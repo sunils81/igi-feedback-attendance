@@ -549,14 +549,26 @@ function doGet(e) {
     if (act==='getBatches') {
       const sh = ss.getSheetByName(SH_BATCHES);
       if (sh.getLastRow()<2) return respond({status:'ok',batches:[]});
-      const data=sh.getRange(2,1,sh.getLastRow()-1,8).getValues();
+      const data=sh.getRange(2,1,sh.getLastRow()-1,10).getValues();
       const centre=(p.centre||'').trim();
       const centres=(p.centres||'').split(',').map(s=>s.trim()).filter(Boolean);
-      return respond({status:'ok',batches:data.filter(r=>r[0]&&(!centre||r[1]===centre)&&(!centres.length||centres.includes(r[1]))).map(r=>({
-        batchCode:r[0],centre:r[1],course:r[2],type:r[3],
-        startDate:r[4]?new Date(r[4]).toLocaleDateString('en-IN'):'',
-        endDate:r[5]?new Date(r[5]).toLocaleDateString('en-IN'):''
-      }))});
+      return respond({status:'ok',batches:data.filter(r=>r[0]&&(!centre||r[1]===centre)&&(!centres.length||centres.includes(r[1]))).map(r=>{
+        const isNew = detectSlotOrDate(r[4]);
+        const sdRaw = isNew ? r[5] : r[4];
+        const edRaw = isNew ? r[6] : r[5];
+        const fmtDate = function(v){ if(!v) return ''; if(v instanceof Date) return v.toLocaleDateString('en-IN'); const d=new Date(v); return isNaN(d)?'':d.toLocaleDateString('en-IN'); };
+        return {
+          batchCode:  r[0],
+          centre:     r[1],
+          course:     r[2],
+          type:       r[3],
+          batchSlot:  isNew ? String(r[4]).trim() : 'Full Day',
+          startDate:  fmtDate(sdRaw),
+          endDate:    fmtDate(edRaw),
+          counselor:  isNew ? (r[7]||'') : (r[6]||''),
+          instructor: isNew ? (r[9]||'') : (r[8]||'')
+        };
+      })});
     }
 
     // ── getNextEnrollment ──────────────────────────────────────
@@ -1400,8 +1412,13 @@ function ensureHolidayHeaders(sh){
 // Detect if col4 contains a Batch Slot string (new schema) or a date (old schema)
 function detectSlotOrDate(val) {
   if (!val) return false; // empty = old schema without slot
-  const s = String(val);
-  return s==='First Half'||s==='Second Half'||s==='Full Day';
+  const s = String(val).trim().toLowerCase();
+  // If it looks like a date (contains digits and dashes/slashes) → old schema
+  if (/\d{4}-\d{2}|\d+\/\d+/.test(s)) return false;
+  // If it's a Date object → old schema
+  if (val instanceof Date) return false;
+  // If it matches a slot keyword → new schema
+  return s==='first half'||s==='second half'||s==='full day';
 }
 
 function getOrCreateSheet(ss,name){let s=ss.getSheetByName(name);if(!s)s=ss.insertSheet(name);return s;}

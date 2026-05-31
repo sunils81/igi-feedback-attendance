@@ -382,7 +382,7 @@ const SYLLABI = {
   'Navratna Masterclass (10 Half Days)': [
     {day:1,  week:'Week 1', topic:'Introduction to Gemmology — Minerals, Organic, Amorphous, Synthetic, Simulants; Hardness, Toughness, Stability'},
     {day:2,  week:'Week 1', topic:'Optical Phenomena — Instruments: Loupe, Refractometer, Microscope Demo'},
-    {day:3,  week:'Week 1', topic:'3 Gemstones: Cat's Eye, Hessonite, Coral — Practical Demo'},
+    {day:3,  week:'Week 1', topic:'3 Gemstones: Cat\'s Eye, Hessonite, Coral — Practical Demo'},
     {day:4,  week:'Week 1', topic:'Corundum — Basic Properties, Ruby, Sapphire, Yellow Sapphire, Origins'},
     {day:5,  week:'Week 1', topic:'Corundum — Practical Session'},
     {day:6,  week:'Week 2', topic:'Emerald — Basic Properties of Beryl, Origins, Treatments, Synthetics, Simulants'},
@@ -393,7 +393,7 @@ const SYLLABI = {
   ],
   'Navratna Masterclass (5 Full Days)': [
     {day:1, week:'Week 1', topic:'Introduction to Gemmology — Minerals, Organic, Amorphous, Synthetic, Simulants; Hardness, Toughness, Stability'},
-    {day:2, week:'Week 1', topic:'Optical Phenomena + 3 Gemstones: Cat's Eye, Hessonite, Coral'},
+    {day:2, week:'Week 1', topic:'Optical Phenomena + 3 Gemstones: Cat\'s Eye, Hessonite, Coral'},
     {day:3, week:'Week 1', topic:'Corundum — Ruby, Sapphire, Yellow Sapphire: Properties, Origins, Practical'},
     {day:4, week:'Week 1', topic:'Emerald (Beryl) + Diamond — Properties, 4Cs, Treatments, Practical'},
     {day:5, week:'Week 1', topic:'Pearl — Properties, Varieties, Treatments + Final Theory Exam + Graduation'}

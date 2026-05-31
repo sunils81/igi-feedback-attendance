@@ -1143,63 +1143,11 @@ function doGet(e) {
       return respond({status:'ok',structured:true,course,days});
     }
 
-    // ── autoCreateSessionsForDate (called by 6AM trigger) ─────
+    // ── autoCreateSessionsForDate — handled by top-level function below ─
     if (act==='autoCreateSessionsForDate') {
-      const today     = new Date();
-      const todayStr  = today.toISOString().split('T')[0];
-      const holidays  = getHolidaysForCentre(ss);
-      if (!isWorkingDay(today, holidays)) return respond({status:'ok',message:'Not a working day',created:0});
-      const shBatch   = ss.getSheetByName(SH_BATCHES);
-      const shSess    = ss.getSheetByName(SH_SESSIONS);
-      if (!shBatch||shBatch.getLastRow()<2) return respond({status:'ok',created:0});
-      const batches   = shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues().filter(r=>r[0]);
-      const existSess = shSess&&shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,8).getValues():[]; 
-      let created     = 0;
-      batches.forEach(b=>{
-        const batchCode = String(b[0]).toUpperCase();
-        const course    = b[2];
-        const batchSlot = b[4]||'Full Day';
-        const startDateRaw = detectSlotOrDate(b[4]) ? b[5] : b[4];
-        const endDateRaw   = detectSlotOrDate(b[4]) ? b[6] : b[5];
-        if (!startDateRaw||!endDateRaw) return;
-        const startDate = new Date(startDateRaw); startDate.setHours(12,0,0,0);
-        const endDate   = new Date(endDateRaw);   endDate.setHours(23,59,59,0);
-        if (today<startDate||today>endDate) return;
-        // Check session already exists today
-        const alreadyExists = existSess.some(r=>
-          String(r[1]).toUpperCase()===batchCode &&
-          r[2] && new Date(r[2]).toISOString().split('T')[0]===todayStr
-        );
-        if (alreadyExists) return;
-        // Find which day number today is
-        const syllabus  = SYLLABI[course];
-        const holidays2 = getHolidaysForCentre(ss);
-        const nDays     = syllabus ? syllabus.length : 30;
-        const schedule  = getWorkingSchedule(startDateRaw instanceof Date?startDateRaw.toISOString().split('T')[0]:String(startDateRaw).split('T')[0], nDays, holidays2);
-        let dayNo = -1;
-        schedule.forEach((d,i)=>{ if(d.toISOString().split('T')[0]===todayStr) dayNo=i+1; });
-        if (dayNo<0) return; // today not in schedule
-        const topic     = syllabus ? syllabus[dayNo-1].topic : '';
-        // Count existing sessions for seq number
-        let sessNo = 1;
-        if (shSess.getLastRow()>1) {
-          sessNo = existSess.filter(r=>String(r[1]).toUpperCase()===batchCode).length + 1;
-        }
-        const sessionCode = batchCode+'-S'+String(sessNo).padStart(2,'0');
-        shSess.appendRow([sessionCode,batchCode,new Date(todayStr),dayNo,
-          detectSlotOrDate(b[4])?(b[9]||''):(b[8]||''), // instructor
-          'Scheduled',topic,                        // type, topic
-          'Y',                                      // auto-created flag (col 9)
-          new Date().toISOString()]);
-        shSess.getRange(shSess.getLastRow(),3).setNumberFormat('dd/mm/yyyy');
-        shSess.getRange(shSess.getLastRow(),1,1,10).setBackground(
-          batchSlot==='First Half'?'#EEF4FB':batchSlot==='Second Half'?'#F9F3E3':'#F4F1EB'
-        );
-        created++;
-      });
-      return respond({status:'ok',created,date:todayStr});
+      const result = autoCreateSessionsForDate();
+      return respond(result);
     }
-
     // ── getStudentPortalData ───────────────────────────────────
     if (act==='getStudentPortalData') {
       const enrollNo = (p.enrollmentNo||'').trim().toUpperCase();
@@ -1298,6 +1246,110 @@ function doGet(e) {
 
     return respond({status:'error',reason:'unknown_action'});
   } catch(err){return respond({status:'error',message:err.toString()});}
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  TOP-LEVEL TRIGGER FUNCTIONS (visible to Apps Script triggers)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * autoCreateSessionsForDate — run daily at 6AM via Apps Script trigger
+ * Creates sessions for all active batches for today (Mon-Fri, non-holidays)
+ * Can also be called via doGet for manual trigger
+ */
+function autoCreateSessionsForDate() {
+  const ss        = SpreadsheetApp.openById(SHEET_ID);
+  const today     = new Date();
+  const todayStr  = today.toISOString().split('T')[0];
+  const holidays  = getHolidaysForCentre(ss);
+  if (!isWorkingDay(today, holidays)) return {status:'ok', message:'Not a working day', created:0};
+
+  ensureSheets(ss);
+  const shBatch   = ss.getSheetByName(SH_BATCHES);
+  const shSess    = ss.getSheetByName(SH_SESSIONS);
+  if (!shBatch || shBatch.getLastRow()<2) return {status:'ok', created:0};
+
+  const batches   = shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues().filter(r=>r[0]);
+  const existSess = shSess && shSess.getLastRow()>1
+    ? shSess.getRange(2,1,shSess.getLastRow()-1,8).getValues() : [];
+
+  let created = 0;
+  batches.forEach(b => {
+    const batchCode    = String(b[0]).toUpperCase();
+    const course       = b[2];
+    const isNew        = detectSlotOrDate(b[4]);
+    const batchSlot    = isNew ? (b[4]||'Full Day') : 'Full Day';
+    const startDateRaw = isNew ? b[5] : b[4];
+    const endDateRaw   = isNew ? b[6] : b[5];
+    const instructor   = isNew ? (b[9]||'') : (b[8]||'');
+
+    if (!startDateRaw || !endDateRaw) return;
+    const startDate = new Date(startDateRaw); startDate.setHours(0,0,0,0);
+    const endDate   = new Date(endDateRaw);   endDate.setHours(23,59,59,0);
+    if (today < startDate || today > endDate) return;
+
+    // Check session already exists today
+    const alreadyExists = existSess.some(r =>
+      String(r[1]).toUpperCase() === batchCode &&
+      r[2] && new Date(r[2]).toISOString().split('T')[0] === todayStr
+    );
+    if (alreadyExists) return;
+
+    // Find which day number today is
+    const syllabus  = SYLLABI[course];
+    const nDays     = syllabus ? syllabus.length : 30;
+    const schedule  = getWorkingSchedule(
+      startDateRaw instanceof Date
+        ? startDateRaw.toISOString().split('T')[0]
+        : String(startDateRaw).split('T')[0],
+      nDays, holidays
+    );
+
+    let dayNo = -1;
+    schedule.forEach((d,i) => {
+      if (d.toISOString().split('T')[0] === todayStr) dayNo = i+1;
+    });
+    if (dayNo < 0) return; // today not in schedule
+
+    const topic   = syllabus ? syllabus[dayNo-1].topic : '';
+    let sessNo    = 1;
+    if (shSess && shSess.getLastRow() > 1) {
+      sessNo = existSess.filter(r => String(r[1]).toUpperCase() === batchCode).length + 1;
+    }
+
+    const sessionCode = batchCode + '-S' + String(sessNo).padStart(2,'0');
+    shSess.appendRow([
+      sessionCode, batchCode, new Date(todayStr), dayNo,
+      instructor, 'Scheduled', topic, 'Y', new Date().toISOString()
+    ]);
+    shSess.getRange(shSess.getLastRow(), 3).setNumberFormat('dd/mm/yyyy');
+    shSess.getRange(shSess.getLastRow(), 1, 1, 9).setBackground(
+      batchSlot==='First Half' ? '#EEF4FB' :
+      batchSlot==='Second Half'? '#F9F3E3' : '#F4F1EB'
+    );
+    created++;
+  });
+
+  Logger.log('autoCreateSessionsForDate: created ' + created + ' sessions for ' + todayStr);
+  return {status:'ok', created, date:todayStr};
+}
+
+/**
+ * fixOldBatches — run ONCE to insert Batch Slot column into old batch rows
+ */
+function fixOldBatches() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sh = ss.getSheetByName(SH_BATCHES);
+  if (!sh || sh.getLastRow() < 2) { Logger.log('No batches found'); return; }
+  const headers = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
+  Logger.log('Current headers: ' + headers.join(', '));
+  if (headers.includes('Batch Slot')) { Logger.log('Already fixed'); return; }
+  sh.insertColumnBefore(5);
+  sh.getRange(1,5).setValue('Batch Slot')
+    .setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
+  if (sh.getLastRow() > 1)
+    sh.getRange(2,5,sh.getLastRow()-1,1).setValue('Full Day');
+  Logger.log('Done — manually set First Half/Second Half per batch in the sheet');
 }
 
 // ═══════════════════════════════════════════════════════════════

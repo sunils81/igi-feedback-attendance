@@ -10,6 +10,13 @@ const MASTER_PASS    = 'IGIMaster2026';
 const REPORT_PASS    = 'IGI2026';          // session report uses same password
 const PASS_THRESHOLD = 60;                 // % pass mark
 
+// ── Slot activation windows (local time hours) ────────────────
+const SLOT_WINDOWS = {
+  'First Half':  { open: 8,  close: 14 }, // 8AM – 2PM
+  'Second Half': { open: 12, close: 20 }, // 12PM – 8PM
+  'Full Day':    { open: 8,  close: 24 }  // 8AM – midnight
+};
+
 // ── Instructor credentials (Option B — unique per instructor) ─
 const INSTRUCTOR_CREDS = {
   'Amit Sidpura':     'IGIAmit2026',
@@ -371,6 +378,26 @@ const SYLLABI = {
     {day:79, week:'Pre-Exam Revision', topic:'Individual Weak Area Review + Instrument Endorsement Completion'},
     {day:80, week:'Pre-Exam Revision', topic:'Final Briefing: Exam Day Preparation, Admin, What to Bring'}
   ]
+,
+  'Navratna Masterclass (10 Half Days)': [
+    {day:1,  week:'Week 1', topic:'Introduction to Gemmology — Minerals, Organic, Amorphous, Synthetic, Simulants; Hardness, Toughness, Stability'},
+    {day:2,  week:'Week 1', topic:'Optical Phenomena — Instruments: Loupe, Refractometer, Microscope Demo'},
+    {day:3,  week:'Week 1', topic:'3 Gemstones: Cat's Eye, Hessonite, Coral — Practical Demo'},
+    {day:4,  week:'Week 1', topic:'Corundum — Basic Properties, Ruby, Sapphire, Yellow Sapphire, Origins'},
+    {day:5,  week:'Week 1', topic:'Corundum — Practical Session'},
+    {day:6,  week:'Week 2', topic:'Emerald — Basic Properties of Beryl, Origins, Treatments, Synthetics, Simulants'},
+    {day:7,  week:'Week 2', topic:'Emerald — Practical Session'},
+    {day:8,  week:'Week 2', topic:'Diamond — Basic Properties, 4Cs Basics, Specimens'},
+    {day:9,  week:'Week 2', topic:'Pearl — Properties, Varieties, Treatments, Simulants'},
+    {day:10, week:'Week 2', topic:'Final Theory Exam + Graduation'}
+  ],
+  'Navratna Masterclass (5 Full Days)': [
+    {day:1, week:'Week 1', topic:'Introduction to Gemmology — Minerals, Organic, Amorphous, Synthetic, Simulants; Hardness, Toughness, Stability'},
+    {day:2, week:'Week 1', topic:'Optical Phenomena + 3 Gemstones: Cat's Eye, Hessonite, Coral'},
+    {day:3, week:'Week 1', topic:'Corundum — Ruby, Sapphire, Yellow Sapphire: Properties, Origins, Practical'},
+    {day:4, week:'Week 1', topic:'Emerald (Beryl) + Diamond — Properties, 4Cs, Treatments, Practical'},
+    {day:5, week:'Week 1', topic:'Pearl — Properties, Varieties, Treatments + Final Theory Exam + Graduation'}
+  ]
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -475,8 +502,9 @@ function doGet(e) {
       const syllabus  = SYLLABI[course];
       const nDays     = syllabus ? syllabus.length : 30;
       const holidays  = getHolidaysForCentre(ss);
-      const schedule  = getWorkingSchedule(startDate, Math.min(nDays,10), holidays);
-      const preview   = schedule.map((d,i)=>({
+      const schedule  = getWorkingSchedule(startDate, nDays, holidays);
+      const showDays  = nDays <= 15 ? nDays : 10; // show all for short courses
+      const preview   = schedule.slice(0,showDays).map((d,i)=>({
         day: i+1,
         date: dateStr(d),
         topic: syllabus ? syllabus[i].topic : 'To be set'
@@ -489,7 +517,7 @@ function doGet(e) {
       const sh = ss.getSheetByName(SH_BATCHES);
       const exist = sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,1).getValues().map(r=>String(r[0])):[];
       if (exist.includes(p.batchCode)) return respond({status:'error',reason:'batch_exists'});
-      sh.appendRow([p.batchCode,p.centre,p.course,p.type,p.startDate,p.endDate,'Counselor',new Date().toISOString()]);
+      sh.appendRow([p.batchCode,p.centre,p.course,p.type,p.batchSlot||'Full Day',p.startDate,p.endDate,'Counselor',new Date().toISOString()]);
       sh.getRange(sh.getLastRow(),1,1,8).setBackground(sh.getLastRow()%2===0?'#F4F1EB':'#FDFCF9');
       return respond({status:'ok',batchCode:p.batchCode});
     }
@@ -898,7 +926,7 @@ function doGet(e) {
       for (let i=0;i<data.length;i++) {
         if (String(data[i][0]).toUpperCase()===batchCode) {
           // Col 9 = Assigned Instructor (index 8)
-          sh.getRange(i+2,9).setValue(instructor);
+          sh.getRange(i+2,10).setValue(instructor);
           return respond({status:'ok'});
         }
       }
@@ -912,11 +940,11 @@ function doGet(e) {
       const sh=ss.getSheetByName(SH_BATCHES);
       if (sh.getLastRow()<2) return respond({status:'ok',batches:[]});
       const data=sh.getRange(2,1,sh.getLastRow()-1,9).getValues();
-      const batches=data.filter(r=>r[0]&&(r[8]||'')=== instructor).map(r=>({
-        batchCode:r[0],centre:r[1],course:r[2],type:r[3],
-        startDate:r[4]?new Date(r[4]).toLocaleDateString('en-IN'):'',
-        endDate:r[5]?new Date(r[5]).toLocaleDateString('en-IN'):'',
-        instructor:r[8]||''
+      const batches=data.filter(r=>r[0]&&(r[9]||'')=== instructor).map(r=>({
+        batchCode:r[0],centre:r[1],course:r[2],type:r[3],batchSlot:r[4]||'Full Day',
+        startDate:r[5]?new Date(r[5]).toLocaleDateString('en-IN'):'',
+        endDate:r[6]?new Date(r[6]).toLocaleDateString('en-IN'):'',
+        instructor:r[9]||''
       }));
       return respond({status:'ok',batches});
     }
@@ -1041,6 +1069,184 @@ function doGet(e) {
       return respond({status:'ok',summary});
     }
 
+    // ── getEndDate ────────────────────────────────────────────
+    if (act==='getEndDate') {
+      const course    = p.course||'';
+      const startDate = p.startDate||'';
+      if (!startDate) return respond({status:'error'});
+      const syllabus  = SYLLABI[course];
+      const nDays     = syllabus ? syllabus.length : 30;
+      const holidays  = getHolidaysForCentre(ss);
+      const schedule  = getWorkingSchedule(startDate, nDays, holidays);
+      const endDate   = schedule[schedule.length-1];
+      return respond({status:'ok',
+        endDate: endDate.toISOString().split('T')[0],
+        endDateDisplay: dateStr(endDate),
+        totalDays: nDays
+      });
+    }
+
+    // ── getDaySchedule (for instructor day dropdown) ──────────
+    if (act==='getDaySchedule') {
+      const batchCode = (p.batchCode||'').toUpperCase();
+      const shBatch   = ss.getSheetByName(SH_BATCHES);
+      const bData     = shBatch.getLastRow()>1?shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues():[];
+      const batch     = bData.find(r=>String(r[0]).toUpperCase()===batchCode);
+      if (!batch) return respond({status:'error',reason:'batch_not_found'});
+      const course    = batch[2];
+      const startDate = batch[5];
+      const syllabus  = SYLLABI[course];
+      if (!syllabus) return respond({status:'ok',structured:false,course});
+      const holidays  = getHolidaysForCentre(ss);
+      const schedule  = getWorkingSchedule(String(startDate).split('T')[0]||new Date(startDate).toISOString().split('T')[0], syllabus.length, holidays);
+      // Get completed sessions
+      const shSess = ss.getSheetByName(SH_SESSIONS);
+      const completedDays = new Set();
+      if (shSess.getLastRow()>1) {
+        shSess.getRange(2,1,shSess.getLastRow()-1,4).getValues()
+          .filter(r=>String(r[1]).toUpperCase()===batchCode)
+          .forEach(r=>completedDays.add(Number(r[3])));
+      }
+      const days = syllabus.map((s,i)=>({
+        day:       s.day,
+        week:      s.week,
+        topic:     s.topic,
+        date:      dateStr(schedule[i]),
+        dateISO:   schedule[i].toISOString().split('T')[0],
+        completed: completedDays.has(s.day)
+      }));
+      return respond({status:'ok',structured:true,course,days});
+    }
+
+    // ── autoCreateSessionsForDate (called by 6AM trigger) ─────
+    if (act==='autoCreateSessionsForDate') {
+      const today     = new Date();
+      const todayStr  = today.toISOString().split('T')[0];
+      const holidays  = getHolidaysForCentre(ss);
+      if (!isWorkingDay(today, holidays)) return respond({status:'ok',message:'Not a working day',created:0});
+      const shBatch   = ss.getSheetByName(SH_BATCHES);
+      const shSess    = ss.getSheetByName(SH_SESSIONS);
+      if (!shBatch||shBatch.getLastRow()<2) return respond({status:'ok',created:0});
+      const batches   = shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues().filter(r=>r[0]);
+      const existSess = shSess&&shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,8).getValues():[]; 
+      let created     = 0;
+      batches.forEach(b=>{
+        const batchCode = String(b[0]).toUpperCase();
+        const course    = b[2];
+        const batchSlot = b[4]||'Full Day';
+        const startDateRaw = b[5];
+        const endDateRaw   = b[6];
+        if (!startDateRaw||!endDateRaw) return;
+        const startDate = new Date(startDateRaw); startDate.setHours(12,0,0,0);
+        const endDate   = new Date(endDateRaw);   endDate.setHours(23,59,59,0);
+        if (today<startDate||today>endDate) return;
+        // Check session already exists today
+        const alreadyExists = existSess.some(r=>
+          String(r[1]).toUpperCase()===batchCode &&
+          r[2] && new Date(r[2]).toISOString().split('T')[0]===todayStr
+        );
+        if (alreadyExists) return;
+        // Find which day number today is
+        const syllabus  = SYLLABI[course];
+        const holidays2 = getHolidaysForCentre(ss);
+        const nDays     = syllabus ? syllabus.length : 30;
+        const schedule  = getWorkingSchedule(startDateRaw instanceof Date?startDateRaw.toISOString().split('T')[0]:String(startDateRaw).split('T')[0], nDays, holidays2);
+        let dayNo = -1;
+        schedule.forEach((d,i)=>{ if(d.toISOString().split('T')[0]===todayStr) dayNo=i+1; });
+        if (dayNo<0) return; // today not in schedule
+        const topic     = syllabus ? syllabus[dayNo-1].topic : '';
+        // Count existing sessions for seq number
+        let sessNo = 1;
+        if (shSess.getLastRow()>1) {
+          sessNo = existSess.filter(r=>String(r[1]).toUpperCase()===batchCode).length + 1;
+        }
+        const sessionCode = batchCode+'-S'+String(sessNo).padStart(2,'0');
+        shSess.appendRow([sessionCode,batchCode,new Date(todayStr),dayNo,
+          b[9]||'',                                // instructor
+          'Scheduled',topic,                        // type, topic
+          'Y',                                      // auto-created flag (col 9)
+          new Date().toISOString()]);
+        shSess.getRange(shSess.getLastRow(),3).setNumberFormat('dd/mm/yyyy');
+        shSess.getRange(shSess.getLastRow(),1,1,10).setBackground(
+          batchSlot==='First Half'?'#EEF4FB':batchSlot==='Second Half'?'#F9F3E3':'#F4F1EB'
+        );
+        created++;
+      });
+      return respond({status:'ok',created,date:todayStr});
+    }
+
+    // ── getStudentPortalData ───────────────────────────────────
+    if (act==='getStudentPortalData') {
+      const enrollNo = (p.enrollmentNo||'').trim().toUpperCase();
+      const dobDD    = (p.dobDD||'').trim();
+      const dobMM    = (p.dobMM||'').trim();
+      const dob      = dobDD.padStart(2,'0') + dobMM.padStart(2,'0');
+      if (!enrollNo||!dob||dob.length!==4) return respond({status:'error',reason:'missing_params'});
+      // Find student
+      const shStu  = ss.getSheetByName(SH_STUDENTS);
+      if (!shStu||shStu.getLastRow()<2) return respond({status:'error',reason:'student_not_found'});
+      const stuData = shStu.getRange(2,1,shStu.getLastRow()-1,8).getValues();
+      const studentRows = stuData.filter(r=>String(r[0]).toUpperCase()===enrollNo&&r[6]==='Active');
+      if (!studentRows.length) return respond({status:'error',reason:'student_not_found'});
+      // Verify DOB against first matching record
+      const firstStu = studentRows[0];
+      if (String(firstStu[3]).replace(/\D/g,'')!==dob) return respond({status:'error',reason:'dob_mismatch'});
+      const studentName = firstStu[2];
+      // Get all active batches for this student
+      const shBatch = ss.getSheetByName(SH_BATCHES);
+      const bData   = shBatch.getLastRow()>1?shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues():[];
+      const today   = new Date(); today.setHours(12,0,0,0);
+      const todayStr= today.toISOString().split('T')[0];
+      const shSess  = ss.getSheetByName(SH_SESSIONS);
+      const shFb    = ss.getSheetByName(SH_FEEDBACK);
+      const allSess = shSess&&shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,10).getValues():[];
+      const allFb   = shFb&&shFb.getLastRow()>1?shFb.getRange(2,1,shFb.getLastRow()-1,3).getValues():[];
+      const batchCards = [];
+      studentRows.forEach(stuRow=>{
+        const batchCode = String(stuRow[1]).toUpperCase();
+        const batch     = bData.find(r=>String(r[0]).toUpperCase()===batchCode);
+        if (!batch) return;
+        const startDate = new Date(batch[5]); startDate.setHours(0,0,0,0);
+        const endDate   = new Date(batch[6]);  endDate.setHours(23,59,59,0);
+        if (today<startDate||today>endDate) return; // batch not active today
+        const batchSlot = batch[4]||'Full Day';
+        // Slot activation window
+        const win   = SLOT_WINDOWS[batchSlot]||SLOT_WINDOWS['Full Day'];
+        const nowHr = new Date().getHours();
+        const windowOpen   = nowHr >= win.open;
+        const windowClosed = nowHr >= win.close;
+        const isActive     = windowOpen && !windowClosed;
+        // Find today's session
+        const todaySess = allSess.find(r=>
+          String(r[1]).toUpperCase()===batchCode &&
+          r[2] && new Date(r[2]).toISOString().split('T')[0]===todayStr
+        );
+        // Check if already submitted
+        const alreadySubmitted = todaySess && allFb.some(r=>
+          String(r[0]).toUpperCase()===String(todaySess[0]).toUpperCase() &&
+          String(r[1]).toUpperCase()===enrollNo
+        );
+        batchCards.push({
+          batchCode, course:batch[2], centre:batch[1], type:batch[3], batchSlot,
+          instructor:  batch[9]||'',
+          sessionCode: todaySess ? String(todaySess[0]) : null,
+          sessNo:      todaySess ? todaySess[3] : null,
+          topic:       todaySess ? (todaySess[6]||'') : null,
+          sessionExists:    !!todaySess,
+          alreadySubmitted: !!alreadySubmitted,
+          windowActive:     isActive,
+          windowOpen:       windowOpen,
+          windowClosed:     windowClosed,
+          windowOpenHr:     win.open,
+          windowCloseHr:    win.close
+        });
+      });
+      // Sort: First Half → Second Half → Full Day
+      const slotOrder = {'First Half':0,'Second Half':1,'Full Day':2};
+      batchCards.sort((a,b)=>(slotOrder[a.batchSlot]||2)-(slotOrder[b.batchSlot]||2));
+      return respond({status:'ok', studentName, enrollmentNo:enrollNo, batches:batchCards});
+    }
+
     return respond({status:'error',reason:'unknown_action'});
   } catch(err){return respond({status:'error',message:err.toString()});}
 }
@@ -1050,9 +1256,9 @@ function doGet(e) {
 // ═══════════════════════════════════════════════════════════════
 function ensureSheets(ss) {
   const defs = {
-    [SH_BATCHES]:  ['Batch Code','Centre','Course','Type','Start Date','End Date','Created By','Created At','Assigned Instructor'],
+    [SH_BATCHES]:  ['Batch Code','Centre','Course','Type','Batch Slot','Start Date','End Date','Created By','Created At','Assigned Instructor'],
     [SH_STUDENTS]: ['Enrollment No','Batch Code','Name','DOB (DDMM)','Mobile','Email','Status','Created At'],
-    [SH_SESSIONS]: ['Session Code','Batch Code','Session Date','Session No','Instructor','Session Type','Topic Covered','Created At'],
+    [SH_SESSIONS]: ['Session Code','Batch Code','Session Date','Session No','Instructor','Session Type','Topic Covered','Auto Created','Created At'],
     [SH_FEEDBACK]: ['Session Code','Enrollment No','Student Name','Batch Code','Centre','Course','Instructor','Topic',
                     'Completion Status','Q1 Overall Rating','Q2 Clarity','Q3 Pace','Q4 Doubts Addressed',
                     'Q5 Learned (text)','Q6 Suggestion (text)','Anonymous','Timestamp'],

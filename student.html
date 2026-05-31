@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IGI — Student Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="assets/shared.js"></script>
+<style id="dyn-css"></style>
+<style>
+.batch-card{background:var(--white);border-radius:var(--radius);border:1.5px solid var(--border);padding:20px;margin-bottom:14px;box-shadow:var(--shadow);transition:border-color .2s}
+.batch-card.active-card{border-color:var(--gold)}
+.batch-card.done-card{border-color:#1D9E75;background:#F0FAF5}
+.batch-card.inactive-card{opacity:.6}
+.slot-badge{display:inline-block;padding:3px 10px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-bottom:10px}
+.slot-first{background:#EEF4FB;color:#185FA5}
+.slot-second{background:var(--gold-pale);color:#B87A10}
+.slot-full{background:#E8F5EE;color:#1a7a3c}
+.bc-course{font-size:16px;font-weight:600;color:var(--navy);margin-bottom:2px;font-family:'Playfair Display',serif}
+.bc-meta{font-size:12px;color:var(--muted);margin-bottom:10px}
+.bc-topic{font-size:13px;font-weight:600;color:var(--navy);background:var(--gold-pale);border-left:3px solid var(--gold);padding:8px 12px;border-radius:0 6px 6px 0;margin-bottom:12px;line-height:1.5}
+.bc-done{font-size:13px;color:#1D9E75;font-weight:600;display:flex;align-items:center;gap:8px}
+.bc-waiting{font-size:12px;color:var(--muted);font-style:italic}
+.bc-inactive{font-size:12px;color:var(--muted)}
+.time-badge{display:inline-block;background:var(--navy);color:rgba(255,255,255,.7);font-size:11px;padding:3px 10px;border-radius:8px;font-family:'DM Mono',monospace}
+/* DOB inputs */
+.dob-wrap{display:flex;gap:8px;align-items:center}
+.dob-box{width:60px;border:1.5px solid var(--border);border-radius:8px;padding:11px 0;font-size:18px;font-family:'DM Mono',monospace;font-weight:600;text-align:center;color:var(--navy);outline:none;transition:border-color .2s}
+.dob-box:focus{border-color:var(--gold)}
+.dob-sep{font-size:20px;color:var(--muted);font-weight:300}
+.dob-label{font-size:10px;text-align:center;color:var(--muted);margin-top:3px;letter-spacing:.04em;text-transform:uppercase}
+/* Welcome bar */
+.welcome-bar{background:var(--navy);border-radius:var(--radius);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.wb-name{font-size:14px;font-weight:600;color:var(--white)}
+.wb-sub{font-size:11px;color:rgba(255,255,255,.4);margin-top:2px}
+.wb-logout{background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif}
+.wb-logout:hover{background:rgba(255,255,255,.1);color:var(--white)}
+/* Feedback inline */
+.feedback-section{border-top:1px solid var(--border);padding-top:14px;margin-top:14px}
+.stars{display:flex;gap:6px;margin-top:4px}
+.star{font-size:26px;cursor:pointer;transition:transform .1s;line-height:1}
+.star.active{filter:drop-shadow(0 0 3px rgba(201,168,76,.4))}
+.sel-btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.sel-btn{flex:1;min-width:70px;padding:8px 6px;border:1.5px solid var(--border);border-radius:7px;font-size:11px;font-weight:500;cursor:pointer;background:var(--white);color:var(--muted);transition:all .15s;font-family:'DM Sans',sans-serif;text-align:center}
+.sel-btn.active{background:var(--gold);color:var(--navy);border-color:var(--gold)}
+.topic-opt{display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;transition:all .15s;margin-bottom:6px;background:var(--white)}
+.topic-opt:hover,.topic-opt.sel{border-color:var(--gold);background:var(--gold-pale)}
+.topic-opt input{accent-color:var(--gold);flex-shrink:0;margin-top:3px}
+.topic-opt .tt{font-size:13px;font-weight:500;color:var(--navy);line-height:1.4}
+.topic-opt .tw{font-size:10px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px}
+.anon-row{display:flex;align-items:flex-start;gap:10px;background:var(--gold-pale);border-radius:8px;padding:10px 12px;margin-bottom:12px;cursor:pointer}
+.anon-row input{accent-color:var(--gold);width:16px;height:16px;flex-shrink:0;margin-top:2px}
+.anon-row .al{font-size:12px;color:var(--navy);line-height:1.5}
+.anon-row .as{font-size:10px;color:var(--muted);margin-top:2px}
+.refresh-note{font-size:11px;color:var(--muted);text-align:center;margin-top:8px}
+</style>
+</head>
+<body>
+<script>document.getElementById('dyn-css').textContent=CSS_VARS;</script>
+
+<div class="wrap" style="max-width:480px">
+  <div class="site-header">
+    <div class="hdr-logo"><img src="assets/igi-school-of-gemology-white-logo.svg"></div>
+    <div class="hdr-divider"></div>
+    <div class="hdr-band">
+      <div class="hdr-label">Student Portal</div>
+      <div class="hdr-sub">Attendance & Feedback — IGI School of Gemology</div>
+    </div>
+  </div>
+
+  <!-- ══ LOGIN ══ -->
+  <div id="s-login" class="screen active">
+    <div class="card">
+      <div class="section-tag">Sign in</div>
+      <h2>Daily Attendance</h2>
+      <p class="sub">Enter your enrollment number and date of birth to mark today's attendance and submit feedback.</p>
+      <div class="field">
+        <label>Enrollment Number *</label>
+        <input type="text" id="lg-enrol" placeholder="e.g. MUM26DG001" style="text-transform:uppercase" autocomplete="username">
+      </div>
+      <div class="field">
+        <label>Date of Birth</label>
+        <div class="dob-wrap">
+          <div>
+            <input type="tel" class="dob-box" id="lg-dd" placeholder="DD" maxlength="2" inputmode="numeric">
+            <div class="dob-label">Day</div>
+          </div>
+          <div class="dob-sep">/</div>
+          <div>
+            <input type="tel" class="dob-box" id="lg-mm" placeholder="MM" maxlength="2" inputmode="numeric">
+            <div class="dob-label">Month</div>
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-gold" id="lg-btn" onclick="doLogin()">Continue →</button>
+      <div class="err-box" id="lg-err"></div>
+      <div style="text-align:center;margin-top:18px;font-size:11px;color:var(--muted)">Your enrollment number was given to you at admission. Contact your counselor if you need help.</div>
+    </div>
+  </div>
+
+  <!-- ══ PORTAL ══ -->
+  <div id="s-portal" class="screen">
+    <div class="welcome-bar">
+      <div>
+        <div class="wb-name" id="wb-name">—</div>
+        <div class="wb-sub" id="wb-date">—</div>
+      </div>
+      <button class="wb-logout" onclick="doLogout()">Sign out</button>
+    </div>
+    <div id="portal-batches"></div>
+  </div>
+
+  <!-- ══ FEEDBACK MODAL ══ -->
+  <div id="s-feedback" class="screen">
+    <div class="card" style="background:var(--navy);padding:16px 18px;margin-bottom:4px">
+      <div style="font-size:11px;color:var(--gold);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Feedback</div>
+      <div style="font-size:15px;font-weight:600;color:var(--white)" id="fb-course">—</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:3px" id="fb-meta">—</div>
+    </div>
+    <div class="card">
+      <!-- Topic selector -->
+      <div id="fb-topic-wrap" style="margin-bottom:16px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px">What was covered today?</div>
+        <div id="fb-topic-opts"></div>
+        <div id="fb-topic-custom-wrap" style="display:none;margin-top:8px">
+          <input type="text" id="fb-topic-custom" placeholder="Describe what was covered…" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none">
+        </div>
+      </div>
+      <!-- Completion -->
+      <div style="margin-bottom:16px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">How was today's session?</div>
+        <div class="sel-btns">
+          <button class="sel-btn" data-g="comp" data-v="Completed" onclick="setSel(this,'comp')">✅ Fully covered</button>
+          <button class="sel-btn" data-g="comp" data-v="Partial"   onclick="setSel(this,'comp')">🔄 Partial</button>
+          <button class="sel-btn" data-g="comp" data-v="Test"      onclick="setSel(this,'comp')">📝 Test</button>
+          <button class="sel-btn" data-g="comp" data-v="Extra"     onclick="setSel(this,'comp')">➕ Extra</button>
+        </div>
+      </div>
+      <!-- Q1 -->
+      <div style="margin-bottom:16px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">Q1 — Overall rating *</div>
+        <div class="stars" id="q1-stars">
+          <span class="star" onclick="setStar('q1',1)">☆</span><span class="star" onclick="setStar('q1',2)">☆</span>
+          <span class="star" onclick="setStar('q1',3)">☆</span><span class="star" onclick="setStar('q1',4)">☆</span>
+          <span class="star" onclick="setStar('q1',5)">☆</span>
+        </div>
+      </div>
+      <!-- Q2 -->
+      <div style="margin-bottom:16px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">Q2 — Clarity of explanation *</div>
+        <div class="stars" id="q2-stars">
+          <span class="star" onclick="setStar('q2',1)">☆</span><span class="star" onclick="setStar('q2',2)">☆</span>
+          <span class="star" onclick="setStar('q2',3)">☆</span><span class="star" onclick="setStar('q2',4)">☆</span>
+          <span class="star" onclick="setStar('q2',5)">☆</span>
+        </div>
+      </div>
+      <!-- Q3 + Q4 -->
+      <div style="margin-bottom:16px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">Q3 — Pace *</div>
+        <div class="sel-btns">
+          <button class="sel-btn" data-g="q3" data-v="Too Slow"  onclick="setSel(this,'q3')">🐢 Too Slow</button>
+          <button class="sel-btn" data-g="q3" data-v="Just Right" onclick="setSel(this,'q3')">✅ Just Right</button>
+          <button class="sel-btn" data-g="q3" data-v="Too Fast"  onclick="setSel(this,'q3')">🚀 Too Fast</button>
+        </div>
+      </div>
+      <div style="margin-bottom:16px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">Q4 — Doubts addressed? *</div>
+        <div class="sel-btns">
+          <button class="sel-btn" data-g="q4" data-v="Yes"        onclick="setSel(this,'q4')">✅ Yes</button>
+          <button class="sel-btn" data-g="q4" data-v="Partially"  onclick="setSel(this,'q4')">🔄 Partially</button>
+          <button class="sel-btn" data-g="q4" data-v="No"         onclick="setSel(this,'q4')">❌ No</button>
+          <button class="sel-btn" data-g="q4" data-v="No doubts"  onclick="setSel(this,'q4')">💡 No doubts</button>
+        </div>
+      </div>
+      <!-- Anonymous toggle -->
+      <label class="anon-row">
+        <input type="checkbox" id="anon-chk">
+        <div>
+          <div class="al">Submit written feedback anonymously</div>
+          <div class="as">Your attendance is always recorded. Only Q5 & Q6 text will be hidden from your counselor.</div>
+        </div>
+      </label>
+      <!-- Q5 + Q6 -->
+      <div class="field" style="margin-bottom:12px">
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Q5 — One thing you learned today</label>
+        <textarea id="q5" rows="2" placeholder="e.g. I learned how the table percentage affects brilliance…" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:13px;resize:none;outline:none"></textarea>
+      </div>
+      <div class="field" style="margin-bottom:16px">
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Q6 — Suggestion <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+        <textarea id="q6" rows="2" placeholder="Any improvement you'd like to see…" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:13px;resize:none;outline:none"></textarea>
+      </div>
+      <button class="btn btn-gold" id="fb-submit-btn" onclick="submitFeedback()">Submit Attendance & Feedback ✓</button>
+      <button class="btn btn-outline" onclick="cancelFeedback()" style="margin-top:8px;width:100%">← Back</button>
+      <div class="err-box" id="fb-err"></div>
+    </div>
+  </div>
+
+  <!-- ══ THANK YOU ══ -->
+  <div id="s-thanks" class="screen">
+    <div class="card" style="text-align:center;padding:36px 24px">
+      <div style="font-size:52px;margin-bottom:14px">🙏</div>
+      <h2 style="margin-bottom:8px" id="ty-name">Thank you!</h2>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:20px" id="ty-sub">—</p>
+      <div style="background:var(--off);border-radius:8px;padding:14px 16px;font-size:12px;text-align:left" id="ty-detail"></div>
+      <button class="btn btn-gold" onclick="backToPortal()" style="margin-top:18px">← Back to Portal</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SESSION_KEY = 'igi_student_portal';
+const SESSION_TTL = 12 * 60 * 60 * 1000; // 12 hours
+
+let portalData   = null;  // full response from getStudentPortalData
+let activeBatch  = null;  // current batch being submitted
+let topicData    = null;  // from getExpectedTopic
+const ratings    = {q1:0, q2:0};
+const sels       = {comp:'', q3:'', q4:''};
+let selectedTopic = '';
+
+// ── Init ──────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  // DD/MM navigation
+  document.getElementById('lg-dd').addEventListener('input', e => {
+    if (e.target.value.length === 2) document.getElementById('lg-mm').focus();
+  });
+  document.getElementById('lg-mm').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+  document.getElementById('lg-enrol').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('lg-dd').focus();
+  });
+  // Check saved session
+  checkSavedSession();
+});
+
+function checkSavedSession() {
+  try {
+    const saved = localStorage.getItem(SESSION_KEY);
+    if (!saved) return;
+    const sess = JSON.parse(saved);
+    if (!sess.enrollmentNo || !sess.dobDD || !sess.dobMM) return;
+    if (Date.now() - sess.savedAt > SESSION_TTL) { localStorage.removeItem(SESSION_KEY); return; }
+    // Auto-login
+    document.getElementById('lg-enrol').value = sess.enrollmentNo;
+    document.getElementById('lg-dd').value    = sess.dobDD;
+    document.getElementById('lg-mm').value    = sess.dobMM;
+    fetchPortalData(sess.enrollmentNo, sess.dobDD, sess.dobMM);
+  } catch(e) {}
+}
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ── Login ─────────────────────────────────────────────────────
+function doLogin() {
+  const enrol = document.getElementById('lg-enrol').value.trim().toUpperCase();
+  const dd    = document.getElementById('lg-dd').value.trim().padStart(2,'0');
+  const mm    = document.getElementById('lg-mm').value.trim().padStart(2,'0');
+  const err   = document.getElementById('lg-err');
+  const btn   = document.getElementById('lg-btn');
+  err.classList.remove('show');
+  if (!enrol || dd==='00' || mm==='00' || dd.length<2 || mm.length<2) {
+    err.textContent='Please enter your enrollment number and date of birth.';
+    err.classList.add('show'); return;
+  }
+  btn.textContent='Loading…'; btn.disabled=true;
+  fetchPortalData(enrol, dd, mm, btn, err);
+}
+
+function fetchPortalData(enrol, dd, mm, btn, err) {
+  gasGet({action:'getStudentPortalData', enrollmentNo:enrol, dobDD:dd, dobMM:mm}, function(e,d) {
+    if (btn) { btn.textContent='Continue →'; btn.disabled=false; }
+    if (e||!d) {
+      if (err) { err.textContent='Connection error. Please try again.'; err.classList.add('show'); }
+      return;
+    }
+    if (d.status!=='ok') {
+      const msgs = {
+        student_not_found: 'Enrollment number not found. Please check with your counselor.',
+        dob_mismatch:      'Date of birth does not match. Please check and try again.',
+        missing_params:    'Please fill all fields correctly.'
+      };
+      if (err) { err.textContent=msgs[d.reason]||'Could not log in. Please try again.'; err.classList.add('show'); }
+      else alert(msgs[d.reason]||'Session expired. Please log in again.');
+      return;
+    }
+    // Save session
+    localStorage.setItem(SESSION_KEY, JSON.stringify({enrollmentNo:enrol, dobDD:dd, dobMM:mm, savedAt:Date.now()}));
+    portalData = d;
+    renderPortal(d);
+  });
+}
+
+function renderPortal(d) {
+  document.getElementById('wb-name').textContent = d.studentName;
+  document.getElementById('wb-date').textContent = new Date().toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+  const wrap = document.getElementById('portal-batches');
+
+  if (!d.batches||!d.batches.length) {
+    wrap.innerHTML='<div class="card" style="text-align:center;padding:32px"><div style="font-size:40px;margin-bottom:12px">📚</div><h2 style="margin-bottom:8px">No active sessions today</h2><p style="font-size:13px;color:var(--muted)">You have no active batch for today, or today is a holiday / weekend.</p></div>';
+    showScreen('s-portal'); return;
+  }
+
+  wrap.innerHTML = d.batches.map(b => {
+    const slotBadgeClass = b.batchSlot==='First Half'?'slot-first':b.batchSlot==='Second Half'?'slot-second':'slot-full';
+    const slotLabel      = b.batchSlot==='First Half'?'🌅 First Half':b.batchSlot==='Second Half'?'🌆 Second Half':'☀️ Full Day';
+
+    if (b.alreadySubmitted) {
+      return `<div class="batch-card done-card">
+        <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
+        <div class="bc-course">${b.course}</div>
+        <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''}</div>
+        <div class="bc-done">✅ Attendance marked &amp; feedback submitted</div>
+      </div>`;
+    }
+
+    if (!b.sessionExists) {
+      return `<div class="batch-card inactive-card">
+        <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
+        <div class="bc-course">${b.course}</div>
+        <div class="bc-meta">${b.batchCode} · ${b.centre}</div>
+        <div class="bc-waiting">⏳ Session not yet started by instructor. Please check back later.</div>
+        <div class="refresh-note">Auto-refreshing in <span id="refresh-cd-${b.batchCode}">60</span>s</div>
+      </div>`;
+    }
+
+    if (!b.windowActive) {
+      const timeMsg = !b.windowOpen
+        ? `Session opens at ${b.windowOpenHr}:00`
+        : `Session window closed at ${b.windowCloseHr}:00`;
+      return `<div class="batch-card inactive-card">
+        <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
+        <div class="bc-course">${b.course}</div>
+        <div class="bc-meta">${b.batchCode} · ${b.centre}</div>
+        <div class="bc-inactive"><span class="time-badge">⏰ ${timeMsg}</span></div>
+      </div>`;
+    }
+
+    // Active — can submit
+    const topicLine = b.topic ? `<div class="bc-topic">📖 ${b.topic}</div>` : '';
+    return `<div class="batch-card active-card">
+      <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
+      <div class="bc-course">${b.course}</div>
+      <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''} · Session ${b.sessNo}</div>
+      ${topicLine}
+      <button class="btn btn-gold" onclick="openFeedback('${b.batchCode}')">Mark Attendance &amp; Submit Feedback →</button>
+    </div>`;
+  }).join('');
+
+  showScreen('s-portal');
+  // Start countdown refresh for waiting sessions
+  startRefreshCountdowns(d.batches);
+}
+
+function startRefreshCountdowns(batches) {
+  batches.filter(b=>!b.sessionExists&&!b.alreadySubmitted).forEach(b=>{
+    let t = 60;
+    const iv = setInterval(()=>{
+      const el = document.getElementById('refresh-cd-'+b.batchCode);
+      if (!el) { clearInterval(iv); return; }
+      t--;
+      if (t<=0) { clearInterval(iv); refreshPortal(); }
+      else el.textContent = t;
+    },1000);
+  });
+}
+
+function refreshPortal() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SESSION_KEY)||'{}');
+    if (saved.enrollmentNo) fetchPortalData(saved.enrollmentNo, saved.dobDD, saved.dobMM);
+  } catch(e){}
+}
+
+function doLogout() {
+  localStorage.removeItem(SESSION_KEY);
+  portalData = null; activeBatch = null;
+  document.getElementById('lg-enrol').value='';
+  document.getElementById('lg-dd').value='';
+  document.getElementById('lg-mm').value='';
+  document.getElementById('lg-err').classList.remove('show');
+  showScreen('s-login');
+}
+
+// ── Open Feedback ─────────────────────────────────────────────
+function openFeedback(batchCode) {
+  const b = portalData.batches.find(x=>x.batchCode===batchCode);
+  if (!b) return;
+  activeBatch = b;
+  // Reset
+  ratings.q1=0; ratings.q2=0;
+  sels.comp=''; sels.q3=''; sels.q4='';
+  selectedTopic='';
+  document.querySelectorAll('.sel-btn').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.star').forEach(x=>{x.textContent='☆';x.classList.remove('active');});
+  document.getElementById('q5').value='';
+  document.getElementById('q6').value='';
+  document.getElementById('anon-chk').checked=false;
+  document.getElementById('fb-err').classList.remove('show');
+  // Fill header
+  document.getElementById('fb-course').textContent = b.course + (b.batchSlot!=='Full Day'?' — '+b.batchSlot:'');
+  document.getElementById('fb-meta').textContent   = 'Session '+b.sessNo+' · '+b.centre+(b.instructor?' · '+b.instructor:'');
+  // Load topic options
+  buildTopicUI(b);
+  showScreen('s-feedback');
+}
+
+function buildTopicUI(b) {
+  const wrap    = document.getElementById('fb-topic-opts');
+  const custWrap= document.getElementById('fb-topic-custom-wrap');
+  wrap.innerHTML='<div class="spinner-wrap" style="padding:12px"><div class="spinner"></div></div>';
+  gasGet({action:'getExpectedTopic', batchCode:b.batchCode, sessNo:b.sessNo}, function(e,d) {
+    topicData = d;
+    if (e||!d||!d.structured) {
+      // Free text
+      wrap.innerHTML='';
+      custWrap.style.display='block';
+      document.getElementById('fb-topic-custom').placeholder='What was covered today?';
+      return;
+    }
+    custWrap.style.display='none';
+    const opts = [];
+    if (d.prev)  opts.push({...d.prev,  badge:'🔵', label:'Carryover from previous', cls:'border-color:#185FA5'});
+    if (d.today) opts.push({...d.today, badge:'🟡', label:'Today\'s scheduled topic', cls:'border-color:var(--gold)'});
+    if (d.next)  opts.push({...d.next,  badge:'🟢', label:'Running ahead',           cls:''});
+    opts.push({day:0,week:'',topic:'Other / custom topic',badge:'⚪',label:'Other',cls:''});
+    wrap.innerHTML = opts.map((op,i)=>`
+      <div class="topic-opt" onclick="selectTopic(${i},'${escJ(op.topic)}')" id="topt-${i}">
+        <input type="radio" name="tsel">
+        <div>
+          <div class="tw">${op.week}${op.day?' · Day '+op.day:''}</div>
+          <div class="tt">${op.badge} ${op.topic}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">${op.label}</div>
+        </div>
+      </div>`).join('');
+    // Pre-select today
+    const todayIdx = opts.findIndex(o=>o.badge==='🟡');
+    if (todayIdx>=0) selectTopic(todayIdx, d.today.topic);
+  });
+}
+
+function escJ(s){return (s||'').replace(/'/g,"\\'").replace(/"/g,'\\"');}
+
+function selectTopic(idx, topic) {
+  document.querySelectorAll('.topic-opt').forEach(o=>o.classList.remove('sel'));
+  const el = document.getElementById('topt-'+idx);
+  if (el) { el.classList.add('sel'); el.querySelector('input').checked=true; }
+  const custWrap = document.getElementById('fb-topic-custom-wrap');
+  if (topic==='Other / custom topic') {
+    custWrap.style.display='block'; selectedTopic='';
+  } else {
+    custWrap.style.display='none'; selectedTopic=topic;
+  }
+}
+
+function cancelFeedback() { showScreen('s-portal'); }
+
+// ── Form interactions ─────────────────────────────────────────
+function setStar(q, val) {
+  ratings[q]=val;
+  document.getElementById(q+'-stars').querySelectorAll('.star').forEach((s,i)=>{
+    s.textContent = i<val?'⭐':'☆'; s.classList.toggle('active', i<val);
+  });
+}
+function setSel(el, group) {
+  document.querySelectorAll('[data-g="'+group+'"]').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active'); sels[group]=el.getAttribute('data-v');
+}
+
+// ── Submit ────────────────────────────────────────────────────
+function submitFeedback() {
+  const err = document.getElementById('fb-err');
+  const btn = document.getElementById('fb-submit-btn');
+  err.classList.remove('show');
+  // Resolve topic
+  let topic = selectedTopic;
+  if (!topic) topic = (document.getElementById('fb-topic-custom').value||'').trim();
+  if (!topic) { err.textContent='Please select or enter the topic covered today.'; err.classList.add('show'); return; }
+  if (!sels.comp) { err.textContent='Please select how the session went.'; err.classList.add('show'); return; }
+  if (!ratings.q1){ err.textContent='Please rate the overall lecture (Q1).'; err.classList.add('show'); return; }
+  if (!ratings.q2){ err.textContent='Please rate the clarity of explanation (Q2).'; err.classList.add('show'); return; }
+  if (!sels.q3)   { err.textContent='Please select the lecture pace (Q3).'; err.classList.add('show'); return; }
+  if (!sels.q4)   { err.textContent='Please answer whether doubts were addressed (Q4).'; err.classList.add('show'); return; }
+  const anon = document.getElementById('anon-chk').checked;
+  const q5   = document.getElementById('q5').value.trim();
+  const q6   = document.getElementById('q6').value.trim();
+  // Get saved session for enrollment number
+  const saved = JSON.parse(localStorage.getItem(SESSION_KEY)||'{}');
+  btn.textContent='Submitting…'; btn.disabled=true;
+  gasGet({
+    action:           'submitFeedback',
+    sessionCode:      activeBatch.sessionCode,
+    enrollmentNo:     saved.enrollmentNo,
+    studentName:      portalData.studentName,
+    batchCode:        activeBatch.batchCode,
+    centre:           activeBatch.centre,
+    course:           activeBatch.course,
+    instructor:       activeBatch.instructor,
+    topic,
+    completionStatus: sels.comp,
+    q1: ratings.q1, q2: ratings.q2,
+    q3: sels.q3, q4: sels.q4, q5, q6,
+    anonymous: anon?'true':'false'
+  }, function(e,d) {
+    btn.textContent='Submit Attendance & Feedback ✓'; btn.disabled=false;
+    if (e||!d||d.status!=='ok') {
+      if (d&&d.reason==='already_submitted') { showThanks(true); return; }
+      err.textContent='Could not submit. Please try again.'; err.classList.add('show'); return;
+    }
+    showThanks(false);
+    refreshPortal();
+  });
+}
+
+function showThanks(alreadyDone) {
+  document.getElementById('ty-name').textContent = 'Thank you, ' + (portalData.studentName.split(' ')[0]) + '!';
+  document.getElementById('ty-sub').textContent  = alreadyDone
+    ? 'Your attendance was already recorded for this session.'
+    : 'Your attendance has been marked and feedback recorded.';
+  document.getElementById('ty-detail').innerHTML = `
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+      <span style="color:var(--muted)">Course</span><strong>${activeBatch.course}</strong>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+      <span style="color:var(--muted)">Session</span><strong>${activeBatch.batchCode} · Session ${activeBatch.sessNo}</strong>
+    </div>
+    <div style="display:flex;justify-content:space-between">
+      <span style="color:var(--muted)">Rating</span><strong>${'⭐'.repeat(ratings.q1)||'—'}</strong>
+    </div>`;
+  showScreen('s-thanks');
+}
+
+function backToPortal() { showScreen('s-portal'); }
+</script>
+</body>
+</html>

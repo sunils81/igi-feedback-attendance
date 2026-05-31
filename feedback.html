@@ -77,8 +77,23 @@
       <div class="field"><label>Enrollment Number *</label>
         <input type="text" id="v-enrol" placeholder="e.g. MUM26DG001" style="text-transform:uppercase">
       </div>
-      <div class="field"><label>Date of Birth (DDMM only) *</label>
-        <input type="tel" id="v-dob" placeholder="e.g. 2303 for 23rd March" maxlength="4">
+      <div class="field" id="v-dob-wrap">
+        <label>Date of Birth *</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div>
+            <input type="tel" id="v-dd" placeholder="DD" maxlength="2" inputmode="numeric"
+              style="width:58px;border:1.5px solid var(--border);border-radius:8px;padding:11px 0;font-size:18px;font-family:'DM Mono',monospace;font-weight:600;text-align:center;color:var(--navy);outline:none"
+              oninput="if(this.value.length===2) document.getElementById('v-btn').focus()">
+            <div style="font-size:10px;text-align:center;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:.04em">Day</div>
+          </div>
+          <div style="font-size:20px;color:var(--muted);font-weight:300">/</div>
+          <div>
+            <input type="tel" id="v-mm" placeholder="MM" maxlength="2" inputmode="numeric"
+              style="width:58px;border:1.5px solid var(--border);border-radius:8px;padding:11px 0;font-size:18px;font-family:'DM Mono',monospace;font-weight:600;text-align:center;color:var(--navy);outline:none"
+              onkeydown="if(event.key==='Enter') doVerify()">
+            <div style="font-size:10px;text-align:center;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:.04em">Month</div>
+          </div>
+        </div>
       </div>
       <button class="btn btn-gold" id="v-btn" onclick="doVerify()">Verify & Continue →</button>
       <div class="err-box" id="v-err"></div>
@@ -248,14 +263,18 @@ let selectedTopic = '';
 const starLabels = ['','Poor','Below Average','Average','Good','Excellent'];
 
 document.addEventListener('DOMContentLoaded', function() {
-  // Pre-fill session code from URL param
   const params = new URLSearchParams(window.location.search);
   const s = params.get('s');
   if (s) {
+    // Session code from URL — hide the field entirely
     document.getElementById('v-sess').value = s.toUpperCase();
+    const sessField = document.getElementById('v-sess').closest('.field');
+    if (sessField) sessField.style.display='none';
     document.getElementById('v-enrol').focus();
+    // Update subtitle
+    const sub = document.querySelector('#s-verify .sub');
+    if (sub) sub.textContent='Enter your enrollment number and date of birth to mark today's attendance.';
   }
-  document.getElementById('v-dob').addEventListener('keydown', e => { if(e.key==='Enter') doVerify(); });
 });
 
 function showScreen(id) {
@@ -266,12 +285,14 @@ function showScreen(id) {
 function doVerify() {
   const sess  = document.getElementById('v-sess').value.trim().toUpperCase();
   const enrol = document.getElementById('v-enrol').value.trim().toUpperCase();
-  const dob   = document.getElementById('v-dob').value.trim();
+  const dd    = (document.getElementById('v-dd').value||'').trim().padStart(2,'0');
+  const mm    = (document.getElementById('v-mm').value||'').trim().padStart(2,'0');
+  const dob   = dd + mm;
   const errEl = document.getElementById('v-err');
   const btn   = document.getElementById('v-btn');
   errEl.classList.remove('show');
-  if (!sess||!enrol||!dob||dob.length!==4) {
-    errEl.textContent='Please fill all fields. DOB must be 4 digits (DDMM).';
+  if (!sess||!enrol||dob.length!==4||dd==='00'||mm==='00') {
+    errEl.textContent='Please fill all fields. Enter your DD and MM separately.';
     errEl.classList.add('show'); return;
   }
   btn.textContent='Verifying…'; btn.disabled=true;

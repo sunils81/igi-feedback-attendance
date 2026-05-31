@@ -11,7 +11,9 @@ const COURSES  = [
   'JewelPad Design','Diploma in Pearls','Polished Diamond Grading',
   'Rough Diamond Graduate','Identification of RES','Small Diamond Assortment',
   'Diamond Graduate Integrated','Coloured Stone Integrated',
-  'Corporate Programs','Seminars','Gem-A Foundation','Gem-A Diploma','Emerald','Pearl'
+  'Corporate Programs','Seminars','Gem-A Foundation','Gem-A Diploma',
+  'Emerald','Pearl',
+  'Navratna Masterclass (10 Half Days)','Navratna Masterclass (5 Full Days)'
 ];
 const INSTRUCTORS = [
   'Amit Sidpura','Asmita Saroday','Arjun Mistry','Bhavin Patel',

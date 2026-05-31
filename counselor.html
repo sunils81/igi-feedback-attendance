@@ -83,13 +83,27 @@
           <select id="b-course" onchange="genBatchCode()"><option value="">Select</option></select>
         </div>
         <div class="field"><label>Type *</label>
-          <select id="b-type"><option value="Full Day">Full Day (3 weeks)</option><option value="Half Day">Half Day (6 weeks)</option></select>
+          <select id="b-type" onchange="toggleSlotField()">
+            <option value="Full Day">Full Day</option>
+            <option value="Half Day">Half Day</option>
+          </select>
+        </div>
+        <div class="field" id="b-slot-field" style="display:none"><label>Batch Slot *</label>
+          <select id="b-slot">
+            <option value="First Half">First Half (Morning)</option>
+            <option value="Second Half">Second Half (Afternoon)</option>
+          </select>
         </div>
         <div class="field"><label>Start Date *</label>
           <input type="date" id="b-start" onchange="genBatchCode()">
         </div>
-        <div class="field"><label>End Date *</label>
-          <input type="date" id="b-end">
+        <div class="field">
+          <label>End Date <span id="b-end-auto-label" style="font-size:10px;color:var(--teal);font-weight:400">(auto-calculated)</span></label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="date" id="b-end" style="flex:1" readonly>
+            <button type="button" onclick="toggleEndDateOverride()" style="white-space:nowrap;font-size:11px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;background:var(--white);cursor:pointer;color:var(--muted)" id="b-end-override-btn">Override</button>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px" id="b-end-help"></div>
         </div>
         <div class="field"><label>Batch Notes (optional)</label>
           <input type="text" id="b-rpass" placeholder="e.g. Sponsored batch, special schedule notes">
@@ -281,6 +295,19 @@ function genBatchCode() {
       loadSchedulePreview(course, start, d2.batchCode);
     }
   });
+  // Auto-calculate end date
+  gasGet({action:'getEndDate', course, startDate:start}, function(e, d2) {
+    if (!e && d2 && d2.endDate) {
+      const endEl   = document.getElementById('b-end');
+      const helpEl  = document.getElementById('b-end-help');
+      const autoLbl = document.getElementById('b-end-auto-label');
+      if (endEl.readOnly) { // only set if not manually overridden
+        endEl.value = d2.endDate;
+        helpEl.textContent = d2.totalDays + ' teaching days → ends ' + d2.endDateDisplay;
+        autoLbl.style.display = 'inline';
+      }
+    }
+  });
 }
 
 function loadSchedulePreview(course, startDate, batchCode) {
@@ -350,7 +377,9 @@ function createBatch() {
   }
   const btn = document.getElementById('b-btn');
   btn.textContent='Creating…'; btn.disabled=true;
-  gasGet({action:'createBatch',batchCode,centre,course,type,startDate,endDate},function(e,d){
+  const batchSlot = document.getElementById('b-slot-field').style.display!=='none'
+    ? document.getElementById('b-slot').value : 'Full Day';
+  gasGet({action:'createBatch',batchCode,centre,course,type,batchSlot,startDate,endDate},function(e,d){
     btn.textContent='Create Batch →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') {
       errEl.textContent=d&&d.reason==='batch_exists'?'Batch code already exists. Try a different start date.':'Error creating batch. Try again.';
@@ -588,6 +617,42 @@ function loadAssessmentSummary() {
 function createSession(){}
 function copyLink(){}
 function whatsappLink(){}
+
+function toggleSlotField() {
+  const type    = document.getElementById('b-type').value;
+  const slotDiv = document.getElementById('b-slot-field');
+  slotDiv.style.display = type === 'Half Day' ? 'block' : 'none';
+  if (type === 'Full Day') document.getElementById('b-slot').value = 'First Half';
+}
+
+function toggleEndDateOverride() {
+  const endEl  = document.getElementById('b-end');
+  const btn    = document.getElementById('b-end-override-btn');
+  const lbl    = document.getElementById('b-end-auto-label');
+  const helpEl = document.getElementById('b-end-help');
+  if (endEl.readOnly) {
+    endEl.readOnly = false;
+    endEl.style.background = '#fff9e6';
+    btn.textContent = 'Auto';
+    lbl.style.display = 'none';
+  } else {
+    endEl.readOnly = true;
+    endEl.style.background = '';
+    btn.textContent = 'Override';
+    lbl.style.display = 'inline';
+    // Re-trigger auto calculation
+    const course = document.getElementById('b-course').value;
+    const start  = document.getElementById('b-start').value;
+    if (course && start) {
+      gasGet({action:'getEndDate', course, startDate:start}, function(e, d2) {
+        if (!e && d2 && d2.endDate) {
+          endEl.value = d2.endDate;
+          helpEl.textContent = d2.totalDays + ' teaching days → ends ' + d2.endDateDisplay;
+        }
+      });
+    }
+  }
+}
 </script>
 </body>
 </html>

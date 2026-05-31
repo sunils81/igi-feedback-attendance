@@ -718,6 +718,30 @@ function doGet(e) {
         .sort((a,b)=>b.sessNo-a.sessNo)});
     }
 
+    // ── getBatchSessionTimeline ───────────────────────────────
+    if (act==='getBatchSessionTimeline') {
+      const batch=(p.batchCode||'').toUpperCase();
+      const shSess=ss.getSheetByName(SH_SESSIONS);
+      const shStu=ss.getSheetByName(SH_STUDENTS);
+      const shFb=ss.getSheetByName(SH_FEEDBACK);
+      const total=shStu&&shStu.getLastRow()>1?shStu.getRange(2,1,shStu.getLastRow()-1,8).getValues()
+        .filter(r=>String(r[1]).toUpperCase()===batch&&r[6]==='Active').length:0;
+      const sess=shSess&&shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,8).getValues()
+        .filter(r=>r[0]&&String(r[1]).toUpperCase()===batch):[];
+      const fb=shFb&&shFb.getLastRow()>1?shFb.getRange(2,1,shFb.getLastRow()-1,3).getValues():[];
+      const today=new Date(); today.setHours(0,0,0,0);
+      const timeline=sess.map(s=>{
+        const d=s[2]?new Date(s[2]):null;
+        if(d)d.setHours(0,0,0,0);
+        const count=fb.filter(f=>String(f[0]).toUpperCase()===String(s[0]).toUpperCase()).length;
+        return {sessionCode:s[0],sessNo:s[3],sessionDate:s[2]?new Date(s[2]).toLocaleDateString('en-IN'):'',
+          topic:s[6]||'',instructor:s[4]||'',sessionType:s[5]||'Scheduled',count,total,
+          pct:total?Math.round((count/total)*100):0,isToday:d?d.getTime()===today.getTime():false,
+          isPast:d?d<today:false};
+      }).sort((a,b)=>Number(b.sessNo)-Number(a.sessNo));
+      return respond({status:'ok',timeline,total});
+    }
+
     // ── getExpectedTopic ───────────────────────────────────────
     if (act==='getExpectedTopic') {
       const batch=(p.batchCode||'').toUpperCase();
@@ -1267,6 +1291,16 @@ function doGet(e) {
           String(r[0]).toUpperCase()===String(todaySess[0]).toUpperCase() &&
           String(r[1]).toUpperCase()===enrollNo
         );
+        const batchSessions = allSess.filter(r=>String(r[1]).toUpperCase()===batchCode && r[2])
+          .sort((a,b)=>new Date(b[2])-new Date(a[2]));
+        const history = batchSessions.slice(0,7).map(r=>{
+          const attended = allFb.some(f=>String(f[0]).toUpperCase()===String(r[0]).toUpperCase() && String(f[1]).toUpperCase()===enrollNo);
+          return {sessionCode:String(r[0]),sessNo:r[3],sessionDate:new Date(r[2]).toLocaleDateString('en-IN'),
+            topic:r[6]||'',attended};
+        });
+        const attendedCount = batchSessions.filter(r=>allFb.some(f=>
+          String(f[0]).toUpperCase()===String(r[0]).toUpperCase() && String(f[1]).toUpperCase()===enrollNo
+        )).length;
         batchCards.push({
           batchCode, course:batch[2], centre:batch[1], type:batch[3], batchSlot,
           instructor:  batch[9]||'',
@@ -1279,7 +1313,13 @@ function doGet(e) {
           windowOpen:       windowOpen,
           windowClosed:     windowClosed,
           windowOpenHr:     win.open,
-          windowCloseHr:    win.close
+          windowCloseHr:    win.close,
+          history,
+          historySummary: {
+            attended: attendedCount,
+            total: batchSessions.length,
+            pct: batchSessions.length?Math.round((attendedCount/batchSessions.length)*100):0
+          }
         });
       });
       // Sort: First Half → Second Half → Full Day

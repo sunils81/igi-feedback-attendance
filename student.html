@@ -52,6 +52,16 @@
 .anon-row .al{font-size:12px;color:var(--navy);line-height:1.5}
 .anon-row .as{font-size:10px;color:var(--muted);margin-top:2px}
 .refresh-note{font-size:11px;color:var(--muted);text-align:center;margin-top:8px}
+.hist-card{background:var(--white);border-radius:var(--radius);border:1px solid var(--border);padding:16px;margin-top:14px}
+.hist-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--off)}
+.hist-row:last-child{border-bottom:none}
+.hist-row.missed{opacity:.62}
+.hist-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.hist-dot.present{background:#1D9E75}.hist-dot.missed{background:#C9A84C}
+.hist-main{flex:1;min-width:0}
+.hist-title{font-size:12px;font-weight:700;color:var(--navy)}
+.hist-meta{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hist-pct{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--navy)}
 </style>
 </head>
 <body>
@@ -313,7 +323,7 @@ function renderPortal(d) {
         <div class="bc-course">${b.course}</div>
         <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''}</div>
         <div class="bc-done">✅ Attendance marked &amp; feedback submitted</div>
-      </div>`;
+      </div>${renderHistory(b)}`;
     }
 
     if (!b.sessionExists) {
@@ -323,7 +333,7 @@ function renderPortal(d) {
         <div class="bc-meta">${b.batchCode} · ${b.centre}</div>
         <div class="bc-waiting">⏳ Session not yet started by instructor. Please check back later.</div>
         <div class="refresh-note">Auto-refreshing in <span id="refresh-cd-${b.batchCode}">60</span>s</div>
-      </div>`;
+      </div>${renderHistory(b)}`;
     }
 
     if (!b.windowActive) {
@@ -335,7 +345,7 @@ function renderPortal(d) {
         <div class="bc-course">${b.course}</div>
         <div class="bc-meta">${b.batchCode} · ${b.centre}</div>
         <div class="bc-inactive"><span class="time-badge">⏰ ${timeMsg}</span></div>
-      </div>`;
+      </div>${renderHistory(b)}`;
     }
 
     // Active — can submit
@@ -346,12 +356,35 @@ function renderPortal(d) {
       <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''} · Session ${b.sessNo}</div>
       ${topicLine}
       <button class="btn btn-gold" onclick="openFeedback('${b.batchCode}')">Mark Attendance &amp; Submit Feedback →</button>
-    </div>`;
+    </div>${renderHistory(b)}`;
   }).join('');
 
   showScreen('s-portal');
   // Start countdown refresh for waiting sessions
   startRefreshCountdowns(d.batches);
+}
+
+function renderHistory(b) {
+  const h = b.history || [];
+  const s = b.historySummary || {attended:0,total:0,pct:0};
+  if (!h.length) return '';
+  return `<div class="hist-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div>
+        <div class="section-tag" style="margin-bottom:0">Attendance History</div>
+        <div style="font-size:11px;color:var(--muted)">${s.attended}/${s.total} sessions attended</div>
+      </div>
+      <div class="hist-pct">${s.pct}%</div>
+    </div>
+    ${h.map(x=>`<div class="hist-row ${x.attended?'':'missed'}">
+      <span class="hist-dot ${x.attended?'present':'missed'}"></span>
+      <div class="hist-main">
+        <div class="hist-title">Session ${x.sessNo} · ${x.sessionDate}</div>
+        <div class="hist-meta">${x.topic||'Topic not set'}</div>
+      </div>
+      <span class="badge ${x.attended?'badge-green':'badge-amber'}">${x.attended?'Present':'Not marked'}</span>
+    </div>`).join('')}
+  </div>`;
 }
 
 function startRefreshCountdowns(batches) {

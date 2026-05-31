@@ -47,6 +47,17 @@
 .topic-field{width:100%;border:1.5px solid var(--gold);border-radius:8px;padding:9px 12px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--gold-pale);color:var(--navy);outline:none;margin-bottom:8px}
 .topic-override{width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 12px;font-family:'DM Sans',sans-serif;font-size:12px;background:var(--white);color:var(--navy);outline:none;margin-bottom:10px}
 .topic-override:focus{border-color:var(--gold)}
+.timeline{display:grid;gap:8px;margin-bottom:14px}
+.timeline-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--white);cursor:pointer;transition:border-color .15s,background .15s}
+.timeline-row:hover{border-color:var(--gold)}
+.timeline-row.past{background:var(--off);opacity:.72}
+.timeline-row.today{background:var(--gold-pale);border-color:var(--gold);opacity:1}
+.timeline-row.active{border-color:var(--gold);box-shadow:0 0 0 2px rgba(201,168,76,.12)}
+.tl-num{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--navy);width:34px;flex-shrink:0}
+.tl-main{flex:1;min-width:0}
+.tl-title{font-size:12px;font-weight:700;color:var(--navy)}
+.tl-meta{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl-count{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--navy)}
 </style>
 </head>
 <body>
@@ -162,6 +173,7 @@
       <div id="at-live-badge" style="display:none;margin-bottom:12px">
         <span class="live-dot"></span> <span style="font-size:12px;color:#1D9E75;font-weight:600;margin-left:4px">Live — auto-refreshing every 30s</span>
       </div>
+      <div id="at-timeline"></div>
       <div id="at-wrap"></div>
     </div>
   </div>
@@ -540,6 +552,7 @@ function loadSessionsForBatch() {
   const sel   = document.getElementById('at-session');
   sel.innerHTML = '<option value="">Select session</option>';
   document.getElementById('at-wrap').innerHTML = '';
+  document.getElementById('at-timeline').innerHTML = '';
   if (!batch) return;
   gasGet({action:'getSessions', batchCode:batch}, function(e,d) {
     if (e||!d||!d.sessions) return;
@@ -551,6 +564,37 @@ function loadSessionsForBatch() {
     });
     if (d.sessions.length) { sel.value = d.sessions[0].sessionCode; loadAttendance(); }
   });
+  loadSessionTimeline(batch);
+}
+
+function loadSessionTimeline(batch) {
+  const wrap = document.getElementById('at-timeline');
+  wrap.innerHTML = '<div class="spinner-wrap" style="padding:14px"><div class="spinner"></div><p>Loading session history…</p></div>';
+  gasGet({action:'getBatchSessionTimeline', batchCode:batch}, function(e,d) {
+    if (e||!d||!d.timeline||!d.timeline.length) { wrap.innerHTML=''; return; }
+    wrap.innerHTML = `<div class="timeline">${d.timeline.map(s=>`
+      <div class="timeline-row ${s.isToday?'today':s.isPast?'past':''}" id="tl-${s.sessionCode}" onclick="selectTimelineSession('${s.sessionCode}')">
+        <div class="tl-num">S${String(s.sessNo).padStart(2,'0')}</div>
+        <div class="tl-main">
+          <div class="tl-title">${s.sessionDate}${s.isToday?' · Today':''}</div>
+          <div class="tl-meta">${s.topic||'Topic not set'}</div>
+        </div>
+        <div class="tl-count">${s.count}/${s.total}</div>
+      </div>`).join('')}</div>`;
+    markTimelineActive(document.getElementById('at-session').value);
+  });
+}
+
+function selectTimelineSession(sessionCode) {
+  document.getElementById('at-session').value = sessionCode;
+  loadAttendance();
+  markTimelineActive(sessionCode);
+}
+
+function markTimelineActive(sessionCode) {
+  document.querySelectorAll('.timeline-row').forEach(r=>r.classList.remove('active'));
+  const el = document.getElementById('tl-'+sessionCode);
+  if (el) el.classList.add('active');
 }
 
 function loadAttendance() {
@@ -559,6 +603,7 @@ function loadAttendance() {
   const wrap  = document.getElementById('at-wrap');
   stopAttendanceRefresh();
   if (!sess||!batch) { wrap.innerHTML=''; return; }
+  markTimelineActive(sess);
   wrap.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading attendance…</p></div>';
   fetchAttendance(sess, batch);
   // Auto-refresh

@@ -429,10 +429,8 @@ function isWorkingDay(date, holidays) {
   const d   = new Date(date);
   const dow = d.getDay(); // 0=Sun, 6=Sat
   if (dow === 0) return false; // Sunday
-  if (dow === 6) {
-    const ord = getSaturdayOrdinal(d);
-    if (ord === 1 || ord === 3 || ord === 5) return false; // 1st/3rd/5th Sat OFF
-  }
+  if (dow === 6) return false; // All Saturdays are OFF by default
+  // 2nd/4th Sat available only for manual extra sessions (createSession with sessionType='Extra')
   const key = d.toISOString().split('T')[0];
   if (holidays.has(key)) return false;
   return true;
@@ -941,10 +939,11 @@ function doGet(e) {
       if (sh.getLastRow()<2) return respond({status:'ok',batches:[]});
       const data=sh.getRange(2,1,sh.getLastRow()-1,9).getValues();
       const batches=data.filter(r=>r[0]&&(r[9]||'')=== instructor).map(r=>({
-        batchCode:r[0],centre:r[1],course:r[2],type:r[3],batchSlot:r[4]||'Full Day',
-        startDate:r[5]?new Date(r[5]).toLocaleDateString('en-IN'):'',
-        endDate:r[6]?new Date(r[6]).toLocaleDateString('en-IN'):'',
-        instructor:r[9]||''
+        batchCode:r[0],centre:r[1],course:r[2],type:r[3],
+        batchSlot:  detectSlotOrDate(r[4])?(r[4]||'Full Day'):'Full Day',
+        startDate:  detectSlotOrDate(r[4])?(r[5]?new Date(r[5]).toLocaleDateString('en-IN'):''):(r[4]?new Date(r[4]).toLocaleDateString('en-IN'):''),
+        endDate:    detectSlotOrDate(r[4])?(r[6]?new Date(r[6]).toLocaleDateString('en-IN'):''):(r[5]?new Date(r[5]).toLocaleDateString('en-IN'):''),
+        instructor: detectSlotOrDate(r[4])?(r[9]||''):(r[8]||'')
       }));
       return respond({status:'ok',batches});
     }
@@ -1094,7 +1093,7 @@ function doGet(e) {
       const batch     = bData.find(r=>String(r[0]).toUpperCase()===batchCode);
       if (!batch) return respond({status:'error',reason:'batch_not_found'});
       const course    = batch[2];
-      const startDate = batch[5];
+      const startDate = detectSlotOrDate(batch[4]) ? batch[5] : batch[4];
       const syllabus  = SYLLABI[course];
       if (!syllabus) return respond({status:'ok',structured:false,course});
       const holidays  = getHolidaysForCentre(ss);
@@ -1134,8 +1133,8 @@ function doGet(e) {
         const batchCode = String(b[0]).toUpperCase();
         const course    = b[2];
         const batchSlot = b[4]||'Full Day';
-        const startDateRaw = b[5];
-        const endDateRaw   = b[6];
+        const startDateRaw = detectSlotOrDate(b[4]) ? b[5] : b[4];
+        const endDateRaw   = detectSlotOrDate(b[4]) ? b[6] : b[5];
         if (!startDateRaw||!endDateRaw) return;
         const startDate = new Date(startDateRaw); startDate.setHours(12,0,0,0);
         const endDate   = new Date(endDateRaw);   endDate.setHours(23,59,59,0);
@@ -1162,7 +1161,7 @@ function doGet(e) {
         }
         const sessionCode = batchCode+'-S'+String(sessNo).padStart(2,'0');
         shSess.appendRow([sessionCode,batchCode,new Date(todayStr),dayNo,
-          b[9]||'',                                // instructor
+          detectSlotOrDate(b[4])?(b[9]||''):(b[8]||''), // instructor
           'Scheduled',topic,                        // type, topic
           'Y',                                      // auto-created flag (col 9)
           new Date().toISOString()]);
@@ -1206,10 +1205,11 @@ function doGet(e) {
         const batchCode = String(stuRow[1]).toUpperCase();
         const batch     = bData.find(r=>String(r[0]).toUpperCase()===batchCode);
         if (!batch) return;
-        const startDate = new Date(batch[5]); startDate.setHours(0,0,0,0);
-        const endDate   = new Date(batch[6]);  endDate.setHours(23,59,59,0);
+        const isNew     = detectSlotOrDate(batch[4]);
+        const startDate = new Date(isNew?batch[5]:batch[4]); startDate.setHours(0,0,0,0);
+        const endDate   = new Date(isNew?batch[6]:batch[5]);  endDate.setHours(23,59,59,0);
         if (today<startDate||today>endDate) return; // batch not active today
-        const batchSlot = batch[4]||'Full Day';
+        const batchSlot = isNew?(batch[4]||'Full Day'):'Full Day';
         // Slot activation window
         const win   = SLOT_WINDOWS[batchSlot]||SLOT_WINDOWS['Full Day'];
         const nowHr = new Date().getHours();
@@ -1296,4 +1296,11 @@ function ensureHolidayHeaders(sh){
     sh.setFrozenRows(1);
   }
 }
+// Detect if col4 contains a Batch Slot string (new schema) or a date (old schema)
+function detectSlotOrDate(val) {
+  if (!val) return false; // empty = old schema without slot
+  const s = String(val);
+  return s==='First Half'||s==='Second Half'||s==='Full Day';
+}
+
 function getOrCreateSheet(ss,name){let s=ss.getSheetByName(name);if(!s)s=ss.insertSheet(name);return s;}

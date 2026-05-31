@@ -2,7 +2,7 @@
  * IGI Feedback Attendance — shared constants
  * Included inline in each HTML page
  */
-const GAS_URL = 'https://script.google.com/macros/s/PASTE_YOUR_DEPLOYMENT_URL_HERE/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxWiL5q9A3Z1odYYK0ZRR8ngqwPhzPnkX4maKJRlgM6QspoiV1abAzFjRwEJIZEDpC65Q/exec';
 
 const CENTRES  = ['Mumbai','Delhi','Kolkata','Surat','Chennai','Hyderabad','Pune','Bangalore','Lucknow','Ahmedabad','Jaipur'];
 const COURSES  = [

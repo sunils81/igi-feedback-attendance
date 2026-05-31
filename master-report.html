@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IGI — Master Report</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="assets/shared.js"></script>
+<style id="dyn-css"></style>
+<style>
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+@media(max-width:600px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--white);border-radius:10px;border:1px solid var(--border);padding:14px 16px;text-align:center}
+.kpi .kv{font-size:28px;font-weight:700;font-family:"DM Mono",monospace;color:var(--navy);line-height:1}
+.kpi .kl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:5px}
+.inst-row{padding:12px 0;border-bottom:1px solid var(--off);display:flex;align-items:center;gap:12px}
+.inst-row:last-child{border-bottom:none}
+.inst-name{font-weight:600;font-size:14px;flex:1}
+.star-bar{display:flex;gap:2px;align-items:center}
+.star-pip{width:12px;height:12px;border-radius:2px;background:var(--border)}
+.star-pip.fill{background:var(--gold)}
+.ctr-table,.fb-table{width:100%;border-collapse:collapse;font-size:12px}
+.ctr-table th,.fb-table th{padding:7px 10px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);border-bottom:2px solid var(--border)}
+.ctr-table td,.fb-table td{padding:8px 10px;border-bottom:1px solid var(--off);vertical-align:middle}
+.at-risk-row{background:#FEF2F2}
+.filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.filter-bar select,.filter-bar input{border:1.5px solid var(--border);border-radius:7px;padding:7px 10px;font-family:"DM Sans",sans-serif;font-size:12px;background:var(--white);color:var(--navy);outline:none}
+.filter-bar select:focus,.filter-bar input:focus{border-color:var(--gold)}
+.anon-badge{font-size:10px;padding:2px 7px;border-radius:10px;background:#EEF4FB;color:var(--blue);font-weight:600}
+.named-badge{font-size:10px;padding:2px 7px;border-radius:10px;background:#E8F5EE;color:#1a7a3c;font-weight:600}
+</style>
+</head>
+<body>
+<script>document.getElementById('dyn-css').textContent=CSS_VARS;</script>
+
+<div class="wrap" style="max-width:900px">
+  <div class="site-header">
+    <div class="hdr-logo"><img src="assets/igi-school-of-gemology-white-logo.svg"></div>
+    <div class="hdr-divider"></div>
+    <div class="hdr-band">
+      <div class="hdr-label">Master Report</div>
+      <div class="hdr-sub">All Centres · All Instructors · Full Feedback</div>
+    </div>
+  </div>
+
+  <!-- LOGIN -->
+  <div id="s-login" class="screen active">
+    <div class="card">
+      <div class="section-tag">Master Access</div>
+      <h2>Master Dashboard</h2>
+      <p class="sub">This dashboard shows feedback, instructor performance, and at-risk attendance across all IGI centres.</p>
+      <div class="field"><label>Master Password</label>
+        <input type="password" id="lg-pass" placeholder="Enter master password">
+      </div>
+      <button class="btn btn-gold" id="lg-btn" onclick="loadMaster()">Access Dashboard →</button>
+      <div class="err-box" id="lg-err">Incorrect password.</div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="s-dash" class="screen">
+    <!-- KPIs -->
+    <div class="kpi-grid" id="kpi-grid"></div>
+
+    <div class="tab-bar">
+      <button class="tab active" onclick="mTab('m-instructors')">👨‍🏫 Instructors</button>
+      <button class="tab" onclick="mTab('m-centres')">🏢 Centres</button>
+      <button class="tab" onclick="mTab('m-atrisk')">⚠ At Risk</button>
+      <button class="tab" onclick="mTab('m-feedback')">💬 Feedback</button>
+    </div>
+
+    <!-- Instructor Performance -->
+    <div id="m-instructors" class="tab-content active">
+      <div class="card">
+        <div class="section-tag">Instructor Performance</div>
+        <h2>Feedback Ratings by Instructor</h2>
+        <p class="sub" style="margin-bottom:16px">Instructors cannot see this data. Averaged from student feedback.</p>
+        <div id="inst-wrap"></div>
+      </div>
+    </div>
+
+    <!-- Centres -->
+    <div id="m-centres" class="tab-content">
+      <div class="card">
+        <div class="section-tag">Centre Overview</div>
+        <h2>All IGI Centres</h2>
+        <div id="ctr-wrap"></div>
+      </div>
+    </div>
+
+    <!-- At Risk -->
+    <div id="m-atrisk" class="tab-content">
+      <div class="card">
+        <div class="section-tag">Attendance At Risk</div>
+        <h2>Students Below 75% Attendance</h2>
+        <p class="sub" style="margin-bottom:16px">Only shown after 4+ sessions in a batch.</p>
+        <div id="risk-wrap"></div>
+      </div>
+    </div>
+
+    <!-- All Feedback -->
+    <div id="m-feedback" class="tab-content">
+      <div class="card">
+        <div class="section-tag">All Feedback Responses</div>
+        <h2>Full Feedback Log</h2>
+        <p class="sub" style="margin-bottom:12px">Anonymous feedback shows student identity at master level only.</p>
+        <div class="filter-bar">
+          <select id="f-centre" onchange="renderFeedback()"><option value="">All Centres</option></select>
+          <select id="f-instr" onchange="renderFeedback()"><option value="">All Instructors</option></select>
+          <input type="text" id="f-search" placeholder="Search topic or name…" oninput="renderFeedback()" style="flex:1;min-width:140px">
+        </div>
+        <div id="fb-wrap"></div>
+      </div>
+    </div>
+
+  </div><!-- /s-dash -->
+</div>
+
+<script>
+let masterData = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('lg-pass').addEventListener('keydown', e=>{ if(e.key==='Enter') loadMaster(); });
+});
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function mTab(id) {
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const idx=['m-instructors','m-centres','m-atrisk','m-feedback'].indexOf(id);
+  document.querySelectorAll('.tab')[idx].classList.add('active');
+}
+
+function loadMaster() {
+  const pass  = document.getElementById('lg-pass').value.trim();
+  const btn   = document.getElementById('lg-btn');
+  const errEl = document.getElementById('lg-err');
+  errEl.classList.remove('show');
+  btn.textContent='Loading…'; btn.disabled=true;
+  gasGet({action:'getMasterReport',pass}, function(e,d){
+    btn.textContent='Access Dashboard →'; btn.disabled=false;
+    if (e||!d||d.status!=='ok') { errEl.classList.add('show'); return; }
+    masterData = d;
+    renderDashboard(d);
+    showScreen('s-dash');
+  });
+}
+
+function renderDashboard(d) {
+  // KPIs
+  document.getElementById('kpi-grid').innerHTML = [
+    {v:d.summary.totalBatches,  l:'Total Batches'},
+    {v:d.summary.totalStudents, l:'Active Students'},
+    {v:d.summary.totalSessions, l:'Sessions Held'},
+    {v:d.summary.totalFeedback, l:'Feedback Submitted'}
+  ].map(k=>`<div class="kpi"><div class="kv">${k.v}</div><div class="kl">${k.l}</div></div>`).join('');
+
+  // Instructors
+  const instWrap = document.getElementById('inst-wrap');
+  if (!d.instructors.length) { instWrap.innerHTML='<p style="color:var(--muted);font-size:13px">No feedback data yet.</p>'; }
+  else instWrap.innerHTML = d.instructors.map(i=>`
+    <div class="inst-row">
+      <div class="inst-name">${i.name}</div>
+      <div style="text-align:center;min-width:80px">
+        <div style="font-size:14px;font-weight:700;font-family:'DM Mono',monospace;color:${i.avgQ1>=4?'#1a7a3c':i.avgQ1>=3?'#B87A10':'var(--red)'}">${i.avgQ1} ⭐</div>
+        <div style="font-size:10px;color:var(--muted)">Overall</div>
+      </div>
+      <div style="text-align:center;min-width:80px">
+        <div style="font-size:14px;font-weight:700;font-family:'DM Mono',monospace;color:${i.avgQ2>=4?'#1a7a3c':i.avgQ2>=3?'#B87A10':'var(--red)'}">${i.avgQ2} ⭐</div>
+        <div style="font-size:10px;color:var(--muted)">Clarity</div>
+      </div>
+      <div style="text-align:center;min-width:60px">
+        <div style="font-size:13px;font-weight:600;color:var(--muted)">${i.totalFeedback}</div>
+        <div style="font-size:10px;color:var(--muted)">Responses</div>
+      </div>
+      <div style="text-align:center;min-width:60px">
+        <div style="font-size:13px;font-weight:600;color:var(--muted)">${i.totalSessions}</div>
+        <div style="font-size:10px;color:var(--muted)">Sessions</div>
+      </div>
+    </div>`).join('');
+
+  // Centres
+  const ctrWrap = document.getElementById('ctr-wrap');
+  ctrWrap.innerHTML = `<table class="ctr-table">
+    <thead><tr><th>Centre</th><th>Batches</th><th>Students</th><th>Sessions</th><th>Feedback</th></tr></thead>
+    <tbody>${d.centres.map(c=>`<tr>
+      <td><strong>${c.centre}</strong></td>
+      <td>${c.batches}</td><td>${c.students}</td><td>${c.sessions}</td><td>${c.feedback}</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+
+  // At risk
+  const riskWrap = document.getElementById('risk-wrap');
+  if (!d.atRisk.length) {
+    riskWrap.innerHTML='<p style="color:#1a7a3c;font-size:13px">✅ No students below 75% attendance.</p>';
+  } else {
+    riskWrap.innerHTML = `<table class="ctr-table">
+      <thead><tr><th>Student</th><th>Centre</th><th>Course</th><th>Batch</th><th>Attended</th><th>%</th></tr></thead>
+      <tbody>${d.atRisk.sort((a,b)=>a.pct-b.pct).map(r=>`<tr class="at-risk-row">
+        <td><div style="font-weight:600">${r.name}</div><div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--muted)">${r.enrollmentNo}</div></td>
+        <td>${r.centre}</td><td style="font-size:11px">${r.course}</td>
+        <td style="font-family:'DM Mono',monospace;font-size:11px">${r.batchCode}</td>
+        <td>${r.attended}/${r.total}</td>
+        <td style="font-weight:700;color:var(--red)">${r.pct}%</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  }
+
+  // Feedback filters
+  const centreSet = [...new Set(d.allFeedback.map(f=>f.centre).filter(Boolean))].sort();
+  const instrSet  = [...new Set(d.allFeedback.map(f=>f.instructor).filter(Boolean))].sort();
+  const fCentre = document.getElementById('f-centre');
+  const fInstr  = document.getElementById('f-instr');
+  centreSet.forEach(c=>{ const o=document.createElement('option');o.value=c;o.textContent=c;fCentre.appendChild(o); });
+  instrSet.forEach(i=>{ const o=document.createElement('option');o.value=i;o.textContent=i;fInstr.appendChild(o); });
+
+  renderFeedback();
+}
+
+function renderFeedback() {
+  if (!masterData) return;
+  const centre = document.getElementById('f-centre').value;
+  const instr  = document.getElementById('f-instr').value;
+  const search = document.getElementById('f-search').value.toLowerCase();
+  const wrap   = document.getElementById('fb-wrap');
+
+  let rows = masterData.allFeedback;
+  if (centre) rows = rows.filter(r=>r.centre===centre);
+  if (instr)  rows = rows.filter(r=>r.instructor===instr);
+  if (search) rows = rows.filter(r=>
+    (r.topic||'').toLowerCase().includes(search) ||
+    (r.studentName||'').toLowerCase().includes(search) ||
+    (r.q5||'').toLowerCase().includes(search) ||
+    (r.q6||'').toLowerCase().includes(search)
+  );
+
+  if (!rows.length) { wrap.innerHTML='<p style="color:var(--muted);font-size:13px">No feedback matches the filter.</p>'; return; }
+
+  wrap.innerHTML = `<table class="fb-table">
+    <thead><tr>
+      <th>Student</th><th>Session</th><th>Instructor</th>
+      <th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th>
+      <th>Q5 — Learned</th><th>Q6 — Suggestion</th><th>Anon</th>
+    </tr></thead>
+    <tbody>${rows.map(r=>`<tr>
+      <td>
+        <div style="font-weight:600;font-size:12px">${r.studentName||'—'}</div>
+        <div style="font-size:10px;color:var(--muted);font-family:'DM Mono',monospace">${r.enrollmentNo}</div>
+      </td>
+      <td>
+        <div style="font-size:10px;font-family:'DM Mono',monospace;font-weight:600">${r.sessionCode}</div>
+        <div style="font-size:10px;color:var(--muted)">${r.topic}</div>
+      </td>
+      <td style="font-size:11px">${r.instructor}</td>
+      <td style="text-align:center;font-weight:700;color:${r.q1>=4?'#1a7a3c':r.q1>=3?'#B87A10':'var(--red)'}">${r.q1}⭐</td>
+      <td style="text-align:center;font-weight:700;color:${r.q2>=4?'#1a7a3c':r.q2>=3?'#B87A10':'var(--red)'}">${r.q2}⭐</td>
+      <td style="font-size:11px">${r.q3||'—'}</td>
+      <td style="font-size:11px">${r.q4||'—'}</td>
+      <td style="font-size:11px;max-width:150px">${r.q5||'—'}</td>
+      <td style="font-size:11px;max-width:150px">${r.q6||'—'}</td>
+      <td>${r.anonymous==='Y'?'<span class="anon-badge">Anon</span>':'<span class="named-badge">Named</span>'}</td>
+    </tr>`).join('')}
+    </tbody>
+  </table>
+  <div style="font-size:11px;color:var(--muted);margin-top:10px">Showing ${rows.length} of ${masterData.allFeedback.length} records</div>`;
+}
+</script>
+</body>
+</html>

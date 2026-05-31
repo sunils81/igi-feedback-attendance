@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IGI — Counselor Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="assets/shared.js"></script>
+<style id="dyn-css"></style>
+<style>
+.qr-wrap{text-align:center;padding:16px;background:var(--white);border-radius:8px;border:1px solid var(--border);margin-top:12px}
+.qr-wrap img{width:160px;height:160px}
+.qr-link{font-size:11px;font-family:"DM Mono",monospace;color:var(--muted);margin-top:6px;word-break:break-all}
+.student-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;background:var(--off);margin-bottom:6px}
+.student-row .enr{font-family:"DM Mono",monospace;font-size:11px;color:var(--muted);width:110px;flex-shrink:0}
+.student-row .nm{flex:1;font-size:13px;font-weight:600}
+.student-row .dob{font-size:11px;color:var(--muted);margin-right:8px}
+.del-btn{background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;padding:2px 6px}
+.batch-row{padding:10px 14px;border-radius:8px;background:var(--off);margin-bottom:8px;cursor:pointer;transition:background .15s}
+.batch-row:hover{background:var(--gold-pale)}
+.batch-row .bc{font-family:"DM Mono",monospace;font-size:12px;font-weight:700;color:var(--navy)}
+.batch-row .bm{font-size:11px;color:var(--muted);margin-top:2px}
+.sess-row{padding:8px 12px;border-radius:7px;background:var(--off);margin-bottom:6px}
+.sess-row .sc{font-family:"DM Mono",monospace;font-size:11px;font-weight:700;color:var(--navy)}
+.sess-row .sm{font-size:11px;color:var(--muted)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:500px){.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<script>document.getElementById('dyn-css').textContent=CSS_VARS;</script>
+
+<!-- LOGIN GATE -->
+<div id="s-login" class="screen active">
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--navy)">
+    <div style="background:var(--white);border-radius:16px;padding:36px 32px;width:100%;max-width:380px;margin:16px;box-shadow:0 20px 60px rgba(0,0,0,.35)">
+      <div style="text-align:center;margin-bottom:28px">
+        <div style="background:var(--navy);border-radius:10px;padding:14px 20px;display:inline-block;margin-bottom:16px">
+          <img src="assets/igi-school-of-gemology-white-logo.svg" style="height:40px;width:auto;display:block">
+        </div>
+        <div style="font-size:17px;font-weight:600;color:var(--navy)">Counselor Panel</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">IGI Lecture Attendance & Feedback</div>
+      </div>
+      <div class="field"><label>Password</label>
+        <input type="password" id="lg-pass" placeholder="Enter counselor password">
+      </div>
+      <button class="btn btn-gold" id="lg-btn" onclick="doLogin()">Sign in →</button>
+      <div class="err-box" id="lg-err">Incorrect password.</div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN PANEL -->
+<div id="s-main" class="screen">
+<div class="wrap">
+  <div class="site-header">
+    <div class="hdr-logo"><img src="assets/igi-school-of-gemology-white-logo.svg"></div>
+    <div class="hdr-divider"></div>
+    <div class="hdr-band">
+      <div class="hdr-label">Counselor Panel</div>
+      <div class="hdr-sub">IGI Lecture Attendance & Feedback System</div>
+    </div>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab active" onclick="switchTab('t-batches')">📋 Batches</button>
+    <button class="tab" onclick="switchTab('t-students')">👥 Students</button>
+    <button class="tab" onclick="switchTab('t-session')">📅 Session</button>
+    <button class="tab" onclick="switchTab('t-mybatches')">🗂 My Batches</button>
+  </div>
+
+  <!-- TAB 1: CREATE BATCH -->
+  <div id="t-batches" class="tab-content active">
+    <div class="card">
+      <div class="section-tag">Create New Batch</div>
+      <h2>Batch Setup</h2>
+      <p class="sub">Fill in the details below. Batch code is generated automatically.</p>
+      <div class="grid2">
+        <div class="field"><label>Centre *</label>
+          <select id="b-centre" onchange="genBatchCode()"><option value="">Select</option></select>
+        </div>
+        <div class="field"><label>Course *</label>
+          <select id="b-course" onchange="genBatchCode()"><option value="">Select</option></select>
+        </div>
+        <div class="field"><label>Type *</label>
+          <select id="b-type"><option value="Full Day">Full Day (3 weeks)</option><option value="Half Day">Half Day (6 weeks)</option></select>
+        </div>
+        <div class="field"><label>Start Date *</label>
+          <input type="date" id="b-start" onchange="genBatchCode()">
+        </div>
+        <div class="field"><label>End Date *</label>
+          <input type="date" id="b-end">
+        </div>
+        <div class="field"><label>Report Password *</label>
+          <input type="text" id="b-rpass" placeholder="Password for session report">
+        </div>
+      </div>
+      <div class="field"><label>Batch Code (auto-generated)</label>
+        <input type="text" id="b-code" class="auto-val" readonly placeholder="Fill centre + course + date above">
+      </div>
+      <button class="btn btn-gold" id="b-btn" onclick="createBatch()">Create Batch →</button>
+      <div class="err-box" id="b-err"></div>
+    </div>
+  </div>
+
+  <!-- TAB 2: ADD STUDENTS -->
+  <div id="t-students" class="tab-content">
+    <div class="card">
+      <div class="section-tag">Add Students to Batch</div>
+      <h2>Student Entry</h2>
+      <div class="field"><label>Select Batch *</label>
+        <select id="st-batch" onchange="loadStudents()"><option value="">Select a batch</option></select>
+      </div>
+      <div id="st-enrol-wrap" style="display:none">
+        <div class="info-box">Enrollment numbers are auto-generated. Enter Name, DOB (DDMM only e.g. <strong>2303</strong> for 23 March), and optionally Mobile and Email.</div>
+        <div class="grid2">
+          <div class="field"><label>Name *</label><input type="text" id="st-name" placeholder="Full name"></div>
+          <div class="field"><label>DOB (DDMM) *</label><input type="tel" id="st-dob" placeholder="e.g. 2303" maxlength="4"></div>
+          <div class="field"><label>Mobile</label><input type="tel" id="st-mobile" placeholder="10 digits"></div>
+          <div class="field"><label>Email</label><input type="email" id="st-email" placeholder="student@email.com"></div>
+        </div>
+        <div class="field"><label>Enrollment No. (auto)</label>
+          <input type="text" id="st-enrol" class="auto-val" readonly placeholder="Generated on save">
+        </div>
+        <button class="btn btn-gold" id="st-btn" onclick="addStudent()">Add Student →</button>
+        <div class="err-box" id="st-err"></div>
+      </div>
+    </div>
+    <div class="card" id="st-list-card" style="display:none">
+      <div class="section-tag">Enrolled Students</div>
+      <h2 id="st-list-title">—</h2>
+      <div id="st-list"></div>
+    </div>
+  </div>
+
+  <!-- TAB 3: CREATE SESSION -->
+  <div id="t-session" class="tab-content">
+    <div class="card">
+      <div class="section-tag">Today's Session</div>
+      <h2>Create Session</h2>
+      <p class="sub">Select the batch and fill in today's details. Session code is auto-generated.</p>
+      <div class="field"><label>Select Batch *</label>
+        <select id="ss-batch"><option value="">Select a batch</option></select>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Instructor *</label>
+          <select id="ss-instr"><option value="">Select</option></select>
+        </div>
+        <div class="field"><label>Session Date *</label>
+          <input type="date" id="ss-date">
+        </div>
+      </div>
+      <div class="field"><label>Topic Covered *</label>
+        <input type="text" id="ss-topic" placeholder="e.g. Diamond Cutting — Brilliant Cut">
+      </div>
+      <div class="field"><label>Module / Chapter (optional)</label>
+        <input type="text" id="ss-module" placeholder="e.g. Module 3 — Cut">
+      </div>
+      <button class="btn btn-gold" id="ss-btn" onclick="createSession()">Create Session →</button>
+      <div class="err-box" id="ss-err"></div>
+    </div>
+    <div class="card" id="ss-result-card" style="display:none">
+      <div class="section-tag">Session Created ✓</div>
+      <h2 id="ss-code-disp">—</h2>
+      <p class="sub">Share the link below with students via WhatsApp. They can also scan the QR code in class.</p>
+      <div class="field"><label>Student Feedback Link</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="ss-link" class="auto-val" readonly style="flex:1">
+          <button class="btn btn-outline" style="width:auto;padding:10px 14px" onclick="copyLink()">📋</button>
+          <button class="btn btn-outline" style="width:auto;padding:10px 14px" onclick="whatsappLink()">📲</button>
+        </div>
+      </div>
+      <div class="qr-wrap">
+        <img id="ss-qr" src="" alt="QR Code">
+        <div class="qr-link" id="ss-qr-link"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: MY BATCHES -->
+  <div id="t-mybatches" class="tab-content">
+    <div class="card">
+      <div class="section-tag">All Batches</div>
+      <h2>Batch Overview</h2>
+      <div id="mb-list"><div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div></div>
+    </div>
+  </div>
+
+</div><!-- /wrap -->
+</div><!-- /s-main -->
+
+<script>
+// ── Init ──────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  CENTRES.forEach(c => {
+    ['b-centre'].forEach(id => {
+      const o = document.createElement('option'); o.value=c; o.textContent=c;
+      document.getElementById(id).appendChild(o);
+    });
+  });
+  COURSES.forEach(c => {
+    ['b-course'].forEach(id => {
+      const o = document.createElement('option'); o.value=c; o.textContent=c;
+      document.getElementById(id).appendChild(o);
+    });
+  });
+  INSTRUCTORS.forEach(i => {
+    const o = document.createElement('option'); o.value=i; o.textContent=i;
+    document.getElementById('ss-instr').appendChild(o);
+  });
+  document.getElementById('b-start').value  = new Date().toISOString().split('T')[0];
+  document.getElementById('ss-date').value  = new Date().toISOString().split('T')[0];
+  // Enter key on login
+  document.getElementById('lg-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+});
+
+// ── Login ─────────────────────────────────────────────────────
+function doLogin() {
+  const pass = document.getElementById('lg-pass').value.trim();
+  const btn  = document.getElementById('lg-btn');
+  const err  = document.getElementById('lg-err');
+  err.classList.remove('show');
+  btn.textContent = 'Signing in…'; btn.disabled = true;
+  gasGet({action:'counselorLogin', pass}, function(e, d) {
+    btn.textContent = 'Sign in →'; btn.disabled = false;
+    if (e || !d || d.status !== 'ok') { err.classList.add('show'); return; }
+    showScreen('s-main');
+    loadBatchDropdowns();
+    loadMyBatches();
+  });
+}
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function switchTab(id) {
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const idx = ['t-batches','t-students','t-session','t-mybatches'].indexOf(id);
+  document.querySelectorAll('.tab')[idx].classList.add('active');
+}
+
+// ── Batch Code Generator ──────────────────────────────────────
+function genBatchCode() {
+  const centre = document.getElementById('b-centre').value;
+  const course = document.getElementById('b-course').value;
+  const start  = document.getElementById('b-start').value;
+  if (!centre || !course || !start) return;
+  const d = new Date(start);
+  const month = d.toLocaleString('default',{month:'short'}).toUpperCase() + String(d.getFullYear()).slice(2);
+  gasGet({action:'getBatchCode', centre, course, month}, function(e, d2) {
+    if (!e && d2 && d2.batchCode)
+      document.getElementById('b-code').value = d2.batchCode;
+  });
+}
+
+// ── Create Batch ──────────────────────────────────────────────
+function createBatch() {
+  const batchCode = document.getElementById('b-code').value.trim();
+  const centre    = document.getElementById('b-centre').value;
+  const course    = document.getElementById('b-course').value;
+  const type      = document.getElementById('b-type').value;
+  const startDate = document.getElementById('b-start').value;
+  const endDate   = document.getElementById('b-end').value;
+  const reportPass= document.getElementById('b-rpass').value.trim();
+  const errEl     = document.getElementById('b-err');
+  errEl.classList.remove('show');
+  if (!batchCode||!centre||!course||!startDate||!reportPass) {
+    errEl.textContent='Please fill all required fields.'; errEl.classList.add('show'); return;
+  }
+  const btn = document.getElementById('b-btn');
+  btn.textContent='Creating…'; btn.disabled=true;
+  gasGet({action:'createBatch',batchCode,centre,course,type,startDate,endDate,reportPass},function(e,d){
+    btn.textContent='Create Batch →'; btn.disabled=false;
+    if (e||!d||d.status!=='ok') {
+      errEl.textContent=d&&d.reason==='batch_exists'?'Batch code already exists. Try a different start date.':'Error creating batch. Try again.';
+      errEl.classList.add('show'); return;
+    }
+    loadBatchDropdowns();
+    loadMyBatches();
+    alert('✅ Batch ' + batchCode + ' created successfully!');
+    ['b-centre','b-course','b-type','b-start','b-end','b-rpass'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el.tagName==='SELECT') el.selectedIndex=0; else el.value='';
+    });
+    document.getElementById('b-code').value='';
+  });
+}
+
+// ── Load batch dropdowns ──────────────────────────────────────
+function loadBatchDropdowns() {
+  gasGet({action:'getBatches'}, function(e,d) {
+    if (e||!d||!d.batches) return;
+    ['st-batch','ss-batch'].forEach(id => {
+      const sel = document.getElementById(id);
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">Select a batch</option>';
+      d.batches.forEach(b => {
+        const o = document.createElement('option');
+        o.value = b.batchCode;
+        o.textContent = b.batchCode + ' — ' + b.course + ' (' + b.centre + ')';
+        sel.appendChild(o);
+      });
+      if (cur) sel.value = cur;
+    });
+  });
+}
+
+// ── Load students for selected batch ─────────────────────────
+function loadStudents() {
+  const batch = document.getElementById('st-batch').value;
+  document.getElementById('st-enrol-wrap').style.display = batch ? 'block' : 'none';
+  document.getElementById('st-list-card').style.display  = batch ? 'block' : 'none';
+  if (!batch) return;
+  fetchNextEnroll(batch);
+  renderStudentList(batch);
+}
+
+function fetchNextEnroll(batch) {
+  const bsel   = document.getElementById('st-batch');
+  const selTxt = bsel.options[bsel.selectedIndex].text;
+  const parts  = selTxt.split('—')[0].trim().split('-');
+  const centre = document.getElementById('b-centre').value ||
+    (() => { const c = selTxt.match(/\(([^)]+)\)/); return c?c[1]:''; })();
+  const batchInfo = batch;
+  gasGet({action:'getNextEnrollment', batchCode:batch}, function(e,d) {
+    if (!e && d && d.enrollmentNo)
+      document.getElementById('st-enrol').value = d.enrollmentNo;
+  });
+}
+
+function renderStudentList(batch) {
+  const listEl = document.getElementById('st-list');
+  const titleEl= document.getElementById('st-list-title');
+  listEl.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div>';
+  gasGet({action:'getStudents', batchCode:batch}, function(e,d) {
+    if (e||!d) { listEl.innerHTML='<p style="color:var(--muted);font-size:13px">Could not load students.</p>'; return; }
+    titleEl.textContent = (d.students||[]).length + ' students enrolled';
+    if (!d.students.length) { listEl.innerHTML='<p style="color:var(--muted);font-size:13px">No students yet. Add the first one above.</p>'; return; }
+    listEl.innerHTML = d.students.map(s=>`
+      <div class="student-row">
+        <div class="enr">${s.enrollmentNo}</div>
+        <div class="nm">${s.name}</div>
+        <div class="dob">DOB: ${s.dob}</div>
+        <button class="del-btn" onclick="removeStudent('${s.enrollmentNo}','${batch}')">✕</button>
+      </div>`).join('');
+  });
+}
+
+function addStudent() {
+  const batch  = document.getElementById('st-batch').value;
+  const name   = document.getElementById('st-name').value.trim();
+  const dob    = document.getElementById('st-dob').value.trim();
+  const mobile = document.getElementById('st-mobile').value.trim();
+  const email  = document.getElementById('st-email').value.trim();
+  const enrol  = document.getElementById('st-enrol').value.trim();
+  const errEl  = document.getElementById('st-err');
+  errEl.classList.remove('show');
+  if (!batch||!name||!dob||!enrol||dob.length!==4) {
+    errEl.textContent='Please fill Name and DOB (4 digits, e.g. 2303).'; errEl.classList.add('show'); return;
+  }
+  const btn = document.getElementById('st-btn');
+  btn.textContent='Adding…'; btn.disabled=true;
+  gasGet({action:'addStudent',enrollmentNo:enrol,batchCode:batch,name,dob,mobile,email},function(e,d){
+    btn.textContent='Add Student →'; btn.disabled=false;
+    if (e||!d||d.status!=='ok') {
+      errEl.textContent='Could not add student. Try again.'; errEl.classList.add('show'); return;
+    }
+    ['st-name','st-dob','st-mobile','st-email'].forEach(id=>document.getElementById(id).value='');
+    renderStudentList(batch);
+    fetchNextEnroll(batch);
+  });
+}
+
+function removeStudent(enrollmentNo, batch) {
+  if (!confirm('Remove ' + enrollmentNo + ' from this batch?')) return;
+  gasGet({action:'removeStudent',enrollmentNo}, function() { renderStudentList(batch); });
+}
+
+// ── Create Session ────────────────────────────────────────────
+function createSession() {
+  const batch    = document.getElementById('ss-batch').value;
+  const instr    = document.getElementById('ss-instr').value;
+  const date     = document.getElementById('ss-date').value;
+  const topic    = document.getElementById('ss-topic').value.trim();
+  const module   = document.getElementById('ss-module').value.trim();
+  const errEl    = document.getElementById('ss-err');
+  errEl.classList.remove('show');
+  if (!batch||!instr||!date||!topic) {
+    errEl.textContent='Please fill all required fields.'; errEl.classList.add('show'); return;
+  }
+  const btn = document.getElementById('ss-btn');
+  btn.textContent='Creating…'; btn.disabled=true;
+  gasGet({action:'createSession',batchCode:batch,instructor:instr,sessionDate:date,topic,module},function(e,d){
+    btn.textContent='Create Session →'; btn.disabled=false;
+    if (e||!d||d.status!=='ok') {
+      const msg = d&&d.reason==='session_exists_today'?'A session already exists for this batch today.':'Error creating session.';
+      errEl.textContent=msg; errEl.classList.add('show'); return;
+    }
+    const baseUrl  = window.location.origin + '/feedback';
+    const fullLink = baseUrl + '?s=' + encodeURIComponent(d.sessionCode);
+    document.getElementById('ss-code-disp').textContent = d.sessionCode;
+    document.getElementById('ss-link').value = fullLink;
+    document.getElementById('ss-qr').src = 'https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=' + encodeURIComponent(fullLink);
+    document.getElementById('ss-qr-link').textContent = fullLink;
+    document.getElementById('ss-result-card').style.display = 'block';
+    document.getElementById('ss-result-card').scrollIntoView({behavior:'smooth'});
+  });
+}
+
+function copyLink() {
+  navigator.clipboard.writeText(document.getElementById('ss-link').value)
+    .then(()=>alert('✅ Link copied!'));
+}
+function whatsappLink() {
+  const link = document.getElementById('ss-link').value;
+  const code = document.getElementById('ss-code-disp').textContent;
+  window.open('https://wa.me/?text=' + encodeURIComponent(
+    'IGI Lecture Feedback\nSession: ' + code + '\nPlease fill in your feedback after today\'s lecture:\n' + link +
+    '\n\nYou\'ll need your Enrollment Number and Date of Birth (DDMM format) to submit.'
+  ),'_blank');
+}
+
+// ── My Batches ────────────────────────────────────────────────
+function loadMyBatches() {
+  const el = document.getElementById('mb-list');
+  el.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div>';
+  gasGet({action:'getBatches'}, function(e,d) {
+    if (e||!d||!d.batches||!d.batches.length) {
+      el.innerHTML='<p style="color:var(--muted);font-size:13px">No batches yet. Create your first batch.</p>'; return;
+    }
+    el.innerHTML = d.batches.map(b=>`
+      <div class="batch-row">
+        <div class="bc">${b.batchCode}</div>
+        <div class="bm">${b.course} &nbsp;·&nbsp; ${b.centre} &nbsp;·&nbsp; ${b.type} &nbsp;·&nbsp; ${b.startDate}${b.endDate?' → '+b.endDate:''}</div>
+        <div style="margin-top:4px"><span class="badge badge-blue">${b.counselor}</span></div>
+      </div>`).join('');
+  });
+}
+</script>
+</body>
+</html>

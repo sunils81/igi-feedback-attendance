@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IGI — Lecture Feedback</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="assets/shared.js"></script>
+<style id="dyn-css"></style>
+<style>
+.stars{display:flex;gap:6px;margin-top:4px}
+.star{font-size:28px;cursor:pointer;transition:transform .1s;line-height:1}
+.star:hover,.star.active{transform:scale(1.15)}
+.star.active{filter:drop-shadow(0 0 4px rgba(201,168,76,.4))}
+.pace-btns,.doubt-btns{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap}
+.sel-btn{flex:1;min-width:80px;padding:10px 8px;border:1.5px solid var(--border);border-radius:8px;
+  font-size:13px;font-weight:500;cursor:pointer;background:var(--white);color:var(--muted);
+  transition:all .15s;font-family:"DM Sans",sans-serif;text-align:center}
+.sel-btn.active{background:var(--gold);color:var(--navy);border-color:var(--gold)}
+.anon-toggle{display:flex;align-items:flex-start;gap:12px;background:var(--gold-pale);
+  border-radius:8px;padding:12px 14px;cursor:pointer;margin-bottom:16px}
+.anon-toggle input[type=checkbox]{width:18px;height:18px;margin-top:2px;accent-color:var(--gold);flex-shrink:0}
+.anon-toggle .at-label{font-size:13px;color:var(--navy);line-height:1.5}
+.anon-toggle .at-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.confirm-card{background:var(--navy);border-radius:10px;padding:16px 18px;margin-bottom:18px}
+.confirm-card .cc-name{font-size:16px;font-weight:600;color:var(--white);margin-bottom:6px}
+.confirm-card .cc-meta{font-size:12px;color:rgba(255,255,255,.5);line-height:1.7}
+.confirm-card .cc-sess{font-family:"DM Mono",monospace;font-size:11px;color:var(--gold);margin-top:6px}
+.thank-icon{font-size:56px;text-align:center;margin-bottom:16px}
+</style>
+</head>
+<body>
+<script>document.getElementById('dyn-css').textContent=CSS_VARS;</script>
+
+<div class="wrap">
+  <div class="site-header">
+    <div class="hdr-logo"><img src="assets/igi-school-of-gemology-white-logo.svg"></div>
+    <div class="hdr-divider"></div>
+    <div class="hdr-band">
+      <div class="hdr-label">Lecture Feedback</div>
+      <div class="hdr-sub">IGI School of Gemology</div>
+    </div>
+  </div>
+
+  <!-- SCREEN: VERIFY -->
+  <div id="s-verify" class="screen active">
+    <div class="card">
+      <div class="section-tag">Identify yourself</div>
+      <h2>Attendance & Feedback</h2>
+      <p class="sub">Enter your session code, enrollment number, and date of birth to mark attendance and submit feedback.</p>
+      <div class="info-box">💡 Use the <strong>Session Code</strong> shared by your counselor or instructor today. Your <strong>Enrollment Number</strong> was given to you at admission.</div>
+      <div class="field"><label>Session Code *</label>
+        <input type="text" id="v-sess" placeholder="e.g. MUM-DG-MAY26-S03" style="text-transform:uppercase">
+      </div>
+      <div class="field"><label>Enrollment Number *</label>
+        <input type="text" id="v-enrol" placeholder="e.g. MUM26DG001" style="text-transform:uppercase">
+      </div>
+      <div class="field"><label>Date of Birth (DDMM only) *</label>
+        <input type="tel" id="v-dob" placeholder="e.g. 2303 for 23rd March" maxlength="4">
+      </div>
+      <button class="btn btn-gold" id="v-btn" onclick="doVerify()">Verify & Continue →</button>
+      <div class="err-box" id="v-err"></div>
+    </div>
+  </div>
+
+  <!-- SCREEN: CONFIRM IDENTITY -->
+  <div id="s-confirm" class="screen">
+    <div class="card">
+      <div class="section-tag">Is this you?</div>
+      <h2 id="cf-name">—</h2>
+      <div class="confirm-card">
+        <div class="cc-meta" id="cf-meta">—</div>
+        <div class="cc-sess" id="cf-sess">—</div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:18px">Please confirm your identity before filling the feedback form.</p>
+      <button class="btn btn-gold" onclick="showFeedback()">Yes, that's me — Continue →</button>
+      <button class="btn btn-outline" onclick="showScreen('s-verify')" style="margin-top:8px;width:100%">← Not me</button>
+    </div>
+  </div>
+
+  <!-- SCREEN: FEEDBACK FORM -->
+  <div id="s-feedback" class="screen">
+    <div class="card" style="background:var(--navy);color:var(--white);padding:16px 18px;margin-bottom:4px">
+      <div style="font-size:11px;color:var(--gold);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px">Today's Session</div>
+      <div style="font-size:15px;font-weight:600" id="fb-topic">—</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:4px" id="fb-meta">—</div>
+    </div>
+
+    <div class="card">
+      <div class="section-tag">Your Feedback</div>
+      <h2>How was today's lecture?</h2>
+      <p class="sub">Your honest feedback helps us improve. This takes 2–3 minutes.</p>
+
+      <!-- Q1: Overall Rating -->
+      <div class="field" style="margin-bottom:20px">
+        <label>Q1 — Overall lecture rating *</label>
+        <div class="stars" id="q1-stars">
+          <span class="star" data-v="1" onclick="setStar('q1',1)">⭐</span>
+          <span class="star" data-v="2" onclick="setStar('q1',2)">⭐</span>
+          <span class="star" data-v="3" onclick="setStar('q1',3)">⭐</span>
+          <span class="star" data-v="4" onclick="setStar('q1',4)">⭐</span>
+          <span class="star" data-v="5" onclick="setStar('q1',5)">⭐</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px" id="q1-label">Tap to rate</div>
+      </div>
+
+      <!-- Q2: Clarity -->
+      <div class="field" style="margin-bottom:20px">
+        <label>Q2 — Clarity of explanation *</label>
+        <div class="stars" id="q2-stars">
+          <span class="star" data-v="1" onclick="setStar('q2',1)">⭐</span>
+          <span class="star" data-v="2" onclick="setStar('q2',2)">⭐</span>
+          <span class="star" data-v="3" onclick="setStar('q2',3)">⭐</span>
+          <span class="star" data-v="4" onclick="setStar('q2',4)">⭐</span>
+          <span class="star" data-v="5" onclick="setStar('q2',5)">⭐</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px" id="q2-label">Tap to rate</div>
+      </div>
+
+      <!-- Q3: Pace -->
+      <div class="field" style="margin-bottom:20px">
+        <label>Q3 — Pace of the lecture *</label>
+        <div class="pace-btns">
+          <button class="sel-btn" data-g="q3" data-v="Too Slow" onclick="selBtn(this,'q3')">🐢 Too Slow</button>
+          <button class="sel-btn" data-g="q3" data-v="Just Right" onclick="selBtn(this,'q3')">✅ Just Right</button>
+          <button class="sel-btn" data-g="q3" data-v="Too Fast" onclick="selBtn(this,'q3')">🚀 Too Fast</button>
+        </div>
+      </div>
+
+      <!-- Q4: Doubts -->
+      <div class="field" style="margin-bottom:20px">
+        <label>Q4 — Were your doubts addressed? *</label>
+        <div class="doubt-btns">
+          <button class="sel-btn" data-g="q4" data-v="Yes" onclick="selBtn(this,'q4')">✅ Yes</button>
+          <button class="sel-btn" data-g="q4" data-v="Partially" onclick="selBtn(this,'q4')">🔄 Partially</button>
+          <button class="sel-btn" data-g="q4" data-v="No" onclick="selBtn(this,'q4')">❌ No</button>
+          <button class="sel-btn" data-g="q4" data-v="No doubts" onclick="selBtn(this,'q4')">💡 No doubts</button>
+        </div>
+      </div>
+
+      <!-- Anonymous toggle -->
+      <label class="anon-toggle">
+        <input type="checkbox" id="anon-toggle">
+        <div>
+          <div class="at-label">Submit written feedback anonymously</div>
+          <div class="at-sub">Your attendance is still recorded with your name. Only your written answers (Q5 & Q6) will be shown without your name to the counselor.</div>
+        </div>
+      </label>
+
+      <!-- Q5: Learned -->
+      <div class="field">
+        <label>Q5 — One thing you learned today</label>
+        <textarea id="q5" placeholder="e.g. I learned how the table percentage affects brilliance…"></textarea>
+      </div>
+
+      <!-- Q6: Suggestion -->
+      <div class="field">
+        <label>Q6 — Any suggestion for improvement? <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+        <textarea id="q6" placeholder="Any topic you'd like covered in more depth…"></textarea>
+      </div>
+
+      <button class="btn btn-gold" id="fb-btn" onclick="submitFeedback()">Submit Feedback ✓</button>
+      <div class="err-box" id="fb-err"></div>
+    </div>
+  </div>
+
+  <!-- SCREEN: THANK YOU -->
+  <div id="s-thanks" class="screen">
+    <div class="card" style="text-align:center;padding:40px 24px">
+      <div class="thank-icon">🙏</div>
+      <h2 style="margin-bottom:8px" id="ty-name">Thank you!</h2>
+      <p style="font-size:14px;color:var(--muted);margin-bottom:20px" id="ty-sub">Your attendance has been marked and feedback recorded.</p>
+      <div style="background:var(--off);border-radius:8px;padding:14px 16px;font-size:13px;text-align:left" id="ty-detail"></div>
+    </div>
+  </div>
+
+  <!-- SCREEN: ALREADY SUBMITTED -->
+  <div id="s-already" class="screen">
+    <div class="card" style="text-align:center;padding:40px 24px">
+      <div style="font-size:48px;margin-bottom:14px">✅</div>
+      <h2 style="margin-bottom:8px">Already Submitted</h2>
+      <p style="font-size:13px;color:var(--muted)">You have already submitted feedback for this session. If you believe this is an error, please contact your counselor.</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let verifiedData = {};
+const ratings = {q1:0, q2:0};
+const selections = {q3:'', q4:''};
+const starLabels = ['','Poor','Below Average','Average','Good','Excellent'];
+
+document.addEventListener('DOMContentLoaded', function() {
+  // Pre-fill session code from URL param
+  const params = new URLSearchParams(window.location.search);
+  const s = params.get('s');
+  if (s) {
+    document.getElementById('v-sess').value = s.toUpperCase();
+    document.getElementById('v-enrol').focus();
+  }
+  document.getElementById('v-dob').addEventListener('keydown', e => { if(e.key==='Enter') doVerify(); });
+});
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function doVerify() {
+  const sess  = document.getElementById('v-sess').value.trim().toUpperCase();
+  const enrol = document.getElementById('v-enrol').value.trim().toUpperCase();
+  const dob   = document.getElementById('v-dob').value.trim();
+  const errEl = document.getElementById('v-err');
+  const btn   = document.getElementById('v-btn');
+  errEl.classList.remove('show');
+  if (!sess||!enrol||!dob||dob.length!==4) {
+    errEl.textContent='Please fill all fields. DOB must be 4 digits (DDMM).';
+    errEl.classList.add('show'); return;
+  }
+  btn.textContent='Verifying…'; btn.disabled=true;
+  gasGet({action:'verifyStudent',sessionCode:sess,enrollmentNo:enrol,dob},function(e,d){
+    btn.textContent='Verify & Continue →'; btn.disabled=false;
+    if (e||!d) { errEl.textContent='Connection error. Please try again.'; errEl.classList.add('show'); return; }
+    if (d.status==='error') {
+      const msgs = {
+        invalid_session: 'Session code not found. Please check with your counselor.',
+        window_closed:   'The feedback window for this session has closed (24 hours after the lecture).',
+        student_not_found: 'Enrollment number not found in this batch. Please check your details.',
+        dob_mismatch:    'Date of birth does not match. Please check and try again.',
+        already_submitted: null
+      };
+      if (d.reason==='already_submitted') { showScreen('s-already'); return; }
+      errEl.textContent = msgs[d.reason]||'Verification failed. Please try again.';
+      errEl.classList.add('show'); return;
+    }
+    verifiedData = d;
+    // Fill confirm screen
+    document.getElementById('cf-name').textContent = d.studentName;
+    document.getElementById('cf-meta').innerHTML =
+      `<strong style="color:rgba(255,255,255,.8)">${d.course}</strong> &nbsp;·&nbsp; ${d.centre}<br>` +
+      `Instructor: ${d.instructor}`;
+    document.getElementById('cf-sess').textContent =
+      `Session ${d.sessNo} — ${d.sessionDate} — ${d.topic}`;
+    showScreen('s-confirm');
+  });
+}
+
+function showFeedback() {
+  document.getElementById('fb-topic').textContent = verifiedData.topic;
+  document.getElementById('fb-meta').textContent  =
+    'Session ' + verifiedData.sessNo + ' · ' + verifiedData.sessionDate +
+    ' · Instructor: ' + verifiedData.instructor;
+  showScreen('s-feedback');
+}
+
+function setStar(q, val) {
+  ratings[q] = val;
+  const stars = document.getElementById(q+'-stars').querySelectorAll('.star');
+  stars.forEach((s,i) => {
+    s.classList.toggle('active', i < val);
+    s.textContent = i < val ? '⭐' : '☆';
+  });
+  document.getElementById(q+'-label').textContent = starLabels[val] + ' (' + val + '/5)';
+}
+
+function selBtn(el, group) {
+  document.querySelectorAll('[data-g="'+group+'"]').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  selections[group] = el.getAttribute('data-v');
+}
+
+function submitFeedback() {
+  const errEl = document.getElementById('fb-err');
+  errEl.classList.remove('show');
+  if (!ratings.q1) { errEl.textContent='Please rate the overall lecture (Q1).'; errEl.classList.add('show'); return; }
+  if (!ratings.q2) { errEl.textContent='Please rate the clarity of explanation (Q2).'; errEl.classList.add('show'); return; }
+  if (!selections.q3) { errEl.textContent='Please select the lecture pace (Q3).'; errEl.classList.add('show'); return; }
+  if (!selections.q4) { errEl.textContent='Please answer whether doubts were addressed (Q4).'; errEl.classList.add('show'); return; }
+  const q5  = document.getElementById('q5').value.trim();
+  const q6  = document.getElementById('q6').value.trim();
+  const anon = document.getElementById('anon-toggle').checked;
+  const btn = document.getElementById('fb-btn');
+  btn.textContent='Submitting…'; btn.disabled=true;
+  gasGet({
+    action:       'submitFeedback',
+    sessionCode:  verifiedData.sessionCode,
+    enrollmentNo: verifiedData.enrollmentNo,
+    studentName:  verifiedData.studentName,
+    batchCode:    verifiedData.batchCode,
+    centre:       verifiedData.centre,
+    course:       verifiedData.course,
+    instructor:   verifiedData.instructor,
+    topic:        verifiedData.topic,
+    q1: ratings.q1, q2: ratings.q2,
+    q3: selections.q3, q4: selections.q4,
+    q5, q6,
+    anonymous: anon ? 'true' : 'false'
+  }, function(e,d) {
+    btn.textContent='Submit Feedback ✓'; btn.disabled=false;
+    if (e||!d||d.status!=='ok') {
+      if (d&&d.reason==='already_submitted') { showScreen('s-already'); return; }
+      errEl.textContent='Could not submit. Please try again.'; errEl.classList.add('show'); return;
+    }
+    // Thank you screen
+    document.getElementById('ty-name').textContent = 'Thank you, ' + verifiedData.studentName + '!';
+    document.getElementById('ty-sub').textContent  =
+      'Your attendance has been marked and feedback recorded for Session ' + verifiedData.sessNo + '.';
+    document.getElementById('ty-detail').innerHTML =
+      `<div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <span style="color:var(--muted)">Session</span>
+        <strong>${verifiedData.sessionCode}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <span style="color:var(--muted)">Topic</span>
+        <strong>${verifiedData.topic}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <span style="color:var(--muted)">Your rating</span>
+        <strong>${'⭐'.repeat(ratings.q1)} (${ratings.q1}/5)</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between">
+        <span style="color:var(--muted)">Feedback</span>
+        <strong>${anon?'Anonymous':'Named'}</strong>
+      </div>`;
+    showScreen('s-thanks');
+  });
+}
+</script>
+</body>
+</html>

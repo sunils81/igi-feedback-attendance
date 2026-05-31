@@ -673,16 +673,18 @@ function doGet(e) {
       // Check if beyond batch end date
       const shBatch=ss.getSheetByName(SH_BATCHES);
       if(shBatch.getLastRow()>1){
-        const bData=shBatch.getRange(2,1,shBatch.getLastRow()-1,8).getValues();
+        const bData=shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues();
         const bRow=bData.find(r=>String(r[0]).toUpperCase()===batch);
-        if(bRow&&bRow[5]){
-          const endDate=new Date(bRow[5]);
-          if(new Date(sessionDate)>endDate) sessionType='Extended';
+        if(bRow){
+          const isNew = detectSlotOrDate(bRow[4]);
+          const endRaw = isNew ? bRow[6] : bRow[5];
+          const endDate=endRaw ? new Date(endRaw) : null;
+          if(endDate && new Date(sessionDate)>endDate) sessionType='Extended';
         }
       }
       if(p.sessionType) sessionType=p.sessionType; // override if explicitly set
       const sessionCode=batch+'-S'+String(sessNo).padStart(2,'0');
-      sh.appendRow([sessionCode,batch,new Date(sessionDate),sessNo,p.instructor,sessionType,'',new Date().toISOString()]);
+      sh.appendRow([sessionCode,batch,new Date(sessionDate),sessNo,p.instructor,sessionType,p.topic||'',new Date().toISOString()]);
       sh.getRange(sh.getLastRow(),3).setNumberFormat('dd/mm/yyyy');
       return respond({status:'ok',sessionCode,sessNo,sessionType});
     }
@@ -975,8 +977,11 @@ function doGet(e) {
       if (!instructor) return respond({status:'ok',batches:[]});
       const sh=ss.getSheetByName(SH_BATCHES);
       if (sh.getLastRow()<2) return respond({status:'ok',batches:[]});
-      const data=sh.getRange(2,1,sh.getLastRow()-1,9).getValues();
-      const batches=data.filter(r=>r[0]&&(r[9]||'')=== instructor).map(r=>({
+      const data=sh.getRange(2,1,sh.getLastRow()-1,10).getValues();
+      const batches=data.filter(r=>{
+        const assigned = detectSlotOrDate(r[4]) ? (r[9]||'') : (r[8]||'');
+        return r[0] && assigned === instructor;
+      }).map(r=>({
         batchCode:r[0],centre:r[1],course:r[2],type:r[3],
         batchSlot:  detectSlotOrDate(r[4])?(r[4]||'Full Day'):'Full Day',
         startDate:  detectSlotOrDate(r[4])?(r[5]?new Date(r[5]).toLocaleDateString('en-IN'):''):(r[4]?new Date(r[4]).toLocaleDateString('en-IN'):''),
@@ -984,6 +989,56 @@ function doGet(e) {
         instructor: detectSlotOrDate(r[4])?(r[9]||''):(r[8]||'')
       }));
       return respond({status:'ok',batches});
+    }
+
+    // ── getInstructorTodaySessions ────────────────────────────
+    if (act==='getInstructorTodaySessions') {
+      const instructor=(p.instructor||'').trim();
+      if (!instructor) return respond({status:'ok',date:dateStr(new Date()),batches:[]});
+      const shBatch=ss.getSheetByName(SH_BATCHES);
+      const shSess=ss.getSheetByName(SH_SESSIONS);
+      if (!shBatch||shBatch.getLastRow()<2) return respond({status:'ok',date:dateStr(new Date()),batches:[]});
+
+      const today = new Date(); today.setHours(12,0,0,0);
+      const todayISO = today.toISOString().split('T')[0];
+      const batchRows = shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues().filter(r=>r[0]);
+      const sessions = shSess&&shSess.getLastRow()>1 ? shSess.getRange(2,1,shSess.getLastRow()-1,8).getValues() : [];
+      const holidays = getHolidaysForCentre(ss);
+      const isWorkDay = isWorkingDay(today, holidays);
+
+      const batches = batchRows.filter(r=>{
+        const assigned = detectSlotOrDate(r[4]) ? (r[9]||'') : (r[8]||'');
+        return assigned === instructor;
+      }).map(r=>{
+        const isNew = detectSlotOrDate(r[4]);
+        const batchCode = String(r[0]).toUpperCase();
+        const startRaw = isNew ? r[5] : r[4];
+        const endRaw = isNew ? r[6] : r[5];
+        const startDate = startRaw ? new Date(startRaw) : null;
+        const endDate = endRaw ? new Date(endRaw) : null;
+        if (startDate) startDate.setHours(0,0,0,0);
+        if (endDate) endDate.setHours(23,59,59,0);
+        const activeToday = !!(startDate&&endDate&&today>=startDate&&today<=endDate);
+        const todaySess = sessions.find(s=>
+          String(s[1]).toUpperCase()===batchCode &&
+          s[2] && new Date(s[2]).toISOString().split('T')[0]===todayISO
+        );
+        return {
+          batchCode, centre:r[1], course:r[2], type:r[3],
+          batchSlot:isNew?(r[4]||'Full Day'):'Full Day',
+          startDate:startRaw?new Date(startRaw).toLocaleDateString('en-IN'):'',
+          endDate:endRaw?new Date(endRaw).toLocaleDateString('en-IN'):'',
+          activeToday, workingDay:isWorkDay,
+          sessionCode:todaySess?String(todaySess[0]):'',
+          sessNo:todaySess?todaySess[3]:'',
+          sessionType:todaySess?(todaySess[5]||'Scheduled'):'',
+          topic:todaySess?(todaySess[6]||''):''
+        };
+      }).sort((a,b)=>{
+        const slotOrder={'First Half':0,'Second Half':1,'Full Day':2};
+        return (slotOrder[a.batchSlot]||2)-(slotOrder[b.batchSlot]||2) || a.batchCode.localeCompare(b.batchCode);
+      });
+      return respond({status:'ok',date:dateStr(today),todayISO,batches});
     }
 
     // ── getSessionAttendanceLive ───────────────────────────────

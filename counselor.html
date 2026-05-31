@@ -28,6 +28,9 @@
 .health-item.warn{background:#FEF8E7;border:1px solid rgba(201,168,76,.25)}
 .health-item.ok{background:#E8F5EE;color:#1a7a3c}
 .health-icon{font-size:16px;line-height:1}
+.inline-assign{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+.inline-assign select{flex:1;min-width:180px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-family:"DM Sans",sans-serif;font-size:12px;background:var(--white);color:var(--navy)}
+.inline-assign button{width:auto;padding:7px 12px;font-size:12px}
 @media(max-width:500px){.grid2{grid-template-columns:1fr}}
 </style>
 </head>
@@ -429,16 +432,18 @@ function createBatch() {
       errEl.textContent=d&&d.reason==='batch_exists'?'Batch code already exists. Try a different start date.':'Error creating batch. Try again.';
       errEl.classList.add('show'); return;
     }
-    loadBatchDropdowns();
-    loadMyBatches();
-    loadHolidayList();
-    alert('✅ Batch ' + batchCode + ' created successfully!');
-    ['b-centre','b-course','b-type','b-start','b-end','b-rpass'].forEach(id=>{
-      const el=document.getElementById(id);
-      if(el.tagName==='SELECT') el.selectedIndex=0; else el.value='';
+    gasGet({action:'assignInstructor', batchCode, instructor}, function() {
+      loadBatchDropdowns();
+      loadMyBatches();
+      loadHolidayList();
+      alert('✅ Batch ' + batchCode + ' created successfully!');
+      ['b-centre','b-course','b-type','b-start','b-end','b-rpass'].forEach(id=>{
+        const el=document.getElementById(id);
+        if(el.tagName==='SELECT') el.selectedIndex=0; else el.value='';
+      });
+      document.getElementById('b-code').value='';
+      document.getElementById('b-instructor').value='';
     });
-    document.getElementById('b-code').value='';
-    document.getElementById('b-instructor').value='';
   });
 }
 
@@ -598,7 +603,27 @@ function loadMyBatches() {
           <span class="badge badge-blue">${b.counselor}</span>
           ${b.instructor?`<span class="badge badge-green" style="margin-left:6px">${b.instructor}</span>`:'<span class="badge badge-amber" style="margin-left:6px">No instructor</span>'}
         </div>
+        ${b.instructor?'':renderInlineInstructorAssign(b.batchCode)}
       </div>`).join('');
+  });
+}
+
+function renderInlineInstructorAssign(batchCode) {
+  const opts = INSTRUCTORS.map(i=>`<option value="${i}">${i}</option>`).join('');
+  return `<div class="inline-assign">
+    <select id="assign-${batchCode}"><option value="">Assign instructor</option>${opts}</select>
+    <button class="btn btn-outline" onclick="saveInlineInstructor('${batchCode}')">Save</button>
+  </div>`;
+}
+
+function saveInlineInstructor(batchCode) {
+  const sel = document.getElementById('assign-'+batchCode);
+  const instructor = sel ? sel.value : '';
+  if (!instructor) { alert('Please select an instructor.'); return; }
+  gasGet({action:'assignInstructor', batchCode, instructor}, function(e,d) {
+    if (e||!d||d.status!=='ok') { alert('Could not assign instructor. Please try again.'); return; }
+    loadMyBatches();
+    loadBatchDropdowns();
   });
 }
 

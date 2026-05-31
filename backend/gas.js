@@ -540,8 +540,8 @@ function doGet(e) {
       const sh = ss.getSheetByName(SH_BATCHES);
       const exist = sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,1).getValues().map(r=>String(r[0])):[];
       if (exist.includes(p.batchCode)) return respond({status:'error',reason:'batch_exists'});
-      sh.appendRow([p.batchCode,p.centre,p.course,p.type,p.batchSlot||'Full Day',p.startDate,p.endDate,p.counselorName||'Counselor',new Date().toISOString()]);
-      sh.getRange(sh.getLastRow(),1,1,8).setBackground(sh.getLastRow()%2===0?'#F4F1EB':'#FDFCF9');
+      sh.appendRow([p.batchCode,p.centre,p.course,p.type,p.batchSlot||'Full Day',p.startDate,p.endDate,p.counselorName||'Counselor',new Date().toISOString(),p.instructor||'']);
+      sh.getRange(sh.getLastRow(),1,1,10).setBackground(sh.getLastRow()%2===0?'#F4F1EB':'#FDFCF9');
       return respond({status:'ok',batchCode:p.batchCode});
     }
 

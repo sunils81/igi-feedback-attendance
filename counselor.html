@@ -23,6 +23,11 @@
 .sess-row .sc{font-family:"DM Mono",monospace;font-size:11px;font-weight:700;color:var(--navy)}
 .sess-row .sm{font-size:11px;color:var(--muted)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.health-list{display:grid;gap:8px}
+.health-item{display:flex;gap:10px;align-items:flex-start;border-radius:8px;padding:10px 12px;background:var(--off);font-size:12px;color:var(--navy)}
+.health-item.warn{background:#FEF8E7;border:1px solid rgba(201,168,76,.25)}
+.health-item.ok{background:#E8F5EE;color:#1a7a3c}
+.health-icon{font-size:16px;line-height:1}
 @media(max-width:500px){.grid2{grid-template-columns:1fr}}
 </style>
 </head>
@@ -174,6 +179,11 @@
 
   <!-- TAB 4: MY BATCHES -->
   <div id="t-mybatches" class="tab-content">
+    <div class="card">
+      <div class="section-tag">Action Needed</div>
+      <h2>Batch Health</h2>
+      <div id="mb-health"><div class="spinner-wrap"><div class="spinner"></div><p>Checking…</p></div></div>
+    </div>
     <div class="card">
       <div class="section-tag">All Batches</div>
       <h2>Batch Overview</h2>
@@ -410,7 +420,10 @@ function createBatch() {
   const batchSlot  = document.getElementById('b-slot-field').style.display!=='none'
     ? document.getElementById('b-slot').value : 'Full Day';
   const instructor = document.getElementById('b-instructor').value;
-  gasGet({action:'createBatch',batchCode,centre,course,type,batchSlot,startDate,endDate,counselorName},function(e,d){
+  if (!instructor) {
+    errEl.textContent='Please assign an instructor before creating the batch.'; errEl.classList.add('show'); return;
+  }
+  gasGet({action:'createBatch',batchCode,centre,course,type,batchSlot,startDate,endDate,counselorName,instructor},function(e,d){
     btn.textContent='Create Batch →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') {
       errEl.textContent=d&&d.reason==='batch_exists'?'Batch code already exists. Try a different start date.':'Error creating batch. Try again.';
@@ -425,6 +438,7 @@ function createBatch() {
       if(el.tagName==='SELECT') el.selectedIndex=0; else el.value='';
     });
     document.getElementById('b-code').value='';
+    document.getElementById('b-instructor').value='';
   });
 }
 
@@ -566,19 +580,52 @@ function whatsappLink() {
 // ── My Batches ────────────────────────────────────────────────
 function loadMyBatches() {
   const el = document.getElementById('mb-list');
+  const health = document.getElementById('mb-health');
   el.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div>';
+  if (health) health.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Checking…</p></div>';
   const centresParam = isAdmin ? '' : allowedCentres.join(',');
   gasGet({action:'getBatches', centres:centresParam}, function(e,d) {
     if (e||!d||!d.batches||!d.batches.length) {
+      if (health) health.innerHTML = '<div class="health-item ok"><span class="health-icon">✓</span><div>No batches to check yet.</div></div>';
       el.innerHTML='<p style="color:var(--muted);font-size:13px">No batches yet. Create your first batch.</p>'; return;
     }
+    renderBatchHealth(d.batches);
     el.innerHTML = d.batches.map(b=>`
       <div class="batch-row">
         <div class="bc">${b.batchCode}</div>
         <div class="bm">${b.course} &nbsp;·&nbsp; ${b.centre} &nbsp;·&nbsp; ${b.type} &nbsp;·&nbsp; ${b.startDate}${b.endDate?' → '+b.endDate:''}</div>
-        <div style="margin-top:4px"><span class="badge badge-blue">${b.counselor}</span></div>
+        <div style="margin-top:4px">
+          <span class="badge badge-blue">${b.counselor}</span>
+          ${b.instructor?`<span class="badge badge-green" style="margin-left:6px">${b.instructor}</span>`:'<span class="badge badge-amber" style="margin-left:6px">No instructor</span>'}
+        </div>
       </div>`).join('');
   });
+}
+
+function renderBatchHealth(batches) {
+  const health = document.getElementById('mb-health');
+  if (!health) return;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const items = [];
+  const noInstructor = batches.filter(b=>!b.instructor);
+  if (noInstructor.length) {
+    items.push(`<div class="health-item warn"><span class="health-icon">!</span><div><strong>${noInstructor.length} batch${noInstructor.length!==1?'es':''} without instructor.</strong><br>Assign instructors so the instructor portal can show their batches.</div></div>`);
+  }
+  const startingSoon = batches.filter(b=>{
+    if (!b.startDate) return false;
+    const parts = String(b.startDate).split('/');
+    if (parts.length!==3) return false;
+    const start = new Date(Number(parts[2]), Number(parts[1])-1, Number(parts[0]));
+    const days = Math.ceil((start - today) / 86400000);
+    return days >= 0 && days <= 7;
+  });
+  if (startingSoon.length) {
+    items.push(`<div class="health-item warn"><span class="health-icon">→</span><div><strong>${startingSoon.length} batch${startingSoon.length!==1?'es':''} starting within 7 days.</strong><br>Confirm students are added and enrollment numbers are shared.</div></div>`);
+  }
+  if (!items.length) {
+    items.push('<div class="health-item ok"><span class="health-icon">✓</span><div>All visible batches have instructors assigned. Nothing urgent here.</div></div>');
+  }
+  health.innerHTML = `<div class="health-list">${items.join('')}</div>`;
 }
 // Instructor assignment now handled during batch creation
 

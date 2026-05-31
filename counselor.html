@@ -64,7 +64,7 @@
   <div class="tab-bar">
     <button class="tab active" onclick="switchTab('t-batches')">📋 Batches</button>
     <button class="tab" onclick="switchTab('t-students')">👥 Students</button>
-    <button class="tab" onclick="switchTab('t-session')">📅 Session</button>
+    <button class="tab" onclick="switchTab('t-assign')">👨‍🏫 Assign</button>
     <button class="tab" onclick="switchTab('t-mybatches')">🗂 My Batches</button>
     <button class="tab" onclick="switchTab('t-holidays')">🗓 Holidays</button>
   </div>
@@ -138,42 +138,30 @@
     </div>
   </div>
 
-  <!-- TAB 3: CREATE SESSION -->
-  <div id="t-session" class="tab-content">
+  <!-- TAB 3: ASSIGN INSTRUCTOR -->
+  <div id="t-assign" class="tab-content">
     <div class="card">
-      <div class="section-tag">Today's Session</div>
-      <h2>Create Session</h2>
-      <p class="sub">Select the batch and fill in today's details. Session code is auto-generated.</p>
+      <div class="section-tag">Instructor Assignment</div>
+      <h2>Assign Instructor to Batch</h2>
+      <p class="sub">Once assigned, the instructor can log into their portal, create sessions, view attendance and enter assessment marks for this batch.</p>
       <div class="field"><label>Select Batch *</label>
-        <select id="ss-batch"><option value="">Select a batch</option></select>
+        <select id="ai-batch" onchange="loadBatchInstructor()"><option value="">Select a batch</option></select>
       </div>
-      <div class="grid2">
-        <div class="field"><label>Instructor *</label>
-          <select id="ss-instr"><option value="">Select</option></select>
-        </div>
-        <div class="field"><label>Session Date *</label>
-          <input type="date" id="ss-date">
-        </div>
+      <div class="field"><label>Assign Instructor *</label>
+        <select id="ai-instr"><option value="">Select instructor</option></select>
       </div>
-      <div class="info-box">💡 Topic will be selected by students when they submit their feedback. For free-text courses (CAD, JewelPad etc.) students will type the topic directly.</div>
-      <button class="btn btn-gold" id="ss-btn" onclick="createSession()">Create Session →</button>
-      <div class="err-box" id="ss-err"></div>
+      <div id="ai-current" style="display:none" class="info-box"></div>
+      <button class="btn btn-gold" id="ai-btn" onclick="assignInstructor()">Assign Instructor →</button>
+      <div class="err-box" id="ai-err"></div>
     </div>
-    <div class="card" id="ss-result-card" style="display:none">
-      <div class="section-tag">Session Created ✓</div>
-      <h2 id="ss-code-disp">—</h2>
-      <p class="sub">Share the link below with students via WhatsApp. They can also scan the QR code in class.</p>
-      <div class="field"><label>Student Feedback Link</label>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input type="text" id="ss-link" class="auto-val" readonly style="flex:1">
-          <button class="btn btn-outline" style="width:auto;padding:10px 14px" onclick="copyLink()">📋</button>
-          <button class="btn btn-outline" style="width:auto;padding:10px 14px" onclick="whatsappLink()">📲</button>
-        </div>
+    <div class="card">
+      <div class="section-tag">Assessment Marks Summary</div>
+      <h2>Batch Test Results</h2>
+      <p class="sub">Select a batch to view test summaries. Individual student marks are visible in the Master Report only.</p>
+      <div class="field"><label>Select Batch</label>
+        <select id="am-batch" onchange="loadAssessmentSummary()"><option value="">Select a batch</option></select>
       </div>
-      <div class="qr-wrap">
-        <img id="ss-qr" src="" alt="QR Code">
-        <div class="qr-link" id="ss-qr-link"></div>
-      </div>
+      <div id="am-wrap"></div>
     </div>
   </div>
 
@@ -235,10 +223,10 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   INSTRUCTORS.forEach(i => {
     const o = document.createElement('option'); o.value=i; o.textContent=i;
-    document.getElementById('ss-instr').appendChild(o);
+    document.getElementById('ai-instr').appendChild(o);
   });
   document.getElementById('b-start').value  = new Date().toISOString().split('T')[0];
-  document.getElementById('ss-date').value  = new Date().toISOString().split('T')[0];
+  // session creation moved to instructor portal
   // Populate holiday centre dropdown
   CENTRES.forEach(c => {
     const o = document.createElement('option'); o.value=c; o.textContent=c;
@@ -274,7 +262,7 @@ function switchTab(id) {
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const idx = ['t-batches','t-students','t-session','t-mybatches','t-holidays'].indexOf(id);
+  const idx = ['t-batches','t-students','t-assign','t-mybatches','t-holidays'].indexOf(id);
   document.querySelectorAll('.tab')[idx].classList.add('active');
   if (id==='t-holidays') loadHolidayList();
 }
@@ -357,8 +345,8 @@ function createBatch() {
   const reportPass= document.getElementById('b-rpass').value.trim();
   const errEl     = document.getElementById('b-err');
   errEl.classList.remove('show');
-  if (!batchCode||!centre||!course||!startDate||!reportPass) {
-    errEl.textContent='Please fill all required fields.'; errEl.classList.add('show'); return;
+  if (!batchCode||!centre||!course||!startDate) {
+    errEl.textContent='Please fill Centre, Course, Type and Start Date.'; errEl.classList.add('show'); return;
   }
   const btn = document.getElementById('b-btn');
   btn.textContent='Creating…'; btn.disabled=true;
@@ -384,7 +372,7 @@ function createBatch() {
 function loadBatchDropdowns() {
   gasGet({action:'getBatches'}, function(e,d) {
     if (e||!d||!d.batches) return;
-    ['st-batch','ss-batch'].forEach(id => {
+    ['st-batch','ai-batch','am-batch'].forEach(id => {
       const sel = document.getElementById(id);
       const cur = sel.value;
       sel.innerHTML = '<option value="">Select a batch</option>';
@@ -530,6 +518,76 @@ function loadMyBatches() {
       </div>`).join('');
   });
 }
+function loadBatchInstructor() {
+  const batch = document.getElementById('ai-batch').value;
+  const infoEl = document.getElementById('ai-current');
+  if (!batch) { infoEl.style.display='none'; return; }
+  gasGet({action:'getBatches'}, function(e,d) {
+    if (e||!d||!d.batches) return;
+    const b = d.batches.find(x=>x.batchCode===batch);
+    if (b && b.instructor) {
+      infoEl.style.display='block';
+      infoEl.innerHTML='Current instructor: <strong>'+b.instructor+'</strong>';
+    } else {
+      infoEl.style.display='block';
+      infoEl.innerHTML='No instructor assigned yet.';
+    }
+  });
+}
+
+function assignInstructor() {
+  const batch    = document.getElementById('ai-batch').value;
+  const instr    = document.getElementById('ai-instr').value;
+  const errEl    = document.getElementById('ai-err');
+  const btn      = document.getElementById('ai-btn');
+  errEl.classList.remove('show');
+  if (!batch||!instr) { errEl.textContent='Please select both a batch and an instructor.'; errEl.classList.add('show'); return; }
+  btn.textContent='Assigning…'; btn.disabled=true;
+  gasGet({action:'assignInstructor',batchCode:batch,instructor:instr}, function(e,d) {
+    btn.textContent='Assign Instructor →'; btn.disabled=false;
+    if (e||!d||d.status!=='ok') { errEl.textContent='Could not assign instructor. Try again.'; errEl.classList.add('show'); return; }
+    const infoEl = document.getElementById('ai-current');
+    infoEl.style.display='block';
+    infoEl.innerHTML='✅ Instructor assigned: <strong>'+instr+'</strong>';
+    loadBatchDropdowns();
+  });
+}
+
+function loadAssessmentSummary() {
+  const batch = document.getElementById('am-batch').value;
+  const wrap  = document.getElementById('am-wrap');
+  if (!batch) { wrap.innerHTML=''; return; }
+  wrap.innerHTML='<div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div>';
+  gasGet({action:'getBatchAssessmentSummary',batchCode:batch,reportPass:'IGI2026'}, function(e,d) {
+    if (e||!d||d.status!=='ok') { wrap.innerHTML='<p style="color:var(--muted);font-size:13px">Could not load.</p>'; return; }
+    if (!d.summary||!d.summary.length) { wrap.innerHTML='<p style="color:var(--muted);font-size:13px">No assessments recorded yet for this batch.</p>'; return; }
+    wrap.innerHTML = d.summary.map(a=>`
+      <div style="background:var(--off);border-radius:8px;padding:12px 14px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+          <div>
+            <div style="font-weight:600;font-size:13px;color:var(--navy)">${a.testName}</div>
+            <div style="font-size:11px;color:var(--muted)">${a.testDate} · ${a.testType||''} · Max: ${a.totalMarks}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:18px;font-weight:700;font-family:'DM Mono',monospace;color:${a.passRate>=60?'#1a7a3c':'#C94A4A'}">${a.avgPct}%</div>
+            <div style="font-size:10px;color:var(--muted)">Class avg</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:16px;font-size:11px;color:var(--muted)">
+          <span>Appeared: <strong style="color:var(--navy)">${a.appeared}</strong></span>
+          <span>Pass: <strong style="color:#1a7a3c">${a.passed}</strong></span>
+          <span>Fail: <strong style="color:#C94A4A">${a.failed}</strong></span>
+          <span>DNA: <strong>${a.dna}</strong></span>
+          <span>Pass rate: <strong style="color:${a.passRate>=60?'#1a7a3c':'#C94A4A'}">${a.passRate}%</strong></span>
+        </div>
+      </div>`).join('');
+  });
+}
+
+// Remove old session creation functions (moved to instructor portal)
+function createSession(){}
+function copyLink(){}
+function whatsappLink(){}
 </script>
 </body>
 </html>

@@ -97,6 +97,21 @@
       </div>
     </div>
 
+    <!-- Assessment Performance -->
+    <div id="m-assessments" class="tab-content">
+      <div class="card">
+        <div class="section-tag">Assessment Performance</div>
+        <h2>Test Results — All Centres</h2>
+        <p class="sub" style="margin-bottom:12px">All tests entered by instructors across all batches. Individual student marks visible here only.</p>
+        <div class="filter-bar">
+          <select id="a-centre" onchange="renderAssessments()"><option value="">All Centres</option></select>
+          <select id="a-batch" onchange="renderAssessments()"><option value="">All Batches</option></select>
+          <input type="text" id="a-search" placeholder="Search test name…" oninput="renderAssessments()" style="flex:1;min-width:140px">
+        </div>
+        <div id="a-wrap"></div>
+      </div>
+    </div>
+
     <!-- All Feedback -->
     <div id="m-feedback" class="tab-content">
       <div class="card">
@@ -130,7 +145,7 @@ function mTab(id) {
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const idx=['m-instructors','m-centres','m-atrisk','m-feedback'].indexOf(id);
+  const idx=['m-instructors','m-centres','m-atrisk','m-assessments','m-feedback'].indexOf(id);
   document.querySelectorAll('.tab')[idx].classList.add('active');
 }
 
@@ -218,6 +233,16 @@ function renderDashboard(d) {
   instrSet.forEach(i=>{ const o=document.createElement('option');o.value=i;o.textContent=i;fInstr.appendChild(o); });
 
   renderFeedback();
+  renderAssessments();
+  // Populate assessment filters
+  const batchSetA = [...new Set((d.assessmentSummary||[]).map(a=>a.batchCode).filter(Boolean))].sort();
+  const centreSetA = [...new Set((d.assessmentSummary||[]).map(a=>
+    (d.allFeedback.find(f=>f.batchCode===a.batchCode)||{}).centre||''
+  ).filter(Boolean))].sort();
+  const aCentre = document.getElementById('a-centre');
+  const aBatch  = document.getElementById('a-batch');
+  centreSetA.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;aCentre.appendChild(o);});
+  batchSetA.forEach(b=>{const o=document.createElement('option');o.value=b;o.textContent=b;aBatch.appendChild(o);});
 }
 
 function renderFeedback() {
@@ -266,6 +291,89 @@ function renderFeedback() {
     </tbody>
   </table>
   <div style="font-size:11px;color:var(--muted);margin-top:10px">Showing ${rows.length} of ${masterData.allFeedback.length} records</div>`;
+}
+function renderAssessments() {
+  if (!masterData||!masterData.assessmentSummary) return;
+  const centre = document.getElementById('a-centre').value;
+  const batch  = document.getElementById('a-batch').value;
+  const search = (document.getElementById('a-search').value||'').toLowerCase();
+  const wrap   = document.getElementById('a-wrap');
+
+  // Build centre map from feedback
+  const batchCentreMap = {};
+  (masterData.allFeedback||[]).forEach(f=>{ if(f.batchCode&&f.centre) batchCentreMap[f.batchCode]=f.centre; });
+
+  let rows = masterData.assessmentSummary || [];
+  if (centre) rows = rows.filter(r=>batchCentreMap[r.batchCode]===centre);
+  if (batch)  rows = rows.filter(r=>r.batchCode===batch);
+  if (search) rows = rows.filter(r=>(r.testName||'').toLowerCase().includes(search));
+
+  if (!rows.length) { wrap.innerHTML='<p style="color:var(--muted);font-size:13px">No assessments match the filter.</p>'; return; }
+
+  wrap.innerHTML = rows.map(a=>{
+    const passColor = a.passRate>=60?'#1a7a3c':'#C94A4A';
+    const avgColor  = a.avgPct>=60?'#1a7a3c':'#C94A4A';
+    // Student marks sub-table
+    const markRows = (a.marks||[]).sort((x,y)=>(Number(y.pct)||0)-(Number(x.pct)||0));
+    return `<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden">
+      <!-- Test header -->
+      <div style="background:var(--navy);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-weight:600;color:var(--white);font-size:14px">${a.testName}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:2px">${a.batchCode} · ${batchCentreMap[a.batchCode]||''} · ${a.testDate} · ${a.testType||''} · Max: ${a.totalMarks}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:22px;font-weight:700;font-family:'DM Mono',monospace;color:${avgColor}">${a.avgPct}%</div>
+          <div style="font-size:10px;color:rgba(255,255,255,.5)">Class avg</div>
+        </div>
+      </div>
+      <!-- Summary strip -->
+      <div style="display:flex;gap:0;border-bottom:1px solid var(--off)">
+        ${[
+          {label:'Appeared', val:a.appeared, color:'var(--navy)'},
+          {label:'Pass',     val:a.passed,   color:'#1a7a3c'},
+          {label:'Fail',     val:a.failed,   color:'#C94A4A'},
+          {label:'DNA',      val:a.dna,      color:'var(--muted)'},
+          {label:'Pass Rate',val:a.passRate+'%', color:passColor}
+        ].map(s=>`<div style="flex:1;padding:10px 8px;text-align:center;border-right:1px solid var(--off)">
+          <div style="font-size:16px;font-weight:700;font-family:'DM Mono',monospace;color:${s.color}">${s.val}</div>
+          <div style="font-size:10px;color:var(--muted);font-weight:600">${s.label}</div>
+        </div>`).join('')}
+      </div>
+      <!-- Per-student marks -->
+      ${markRows.length?`<div style="padding:0 0 4px">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:#F4F1EB">
+            <th style="padding:7px 12px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Student</th>
+            <th style="padding:7px 12px;text-align:center;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Marks</th>
+            <th style="padding:7px 12px;text-align:center;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">%</th>
+            <th style="padding:7px 12px;text-align:center;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Result</th>
+            <th style="padding:7px 12px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Remarks</th>
+          </tr></thead>
+          <tbody>${markRows.map((m,i)=>{
+            const isDNA = m.marks==='DNA';
+            const pct   = isDNA?null:Number(m.pct)||0;
+            const bg    = isDNA?'#F4F1EB':pct>=60?'#E8F5EE':'#FEF2F2';
+            const fc    = isDNA?'var(--muted)':pct>=60?'#1a7a3c':'#C94A4A';
+            return `<tr style="background:${bg};border-bottom:1px solid rgba(255,255,255,0.5)">
+              <td style="padding:8px 12px">
+                <div style="font-weight:600">${m.studentName||'—'}</div>
+                <div style="font-size:10px;color:var(--muted);font-family:'DM Mono',monospace">${m.enrollmentNo}</div>
+              </td>
+              <td style="text-align:center;font-family:'DM Mono',monospace;font-weight:700;padding:8px 12px">${isDNA?'—':m.marks}</td>
+              <td style="text-align:center;font-family:'DM Mono',monospace;font-weight:700;color:${fc};padding:8px 12px">${isDNA?'—':pct+'%'}</td>
+              <td style="text-align:center;padding:8px 12px">
+                ${isDNA?'<span style="font-size:10px;color:var(--muted);font-weight:600">DNA</span>':
+                  pct>=60?'<span style="font-size:10px;font-weight:700;color:#1a7a3c">✅ Pass</span>':
+                  '<span style="font-size:10px;font-weight:700;color:#C94A4A">❌ Fail</span>'}
+              </td>
+              <td style="font-size:11px;color:var(--muted);padding:8px 12px">${m.remarks||'—'}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>`:'<p style="font-size:12px;color:var(--muted);padding:10px 14px">No marks entered yet.</p>'}
+    </div>`;
+  }).join('') + `<div style="font-size:11px;color:var(--muted);margin-top:8px">Showing ${rows.length} of ${masterData.assessmentSummary.length} tests</div>`;
 }
 </script>
 </body>

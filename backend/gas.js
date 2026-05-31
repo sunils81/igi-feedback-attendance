@@ -8,6 +8,24 @@ const SHEET_ID       = '1UKMgHN9onP_bfr2nOyCvRW4dGqWnh3thzZwf-BCn3cs';
 const COUNSELOR_PASS = 'IGI2026';
 const MASTER_PASS    = 'IGIMaster2026';
 const REPORT_PASS    = 'IGI2026';          // session report uses same password
+const PASS_THRESHOLD = 60;                 // % pass mark
+
+// ── Instructor credentials (Option B — unique per instructor) ─
+const INSTRUCTOR_CREDS = {
+  'Amit Sidpura':     'IGIAmit2026',
+  'Asmita Saroday':   'IGIAsmita2026',
+  'Arjun Mistry':     'IGIArjun2026',
+  'Bhavin Patel':     'IGIBhavin2026',
+  'Sneha Garodia':    'IGISneha2026',
+  'Khorehmand Kasad': 'IGIKhore2026',
+  'Nishchay Kapoor':  'IGINishchay2026',
+  'Piyush Ahuja':     'IGIPiyush2026',
+  'Preeti Agarwala':  'IGIPreeti2026',
+  'Sayan Banerjee':   'IGISayan2026',
+  'Deepak Nachankar': 'IGIDeeepak2026',
+  'Sharoon Joy':      'IGISharoon2026',
+  'Seema Athavale':   'IGISeema2026'
+};
 const FEEDBACK_HRS   = 24;
 const EXAM_ALERT_DAYS= 21;
 const NAVY = '#0D1B2E', GOLD = '#C9A84C', WHITE = '#FDFCF9';
@@ -17,7 +35,9 @@ const SH_BATCHES  = 'Batches';
 const SH_STUDENTS = 'Batch_Students';
 const SH_SESSIONS = 'Sessions';
 const SH_FEEDBACK = 'Attendance_Feedback';
-const SH_HOLIDAYS = 'Holidays';
+const SH_HOLIDAYS     = 'Holidays';
+const SH_ASSESSMENTS  = 'Assessments';
+const SH_MARKS        = 'Assessment_Marks';
 
 // ── Centre / Course codes ──────────────────────────────────────
 const CENTRE_CODES = {
@@ -830,12 +850,195 @@ function doGet(e) {
         summary:{totalBatches:batches.length,totalStudents:students.filter(s=>s[6]==='Active').length,
           totalSessions:sessions.length,totalFeedback:feedback.length},
         instructors,centres:Object.values(centreMap),atRisk,
+        assessmentSummary: (() => {
+          const shA=ss.getSheetByName(SH_ASSESSMENTS);
+          const shM=ss.getSheetByName(SH_MARKS);
+          if (!shA||shA.getLastRow()<2) return [];
+          const aData=shA.getRange(2,1,shA.getLastRow()-1,8).getValues().filter(r=>r[0]);
+          const mData=shM&&shM.getLastRow()>1?shM.getRange(2,1,shM.getLastRow()-1,9).getValues():[];
+          return aData.map(a=>{
+            const aId=String(a[0]).toUpperCase();
+            const marks=mData.filter(m=>String(m[0]).toUpperCase()===aId);
+            const appeared=marks.filter(m=>m[3]!=='DNA');
+            const passed=appeared.filter(m=>m[5]==='Pass');
+            const avgPct=appeared.length?Math.round(appeared.reduce((s,m)=>s+(Number(m[4])||0),0)/appeared.length):0;
+            return {assessmentId:a[0],batchCode:a[1],testName:a[2],testType:a[3],
+              testDate:a[4]?new Date(a[4]).toLocaleDateString('en-IN'):'',
+              totalMarks:a[5],instructor:a[6],appeared:appeared.length,
+              passed:passed.length,avgPct,passRate:appeared.length?Math.round((passed.length/appeared.length)*100):0,
+              marks:marks.map(m=>({enrollmentNo:m[1],studentName:m[2],marks:m[3],pct:m[4],result:m[5],remarks:m[6]}))
+            };
+          });
+        })(),
         allFeedback:feedback.map(f=>({sessionCode:f[0],enrollmentNo:f[1],studentName:f[2],
           batchCode:f[3],centre:f[4],course:f[5],instructor:f[6],topic:f[7],
           completionStatus:f[8],q1:f[9],q2:f[10],q3:f[11],q4:f[12],q5:f[13],q6:f[14],
           anonymous:f[15],timestamp:f[16]?new Date(f[16]).toLocaleString('en-IN'):''
         }))
       });
+    }
+
+    // ── instructorLogin ───────────────────────────────────────
+    if (act==='instructorLogin') {
+      const name = p.name||'';
+      const pin  = p.pin ||'';
+      if (!INSTRUCTOR_CREDS[name] || INSTRUCTOR_CREDS[name]!==pin)
+        return respond({status:'error',reason:'wrong_credentials'});
+      return respond({status:'ok', instructorName:name});
+    }
+
+    // ── assignInstructor ───────────────────────────────────────
+    if (act==='assignInstructor') {
+      const batchCode=(p.batchCode||'').toUpperCase();
+      const instructor=p.instructor||'';
+      if (!batchCode||!instructor) return respond({status:'error',reason:'missing_params'});
+      const sh=ss.getSheetByName(SH_BATCHES);
+      if (sh.getLastRow()<2) return respond({status:'error',reason:'batch_not_found'});
+      const data=sh.getRange(2,1,sh.getLastRow()-1,9).getValues();
+      for (let i=0;i<data.length;i++) {
+        if (String(data[i][0]).toUpperCase()===batchCode) {
+          // Col 9 = Assigned Instructor (index 8)
+          sh.getRange(i+2,9).setValue(instructor);
+          return respond({status:'ok'});
+        }
+      }
+      return respond({status:'error',reason:'batch_not_found'});
+    }
+
+    // ── getInstructorBatches ───────────────────────────────────
+    if (act==='getInstructorBatches') {
+      const instructor=(p.instructor||'').trim();
+      if (!instructor) return respond({status:'ok',batches:[]});
+      const sh=ss.getSheetByName(SH_BATCHES);
+      if (sh.getLastRow()<2) return respond({status:'ok',batches:[]});
+      const data=sh.getRange(2,1,sh.getLastRow()-1,9).getValues();
+      const batches=data.filter(r=>r[0]&&(r[8]||'')=== instructor).map(r=>({
+        batchCode:r[0],centre:r[1],course:r[2],type:r[3],
+        startDate:r[4]?new Date(r[4]).toLocaleDateString('en-IN'):'',
+        endDate:r[5]?new Date(r[5]).toLocaleDateString('en-IN'):'',
+        instructor:r[8]||''
+      }));
+      return respond({status:'ok',batches});
+    }
+
+    // ── getSessionAttendanceLive ───────────────────────────────
+    if (act==='getSessionAttendanceLive') {
+      const sessionCode=(p.sessionCode||'').toUpperCase();
+      const batchCode=(p.batchCode||'').toUpperCase();
+      const shStu=ss.getSheetByName(SH_STUDENTS);
+      const shFb=ss.getSheetByName(SH_FEEDBACK);
+      const stuAll=shStu.getLastRow()>1?shStu.getRange(2,1,shStu.getLastRow()-1,8).getValues()
+        .filter(r=>String(r[1]).toUpperCase()===batchCode&&r[6]==='Active'):[];
+      const fbRows=shFb.getLastRow()>1?shFb.getRange(2,1,shFb.getLastRow()-1,3).getValues()
+        .filter(r=>String(r[0]).toUpperCase()===sessionCode):[];
+      const presentSet=new Set(fbRows.map(r=>String(r[1]).toUpperCase()));
+      return respond({status:'ok',
+        present:stuAll.filter(r=>presentSet.has(String(r[0]).toUpperCase())).map(r=>({enrollmentNo:r[0],name:r[2]})),
+        absent: stuAll.filter(r=>!presentSet.has(String(r[0]).toUpperCase())).map(r=>({enrollmentNo:r[0],name:r[2]})),
+        total:  stuAll.length,
+        count:  presentSet.size
+      });
+    }
+
+    // ── createAssessment ──────────────────────────────────────
+    if (act==='createAssessment') {
+      const sh=getOrCreateSheet(ss,SH_ASSESSMENTS);
+      ensureAssessmentHeaders(sh);
+      const batchCode=(p.batchCode||'').toUpperCase();
+      // Auto-generate assessment ID
+      let maxN=0;
+      if (sh.getLastRow()>1) {
+        sh.getRange(2,1,sh.getLastRow()-1,1).getValues().forEach(r=>{
+          const id=String(r[0]);
+          if (id.startsWith(batchCode+'-T')) {
+            const n=parseInt(id.replace(batchCode+'-T',''))||0;
+            if (n>maxN) maxN=n;
+          }
+        });
+      }
+      const assessmentId=batchCode+'-T'+String(maxN+1).padStart(3,'0');
+      sh.appendRow([assessmentId,batchCode,p.testName||'',p.testType||'',
+        p.testDate?new Date(p.testDate):'',Number(p.totalMarks)||0,p.instructor||'',new Date().toISOString()]);
+      sh.getRange(sh.getLastRow(),5).setNumberFormat('dd/mm/yyyy');
+      return respond({status:'ok',assessmentId});
+    }
+
+    // ── saveAssessmentMarks ────────────────────────────────────
+    if (act==='saveAssessmentMarks') {
+      const sh=getOrCreateSheet(ss,SH_MARKS);
+      ensureMarksHeaders(sh);
+      const assessmentId=(p.assessmentId||'').toUpperCase();
+      const marksArr=JSON.parse(p.marks||'[]'); // [{enrollmentNo,studentName,marks,pct,dna,remarks}]
+      const totalMarks=Number(p.totalMarks)||1;
+      // Delete existing rows for this assessment (overwrite)
+      if (sh.getLastRow()>1) {
+        const data=sh.getRange(2,1,sh.getLastRow()-1,9).getValues();
+        for (let i=data.length-1;i>=0;i--) {
+          if (String(data[i][0]).toUpperCase()===assessmentId) sh.deleteRow(i+2);
+        }
+      }
+      marksArr.forEach(m=>{
+        const marks=m.dna?null:Number(m.marks)||0;
+        const pct  =m.dna?null:Math.round((marks/totalMarks)*100);
+        const result=m.dna?'DNA':pct>=PASS_THRESHOLD?'Pass':'Fail';
+        sh.appendRow([assessmentId,m.enrollmentNo||'',m.studentName||'',
+          m.dna?'DNA':marks,m.dna?'DNA':pct,result,m.remarks||'',totalMarks,new Date().toISOString()]);
+        const lr=sh.getLastRow();
+        const bg=m.dna?'#F4F1EB':pct>=PASS_THRESHOLD?'#E8F5EE':'#FEF2F2';
+        sh.getRange(lr,1,1,9).setBackground(bg);
+        if (!m.dna && pct<PASS_THRESHOLD) sh.getRange(lr,5).setFontColor('#C94A4A').setFontWeight('bold');
+      });
+      return respond({status:'ok',saved:marksArr.length});
+    }
+
+    // ── getAssessments ─────────────────────────────────────────
+    if (act==='getAssessments') {
+      const batchCode=(p.batchCode||'').toUpperCase();
+      const sh=ss.getSheetByName(SH_ASSESSMENTS);
+      if (!sh||sh.getLastRow()<2) return respond({status:'ok',assessments:[]});
+      const data=sh.getRange(2,1,sh.getLastRow()-1,8).getValues();
+      return respond({status:'ok',assessments:data.filter(r=>r[0]&&String(r[1]).toUpperCase()===batchCode)
+        .map(r=>({assessmentId:r[0],batchCode:r[1],testName:r[2],testType:r[3],
+          testDate:r[4]?new Date(r[4]).toLocaleDateString('en-IN'):'',
+          totalMarks:r[5],instructor:r[6]}))
+        .sort((a,b)=>a.assessmentId.localeCompare(b.assessmentId))});
+    }
+
+    // ── getAssessmentMarks ─────────────────────────────────────
+    if (act==='getAssessmentMarks') {
+      const assessmentId=(p.assessmentId||'').toUpperCase();
+      const sh=ss.getSheetByName(SH_MARKS);
+      if (!sh||sh.getLastRow()<2) return respond({status:'ok',marks:[]});
+      const data=sh.getRange(2,1,sh.getLastRow()-1,9).getValues();
+      return respond({status:'ok',marks:data.filter(r=>String(r[0]).toUpperCase()===assessmentId)
+        .map(r=>({enrollmentNo:r[1],studentName:r[2],marks:r[3],pct:r[4],result:r[5],remarks:r[6],totalMarks:r[7]}))});
+    }
+
+    // ── getBatchAssessmentSummary (for counselor — aggregates only) ─
+    if (act==='getBatchAssessmentSummary') {
+      const batchCode=(p.batchCode||'').toUpperCase();
+      const reportPass=(p.reportPass||'').trim();
+      if (reportPass!==REPORT_PASS) return respond({status:'error',reason:'wrong_password'});
+      const shA=ss.getSheetByName(SH_ASSESSMENTS);
+      const shM=ss.getSheetByName(SH_MARKS);
+      if (!shA||shA.getLastRow()<2) return respond({status:'ok',summary:[]});
+      const aData=shA.getRange(2,1,shA.getLastRow()-1,8).getValues()
+        .filter(r=>r[0]&&String(r[1]).toUpperCase()===batchCode);
+      const mData=shM&&shM.getLastRow()>1?shM.getRange(2,1,shM.getLastRow()-1,9).getValues():[];
+      const summary=aData.map(a=>{
+        const aId=String(a[0]).toUpperCase();
+        const marks=mData.filter(m=>String(m[0]).toUpperCase()===aId);
+        const appeared=marks.filter(m=>m[3]!=='DNA');
+        const passed=appeared.filter(m=>m[5]==='Pass');
+        const avgPct=appeared.length?Math.round(appeared.reduce((s,m)=>s+(Number(m[4])||0),0)/appeared.length):0;
+        return {assessmentId:a[0],testName:a[2],testType:a[3],
+          testDate:a[4]?new Date(a[4]).toLocaleDateString('en-IN'):'',
+          totalMarks:a[5],appeared:appeared.length,passed:passed.length,
+          failed:appeared.length-passed.length,dna:marks.length-appeared.length,
+          avgPct,passRate:appeared.length?Math.round((passed.length/appeared.length)*100):0
+        };
+      });
+      return respond({status:'ok',summary});
     }
 
     return respond({status:'error',reason:'unknown_action'});
@@ -847,13 +1050,15 @@ function doGet(e) {
 // ═══════════════════════════════════════════════════════════════
 function ensureSheets(ss) {
   const defs = {
-    [SH_BATCHES]:  ['Batch Code','Centre','Course','Type','Start Date','End Date','Created By','Created At'],
+    [SH_BATCHES]:  ['Batch Code','Centre','Course','Type','Start Date','End Date','Created By','Created At','Assigned Instructor'],
     [SH_STUDENTS]: ['Enrollment No','Batch Code','Name','DOB (DDMM)','Mobile','Email','Status','Created At'],
     [SH_SESSIONS]: ['Session Code','Batch Code','Session Date','Session No','Instructor','Session Type','Topic Covered','Created At'],
     [SH_FEEDBACK]: ['Session Code','Enrollment No','Student Name','Batch Code','Centre','Course','Instructor','Topic',
                     'Completion Status','Q1 Overall Rating','Q2 Clarity','Q3 Pace','Q4 Doubts Addressed',
                     'Q5 Learned (text)','Q6 Suggestion (text)','Anonymous','Timestamp'],
-    [SH_HOLIDAYS]: ['Date','Holiday Name','Centre','Added At']
+    [SH_HOLIDAYS]:     ['Date','Holiday Name','Centre','Added At'],
+    [SH_ASSESSMENTS]:  ['Assessment ID','Batch Code','Test Name','Test Type','Test Date','Total Marks','Instructor','Created At'],
+    [SH_MARKS]:        ['Assessment ID','Enrollment No','Student Name','Marks Obtained','Percentage','Result','Remarks','Total Marks','Updated At']
   };
   Object.entries(defs).forEach(([name,headers])=>{
     let sh=ss.getSheetByName(name);if(!sh)sh=ss.insertSheet(name);
@@ -863,6 +1068,20 @@ function ensureSheets(ss) {
       sh.setFrozenRows(1);
     }
   });
+}
+function ensureAssessmentHeaders(sh) {
+  if (sh.getLastRow()>0&&sh.getRange(1,1).getValue()!=='') return;
+  const h=['Assessment ID','Batch Code','Test Name','Test Type','Test Date','Total Marks','Instructor','Created At'];
+  sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
+  sh.setFrozenRows(1);
+  [150,140,220,120,110,100,150,160].forEach((w,i)=>sh.setColumnWidth(i+1,w));
+}
+function ensureMarksHeaders(sh) {
+  if (sh.getLastRow()>0&&sh.getRange(1,1).getValue()!=='') return;
+  const h=['Assessment ID','Enrollment No','Student Name','Marks Obtained','Percentage','Result','Remarks','Total Marks','Updated At'];
+  sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
+  sh.setFrozenRows(1);
+  [150,120,160,110,100,80,160,100,160].forEach((w,i)=>sh.setColumnWidth(i+1,w));
 }
 function ensureHolidayHeaders(sh){
   if(sh.getLastRow()===0||sh.getRange(1,1).getValue()===''){

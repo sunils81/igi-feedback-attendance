@@ -66,6 +66,7 @@
     <button class="tab" onclick="switchTab('t-students')">👥 Students</button>
     <button class="tab" onclick="switchTab('t-session')">📅 Session</button>
     <button class="tab" onclick="switchTab('t-mybatches')">🗂 My Batches</button>
+    <button class="tab" onclick="switchTab('t-holidays')">🗓 Holidays</button>
   </div>
 
   <!-- TAB 1: CREATE BATCH -->
@@ -90,12 +91,17 @@
         <div class="field"><label>End Date *</label>
           <input type="date" id="b-end">
         </div>
-        <div class="field"><label>Report Password *</label>
-          <input type="text" id="b-rpass" placeholder="Password for session report">
+        <div class="field"><label>Batch Notes (optional)</label>
+          <input type="text" id="b-rpass" placeholder="e.g. Sponsored batch, special schedule notes">
         </div>
       </div>
       <div class="field"><label>Batch Code (auto-generated)</label>
         <input type="text" id="b-code" class="auto-val" readonly placeholder="Fill centre + course + date above">
+      </div>
+      <div id="b-schedule-preview" style="display:none;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px">📅 Schedule Preview</div>
+        <div id="b-schedule-list" style="font-size:12px;line-height:1.8;background:var(--off);border-radius:8px;padding:10px 14px;font-family:'DM Mono',monospace;color:var(--navy)"></div>
+        <div id="b-schedule-total" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
       </div>
       <button class="btn btn-gold" id="b-btn" onclick="createBatch()">Create Batch →</button>
       <div class="err-box" id="b-err"></div>
@@ -149,12 +155,7 @@
           <input type="date" id="ss-date">
         </div>
       </div>
-      <div class="field"><label>Topic Covered *</label>
-        <input type="text" id="ss-topic" placeholder="e.g. Diamond Cutting — Brilliant Cut">
-      </div>
-      <div class="field"><label>Module / Chapter (optional)</label>
-        <input type="text" id="ss-module" placeholder="e.g. Module 3 — Cut">
-      </div>
+      <div class="info-box">💡 Topic will be selected by students when they submit their feedback. For free-text courses (CAD, JewelPad etc.) students will type the topic directly.</div>
       <button class="btn btn-gold" id="ss-btn" onclick="createSession()">Create Session →</button>
       <div class="err-box" id="ss-err"></div>
     </div>
@@ -185,6 +186,35 @@
     </div>
   </div>
 
+  <!-- TAB 5: HOLIDAYS -->
+  <div id="t-holidays" class="tab-content">
+    <div class="card">
+      <div class="section-tag">Holiday Management</div>
+      <h2>Mark Centre Holidays</h2>
+      <p class="sub">Pre-loaded national holidays are already excluded from batch schedules. Add state-specific, local, or centre-specific holidays here.</p>
+      <div class="grid2">
+        <div class="field"><label>Holiday Date *</label>
+          <input type="date" id="hol-date">
+        </div>
+        <div class="field"><label>Holiday Name *</label>
+          <input type="text" id="hol-name" placeholder="e.g. Gudi Padwa, Eid ul-Fitr, Bandh">
+        </div>
+      </div>
+      <div class="field"><label>Applies to Centre</label>
+        <select id="hol-centre">
+          <option value="All">All Centres</option>
+        </select>
+      </div>
+      <button class="btn btn-gold" id="hol-btn" onclick="addHoliday()">Add Holiday →</button>
+      <div class="err-box" id="hol-err"></div>
+    </div>
+    <div class="card">
+      <div class="section-tag">Holiday Calendar</div>
+      <h2>Upcoming Excluded Days</h2>
+      <div id="hol-list"><div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div></div>
+    </div>
+  </div>
+
 </div><!-- /wrap -->
 </div><!-- /s-main -->
 
@@ -209,6 +239,11 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   document.getElementById('b-start').value  = new Date().toISOString().split('T')[0];
   document.getElementById('ss-date').value  = new Date().toISOString().split('T')[0];
+  // Populate holiday centre dropdown
+  CENTRES.forEach(c => {
+    const o = document.createElement('option'); o.value=c; o.textContent=c;
+    document.getElementById('hol-centre').appendChild(o);
+  });
   // Enter key on login
   document.getElementById('lg-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
 });
@@ -226,6 +261,7 @@ function doLogin() {
     showScreen('s-main');
     loadBatchDropdowns();
     loadMyBatches();
+    loadHolidayList();
   });
 }
 
@@ -238,8 +274,9 @@ function switchTab(id) {
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const idx = ['t-batches','t-students','t-session','t-mybatches'].indexOf(id);
+  const idx = ['t-batches','t-students','t-session','t-mybatches','t-holidays'].indexOf(id);
   document.querySelectorAll('.tab')[idx].classList.add('active');
+  if (id==='t-holidays') loadHolidayList();
 }
 
 // ── Batch Code Generator ──────────────────────────────────────
@@ -251,8 +288,63 @@ function genBatchCode() {
   const d = new Date(start);
   const month = d.toLocaleString('default',{month:'short'}).toUpperCase() + String(d.getFullYear()).slice(2);
   gasGet({action:'getBatchCode', centre, course, month}, function(e, d2) {
-    if (!e && d2 && d2.batchCode)
+    if (!e && d2 && d2.batchCode) {
       document.getElementById('b-code').value = d2.batchCode;
+      loadSchedulePreview(course, start, d2.batchCode);
+    }
+  });
+}
+
+function loadSchedulePreview(course, startDate, batchCode) {
+  gasGet({action:'getSchedulePreview', course, startDate}, function(e, d) {
+    const wrap  = document.getElementById('b-schedule-preview');
+    const list  = document.getElementById('b-schedule-list');
+    const total = document.getElementById('b-schedule-total');
+    if (e||!d||!d.preview) { wrap.style.display='none'; return; }
+    wrap.style.display = 'block';
+    list.innerHTML = d.preview.map(p =>
+      `<div>Day ${p.day} &nbsp;→&nbsp; ${p.date} &nbsp;·&nbsp; <span style="color:var(--muted)">${p.topic.substring(0,55)}${p.topic.length>55?'…':''}</span></div>`
+    ).join('');
+    total.textContent = '📚 Total teaching days: ' + d.totalDays + ' · Holidays & weekends automatically excluded.';
+  });
+}
+
+function addHoliday() {
+  const date   = document.getElementById('hol-date').value;
+  const name   = document.getElementById('hol-name').value.trim();
+  const centre = document.getElementById('hol-centre').value;
+  const errEl  = document.getElementById('hol-err');
+  const btn    = document.getElementById('hol-btn');
+  errEl.classList.remove('show');
+  if (!date||!name) { errEl.textContent='Please fill date and holiday name.'; errEl.classList.add('show'); return; }
+  btn.textContent='Adding…'; btn.disabled=true;
+  gasGet({action:'addHoliday', pass:COUNSELOR_PASS_LOCAL, date, name, centre}, function(e,d) {
+    btn.textContent='Add Holiday →'; btn.disabled=false;
+    if (e||!d||d.status!=='ok') { errEl.textContent='Could not add holiday.'; errEl.classList.add('show'); return; }
+    document.getElementById('hol-date').value='';
+    document.getElementById('hol-name').value='';
+    loadHolidayList();
+  });
+}
+
+const COUNSELOR_PASS_LOCAL = 'IGI2026';
+
+function loadHolidayList() {
+  const el = document.getElementById('hol-list');
+  if (!el) return;
+  el.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div>';
+  gasGet({action:'getHolidays'}, function(e,d) {
+    if (e||!d||!d.holidays) { el.innerHTML='<p style="color:var(--muted);font-size:13px">Could not load holidays.</p>'; return; }
+    const today = new Date().toISOString().split('T')[0];
+    const upcoming = d.holidays.filter(h=>h.date>=today).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,20);
+    if (!upcoming.length) { el.innerHTML='<p style="color:var(--muted);font-size:13px">No upcoming holidays found.</p>'; return; }
+    el.innerHTML = upcoming.map(h=>`
+      <div class="batch-row" style="cursor:default">
+        <div class="bc">${h.date}</div>
+        <div class="bm">${h.name} &nbsp;·&nbsp; ${h.centre}
+          ${h.type==='national'?'<span class="badge badge-blue" style="margin-left:6px">National</span>':'<span class="badge badge-amber" style="margin-left:6px">Custom</span>'}
+        </div>
+      </div>`).join('');
   });
 }
 
@@ -272,7 +364,7 @@ function createBatch() {
   }
   const btn = document.getElementById('b-btn');
   btn.textContent='Creating…'; btn.disabled=true;
-  gasGet({action:'createBatch',batchCode,centre,course,type,startDate,endDate,reportPass},function(e,d){
+  gasGet({action:'createBatch',batchCode,centre,course,type,startDate,endDate},function(e,d){
     btn.textContent='Create Batch →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') {
       errEl.textContent=d&&d.reason==='batch_exists'?'Batch code already exists. Try a different start date.':'Error creating batch. Try again.';
@@ -280,6 +372,7 @@ function createBatch() {
     }
     loadBatchDropdowns();
     loadMyBatches();
+    loadHolidayList();
     alert('✅ Batch ' + batchCode + ' created successfully!');
     ['b-centre','b-course','b-type','b-start','b-end','b-rpass'].forEach(id=>{
       const el=document.getElementById(id);
@@ -393,7 +486,7 @@ function createSession() {
   }
   const btn = document.getElementById('ss-btn');
   btn.textContent='Creating…'; btn.disabled=true;
-  gasGet({action:'createSession',batchCode:batch,instructor:instr,sessionDate:date,topic,module},function(e,d){
+  gasGet({action:'createSession',batchCode:batch,instructor:instr,sessionDate:date},function(e,d){
     btn.textContent='Create Session →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') {
       const msg = d&&d.reason==='session_exists_today'?'A session already exists for this batch today.':'Error creating session.';

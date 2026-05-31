@@ -26,6 +26,29 @@
 .confirm-card .cc-meta{font-size:12px;color:rgba(255,255,255,.5);line-height:1.7}
 .confirm-card .cc-sess{font-family:"DM Mono",monospace;font-size:11px;color:var(--gold);margin-top:6px}
 .thank-icon{font-size:56px;text-align:center;margin-bottom:16px}
+
+/* Topic selector */
+.topic-option{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1.5px solid var(--border);border-radius:9px;cursor:pointer;transition:all .15s;margin-bottom:8px;background:var(--white)}
+.topic-option:hover{border-color:var(--gold);background:var(--gold-pale)}
+.topic-option.selected{border-color:var(--gold);background:var(--gold-pale)}
+.topic-option input[type=radio]{accent-color:var(--gold);width:16px;height:16px;flex-shrink:0;margin-top:2px}
+.topic-option .to-week{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--gold);margin-bottom:2px}
+.topic-option .to-text{font-size:13px;font-weight:500;color:var(--navy);line-height:1.4}
+.topic-option .to-badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:8px;font-weight:600;margin-top:4px}
+.to-today{background:#E8F5EE;color:#1a7a3c}
+.to-prev{background:#EEF4FB;color:var(--blue)}
+.to-next{background:var(--gold-pale);color:#B87A10}
+.to-other{background:var(--off);color:var(--muted)}
+.topic-freetext{display:none;margin-top:10px}
+.topic-freetext.show{display:block}
+.exam-alert{background:linear-gradient(135deg,#0D1B2E,#1A2F4E);border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#fff}
+.exam-alert .ea-icon{font-size:20px;margin-right:8px}
+.exam-alert .ea-text{font-size:12px;color:rgba(255,255,255,.85)}
+.exam-alert .ea-title{font-size:13px;font-weight:600;color:var(--gold)}
+/* Completion status */
+.comp-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.comp-btn{flex:1;min-width:120px;padding:10px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;background:var(--white);color:var(--muted);transition:all .15s;font-family:"DM Sans",sans-serif;text-align:center}
+.comp-btn.active{background:var(--gold);color:var(--navy);border-color:var(--gold)}
 </style>
 </head>
 <body>
@@ -90,6 +113,38 @@
       <h2>How was today's lecture?</h2>
       <p class="sub">Your honest feedback helps us improve. This takes 2–3 minutes.</p>
 
+      <!-- TOPIC SELECTOR (structured courses) -->
+      <div class="field" id="topic-selector-wrap" style="margin-bottom:20px;display:none">
+        <label>What was covered today? *</label>
+        <div id="topic-options"></div>
+        <div class="topic-freetext" id="topic-freetext-wrap">
+          <input type="text" id="topic-custom" placeholder="Describe what was covered…">
+        </div>
+      </div>
+
+      <!-- FREE TEXT TOPIC (unstructured courses) -->
+      <div class="field" id="topic-freetext-only" style="margin-bottom:20px;display:none">
+        <label>What was covered today? *</label>
+        <input type="text" id="topic-free" placeholder="Describe what was covered in today's session…">
+      </div>
+
+      <!-- COMPLETION STATUS -->
+      <div class="field" style="margin-bottom:20px">
+        <label>How was today's session? *</label>
+        <div class="comp-btns">
+          <button class="comp-btn" data-v="Completed" onclick="setComp(this)">✅ Fully covered</button>
+          <button class="comp-btn" data-v="Partial" onclick="setComp(this)">🔄 Partially covered</button>
+          <button class="comp-btn" data-v="Test" onclick="setComp(this)">📝 Test / assessment</button>
+          <button class="comp-btn" data-v="Extra" onclick="setComp(this)">➕ Extra session</button>
+        </div>
+      </div>
+
+      <!-- EXAM ALERT (Gem-A) -->
+      <div class="exam-alert" id="exam-alert" style="display:none">
+        <div><span class="ea-icon">📅</span><span class="ea-title" id="exam-alert-title">—</span></div>
+        <div class="ea-text" id="exam-alert-text">—</div>
+      </div>
+
       <!-- Q1: Overall Rating -->
       <div class="field" style="margin-bottom:20px">
         <label>Q1 — Overall lecture rating *</label>
@@ -148,7 +203,7 @@
 
       <!-- Q5: Learned -->
       <div class="field">
-        <label>Q5 — One thing you learned today</label>
+        <label>Q5 — One thing you learned today <span style="font-size:10px;font-weight:400;color:var(--muted)">(may be anonymous)</span></label>
         <textarea id="q5" placeholder="e.g. I learned how the table percentage affects brilliance…"></textarea>
       </div>
 
@@ -186,8 +241,10 @@
 
 <script>
 let verifiedData = {};
-const ratings = {q1:0, q2:0};
-const selections = {q3:'', q4:''};
+let topicData     = null; // from getExpectedTopic
+const ratings     = {q1:0, q2:0};
+const selections  = {q3:'', q4:'', comp:''};
+let selectedTopic = '';
 const starLabels = ['','Poor','Below Average','Average','Good','Excellent'];
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -246,12 +303,89 @@ function doVerify() {
 }
 
 function showFeedback() {
-  document.getElementById('fb-topic').textContent = verifiedData.topic;
+  document.getElementById('fb-topic').textContent = verifiedData.topic || 'Session ' + verifiedData.sessNo;
   document.getElementById('fb-meta').textContent  =
     'Session ' + verifiedData.sessNo + ' · ' + verifiedData.sessionDate +
     ' · Instructor: ' + verifiedData.instructor;
   showScreen('s-feedback');
+  loadTopicSelector();
 }
+
+function loadTopicSelector() {
+  gasGet({action:'getExpectedTopic', batchCode:verifiedData.batchCode, sessNo:verifiedData.sessNo},
+    function(e, d) {
+      if (e||!d) { showFreeText(); return; }
+      topicData = d;
+      if (!d.structured) { showFreeText(); return; }
+      buildTopicDropdown(d);
+      // Exam alert
+      if (d.examAlert) {
+        const alEl = document.getElementById('exam-alert');
+        const days = d.examAlert.daysLeft;
+        document.getElementById('exam-alert-title').textContent =
+          days > 0 ? '⚠ ' + d.examAlert.label + ' — ' + days + ' days away' : d.examAlert.label;
+        document.getElementById('exam-alert-text').textContent =
+          days > 0
+            ? 'Ensure all syllabus topics are on track. Encourage students to review past paper questions.'
+            : 'Exam month is here. Focus on revision and practical preparation.';
+        alEl.style.display = 'block';
+      }
+  });
+}
+
+function showFreeText() {
+  document.getElementById('topic-freetext-only').style.display = 'block';
+  document.getElementById('topic-selector-wrap').style.display = 'none';
+}
+
+function buildTopicDropdown(d) {
+  document.getElementById('topic-selector-wrap').style.display = 'block';
+  document.getElementById('topic-freetext-only').style.display = 'none';
+  const container = document.getElementById('topic-options');
+  const options = [];
+  if (d.prev)  options.push({...d.prev,  badge:'to-prev',  label:'← Carryover from previous'});
+  if (d.today) options.push({...d.today, badge:'to-today', label:'✓ Today's scheduled topic'});
+  if (d.next)  options.push({...d.next,  badge:'to-next',  label:'→ Running ahead'});
+  options.push({day:0, week:'', topic:'Other / Custom', badge:'to-other', label:'Other or extra topic'});
+
+  container.innerHTML = options.map((op,i) => `
+    <label class="topic-option" onclick="selectTopicOpt(${i},'${escJs(op.topic)}')">
+      <input type="radio" name="topic_sel" value="${i}">
+      <div>
+        <div class="to-week">${op.week ? op.week + (op.day?' · Day '+op.day:'') : ''}</div>
+        <div class="to-text">${op.topic}</div>
+        <span class="topic-option to-badge ${op.badge}">${op.label}</span>
+      </div>
+    </label>`).join('');
+
+  // Auto-select today's topic
+  if (d.today) {
+    selectTopicOpt(options.findIndex(o=>o.badge==='to-today'), d.today.topic);
+    const radios = container.querySelectorAll('input[type=radio]');
+    radios[options.findIndex(o=>o.badge==='to-today')].checked = true;
+  }
+}
+
+function selectTopicOpt(idx, topic) {
+  document.querySelectorAll('.topic-option').forEach(o=>o.classList.remove('selected'));
+  const opts = document.querySelectorAll('.topic-option');
+  if (opts[idx]) opts[idx].classList.add('selected');
+  if (topic==='Other / Custom') {
+    document.getElementById('topic-freetext-wrap').classList.add('show');
+    selectedTopic = '';
+  } else {
+    document.getElementById('topic-freetext-wrap').classList.remove('show');
+    selectedTopic = topic;
+  }
+}
+
+function setComp(el) {
+  document.querySelectorAll('.comp-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  selections.comp = el.getAttribute('data-v');
+}
+
+function escJs(s) { return s.replace(/'/g,"\'").replace(/"/g,'\"'); }
 
 function setStar(q, val) {
   ratings[q] = val;
@@ -272,6 +406,17 @@ function selBtn(el, group) {
 function submitFeedback() {
   const errEl = document.getElementById('fb-err');
   errEl.classList.remove('show');
+  // Resolve topic
+  let finalTopic = selectedTopic;
+  if (!finalTopic && topicData && !topicData.structured) {
+    finalTopic = document.getElementById('topic-free').value.trim();
+  }
+  if (!finalTopic) {
+    const custom = document.getElementById('topic-custom');
+    if (custom) finalTopic = custom.value.trim();
+  }
+  if (!finalTopic) { errEl.textContent='Please select or enter the topic covered today.'; errEl.classList.add('show'); return; }
+  if (!selections.comp) { errEl.textContent='Please select how the session went (Q0 — completion status).'; errEl.classList.add('show'); return; }
   if (!ratings.q1) { errEl.textContent='Please rate the overall lecture (Q1).'; errEl.classList.add('show'); return; }
   if (!ratings.q2) { errEl.textContent='Please rate the clarity of explanation (Q2).'; errEl.classList.add('show'); return; }
   if (!selections.q3) { errEl.textContent='Please select the lecture pace (Q3).'; errEl.classList.add('show'); return; }
@@ -282,15 +427,16 @@ function submitFeedback() {
   const btn = document.getElementById('fb-btn');
   btn.textContent='Submitting…'; btn.disabled=true;
   gasGet({
-    action:       'submitFeedback',
-    sessionCode:  verifiedData.sessionCode,
-    enrollmentNo: verifiedData.enrollmentNo,
-    studentName:  verifiedData.studentName,
-    batchCode:    verifiedData.batchCode,
-    centre:       verifiedData.centre,
-    course:       verifiedData.course,
-    instructor:   verifiedData.instructor,
-    topic:        verifiedData.topic,
+    action:           'submitFeedback',
+    sessionCode:      verifiedData.sessionCode,
+    enrollmentNo:     verifiedData.enrollmentNo,
+    studentName:      verifiedData.studentName,
+    batchCode:        verifiedData.batchCode,
+    centre:           verifiedData.centre,
+    course:           verifiedData.course,
+    instructor:       verifiedData.instructor,
+    topic:            finalTopic,
+    completionStatus: selections.comp,
     q1: ratings.q1, q2: ratings.q2,
     q3: selections.q3, q4: selections.q4,
     q5, q6,

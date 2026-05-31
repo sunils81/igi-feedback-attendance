@@ -32,7 +32,7 @@
 <!-- LOGIN GATE -->
 <div id="s-login" class="screen active">
   <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--navy)">
-    <div style="background:var(--white);border-radius:16px;padding:36px 32px;width:100%;max-width:380px;margin:16px;box-shadow:0 20px 60px rgba(0,0,0,.35)">
+    <div style="background:var(--white);border-radius:16px;padding:36px 32px;width:100%;max-width:390px;margin:16px;box-shadow:0 20px 60px rgba(0,0,0,.35)">
       <div style="text-align:center;margin-bottom:28px">
         <div style="background:var(--navy);border-radius:10px;padding:14px 20px;display:inline-block;margin-bottom:16px">
           <img src="assets/igi-school-of-gemology-white-logo.svg" style="height:40px;width:auto;display:block">
@@ -40,11 +40,27 @@
         <div style="font-size:17px;font-weight:600;color:var(--navy)">Counselor Panel</div>
         <div style="font-size:12px;color:var(--muted);margin-top:4px">IGI Lecture Attendance & Feedback</div>
       </div>
-      <div class="field"><label>Password</label>
-        <input type="password" id="lg-pass" placeholder="Enter counselor password">
+      <div class="field"><label>Your Name *</label>
+        <select id="lg-name">
+          <option value="">Select your name</option>
+          <option value="Anuradha">Anuradha</option>
+          <option value="Bianca">Bianca</option>
+          <option value="Omkar Kadam">Omkar Kadam</option>
+          <option value="Preethy">Preethy</option>
+          <option value="Sunita">Sunita</option>
+          <option value="Rohit">Rohit</option>
+          <option value="Arpita">Arpita</option>
+          <option value="Nadiya">Nadiya</option>
+          <option value="Rajini">Rajini</option>
+          <option value="Kripa">Kripa</option>
+          <option value="__admin__">Admin / Management</option>
+        </select>
+      </div>
+      <div class="field"><label>PIN *</label>
+        <input type="password" id="lg-pass" placeholder="Enter your PIN">
       </div>
       <button class="btn btn-gold" id="lg-btn" onclick="doLogin()">Sign in →</button>
-      <div class="err-box" id="lg-err">Incorrect password.</div>
+      <div class="err-box" id="lg-err">Incorrect name or PIN. Please try again.</div>
     </div>
   </div>
 </div>
@@ -56,7 +72,7 @@
     <div class="hdr-logo"><img src="assets/igi-school-of-gemology-white-logo.svg"></div>
     <div class="hdr-divider"></div>
     <div class="hdr-band">
-      <div class="hdr-label">Counselor Panel</div>
+      <div class="hdr-label">Counselor Panel &nbsp;<span id="counselor-name-badge" style="display:none;font-size:10px;background:var(--gold);color:var(--navy);padding:2px 8px;border-radius:8px;font-weight:700;letter-spacing:.03em"></span></div>
       <div class="hdr-sub">IGI Lecture Attendance & Feedback System</div>
     </div>
   </div>
@@ -223,25 +239,62 @@ document.addEventListener('DOMContentLoaded', function() {
     const o = document.createElement('option'); o.value=c; o.textContent=c;
     document.getElementById('hol-centre').appendChild(o);
   });
-  // Enter key on login
+  // Enter key on PIN
   document.getElementById('lg-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
 });
 
 // ── Login ─────────────────────────────────────────────────────
+let counselorName    = '';
+let allowedCentres  = [];
+let isAdmin         = false;
+
 function doLogin() {
-  const pass = document.getElementById('lg-pass').value.trim();
-  const btn  = document.getElementById('lg-btn');
-  const err  = document.getElementById('lg-err');
+  const nameVal = document.getElementById('lg-name').value;
+  const pass    = document.getElementById('lg-pass').value.trim();
+  const btn     = document.getElementById('lg-btn');
+  const err     = document.getElementById('lg-err');
   err.classList.remove('show');
+  if (!nameVal || !pass) { err.textContent='Please select your name and enter your PIN.'; err.classList.add('show'); return; }
   btn.textContent = 'Signing in…'; btn.disabled = true;
-  gasGet({action:'counselorLogin', pass}, function(e, d) {
+  // Admin uses old password flow; counselors use name+pin
+  const params = nameVal==='__admin__'
+    ? {action:'counselorLogin', pass}
+    : {action:'counselorLogin', name:nameVal, pin:pass};
+  gasGet(params, function(e, d) {
     btn.textContent = 'Sign in →'; btn.disabled = false;
     if (e || !d || d.status !== 'ok') { err.classList.add('show'); return; }
+    counselorName   = d.counselorName || nameVal;
+    allowedCentres  = d.centres || [];
+    isAdmin         = !!d.isAdmin;
+    // Update header
+    document.getElementById('counselor-name-badge').textContent = counselorName;
+    document.getElementById('counselor-name-badge').style.display = 'inline-block';
+    // Lock centre dropdown to allowed centres
+    applyCentreFilter();
     showScreen('s-main');
     loadBatchDropdowns();
     loadMyBatches();
     loadHolidayList();
   });
+}
+
+function applyCentreFilter() {
+  const centreEl = document.getElementById('b-centre');
+  // Remove options not in allowedCentres (unless admin)
+  Array.from(centreEl.options).forEach(o=>{
+    if (o.value && !isAdmin && !allowedCentres.includes(o.value)) {
+      o.disabled = true;
+      o.style.display = 'none';
+    }
+  });
+  // Auto-select if only one centre
+  if (!isAdmin && allowedCentres.length === 1) {
+    centreEl.value = allowedCentres[0];
+    genBatchCode();
+  } else if (!isAdmin && allowedCentres.length > 0) {
+    // Select first allowed centre
+    centreEl.value = allowedCentres[0];
+  }
 }
 
 function showScreen(id) {
@@ -357,7 +410,7 @@ function createBatch() {
   const batchSlot  = document.getElementById('b-slot-field').style.display!=='none'
     ? document.getElementById('b-slot').value : 'Full Day';
   const instructor = document.getElementById('b-instructor').value;
-  gasGet({action:'createBatch',batchCode,centre,course,type,batchSlot,startDate,endDate},function(e,d){
+  gasGet({action:'createBatch',batchCode,centre,course,type,batchSlot,startDate,endDate,counselorName},function(e,d){
     btn.textContent='Create Batch →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') {
       errEl.textContent=d&&d.reason==='batch_exists'?'Batch code already exists. Try a different start date.':'Error creating batch. Try again.';
@@ -377,7 +430,8 @@ function createBatch() {
 
 // ── Load batch dropdowns ──────────────────────────────────────
 function loadBatchDropdowns() {
-  gasGet({action:'getBatches'}, function(e,d) {
+  const centresParam = isAdmin ? '' : allowedCentres.join(',');
+  gasGet({action:'getBatches', centres:centresParam}, function(e,d) {
     if (e||!d||!d.batches) return;
     ['st-batch'].forEach(id => {
       const sel = document.getElementById(id);
@@ -513,7 +567,8 @@ function whatsappLink() {
 function loadMyBatches() {
   const el = document.getElementById('mb-list');
   el.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div>';
-  gasGet({action:'getBatches'}, function(e,d) {
+  const centresParam = isAdmin ? '' : allowedCentres.join(',');
+  gasGet({action:'getBatches', centres:centresParam}, function(e,d) {
     if (e||!d||!d.batches||!d.batches.length) {
       el.innerHTML='<p style="color:var(--muted);font-size:13px">No batches yet. Create your first batch.</p>'; return;
     }

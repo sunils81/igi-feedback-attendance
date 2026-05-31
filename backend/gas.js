@@ -17,6 +17,21 @@ const SLOT_WINDOWS = {
   'Full Day':    { open: 8,  close: 24 }  // 8AM – midnight
 };
 
+// ── Counselor credentials — unique per counselor ─────────────
+const COUNSELOR_CREDS = {
+  'Anuradha':  { pin:'IGIAnuradha2026', centres:['Mumbai','Lucknow','Ahmedabad'] },
+  'Bianca':    { pin:'IGIBianca2026',   centres:['Mumbai'] },
+  'Omkar Kadam':{ pin:'IGIOmkar2026',  centres:['Mumbai'] },
+  'Preethy':   { pin:'IGIPreethy2026', centres:['Chennai'] },
+  'Sunita':    { pin:'IGISunita2026',  centres:['Delhi'] },
+  'Rohit':     { pin:'IGIRohit2026',   centres:['Surat'] },
+  'Arpita':    { pin:'IGIArpita2026',  centres:['Kolkata'] },
+  'Nadiya':    { pin:'IGINadiya2026',  centres:['Bangalore'] },
+  'Rajini':    { pin:'IGIRajini2026',  centres:['Hyderabad'] },
+  'Kripa':     { pin:'IGIKripa2026',   centres:['Jaipur'] }
+};
+const ADMIN_PASS = 'IGI2026'; // admin override — sees all centres
+
 // ── Instructor credentials (Option B — unique per instructor) ─
 const INSTRUCTOR_CREDS = {
   'Amit Sidpura':     'IGIAmit2026',
@@ -475,7 +490,17 @@ function doGet(e) {
     if (!act) return respond({status:'ok', service:'IGI Feedback Attendance v2'});
 
     // ── auth ───────────────────────────────────────────────────
-    if (act==='counselorLogin') return respond({status: p.pass===COUNSELOR_PASS?'ok':'error'});
+    if (act==='counselorLogin') {
+      // Admin override
+      if (p.pass===ADMIN_PASS) {
+        return respond({status:'ok', counselorName:'Admin', centres:Object.keys(CENTRE_CODES), isAdmin:true});
+      }
+      const name = p.name||'';
+      const pin  = p.pin ||p.pass||'';
+      const cred = COUNSELOR_CREDS[name];
+      if (!cred || cred.pin!==pin) return respond({status:'error', reason:'wrong_credentials'});
+      return respond({status:'ok', counselorName:name, centres:cred.centres, isAdmin:false});
+    }
     if (act==='masterLogin')    return respond({status: p.pass===MASTER_PASS?'ok':'error'});
 
     // ── getBatchCode ───────────────────────────────────────────
@@ -515,7 +540,7 @@ function doGet(e) {
       const sh = ss.getSheetByName(SH_BATCHES);
       const exist = sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,1).getValues().map(r=>String(r[0])):[];
       if (exist.includes(p.batchCode)) return respond({status:'error',reason:'batch_exists'});
-      sh.appendRow([p.batchCode,p.centre,p.course,p.type,p.batchSlot||'Full Day',p.startDate,p.endDate,'Counselor',new Date().toISOString()]);
+      sh.appendRow([p.batchCode,p.centre,p.course,p.type,p.batchSlot||'Full Day',p.startDate,p.endDate,p.counselorName||'Counselor',new Date().toISOString()]);
       sh.getRange(sh.getLastRow(),1,1,8).setBackground(sh.getLastRow()%2===0?'#F4F1EB':'#FDFCF9');
       return respond({status:'ok',batchCode:p.batchCode});
     }
@@ -526,7 +551,8 @@ function doGet(e) {
       if (sh.getLastRow()<2) return respond({status:'ok',batches:[]});
       const data=sh.getRange(2,1,sh.getLastRow()-1,8).getValues();
       const centre=(p.centre||'').trim();
-      return respond({status:'ok',batches:data.filter(r=>r[0]&&(!centre||r[1]===centre)).map(r=>({
+      const centres=(p.centres||'').split(',').map(s=>s.trim()).filter(Boolean);
+      return respond({status:'ok',batches:data.filter(r=>r[0]&&(!centre||r[1]===centre)&&(!centres.length||centres.includes(r[1]))).map(r=>({
         batchCode:r[0],centre:r[1],course:r[2],type:r[3],
         startDate:r[4]?new Date(r[4]).toLocaleDateString('en-IN'):'',
         endDate:r[5]?new Date(r[5]).toLocaleDateString('en-IN'):''
@@ -1245,6 +1271,29 @@ function doGet(e) {
       const slotOrder = {'First Half':0,'Second Half':1,'Full Day':2};
       batchCards.sort((a,b)=>(slotOrder[a.batchSlot]||2)-(slotOrder[b.batchSlot]||2));
       return respond({status:'ok', studentName, enrollmentNo:enrollNo, batches:batchCards});
+    }
+
+    // ── fixOldBatches (one-time utility to insert Batch Slot col) ─
+    if (act==='fixOldBatches') {
+      if (p.pass!==ADMIN_PASS) return respond({status:'error',reason:'auth'});
+      const sh = ss.getSheetByName(SH_BATCHES);
+      if (!sh||sh.getLastRow()<2) return respond({status:'ok',fixed:0});
+      const data = sh.getRange(2,1,sh.getLastRow()-1,10).getValues();
+      let fixed = 0;
+      data.forEach((r,i)=>{
+        if (!r[0]) return;
+        // Check if col4 is a date (old schema) not a slot string
+        if (!detectSlotOrDate(r[4]) && r[4]) {
+          // Old schema: shift cols right by inserting 'Full Day' at position 4 (col E)
+          sh.insertColumnBefore(5);
+          sh.getRange(i+2,5).setValue('Full Day');
+          fixed++;
+        }
+      });
+      // Refresh header
+      sh.getRange(1,1,1,10).setValues([['Batch Code','Centre','Course','Type','Batch Slot','Start Date','End Date','Created By','Created At','Assigned Instructor']])
+        .setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD);
+      return respond({status:'ok',fixed});
     }
 
     return respond({status:'error',reason:'unknown_action'});

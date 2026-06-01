@@ -608,11 +608,13 @@ function doGet(e) {
     // ── addStudent ─────────────────────────────────────────────
     if (act==='addStudent') {
       const sh=ss.getSheetByName(SH_STUDENTS);
+      const mobileLast4=String(p.mobileLast4||'').replace(/\D/g,'').slice(-4);
+      if(!p.enrollmentNo||!p.batchCode||!p.name||mobileLast4.length!==4)return respond({status:'error',reason:'missing_params'});
       if (sh.getLastRow()>1){
         const exist=sh.getRange(2,1,sh.getLastRow()-1,1).getValues().map(r=>String(r[0]));
         if(exist.includes(p.enrollmentNo))return respond({status:'error',reason:'enrollment_exists'});
       }
-      sh.appendRow([p.enrollmentNo,p.batchCode,p.name,p.dob,p.mobile||'',p.email||'','Active',new Date().toISOString()]);
+      sh.appendRow([p.enrollmentNo,p.batchCode,p.name,mobileLast4,p.mobile||'',p.email||'','Active',new Date().toISOString()]);
       sh.getRange(sh.getLastRow(),4).setNumberFormat('@STRING@');
       return respond({status:'ok',enrollmentNo:p.enrollmentNo});
     }
@@ -624,7 +626,11 @@ function doGet(e) {
       if(sh.getLastRow()<2)return respond({status:'ok',students:[]});
       const data=sh.getRange(2,1,sh.getLastRow()-1,8).getValues();
       return respond({status:'ok',students:data.filter(r=>r[0]&&String(r[1]).toUpperCase()===batch&&r[6]==='Active')
-        .map(r=>({enrollmentNo:r[0],name:r[2],dob:String(r[3]),mobile:r[4],email:r[5]}))});
+        .map(r=>{
+          const mobileDigits=String(r[4]||'').replace(/\D/g,'');
+          const last4=mobileDigits.length>=4?mobileDigits.slice(-4):String(r[3]||'');
+          return {enrollmentNo:r[0],name:r[2],mobileLast4:last4,dob:last4,mobile:r[4],email:r[5]};
+        })});
     }
 
     // ── removeStudent ──────────────────────────────────────────
@@ -796,7 +802,7 @@ function doGet(e) {
     if (act==='verifyStudent') {
       const sessionCode=(p.sessionCode||'').toUpperCase();
       const enrollNo=(p.enrollmentNo||'').toUpperCase();
-      const dob=(p.dob||'').replace(/\D/g,'');
+      const mobileLast4=String(p.mobileLast4||p.mobileLastFour||p.dob||'').replace(/\D/g,'').slice(-4);
       const shSess=ss.getSheetByName(SH_SESSIONS);
       if(shSess.getLastRow()<2)return respond({status:'error',reason:'invalid_session'});
       const sessData=shSess.getRange(2,1,shSess.getLastRow()-1,8).getValues();
@@ -810,7 +816,10 @@ function doGet(e) {
       const stuData=shStu.getRange(2,1,shStu.getLastRow()-1,8).getValues();
       const student=stuData.find(r=>String(r[0]).toUpperCase()===enrollNo&&String(r[1]).toUpperCase()===batchCode&&r[6]==='Active');
       if(!student)return respond({status:'error',reason:'student_not_found'});
-      if(String(student[3]).replace(/\D/g,'')!==dob)return respond({status:'error',reason:'dob_mismatch'});
+      if(mobileLast4.length!==4)return respond({status:'error',reason:'missing_params'});
+      const storedLast4=String(student[3]).replace(/\D/g,'').slice(-4);
+      const mobileColLast4=String(student[4]).replace(/\D/g,'').slice(-4);
+      if(storedLast4!==mobileLast4&&mobileColLast4!==mobileLast4)return respond({status:'error',reason:'mobile_mismatch'});
       const shFb=ss.getSheetByName(SH_FEEDBACK);
       if(shFb.getLastRow()>1){
         const fbData=shFb.getRange(2,1,shFb.getLastRow()-1,3).getValues();
@@ -1263,20 +1272,20 @@ function doGet(e) {
     }
     // ── getStudentPortalData ───────────────────────────────────
     if (act==='getStudentPortalData') {
-      const enrollNo = (p.enrollmentNo||'').trim().toUpperCase();
-      const dobDD    = (p.dobDD||'').trim();
-      const dobMM    = (p.dobMM||'').trim();
-      const dob      = dobDD.padStart(2,'0') + dobMM.padStart(2,'0');
-      if (!enrollNo||!dob||dob.length!==4) return respond({status:'error',reason:'missing_params'});
+      const enrollNo = (p.studentId||p.enrollmentNo||'').trim().toUpperCase();
+      const mobileLast4 = String(p.mobileLast4||p.mobileLastFour||'').replace(/\D/g,'').slice(-4);
+      if (!enrollNo||mobileLast4.length!==4) return respond({status:'error',reason:'missing_params'});
       // Find student
       const shStu  = ss.getSheetByName(SH_STUDENTS);
       if (!shStu||shStu.getLastRow()<2) return respond({status:'error',reason:'student_not_found'});
       const stuData = shStu.getRange(2,1,shStu.getLastRow()-1,8).getValues();
       const studentRows = stuData.filter(r=>String(r[0]).toUpperCase()===enrollNo&&r[6]==='Active');
       if (!studentRows.length) return respond({status:'error',reason:'student_not_found'});
-      // Verify DOB against first matching record
+      // Verify mobile last 4 against first matching record.
       const firstStu = studentRows[0];
-      if (String(firstStu[3]).replace(/\D/g,'')!==dob) return respond({status:'error',reason:'dob_mismatch'});
+      const storedLast4 = String(firstStu[3]).replace(/\D/g,'').slice(-4);
+      const mobileColLast4 = String(firstStu[4]).replace(/\D/g,'').slice(-4);
+      if (storedLast4!==mobileLast4&&mobileColLast4!==mobileLast4) return respond({status:'error',reason:'mobile_mismatch'});
       const studentName = firstStu[2];
       // Get all active batches for this student
       const shBatch = ss.getSheetByName(SH_BATCHES);
@@ -1589,14 +1598,14 @@ function fixOldBatches() {
 function ensureSheets(ss) {
   const defs = {
     [SH_BATCHES]:  ['Batch Code','Centre','Course','Type','Batch Slot','Start Date','End Date','Created By','Created At','Assigned Instructor'],
-    [SH_STUDENTS]: ['Enrollment No','Batch Code','Name','DOB (DDMM)','Mobile','Email','Status','Created At'],
+    [SH_STUDENTS]: ['Student ID','Batch Code','Name','Mobile Last 4','Mobile','Email','Status','Created At'],
     [SH_SESSIONS]: ['Session Code','Batch Code','Session Date','Session No','Instructor','Session Type','Topic Covered','Auto Created','Created At'],
-    [SH_FEEDBACK]: ['Session Code','Enrollment No','Student Name','Batch Code','Centre','Course','Instructor','Topic',
+    [SH_FEEDBACK]: ['Session Code','Student ID','Student Name','Batch Code','Centre','Course','Instructor','Topic',
                     'Completion Status','Q1 Overall Rating','Q2 Clarity','Q3 Pace','Q4 Doubts Addressed',
                     'Q5 Learned (text)','Q6 Suggestion (text)','Anonymous','Timestamp'],
     [SH_HOLIDAYS]:     ['Date','Holiday Name','Centre','Added At'],
     [SH_ASSESSMENTS]:  ['Assessment ID','Batch Code','Test Name','Test Type','Test Date','Total Marks','Instructor','Created At'],
-    [SH_MARKS]:        ['Assessment ID','Enrollment No','Student Name','Marks Obtained','Percentage','Result','Remarks','Total Marks','Updated At']
+    [SH_MARKS]:        ['Assessment ID','Student ID','Student Name','Marks Obtained','Percentage','Result','Remarks','Total Marks','Updated At']
   };
   Object.entries(defs).forEach(([name,headers])=>{
     let sh=ss.getSheetByName(name);if(!sh)sh=ss.insertSheet(name);
@@ -1604,6 +1613,8 @@ function ensureSheets(ss) {
       sh.getRange(1,1,1,headers.length).setValues([headers])
         .setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
       sh.setFrozenRows(1);
+    } else if (name===SH_STUDENTS && sh.getRange(1,4).getValue()==='DOB (DDMM)') {
+      sh.getRange(1,4).setValue('Mobile Last 4');
     }
   });
 }
@@ -1616,7 +1627,7 @@ function ensureAssessmentHeaders(sh) {
 }
 function ensureMarksHeaders(sh) {
   if (sh.getLastRow()>0&&sh.getRange(1,1).getValue()!=='') return;
-  const h=['Assessment ID','Enrollment No','Student Name','Marks Obtained','Percentage','Result','Remarks','Total Marks','Updated At'];
+  const h=['Assessment ID','Student ID','Student Name','Marks Obtained','Percentage','Result','Remarks','Total Marks','Updated At'];
   sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
   sh.setFrozenRows(1);
   [150,120,160,110,100,80,160,100,160].forEach((w,i)=>sh.setColumnWidth(i+1,w));

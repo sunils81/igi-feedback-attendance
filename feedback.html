@@ -69,31 +69,19 @@
     <div class="card">
       <div class="section-tag">Identify yourself</div>
       <h2>Attendance & Feedback</h2>
-      <p class="sub">Enter your session code, enrollment number, and date of birth to mark attendance and submit feedback.</p>
-      <div class="info-box">💡 Use the <strong>Session Code</strong> shared by your counselor or instructor today. Your <strong>Enrollment Number</strong> was given to you at admission.</div>
+      <p class="sub">Enter your session code, Student ID, and the last 4 digits of your mobile number to mark attendance and submit feedback.</p>
+      <div class="info-box">Use the <strong>Session Code</strong> shared by your counselor or instructor today. Your <strong>Student ID</strong> is the 4 digit number from the enrolment system.</div>
       <div class="field"><label>Session Code *</label>
         <input type="text" id="v-sess" placeholder="e.g. MUM-DG-MAY26-S03" style="text-transform:uppercase">
       </div>
-      <div class="field"><label>Enrollment Number *</label>
-        <input type="text" id="v-enrol" placeholder="e.g. MUM26DG001" style="text-transform:uppercase">
+      <div class="field"><label>Student ID *</label>
+        <input type="text" id="v-enrol" placeholder="e.g. 6008" style="text-transform:uppercase">
       </div>
-      <div class="field" id="v-dob-wrap">
-        <label>Date of Birth *</label>
-        <div style="display:flex;gap:8px;align-items:center">
-          <div>
-            <input type="tel" id="v-dd" placeholder="DD" maxlength="2" inputmode="numeric"
-              style="width:58px;border:1.5px solid var(--border);border-radius:8px;padding:11px 0;font-size:18px;font-family:'DM Mono',monospace;font-weight:600;text-align:center;color:var(--navy);outline:none"
-              oninput="if(this.value.length===2) document.getElementById('v-btn').focus()">
-            <div style="font-size:10px;text-align:center;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:.04em">Day</div>
-          </div>
-          <div style="font-size:20px;color:var(--muted);font-weight:300">/</div>
-          <div>
-            <input type="tel" id="v-mm" placeholder="MM" maxlength="2" inputmode="numeric"
-              style="width:58px;border:1.5px solid var(--border);border-radius:8px;padding:11px 0;font-size:18px;font-family:'DM Mono',monospace;font-weight:600;text-align:center;color:var(--navy);outline:none"
-              onkeydown="if(event.key==='Enter') doVerify()">
-            <div style="font-size:10px;text-align:center;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:.04em">Month</div>
-          </div>
-        </div>
+      <div class="field" id="v-mobile-last4-wrap">
+        <label>Last 4 Digits of Mobile *</label>
+        <input type="tel" id="v-mobile-last4" placeholder="1234" maxlength="4" inputmode="numeric"
+          style="width:130px;border:1.5px solid var(--border);border-radius:8px;padding:11px 0;font-size:18px;font-family:'DM Mono',monospace;font-weight:600;text-align:center;color:var(--navy);outline:none"
+          onkeydown="if(event.key==='Enter') doVerify()">
       </div>
       <button class="btn btn-gold" id="v-btn" onclick="doVerify()">Verify & Continue →</button>
       <div class="err-box" id="v-err"></div>
@@ -277,7 +265,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('v-enrol').focus();
     // Update subtitle
     const sub = document.querySelector('#s-verify .sub');
-    if (sub) sub.textContent="Enter your enrollment number and date of birth to mark today's attendance.";
+    if (sub) sub.textContent="Enter your Student ID and mobile last 4 digits to mark today's attendance.";
   }
 });
 
@@ -288,27 +276,26 @@ function showScreen(id) {
 
 function doVerify() {
   const sess  = document.getElementById('v-sess').value.trim().toUpperCase();
-  const enrol = document.getElementById('v-enrol').value.trim().toUpperCase();
-  const dd    = (document.getElementById('v-dd').value||'').trim().padStart(2,'0');
-  const mm    = (document.getElementById('v-mm').value||'').trim().padStart(2,'0');
-  const dob   = dd + mm;
+  const enrol = document.getElementById('v-enrol').value.trim();
+  const mobileLast4 = (document.getElementById('v-mobile-last4').value||'').replace(/\D/g,'');
   const errEl = document.getElementById('v-err');
   const btn   = document.getElementById('v-btn');
   errEl.classList.remove('show');
-  if (!sess||!enrol||dob.length!==4||dd==='00'||mm==='00') {
-    errEl.textContent='Please fill all fields. Enter your DD and MM separately.';
+  if (!sess||!enrol||mobileLast4.length!==4) {
+    errEl.textContent='Please fill all fields. Enter the last 4 digits of your mobile number.';
     errEl.classList.add('show'); return;
   }
   btn.textContent='Verifying…'; btn.disabled=true;
-  gasGet({action:'verifyStudent',sessionCode:sess,enrollmentNo:enrol,dob},function(e,d){
+  gasGet({action:'verifyStudent',sessionCode:sess,enrollmentNo:enrol,mobileLast4},function(e,d){
     btn.textContent='Verify & Continue →'; btn.disabled=false;
     if (e||!d) { errEl.textContent='Connection error. Please try again.'; errEl.classList.add('show'); return; }
     if (d.status==='error') {
       const msgs = {
         invalid_session: 'Session code not found. Please check with your counselor.',
         window_closed:   'The feedback window for this session has closed (24 hours after the lecture).',
-        student_not_found: 'Enrollment number not found in this batch. Please check your details.',
-        dob_mismatch:    'Date of birth does not match. Please check and try again.',
+        student_not_found: 'Student ID not found in this batch. Please check your details.',
+        mobile_mismatch: 'Mobile last 4 digits do not match. Please check and try again.',
+        dob_mismatch:    'Mobile last 4 digits do not match. Please check and try again.',
         already_submitted: null
       };
       if (d.reason==='already_submitted') { showScreen('s-already'); return; }

@@ -13,7 +13,7 @@
 .student-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;background:var(--off);margin-bottom:6px}
 .student-row .enr{font-family:"DM Mono",monospace;font-size:11px;color:var(--muted);width:110px;flex-shrink:0}
 .student-row .nm{flex:1;font-size:13px;font-weight:600}
-.student-row .dob{font-size:11px;color:var(--muted);margin-right:8px}
+.student-row .last4{font-size:11px;color:var(--muted);margin-right:8px}
 .del-btn{background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;padding:2px 6px}
 .batch-row{padding:10px 14px;border-radius:8px;background:var(--off);margin-bottom:8px;cursor:pointer;transition:background .15s}
 .batch-row:hover{background:var(--gold-pale)}
@@ -167,15 +167,15 @@
         <select id="st-batch" onchange="loadStudents()"><option value="">Select a batch</option></select>
       </div>
       <div id="st-enrol-wrap" style="display:none">
-        <div class="info-box">Enrollment numbers are auto-generated. Enter Name, DOB (DDMM only e.g. <strong>2303</strong> for 23 March), and optionally Mobile and Email.</div>
+        <div class="info-box">Enter the 4 digit Student ID from the enrolment system. Last 4 digits of mobile will fill automatically once Mobile is entered.</div>
         <div class="grid2">
+          <div class="field"><label>Student ID *</label><input type="text" id="st-enrol" placeholder="e.g. 6008" inputmode="numeric"></div>
           <div class="field"><label>Name *</label><input type="text" id="st-name" placeholder="Full name"></div>
-          <div class="field"><label>DOB (DDMM) *</label><input type="tel" id="st-dob" placeholder="e.g. 2303" maxlength="4"></div>
-          <div class="field"><label>Mobile</label><input type="tel" id="st-mobile" placeholder="10 digits"></div>
+          <div class="field"><label>Mobile *</label><input type="tel" id="st-mobile" placeholder="10 digits" inputmode="numeric" oninput="updateMobileLast4()"></div>
           <div class="field"><label>Email</label><input type="email" id="st-email" placeholder="student@email.com"></div>
         </div>
-        <div class="field"><label>Enrollment No. (auto)</label>
-          <input type="text" id="st-enrol" class="auto-val" readonly placeholder="Generated on save">
+        <div class="field"><label>Last 4 Digits of Mobile (auto)</label>
+          <input type="text" id="st-mobile-last4" class="auto-val" readonly placeholder="Auto-filled from mobile">
         </div>
         <button class="btn btn-gold" id="st-btn" onclick="addStudent()">Add Student →</button>
         <div class="err-box" id="st-err"></div>
@@ -535,7 +535,6 @@ function loadStudents() {
   document.getElementById('st-enrol-wrap').style.display = batch ? 'block' : 'none';
   document.getElementById('st-list-card').style.display  = batch ? 'block' : 'none';
   if (!batch) return;
-  fetchNextEnroll(batch);
   renderStudentList(batch);
 }
 
@@ -564,34 +563,39 @@ function renderStudentList(batch) {
       <div class="student-row">
         <div class="enr">${s.enrollmentNo}</div>
         <div class="nm">${s.name}</div>
-        <div class="dob">DOB: ${s.dob}</div>
+        <div class="last4">Mobile last 4: ${s.mobileLast4||s.dob||''}</div>
         <button class="del-btn" onclick="removeStudent('${s.enrollmentNo}','${batch}')">✕</button>
       </div>`).join('');
   });
 }
 
+function updateMobileLast4() {
+  const mobile = document.getElementById('st-mobile').value.replace(/\D/g,'');
+  document.getElementById('st-mobile-last4').value = mobile.length >= 4 ? mobile.slice(-4) : '';
+}
+
 function addStudent() {
   const batch  = document.getElementById('st-batch').value;
   const name   = document.getElementById('st-name').value.trim();
-  const dob    = document.getElementById('st-dob').value.trim();
-  const mobile = document.getElementById('st-mobile').value.trim();
+  const mobile = document.getElementById('st-mobile').value.replace(/\D/g,'');
   const email  = document.getElementById('st-email').value.trim();
   const enrol  = document.getElementById('st-enrol').value.trim();
+  const mobileLast4 = document.getElementById('st-mobile-last4').value.trim();
   const errEl  = document.getElementById('st-err');
   errEl.classList.remove('show');
-  if (!batch||!name||!dob||!enrol||dob.length!==4) {
-    errEl.textContent='Please fill Name and DOB (4 digits, e.g. 2303).'; errEl.classList.add('show'); return;
+  if (!batch||!name||!enrol||mobile.length<4||mobileLast4.length!==4) {
+    errEl.textContent='Please fill Student ID, Name, and Mobile. Last 4 digits must be available.'; errEl.classList.add('show'); return;
   }
   const btn = document.getElementById('st-btn');
   btn.textContent='Adding…'; btn.disabled=true;
-  gasGet({action:'addStudent',enrollmentNo:enrol,batchCode:batch,name,dob,mobile,email},function(e,d){
+  gasGet({action:'addStudent',enrollmentNo:enrol,batchCode:batch,name,mobileLast4,mobile,email},function(e,d){
     btn.textContent='Add Student →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') {
-      errEl.textContent='Could not add student. Try again.'; errEl.classList.add('show'); return;
+      errEl.textContent=d&&d.reason==='enrollment_exists'?'Student ID already exists. Please check the number.':'Could not add student. Try again.';
+      errEl.classList.add('show'); return;
     }
-    ['st-name','st-dob','st-mobile','st-email'].forEach(id=>document.getElementById(id).value='');
+    ['st-enrol','st-name','st-mobile','st-mobile-last4','st-email'].forEach(id=>document.getElementById(id).value='');
     renderStudentList(batch);
-    fetchNextEnroll(batch);
   });
 }
 
@@ -640,7 +644,7 @@ function whatsappLink() {
   const code = document.getElementById('ss-code-disp').textContent;
   window.open('https://wa.me/?text=' + encodeURIComponent(
     'IGI Lecture Feedback\nSession: ' + code + '\nPlease fill in your feedback after today\'s lecture:\n' + link +
-    '\n\nYou\'ll need your Enrollment Number and Date of Birth (DDMM format) to submit.'
+    '\n\nYou\'ll need your Student ID and the last 4 digits of your mobile number to submit.'
   ),'_blank');
 }
 
@@ -707,7 +711,7 @@ function renderBatchHealth(batches) {
     return days >= 0 && days <= 7;
   });
   if (startingSoon.length) {
-    items.push(`<div class="health-item warn"><span class="health-icon">→</span><div><strong>${startingSoon.length} batch${startingSoon.length!==1?'es':''} starting within 7 days.</strong><br>Confirm students are added and enrollment numbers are shared.</div></div>`);
+    items.push(`<div class="health-item warn"><span class="health-icon">→</span><div><strong>${startingSoon.length} batch${startingSoon.length!==1?'es':''} starting within 7 days.</strong><br>Confirm students are added and Student IDs are shared.</div></div>`);
   }
   if (!items.length) {
     items.push('<div class="health-item ok"><span class="health-icon">✓</span><div>All visible batches have instructors assigned. Nothing urgent here.</div></div>');

@@ -22,12 +22,9 @@
 .bc-waiting{font-size:12px;color:var(--muted);font-style:italic}
 .bc-inactive{font-size:12px;color:var(--muted)}
 .time-badge{display:inline-block;background:var(--navy);color:rgba(255,255,255,.7);font-size:11px;padding:3px 10px;border-radius:8px;font-family:'DM Mono',monospace}
-/* DOB inputs */
-.dob-wrap{display:flex;gap:8px;align-items:center}
-.dob-box{width:60px;border:1.5px solid var(--border);border-radius:8px;padding:11px 0;font-size:18px;font-family:'DM Mono',monospace;font-weight:600;text-align:center;color:var(--navy);outline:none;transition:border-color .2s}
-.dob-box:focus{border-color:var(--gold)}
-.dob-sep{font-size:20px;color:var(--muted);font-weight:300}
-.dob-label{font-size:10px;text-align:center;color:var(--muted);margin-top:3px;letter-spacing:.04em;text-transform:uppercase}
+/* Mobile last-4 input */
+.pin-box{width:130px;border:1.5px solid var(--border);border-radius:8px;padding:11px 0;font-size:18px;font-family:'DM Mono',monospace;font-weight:600;text-align:center;color:var(--navy);outline:none;transition:border-color .2s}
+.pin-box:focus{border-color:var(--gold)}
 /* Welcome bar */
 .welcome-bar{background:var(--navy);border-radius:var(--radius);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
 .wb-name{font-size:14px;font-weight:600;color:var(--white)}
@@ -82,28 +79,18 @@
     <div class="card">
       <div class="section-tag">Sign in</div>
       <h2>Daily Attendance</h2>
-      <p class="sub">Enter your enrollment number and birth day/month. No session code needed for normal daily attendance.</p>
+      <p class="sub">Enter your Student ID and the last 4 digits of your mobile number. No session code needed for normal daily attendance.</p>
       <div class="field">
-        <label>Enrollment Number *</label>
-        <input type="text" id="lg-enrol" placeholder="e.g. MUM26DG001" style="text-transform:uppercase" autocomplete="username">
+        <label>Student ID *</label>
+        <input type="text" id="lg-enrol" placeholder="e.g. 6008"  autocomplete="username">
       </div>
       <div class="field">
-        <label>Date of Birth</label>
-        <div class="dob-wrap">
-          <div>
-            <input type="tel" class="dob-box" id="lg-dd" placeholder="DD" maxlength="2" inputmode="numeric">
-            <div class="dob-label">Day</div>
-          </div>
-          <div class="dob-sep">/</div>
-          <div>
-            <input type="tel" class="dob-box" id="lg-mm" placeholder="MM" maxlength="2" inputmode="numeric">
-            <div class="dob-label">Month</div>
-          </div>
-        </div>
+        <label>Last 4 Digits of Mobile *</label>
+        <input type="tel" class="pin-box" id="lg-mobile-last4" placeholder="1234" maxlength="4" inputmode="numeric" autocomplete="current-password">
       </div>
       <button class="btn btn-gold" id="lg-btn" onclick="doLogin()">Continue →</button>
       <div class="err-box" id="lg-err"></div>
-      <div style="text-align:center;margin-top:18px;font-size:11px;color:var(--muted)">This device remembers you for 12 hours. Contact your counselor if you need your enrollment number.</div>
+      <div style="text-align:center;margin-top:18px;font-size:11px;color:var(--muted)">This device remembers you for 12 hours. Contact your counselor if you need your Student ID.</div>
     </div>
   </div>
 
@@ -229,15 +216,11 @@ let selectedTopic = '';
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
-  // DD/MM navigation
-  document.getElementById('lg-dd').addEventListener('input', e => {
-    if (e.target.value.length === 2) document.getElementById('lg-mm').focus();
-  });
-  document.getElementById('lg-mm').addEventListener('keydown', e => {
+  document.getElementById('lg-mobile-last4').addEventListener('keydown', e => {
     if (e.key === 'Enter') doLogin();
   });
   document.getElementById('lg-enrol').addEventListener('keydown', e => {
-    if (e.key === 'Enter') document.getElementById('lg-dd').focus();
+    if (e.key === 'Enter') document.getElementById('lg-mobile-last4').focus();
   });
   // Check saved session
   checkSavedSession();
@@ -248,13 +231,12 @@ function checkSavedSession() {
     const saved = localStorage.getItem(SESSION_KEY);
     if (!saved) return;
     const sess = JSON.parse(saved);
-    if (!sess.enrollmentNo || !sess.dobDD || !sess.dobMM) return;
+    if (!sess.enrollmentNo || !sess.mobileLast4) return;
     if (Date.now() - sess.savedAt > SESSION_TTL) { localStorage.removeItem(SESSION_KEY); return; }
     // Auto-login
     document.getElementById('lg-enrol').value = sess.enrollmentNo;
-    document.getElementById('lg-dd').value    = sess.dobDD;
-    document.getElementById('lg-mm').value    = sess.dobMM;
-    fetchPortalData(sess.enrollmentNo, sess.dobDD, sess.dobMM);
+    document.getElementById('lg-mobile-last4').value = sess.mobileLast4;
+    fetchPortalData(sess.enrollmentNo, sess.mobileLast4);
   } catch(e) {}
 }
 
@@ -265,22 +247,21 @@ function showScreen(id) {
 
 // ── Login ─────────────────────────────────────────────────────
 function doLogin() {
-  const enrol = document.getElementById('lg-enrol').value.trim().toUpperCase();
-  const dd    = document.getElementById('lg-dd').value.trim().padStart(2,'0');
-  const mm    = document.getElementById('lg-mm').value.trim().padStart(2,'0');
+  const enrol = document.getElementById('lg-enrol').value.trim();
+  const mobileLast4 = document.getElementById('lg-mobile-last4').value.replace(/\D/g,'');
   const err   = document.getElementById('lg-err');
   const btn   = document.getElementById('lg-btn');
   err.classList.remove('show');
-  if (!enrol || dd==='00' || mm==='00' || dd.length<2 || mm.length<2) {
-    err.textContent='Please enter your enrollment number and date of birth.';
+  if (!enrol || mobileLast4.length!==4) {
+    err.textContent='Please enter your Student ID and the last 4 digits of your mobile number.';
     err.classList.add('show'); return;
   }
   btn.textContent='Loading…'; btn.disabled=true;
-  fetchPortalData(enrol, dd, mm, btn, err);
+  fetchPortalData(enrol, mobileLast4, btn, err);
 }
 
-function fetchPortalData(enrol, dd, mm, btn, err) {
-  gasGet({action:'getStudentPortalData', enrollmentNo:enrol, dobDD:dd, dobMM:mm}, function(e,d) {
+function fetchPortalData(enrol, mobileLast4, btn, err) {
+  gasGet({action:'getStudentPortalData', studentId:enrol, mobileLast4}, function(e,d) {
     if (btn) { btn.textContent='Continue →'; btn.disabled=false; }
     if (e||!d) {
       if (err) { err.textContent='Connection error. Please try again.'; err.classList.add('show'); }
@@ -288,8 +269,9 @@ function fetchPortalData(enrol, dd, mm, btn, err) {
     }
     if (d.status!=='ok') {
       const msgs = {
-        student_not_found: 'Enrollment number not found. Please check with your counselor.',
-        dob_mismatch:      'Date of birth does not match. Please check and try again.',
+        student_not_found: 'Student ID not found. Please check with your counselor.',
+        mobile_mismatch:   'Mobile last 4 digits do not match. Please check and try again.',
+        dob_mismatch:      'Mobile last 4 digits do not match. Please check and try again.',
         missing_params:    'Please fill all fields correctly.'
       };
       if (err) { err.textContent=msgs[d.reason]||'Could not log in. Please try again.'; err.classList.add('show'); }
@@ -297,7 +279,7 @@ function fetchPortalData(enrol, dd, mm, btn, err) {
       return;
     }
     // Save session
-    localStorage.setItem(SESSION_KEY, JSON.stringify({enrollmentNo:enrol, dobDD:dd, dobMM:mm, savedAt:Date.now()}));
+    localStorage.setItem(SESSION_KEY, JSON.stringify({enrollmentNo:enrol, studentId:enrol, mobileLast4, savedAt:Date.now()}));
     portalData = d;
     renderPortal(d);
   });
@@ -403,7 +385,7 @@ function startRefreshCountdowns(batches) {
 function refreshPortal() {
   try {
     const saved = JSON.parse(localStorage.getItem(SESSION_KEY)||'{}');
-    if (saved.enrollmentNo) fetchPortalData(saved.enrollmentNo, saved.dobDD, saved.dobMM);
+    if (saved.enrollmentNo) fetchPortalData(saved.enrollmentNo, saved.mobileLast4);
   } catch(e){}
 }
 
@@ -411,8 +393,7 @@ function doLogout() {
   localStorage.removeItem(SESSION_KEY);
   portalData = null; activeBatch = null;
   document.getElementById('lg-enrol').value='';
-  document.getElementById('lg-dd').value='';
-  document.getElementById('lg-mm').value='';
+  document.getElementById('lg-mobile-last4').value='';
   document.getElementById('lg-err').classList.remove('show');
   showScreen('s-login');
 }
@@ -519,7 +500,7 @@ function submitFeedback() {
   const anon = document.getElementById('anon-chk').checked;
   const q5   = document.getElementById('q5').value.trim();
   const q6   = document.getElementById('q6').value.trim();
-  // Get saved session for enrollment number
+  // Get saved session for Student ID
   const saved = JSON.parse(localStorage.getItem(SESSION_KEY)||'{}');
   btn.textContent='Submitting…'; btn.disabled=true;
   gasGet({

@@ -507,36 +507,77 @@ function loadBatchDropdowns() {
 }
 
 function loadCounselorReport() {
-  const batch = document.getElementById('rp-batch').value;
-  const wrap = document.getElementById('rp-wrap');
-  if (!batch) { wrap.innerHTML='<p style="font-size:13px;color:var(--muted)">Select a batch to see past sessions. Past sessions are greyed out.</p>'; return; }
+  var batch = document.getElementById('rp-batch').value;
+  var wrap  = document.getElementById('rp-wrap');
+  if (!batch) { wrap.innerHTML='<p style="font-size:13px;color:var(--muted)">Select a batch to view attendance.</p>'; return; }
   wrap.innerHTML='<div class="spinner-wrap"><div class="spinner"></div><p>Loading report…</p></div>';
   gasGet({action:'getSessionReport', batchCode:batch, reportPass:COUNSELOR_PASS_LOCAL}, function(e,d) {
     if (e||!d||d.status!=='ok') { wrap.innerHTML='<p style="color:var(--red);font-size:13px">Could not load report.</p>'; return; }
-    const today = new Date(); today.setHours(0,0,0,0);
-    if (!d.sessions.length) { wrap.innerHTML='<p style="font-size:13px;color:var(--muted)">No sessions created yet.</p>'; return; }
-    wrap.innerHTML = `
-      <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
-        <div style="flex:1;background:var(--off);border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:20px;font-weight:700">${d.totalStudents}</div><div style="font-size:10px;color:var(--muted)">Students</div>
-        </div>
-        <div style="flex:1;background:var(--off);border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:20px;font-weight:700">${d.totalSessions}</div><div style="font-size:10px;color:var(--muted)">Sessions</div>
-        </div>
-      </div>
-      ${[...d.sessions].reverse().map(s=>{
-        const present = d.students.filter(st=>st.attendedSessions.some(a=>a.sessionCode===s.sessionCode&&a.attended)).length;
-        const parts = String(s.sessionDate).split('/');
-        const sd = parts.length===3 ? new Date(Number(parts[2]), Number(parts[1])-1, Number(parts[0])) : null;
-        const cls = sd && sd.getTime()===today.getTime() ? 'today' : sd && sd<today ? 'past' : '';
-        return `<div class="report-row ${cls}">
-          <div class="report-main">
-            <div class="report-title">Session ${s.sessNo} · ${s.sessionDate}${cls==='today'?' · Today':''}</div>
-            <div class="report-meta">${s.topic||'Topic not set'}</div>
-          </div>
-          <div class="report-count">${present}/${d.totalStudents}</div>
-        </div>`;
-      }).join('')}`;
+    var today = new Date(); today.setHours(0,0,0,0);
+    if (!d.sessions||!d.sessions.length) { wrap.innerHTML='<p style="font-size:13px;color:var(--muted)">No sessions yet.</p>'; return; }
+    var html = '';
+    html += '<div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">';
+    html += '<div style="flex:1;background:var(--off);border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:700">' + d.totalStudents + '</div><div style="font-size:10px;color:var(--muted)">Students</div></div>';
+    html += '<div style="flex:1;background:var(--off);border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:700">' + d.totalSessions + '</div><div style="font-size:10px;color:var(--muted)">Sessions</div></div>';
+    html += '</div>';
+    var sessions = d.sessions.slice().reverse();
+    for (var i=0; i<sessions.length; i++) {
+      var s = sessions[i];
+      // Present = students who attended this session
+      var presentStudents = [];
+      var absentStudents  = [];
+      if (d.students && d.students.length) {
+        for (var j=0; j<d.students.length; j++) {
+          var st = d.students[j];
+          var attended = false;
+          if (st.attendedSessions) {
+            for (var k=0; k<st.attendedSessions.length; k++) {
+              if (st.attendedSessions[k].sessionCode===s.sessionCode && st.attendedSessions[k].attended) {
+                attended = true; break;
+              }
+            }
+          }
+          if (attended) presentStudents.push(st.name || st.studentId || st.enrollmentNo || '');
+          else          absentStudents.push(st.name  || st.studentId || st.enrollmentNo || '');
+        }
+      }
+      var parts = String(s.sessionDate).split('/');
+      var sd  = parts.length===3 ? new Date(Number(parts[2]), Number(parts[1])-1, Number(parts[0])) : null;
+      var cls = sd && sd.getTime()===today.getTime() ? 'today' : sd && sd<today ? 'past' : '';
+      var cancelled = String(s.sessionType||'').toLowerCase()==='cancelled';
+      html += '<div class="report-row ' + cls + '" style="' + (cancelled?'background:#FEF2F2;':'') + '">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">';
+      html += '<div>';
+      html += '<div class="report-title">Session ' + s.sessNo + ' &nbsp;&middot;&nbsp; ' + s.sessionDate + (cls==='today'?' &nbsp;<span style="color:var(--gold);font-size:10px;font-weight:700">TODAY</span>':'') + '</div>';
+      html += '<div class="report-meta">' + (cancelled?'<span style="color:#C94A4A;font-weight:600">CANCELLED</span> &mdash; ':'') + (s.topic||'Topic not set') + '</div>';
+      html += '</div>';
+      html += '<div class="report-count" style="white-space:nowrap">' + presentStudents.length + '/' + d.totalStudents + '</div>';
+      html += '</div>';
+      if (!cancelled) {
+        // Present names
+        if (presentStudents.length) {
+          html += '<div style="margin-bottom:6px">';
+          html += '<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#1a7a3c;margin-bottom:4px">Present (' + presentStudents.length + ')</div>';
+          html += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+          for (var p=0; p<presentStudents.length; p++) {
+            html += '<span style="background:#E8F5EE;color:#1a7a3c;font-size:11px;font-weight:500;padding:2px 8px;border-radius:10px">' + presentStudents[p] + '</span>';
+          }
+          html += '</div></div>';
+        }
+        // Absent names
+        if (absentStudents.length) {
+          html += '<div>';
+          html += '<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#C94A4A;margin-bottom:4px">Absent (' + absentStudents.length + ')</div>';
+          html += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+          for (var q=0; q<absentStudents.length; q++) {
+            html += '<span style="background:#FEF2F2;color:#C94A4A;font-size:11px;font-weight:500;padding:2px 8px;border-radius:10px">' + absentStudents[q] + '</span>';
+          }
+          html += '</div></div>';
+        }
+      }
+      html += '</div>';
+    }
+    wrap.innerHTML = html;
   });
 }
 
@@ -576,6 +617,8 @@ function renderStudentList(batch) {
         <div class="enr">${s.enrollmentNo}</div>
         <div class="nm">${s.name}</div>
         <div class="last4">Mobile last 4: ${s.mobileLast4||s.dob||''}</div>
+        <div class="last4">${welcomeEmailLabel(s)}</div>
+        <button class="del-btn" title="Resend welcome email" onclick="resendWelcomeEmail('${s.enrollmentNo}','${batch}')">Email</button>
         <button class="del-btn" onclick="removeStudent('${s.enrollmentNo}','${batch}')">✕</button>
       </div>`).join('');
   });
@@ -632,6 +675,7 @@ function addStudent() {
   const batchCodes = selectedStudentBatches();
   const errEl  = document.getElementById('st-err');
   errEl.classList.remove('show');
+  errEl.style.color='';
   if (!batch||!name||!enrol||mobile.length<4||mobileLast4.length!==4||!batchCodes.length) {
     errEl.textContent='Please fill Student ID, Name, Mobile, and select at least one batch.'; errEl.classList.add('show'); return;
   }
@@ -641,10 +685,59 @@ function addStudent() {
     btn.textContent='Add Student →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') {
       errEl.textContent='Could not add student. Try again.';
+      errEl.style.color='';
       errEl.classList.add('show'); return;
     }
+    showStudentEmailResult(d.email,'Student added.');
     ['st-enrol','st-name','st-mobile','st-mobile-last4','st-email'].forEach(id=>document.getElementById(id).value='');
     renderStudentBatchChoices();
+    renderStudentList(batch);
+  });
+}
+
+function welcomeEmailLabel(s) {
+  const status = s.welcomeEmailStatus || '';
+  if (!s.email) return 'Email: not provided';
+  if (status.indexOf('Sent') === 0) return 'Welcome: sent';
+  if (status.indexOf('Failed') === 0) return 'Welcome: failed';
+  if (status === 'No Email') return 'Email: not provided';
+  return 'Welcome: pending';
+}
+
+function showStudentEmailResult(emailResult, prefix) {
+  const errEl = document.getElementById('st-err');
+  const p = prefix || '';
+  if (emailResult&&emailResult.status==='sent') {
+    errEl.textContent=p+' Welcome email sent.';
+    errEl.style.color='var(--teal)';
+  } else if (emailResult&&emailResult.status==='already_sent') {
+    errEl.textContent=p+' Welcome email was already sent earlier.';
+    errEl.style.color='var(--teal)';
+  } else if (emailResult&&emailResult.status==='no_email') {
+    errEl.textContent=p+' No email address was provided, so no welcome email was sent.';
+    errEl.style.color='var(--red)';
+  } else if (emailResult&&emailResult.status==='failed') {
+    errEl.textContent=p+' Welcome email could not be sent.';
+    errEl.style.color='var(--red)';
+  } else {
+    errEl.textContent=p;
+    errEl.style.color='var(--teal)';
+  }
+  errEl.classList.add('show');
+}
+
+function resendWelcomeEmail(enrollmentNo, batch) {
+  const errEl = document.getElementById('st-err');
+  errEl.classList.remove('show');
+  errEl.style.color='';
+  gasGet({action:'resendStudentWelcomeEmail',enrollmentNo},function(e,d){
+    if (e||!d||d.status!=='ok') {
+      errEl.textContent='Could not resend welcome email.';
+      errEl.style.color='var(--red)';
+      errEl.classList.add('show');
+      return;
+    }
+    showStudentEmailResult(d.email,'');
     renderStudentList(batch);
   });
 }

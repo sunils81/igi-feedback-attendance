@@ -71,6 +71,18 @@
 .batch-choice input{width:auto;margin-top:2px;accent-color:var(--gold)}
 .batch-choice .bc-name{font-weight:700;font-family:"DM Mono",monospace;font-size:11px}
 .batch-choice .bc-meta{font-size:11px;color:var(--muted);line-height:1.3}
+.fee-status{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:4px 9px;display:inline-flex}
+.fee-status.paid{background:#E8F5EE;color:#1a7a3c}
+.fee-status.partial{background:var(--gold-pale);color:#B87A10}
+.fee-status.overdue{background:#FEF2F2;color:var(--red)}
+.fee-status.pending{background:var(--off);color:var(--muted)}
+.fee-form-head{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.fee-readonly{background:var(--off);border-radius:8px;padding:10px 12px;min-width:0}
+.fee-readonly .k{font-size:9px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.fee-readonly .v{font-size:13px;font-weight:700;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.inst-grid{display:grid;grid-template-columns:1fr 1fr .8fr 1fr 1fr;gap:8px;align-items:end;margin-bottom:8px}
+.inst-grid .field{margin-bottom:0}
+@media(max-width:760px){.fee-form-head,.inst-grid{grid-template-columns:1fr}.inst-grid{gap:10px}}
 @media(max-width:620px){
   .grid2,.report-summary,.attendance-body{grid-template-columns:1fr}
   .attendance-head{grid-template-columns:1fr}
@@ -264,6 +276,65 @@
     </div>
   </div>
 
+  <!-- TAB 6: FEES -->
+  <div id="t-fees" class="tab-content">
+    <div class="card">
+      <div class="section-tag">Fee Collection</div>
+      <h2>Batch Fees</h2>
+      <p class="sub">Select a batch, then click Add / Update Fee for any student. Student details and course fee are filled automatically.</p>
+      <div class="field"><label>Select Batch</label>
+        <select id="fee-batch" onchange="loadFeeOverview()"><option value="">Select a batch</option></select>
+      </div>
+      <div id="fee-summary" class="dashboard-summary" style="display:none"></div>
+      <div id="fee-list"><div class="empty-state"><div class="empty-icon">💰</div><div class="empty-title">Choose a batch to manage fees</div><div class="empty-copy">Students, total payable, collected amount, and outstanding balance will appear here.</div></div></div>
+    </div>
+
+    <div class="card" id="fee-form-card" style="display:none">
+      <div class="section-tag">Student Fee Setup</div>
+      <h2 id="fee-form-title">Add Fee</h2>
+      <div class="fee-form-head">
+        <div class="fee-readonly"><div class="k">Student ID</div><div class="v" id="fee-ro-student">—</div></div>
+        <div class="fee-readonly"><div class="k">Student</div><div class="v" id="fee-ro-name">—</div></div>
+        <div class="fee-readonly"><div class="k">Batch</div><div class="v" id="fee-ro-batch">—</div></div>
+        <div class="fee-readonly"><div class="k">Course</div><div class="v" id="fee-ro-course">—</div></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Course Fee</label><input type="number" id="fee-course-fee" oninput="recalcFeeForm()"></div>
+        <div class="field"><label>Registration Fee</label><input type="number" id="fee-reg-fee" oninput="recalcFeeForm()"></div>
+        <div class="field"><label>Discount</label>
+          <select id="fee-disc-pct" onchange="toggleCustomDiscount();recalcFeeForm()">
+            <option value="0">No discount</option>
+            <option value="5">5%</option>
+            <option value="7">7%</option>
+            <option value="10">10%</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <div class="field" id="fee-custom-disc-wrap" style="display:none"><label>Custom Discount %</label><input type="number" id="fee-custom-disc" min="0" max="100" oninput="recalcFeeForm()"></div>
+        <div class="field"><label>Discount Reason</label><input type="text" id="fee-disc-reason" placeholder="Optional"></div>
+        <div class="field"><label>TDS %</label><input type="number" id="fee-tds-pct" value="0" min="0" max="100" oninput="recalcFeeForm()"></div>
+        <div class="field"><label>Installments</label>
+          <select id="fee-n-inst" onchange="renderInstallments();recalcFeeForm()">
+            <option value="1">1 installment</option>
+            <option value="2">2 installments</option>
+            <option value="3">3 installments</option>
+          </select>
+        </div>
+      </div>
+      <div class="report-summary" style="margin-top:2px">
+        <div class="report-stat"><div class="report-stat-value" id="fee-net">₹0</div><div class="report-stat-label">Net Payable</div></div>
+        <div class="report-stat"><div class="report-stat-value" id="fee-paid">₹0</div><div class="report-stat-label">Collected</div></div>
+        <div class="report-stat"><div class="report-stat-value" id="fee-out">₹0</div><div class="report-stat-label">Outstanding</div></div>
+      </div>
+      <div id="fee-installments"></div>
+      <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+        <button class="btn btn-gold" id="fee-save-btn" onclick="saveFeeRecord()">Save Fee Record</button>
+        <button class="btn btn-outline" style="width:auto" onclick="hideFeeForm()">Cancel</button>
+      </div>
+      <div class="err-box" id="fee-err"></div>
+    </div>
+  </div>
+
   <!-- TAB 5: HOLIDAYS -->
   <div id="t-holidays" class="tab-content">
     <div class="card">
@@ -333,6 +404,9 @@ let isAdmin         = false;
 let allBatches      = [];
 let counselorReportRequestId = 0;
 let counselorStudentsByBatch = {};
+let feeStudentsByBatch = {};
+let feeRecordsByStudent = {};
+let currentFeeStudent = null;
 
 function escC(v) {
   return String(v || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -427,6 +501,7 @@ function switchTab(id) {
         });
       }
     }
+    if (feeSel && feeSel.value) loadFeeOverview();
   }
   if (id==='t-reports') {
     var sel = document.getElementById('rp-batch');
@@ -582,7 +657,7 @@ function loadBatchDropdowns(onDone) {
     if (e||!d||!d.batches) { if(onDone) onDone(); return; }
     allBatches = d.batches || [];
     updateCounselorSummary(allBatches);
-    ['st-batch','rp-batch'].forEach(id => {
+    ['st-batch','rp-batch','fee-batch'].forEach(id => {
       const sel = document.getElementById(id);
       if (!sel) return;
       const cur = sel.value;
@@ -915,6 +990,263 @@ function resendWelcomeEmail(enrollmentNo, batch) {
 function removeStudent(enrollmentNo, batch) {
   if (!confirm('Remove ' + enrollmentNo + ' from this batch?')) return;
   gasGet({action:'removeStudent',enrollmentNo}, function() { showToast('Student removed from batch.'); renderStudentList(batch); });
+}
+
+function money(v) {
+  return '₹' + Math.round(Number(v) || 0).toLocaleString('en-IN');
+}
+
+function selectedFeeBatch() {
+  const code = document.getElementById('fee-batch').value;
+  return (allBatches || []).find(b => String(b.batchCode).toUpperCase() === String(code).toUpperCase()) || null;
+}
+
+function feeDefaultsForCourse(course) {
+  return COURSE_FEES_JS[course] || {fee:0, regFee:0, gst:18};
+}
+
+function loadFeeOverview() {
+  const batch = document.getElementById('fee-batch').value;
+  const list = document.getElementById('fee-list');
+  const summary = document.getElementById('fee-summary');
+  document.getElementById('fee-form-card').style.display = 'none';
+  if (!batch) {
+    summary.style.display = 'none';
+    list.innerHTML = emptyState('💰', 'Choose a batch to manage fees', 'Students, total payable, collected amount, and outstanding balance will appear here.');
+    return;
+  }
+  list.innerHTML = loadingState('Loading fee records...');
+  summary.style.display = 'none';
+  let studentsDone = false;
+  let recordsDone = false;
+  let students = [];
+  let records = [];
+  function finish() {
+    if (!studentsDone || !recordsDone) return;
+    feeStudentsByBatch[batch] = students;
+    feeRecordsByStudent = {};
+    records.forEach(r => feeRecordsByStudent[String(r.studentId).toUpperCase()] = r);
+    renderFeeOverview(batch, students, records);
+  }
+  gasGet({action:'getStudents', batchCode:batch}, function(e,d) {
+    studentsDone = true;
+    students = (!e && d && d.students) ? d.students : [];
+    finish();
+  });
+  gasGet({action:'getFeeRecords', batchCode:batch, centres:isAdmin?'':allowedCentres.join(',')}, function(e,d) {
+    recordsDone = true;
+    records = (!e && d && d.records) ? d.records : [];
+    finish();
+  });
+}
+
+function renderFeeOverview(batch, students, records) {
+  const list = document.getElementById('fee-list');
+  const summary = document.getElementById('fee-summary');
+  if (!students.length) {
+    summary.style.display = 'none';
+    list.innerHTML = emptyState('👥', 'No students in this batch yet', 'Add students first, then return here to set up fee records.');
+    return;
+  }
+  const recordMap = {};
+  records.forEach(r => recordMap[String(r.studentId).toUpperCase()] = r);
+  let expected = 0, collected = 0, outstanding = 0, overdue = 0;
+  students.forEach(s => {
+    const r = recordMap[String(s.enrollmentNo).toUpperCase()];
+    if (r) {
+      expected += Number(r.netPayable) || 0;
+      collected += Number(r.collected) || 0;
+      outstanding += Number(r.outstanding) || 0;
+      if (r.feeStatus === 'Overdue') overdue++;
+    } else {
+      const b = selectedFeeBatch();
+      const cf = feeDefaultsForCourse(b ? b.course : '');
+      const base = (Number(cf.fee) || 0) + Math.round((Number(cf.fee) || 0) * (Number(cf.gst) || 0) / 100) +
+        (Number(cf.regFee) || 0) + Math.round((Number(cf.regFee) || 0) * (Number(cf.gst) || 0) / 100);
+      expected += base;
+      outstanding += base;
+    }
+  });
+  summary.style.display = 'grid';
+  summary.innerHTML =
+    '<div class="summary-tile"><div class="k">Expected</div><div class="v">' + money(expected) + '</div><div class="s">For selected batch</div></div>' +
+    '<div class="summary-tile ok"><div class="k">Collected</div><div class="v">' + money(collected) + '</div><div class="s">' + Math.round(collected / Math.max(expected, 1) * 100) + '% collected</div></div>' +
+    '<div class="summary-tile ' + (outstanding ? 'warn' : 'ok') + '"><div class="k">Outstanding</div><div class="v">' + money(outstanding) + '</div><div class="s">Balance pending</div></div>' +
+    '<div class="summary-tile ' + (overdue ? 'warn' : 'ok') + '"><div class="k">Overdue</div><div class="v">' + overdue + '</div><div class="s">Students past due</div></div>';
+
+  let html = '<table class="compact-table"><thead><tr><th>Student</th><th>Expected</th><th>Collected</th><th>Outstanding</th><th>Status</th><th>Action</th></tr></thead><tbody>';
+  html += students.map(s => {
+    const r = recordMap[String(s.enrollmentNo).toUpperCase()];
+    const b = selectedFeeBatch();
+    const cf = feeDefaultsForCourse(b ? b.course : '');
+    const fallback = (Number(cf.fee) || 0) + Math.round((Number(cf.fee) || 0) * (Number(cf.gst) || 0) / 100) +
+      (Number(cf.regFee) || 0) + Math.round((Number(cf.regFee) || 0) * (Number(cf.gst) || 0) / 100);
+    const status = r ? r.feeStatus : 'Pending';
+    const statusCls = String(status || 'Pending').toLowerCase();
+    return '<tr>' +
+      '<td><strong>' + escC(s.name) + '</strong><div style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--muted)">' + escC(s.enrollmentNo) + '</div></td>' +
+      '<td><strong style="font-family:\'DM Mono\',monospace">' + money(r ? r.netPayable : fallback) + '</strong></td>' +
+      '<td><strong style="font-family:\'DM Mono\',monospace;color:#1a7a3c">' + money(r ? r.collected : 0) + '</strong></td>' +
+      '<td><strong style="font-family:\'DM Mono\',monospace;color:' + ((r && Number(r.outstanding) > 0) || !r ? 'var(--red)' : '#1a7a3c') + '">' + money(r ? r.outstanding : fallback) + '</strong></td>' +
+      '<td><span class="fee-status ' + escC(statusCls) + '">' + escC(status) + '</span></td>' +
+      '<td><button class="del-btn" onclick="openFeeForm(\'' + escC(s.enrollmentNo) + '\')">' + (r ? 'Update' : 'Add') + ' Fee</button></td>' +
+    '</tr>';
+  }).join('');
+  html += '</tbody></table>';
+  list.innerHTML = html;
+}
+
+function openFeeForm(studentId) {
+  const batch = document.getElementById('fee-batch').value;
+  const b = selectedFeeBatch();
+  const students = feeStudentsByBatch[batch] || [];
+  const s = students.find(x => String(x.enrollmentNo).toUpperCase() === String(studentId).toUpperCase());
+  if (!b || !s) { showToast('Select a batch and student first.', 'error'); return; }
+  const existing = feeRecordsByStudent[String(studentId).toUpperCase()] || null;
+  const defaults = feeDefaultsForCourse(b.course);
+  currentFeeStudent = {student:s, batch:b, existing};
+  document.getElementById('fee-form-title').textContent = (existing ? 'Update Fee' : 'Add Fee') + ' — ' + s.name;
+  document.getElementById('fee-ro-student').textContent = s.enrollmentNo;
+  document.getElementById('fee-ro-name').textContent = s.name;
+  document.getElementById('fee-ro-batch').textContent = b.batchCode + ' · ' + b.centre;
+  document.getElementById('fee-ro-course').textContent = b.course;
+  document.getElementById('fee-course-fee').value = existing ? existing.courseFee : defaults.fee;
+  document.getElementById('fee-reg-fee').value = existing ? existing.regFee : defaults.regFee;
+  document.getElementById('fee-tds-pct').value = existing ? existing.tdsPct : 0;
+  const disc = existing ? Number(existing.discPct || 0) : 0;
+  document.getElementById('fee-disc-pct').value = ['0','5','7','10'].includes(String(disc)) ? String(disc) : 'custom';
+  document.getElementById('fee-custom-disc').value = ['0','5','7','10'].includes(String(disc)) ? '' : disc;
+  document.getElementById('fee-disc-reason').value = existing ? (existing.discReason || '') : '';
+  document.getElementById('fee-n-inst').value = existing ? (existing.nInst || 1) : 1;
+  toggleCustomDiscount();
+  renderInstallments(existing);
+  recalcFeeForm();
+  document.getElementById('fee-err').classList.remove('show');
+  document.getElementById('fee-form-card').style.display = 'block';
+  document.getElementById('fee-form-card').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function hideFeeForm() {
+  document.getElementById('fee-form-card').style.display = 'none';
+  currentFeeStudent = null;
+}
+
+function toggleCustomDiscount() {
+  document.getElementById('fee-custom-disc-wrap').style.display =
+    document.getElementById('fee-disc-pct').value === 'custom' ? 'block' : 'none';
+}
+
+function currentDiscountPct() {
+  const v = document.getElementById('fee-disc-pct').value;
+  return v === 'custom' ? Number(document.getElementById('fee-custom-disc').value) || 0 : Number(v) || 0;
+}
+
+function feeCalc() {
+  const b = currentFeeStudent ? currentFeeStudent.batch : selectedFeeBatch();
+  const gst = feeDefaultsForCourse(b ? b.course : '').gst || 18;
+  const courseFee = Number(document.getElementById('fee-course-fee').value) || 0;
+  const regFee = Number(document.getElementById('fee-reg-fee').value) || 0;
+  const courseFeeG = courseFee + Math.round(courseFee * gst / 100);
+  const regFeeG = regFee + Math.round(regFee * gst / 100);
+  const gross = courseFeeG + regFeeG;
+  const discPct = currentDiscountPct();
+  const discAmt = Math.round(gross * discPct / 100);
+  const tdsPct = Number(document.getElementById('fee-tds-pct').value) || 0;
+  const tdsAmt = Math.round((gross - discAmt) * tdsPct / 100);
+  const net = gross - discAmt - tdsAmt;
+  return {gst, courseFee, regFee, discPct, discAmt, tdsPct, tdsAmt, net};
+}
+
+function renderInstallments(existing) {
+  const wrap = document.getElementById('fee-installments');
+  const n = Number(document.getElementById('fee-n-inst').value) || 1;
+  const rec = existing || (currentFeeStudent && currentFeeStudent.existing) || {};
+  const modes = ['','Cash','Card','UPI','RTGS','Collexo','Cheque','DD'];
+  let html = '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:12px 0 8px">Installments</div>';
+  for (let i = 1; i <= n; i++) {
+    const inst = rec['inst' + i] || {};
+    html += '<div class="inst-grid">' +
+      '<div class="field"><label>Amount ' + i + '</label><input type="number" id="fee-inst' + i + '-amt" value="' + escC(inst.amt || '') + '" oninput="recalcFeeForm()"></div>' +
+      '<div class="field"><label>Due Date</label><input type="date" id="fee-inst' + i + '-due" value="' + dateForInput(inst.due) + '"></div>' +
+      '<div class="field"><label>Paid?</label><select id="fee-inst' + i + '-paid" onchange="recalcFeeForm()"><option value="N">No</option><option value="Y" ' + (inst.paid === 'Y' ? 'selected' : '') + '>Yes</option></select></div>' +
+      '<div class="field"><label>Mode</label><select id="fee-inst' + i + '-mode">' + modes.map(m => '<option value="' + m + '" ' + (inst.mode === m ? 'selected' : '') + '>' + (m || 'Select') + '</option>').join('') + '</select></div>' +
+      '<div class="field"><label>Reference</label><input type="text" id="fee-inst' + i + '-ref" value="' + escC(inst.ref || '') + '" placeholder="Receipt / UTR"></div>' +
+    '</div>';
+  }
+  wrap.innerHTML = html;
+  recalcFeeForm();
+}
+
+function dateForInput(v) {
+  if (!v) return '';
+  const parts = String(v).split('/');
+  if (parts.length === 3) return parts[2] + '-' + parts[1].padStart(2,'0') + '-' + parts[0].padStart(2,'0');
+  if (/^\d{4}-\d{2}-\d{2}/.test(String(v))) return String(v).slice(0,10);
+  return '';
+}
+
+function recalcFeeForm() {
+  const calc = feeCalc();
+  const n = Number(document.getElementById('fee-n-inst').value) || 1;
+  let collected = 0;
+  for (let i = 1; i <= n; i++) {
+    const amtEl = document.getElementById('fee-inst' + i + '-amt');
+    const paidEl = document.getElementById('fee-inst' + i + '-paid');
+    if (amtEl && !amtEl.value) amtEl.value = Math.round(calc.net / n);
+    if (amtEl && paidEl && paidEl.value === 'Y') collected += Number(amtEl.value) || 0;
+  }
+  document.getElementById('fee-net').textContent = money(calc.net);
+  document.getElementById('fee-paid').textContent = money(collected);
+  document.getElementById('fee-out').textContent = money(Math.max(calc.net - collected, 0));
+}
+
+function saveFeeRecord() {
+  if (!currentFeeStudent) return;
+  const err = document.getElementById('fee-err');
+  const btn = document.getElementById('fee-save-btn');
+  err.classList.remove('show');
+  const calc = feeCalc();
+  const n = Number(document.getElementById('fee-n-inst').value) || 1;
+  const payload = {
+    action:'saveFeeRecord',
+    studentId:currentFeeStudent.student.enrollmentNo,
+    studentName:currentFeeStudent.student.name,
+    batchCode:currentFeeStudent.batch.batchCode,
+    centre:currentFeeStudent.batch.centre,
+    course:currentFeeStudent.batch.course,
+    courseFee:calc.courseFee,
+    regFee:calc.regFee,
+    discountPct:calc.discPct,
+    discountAmt:calc.discAmt,
+    discountReason:document.getElementById('fee-disc-reason').value.trim(),
+    tdsPct:calc.tdsPct,
+    tdsAmt:calc.tdsAmt,
+    nInst:n,
+    enteredBy:counselorName || 'Counselor'
+  };
+  for (let i = 1; i <= 3; i++) {
+    payload['inst' + i + 'Amt'] = i <= n ? (document.getElementById('fee-inst' + i + '-amt').value || 0) : 0;
+    payload['inst' + i + 'Due'] = i <= n ? (document.getElementById('fee-inst' + i + '-due').value || '') : '';
+    payload['inst' + i + 'Paid'] = i <= n ? (document.getElementById('fee-inst' + i + '-paid').value || 'N') : 'N';
+    payload['inst' + i + 'PaidDate'] = payload['inst' + i + 'Paid'] === 'Y' ? new Date().toISOString().slice(0,10) : '';
+    payload['inst' + i + 'Mode'] = i <= n ? (document.getElementById('fee-inst' + i + '-mode').value || '') : '';
+    payload['inst' + i + 'Ref'] = i <= n ? (document.getElementById('fee-inst' + i + '-ref').value || '') : '';
+  }
+  btn.textContent = 'Saving...';
+  btn.disabled = true;
+  gasGet(payload, function(e,d) {
+    btn.textContent = 'Save Fee Record';
+    btn.disabled = false;
+    if (e || !d || d.status !== 'ok') {
+      err.textContent = 'Could not save fee record. Please try again.';
+      err.classList.add('show');
+      showToast('Could not save fee record.', 'error');
+      return;
+    }
+    showToast('Fee record saved.');
+    hideFeeForm();
+    loadFeeOverview();
+  });
 }
 
 // ── Create Session ────────────────────────────────────────────

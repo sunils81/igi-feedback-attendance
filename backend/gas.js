@@ -1966,6 +1966,13 @@ function ensureSheets(ss) {
     [SH_FEEDBACK]: ['Session Code','Student ID','Student Name','Batch Code','Centre','Course','Instructor','Topic',
                     'Completion Status','Q1 Overall Rating','Q2 Clarity','Q3 Pace','Q4 Doubts Addressed',
                     'Q5 Learned (text)','Q6 Suggestion (text)','Anonymous','Timestamp'],
+    [SH_FEES]: ['Student ID','Student Name','Batch Code','Centre','Course',
+                    'Course Fee','GST Amount','Course Fee + GST','Registration Fee','Registration GST','Registration Fee + GST',
+                    'Discount %','Discount Amount','Discount Reason','TDS %','TDS Amount','Net Payable','Installments',
+                    'Inst 1 Amount','Inst 1 Due','Inst 1 Paid','Inst 1 Paid Date','Inst 1 Mode','Inst 1 Reference',
+                    'Inst 2 Amount','Inst 2 Due','Inst 2 Paid','Inst 2 Paid Date','Inst 2 Mode','Inst 2 Reference',
+                    'Inst 3 Amount','Inst 3 Due','Inst 3 Paid','Inst 3 Paid Date','Inst 3 Mode','Inst 3 Reference',
+                    'Collected','Outstanding','Fee Status','Entered By','Updated At'],
     [SH_HOLIDAYS]:     ['Date','Holiday Name','Centre','Added At'],
     [SH_ASSESSMENTS]:  ['Assessment ID','Batch Code','Test Name','Test Type','Test Date','Total Marks','Instructor','Created At'],
     [SH_MARKS]:        ['Assessment ID','Student ID','Student Name','Marks Obtained','Percentage','Result','Remarks','Total Marks','Updated At']
@@ -1980,6 +1987,8 @@ function ensureSheets(ss) {
       ensureStudentHeaders(sh);
     } else if (name===SH_SESSIONS) {
       ensureSessionHeaders(sh);
+    } else if (name===SH_FEES) {
+      ensureFeeHeaders(sh);
     }
   });
 }
@@ -2021,6 +2030,25 @@ function ensureMarksHeaders(sh) {
   sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
   sh.setFrozenRows(1);
   [150,120,160,110,100,80,160,100,160].forEach((w,i)=>sh.setColumnWidth(i+1,w));
+}
+function ensureFeeHeaders(sh) {
+  const h=['Student ID','Student Name','Batch Code','Centre','Course',
+    'Course Fee','GST Amount','Course Fee + GST','Registration Fee','Registration GST','Registration Fee + GST',
+    'Discount %','Discount Amount','Discount Reason','TDS %','TDS Amount','Net Payable','Installments',
+    'Inst 1 Amount','Inst 1 Due','Inst 1 Paid','Inst 1 Paid Date','Inst 1 Mode','Inst 1 Reference',
+    'Inst 2 Amount','Inst 2 Due','Inst 2 Paid','Inst 2 Paid Date','Inst 2 Mode','Inst 2 Reference',
+    'Inst 3 Amount','Inst 3 Due','Inst 3 Paid','Inst 3 Paid Date','Inst 3 Mode','Inst 3 Reference',
+    'Collected','Outstanding','Fee Status','Entered By','Updated At'];
+  if (sh.getLastRow()===0 || sh.getRange(1,1).getValue()==='') {
+    sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
+    sh.setFrozenRows(1);
+    return;
+  }
+  const current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);
+  if (current[0]!==h[0] || current[40]!==h[40]) {
+    sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
+    sh.setFrozenRows(1);
+  }
 }
 function ensureHolidayHeaders(sh){
   if(sh.getLastRow()===0||sh.getRange(1,1).getValue()===''){

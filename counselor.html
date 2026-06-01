@@ -404,13 +404,28 @@ function switchTab(id) {
   document.querySelectorAll('.tab')[idx].classList.add('active');
   if (id==='t-fees') {
     var feeSel = document.getElementById('fee-batch');
-    if (feeSel && feeSel.options.length <= 1 && allBatches && allBatches.length) {
-      allBatches.forEach(function(b) {
-        var o = document.createElement('option');
-        o.value = b.batchCode;
-        o.textContent = b.batchCode + ' — ' + b.course + ' (' + b.centre + ')';
-        feeSel.appendChild(o);
-      });
+    if (feeSel && feeSel.options.length <= 1) {
+      if (allBatches && allBatches.length) {
+        // Batches already loaded
+        allBatches.forEach(function(b) {
+          var o = document.createElement('option');
+          o.value = b.batchCode;
+          o.textContent = b.batchCode + ' — ' + b.course + ' (' + b.centre + ')';
+          feeSel.appendChild(o);
+        });
+      } else {
+        // Load batches then populate
+        gasGet({action:'getBatches', centres:isAdmin?'':allowedCentres.join(',')}, function(e,d){
+          if(e||!d||!d.batches) return;
+          allBatches = d.batches;
+          d.batches.forEach(function(b){
+            var o=document.createElement('option');
+            o.value=b.batchCode;
+            o.textContent=b.batchCode+' — '+b.course+' ('+b.centre+')';
+            feeSel.appendChild(o);
+          });
+        });
+      }
     }
   }
   if (id==='t-reports') {
@@ -649,7 +664,14 @@ function loadCounselorReport() {
       html += '<div class="attendance-head">';
       html += '<div><div class="attendance-title"><span>Session ' + escC(s.sessNo) + '</span><span>&middot;</span><span>' + escC(s.sessionDate) + '</span>' + (isToday ? '<span class="today-pill">Today</span>' : '') + (cancelled ? '<span class="cancelled-pill">Cancelled</span>' : '') + '</div>';
       html += '<div class="attendance-topic">' + escC(s.topic || 'Topic not set') + '</div></div>';
+      var sc2=s.avgScore>=4?'#1a7a3c':s.avgScore>=3?'#B87A10':'#C94A4A';
+      html += '<div style="text-align:right">';
       html += '<div class="attendance-score"><strong>' + presentStudents.length + '/' + d.totalStudents + '</strong><span>Present</span></div>';
+      if(s.avgScore!==null&&s.avgScore!==undefined){
+        html += '<div style="font-size:13px;font-weight:700;font-family:monospace;color:'+sc2+';margin-top:4px">'+s.avgScore+'/5</div>';
+        html += '<div style="font-size:9px;color:var(--muted);font-weight:500">avg rating</div>';
+      }
+      html += '</div>';
       html += '</div>';
       if (!cancelled) {
         html += '<div class="attendance-body">';

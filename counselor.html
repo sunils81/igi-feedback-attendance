@@ -38,6 +38,11 @@
 .report-title{font-size:12px;font-weight:700;color:var(--navy)}
 .report-meta{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .report-count{font-family:"DM Mono",monospace;font-size:12px;font-weight:700;color:var(--navy)}
+.batch-choice-list{display:grid;gap:7px;max-height:190px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--white)}
+.batch-choice{display:flex;gap:8px;align-items:flex-start;padding:8px;border-radius:7px;background:var(--off);font-size:12px;color:var(--navy);cursor:pointer}
+.batch-choice input{width:auto;margin-top:2px;accent-color:var(--gold)}
+.batch-choice .bc-name{font-weight:700;font-family:"DM Mono",monospace;font-size:11px}
+.batch-choice .bc-meta{font-size:11px;color:var(--muted);line-height:1.3}
 @media(max-width:500px){.grid2{grid-template-columns:1fr}}
 </style>
 </head>
@@ -169,13 +174,16 @@
       <div id="st-enrol-wrap" style="display:none">
         <div class="info-box">Enter the 4 digit Student ID from the enrolment system. Last 4 digits of mobile will fill automatically once Mobile is entered.</div>
         <div class="grid2">
-          <div class="field"><label>Student ID *</label><input type="text" id="st-enrol" placeholder="e.g. 6008" inputmode="numeric"></div>
+          <div class="field"><label>Student ID *</label><input type="text" id="st-enrol" placeholder="e.g. 6008" inputmode="numeric" onblur="lookupStudent()"></div>
           <div class="field"><label>Name *</label><input type="text" id="st-name" placeholder="Full name"></div>
           <div class="field"><label>Mobile *</label><input type="tel" id="st-mobile" placeholder="10 digits" inputmode="numeric" oninput="updateMobileLast4()"></div>
           <div class="field"><label>Email</label><input type="email" id="st-email" placeholder="student@email.com"></div>
         </div>
         <div class="field"><label>Last 4 Digits of Mobile (auto)</label>
           <input type="text" id="st-mobile-last4" class="auto-val" readonly placeholder="Auto-filled from mobile">
+        </div>
+        <div class="field"><label>Select Batch(es) *</label>
+          <div id="st-batch-choices" class="batch-choice-list"></div>
         </div>
         <button class="btn btn-gold" id="st-btn" onclick="addStudent()">Add Student →</button>
         <div class="err-box" id="st-err"></div>
@@ -282,6 +290,7 @@ document.addEventListener('DOMContentLoaded', function() {
 let counselorName    = '';
 let allowedCentres  = [];
 let isAdmin         = false;
+let allBatches      = [];
 
 function doLogin() {
   const nameVal = document.getElementById('lg-name').value;
@@ -479,6 +488,7 @@ function loadBatchDropdowns() {
   const centresParam = isAdmin ? '' : allowedCentres.join(',');
   gasGet({action:'getBatches', centres:centresParam}, function(e,d) {
     if (e||!d||!d.batches) return;
+    allBatches = d.batches || [];
     ['st-batch','rp-batch'].forEach(id => {
       const sel = document.getElementById(id);
       if (!sel) return;
@@ -492,6 +502,7 @@ function loadBatchDropdowns() {
       });
       if (cur) sel.value = cur;
     });
+    renderStudentBatchChoices();
   });
 }
 
@@ -535,6 +546,7 @@ function loadStudents() {
   document.getElementById('st-enrol-wrap').style.display = batch ? 'block' : 'none';
   document.getElementById('st-list-card').style.display  = batch ? 'block' : 'none';
   if (!batch) return;
+  renderStudentBatchChoices();
   renderStudentList(batch);
 }
 
@@ -569,9 +581,45 @@ function renderStudentList(batch) {
   });
 }
 
+function renderStudentBatchChoices(selectedBatches) {
+  const wrap = document.getElementById('st-batch-choices');
+  if (!wrap) return;
+  const current = selectedBatches || [document.getElementById('st-batch').value].filter(Boolean);
+  if (!allBatches.length) {
+    wrap.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px">No batches available.</div>';
+    return;
+  }
+  wrap.innerHTML = allBatches.map(b => {
+    const checked = current.includes(b.batchCode) ? 'checked' : '';
+    return `<label class="batch-choice">
+      <input type="checkbox" name="st-batch-choice" value="${b.batchCode}" ${checked}>
+      <div><div class="bc-name">${b.batchCode}</div><div class="bc-meta">${b.course} · ${b.centre}</div></div>
+    </label>`;
+  }).join('');
+}
+
+function selectedStudentBatches() {
+  return Array.from(document.querySelectorAll('input[name="st-batch-choice"]:checked')).map(x=>x.value);
+}
+
 function updateMobileLast4() {
   const mobile = document.getElementById('st-mobile').value.replace(/\D/g,'');
   document.getElementById('st-mobile-last4').value = mobile.length >= 4 ? mobile.slice(-4) : '';
+}
+
+function lookupStudent() {
+  const enrol = document.getElementById('st-enrol').value.trim();
+  if (!enrol) return;
+  gasGet({action:'getStudentProfile', studentId:enrol}, function(e,d) {
+    if (e||!d||d.status!=='ok'||!d.student) return;
+    document.getElementById('st-name').value = d.student.name || '';
+    document.getElementById('st-mobile').value = d.student.mobile || '';
+    document.getElementById('st-email').value = d.student.email || '';
+    document.getElementById('st-mobile-last4').value = d.student.mobileLast4 || '';
+    const current = document.getElementById('st-batch').value;
+    const batches = Array.from(new Set([...(d.student.batches||[]), current].filter(Boolean)));
+    renderStudentBatchChoices(batches);
+  });
 }
 
 function addStudent() {
@@ -581,20 +629,22 @@ function addStudent() {
   const email  = document.getElementById('st-email').value.trim();
   const enrol  = document.getElementById('st-enrol').value.trim();
   const mobileLast4 = document.getElementById('st-mobile-last4').value.trim();
+  const batchCodes = selectedStudentBatches();
   const errEl  = document.getElementById('st-err');
   errEl.classList.remove('show');
-  if (!batch||!name||!enrol||mobile.length<4||mobileLast4.length!==4) {
-    errEl.textContent='Please fill Student ID, Name, and Mobile. Last 4 digits must be available.'; errEl.classList.add('show'); return;
+  if (!batch||!name||!enrol||mobile.length<4||mobileLast4.length!==4||!batchCodes.length) {
+    errEl.textContent='Please fill Student ID, Name, Mobile, and select at least one batch.'; errEl.classList.add('show'); return;
   }
   const btn = document.getElementById('st-btn');
   btn.textContent='Adding…'; btn.disabled=true;
-  gasGet({action:'addStudent',enrollmentNo:enrol,batchCode:batch,name,mobileLast4,mobile,email},function(e,d){
+  gasGet({action:'addStudent',enrollmentNo:enrol,batchCode:batch,batchCodes:batchCodes.join(','),name,mobileLast4,mobile,email},function(e,d){
     btn.textContent='Add Student →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') {
-      errEl.textContent=d&&d.reason==='enrollment_exists'?'Student ID already exists. Please check the number.':'Could not add student. Try again.';
+      errEl.textContent='Could not add student. Try again.';
       errEl.classList.add('show'); return;
     }
     ['st-enrol','st-name','st-mobile','st-mobile-last4','st-email'].forEach(id=>document.getElementById(id).value='');
+    renderStudentBatchChoices();
     renderStudentList(batch);
   });
 }

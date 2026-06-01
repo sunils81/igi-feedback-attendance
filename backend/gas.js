@@ -62,6 +62,7 @@ const NAVY = '#0D1B2E', GOLD = '#C9A84C', WHITE = '#FDFCF9';
 // ── Sheet names ────────────────────────────────────────────────
 const SH_BATCHES  = 'Batches';
 const SH_STUDENTS = 'Batch_Students';
+const SH_ENROLLMENTS = 'Student_Batches';
 const SH_SESSIONS = 'Sessions';
 const SH_FEEDBACK = 'Attendance_Feedback';
 const SH_HOLIDAYS     = 'Holidays';
@@ -608,36 +609,64 @@ function doGet(e) {
     // ── addStudent ─────────────────────────────────────────────
     if (act==='addStudent') {
       const sh=ss.getSheetByName(SH_STUDENTS);
+      const shEn=getOrCreateSheet(ss,SH_ENROLLMENTS);
+      ensureEnrollmentHeaders(shEn);
       const mobileLast4=String(p.mobileLast4||'').replace(/\D/g,'').slice(-4);
-      if(!p.enrollmentNo||!p.batchCode||!p.name||mobileLast4.length!==4)return respond({status:'error',reason:'missing_params'});
-      if (sh.getLastRow()>1){
-        const exist=sh.getRange(2,1,sh.getLastRow()-1,1).getValues().map(r=>String(r[0]));
-        if(exist.includes(p.enrollmentNo))return respond({status:'error',reason:'enrollment_exists'});
+      const studentId=String(p.enrollmentNo).trim().toUpperCase();
+      const batchCodes=String(p.batchCodes||p.batchCode||'').split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
+      if(!studentId||!p.name||mobileLast4.length!==4||!batchCodes.length)return respond({status:'error',reason:'missing_params'});
+      const existing=getStudentById(ss,studentId);
+      if(existing){
+        const row=existing.rowIndex;
+        sh.getRange(row,3,1,4).setValues([[p.name,mobileLast4,p.mobile||'',p.email||'']]);
+        sh.getRange(row,7).setValue('Active');
+      }else{
+        sh.appendRow([studentId,batchCodes[0],p.name,mobileLast4,p.mobile||'',p.email||'','Active',new Date().toISOString()]);
+        sh.getRange(sh.getLastRow(),4).setNumberFormat('@STRING@');
       }
-      sh.appendRow([p.enrollmentNo,p.batchCode,p.name,mobileLast4,p.mobile||'',p.email||'','Active',new Date().toISOString()]);
-      sh.getRange(sh.getLastRow(),4).setNumberFormat('@STRING@');
-      return respond({status:'ok',enrollmentNo:p.enrollmentNo});
+      const existingEnrollments=getEnrollmentRows(ss)
+        .filter(e=>e.studentId===studentId&&batchCodes.includes(e.batchCode)&&e.status==='Active')
+        .map(e=>e.batchCode);
+      const added=[];
+      batchCodes.forEach(batchCode=>{
+        if(existingEnrollments.includes(batchCode))return;
+        shEn.appendRow([studentId,batchCode,'Active',new Date().toISOString()]);
+        added.push(batchCode);
+      });
+      return respond({status:'ok',enrollmentNo:studentId,added,skipped:existingEnrollments});
     }
 
     // ── getStudents ────────────────────────────────────────────
     if (act==='getStudents') {
       const batch=(p.batchCode||'').toUpperCase();
-      const sh=ss.getSheetByName(SH_STUDENTS);
-      if(sh.getLastRow()<2)return respond({status:'ok',students:[]});
-      const data=sh.getRange(2,1,sh.getLastRow()-1,8).getValues();
-      return respond({status:'ok',students:data.filter(r=>r[0]&&String(r[1]).toUpperCase()===batch&&r[6]==='Active')
-        .map(r=>{
-          const mobileDigits=String(r[4]||'').replace(/\D/g,'');
-          const last4=mobileDigits.length>=4?mobileDigits.slice(-4):String(r[3]||'');
-          return {enrollmentNo:r[0],name:r[2],mobileLast4:last4,dob:last4,mobile:r[4],email:r[5]};
-        })});
+      return respond({status:'ok',students:getStudentsForBatch(ss,batch)});
+    }
+
+    // ── getStudentProfile ─────────────────────────────────────
+    if (act==='getStudentProfile') {
+      const studentId=(p.studentId||p.enrollmentNo||'').trim().toUpperCase();
+      if(!studentId)return respond({status:'error',reason:'missing_params'});
+      const student=getStudentById(ss,studentId);
+      if(!student)return respond({status:'error',reason:'student_not_found'});
+      const batches=getEnrollmentRows(ss).filter(e=>e.studentId===studentId&&e.status==='Active').map(e=>e.batchCode);
+      return respond({status:'ok',student:{enrollmentNo:student.id,name:student.name,mobileLast4:student.mobileLast4,mobile:student.mobile,email:student.email,batches}});
     }
 
     // ── removeStudent ──────────────────────────────────────────
     if (act==='removeStudent') {
-      const sh=ss.getSheetByName(SH_STUDENTS);
-      if(sh.getLastRow()>1){const data=sh.getRange(2,1,sh.getLastRow()-1,8).getValues();
-        for(let i=0;i<data.length;i++){if(String(data[i][0])===p.enrollmentNo){sh.getRange(i+2,7).setValue('Inactive');break;}}}
+      const batch=(p.batchCode||'').toUpperCase();
+      const studentId=(p.enrollmentNo||p.studentId||'').toUpperCase();
+      const shEn=getOrCreateSheet(ss,SH_ENROLLMENTS);
+      ensureEnrollmentHeaders(shEn);
+      if(shEn.getLastRow()>1){
+        const data=shEn.getRange(2,1,shEn.getLastRow()-1,4).getValues();
+        for(let i=0;i<data.length;i++){
+          if(String(data[i][0]).toUpperCase()===studentId&&String(data[i][1]).toUpperCase()===batch&&data[i][2]==='Active'){
+            shEn.getRange(i+2,3).setValue('Inactive');
+          }
+        }
+      }
+      if(studentId&&batch)shEn.appendRow([studentId,batch,'Inactive',new Date().toISOString()]);
       return respond({status:'ok'});
     }
 
@@ -746,8 +775,7 @@ function doGet(e) {
       const shSess=ss.getSheetByName(SH_SESSIONS);
       const shStu=ss.getSheetByName(SH_STUDENTS);
       const shFb=ss.getSheetByName(SH_FEEDBACK);
-      const total=shStu&&shStu.getLastRow()>1?shStu.getRange(2,1,shStu.getLastRow()-1,8).getValues()
-        .filter(r=>String(r[1]).toUpperCase()===batch&&r[6]==='Active').length:0;
+      const total=getStudentsForBatch(ss,batch).length;
       const sess=shSess&&shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,8).getValues()
         .filter(r=>r[0]&&String(r[1]).toUpperCase()===batch):[];
       const fb=shFb&&shFb.getLastRow()>1?shFb.getRange(2,1,shFb.getLastRow()-1,3).getValues():[];
@@ -811,14 +839,11 @@ function doGet(e) {
       const sessDate=new Date(session[2]);
       if((new Date()-sessDate)/3600000>FEEDBACK_HRS) return respond({status:'error',reason:'window_closed'});
       const batchCode=String(session[1]).toUpperCase();
-      const shStu=ss.getSheetByName(SH_STUDENTS);
-      if(shStu.getLastRow()<2)return respond({status:'error',reason:'student_not_found'});
-      const stuData=shStu.getRange(2,1,shStu.getLastRow()-1,8).getValues();
-      const student=stuData.find(r=>String(r[0]).toUpperCase()===enrollNo&&String(r[1]).toUpperCase()===batchCode&&r[6]==='Active');
+      const student=getStudentsForBatch(ss,batchCode).find(s=>String(s.enrollmentNo).toUpperCase()===enrollNo);
       if(!student)return respond({status:'error',reason:'student_not_found'});
       if(mobileLast4.length!==4)return respond({status:'error',reason:'missing_params'});
-      const storedLast4=String(student[3]).replace(/\D/g,'').slice(-4);
-      const mobileColLast4=String(student[4]).replace(/\D/g,'').slice(-4);
+      const storedLast4=String(student.mobileLast4).replace(/\D/g,'').slice(-4);
+      const mobileColLast4=String(student.mobile).replace(/\D/g,'').slice(-4);
       if(storedLast4!==mobileLast4&&mobileColLast4!==mobileLast4)return respond({status:'error',reason:'mobile_mismatch'});
       const shFb=ss.getSheetByName(SH_FEEDBACK);
       if(shFb.getLastRow()>1){
@@ -829,7 +854,7 @@ function doGet(e) {
       const shBatch=ss.getSheetByName(SH_BATCHES);
       const bData=shBatch.getLastRow()>1?shBatch.getRange(2,1,shBatch.getLastRow()-1,8).getValues():[];
       const batch=bData.find(r=>String(r[0]).toUpperCase()===batchCode);
-      return respond({status:'ok',studentName:student[2],enrollmentNo:student[0],
+      return respond({status:'ok',studentName:student.name,enrollmentNo:student.enrollmentNo,
         batchCode,sessionCode,sessNo:session[3],topic:session[6]||'',
         instructor:session[4],sessionType:session[5]||'Scheduled',
         sessionDate:sessDate.toLocaleDateString('en-IN'),
@@ -879,9 +904,7 @@ function doGet(e) {
       const bData=shBatch.getLastRow()>1?shBatch.getRange(2,1,shBatch.getLastRow()-1,8).getValues():[];
       const batch=bData.find(r=>String(r[0]).toUpperCase()===batchCode);
       if(!batch)return respond({status:'error',reason:'batch_not_found'});
-      const shStu=ss.getSheetByName(SH_STUDENTS);
-      const stuAll=shStu.getLastRow()>1?shStu.getRange(2,1,shStu.getLastRow()-1,8).getValues()
-        .filter(r=>String(r[1]).toUpperCase()===batchCode&&r[6]==='Active'):[];
+      const stuAll=getStudentsForBatch(ss,batchCode);
       const shSess=ss.getSheetByName(SH_SESSIONS);
       const sessAll=shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,8).getValues()
         .filter(r=>String(r[1]).toUpperCase()===batchCode):[];
@@ -893,13 +916,13 @@ function doGet(e) {
         .sort((a,b)=>a.sessNo-b.sessNo);
       const totalSessions=sessions.length;
       const students=stuAll.map(r=>{
-        const enrol=String(r[0]);
+        const enrol=String(r.enrollmentNo);
         const attended=fbAll.filter(f=>String(f[1]).toUpperCase()===enrol.toUpperCase()).length;
         const attendedSessions=sessions.map(s=>({
           sessionCode:s.sessionCode,sessNo:s.sessNo,
           attended:fbAll.some(f=>String(f[0]).toUpperCase()===s.sessionCode&&String(f[1]).toUpperCase()===enrol.toUpperCase())
         }));
-        return {enrollmentNo:enrol,name:r[2],attended,total:totalSessions,
+        return {enrollmentNo:enrol,name:r.name,attended,total:totalSessions,
           streakPct:totalSessions>0?Math.round((attended/totalSessions)*100):0,
           atRisk:totalSessions>=4&&Math.round((attended/totalSessions)*100)<75,
           attendedSessions};
@@ -911,8 +934,8 @@ function doGet(e) {
         if(!sess)return null;
         const presentEnrols=fbAll.filter(f=>String(f[0]).toUpperCase()===sc).map(f=>String(f[1]).toUpperCase());
         return {...sess,
-          present:stuAll.filter(r=>presentEnrols.includes(String(r[0]).toUpperCase())).map(r=>({enrollmentNo:r[0],name:r[2]})),
-          absent:stuAll.filter(r=>!presentEnrols.includes(String(r[0]).toUpperCase())).map(r=>({enrollmentNo:r[0],name:r[2]}))
+          present:stuAll.filter(r=>presentEnrols.includes(String(r.enrollmentNo).toUpperCase())).map(r=>({enrollmentNo:r.enrollmentNo,name:r.name})),
+          absent:stuAll.filter(r=>!presentEnrols.includes(String(r.enrollmentNo).toUpperCase())).map(r=>({enrollmentNo:r.enrollmentNo,name:r.name}))
         };
       })();
       return respond({status:'ok',batch:{batchCode,centre:batch[1],course:batch[2],type:batch[3]},
@@ -927,7 +950,7 @@ function doGet(e) {
       const shSess=ss.getSheetByName(SH_SESSIONS);
       const shFb=ss.getSheetByName(SH_FEEDBACK);
       const batches=shBatch.getLastRow()>1?shBatch.getRange(2,1,shBatch.getLastRow()-1,8).getValues().filter(r=>r[0]):[];
-      const students=shStu.getLastRow()>1?shStu.getRange(2,1,shStu.getLastRow()-1,8).getValues().filter(r=>r[0]):[];
+      const students=getStudentRows(ss);
       const sessions=shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,8).getValues().filter(r=>r[0]):[];
       const feedback=shFb.getLastRow()>1?shFb.getRange(2,1,shFb.getLastRow()-1,17).getValues().filter(r=>r[0]):[];
       const instrMap={};
@@ -944,25 +967,25 @@ function doGet(e) {
       batches.forEach(b=>{const c=b[1]||'Unknown';
         if(!centreMap[c])centreMap[c]={centre:c,batches:0,students:0,sessions:0,feedback:0};
         centreMap[c].batches++;
-        centreMap[c].students+=students.filter(s=>String(s[1]).toUpperCase()===String(b[0]).toUpperCase()).length;
+        centreMap[c].students+=getStudentsForBatch(ss,String(b[0]).toUpperCase()).length;
         centreMap[c].sessions+=sessions.filter(s=>String(s[1]).toUpperCase()===String(b[0]).toUpperCase()).length;
         centreMap[c].feedback+=feedback.filter(f=>String(f[3]).toUpperCase()===String(b[0]).toUpperCase()).length;
       });
       const atRisk=[];
       batches.forEach(b=>{
         const bCode=String(b[0]).toUpperCase();
-        const bStu=students.filter(r=>String(r[1]).toUpperCase()===bCode&&r[6]==='Active');
+        const bStu=getStudentsForBatch(ss,bCode);
         const bSess=sessions.filter(r=>String(r[1]).toUpperCase()===bCode);
         if(bSess.length<4)return;
         bStu.forEach(s=>{
-          const enrol=String(s[0]).toUpperCase();
+          const enrol=String(s.enrollmentNo).toUpperCase();
           const attended=feedback.filter(f=>String(f[3]).toUpperCase()===bCode&&String(f[1]).toUpperCase()===enrol).length;
           const pct=Math.round((attended/bSess.length)*100);
-          if(pct<75)atRisk.push({name:s[2],enrollmentNo:s[0],centre:b[1],course:b[2],batchCode:b[0],attended,total:bSess.length,pct});
+          if(pct<75)atRisk.push({name:s.name,enrollmentNo:s.enrollmentNo,centre:b[1],course:b[2],batchCode:b[0],attended,total:bSess.length,pct});
         });
       });
       return respond({status:'ok',
-        summary:{totalBatches:batches.length,totalStudents:students.filter(s=>s[6]==='Active').length,
+        summary:{totalBatches:batches.length,totalStudents:students.filter(s=>s.status==='Active').length,
           totalSessions:sessions.length,totalFeedback:feedback.length},
         instructors,centres:Object.values(centreMap),atRisk,
         assessmentSummary: (() => {
@@ -1100,16 +1123,14 @@ function doGet(e) {
     if (act==='getSessionAttendanceLive') {
       const sessionCode=(p.sessionCode||'').toUpperCase();
       const batchCode=(p.batchCode||'').toUpperCase();
-      const shStu=ss.getSheetByName(SH_STUDENTS);
       const shFb=ss.getSheetByName(SH_FEEDBACK);
-      const stuAll=shStu.getLastRow()>1?shStu.getRange(2,1,shStu.getLastRow()-1,8).getValues()
-        .filter(r=>String(r[1]).toUpperCase()===batchCode&&r[6]==='Active'):[];
+      const stuAll=getStudentsForBatch(ss,batchCode);
       const fbRows=shFb.getLastRow()>1?shFb.getRange(2,1,shFb.getLastRow()-1,3).getValues()
         .filter(r=>String(r[0]).toUpperCase()===sessionCode):[];
       const presentSet=new Set(fbRows.map(r=>String(r[1]).toUpperCase()));
       return respond({status:'ok',
-        present:stuAll.filter(r=>presentSet.has(String(r[0]).toUpperCase())).map(r=>({enrollmentNo:r[0],name:r[2]})),
-        absent: stuAll.filter(r=>!presentSet.has(String(r[0]).toUpperCase())).map(r=>({enrollmentNo:r[0],name:r[2]})),
+        present:stuAll.filter(r=>presentSet.has(String(r.enrollmentNo).toUpperCase())).map(r=>({enrollmentNo:r.enrollmentNo,name:r.name})),
+        absent: stuAll.filter(r=>!presentSet.has(String(r.enrollmentNo).toUpperCase())).map(r=>({enrollmentNo:r.enrollmentNo,name:r.name})),
         total:  stuAll.length,
         count:  presentSet.size
       });
@@ -1276,17 +1297,13 @@ function doGet(e) {
       const mobileLast4 = String(p.mobileLast4||p.mobileLastFour||'').replace(/\D/g,'').slice(-4);
       if (!enrollNo||mobileLast4.length!==4) return respond({status:'error',reason:'missing_params'});
       // Find student
-      const shStu  = ss.getSheetByName(SH_STUDENTS);
-      if (!shStu||shStu.getLastRow()<2) return respond({status:'error',reason:'student_not_found'});
-      const stuData = shStu.getRange(2,1,shStu.getLastRow()-1,8).getValues();
-      const studentRows = stuData.filter(r=>String(r[0]).toUpperCase()===enrollNo&&r[6]==='Active');
-      if (!studentRows.length) return respond({status:'error',reason:'student_not_found'});
+      const student = getStudentById(ss,enrollNo);
+      if (!student||student.status!=='Active') return respond({status:'error',reason:'student_not_found'});
       // Verify mobile last 4 against first matching record.
-      const firstStu = studentRows[0];
-      const storedLast4 = String(firstStu[3]).replace(/\D/g,'').slice(-4);
-      const mobileColLast4 = String(firstStu[4]).replace(/\D/g,'').slice(-4);
+      const storedLast4 = String(student.mobileLast4).replace(/\D/g,'').slice(-4);
+      const mobileColLast4 = String(student.mobile).replace(/\D/g,'').slice(-4);
       if (storedLast4!==mobileLast4&&mobileColLast4!==mobileLast4) return respond({status:'error',reason:'mobile_mismatch'});
-      const studentName = firstStu[2];
+      const studentName = student.name;
       // Get all active batches for this student
       const shBatch = ss.getSheetByName(SH_BATCHES);
       const bData   = shBatch.getLastRow()>1?shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues():[];
@@ -1297,8 +1314,9 @@ function doGet(e) {
       const allSess = shSess&&shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,10).getValues():[];
       const allFb   = shFb&&shFb.getLastRow()>1?shFb.getRange(2,1,shFb.getLastRow()-1,3).getValues():[];
       const batchCards = [];
-      studentRows.forEach(stuRow=>{
-        const batchCode = String(stuRow[1]).toUpperCase();
+      const studentBatches=getEnrollmentRows(ss).filter(e=>e.studentId===enrollNo&&e.status==='Active');
+      studentBatches.forEach(stuRow=>{
+        const batchCode = String(stuRow.batchCode).toUpperCase();
         const batch     = bData.find(r=>String(r[0]).toUpperCase()===batchCode);
         if (!batch) return;
         const isNew     = detectSlotOrDate(batch[4]);
@@ -1595,10 +1613,72 @@ function fixOldBatches() {
 // ═══════════════════════════════════════════════════════════════
 //  Sheet helpers
 // ═══════════════════════════════════════════════════════════════
+function getStudentRows(ss) {
+  const sh=ss.getSheetByName(SH_STUDENTS);
+  if(!sh||sh.getLastRow()<2)return [];
+  const data=sh.getRange(2,1,sh.getLastRow()-1,8).getValues();
+  const map={};
+  data.forEach((r,i)=>{
+    const id=String(r[0]||'').trim().toUpperCase();
+    if(!id)return;
+    const mobileDigits=String(r[4]||'').replace(/\D/g,'');
+    const last4=mobileDigits.length>=4?mobileDigits.slice(-4):String(r[3]||'').replace(/\D/g,'').slice(-4);
+    const row={id,enrollmentNo:id,primaryBatch:String(r[1]||'').toUpperCase(),name:r[2]||'',mobileLast4:last4,
+      mobile:r[4]||'',email:r[5]||'',status:r[6]||'Active',createdAt:r[7]||'',rowIndex:i+2,raw:r};
+    if(!map[id]||map[id].status!=='Active')map[id]=row;
+  });
+  return Object.values(map);
+}
+
+function getStudentById(ss, studentId) {
+  const id=String(studentId||'').trim().toUpperCase();
+  return getStudentRows(ss).find(s=>s.id===id)||null;
+}
+
+function getEnrollmentRows(ss) {
+  const rows=[];
+  const explicitKeys={};
+  const shEn=ss.getSheetByName(SH_ENROLLMENTS);
+  if(shEn&&shEn.getLastRow()>1){
+    shEn.getRange(2,1,shEn.getLastRow()-1,4).getValues().forEach((r,i)=>{
+      const studentId=String(r[0]||'').trim().toUpperCase();
+      const batchCode=String(r[1]||'').trim().toUpperCase();
+      if(studentId&&batchCode){
+        explicitKeys[studentId+'|'+batchCode]=true;
+        rows.push({studentId,batchCode,status:r[2]||'Active',enrolledAt:r[3]||'',rowIndex:i+2,source:'link'});
+      }
+    });
+  }
+  const sh=ss.getSheetByName(SH_STUDENTS);
+  if(sh&&sh.getLastRow()>1){
+    sh.getRange(2,1,sh.getLastRow()-1,8).getValues().forEach((r,i)=>{
+      const studentId=String(r[0]||'').trim().toUpperCase();
+      const batchCode=String(r[1]||'').trim().toUpperCase();
+      if(studentId&&batchCode&&!explicitKeys[studentId+'|'+batchCode])
+        rows.push({studentId,batchCode,status:r[6]||'Active',enrolledAt:r[7]||'',rowIndex:i+2,source:'legacy'});
+    });
+  }
+  return rows;
+}
+
+function getStudentsForBatch(ss, batchCode) {
+  const batch=String(batchCode||'').trim().toUpperCase();
+  const students=getStudentRows(ss);
+  const byId={};students.forEach(s=>byId[s.id]=s);
+  const ids={};
+  getEnrollmentRows(ss).forEach(e=>{
+    if(e.batchCode===batch&&e.status==='Active')ids[e.studentId]=true;
+  });
+  return Object.keys(ids).map(id=>byId[id]).filter(Boolean)
+    .map(s=>({enrollmentNo:s.id,name:s.name,mobileLast4:s.mobileLast4,dob:s.mobileLast4,mobile:s.mobile,email:s.email,status:s.status}))
+    .sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+}
+
 function ensureSheets(ss) {
   const defs = {
     [SH_BATCHES]:  ['Batch Code','Centre','Course','Type','Batch Slot','Start Date','End Date','Created By','Created At','Assigned Instructor'],
-    [SH_STUDENTS]: ['Student ID','Batch Code','Name','Mobile Last 4','Mobile','Email','Status','Created At'],
+    [SH_STUDENTS]: ['Student ID','Primary Batch Code','Name','Mobile Last 4','Mobile','Email','Status','Created At'],
+    [SH_ENROLLMENTS]: ['Student ID','Batch Code','Status','Enrolled At'],
     [SH_SESSIONS]: ['Session Code','Batch Code','Session Date','Session No','Instructor','Session Type','Topic Covered','Auto Created','Created At'],
     [SH_FEEDBACK]: ['Session Code','Student ID','Student Name','Batch Code','Centre','Course','Instructor','Topic',
                     'Completion Status','Q1 Overall Rating','Q2 Clarity','Q3 Pace','Q4 Doubts Addressed',
@@ -1615,8 +1695,16 @@ function ensureSheets(ss) {
       sh.setFrozenRows(1);
     } else if (name===SH_STUDENTS && sh.getRange(1,4).getValue()==='DOB (DDMM)') {
       sh.getRange(1,4).setValue('Mobile Last 4');
+    } else if (name===SH_STUDENTS && sh.getRange(1,2).getValue()==='Batch Code') {
+      sh.getRange(1,2).setValue('Primary Batch Code');
     }
   });
+}
+function ensureEnrollmentHeaders(sh) {
+  if (sh.getLastRow()>0&&sh.getRange(1,1).getValue()!=='') return;
+  const h=['Student ID','Batch Code','Status','Enrolled At'];
+  sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
+  sh.setFrozenRows(1);
 }
 function ensureAssessmentHeaders(sh) {
   if (sh.getLastRow()>0&&sh.getRange(1,1).getValue()!=='') return;

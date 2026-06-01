@@ -64,6 +64,35 @@
 .fee-card.fee-paid{border-color:#1D9E75;background:#F0FAF5}
 .fee-card.fee-overdue{border-color:#C94A4A;background:#FEF2F2}
 .fee-card.fee-partial{border-color:var(--gold);background:var(--gold-pale)}
+.fee-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.fee-title{font-size:14px;font-weight:700;color:var(--navy);line-height:1.25}
+.fee-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.fee-status{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;border-radius:999px;padding:4px 9px;white-space:nowrap}
+.fee-status.paid{background:#DDF4E8;color:#126b35}
+.fee-status.overdue{background:#FCE4E4;color:#B42323}
+.fee-status.partial{background:#FFF2C2;color:#946300}
+.fee-status.pending{background:var(--off);color:var(--muted)}
+.fee-progress{height:7px;background:rgba(17,34,64,.08);border-radius:999px;overflow:hidden;margin-bottom:12px}
+.fee-progress span{display:block;height:100%;border-radius:999px}
+.fee-money-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.fee-money{border:1px solid var(--border);border-radius:8px;padding:8px;background:rgba(255,255,255,.72);min-width:0}
+.fee-money .k{font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:3px}
+.fee-money .v{font-family:'DM Mono',monospace;font-size:12px;font-weight:800;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fee-money .v.good{color:#126b35}.fee-money .v.due{color:#B42323}
+.fee-next{display:flex;justify-content:space-between;gap:10px;border-radius:8px;padding:9px 10px;font-size:12px;margin-bottom:12px;background:rgba(255,255,255,.7);border:1px solid var(--border)}
+.fee-next span{color:var(--muted)}
+.fee-next strong{font-family:'DM Mono',monospace;color:var(--navy);text-align:right}
+.fee-inst{display:grid;gap:7px;margin-top:8px}
+.fee-inst-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;border-top:1px solid rgba(17,34,64,.08);padding-top:8px;font-size:11px;color:var(--muted)}
+.fee-inst-dot{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:900}
+.fee-inst-row.paid .fee-inst-dot{background:#1D9E75;color:#fff}
+.fee-inst-row.due .fee-inst-dot{background:#C94A4A;color:#fff}
+.fee-inst-row.pending .fee-inst-dot{background:var(--gold-pale);color:#946300}
+.fee-inst-main{min-width:0}
+.fee-inst-main strong{display:block;color:var(--navy);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fee-inst-side{font-family:'DM Mono',monospace;font-weight:800;color:var(--navy);white-space:nowrap}
+.fee-note{font-size:10px;color:var(--muted);line-height:1.45;margin-top:10px}
+@media(max-width:420px){.fee-money-grid{grid-template-columns:1fr}.fee-inst-row{grid-template-columns:auto 1fr}.fee-inst-side{grid-column:2;text-align:left}}
 </style>
 </head>
 <body>
@@ -109,9 +138,9 @@
       <button class="wb-logout" onclick="doLogout()">Sign out</button>
     </div>
     <div id="student-summary" class="dashboard-summary"></div>
+    <div id="portal-fees" style="margin-top:8px"></div>
     <div id="portal-calendar"></div>
     <div id="portal-batches"></div>
-  <div id="portal-fees" style="margin-top:8px"></div>
   </div>
 
   <!-- ══ FEEDBACK MODAL ══ -->
@@ -299,6 +328,7 @@ function renderPortal(d) {
   document.getElementById('wb-date').textContent = new Date().toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
   const wrap = document.getElementById('portal-batches');
   renderStudentSummary(d);
+  loadStudentFees();
   loadStudentAttendanceCalendar(studentCalendarMonth);
 
   if (!d.batches||!d.batches.length) {
@@ -353,7 +383,6 @@ function renderPortal(d) {
   }).join('');
 
   showScreen('s-portal');
-  loadStudentFees();
   // Start countdown refresh for waiting sessions
   startRefreshCountdowns(d.batches);
 }
@@ -610,27 +639,57 @@ function loadStudentFees() {
   var saved = JSON.parse(localStorage.getItem(SESSION_KEY)||'{}');
   var sid = saved.studentId || saved.enrollmentNo;
   if (!sid) return;
+  feeWrap.innerHTML = loadingState('Loading fee dashboard...');
   gasGet({action:'getStudentFeeStatus', studentId:sid}, function(e,d) {
     if (e||!d||!d.found||!d.summaries||!d.summaries.length) { feeWrap.innerHTML=''; return; }
-    var html='<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;padding:0 2px">Fee Summary</div>';
-    d.summaries.forEach(function(f) {
-      var pct=f.netPayable>0?Math.round(f.collected/f.netPayable*100):0;
-      var cls=f.feeStatus==='Paid'?'fee-paid':f.feeStatus==='Overdue'?'fee-overdue':f.feeStatus==='Partial'?'fee-partial':'';
-      var sc=f.feeStatus==='Paid'?'#1D9E75':f.feeStatus==='Overdue'?'#C94A4A':f.feeStatus==='Partial'?'#B87A10':'var(--muted)';
-      html+='<div class="fee-card '+cls+'">';
-      html+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">';
-      html+='<div><div style="font-weight:600;font-size:13px;color:var(--navy)">'+f.course+'</div><div style="font-size:11px;color:var(--muted)">'+f.batchCode+'</div></div>';
-      html+='<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:10px;background:'+sc+'20;color:'+sc+'">'+f.feeStatus.toUpperCase()+'</span>';
-      html+='</div>';
-      html+='<div style="height:6px;background:var(--off);border-radius:3px;margin-bottom:10px;overflow:hidden"><div style="height:6px;width:'+pct+'%;background:'+sc+';border-radius:3px"></div></div>';
-      html+='<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid var(--off)"><span style="color:var(--muted)">Total Payable</span><strong style="font-family:monospace">₹'+Number(f.netPayable).toLocaleString('en-IN')+'</strong></div>';
-      html+='<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid var(--off)"><span style="color:var(--muted)">Amount Paid</span><strong style="font-family:monospace;color:#1D9E75">₹'+Number(f.collected).toLocaleString('en-IN')+'</strong></div>';
-      if(f.outstanding>0){html+='<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0"><span style="color:var(--muted)">Outstanding</span><strong style="font-family:monospace;color:#C94A4A">₹'+Number(f.outstanding).toLocaleString('en-IN')+'</strong></div>';}
-      if(f.nextDueDate){html+='<div style="margin-top:8px;background:'+sc+'15;border-radius:6px;padding:8px 10px;font-size:12px"><span style="font-weight:600;color:'+sc+'">Next due: '+f.nextDueDate+' — ₹'+Number(f.nextDueAmt).toLocaleString('en-IN')+'</span>'+(f.feeStatus==='Overdue'?' <span style="color:#C94A4A;font-weight:700">⚠ OVERDUE</span>':'')+'</div>';}
-      html+='</div>';
-    });
-    feeWrap.innerHTML=html;
+    feeWrap.innerHTML = renderStudentFeeDashboard(d.summaries);
   });
+}
+
+function renderStudentFeeDashboard(summaries) {
+  var html='<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;padding:0 2px">Fee Dashboard</div>';
+  summaries.forEach(function(f) {
+    var pct=f.netPayable>0?Math.min(100,Math.round(f.collected/f.netPayable*100)):0;
+    var balance = Math.max(Number(f.outstanding) || 0, 0);
+    var statusKey=String(f.feeStatus||'Pending').toLowerCase();
+    var cls=statusKey==='paid'?'fee-paid':statusKey==='overdue'?'fee-overdue':statusKey==='partial'?'fee-partial':'';
+    var bar=statusKey==='paid'?'#1D9E75':statusKey==='overdue'?'#C94A4A':statusKey==='partial'?'#C9A84C':'#A49A87';
+    html+='<div class="fee-card '+cls+'">';
+    html+='<div class="fee-head"><div><div class="fee-title">'+escShared(f.course||'Course fee')+'</div><div class="fee-meta">'+escShared(f.batchCode||'')+'</div></div><span class="fee-status '+escShared(statusKey)+'">'+escShared(f.feeStatus||'Pending')+'</span></div>';
+    html+='<div class="fee-progress"><span style="width:'+pct+'%;background:'+bar+'"></span></div>';
+    html+='<div class="fee-money-grid">';
+    html+='<div class="fee-money"><div class="k">Total Payable</div><div class="v">'+studentMoney(f.netPayable)+'</div></div>';
+    html+='<div class="fee-money"><div class="k">Paid</div><div class="v good">'+studentMoney(f.collected)+'</div></div>';
+    html+='<div class="fee-money"><div class="k">Balance</div><div class="v due">'+studentMoney(balance)+'</div></div>';
+    html+='</div>';
+    if (f.nextDueDate) {
+      html+='<div class="fee-next"><span>'+ (f.feeStatus==='Overdue'?'Overdue since':'Next due') +'</span><strong>'+escShared(f.nextDueDate)+' · '+studentMoney(f.nextDueAmt)+'</strong></div>';
+    }
+    html += renderStudentInstallments(f.installments || []);
+    html+='<div class="fee-note">For payment updates or receipt corrections, please contact your counselor.</div>';
+    html+='</div>';
+  });
+  return html;
+}
+
+function renderStudentInstallments(installments) {
+  var visible = installments.filter(function(x){ return Number(x.amount) > 0 || x.dueDate; });
+  if (!visible.length) return '';
+  var html='<div class="fee-inst">';
+  visible.forEach(function(inst, idx) {
+    var paid = inst.paid === 'Y';
+    var state = paid ? 'paid' : (inst.overdue ? 'due' : 'pending');
+    var dot = paid ? '✓' : String(idx + 1);
+    var label = paid ? 'Paid' : (inst.overdue ? 'Overdue' : 'Pending');
+    var date = paid && inst.paidDate ? 'Paid on ' + inst.paidDate : (inst.dueDate ? 'Due ' + inst.dueDate : 'Due date not set');
+    html+='<div class="fee-inst-row '+state+'"><span class="fee-inst-dot">'+dot+'</span><div class="fee-inst-main"><strong>Installment '+(idx+1)+' · '+label+'</strong><span>'+escShared(date)+'</span></div><div class="fee-inst-side">'+studentMoney(inst.amount)+'</div></div>';
+  });
+  html+='</div>';
+  return html;
+}
+
+function studentMoney(value) {
+  return '₹' + Number(value || 0).toLocaleString('en-IN');
 }
 </script>
 </body>

@@ -1757,20 +1757,32 @@ function doGet(e) {
     }
 
     if (act==='getStudentFeeStatus') {
-      var fsid=(p.studentId||p.enrollmentNo||'').trim();
+      var fsid=(p.studentId||p.enrollmentNo||'').trim().toUpperCase();
       if(!fsid) return respond({status:'ok',found:false});
       var sfsh=ss.getSheetByName(SH_FEES);
       if(!sfsh||sfsh.getLastRow()<2) return respond({status:'ok',found:false});
       var sfd=sfsh.getRange(2,1,sfsh.getLastRow()-1,41).getValues();
-      var sfr=sfd.filter(function(r){return String(r[0]).trim()===fsid&&r[0];});
+      var sfr=sfd.filter(function(r){return String(r[0]).trim().toUpperCase()===fsid&&r[0];});
       if(!sfr.length) return respond({status:'ok',found:false});
       return respond({status:'ok',found:true,summaries:sfr.map(function(r){
         var ft=normalizedFeeTotals(r);
         var ni=Number(r[17])||1;
-        var id=[{amt:r[18],due:r[19],paid:r[20]},{amt:r[24],due:r[25],paid:r[26]},{amt:r[30],due:r[31],paid:r[32]}];
+        var id=[
+          {amt:r[18],due:r[19],paid:r[20],paidDate:r[21]},
+          {amt:r[24],due:r[25],paid:r[26],paidDate:r[27]},
+          {amt:r[30],due:r[31],paid:r[32],paidDate:r[33]}
+        ];
         var nd=null,na=0;
         for(var xi=0;xi<ni;xi++){if(id[xi].paid!=='Y'&&id[xi].due){nd=new Date(id[xi].due).toLocaleDateString('en-IN');na=id[xi].amt;break;}}
-        return {batchCode:r[2],course:r[4],netPayable:ft.netPayable,collected:ft.collected,outstanding:ft.outstanding,feeStatus:ft.feeStatus,nextDueDate:nd,nextDueAmt:na};
+        var todayFee=new Date();todayFee.setHours(0,0,0,0);
+        return {batchCode:r[2],course:r[4],netPayable:ft.netPayable,collected:ft.collected,outstanding:ft.outstanding,feeStatus:ft.feeStatus,nextDueDate:nd,nextDueAmt:na,
+          installments:id.slice(0,ni).map(function(inst){
+            var due=inst.due?new Date(inst.due):null;
+            if(due) due.setHours(0,0,0,0);
+            return {amount:Number(inst.amt)||0,dueDate:inst.due?new Date(inst.due).toLocaleDateString('en-IN'):'',
+              paid:inst.paid==='Y'?'Y':'N',paidDate:inst.paidDate?new Date(inst.paidDate).toLocaleDateString('en-IN'):'',
+              overdue:inst.paid!=='Y'&&due&&due<todayFee};
+          })};
       })});
     }
 

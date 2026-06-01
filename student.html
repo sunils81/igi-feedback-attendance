@@ -50,7 +50,7 @@
 .anon-row .as{font-size:10px;color:var(--muted);margin-top:2px}
 .refresh-note{font-size:11px;color:var(--muted);text-align:center;margin-top:8px}
 .hist-card{background:var(--white);border-radius:var(--radius);border:1px solid var(--border);padding:16px;margin-top:14px}
-.hist-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--off)}
+.hist-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--off)}
 .hist-row:last-child{border-bottom:none}
 .hist-row.missed{opacity:.62}
 .hist-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
@@ -103,6 +103,7 @@
       </div>
       <button class="wb-logout" onclick="doLogout()">Sign out</button>
     </div>
+    <div id="student-summary" class="dashboard-summary"></div>
     <div id="portal-batches"></div>
   </div>
 
@@ -275,7 +276,7 @@ function fetchPortalData(enrol, mobileLast4, btn, err) {
         missing_params:    'Please fill all fields correctly.'
       };
       if (err) { err.textContent=msgs[d.reason]||'Could not log in. Please try again.'; err.classList.add('show'); }
-      else alert(msgs[d.reason]||'Session expired. Please log in again.');
+      else showToast(msgs[d.reason]||'Session expired. Please log in again.', 'error');
       return;
     }
     // Save session
@@ -289,9 +290,10 @@ function renderPortal(d) {
   document.getElementById('wb-name').textContent = d.studentName;
   document.getElementById('wb-date').textContent = new Date().toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
   const wrap = document.getElementById('portal-batches');
+  renderStudentSummary(d);
 
   if (!d.batches||!d.batches.length) {
-    wrap.innerHTML='<div class="card" style="text-align:center;padding:32px"><div style="font-size:40px;margin-bottom:12px">📚</div><h2 style="margin-bottom:8px">No active sessions today</h2><p style="font-size:13px;color:var(--muted)">You have no active batch for today, or today is a holiday / weekend.</p></div>';
+    wrap.innerHTML=emptyState('📚', 'No active sessions today', 'You have no active batch for today, or today is a holiday or weekend.');
     showScreen('s-portal'); return;
   }
 
@@ -358,7 +360,8 @@ function renderHistory(b) {
       </div>
       <div class="hist-pct">${s.pct}%</div>
     </div>
-    ${h.map(x=>`<div class="hist-row ${x.attended?'':'missed'}">
+    <div class="timeline-list">
+    ${h.map(x=>`<div class="timeline-card hist-row ${x.attended?'':'missed'}">
       <span class="hist-dot ${x.attended?'present':'missed'}"></span>
       <div class="hist-main">
         <div class="hist-title">Session ${x.sessNo} · ${x.sessionDate}</div>
@@ -366,7 +369,29 @@ function renderHistory(b) {
       </div>
       <span class="badge ${x.attended?'badge-green':'badge-amber'}">${x.attended?'Present':'Not marked'}</span>
     </div>`).join('')}
+    </div>
   </div>`;
+}
+
+function renderStudentSummary(d) {
+  const el = document.getElementById('student-summary');
+  if (!el) return;
+  const batches = d.batches || [];
+  const active = batches.find(b => b.sessionExists && b.windowActive && !b.alreadySubmitted);
+  const submitted = batches.filter(b => b.alreadySubmitted).length;
+  const next = active || batches.find(b => b.sessionExists) || batches[0];
+  let pct = '—';
+  for (let i = 0; i < batches.length; i++) {
+    if (batches[i].historySummary && batches[i].historySummary.total) {
+      pct = batches[i].historySummary.pct + '%';
+      break;
+    }
+  }
+  el.innerHTML =
+    '<div class="summary-tile ' + (submitted ? 'ok' : '') + '"><div class="k">Today\'s Status</div><div class="v">' + (submitted ? 'Done' : active ? 'Open' : 'Wait') + '</div><div class="s">' + (submitted ? 'Attendance submitted' : active ? 'Ready to submit' : 'No open window yet') + '</div></div>' +
+    '<div class="summary-tile"><div class="k">Upcoming Class</div><div class="v">' + (next ? 'S' + (next.sessNo || '—') : '—') + '</div><div class="s">' + (next ? (next.course || next.batchCode || 'Assigned batch') : 'No batch today') + '</div></div>' +
+    '<div class="summary-tile ok"><div class="k">Attendance %</div><div class="v">' + pct + '</div><div class="s">From recent history</div></div>' +
+    '<div class="summary-tile"><div class="k">Feedback</div><div class="v">' + submitted + '</div><div class="s">Submitted today</div></div>';
 }
 
 function startRefreshCountdowns(batches) {
@@ -524,6 +549,7 @@ function submitFeedback() {
       err.textContent='Could not submit. Please try again.'; err.classList.add('show'); return;
     }
     showThanks(false);
+    showToast('Attendance saved.');
     refreshPortal();
   });
 }

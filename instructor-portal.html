@@ -107,6 +107,8 @@
     <button class="tab" id="t-batchmgmt-tab" style="display:none" onclick="iTab('t-batchmgmt')">🏫 Batches</button>
   </div>
 
+  <div id="instructor-summary" class="dashboard-summary" style="display:none"></div>
+
   <!-- ── TAB 1: TODAY ── -->
   <div id="t-session" class="tab-content active">
     <!-- Today's auto-sessions per batch -->
@@ -115,7 +117,7 @@
       <h2 id="today-title">—</h2>
       <p class="sub">Sessions for today are created automatically. You can update the topic if needed or add an extra session.</p>
       <div id="today-batches-wrap">
-        <div class="spinner-wrap"><div class="spinner"></div><p>Loading your batches…</p></div>
+        <div class="spinner-wrap"><div class="spinner"></div><p>Preparing today's sessions…</p></div>
       </div>
     </div>
 
@@ -277,7 +279,7 @@
     </div>
     <div class="card">
       <div class="section-tag">Active Batches</div>
-      <div id="bm-list"><div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div></div>
+      <div id="bm-list"><div class="spinner-wrap"><div class="spinner"></div><p>Loading centre batches…</p></div></div>
     </div>
   </div>
 
@@ -286,7 +288,7 @@
     <div class="card">
       <div class="section-tag">My Batches</div>
       <h2 id="mb-title">—</h2>
-      <div id="mb-list"><div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div></div>
+      <div id="mb-list"><div class="spinner-wrap"><div class="spinner"></div><p>Loading your batches…</p></div></div>
     </div>
   </div>
 
@@ -301,6 +303,8 @@ let currentBatch   = '';
 let currentAssessmentId = '';
 let currentTotalMarks   = 0;
 let attendanceRefreshIv = null;
+let instructorBatchesCache = [];
+let instructorTodayCache = [];
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
@@ -365,6 +369,8 @@ function loadInstructorBatches() {
       return;
     }
     const batches = d.batches;
+    instructorBatchesCache = batches;
+    renderInstructorSummary();
     ['at-batch','mk-batch','ex-batch'].forEach(id => {
       const sel = document.getElementById(id);
       sel.innerHTML = '<option value="">Select a batch</option>';
@@ -388,7 +394,7 @@ function loadTodaySessions() {
   const title = document.getElementById('today-title');
   const today = new Date();
   title.textContent = 'Today — ' + today.toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'short',year:'numeric'});
-  wrap.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading your batches…</p></div>';
+  wrap.innerHTML = loadingState('Preparing today\'s sessions...');
   const centresParam = isDualRole ? dualCentres.join(',') : '';
   gasGet({action:'getInstructorTodaySessions', instructor:instructorName, centres:centresParam}, function(e,d) {
     if (e||!d) {
@@ -396,9 +402,13 @@ function loadTodaySessions() {
       return;
     }
     if (!d.batches||!d.batches.length) {
-      wrap.innerHTML='<div class="info-box">No sessions scheduled for today. If this is incorrect, check the Extra Session section below or contact your counselor.</div>';
+      instructorTodayCache = [];
+      renderInstructorSummary();
+      wrap.innerHTML=emptyState('🗓', 'No sessions scheduled for today', 'If this seems incorrect, use Extra Session below or contact your counselor.');
       return;
     }
+    instructorTodayCache = d.batches || [];
+    renderInstructorSummary();
     renderTodaySessions(d.batches);
   });
 }
@@ -416,7 +426,7 @@ function createTodaySession(batchCode) {
   }, function(e,d) {
     if (btn) { btn.textContent='Create Today\'s Session →'; btn.disabled=false; }
     if (e||!d||d.status!=='ok') {
-      alert(d&&d.reason==='session_exists_today'?'A session already exists for this batch today.':'Could not create session. Please try again.');
+      showToast(d&&d.reason==='session_exists_today'?'A session already exists for this batch today.':'Could not create session. Please try again.', 'error');
       loadTodaySessions();
       return;
     }
@@ -495,7 +505,7 @@ function renderTodaySessions(sessions) {
   var wrap = document.getElementById('today-batches-wrap');
   var slotColors = {'First Half':'day-badge-first','Second Half':'day-badge-second','Full Day':'day-badge-full'};
   if (!sessions.length) {
-    wrap.innerHTML = '<div class="info-box">No sessions today for your batches.</div>';
+    wrap.innerHTML = emptyState('🗓', 'No sessions today for your batches', 'When a class is scheduled, it will appear here with attendance controls.');
     return;
   }
   var html = '';
@@ -560,7 +570,8 @@ function updateTopic(sessionCode) {
   btn.textContent='Saving…'; btn.disabled=true;
   gasGet({action:'updateSessionTopic', sessionCode, topic, instructor:instructorName}, function(e,d) {
     btn.textContent='✓ Confirm Topic'; btn.disabled=false;
-    if (e||!d||d.status!=='ok') { alert('Could not update topic.'); return; }
+    if (e||!d||d.status!=='ok') { showToast('Could not update topic.', 'error'); return; }
+    showToast('Topic confirmed.');
     btn.style.background='#1D9E75';
     setTimeout(()=>{ btn.style.background=''; }, 2000);
     loadTodaySessions();
@@ -580,8 +591,8 @@ function showCancelDialog(sessionCode, batchCode) {
   };
   const finalReason = reasons[reason.trim()] || reason;
   gasGet({action:'cancelSession', sessionCode, reason:finalReason, cancelledBy:instructorName}, function(e,d) {
-    if (e||!d||d.status!=='ok') { alert('Could not cancel session.'); return; }
-    alert('✅ Session ' + sessionCode + ' cancelled. Students will see a cancellation notice. This day can be made up on a working Saturday.');
+    if (e||!d||d.status!=='ok') { showToast('Could not cancel session.', 'error'); return; }
+    showToast('Session ' + sessionCode + ' cancelled. Students will see the update.');
     loadTodaySessions();
   });
 }
@@ -608,7 +619,7 @@ function createExtraSession() {
   });
 }
 function copyLink() {
-  navigator.clipboard.writeText(document.getElementById('ss-link').value).then(()=>alert('✅ Copied!'));
+  navigator.clipboard.writeText(document.getElementById('ss-link').value).then(()=>showToast('Link copied.'));
 }
 function copyStudentMessage() {
   const studentLink = window.location.origin + '/student';
@@ -616,7 +627,7 @@ function copyStudentMessage() {
   const msg = 'IGI Attendance & Feedback\\n\\nPlease open ' + studentLink +
     ' and sign in with your Student ID and the last 4 digits of your mobile number.\\n\\n' +
     'Session code, if asked by a direct link: ' + code;
-  navigator.clipboard.writeText(msg).then(()=>alert('✅ Student message copied!'));
+  navigator.clipboard.writeText(msg).then(()=>showToast('Student message copied.'));
 }
 function waLink() {
   const studentLink = window.location.origin + '/student';
@@ -652,7 +663,7 @@ function loadSessionsForBatch() {
 
 function loadSessionTimeline(batch) {
   const wrap = document.getElementById('at-timeline');
-  wrap.innerHTML = '<div class="spinner-wrap" style="padding:14px"><div class="spinner"></div><p>Loading session history…</p></div>';
+  wrap.innerHTML = '<div class="spinner-wrap" style="padding:14px"><div class="spinner"></div><p>Preparing session timeline…</p></div>';
   gasGet({action:'getSessions', batchCode:batch}, function(e,d) {
     if (e||!d||!d.sessions||!d.sessions.length) { wrap.innerHTML=''; return; }
     wrap.innerHTML = '';
@@ -665,7 +676,7 @@ function loadSessionTimeline(batch) {
       sessHtml += '<div class="sm">' + (s.sessionDate||'') + ' · ' + (s.instructor||'') + (s.topic?' · '+s.topic.substring(0,40):'') + '</div>';
       sessHtml += '</div>';
     });
-    wrap.innerHTML = sessHtml || '<p style="color:var(--muted);font-size:13px">No sessions yet.</p>';
+    wrap.innerHTML = sessHtml || emptyState('🗓', 'No sessions recorded yet', 'Once class starts, the session timeline will appear here.');
     });
 }
 
@@ -688,7 +699,7 @@ function loadAttendance() {
   stopAttendanceRefresh();
   if (!sess||!batch) { wrap.innerHTML=''; return; }
   markTimelineActive(sess);
-  wrap.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading attendance…</p></div>';
+  wrap.innerHTML = loadingState('Loading attendance...');
   fetchAttendance(sess, batch);
   // Auto-refresh
   document.getElementById('at-live-badge').style.display='block';
@@ -744,10 +755,10 @@ function loadAssessments() {
   const list  = document.getElementById('mk-tests-list');
   if (!batch) { card.style.display='none'; return; }
   card.style.display='block';
-  list.innerHTML='<div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div>';
+  list.innerHTML=loadingState('Loading tests...');
   gasGet({action:'getAssessments', batchCode:batch}, function(e,d) {
     if (e||!d||!d.assessments||!d.assessments.length) {
-      list.innerHTML='<p style="font-size:13px;color:var(--muted)">No tests recorded yet. Create the first one below.</p>'; return;
+      list.innerHTML=emptyState('📝', 'No tests recorded yet', 'Create the first test below. Pending marks will be easy to spot here.'); return;
     }
     list.innerHTML = d.assessments.map(a=>`
       <div class="test-card" onclick="openTestMarks('${a.assessmentId}','${escJ(a.testName)}','${a.testDate}',${a.totalMarks},'${a.testType}')">
@@ -879,6 +890,7 @@ function saveMarks() {
     btn.textContent='Save All Marks ✓'; btn.disabled=false;
     if (e||!d||d.status!=='ok') { errEl.textContent='Could not save. Please try again.'; errEl.classList.add('show'); return; }
     // Show success briefly then go back
+    showToast('Marks saved.');
     btn.textContent='✅ Saved!';
     setTimeout(()=>{ btn.textContent='Save All Marks ✓'; showMarksList(); loadAssessments(); }, 1500);
   });
@@ -907,11 +919,11 @@ function createTest() {
 function loadMyBatches() {
   const list  = document.getElementById('mb-list');
   const title = document.getElementById('mb-title');
-  list.innerHTML='<div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div>';
+  list.innerHTML=loadingState('Loading your batches...');
   gasGet({action:'getInstructorBatches', instructor:instructorName}, function(e,d) {
     if (e||!d||!d.batches||!d.batches.length) {
       title.textContent='No batches assigned';
-      list.innerHTML='<p style="font-size:13px;color:var(--muted)">No batches assigned to you yet. Contact your centre counselor.</p>'; return;
+      list.innerHTML=emptyState('🏫', 'No batches assigned yet', 'Contact your centre counselor if you expected to see a batch here.'); return;
     }
     title.textContent=d.batches.length+' batch'+(d.batches.length!==1?'es':'')+' assigned';
     list.innerHTML = d.batches.map(b=>`
@@ -921,6 +933,22 @@ function loadMyBatches() {
         <div style="font-size:11px;color:var(--muted);margin-top:2px">${b.startDate} → ${b.endDate}</div>
       </div>`).join('');
   });
+}
+
+function renderInstructorSummary() {
+  const el = document.getElementById('instructor-summary');
+  if (!el) return;
+  const today = instructorTodayCache || [];
+  const activeSession = today.find(s => s.sessionCode && !s.cancelled);
+  const started = today.filter(s => s.sessionCode && !s.cancelled).length;
+  const pendingSessions = today.filter(s => !s.sessionCode && s.workingDay && s.activeToday).length;
+  const upcoming = today.filter(s => !s.sessionCode).length;
+  el.style.display = 'grid';
+  el.innerHTML =
+    '<div class="summary-tile ok"><div class="k">Today\'s Session</div><div class="v">' + (activeSession ? 'Live' : started || 0) + '</div><div class="s">' + (activeSession ? escH(activeSession.batchCode) : 'Started today') + '</div></div>' +
+    '<div class="summary-tile"><div class="k">Attendance Count</div><div class="v">' + started + '</div><div class="s">Sessions accepting attendance</div></div>' +
+    '<div class="summary-tile ' + (pendingSessions ? 'warn' : 'ok') + '"><div class="k">Pending Marks</div><div class="v">' + pendingSessions + '</div><div class="s">Sessions still to start</div></div>' +
+    '<div class="summary-tile"><div class="k">Upcoming Tests</div><div class="v">' + upcoming + '</div><div class="s">' + instructorBatchesCache.length + ' assigned batches</div></div>';
 }
 </script>
 </body>

@@ -10,11 +10,10 @@
 .qr-wrap{text-align:center;padding:16px;background:var(--white);border-radius:8px;border:1px solid var(--border);margin-top:12px}
 .qr-wrap img{width:160px;height:160px}
 .qr-link{font-size:11px;font-family:"DM Mono",monospace;color:var(--muted);margin-top:6px;word-break:break-all}
-.student-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;background:var(--off);margin-bottom:6px}
-.student-row .enr{font-family:"DM Mono",monospace;font-size:11px;color:var(--muted);width:110px;flex-shrink:0}
-.student-row .nm{flex:1;font-size:13px;font-weight:600}
-.student-row .last4{font-size:11px;color:var(--muted);margin-right:8px}
-.del-btn{background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;padding:2px 6px}
+.student-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.del-btn{background:var(--white);border:1px solid var(--border);border-radius:7px;cursor:pointer;color:var(--navy);font-size:11px;font-weight:700;padding:6px 9px}
+.del-btn.danger{color:var(--red);border-color:rgba(201,74,74,.28)}
+.student-count-row{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
 .batch-row{padding:10px 14px;border-radius:8px;background:var(--off);margin-bottom:8px;cursor:pointer;transition:background .15s}
 .batch-row:hover{background:var(--gold-pale)}
 .batch-row .bc{font-family:"DM Mono",monospace;font-size:12px;font-weight:700;color:var(--navy)}
@@ -140,6 +139,8 @@
     <button class="tab" onclick="switchTab('t-holidays')">🗓 Holidays</button>
   </div>
 
+  <div id="counselor-summary" class="dashboard-summary" style="display:none"></div>
+
   <!-- TAB 1: CREATE BATCH -->
   <div id="t-batches" class="tab-content active">
     <div class="card">
@@ -236,12 +237,12 @@
     <div class="card">
       <div class="section-tag">Action Needed</div>
       <h2>Batch Health</h2>
-      <div id="mb-health"><div class="spinner-wrap"><div class="spinner"></div><p>Checking…</p></div></div>
+      <div id="mb-health"><div class="spinner-wrap"><div class="spinner"></div><p>Checking setup details…</p></div></div>
     </div>
     <div class="card">
       <div class="section-tag">All Batches</div>
       <h2>Batch Overview</h2>
-      <div id="mb-list"><div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div></div>
+      <div id="mb-list"><div class="spinner-wrap"><div class="spinner"></div><p>Loading batch overview…</p></div></div>
     </div>
   </div>
 
@@ -253,7 +254,7 @@
       <div class="field"><label>Select Batch</label>
         <select id="rp-batch" onchange="loadCounselorReport()"><option value="">Select a batch</option></select>
       </div>
-      <div id="rp-wrap"><p style="font-size:13px;color:var(--muted)">Select a batch to see past sessions. Past sessions are greyed out.</p></div>
+      <div id="rp-wrap"><div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">Choose a batch to view its timeline</div><div class="empty-copy">Sessions, attendance chips, and test summaries will appear here.</div></div></div>
     </div>
     <div class="card" id="rp-marks-card" style="display:none">
       <div class="section-tag">Assessment Summary</div>
@@ -287,7 +288,7 @@
     <div class="card">
       <div class="section-tag">Holiday Calendar</div>
       <h2>Upcoming Excluded Days</h2>
-      <div id="hol-list"><div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div></div>
+      <div id="hol-list"><div class="spinner-wrap"><div class="spinner"></div><p>Loading holiday calendar…</p></div></div>
     </div>
   </div>
 
@@ -330,6 +331,11 @@ let allowedCentres  = [];
 let isAdmin         = false;
 let allBatches      = [];
 let counselorReportRequestId = 0;
+let counselorStudentsByBatch = {};
+
+function escC(v) {
+  return String(v || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
 function doLogin() {
   const nameVal = document.getElementById('lg-name').value;
@@ -483,7 +489,7 @@ function addHoliday() {
 function loadHolidayList() {
   const el = document.getElementById('hol-list');
   if (!el) return;
-  el.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div>';
+  el.innerHTML = loadingState('Loading holiday calendar...');
   gasGet({action:'getHolidays'}, function(e,d) {
     if (e||!d||!d.holidays) { el.innerHTML='<p style="color:var(--muted);font-size:13px">Could not load holidays.</p>'; return; }
     const today = new Date().toISOString().split('T')[0];
@@ -531,7 +537,7 @@ function createBatch() {
       loadBatchDropdowns();
       loadMyBatches();
       loadHolidayList();
-      alert('✅ Batch ' + batchCode + ' created successfully!');
+      showToast('Batch ' + batchCode + ' created successfully.');
       ['b-centre','b-course','b-type','b-start','b-end','b-rpass'].forEach(id=>{
         const el=document.getElementById(id);
         if(el.tagName==='SELECT') el.selectedIndex=0; else el.value='';
@@ -548,6 +554,7 @@ function loadBatchDropdowns(onDone) {
   gasGet({action:'getBatches', centres:centresParam}, function(e,d) {
     if (e||!d||!d.batches) { if(onDone) onDone(); return; }
     allBatches = d.batches || [];
+    updateCounselorSummary(allBatches);
     ['st-batch','rp-batch'].forEach(id => {
       const sel = document.getElementById(id);
       if (!sel) return;
@@ -572,11 +579,11 @@ function loadCounselorReport() {
   var marksCard = document.getElementById('rp-marks-card');
   var requestId = ++counselorReportRequestId;
   if (!batch) {
-    wrap.innerHTML = '<p style="font-size:13px;color:var(--muted)">Select a batch to view attendance.</p>';
+    wrap.innerHTML = emptyState('📊', 'Choose a batch to view its timeline', 'Sessions, attendance chips, and test summaries will appear here.');
     marksCard.style.display = 'none';
     return;
   }
-  wrap.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading report…</p></div>';
+  wrap.innerHTML = loadingState('Preparing attendance report...');
   marksCard.style.display = 'none';
   var slowTimer = setTimeout(function() {
     if (requestId !== counselorReportRequestId) return;
@@ -591,7 +598,7 @@ function loadCounselorReport() {
       return;
     }
     if (!d.sessions || !d.sessions.length) {
-      wrap.innerHTML = '<p style="font-size:13px;color:var(--muted)">No sessions yet for this batch.</p>';
+      wrap.innerHTML = emptyState('🗓', 'No sessions recorded yet', 'Once an instructor starts class, attendance and feedback details will appear here.');
       return;
     }
     var today = new Date(); today.setHours(0, 0, 0, 0);
@@ -601,6 +608,7 @@ function loadCounselorReport() {
     html += '<div class="report-stat"><div class="report-stat-value">' + d.totalSessions + '</div><div class="report-stat-label">Sessions</div></div>';
     html += '<div class="report-stat"><div class="report-stat-value">' + (d.totalSessions ? Math.round((d.students || []).reduce(function(sum, st){ return sum + (Number(st.streakPct) || 0); }, 0) / Math.max(d.totalStudents, 1)) : 0) + '%</div><div class="report-stat-label">Avg Attendance</div></div>';
     html += '</div>';
+    html += '<div class="timeline-list">';
     var sessions = d.sessions.slice().reverse();
     for (var i = 0; i < sessions.length; i++) {
       var s = sessions[i];
@@ -625,10 +633,10 @@ function loadCounselorReport() {
       var sd  = parts.length === 3 ? new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0])) : null;
       var isToday = sd && sd.getTime() === today.getTime();
       var cancelled = String(s.sessionType || '').toLowerCase() === 'cancelled';
-      html += '<div class="attendance-card' + (isToday ? ' today' : '') + (cancelled ? ' cancelled' : '') + '">';
+      html += '<div class="timeline-card attendance-card' + (isToday ? ' today' : '') + (cancelled ? ' cancelled' : '') + '">';
       html += '<div class="attendance-head">';
-      html += '<div><div class="attendance-title"><span>Session ' + s.sessNo + '</span><span>&middot;</span><span>' + s.sessionDate + '</span>' + (isToday ? '<span class="today-pill">Today</span>' : '') + (cancelled ? '<span class="cancelled-pill">Cancelled</span>' : '') + '</div>';
-      html += '<div class="attendance-topic">' + (s.topic || 'Topic not set') + '</div></div>';
+      html += '<div><div class="attendance-title"><span>Session ' + escC(s.sessNo) + '</span><span>&middot;</span><span>' + escC(s.sessionDate) + '</span>' + (isToday ? '<span class="today-pill">Today</span>' : '') + (cancelled ? '<span class="cancelled-pill">Cancelled</span>' : '') + '</div>';
+      html += '<div class="attendance-topic">' + escC(s.topic || 'Topic not set') + '</div></div>';
       html += '<div class="attendance-score"><strong>' + presentStudents.length + '/' + d.totalStudents + '</strong><span>Present</span></div>';
       html += '</div>';
       if (!cancelled) {
@@ -636,7 +644,7 @@ function loadCounselorReport() {
         html += '<div class="student-panel present"><div class="student-panel-head"><div class="student-panel-title">Present</div><div class="student-panel-count">' + presentStudents.length + '</div></div>';
         if (presentStudents.length) {
           html += '<div class="student-chip-grid">';
-          for (var p = 0; p < presentStudents.length; p++) html += '<span class="student-chip present">' + presentStudents[p] + '</span>';
+          for (var p = 0; p < presentStudents.length; p++) html += '<span class="student-chip present">' + escC(presentStudents[p]) + '</span>';
           html += '</div>';
         } else {
           html += '<div style="font-size:12px;color:var(--muted)">No students marked present.</div>';
@@ -645,7 +653,7 @@ function loadCounselorReport() {
         html += '<div class="student-panel absent"><div class="student-panel-head"><div class="student-panel-title">Absent</div><div class="student-panel-count">' + absentStudents.length + '</div></div>';
         if (absentStudents.length) {
           html += '<div class="student-chip-grid">';
-          for (var q = 0; q < absentStudents.length; q++) html += '<span class="student-chip absent">' + absentStudents[q] + '</span>';
+          for (var q = 0; q < absentStudents.length; q++) html += '<span class="student-chip absent">' + escC(absentStudents[q]) + '</span>';
           html += '</div>';
         } else {
           html += '<div style="font-size:12px;color:var(--muted)">Everyone attended.</div>';
@@ -654,6 +662,7 @@ function loadCounselorReport() {
       }
       html += '</div>';
     }
+    html += '</div>';
     wrap.innerHTML = html;
 
     // Load test marks summary separately (non-blocking)
@@ -709,21 +718,45 @@ function fetchNextEnroll(batch) {
 function renderStudentList(batch) {
   const listEl = document.getElementById('st-list');
   const titleEl= document.getElementById('st-list-title');
-  listEl.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div>';
+  listEl.innerHTML = loadingState('Loading students...');
   gasGet({action:'getStudents', batchCode:batch}, function(e,d) {
-    if (e||!d) { listEl.innerHTML='<p style="color:var(--muted);font-size:13px">Could not load students.</p>'; return; }
+    if (e||!d) { listEl.innerHTML=emptyState('!', 'Could not load students', 'Please refresh or try again in a moment.'); return; }
+    counselorStudentsByBatch[batch] = d.students || [];
     titleEl.textContent = (d.students||[]).length + ' students enrolled';
-    if (!d.students.length) { listEl.innerHTML='<p style="color:var(--muted);font-size:13px">No students yet. Add the first one above.</p>'; return; }
-    listEl.innerHTML = d.students.map(s=>`
-      <div class="student-row">
-        <div class="enr">${s.enrollmentNo}</div>
-        <div class="nm">${s.name}</div>
-        <div class="last4">Mobile last 4: ${s.mobileLast4||s.dob||''}</div>
-        <div class="last4">${welcomeEmailLabel(s)}</div>
-        <button class="del-btn" title="Resend welcome email" onclick="resendWelcomeEmail('${s.enrollmentNo}','${batch}')">Email</button>
-        <button class="del-btn" onclick="removeStudent('${s.enrollmentNo}','${batch}')">✕</button>
-      </div>`).join('');
+    renderStudentTable(batch, '');
   });
+}
+
+function renderStudentTable(batch, query) {
+  const listEl = document.getElementById('st-list');
+  const students = counselorStudentsByBatch[batch] || [];
+  if (!students.length) {
+    listEl.innerHTML = emptyState('👥', 'No students added to this batch yet', 'Add the first student above. Their Student ID and mobile last 4 will unlock the Student Portal.');
+    return;
+  }
+  const q = String(query || '').toLowerCase();
+  const filtered = students.filter(s =>
+    String(s.name || '').toLowerCase().includes(q) ||
+    String(s.enrollmentNo || '').toLowerCase().includes(q) ||
+    String(s.mobileLast4 || s.dob || '').toLowerCase().includes(q)
+  );
+  let html = '<div class="student-count-row"><input class="search-input" style="max-width:320px;margin-bottom:0" placeholder="Search students..." oninput="renderStudentTable(\'' + escC(batch) + '\', this.value)"><span class="badge badge-blue">' + filtered.length + ' shown</span></div>';
+  if (!filtered.length) {
+    listEl.innerHTML = html + emptyState('🔎', 'No matching students', 'Try a name, Student ID, or mobile last 4.');
+    return;
+  }
+  html += '<table class="compact-table"><thead><tr><th>Student</th><th>Mobile</th><th>Email Status</th><th>Actions</th></tr></thead><tbody>';
+  html += filtered.map(s => {
+    const emailLabel = welcomeEmailLabel(s);
+    return '<tr>' +
+      '<td><strong>' + escC(s.name) + '</strong><div style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--muted)">' + escC(s.enrollmentNo) + '</div></td>' +
+      '<td><span class="badge badge-amber">Last 4: ' + escC(s.mobileLast4 || s.dob || '') + '</span></td>' +
+      '<td><span class="badge ' + (String(emailLabel).indexOf('failed') >= 0 ? 'badge-red' : 'badge-green') + '">' + escC(emailLabel) + '</span></td>' +
+      '<td><div class="student-actions"><button class="del-btn" title="Resend welcome email" onclick="resendWelcomeEmail(\'' + escC(s.enrollmentNo) + '\',\'' + escC(batch) + '\')">Email</button><button class="del-btn danger" onclick="removeStudent(\'' + escC(s.enrollmentNo) + '\',\'' + escC(batch) + '\')">Remove</button></div></td>' +
+    '</tr>';
+  }).join('');
+  html += '</tbody></table>';
+  listEl.innerHTML = html;
 }
 
 function renderStudentBatchChoices(selectedBatches) {
@@ -826,6 +859,7 @@ function showStudentEmailResult(emailResult, prefix) {
     errEl.style.color='var(--teal)';
   }
   errEl.classList.add('show');
+  showToast(errEl.textContent, errEl.style.color === 'var(--red)' ? 'error' : 'success');
 }
 
 function resendWelcomeEmail(enrollmentNo, batch) {
@@ -846,7 +880,7 @@ function resendWelcomeEmail(enrollmentNo, batch) {
 
 function removeStudent(enrollmentNo, batch) {
   if (!confirm('Remove ' + enrollmentNo + ' from this batch?')) return;
-  gasGet({action:'removeStudent',enrollmentNo}, function() { renderStudentList(batch); });
+  gasGet({action:'removeStudent',enrollmentNo}, function() { showToast('Student removed from batch.'); renderStudentList(batch); });
 }
 
 // ── Create Session ────────────────────────────────────────────
@@ -882,7 +916,7 @@ function createSession() {
 
 function copyLink() {
   navigator.clipboard.writeText(document.getElementById('ss-link').value)
-    .then(()=>alert('✅ Link copied!'));
+    .then(()=>showToast('Link copied.'));
 }
 function whatsappLink() {
   const link = document.getElementById('ss-link').value;
@@ -897,13 +931,13 @@ function whatsappLink() {
 function loadMyBatches() {
   const el = document.getElementById('mb-list');
   const health = document.getElementById('mb-health');
-  el.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div>';
-  if (health) health.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Checking…</p></div>';
+  el.innerHTML = loadingState('Loading batch overview...');
+  if (health) health.innerHTML = loadingState('Checking setup details...');
   const centresParam = isAdmin ? '' : allowedCentres.join(',');
   gasGet({action:'getBatches', centres:centresParam}, function(e,d) {
     if (e||!d||!d.batches||!d.batches.length) {
       if (health) health.innerHTML = '<div class="health-item ok"><span class="health-icon">✓</span><div>No batches to check yet.</div></div>';
-      el.innerHTML='<p style="color:var(--muted);font-size:13px">No batches yet. Create your first batch.</p>'; return;
+      el.innerHTML=emptyState('🏫', 'No batches created yet', 'Create a batch from Batch Setup and it will appear here.'); return;
     }
     renderBatchHealth(d.batches);
     el.innerHTML = d.batches.map(b=>`
@@ -930,9 +964,10 @@ function renderInlineInstructorAssign(batchCode) {
 function saveInlineInstructor(batchCode) {
   const sel = document.getElementById('assign-'+batchCode);
   const instructor = sel ? sel.value : '';
-  if (!instructor) { alert('Please select an instructor.'); return; }
+  if (!instructor) { showToast('Please select an instructor.', 'error'); return; }
   gasGet({action:'assignInstructor', batchCode, instructor}, function(e,d) {
-    if (e||!d||d.status!=='ok') { alert('Could not assign instructor. Please try again.'); return; }
+    if (e||!d||d.status!=='ok') { showToast('Could not assign instructor. Please try again.', 'error'); return; }
+    showToast('Instructor assigned.');
     loadMyBatches();
     loadBatchDropdowns();
   });
@@ -962,6 +997,47 @@ function renderBatchHealth(batches) {
     items.push('<div class="health-item ok"><span class="health-icon">✓</span><div>All visible batches have instructors assigned. Nothing urgent here.</div></div>');
   }
   health.innerHTML = `<div class="health-list">${items.join('')}</div>`;
+}
+
+function updateCounselorSummary(batches) {
+  const el = document.getElementById('counselor-summary');
+  if (!el) return;
+  const visible = batches || [];
+  const pending = visible.filter(b => !b.instructor).length;
+  el.style.display = 'grid';
+  renderCounselorSummaryTiles({batches:visible.length, students:'...', today:'...', pending});
+  if (!visible.length) {
+    renderCounselorSummaryTiles({batches:0, students:0, today:0, pending:0});
+    return;
+  }
+  let studentTotal = 0;
+  let todaySessions = 0;
+  let remaining = visible.length * 2;
+  const today = new Date().toLocaleDateString('en-IN');
+  const done = () => {
+    remaining--;
+    if (remaining <= 0) renderCounselorSummaryTiles({batches:visible.length, students:studentTotal, today:todaySessions, pending});
+  };
+  visible.forEach(b => {
+    gasGet({action:'getStudents', batchCode:b.batchCode}, function(e,d) {
+      if (!e && d && d.students) studentTotal += d.students.length;
+      done();
+    });
+    gasGet({action:'getSessions', batchCode:b.batchCode}, function(e,d) {
+      if (!e && d && d.sessions) todaySessions += d.sessions.filter(s => s.sessionDate === today).length;
+      done();
+    });
+  });
+}
+
+function renderCounselorSummaryTiles(stats) {
+  const el = document.getElementById('counselor-summary');
+  if (!el) return;
+  el.innerHTML =
+    '<div class="summary-tile"><div class="k">Active Batches</div><div class="v">' + stats.batches + '</div><div class="s">Visible to your login</div></div>' +
+    '<div class="summary-tile"><div class="k">Students</div><div class="v">' + stats.students + '</div><div class="s">Across active batches</div></div>' +
+    '<div class="summary-tile ok"><div class="k">Today\'s Sessions</div><div class="v">' + stats.today + '</div><div class="s">Started or scheduled today</div></div>' +
+    '<div class="summary-tile ' + (stats.pending ? 'warn' : 'ok') + '"><div class="k">Setup Issues</div><div class="v">' + stats.pending + '</div><div class="s">' + (stats.pending ? 'Need attention' : 'All clear') + '</div></div>';
 }
 // Instructor assignment now handled during batch creation
 

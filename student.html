@@ -59,6 +59,11 @@
 .hist-title{font-size:12px;font-weight:700;color:var(--navy)}
 .hist-meta{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hist-pct{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--navy)}
+
+.fee-card{background:var(--white);border-radius:var(--radius);border:1.5px solid var(--border);padding:16px;margin-bottom:10px}
+.fee-card.fee-paid{border-color:#1D9E75;background:#F0FAF5}
+.fee-card.fee-overdue{border-color:#C94A4A;background:#FEF2F2}
+.fee-card.fee-partial{border-color:var(--gold);background:var(--gold-pale)}
 </style>
 </head>
 <body>
@@ -105,6 +110,7 @@
     </div>
     <div id="student-summary" class="dashboard-summary"></div>
     <div id="portal-batches"></div>
+  <div id="portal-fees" style="margin-top:8px"></div>
   </div>
 
   <!-- ══ FEEDBACK MODAL ══ -->
@@ -344,6 +350,7 @@ function renderPortal(d) {
   }).join('');
 
   showScreen('s-portal');
+  loadStudentFees();
   // Start countdown refresh for waiting sessions
   startRefreshCountdowns(d.batches);
 }
@@ -573,6 +580,35 @@ function showThanks(alreadyDone) {
 }
 
 function backToPortal() { showScreen('s-portal'); }
+
+function loadStudentFees() {
+  var feeWrap = document.getElementById('portal-fees');
+  if (!feeWrap || !portalData) return;
+  var saved = JSON.parse(localStorage.getItem(SESSION_KEY)||'{}');
+  var sid = saved.studentId || saved.enrollmentNo;
+  if (!sid) return;
+  gasGet({action:'getStudentFeeStatus', studentId:sid}, function(e,d) {
+    if (e||!d||!d.found||!d.summaries||!d.summaries.length) { feeWrap.innerHTML=''; return; }
+    var html='<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;padding:0 2px">Fee Summary</div>';
+    d.summaries.forEach(function(f) {
+      var pct=f.netPayable>0?Math.round(f.collected/f.netPayable*100):0;
+      var cls=f.feeStatus==='Paid'?'fee-paid':f.feeStatus==='Overdue'?'fee-overdue':f.feeStatus==='Partial'?'fee-partial':'';
+      var sc=f.feeStatus==='Paid'?'#1D9E75':f.feeStatus==='Overdue'?'#C94A4A':f.feeStatus==='Partial'?'#B87A10':'var(--muted)';
+      html+='<div class="fee-card '+cls+'">';
+      html+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">';
+      html+='<div><div style="font-weight:600;font-size:13px;color:var(--navy)">'+f.course+'</div><div style="font-size:11px;color:var(--muted)">'+f.batchCode+'</div></div>';
+      html+='<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:10px;background:'+sc+'20;color:'+sc+'">'+f.feeStatus.toUpperCase()+'</span>';
+      html+='</div>';
+      html+='<div style="height:6px;background:var(--off);border-radius:3px;margin-bottom:10px;overflow:hidden"><div style="height:6px;width:'+pct+'%;background:'+sc+';border-radius:3px"></div></div>';
+      html+='<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid var(--off)"><span style="color:var(--muted)">Total Payable</span><strong style="font-family:monospace">₹'+Number(f.netPayable).toLocaleString('en-IN')+'</strong></div>';
+      html+='<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid var(--off)"><span style="color:var(--muted)">Amount Paid</span><strong style="font-family:monospace;color:#1D9E75">₹'+Number(f.collected).toLocaleString('en-IN')+'</strong></div>';
+      if(f.outstanding>0){html+='<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0"><span style="color:var(--muted)">Outstanding</span><strong style="font-family:monospace;color:#C94A4A">₹'+Number(f.outstanding).toLocaleString('en-IN')+'</strong></div>';}
+      if(f.nextDueDate){html+='<div style="margin-top:8px;background:'+sc+'15;border-radius:6px;padding:8px 10px;font-size:12px"><span style="font-weight:600;color:'+sc+'">Next due: '+f.nextDueDate+' — ₹'+Number(f.nextDueAmt).toLocaleString('en-IN')+'</span>'+(f.feeStatus==='Overdue'?' <span style="color:#C94A4A;font-weight:700">⚠ OVERDUE</span>':'')+'</div>';}
+      html+='</div>';
+    });
+    feeWrap.innerHTML=html;
+  });
+}
 </script>
 </body>
 </html>

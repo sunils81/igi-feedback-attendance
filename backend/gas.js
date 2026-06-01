@@ -8,7 +8,31 @@ const SHEET_ID       = '1UKMgHN9onP_bfr2nOyCvRW4dGqWnh3thzZwf-BCn3cs';
 const COUNSELOR_PASS = 'IGI2026';
 const MASTER_PASS    = 'IGIMaster2026';
 const REPORT_PASS    = 'IGI2026';          // session report uses same password
-const PASS_THRESHOLD = 60;                 // % pass mark
+const PASS_THRESHOLD = 60;
+
+const COURSE_FEES = {
+  'Diamond Graduate':                    {fee:165900, regFee:25000, gst:18},
+  'Colored Stone Graduate':              {fee:185900, regFee:25000, gst:18},
+  'Graduate Gemologist':                 {fee:351800, regFee:50000, gst:18},
+  'JewelPad Design':                     {fee:41900,  regFee:0,     gst:18},
+  'Navratna Masterclass (10 Half Days)': {fee:51900,  regFee:0,     gst:18},
+  'Navratna Masterclass (5 Full Days)':  {fee:51900,  regFee:0,     gst:18},
+  'Gem-A Foundation':                    {fee:285500, regFee:0,     gst:18},
+  'Gem-A Diploma':                       {fee:422500, regFee:0,     gst:18},
+  'Jewelry Design Manual':               {fee:103900, regFee:0,     gst:18},
+  'Polished Diamond Grading':            {fee:99900,  regFee:0,     gst:18},
+  'Small Diamond Assortment':            {fee:14900,  regFee:0,     gst:18},
+  'Rough Diamond':                       {fee:51900,  regFee:0,     gst:18},
+  'iRES':                                {fee:35900,  regFee:0,     gst:18},
+  'Diamond Essentials 5Cs':            {fee:25900,  regFee:0,     gst:18},
+  'JD-CAD':                              {fee:82900,  regFee:0,     gst:18},
+  'Smart Learning DG':                   {fee:114900, regFee:0,     gst:18},
+  'Smart Learning CSG':                  {fee:114900, regFee:0,     gst:18},
+  'Smart Learning GG':                   {fee:229800, regFee:0,     gst:18}
+};
+const SH_FEES     = 'Student_Fees';
+const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
+  'RTGS / Bank Transfer','Collexo (Online)','Cheque','Demand Draft'];                 // % pass mark
 const STUDENT_PORTAL_URL = 'https://igi-feedback-attendance.vercel.app/student';
 
 // ── Slot activation windows (local time hours) ────────────────
@@ -1539,6 +1563,127 @@ function doGet(e) {
         };
       });
       return respond({status:'ok', sessions});
+    }
+
+    if (act==='getCourseFees') return respond({status:'ok',fees:COURSE_FEES,modes:PAYMENT_MODES});
+
+    if (act==='saveFeeRecord') {
+      ensureSheets(ss);
+      var sh=ss.getSheetByName(SH_FEES);
+      var sid=(p.studentId||'').trim(),bc=(p.batchCode||'').trim().toUpperCase();
+      if (!sid||!bc) return respond({status:'error',reason:'missing_params'});
+      var cf=COURSE_FEES[p.course]||{fee:0,regFee:0,gst:18};
+      var courseFee=Number(p.courseFee)||cf.fee;
+      var gstAmt=Math.round(courseFee*cf.gst/100),courseFeeG=courseFee+gstAmt;
+      var regFee=Number(p.regFee)||cf.regFee,regGst=Math.round(regFee*cf.gst/100),regFeeG=regFee+regGst;
+      var discPct=Number(p.discountPct)||0;
+      var discAmt=Number(p.discountAmt)||Math.round((courseFeeG+regFeeG)*discPct/100);
+      var tdsPct=Number(p.tdsPct)||0;
+      var tdsAmt=Number(p.tdsAmt)||Math.round((courseFeeG+regFeeG-discAmt)*tdsPct/100);
+      var netPayable=courseFeeG+regFeeG-discAmt-tdsAmt;
+      var nInst=Number(p.nInst)||1;
+      var insts=[];
+      for (var ii=1;ii<=3;ii++) {
+        insts.push([Number(p['inst'+ii+'Amt'])||0,
+          p['inst'+ii+'Due']?new Date(p['inst'+ii+'Due']):'',
+          p['inst'+ii+'Paid']==='Y'?'Y':'N',
+          p['inst'+ii+'PaidDate']?new Date(p['inst'+ii+'PaidDate']):'',
+          p['inst'+ii+'Mode']||'',p['inst'+ii+'Ref']||'']);
+      }
+      var collected=0,overdue=false;
+      var tod=new Date();tod.setHours(0,0,0,0);
+      for (var ji=0;ji<nInst;ji++){
+        if(insts[ji][2]==='Y') collected+=Number(insts[ji][0]);
+        else if(insts[ji][1]&&new Date(insts[ji][1])<tod) overdue=true;
+      }
+      var outstanding=netPayable-collected;
+      var feeStatus=collected>=netPayable?'Paid':overdue?'Overdue':collected>0?'Partial':'Pending';
+      var row=[sid,p.studentName||'',bc,p.centre||'',p.course||'',
+        courseFee,gstAmt,courseFeeG,regFee,regGst,regFeeG,
+        discPct,discAmt,p.discountReason||'',tdsPct,tdsAmt,netPayable,nInst,
+        insts[0][0],insts[0][1],insts[0][2],insts[0][3],insts[0][4],insts[0][5],
+        insts[1][0],insts[1][1],insts[1][2],insts[1][3],insts[1][4],insts[1][5],
+        insts[2][0],insts[2][1],insts[2][2],insts[2][3],insts[2][4],insts[2][5],
+        collected,outstanding,feeStatus,p.enteredBy||'Counselor',new Date().toISOString()];
+      var rowIdx=-1;
+      if(sh.getLastRow()>1){
+        var ex=sh.getRange(2,1,sh.getLastRow()-1,3).getValues();
+        for(var ki=0;ki<ex.length;ki++){if(String(ex[ki][0]).trim()===sid&&String(ex[ki][2]).trim().toUpperCase()===bc){rowIdx=ki+2;break;}}
+      }
+      if(rowIdx>0) sh.getRange(rowIdx,1,1,row.length).setValues([row]);
+      else{sh.appendRow(row);rowIdx=sh.getLastRow();}
+      var bgM={Paid:'#E8F5EE',Partial:'#FFF9E6',Pending:'#F4F1EB',Overdue:'#FEF2F2'};
+      sh.getRange(rowIdx,1,1,row.length).setBackground(bgM[feeStatus]||'#F4F1EB');
+      [20,26,32].forEach(function(col,i){if(insts[i][1])sh.getRange(rowIdx,col).setNumberFormat('dd/mm/yyyy');});
+      [22,28,34].forEach(function(col,i){if(insts[i][3])sh.getRange(rowIdx,col).setNumberFormat('dd/mm/yyyy');});
+      return respond({status:'ok',feeStatus,netPayable,collected,outstanding});
+    }
+
+    if (act==='getFeeRecords') {
+      var shf=ss.getSheetByName(SH_FEES);
+      if(!shf||shf.getLastRow()<2) return respond({status:'ok',records:[]});
+      var fdata=shf.getRange(2,1,shf.getLastRow()-1,41).getValues();
+      var fbc=(p.batchCode||'').toUpperCase();
+      var fcentres=(p.centres||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+      return respond({status:'ok',records:fdata.filter(function(r){
+        if(!r[0]) return false;
+        if(fbc&&String(r[2]).toUpperCase()!==fbc) return false;
+        if(fcentres.length&&!fcentres.includes(r[3])) return false;
+        return true;
+      }).map(function(r){
+        return {studentId:r[0],studentName:r[1],batchCode:r[2],centre:r[3],course:r[4],
+          courseFee:r[5],gstAmt:r[6],courseFeeG:r[7],regFee:r[8],regGst:r[9],regFeeG:r[10],
+          discPct:r[11],discAmt:r[12],discReason:r[13],tdsPct:r[14],tdsAmt:r[15],
+          netPayable:r[16],nInst:r[17],
+          inst1:{amt:r[18],due:r[19]?new Date(r[19]).toLocaleDateString('en-IN'):'',paid:r[20],paidDate:r[21]?new Date(r[21]).toLocaleDateString('en-IN'):'',mode:r[22],ref:r[23]},
+          inst2:{amt:r[24],due:r[25]?new Date(r[25]).toLocaleDateString('en-IN'):'',paid:r[26],paidDate:r[27]?new Date(r[27]).toLocaleDateString('en-IN'):'',mode:r[28],ref:r[29]},
+          inst3:{amt:r[30],due:r[31]?new Date(r[31]).toLocaleDateString('en-IN'):'',paid:r[32],paidDate:r[33]?new Date(r[33]).toLocaleDateString('en-IN'):'',mode:r[34],ref:r[35]},
+          collected:r[36],outstanding:r[37],feeStatus:r[38],enteredBy:r[39]};
+      })});
+    }
+
+    if (act==='getStudentFeeStatus') {
+      var fsid=(p.studentId||p.enrollmentNo||'').trim();
+      if(!fsid) return respond({status:'ok',found:false});
+      var sfsh=ss.getSheetByName(SH_FEES);
+      if(!sfsh||sfsh.getLastRow()<2) return respond({status:'ok',found:false});
+      var sfd=sfsh.getRange(2,1,sfsh.getLastRow()-1,41).getValues();
+      var sfr=sfd.filter(function(r){return String(r[0]).trim()===fsid&&r[0];});
+      if(!sfr.length) return respond({status:'ok',found:false});
+      return respond({status:'ok',found:true,summaries:sfr.map(function(r){
+        var ni=Number(r[17])||1;
+        var id=[{amt:r[18],due:r[19],paid:r[20]},{amt:r[24],due:r[25],paid:r[26]},{amt:r[30],due:r[31],paid:r[32]}];
+        var nd=null,na=0;
+        for(var xi=0;xi<ni;xi++){if(id[xi].paid!=='Y'&&id[xi].due){nd=new Date(id[xi].due).toLocaleDateString('en-IN');na=id[xi].amt;break;}}
+        return {batchCode:r[2],course:r[4],netPayable:r[16],collected:r[36],outstanding:r[37],feeStatus:r[38],nextDueDate:nd,nextDueAmt:na};
+      })});
+    }
+
+    if (act==='getRevenueSummary') {
+      if(p.masterPass!==MASTER_PASS) return respond({status:'error',reason:'auth'});
+      var rvsh=ss.getSheetByName(SH_FEES);
+      if(!rvsh||rvsh.getLastRow()<2) return respond({status:'ok',national:{expected:0,collected:0,outstanding:0,overdue:0},centres:[],batches:[],modes:{}});
+      var rvd=rvsh.getRange(2,1,rvsh.getLastRow()-1,41).getValues().filter(function(r){return r[0];});
+      var nE=0,nC=0,nO=0,nOv=0,cM={},bM={},mM={};
+      rvd.forEach(function(r){
+        var net=Number(r[16])||0,coll=Number(r[36])||0,out=Number(r[37])||0;
+        var st=r[38],cen=r[3],bc=r[2];
+        nE+=net;nC+=coll;nO+=out;
+        if(st==='Overdue') nOv+=out;
+        if(!cM[cen]) cM[cen]={centre:cen,expected:0,collected:0,outstanding:0,overdue:0,students:0,bs:{}};
+        cM[cen].expected+=net;cM[cen].collected+=coll;cM[cen].outstanding+=out;cM[cen].students++;cM[cen].bs[bc]=1;
+        if(st==='Overdue') cM[cen].overdue+=out;
+        if(!bM[bc]) bM[bc]={batchCode:bc,centre:cen,course:r[4],expected:0,collected:0,outstanding:0,students:0,overdue:0};
+        bM[bc].expected+=net;bM[bc].collected+=coll;bM[bc].outstanding+=out;bM[bc].students++;
+        if(st==='Overdue') bM[bc].overdue+=out;
+        [[r[20],r[22],r[18]],[r[26],r[28],r[24]],[r[32],r[34],r[30]]].forEach(function(x){
+          if(x[0]==='Y'&&x[1]) mM[x[1]]=(mM[x[1]]||0)+(Number(x[2])||0);
+        });
+      });
+      return respond({status:'ok',
+        national:{expected:nE,collected:nC,outstanding:nO,overdue:nOv},
+        centres:Object.values(cM).map(function(c){return {centre:c.centre,expected:c.expected,collected:c.collected,outstanding:c.outstanding,overdue:c.overdue,students:c.students,batches:Object.keys(c.bs).length};}),
+        batches:Object.values(bM),modes:mM});
     }
 
     return respond({status:'error',reason:'unknown_action'});

@@ -97,6 +97,23 @@
       </div>
     </div>
 
+    <!-- Revenue Tab -->
+    <div id="m-revenue" class="tab-content">
+      <div class="card">
+        <div class="section-tag">Revenue Dashboard</div>
+        <h2>National Fee Collection</h2>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
+          <div style="background:var(--off);border-radius:10px;padding:14px;text-align:center"><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Total Expected</div><div id="rev-expected" style="font-size:20px;font-weight:700;font-family:monospace;color:var(--navy)">&#8212;</div></div>
+          <div style="background:#E8F5EE;border-radius:10px;padding:14px;text-align:center"><div style="font-size:10px;color:#1a7a3c;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Collected</div><div id="rev-collected" style="font-size:20px;font-weight:700;font-family:monospace;color:#1a7a3c">&#8212;</div><div id="rev-coll-pct" style="font-size:11px;color:#1a7a3c;margin-top:2px"></div></div>
+          <div style="background:#FEF2F2;border-radius:10px;padding:14px;text-align:center"><div style="font-size:10px;color:#C94A4A;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Outstanding</div><div id="rev-outstanding" style="font-size:20px;font-weight:700;font-family:monospace;color:#C94A4A">&#8212;</div></div>
+          <div style="background:#FFF9E6;border-radius:10px;padding:14px;text-align:center"><div style="font-size:10px;color:#B87A10;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Overdue</div><div id="rev-overdue" style="font-size:20px;font-weight:700;font-family:monospace;color:#B87A10">&#8212;</div></div>
+        </div>
+      </div>
+      <div class="card"><div class="section-tag">Centre-wise Breakdown</div><h2>Revenue by Centre</h2><div id="rev-centres"><div class="spinner-wrap"><div class="spinner"></div><p>Loading&#8230;</p></div></div></div>
+      <div class="card"><div class="section-tag">Payment Mode Analysis</div><h2>How Fees Were Collected</h2><div id="rev-modes"></div></div>
+      <div class="card"><div class="section-tag">Batch-wise Revenue</div><h2>All Batches</h2><div id="rev-batches"></div></div>
+    </div>
+
     <!-- Assessment Performance -->
     <div id="m-assessments" class="tab-content">
       <div class="card">
@@ -145,7 +162,7 @@ function mTab(id) {
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const idx=['m-instructors','m-centres','m-atrisk','m-assessments','m-feedback'].indexOf(id);
+  const idx=['m-instructors','m-revenue','m-centres','m-atrisk','m-assessments','m-feedback'].indexOf(id);
   document.querySelectorAll('.tab')[idx].classList.add('active');
 }
 
@@ -374,6 +391,49 @@ function renderAssessments() {
       </div>`:'<p style="font-size:12px;color:var(--muted);padding:10px 14px">No marks entered yet.</p>'}
     </div>`;
   }).join('') + `<div style="font-size:11px;color:var(--muted);margin-top:8px">Showing ${rows.length} of ${masterData.assessmentSummary.length} tests</div>`;
+}
+function loadRevenueDashboard() {
+  gasGet({action:'getRevenueSummary', masterPass:'IGIMaster2026'}, function(e,d) {
+    if (e||!d||d.status!=='ok') {
+      document.getElementById('rev-centres').innerHTML='<p style="color:var(--red);font-size:13px">Could not load revenue data. Ensure GAS is redeployed.</p>';
+      return;
+    }
+    var n=d.national;
+    var pct=n.expected>0?Math.round(n.collected/n.expected*100):0;
+    function fmtM(v){if(v>=10000000) return '₹'+(v/10000000).toFixed(2)+' Cr';if(v>=100000) return '₹'+(v/100000).toFixed(2)+' L';return '₹'+Number(v).toLocaleString('en-IN');}
+    function fmtR(v){return '₹'+Number(v||0).toLocaleString('en-IN');}
+    document.getElementById('rev-expected').textContent=fmtM(n.expected);
+    document.getElementById('rev-collected').textContent=fmtM(n.collected);
+    document.getElementById('rev-coll-pct').textContent=pct+'% collected';
+    document.getElementById('rev-outstanding').textContent=fmtM(n.outstanding);
+    document.getElementById('rev-overdue').textContent=fmtM(n.overdue);
+    var cHtml='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--off)">';
+    ['Centre','Batches','Students','Expected','Collected','%','Outstanding','Overdue'].forEach(function(h){cHtml+='<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">'+h+'</th>';});
+    cHtml+='</tr></thead><tbody>';
+    (d.centres||[]).sort(function(a,b){return b.expected-a.expected;}).forEach(function(c){
+      var cp=c.expected>0?Math.round(c.collected/c.expected*100):0;
+      var cc=cp>=75?'#1a7a3c':cp>=50?'#B87A10':'#C94A4A';
+      cHtml+='<tr style="border-bottom:1px solid var(--off)"><td style="padding:10px;font-weight:600">'+c.centre+'</td><td style="padding:10px;font-family:monospace">'+c.batches+'</td><td style="padding:10px;font-family:monospace">'+c.students+'</td><td style="padding:10px;font-family:monospace">'+fmtR(c.expected)+'</td><td style="padding:10px;font-family:monospace;color:#1a7a3c">'+fmtR(c.collected)+'</td><td style="padding:10px;font-weight:700;color:'+cc+'">'+cp+'%</td><td style="padding:10px;font-family:monospace;color:#C94A4A">'+fmtR(c.outstanding)+'</td><td style="padding:10px;font-family:monospace;color:#B87A10">'+fmtR(c.overdue)+'</td></tr>';
+    });
+    cHtml+='</tbody></table>';
+    document.getElementById('rev-centres').innerHTML=cHtml||'<p style="color:var(--muted);font-size:13px">No fee records yet.</p>';
+    var modes=d.modes||{}, totM=Object.values(modes).reduce(function(s,v){return s+v;},0);
+    var mHtml='';
+    Object.entries(modes).sort(function(a,b){return b[1]-a[1];}).forEach(function(kv){
+      var pm=totM>0?Math.round(kv[1]/totM*100):0;
+      mHtml+='<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="font-weight:600">'+kv[0]+'</span><span style="font-family:monospace">'+fmtR(kv[1])+' <span style="color:var(--muted)">('+pm+'%)</span></span></div><div style="height:8px;background:var(--off);border-radius:4px;overflow:hidden"><div style="height:8px;width:'+pm+'%;background:var(--gold);border-radius:4px"></div></div></div>';
+    });
+    document.getElementById('rev-modes').innerHTML=mHtml||'<p style="color:var(--muted);font-size:13px">No payments recorded yet.</p>';
+    var bHtml='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--off)">';
+    ['Batch','Centre','Course','Students','Expected','Collected','Outstanding'].forEach(function(h){bHtml+='<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">'+h+'</th>';});
+    bHtml+='</tr></thead><tbody>';
+    (d.batches||[]).sort(function(a,b){return b.expected-a.expected;}).forEach(function(b){
+      var bp=b.expected>0?Math.round(b.collected/b.expected*100):0;
+      bHtml+='<tr style="border-bottom:1px solid var(--off)"><td style="padding:10px;font-family:monospace;font-weight:600">'+b.batchCode+'</td><td style="padding:10px">'+b.centre+'</td><td style="padding:10px;font-size:11px;color:var(--muted)">'+(b.course||'').replace('Graduate','Grad.')+'</td><td style="padding:10px;font-family:monospace">'+b.students+'</td><td style="padding:10px;font-family:monospace">'+fmtR(b.expected)+'</td><td style="padding:10px;font-family:monospace;color:#1a7a3c">'+fmtR(b.collected)+' <span style="font-size:10px;color:var(--muted)">('+bp+'%)</span></td><td style="padding:10px;font-family:monospace;color:#C94A4A">'+fmtR(b.outstanding)+'</td></tr>';
+    });
+    bHtml+='</tbody></table>';
+    document.getElementById('rev-batches').innerHTML=bHtml||'<p style="color:var(--muted);font-size:13px">No batches with fee records yet.</p>';
+  });
 }
 </script>
 </body>

@@ -150,3 +150,24 @@ body{font-family:"DM Sans",sans-serif;background:linear-gradient(180deg,#FBFAF6 
 @media(max-width:760px){.dashboard-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.wrap{padding:12px 12px 50px}.card{padding:18px 16px}.compact-table thead{display:none}.compact-table,.compact-table tbody,.compact-table tr,.compact-table td{display:block;width:100%}.compact-table tr{background:var(--off);border-radius:8px;margin-bottom:8px;padding:8px 10px}.compact-table td{background:transparent;padding:3px 0}.compact-table td:last-child{text-align:left}}
 @media(max-width:430px){.dashboard-summary{grid-template-columns:1fr}.hdr-logo img{height:32px}}
 `;
+
+const COURSE_FEES_JS = {
+  'Diamond Graduate':                    {fee:165900,regFee:25000,gst:18},
+  'Colored Stone Graduate':              {fee:185900,regFee:25000,gst:18},
+  'Graduate Gemologist':                 {fee:351800,regFee:50000,gst:18},
+  'JewelPad Design':                     {fee:41900, regFee:0,    gst:18},
+  'Navratna Masterclass (10 Half Days)': {fee:51900, regFee:0,    gst:18},
+  'Navratna Masterclass (5 Full Days)':  {fee:51900, regFee:0,    gst:18},
+  'Gem-A Foundation':                    {fee:285500,regFee:0,    gst:18},
+  'Gem-A Diploma':                       {fee:422500,regFee:0,    gst:18},
+  'Jewelry Design Manual':               {fee:103900,regFee:0,    gst:18},
+  'Polished Diamond Grading':            {fee:99900, regFee:0,    gst:18},
+  'Small Diamond Assortment':            {fee:14900, regFee:0,    gst:18},
+  'Rough Diamond':                       {fee:51900, regFee:0,    gst:18},
+  'iRES':                                {fee:35900, regFee:0,    gst:18},
+  'Diamond Essentials 5Cs':            {fee:25900, regFee:0,    gst:18},
+  'JD-CAD':                              {fee:82900, regFee:0,    gst:18},
+  'Smart Learning DG':                   {fee:114900,regFee:0,    gst:18},
+  'Smart Learning CSG':                  {fee:114900,regFee:0,    gst:18},
+  'Smart Learning GG':                   {fee:229800,regFee:0,    gst:18}
+};

@@ -357,16 +357,25 @@ function switchTab(id) {
   const idx = ['t-batches','t-students','t-mybatches','t-reports','t-holidays'].indexOf(id);
   document.querySelectorAll('.tab')[idx].classList.add('active');
   if (id==='t-reports') {
-    loadBatchDropdowns(function() {
-      // auto-select first batch and load report
-      var sel = document.getElementById('rp-batch');
-      if (sel && sel.options.length > 1 && !sel.value) {
-        sel.selectedIndex = 1;
-        loadCounselorReport();
-      } else if (sel && sel.value) {
-        loadCounselorReport();
-      }
-    });
+    var sel = document.getElementById('rp-batch');
+    if (sel && sel.options.length > 1) {
+      // Batches already loaded — just auto-select first and show report
+      if (!sel.value) sel.selectedIndex = 1;
+      loadCounselorReport();
+    } else {
+      // Not loaded yet — load then report
+      gasGet({action:'getBatches', centres: isAdmin?'':allowedCentres.join(',')}, function(e,d) {
+        if (e||!d||!d.batches) return;
+        sel.innerHTML = '<option value="">Select a batch</option>';
+        d.batches.forEach(function(b) {
+          var o = document.createElement('option');
+          o.value = b.batchCode;
+          o.textContent = b.batchCode + ' — ' + b.course + ' (' + b.centre + ')';
+          sel.appendChild(o);
+        });
+        if (sel.options.length > 1) { sel.selectedIndex = 1; loadCounselorReport(); }
+      });
+    }
   }
   if (id==='t-holidays') loadHolidayList();
 }

@@ -386,60 +386,20 @@ function escHtml(s) {
 function loadTodaySessions() {
   const wrap  = document.getElementById('today-batches-wrap');
   const title = document.getElementById('today-title');
-  title.textContent = 'Loading...';
+  const today = new Date();
+  title.textContent = 'Today — ' + today.toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'short',year:'numeric'});
   wrap.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading your batches…</p></div>';
-  gasGet({action:'getInstructorTodaySessions', instructor:instructorName}, function(e,d) {
-    if (e||!d||d.status!=='ok') {
-      title.textContent = 'Could not load today';
-      wrap.innerHTML = '<div class="info-box" style="background:#FEF2F2;border-left-color:var(--red);color:var(--red)">Could not load your batches. Please refresh and try again.</div>';
+  const centresParam = isDualRole ? dualCentres.join(',') : '';
+  gasGet({action:'getTodaySessions', instructor:instructorName, centres:centresParam}, function(e,d) {
+    if (e||!d) {
+      wrap.innerHTML='<div class="info-box" style="background:#FEF2F2;border-left-color:var(--red);color:var(--red)">Could not load sessions. Please refresh.</div>';
       return;
     }
-    title.textContent = d.date || new Date().toLocaleDateString('en-IN');
-    if (!d.batches||!d.batches.length) {
-      wrap.innerHTML = '<p style="font-size:13px;color:var(--muted)">No batches are assigned to you yet. Contact your centre counselor.</p>';
+    if (!d.sessions||!d.sessions.length) {
+      wrap.innerHTML='<div class="info-box">No sessions scheduled for today. If this is incorrect, check the Extra Session section below or contact your counselor.</div>';
       return;
     }
-    wrap.innerHTML = d.batches.map(b => {
-      const slotClass = b.batchSlot==='First Half'?'day-badge-first':b.batchSlot==='Second Half'?'day-badge-second':'day-badge-full';
-      const safeBatch = escHtml(b.batchCode);
-      const meta = `${escHtml(b.course)} · ${escHtml(b.centre)} · ${escHtml(b.batchSlot||'Full Day')}`;
-      if (b.sessionCode) {
-        const link = window.location.origin + '/feedback?s=' + encodeURIComponent(b.sessionCode);
-        return `<div class="day-batch-card">
-          <div class="day-badge ${slotClass}">${escHtml(b.batchSlot||'Full Day')}</div>
-          <div class="dbc-title">${safeBatch}</div>
-          <div class="dbc-meta">${meta}</div>
-          <div class="info-box">Session ready: <strong>${escHtml(b.sessionCode)}</strong>${b.topic?' · '+escHtml(b.topic):''}</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-outline" style="width:auto" onclick="showSessionShare('${escJ(b.sessionCode)}','${escJ(link)}',${Number(b.sessNo)||1},'${escJ(b.sessionType||'Scheduled')}')">Show QR / Link</button>
-            <button class="btn btn-outline" style="width:auto" onclick="openAttendanceFor('${escJ(b.batchCode)}','${escJ(b.sessionCode)}')">View Attendance</button>
-          </div>
-        </div>`;
-      }
-      if (!b.workingDay) {
-        return `<div class="day-batch-card">
-          <div class="day-badge ${slotClass}">${escHtml(b.batchSlot||'Full Day')}</div>
-          <div class="dbc-title">${safeBatch}</div>
-          <div class="dbc-meta">${meta}</div>
-          <p style="font-size:13px;color:var(--muted)">Today is not a scheduled class day. Use Extra Session below only for approved makeup or extension classes.</p>
-        </div>`;
-      }
-      if (!b.activeToday) {
-        return `<div class="day-batch-card">
-          <div class="day-badge ${slotClass}">${escHtml(b.batchSlot||'Full Day')}</div>
-          <div class="dbc-title">${safeBatch}</div>
-          <div class="dbc-meta">${meta}</div>
-          <p style="font-size:13px;color:var(--muted)">This batch is not active today (${escHtml(b.startDate)} to ${escHtml(b.endDate)}).</p>
-        </div>`;
-      }
-      return `<div class="day-batch-card">
-        <div class="day-badge ${slotClass}">${escHtml(b.batchSlot||'Full Day')}</div>
-        <div class="dbc-title">${safeBatch}</div>
-        <div class="dbc-meta">${meta}</div>
-        <input class="topic-override" id="topic-${safeBatch}" placeholder="Optional topic for today">
-        <button class="btn btn-gold" id="btn-${safeBatch}" onclick="createTodaySession('${escJ(b.batchCode)}')">Create Today's Session →</button>
-      </div>`;
-    }).join('');
+    renderTodaySessions(d.sessions);
   });
 }
 
@@ -529,6 +489,49 @@ function createSession() {
     document.getElementById('ss-result').style.display = 'block';
     document.getElementById('ss-result').scrollIntoView({behavior:'smooth'});
   });
+}
+
+function renderTodaySessions(sessions) {
+  const wrap = document.getElementById('today-batches-wrap');
+  const slotColors = {'First Half':'day-badge-first','Second Half':'day-badge-second','Full Day':'day-badge-full'};
+  if (!sessions.length) {
+    wrap.innerHTML='<div class="info-box">No sessions today for your batches.</div>'; return;
+  }
+  wrap.innerHTML = sessions.map(s => {
+    const slotBadge = slotColors[s.batchSlot]||'day-badge-full';
+    if (s.cancelled) {
+      return `<div class="day-batch-card" style="background:#FEF2F2;border-color:#C94A4A">
+        <div class="dbc-title">${s.batchCode} <span style="font-size:11px;color:#C94A4A;font-weight:700">✗ CANCELLED</span></div>
+        <div class="dbc-meta"><span class="day-badge ${slotBadge}">${s.batchSlot}</span>${s.course} · ${s.centre}</div>
+        <div style="font-size:12px;color:#C94A4A">${s.topic||'Session cancelled'}</div>
+      </div>`;
+    }
+    const displayTopic = s.topic && !s.topic.startsWith('CANCELLED') ? s.topic : '';
+    return `<div class="day-batch-card" id="dbc-${s.sessionCode}">
+      <div class="dbc-title">${s.batchCode}
+        <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-left:8px">${s.sessionCode}</span>
+        ${s.autoCreated?'<span style="font-size:10px;color:#1D9E75;margin-left:6px;font-weight:600">⚡ Auto</span>':''}
+      </div>
+      <div class="dbc-meta"><span class="day-badge ${slotBadge}">${s.batchSlot}</span>
+        ${s.course} · ${s.centre} · Session ${s.sessNo}</div>
+      ${s.scheduledTopic?`<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">
+        Day ${s.dayNo} · ${s.week||''}</div>
+      <div style="font-size:12px;background:var(--gold-pale);border-left:3px solid var(--gold);
+        padding:8px 10px;border-radius:0 6px 6px 0;color:#6b4c10;margin-bottom:10px;line-height:1.4">
+        ${s.scheduledTopic}</div>`:''}
+      <div style="font-size:11px;color:var(--muted);margin-bottom:5px">Override topic if different today:</div>
+      <input type="text" class="topic-override" id="tov-${s.sessionCode}"
+        placeholder="${displayTopic||s.scheduledTopic||'Leave blank to keep scheduled topic'}"
+        value="${displayTopic}">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+        <button class="btn btn-gold" style="flex:1;font-size:12px;padding:9px 12px"
+          onclick="updateTopic('${s.sessionCode}')">✓ Confirm Topic</button>
+        <button style="flex:1;padding:9px 12px;border:1.5px solid #C94A4A;color:#C94A4A;
+          border-radius:8px;background:transparent;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif"
+          onclick="showCancelDialog('${s.sessionCode}','${s.batchCode}')">✗ Cancel Session</button>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function updateTopic(sessionCode) {
@@ -646,9 +649,9 @@ function loadSessionsForBatch() {
 function loadSessionTimeline(batch) {
   const wrap = document.getElementById('at-timeline');
   wrap.innerHTML = '<div class="spinner-wrap" style="padding:14px"><div class="spinner"></div><p>Loading session history…</p></div>';
-  gasGet({action:'getBatchSessionTimeline', batchCode:batch}, function(e,d) {
-    if (e||!d||!d.timeline||!d.timeline.length) { wrap.innerHTML=''; return; }
-    wrap.innerHTML = `<div class="timeline">${d.timeline.map(s=>`
+  gasGet({action:'getSessions', batchCode:batch}, function(e,d) {
+    if (e||!d||!d.sessions||!d.sessions.length) { wrap.innerHTML=''; return; }
+    wrap.innerHTML = `<div class="timeline">${d.sessions.map(s=>`
       <div class="timeline-row ${s.isToday?'today':s.isPast?'past':''}" id="tl-${s.sessionCode}" onclick="selectTimelineSession('${s.sessionCode}')">
         <div class="tl-num">S${String(s.sessNo).padStart(2,'0')}</div>
         <div class="tl-main">

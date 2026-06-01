@@ -356,7 +356,18 @@ function switchTab(id) {
   document.getElementById(id).classList.add('active');
   const idx = ['t-batches','t-students','t-mybatches','t-reports','t-holidays'].indexOf(id);
   document.querySelectorAll('.tab')[idx].classList.add('active');
-  if (id==='t-reports') loadBatchDropdowns();
+  if (id==='t-reports') {
+    loadBatchDropdowns(function() {
+      // auto-select first batch and load report
+      var sel = document.getElementById('rp-batch');
+      if (sel && sel.options.length > 1 && !sel.value) {
+        sel.selectedIndex = 1;
+        loadCounselorReport();
+      } else if (sel && sel.value) {
+        loadCounselorReport();
+      }
+    });
+  }
   if (id==='t-holidays') loadHolidayList();
 }
 
@@ -484,10 +495,10 @@ function createBatch() {
 }
 
 // ── Load batch dropdowns ──────────────────────────────────────
-function loadBatchDropdowns() {
+function loadBatchDropdowns(onDone) {
   const centresParam = isAdmin ? '' : allowedCentres.join(',');
   gasGet({action:'getBatches', centres:centresParam}, function(e,d) {
-    if (e||!d||!d.batches) return;
+    if (e||!d||!d.batches) { if(onDone) onDone(); return; }
     allBatches = d.batches || [];
     ['st-batch','rp-batch'].forEach(id => {
       const sel = document.getElementById(id);

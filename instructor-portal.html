@@ -176,6 +176,7 @@
       <div id="at-live-badge" style="display:none;margin-bottom:12px">
         <span class="live-dot"></span> <span style="font-size:12px;color:#1D9E75;font-weight:600;margin-left:4px">Live — auto-refreshing every 30s</span>
       </div>
+      <div id="at-calendar"></div>
       <div id="at-timeline"></div>
       <div id="at-wrap"></div>
     </div>
@@ -305,6 +306,7 @@ let currentTotalMarks   = 0;
 let attendanceRefreshIv = null;
 let instructorBatchesCache = [];
 let instructorTodayCache = [];
+let instructorCalendarMonth = new Date();
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
@@ -647,7 +649,9 @@ function loadSessionsForBatch() {
   sel.innerHTML = '<option value="">Select session</option>';
   document.getElementById('at-wrap').innerHTML = '';
   document.getElementById('at-timeline').innerHTML = '';
+  document.getElementById('at-calendar').innerHTML = '';
   if (!batch) return;
+  loadInstructorAttendanceCalendar(instructorCalendarMonth);
   gasGet({action:'getSessions', batchCode:batch}, function(e,d) {
     if (e||!d||!d.sessions) return;
     d.sessions.forEach(s => {
@@ -659,6 +663,26 @@ function loadSessionsForBatch() {
     if (d.sessions.length) { sel.value = d.sessions[0].sessionCode; loadAttendance(); }
   });
   loadSessionTimeline(batch);
+}
+
+function loadInstructorAttendanceCalendar(anchor) {
+  const batch = document.getElementById('at-batch').value;
+  const wrap = document.getElementById('at-calendar');
+  if (!batch || !wrap) return;
+  instructorCalendarMonth = anchor || instructorCalendarMonth || new Date();
+  const range = monthRange(instructorCalendarMonth);
+  wrap.innerHTML = loadingState('Loading attendance calendar...');
+  gasGet({action:'getAttendanceCalendar', role:'instructor', instructor:instructorName, batchCode:batch, fromDate:range.fromDate, toDate:range.toDate}, function(e,d) {
+    if (e || !d || d.status !== 'ok') {
+      wrap.innerHTML = '<p style="color:var(--red);font-size:13px">Could not load attendance calendar.</p>';
+      return;
+    }
+    renderAttendanceCalendar('at-calendar', d, {
+      tag:'My Calendar',
+      title:range.label,
+      onNavigate:function(nextMonth){ loadInstructorAttendanceCalendar(nextMonth); }
+    });
+  });
 }
 
 function loadSessionTimeline(batch) {

@@ -505,6 +505,114 @@ function dateStr(d) {
   return d.toLocaleDateString('en-IN', {day:'2-digit',month:'short',year:'numeric',weekday:'short'});
 }
 
+function getAttendanceCalendarData(ss,p) {
+  const role=String(p.role||'counselor').toLowerCase();
+  const fromDate=p.fromDate?new Date(p.fromDate):new Date(new Date().getFullYear(),new Date().getMonth(),1);
+  const toDate=p.toDate?new Date(p.toDate):new Date(new Date().getFullYear(),new Date().getMonth()+1,0);
+  fromDate.setHours(0,0,0,0);toDate.setHours(23,59,59,0);
+  const fromKey=dateKey(fromDate),toKey=dateKey(toDate);
+  const shBatch=ss.getSheetByName(SH_BATCHES);
+  const batchRows=shBatch&&shBatch.getLastRow()>1?shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues().filter(r=>r[0]):[];
+  const requestedBatch=String(p.batchCode||'').toUpperCase();
+  const centres=String(p.centres||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const instructor=String(p.instructor||'').trim();
+  const studentId=String(p.studentId||p.enrollmentNo||'').trim().toUpperCase();
+  const studentBatchKeys={};
+  if(role==='student'&&studentId) {
+    const mobileLast4=String(p.mobileLast4||p.mobileLastFour||'').replace(/\D/g,'').slice(-4);
+    const student=getStudentById(ss,studentId);
+    if(!student||student.status!=='Active')return {status:'error',reason:'student_not_found'};
+    const storedLast4=String(student.mobileLast4).replace(/\D/g,'').slice(-4);
+    const mobileColLast4=String(student.mobile).replace(/\D/g,'').slice(-4);
+    if(mobileLast4.length!==4||(storedLast4!==mobileLast4&&mobileColLast4!==mobileLast4))return {status:'error',reason:'mobile_mismatch'};
+    getEnrollmentRows(ss).filter(e=>e.studentId===studentId&&e.status==='Active').forEach(e=>studentBatchKeys[e.batchCode]=true);
+  }
+  let batches=batchRows.filter(r=>{
+    const code=String(r[0]).toUpperCase();
+    if(requestedBatch&&code!==requestedBatch)return false;
+    if(role==='student')return !!studentBatchKeys[code];
+    if(role==='instructor'&&instructor){
+      const assigned=detectSlotOrDate(r[4])?(r[9]||''):(r[8]||'');
+      return sameName(assigned,instructor);
+    }
+    if(centres.length&&!centres.includes(r[1]))return false;
+    return true;
+  });
+  const batchMeta={};
+  batches.forEach(r=>{
+    const isNew=detectSlotOrDate(r[4]);
+    batchMeta[String(r[0]).toUpperCase()]={batchCode:String(r[0]).toUpperCase(),centre:r[1]||'',course:r[2]||'',type:r[3]||'',
+      batchSlot:isNew?(r[4]||'Full Day'):'Full Day',start:isNew?r[5]:r[4],end:isNew?r[6]:r[5],
+      instructor:isNew?(r[9]||''):(r[8]||'')};
+  });
+  const allowedBatchKeys={};batches.forEach(r=>allowedBatchKeys[String(r[0]).toUpperCase()]=true);
+  const shSess=ss.getSheetByName(SH_SESSIONS);
+  const allSess=shSess&&shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,9).getValues().filter(r=>r[0]):[];
+  const shFb=ss.getSheetByName(SH_FEEDBACK);
+  const allFb=shFb&&shFb.getLastRow()>1?shFb.getRange(2,1,shFb.getLastRow()-1,17).getValues().filter(r=>r[0]):[];
+  const studentsByBatch={};
+  Object.keys(allowedBatchKeys).forEach(bc=>studentsByBatch[bc]=getStudentsForBatch(ss,bc));
+  const fbBySession={};
+  allFb.forEach(f=>{
+    const sc=String(f[0]).toUpperCase();
+    if(!fbBySession[sc])fbBySession[sc]=[];
+    fbBySession[sc].push(f);
+  });
+  const today=new Date();today.setHours(0,0,0,0);
+  const events=[],actualKeys={};
+  allSess.forEach(r=>{
+    const bc=String(r[1]).toUpperCase();
+    if(!allowedBatchKeys[bc]||!r[2])return;
+    const d=new Date(r[2]);d.setHours(0,0,0,0);
+    if(d<fromDate||d>toDate)return;
+    const sc=String(r[0]).toUpperCase();
+    actualKeys[bc+'|'+dateKey(d)]=true;
+    const meta=batchMeta[bc]||{};
+    const presentRows=fbBySession[sc]||[];
+    const total=(studentsByBatch[bc]||[]).length;
+    const cancelled=String(r[5]||'').toLowerCase()==='cancelled';
+    const status=cancelled?'cancelled':(d>today?'upcoming':(presentRows.length?'completed':'pending'));
+    const studentRow=studentId?presentRows.find(f=>String(f[1]).toUpperCase()===studentId):null;
+    events.push(calendarEventObject(d,{sessionCode:sc,batchCode:bc,course:meta.course,centre:meta.centre,instructor:r[4]||meta.instructor,
+      sessNo:r[3],topic:r[6]||'',sessionType:r[5]||'Scheduled',status,presentCount:presentRows.length,totalStudents:total,
+      studentAttendance:(studentId&&d<=today)?(studentRow?'present':'absent'):''}));
+  });
+  const holidays=getHolidaysForCentre(ss);
+  Object.keys(batchMeta).forEach(bc=>{
+    const meta=batchMeta[bc];
+    if(!meta.start)return;
+    const start=new Date(meta.start),end=meta.end?new Date(meta.end):null;
+    if(isNaN(start))return;
+    start.setHours(12,0,0,0);
+    const syllabus=SYLLABI[meta.course]||[];
+    let schedule=[];
+    if(syllabus.length) {
+      schedule=getWorkingSchedule(dateKey(start),syllabus.length,holidays);
+    } else if(end&&!isNaN(end)) {
+      const cur=new Date(start);end.setHours(12,0,0,0);
+      while(cur<=end&&schedule.length<220){if(isWorkingDay(cur,holidays))schedule.push(new Date(cur));cur.setDate(cur.getDate()+1);}
+    }
+    schedule.forEach((d,i)=>{
+      const dk=dateKey(d);
+      if(d<fromDate||d>toDate||actualKeys[bc+'|'+dk])return;
+      const topic=syllabus[i]?syllabus[i].topic:'Scheduled class';
+      events.push(calendarEventObject(d,{sessionCode:'',batchCode:bc,course:meta.course,centre:meta.centre,instructor:meta.instructor,
+        sessNo:i+1,topic,sessionType:'Scheduled',status:d<today?'pending':'upcoming',presentCount:0,totalStudents:(studentsByBatch[bc]||[]).length,
+        studentAttendance:''}));
+    });
+  });
+  events.sort((a,b)=>String(a.dateISO).localeCompare(String(b.dateISO))||String(a.batchCode).localeCompare(String(b.batchCode))||Number(a.sessNo||0)-Number(b.sessNo||0));
+  return {status:'ok',role,fromDate:fromKey,toDate:toKey,events};
+}
+
+function calendarEventObject(d,extra) {
+  return Object.assign({
+    dateISO:dateKey(d),
+    day:Utilities.formatDate(d,Session.getScriptTimeZone(),'dd'),
+    month:Utilities.formatDate(d,Session.getScriptTimeZone(),'MMM')
+  },extra);
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  doGet
 // ═══════════════════════════════════════════════════════════════
@@ -830,6 +938,11 @@ function doGet(e) {
           isPast:d?d<today:false};
       }).sort((a,b)=>Number(b.sessNo)-Number(a.sessNo));
       return respond({status:'ok',timeline,total});
+    }
+
+    // ── getAttendanceCalendar ─────────────────────────────────
+    if (act==='getAttendanceCalendar') {
+      return respond(getAttendanceCalendarData(ss,p));
     }
 
     // ── getExpectedTopic ───────────────────────────────────────

@@ -109,6 +109,7 @@
       <button class="wb-logout" onclick="doLogout()">Sign out</button>
     </div>
     <div id="student-summary" class="dashboard-summary"></div>
+    <div id="portal-calendar"></div>
     <div id="portal-batches"></div>
   <div id="portal-fees" style="margin-top:8px"></div>
   </div>
@@ -217,6 +218,7 @@ const SESSION_TTL = 12 * 60 * 60 * 1000; // 12 hours
 let portalData   = null;  // full response from getStudentPortalData
 let activeBatch  = null;  // current batch being submitted
 let topicData    = null;  // from getExpectedTopic
+let studentCalendarMonth = new Date();
 const ratings    = {q1:0, q2:0};
 const sels       = {comp:'', q3:'', q4:''};
 let selectedTopic = '';
@@ -297,6 +299,7 @@ function renderPortal(d) {
   document.getElementById('wb-date').textContent = new Date().toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
   const wrap = document.getElementById('portal-batches');
   renderStudentSummary(d);
+  loadStudentAttendanceCalendar(studentCalendarMonth);
 
   if (!d.batches||!d.batches.length) {
     wrap.innerHTML=emptyState('📚', 'No active sessions today', 'You have no active batch for today, or today is a holiday or weekend.');
@@ -353,6 +356,26 @@ function renderPortal(d) {
   loadStudentFees();
   // Start countdown refresh for waiting sessions
   startRefreshCountdowns(d.batches);
+}
+
+function loadStudentAttendanceCalendar(anchor) {
+  const wrap = document.getElementById('portal-calendar');
+  if (!wrap || !portalData) return;
+  const saved = JSON.parse(localStorage.getItem(SESSION_KEY)||'{}');
+  studentCalendarMonth = anchor || studentCalendarMonth || new Date();
+  const range = monthRange(studentCalendarMonth);
+  wrap.innerHTML = loadingState('Loading attendance calendar...');
+  gasGet({action:'getAttendanceCalendar', role:'student', studentId:portalData.enrollmentNo, mobileLast4:saved.mobileLast4 || '', fromDate:range.fromDate, toDate:range.toDate}, function(e,d) {
+    if (e || !d || d.status !== 'ok') {
+      wrap.innerHTML = '<p style="color:var(--red);font-size:13px">Could not load attendance calendar.</p>';
+      return;
+    }
+    renderAttendanceCalendar('portal-calendar', d, {
+      tag:'My Attendance',
+      title:range.label,
+      onNavigate:function(nextMonth){ loadStudentAttendanceCalendar(nextMonth); }
+    });
+  });
 }
 
 function renderHistory(b) {

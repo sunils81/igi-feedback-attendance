@@ -267,6 +267,7 @@
       <div class="field"><label>Select Batch</label>
         <select id="rp-batch" onchange="loadCounselorReport()"><option value="">Select a batch</option></select>
       </div>
+      <div id="rp-calendar"></div>
       <div id="rp-wrap"><div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">Choose a batch to view its timeline</div><div class="empty-copy">Sessions, attendance chips, and test summaries will appear here.</div></div></div>
     </div>
     <div class="card" id="rp-marks-card" style="display:none">
@@ -403,6 +404,7 @@ let allowedCentres  = [];
 let isAdmin         = false;
 let allBatches      = [];
 let counselorReportRequestId = 0;
+let counselorCalendarMonth = new Date();
 let counselorStudentsByBatch = {};
 let feeStudentsByBatch = {};
 let feeRecordsByStudent = {};
@@ -678,13 +680,16 @@ function loadBatchDropdowns(onDone) {
 function loadCounselorReport() {
   var batch = document.getElementById('rp-batch').value;
   var wrap  = document.getElementById('rp-wrap');
+  var calWrap = document.getElementById('rp-calendar');
   var marksCard = document.getElementById('rp-marks-card');
   var requestId = ++counselorReportRequestId;
   if (!batch) {
+    if (calWrap) calWrap.innerHTML = '';
     wrap.innerHTML = emptyState('📊', 'Choose a batch to view its timeline', 'Sessions, attendance chips, and test summaries will appear here.');
     marksCard.style.display = 'none';
     return;
   }
+  loadCounselorAttendanceCalendar(counselorCalendarMonth);
   wrap.innerHTML = loadingState('Preparing attendance report...');
   marksCard.style.display = 'none';
   var slowTimer = setTimeout(function() {
@@ -797,6 +802,26 @@ function loadCounselorReport() {
         });
         document.getElementById('rp-marks-wrap').innerHTML = mHtml;
       }
+    });
+  });
+}
+
+function loadCounselorAttendanceCalendar(anchor) {
+  var batch = document.getElementById('rp-batch').value;
+  var calWrap = document.getElementById('rp-calendar');
+  if (!batch || !calWrap) return;
+  counselorCalendarMonth = anchor || counselorCalendarMonth || new Date();
+  var range = monthRange(counselorCalendarMonth);
+  calWrap.innerHTML = loadingState('Loading attendance calendar...');
+  gasGet({action:'getAttendanceCalendar', role:'counselor', batchCode:batch, centres:isAdmin?'':allowedCentres.join(','), fromDate:range.fromDate, toDate:range.toDate}, function(e,d) {
+    if (e || !d || d.status !== 'ok') {
+      calWrap.innerHTML = '<p style="color:var(--red);font-size:13px">Could not load attendance calendar.</p>';
+      return;
+    }
+    renderAttendanceCalendar('rp-calendar', d, {
+      tag:'Calendar View',
+      title:range.label,
+      onNavigate:function(nextMonth){ loadCounselorAttendanceCalendar(nextMonth); }
     });
   });
 }

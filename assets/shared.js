@@ -65,6 +65,108 @@ function loadingState(message) {
   return '<div class="spinner-wrap"><div class="spinner"></div><p>' + (message || 'Loading...') + '</p></div>';
 }
 
+function monthRange(anchor) {
+  const d = anchor ? new Date(anchor) : new Date();
+  const start = new Date(d.getFullYear(), d.getMonth(), 1);
+  const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return {
+    start,
+    end,
+    fromDate: localDateISO(start),
+    toDate: localDateISO(end),
+    label: start.toLocaleDateString('en-IN', { month:'long', year:'numeric' })
+  };
+}
+
+function localDateISO(date) {
+  const d = new Date(date);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function attendanceStatusLabel(status) {
+  return {
+    completed:'Completed',
+    pending:'Pending',
+    upcoming:'Upcoming',
+    cancelled:'Cancelled',
+    holiday:'Holiday'
+  }[status] || 'Scheduled';
+}
+
+function renderAttendanceCalendar(targetId, payload, opts) {
+  const target = typeof targetId === 'string' ? document.getElementById(targetId) : targetId;
+  if (!target) return;
+  opts = opts || {};
+  const events = (payload && payload.events ? payload.events : []).slice().sort((a,b)=>
+    String(a.dateISO).localeCompare(String(b.dateISO)) || Number(a.sessNo || 0) - Number(b.sessNo || 0)
+  );
+  const range = monthRange((payload && payload.fromDate) || new Date());
+  const todayISO = localDateISO(new Date());
+  const byDate = {};
+  events.forEach(ev => {
+    if (!byDate[ev.dateISO]) byDate[ev.dateISO] = [];
+    byDate[ev.dateISO].push(ev);
+  });
+  const first = new Date(range.start);
+  const gridStart = new Date(first);
+  gridStart.setDate(first.getDate() - first.getDay());
+  const cells = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(gridStart);
+    d.setDate(gridStart.getDate() + i);
+    const iso = localDateISO(d);
+    const dayEvents = byDate[iso] || [];
+    const inMonth = d.getMonth() === range.start.getMonth();
+    const dayLabel = d.getDate();
+    cells.push('<button type="button" class="att-cal-day' + (inMonth ? '' : ' muted') + (iso === todayISO ? ' today' : '') + '" data-date="' + iso + '">' +
+      '<span class="att-cal-num">' + dayLabel + '</span>' +
+      '<span class="att-cal-dots">' + dayEvents.slice(0,4).map(ev => '<i class="' + escShared(ev.status || 'upcoming') + '"></i>').join('') + '</span>' +
+      (dayEvents.length > 4 ? '<span class="att-cal-more">+' + (dayEvents.length - 4) + '</span>' : '') +
+    '</button>');
+  }
+  const completed = events.filter(e => e.status === 'completed').length;
+  const pending = events.filter(e => e.status === 'pending').length;
+  const upcoming = events.filter(e => e.status === 'upcoming').length;
+  const cancelled = events.filter(e => e.status === 'cancelled').length;
+  const agenda = events.length ? events.map(ev => {
+    const pct = Number(ev.totalStudents) ? Math.round((Number(ev.presentCount) || 0) * 100 / Number(ev.totalStudents)) : 0;
+    const studentText = ev.studentAttendance ? (ev.studentAttendance === 'present' ? 'Present' : 'Not marked') : attendanceStatusLabel(ev.status);
+    return '<div class="att-agenda-row ' + escShared(ev.status || 'upcoming') + '">' +
+      '<div class="att-agenda-date"><strong>' + escShared(ev.day || '') + '</strong><span>' + escShared(ev.month || '') + '</span></div>' +
+      '<div class="att-agenda-main"><div class="att-agenda-title">' + escShared(ev.batchCode || '') + (ev.sessNo ? ' · Session ' + escShared(ev.sessNo) : '') + '</div>' +
+      '<div class="att-agenda-meta">' + escShared(ev.course || '') + (ev.instructor ? ' · ' + escShared(ev.instructor) : '') + '</div>' +
+      '<div class="att-agenda-topic">' + escShared(ev.topic || 'Topic not set') + '</div></div>' +
+      '<div class="att-agenda-stat"><span class="att-status ' + escShared(ev.status || 'upcoming') + '">' + escShared(studentText) + '</span>' +
+      (ev.totalStudents ? '<small>' + escShared(ev.presentCount || 0) + '/' + escShared(ev.totalStudents) + ' · ' + pct + '%</small>' : '') + '</div>' +
+    '</div>';
+  }).join('') : emptyState('📅', 'No attendance items this month', 'Past and upcoming sessions will appear here once the schedule is available.');
+  target.innerHTML =
+    '<div class="att-cal-shell">' +
+      '<div class="att-cal-head"><div><div class="section-tag" style="margin-bottom:0">' + escShared(opts.tag || 'Attendance Calendar') + '</div><h2>' + escShared(opts.title || range.label) + '</h2></div>' +
+      '<div class="att-cal-actions"><button type="button" class="btn btn-outline" data-cal-nav="prev">Previous</button><button type="button" class="btn btn-outline" data-cal-nav="today">Today</button><button type="button" class="btn btn-outline" data-cal-nav="next">Next</button></div></div>' +
+      '<div class="att-cal-summary"><span><b>' + completed + '</b> completed</span><span><b>' + pending + '</b> pending</span><span><b>' + upcoming + '</b> upcoming</span><span><b>' + cancelled + '</b> cancelled</span></div>' +
+      '<div class="att-cal-week"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>' +
+      '<div class="att-cal-grid">' + cells.join('') + '</div>' +
+      '<div class="att-cal-legend"><span><i class="completed"></i>Completed</span><span><i class="pending"></i>Pending</span><span><i class="upcoming"></i>Upcoming</span><span><i class="cancelled"></i>Cancelled</span></div>' +
+      '<div class="att-agenda">' + agenda + '</div>' +
+    '</div>';
+  if (opts.onNavigate) {
+    target.querySelectorAll('[data-cal-nav]').forEach(btn => btn.onclick = function() {
+      const dir = this.getAttribute('data-cal-nav');
+      const next = dir === 'today' ? new Date() : new Date(range.start);
+      if (dir === 'prev') next.setMonth(next.getMonth() - 1);
+      if (dir === 'next') next.setMonth(next.getMonth() + 1);
+      opts.onNavigate(next);
+    });
+  }
+}
+
+function escShared(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
 const CSS_VARS = `
 :root{
   --navy:#0D1B2E;--navy2:#1A2F4E;--gold:#C9A84C;--gold-light:#E8C97A;--gold-pale:#F9F3E3;
@@ -143,11 +245,46 @@ body{font-family:"DM Sans",sans-serif;background:linear-gradient(180deg,#FBFAF6 
 .timeline-meta{font-size:11px;color:var(--muted);margin-top:2px}
 .timeline-topic{font-size:13px;color:var(--navy);margin-top:8px;line-height:1.45}
 .timeline-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.att-cal-shell{border:1px solid var(--border);border-radius:10px;background:var(--white);padding:14px;margin-top:14px}
+.att-cal-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}
+.att-cal-head h2{margin:0;font-size:18px}
+.att-cal-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.att-cal-actions .btn{width:auto;padding:7px 10px;font-size:12px}
+.att-cal-summary{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.att-cal-summary span{border:1px solid var(--border);border-radius:8px;padding:6px 9px;font-size:11px;color:var(--muted);background:var(--off)}
+.att-cal-summary b{font-family:"DM Mono",monospace;color:var(--navy)}
+.att-cal-week,.att-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.att-cal-week{font-size:10px;font-weight:800;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;text-align:center;margin-bottom:6px}
+.att-cal-day{min-height:58px;border:1px solid var(--border);border-radius:8px;background:#fff;display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:7px;cursor:default;font-family:"DM Sans",sans-serif;color:var(--navy)}
+.att-cal-day.muted{opacity:.34;background:var(--off)}
+.att-cal-day.today{border-color:var(--gold);background:var(--gold-pale)}
+.att-cal-num{font-family:"DM Mono",monospace;font-size:12px;font-weight:800}
+.att-cal-dots{display:flex;gap:3px;flex-wrap:wrap}
+.att-cal-dots i,.att-cal-legend i{width:7px;height:7px;border-radius:50%;display:inline-block}
+.att-cal-more{font-size:9px;color:var(--muted)}
+.att-cal-legend{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0 12px;font-size:11px;color:var(--muted)}
+.att-cal-legend span{display:inline-flex;align-items:center;gap:5px}
+.att-cal-dots .completed,.att-cal-legend .completed,.att-status.completed{background:#E8F5EE;color:#1a7a3c}
+.att-cal-dots .pending,.att-cal-legend .pending,.att-status.pending{background:#FEF2F2;color:var(--red)}
+.att-cal-dots .upcoming,.att-cal-legend .upcoming,.att-status.upcoming{background:var(--gold-pale);color:#B87A10}
+.att-cal-dots .cancelled,.att-cal-legend .cancelled,.att-status.cancelled{background:#E5E1D8;color:var(--muted)}
+.att-agenda{display:grid;gap:8px}
+.att-agenda-row{display:grid;grid-template-columns:54px minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--off)}
+.att-agenda-row.completed{background:#F4FBF7}.att-agenda-row.pending{background:#FFF8F5}.att-agenda-row.upcoming{background:#FFFCF2}.att-agenda-row.cancelled{opacity:.72}
+.att-agenda-date{text-align:center;border-right:1px solid var(--border);padding-right:8px}
+.att-agenda-date strong{display:block;font-family:"DM Mono",monospace;font-size:18px;line-height:1;color:var(--navy)}
+.att-agenda-date span{display:block;font-size:10px;text-transform:uppercase;color:var(--muted);font-weight:800}
+.att-agenda-title{font-size:13px;font-weight:800;color:var(--navy)}
+.att-agenda-meta,.att-agenda-topic{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.att-agenda-topic{color:var(--navy);margin-top:2px}
+.att-agenda-stat{text-align:right;min-width:86px}
+.att-status{display:inline-flex;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+.att-agenda-stat small{display:block;font-size:10px;color:var(--muted);margin-top:3px}
 .toast-host{position:fixed;right:16px;bottom:16px;display:grid;gap:8px;z-index:9999;max-width:min(360px,calc(100vw - 32px))}
 .toast{transform:translateY(8px);opacity:0;border-radius:10px;padding:11px 14px;background:var(--navy);color:var(--white);box-shadow:0 14px 34px rgba(13,27,46,.24);font-size:13px;font-weight:600;transition:opacity .18s,transform .18s}
 .toast.show{opacity:1;transform:translateY(0)}
 .toast-error{background:#8D2D2D}.toast-info{background:var(--navy2)}
-@media(max-width:760px){.dashboard-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.wrap{padding:12px 12px 50px}.card{padding:18px 16px}.compact-table thead{display:none}.compact-table,.compact-table tbody,.compact-table tr,.compact-table td{display:block;width:100%}.compact-table tr{background:var(--off);border-radius:8px;margin-bottom:8px;padding:8px 10px}.compact-table td{background:transparent;padding:3px 0}.compact-table td:last-child{text-align:left}}
+@media(max-width:760px){.dashboard-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.wrap{padding:12px 12px 50px}.card{padding:18px 16px}.compact-table thead{display:none}.compact-table,.compact-table tbody,.compact-table tr,.compact-table td{display:block;width:100%}.compact-table tr{background:var(--off);border-radius:8px;margin-bottom:8px;padding:8px 10px}.compact-table td{background:transparent;padding:3px 0}.compact-table td:last-child{text-align:left}.att-cal-head{align-items:flex-start;flex-direction:column}.att-cal-actions{justify-content:flex-start}.att-cal-day{min-height:46px;padding:5px}.att-agenda-row{grid-template-columns:44px minmax(0,1fr);align-items:start}.att-agenda-stat{text-align:left;grid-column:2}}
 @media(max-width:430px){.dashboard-summary{grid-template-columns:1fr}.hdr-logo img{height:32px}}
 `;
 

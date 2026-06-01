@@ -92,6 +92,10 @@ const INSTRUCTORS = [
   'Seema Athavale'
 ];
 
+function sameName(a,b) {
+  return String(a||'').trim().toUpperCase() === String(b||'').trim().toUpperCase();
+}
+
 // ── National holidays India 2026-2027 (YYYY-MM-DD) ────────────
 const NATIONAL_HOLIDAYS = [
   '2026-01-26', // Republic Day
@@ -1058,7 +1062,7 @@ function doGet(e) {
       const data=sh.getRange(2,1,sh.getLastRow()-1,10).getValues();
       const batches=data.filter(r=>{
         const assigned = detectSlotOrDate(r[4]) ? (r[9]||'') : (r[8]||'');
-        return r[0] && assigned === instructor;
+        return r[0] && sameName(assigned, instructor);
       }).map(r=>({
         batchCode:r[0],centre:r[1],course:r[2],type:r[3],
         batchSlot:  detectSlotOrDate(r[4])?(r[4]||'Full Day'):'Full Day',
@@ -1086,7 +1090,7 @@ function doGet(e) {
 
       const batches = batchRows.filter(r=>{
         const assigned = detectSlotOrDate(r[4]) ? (r[9]||'') : (r[8]||'');
-        return assigned === instructor;
+        return sameName(assigned, instructor);
       }).map(r=>{
         const isNew = detectSlotOrDate(r[4]);
         const batchCode = String(r[0]).toUpperCase();
@@ -1458,7 +1462,7 @@ function doGet(e) {
         if (!r[0]) return false;
         const sessDate = dateKey(r[2]);
         if (sessDate !== todayStr) return false;
-        if (instructor && r[4] !== instructor) {
+        if (instructor && !sameName(r[4], instructor)) {
           // Allow dual-role if batch is in their centre
           if (centres.length) {
             const b = batchData.find(b=>String(b[0]).toUpperCase()===String(r[1]).toUpperCase());

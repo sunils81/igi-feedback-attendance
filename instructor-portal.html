@@ -390,16 +390,16 @@ function loadTodaySessions() {
   title.textContent = 'Today — ' + today.toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'short',year:'numeric'});
   wrap.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading your batches…</p></div>';
   const centresParam = isDualRole ? dualCentres.join(',') : '';
-  gasGet({action:'getTodaySessions', instructor:instructorName, centres:centresParam}, function(e,d) {
+  gasGet({action:'getInstructorTodaySessions', instructor:instructorName, centres:centresParam}, function(e,d) {
     if (e||!d) {
       wrap.innerHTML='<div class="info-box" style="background:#FEF2F2;border-left-color:var(--red);color:var(--red)">Could not load sessions. Please refresh.</div>';
       return;
     }
-    if (!d.sessions||!d.sessions.length) {
+    if (!d.batches||!d.batches.length) {
       wrap.innerHTML='<div class="info-box">No sessions scheduled for today. If this is incorrect, check the Extra Session section below or contact your counselor.</div>';
       return;
     }
-    renderTodaySessions(d.sessions);
+    renderTodaySessions(d.batches);
   });
 }
 
@@ -502,6 +502,23 @@ function renderTodaySessions(sessions) {
   for (var i = 0; i < sessions.length; i++) {
     var s = sessions[i];
     var slotBadge = slotColors[s.batchSlot] || 'day-badge-full';
+    if (!s.sessionCode) {
+      html += '<div class="day-batch-card">';
+      html += '<div class="dbc-title">' + escH(s.batchCode) + '</div>';
+      html += '<div class="dbc-meta"><span class="day-badge ' + slotBadge + '">' + escH(s.batchSlot) + '</span> ';
+      html += escH(s.course) + ' &middot; ' + escH(s.centre) + '</div>';
+      if (!s.workingDay) {
+        html += '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Today is not marked as a working day for this batch.</div>';
+      } else if (!s.activeToday) {
+        html += '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Batch is assigned to you, but today is outside the batch date range.</div>';
+      } else {
+        html += '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Session has not been started yet.</div>';
+      }
+      html += '<input type="text" class="topic-override" id="topic-' + escH(s.batchCode) + '" placeholder="Topic covered today">';
+      html += '<button class="btn btn-gold" id="btn-' + escH(s.batchCode) + '" data-batch="' + escH(s.batchCode) + '" onclick="createTodaySession(this.dataset.batch)" ' + ((!s.workingDay||!s.activeToday)?'disabled':'') + '>Create Today\'s Session →</button>';
+      html += '</div>';
+      continue;
+    }
     if (s.cancelled) {
       html += '<div class="day-batch-card" style="background:#FEF2F2;border-color:#C94A4A">';
       html += '<div class="dbc-title">' + escH(s.batchCode) + ' <span style="font-size:11px;color:#C94A4A;font-weight:700">CANCELLED</span></div>';

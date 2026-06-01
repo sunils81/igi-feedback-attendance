@@ -1577,10 +1577,10 @@ function doGet(e) {
       var gstAmt=Math.round(courseFee*cf.gst/100),courseFeeG=courseFee+gstAmt;
       var regFee=Number(p.regFee)||cf.regFee,regGst=Math.round(regFee*cf.gst/100),regFeeG=regFee+regGst;
       var discPct=Number(p.discountPct)||0;
-      var discAmt=Number(p.discountAmt)||Math.round((courseFeeG+regFeeG)*discPct/100);
+      var discAmt=Number(p.discountAmt)||Math.round(courseFeeG*discPct/100);
       var tdsPct=Number(p.tdsPct)||0;
-      var tdsAmt=Number(p.tdsAmt)||Math.round((courseFeeG+regFeeG-discAmt)*tdsPct/100);
-      var netPayable=courseFeeG+regFeeG-discAmt-tdsAmt;
+      var tdsAmt=Number(p.tdsAmt)||Math.round((courseFeeG-discAmt)*tdsPct/100);
+      var netPayable=courseFeeG-discAmt-tdsAmt;
       var nInst=Number(p.nInst)||1;
       var insts=[];
       for (var ii=1;ii<=3;ii++) {
@@ -1631,14 +1631,15 @@ function doGet(e) {
         if(fcentres.length&&!fcentres.includes(r[3])) return false;
         return true;
       }).map(function(r){
+        var ft=normalizedFeeTotals(r);
         return {studentId:r[0],studentName:r[1],batchCode:r[2],centre:r[3],course:r[4],
           courseFee:r[5],gstAmt:r[6],courseFeeG:r[7],regFee:r[8],regGst:r[9],regFeeG:r[10],
-          discPct:r[11],discAmt:r[12],discReason:r[13],tdsPct:r[14],tdsAmt:r[15],
-          netPayable:r[16],nInst:r[17],
+          discPct:r[11],discAmt:ft.discAmt,discReason:r[13],tdsPct:r[14],tdsAmt:ft.tdsAmt,
+          netPayable:ft.netPayable,nInst:r[17],
           inst1:{amt:r[18],due:r[19]?new Date(r[19]).toLocaleDateString('en-IN'):'',paid:r[20],paidDate:r[21]?new Date(r[21]).toLocaleDateString('en-IN'):'',mode:r[22],ref:r[23]},
           inst2:{amt:r[24],due:r[25]?new Date(r[25]).toLocaleDateString('en-IN'):'',paid:r[26],paidDate:r[27]?new Date(r[27]).toLocaleDateString('en-IN'):'',mode:r[28],ref:r[29]},
           inst3:{amt:r[30],due:r[31]?new Date(r[31]).toLocaleDateString('en-IN'):'',paid:r[32],paidDate:r[33]?new Date(r[33]).toLocaleDateString('en-IN'):'',mode:r[34],ref:r[35]},
-          collected:r[36],outstanding:r[37],feeStatus:r[38],enteredBy:r[39]};
+          collected:ft.collected,outstanding:ft.outstanding,feeStatus:ft.feeStatus,enteredBy:r[39]};
       })});
     }
 
@@ -1651,11 +1652,12 @@ function doGet(e) {
       var sfr=sfd.filter(function(r){return String(r[0]).trim()===fsid&&r[0];});
       if(!sfr.length) return respond({status:'ok',found:false});
       return respond({status:'ok',found:true,summaries:sfr.map(function(r){
+        var ft=normalizedFeeTotals(r);
         var ni=Number(r[17])||1;
         var id=[{amt:r[18],due:r[19],paid:r[20]},{amt:r[24],due:r[25],paid:r[26]},{amt:r[30],due:r[31],paid:r[32]}];
         var nd=null,na=0;
         for(var xi=0;xi<ni;xi++){if(id[xi].paid!=='Y'&&id[xi].due){nd=new Date(id[xi].due).toLocaleDateString('en-IN');na=id[xi].amt;break;}}
-        return {batchCode:r[2],course:r[4],netPayable:r[16],collected:r[36],outstanding:r[37],feeStatus:r[38],nextDueDate:nd,nextDueAmt:na};
+        return {batchCode:r[2],course:r[4],netPayable:ft.netPayable,collected:ft.collected,outstanding:ft.outstanding,feeStatus:ft.feeStatus,nextDueDate:nd,nextDueAmt:na};
       })});
     }
 
@@ -1666,8 +1668,9 @@ function doGet(e) {
       var rvd=rvsh.getRange(2,1,rvsh.getLastRow()-1,41).getValues().filter(function(r){return r[0];});
       var nE=0,nC=0,nO=0,nOv=0,cM={},bM={},mM={};
       rvd.forEach(function(r){
-        var net=Number(r[16])||0,coll=Number(r[36])||0,out=Number(r[37])||0;
-        var st=r[38],cen=r[3],bc=r[2];
+        var ft=normalizedFeeTotals(r);
+        var net=ft.netPayable,coll=ft.collected,out=ft.outstanding;
+        var st=ft.feeStatus,cen=r[3],bc=r[2];
         nE+=net;nC+=coll;nO+=out;
         if(st==='Overdue') nOv+=out;
         if(!cM[cen]) cM[cen]={centre:cen,expected:0,collected:0,outstanding:0,overdue:0,students:0,bs:{}};
@@ -2030,6 +2033,27 @@ function ensureMarksHeaders(sh) {
   sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
   sh.setFrozenRows(1);
   [150,120,160,110,100,80,160,100,160].forEach((w,i)=>sh.setColumnWidth(i+1,w));
+}
+function normalizedFeeTotals(r) {
+  var courseFeeG=Number(r[7])||0;
+  if(!courseFeeG){
+    var cf=COURSE_FEES[r[4]]||{gst:18};
+    var courseFee=Number(r[5])||0;
+    courseFeeG=courseFee+Math.round(courseFee*(Number(cf.gst)||18)/100);
+  }
+  var discPct=Number(r[11])||0;
+  var discAmt=Math.round(courseFeeG*discPct/100);
+  var tdsPct=Number(r[14])||0;
+  var tdsAmt=Math.round((courseFeeG-discAmt)*tdsPct/100);
+  var netPayable=courseFeeG-discAmt-tdsAmt;
+  var collected=Number(r[36])||0;
+  var outstanding=netPayable-collected;
+  var overdue=false,tod=new Date();tod.setHours(0,0,0,0);
+  [[r[19],r[20]],[r[25],r[26]],[r[31],r[32]]].forEach(function(x){
+    if(x[1]!=='Y'&&x[0]&&new Date(x[0])<tod) overdue=true;
+  });
+  var feeStatus=collected>=netPayable?'Paid':overdue?'Overdue':collected>0?'Partial':'Pending';
+  return {discAmt:discAmt,tdsAmt:tdsAmt,netPayable:netPayable,collected:collected,outstanding:outstanding,feeStatus:feeStatus};
 }
 function ensureFeeHeaders(sh) {
   const h=['Student ID','Student Name','Batch Code','Centre','Course',

@@ -300,7 +300,7 @@
       </div>
       <div class="grid2">
         <div class="field"><label>Course Fee</label><input type="number" id="fee-course-fee" oninput="recalcFeeForm()"></div>
-        <div class="field"><label>Registration Fee</label><input type="number" id="fee-reg-fee" oninput="recalcFeeForm()"></div>
+        <div class="field"><label>Registration Fee <span style="font-weight:400;color:var(--muted)">(included)</span></label><input type="number" id="fee-reg-fee" oninput="recalcFeeForm()"></div>
         <div class="field"><label>Discount</label>
           <select id="fee-disc-pct" onchange="toggleCustomDiscount();recalcFeeForm()">
             <option value="0">No discount</option>
@@ -1061,8 +1061,7 @@ function renderFeeOverview(batch, students, records) {
     } else {
       const b = selectedFeeBatch();
       const cf = feeDefaultsForCourse(b ? b.course : '');
-      const base = (Number(cf.fee) || 0) + Math.round((Number(cf.fee) || 0) * (Number(cf.gst) || 0) / 100) +
-        (Number(cf.regFee) || 0) + Math.round((Number(cf.regFee) || 0) * (Number(cf.gst) || 0) / 100);
+      const base = (Number(cf.fee) || 0) + Math.round((Number(cf.fee) || 0) * (Number(cf.gst) || 0) / 100);
       expected += base;
       outstanding += base;
     }
@@ -1079,8 +1078,7 @@ function renderFeeOverview(batch, students, records) {
     const r = recordMap[String(s.enrollmentNo).toUpperCase()];
     const b = selectedFeeBatch();
     const cf = feeDefaultsForCourse(b ? b.course : '');
-    const fallback = (Number(cf.fee) || 0) + Math.round((Number(cf.fee) || 0) * (Number(cf.gst) || 0) / 100) +
-      (Number(cf.regFee) || 0) + Math.round((Number(cf.regFee) || 0) * (Number(cf.gst) || 0) / 100);
+    const fallback = (Number(cf.fee) || 0) + Math.round((Number(cf.fee) || 0) * (Number(cf.gst) || 0) / 100);
     const status = r ? r.feeStatus : 'Pending';
     const statusCls = String(status || 'Pending').toLowerCase();
     return '<tr>' +
@@ -1147,8 +1145,7 @@ function feeCalc() {
   const courseFee = Number(document.getElementById('fee-course-fee').value) || 0;
   const regFee = Number(document.getElementById('fee-reg-fee').value) || 0;
   const courseFeeG = courseFee + Math.round(courseFee * gst / 100);
-  const regFeeG = regFee + Math.round(regFee * gst / 100);
-  const gross = courseFeeG + regFeeG;
+  const gross = courseFeeG;
   const discPct = currentDiscountPct();
   const discAmt = Math.round(gross * discPct / 100);
   const tdsPct = Number(document.getElementById('fee-tds-pct').value) || 0;

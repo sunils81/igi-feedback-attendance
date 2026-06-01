@@ -32,6 +32,13 @@ const COUNSELOR_CREDS = {
 };
 const ADMIN_PASS = 'IGI2026'; // admin override — sees all centres
 
+// ── Dual-role instructors (instructor + counselor for their centre) ─
+const DUAL_ROLE = {
+  'Arjun Mistry':  { centres:['Ahmedabad'] },
+  'Piyush Ahuja':  { centres:['Lucknow'] },
+  'Anuradha':      { centres:['Mumbai','Lucknow','Ahmedabad'] }
+};
+
 // ── Instructor credentials (Option B — unique per instructor) ─
 const INSTRUCTOR_CREDS = {
   'Amit Sidpura':     'IGIAmit2026',
@@ -497,9 +504,18 @@ function doGet(e) {
       }
       const name = p.name||'';
       const pin  = p.pin ||p.pass||'';
+      // Check counselor credentials first
       const cred = COUNSELOR_CREDS[name];
-      if (!cred || cred.pin!==pin) return respond({status:'error', reason:'wrong_credentials'});
-      return respond({status:'ok', counselorName:name, centres:cred.centres, isAdmin:false});
+      if (cred && cred.pin===pin) {
+        return respond({status:'ok', counselorName:name, centres:cred.centres, isAdmin:false});
+      }
+      // Check dual-role instructor credentials (Arjun, Piyush, Anuradha)
+      const dual = DUAL_ROLE[name];
+      const instrCred = INSTRUCTOR_CREDS[name];
+      if (dual && instrCred && instrCred===pin) {
+        return respond({status:'ok', counselorName:name, centres:dual.centres, isAdmin:false, isDualRole:true});
+      }
+      return respond({status:'error', reason:'wrong_credentials'});
     }
     if (act==='masterLogin')    return respond({status: p.pass===MASTER_PASS?'ok':'error'});
 
@@ -974,7 +990,13 @@ function doGet(e) {
       const pin  = p.pin ||'';
       if (!INSTRUCTOR_CREDS[name] || INSTRUCTOR_CREDS[name]!==pin)
         return respond({status:'error',reason:'wrong_credentials'});
-      return respond({status:'ok', instructorName:name});
+      const dual = DUAL_ROLE[name];
+      return respond({
+        status:'ok',
+        instructorName: name,
+        isDualRole:  !!dual,
+        centres:     dual ? dual.centres : []
+      });
     }
 
     // ── assignInstructor ───────────────────────────────────────
@@ -1349,6 +1371,108 @@ function doGet(e) {
       sh.getRange(1,1,1,10).setValues([['Batch Code','Centre','Course','Type','Batch Slot','Start Date','End Date','Created By','Created At','Assigned Instructor']])
         .setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD);
       return respond({status:'ok',fixed});
+    }
+
+    // ── cancelSession ──────────────────────────────────────────
+    if (act==='cancelSession') {
+      const sessionCode = (p.sessionCode||'').toUpperCase();
+      const reason      = p.reason||'Instructor absent';
+      const cancelledBy = p.cancelledBy||'';
+      const sh = ss.getSheetByName(SH_SESSIONS);
+      if (!sh||sh.getLastRow()<2) return respond({status:'error',reason:'not_found'});
+      const data = sh.getRange(2,1,sh.getLastRow()-1,9).getValues();
+      for (let i=0;i<data.length;i++) {
+        if (String(data[i][0]).toUpperCase()===sessionCode) {
+          sh.getRange(i+2,6).setValue('Cancelled');   // Session Type col
+          sh.getRange(i+2,7).setValue('CANCELLED: '+reason+' (by '+cancelledBy+')'); // Topic col
+          sh.getRange(i+2,1,1,9).setBackground('#FEF2F2');
+          sh.getRange(i+2,6).setFontColor('#C94A4A').setFontWeight('bold');
+          return respond({status:'ok', sessionCode, reason});
+        }
+      }
+      return respond({status:'error',reason:'not_found'});
+    }
+
+    // ── updateSessionTopic (instructor overrides auto topic) ───
+    if (act==='updateSessionTopic') {
+      const sessionCode = (p.sessionCode||'').toUpperCase();
+      const topic       = p.topic||'';
+      const instructor  = p.instructor||'';
+      const sh = ss.getSheetByName(SH_SESSIONS);
+      if (!sh||sh.getLastRow()<2) return respond({status:'error',reason:'not_found'});
+      const data = sh.getRange(2,1,sh.getLastRow()-1,9).getValues();
+      for (let i=0;i<data.length;i++) {
+        if (String(data[i][0]).toUpperCase()===sessionCode) {
+          if (topic)      sh.getRange(i+2,7).setValue(topic);
+          if (instructor) sh.getRange(i+2,5).setValue(instructor);
+          // Mark as Confirmed (not just Scheduled/Auto-Created)
+          if (sh.getRange(i+2,6).getValue()==='Scheduled'||sh.getRange(i+2,6).getValue()==='') {
+            sh.getRange(i+2,6).setValue('Confirmed');
+          }
+          return respond({status:'ok'});
+        }
+      }
+      return respond({status:'error',reason:'not_found'});
+    }
+
+    // ── getTodaySessions (for instructor + counselor) ──────────
+    if (act==='getTodaySessions') {
+      const instructor = (p.instructor||'').trim();
+      const centres    = (p.centres||'').split(',').map(s=>s.trim()).filter(Boolean);
+      const todayStr   = new Date().toISOString().split('T')[0];
+      const shSess     = ss.getSheetByName(SH_SESSIONS);
+      const shBatch    = ss.getSheetByName(SH_BATCHES);
+      if (!shSess||shSess.getLastRow()<2) return respond({status:'ok',sessions:[]});
+      const sessData   = shSess.getRange(2,1,shSess.getLastRow()-1,9).getValues();
+      const batchData  = shBatch&&shBatch.getLastRow()>1
+        ? shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues() : [];
+
+      const todays = sessData.filter(r=>{
+        if (!r[0]) return false;
+        const sessDate = r[2] instanceof Date
+          ? r[2].toISOString().split('T')[0]
+          : String(r[2]).split('T')[0];
+        if (sessDate !== todayStr) return false;
+        if (instructor && r[4] !== instructor) {
+          // Allow dual-role if batch is in their centre
+          if (centres.length) {
+            const b = batchData.find(b=>String(b[0]).toUpperCase()===String(r[1]).toUpperCase());
+            if (!b) return false;
+            const isNew = detectSlotOrDate(b[4]);
+            const centre = b[1];
+            if (!centres.includes(centre)) return false;
+          } else return false;
+        }
+        return true;
+      });
+
+      const sessions = todays.map(r=>{
+        const batchCode = String(r[1]).toUpperCase();
+        const b = batchData.find(b=>String(b[0]).toUpperCase()===batchCode);
+        const isNew = b ? detectSlotOrDate(b[4]) : false;
+        // Get syllabus day info
+        const course   = b ? b[2] : '';
+        const syllabus = SYLLABI[course];
+        const dayNo    = Number(r[3]);
+        const dayTopic = syllabus && dayNo>0 ? syllabus[dayNo-1] : null;
+        return {
+          sessionCode:    String(r[0]),
+          batchCode:      r[1],
+          sessNo:         r[3],
+          instructor:     r[4],
+          sessionType:    r[5]||'Scheduled',
+          topic:          r[6]||'',
+          autoCreated:    r[7]==='Y',
+          cancelled:      String(r[5]).toLowerCase()==='cancelled',
+          course,
+          centre:         b ? b[1] : '',
+          batchSlot:      b ? (isNew?String(b[4]).trim():'Full Day') : 'Full Day',
+          scheduledTopic: dayTopic ? dayTopic.topic : '',
+          week:           dayTopic ? dayTopic.week  : '',
+          dayNo
+        };
+      });
+      return respond({status:'ok', sessions});
     }
 
     return respond({status:'error',reason:'unknown_action'});

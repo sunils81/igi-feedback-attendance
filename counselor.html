@@ -59,8 +59,10 @@
         <select id="lg-name">
           <option value="">Select your name</option>
           <option value="Anuradha">Anuradha</option>
+          <option value="Arjun Mistry">Arjun Mistry (Ahmedabad)</option>
           <option value="Bianca">Bianca</option>
           <option value="Omkar Kadam">Omkar Kadam</option>
+          <option value="Piyush Ahuja">Piyush Ahuja (Lucknow)</option>
           <option value="Preethy">Preethy</option>
           <option value="Sunita">Sunita</option>
           <option value="Rohit">Rohit</option>
@@ -290,9 +292,13 @@ function doLogin() {
   if (!nameVal || !pass) { err.textContent='Please select your name and enter your PIN.'; err.classList.add('show'); return; }
   btn.textContent = 'Signing in…'; btn.disabled = true;
   // Admin uses old password flow; counselors use name+pin
+  // Arjun + Piyush use instructor PINs but get counselor access for their centre
+  const dualRoleNames = ['Arjun Mistry','Piyush Ahuja'];
   const params = nameVal==='__admin__'
     ? {action:'counselorLogin', pass}
-    : {action:'counselorLogin', name:nameVal, pin:pass};
+    : dualRoleNames.includes(nameVal)
+      ? {action:'counselorLogin', name:nameVal, pin:pass, isDualRole:true}
+      : {action:'counselorLogin', name:nameVal, pin:pass};
   gasGet(params, function(e, d) {
     btn.textContent = 'Sign in →'; btn.disabled = false;
     if (e || !d || d.status !== 'ok') { err.classList.add('show'); return; }

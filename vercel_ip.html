@@ -47,17 +47,6 @@
 .topic-field{width:100%;border:1.5px solid var(--gold);border-radius:8px;padding:9px 12px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--gold-pale);color:var(--navy);outline:none;margin-bottom:8px}
 .topic-override{width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 12px;font-family:'DM Sans',sans-serif;font-size:12px;background:var(--white);color:var(--navy);outline:none;margin-bottom:10px}
 .topic-override:focus{border-color:var(--gold)}
-.timeline{display:grid;gap:8px;margin-bottom:14px}
-.timeline-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--white);cursor:pointer;transition:border-color .15s,background .15s}
-.timeline-row:hover{border-color:var(--gold)}
-.timeline-row.past{background:var(--off);opacity:.72}
-.timeline-row.today{background:var(--gold-pale);border-color:var(--gold);opacity:1}
-.timeline-row.active{border-color:var(--gold);box-shadow:0 0 0 2px rgba(201,168,76,.12)}
-.tl-num{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--navy);width:34px;flex-shrink:0}
-.tl-main{flex:1;min-width:0}
-.tl-title{font-size:12px;font-weight:700;color:var(--navy)}
-.tl-meta{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tl-count{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--navy)}
 </style>
 </head>
 <body>
@@ -104,7 +93,6 @@
     <button class="tab" onclick="iTab('t-attendance')">👥 Attendance</button>
     <button class="tab" onclick="iTab('t-marks')">📝 Marks</button>
     <button class="tab" onclick="iTab('t-mybatches')">🗂 My Batches</button>
-    <button class="tab" id="t-batchmgmt-tab" style="display:none" onclick="iTab('t-batchmgmt')">🏫 Batches</button>
   </div>
 
   <!-- ── TAB 1: TODAY ── -->
@@ -141,9 +129,7 @@
     <div class="card" id="ss-result" style="display:none">
       <div class="section-tag">Session Ready ✓</div>
       <h2 id="ss-code">—</h2>
-      <p class="sub" id="ss-type-disp">Students should use the Student Portal with enrollment number + birth day/month. The direct link below is optional.</p>
-      <div class="info-box">Primary student link: <strong id="student-portal-link">/student</strong></div>
-      <button class="btn btn-gold" style="margin-bottom:12px" onclick="copyStudentMessage()">Copy Student Message</button>
+      <p class="sub" id="ss-type-disp">Students can submit via the Student Portal — no link needed.</p>
       <div class="field"><label>Optional: Share direct link</label>
         <div style="display:flex;gap:8px;align-items:center">
           <input type="text" id="ss-link" class="auto-val" readonly style="flex:1;font-size:12px">
@@ -174,7 +160,6 @@
       <div id="at-live-badge" style="display:none;margin-bottom:12px">
         <span class="live-dot"></span> <span style="font-size:12px;color:#1D9E75;font-weight:600;margin-left:4px">Live — auto-refreshing every 30s</span>
       </div>
-      <div id="at-timeline"></div>
       <div id="at-wrap"></div>
     </div>
   </div>
@@ -262,25 +247,6 @@
     </div>
   </div>
 
-  <!-- ── TAB 5: BATCH MANAGEMENT (dual-role only) ── -->
-  <div id="t-batchmgmt" class="tab-content">
-    <div class="card">
-      <div class="section-tag">Batch Management</div>
-      <h2>Your Centre Batches</h2>
-      <p class="sub">As a dual-role instructor, you can manage batches for your centre. Full batch creation and student management is available here.</p>
-      <div class="info-box" style="margin-bottom:0">
-        For full batch management including student enrollment, open the
-        <a href="/counselor" style="color:var(--gold);font-weight:600">Counselor Panel</a>
-        and log in with your instructor name — your PIN works there too.
-        Your name will be listed in the counselor login dropdown with centre access.
-      </div>
-    </div>
-    <div class="card">
-      <div class="section-tag">Active Batches</div>
-      <div id="bm-list"><div class="spinner-wrap"><div class="spinner"></div><p>Loading…</p></div></div>
-    </div>
-  </div>
-
   <!-- ── TAB 4: MY BATCHES ── -->
   <div id="t-mybatches" class="tab-content">
     <div class="card">
@@ -295,8 +261,6 @@
 
 <script>
 let instructorName = '';
-let isDualRole     = false;
-let dualCentres    = [];
 let currentBatch   = '';
 let currentAssessmentId = '';
 let currentTotalMarks   = 0;
@@ -308,8 +272,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const o = document.createElement('option'); o.value=i; o.textContent=i;
     document.getElementById('lg-name').appendChild(o);
   });
-  const oldSessionDate = document.getElementById('ss-date');
-  if (oldSessionDate) oldSessionDate.value = new Date().toISOString().split('T')[0];
+  document.getElementById('ss-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('ct-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('ex-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('lg-pin').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
@@ -323,7 +286,7 @@ function iTab(id) {
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const idx = ['t-session','t-attendance','t-marks','t-mybatches','t-batchmgmt'].indexOf(id);
+  const idx = ['t-session','t-attendance','t-marks','t-mybatches'].indexOf(id);
   document.querySelectorAll('.tab')[idx].classList.add('active');
   if (id==='t-attendance') stopAttendanceRefresh();
   if (id==='t-mybatches')  loadMyBatches();
@@ -342,13 +305,7 @@ function doLogin() {
     btn.textContent='Sign in →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') { err.classList.add('show'); return; }
     instructorName = name;
-    isDualRole     = !!d.isDualRole;
-    dualCentres    = d.centres || [];
     document.getElementById('portal-name').textContent = name;
-    // Show batch management tab for dual-role
-    if (isDualRole) {
-      document.getElementById('t-batchmgmt-tab').style.display = 'flex';
-    }
     showScreen('s-main');
     loadInstructorBatches();
     loadTodaySessions();
@@ -357,13 +314,7 @@ function doLogin() {
 
 function loadInstructorBatches() {
   gasGet({action:'getInstructorBatches', instructor:instructorName}, function(e,d) {
-    if (e||!d||!d.batches) {
-      ['at-batch','mk-batch','ex-batch'].forEach(id => {
-        const sel = document.getElementById(id);
-        sel.innerHTML = '<option value="">Could not load batches</option>';
-      });
-      return;
-    }
+    if (e||!d||!d.batches) return;
     const batches = d.batches;
     ['at-batch','mk-batch','ex-batch'].forEach(id => {
       const sel = document.getElementById(id);
@@ -379,137 +330,20 @@ function loadInstructorBatches() {
 }
 
 // ── SESSION ───────────────────────────────────────────────────
-function escHtml(s) {
-  return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
-function loadTodaySessions() {
-  const wrap  = document.getElementById('today-batches-wrap');
-  const title = document.getElementById('today-title');
-  title.textContent = 'Loading...';
-  wrap.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading your batches…</p></div>';
-  gasGet({action:'getInstructorTodaySessions', instructor:instructorName}, function(e,d) {
-    if (e||!d||d.status!=='ok') {
-      title.textContent = 'Could not load today';
-      wrap.innerHTML = '<div class="info-box" style="background:#FEF2F2;border-left-color:var(--red);color:var(--red)">Could not load your batches. Please refresh and try again.</div>';
-      return;
-    }
-    title.textContent = d.date || new Date().toLocaleDateString('en-IN');
-    if (!d.batches||!d.batches.length) {
-      wrap.innerHTML = '<p style="font-size:13px;color:var(--muted)">No batches are assigned to you yet. Contact your centre counselor.</p>';
-      return;
-    }
-    wrap.innerHTML = d.batches.map(b => {
-      const slotClass = b.batchSlot==='First Half'?'day-badge-first':b.batchSlot==='Second Half'?'day-badge-second':'day-badge-full';
-      const safeBatch = escHtml(b.batchCode);
-      const meta = `${escHtml(b.course)} · ${escHtml(b.centre)} · ${escHtml(b.batchSlot||'Full Day')}`;
-      if (b.sessionCode) {
-        const link = window.location.origin + '/feedback?s=' + encodeURIComponent(b.sessionCode);
-        return `<div class="day-batch-card">
-          <div class="day-badge ${slotClass}">${escHtml(b.batchSlot||'Full Day')}</div>
-          <div class="dbc-title">${safeBatch}</div>
-          <div class="dbc-meta">${meta}</div>
-          <div class="info-box">Session ready: <strong>${escHtml(b.sessionCode)}</strong>${b.topic?' · '+escHtml(b.topic):''}</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-outline" style="width:auto" onclick="showSessionShare('${escJ(b.sessionCode)}','${escJ(link)}',${Number(b.sessNo)||1},'${escJ(b.sessionType||'Scheduled')}')">Show QR / Link</button>
-            <button class="btn btn-outline" style="width:auto" onclick="openAttendanceFor('${escJ(b.batchCode)}','${escJ(b.sessionCode)}')">View Attendance</button>
-          </div>
-        </div>`;
-      }
-      if (!b.workingDay) {
-        return `<div class="day-batch-card">
-          <div class="day-badge ${slotClass}">${escHtml(b.batchSlot||'Full Day')}</div>
-          <div class="dbc-title">${safeBatch}</div>
-          <div class="dbc-meta">${meta}</div>
-          <p style="font-size:13px;color:var(--muted)">Today is not a scheduled class day. Use Extra Session below only for approved makeup or extension classes.</p>
-        </div>`;
-      }
-      if (!b.activeToday) {
-        return `<div class="day-batch-card">
-          <div class="day-badge ${slotClass}">${escHtml(b.batchSlot||'Full Day')}</div>
-          <div class="dbc-title">${safeBatch}</div>
-          <div class="dbc-meta">${meta}</div>
-          <p style="font-size:13px;color:var(--muted)">This batch is not active today (${escHtml(b.startDate)} to ${escHtml(b.endDate)}).</p>
-        </div>`;
-      }
-      return `<div class="day-batch-card">
-        <div class="day-badge ${slotClass}">${escHtml(b.batchSlot||'Full Day')}</div>
-        <div class="dbc-title">${safeBatch}</div>
-        <div class="dbc-meta">${meta}</div>
-        <input class="topic-override" id="topic-${safeBatch}" placeholder="Optional topic for today">
-        <button class="btn btn-gold" id="btn-${safeBatch}" onclick="createTodaySession('${escJ(b.batchCode)}')">Create Today's Session →</button>
-      </div>`;
-    }).join('');
-  });
-}
-
-function createTodaySession(batchCode) {
-  const btn = document.getElementById('btn-'+batchCode);
-  const topicEl = document.getElementById('topic-'+batchCode);
-  if (btn) { btn.textContent='Creating…'; btn.disabled=true; }
-  gasGet({
-    action:'createSession',
-    batchCode,
-    instructor:instructorName,
-    sessionDate:new Date().toISOString().split('T')[0],
-    topic:topicEl ? topicEl.value.trim() : ''
-  }, function(e,d) {
-    if (btn) { btn.textContent='Create Today\'s Session →'; btn.disabled=false; }
-    if (e||!d||d.status!=='ok') {
-      alert(d&&d.reason==='session_exists_today'?'A session already exists for this batch today.':'Could not create session. Please try again.');
-      loadTodaySessions();
-      return;
-    }
-    const link = window.location.origin + '/feedback?s=' + encodeURIComponent(d.sessionCode);
-    showSessionShare(d.sessionCode, link, d.sessNo, d.sessionType||'Scheduled');
-    loadInstructorBatches();
-    loadTodaySessions();
-  });
-}
-
-function showSessionShare(sessionCode, link, sessNo, sessionType) {
-  const studentLink = window.location.origin + '/student';
-  document.getElementById('ss-code').textContent  = sessionCode;
-  document.getElementById('ss-type-disp').textContent = 'Session ' + sessNo + ' · ' + sessionType + ' · Students can also use the Student Portal';
-  document.getElementById('student-portal-link').textContent = studentLink;
-  document.getElementById('ss-link').value = link;
-  document.getElementById('ss-qr').src = 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=' + encodeURIComponent(link);
-  document.getElementById('ss-qr-txt').textContent = link;
-  document.getElementById('ss-result').style.display = 'block';
-  document.getElementById('ss-result').scrollIntoView({behavior:'smooth'});
-}
-
-function openAttendanceFor(batchCode, sessionCode) {
-  iTab('t-attendance');
-  document.getElementById('at-batch').value = batchCode;
-  loadSessionsForBatch();
-  setTimeout(function(){
-    const sel = document.getElementById('at-session');
-    if (sessionCode) sel.value = sessionCode;
-    loadAttendance();
-  }, 600);
-}
-
 function onBatchSelect() {
-  const batchEl = document.getElementById('ss-batch');
-  if (!batchEl) return;
-  const batch = batchEl.value;
+  const batch = document.getElementById('ss-batch').value;
   if (!batch) return;
   // Show topic info hint
   const infoEl = document.getElementById('ss-topic-info');
-  if (!infoEl) return;
   infoEl.style.display = 'block';
   infoEl.innerHTML = '💡 Topic for this session will be selected by each student from the structured syllabus when they submit feedback. No need to enter it here.';
 }
 
 function createSession() {
-  const batchEl = document.getElementById('ss-batch');
-  const dateEl  = document.getElementById('ss-date');
-  const err     = document.getElementById('ss-err');
-  const btn     = document.getElementById('ss-btn');
-  if (!batchEl || !dateEl || !err || !btn) return;
-  const batch = batchEl.value;
-  const date  = dateEl.value;
+  const batch = document.getElementById('ss-batch').value;
+  const date  = document.getElementById('ss-date').value;
+  const err   = document.getElementById('ss-err');
+  const btn   = document.getElementById('ss-btn');
   err.classList.remove('show');
   if (!batch||!date) { err.textContent='Please select a batch and date.'; err.classList.add('show'); return; }
   btn.textContent='Creating…'; btn.disabled=true;
@@ -530,96 +364,15 @@ function createSession() {
     document.getElementById('ss-result').scrollIntoView({behavior:'smooth'});
   });
 }
-
-function updateTopic(sessionCode) {
-  const topic = (document.getElementById('tov-'+sessionCode)||{value:''}).value.trim();
-  const btn   = event.target;
-  btn.textContent='Saving…'; btn.disabled=true;
-  gasGet({action:'updateSessionTopic', sessionCode, topic, instructor:instructorName}, function(e,d) {
-    btn.textContent='✓ Confirm Topic'; btn.disabled=false;
-    if (e||!d||d.status!=='ok') { alert('Could not update topic.'); return; }
-    btn.style.background='#1D9E75';
-    setTimeout(()=>{ btn.style.background=''; }, 2000);
-    loadTodaySessions();
-  });
-}
-
-function showCancelDialog(sessionCode, batchCode) {
-  const reason = prompt(
-    'Cancel session ' + sessionCode + '?
-
-Select reason:
-' +
-    '1. Instructor absent — illness
-' +
-    '2. Instructor absent — personal
-' +
-    '3. Institutional holiday
-' +
-    '4. Low attendance
-' +
-    '5. Other
-
-' +
-    'Type the number or write a reason:'
-  );
-  if (!reason) return;
-  const reasons = {
-    '1':'Instructor absent — illness',
-    '2':'Instructor absent — personal',
-    '3':'Institutional holiday',
-    '4':'Low attendance',
-    '5':'Other'
-  };
-  const finalReason = reasons[reason.trim()] || reason;
-  gasGet({action:'cancelSession', sessionCode, reason:finalReason, cancelledBy:instructorName}, function(e,d) {
-    if (e||!d||d.status!=='ok') { alert('Could not cancel session.'); return; }
-    alert('✅ Session ' + sessionCode + ' cancelled. Students will see a cancellation notice. This day can be made up on a working Saturday.');
-    loadTodaySessions();
-  });
-}
-
-function createExtraSession() {
-  const batch = document.getElementById('ex-batch').value;
-  const date  = document.getElementById('ex-date').value;
-  const topic = document.getElementById('ex-topic').value.trim();
-  const err   = document.getElementById('ex-err');
-  const btn   = document.getElementById('ex-btn');
-  err.classList.remove('show');
-  if (!batch||!date||!topic) { err.textContent='Please select a batch, date, and topic.'; err.classList.add('show'); return; }
-  btn.textContent='Creating…'; btn.disabled=true;
-  gasGet({action:'createSession', batchCode:batch, instructor:instructorName, sessionDate:date, topic, sessionType:'Extra'}, function(e,d) {
-    btn.textContent='Create Extra Session →'; btn.disabled=false;
-    if (e||!d||d.status!=='ok') {
-      err.textContent = d&&d.reason==='session_exists_today' ? 'A session already exists for this batch on that date.' : 'Could not create extra session.';
-      err.classList.add('show'); return;
-    }
-    const link = window.location.origin + '/feedback?s=' + encodeURIComponent(d.sessionCode);
-    showSessionShare(d.sessionCode, link, d.sessNo, d.sessionType||'Extra');
-    document.getElementById('ex-topic').value='';
-    loadTodaySessions();
-  });
-}
 function copyLink() {
   navigator.clipboard.writeText(document.getElementById('ss-link').value).then(()=>alert('✅ Copied!'));
 }
-function copyStudentMessage() {
-  const studentLink = window.location.origin + '/student';
-  const code = document.getElementById('ss-code').textContent;
-  const msg = 'IGI Attendance & Feedback\\n\\nPlease open ' + studentLink +
-    ' and sign in with your Enrollment Number and birth date/month (DD/MM).\\n\\n' +
-    'Session code, if asked by a direct link: ' + code;
-  navigator.clipboard.writeText(msg).then(()=>alert('✅ Student message copied!'));
-}
 function waLink() {
-  const studentLink = window.location.origin + '/student';
   const link = document.getElementById('ss-link').value;
   const code = document.getElementById('ss-code').textContent;
   window.open('https://wa.me/?text='+encodeURIComponent(
-    'IGI Attendance & Feedback\n\nPlease open the student portal:\n'+studentLink+
-    '\n\nUse your Enrollment Number and birth date/month (DD/MM).'+
-    '\n\nOptional direct session link:\n'+link+
-    '\nSession: '+code),'_blank');
+    'IGI Lecture Feedback\nSession: '+code+'\n\nPlease submit your feedback after today\'s lecture:\n'+link+
+    '\n\nYou will need your Enrollment Number and Date of Birth (DDMM) to submit.'),'_blank');
 }
 
 // ── ATTENDANCE ────────────────────────────────────────────────
@@ -628,7 +381,6 @@ function loadSessionsForBatch() {
   const sel   = document.getElementById('at-session');
   sel.innerHTML = '<option value="">Select session</option>';
   document.getElementById('at-wrap').innerHTML = '';
-  document.getElementById('at-timeline').innerHTML = '';
   if (!batch) return;
   gasGet({action:'getSessions', batchCode:batch}, function(e,d) {
     if (e||!d||!d.sessions) return;
@@ -640,37 +392,6 @@ function loadSessionsForBatch() {
     });
     if (d.sessions.length) { sel.value = d.sessions[0].sessionCode; loadAttendance(); }
   });
-  loadSessionTimeline(batch);
-}
-
-function loadSessionTimeline(batch) {
-  const wrap = document.getElementById('at-timeline');
-  wrap.innerHTML = '<div class="spinner-wrap" style="padding:14px"><div class="spinner"></div><p>Loading session history…</p></div>';
-  gasGet({action:'getBatchSessionTimeline', batchCode:batch}, function(e,d) {
-    if (e||!d||!d.timeline||!d.timeline.length) { wrap.innerHTML=''; return; }
-    wrap.innerHTML = `<div class="timeline">${d.timeline.map(s=>`
-      <div class="timeline-row ${s.isToday?'today':s.isPast?'past':''}" id="tl-${s.sessionCode}" onclick="selectTimelineSession('${s.sessionCode}')">
-        <div class="tl-num">S${String(s.sessNo).padStart(2,'0')}</div>
-        <div class="tl-main">
-          <div class="tl-title">${s.sessionDate}${s.isToday?' · Today':''}</div>
-          <div class="tl-meta">${s.topic||'Topic not set'}</div>
-        </div>
-        <div class="tl-count">${s.count}/${s.total}</div>
-      </div>`).join('')}</div>`;
-    markTimelineActive(document.getElementById('at-session').value);
-  });
-}
-
-function selectTimelineSession(sessionCode) {
-  document.getElementById('at-session').value = sessionCode;
-  loadAttendance();
-  markTimelineActive(sessionCode);
-}
-
-function markTimelineActive(sessionCode) {
-  document.querySelectorAll('.timeline-row').forEach(r=>r.classList.remove('active'));
-  const el = document.getElementById('tl-'+sessionCode);
-  if (el) el.classList.add('active');
 }
 
 function loadAttendance() {
@@ -679,7 +400,6 @@ function loadAttendance() {
   const wrap  = document.getElementById('at-wrap');
   stopAttendanceRefresh();
   if (!sess||!batch) { wrap.innerHTML=''; return; }
-  markTimelineActive(sess);
   wrap.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading attendance…</p></div>';
   fetchAttendance(sess, batch);
   // Auto-refresh

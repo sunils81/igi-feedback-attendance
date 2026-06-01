@@ -1697,15 +1697,17 @@ function sendStudentWelcomeEmail(ss, studentId, opts) {
   const body='Dear '+student.name+',\n\n'
     +'Welcome to IGI School of Gemology.\n\n'
     +'Your Student ID: '+student.id+'\n'
+    +'Your Password: '+student.mobileLast4+' (last 4 digits of your registered mobile number)\n'
     +'Student Portal: '+STUDENT_PORTAL_URL+'\n\n'
-    +'To sign in, use your Student ID and the last 4 digits of your registered mobile number.\n\n'
+    +'To sign in, use your Student ID and the password above.\n\n'
     +'Your batch details:\n'+batchLines+'\n\n'
     +'Regards,\nIGI School of Gemology';
   const htmlBody='<p>Dear '+escapeHtml(student.name)+',</p>'
     +'<p>Welcome to IGI School of Gemology.</p>'
     +'<p><strong>Your Student ID:</strong> '+escapeHtml(student.id)+'<br>'
+    +'<strong>Your Password:</strong> '+escapeHtml(student.mobileLast4)+' <span style="color:#666">(last 4 digits of your registered mobile number)</span><br>'
     +'<strong>Student Portal:</strong> <a href="'+STUDENT_PORTAL_URL+'">'+STUDENT_PORTAL_URL+'</a></p>'
-    +'<p>To sign in, use your Student ID and the last 4 digits of your registered mobile number.</p>'
+    +'<p>To sign in, use your Student ID and the password above.</p>'
     +'<p><strong>Your batch details:</strong></p>'+batchHtml
     +'<p>Regards,<br>IGI School of Gemology</p>';
   try {

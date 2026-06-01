@@ -66,6 +66,17 @@
 .student-chip{border-radius:7px;padding:7px 9px;font-size:12px;font-weight:600;line-height:1.25;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .student-chip.present{background:rgba(255,255,255,.68);color:#126b35}
 .student-chip.absent{background:rgba(255,255,255,.72);color:#C94A4A}
+.extract-toolbar{display:grid;grid-template-columns:1.1fr 1.2fr .8fr .8fr .7fr;gap:10px;align-items:end;margin:14px 0 12px}
+.extract-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.extract-actions .btn{width:auto;padding:8px 12px;font-size:12px}
+.extract-table-wrap{overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--white)}
+.extract-table{width:100%;border-collapse:collapse;font-size:12px;min-width:720px}
+.extract-table th{position:sticky;top:0;background:var(--navy);color:var(--gold);text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:9px 10px}
+.extract-table td{border-bottom:1px solid var(--border);padding:9px 10px;color:var(--navy)}
+.extract-table tr:nth-child(even) td{background:var(--off)}
+.extract-stat{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px}
+.extract-stat span{background:var(--off);border:1px solid var(--border);border-radius:8px;padding:6px 9px;font-size:11px;color:var(--muted)}
+.extract-stat b{font-family:"DM Mono",monospace;color:var(--navy)}
 .batch-choice-list{display:grid;gap:7px;max-height:190px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--white)}
 .batch-choice{display:flex;gap:8px;align-items:flex-start;padding:8px;border-radius:7px;background:var(--off);font-size:12px;color:var(--navy);cursor:pointer}
 .batch-choice input{width:auto;margin-top:2px;accent-color:var(--gold)}
@@ -87,6 +98,7 @@
   .grid2,.report-summary,.attendance-body{grid-template-columns:1fr}
   .attendance-head{grid-template-columns:1fr}
   .attendance-score{text-align:left}
+  .extract-toolbar{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -268,6 +280,29 @@
         <select id="rp-batch" onchange="loadCounselorReport()"><option value="">Select a batch</option></select>
       </div>
       <div id="rp-calendar"></div>
+      <div id="rp-extract-card" style="display:none;margin-top:14px">
+        <div class="section-tag">Attendance Extract</div>
+        <h2 style="margin-bottom:4px">Report Builder</h2>
+        <div class="extract-toolbar">
+          <div class="field"><label>Report Type</label>
+            <select id="rp-extract-type" onchange="renderAttendanceExtract()">
+              <option value="student">One Student History</option>
+              <option value="absentees">Absentees Only</option>
+              <option value="low">Low Attendance</option>
+              <option value="register">Full Register</option>
+            </select>
+          </div>
+          <div class="field"><label>Student</label><select id="rp-extract-student" onchange="renderAttendanceExtract()"><option value="">All students</option></select></div>
+          <div class="field"><label>From</label><input type="date" id="rp-extract-from" onchange="renderAttendanceExtract()"></div>
+          <div class="field"><label>To</label><input type="date" id="rp-extract-to" onchange="renderAttendanceExtract()"></div>
+          <div class="field"><label>Below %</label><input type="number" id="rp-extract-threshold" min="0" max="100" value="75" oninput="renderAttendanceExtract()"></div>
+        </div>
+        <div class="extract-actions">
+          <button class="btn btn-outline" onclick="copyAttendanceExtract()">Copy Table</button>
+          <button class="btn btn-outline" onclick="downloadAttendanceExtractCsv()">Download CSV</button>
+        </div>
+        <div id="rp-extract-wrap"></div>
+      </div>
       <div id="rp-wrap"><div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">Choose a batch to view its timeline</div><div class="empty-copy">Sessions, attendance chips, and test summaries will appear here.</div></div></div>
     </div>
     <div class="card" id="rp-marks-card" style="display:none">
@@ -405,6 +440,8 @@ let isAdmin         = false;
 let allBatches      = [];
 let counselorReportRequestId = 0;
 let counselorCalendarMonth = new Date();
+let counselorReportData = null;
+let currentExtractRows = [];
 let counselorStudentsByBatch = {};
 let feeStudentsByBatch = {};
 let feeRecordsByStudent = {};
@@ -685,6 +722,8 @@ function loadCounselorReport() {
   var requestId = ++counselorReportRequestId;
   if (!batch) {
     if (calWrap) calWrap.innerHTML = '';
+    counselorReportData = null;
+    document.getElementById('rp-extract-card').style.display = 'none';
     wrap.innerHTML = emptyState('📊', 'Choose a batch to view its timeline', 'Sessions, attendance chips, and test summaries will appear here.');
     marksCard.style.display = 'none';
     return;
@@ -701,9 +740,13 @@ function loadCounselorReport() {
     if (requestId !== counselorReportRequestId) return;
     clearTimeout(slowTimer);
     if (e || !d || d.status !== 'ok') {
+      counselorReportData = null;
+      document.getElementById('rp-extract-card').style.display = 'none';
       wrap.innerHTML = '<p style="color:var(--red);font-size:13px">Could not load report. Reason: ' + (d && d.reason ? d.reason : (e ? e.message : 'unknown')) + '</p>';
       return;
     }
+    counselorReportData = d;
+    setupAttendanceExtract(d);
     if (!d.sessions || !d.sessions.length) {
       wrap.innerHTML = emptyState('🗓', 'No sessions recorded yet', 'Once an instructor starts class, attendance and feedback details will appear here.');
       return;
@@ -804,6 +847,134 @@ function loadCounselorReport() {
       }
     });
   });
+}
+
+function setupAttendanceExtract(d) {
+  var card = document.getElementById('rp-extract-card');
+  var sel = document.getElementById('rp-extract-student');
+  if (!card || !sel) return;
+  card.style.display = 'block';
+  var cur = sel.value;
+  sel.innerHTML = '<option value="">All students</option>';
+  (d.students || []).slice().sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''));}).forEach(function(st) {
+    var o = document.createElement('option');
+    o.value = st.enrollmentNo;
+    o.textContent = (st.name || st.enrollmentNo) + ' · ' + st.enrollmentNo;
+    sel.appendChild(o);
+  });
+  if (cur) sel.value = cur;
+  var dates = (d.sessions || []).map(function(s){ return parseReportDateISO(s.sessionDate); }).filter(Boolean).sort();
+  if (dates.length) {
+    document.getElementById('rp-extract-from').value = dates[0];
+    document.getElementById('rp-extract-to').value = dates[dates.length - 1];
+  }
+  renderAttendanceExtract();
+}
+
+function renderAttendanceExtract() {
+  var d = counselorReportData;
+  var wrap = document.getElementById('rp-extract-wrap');
+  if (!d || !wrap) return;
+  var type = document.getElementById('rp-extract-type').value;
+  var studentId = document.getElementById('rp-extract-student').value;
+  var from = document.getElementById('rp-extract-from').value;
+  var to = document.getElementById('rp-extract-to').value;
+  var threshold = Number(document.getElementById('rp-extract-threshold').value) || 75;
+  var sessions = (d.sessions || []).filter(function(s) {
+    var iso = parseReportDateISO(s.sessionDate);
+    return (!from || iso >= from) && (!to || iso <= to);
+  });
+  var rows = [];
+  if (type === 'low') {
+    (d.students || []).forEach(function(st) {
+      var present = 0, missed = [];
+      sessions.forEach(function(s) {
+        var attended = studentAttendedSession(st, s.sessionCode);
+        if (attended) present++;
+        else missed.push('S' + s.sessNo);
+      });
+      var pct = sessions.length ? Math.round(present * 100 / sessions.length) : 0;
+      if (pct < threshold) rows.push({studentId:st.enrollmentNo, student:st.name, present, total:sessions.length, pct:pct + '%', missed:missed.join(', ')});
+    });
+  } else {
+    sessions.forEach(function(s) {
+      (d.students || []).forEach(function(st) {
+        if (studentId && String(st.enrollmentNo) !== String(studentId)) return;
+        var attended = studentAttendedSession(st, s.sessionCode);
+        if (type === 'absentees' && attended) return;
+        rows.push({date:s.sessionDate, session:'S' + s.sessNo, topic:s.topic || 'Topic not set', studentId:st.enrollmentNo, student:st.name, status:attended?'Present':'Absent', instructor:s.instructor || ''});
+      });
+    });
+  }
+  currentExtractRows = rows;
+  wrap.innerHTML = renderExtractTable(type, rows, sessions.length);
+}
+
+function renderExtractTable(type, rows, sessionCount) {
+  if (!rows.length) return emptyState('📋', 'No matching records', 'Try widening the date range or changing the report type.');
+  var html = '<div class="extract-stat"><span><b>' + rows.length + '</b> rows</span><span><b>' + sessionCount + '</b> sessions in range</span></div>';
+  html += '<div class="extract-table-wrap"><table class="extract-table"><thead><tr>';
+  var cols = type === 'low'
+    ? ['studentId','student','present','total','pct','missed']
+    : ['date','session','topic','studentId','student','status','instructor'];
+  var labels = {studentId:'Student ID',student:'Student',present:'Present',total:'Total',pct:'Attendance %',missed:'Missed Sessions',date:'Date',session:'Session',topic:'Topic',status:'Status',instructor:'Instructor'};
+  cols.forEach(function(c){ html += '<th>' + labels[c] + '</th>'; });
+  html += '</tr></thead><tbody>';
+  rows.forEach(function(r) {
+    html += '<tr>' + cols.map(function(c){ return '<td>' + escC(r[c]) + '</td>'; }).join('') + '</tr>';
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+function studentAttendedSession(st, sessionCode) {
+  var sessions = st.attendedSessions || [];
+  for (var i = 0; i < sessions.length; i++) {
+    if (String(sessions[i].sessionCode) === String(sessionCode)) return !!sessions[i].attended;
+  }
+  return false;
+}
+
+function parseReportDateISO(v) {
+  var s = String(v || '');
+  var m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return m[3] + '-' + String(m[2]).padStart(2,'0') + '-' + String(m[1]).padStart(2,'0');
+  var d = new Date(s);
+  if (isNaN(d)) return '';
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function extractRowsToCsv(rows) {
+  if (!rows.length) return '';
+  var cols = Object.keys(rows[0]);
+  var lines = [cols.join(',')];
+  rows.forEach(function(r) {
+    lines.push(cols.map(function(c) {
+      var value = String(r[c] == null ? '' : r[c]).replace(/"/g, '""');
+      return '"' + value + '"';
+    }).join(','));
+  });
+  return lines.join('\n');
+}
+
+function copyAttendanceExtract() {
+  var csv = extractRowsToCsv(currentExtractRows);
+  if (!csv) { showToast('No extract rows to copy.', 'error'); return; }
+  navigator.clipboard.writeText(csv).then(function(){ showToast('Attendance extract copied.'); }, function(){ showToast('Copy failed. Use Download CSV instead.', 'error'); });
+}
+
+function downloadAttendanceExtractCsv() {
+  var csv = extractRowsToCsv(currentExtractRows);
+  if (!csv) { showToast('No extract rows to download.', 'error'); return; }
+  var batch = document.getElementById('rp-batch').value || 'attendance';
+  var type = document.getElementById('rp-extract-type').value;
+  var blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = batch + '-' + type + '-attendance.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 
 function loadCounselorAttendanceCalendar(anchor) {

@@ -120,7 +120,7 @@ function renderAttendanceCalendar(targetId, payload, opts) {
     const dayLabel = d.getDate();
     cells.push('<button type="button" class="att-cal-day' + (inMonth ? '' : ' muted') + (iso === todayISO ? ' today' : '') + '" data-date="' + iso + '">' +
       '<span class="att-cal-num">' + dayLabel + '</span>' +
-      '<span class="att-cal-dots">' + dayEvents.slice(0,4).map(ev => '<i class="' + escShared(ev.status || 'upcoming') + '"></i>').join('') + '</span>' +
+      '<span class="att-cal-dots">' + dayEvents.slice(0,4).map(ev => '<i class="' + escShared(attendanceDotClass(ev)) + '">' + (ev.studentAttendance === 'present' ? '✓' : '') + '</i>').join('') + '</span>' +
       (dayEvents.length > 4 ? '<span class="att-cal-more">+' + (dayEvents.length - 4) + '</span>' : '') +
     '</button>');
   }
@@ -159,6 +159,12 @@ function renderAttendanceCalendar(targetId, payload, opts) {
       opts.onNavigate(next);
     });
   }
+}
+
+function attendanceDotClass(ev) {
+  if (ev && ev.studentAttendance === 'present') return 'student-present';
+  if (ev && ev.studentAttendance === 'absent') return 'student-missed';
+  return (ev && ev.status) || 'upcoming';
 }
 
 function escShared(value) {
@@ -260,7 +266,8 @@ body{font-family:"DM Sans",sans-serif;background:linear-gradient(180deg,#FBFAF6 
 .att-cal-day.today{border-color:var(--gold);background:var(--gold-pale)}
 .att-cal-num{font-family:"DM Mono",monospace;font-size:12px;font-weight:800}
 .att-cal-dots{display:flex;gap:3px;flex-wrap:wrap}
-.att-cal-dots i,.att-cal-legend i{width:7px;height:7px;border-radius:50%;display:inline-block}
+.att-cal-dots i,.att-cal-legend i{width:8px;height:8px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center}
+.att-cal-dots i{box-shadow:0 0 0 2px rgba(253,252,249,.95)}
 .att-cal-more{font-size:9px;color:var(--muted)}
 .att-cal-legend{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0 12px;font-size:11px;color:var(--muted)}
 .att-cal-legend span{display:inline-flex;align-items:center;gap:5px}
@@ -268,6 +275,8 @@ body{font-family:"DM Sans",sans-serif;background:linear-gradient(180deg,#FBFAF6 
 .att-cal-dots .pending,.att-cal-legend .pending,.att-status.pending{background:#FEF2F2;color:var(--red)}
 .att-cal-dots .upcoming,.att-cal-legend .upcoming,.att-status.upcoming{background:var(--gold-pale);color:#B87A10}
 .att-cal-dots .cancelled,.att-cal-legend .cancelled,.att-status.cancelled{background:#E5E1D8;color:var(--muted)}
+.att-cal-dots .student-present,.att-cal-legend .student-present{width:14px;height:14px;background:#168B57;color:#fff;font-size:9px;font-weight:900;line-height:1}
+.att-cal-dots .student-missed,.att-cal-legend .student-missed{width:12px;height:12px;background:var(--red);color:#fff}
 .att-agenda{display:grid;gap:8px}
 .att-agenda-row{display:grid;grid-template-columns:54px minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--off)}
 .att-agenda-row.completed{background:#F4FBF7}.att-agenda-row.pending{background:#FFF8F5}.att-agenda-row.upcoming{background:#FFFCF2}.att-agenda-row.cancelled{opacity:.72}

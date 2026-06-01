@@ -509,35 +509,43 @@ function loadBatchDropdowns() {
 function loadCounselorReport() {
   var batch = document.getElementById('rp-batch').value;
   var wrap  = document.getElementById('rp-wrap');
-  if (!batch) { wrap.innerHTML='<p style="font-size:13px;color:var(--muted)">Select a batch to view attendance.</p>'; return; }
+  if (!batch) {
+    wrap.innerHTML='<p style="font-size:13px;color:var(--muted)">Select a batch to view attendance.</p>';
+    document.getElementById('rp-marks-card').style.display='none';
+    return;
+  }
   wrap.innerHTML='<div class="spinner-wrap"><div class="spinner"></div><p>Loading report…</p></div>';
-  // Also load test marks summary
-  document.getElementById('rp-marks-card').style.display = 'none';
-  gasGet({action:'getBatchAssessmentSummary', batchCode:batch, reportPass:COUNSELOR_PASS_LOCAL}, function(em,dm) {
-    var card  = document.getElementById('rp-marks-card');
-    var mWrap = document.getElementById('rp-marks-wrap');
-    if (!em && dm && dm.status==='ok' && dm.summary && dm.summary.length) {
-      card.style.display = 'block';
-      var mHtml = '';
-      dm.summary.forEach(function(a) {
-        var passColor = a.passRate >= 60 ? '#1a7a3c' : '#C94A4A';
-        mHtml += '<div style="background:var(--off);border-radius:8px;padding:12px 14px;margin-bottom:10px">';
-        mHtml += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">';
-        mHtml += '<div><div style="font-weight:600;font-size:13px;color:var(--navy)">' + (a.testName||'') + '</div>';
-        mHtml += '<div style="font-size:11px;color:var(--muted)">' + (a.testDate||'') + ' &middot; ' + (a.testType||'') + ' &middot; Max: ' + a.totalMarks + '</div></div>';
-        mHtml += '<div style="text-align:right"><div style="font-size:18px;font-weight:700;font-family:monospace;color:' + passColor + '">' + a.avgPct + '%</div>';
-        mHtml += '<div style="font-size:10px;color:var(--muted)">Class avg</div></div></div>';
-        mHtml += '<div style="display:flex;gap:16px;font-size:11px;color:var(--muted)">';
-        mHtml += '<span>Appeared: <strong style="color:var(--navy)">' + a.appeared + '</strong></span>';
-        mHtml += '<span>Pass: <strong style="color:#1a7a3c">' + a.passed + '</strong></span>';
-        mHtml += '<span>Fail: <strong style="color:#C94A4A">' + a.failed + '</strong></span>';
-        mHtml += '<span>Pass rate: <strong style="color:' + passColor + '">' + a.passRate + '%</strong></span>';
-        mHtml += '</div></div>';
-      });
-      mWrap.innerHTML = mHtml;
-    }
-  });
-  gasGet({action:'getSessionReport', batchCode:batch, reportPass:COUNSELOR_PASS_LOCAL}, function(e,d) {
+  document.getElementById('rp-marks-card').style.display='none';
+
+  // Load marks separately — non-blocking, fails silently if GAS not updated yet
+  setTimeout(function() {
+    gasGet({action:'getBatchAssessmentSummary', batchCode:batch, reportPass:COUNSELOR_PASS_LOCAL}, function(em,dm) {
+      if (!em && dm && dm.status==='ok' && dm.summary && dm.summary.length) {
+        var card  = document.getElementById('rp-marks-card');
+        var mWrap = document.getElementById('rp-marks-wrap');
+        card.style.display = 'block';
+        var mHtml = '';
+        dm.summary.forEach(function(a) {
+          var passColor = a.passRate >= 60 ? '#1a7a3c' : '#C94A4A';
+          mHtml += '<div style="background:var(--off);border-radius:8px;padding:12px 14px;margin-bottom:10px">';
+          mHtml += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">';
+          mHtml += '<div><div style="font-weight:600;font-size:13px;color:var(--navy)">' + (a.testName||'') + '</div>';
+          mHtml += '<div style="font-size:11px;color:var(--muted)">' + (a.testDate||'') + ' &middot; ' + (a.testType||'') + ' &middot; Max: ' + a.totalMarks + '</div></div>';
+          mHtml += '<div style="text-align:right"><div style="font-size:18px;font-weight:700;font-family:monospace;color:' + passColor + '">' + a.avgPct + '%</div>';
+          mHtml += '<div style="font-size:10px;color:var(--muted)">Class avg</div></div></div>';
+          mHtml += '<div style="display:flex;gap:16px;font-size:11px;color:var(--muted)">';
+          mHtml += '<span>Appeared: <strong style="color:var(--navy)">' + a.appeared + '</strong></span>';
+          mHtml += '<span>Pass: <strong style="color:#1a7a3c">' + a.passed + '</strong></span>';
+          mHtml += '<span>Fail: <strong style="color:#C94A4A">' + a.failed + '</strong></span>';
+          mHtml += '<span>Pass rate: <strong style="color:' + passColor + '">' + a.passRate + '%</strong></span>';
+          mHtml += '</div></div>';
+        });
+        mWrap.innerHTML = mHtml;
+      }
+    });
+  }, 100); // slight delay so session report loads first
+
+    gasGet({action:'getSessionReport', batchCode:batch, reportPass:COUNSELOR_PASS_LOCAL}, function(e,d) {
     if (e||!d||d.status!=='ok') { wrap.innerHTML='<p style="color:var(--red);font-size:13px">Could not load report.</p>'; return; }
     var today = new Date(); today.setHours(0,0,0,0);
     if (!d.sessions||!d.sessions.length) { wrap.innerHTML='<p style="font-size:13px;color:var(--muted)">No sessions yet.</p>'; return; }

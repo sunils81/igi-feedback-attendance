@@ -703,13 +703,13 @@ function doGet(e) {
       const batch=(p.batchCode||'').toUpperCase();
       const sh=ss.getSheetByName(SH_SESSIONS);
       let sessNo=1;
-      const sessionDate=p.sessionDate||new Date().toISOString().split('T')[0];
+      const sessionDate=p.sessionDate||dateKey(new Date());
       if(sh.getLastRow()>1){
-        const data=sh.getRange(2,1,sh.getLastRow()-1,8).getValues();
+        const data=sh.getRange(2,1,sh.getLastRow()-1,9).getValues();
         const batchSess=data.filter(r=>String(r[1]).toUpperCase()===batch);
         sessNo=batchSess.length+1;
         for(const r of batchSess){
-          if(r[2]&&new Date(r[2]).toLocaleDateString('en-IN')===new Date(sessionDate).toLocaleDateString('en-IN'))
+          if(r[2]&&dateKey(r[2])===dateKey(sessionDate))
             return respond({status:'error',reason:'session_exists_today'});
         }
       }
@@ -735,7 +735,7 @@ function doGet(e) {
       }
       if(p.sessionType) sessionType=p.sessionType; // override if explicitly set
       const sessionCode=batch+'-S'+String(sessNo).padStart(2,'0');
-      sh.appendRow([sessionCode,batch,new Date(sessionDate),sessNo,p.instructor,sessionType,p.topic||'',new Date().toISOString()]);
+      sh.appendRow([sessionCode,batch,new Date(sessionDate),sessNo,p.instructor,sessionType,p.topic||'','N',new Date().toISOString()]);
       sh.getRange(sh.getLastRow(),3).setNumberFormat('dd/mm/yyyy');
       return respond({status:'ok',sessionCode,sessNo,sessionType});
     }
@@ -746,7 +746,7 @@ function doGet(e) {
       const sessionCode=(p.sessionCode||'').toUpperCase();
       const sh=ss.getSheetByName(SH_SESSIONS);
       if(sh.getLastRow()>1){
-        const data=sh.getRange(2,1,sh.getLastRow()-1,8).getValues();
+        const data=sh.getRange(2,1,sh.getLastRow()-1,9).getValues();
         for(let i=0;i<data.length;i++){
           if(String(data[i][0]).toUpperCase()===sessionCode){
             sh.getRange(i+2,7).setValue(p.topic||''); // col G = topic
@@ -762,7 +762,7 @@ function doGet(e) {
       const batch=(p.batchCode||'').toUpperCase();
       const sh=ss.getSheetByName(SH_SESSIONS);
       if(sh.getLastRow()<2)return respond({status:'ok',sessions:[]});
-      const data=sh.getRange(2,1,sh.getLastRow()-1,8).getValues();
+      const data=sh.getRange(2,1,sh.getLastRow()-1,9).getValues();
       return respond({status:'ok',sessions:data.filter(r=>r[0]&&(!batch||String(r[1]).toUpperCase()===batch))
         .map(r=>({sessionCode:r[0],batchCode:r[1],sessionDate:r[2]?new Date(r[2]).toLocaleDateString('en-IN'):'',
           sessNo:r[3],instructor:r[4],sessionType:r[5]||'Scheduled',topic:r[6]||''}))
@@ -776,7 +776,7 @@ function doGet(e) {
       const shStu=ss.getSheetByName(SH_STUDENTS);
       const shFb=ss.getSheetByName(SH_FEEDBACK);
       const total=getStudentsForBatch(ss,batch).length;
-      const sess=shSess&&shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,8).getValues()
+      const sess=shSess&&shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,9).getValues()
         .filter(r=>r[0]&&String(r[1]).toUpperCase()===batch):[];
       const fb=shFb&&shFb.getLastRow()>1?shFb.getRange(2,1,shFb.getLastRow()-1,3).getValues():[];
       const today=new Date(); today.setHours(0,0,0,0);
@@ -833,7 +833,7 @@ function doGet(e) {
       const mobileLast4=String(p.mobileLast4||p.mobileLastFour||p.dob||'').replace(/\D/g,'').slice(-4);
       const shSess=ss.getSheetByName(SH_SESSIONS);
       if(shSess.getLastRow()<2)return respond({status:'error',reason:'invalid_session'});
-      const sessData=shSess.getRange(2,1,shSess.getLastRow()-1,8).getValues();
+      const sessData=shSess.getRange(2,1,shSess.getLastRow()-1,9).getValues();
       const session=sessData.find(r=>String(r[0]).toUpperCase()===sessionCode);
       if(!session)return respond({status:'error',reason:'invalid_session'});
       const sessDate=new Date(session[2]);
@@ -884,7 +884,7 @@ function doGet(e) {
       if(p.topic){
         const shSess=ss.getSheetByName(SH_SESSIONS);
         if(shSess.getLastRow()>1){
-          const sData=shSess.getRange(2,1,shSess.getLastRow()-1,8).getValues();
+          const sData=shSess.getRange(2,1,shSess.getLastRow()-1,9).getValues();
           for(let i=0;i<sData.length;i++){
             if(String(sData[i][0]).toUpperCase()===(p.sessionCode||'').toUpperCase()&&!sData[i][6]){
               shSess.getRange(i+2,7).setValue(p.topic);break;
@@ -906,7 +906,7 @@ function doGet(e) {
       if(!batch)return respond({status:'error',reason:'batch_not_found'});
       const stuAll=getStudentsForBatch(ss,batchCode);
       const shSess=ss.getSheetByName(SH_SESSIONS);
-      const sessAll=shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,8).getValues()
+      const sessAll=shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,9).getValues()
         .filter(r=>String(r[1]).toUpperCase()===batchCode):[];
       const shFb=ss.getSheetByName(SH_FEEDBACK);
       const fbAll=shFb.getLastRow()>1?shFb.getRange(2,1,shFb.getLastRow()-1,17).getValues()
@@ -951,7 +951,7 @@ function doGet(e) {
       const shFb=ss.getSheetByName(SH_FEEDBACK);
       const batches=shBatch.getLastRow()>1?shBatch.getRange(2,1,shBatch.getLastRow()-1,8).getValues().filter(r=>r[0]):[];
       const students=getStudentRows(ss);
-      const sessions=shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,8).getValues().filter(r=>r[0]):[];
+      const sessions=shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,9).getValues().filter(r=>r[0]):[];
       const feedback=shFb.getLastRow()>1?shFb.getRange(2,1,shFb.getLastRow()-1,17).getValues().filter(r=>r[0]):[];
       const instrMap={};
       feedback.forEach(f=>{
@@ -1078,9 +1078,9 @@ function doGet(e) {
       if (!shBatch||shBatch.getLastRow()<2) return respond({status:'ok',date:dateStr(new Date()),batches:[]});
 
       const today = new Date(); today.setHours(12,0,0,0);
-      const todayISO = today.toISOString().split('T')[0];
+      const todayISO = dateKey(today);
       const batchRows = shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues().filter(r=>r[0]);
-      const sessions = shSess&&shSess.getLastRow()>1 ? shSess.getRange(2,1,shSess.getLastRow()-1,8).getValues() : [];
+      const sessions = shSess&&shSess.getLastRow()>1 ? shSess.getRange(2,1,shSess.getLastRow()-1,9).getValues() : [];
       const holidays = getHolidaysForCentre(ss);
       const isWorkDay = isWorkingDay(today, holidays);
 
@@ -1099,7 +1099,7 @@ function doGet(e) {
         const activeToday = !!(startDate&&endDate&&today>=startDate&&today<=endDate);
         const todaySess = sessions.find(s=>
           String(s[1]).toUpperCase()===batchCode &&
-          s[2] && new Date(s[2]).toISOString().split('T')[0]===todayISO
+          s[2] && dateKey(s[2])===todayISO
         );
         return {
           batchCode, centre:r[1], course:r[2], type:r[3],
@@ -1308,7 +1308,7 @@ function doGet(e) {
       const shBatch = ss.getSheetByName(SH_BATCHES);
       const bData   = shBatch.getLastRow()>1?shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues():[];
       const today   = new Date(); today.setHours(12,0,0,0);
-      const todayStr= today.toISOString().split('T')[0];
+      const todayStr= dateKey(today);
       const shSess  = ss.getSheetByName(SH_SESSIONS);
       const shFb    = ss.getSheetByName(SH_FEEDBACK);
       const allSess = shSess&&shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,10).getValues():[];
@@ -1333,7 +1333,7 @@ function doGet(e) {
         // Find today's session
         const todaySess = allSess.find(r=>
           String(r[1]).toUpperCase()===batchCode &&
-          r[2] && new Date(r[2]).toISOString().split('T')[0]===todayStr
+          r[2] && dateKey(r[2])===todayStr
         );
         // Check if already submitted
         const alreadySubmitted = todaySess && allFb.some(r=>
@@ -1446,7 +1446,7 @@ function doGet(e) {
     if (act==='getTodaySessions') {
       const instructor = (p.instructor||'').trim();
       const centres    = (p.centres||'').split(',').map(s=>s.trim()).filter(Boolean);
-      const todayStr   = new Date().toISOString().split('T')[0];
+      const todayStr   = dateKey(new Date());
       const shSess     = ss.getSheetByName(SH_SESSIONS);
       const shBatch    = ss.getSheetByName(SH_BATCHES);
       if (!shSess||shSess.getLastRow()<2) return respond({status:'ok',sessions:[]});
@@ -1456,9 +1456,7 @@ function doGet(e) {
 
       const todays = sessData.filter(r=>{
         if (!r[0]) return false;
-        const sessDate = r[2] instanceof Date
-          ? r[2].toISOString().split('T')[0]
-          : String(r[2]).split('T')[0];
+        const sessDate = dateKey(r[2]);
         if (sessDate !== todayStr) return false;
         if (instructor && r[4] !== instructor) {
           // Allow dual-role if batch is in their centre
@@ -1518,7 +1516,7 @@ function doGet(e) {
 function autoCreateSessionsForDate() {
   const ss        = SpreadsheetApp.openById(SHEET_ID);
   const today     = new Date();
-  const todayStr  = today.toISOString().split('T')[0];
+  const todayStr  = dateKey(today);
   const holidays  = getHolidaysForCentre(ss);
   if (!isWorkingDay(today, holidays)) return {status:'ok', message:'Not a working day', created:0};
 
@@ -1529,7 +1527,7 @@ function autoCreateSessionsForDate() {
 
   const batches   = shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues().filter(r=>r[0]);
   const existSess = shSess && shSess.getLastRow()>1
-    ? shSess.getRange(2,1,shSess.getLastRow()-1,8).getValues() : [];
+    ? shSess.getRange(2,1,shSess.getLastRow()-1,9).getValues() : [];
 
   let created = 0;
   batches.forEach(b => {
@@ -1549,7 +1547,7 @@ function autoCreateSessionsForDate() {
     // Check session already exists today
     const alreadyExists = existSess.some(r =>
       String(r[1]).toUpperCase() === batchCode &&
-      r[2] && new Date(r[2]).toISOString().split('T')[0] === todayStr
+      r[2] && dateKey(r[2]) === todayStr
     );
     if (alreadyExists) return;
 
@@ -1558,14 +1556,14 @@ function autoCreateSessionsForDate() {
     const nDays     = syllabus ? syllabus.length : 30;
     const schedule  = getWorkingSchedule(
       startDateRaw instanceof Date
-        ? startDateRaw.toISOString().split('T')[0]
+        ? dateKey(startDateRaw)
         : String(startDateRaw).split('T')[0],
       nDays, holidays
     );
 
     let dayNo = -1;
     schedule.forEach((d,i) => {
-      if (d.toISOString().split('T')[0] === todayStr) dayNo = i+1;
+      if (dateKey(d) === todayStr) dayNo = i+1;
     });
     if (dayNo < 0) return; // today not in schedule
 
@@ -1628,6 +1626,17 @@ function getStudentRows(ss) {
     if(!map[id]||map[id].status!=='Active')map[id]=row;
   });
   return Object.values(map);
+}
+
+function dateKey(value) {
+  if (!value) return '';
+  if (!(value instanceof Date)) {
+    const m=String(value).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) return m[3]+'-'+String(m[2]).padStart(2,'0')+'-'+String(m[1]).padStart(2,'0');
+  }
+  const d = value instanceof Date ? value : new Date(value);
+  if (isNaN(d)) return String(value).split('T')[0];
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
 
 function getStudentById(ss, studentId) {
@@ -1697,8 +1706,19 @@ function ensureSheets(ss) {
       sh.getRange(1,4).setValue('Mobile Last 4');
     } else if (name===SH_STUDENTS && sh.getRange(1,2).getValue()==='Batch Code') {
       sh.getRange(1,2).setValue('Primary Batch Code');
+    } else if (name===SH_SESSIONS) {
+      ensureSessionHeaders(sh);
     }
   });
+}
+function ensureSessionHeaders(sh) {
+  const h=['Session Code','Batch Code','Session Date','Session No','Instructor','Session Type','Topic Covered','Auto Created','Created At'];
+  const current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);
+  const hasOldTopicHeader=current[5]==='Topic'||current[6]==='Module'||current[7]==='Created At';
+  if (hasOldTopicHeader||current[5]!==h[5]||current[6]!==h[6]||current[7]!==h[7]||current[8]!==h[8]) {
+    sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
+    sh.setFrozenRows(1);
+  }
 }
 function ensureEnrollmentHeaders(sh) {
   if (sh.getLastRow()>0&&sh.getRange(1,1).getValue()!=='') return;

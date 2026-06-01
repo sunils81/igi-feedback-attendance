@@ -92,6 +92,9 @@
 .fee-inst-main strong{display:block;color:var(--navy);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fee-inst-side{font-family:'DM Mono',monospace;font-weight:800;color:var(--navy);white-space:nowrap}
 .fee-note{font-size:10px;color:var(--muted);line-height:1.45;margin-top:10px}
+.fee-empty{border-style:dashed;background:rgba(255,255,255,.74)}
+.fee-empty .fee-title{margin-bottom:4px}
+.fee-empty-copy{font-size:12px;color:var(--muted);line-height:1.5}
 @media(max-width:420px){.fee-money-grid{grid-template-columns:1fr}.fee-inst-row{grid-template-columns:auto 1fr}.fee-inst-side{grid-column:2;text-align:left}}
 </style>
 </head>
@@ -641,9 +644,27 @@ function loadStudentFees() {
   if (!sid) return;
   feeWrap.innerHTML = loadingState('Loading fee dashboard...');
   gasGet({action:'getStudentFeeStatus', studentId:sid}, function(e,d) {
-    if (e||!d||!d.found||!d.summaries||!d.summaries.length) { feeWrap.innerHTML=''; return; }
+    if (e||!d) { feeWrap.innerHTML = renderStudentFeeEmpty('Could not load fee details', 'Please refresh once. If this continues, contact your counselor.'); return; }
+    if (!d.found||!d.summaries||!d.summaries.length) { feeWrap.innerHTML = renderStudentFeeEmpty('Fee record not set up yet', 'Your counselor has not added a fee schedule for this Student ID yet. Once added, payable amount, paid amount, balance, and installments will appear here.'); return; }
     feeWrap.innerHTML = renderStudentFeeDashboard(d.summaries);
   });
+}
+
+function renderStudentFeeEmpty(title, message) {
+  var batchText = '';
+  if (portalData && portalData.batches && portalData.batches.length) {
+    var seen = {};
+    batchText = portalData.batches.filter(function(b){
+      if (!b.batchCode || seen[b.batchCode]) return false;
+      seen[b.batchCode] = true;
+      return true;
+    }).map(function(b){ return escShared(b.batchCode + (b.course ? ' · ' + b.course : '')); }).join('<br>');
+  }
+  return '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;padding:0 2px">Fee Dashboard</div>' +
+    '<div class="fee-card fee-empty"><div class="fee-title">' + escShared(title) + '</div>' +
+    '<div class="fee-empty-copy">' + escShared(message) + '</div>' +
+    (batchText ? '<div class="fee-note">' + batchText + '</div>' : '') +
+    '</div>';
 }
 
 function renderStudentFeeDashboard(summaries) {

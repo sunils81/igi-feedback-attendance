@@ -528,6 +528,12 @@ function loadCounselorReport() {
   }
   wrap.innerHTML='<div class="spinner-wrap"><div class="spinner"></div><p>Loading report…</p></div>';
   document.getElementById('rp-marks-card').style.display='none';
+  // Hard fallback - clear spinner after 15s if nothing loaded
+  var _rpTimeout = setTimeout(function(){
+    if (wrap.innerHTML.indexOf('spinner')!==-1) {
+      wrap.innerHTML='<p style="color:var(--red);font-size:13px">Could not load report. Please try again.</p>';
+    }
+  }, 15000);
 
   // Load marks separately — non-blocking, fails silently if GAS not updated yet
   setTimeout(function() {
@@ -558,7 +564,8 @@ function loadCounselorReport() {
   }, 100); // slight delay so session report loads first
 
     gasGet({action:'getSessionReport', batchCode:batch, reportPass:COUNSELOR_PASS_LOCAL}, function(e,d) {
-    if (e||!d||d.status!=='ok') { wrap.innerHTML='<p style="color:var(--red);font-size:13px">Could not load report.</p>'; return; }
+    if (e||!d||d.status!=='ok') { clearTimeout(_rpTimeout); wrap.innerHTML='<p style="color:var(--red);font-size:13px">Could not load. Error: '+(d&&d.reason||'unknown')+'</p>'; return; }
+    clearTimeout(_rpTimeout);
     var today = new Date(); today.setHours(0,0,0,0);
     if (!d.sessions||!d.sessions.length) { wrap.innerHTML='<p style="font-size:13px;color:var(--muted)">No sessions yet.</p>'; return; }
     var html = '';

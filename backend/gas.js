@@ -868,7 +868,7 @@ function doGet(e) {
           return respond({status:'error',reason:'already_submitted'});
       }
       const shBatch=ss.getSheetByName(SH_BATCHES);
-      const bData=shBatch.getLastRow()>1?shBatch.getRange(2,1,shBatch.getLastRow()-1,8).getValues():[];
+      const bData=shBatch.getLastRow()>1?shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues():[];
       const batch=bData.find(r=>String(r[0]).toUpperCase()===batchCode);
       return respond({status:'ok',studentName:student.name,enrollmentNo:student.enrollmentNo,
         batchCode,sessionCode,sessNo:session[3],topic:session[6]||'',
@@ -917,7 +917,7 @@ function doGet(e) {
       const reportPass=(p.reportPass||'').trim();
       if(reportPass!==REPORT_PASS)return respond({status:'error',reason:'wrong_password'});
       const shBatch=ss.getSheetByName(SH_BATCHES);
-      const bData=shBatch.getLastRow()>1?shBatch.getRange(2,1,shBatch.getLastRow()-1,8).getValues():[];
+      const bData=shBatch.getLastRow()>1?shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues():[];
       const batch=bData.find(r=>String(r[0]).toUpperCase()===batchCode);
       if(!batch)return respond({status:'error',reason:'batch_not_found'});
       const stuAll=getStudentsForBatch(ss,batchCode);

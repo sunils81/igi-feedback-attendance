@@ -492,50 +492,50 @@ function createSession() {
 }
 
 function renderTodaySessions(sessions) {
-  const wrap = document.getElementById('today-batches-wrap');
-  const slotColors = {'First Half':'day-badge-first','Second Half':'day-badge-second','Full Day':'day-badge-full'};
+  var wrap = document.getElementById('today-batches-wrap');
+  var slotColors = {'First Half':'day-badge-first','Second Half':'day-badge-second','Full Day':'day-badge-full'};
   if (!sessions.length) {
-    wrap.innerHTML='<div class="info-box">No sessions today for your batches.</div>'; return;
+    wrap.innerHTML = '<div class="info-box">No sessions today for your batches.</div>';
+    return;
   }
   var html = '';
-  sessions.forEach(function(s) {
-    var slotBadge = slotColors[s.batchSlot]||'day-badge-full';
+  for (var i = 0; i < sessions.length; i++) {
+    var s = sessions[i];
+    var slotBadge = slotColors[s.batchSlot] || 'day-badge-full';
     if (s.cancelled) {
       html += '<div class="day-batch-card" style="background:#FEF2F2;border-color:#C94A4A">';
-      html += '<div class="dbc-title">' + s.batchCode + ' <span style="font-size:11px;color:#C94A4A;font-weight:700">CANCELLED</span></div>';
-      html += '<div class="dbc-meta"><span class="day-badge ' + slotBadge + '">' + s.batchSlot + '</span>' + s.course + ' · ' + s.centre + '</div>';
-      html += '<div style="font-size:12px;color:#C94A4A">' + (s.topic||'Session cancelled') + '</div>';
+      html += '<div class="dbc-title">' + escH(s.batchCode) + ' <span style="font-size:11px;color:#C94A4A;font-weight:700">CANCELLED</span></div>';
+      html += '<div class="dbc-meta"><span class="day-badge ' + slotBadge + '">' + escH(s.batchSlot) + '</span> ' + escH(s.course) + ' &middot; ' + escH(s.centre) + '</div>';
+      html += '<div style="font-size:12px;color:#C94A4A">' + escH(s.topic || 'Session cancelled') + '</div>';
       html += '</div>';
-      return;
+      continue;
     }
-    var displayTopic = s.topic && !s.topic.startsWith('CANCELLED') ? s.topic : '';
-    var autoBadge = s.autoCreated ? '<span style="font-size:10px;color:#1D9E75;margin-left:6px;font-weight:600">Auto</span>' : '';
-    var topicBlock = '';
+    var displayTopic = (s.topic && s.topic.indexOf('CANCELLED') !== 0) ? s.topic : '';
+    var autoTxt = s.autoCreated ? ' <span style="font-size:10px;color:#1D9E75;font-weight:600">Auto</span>' : '';
+    html += '<div class="day-batch-card" id="dbc-' + escH(s.sessionCode) + '">';
+    html += '<div class="dbc-title">' + escH(s.batchCode);
+    html += '<span style="font-family:monospace;font-size:10px;color:var(--muted);margin-left:8px">' + escH(s.sessionCode) + '</span>';
+    html += autoTxt + '</div>';
+    html += '<div class="dbc-meta"><span class="day-badge ' + slotBadge + '">' + escH(s.batchSlot) + '</span> ';
+    html += escH(s.course) + ' &middot; ' + escH(s.centre) + ' &middot; Session ' + s.sessNo + '</div>';
     if (s.scheduledTopic) {
-      topicBlock += '<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Day ' + s.dayNo + (s.week?' · '+s.week:'') + '</div>';
-      topicBlock += '<div style="font-size:12px;background:var(--gold-pale);border-left:3px solid var(--gold);padding:8px 10px;border-radius:0 6px 6px 0;color:#6b4c10;margin-bottom:10px;line-height:1.4">' + s.scheduledTopic + '</div>';
+      html += '<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Day ' + s.dayNo + (s.week ? ' &middot; ' + escH(s.week) : '') + '</div>';
+      html += '<div style="font-size:12px;background:var(--gold-pale);border-left:3px solid var(--gold);padding:8px 10px;border-radius:0 6px 6px 0;color:#6b4c10;margin-bottom:10px;line-height:1.4">' + escH(s.scheduledTopic) + '</div>';
     }
-    html += '<div class="day-batch-card" id="dbc-' + s.sessionCode + '">';
-    html += '<div class="dbc-title">' + s.batchCode;
-    html += '<span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-left:8px">' + s.sessionCode + '</span>';
-    html += autoBadge + '</div>';
-    html += '<div class="dbc-meta"><span class="day-badge ' + slotBadge + '">' + s.batchSlot + '</span> ';
-    html += s.course + ' · ' + s.centre + ' · Session ' + s.sessNo + '</div>';
-    html += topicBlock;
     html += '<div style="font-size:11px;color:var(--muted);margin-bottom:5px">Override topic if different today:</div>';
-    html += '<input type="text" class="topic-override" id="tov-' + s.sessionCode + '" ';
-    html += 'placeholder="' + (displayTopic||s.scheduledTopic||'Leave blank to keep scheduled topic') + '" ';
-    html += 'value="' + displayTopic + '">';
+    html += '<input type="text" class="topic-override" id="tov-' + escH(s.sessionCode) + '" placeholder="' + escH(displayTopic || s.scheduledTopic || 'Leave blank to keep scheduled topic') + '" value="' + escH(displayTopic) + '">';
     html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">';
-    html += '<button class="btn btn-gold" style="flex:1;font-size:12px;padding:9px 12px" ';
-    html += 'onclick="updateTopic('' + s.sessionCode + '')">Confirm Topic</button>';
-    html += '<button style="flex:1;padding:9px 12px;border:1.5px solid #C94A4A;color:#C94A4A;';
-    html += 'border-radius:8px;background:transparent;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif" ';
-    html += 'onclick="showCancelDialog('' + s.sessionCode + '','' + s.batchCode + '')">Cancel Session</button>';
+    html += '<button class="btn btn-gold" style="flex:1;font-size:12px;padding:9px 12px" data-sess="' + escH(s.sessionCode) + '" onclick="updateTopic(this.dataset.sess)">Confirm Topic</button>';
+    html += '<button style="flex:1;padding:9px 12px;border:1.5px solid #C94A4A;color:#C94A4A;border-radius:8px;background:transparent;font-size:12px;cursor:pointer" data-sess="' + escH(s.sessionCode) + '" data-batch="' + escH(s.batchCode) + '" onclick="showCancelDialog(this.dataset.sess,this.dataset.batch)">Cancel Session</button>';
     html += '</div></div>';
-  });
+  }
   wrap.innerHTML = html;
 }
+
+function escH(v) {
+  return String(v || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 
 function updateTopic(sessionCode) {
   const topic = (document.getElementById('tov-'+sessionCode)||{value:''}).value.trim();
@@ -551,24 +551,8 @@ function updateTopic(sessionCode) {
 }
 
 function showCancelDialog(sessionCode, batchCode) {
-  const reason = prompt(
-    'Cancel session ' + sessionCode + '?
-
-Select reason:
-' +
-    '1. Instructor absent — illness
-' +
-    '2. Instructor absent — personal
-' +
-    '3. Institutional holiday
-' +
-    '4. Low attendance
-' +
-    '5. Other
-
-' +
-    'Type the number or write a reason:'
-  );
+  var msg = 'Cancel session ' + sessionCode + '?\n\nSelect reason:\n1. Instructor absent - illness\n2. Instructor absent - personal\n3. Institutional holiday\n4. Low attendance\n5. Other\n\nType the number or reason:';
+  const reason = prompt(msg);
   if (!reason) return;
   const reasons = {
     '1':'Instructor absent — illness',

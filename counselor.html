@@ -222,6 +222,11 @@
       </div>
       <div id="rp-wrap"><p style="font-size:13px;color:var(--muted)">Select a batch to see past sessions. Past sessions are greyed out.</p></div>
     </div>
+    <div class="card" id="rp-marks-card" style="display:none">
+      <div class="section-tag">Assessment Summary</div>
+      <h2>Test Marks</h2>
+      <div id="rp-marks-wrap"></div>
+    </div>
   </div>
 
   <!-- TAB 5: HOLIDAYS -->
@@ -291,6 +296,7 @@ let counselorName    = '';
 let allowedCentres  = [];
 let isAdmin         = false;
 let allBatches      = [];
+let counselorReportRequestId = 0;
 
 function doLogin() {
   const nameVal = document.getElementById('lg-name').value;
@@ -531,6 +537,7 @@ function loadCounselorReport() {
   var batch = document.getElementById('rp-batch').value;
   var wrap  = document.getElementById('rp-wrap');
   var marksCard = document.getElementById('rp-marks-card');
+  var requestId = ++counselorReportRequestId;
   if (!batch) {
     wrap.innerHTML = '<p style="font-size:13px;color:var(--muted)">Select a batch to view attendance.</p>';
     marksCard.style.display = 'none';
@@ -538,8 +545,14 @@ function loadCounselorReport() {
   }
   wrap.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading report…</p></div>';
   marksCard.style.display = 'none';
+  var slowTimer = setTimeout(function() {
+    if (requestId !== counselorReportRequestId) return;
+    wrap.innerHTML = '<p style="color:var(--red);font-size:13px">This report is taking too long to load. Please try again, or choose another batch and come back.</p><button class="btn btn-outline" style="margin-top:10px" onclick="loadCounselorReport()">Retry</button>';
+  }, 18000);
 
   gasGet({action:'getSessionReport', batchCode:batch, reportPass:COUNSELOR_PASS_LOCAL}, function(e, d) {
+    if (requestId !== counselorReportRequestId) return;
+    clearTimeout(slowTimer);
     if (e || !d || d.status !== 'ok') {
       wrap.innerHTML = '<p style="color:var(--red);font-size:13px">Could not load report. Reason: ' + (d && d.reason ? d.reason : (e ? e.message : 'unknown')) + '</p>';
       return;
@@ -608,6 +621,7 @@ function loadCounselorReport() {
 
     // Load test marks summary separately (non-blocking)
     gasGet({action:'getBatchAssessmentSummary', batchCode:batch, reportPass:COUNSELOR_PASS_LOCAL}, function(em, dm) {
+      if (requestId !== counselorReportRequestId) return;
       if (!em && dm && dm.status === 'ok' && dm.summary && dm.summary.length) {
         marksCard.style.display = 'block';
         var mHtml = '';

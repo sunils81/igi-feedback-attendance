@@ -925,14 +925,24 @@ function doGet(e) {
       const sessAll=shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,9).getValues()
         .filter(r=>String(r[1]).toUpperCase()===batchCode):[];
       const shFb=ss.getSheetByName(SH_FEEDBACK);
-      const fbAll=shFb.getLastRow()>1?shFb.getRange(2,1,shFb.getLastRow()-1,17).getValues()
+      const fbAll=shFb.getLastRow()>1?shFb.getRange(2,1,shFb.getLastRow()-1,11).getValues()
         .filter(r=>String(r[3]).toUpperCase()===batchCode):[];
+      const feedbackBySession={};
+      const attendedByStudent={};
+      fbAll.forEach(f=>{
+        const sc=String(f[0]).toUpperCase();
+        const enrol=String(f[1]).toUpperCase();
+        if(!feedbackBySession[sc])feedbackBySession[sc]=[];
+        feedbackBySession[sc].push(f);
+        if(!attendedByStudent[enrol])attendedByStudent[enrol]=new Set();
+        attendedByStudent[enrol].add(sc);
+      });
       const sessions=sessAll.map(r=>{
         const sc = String(r[0]).toUpperCase();
         // Feedback rows for this session: col 8=Q1, col 9=Q2 (0-indexed from fbAll row)
         // Attendance_Feedback cols: 0=Session Code,1=Student ID,2=Student Name,3=Batch Code,
         //   4=Centre,5=Course,6=Instructor,7=Topic,8=Completion,9=Q1,10=Q2,11=Q3,12=Q4,13=Q5,14=Q6,15=Anonymous,16=Timestamp
-        const sessFb = fbAll.filter(f=>String(f[0]).toUpperCase()===sc);
+        const sessFb = feedbackBySession[sc]||[];
         const q1vals = sessFb.map(f=>Number(f[9])||0).filter(v=>v>0);
         const q2vals = sessFb.map(f=>Number(f[10])||0).filter(v=>v>0);
         const avgQ1  = q1vals.length ? Math.round((q1vals.reduce((s,v)=>s+v,0)/q1vals.length)*10)/10 : null;
@@ -947,10 +957,11 @@ function doGet(e) {
       const totalSessions=sessions.length;
       const students=stuAll.map(r=>{
         const enrol=String(r.enrollmentNo);
-        const attended=fbAll.filter(f=>String(f[1]).toUpperCase()===enrol.toUpperCase()).length;
+        const attendedSet=attendedByStudent[enrol.toUpperCase()]||new Set();
+        const attended=attendedSet.size;
         const attendedSessions=sessions.map(s=>({
           sessionCode:s.sessionCode,sessNo:s.sessNo,
-          attended:fbAll.some(f=>String(f[0]).toUpperCase()===s.sessionCode&&String(f[1]).toUpperCase()===enrol.toUpperCase())
+          attended:attendedSet.has(String(s.sessionCode).toUpperCase())
         }));
         return {enrollmentNo:enrol,name:r.name,attended,total:totalSessions,
           streakPct:totalSessions>0?Math.round((attended/totalSessions)*100):0,
@@ -962,7 +973,7 @@ function doGet(e) {
         if(!sc)return null;
         const sess=sessions.find(s=>s.sessionCode===sc);
         if(!sess)return null;
-        const presentEnrols=fbAll.filter(f=>String(f[0]).toUpperCase()===sc).map(f=>String(f[1]).toUpperCase());
+        const presentEnrols=(feedbackBySession[sc]||[]).map(f=>String(f[1]).toUpperCase());
         return {...sess,
           present:stuAll.filter(r=>presentEnrols.includes(String(r.enrollmentNo).toUpperCase())).map(r=>({enrollmentNo:r.enrollmentNo,name:r.name})),
           absent:stuAll.filter(r=>!presentEnrols.includes(String(r.enrollmentNo).toUpperCase())).map(r=>({enrollmentNo:r.enrollmentNo,name:r.name}))

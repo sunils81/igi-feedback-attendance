@@ -497,41 +497,44 @@ function renderTodaySessions(sessions) {
   if (!sessions.length) {
     wrap.innerHTML='<div class="info-box">No sessions today for your batches.</div>'; return;
   }
-  wrap.innerHTML = sessions.map(s => {
-    const slotBadge = slotColors[s.batchSlot]||'day-badge-full';
+  var html = '';
+  sessions.forEach(function(s) {
+    var slotBadge = slotColors[s.batchSlot]||'day-badge-full';
     if (s.cancelled) {
-      return `<div class="day-batch-card" style="background:#FEF2F2;border-color:#C94A4A">
-        <div class="dbc-title">${s.batchCode} <span style="font-size:11px;color:#C94A4A;font-weight:700">✗ CANCELLED</span></div>
-        <div class="dbc-meta"><span class="day-badge ${slotBadge}">${s.batchSlot}</span>${s.course} · ${s.centre}</div>
-        <div style="font-size:12px;color:#C94A4A">${s.topic||'Session cancelled'}</div>
-      </div>`;
+      html += '<div class="day-batch-card" style="background:#FEF2F2;border-color:#C94A4A">';
+      html += '<div class="dbc-title">' + s.batchCode + ' <span style="font-size:11px;color:#C94A4A;font-weight:700">CANCELLED</span></div>';
+      html += '<div class="dbc-meta"><span class="day-badge ' + slotBadge + '">' + s.batchSlot + '</span>' + s.course + ' · ' + s.centre + '</div>';
+      html += '<div style="font-size:12px;color:#C94A4A">' + (s.topic||'Session cancelled') + '</div>';
+      html += '</div>';
+      return;
     }
-    const displayTopic = s.topic && !s.topic.startsWith('CANCELLED') ? s.topic : '';
-    return `<div class="day-batch-card" id="dbc-${s.sessionCode}">
-      <div class="dbc-title">${s.batchCode}
-        <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-left:8px">${s.sessionCode}</span>
-        ${s.autoCreated?'<span style="font-size:10px;color:#1D9E75;margin-left:6px;font-weight:600">⚡ Auto</span>':''}
-      </div>
-      <div class="dbc-meta"><span class="day-badge ${slotBadge}">${s.batchSlot}</span>
-        ${s.course} · ${s.centre} · Session ${s.sessNo}</div>
-      ${s.scheduledTopic?`<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">
-        Day ${s.dayNo} · ${s.week||''}</div>
-      <div style="font-size:12px;background:var(--gold-pale);border-left:3px solid var(--gold);
-        padding:8px 10px;border-radius:0 6px 6px 0;color:#6b4c10;margin-bottom:10px;line-height:1.4">
-        ${s.scheduledTopic}</div>`:''}
-      <div style="font-size:11px;color:var(--muted);margin-bottom:5px">Override topic if different today:</div>
-      <input type="text" class="topic-override" id="tov-${s.sessionCode}"
-        placeholder="${displayTopic||s.scheduledTopic||'Leave blank to keep scheduled topic'}"
-        value="${displayTopic}">
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
-        <button class="btn btn-gold" style="flex:1;font-size:12px;padding:9px 12px"
-          onclick="updateTopic('${s.sessionCode}')">✓ Confirm Topic</button>
-        <button style="flex:1;padding:9px 12px;border:1.5px solid #C94A4A;color:#C94A4A;
-          border-radius:8px;background:transparent;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif"
-          onclick="showCancelDialog('${s.sessionCode}','${s.batchCode}')">✗ Cancel Session</button>
-      </div>
-    </div>`;
-  }).join('');
+    var displayTopic = s.topic && !s.topic.startsWith('CANCELLED') ? s.topic : '';
+    var autoBadge = s.autoCreated ? '<span style="font-size:10px;color:#1D9E75;margin-left:6px;font-weight:600">Auto</span>' : '';
+    var topicBlock = '';
+    if (s.scheduledTopic) {
+      topicBlock += '<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Day ' + s.dayNo + (s.week?' · '+s.week:'') + '</div>';
+      topicBlock += '<div style="font-size:12px;background:var(--gold-pale);border-left:3px solid var(--gold);padding:8px 10px;border-radius:0 6px 6px 0;color:#6b4c10;margin-bottom:10px;line-height:1.4">' + s.scheduledTopic + '</div>';
+    }
+    html += '<div class="day-batch-card" id="dbc-' + s.sessionCode + '">';
+    html += '<div class="dbc-title">' + s.batchCode;
+    html += '<span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-left:8px">' + s.sessionCode + '</span>';
+    html += autoBadge + '</div>';
+    html += '<div class="dbc-meta"><span class="day-badge ' + slotBadge + '">' + s.batchSlot + '</span> ';
+    html += s.course + ' · ' + s.centre + ' · Session ' + s.sessNo + '</div>';
+    html += topicBlock;
+    html += '<div style="font-size:11px;color:var(--muted);margin-bottom:5px">Override topic if different today:</div>';
+    html += '<input type="text" class="topic-override" id="tov-' + s.sessionCode + '" ';
+    html += 'placeholder="' + (displayTopic||s.scheduledTopic||'Leave blank to keep scheduled topic') + '" ';
+    html += 'value="' + displayTopic + '">';
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">';
+    html += '<button class="btn btn-gold" style="flex:1;font-size:12px;padding:9px 12px" ';
+    html += 'onclick="updateTopic('' + s.sessionCode + '')">Confirm Topic</button>';
+    html += '<button style="flex:1;padding:9px 12px;border:1.5px solid #C94A4A;color:#C94A4A;';
+    html += 'border-radius:8px;background:transparent;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif" ';
+    html += 'onclick="showCancelDialog('' + s.sessionCode + '','' + s.batchCode + '')">Cancel Session</button>';
+    html += '</div></div>';
+  });
+  wrap.innerHTML = html;
 }
 
 function updateTopic(sessionCode) {
@@ -651,17 +654,18 @@ function loadSessionTimeline(batch) {
   wrap.innerHTML = '<div class="spinner-wrap" style="padding:14px"><div class="spinner"></div><p>Loading session history…</p></div>';
   gasGet({action:'getSessions', batchCode:batch}, function(e,d) {
     if (e||!d||!d.sessions||!d.sessions.length) { wrap.innerHTML=''; return; }
-    wrap.innerHTML = `<div class="timeline">${d.sessions.map(s=>`
-      <div class="timeline-row ${s.isToday?'today':s.isPast?'past':''}" id="tl-${s.sessionCode}" onclick="selectTimelineSession('${s.sessionCode}')">
-        <div class="tl-num">S${String(s.sessNo).padStart(2,'0')}</div>
-        <div class="tl-main">
-          <div class="tl-title">${s.sessionDate}${s.isToday?' · Today':''}</div>
-          <div class="tl-meta">${s.topic||'Topic not set'}</div>
-        </div>
-        <div class="tl-count">${s.count}/${s.total}</div>
-      </div>`).join('')}</div>`;
-    markTimelineActive(document.getElementById('at-session').value);
-  });
+    wrap.innerHTML = '';
+    var sessHtml = '';
+    d.sessions.forEach(function(s) {
+      var isToday = s.sessionDate === new Date().toLocaleDateString('en-IN');
+      var cancelled = s.sessionType === 'Cancelled';
+      sessHtml += '<div class="sess-row" style="' + (isToday?'border-left:3px solid var(--gold);':'') + (cancelled?'background:#FEF2F2;':'') + '">';
+      sessHtml += '<div class="sc">' + s.sessionCode + (cancelled?' <span style="color:#C94A4A;font-size:10px">CANCELLED</span>':'') + '</div>';
+      sessHtml += '<div class="sm">' + (s.sessionDate||'') + ' · ' + (s.instructor||'') + (s.topic?' · '+s.topic.substring(0,40):'') + '</div>';
+      sessHtml += '</div>';
+    });
+    wrap.innerHTML = sessHtml || '<p style="color:var(--muted);font-size:13px">No sessions yet.</p>';
+    });
 }
 
 function selectTimelineSession(sessionCode) {
@@ -695,26 +699,31 @@ function fetchAttendance(sess, batch) {
     const wrap = document.getElementById('at-wrap');
     if (e||!d) { wrap.innerHTML='<p style="color:var(--red);font-size:13px">Could not load.</p>'; return; }
     const pct = d.total>0?Math.round((d.count/d.total)*100):0;
-    wrap.innerHTML = `
-      <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
-        <div style="flex:1;min-width:80px;background:#E8F5EE;border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:24px;font-weight:700;color:#1a7a3c">${d.count}</div>
-          <div style="font-size:11px;color:#1a7a3c;font-weight:600">Present</div>
-        </div>
-        <div style="flex:1;min-width:80px;background:#FEF2F2;border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:24px;font-weight:700;color:var(--red)">${d.total-d.count}</div>
-          <div style="font-size:11px;color:var(--red);font-weight:600">Absent</div>
-        </div>
-        <div style="flex:1;min-width:80px;background:var(--off);border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:24px;font-weight:700;color:var(--navy)">${pct}%</div>
-          <div style="font-size:11px;color:var(--muted);font-weight:600">Attendance</div>
-        </div>
-      </div>
-      <div class="progress-bar" style="margin-bottom:16px"><div class="progress-fill" style="width:${pct}%"></div></div>
-      ${d.present.length?`<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#1a7a3c;margin-bottom:8px">✅ Present (${d.present.length})</div>
-      <div style="margin-bottom:14px">${d.present.map(s=>`<span class="att-pill att-present" style="margin:2px 4px 2px 0">${s.name}</span>`).join('')}</div>`:''}
-      ${d.absent.length?`<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--red);margin-bottom:8px">⏳ Yet to submit (${d.absent.length})</div>
-      <div>${d.absent.map(s=>`<span class="att-pill att-absent" style="margin:2px 4px 2px 0">${s.name}</span>`).join('')}</div>`:''}`;
+    var html = '';
+    html += '<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">';
+    html += '<div style="flex:1;min-width:80px;background:#E8F5EE;border-radius:8px;padding:12px;text-align:center">';
+    html += '<div style="font-size:24px;font-weight:700;color:#1a7a3c">' + d.count + '</div>';
+    html += '<div style="font-size:11px;color:#1a7a3c;font-weight:600">Present</div></div>';
+    html += '<div style="flex:1;min-width:80px;background:#FEF2F2;border-radius:8px;padding:12px;text-align:center">';
+    html += '<div style="font-size:24px;font-weight:700;color:var(--red)">' + (d.total-d.count) + '</div>';
+    html += '<div style="font-size:11px;color:var(--red);font-weight:600">Absent</div></div>';
+    html += '<div style="flex:1;min-width:80px;background:var(--off);border-radius:8px;padding:12px;text-align:center">';
+    html += '<div style="font-size:24px;font-weight:700;color:var(--navy)">' + pct + '%</div>';
+    html += '<div style="font-size:11px;color:var(--muted);font-weight:600">Attendance</div></div></div>';
+    html += '<div class="progress-bar" style="margin-bottom:16px"><div class="progress-fill" style="width:' + pct + '%"></div></div>';
+    if (d.present.length) {
+      html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#1a7a3c;margin-bottom:8px">Present (' + d.present.length + ')</div>';
+      html += '<div style="margin-bottom:14px">';
+      d.present.forEach(function(s){ html += '<span class="att-pill att-present" style="margin:2px 4px 2px 0">' + s.name + '</span>'; });
+      html += '</div>';
+    }
+    if (d.absent.length) {
+      html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--red);margin-bottom:8px">Yet to submit (' + d.absent.length + ')</div>';
+      html += '<div>';
+      d.absent.forEach(function(s){ html += '<span class="att-pill att-absent" style="margin:2px 4px 2px 0">' + s.name + '</span>'; });
+      html += '</div>';
+    }
+    wrap.innerHTML = html;
   });
 }
 function stopAttendanceRefresh() {

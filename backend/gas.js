@@ -9,6 +9,7 @@ const COUNSELOR_PASS = 'IGI2026';
 const MASTER_PASS    = 'IGIMaster2026';
 const REPORT_PASS    = 'IGI2026';          // session report uses same password
 const PASS_THRESHOLD = 60;                 // % pass mark
+const STUDENT_PORTAL_URL = 'https://igi-feedback-attendance.vercel.app/student';
 
 // ── Slot activation windows (local time hours) ────────────────
 const SLOT_WINDOWS = {
@@ -615,6 +616,7 @@ function doGet(e) {
       const sh=ss.getSheetByName(SH_STUDENTS);
       const shEn=getOrCreateSheet(ss,SH_ENROLLMENTS);
       ensureEnrollmentHeaders(shEn);
+      ensureStudentHeaders(sh);
       const mobileLast4=String(p.mobileLast4||'').replace(/\D/g,'').slice(-4);
       const studentId=String(p.enrollmentNo).trim().toUpperCase();
       const batchCodes=String(p.batchCodes||p.batchCode||'').split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
@@ -625,7 +627,7 @@ function doGet(e) {
         sh.getRange(row,3,1,4).setValues([[p.name,mobileLast4,p.mobile||'',p.email||'']]);
         sh.getRange(row,7).setValue('Active');
       }else{
-        sh.appendRow([studentId,batchCodes[0],p.name,mobileLast4,p.mobile||'',p.email||'','Active',new Date().toISOString()]);
+        sh.appendRow([studentId,batchCodes[0],p.name,mobileLast4,p.mobile||'',p.email||'','Active',new Date().toISOString(),'','']);
         sh.getRange(sh.getLastRow(),4).setNumberFormat('@STRING@');
       }
       const existingEnrollments=getEnrollmentRows(ss)
@@ -637,7 +639,8 @@ function doGet(e) {
         shEn.appendRow([studentId,batchCode,'Active',new Date().toISOString()]);
         added.push(batchCode);
       });
-      return respond({status:'ok',enrollmentNo:studentId,added,skipped:existingEnrollments});
+      const emailResult=sendStudentWelcomeEmail(ss,studentId,{force:false});
+      return respond({status:'ok',enrollmentNo:studentId,added,skipped:existingEnrollments,email:emailResult});
     }
 
     // ── getStudents ────────────────────────────────────────────
@@ -654,6 +657,15 @@ function doGet(e) {
       if(!student)return respond({status:'error',reason:'student_not_found'});
       const batches=getEnrollmentRows(ss).filter(e=>e.studentId===studentId&&e.status==='Active').map(e=>e.batchCode);
       return respond({status:'ok',student:{enrollmentNo:student.id,name:student.name,mobileLast4:student.mobileLast4,mobile:student.mobile,email:student.email,batches}});
+    }
+
+    // ── resendStudentWelcomeEmail ─────────────────────────────
+    if (act==='resendStudentWelcomeEmail') {
+      const studentId=(p.studentId||p.enrollmentNo||'').trim().toUpperCase();
+      if(!studentId)return respond({status:'error',reason:'missing_params'});
+      const result=sendStudentWelcomeEmail(ss,studentId,{force:true});
+      if(result.status==='student_not_found')return respond({status:'error',reason:'student_not_found',email:result});
+      return respond({status:'ok',email:result});
     }
 
     // ── removeStudent ──────────────────────────────────────────
@@ -915,9 +927,23 @@ function doGet(e) {
       const shFb=ss.getSheetByName(SH_FEEDBACK);
       const fbAll=shFb.getLastRow()>1?shFb.getRange(2,1,shFb.getLastRow()-1,17).getValues()
         .filter(r=>String(r[3]).toUpperCase()===batchCode):[];
-      const sessions=sessAll.map(r=>({sessionCode:r[0],sessionDate:r[2]?new Date(r[2]).toLocaleDateString('en-IN'):'',
-        sessNo:r[3],instructor:r[4],sessionType:r[5]||'Scheduled',topic:r[6]||''}))
-        .sort((a,b)=>a.sessNo-b.sessNo);
+      const sessions=sessAll.map(r=>{
+        const sc = String(r[0]).toUpperCase();
+        // Feedback rows for this session: col 8=Q1, col 9=Q2 (0-indexed from fbAll row)
+        // Attendance_Feedback cols: 0=Session Code,1=Student ID,2=Student Name,3=Batch Code,
+        //   4=Centre,5=Course,6=Instructor,7=Topic,8=Completion,9=Q1,10=Q2,11=Q3,12=Q4,13=Q5,14=Q6,15=Anonymous,16=Timestamp
+        const sessFb = fbAll.filter(f=>String(f[0]).toUpperCase()===sc);
+        const q1vals = sessFb.map(f=>Number(f[9])||0).filter(v=>v>0);
+        const q2vals = sessFb.map(f=>Number(f[10])||0).filter(v=>v>0);
+        const avgQ1  = q1vals.length ? Math.round((q1vals.reduce((s,v)=>s+v,0)/q1vals.length)*10)/10 : null;
+        const avgQ2  = q2vals.length ? Math.round((q2vals.reduce((s,v)=>s+v,0)/q2vals.length)*10)/10 : null;
+        const avgScore = (avgQ1!==null && avgQ2!==null) ? Math.round(((avgQ1+avgQ2)/2)*10)/10
+                       : avgQ1!==null ? avgQ1
+                       : avgQ2!==null ? avgQ2 : null;
+        return {sessionCode:r[0],sessionDate:r[2]?new Date(r[2]).toLocaleDateString('en-IN'):'',
+          sessNo:r[3],instructor:r[4],sessionType:r[5]||'Scheduled',topic:r[6]||'',
+          avgQ1, avgQ2, avgScore, responseCount:sessFb.length};
+      }).sort((a,b)=>a.sessNo-b.sessNo);
       const totalSessions=sessions.length;
       const students=stuAll.map(r=>{
         const enrol=String(r.enrollmentNo);
@@ -1618,7 +1644,7 @@ function fixOldBatches() {
 function getStudentRows(ss) {
   const sh=ss.getSheetByName(SH_STUDENTS);
   if(!sh||sh.getLastRow()<2)return [];
-  const data=sh.getRange(2,1,sh.getLastRow()-1,8).getValues();
+  const data=sh.getRange(2,1,sh.getLastRow()-1,10).getValues();
   const map={};
   data.forEach((r,i)=>{
     const id=String(r[0]||'').trim().toUpperCase();
@@ -1626,10 +1652,95 @@ function getStudentRows(ss) {
     const mobileDigits=String(r[4]||'').replace(/\D/g,'');
     const last4=mobileDigits.length>=4?mobileDigits.slice(-4):String(r[3]||'').replace(/\D/g,'').slice(-4);
     const row={id,enrollmentNo:id,primaryBatch:String(r[1]||'').toUpperCase(),name:r[2]||'',mobileLast4:last4,
-      mobile:r[4]||'',email:r[5]||'',status:r[6]||'Active',createdAt:r[7]||'',rowIndex:i+2,raw:r};
+      mobile:r[4]||'',email:r[5]||'',status:r[6]||'Active',createdAt:r[7]||'',
+      welcomeEmailStatus:r[8]||'',welcomeEmailSentAt:r[9]||'',rowIndex:i+2,raw:r};
     if(!map[id]||map[id].status!=='Active')map[id]=row;
   });
   return Object.values(map);
+}
+
+function sendStudentWelcomeEmail(ss, studentId, opts) {
+  opts=opts||{};
+  const student=getStudentById(ss,studentId);
+  if(!student)return {status:'student_not_found'};
+  const email=String(student.email||'').trim();
+  if(!email){
+    setStudentWelcomeStatus(ss,student.id,'No Email','');
+    return {status:'no_email'};
+  }
+  if(!opts.force&&String(student.welcomeEmailStatus||'').indexOf('Sent')===0){
+    return {status:'already_sent',sentAt:student.welcomeEmailSentAt||''};
+  }
+
+  const batches=getStudentBatchDetails(ss,student.id);
+  const batchLines=batches.length
+    ? batches.map(b=>'- '+b.batchCode+(b.course?' | '+b.course:'')+(b.centre?' | '+b.centre:'')+(b.instructor?' | Instructor: '+b.instructor:'')).join('\n')
+    : '- '+(student.primaryBatch||'Assigned batch');
+  const batchHtml=batches.length
+    ? '<ul>'+batches.map(b=>'<li><strong>'+escapeHtml(b.batchCode)+'</strong>'
+        +(b.course?' - '+escapeHtml(b.course):'')
+        +(b.centre?' ('+escapeHtml(b.centre)+')':'')
+        +(b.instructor?'<br>Instructor: '+escapeHtml(b.instructor):'')+'</li>').join('')+'</ul>'
+    : '<p>'+escapeHtml(student.primaryBatch||'Assigned batch')+'</p>';
+  const subject='IGI Student Portal Access - '+student.id;
+  const body='Dear '+student.name+',\n\n'
+    +'Welcome to IGI School of Gemology.\n\n'
+    +'Your Student ID: '+student.id+'\n'
+    +'Student Portal: '+STUDENT_PORTAL_URL+'\n\n'
+    +'To sign in, use your Student ID and the last 4 digits of your registered mobile number.\n\n'
+    +'Your batch details:\n'+batchLines+'\n\n'
+    +'Regards,\nIGI School of Gemology';
+  const htmlBody='<p>Dear '+escapeHtml(student.name)+',</p>'
+    +'<p>Welcome to IGI School of Gemology.</p>'
+    +'<p><strong>Your Student ID:</strong> '+escapeHtml(student.id)+'<br>'
+    +'<strong>Student Portal:</strong> <a href="'+STUDENT_PORTAL_URL+'">'+STUDENT_PORTAL_URL+'</a></p>'
+    +'<p>To sign in, use your Student ID and the last 4 digits of your registered mobile number.</p>'
+    +'<p><strong>Your batch details:</strong></p>'+batchHtml
+    +'<p>Regards,<br>IGI School of Gemology</p>';
+  try {
+    MailApp.sendEmail({to:email,subject,body,htmlBody,name:'IGI School of Gemology'});
+    const sentAt=new Date().toISOString();
+    setStudentWelcomeStatus(ss,student.id,'Sent',sentAt);
+    return {status:'sent',sentAt,email};
+  } catch(err) {
+    setStudentWelcomeStatus(ss,student.id,'Failed: '+String(err).slice(0,120),'');
+    return {status:'failed',message:String(err),email};
+  }
+}
+
+function setStudentWelcomeStatus(ss, studentId, status, sentAt) {
+  const sh=ss.getSheetByName(SH_STUDENTS);
+  if(!sh)return;
+  ensureStudentHeaders(sh);
+  const student=getStudentById(ss,studentId);
+  if(!student)return;
+  sh.getRange(student.rowIndex,9).setValue(status||'');
+  sh.getRange(student.rowIndex,10).setValue(sentAt||'');
+}
+
+function getStudentBatchDetails(ss, studentId) {
+  const sh=ss.getSheetByName(SH_BATCHES);
+  const batchRows=sh&&sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,10).getValues():[];
+  const active=getEnrollmentRows(ss).filter(e=>e.studentId===studentId&&e.status==='Active').map(e=>e.batchCode);
+  return active.map(code=>{
+    const r=batchRows.find(b=>String(b[0]).toUpperCase()===code);
+    if(!r)return {batchCode:code};
+    const isNew=detectSlotOrDate(r[4]);
+    return {
+      batchCode:code,
+      centre:r[1]||'',
+      course:r[2]||'',
+      type:r[3]||'',
+      batchSlot:isNew?(r[4]||'Full Day'):'Full Day',
+      instructor:isNew?(r[9]||''):(r[8]||'')
+    };
+  });
+}
+
+function escapeHtml(value) {
+  return String(value||'').replace(/[&<>"']/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
 }
 
 function dateKey(value) {
@@ -1683,14 +1794,15 @@ function getStudentsForBatch(ss, batchCode) {
     if(e.batchCode===batch&&e.status==='Active')ids[e.studentId]=true;
   });
   return Object.keys(ids).map(id=>byId[id]).filter(Boolean)
-    .map(s=>({enrollmentNo:s.id,name:s.name,mobileLast4:s.mobileLast4,dob:s.mobileLast4,mobile:s.mobile,email:s.email,status:s.status}))
+    .map(s=>({enrollmentNo:s.id,name:s.name,mobileLast4:s.mobileLast4,dob:s.mobileLast4,mobile:s.mobile,email:s.email,status:s.status,
+      welcomeEmailStatus:s.welcomeEmailStatus,welcomeEmailSentAt:s.welcomeEmailSentAt}))
     .sort((a,b)=>String(a.name).localeCompare(String(b.name)));
 }
 
 function ensureSheets(ss) {
   const defs = {
     [SH_BATCHES]:  ['Batch Code','Centre','Course','Type','Batch Slot','Start Date','End Date','Created By','Created At','Assigned Instructor'],
-    [SH_STUDENTS]: ['Student ID','Primary Batch Code','Name','Mobile Last 4','Mobile','Email','Status','Created At'],
+    [SH_STUDENTS]: ['Student ID','Primary Batch Code','Name','Mobile Last 4','Mobile','Email','Status','Created At','Welcome Email Status','Welcome Email Sent At'],
     [SH_ENROLLMENTS]: ['Student ID','Batch Code','Status','Enrolled At'],
     [SH_SESSIONS]: ['Session Code','Batch Code','Session Date','Session No','Instructor','Session Type','Topic Covered','Auto Created','Created At'],
     [SH_FEEDBACK]: ['Session Code','Student ID','Student Name','Batch Code','Centre','Course','Instructor','Topic',
@@ -1706,14 +1818,22 @@ function ensureSheets(ss) {
       sh.getRange(1,1,1,headers.length).setValues([headers])
         .setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
       sh.setFrozenRows(1);
-    } else if (name===SH_STUDENTS && sh.getRange(1,4).getValue()==='DOB (DDMM)') {
-      sh.getRange(1,4).setValue('Mobile Last 4');
-    } else if (name===SH_STUDENTS && sh.getRange(1,2).getValue()==='Batch Code') {
-      sh.getRange(1,2).setValue('Primary Batch Code');
+    } else if (name===SH_STUDENTS) {
+      ensureStudentHeaders(sh);
     } else if (name===SH_SESSIONS) {
       ensureSessionHeaders(sh);
     }
   });
+}
+function ensureStudentHeaders(sh) {
+  const h=['Student ID','Primary Batch Code','Name','Mobile Last 4','Mobile','Email','Status','Created At','Welcome Email Status','Welcome Email Sent At'];
+  const current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);
+  if (current[1]==='Batch Code') sh.getRange(1,2).setValue('Primary Batch Code');
+  if (current[3]==='DOB (DDMM)') sh.getRange(1,4).setValue('Mobile Last 4');
+  if (current[8]!==h[8]||current[9]!==h[9]) {
+    sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
+    sh.setFrozenRows(1);
+  }
 }
 function ensureSessionHeaders(sh) {
   const h=['Session Code','Batch Code','Session Date','Session No','Instructor','Session Type','Topic Covered','Auto Created','Created At'];

@@ -93,9 +93,30 @@
 .fee-readonly .v{font-size:13px;font-weight:700;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
 .inst-grid{display:grid;grid-template-columns:1fr 1fr .8fr 1fr 1fr;gap:8px;align-items:end;margin-bottom:8px}
 .inst-grid .field{margin-bottom:0}
+.revenue-filters{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;align-items:end;margin:12px 0 14px}
+.revenue-filters .field{margin-bottom:0}
+.revenue-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
+.revenue-actions .btn{width:auto;padding:8px 12px;font-size:12px}
+.revenue-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:14px}
+.revenue-month{border:1px solid var(--border);border-radius:8px;background:var(--white);padding:11px 12px;min-width:0}
+.revenue-month.ok{background:#F4FBF7;border-color:rgba(29,158,117,.22)}
+.revenue-month.warn{background:#FFF9E6;border-color:rgba(201,168,76,.28)}
+.revenue-month.danger{background:#FFF8F5;border-color:rgba(201,74,74,.22)}
+.revenue-month-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px}
+.revenue-month-title{font-size:12px;font-weight:800;color:var(--navy)}
+.revenue-month-pct{font-family:"DM Mono",monospace;font-size:12px;font-weight:800;color:var(--navy)}
+.revenue-bar{height:7px;background:rgba(13,27,46,.08);border-radius:999px;overflow:hidden;margin-bottom:8px}
+.revenue-bar span{display:block;height:100%;border-radius:999px;background:var(--gold)}
+.revenue-month-meta{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px;color:var(--muted)}
+.revenue-month-meta strong{display:block;font-family:"DM Mono",monospace;font-size:12px;color:var(--navy);margin-top:2px}
+.revenue-editor{overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--white);margin-top:8px}
+.revenue-editor table{width:100%;border-collapse:collapse;min-width:760px;font-size:12px}
+.revenue-editor th{position:sticky;top:0;background:var(--navy);color:var(--gold);text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:9px}
+.revenue-editor td{border-bottom:1px solid var(--border);padding:8px}
+.revenue-editor input{width:100%;border:1px solid var(--border);border-radius:6px;padding:7px 8px;font-family:"DM Sans",sans-serif;font-size:12px;color:var(--navy);background:var(--off)}
 @media(max-width:760px){.fee-form-head,.inst-grid{grid-template-columns:1fr}.inst-grid{gap:10px}}
 @media(max-width:620px){
-  .grid2,.report-summary,.attendance-body{grid-template-columns:1fr}
+  .grid2,.report-summary,.attendance-body,.revenue-filters{grid-template-columns:1fr}
   .attendance-head{grid-template-columns:1fr}
   .attendance-score{text-align:left}
   .extract-toolbar{grid-template-columns:1fr}
@@ -161,6 +182,7 @@
     <button class="tab" onclick="switchTab('t-mybatches')">🗂 My Batches</button>
     <button class="tab" onclick="switchTab('t-reports')">📊 Reports</button>
     <button class="tab" onclick="switchTab('t-fees')">💰 Fees</button>
+    <button class="tab" onclick="switchTab('t-revenue')">📈 Revenue</button>
     <button class="tab" onclick="switchTab('t-holidays')">🗓 Holidays</button>
   </div>
 
@@ -371,6 +393,47 @@
     </div>
   </div>
 
+  <!-- TAB 7: REVENUE -->
+  <div id="t-revenue" class="tab-content">
+    <div class="card">
+      <div class="section-tag">Revenue Planning</div>
+      <h2>Counsellor Revenue Targets</h2>
+      <p class="sub">Set month-wise targets by counsellor and centre. Achieved revenue is calculated from paid fee installments, so cross-centre sales stay visible by both counsellor and centre.</p>
+      <div class="revenue-filters">
+        <div class="field"><label>Centre</label><select id="rev-centre" onchange="loadRevenueDashboard()"><option value="">All visible centres</option></select></div>
+        <div class="field"><label>Counsellor</label><select id="rev-counsellor" onchange="loadRevenueDashboard()"><option value="">All counsellors</option></select></div>
+        <div class="field"><label>Course</label><select id="rev-course" onchange="loadRevenueDashboard()"><option value="">All courses</option></select></div>
+        <div class="field"><label>From</label><select id="rev-from" onchange="syncRevenueRange();loadRevenueDashboard()"></select></div>
+        <div class="field"><label>To</label><select id="rev-to" onchange="syncRevenueRange();loadRevenueDashboard()"></select></div>
+        <div class="field"><label>Metric</label><select id="rev-metric" onchange="renderRevenueDashboard()"><option value="gst">Course Fee + GST</option><option value="course">Course Fee</option></select></div>
+      </div>
+      <div id="rev-summary" class="dashboard-summary"></div>
+      <div class="revenue-actions">
+        <button class="btn btn-outline" onclick="downloadRevenueCsv()">Download CSV</button>
+      </div>
+      <div id="rev-month-grid"></div>
+    </div>
+    <div class="card">
+      <div class="section-tag">Target Entry</div>
+      <h2>Monthly Target Sheet</h2>
+      <p class="sub">Choose a counsellor and centre, enter targets for Jan 2026 to Mar 2027, then save. Existing rows are updated for the same month, counsellor, and centre.</p>
+      <div class="grid2">
+        <div class="field"><label>Counsellor</label><select id="rev-edit-counsellor" onchange="renderRevenueTargetEditor()"></select></div>
+        <div class="field"><label>Centre</label><select id="rev-edit-centre" onchange="renderRevenueTargetEditor()"></select></div>
+      </div>
+      <div id="rev-target-editor"></div>
+      <div class="revenue-actions">
+        <button class="btn btn-gold" id="rev-save-btn" onclick="saveRevenueTargets()">Save Targets</button>
+      </div>
+      <div class="err-box" id="rev-err"></div>
+    </div>
+    <div class="card">
+      <div class="section-tag">Rollups</div>
+      <h2>Centre & Counsellor View</h2>
+      <div id="rev-rollups"></div>
+    </div>
+  </div>
+
   <!-- TAB 5: HOLIDAYS -->
   <div id="t-holidays" class="tab-content">
     <div class="card">
@@ -446,6 +509,8 @@ let counselorStudentsByBatch = {};
 let feeStudentsByBatch = {};
 let feeRecordsByStudent = {};
 let currentFeeStudent = null;
+let revenueInitialized = false;
+let revenueData = null;
 
 function escC(v) {
   return String(v || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -513,7 +578,7 @@ function switchTab(id) {
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const idx = ['t-batches','t-students','t-mybatches','t-reports','t-fees','t-holidays'].indexOf(id);
+  const idx = ['t-batches','t-students','t-mybatches','t-reports','t-fees','t-revenue','t-holidays'].indexOf(id);
   document.querySelectorAll('.tab')[idx].classList.add('active');
   if (id==='t-fees') {
     var feeSel = document.getElementById('fee-batch');
@@ -563,6 +628,7 @@ function switchTab(id) {
       });
     }
   }
+  if (id==='t-revenue') initRevenueTab();
   if (id==='t-holidays') loadHolidayList();
 }
 
@@ -1440,6 +1506,249 @@ function saveFeeRecord() {
     hideFeeForm();
     loadFeeOverview();
   });
+}
+
+// -- Revenue planning -------------------------------------------------------
+function revenueMonths() {
+  const out = [];
+  const d = new Date(2026, 0, 1);
+  const end = new Date(2027, 2, 1);
+  while (d <= end) {
+    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    out.push({key, label:d.toLocaleString('en-IN', {month:'short', year:'numeric'})});
+    d.setMonth(d.getMonth() + 1);
+  }
+  return out;
+}
+
+function revenueVisibleCentres() {
+  return isAdmin ? CENTRES.slice() : (allowedCentres && allowedCentres.length ? allowedCentres.slice() : CENTRES.slice());
+}
+
+function revenueCounsellors() {
+  const names = new Set();
+  if (isAdmin) names.add('Admin');
+  if (counselorName && counselorName !== '__admin__') names.add(counselorName);
+  (allBatches || []).forEach(b => { if (b.counselor) names.add(b.counselor); });
+  if (!names.size) names.add(counselorName || 'Counselor');
+  return Array.from(names).sort();
+}
+
+function initRevenueTab() {
+  if (!revenueInitialized) {
+    fillRevenueSelects();
+    revenueInitialized = true;
+  }
+  loadRevenueDashboard();
+}
+
+function fillRevenueSelects() {
+  const months = revenueMonths();
+  const from = document.getElementById('rev-from');
+  const to = document.getElementById('rev-to');
+  from.innerHTML = months.map(m => '<option value="' + m.key + '">' + m.label + '</option>').join('');
+  to.innerHTML = from.innerHTML;
+  from.value = '2026-01';
+  to.value = '2027-03';
+
+  const centreOptions = revenueVisibleCentres().map(c => '<option value="' + escC(c) + '">' + escC(c) + '</option>').join('');
+  document.getElementById('rev-centre').innerHTML = '<option value="">All visible centres</option>' + centreOptions;
+  document.getElementById('rev-edit-centre').innerHTML = centreOptions;
+
+  const counsellorOptions = revenueCounsellors().map(c => '<option value="' + escC(c) + '">' + escC(c) + '</option>').join('');
+  document.getElementById('rev-counsellor').innerHTML = '<option value="">All counsellors</option>' + counsellorOptions;
+  document.getElementById('rev-edit-counsellor').innerHTML = counsellorOptions;
+  if (!isAdmin && counselorName) {
+    document.getElementById('rev-edit-counsellor').value = counselorName;
+  }
+
+  document.getElementById('rev-course').innerHTML = '<option value="">All courses</option>' +
+    COURSES.map(c => '<option value="' + escC(c) + '">' + escC(c) + '</option>').join('');
+  renderRevenueTargetEditor();
+}
+
+function syncRevenueRange() {
+  const from = document.getElementById('rev-from');
+  const to = document.getElementById('rev-to');
+  if (from.value > to.value) to.value = from.value;
+}
+
+function revenueRequestParams() {
+  return {
+    action:'getRevenueDashboard',
+    centres:isAdmin ? '' : revenueVisibleCentres().join(','),
+    centre:document.getElementById('rev-centre').value,
+    counsellor:document.getElementById('rev-counsellor').value,
+    course:document.getElementById('rev-course').value,
+    fromMonth:document.getElementById('rev-from').value,
+    toMonth:document.getElementById('rev-to').value
+  };
+}
+
+function loadRevenueDashboard() {
+  if (!document.getElementById('t-revenue').classList.contains('active')) return;
+  const grid = document.getElementById('rev-month-grid');
+  const summary = document.getElementById('rev-summary');
+  grid.innerHTML = loadingState('Loading revenue dashboard...');
+  summary.innerHTML = '';
+  gasGet(revenueRequestParams(), function(e,d) {
+    if (e || !d || d.status !== 'ok') {
+      grid.innerHTML = emptyState('!', 'Revenue data unavailable', 'Please try again after refreshing the panel.');
+      return;
+    }
+    revenueData = d;
+    renderRevenueDashboard();
+    renderRevenueTargetEditor();
+  });
+}
+
+function revenueMetricKeys() {
+  return document.getElementById('rev-metric').value === 'course'
+    ? {target:'targetCourse', achieved:'achievedCourse', label:'Course Fee'}
+    : {target:'targetGst', achieved:'achievedGst', label:'Course Fee + GST'};
+}
+
+function revenueTotals(rows) {
+  const keys = revenueMetricKeys();
+  return (rows || []).reduce((a,r) => {
+    a.target += Number(r[keys.target]) || 0;
+    a.achieved += Number(r[keys.achieved]) || 0;
+    return a;
+  }, {target:0, achieved:0});
+}
+
+function revenuePct(achieved, target) {
+  return target ? Math.round((achieved / target) * 100) : (achieved ? 100 : 0);
+}
+
+function renderRevenueDashboard() {
+  if (!revenueData) return;
+  const keys = revenueMetricKeys();
+  const totals = revenueTotals(revenueData.months);
+  const gap = totals.achieved - totals.target;
+  const pct = revenuePct(totals.achieved, totals.target);
+  document.getElementById('rev-summary').innerHTML =
+    '<div class="summary-tile"><div class="k">Target</div><div class="v">' + money(totals.target) + '</div><div class="s">' + keys.label + '</div></div>' +
+    '<div class="summary-tile ok"><div class="k">Achieved</div><div class="v">' + money(totals.achieved) + '</div><div class="s">' + pct + '% of target</div></div>' +
+    '<div class="summary-tile ' + (gap >= 0 ? 'ok' : 'warn') + '"><div class="k">Gap</div><div class="v">' + money(Math.abs(gap)) + '</div><div class="s">' + (gap >= 0 ? 'Above target' : 'Below target') + '</div></div>' +
+    '<div class="summary-tile ' + (pct >= 90 ? 'ok' : 'warn') + '"><div class="k">Achievement</div><div class="v">' + pct + '%</div><div class="s">' + (revenueData.months || []).length + ' months selected</div></div>';
+
+  document.getElementById('rev-month-grid').innerHTML = '<div class="revenue-grid">' + (revenueData.months || []).map(m => {
+    const target = Number(m[keys.target]) || 0;
+    const achieved = Number(m[keys.achieved]) || 0;
+    const monthPct = revenuePct(achieved, target);
+    const cls = monthPct >= 90 ? 'ok' : monthPct >= 60 ? 'warn' : 'danger';
+    return '<div class="revenue-month ' + cls + '">' +
+      '<div class="revenue-month-head"><div class="revenue-month-title">' + escC(m.label) + '</div><div class="revenue-month-pct">' + monthPct + '%</div></div>' +
+      '<div class="revenue-bar"><span style="width:' + Math.min(monthPct, 120) + '%"></span></div>' +
+      '<div class="revenue-month-meta"><div>Target<strong>' + money(target) + '</strong></div><div>Achieved<strong>' + money(achieved) + '</strong></div><div>Gap<strong>' + money(Math.abs(achieved - target)) + '</strong></div><div>Status<strong>' + (achieved >= target ? 'Met' : 'Open') + '</strong></div></div>' +
+    '</div>';
+  }).join('') + '</div>';
+  renderRevenueRollups();
+}
+
+function renderRevenueRollups() {
+  const keys = revenueMetricKeys();
+  const rowHtml = (rows, labelKey) => rows.map(r => {
+    const target = Number(r[keys.target]) || 0;
+    const achieved = Number(r[keys.achieved]) || 0;
+    return '<tr><td><strong>' + escC(r[labelKey]) + '</strong></td><td>' + money(target) + '</td><td>' + money(achieved) + '</td><td>' + money(Math.abs(achieved - target)) + '</td><td>' + revenuePct(achieved, target) + '%</td></tr>';
+  }).join('');
+  document.getElementById('rev-rollups').innerHTML =
+    '<table class="compact-table"><thead><tr><th>Name</th><th>Target</th><th>Achieved</th><th>Gap</th><th>%</th></tr></thead><tbody>' +
+    rowHtml(revenueData.centres || [], 'centre') +
+    rowHtml(revenueData.counsellors || [], 'counsellor') +
+    '</tbody></table>';
+}
+
+function revenueTargetMap() {
+  const out = {};
+  (revenueData && revenueData.targetRows ? revenueData.targetRows : []).forEach(r => {
+    out[r.month + '|' + r.counsellor + '|' + r.centre] = r;
+  });
+  return out;
+}
+
+function renderRevenueTargetEditor() {
+  const wrap = document.getElementById('rev-target-editor');
+  if (!wrap) return;
+  const counsellor = document.getElementById('rev-edit-counsellor').value;
+  const centre = document.getElementById('rev-edit-centre').value;
+  if (!counsellor || !centre) {
+    wrap.innerHTML = emptyState('₹', 'Choose counsellor and centre', 'Target rows will appear for Jan 2026 through Mar 2027.');
+    return;
+  }
+  const map = revenueTargetMap();
+  let html = '<div class="revenue-editor"><table><thead><tr><th>Month</th><th>Course Fee Target</th><th>Course Fee + GST Target</th><th>Notes</th></tr></thead><tbody>';
+  html += revenueMonths().map(m => {
+    const row = map[m.key + '|' + counsellor + '|' + centre] || {};
+    return '<tr data-month="' + m.key + '"><td><strong>' + m.label + '</strong></td>' +
+      '<td><input type="number" class="rev-t-course" min="0" value="' + escC(row.targetCourse || '') + '"></td>' +
+      '<td><input type="number" class="rev-t-gst" min="0" value="' + escC(row.targetGst || '') + '"></td>' +
+      '<td><input type="text" class="rev-t-notes" value="' + escC(row.notes || '') + '" placeholder="Optional"></td></tr>';
+  }).join('');
+  wrap.innerHTML = html + '</tbody></table></div>';
+}
+
+function saveRevenueTargets() {
+  const err = document.getElementById('rev-err');
+  const btn = document.getElementById('rev-save-btn');
+  const counsellor = document.getElementById('rev-edit-counsellor').value;
+  const centre = document.getElementById('rev-edit-centre').value;
+  err.classList.remove('show');
+  if (!counsellor || !centre) {
+    err.textContent = 'Please choose counsellor and centre.';
+    err.classList.add('show');
+    return;
+  }
+  const targets = Array.from(document.querySelectorAll('#rev-target-editor tbody tr')).map(tr => ({
+    month:tr.getAttribute('data-month'),
+    counsellor,
+    centre,
+    targetCourse:tr.querySelector('.rev-t-course').value || 0,
+    targetGst:tr.querySelector('.rev-t-gst').value || 0,
+    notes:tr.querySelector('.rev-t-notes').value || ''
+  }));
+  btn.textContent = 'Saving...';
+  btn.disabled = true;
+  const params = Object.assign(revenueRequestParams(), {
+    action:'saveRevenueTargets',
+    targets:JSON.stringify(targets),
+    updatedBy:counselorName || 'Counselor'
+  });
+  gasGet(params, function(e,d) {
+    btn.textContent = 'Save Targets';
+    btn.disabled = false;
+    if (e || !d || d.status !== 'ok') {
+      err.textContent = 'Could not save revenue targets.';
+      err.classList.add('show');
+      showToast('Could not save revenue targets.', 'error');
+      return;
+    }
+    revenueData = d.dashboard || revenueData;
+    showToast('Revenue targets saved.');
+    renderRevenueDashboard();
+    renderRevenueTargetEditor();
+  });
+}
+
+function downloadRevenueCsv() {
+  if (!revenueData) return;
+  const keys = revenueMetricKeys();
+  const lines = [['Month','Target','Achieved','Gap','Achievement %']];
+  (revenueData.months || []).forEach(m => {
+    const target = Number(m[keys.target]) || 0;
+    const achieved = Number(m[keys.achieved]) || 0;
+    lines.push([m.label, target, achieved, achieved - target, revenuePct(achieved, target)]);
+  });
+  const csv = lines.map(row => row.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'revenue-dashboard.csv';
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ── Create Session ────────────────────────────────────────────

@@ -35,6 +35,7 @@ const SH_REVENUE_TARGETS = 'Revenue_Targets';
 const SH_REVENUE_CENTRE_TARGETS = 'Revenue_Centre_Targets';
 const SH_REVENUE_ANNUAL_TARGETS = 'Revenue_Annual_Targets';
 const SH_REVENUE_MONTHLY_ACHIEVED = 'Revenue_Monthly_Achieved';
+const REVENUE_BACKEND_VERSION = 'revenue-redesign-v2-2026-06-02';
 const SH_USER_CREDENTIALS = 'User_Credentials';
 const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
   'RTGS / Bank Transfer','Collexo (Online)','Cheque','Demand Draft'];                 // % pass mark
@@ -236,6 +237,18 @@ function resetUserPassword(ss,role,name,tempPassword) {
 
 function sameName(a,b) {
   return String(a||'').trim().toUpperCase() === String(b||'').trim().toUpperCase();
+}
+
+function sheetHeaderMap(sh) {
+  var headers=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),1)).getValues()[0].map(function(h){return String(h||'').trim();});
+  var map={};
+  headers.forEach(function(h,i){if(h)map[h]=i;});
+  return map;
+}
+
+function rowCell(row,map,name,fallbackIndex) {
+  var idx=map&&map[name]!==undefined?map[name]:fallbackIndex;
+  return idx!==undefined&&idx>=0?row[idx]:'';
 }
 
 // ── National holidays India 2026-2027 (YYYY-MM-DD) ────────────
@@ -1966,12 +1979,19 @@ function doGet(e) {
       try { centreRows=JSON.parse(p.centreTargets||'[]'); } catch(_e2) { centreRows=[]; }
       try { monthlyRows=JSON.parse(p.monthlyRows||'[]'); } catch(_e3) { monthlyRows=[]; }
       try { monthlyScope=JSON.parse(p.monthlyScope||'null'); } catch(_e4) { monthlyScope=null; }
-      if(!rows.length&&!centreRows.length&&!monthlyRows.length) return respond({status:'error',reason:'no_targets'});
+      var effectiveCounsellor=revenueEffectiveCounsellor(p);
+      if(String(p.isAdmin)!=='true'&&effectiveCounsellor){
+        centreRows=[];
+        rows=rows.filter(function(r){return revenueSameCounsellor(r.counsellor,effectiveCounsellor);});
+        monthlyRows=monthlyRows.filter(function(r){return revenueSameCounsellor(r.counsellor,effectiveCounsellor);});
+        if(monthlyScope)monthlyScope.counsellor=effectiveCounsellor;
+      }
+      if(!rows.length&&!centreRows.length&&!monthlyRows.length) return respond({status:'error',reason:'no_revenue_rows',message:'No annual target or monthly revenue rows were submitted.'});
       var actor=p.updatedBy||p.counsellor||'Counselor';
       var savedCentre=saveRevenueCentreTargetRows(ss,centreRows,actor);
       var savedTargets=saveRevenueAnnualTargetRows(ss,rows,actor);
       var savedMonthly=saveRevenueMonthlyAchievedRows(ss,monthlyRows,actor,monthlyScope);
-      return respond({status:'ok',saved:savedCentre+savedTargets+savedMonthly,savedCentre:savedCentre,savedTargets:savedTargets,savedMonthly:savedMonthly,dashboard:buildRevenueDashboard(ss,p)});
+      return respond({status:'ok',saved:savedCentre+savedTargets+savedMonthly,savedCentre:savedCentre,savedTargets:savedTargets,savedMonthly:savedMonthly,savedAt:new Date().toISOString(),backendVersion:REVENUE_BACKEND_VERSION,dashboard:buildRevenueDashboard(ss,p)});
     }
 
     return respond({status:'error',reason:'unknown_action'});
@@ -2264,7 +2284,7 @@ function ensureSheets(ss) {
     [SH_REVENUE_TARGETS]: ['Month','Counsellor','Centre','Target Course Fee','Target Course Fee + GST','Notes','Updated By','Updated At'],
     [SH_REVENUE_CENTRE_TARGETS]: ['Period','Centre','Annual Course Fee Target','Annual Course Fee + GST Target','Notes','Updated By','Updated At'],
     [SH_REVENUE_ANNUAL_TARGETS]: ['Period','Counsellor','Assigned Centre','Annual Course Fee Target','Annual Course Fee + GST Target','Notes','Updated By','Updated At'],
-    [SH_REVENUE_MONTHLY_ACHIEVED]: ['Month','Period','Counsellor','Assigned Centre','Business Centre','Business Type','Achieved Course Fee','Achieved Course Fee + GST','Notes','Updated By','Updated At'],
+    [SH_REVENUE_MONTHLY_ACHIEVED]: ['Month','Period','Counsellor','Assigned Centre','Business Centre','Business Type','Student Count','Achieved Course Fee','Achieved Course Fee + GST','Notes','Updated By','Locked','Updated At'],
     [SH_USER_CREDENTIALS]: ['Role','Name','Centres','Password Hash','Salt','Must Change Password','Updated At','Active'],
     [SH_HOLIDAYS]:     ['Date','Holiday Name','Centre','Added At'],
     [SH_ASSESSMENTS]:  ['Assessment ID','Batch Code','Test Name','Test Type','Test Date','Total Marks','Instructor','Created At'],
@@ -2379,12 +2399,35 @@ function revenueMonthKey(value) {
 }
 
 function revenueBlankBucket() {
-  return {targetCourse:0,targetGst:0,achievedCourse:0,achievedGst:0};
+  return {targetCourse:0,targetGst:0,achievedCourse:0,achievedGst:0,studentCount:0,designatedCourse:0,designatedGst:0,otherCentreCourse:0,otherCentreGst:0,corporateCourse:0,corporateGst:0};
 }
 
 function revenueAddBucket(map,key) {
   if(!map[key])map[key]=revenueBlankBucket();
   return map[key];
+}
+
+function revenueNameKey(name) {
+  return String(name||'').trim().toLowerCase().replace(/\s+/g,' ');
+}
+
+function revenueNameAliases(name) {
+  var key=revenueNameKey(name);
+  var aliases={
+    'omkar':['omkar','omkar kadam'],
+    'omkar kadam':['omkar','omkar kadam']
+  };
+  return aliases[key]||[key];
+}
+
+function revenueSameCounsellor(a,b) {
+  var bAliases=revenueNameAliases(b);
+  return revenueNameAliases(a).some(function(alias){return bAliases.indexOf(alias)>=0;});
+}
+
+function revenueEffectiveCounsellor(p) {
+  if(p&&String(p.isAdmin)==='true')return String(p.counsellor||'').trim();
+  return String((p&&p.viewerCounsellor)||'').trim()||String((p&&p.counsellor)||'').trim();
 }
 
 function revenueAllowedCentre(centre,p) {
@@ -2393,7 +2436,8 @@ function revenueAllowedCentre(centre,p) {
 }
 
 function revenueAllowedCounsellor(counsellor,p) {
-  return !p.counsellor||p.counsellor===counsellor;
+  var effective=revenueEffectiveCounsellor(p);
+  return !effective||revenueSameCounsellor(counsellor,effective);
 }
 
 function revenueAllowedViewCentre(row,p) {
@@ -2435,8 +2479,8 @@ function buildRevenueDashboard(ss,p) {
     c.targetCourse+=r.targetCourse;c.targetGst+=r.targetGst;
     splitTargetCourse+=r.targetCourse;splitTargetGst+=r.targetGst;
   });
-  totalTargetCourse=p.counsellor?splitTargetCourse:(centreTargetCourse||splitTargetCourse);
-  totalTargetGst=p.counsellor?splitTargetGst:(centreTargetGst||splitTargetGst);
+  totalTargetCourse=revenueEffectiveCounsellor(p)?splitTargetCourse:(centreTargetCourse||splitTargetCourse);
+  totalTargetGst=revenueEffectiveCounsellor(p)?splitTargetGst:(centreTargetGst||splitTargetGst);
   var monthlyTargetCourse=fullMonths.length?Math.round(totalTargetCourse/fullMonths.length):0;
   var monthlyTargetGst=fullMonths.length?Math.round(totalTargetGst/fullMonths.length):0;
   months.forEach(function(m){
@@ -2445,20 +2489,32 @@ function buildRevenueDashboard(ss,p) {
   });
 
   var achievedCourse=0,achievedGst=0;
+  var studentCount=0, designatedCourse=0, designatedGst=0, otherCentreCourse=0, otherCentreGst=0, corporateCourse=0, corporateGst=0;
   achievedRows.forEach(function(r){
     var viewCentre=p.viewMode==='business'?r.businessCentre:r.assignedCentre;
     var bm=revenueAddBucket(byMonth,r.month), bc=revenueAddBucket(byCounsellor,r.counsellor), bViewCentre=revenueAddBucket(byCentre,viewCentre), bBusiness=revenueAddBucket(byBusinessCentre,r.businessCentre);
-    [bm,bc,bViewCentre,bBusiness].forEach(function(b){b.achievedGst+=r.achievedGst;b.achievedCourse+=r.achievedCourse;});
+    var isCorporate=String(r.businessType||'').toLowerCase().indexOf('corporate')>=0||String(r.businessCentre||'').toLowerCase().indexOf('corporate')>=0;
+    var isOtherCentre=!isCorporate&&r.assignedCentre!==r.businessCentre;
+    [bm,bc,bViewCentre,bBusiness].forEach(function(b){
+      b.achievedGst+=r.achievedGst;b.achievedCourse+=r.achievedCourse;b.studentCount+=r.studentCount;
+      if(isCorporate){b.corporateCourse+=r.achievedCourse;b.corporateGst+=r.achievedGst;}
+      else if(isOtherCentre){b.otherCentreCourse+=r.achievedCourse;b.otherCentreGst+=r.achievedGst;}
+      else{b.designatedCourse+=r.achievedCourse;b.designatedGst+=r.achievedGst;}
+    });
     achievedGst+=r.achievedGst;
     achievedCourse+=r.achievedCourse;
+    studentCount+=r.studentCount;
+    if(isCorporate){corporateCourse+=r.achievedCourse;corporateGst+=r.achievedGst;}
+    else if(isOtherCentre){otherCentreCourse+=r.achievedCourse;otherCentreGst+=r.achievedGst;}
+    else{designatedCourse+=r.achievedCourse;designatedGst+=r.achievedGst;}
     if(r.assignedCentre!==r.businessCentre)crossRows.push(r);
   });
   var monthRows=months.map(function(m){
     var b=byMonth[m.key]||revenueBlankBucket();
     return Object.assign({month:m.key,label:m.label},b);
   });
-  return {status:'ok',period:period,months:monthRows,centreTargetRows:centreTargetRows,targetRows:targetRows,monthlyRows:achievedRows,crossRows:crossRows,
-    summary:{targetCourse:totalTargetCourse,targetGst:totalTargetGst,achievedCourse:achievedCourse,achievedGst:achievedGst,monthlyTargetCourse:monthlyTargetCourse,monthlyTargetGst:monthlyTargetGst,monthsInPeriod:fullMonths.length,centreTargetCourse:centreTargetCourse,centreTargetGst:centreTargetGst,splitTargetCourse:splitTargetCourse,splitTargetGst:splitTargetGst},
+  return {status:'ok',backendVersion:REVENUE_BACKEND_VERSION,period:period,months:monthRows,centreTargetRows:centreTargetRows,targetRows:targetRows,monthlyRows:achievedRows,crossRows:crossRows,
+    summary:{targetCourse:totalTargetCourse,targetGst:totalTargetGst,achievedCourse:achievedCourse,achievedGst:achievedGst,studentCount:studentCount,designatedCourse:designatedCourse,designatedGst:designatedGst,otherCentreCourse:otherCentreCourse,otherCentreGst:otherCentreGst,corporateCourse:corporateCourse,corporateGst:corporateGst,monthlyTargetCourse:monthlyTargetCourse,monthlyTargetGst:monthlyTargetGst,monthsInPeriod:fullMonths.length,centreTargetCourse:centreTargetCourse,centreTargetGst:centreTargetGst,splitTargetCourse:splitTargetCourse,splitTargetGst:splitTargetGst},
     counsellors:Object.keys(byCounsellor).sort().map(function(k){return Object.assign({counsellor:k},byCounsellor[k]);}),
     centres:Object.keys(byCentre).sort().map(function(k){return Object.assign({centre:k},byCentre[k]);}),
     businessCentres:Object.keys(byBusinessCentre).sort().map(function(k){return Object.assign({centre:k},byBusinessCentre[k]);})};
@@ -2467,28 +2523,65 @@ function buildRevenueDashboard(ss,p) {
 function getRevenueCentreTargetRows(ss) {
   var sh=ss.getSheetByName(SH_REVENUE_CENTRE_TARGETS);
   if(!sh||sh.getLastRow()<2)return [];
-  return sh.getRange(2,1,sh.getLastRow()-1,7).getValues().filter(function(r){return r[0]&&r[1];}).map(function(r){
-    return {period:String(r[0]),centre:String(r[1]),targetCourse:Number(r[2])||0,targetGst:Number(r[3])||0,notes:r[4]||'',updatedBy:r[5]||'',updatedAt:r[6]||''};
-  });
+  var map=sheetHeaderMap(sh);
+  return sh.getRange(2,1,sh.getLastRow()-1,Math.max(sh.getLastColumn(),7)).getValues().map(function(r){
+    return {
+      period:String(rowCell(r,map,'Period',0)||'2026-27').trim(),
+      centre:String(rowCell(r,map,'Centre',1)||'').trim(),
+      targetCourse:Number(rowCell(r,map,'Annual Course Fee Target',2))||0,
+      targetGst:Number(rowCell(r,map,'Annual Course Fee + GST Target',3))||0,
+      notes:rowCell(r,map,'Notes',4)||'',
+      updatedBy:rowCell(r,map,'Updated By',5)||'',
+      updatedAt:rowCell(r,map,'Updated At',6)||''
+    };
+  }).filter(function(r){return r.period&&r.centre;});
 }
 
 function getRevenueAnnualTargetRows(ss) {
   var sh=ss.getSheetByName(SH_REVENUE_ANNUAL_TARGETS);
   if(!sh||sh.getLastRow()<2)return [];
-  return sh.getRange(2,1,sh.getLastRow()-1,8).getValues().filter(function(r){return r[0]&&r[1]&&r[2];}).map(function(r){
-    return {period:String(r[0]),counsellor:String(r[1]),centre:String(r[2]),targetCourse:Number(r[3])||0,targetGst:Number(r[4])||0,notes:r[5]||'',updatedBy:r[6]||'',updatedAt:r[7]||''};
-  });
+  var map=sheetHeaderMap(sh);
+  return sh.getRange(2,1,sh.getLastRow()-1,Math.max(sh.getLastColumn(),8)).getValues().map(function(r){
+    return {
+      period:String(rowCell(r,map,'Period',0)||'2026-27').trim(),
+      counsellor:String(rowCell(r,map,'Counsellor',1)||'').trim(),
+      centre:String(rowCell(r,map,'Assigned Centre',2)||rowCell(r,map,'Centre',2)||'').trim(),
+      targetCourse:Number(rowCell(r,map,'Annual Course Fee Target',3))||0,
+      targetGst:Number(rowCell(r,map,'Annual Course Fee + GST Target',4))||0,
+      notes:rowCell(r,map,'Notes',5)||'',
+      updatedBy:rowCell(r,map,'Updated By',6)||'',
+      updatedAt:rowCell(r,map,'Updated At',7)||''
+    };
+  }).filter(function(r){return r.period&&r.counsellor&&r.centre;});
 }
 
 function getRevenueMonthlyAchievedRows(ss) {
   var sh=ss.getSheetByName(SH_REVENUE_MONTHLY_ACHIEVED);
   if(!sh||sh.getLastRow()<2)return [];
-  return sh.getRange(2,1,sh.getLastRow()-1,11).getValues().filter(function(r){return r[0]&&r[1]&&r[2]&&r[3]&&r[4];}).map(function(r){
-    var oldShape=typeof r[5]==='number'||typeof r[6]==='number'&&String(r[5]||'').match(/^\d+(\.\d+)?$/);
-    return oldShape
-      ? {month:String(r[0]),period:String(r[1]),counsellor:String(r[2]),assignedCentre:String(r[3]),businessCentre:String(r[4]),businessType:'Centre Revenue',achievedCourse:Number(r[5])||0,achievedGst:Number(r[6])||0,notes:r[7]||'',updatedBy:r[8]||'',updatedAt:r[9]||''}
-      : {month:String(r[0]),period:String(r[1]),counsellor:String(r[2]),assignedCentre:String(r[3]),businessCentre:String(r[4]),businessType:String(r[5]||'Centre Revenue'),achievedCourse:Number(r[6])||0,achievedGst:Number(r[7])||0,notes:r[8]||'',updatedBy:r[9]||'',updatedAt:r[10]||''};
-  });
+  var map=sheetHeaderMap(sh);
+  return sh.getRange(2,1,sh.getLastRow()-1,Math.max(sh.getLastColumn(),13)).getValues().map(function(r){
+    var rawType=rowCell(r,map,'Business Type',5);
+    var oldShape=typeof rawType==='number'||(rawType!==''&&String(rawType||'').match(/^\d+(\.\d+)?$/));
+    var course=oldShape?r[5]:rowCell(r,map,'Achieved Course Fee',6);
+    var gst=oldShape?r[6]:rowCell(r,map,'Achieved Course Fee + GST',7);
+    var newerShape=map['Student Count']!==undefined;
+    if(newerShape){course=rowCell(r,map,'Achieved Course Fee',7);gst=rowCell(r,map,'Achieved Course Fee + GST',8);}
+    return {
+      month:String(rowCell(r,map,'Month',0)||'').slice(0,7),
+      period:String(rowCell(r,map,'Period',1)||'2026-27').trim(),
+      counsellor:String(rowCell(r,map,'Counsellor',2)||'').trim(),
+      assignedCentre:String(rowCell(r,map,'Assigned Centre',3)||'').trim(),
+      businessCentre:String(rowCell(r,map,'Business Centre',4)||rowCell(r,map,'Assigned Centre',3)||'').trim(),
+      businessType:oldShape?'Centre Revenue':String(rawType||'Centre Revenue').trim(),
+      achievedCourse:Number(course)||0,
+      achievedGst:Number(gst)||0,
+      studentCount:Number(newerShape?rowCell(r,map,'Student Count',6):0)||0,
+      locked:String((newerShape?rowCell(r,map,'Locked',11):'Y')||'Y').trim()!=='N',
+      notes:oldShape?r[7]||'':rowCell(r,map,'Notes',newerShape?9:8)||'',
+      updatedBy:oldShape?r[8]||'':rowCell(r,map,'Updated By',newerShape?10:9)||'',
+      updatedAt:oldShape?r[9]||'':rowCell(r,map,'Updated At',newerShape?12:10)||''
+    };
+  }).filter(function(r){return r.month&&r.period&&r.counsellor&&r.assignedCentre&&r.businessCentre;});
 }
 
 function saveRevenueCentreTargetRows(ss,rows,updatedBy) {
@@ -2513,6 +2606,7 @@ function saveRevenueCentreTargetRows(ss,rows,updatedBy) {
 function saveRevenueAnnualTargetRows(ss,rows,updatedBy) {
   var sh=ss.getSheetByName(SH_REVENUE_ANNUAL_TARGETS);
   ensureRevenueAnnualTargetHeaders(sh);
+  var locked=getRevenueAnnualTargetRows(ss);
   var existing=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,3).getValues():[];
   var rowMap={};
   existing.forEach(function(r,i){rowMap[String(r[0])+'|'+String(r[1])+'|'+String(r[2])]=i+2;});
@@ -2520,10 +2614,12 @@ function saveRevenueAnnualTargetRows(ss,rows,updatedBy) {
   rows.forEach(function(r){
     var period=String(r.period||'2026-27').trim(), counsellor=String(r.counsellor||'').trim(), centre=String(r.centre||'').trim();
     if(!period||!counsellor||!centre)return;
+    if(!Number(r.targetCourse)&&!Number(r.targetGst))return;
+    if(locked.some(function(x){return x.period===period&&x.centre===centre&&revenueSameCounsellor(x.counsellor,counsellor);}))return;
     var row=[period,counsellor,centre,Number(r.targetCourse)||0,Number(r.targetGst)||0,r.notes||'',updatedBy,new Date().toISOString()];
     var key=period+'|'+counsellor+'|'+centre;
-    if(rowMap[key])sh.getRange(rowMap[key],1,1,row.length).setValues([row]);
-    else{sh.appendRow(row);rowMap[key]=sh.getLastRow();}
+    if(rowMap[key])return;
+    sh.appendRow(row);rowMap[key]=sh.getLastRow();
     saved++;
   });
   return saved;
@@ -2532,14 +2628,20 @@ function saveRevenueAnnualTargetRows(ss,rows,updatedBy) {
 function saveRevenueMonthlyAchievedRows(ss,rows,updatedBy,scope) {
   var sh=ss.getSheetByName(SH_REVENUE_MONTHLY_ACHIEVED);
   ensureRevenueMonthlyAchievedHeaders(sh);
+  var lockedMonths={};
+  getRevenueMonthlyAchievedRows(ss).forEach(function(r){
+    if(r.locked)lockedMonths[r.month+'|'+r.period+'|'+revenueNameAliases(r.counsellor)[0]+'|'+r.assignedCentre]=true;
+  });
   if(scope&&scope.period&&scope.counsellor&&scope.assignedCentre&&scope.months&&scope.months.length&&sh.getLastRow()>1){
     var deleteMonths={};
     scope.months.forEach(function(m){deleteMonths[String(m).slice(0,7)]=true;});
-    var scoped=sh.getRange(2,1,sh.getLastRow()-1,6).getValues();
+    var scoped=sh.getRange(2,1,sh.getLastRow()-1,Math.max(sh.getLastColumn(),12)).getValues();
+    var map=sheetHeaderMap(sh);
     for(var i=scoped.length-1;i>=0;i--){
       var r=scoped[i];
       var month=String(r[0]).slice(0,7);
-      if(deleteMonths[month]&&String(r[1])===String(scope.period)&&String(r[2])===String(scope.counsellor)&&String(r[3])===String(scope.assignedCentre)){
+      var locked=String(rowCell(r,map,'Locked',11)||'Y').trim()!=='N';
+      if(!locked&&deleteMonths[month]&&String(r[1])===String(scope.period)&&revenueSameCounsellor(r[2],scope.counsellor)&&String(r[3])===String(scope.assignedCentre)){
         sh.deleteRow(i+2);
       }
     }
@@ -2552,7 +2654,9 @@ function saveRevenueMonthlyAchievedRows(ss,rows,updatedBy,scope) {
     var month=String(r.month||'').slice(0,7), period=String(r.period||'2026-27').trim(), counsellor=String(r.counsellor||'').trim(), assigned=String(r.assignedCentre||r.centre||'').trim(), business=String(r.businessCentre||assigned).trim();
     var businessType=String(r.businessType||'Centre Revenue').trim();
     if(!month||!period||!counsellor||!assigned||!business)return;
-    var row=[month,period,counsellor,assigned,business,businessType,Number(r.achievedCourse)||0,Number(r.achievedGst)||0,r.notes||'',updatedBy,new Date().toISOString()];
+    var lockKey=month+'|'+period+'|'+revenueNameAliases(counsellor)[0]+'|'+assigned;
+    if(lockedMonths[lockKey])return;
+    var row=[month,period,counsellor,assigned,business,businessType,Number(r.studentCount)||0,Number(r.achievedCourse)||0,Number(r.achievedGst)||0,r.notes||'',updatedBy,'Y',new Date().toISOString()];
     var key=month+'|'+period+'|'+counsellor+'|'+assigned+'|'+business+'|'+businessType;
     if(rowMap[key])sh.getRange(rowMap[key],1,1,row.length).setValues([row]);
     else{sh.appendRow(row);rowMap[key]=sh.getLastRow();}
@@ -2620,14 +2724,22 @@ function ensureRevenueAnnualTargetHeaders(sh) {
   }
 }
 function ensureRevenueMonthlyAchievedHeaders(sh) {
-  const h=['Month','Period','Counsellor','Assigned Centre','Business Centre','Business Type','Achieved Course Fee','Achieved Course Fee + GST','Notes','Updated By','Updated At'];
+  const h=['Month','Period','Counsellor','Assigned Centre','Business Centre','Business Type','Student Count','Achieved Course Fee','Achieved Course Fee + GST','Notes','Updated By','Locked','Updated At'];
   if (sh.getLastRow()===0 || sh.getRange(1,1).getValue()==='') {
     sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
     sh.setFrozenRows(1);
     return;
   }
-  const current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);
-  if (current[0]!==h[0] || current[5]!==h[5] || current[10]!==h[10]) {
+  let current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);
+  if (current[6]==='Achieved Course Fee') {
+    sh.insertColumnBefore(7);
+    current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);
+  }
+  if (current[11]==='Updated At' || current[11]==='') {
+    sh.insertColumnBefore(12);
+    current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);
+  }
+  if (current[0]!==h[0] || current[5]!==h[5] || current[12]!==h[12]) {
     sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
     sh.setFrozenRows(1);
   }

@@ -418,8 +418,8 @@
   <div id="t-revenue" class="tab-content">
     <div class="card">
       <div class="section-tag">Revenue Planning</div>
-      <h2>Counsellor Revenue Targets</h2>
-      <p class="sub">Set month-wise targets by counsellor and centre. Achieved revenue is calculated from paid fee installments, so cross-centre sales stay visible by both counsellor and centre.</p>
+      <h2>Annual Target & Monthly Revenue Achieved</h2>
+      <p class="sub">Set annual targets by counsellor and centre. Monthly achieved revenue is calculated from paid fee installments, so cross-centre sales stay visible by both counsellor and centre.</p>
       <div class="revenue-filters">
         <div class="field"><label>Centre</label><select id="rev-centre" onchange="loadRevenueDashboard()"><option value="">All visible centres</option></select></div>
         <div class="field"><label>Counsellor</label><select id="rev-counsellor" onchange="loadRevenueDashboard()"><option value="">All counsellors</option></select></div>
@@ -436,15 +436,15 @@
     </div>
     <div class="card">
       <div class="section-tag">Target Entry</div>
-      <h2>Monthly Target Sheet</h2>
-      <p class="sub">Choose a counsellor and centre, enter targets for Jan 2026 to Mar 2027, then save. Existing rows are updated for the same month, counsellor, and centre.</p>
+      <h2>Annual Target</h2>
+      <p class="sub">Choose a counsellor and centre, enter the annual target for 2026-27, then save. Existing rows are updated for the same period, counsellor, and centre.</p>
       <div class="grid2">
         <div class="field"><label>Counsellor</label><select id="rev-edit-counsellor" onchange="renderRevenueTargetEditor()"></select></div>
         <div class="field"><label>Centre</label><select id="rev-edit-centre" onchange="renderRevenueTargetEditor()"></select></div>
       </div>
       <div id="rev-target-editor"></div>
       <div class="revenue-actions">
-        <button class="btn btn-gold" id="rev-save-btn" onclick="saveRevenueTargets()">Save Targets</button>
+        <button class="btn btn-gold" id="rev-save-btn" onclick="saveRevenueTargets()">Save Annual Target</button>
       </div>
       <div class="err-box" id="rev-err"></div>
     </div>
@@ -1662,6 +1662,7 @@ function syncRevenueRange() {
 function revenueRequestParams() {
   return {
     action:'getRevenueDashboard',
+    period:'2026-27',
     centres:isAdmin ? '' : revenueVisibleCentres().join(','),
     centre:document.getElementById('rev-centre').value,
     counsellor:document.getElementById('rev-counsellor').value,
@@ -1696,11 +1697,17 @@ function revenueMetricKeys() {
 
 function revenueTotals(rows) {
   const keys = revenueMetricKeys();
+  if (revenueData && revenueData.summary) {
+    return {
+      target:Number(revenueData.summary[keys.target]) || 0,
+      achieved:Number(revenueData.summary[keys.achieved]) || 0,
+      monthlyTarget:Number(revenueData.summary[keys.target === 'targetCourse' ? 'monthlyTargetCourse' : 'monthlyTargetGst']) || 0
+    };
+  }
   return (rows || []).reduce((a,r) => {
-    a.target += Number(r[keys.target]) || 0;
     a.achieved += Number(r[keys.achieved]) || 0;
     return a;
-  }, {target:0, achieved:0});
+  }, {target:0, achieved:0, monthlyTarget:0});
 }
 
 function revenuePct(achieved, target) {
@@ -1711,13 +1718,13 @@ function renderRevenueDashboard() {
   if (!revenueData) return;
   const keys = revenueMetricKeys();
   const totals = revenueTotals(revenueData.months);
-  const gap = totals.achieved - totals.target;
+  const gap = totals.target - totals.achieved;
   const pct = revenuePct(totals.achieved, totals.target);
   document.getElementById('rev-summary').innerHTML =
-    '<div class="summary-tile"><div class="k">Target</div><div class="v">' + money(totals.target) + '</div><div class="s">' + keys.label + '</div></div>' +
-    '<div class="summary-tile ok"><div class="k">Achieved</div><div class="v">' + money(totals.achieved) + '</div><div class="s">' + pct + '% of target</div></div>' +
-    '<div class="summary-tile ' + (gap >= 0 ? 'ok' : 'warn') + '"><div class="k">Gap</div><div class="v">' + money(Math.abs(gap)) + '</div><div class="s">' + (gap >= 0 ? 'Above target' : 'Below target') + '</div></div>' +
-    '<div class="summary-tile ' + (pct >= 90 ? 'ok' : 'warn') + '"><div class="k">Achievement</div><div class="v">' + pct + '%</div><div class="s">' + (revenueData.months || []).length + ' months selected</div></div>';
+    '<div class="summary-tile"><div class="k">Annual Target</div><div class="v">' + money(totals.target) + '</div><div class="s">' + keys.label + ' · 2026-27</div></div>' +
+    '<div class="summary-tile ok"><div class="k">Achieved</div><div class="v">' + money(totals.achieved) + '</div><div class="s">' + pct + '% of annual target</div></div>' +
+    '<div class="summary-tile ' + (gap <= 0 ? 'ok' : 'warn') + '"><div class="k">Remaining</div><div class="v">' + money(Math.max(gap, 0)) + '</div><div class="s">' + (gap <= 0 ? 'Annual target met' : 'Still to collect') + '</div></div>' +
+    '<div class="summary-tile"><div class="k">Monthly Run Rate</div><div class="v">' + money(totals.monthlyTarget) + '</div><div class="s">Average needed per month</div></div>';
 
   document.getElementById('rev-month-grid').innerHTML = '<div class="revenue-grid">' + (revenueData.months || []).map(m => {
     const target = Number(m[keys.target]) || 0;
@@ -1727,7 +1734,7 @@ function renderRevenueDashboard() {
     return '<div class="revenue-month ' + cls + '">' +
       '<div class="revenue-month-head"><div class="revenue-month-title">' + escC(m.label) + '</div><div class="revenue-month-pct">' + monthPct + '%</div></div>' +
       '<div class="revenue-bar"><span style="width:' + Math.min(monthPct, 120) + '%"></span></div>' +
-      '<div class="revenue-month-meta"><div>Target<strong>' + money(target) + '</strong></div><div>Achieved<strong>' + money(achieved) + '</strong></div><div>Gap<strong>' + money(Math.abs(achieved - target)) + '</strong></div><div>Status<strong>' + (achieved >= target ? 'Met' : 'Open') + '</strong></div></div>' +
+      '<div class="revenue-month-meta"><div>Run Rate<strong>' + money(target) + '</strong></div><div>Achieved<strong>' + money(achieved) + '</strong></div><div>Variance<strong>' + money(Math.abs(achieved - target)) + '</strong></div><div>Status<strong>' + (achieved >= target ? 'Ahead' : 'Behind') + '</strong></div></div>' +
     '</div>';
   }).join('') + '</div>';
   renderRevenueRollups();
@@ -1750,7 +1757,7 @@ function renderRevenueRollups() {
 function revenueTargetMap() {
   const out = {};
   (revenueData && revenueData.targetRows ? revenueData.targetRows : []).forEach(r => {
-    out[r.month + '|' + r.counsellor + '|' + r.centre] = r;
+    out[(r.period || '2026-27') + '|' + r.counsellor + '|' + r.centre] = r;
   });
   return out;
 }
@@ -1761,19 +1768,20 @@ function renderRevenueTargetEditor() {
   const counsellor = document.getElementById('rev-edit-counsellor').value;
   const centre = document.getElementById('rev-edit-centre').value;
   if (!counsellor || !centre) {
-    wrap.innerHTML = emptyState('₹', 'Choose counsellor and centre', 'Target rows will appear for Jan 2026 through Mar 2027.');
+    wrap.innerHTML = emptyState('₹', 'Choose counsellor and centre', 'Annual target fields will appear here.');
     return;
   }
   const map = revenueTargetMap();
-  let html = '<div class="revenue-editor"><table><thead><tr><th>Month</th><th>Course Fee Target</th><th>Course Fee + GST Target</th><th>Notes</th></tr></thead><tbody>';
-  html += revenueMonths().map(m => {
-    const row = map[m.key + '|' + counsellor + '|' + centre] || {};
-    return '<tr data-month="' + m.key + '"><td><strong>' + m.label + '</strong></td>' +
-      '<td><input type="number" class="rev-t-course" min="0" value="' + escC(row.targetCourse || '') + '"></td>' +
-      '<td><input type="number" class="rev-t-gst" min="0" value="' + escC(row.targetGst || '') + '"></td>' +
-      '<td><input type="text" class="rev-t-notes" value="' + escC(row.notes || '') + '" placeholder="Optional"></td></tr>';
-  }).join('');
-  wrap.innerHTML = html + '</tbody></table></div>';
+  const row = map['2026-27|' + counsellor + '|' + centre] || {};
+  wrap.innerHTML =
+    '<div class="grid2">' +
+      '<div class="field"><label>Period</label><input type="text" id="rev-t-period" value="2026-27" readonly></div>' +
+      '<div class="field"><label>Annual Course Fee Target</label><input type="number" id="rev-t-course" min="0" value="' + escC(row.targetCourse || '') + '"></div>' +
+    '</div>' +
+    '<div class="grid2">' +
+      '<div class="field"><label>Annual Course Fee + GST Target</label><input type="number" id="rev-t-gst" min="0" value="' + escC(row.targetGst || '') + '"></div>' +
+      '<div class="field"><label>Notes</label><input type="text" id="rev-t-notes" value="' + escC(row.notes || '') + '" placeholder="Optional"></div>' +
+    '</div>';
 }
 
 function saveRevenueTargets() {
@@ -1787,14 +1795,14 @@ function saveRevenueTargets() {
     err.classList.add('show');
     return;
   }
-  const targets = Array.from(document.querySelectorAll('#rev-target-editor tbody tr')).map(tr => ({
-    month:tr.getAttribute('data-month'),
+  const targets = [{
+    period:'2026-27',
     counsellor,
     centre,
-    targetCourse:tr.querySelector('.rev-t-course').value || 0,
-    targetGst:tr.querySelector('.rev-t-gst').value || 0,
-    notes:tr.querySelector('.rev-t-notes').value || ''
-  }));
+    targetCourse:document.getElementById('rev-t-course').value || 0,
+    targetGst:document.getElementById('rev-t-gst').value || 0,
+    notes:document.getElementById('rev-t-notes').value || ''
+  }];
   btn.textContent = 'Saving...';
   btn.disabled = true;
   const params = Object.assign(revenueRequestParams(), {
@@ -1803,16 +1811,16 @@ function saveRevenueTargets() {
     updatedBy:counselorName || 'Counselor'
   });
   gasGet(params, function(e,d) {
-    btn.textContent = 'Save Targets';
+    btn.textContent = 'Save Annual Target';
     btn.disabled = false;
     if (e || !d || d.status !== 'ok') {
-      err.textContent = 'Could not save revenue targets.';
+      err.textContent = 'Could not save annual target.';
       err.classList.add('show');
-      showToast('Could not save revenue targets.', 'error');
+      showToast('Could not save annual target.', 'error');
       return;
     }
     revenueData = d.dashboard || revenueData;
-    showToast('Revenue targets saved.');
+    showToast('Annual target saved.');
     renderRevenueDashboard();
     renderRevenueTargetEditor();
   });
@@ -1821,11 +1829,14 @@ function saveRevenueTargets() {
 function downloadRevenueCsv() {
   if (!revenueData) return;
   const keys = revenueMetricKeys();
-  const lines = [['Month','Target','Achieved','Gap','Achievement %']];
+  const totals = revenueTotals(revenueData.months);
+  const lines = [['Month','Average Monthly Run Rate','Achieved','Variance','Achievement %','Cumulative Achieved','Annual Target','Remaining Annual Target']];
+  let cumulative = 0;
   (revenueData.months || []).forEach(m => {
     const target = Number(m[keys.target]) || 0;
     const achieved = Number(m[keys.achieved]) || 0;
-    lines.push([m.label, target, achieved, achieved - target, revenuePct(achieved, target)]);
+    cumulative += achieved;
+    lines.push([m.label, target, achieved, achieved - target, revenuePct(achieved, target), cumulative, totals.target, Math.max(totals.target - cumulative, 0)]);
   });
   const csv = lines.map(row => row.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});

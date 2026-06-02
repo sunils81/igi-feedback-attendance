@@ -120,17 +120,25 @@
 .rev-month-badge.saved{background:#E0F5EA;color:#1a7a3c}
 .rev-month-badge.future{background:var(--off);color:var(--muted)}
 .rev-month-body{padding:12px 14px}
-.rev-saved-row{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px;color:var(--muted);margin-bottom:8px}
+.rev-saved-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:10px;color:var(--muted);margin-bottom:8px}
 .rev-saved-row strong{display:block;font-family:"DM Mono",monospace;font-size:13px;color:var(--navy);margin-top:2px}
 .rev-saved-row .wide{grid-column:1/-1}
-.rev-mini-form{display:grid;gap:8px}
+.rev-saved-total{grid-column:1/-1;background:var(--navy);border-radius:7px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;margin-top:4px}
+.rev-saved-total .k{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.55)}
+.rev-saved-total .v{font-family:"DM Mono",monospace;font-size:15px;font-weight:700;color:var(--gold)}
+.rev-bucket{border:1px solid var(--border);border-radius:8px;padding:10px 11px;margin-bottom:8px;background:var(--off)}
+.rev-bucket-head{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.rev-bucket-head .badge-teal{background:rgba(29,158,117,.12);color:var(--teal);font-size:9px;padding:2px 7px;border-radius:999px}
+.rev-bucket-head .badge-amber{background:rgba(201,168,76,.15);color:#A07810;font-size:9px;padding:2px 7px;border-radius:999px}
+.rev-bucket-head .badge-blue{background:rgba(60,100,200,.1);color:#3c64c8;font-size:9px;padding:2px 7px;border-radius:999px}
+.rev-mini-form{display:grid;gap:6px}
 .rev-mini-form .field{margin-bottom:0}
 .rev-mini-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.rev-gst-auto{font-size:11px;color:var(--muted);margin-top:3px;font-family:"DM Mono",monospace}
-.rev-extra-toggle{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--teal);cursor:pointer;border:none;background:none;padding:0;margin-top:6px;font-weight:600}
-.rev-extra-form{border-top:1px dashed var(--border);margin-top:10px;padding-top:10px;display:none}
-.rev-extra-form.open{display:block}
-.rev-month-save-btn{margin-top:10px;width:100%;padding:9px;font-size:12px;font-weight:700;border-radius:7px;border:none;cursor:pointer;background:var(--gold);color:var(--navy)}
+.rev-gst-auto{font-size:10px;color:var(--muted);margin-top:2px;font-family:"DM Mono",monospace}
+.rev-month-total-row{background:var(--navy);border-radius:8px;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;margin:10px 0 6px}
+.rev-month-total-row .k{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.55)}
+.rev-month-total-row .v{font-family:"DM Mono",monospace;font-size:16px;font-weight:700;color:var(--gold)}
+.rev-month-save-btn{width:100%;padding:10px;font-size:12px;font-weight:700;border-radius:7px;border:none;cursor:pointer;background:var(--gold);color:var(--navy);letter-spacing:.02em}
 .rev-month-save-btn:disabled{opacity:.5;cursor:not-allowed}
 .rev-month-save-note{font-size:10px;color:var(--muted);margin-top:5px;min-height:14px}
 .rev-centre-bar{background:var(--navy);border-radius:10px;padding:14px 16px;color:var(--white);margin-bottom:16px;display:none}
@@ -1944,61 +1952,89 @@ function renderRevenueMonthCards(counsellor) {
     var open = revenueMonthOpen(m.key);
     var saved = open && revMonthIsSavedLocked(m.key, counsellor, designatedCentre);
     var state = !open ? 'future' : (saved ? 'saved' : 'open');
-    var badge = !open ? '<span class="rev-month-badge future">Future</span>' : (saved ? '<span class="rev-month-badge saved">✓ Saved</span>' : '<span class="rev-month-badge open">Enter</span>');
-    var cardCls = 'rev-month-card rev-'+state;
-
+    var badge = !open
+      ? '<span class="rev-month-badge future">Future</span>'
+      : saved
+        ? '<span class="rev-month-badge saved">✓ Saved & Locked</span>'
+        : '<span class="rev-month-badge open">Open — Enter</span>';
+    var cardCls = 'rev-month-card rev-' + state;
     var body = '';
 
     if (!open) {
-      body = '<div style="font-size:12px;color:var(--muted);padding:4px 0">This month hasn\'t started yet.</div>';
+      body = '<div style="font-size:12px;color:var(--muted);padding:6px 0">This month hasn\'t started yet. It will unlock automatically.</div>';
+
     } else if (saved) {
-      // show saved data read-only
-      var k = m.key+'|'+revCanonical(counsellor)+'|'+designatedCentre;
-      var rows = mmap[k]||[];
+      // Read-only saved view
+      var k = m.key + '|' + revCanonical(counsellor) + '|' + designatedCentre;
+      var rows = mmap[k] || [];
+      var ownRows = rows.filter(function(r){ return !revIsCorporate(r) && r.businessCentre === designatedCentre; });
+      var otherRows = rows.filter(function(r){ return !revIsCorporate(r) && r.businessCentre !== designatedCentre; });
+      var corpRows = rows.filter(function(r){ return revIsCorporate(r); });
+      var ownAch = ownRows.reduce(function(s,r){ return s+(Number(r.achievedGst)||0); },0);
+      var otherAch = otherRows.reduce(function(s,r){ return s+(Number(r.achievedGst)||0); },0);
+      var corpAch = corpRows.reduce(function(s,r){ return s+(Number(r.achievedGst)||0); },0);
       var totalAch = rows.reduce(function(s,r){ return s+(Number(r.achievedGst)||0); },0);
       var totalStu = rows.reduce(function(s,r){ return s+(Number(r.studentCount)||0); },0);
-      body = '<div class="rev-saved-row">'+
-        '<div>Achieved (incl. GST)<strong>'+money(totalAch)+'</strong></div>'+
-        '<div>Students<strong>'+totalStu+'</strong></div>';
-      // show extra lines if any
-      var extraRows = rows.filter(function(r){ return r.businessCentre !== designatedCentre || String(r.businessType||'').toLowerCase().indexOf('corporate')>=0; });
-      if(extraRows.length) {
-        body += '<div class="wide" style="font-size:10px;color:var(--muted);margin-top:4px">';
-        extraRows.forEach(function(er){ body += '+ '+escC(er.businessCentre)+' / '+escC(er.businessType||'Other')+': '+money(Number(er.achievedGst)||0)+'<br>'; });
-        body += '</div>';
-      }
-      // show who saved and when
-      var lastRow = rows[rows.length-1];
-      if(lastRow && lastRow.updatedAt) body += '<div class="wide" style="font-size:10px;color:var(--muted);margin-top:2px">Saved by '+escC(lastRow.updatedBy||counsellor)+' · '+escC(formatDateTime(lastRow.updatedAt))+'</div>';
-      body += '</div>';
-    } else {
-      // open editable card
-      var centreOpts = CENTRES.map(function(c){ return '<option value="'+escC(c)+'"'+(c===designatedCentre?' selected':'')+'>'+escC(c)+'</option>'; }).join('');
-      var typeOpts = BUSINESS_TYPES.map(function(t){ return '<option value="'+escC(t)+'">'+escC(t)+'</option>'; }).join('');
       body =
-        '<div class="rev-mini-form">'+
-          '<div class="rev-mini-row">'+
-            '<div class="field"><label style="font-size:10px">Students</label><input type="number" class="rmc-students" min="0" placeholder="0"></div>'+
-            '<div class="field"><label style="font-size:10px">Course Fee ₹</label><input type="number" class="rmc-course" min="0" placeholder="0" oninput="revSyncGst(this)"></div>'+
-          '</div>'+
-          '<div class="field"><label style="font-size:10px">GST Amount (auto)</label><input type="number" class="rmc-gst" readonly placeholder="Auto"></div>'+
-          '<div class="field"><label style="font-size:10px">Notes (optional)</label><input type="text" class="rmc-notes" placeholder="Optional note"></div>'+
+        '<div class="rev-saved-row">'+
+          '<div>Own Centre Revenue<strong>'+money(ownAch)+'</strong></div>'+
+          '<div>Other Centre Revenue<strong>'+money(otherAch)+'</strong></div>'+
+          '<div>Corporate Revenue<strong>'+money(corpAch)+'</strong></div>'+
         '</div>'+
-        '<button type="button" class="rev-extra-toggle" onclick="revToggleExtra(this)">+ Add revenue from another centre / corporate</button>'+
-        '<div class="rev-extra-form">'+
-          '<div class="rev-mini-row">'+
-            '<div class="field"><label style="font-size:10px">Business Centre</label><select class="rmc-business">'+centreOpts+'</select></div>'+
-            '<div class="field"><label style="font-size:10px">Type</label><select class="rmc-type">'+typeOpts+'</select></div>'+
+        '<div class="rev-saved-total"><span class="k">Total Monthly Achieved (incl. GST)</span><span class="v">'+money(totalAch)+'</span></div>'+
+        '<div style="font-size:10px;color:var(--muted);margin-top:6px">'+totalStu+' student'+(totalStu===1?'':'s')+
+          (rows[rows.length-1]&&rows[rows.length-1].updatedAt ? ' · Saved by '+escC(rows[rows.length-1].updatedBy||counsellor)+' on '+escC(formatDateTime(rows[rows.length-1].updatedAt)) : '')+
+        '</div>';
+
+    } else {
+      // Editable 3-bucket form
+      var centreOpts = CENTRES.map(function(c){ return '<option value="'+escC(c)+'"'+(c===designatedCentre?' selected':'')+'>'+escC(c)+'</option>'; }).join('');
+      body =
+        // Bucket 1 — Own Centre
+        '<div class="rev-bucket">'+
+          '<div class="rev-bucket-head">Own Centre Revenue <span class="badge-teal">'+escC(designatedCentre)+'</span></div>'+
+          '<div class="rev-mini-form">'+
+            '<div class="rev-mini-row">'+
+              '<div class="field"><label style="font-size:10px">Students</label><input type="number" class="rmc-students" min="0" placeholder="0" oninput="revUpdateMonthTotal(this)"></div>'+
+              '<div class="field"><label style="font-size:10px">Course Fee ₹ (excl. GST)</label><input type="number" class="rmc-course" min="0" placeholder="0" oninput="revSyncBucketGst(this,\'rmc-gst\');revUpdateMonthTotal(this)"></div>'+
+            '</div>'+
+            '<div class="field"><label style="font-size:10px">GST Amount (auto @ 18%)</label><input type="number" class="rmc-gst" readonly placeholder="Auto-calculated"></div>'+
+            '<div class="field"><label style="font-size:10px">Notes</label><input type="text" class="rmc-notes" placeholder="Optional"></div>'+
           '</div>'+
-          '<div class="rev-mini-row">'+
-            '<div class="field"><label style="font-size:10px">Students</label><input type="number" class="rmc-xstudents" min="0" placeholder="0"></div>'+
-            '<div class="field"><label style="font-size:10px">Course Fee ₹</label><input type="number" class="rmc-xcourse" min="0" placeholder="0" oninput="revSyncGst(this,\'rmc-xgst\')"></div>'+
-          '</div>'+
-          '<div class="field"><label style="font-size:10px">GST (auto)</label><input type="number" class="rmc-xgst" readonly placeholder="Auto"></div>'+
         '</div>'+
-        '<button type="button" class="rev-month-save-btn" '+
-          'data-month="'+escC(m.key)+'" data-label="'+escC(m.label)+'" data-centre="'+escC(designatedCentre)+'" '+
-          'onclick="revSaveMonthCard(this)">Save & Lock '+escC(m.label)+'</button>'+
+        // Bucket 2 — Other Centre
+        '<div class="rev-bucket">'+
+          '<div class="rev-bucket-head">Other Centre Revenue <span class="badge-amber">Optional</span></div>'+
+          '<div class="rev-mini-form">'+
+            '<div class="rev-mini-row">'+
+              '<div class="field"><label style="font-size:10px">Centre</label><select class="rmc-business">'+centreOpts+'</select></div>'+
+              '<div class="field"><label style="font-size:10px">Students</label><input type="number" class="rmc-xstudents" min="0" placeholder="0" oninput="revUpdateMonthTotal(this)"></div>'+
+            '</div>'+
+            '<div class="rev-mini-row">'+
+              '<div class="field"><label style="font-size:10px">Course Fee ₹ (excl. GST)</label><input type="number" class="rmc-xcourse" min="0" placeholder="0" oninput="revSyncBucketGst(this,\'rmc-xgst\');revUpdateMonthTotal(this)"></div>'+
+              '<div class="field"><label style="font-size:10px">GST Amount (auto)</label><input type="number" class="rmc-xgst" readonly placeholder="Auto-calculated"></div>'+
+            '</div>'+
+          '</div>'+
+        '</div>'+
+        // Bucket 3 — Corporate
+        '<div class="rev-bucket">'+
+          '<div class="rev-bucket-head">Corporate Program Revenue <span class="badge-blue">Optional</span></div>'+
+          '<div class="rev-mini-form">'+
+            '<div class="rev-mini-row">'+
+              '<div class="field"><label style="font-size:10px">Students</label><input type="number" class="rmc-cstudents" min="0" placeholder="0" oninput="revUpdateMonthTotal(this)"></div>'+
+              '<div class="field"><label style="font-size:10px">Course Fee ₹ (excl. GST)</label><input type="number" class="rmc-ccourse" min="0" placeholder="0" oninput="revSyncBucketGst(this,\'rmc-cgst\');revUpdateMonthTotal(this)"></div>'+
+            '</div>'+
+            '<div class="field"><label style="font-size:10px">GST Amount (auto)</label><input type="number" class="rmc-cgst" readonly placeholder="Auto-calculated"></div>'+
+          '</div>'+
+        '</div>'+
+        // Running total
+        '<div class="rev-month-total-row"><span class="k">Total This Month (incl. GST)</span><span class="v" id="revtot-'+escC(m.key)+'">₹0</span></div>'+
+        // Save button
+        '<button type="button" class="rev-month-save-btn"'+
+          ' data-month="'+escC(m.key)+'"'+
+          ' data-label="'+escC(m.label)+'"'+
+          ' data-centre="'+escC(designatedCentre)+'"'+
+          ' onclick="revSaveMonthCard(this)">💾 Save & Lock '+escC(m.label)+'</button>'+
         '<div class="rev-month-save-note"></div>';
     }
 
@@ -2011,19 +2047,29 @@ function renderRevenueMonthCards(counsellor) {
   grid.innerHTML = html;
 }
 
-function revSyncGst(input, gstClass) {
-  var gstCls = gstClass || 'rmc-gst';
-  var card = input.closest('.rev-month-body');
-  if (!card) return;
-  var gstEl = card.querySelector('.'+gstCls);
+function revIsCorporate(row) {
+  return String(row.businessType||'').toLowerCase().indexOf('corporate') >= 0 ||
+         String(row.businessCentre||'').toLowerCase().indexOf('corporate') >= 0;
+}
+
+function revSyncBucketGst(input, gstClass) {
+  var body = input.closest('.rev-month-body');
+  if (!body) return;
+  var gstEl = body.querySelector('.' + gstClass);
   if (gstEl) gstEl.value = input.value ? revenueGst(input.value) : '';
 }
 
-function revToggleExtra(btn) {
-  var form = btn.nextElementSibling;
-  if (!form) return;
-  form.classList.toggle('open');
-  btn.textContent = form.classList.contains('open') ? '− Remove extra revenue line' : '+ Add revenue from another centre / corporate';
+function revUpdateMonthTotal(input) {
+  var body = input.closest('.rev-month-body');
+  if (!body) return;
+  var btn = body.querySelector('.rev-month-save-btn');
+  if (!btn) return;
+  var monthKey = btn.getAttribute('data-month');
+  var gst1 = Number(body.querySelector('.rmc-gst') ? body.querySelector('.rmc-gst').value : 0) || 0;
+  var gst2 = Number(body.querySelector('.rmc-xgst') ? body.querySelector('.rmc-xgst').value : 0) || 0;
+  var gst3 = Number(body.querySelector('.rmc-cgst') ? body.querySelector('.rmc-cgst').value : 0) || 0;
+  var totEl = document.getElementById('revtot-' + monthKey);
+  if (totEl) totEl.textContent = money(gst1 + gst2 + gst3);
 }
 
 function revSaveMonthCard(btn) {
@@ -2034,65 +2080,76 @@ function revSaveMonthCard(btn) {
   var note = body.querySelector('.rev-month-save-note');
   var me = counselorName || '';
 
-  // collect primary row
-  var course = Number(body.querySelector('.rmc-course').value)||0;
-  var gst = Number(body.querySelector('.rmc-gst').value)||revenueGst(course);
-  var students = Number(body.querySelector('.rmc-students').value)||0;
-  var notes = (body.querySelector('.rmc-notes').value||'').trim();
+  // Bucket 1 — Own centre
+  var course1 = Number(body.querySelector('.rmc-course').value) || 0;
+  var gst1 = Number(body.querySelector('.rmc-gst').value) || revenueGst(course1);
+  var stu1 = Number(body.querySelector('.rmc-students').value) || 0;
+  var notes1 = (body.querySelector('.rmc-notes').value || '').trim();
 
-  if (!course && !students) {
-    note.textContent = '⚠ Please enter at least one value (students or course fee).';
-    note.style.color = 'var(--red)';
+  // Bucket 2 — Other centre (only if course fee or students entered)
+  var course2 = Number(body.querySelector('.rmc-xcourse').value) || 0;
+  var gst2 = Number(body.querySelector('.rmc-xgst').value) || revenueGst(course2);
+  var stu2 = Number(body.querySelector('.rmc-xstudents').value) || 0;
+  var biz2 = body.querySelector('.rmc-business').value || assignedCentre;
+
+  // Bucket 3 — Corporate (only if course fee or students entered)
+  var course3 = Number(body.querySelector('.rmc-ccourse').value) || 0;
+  var gst3 = Number(body.querySelector('.rmc-cgst').value) || revenueGst(course3);
+  var stu3 = Number(body.querySelector('.rmc-cstudents').value) || 0;
+
+  if (!course1 && !stu1 && !course2 && !stu2 && !course3 && !stu3) {
+    if (note) { note.textContent = '⚠ Enter at least one value before saving.'; note.style.color = 'var(--red)'; }
     return;
   }
 
   var rows = [];
-  // primary
-  rows.push({month:monthKey, period:'2026-27', counsellor:me, assignedCentre:assignedCentre,
-    businessCentre:assignedCentre, businessType:'Centre Revenue',
-    studentCount:students, achievedCourse:course, achievedGst:gst, notes:notes});
-
-  // extra line if open and filled
-  var extraForm = body.querySelector('.rev-extra-form');
-  if (extraForm && extraForm.classList.contains('open')) {
-    var xcourse = Number(body.querySelector('.rmc-xcourse').value)||0;
-    var xgst = Number(body.querySelector('.rmc-xgst').value)||revenueGst(xcourse);
-    var xstudents = Number(body.querySelector('.rmc-xstudents').value)||0;
-    var xbiz = body.querySelector('.rmc-business').value || assignedCentre;
-    var xtype = body.querySelector('.rmc-type').value || 'Other Centre Business';
-    if (xcourse || xstudents) {
-      rows.push({month:monthKey, period:'2026-27', counsellor:me, assignedCentre:assignedCentre,
-        businessCentre:xbiz, businessType:xtype,
-        studentCount:xstudents, achievedCourse:xcourse, achievedGst:xgst, notes:''});
-    }
+  // Always include bucket 1 (own centre) — even if zero, it establishes the lock
+  rows.push({
+    month: monthKey, period: '2026-27', counsellor: me, assignedCentre: assignedCentre,
+    businessCentre: assignedCentre, businessType: 'Centre Revenue',
+    studentCount: stu1, achievedCourse: course1, achievedGst: gst1, notes: notes1
+  });
+  // Bucket 2 only if filled
+  if (course2 || stu2) {
+    rows.push({
+      month: monthKey, period: '2026-27', counsellor: me, assignedCentre: assignedCentre,
+      businessCentre: biz2, businessType: 'Centre Revenue',
+      studentCount: stu2, achievedCourse: course2, achievedGst: gst2, notes: ''
+    });
+  }
+  // Bucket 3 only if filled
+  if (course3 || stu3) {
+    rows.push({
+      month: monthKey, period: '2026-27', counsellor: me, assignedCentre: assignedCentre,
+      businessCentre: assignedCentre, businessType: 'Corporate Programs',
+      studentCount: stu3, achievedCourse: course3, achievedGst: gst3, notes: ''
+    });
   }
 
-  // Optimistic UI: disable button
   btn.disabled = true;
   btn.textContent = 'Saving…';
-  if (note) { note.textContent = ''; }
+  if (note) { note.textContent = ''; note.style.color = 'var(--muted)'; }
 
-  var scope = {period:'2026-27', counsellor:me, assignedCentre:assignedCentre, months:[monthKey]};
+  var scope = { period: '2026-27', counsellor: me, assignedCentre: assignedCentre, months: [monthKey] };
   var params = Object.assign(revenueRequestParams(), {
-    action:'saveRevenueTargets',
-    centreTargets:'[]',
-    targets:'[]',
-    monthlyRows:JSON.stringify(rows),
-    monthlyScope:JSON.stringify(scope),
-    updatedBy:me || 'Counselor'
+    action: 'saveRevenueTargets',
+    centreTargets: '[]',
+    targets: '[]',
+    monthlyRows: JSON.stringify(rows),
+    monthlyScope: JSON.stringify(scope),
+    updatedBy: me || 'Counselor'
   });
 
   gasGet(params, function(e, d) {
     if (e || !d || d.status !== 'ok') {
       btn.disabled = false;
-      btn.textContent = 'Save & Lock '+monthLabel;
-      var errMsg = (d && d.message) ? d.message : 'Save failed. Please try again.';
-      if(note) { note.textContent = '⚠ '+errMsg; note.style.color='var(--red)'; }
+      btn.textContent = '💾 Save & Lock ' + monthLabel;
+      var errMsg = (d && d.message) ? d.message : 'Save failed — please try again.';
+      if (note) { note.textContent = '⚠ ' + errMsg; note.style.color = 'var(--red)'; }
       showToast(errMsg, 'error');
       return;
     }
-    showToast(monthLabel+' revenue saved and locked.');
-    // Reload data fresh
+    showToast(monthLabel + ' revenue saved and locked ✓');
     revenueData = null;
     loadRevenueDashboard();
   });

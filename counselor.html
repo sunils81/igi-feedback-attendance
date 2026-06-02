@@ -111,7 +111,7 @@
 .revenue-month-meta{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px;color:var(--muted)}
 .revenue-month-meta strong{display:block;font-family:"DM Mono",monospace;font-size:12px;color:var(--navy);margin-top:2px}
 .revenue-editor{overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--white);margin-top:8px}
-.revenue-editor table{width:100%;border-collapse:collapse;min-width:760px;font-size:12px}
+.revenue-editor table{width:100%;border-collapse:collapse;min-width:980px;font-size:12px}
 .revenue-editor th{position:sticky;top:0;background:var(--navy);color:var(--gold);text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:9px}
 .revenue-editor td{border-bottom:1px solid var(--border);padding:8px}
 .revenue-editor input{width:100%;border:1px solid var(--border);border-radius:6px;padding:7px 8px;font-family:"DM Sans",sans-serif;font-size:12px;color:var(--navy);background:var(--off)}
@@ -1642,6 +1642,14 @@ function revenueGst(courseAmount) {
   return Math.round((Number(courseAmount) || 0) * 1.18);
 }
 
+function revenueBusinessTypes() {
+  return ['Centre Revenue','Corporate Programs','Seminars','Other Centre Business'];
+}
+
+function revenueMumbaiCounsellors() {
+  return ['Anuradha','Bianca','Omkar'];
+}
+
 function revenueVisibleCentres() {
   return isAdmin ? CENTRES.slice() : (allowedCentres && allowedCentres.length ? allowedCentres.slice() : CENTRES.slice());
 }
@@ -1651,6 +1659,7 @@ function revenueCounsellors() {
   if (isAdmin) names.add('Admin');
   if (counselorName && counselorName !== '__admin__') names.add(counselorName);
   (allBatches || []).forEach(b => { if (b.counselor) names.add(b.counselor); });
+  revenueMumbaiCounsellors().forEach(name => names.add(name));
   if (!names.size) names.add(counselorName || 'Counselor');
   return Array.from(names).sort();
 }
@@ -1811,7 +1820,9 @@ function revenueCentreTargetMap() {
 function revenueMonthlyMap() {
   const out = {};
   (revenueData && revenueData.monthlyRows ? revenueData.monthlyRows : []).forEach(r => {
-    out[(r.month || '') + '|2026-27|' + r.counsellor + '|' + r.assignedCentre] = r;
+    const key = (r.month || '') + '|2026-27|' + r.counsellor + '|' + r.assignedCentre;
+    if (!out[key]) out[key] = [];
+    out[key].push(r);
   });
   return out;
 }
@@ -1821,7 +1832,7 @@ function renderRevenueCrossTable() {
   const rows = revenueData && revenueData.crossRows ? revenueData.crossRows : [];
   if (!rows.length) return '';
   return '<div class="revenue-editor" style="margin-top:12px"><table><thead><tr><th>Month</th><th>Counsellor</th><th>Assigned Centre</th><th>Business Centre</th><th>Revenue</th></tr></thead><tbody>' +
-    rows.map(r => '<tr><td>' + escC(r.month) + '</td><td>' + escC(r.counsellor) + '</td><td>' + escC(r.assignedCentre) + '</td><td>' + escC(r.businessCentre) + '</td><td>' + money(Number(r[keys.achieved]) || 0) + '</td></tr>').join('') +
+    rows.map(r => '<tr><td>' + escC(r.month) + '</td><td>' + escC(r.counsellor) + '</td><td>' + escC(r.assignedCentre) + '</td><td>' + escC(r.businessCentre) + '<div class="revenue-note">' + escC(r.businessType || 'Centre Revenue') + '</div></td><td>' + money(Number(r[keys.achieved]) || 0) + '</td></tr>').join('') +
     '</tbody></table></div>';
 }
 
@@ -1842,6 +1853,23 @@ function renderRevenueCentreTargetEditor() {
   syncRevenueGst('rev-centre-course','rev-centre-gst');
 }
 
+function revenueTargetRowsForCentre(centre) {
+  return (revenueData && revenueData.targetRows ? revenueData.targetRows : []).filter(r => r.centre === centre);
+}
+
+function revenueOmkarRemainingTarget(centre, metric) {
+  const centreTarget = revenueCentreTargetMap()['2026-27|' + centre] || {};
+  const base = Number(centreTarget[metric]) || 0;
+  const used = revenueTargetRowsForCentre(centre)
+    .filter(r => ['anuradha','bianca'].includes(String(r.counsellor || '').toLowerCase()))
+    .reduce((sum,r) => sum + (Number(r[metric]) || 0), 0);
+  return Math.max(base - used, 0);
+}
+
+function revenueIsOmkarRemainder(counsellor, centre) {
+  return String(counsellor || '').toLowerCase() === 'omkar' && centre === 'Mumbai';
+}
+
 function renderRevenueTargetEditor() {
   const wrap = document.getElementById('rev-target-editor');
   if (!wrap) return;
@@ -1854,11 +1882,14 @@ function renderRevenueTargetEditor() {
     return;
   }
   const map = revenueTargetMap();
-  const row = map['2026-27|' + counsellor + '|' + centre] || {};
+  const isOmkarRemainder = revenueIsOmkarRemainder(counsellor, centre);
+  const row = isOmkarRemainder
+    ? {targetCourse:revenueOmkarRemainingTarget(centre, 'targetCourse'), targetGst:revenueOmkarRemainingTarget(centre, 'targetGst'), notes:'Auto balance after Anuradha and Bianca'}
+    : (map['2026-27|' + counsellor + '|' + centre] || {});
   wrap.innerHTML =
     '<div class="grid2">' +
       '<div class="field"><label>Period</label><input type="text" id="rev-t-period" value="2026-27" readonly></div>' +
-      '<div class="field"><label>Annual Course Fee Target</label><input type="number" id="rev-t-course" min="0" value="' + escC(row.targetCourse || '') + '" oninput="syncRevenueGst(\'rev-t-course\',\'rev-t-gst\');renderRevenueSplitWarning()"></div>' +
+      '<div class="field"><label>Annual Course Fee Target</label><input type="number" id="rev-t-course" min="0" value="' + escC(row.targetCourse || '') + '" ' + (isOmkarRemainder ? 'readonly' : 'oninput="syncRevenueGst(\'rev-t-course\',\'rev-t-gst\');renderRevenueSplitWarning()"') + '></div>' +
     '</div>' +
     '<div class="grid2">' +
       '<div class="field"><label>Annual Course Fee + GST Target</label><input type="number" id="rev-t-gst" min="0" value="' + escC(row.targetGst || '') + '" readonly></div>' +
@@ -1905,28 +1936,121 @@ function renderRevenueMonthlyEditor() {
   const assigned = document.getElementById('rev-edit-centre').value;
   const monthly = revenueMonthlyMap();
   const centreOptions = revenueVisibleCentres().map(c => '<option value="' + escC(c) + '">' + escC(c) + '</option>').join('');
-  let html = '<div class="section-tag" style="margin-top:16px">Monthly Achievement</div><div class="revenue-editor"><table><thead><tr><th>Month</th><th>Business Centre</th><th>Achieved Course Fee</th><th>Achieved + GST</th><th>Status</th><th>Notes</th></tr></thead><tbody>';
+  const typeOptions = revenueBusinessTypes().map(t => '<option value="' + escC(t) + '">' + escC(t) + '</option>').join('');
+  let html = '<div class="section-tag" style="margin-top:16px">Counsellor Monthly Revenue Lines</div><div class="revenue-editor"><table><thead><tr><th>Month</th><th>Business Centre</th><th>Business Type</th><th>Achieved Course Fee</th><th>Achieved + GST</th><th>Status</th><th>Notes</th><th>Line</th></tr></thead><tbody>';
   html += revenueMonths().map(m => {
     const open = revenueMonthOpen(m.key);
-    const row = monthly[m.key + '|2026-27|' + counsellor + '|' + assigned] || {};
-    const business = row.businessCentre || assigned;
-    return '<tr data-month="' + m.key + '">' +
-      '<td><strong>' + escC(m.label) + '</strong></td>' +
-      '<td><select class="rev-m-business" ' + (open ? '' : 'disabled') + '>' + centreOptions.replace('value="' + escC(business) + '"', 'value="' + escC(business) + '" selected') + '</select></td>' +
-      '<td><input type="number" class="rev-m-course" min="0" value="' + escC(row.achievedCourse || '') + '" ' + (open ? 'oninput="syncRevenueMonthlyGst(this)"' : 'disabled') + '></td>' +
-      '<td><input type="number" class="rev-m-gst" min="0" value="' + escC(row.achievedGst || '') + '" readonly></td>' +
-      '<td>' + (open ? 'Open' : 'Locked') + '</td>' +
-      '<td><input type="text" class="rev-m-notes" value="' + escC(row.notes || '') + '" placeholder="Optional" ' + (open ? '' : 'disabled') + '></td>' +
-    '</tr>';
+    const key = m.key + '|2026-27|' + counsellor + '|' + assigned;
+    const rows = (monthly[key] && monthly[key].length ? monthly[key] : [{businessCentre:assigned,businessType:'Centre Revenue',achievedCourse:'',achievedGst:'',notes:''}]);
+    return rows.map((row, idx) => renderRevenueMonthlyRow(m, row, open, centreOptions, typeOptions, idx === 0)).join('');
   }).join('');
-  wrap.innerHTML = html + '</tbody></table></div><div class="revenue-note">Entries are open from Jan 2026 through ' + escC(revenueCurrentMonthKey()) + '. Later months unlock automatically when the month starts.</div>';
+  wrap.innerHTML = html + '</tbody></table></div><div class="revenue-note">Entries are open from Jan 2026 through ' + escC(revenueCurrentMonthKey()) + '. Add separate lines when a counsellor does business for Bangalore, Chennai, Hyderabad, Surat, Delhi, Mumbai, or Corporate Programs. Later months unlock automatically when the month starts.</div>';
   Array.from(wrap.querySelectorAll('.rev-m-course')).forEach(input => syncRevenueMonthlyGst(input));
+  applyRevenueEditorPreview();
+}
+
+function optionHtml(optionsHtml, selected) {
+  const escaped = escC(selected || '');
+  return optionsHtml.replace('value="' + escaped + '"', 'value="' + escaped + '" selected');
+}
+
+function renderRevenueMonthlyRow(month, row, open, centreOptions, typeOptions, firstInMonth) {
+  const business = row.businessCentre || document.getElementById('rev-edit-centre').value;
+  const businessType = row.businessType || 'Centre Revenue';
+  return '<tr data-month="' + month.key + '">' +
+    '<td><strong>' + (firstInMonth ? escC(month.label) : '') + '</strong>' + (firstInMonth && open ? '<div style="margin-top:6px"><button type="button" class="del-btn" onclick="addRevenueMonthlyLine(this.closest(&quot;tr&quot;).getAttribute(&quot;data-month&quot;))">Add line</button></div>' : '') + '</td>' +
+    '<td><select class="rev-m-business" ' + (open ? 'onchange="applyRevenueEditorPreview()"' : 'disabled') + '>' + optionHtml(centreOptions, business) + '</select></td>' +
+    '<td><select class="rev-m-type" ' + (open ? 'onchange="applyRevenueEditorPreview()"' : 'disabled') + '>' + optionHtml(typeOptions, businessType) + '</select></td>' +
+    '<td><input type="number" class="rev-m-course" min="0" value="' + escC(row.achievedCourse || '') + '" ' + (open ? 'oninput="syncRevenueMonthlyGst(this);applyRevenueEditorPreview()"' : 'disabled') + '></td>' +
+    '<td><input type="number" class="rev-m-gst" min="0" value="' + escC(row.achievedGst || '') + '" readonly></td>' +
+    '<td>' + (open ? 'Open' : 'Locked') + '</td>' +
+    '<td><input type="text" class="rev-m-notes" value="' + escC(row.notes || '') + '" placeholder="Optional" ' + (open ? 'oninput="applyRevenueEditorPreview()"' : 'disabled') + '></td>' +
+    '<td>' + (open && !firstInMonth ? '<button type="button" class="del-btn danger" onclick="clearRevenueMonthlyLine(this)">Clear</button>' : '') + '</td>' +
+  '</tr>';
+}
+
+function addRevenueMonthlyLine(monthKey) {
+  const rows = Array.from(document.querySelectorAll('#rev-monthly-editor tr[data-month="' + monthKey + '"]'));
+  if (!rows.length) return;
+  const first = rows[0];
+  const centreOptions = revenueVisibleCentres().map(c => '<option value="' + escC(c) + '">' + escC(c) + '</option>').join('');
+  const typeOptions = revenueBusinessTypes().map(t => '<option value="' + escC(t) + '">' + escC(t) + '</option>').join('');
+  const label = revenueMonths().find(m => m.key === monthKey) || {key:monthKey,label:monthKey};
+  const html = renderRevenueMonthlyRow(label, {businessCentre:document.getElementById('rev-edit-centre').value,businessType:'Centre Revenue'}, true, centreOptions, typeOptions, false);
+  first.parentNode.insertBefore(document.createRange().createContextualFragment(html), rows[rows.length - 1].nextSibling);
+  applyRevenueEditorPreview();
+}
+
+function clearRevenueMonthlyLine(btn) {
+  const tr = btn.closest('tr');
+  if (!tr) return;
+  tr.querySelector('.rev-m-course').value = '';
+  tr.querySelector('.rev-m-gst').value = '';
+  tr.querySelector('.rev-m-notes').value = '';
+  applyRevenueEditorPreview();
 }
 
 function syncRevenueMonthlyGst(input) {
   const tr = input.closest('tr');
   const gst = tr && tr.querySelector('.rev-m-gst');
   if (gst) gst.value = input.value ? revenueGst(input.value) : '';
+}
+
+function collectRevenueMonthlyRows() {
+  const counsellor = document.getElementById('rev-edit-counsellor').value;
+  const centre = document.getElementById('rev-edit-centre').value;
+  return Array.from(document.querySelectorAll('#rev-monthly-editor tbody tr'))
+    .filter(tr => revenueMonthOpen(tr.getAttribute('data-month')))
+    .map(tr => ({
+      month:tr.getAttribute('data-month'),
+      period:'2026-27',
+      counsellor,
+      assignedCentre:centre,
+      businessCentre:tr.querySelector('.rev-m-business').value || centre,
+      businessType:tr.querySelector('.rev-m-type').value || 'Centre Revenue',
+      achievedCourse:tr.querySelector('.rev-m-course').value || 0,
+      achievedGst:tr.querySelector('.rev-m-gst').value || 0,
+      notes:tr.querySelector('.rev-m-notes').value || ''
+    }))
+    .filter(r => Number(r.achievedCourse) || Number(r.achievedGst) || r.notes);
+}
+
+function applyRevenueEditorPreview() {
+  if (!revenueData || !revenueData.months) return;
+  const counsellor = document.getElementById('rev-edit-counsellor').value;
+  const assigned = document.getElementById('rev-edit-centre').value;
+  const replacement = collectRevenueMonthlyRows();
+  const existing = (revenueData.monthlyRows || []).filter(r => !(r.counsellor === counsellor && r.assignedCentre === assigned));
+  const rows = existing.concat(replacement);
+  const params = revenueRequestParams();
+  const monthKeys = {};
+  (revenueData.months || []).forEach(m => {
+    monthKeys[m.month] = true;
+    m.achievedCourse = 0;
+    m.achievedGst = 0;
+  });
+  let achievedCourse = 0;
+  let achievedGst = 0;
+  rows.forEach(r => {
+    if (!monthKeys[r.month]) return;
+    if (params.counsellor && params.counsellor !== r.counsellor) return;
+    const viewCentre = params.viewMode === 'business' ? r.businessCentre : r.assignedCentre;
+    if (params.centre && params.centre !== viewCentre) return;
+    const month = revenueData.months.find(m => m.month === r.month);
+    if (!month) return;
+    const course = Number(r.achievedCourse) || 0;
+    const gst = Number(r.achievedGst) || 0;
+    month.achievedCourse += course;
+    month.achievedGst += gst;
+    achievedCourse += course;
+    achievedGst += gst;
+  });
+  revenueData.monthlyRows = rows;
+  if (revenueData.summary) {
+    revenueData.summary.achievedCourse = achievedCourse;
+    revenueData.summary.achievedGst = achievedGst;
+  }
+  renderRevenueDashboard();
 }
 
 function saveRevenueTargets() {
@@ -1956,16 +2080,13 @@ function saveRevenueTargets() {
     targetGst:document.getElementById('rev-t-gst').value || 0,
     notes:document.getElementById('rev-t-notes').value || ''
   }];
-  const monthlyRows = Array.from(document.querySelectorAll('#rev-monthly-editor tbody tr')).filter(tr => revenueMonthOpen(tr.getAttribute('data-month'))).map(tr => ({
-    month:tr.getAttribute('data-month'),
+  const monthlyRows = collectRevenueMonthlyRows();
+  const monthlyScope = {
     period:'2026-27',
     counsellor,
     assignedCentre:centre,
-    businessCentre:tr.querySelector('.rev-m-business').value || centre,
-    achievedCourse:tr.querySelector('.rev-m-course').value || 0,
-    achievedGst:tr.querySelector('.rev-m-gst').value || 0,
-    notes:tr.querySelector('.rev-m-notes').value || ''
-  }));
+    months:revenueMonths().filter(m => revenueMonthOpen(m.key)).map(m => m.key)
+  };
   btn.textContent = 'Saving...';
   btn.disabled = true;
   const params = Object.assign(revenueRequestParams(), {
@@ -1973,6 +2094,7 @@ function saveRevenueTargets() {
     centreTargets:JSON.stringify(centreTargets),
     targets:JSON.stringify(targets),
     monthlyRows:JSON.stringify(monthlyRows),
+    monthlyScope:JSON.stringify(monthlyScope),
     updatedBy:counselorName || 'Counselor'
   });
   gasGet(params, function(e,d) {

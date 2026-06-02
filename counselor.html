@@ -169,6 +169,27 @@
 .rev-saved-total-row .k{font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.5)}
 .rev-saved-total-row .v{font-family:"DM Mono",monospace;font-size:14px;font-weight:700;color:var(--gold)}
 .rev-saved-meta{font-size:10px;color:var(--muted)}
+.rev-loading-note{font-size:12px;color:var(--muted);padding:10px 0}
+.rev-run-rate-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:14px}
+.rev-run-card{border:1px solid var(--border);border-radius:8px;background:var(--white);padding:12px 13px;min-width:0}
+.rev-run-card.open{background:#FFF9E6;border-color:rgba(201,168,76,.34)}
+.rev-run-card.saved{background:#F4FBF7;border-color:rgba(29,158,117,.26)}
+.rev-run-card.behind{background:#FFF8F5;border-color:rgba(201,74,74,.22)}
+.rev-run-card.future{opacity:.62;background:var(--off)}
+.rev-run-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+.rev-run-title{font-size:13px;font-weight:800;color:var(--navy)}
+.rev-run-pct{font-family:"DM Mono",monospace;font-size:12px;font-weight:800;color:var(--navy)}
+.rev-run-bar{height:7px;background:rgba(13,27,46,.08);border-radius:999px;overflow:hidden;margin-bottom:10px}
+.rev-run-bar span{display:block;height:100%;border-radius:999px;background:var(--gold)}
+.rev-run-card.saved .rev-run-bar span{background:#1D9E75}
+.rev-run-card.behind .rev-run-bar span{background:#C94A4A}
+.rev-run-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;font-size:10px;color:var(--muted)}
+.rev-run-meta strong{display:block;font-family:"DM Mono",monospace;font-size:12px;color:var(--navy);margin-top:2px}
+.rev-run-actions{margin-top:10px}
+.rev-run-toggle{border:1px solid var(--border);background:var(--white);color:var(--navy);border-radius:7px;padding:7px 10px;font-size:11px;font-weight:800;cursor:pointer;width:100%}
+.rev-run-toggle:hover{border-color:var(--gold)}
+.rev-entry-panel{display:none;margin-top:10px;border-top:1px dashed rgba(201,168,76,.32);padding-top:10px}
+.rev-entry-panel.open{display:block}
 /* Centre bar */
 .rev-centre-bar{background:var(--navy);border-radius:10px;padding:14px 16px;color:var(--white);margin-bottom:16px;display:none}
 .rev-centre-bar.show{display:block}
@@ -2067,6 +2088,7 @@ function initRevenueTab() {
     fillRevenueSelects();
     revenueInitialized = true;
   }
+  if (!revenueData && !isAdmin) renderRevenueFastShell();
   loadRevenueDashboard();
 }
 
@@ -2122,8 +2144,8 @@ function loadRevenueDashboard() {
       centreTargetRows:[], centres:[], counsellors:[],
       summary:{targetGst:0,achievedGst:0,studentCount:0} };
     renderAdminTargetPanel();
-  } else if (grid) {
-    grid.innerHTML = loadingState('Loading revenue data…');
+  } else if (grid && !revenueData) {
+    grid.innerHTML = '<div class="rev-loading-note">Fetching saved revenue from backend...</div>' + renderRevenueRunRateSkeleton();
   }
   gasGet(revenueRequestParams(), function(e,d) {
     if (e || !d || d.status !== 'ok') {
@@ -2143,6 +2165,35 @@ function loadRevenueDashboard() {
     renderMyRevenue();
     if (isAdmin) { renderRevenueCentreTargetEditor(); renderRevenueRollups(); }
   });
+}
+
+function renderRevenueFastShell() {
+  var me = counselorName || '';
+  var titleEl = document.getElementById('rev-my-title');
+  var subEl = document.getElementById('rev-my-sub');
+  if(titleEl) titleEl.textContent = me ? me+"'s Revenue - 2026-27" : 'Revenue Dashboard - 2026-27';
+  if(subEl) {
+    subEl.textContent = 'Dashboard opens immediately. Latest targets and achieved revenue are loading from backend.';
+    subEl.style.color = '';
+  }
+  [['rev-kpi-target','-'],['rev-kpi-achieved','-'],['rev-kpi-gap','-'],['rev-kpi-students','-'],['rev-kpi-pct','Fetching...'],['rev-kpi-gap-s','Fetching...']].forEach(function(pair){
+    var el=document.getElementById(pair[0]);
+    if(el) el.textContent=pair[1];
+  });
+  var pb=document.getElementById('rev-progress-bar'); if(pb) pb.style.width='0%';
+  var grid=document.getElementById('rev-month-grid');
+  if(grid) grid.innerHTML = renderRevenueRunRateSkeleton();
+}
+
+function renderRevenueRunRateSkeleton() {
+  var months = revenueMonths().slice(0,6);
+  return '<div class="rev-run-rate-grid">'+months.map(function(m){
+    return '<div class="rev-run-card open">'+
+      '<div class="rev-run-head"><div class="rev-run-title">'+escC(m.label)+'</div><div class="rev-run-pct">...</div></div>'+
+      '<div class="rev-run-bar"><span style="width:0%"></span></div>'+
+      '<div class="rev-run-meta"><div>Run Rate<strong>-</strong></div><div>Achieved<strong>-</strong></div><div>Variance<strong>-</strong></div><div>Status<strong>Loading</strong></div></div>'+
+    '</div>';
+  }).join('')+'</div>';
 }
 
 function renderMyRevenue() {
@@ -2216,120 +2267,120 @@ function renderRevenueMonthCards(counsellor) {
   var grid = document.getElementById('rev-month-grid');
   if (!grid) return;
   var months = revenueMonths();
-  var mmap = revMonthlyMap();
   var designatedCentre = (allowedCentres && allowedCentres.length) ? allowedCentres[0] : (CENTRES[0]||'');
+  var target = revAnnualTargetForCounsellor(counsellor);
+  var runRate = Number((revenueData && revenueData.summary && revenueData.summary.monthlyTargetGst)||0) || (target ? Math.round(target / months.length) : 0);
   // Default "other centre" = first centre that is NOT the designated one
   var otherDefault = CENTRES.filter(function(c){ return c !== designatedCentre; })[0] || CENTRES[0];
 
-  var html = '<div class="rev-month-grid">';
+  var html = '<div class="rev-run-rate-grid">';
   months.forEach(function(m) {
     var open  = revenueMonthOpen(m.key);
-    var saved = open && revMonthIsSavedLocked(m.key, counsellor, designatedCentre);
-    var state = !open ? 'future' : (saved ? 'saved' : 'open');
-    var badge = !open
-      ? '<span class="rev-month-badge future">Future</span>'
-      : saved
-        ? '<span class="rev-month-badge saved">&#10003; Saved</span>'
-        : '<span class="rev-month-badge open">Open &mdash; Enter</span>';
-
-    var body = '';
-
-    if (!open) {
-      body = '<div style="font-size:11px;color:var(--muted);padding:6px 0">Unlocks when the month starts.</div>';
-
-    } else if (saved) {
-      var k    = m.key+'|'+revCanonical(counsellor)+'|'+designatedCentre;
-      var rows = mmap[k] || [];
-      var ownR  = rows.filter(function(r){ return !revIsCorporate(r) && r.businessCentre===designatedCentre; });
-      var othR  = rows.filter(function(r){ return !revIsCorporate(r) && r.businessCentre!==designatedCentre; });
-      var corR  = rows.filter(function(r){ return revIsCorporate(r); });
-      var ownA  = ownR.reduce(function(s,r){return s+(Number(r.achievedGst)||0);},0);
-      var othA  = othR.reduce(function(s,r){return s+(Number(r.achievedGst)||0);},0);
-      var corA  = corR.reduce(function(s,r){return s+(Number(r.achievedGst)||0);},0);
-      var totA  = ownA + othA + corA;
-      var totS  = rows.reduce(function(s,r){return s+(Number(r.studentCount)||0);},0);
-      var last  = rows[rows.length-1];
-      body =
-        '<div class="rev-saved-grid">'+
-          '<div class="rev-saved-cell">Own Centre<strong>'+money(ownA)+'</strong></div>'+
-          '<div class="rev-saved-cell">Other Centre<strong>'+money(othA)+'</strong></div>'+
-          '<div class="rev-saved-cell">Corporate<strong>'+money(corA)+'</strong></div>'+
-        '</div>'+
-        '<div class="rev-saved-total-row"><span class="k">Total (incl. GST)</span><span class="v">'+money(totA)+'</span></div>'+
-        '<div class="rev-saved-meta">'+totS+' student'+(totS===1?'':'s')+
-          (last&&last.updatedAt?' &middot; Saved by '+escC(last.updatedBy||counsellor)+' &middot; '+escC(formatDateTime(last.updatedAt)):'')+
-        '</div>';
-
-    } else {
-      // Build centre options — other bucket defaults to first non-designated centre
-      var centreOpts = CENTRES.map(function(cc){
-        var sel = (cc===otherDefault) ? ' selected' : '';
-        return '<option value="'+escC(cc)+'"'+sel+'>'+escC(cc)+'</option>';
-      }).join('');
-
-      body =
-        // ── Own Centre ──
-        '<div class="rev-own-section">'+
-          '<div class="rev-own-label">Own Centre Revenue <span class="rev-centre-tag">'+escC(designatedCentre)+'</span></div>'+
-          '<div class="rev-compact-row">'+
-            '<div class="rev-ci"><label>Students</label><input type="number" class="rmc-students" min="0" placeholder="e.g. 5" oninput="revUpdateTotal(this)"></div>'+
-            '<div class="rev-ci"><label>Course Fee &#8377; (excl. GST)</label><input type="number" class="rmc-course" min="0" placeholder="e.g. 500000" oninput="revCalcGst(this,\'own\');revUpdateTotal(this)"></div>'+
-          '</div>'+
-          '<div class="rev-gst-inline" id="rev-gst-own-'+escC(m.key)+'">GST: <b>&#8377;0</b></div>'+
-          '<div class="rev-notes-row"><input type="text" class="rmc-notes" placeholder="Notes (optional)"></div>'+
-        '</div>'+
-
-        // ── Other Centre (collapsible) ──
-        '<div class="rev-expand-row" onclick="revToggleBucket(this)">'+
-          '<span class="rev-expand-chevron">&#9658;</span>'+
-          '<span class="rev-expand-label">Other Centre Revenue</span>'+
-          '<span class="rev-expand-badge opt">Optional</span>'+
-        '</div>'+
-        '<div class="rev-bucket-body" data-bucket="other">'+
-          '<div class="rev-compact-row three">'+
-            '<div class="rev-ci"><label>Centre</label><select class="rmc-business">'+centreOpts+'</select></div>'+
-            '<div class="rev-ci"><label>Students</label><input type="number" class="rmc-xstudents" min="0" placeholder="0" oninput="revUpdateTotal(this)"></div>'+
-            '<div class="rev-ci"><label>Course Fee &#8377;</label><input type="number" class="rmc-xcourse" min="0" placeholder="0" oninput="revCalcGst(this,\'other\');revUpdateTotal(this)"></div>'+
-          '</div>'+
-          '<div class="rev-gst-inline" id="rev-gst-other-'+escC(m.key)+'">GST: <b>&#8377;0</b></div>'+
-        '</div>'+
-
-        // ── Corporate (collapsible) ──
-        '<div class="rev-expand-row" onclick="revToggleBucket(this)">'+
-          '<span class="rev-expand-chevron">&#9658;</span>'+
-          '<span class="rev-expand-label">Corporate Program Revenue</span>'+
-          '<span class="rev-expand-badge opt">Optional</span>'+
-        '</div>'+
-        '<div class="rev-bucket-body" data-bucket="corp">'+
-          '<div class="rev-compact-row">'+
-            '<div class="rev-ci"><label>Students</label><input type="number" class="rmc-cstudents" min="0" placeholder="0" oninput="revUpdateTotal(this)"></div>'+
-            '<div class="rev-ci"><label>Course Fee &#8377;</label><input type="number" class="rmc-ccourse" min="0" placeholder="0" oninput="revCalcGst(this,\'corp\');revUpdateTotal(this)"></div>'+
-          '</div>'+
-          '<div class="rev-gst-inline" id="rev-gst-corp-'+escC(m.key)+'">GST: <b>&#8377;0</b></div>'+
-        '</div>'+
-
-        // ── Footer ──
-        '<div class="rev-card-footer">'+
-          '<div class="rev-total-row"><span class="k">Total This Month (incl. GST)</span><span class="v" id="revtot-'+escC(m.key)+'">&#8377;0</span></div>'+
-          '<button type="button" class="rev-save-btn"'+
-            ' data-month="'+escC(m.key)+'"'+
-            ' data-label="'+escC(m.label)+'"'+
-            ' data-centre="'+escC(designatedCentre)+'"'+
-            ' onclick="revSaveMonthCard(this)">&#128190; Save &amp; Lock '+escC(m.label)+'</button>'+
-          '<div class="rev-save-note"></div>'+
-        '</div>';
-    }
-
+    var rows = revRowsForMonth(m.key, counsellor, designatedCentre);
+    var totals = revTotalsFromRows(rows, designatedCentre);
+    var saved = rows.some(function(r){ return r.locked !== false; });
+    var pct = runRate ? Math.round((totals.totalGst / runRate) * 100) : (totals.totalGst ? 100 : 0);
+    var variance = totals.totalGst - runRate;
+    var status = !open ? 'Future' : (saved ? (variance >= 0 ? 'Ahead' : 'Behind') : 'Open');
+    var state = !open ? 'future' : (saved ? (variance >= 0 ? 'saved' : 'behind') : 'open');
+    var barWidth = Math.max(0, Math.min(pct, 100));
     html +=
-      '<div class="rev-month-card rev-'+state+'" id="rmc-'+escC(m.key)+'">'+
-        '<div class="rev-month-head">'+
-          '<span class="rev-month-label">'+escC(m.label)+'</span>'+badge+
+      '<div class="rev-run-card '+state+'" id="rmc-'+escC(m.key)+'">'+
+        '<div class="rev-run-head"><div class="rev-run-title">'+escC(m.label)+'</div><div class="rev-run-pct">'+escC(pct)+'%</div></div>'+
+        '<div class="rev-run-bar"><span style="width:'+barWidth+'%"></span></div>'+
+        '<div class="rev-run-meta">'+
+          '<div>Run Rate<strong>'+money(runRate)+'</strong></div>'+
+          '<div>Achieved<strong>'+money(totals.totalGst)+'</strong></div>'+
+          '<div>Variance<strong>'+money(Math.abs(variance))+'</strong></div>'+
+          '<div>Status<strong>'+escC(status)+'</strong></div>'+
         '</div>'+
-        '<div class="rev-month-body">'+body+'</div>'+
+        (saved ? renderRevenueSavedBreakup(rows, designatedCentre, counsellor) : '')+
+        (open && !saved ? '<div class="rev-run-actions"><button type="button" class="rev-run-toggle" onclick="revToggleEntry(this)">Enter / Save '+escC(m.label)+'</button></div>'+renderRevenueEntryPanel(m, designatedCentre, otherDefault) : '')+
       '</div>';
   });
   html += '</div>';
   grid.innerHTML = html;
+}
+
+function revRowsForMonth(monthKey, counsellor, assignedCentre) {
+  return ((revenueData && revenueData.monthlyRows)||[]).filter(function(r){
+    return r.month === monthKey && revSameCounsellor(r.counsellor, counsellor) && r.assignedCentre === assignedCentre;
+  });
+}
+
+function revTotalsFromRows(rows, designatedCentre) {
+  var out = {ownGst:0, otherGst:0, corpGst:0, totalGst:0, students:0};
+  rows.forEach(function(r){
+    var gst = Number(r.achievedGst)||0;
+    out.totalGst += gst;
+    out.students += Number(r.studentCount)||0;
+    if (revIsCorporate(r)) out.corpGst += gst;
+    else if (r.businessCentre !== designatedCentre) out.otherGst += gst;
+    else out.ownGst += gst;
+  });
+  return out;
+}
+
+function renderRevenueSavedBreakup(rows, designatedCentre, counsellor) {
+  if (!rows.length) return '';
+  var totals = revTotalsFromRows(rows, designatedCentre);
+  var last = rows[rows.length-1] || {};
+  return '<div class="rev-saved-grid" style="margin-top:10px">'+
+      '<div class="rev-saved-cell">Own Centre<strong>'+money(totals.ownGst)+'</strong></div>'+
+      '<div class="rev-saved-cell">Other Centre<strong>'+money(totals.otherGst)+'</strong></div>'+
+      '<div class="rev-saved-cell">Corporate<strong>'+money(totals.corpGst)+'</strong></div>'+
+    '</div>'+
+    '<div class="rev-saved-meta">'+totals.students+' student'+(totals.students===1?'':'s')+
+      (last.updatedAt?' &middot; Saved by '+escC(last.updatedBy||counsellor)+' &middot; '+escC(formatDateTime(last.updatedAt)):'')+
+    '</div>';
+}
+
+function renderRevenueEntryPanel(m, designatedCentre, otherDefault) {
+  var centreOpts = CENTRES.map(function(cc){
+    var sel = (cc===otherDefault) ? ' selected' : '';
+    return '<option value="'+escC(cc)+'"'+sel+'>'+escC(cc)+'</option>';
+  }).join('');
+  return '<div class="rev-entry-panel">'+
+    '<div class="rev-own-section">'+
+      '<div class="rev-own-label">Own Centre Revenue <span class="rev-centre-tag">'+escC(designatedCentre)+'</span></div>'+
+      '<div class="rev-compact-row">'+
+        '<div class="rev-ci"><label>Students</label><input type="number" class="rmc-students" min="0" placeholder="e.g. 5" oninput="revUpdateTotal(this)"></div>'+
+        '<div class="rev-ci"><label>Course Fee &#8377; (excl. GST)</label><input type="number" class="rmc-course" min="0" placeholder="e.g. 500000" oninput="revCalcGst(this,\'own\');revUpdateTotal(this)"></div>'+
+      '</div>'+
+      '<div class="rev-gst-inline" id="rev-gst-own-'+escC(m.key)+'">GST: <b>&#8377;0</b></div>'+
+      '<div class="rev-notes-row"><input type="text" class="rmc-notes" placeholder="Notes (optional)"></div>'+
+    '</div>'+
+    '<div class="rev-expand-row" onclick="revToggleBucket(this)"><span class="rev-expand-chevron">&#9658;</span><span class="rev-expand-label">Other Centre Revenue</span><span class="rev-expand-badge opt">Optional</span></div>'+
+    '<div class="rev-bucket-body" data-bucket="other">'+
+      '<div class="rev-compact-row three">'+
+        '<div class="rev-ci"><label>Centre</label><select class="rmc-business">'+centreOpts+'</select></div>'+
+        '<div class="rev-ci"><label>Students</label><input type="number" class="rmc-xstudents" min="0" placeholder="0" oninput="revUpdateTotal(this)"></div>'+
+        '<div class="rev-ci"><label>Course Fee &#8377;</label><input type="number" class="rmc-xcourse" min="0" placeholder="0" oninput="revCalcGst(this,\'other\');revUpdateTotal(this)"></div>'+
+      '</div>'+
+      '<div class="rev-gst-inline" id="rev-gst-other-'+escC(m.key)+'">GST: <b>&#8377;0</b></div>'+
+    '</div>'+
+    '<div class="rev-expand-row" onclick="revToggleBucket(this)"><span class="rev-expand-chevron">&#9658;</span><span class="rev-expand-label">Corporate Program Revenue</span><span class="rev-expand-badge opt">Optional</span></div>'+
+    '<div class="rev-bucket-body" data-bucket="corp">'+
+      '<div class="rev-compact-row">'+
+        '<div class="rev-ci"><label>Students</label><input type="number" class="rmc-cstudents" min="0" placeholder="0" oninput="revUpdateTotal(this)"></div>'+
+        '<div class="rev-ci"><label>Course Fee &#8377;</label><input type="number" class="rmc-ccourse" min="0" placeholder="0" oninput="revCalcGst(this,\'corp\');revUpdateTotal(this)"></div>'+
+      '</div>'+
+      '<div class="rev-gst-inline" id="rev-gst-corp-'+escC(m.key)+'">GST: <b>&#8377;0</b></div>'+
+    '</div>'+
+    '<div class="rev-card-footer">'+
+      '<div class="rev-total-row"><span class="k">Total This Month (incl. GST)</span><span class="v" id="revtot-'+escC(m.key)+'">&#8377;0</span></div>'+
+      '<button type="button" class="rev-save-btn" data-month="'+escC(m.key)+'" data-label="'+escC(m.label)+'" data-centre="'+escC(designatedCentre)+'" onclick="revSaveMonthCard(this)">Save &amp; Lock '+escC(m.label)+'</button>'+
+      '<div class="rev-save-note"></div>'+
+    '</div>'+
+  '</div>';
+}
+
+function revToggleEntry(btn) {
+  var card = btn.closest('.rev-run-card');
+  var panel = card && card.querySelector('.rev-entry-panel');
+  if (!panel) return;
+  var open = panel.classList.toggle('open');
+  btn.textContent = (open ? 'Hide Entry' : 'Enter / Save ' + (card.querySelector('.rev-run-title')||{}).textContent);
 }
 
 function revToggleBucket(row) {
@@ -2344,7 +2395,7 @@ function revToggleBucket(row) {
 }
 
 function revCalcGst(input, bucket) {
-  var body = input.closest('.rev-month-body');
+  var body = input.closest('.rev-entry-panel') || input.closest('.rev-month-body');
   if (!body) return;
   var saveBtn = body.querySelector('.rev-save-btn');
   if (!saveBtn) return;
@@ -2355,7 +2406,7 @@ function revCalcGst(input, bucket) {
 }
 
 function revUpdateTotal(input) {
-  var body = input.closest('.rev-month-body');
+  var body = input.closest('.rev-entry-panel') || input.closest('.rev-month-body');
   if (!body) return;
   var saveBtn = body.querySelector('.rev-save-btn');
   if (!saveBtn) return;
@@ -2411,7 +2462,7 @@ function revSaveMonthCard(btn) {
   var monthKey = btn.getAttribute('data-month');
   var monthLabel = btn.getAttribute('data-label');
   var assignedCentre = btn.getAttribute('data-centre');
-  var body = btn.closest('.rev-month-body');
+  var body = btn.closest('.rev-entry-panel') || btn.closest('.rev-month-body');
   var note = body.querySelector('.rev-save-note');
   var me = counselorName || '';
   if (!me || isAdmin) {
@@ -2503,12 +2554,29 @@ function revSaveMonthCard(btn) {
     showToast(monthLabel + ' revenue saved and locked ✓');
     if (d.dashboard && d.dashboard.status === 'ok') {
       revenueData = d.dashboard;
-      renderMyRevenue();
-    } else {
-      revenueData = null;
-      loadRevenueDashboard();
     }
+    revApplySavedMonthlyRows(rows, me, assignedCentre, monthKey);
+    renderMyRevenue();
   });
+}
+
+function revApplySavedMonthlyRows(rows, counsellor, assignedCentre, monthKey) {
+  revenueData = revenueData || {status:'ok', months:[], monthlyRows:[], targetRows:[], centreTargetRows:[], centres:[], counsellors:[], summary:{}};
+  var existing = revenueData.monthlyRows || [];
+  revenueData.monthlyRows = existing.filter(function(r){
+    return !(r.month === monthKey && revSameCounsellor(r.counsellor, counsellor) && r.assignedCentre === assignedCentre);
+  }).concat(rows.map(function(r){
+    return Object.assign({}, r, {
+      locked: true,
+      updatedBy: counsellor || 'Counselor',
+      updatedAt: new Date().toISOString()
+    });
+  }));
+  var total = revenueData.monthlyRows.reduce(function(sum,r){ return sum + (Number(r.achievedGst)||0); }, 0);
+  var students = revenueData.monthlyRows.reduce(function(sum,r){ return sum + (Number(r.studentCount)||0); }, 0);
+  revenueData.summary = revenueData.summary || {};
+  revenueData.summary.achievedGst = total;
+  revenueData.summary.studentCount = students;
 }
 
 // Admin: Centre target save

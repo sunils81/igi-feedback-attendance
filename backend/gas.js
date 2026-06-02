@@ -1986,6 +1986,7 @@ function doGet(e) {
       try { centreRows=JSON.parse(p.centreTargets||'[]'); } catch(_e2) { centreRows=[]; }
       try { monthlyRows=JSON.parse(p.monthlyRows||'[]'); } catch(_e3) { monthlyRows=[]; }
       try { monthlyScope=JSON.parse(p.monthlyScope||'null'); } catch(_e4) { monthlyScope=null; }
+      var submittedMonthlyRows=monthlyRows.length;
       var effectiveCounsellor=revenueEffectiveCounsellor(p);
       if(String(p.isAdmin)!=='true'&&effectiveCounsellor){
         centreRows=[];
@@ -1998,6 +1999,9 @@ function doGet(e) {
       var savedCentre=saveRevenueCentreTargetRows(ss,centreRows,actor);
       var savedTargets=saveRevenueAnnualTargetRows(ss,rows,actor);
       var savedMonthly=saveRevenueMonthlyAchievedRows(ss,monthlyRows,actor,monthlyScope);
+      if(submittedMonthlyRows&&!savedMonthly&&!savedCentre&&!savedTargets){
+        return respond({status:'error',reason:'monthly_revenue_not_saved',message:'This month is already locked or the submitted counsellor does not match your login.',savedMonthly:0,backendVersion:REVENUE_BACKEND_VERSION,dashboard:buildRevenueDashboard(ss,p)});
+      }
       return respond({status:'ok',saved:savedCentre+savedTargets+savedMonthly,savedCentre:savedCentre,savedTargets:savedTargets,savedMonthly:savedMonthly,savedAt:new Date().toISOString(),backendVersion:REVENUE_BACKEND_VERSION,dashboard:buildRevenueDashboard(ss,p)});
     }
 

@@ -456,7 +456,10 @@
       <div class="section-tag">Admin Overview</div>
       <h2>Attendance & Test Records</h2>
       <p class="sub">Centre-wise attendance health, test completion, and low-score watchlist.</p>
-      <div id="admin-report-wrap"><div class="spinner-wrap"><div class="spinner"></div><p>Loading admin records...</p></div></div>
+      <div id="admin-report-wrap">
+        <div style="font-size:12px;color:var(--muted);padding:6px 0">Admin records are fetched only when requested because this report combines every centre, batch, session, test, and student record.</div>
+        <div class="admin-action-row" style="justify-content:flex-start"><button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="loadAdminDashboard(true)">Load Admin Records</button></div>
+      </div>
     </div>
     <div class="card">
       <div class="section-tag">Day-wise Attendance</div>
@@ -503,7 +506,10 @@
       <div class="section-tag">Admin Overview</div>
       <h2>Fee Collection Summary</h2>
       <p class="sub">Centre and batch collection status across paid, partial, pending, and overdue records.</p>
-      <div id="admin-fee-wrap"><div class="spinner-wrap"><div class="spinner"></div><p>Loading fee collection summary...</p></div></div>
+      <div id="admin-fee-wrap">
+        <div style="font-size:12px;color:var(--muted);padding:6px 0">Fee collection summary is loaded on demand so the Fees tab opens immediately.</div>
+        <div class="admin-action-row" style="justify-content:flex-start"><button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="loadAdminDashboard(true)">Load Fee Summary</button></div>
+      </div>
     </div>
     <div class="card">
       <div class="section-tag">Fee Collection</div>
@@ -775,6 +781,7 @@ function applyAdminVisibility() {
   document.querySelectorAll('.admin-only').forEach(function(el){ el.style.display = isAdmin ? 'block' : 'none'; });
   var myRev = document.getElementById('rev-my-card');
   if (myRev) myRev.style.display = isAdmin ? 'none' : '';
+  if (isAdmin) renderAdminDashboardPlaceholders();
 }
 
 function applyPasswordChangeState() {
@@ -868,7 +875,7 @@ function switchTab(id) {
   const idx = ['t-batches','t-students','t-mybatches','t-reports','t-fees','t-revenue','t-holidays'].indexOf(id);
   document.querySelectorAll('.tab')[idx].classList.add('active');
   if (id==='t-fees') {
-    if (isAdmin) loadAdminDashboard();
+    if (isAdmin && !adminDashboardData) renderAdminDashboardPlaceholders();
     var feeSel = document.getElementById('fee-batch');
     if (feeSel && feeSel.options.length <= 1) {
       if (allBatches && allBatches.length) {
@@ -896,7 +903,7 @@ function switchTab(id) {
     if (feeSel && feeSel.value) loadFeeOverview();
   }
   if (id==='t-reports') {
-    if (isAdmin) loadAdminDashboard();
+    if (isAdmin && !adminDashboardData) renderAdminDashboardPlaceholders();
     var sel = document.getElementById('rp-batch');
     if (sel && sel.options.length > 1) {
       // Batches already loaded — just auto-select first and show report
@@ -1800,7 +1807,26 @@ function saveFeeRecord() {
     showToast('Fee record saved.');
     hideFeeForm();
     loadFeeOverview();
-    if (isAdmin) { adminDashboardData = null; loadAdminDashboard(true); }
+    if (isAdmin) { adminDashboardData = null; renderAdminDashboardPlaceholders('Fee record updated. Refresh the admin summaries to include the latest fee data.'); }
+  });
+}
+
+function renderAdminDashboardPlaceholders(message) {
+  if (!isAdmin) return;
+  var copy = message || 'This combined admin report is loaded on demand so tabs and target settings open immediately.';
+  var items = [
+    {id:'admin-dashboard-wrap', button:'Load Centre Performance'},
+    {id:'admin-fee-wrap', button:'Load Fee Summary'},
+    {id:'admin-report-wrap', button:'Load Admin Records'}
+  ];
+  items.forEach(function(item){
+    var el = document.getElementById(item.id);
+    if (!el) return;
+    el.innerHTML =
+      '<div style="font-size:12px;color:var(--muted);padding:6px 0">'+escC(copy)+'</div>'+
+      '<div class="admin-action-row" style="justify-content:flex-start">'+
+        '<button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="loadAdminDashboard(true)">'+escC(item.button)+'</button>'+
+      '</div>';
   });
 }
 
@@ -2167,9 +2193,9 @@ function renderMyRevenue() {
 function renderMumbaiCentreBar(counsellor) {
   var bar = document.getElementById('rev-centre-bar');
   if (!bar) return;
-  if (!revIsMumbai(counsellor) && !isAdmin) { bar.classList.remove('show'); return; }
-  var centre = isAdmin ? null : 'Mumbai';
   if (isAdmin) { bar.classList.remove('show'); return; } // admin sees rollup table instead
+  var centre = (allowedCentres && allowedCentres.length) ? allowedCentres[0] : '';
+  if (!centre) { bar.classList.remove('show'); return; }
   var cs = revCentreAchievedAll(centre);
   if (!cs.target && !cs.achieved) { bar.classList.remove('show'); return; }
   bar.classList.add('show');
@@ -2388,6 +2414,10 @@ function revSaveMonthCard(btn) {
   var body = btn.closest('.rev-month-body');
   var note = body.querySelector('.rev-save-note');
   var me = counselorName || '';
+  if (!me || isAdmin) {
+    if (note) { note.textContent = '⚠ Please sign in as a counsellor before saving monthly revenue.'; note.style.color = 'var(--red)'; }
+    return;
+  }
 
   // Bucket 1 — Own centre
   var course1 = Number(body.querySelector('.rmc-course').value) || 0;
@@ -2458,9 +2488,26 @@ function revSaveMonthCard(btn) {
       showToast(errMsg, 'error');
       return;
     }
+    if (Number(d.savedMonthly || 0) < 1) {
+      btn.disabled = false;
+      btn.textContent = '💾 Save & Lock ' + monthLabel;
+      var noSaveMsg = d.message || 'This month was not saved. It may already be locked; refresh and check the saved card.';
+      if (note) { note.textContent = '⚠ ' + noSaveMsg; note.style.color = 'var(--red)'; }
+      showToast(noSaveMsg, 'error');
+      if (d.dashboard && d.dashboard.status === 'ok') {
+        revenueData = d.dashboard;
+        renderMyRevenue();
+      }
+      return;
+    }
     showToast(monthLabel + ' revenue saved and locked ✓');
-    revenueData = null;
-    loadRevenueDashboard();
+    if (d.dashboard && d.dashboard.status === 'ok') {
+      revenueData = d.dashboard;
+      renderMyRevenue();
+    } else {
+      revenueData = null;
+      loadRevenueDashboard();
+    }
   });
 }
 
@@ -2483,6 +2530,7 @@ function saveRevenueCentreTarget() {
     action:'saveRevenueTargets',
     centreTargets:JSON.stringify([row]),
     targets:'[]', monthlyRows:'[]', monthlyScope:'null',
+    centres:'', centre:'', counsellor:'', viewerCounsellor:'', isAdmin:'true',
     updatedBy:counselorName||'Admin'
   });
   gasGet(params, function(e,d) {
@@ -2510,6 +2558,7 @@ function saveRevenueAnnualTarget() {
     centreTargets:'[]',
     targets:JSON.stringify([row]),
     monthlyRows:'[]', monthlyScope:'null',
+    centres:'', centre:'', counsellor:'', viewerCounsellor:'', isAdmin:'true',
     updatedBy:counselorName||'Admin'
   });
   gasGet(params, function(e,d) {
@@ -2755,6 +2804,7 @@ function saveAllAdminTargets() {
     centreTargets:JSON.stringify(centreRows),
     targets:JSON.stringify(rows),
     monthlyRows:'[]', monthlyScope:'null',
+    centres:'', centre:'', counsellor:'', viewerCounsellor:'', isAdmin:'true',
     updatedBy:'Admin'
   });
   gasGet(params, function(e,d) {

@@ -99,6 +99,7 @@
 .revenue-actions .btn{width:auto;padding:8px 12px;font-size:12px}
 .revenue-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:14px}
 .revenue-month{border:1px solid var(--border);border-radius:8px;background:var(--white);padding:11px 12px;min-width:0}
+.revenue-month.locked{background:var(--off);opacity:.72}
 .revenue-month.ok{background:#F4FBF7;border-color:rgba(29,158,117,.22)}
 .revenue-month.warn{background:#FFF9E6;border-color:rgba(201,168,76,.28)}
 .revenue-month.danger{background:#FFF8F5;border-color:rgba(201,74,74,.22)}
@@ -114,6 +115,12 @@
 .revenue-editor th{position:sticky;top:0;background:var(--navy);color:var(--gold);text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:9px}
 .revenue-editor td{border-bottom:1px solid var(--border);padding:8px}
 .revenue-editor input{width:100%;border:1px solid var(--border);border-radius:6px;padding:7px 8px;font-family:"DM Sans",sans-serif;font-size:12px;color:var(--navy);background:var(--off)}
+.revenue-editor select{width:100%;border:1px solid var(--border);border-radius:6px;padding:7px 8px;font-family:"DM Sans",sans-serif;font-size:12px;color:var(--navy);background:var(--off)}
+.revenue-editor input[readonly]{background:#F5F1E8;color:var(--muted)}
+.revenue-editor input:disabled,.revenue-editor select:disabled{opacity:.58;cursor:not-allowed}
+.revenue-note{font-size:11px;color:var(--muted);line-height:1.4;margin:8px 0 0}
+.revenue-alert{display:none;border-radius:8px;padding:9px 11px;background:#FFF9E6;border:1px solid rgba(201,168,76,.3);font-size:12px;color:var(--navy);margin-top:10px}
+.revenue-alert.show{display:block}
 .account-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;margin-bottom:12px}
 .password-card{display:none;border:1px solid rgba(201,168,76,.35);background:#FFF9E6}
 .password-card.required{display:block}
@@ -418,12 +425,12 @@
   <div id="t-revenue" class="tab-content">
     <div class="card">
       <div class="section-tag">Revenue Planning</div>
-      <h2>Annual Target & Monthly Revenue Achieved</h2>
-      <p class="sub">Set annual targets by counsellor and centre. Monthly achieved revenue is calculated from paid fee installments, so cross-centre sales stay visible by both counsellor and centre.</p>
+      <h2>Revenue Target, Achievement & Cross-Centre Business</h2>
+      <p class="sub">Set centre targets, split them by counsellor, and enter monthly achieved revenue manually. GST, pending target, run-rate, and cross-centre business are calculated automatically.</p>
       <div class="revenue-filters">
         <div class="field"><label>Centre</label><select id="rev-centre" onchange="loadRevenueDashboard()"><option value="">All visible centres</option></select></div>
         <div class="field"><label>Counsellor</label><select id="rev-counsellor" onchange="loadRevenueDashboard()"><option value="">All counsellors</option></select></div>
-        <div class="field"><label>Course</label><select id="rev-course" onchange="loadRevenueDashboard()"><option value="">All courses</option></select></div>
+        <div class="field"><label>View</label><select id="rev-view-mode" onchange="loadRevenueDashboard()"><option value="assigned">Assigned Centre</option><option value="business">Business Centre</option></select></div>
         <div class="field"><label>From</label><select id="rev-from" onchange="syncRevenueRange();loadRevenueDashboard()"></select></div>
         <div class="field"><label>To</label><select id="rev-to" onchange="syncRevenueRange();loadRevenueDashboard()"></select></div>
         <div class="field"><label>Metric</label><select id="rev-metric" onchange="renderRevenueDashboard()"><option value="gst">Course Fee + GST</option><option value="course">Course Fee</option></select></div>
@@ -435,16 +442,28 @@
       <div id="rev-month-grid"></div>
     </div>
     <div class="card">
-      <div class="section-tag">Target Entry</div>
-      <h2>Annual Target</h2>
-      <p class="sub">Choose a counsellor and centre, enter the annual target for 2026-27, then save. Existing rows are updated for the same period, counsellor, and centre.</p>
+      <div class="section-tag">Centre Target</div>
+      <h2>Overall Centre Annual Target</h2>
+      <p class="sub">Enter the centre-level target once. Counsellor targets can be different, but the split is compared with this overall target.</p>
+      <div class="grid2">
+        <div class="field"><label>Centre</label><select id="rev-centre-target-centre" onchange="renderRevenueTargetEditor()"></select></div>
+        <div class="field"><label>Period</label><input type="text" value="2026-27" readonly></div>
+      </div>
+      <div id="rev-centre-target-editor"></div>
+      <div class="revenue-alert" id="rev-split-alert"></div>
+    </div>
+    <div class="card">
+      <div class="section-tag">Counsellor Split</div>
+      <h2>Individual Annual Target & Monthly Achievement</h2>
+      <p class="sub">Choose assigned centre and counsellor, enter individual target, then enter achieved revenue month-wise. Future months stay locked until that month starts.</p>
       <div class="grid2">
         <div class="field"><label>Counsellor</label><select id="rev-edit-counsellor" onchange="renderRevenueTargetEditor()"></select></div>
-        <div class="field"><label>Centre</label><select id="rev-edit-centre" onchange="renderRevenueTargetEditor()"></select></div>
+        <div class="field"><label>Assigned Centre</label><select id="rev-edit-centre" onchange="renderRevenueTargetEditor()"></select></div>
       </div>
       <div id="rev-target-editor"></div>
+      <div id="rev-monthly-editor"></div>
       <div class="revenue-actions">
-        <button class="btn btn-gold" id="rev-save-btn" onclick="saveRevenueTargets()">Save Annual Target</button>
+        <button class="btn btn-gold" id="rev-save-btn" onclick="saveRevenueTargets()">Save Revenue Plan</button>
       </div>
       <div class="err-box" id="rev-err"></div>
     </div>
@@ -1607,6 +1626,22 @@ function revenueMonths() {
   return out;
 }
 
+function revenueCurrentMonthKey() {
+  const today = new Date();
+  const periodStart = new Date(2026, 0, 1);
+  const periodEnd = new Date(2027, 2, 1);
+  const current = today < periodStart ? periodStart : (today > periodEnd ? periodEnd : today);
+  return current.getFullYear() + '-' + String(current.getMonth() + 1).padStart(2, '0');
+}
+
+function revenueMonthOpen(key) {
+  return key <= revenueCurrentMonthKey();
+}
+
+function revenueGst(courseAmount) {
+  return Math.round((Number(courseAmount) || 0) * 1.18);
+}
+
 function revenueVisibleCentres() {
   return isAdmin ? CENTRES.slice() : (allowedCentres && allowedCentres.length ? allowedCentres.slice() : CENTRES.slice());
 }
@@ -1635,11 +1670,12 @@ function fillRevenueSelects() {
   from.innerHTML = months.map(m => '<option value="' + m.key + '">' + m.label + '</option>').join('');
   to.innerHTML = from.innerHTML;
   from.value = '2026-01';
-  to.value = '2027-03';
+  to.value = revenueCurrentMonthKey();
 
   const centreOptions = revenueVisibleCentres().map(c => '<option value="' + escC(c) + '">' + escC(c) + '</option>').join('');
   document.getElementById('rev-centre').innerHTML = '<option value="">All visible centres</option>' + centreOptions;
   document.getElementById('rev-edit-centre').innerHTML = centreOptions;
+  document.getElementById('rev-centre-target-centre').innerHTML = centreOptions;
 
   const counsellorOptions = revenueCounsellors().map(c => '<option value="' + escC(c) + '">' + escC(c) + '</option>').join('');
   document.getElementById('rev-counsellor').innerHTML = '<option value="">All counsellors</option>' + counsellorOptions;
@@ -1648,8 +1684,6 @@ function fillRevenueSelects() {
     document.getElementById('rev-edit-counsellor').value = counselorName;
   }
 
-  document.getElementById('rev-course').innerHTML = '<option value="">All courses</option>' +
-    COURSES.map(c => '<option value="' + escC(c) + '">' + escC(c) + '</option>').join('');
   renderRevenueTargetEditor();
 }
 
@@ -1666,7 +1700,7 @@ function revenueRequestParams() {
     centres:isAdmin ? '' : revenueVisibleCentres().join(','),
     centre:document.getElementById('rev-centre').value,
     counsellor:document.getElementById('rev-counsellor').value,
-    course:document.getElementById('rev-course').value,
+    viewMode:document.getElementById('rev-view-mode').value,
     fromMonth:document.getElementById('rev-from').value,
     toMonth:document.getElementById('rev-to').value
   };
@@ -1720,19 +1754,21 @@ function renderRevenueDashboard() {
   const totals = revenueTotals(revenueData.months);
   const gap = totals.target - totals.achieved;
   const pct = revenuePct(totals.achieved, totals.target);
+  const splitGap = Number(revenueData.summary && revenueData.summary.centreTargetGst || 0) - Number(revenueData.summary && revenueData.summary.splitTargetGst || 0);
   document.getElementById('rev-summary').innerHTML =
     '<div class="summary-tile"><div class="k">Annual Target</div><div class="v">' + money(totals.target) + '</div><div class="s">' + keys.label + ' · 2026-27</div></div>' +
-    '<div class="summary-tile ok"><div class="k">Achieved</div><div class="v">' + money(totals.achieved) + '</div><div class="s">' + pct + '% of annual target</div></div>' +
+    '<div class="summary-tile ok"><div class="k">Achieved Till ' + escC(revenueCurrentMonthKey()) + '</div><div class="v">' + money(totals.achieved) + '</div><div class="s">' + pct + '% of annual target</div></div>' +
     '<div class="summary-tile ' + (gap <= 0 ? 'ok' : 'warn') + '"><div class="k">Remaining</div><div class="v">' + money(Math.max(gap, 0)) + '</div><div class="s">' + (gap <= 0 ? 'Annual target met' : 'Still to collect') + '</div></div>' +
-    '<div class="summary-tile"><div class="k">Monthly Run Rate</div><div class="v">' + money(totals.monthlyTarget) + '</div><div class="s">Average needed per month</div></div>';
+    '<div class="summary-tile"><div class="k">Monthly Run Rate</div><div class="v">' + money(totals.monthlyTarget) + '</div><div class="s">' + (splitGap ? 'Split gap ' + money(Math.abs(splitGap)) : 'Average plan per month') + '</div></div>';
 
   document.getElementById('rev-month-grid').innerHTML = '<div class="revenue-grid">' + (revenueData.months || []).map(m => {
     const target = Number(m[keys.target]) || 0;
     const achieved = Number(m[keys.achieved]) || 0;
     const monthPct = revenuePct(achieved, target);
-    const cls = monthPct >= 90 ? 'ok' : monthPct >= 60 ? 'warn' : 'danger';
+    const locked = !revenueMonthOpen(m.month);
+    const cls = locked ? 'locked' : (monthPct >= 90 ? 'ok' : monthPct >= 60 ? 'warn' : 'danger');
     return '<div class="revenue-month ' + cls + '">' +
-      '<div class="revenue-month-head"><div class="revenue-month-title">' + escC(m.label) + '</div><div class="revenue-month-pct">' + monthPct + '%</div></div>' +
+      '<div class="revenue-month-head"><div class="revenue-month-title">' + escC(m.label) + '</div><div class="revenue-month-pct">' + (locked ? 'Locked' : monthPct + '%') + '</div></div>' +
       '<div class="revenue-bar"><span style="width:' + Math.min(monthPct, 120) + '%"></span></div>' +
       '<div class="revenue-month-meta"><div>Run Rate<strong>' + money(target) + '</strong></div><div>Achieved<strong>' + money(achieved) + '</strong></div><div>Variance<strong>' + money(Math.abs(achieved - target)) + '</strong></div><div>Status<strong>' + (achieved >= target ? 'Ahead' : 'Behind') + '</strong></div></div>' +
     '</div>';
@@ -1748,10 +1784,12 @@ function renderRevenueRollups() {
     return '<tr><td><strong>' + escC(r[labelKey]) + '</strong></td><td>' + money(target) + '</td><td>' + money(achieved) + '</td><td>' + money(Math.abs(achieved - target)) + '</td><td>' + revenuePct(achieved, target) + '%</td></tr>';
   }).join('');
   document.getElementById('rev-rollups').innerHTML =
-    '<table class="compact-table"><thead><tr><th>Name</th><th>Target</th><th>Achieved</th><th>Gap</th><th>%</th></tr></thead><tbody>' +
+    '<table class="compact-table"><thead><tr><th>Name</th><th>Target</th><th>Achieved</th><th>Pending</th><th>%</th></tr></thead><tbody>' +
     rowHtml(revenueData.centres || [], 'centre') +
     rowHtml(revenueData.counsellors || [], 'counsellor') +
-    '</tbody></table>';
+    '</tbody></table>' +
+    '<div class="revenue-note">' + ((revenueData.crossRows || []).length ? 'Cross-centre business found: ' + (revenueData.crossRows || []).length + ' month entries.' : 'No cross-centre business found for this filter.') + '</div>' +
+    renderRevenueCrossTable();
 }
 
 function revenueTargetMap() {
@@ -1762,13 +1800,57 @@ function revenueTargetMap() {
   return out;
 }
 
+function revenueCentreTargetMap() {
+  const out = {};
+  (revenueData && revenueData.centreTargetRows ? revenueData.centreTargetRows : []).forEach(r => {
+    out[(r.period || '2026-27') + '|' + r.centre] = r;
+  });
+  return out;
+}
+
+function revenueMonthlyMap() {
+  const out = {};
+  (revenueData && revenueData.monthlyRows ? revenueData.monthlyRows : []).forEach(r => {
+    out[(r.month || '') + '|2026-27|' + r.counsellor + '|' + r.assignedCentre] = r;
+  });
+  return out;
+}
+
+function renderRevenueCrossTable() {
+  const keys = revenueMetricKeys();
+  const rows = revenueData && revenueData.crossRows ? revenueData.crossRows : [];
+  if (!rows.length) return '';
+  return '<div class="revenue-editor" style="margin-top:12px"><table><thead><tr><th>Month</th><th>Counsellor</th><th>Assigned Centre</th><th>Business Centre</th><th>Revenue</th></tr></thead><tbody>' +
+    rows.map(r => '<tr><td>' + escC(r.month) + '</td><td>' + escC(r.counsellor) + '</td><td>' + escC(r.assignedCentre) + '</td><td>' + escC(r.businessCentre) + '</td><td>' + money(Number(r[keys.achieved]) || 0) + '</td></tr>').join('') +
+    '</tbody></table></div>';
+}
+
+function renderRevenueCentreTargetEditor() {
+  const centre = document.getElementById('rev-centre-target-centre').value;
+  const wrap = document.getElementById('rev-centre-target-editor');
+  if (!centre) {
+    wrap.innerHTML = emptyState('₹', 'Choose centre', 'Centre target fields will appear here.');
+    return;
+  }
+  const row = revenueCentreTargetMap()['2026-27|' + centre] || {};
+  wrap.innerHTML =
+    '<div class="grid2">' +
+      '<div class="field"><label>Annual Course Fee Target</label><input type="number" id="rev-centre-course" min="0" value="' + escC(row.targetCourse || '') + '" oninput="syncRevenueGst(\'rev-centre-course\',\'rev-centre-gst\');renderRevenueSplitWarning()"></div>' +
+      '<div class="field"><label>Annual Course Fee + GST Target</label><input type="number" id="rev-centre-gst" min="0" value="' + escC(row.targetGst || '') + '" readonly></div>' +
+    '</div>' +
+    '<div class="field"><label>Notes</label><input type="text" id="rev-centre-notes" value="' + escC(row.notes || '') + '" placeholder="Optional"></div>';
+  syncRevenueGst('rev-centre-course','rev-centre-gst');
+}
+
 function renderRevenueTargetEditor() {
   const wrap = document.getElementById('rev-target-editor');
   if (!wrap) return;
+  renderRevenueCentreTargetEditor();
   const counsellor = document.getElementById('rev-edit-counsellor').value;
   const centre = document.getElementById('rev-edit-centre').value;
   if (!counsellor || !centre) {
     wrap.innerHTML = emptyState('₹', 'Choose counsellor and centre', 'Annual target fields will appear here.');
+    document.getElementById('rev-monthly-editor').innerHTML = '';
     return;
   }
   const map = revenueTargetMap();
@@ -1776,12 +1858,75 @@ function renderRevenueTargetEditor() {
   wrap.innerHTML =
     '<div class="grid2">' +
       '<div class="field"><label>Period</label><input type="text" id="rev-t-period" value="2026-27" readonly></div>' +
-      '<div class="field"><label>Annual Course Fee Target</label><input type="number" id="rev-t-course" min="0" value="' + escC(row.targetCourse || '') + '"></div>' +
+      '<div class="field"><label>Annual Course Fee Target</label><input type="number" id="rev-t-course" min="0" value="' + escC(row.targetCourse || '') + '" oninput="syncRevenueGst(\'rev-t-course\',\'rev-t-gst\');renderRevenueSplitWarning()"></div>' +
     '</div>' +
     '<div class="grid2">' +
-      '<div class="field"><label>Annual Course Fee + GST Target</label><input type="number" id="rev-t-gst" min="0" value="' + escC(row.targetGst || '') + '"></div>' +
+      '<div class="field"><label>Annual Course Fee + GST Target</label><input type="number" id="rev-t-gst" min="0" value="' + escC(row.targetGst || '') + '" readonly></div>' +
       '<div class="field"><label>Notes</label><input type="text" id="rev-t-notes" value="' + escC(row.notes || '') + '" placeholder="Optional"></div>' +
     '</div>';
+  syncRevenueGst('rev-t-course','rev-t-gst');
+  renderRevenueMonthlyEditor();
+  renderRevenueSplitWarning();
+}
+
+function syncRevenueGst(sourceId, targetId) {
+  const source = document.getElementById(sourceId);
+  const target = document.getElementById(targetId);
+  if (source && target) target.value = source.value ? revenueGst(source.value) : '';
+}
+
+function renderRevenueSplitWarning() {
+  const alert = document.getElementById('rev-split-alert');
+  if (!alert) return;
+  const centre = document.getElementById('rev-centre-target-centre').value;
+  const centreTarget = Number(document.getElementById('rev-centre-gst') && document.getElementById('rev-centre-gst').value) || 0;
+  const savedSplit = (revenueData && revenueData.targetRows ? revenueData.targetRows : [])
+    .filter(r => r.centre === centre)
+    .reduce((sum,r) => sum + (Number(r.targetGst) || 0), 0);
+  const currentCounsellor = document.getElementById('rev-edit-counsellor').value;
+  const currentCentre = document.getElementById('rev-edit-centre').value;
+  const currentValue = Number(document.getElementById('rev-t-gst') && document.getElementById('rev-t-gst').value) || 0;
+  const oldCurrent = (revenueData && revenueData.targetRows ? revenueData.targetRows : [])
+    .filter(r => r.centre === currentCentre && r.counsellor === currentCounsellor)
+    .reduce((sum,r) => sum + (Number(r.targetGst) || 0), 0);
+  const split = savedSplit - oldCurrent + (currentCentre === centre ? currentValue : 0);
+  const gap = centreTarget - split;
+  if (!centreTarget) {
+    alert.classList.remove('show');
+    return;
+  }
+  alert.textContent = gap === 0 ? 'Counsellor split matches the centre target.' : 'Counsellor split is ' + (gap > 0 ? 'below' : 'above') + ' centre target by ' + money(Math.abs(gap)) + '.';
+  alert.classList.add('show');
+}
+
+function renderRevenueMonthlyEditor() {
+  const wrap = document.getElementById('rev-monthly-editor');
+  const counsellor = document.getElementById('rev-edit-counsellor').value;
+  const assigned = document.getElementById('rev-edit-centre').value;
+  const monthly = revenueMonthlyMap();
+  const centreOptions = revenueVisibleCentres().map(c => '<option value="' + escC(c) + '">' + escC(c) + '</option>').join('');
+  let html = '<div class="section-tag" style="margin-top:16px">Monthly Achievement</div><div class="revenue-editor"><table><thead><tr><th>Month</th><th>Business Centre</th><th>Achieved Course Fee</th><th>Achieved + GST</th><th>Status</th><th>Notes</th></tr></thead><tbody>';
+  html += revenueMonths().map(m => {
+    const open = revenueMonthOpen(m.key);
+    const row = monthly[m.key + '|2026-27|' + counsellor + '|' + assigned] || {};
+    const business = row.businessCentre || assigned;
+    return '<tr data-month="' + m.key + '">' +
+      '<td><strong>' + escC(m.label) + '</strong></td>' +
+      '<td><select class="rev-m-business" ' + (open ? '' : 'disabled') + '>' + centreOptions.replace('value="' + escC(business) + '"', 'value="' + escC(business) + '" selected') + '</select></td>' +
+      '<td><input type="number" class="rev-m-course" min="0" value="' + escC(row.achievedCourse || '') + '" ' + (open ? 'oninput="syncRevenueMonthlyGst(this)"' : 'disabled') + '></td>' +
+      '<td><input type="number" class="rev-m-gst" min="0" value="' + escC(row.achievedGst || '') + '" readonly></td>' +
+      '<td>' + (open ? 'Open' : 'Locked') + '</td>' +
+      '<td><input type="text" class="rev-m-notes" value="' + escC(row.notes || '') + '" placeholder="Optional" ' + (open ? '' : 'disabled') + '></td>' +
+    '</tr>';
+  }).join('');
+  wrap.innerHTML = html + '</tbody></table></div><div class="revenue-note">Entries are open from Jan 2026 through ' + escC(revenueCurrentMonthKey()) + '. Later months unlock automatically when the month starts.</div>';
+  Array.from(wrap.querySelectorAll('.rev-m-course')).forEach(input => syncRevenueMonthlyGst(input));
+}
+
+function syncRevenueMonthlyGst(input) {
+  const tr = input.closest('tr');
+  const gst = tr && tr.querySelector('.rev-m-gst');
+  if (gst) gst.value = input.value ? revenueGst(input.value) : '';
 }
 
 function saveRevenueTargets() {
@@ -1795,6 +1940,14 @@ function saveRevenueTargets() {
     err.classList.add('show');
     return;
   }
+  const targetCentre = document.getElementById('rev-centre-target-centre').value;
+  const centreTargets = targetCentre ? [{
+    period:'2026-27',
+    centre:targetCentre,
+    targetCourse:document.getElementById('rev-centre-course').value || 0,
+    targetGst:document.getElementById('rev-centre-gst').value || 0,
+    notes:document.getElementById('rev-centre-notes').value || ''
+  }] : [];
   const targets = [{
     period:'2026-27',
     counsellor,
@@ -1803,24 +1956,36 @@ function saveRevenueTargets() {
     targetGst:document.getElementById('rev-t-gst').value || 0,
     notes:document.getElementById('rev-t-notes').value || ''
   }];
+  const monthlyRows = Array.from(document.querySelectorAll('#rev-monthly-editor tbody tr')).filter(tr => revenueMonthOpen(tr.getAttribute('data-month'))).map(tr => ({
+    month:tr.getAttribute('data-month'),
+    period:'2026-27',
+    counsellor,
+    assignedCentre:centre,
+    businessCentre:tr.querySelector('.rev-m-business').value || centre,
+    achievedCourse:tr.querySelector('.rev-m-course').value || 0,
+    achievedGst:tr.querySelector('.rev-m-gst').value || 0,
+    notes:tr.querySelector('.rev-m-notes').value || ''
+  }));
   btn.textContent = 'Saving...';
   btn.disabled = true;
   const params = Object.assign(revenueRequestParams(), {
     action:'saveRevenueTargets',
+    centreTargets:JSON.stringify(centreTargets),
     targets:JSON.stringify(targets),
+    monthlyRows:JSON.stringify(monthlyRows),
     updatedBy:counselorName || 'Counselor'
   });
   gasGet(params, function(e,d) {
-    btn.textContent = 'Save Annual Target';
+    btn.textContent = 'Save Revenue Plan';
     btn.disabled = false;
     if (e || !d || d.status !== 'ok') {
-      err.textContent = 'Could not save annual target.';
+      err.textContent = 'Could not save revenue plan.';
       err.classList.add('show');
-      showToast('Could not save annual target.', 'error');
+      showToast('Could not save revenue plan.', 'error');
       return;
     }
     revenueData = d.dashboard || revenueData;
-    showToast('Annual target saved.');
+    showToast('Revenue plan saved.');
     renderRevenueDashboard();
     renderRevenueTargetEditor();
   });

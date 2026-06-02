@@ -2474,9 +2474,17 @@ function buildRevenueDashboard(ss,p) {
   var targetRows=getRevenueAnnualTargetRows(ss).filter(function(r){
     return r.period===period&&revenueAllowedCentre(r.centre,p)&&revenueAllowedCounsellor(r.counsellor,p);
   });
+  var monthlyPreviewTargets=getRevenueAnnualTargetRows(ss).filter(function(r){
+    return r.period===period&&revenueAllowedCentre(r.centre,p);
+  });
   var achievedRows=getRevenueMonthlyAchievedRows(ss).filter(function(r){
     if(r.period!==period||!monthKeys[r.month])return false;
     if(!revenueAllowedCounsellor(r.counsellor,p))return false;
+    if(p.crossOnly==='true'&&r.assignedCentre===r.businessCentre)return false;
+    return revenueAllowedViewCentre(r,p);
+  });
+  var monthlyPreviewRows=getRevenueMonthlyAchievedRows(ss).filter(function(r){
+    if(r.period!==period||!monthKeys[r.month])return false;
     if(p.crossOnly==='true'&&r.assignedCentre===r.businessCentre)return false;
     return revenueAllowedViewCentre(r,p);
   });
@@ -2527,7 +2535,7 @@ function buildRevenueDashboard(ss,p) {
     var b=byMonth[m.key]||revenueBlankBucket();
     return Object.assign({month:m.key,label:m.label},b);
   });
-  return {status:'ok',backendVersion:REVENUE_BACKEND_VERSION,period:period,months:monthRows,centreTargetRows:centreTargetRows,targetRows:targetRows,monthlyRows:achievedRows,crossRows:crossRows,
+  return {status:'ok',backendVersion:REVENUE_BACKEND_VERSION,period:period,months:monthRows,centreTargetRows:centreTargetRows,targetRows:targetRows,monthlyRows:achievedRows,monthlyPreviewRows:monthlyPreviewRows,monthlyPreviewTargets:monthlyPreviewTargets,crossRows:crossRows,
     summary:{targetCourse:totalTargetCourse,targetGst:totalTargetGst,achievedCourse:achievedCourse,achievedGst:achievedGst,studentCount:studentCount,designatedCourse:designatedCourse,designatedGst:designatedGst,otherCentreCourse:otherCentreCourse,otherCentreGst:otherCentreGst,corporateCourse:corporateCourse,corporateGst:corporateGst,monthlyTargetCourse:monthlyTargetCourse,monthlyTargetGst:monthlyTargetGst,monthsInPeriod:fullMonths.length,centreTargetCourse:centreTargetCourse,centreTargetGst:centreTargetGst,splitTargetCourse:splitTargetCourse,splitTargetGst:splitTargetGst},
     counsellors:Object.keys(byCounsellor).sort().map(function(k){return Object.assign({counsellor:k},byCounsellor[k]);}),
     centres:Object.keys(byCentre).sort().map(function(k){return Object.assign({centre:k},byCentre[k]);}),

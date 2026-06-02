@@ -179,6 +179,12 @@
 .rev-run-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
 .rev-run-title{font-size:13px;font-weight:800;color:var(--navy)}
 .rev-run-pct{font-family:"DM Mono",monospace;font-size:12px;font-weight:800;color:var(--navy)}
+.rev-motive-row{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 2px}
+.rev-ach-chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:3px 7px;font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;background:rgba(13,27,46,.07);color:var(--muted)}
+.rev-ach-chip.beat{background:rgba(29,158,117,.12);color:#16785B}
+.rev-ach-chip.track{background:rgba(201,168,76,.14);color:#98710E}
+.rev-ach-chip.build{background:rgba(13,27,46,.06);color:var(--muted)}
+.rev-ach-chip.streak{background:var(--navy);color:var(--gold)}
 .rev-run-bar{height:7px;background:rgba(13,27,46,.08);border-radius:999px;overflow:hidden;margin-bottom:10px}
 .rev-run-bar span{display:block;height:100%;border-radius:999px;background:var(--gold)}
 .rev-run-card.saved .rev-run-bar span{background:#1D9E75}
@@ -192,6 +198,19 @@
 .rev-run-card.saved .rev-entry-panel{border-top-color:rgba(29,158,117,.26)}
 .rev-entry-panel{display:none;margin-top:10px;border-top:1px dashed rgba(201,168,76,.32);padding-top:10px}
 .rev-entry-panel.open{display:block}
+.rev-month-preview{margin-top:14px}
+.rev-preview-panel{border:1px solid rgba(201,168,76,.24);background:#FFFDF5;border-radius:8px;padding:12px 13px;display:grid;grid-template-columns:minmax(180px,1.1fr) minmax(220px,1.4fr) minmax(180px,.9fr);gap:12px;align-items:stretch}
+.rev-preview-title{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#98710E;margin-bottom:4px}
+.rev-preview-big{font-family:"DM Mono",monospace;font-size:18px;font-weight:800;color:var(--navy);line-height:1.2}
+.rev-preview-sub{font-size:10px;color:var(--muted);line-height:1.35;margin-top:3px}
+.rev-leader-list{display:flex;flex-direction:column;gap:6px}
+.rev-leader-row{display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;border:1px solid rgba(13,27,46,.08);border-radius:7px;background:var(--white);padding:7px 8px}
+.rev-leader-rank{font-family:"DM Mono",monospace;font-size:11px;font-weight:800;color:var(--gold)}
+.rev-leader-name{font-size:11px;font-weight:800;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rev-leader-meta{font-size:9px;color:var(--muted);margin-top:1px}
+.rev-leader-amt{font-family:"DM Mono",monospace;font-size:12px;font-weight:800;color:var(--navy)}
+.rev-personal-pulse{border-left:3px solid var(--gold);padding-left:10px;display:flex;flex-direction:column;justify-content:center}
+@media(max-width:860px){.rev-preview-panel{grid-template-columns:1fr}.rev-leader-row{grid-template-columns:26px 1fr}.rev-leader-amt{grid-column:2}}
 /* Centre bar */
 .rev-centre-bar{background:var(--navy);border-radius:10px;padding:14px 16px;color:var(--white);margin-bottom:16px;display:none}
 .rev-centre-bar.show{display:block}
@@ -624,6 +643,9 @@
         <div class="rev-kpi"><div class="k">Students This Year</div><div class="v" id="rev-kpi-students">—</div><div class="s" id="rev-kpi-students-s">2026-27</div></div>
       </div>
       <div class="rev-progress-wrap"><div class="rev-progress-bar" id="rev-progress-bar" style="width:0%"></div></div>
+
+      <!-- Monthly-only motivation preview -->
+      <div id="rev-month-preview" class="rev-month-preview"></div>
 
       <!-- Month cards -->
       <div id="rev-month-grid" style="margin-top:14px"></div>
@@ -2183,6 +2205,8 @@ function renderRevenueFastShell() {
     if(el) el.textContent=pair[1];
   });
   var pb=document.getElementById('rev-progress-bar'); if(pb) pb.style.width='0%';
+  var preview=document.getElementById('rev-month-preview');
+  if(preview) preview.innerHTML = '<div class="rev-preview-panel"><div><div class="rev-preview-title">This Month Preview</div><div class="rev-preview-big">Loading</div><div class="rev-preview-sub">Monthly motivation data is fetching from backend.</div></div></div>';
   var grid=document.getElementById('rev-month-grid');
   if(grid) grid.innerHTML = renderRevenueRunRateSkeleton();
 }
@@ -2238,6 +2262,7 @@ function renderMyRevenue() {
 
   // Mumbai combined bar
   renderMumbaiCentreBar(me);
+  renderRevenueMotivation(me, target);
 
   // Month cards
   renderRevenueMonthCards(me);
@@ -2265,6 +2290,121 @@ function renderMumbaiCentreBar(counsellor) {
   if(prog) prog.style.width = cpct+'%';
 }
 
+function revPreviewRows() {
+  return (revenueData && (revenueData.monthlyPreviewRows || revenueData.monthlyRows)) || [];
+}
+
+function revPreviewTargets() {
+  return (revenueData && (revenueData.monthlyPreviewTargets || revenueData.targetRows)) || [];
+}
+
+function revMonthlyTargetForCounsellor(counsellor) {
+  var months = revenueMonths();
+  var target = revPreviewTargets().filter(function(r){
+    return revSameCounsellor(r.counsellor, counsellor);
+  }).reduce(function(sum,r){ return sum + (Number(r.targetGst)||0); }, 0);
+  return target && months.length ? Math.round(target / months.length) : 0;
+}
+
+function revMonthTotalsByCounsellor(monthKey) {
+  var out = {};
+  revPreviewRows().forEach(function(r){
+    if (r.month !== monthKey) return;
+    var key = revCanonical(r.counsellor);
+    if (!out[key]) out[key] = {counsellor:r.counsellor, achievedGst:0, studentCount:0, targetGst:0};
+    out[key].achievedGst += Number(r.achievedGst)||0;
+    out[key].studentCount += Number(r.studentCount)||0;
+  });
+  revPreviewTargets().forEach(function(r){
+    var key = revCanonical(r.counsellor);
+    if (!out[key]) out[key] = {counsellor:r.counsellor, achievedGst:0, studentCount:0, targetGst:0};
+    out[key].targetGst += Number(r.targetGst)||0;
+  });
+  Object.keys(out).forEach(function(k){
+    out[k].runRateGst = revMonthlyTargetForCounsellor(out[k].counsellor);
+    out[k].pct = out[k].runRateGst ? Math.round(out[k].achievedGst/out[k].runRateGst*100) : (out[k].achievedGst ? 100 : 0);
+  });
+  return out;
+}
+
+function revLeaderboardForMonth(monthKey) {
+  return Object.keys(revMonthTotalsByCounsellor(monthKey)).map(function(k){
+    return revMonthTotalsByCounsellor(monthKey)[k];
+  }).sort(function(a,b){
+    return (Number(b.achievedGst)||0) - (Number(a.achievedGst)||0) || String(a.counsellor).localeCompare(String(b.counsellor));
+  });
+}
+
+function revRowsForCounsellorMonth(monthKey, counsellor, assignedCentre) {
+  return revPreviewRows().filter(function(r){
+    return r.month === monthKey && revSameCounsellor(r.counsellor, counsellor) && (!assignedCentre || r.assignedCentre === assignedCentre);
+  });
+}
+
+function revStreakEndingAt(counsellor, assignedCentre, runRate, monthKey) {
+  if (!runRate) return 0;
+  var streak = 0;
+  revenueMonths().some(function(m){
+    if (m.key > monthKey) return true;
+    var rows = revRowsForCounsellorMonth(m.key, counsellor, assignedCentre);
+    if (!rows.length) { streak = 0; return false; }
+    var total = revTotalsFromRows(rows, assignedCentre || '').totalGst;
+    streak = total >= runRate ? streak + 1 : 0;
+    return false;
+  });
+  return streak;
+}
+
+function revCurrentStreak(counsellor, assignedCentre, runRate) {
+  var latest = '';
+  revenueMonths().forEach(function(m){
+    if (m.key <= revenueCurrentMonthKey() && revRowsForCounsellorMonth(m.key, counsellor, assignedCentre).length) latest = m.key;
+  });
+  return latest ? revStreakEndingAt(counsellor, assignedCentre, runRate, latest) : 0;
+}
+
+function revAchievementChips(open, rows, pct, streak) {
+  if (!open) return '<div class="rev-motive-row"><span class="rev-ach-chip build">Scheduled</span></div>';
+  var html = '<div class="rev-motive-row">';
+  if (pct >= 100) html += '<span class="rev-ach-chip beat">&#127942; Target Beat</span>';
+  else if (pct >= 80) html += '<span class="rev-ach-chip track">&#9889; On Track</span>';
+  else html += '<span class="rev-ach-chip build">'+(rows.length?'Building':'Ready')+'</span>';
+  if (streak >= 3) html += '<span class="rev-ach-chip streak">&#127942; '+streak+' Month Streak</span>';
+  html += '</div>';
+  return html;
+}
+
+function renderRevenueMotivation(counsellor, annualTarget) {
+  var wrap = document.getElementById('rev-month-preview');
+  if (!wrap) return;
+  var monthKey = revenueCurrentMonthKey();
+  var month = revenueMonths().filter(function(m){ return m.key === monthKey; })[0] || revenueMonths()[0];
+  var leaders = revLeaderboardForMonth(monthKey);
+  var meKey = revCanonical(counsellor);
+  var myIndex = leaders.findIndex(function(r){ return revCanonical(r.counsellor) === meKey; });
+  var mine = myIndex >= 0 ? leaders[myIndex] : {counsellor:counsellor, achievedGst:0, studentCount:0, runRateGst:revMonthlyTargetForCounsellor(counsellor), pct:0};
+  var next = myIndex > 0 ? leaders[myIndex-1] : null;
+  var centre = (allowedCentres && allowedCentres.length) ? allowedCentres[0] : '';
+  var runRate = mine.runRateGst || (annualTarget ? Math.round(annualTarget / revenueMonths().length) : 0);
+  var streak = revCurrentStreak(counsellor, centre, runRate);
+  var activeLeaders = leaders.filter(function(r){ return Number(r.achievedGst)>0; }).slice(0,3);
+  var leaderHtml = activeLeaders.length ? activeLeaders.map(function(r,idx){
+    return '<div class="rev-leader-row">'+
+      '<div class="rev-leader-rank">#'+(idx+1)+'</div>'+
+      '<div><div class="rev-leader-name">'+escC(r.counsellor)+'</div><div class="rev-leader-meta">'+escC(r.pct||0)+'% of monthly run-rate</div></div>'+
+      '<div class="rev-leader-amt">'+money(r.achievedGst||0)+'</div>'+
+    '</div>';
+  }).join('') : '<div class="rev-preview-sub">No revenue has been entered for '+escC(month.label)+' yet.</div>';
+  var rankText = myIndex >= 0 && Number(mine.achievedGst)>0 ? '#'+(myIndex+1) : 'Unranked';
+  var gapText = next ? money(Math.max((Number(next.achievedGst)||0)-(Number(mine.achievedGst)||0)+1,0))+' from next rank' : (myIndex===0&&Number(mine.achievedGst)>0 ? 'Leading this month' : 'Enter revenue to join the board');
+  wrap.innerHTML =
+    '<div class="rev-preview-panel">'+
+      '<div><div class="rev-preview-title">This Month Preview</div><div class="rev-preview-big">'+escC(month.label)+'</div><div class="rev-preview-sub">Monthly-only leaderboard for your visible centre.</div></div>'+
+      '<div><div class="rev-preview-title">Top Momentum</div><div class="rev-leader-list">'+leaderHtml+'</div></div>'+
+      '<div class="rev-personal-pulse"><div class="rev-preview-title">Your Pulse</div><div class="rev-preview-big">'+escC(rankText)+'</div><div class="rev-preview-sub">'+money(mine.achievedGst||0)+' this month &middot; '+escC(mine.pct||0)+'% run-rate</div><div class="rev-preview-sub">'+escC(gapText)+'</div><div class="rev-motive-row">'+(streak>=3?'<span class="rev-ach-chip streak">&#127942; '+streak+' Month Streak</span>':'<span class="rev-ach-chip build">Streak starts after 3 target-beat months</span>')+'</div></div>'+
+    '</div>';
+}
+
 function renderRevenueMonthCards(counsellor) {
   var grid = document.getElementById('rev-month-grid');
   if (!grid) return;
@@ -2286,6 +2426,7 @@ function renderRevenueMonthCards(counsellor) {
     var status = !open ? 'Future' : (saved ? (variance >= 0 ? 'Ahead' : 'Behind') : 'Open');
     var state = !open ? 'future' : (saved ? (variance >= 0 ? 'saved' : 'behind') : 'open');
     var barWidth = Math.max(0, Math.min(pct, 100));
+    var streak = revStreakEndingAt(counsellor, designatedCentre, runRate, m.key);
     html +=
       '<div class="rev-run-card '+state+'" id="rmc-'+escC(m.key)+'">'+
         '<div class="rev-run-head"><div class="rev-run-title">'+escC(m.label)+'</div><div class="rev-run-pct">'+escC(pct)+'%</div></div>'+
@@ -2296,6 +2437,7 @@ function renderRevenueMonthCards(counsellor) {
           '<div>Variance<strong>'+money(Math.abs(variance))+'</strong></div>'+
           '<div>Status<strong>'+escC(status)+'</strong></div>'+
         '</div>'+
+        revAchievementChips(open, rows, pct, streak)+
         (saved ? renderRevenueSavedBreakup(rows, designatedCentre, counsellor) : '')+
         (open && saved ? '<div class="rev-run-actions"><button type="button" class="rev-run-toggle" onclick="revToggleEntry(this)">Revise '+escC(m.label)+'</button></div>'+renderRevenueEntryPanel(m, designatedCentre, otherDefault, rows, true) : '')+
         (open && !saved ? '<div class="rev-run-actions"><button type="button" class="rev-run-toggle" onclick="revToggleEntry(this)">Enter / Save '+escC(m.label)+'</button></div>'+renderRevenueEntryPanel(m, designatedCentre, otherDefault) : '')+
@@ -2579,6 +2721,16 @@ function revApplySavedMonthlyRows(rows, counsellor, assignedCentre, monthKey) {
   revenueData = revenueData || {status:'ok', months:[], monthlyRows:[], targetRows:[], centreTargetRows:[], centres:[], counsellors:[], summary:{}};
   var existing = revenueData.monthlyRows || [];
   revenueData.monthlyRows = existing.filter(function(r){
+    return !(r.month === monthKey && revSameCounsellor(r.counsellor, counsellor) && r.assignedCentre === assignedCentre);
+  }).concat(rows.map(function(r){
+    return Object.assign({}, r, {
+      locked: true,
+      updatedBy: counsellor || 'Counselor',
+      updatedAt: new Date().toISOString()
+    });
+  }));
+  var previewExisting = revenueData.monthlyPreviewRows || revenueData.monthlyRows || [];
+  revenueData.monthlyPreviewRows = previewExisting.filter(function(r){
     return !(r.month === monthKey && revSameCounsellor(r.counsellor, counsellor) && r.assignedCentre === assignedCentre);
   }).concat(rows.map(function(r){
     return Object.assign({}, r, {

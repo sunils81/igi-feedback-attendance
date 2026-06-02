@@ -35,7 +35,7 @@ const SH_REVENUE_TARGETS = 'Revenue_Targets';
 const SH_REVENUE_CENTRE_TARGETS = 'Revenue_Centre_Targets';
 const SH_REVENUE_ANNUAL_TARGETS = 'Revenue_Annual_Targets';
 const SH_REVENUE_MONTHLY_ACHIEVED = 'Revenue_Monthly_Achieved';
-const REVENUE_BACKEND_VERSION = 'revenue-save-split-2026-06-02';
+const REVENUE_BACKEND_VERSION = 'revenue-lock-students-split-2026-06-02';
 const SH_USER_CREDENTIALS = 'User_Credentials';
 const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
   'RTGS / Bank Transfer','Collexo (Online)','Cheque','Demand Draft'];                 // % pass mark
@@ -2399,7 +2399,7 @@ function revenueMonthKey(value) {
 }
 
 function revenueBlankBucket() {
-  return {targetCourse:0,targetGst:0,achievedCourse:0,achievedGst:0};
+  return {targetCourse:0,targetGst:0,achievedCourse:0,achievedGst:0,studentCount:0,designatedCourse:0,designatedGst:0,otherCentreCourse:0,otherCentreGst:0,corporateCourse:0,corporateGst:0};
 }
 
 function revenueAddBucket(map,key) {
@@ -2489,12 +2489,24 @@ function buildRevenueDashboard(ss,p) {
   });
 
   var achievedCourse=0,achievedGst=0;
+  var studentCount=0, designatedCourse=0, designatedGst=0, otherCentreCourse=0, otherCentreGst=0, corporateCourse=0, corporateGst=0;
   achievedRows.forEach(function(r){
     var viewCentre=p.viewMode==='business'?r.businessCentre:r.assignedCentre;
     var bm=revenueAddBucket(byMonth,r.month), bc=revenueAddBucket(byCounsellor,r.counsellor), bViewCentre=revenueAddBucket(byCentre,viewCentre), bBusiness=revenueAddBucket(byBusinessCentre,r.businessCentre);
-    [bm,bc,bViewCentre,bBusiness].forEach(function(b){b.achievedGst+=r.achievedGst;b.achievedCourse+=r.achievedCourse;});
+    var isCorporate=String(r.businessType||'').toLowerCase().indexOf('corporate')>=0||String(r.businessCentre||'').toLowerCase().indexOf('corporate')>=0;
+    var isOtherCentre=!isCorporate&&r.assignedCentre!==r.businessCentre;
+    [bm,bc,bViewCentre,bBusiness].forEach(function(b){
+      b.achievedGst+=r.achievedGst;b.achievedCourse+=r.achievedCourse;b.studentCount+=r.studentCount;
+      if(isCorporate){b.corporateCourse+=r.achievedCourse;b.corporateGst+=r.achievedGst;}
+      else if(isOtherCentre){b.otherCentreCourse+=r.achievedCourse;b.otherCentreGst+=r.achievedGst;}
+      else{b.designatedCourse+=r.achievedCourse;b.designatedGst+=r.achievedGst;}
+    });
     achievedGst+=r.achievedGst;
     achievedCourse+=r.achievedCourse;
+    studentCount+=r.studentCount;
+    if(isCorporate){corporateCourse+=r.achievedCourse;corporateGst+=r.achievedGst;}
+    else if(isOtherCentre){otherCentreCourse+=r.achievedCourse;otherCentreGst+=r.achievedGst;}
+    else{designatedCourse+=r.achievedCourse;designatedGst+=r.achievedGst;}
     if(r.assignedCentre!==r.businessCentre)crossRows.push(r);
   });
   var monthRows=months.map(function(m){
@@ -2502,7 +2514,7 @@ function buildRevenueDashboard(ss,p) {
     return Object.assign({month:m.key,label:m.label},b);
   });
   return {status:'ok',backendVersion:REVENUE_BACKEND_VERSION,period:period,months:monthRows,centreTargetRows:centreTargetRows,targetRows:targetRows,monthlyRows:achievedRows,crossRows:crossRows,
-    summary:{targetCourse:totalTargetCourse,targetGst:totalTargetGst,achievedCourse:achievedCourse,achievedGst:achievedGst,monthlyTargetCourse:monthlyTargetCourse,monthlyTargetGst:monthlyTargetGst,monthsInPeriod:fullMonths.length,centreTargetCourse:centreTargetCourse,centreTargetGst:centreTargetGst,splitTargetCourse:splitTargetCourse,splitTargetGst:splitTargetGst},
+    summary:{targetCourse:totalTargetCourse,targetGst:totalTargetGst,achievedCourse:achievedCourse,achievedGst:achievedGst,studentCount:studentCount,designatedCourse:designatedCourse,designatedGst:designatedGst,otherCentreCourse:otherCentreCourse,otherCentreGst:otherCentreGst,corporateCourse:corporateCourse,corporateGst:corporateGst,monthlyTargetCourse:monthlyTargetCourse,monthlyTargetGst:monthlyTargetGst,monthsInPeriod:fullMonths.length,centreTargetCourse:centreTargetCourse,centreTargetGst:centreTargetGst,splitTargetCourse:splitTargetCourse,splitTargetGst:splitTargetGst},
     counsellors:Object.keys(byCounsellor).sort().map(function(k){return Object.assign({counsellor:k},byCounsellor[k]);}),
     centres:Object.keys(byCentre).sort().map(function(k){return Object.assign({centre:k},byCentre[k]);}),
     businessCentres:Object.keys(byBusinessCentre).sort().map(function(k){return Object.assign({centre:k},byBusinessCentre[k]);})};
@@ -2547,11 +2559,13 @@ function getRevenueMonthlyAchievedRows(ss) {
   var sh=ss.getSheetByName(SH_REVENUE_MONTHLY_ACHIEVED);
   if(!sh||sh.getLastRow()<2)return [];
   var map=sheetHeaderMap(sh);
-  return sh.getRange(2,1,sh.getLastRow()-1,Math.max(sh.getLastColumn(),11)).getValues().map(function(r){
+  return sh.getRange(2,1,sh.getLastRow()-1,Math.max(sh.getLastColumn(),13)).getValues().map(function(r){
     var rawType=rowCell(r,map,'Business Type',5);
     var oldShape=typeof rawType==='number'||(rawType!==''&&String(rawType||'').match(/^\d+(\.\d+)?$/));
     var course=oldShape?r[5]:rowCell(r,map,'Achieved Course Fee',6);
     var gst=oldShape?r[6]:rowCell(r,map,'Achieved Course Fee + GST',7);
+    var newerShape=map['Student Count']!==undefined;
+    if(newerShape){course=rowCell(r,map,'Achieved Course Fee',7);gst=rowCell(r,map,'Achieved Course Fee + GST',8);}
     return {
       month:String(rowCell(r,map,'Month',0)||'').slice(0,7),
       period:String(rowCell(r,map,'Period',1)||'2026-27').trim(),
@@ -2561,9 +2575,11 @@ function getRevenueMonthlyAchievedRows(ss) {
       businessType:oldShape?'Centre Revenue':String(rawType||'Centre Revenue').trim(),
       achievedCourse:Number(course)||0,
       achievedGst:Number(gst)||0,
-      notes:oldShape?r[7]||'':rowCell(r,map,'Notes',8)||'',
-      updatedBy:oldShape?r[8]||'':rowCell(r,map,'Updated By',9)||'',
-      updatedAt:oldShape?r[9]||'':rowCell(r,map,'Updated At',10)||''
+      studentCount:Number(newerShape?rowCell(r,map,'Student Count',6):0)||0,
+      locked:String((newerShape?rowCell(r,map,'Locked',11):'Y')||'Y').trim()!=='N',
+      notes:oldShape?r[7]||'':rowCell(r,map,'Notes',newerShape?9:8)||'',
+      updatedBy:oldShape?r[8]||'':rowCell(r,map,'Updated By',newerShape?10:9)||'',
+      updatedAt:oldShape?r[9]||'':rowCell(r,map,'Updated At',newerShape?12:10)||''
     };
   }).filter(function(r){return r.month&&r.period&&r.counsellor&&r.assignedCentre&&r.businessCentre;});
 }
@@ -2612,14 +2628,20 @@ function saveRevenueAnnualTargetRows(ss,rows,updatedBy) {
 function saveRevenueMonthlyAchievedRows(ss,rows,updatedBy,scope) {
   var sh=ss.getSheetByName(SH_REVENUE_MONTHLY_ACHIEVED);
   ensureRevenueMonthlyAchievedHeaders(sh);
+  var lockedMonths={};
+  getRevenueMonthlyAchievedRows(ss).forEach(function(r){
+    if(r.locked)lockedMonths[r.month+'|'+r.period+'|'+revenueNameAliases(r.counsellor)[0]+'|'+r.assignedCentre]=true;
+  });
   if(scope&&scope.period&&scope.counsellor&&scope.assignedCentre&&scope.months&&scope.months.length&&sh.getLastRow()>1){
     var deleteMonths={};
     scope.months.forEach(function(m){deleteMonths[String(m).slice(0,7)]=true;});
-    var scoped=sh.getRange(2,1,sh.getLastRow()-1,6).getValues();
+    var scoped=sh.getRange(2,1,sh.getLastRow()-1,Math.max(sh.getLastColumn(),12)).getValues();
+    var map=sheetHeaderMap(sh);
     for(var i=scoped.length-1;i>=0;i--){
       var r=scoped[i];
       var month=String(r[0]).slice(0,7);
-      if(deleteMonths[month]&&String(r[1])===String(scope.period)&&revenueSameCounsellor(r[2],scope.counsellor)&&String(r[3])===String(scope.assignedCentre)){
+      var locked=String(rowCell(r,map,'Locked',11)||'Y').trim()!=='N';
+      if(!locked&&deleteMonths[month]&&String(r[1])===String(scope.period)&&revenueSameCounsellor(r[2],scope.counsellor)&&String(r[3])===String(scope.assignedCentre)){
         sh.deleteRow(i+2);
       }
     }
@@ -2632,7 +2654,9 @@ function saveRevenueMonthlyAchievedRows(ss,rows,updatedBy,scope) {
     var month=String(r.month||'').slice(0,7), period=String(r.period||'2026-27').trim(), counsellor=String(r.counsellor||'').trim(), assigned=String(r.assignedCentre||r.centre||'').trim(), business=String(r.businessCentre||assigned).trim();
     var businessType=String(r.businessType||'Centre Revenue').trim();
     if(!month||!period||!counsellor||!assigned||!business)return;
-    var row=[month,period,counsellor,assigned,business,businessType,Number(r.achievedCourse)||0,Number(r.achievedGst)||0,r.notes||'',updatedBy,new Date().toISOString()];
+    var lockKey=month+'|'+period+'|'+revenueNameAliases(counsellor)[0]+'|'+assigned;
+    if(lockedMonths[lockKey])return;
+    var row=[month,period,counsellor,assigned,business,businessType,Number(r.studentCount)||0,Number(r.achievedCourse)||0,Number(r.achievedGst)||0,r.notes||'',updatedBy,'Y',new Date().toISOString()];
     var key=month+'|'+period+'|'+counsellor+'|'+assigned+'|'+business+'|'+businessType;
     if(rowMap[key])sh.getRange(rowMap[key],1,1,row.length).setValues([row]);
     else{sh.appendRow(row);rowMap[key]=sh.getLastRow();}
@@ -2700,14 +2724,22 @@ function ensureRevenueAnnualTargetHeaders(sh) {
   }
 }
 function ensureRevenueMonthlyAchievedHeaders(sh) {
-  const h=['Month','Period','Counsellor','Assigned Centre','Business Centre','Business Type','Achieved Course Fee','Achieved Course Fee + GST','Notes','Updated By','Updated At'];
+  const h=['Month','Period','Counsellor','Assigned Centre','Business Centre','Business Type','Student Count','Achieved Course Fee','Achieved Course Fee + GST','Notes','Updated By','Locked','Updated At'];
   if (sh.getLastRow()===0 || sh.getRange(1,1).getValue()==='') {
     sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
     sh.setFrozenRows(1);
     return;
   }
-  const current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);
-  if (current[0]!==h[0] || current[5]!==h[5] || current[10]!==h[10]) {
+  let current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);
+  if (current[6]==='Achieved Course Fee') {
+    sh.insertColumnBefore(7);
+    current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);
+  }
+  if (current[11]==='Updated At' || current[11]==='') {
+    sh.insertColumnBefore(12);
+    current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);
+  }
+  if (current[0]!==h[0] || current[5]!==h[5] || current[12]!==h[12]) {
     sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
     sh.setFrozenRows(1);
   }

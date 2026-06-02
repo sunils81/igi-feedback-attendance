@@ -218,6 +218,26 @@
 .revenue-save-meta strong{color:var(--navy)}
 .revenue-alert{display:none;border-radius:8px;padding:9px 11px;background:#FFF9E6;border:1px solid rgba(201,168,76,.3);font-size:12px;color:var(--navy);margin-top:10px}
 .revenue-alert.show{display:block}
+
+/* ── Admin target panel ── */
+.rev-target-panel{background:var(--white);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:0}
+.rev-target-panel-head{background:var(--navy);padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
+.rev-target-panel-head h3{font-size:14px;font-weight:700;color:var(--white);margin:0}
+.rev-target-panel-head .sub{font-size:11px;color:rgba(255,255,255,.5);margin-top:2px}
+.rev-target-table{width:100%;border-collapse:collapse;font-size:12px}
+.rev-target-table th{background:var(--off);text-align:left;font-size:9px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--border)}
+.rev-target-table td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+.rev-target-table tr:last-child td{border-bottom:none}
+.rev-target-table tr:hover td{background:var(--gold-pale)}
+.rev-target-input{width:130px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-family:"DM Mono",monospace;font-size:12px;color:var(--navy);background:var(--white);text-align:right}
+.rev-target-input:focus{outline:none;border-color:var(--gold)}
+.rev-target-input[readonly]{background:var(--off);color:var(--muted);cursor:default}
+.rev-target-gst{font-family:"DM Mono",monospace;font-size:11px;color:var(--muted)}
+.rev-target-gst b{color:var(--navy)}
+.rev-target-locked{font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;border-radius:999px;padding:2px 8px;background:#E0F5EA;color:#1a7a3c}
+.rev-target-missing{font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;border-radius:999px;padding:2px 8px;background:#FEF2F2;color:var(--red)}
+.rev-target-save-row{padding:12px 16px;background:var(--off);border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;align-items:center}
+.rev-target-meta{font-size:11px;color:var(--muted);flex:1}
 .account-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;margin-bottom:12px}
 .password-card{display:none;border:1px solid rgba(201,168,76,.35);background:#FFF9E6}
 .password-card.required{display:block}
@@ -555,20 +575,18 @@
       <select id="rev-metric" style="display:none"><option value="gst">Course Fee + GST</option></select>
     </div>
 
-    <!-- ADMIN: Centre target + Rollups (hidden from normal counsellors) -->
+    <!-- ADMIN: Annual target setter + Rollups -->
     <div class="card" id="rev-centre-target-card">
-      <div class="section-tag">Centre Target</div>
-      <h2>Overall Centre Annual Target</h2>
-      <p class="sub">Enter the centre-level target once. The counsellor split is compared against this.</p>
-      <div class="grid2">
-        <div class="field"><label>Centre</label><select id="rev-centre-target-centre" onchange="renderRevenueCentreTargetEditor()"></select></div>
-        <div class="field"><label>Period</label><input type="text" value="2026-27" readonly></div>
+      <div class="section-tag">Admin — Annual Targets</div>
+      <h2>Set Counsellor Annual Targets</h2>
+      <p class="sub">Set the annual course fee target for each counsellor. The system auto-calculates GST (18%). Targets lock after first save — contact admin to revise.</p>
+      <div id="rev-target-panel-wrap">
+        <div style="font-size:12px;color:var(--muted);padding:8px 0">Loading targets…</div>
       </div>
-      <div id="rev-centre-target-editor"></div>
-      <div class="revenue-alert" id="rev-split-alert"></div>
-      <div style="margin-top:12px">
-        <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="saveRevenueCentreTarget()">Save Centre Target</button>
-      </div>
+      <!-- hidden selects kept for JS compat -->
+      <select id="rev-centre-target-centre" style="display:none" onchange="renderRevenueCentreTargetEditor()"></select>
+      <div id="rev-centre-target-editor" style="display:none"></div>
+      <div class="revenue-alert" id="rev-split-alert" style="display:none"></div>
     </div>
 
     <div class="card" id="rev-rollups-card">
@@ -576,7 +594,7 @@
       <h2>Centre & Counsellor Overview</h2>
       <div id="rev-rollups"></div>
       <div style="margin-top:12px">
-        <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="downloadRevenueCsv()">Download CSV</button>
+        <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="downloadRevenueCsv()">&#8595; Download CSV</button>
       </div>
     </div>
 
@@ -1926,12 +1944,19 @@ function renderMyRevenue() {
   var titleEl = document.getElementById('rev-my-title');
   var subEl = document.getElementById('rev-my-sub');
   if(titleEl) titleEl.textContent = me ? me+"'s Revenue — 2026-27" : "Revenue Dashboard — 2026-27";
-  if(subEl) subEl.textContent = target
-    ? 'Your annual target is '+money(target)+'. Enter monthly achievements below — each month locks after saving.'
-    : 'No annual target set yet. Contact admin to set your target for 2026-27.';
+  if(subEl) {
+    if (target) {
+      subEl.textContent = 'Your annual target is '+money(target)+' (incl. GST). Enter monthly revenue below — each month locks after saving.';
+      subEl.style.color = '';
+    } else {
+      subEl.innerHTML = '⚠️ Annual target not set yet. <strong>Ask your admin (Sunil) to log in and set your target.</strong> You can still enter monthly revenue now.';
+      subEl.style.color = '#8A6020';
+    }
+  }
 
   // KPI tiles
-  var t=document.getElementById('rev-kpi-target'); if(t) t.textContent = target ? money(target) : '—';
+  var t=document.getElementById('rev-kpi-target'); if(t) t.textContent = target ? money(target) : 'Not set';
+  var tkpi = t && t.closest('.rev-kpi'); if(tkpi) tkpi.style.borderColor = target ? '' : 'rgba(201,74,74,.3)';
   var a=document.getElementById('rev-kpi-achieved'); if(a) a.textContent = money(achieved);
   var p=document.getElementById('rev-kpi-pct'); if(p) p.textContent = target ? pct+'% of annual target' : 'No target set';
   var g=document.getElementById('rev-kpi-gap'); if(g) g.textContent = money(gap);
@@ -2331,10 +2356,17 @@ function revSyncCentreGst() {
 }
 
 function renderRevenueRollups() {
+  // Render the inline target editor for admin
+  renderAdminTargetPanel();
+  // Rollup table
   var wrap = document.getElementById('rev-rollups');
   if (!wrap || !revenueData) return;
-  var centres = revenueData.centres || [];
+  var centres   = revenueData.centres   || [];
   var counsellors = revenueData.counsellors || [];
+  if (!centres.length && !counsellors.length) {
+    wrap.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px 0">No data yet for this period.</div>';
+    return;
+  }
   var html = '<table class="compact-table"><thead><tr><th>Name</th><th>Target (GST)</th><th>Achieved (GST)</th><th>Gap</th><th>%</th></tr></thead><tbody>';
   centres.forEach(function(r) {
     var pct = r.targetGst ? Math.round(r.achievedGst/r.targetGst*100) : (r.achievedGst?100:0);
@@ -2345,9 +2377,145 @@ function renderRevenueRollups() {
     html += '<tr><td>'+escC(r.counsellor)+'</td><td>'+money(r.targetGst)+'</td><td>'+money(r.achievedGst)+'</td><td>'+money(Math.abs(r.achievedGst-r.targetGst))+'</td><td>'+pct+'%</td></tr>';
   });
   wrap.innerHTML = html + '</tbody></table>';
-  // also populate admin annual target editor selects
-  renderRevenueTargetEditor();
 }
+
+// All counsellors with their designated centres for target setting
+function adminTargetRows() {
+  return [
+    {counsellor:'Anuradha',   centre:'Mumbai'},
+    {counsellor:'Bianca',     centre:'Mumbai'},
+    {counsellor:'Omkar Kadam',centre:'Mumbai'},
+    {counsellor:'Sunita',     centre:'Delhi'},
+    {counsellor:'Arpita',     centre:'Kolkata'},
+    {counsellor:'Rohit',      centre:'Surat'},
+    {counsellor:'Preethy',    centre:'Chennai'},
+    {counsellor:'Nadiya',     centre:'Bangalore'},
+    {counsellor:'Rajini',     centre:'Hyderabad'},
+    {counsellor:'Kripa',      centre:'Jaipur'},
+    {counsellor:'Arjun Mistry', centre:'Ahmedabad'},
+    {counsellor:'Piyush Ahuja', centre:'Lucknow'}
+  ];
+}
+
+function renderAdminTargetPanel() {
+  var wrap = document.getElementById('rev-target-panel-wrap');
+  if (!wrap || !isAdmin) return;
+  var tmap = {};
+  ((revenueData && revenueData.targetRows)||[]).forEach(function(r){
+    tmap[revCanonical(r.counsellor)+'|'+r.centre] = r;
+  });
+  var rows = adminTargetRows();
+  var html =
+    '<div class="rev-target-panel">'+
+      '<div class="rev-target-panel-head">'+
+        '<div><h3>2026-27 Annual Targets — Course Fee + GST</h3>'+
+          '<div class="sub">Enter course fee (excl. GST). System adds 18% automatically. Targets lock after first save.</div>'+
+        '</div>'+
+      '</div>'+
+      '<table class="rev-target-table">'+
+        '<thead><tr>'+
+          '<th>Counsellor</th><th>Centre</th>'+
+          '<th>Annual Course Fee &#8377;</th>'+
+          '<th>Incl. GST (auto)</th>'+
+          '<th>Status</th>'+
+        '</tr></thead>'+
+        '<tbody>';
+  rows.forEach(function(row) {
+    var key  = revCanonical(row.counsellor)+'|'+row.centre;
+    var saved = tmap[key] || {};
+    var locked = !!(saved.updatedAt || Number(saved.targetCourse) || Number(saved.targetGst));
+    var courseFee = locked ? (Number(saved.targetCourse)||0) : '';
+    var gstAmt    = locked ? (Number(saved.targetGst)||0)    : 0;
+    var statusHtml = locked
+      ? '<span class="rev-target-locked">&#10003; Set</span>'
+      : '<span class="rev-target-missing">Not set</span>';
+    html +=
+      '<tr data-counsellor="'+escC(row.counsellor)+'" data-centre="'+escC(row.centre)+'">'+
+        '<td><strong>'+escC(row.counsellor)+'</strong></td>'+
+        '<td>'+escC(row.centre)+'</td>'+
+        '<td>'+
+          '<input type="number" class="rev-target-input rta-course" min="0" placeholder="e.g. 6500000"'+
+            (locked ? ' readonly' : '')+
+            ' value="'+escC(courseFee)+'"'+
+            ' oninput="revTargetSyncGst(this)"'+
+          '>'+
+        '</td>'+
+        '<td><span class="rev-target-gst rta-gst-label">'+
+          (gstAmt ? '<b>'+money(gstAmt)+'</b>' : '<span style="color:var(--muted)">—</span>')+
+        '</span></td>'+
+        '<td>'+statusHtml+'</td>'+
+      '</tr>';
+  });
+  html +=
+        '</tbody>'+
+      '</table>'+
+      '<div class="rev-target-save-row">'+
+        '<span class="rev-target-meta" id="rev-target-save-meta"></span>'+
+        '<button class="btn btn-outline" style="width:auto;padding:8px 16px;font-size:12px" onclick="saveAllAdminTargets()">Save Targets</button>'+
+      '</div>'+
+    '</div>';
+  wrap.innerHTML = html;
+  // Sync GST display for pre-filled values
+  Array.from(wrap.querySelectorAll('.rta-course')).forEach(function(inp){ if(inp.value) revTargetSyncGst(inp); });
+}
+
+function revTargetSyncGst(input) {
+  var tr = input.closest('tr');
+  if (!tr) return;
+  var label = tr.querySelector('.rta-gst-label');
+  if (!label) return;
+  var gst = revenueGst(input.value || 0);
+  label.innerHTML = input.value ? '<b>'+money(gst)+'</b>' : '<span style="color:var(--muted)">\u2014</span>';
+}
+
+function saveAllAdminTargets() {
+  if (!isAdmin) return;
+  var wrap  = document.getElementById('rev-target-panel-wrap');
+  var meta  = document.getElementById('rev-target-save-meta');
+  var rows  = [];
+  var tmap  = {};
+  ((revenueData && revenueData.targetRows)||[]).forEach(function(r){
+    tmap[revCanonical(r.counsellor)+'|'+r.centre] = r;
+  });
+  Array.from(wrap.querySelectorAll('tr[data-counsellor]')).forEach(function(tr) {
+    var counsellor = tr.getAttribute('data-counsellor');
+    var centre     = tr.getAttribute('data-centre');
+    var inp        = tr.querySelector('.rta-course');
+    if (!inp || inp.readOnly || !inp.value) return; // skip locked or empty
+    var course = Number(inp.value)||0;
+    if (!course) return;
+    var key = revCanonical(counsellor)+'|'+centre;
+    if (tmap[key] && (Number(tmap[key].targetCourse)||0)) return; // already locked
+    rows.push({period:'2026-27', counsellor:counsellor, centre:centre,
+      targetCourse:course, targetGst:revenueGst(course), notes:''});
+  });
+  if (!rows.length) {
+    if (meta) meta.textContent = 'No new targets to save. Locked targets cannot be changed here.';
+    return;
+  }
+  if (meta) meta.textContent = 'Saving '+rows.length+' target'+(rows.length===1?'':'s')+'\u2026';
+  var params = Object.assign(revenueRequestParams(), {
+    action:'saveRevenueTargets',
+    centreTargets:'[]',
+    targets:JSON.stringify(rows),
+    monthlyRows:'[]', monthlyScope:'null',
+    updatedBy:'Admin'
+  });
+  gasGet(params, function(e,d) {
+    if (e||!d||d.status!=='ok') {
+      if(meta) meta.textContent = 'Save failed. Please try again.';
+      showToast('Could not save targets.','error');
+      return;
+    }
+    showToast('Targets saved for '+rows.length+' counsellor'+(rows.length===1?'':'s')+' \u2713');
+    if(meta) meta.textContent = 'Saved '+rows.length+' target'+(rows.length===1?'':'s')+'.';
+    revenueData = null;
+    loadRevenueDashboard();
+  });
+}
+
+function renderRevenueCentreTargetEditor() { /* stub — centre targets handled in panel */ }
+
 
 function renderRevenueTargetEditor() {
   // Admin can use hidden inputs to set individual counsellor annual targets

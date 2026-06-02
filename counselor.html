@@ -553,7 +553,7 @@
 
     <!-- hidden meta for version tracking -->
     <div class="revenue-save-meta" id="rev-save-meta" style="display:none"></div>
-    <div class="err-box" id="rev-err" style="margin:0 0 8px"></div>
+    <div class="err-box" id="rev-err" style="margin:0 0 8px;display:none"></div>
 
     <!-- Legacy hidden selects (admin annual target editor reuses these) -->
     <select id="rev-edit-counsellor" style="display:none"></select>
@@ -1866,9 +1866,17 @@ function loadRevenueDashboard() {
   grid.innerHTML = loadingState('Loading revenue data…');
   gasGet(revenueRequestParams(), function(e,d) {
     if (e || !d || d.status !== 'ok') {
-      grid.innerHTML = emptyState('!','Revenue data unavailable','Backend error. Please refresh and try again.');
+      // Backend error — render all month cards as open so counsellor can still enter data
+      revenueData = { status:'ok', months:[], monthlyRows:[], targetRows:[],
+        centreTargetRows:[], centres:[], counsellors:[],
+        summary:{targetGst:0,achievedGst:0,studentCount:0} };
+      var eb = document.getElementById('rev-err');
+      if (eb) { eb.style.display='block'; eb.textContent='⚠ Saved data could not be loaded (backend unreachable). You can still enter and save revenue — the form will work normally.'; }
+      renderMyRevenue();
       return;
     }
+    var eb = document.getElementById('rev-err');
+    if (eb) eb.style.display='none';
     revenueData = d;
     renderMyRevenue();
     if (isAdmin) { renderRevenueCentreTargetEditor(); renderRevenueRollups(); }

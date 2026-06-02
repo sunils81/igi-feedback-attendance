@@ -238,6 +238,18 @@
 .rev-target-missing{font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;border-radius:999px;padding:2px 8px;background:#FEF2F2;color:var(--red)}
 .rev-target-save-row{padding:12px 16px;background:var(--off);border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;align-items:center}
 .rev-target-meta{font-size:11px;color:var(--muted);flex:1}
+.admin-only{display:none}
+.admin-filter-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin:12px 0}
+.admin-filter-row .field{min-width:180px;margin-bottom:0}
+.admin-table-wrap{overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--white);margin-top:10px}
+.admin-table{width:100%;border-collapse:collapse;font-size:12px;min-width:860px}
+.admin-table th{position:sticky;top:0;background:var(--navy);color:var(--gold);text-align:left;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:9px 10px}
+.admin-table td{border-bottom:1px solid var(--border);padding:9px 10px;vertical-align:middle;color:var(--navy)}
+.admin-table tr:nth-child(even) td{background:var(--off)}
+.admin-table strong{font-family:"DM Mono",monospace}
+.admin-action-row{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
+.admin-mini-note{font-size:11px;color:var(--muted);line-height:1.4;margin-top:8px}
+.admin-target-split{display:grid;grid-template-columns:1fr;gap:14px}
 .account-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;margin-bottom:12px}
 .password-card{display:none;border:1px solid rgba(201,168,76,.35);background:#FFF9E6}
 .password-card.required{display:block}
@@ -440,6 +452,12 @@
 
   <!-- TAB 5: REPORTS -->
   <div id="t-reports" class="tab-content">
+    <div class="card admin-only" id="admin-report-card">
+      <div class="section-tag">Admin Overview</div>
+      <h2>Attendance & Test Records</h2>
+      <p class="sub">Centre-wise attendance health, test completion, and low-score watchlist.</p>
+      <div id="admin-report-wrap"><div class="spinner-wrap"><div class="spinner"></div><p>Loading admin records...</p></div></div>
+    </div>
     <div class="card">
       <div class="section-tag">Day-wise Attendance</div>
       <h2>Batch Report</h2>
@@ -481,6 +499,12 @@
 
   <!-- TAB 6: FEES -->
   <div id="t-fees" class="tab-content">
+    <div class="card admin-only" id="admin-fee-card">
+      <div class="section-tag">Admin Overview</div>
+      <h2>Fee Collection Summary</h2>
+      <p class="sub">Centre and batch collection status across paid, partial, pending, and overdue records.</p>
+      <div id="admin-fee-wrap"><div class="spinner-wrap"><div class="spinner"></div><p>Loading fee collection summary...</p></div></div>
+    </div>
     <div class="card">
       <div class="section-tag">Fee Collection</div>
       <h2>Batch Fees</h2>
@@ -540,9 +564,15 @@
 
   <!-- TAB 7: REVENUE -->
   <div id="t-revenue" class="tab-content">
+    <div class="card admin-only" id="admin-dashboard-card">
+      <div class="section-tag">Admin Dashboard</div>
+      <h2>Centre Performance</h2>
+      <p class="sub">Revenue targets, fee collection, attendance, and test records across all centres.</p>
+      <div id="admin-dashboard-wrap"><div class="spinner-wrap"><div class="spinner"></div><p>Loading admin dashboard...</p></div></div>
+    </div>
 
     <!-- MY REVENUE: KPI + Cards -->
-    <div class="card">
+    <div class="card" id="rev-my-card">
       <div class="section-tag">My Revenue</div>
       <h2 id="rev-my-title">Revenue Dashboard</h2>
       <p class="sub" id="rev-my-sub">Loading your revenue data…</p>
@@ -578,8 +608,8 @@
     <!-- ADMIN: Annual target setter + Rollups -->
     <div class="card" id="rev-centre-target-card">
       <div class="section-tag">Admin — Annual Targets</div>
-      <h2>Set Counsellor Annual Targets</h2>
-      <p class="sub">Set the annual course fee target for each counsellor. The system auto-calculates GST (18%). Targets lock after first save — contact admin to revise.</p>
+      <h2>Set Centre & Counsellor Annual Targets</h2>
+      <p class="sub">Set branch-level centre targets separately from individual counsellor targets. GST is auto-calculated at 18%; saved targets require a revision reason before admin can change them.</p>
       <div id="rev-target-panel-wrap">
         <div style="font-size:12px;color:var(--muted);padding:8px 0">Loading targets…</div>
       </div>
@@ -692,6 +722,8 @@ let currentFeeStudent = null;
 let revenueInitialized = false;
 let revenueData = null;
 let revenuePendingSaveMeta = '';
+let adminDashboardData = null;
+let adminDashboardLoading = false;
 // REVENUE_FRONTEND_VERSION defined in revenue section below
 
 function escC(v) {
@@ -729,10 +761,18 @@ function doLogin() {
     applyCentreFilter();
     showScreen('s-main');
     applyPasswordChangeState();
+    applyAdminVisibility();
     loadBatchDropdowns();
     loadMyBatches();
     loadHolidayList();
+    if (isAdmin) loadAdminDashboard();
   });
+}
+
+function applyAdminVisibility() {
+  document.querySelectorAll('.admin-only').forEach(function(el){ el.style.display = isAdmin ? 'block' : 'none'; });
+  var myRev = document.getElementById('rev-my-card');
+  if (myRev) myRev.style.display = isAdmin ? 'none' : '';
 }
 
 function applyPasswordChangeState() {
@@ -826,6 +866,7 @@ function switchTab(id) {
   const idx = ['t-batches','t-students','t-mybatches','t-reports','t-fees','t-revenue','t-holidays'].indexOf(id);
   document.querySelectorAll('.tab')[idx].classList.add('active');
   if (id==='t-fees') {
+    if (isAdmin) loadAdminDashboard();
     var feeSel = document.getElementById('fee-batch');
     if (feeSel && feeSel.options.length <= 1) {
       if (allBatches && allBatches.length) {
@@ -853,6 +894,7 @@ function switchTab(id) {
     if (feeSel && feeSel.value) loadFeeOverview();
   }
   if (id==='t-reports') {
+    if (isAdmin) loadAdminDashboard();
     var sel = document.getElementById('rp-batch');
     if (sel && sel.options.length > 1) {
       // Batches already loaded — just auto-select first and show report
@@ -873,7 +915,7 @@ function switchTab(id) {
       });
     }
   }
-  if (id==='t-revenue') initRevenueTab();
+  if (id==='t-revenue') { initRevenueTab(); if (isAdmin) loadAdminDashboard(); }
   if (id==='t-holidays') loadHolidayList();
 }
 
@@ -1756,7 +1798,144 @@ function saveFeeRecord() {
     showToast('Fee record saved.');
     hideFeeForm();
     loadFeeOverview();
+    if (isAdmin) { adminDashboardData = null; loadAdminDashboard(true); }
   });
+}
+
+function loadAdminDashboard(force) {
+  if (!isAdmin) return;
+  if (adminDashboardLoading) return;
+  if (adminDashboardData && !force) { renderAdminDashboard(); return; }
+  adminDashboardLoading = true;
+  ['admin-dashboard-wrap','admin-fee-wrap','admin-report-wrap'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.innerHTML = loadingState('Loading admin dashboard...');
+  });
+  gasGet({action:'getAdminDashboard', isAdmin:'true', period:'2026-27'}, function(e,d) {
+    adminDashboardLoading = false;
+    if (e || !d || d.status !== 'ok') {
+      ['admin-dashboard-wrap','admin-fee-wrap','admin-report-wrap'].forEach(function(id){
+        var el=document.getElementById(id);
+        if(el) el.innerHTML = '<p style="color:var(--red);font-size:13px">Could not load admin dashboard.</p>';
+      });
+      return;
+    }
+    adminDashboardData = d;
+    renderAdminDashboard();
+  });
+}
+
+function adminPct(n,d) {
+  return d ? Math.round((Number(n)||0)/(Number(d)||1)*100) : ((Number(n)||0) ? 100 : 0);
+}
+
+function renderAdminDashboard() {
+  if (!isAdmin || !adminDashboardData) return;
+  renderAdminRevenueOverview();
+  renderAdminFeeOverview();
+  renderAdminReportOverview();
+}
+
+function renderAdminRevenueOverview() {
+  var wrap=document.getElementById('admin-dashboard-wrap');
+  if(!wrap) return;
+  var d=adminDashboardData, s=d.summary||{}, rows=d.centreRows||[];
+  var html =
+    '<div class="report-summary">'+
+      '<div class="report-stat"><div class="report-stat-value">'+escC(s.centres||0)+'</div><div class="report-stat-label">Centres</div></div>'+
+      '<div class="report-stat"><div class="report-stat-value">'+money(s.feeCollected||0)+'</div><div class="report-stat-label">Fee Collected</div></div>'+
+      '<div class="report-stat"><div class="report-stat-value">'+money(s.feeOutstanding||0)+'</div><div class="report-stat-label">Outstanding</div></div>'+
+    '</div>'+
+    '<div class="report-summary">'+
+      '<div class="report-stat"><div class="report-stat-value">'+escC(s.attendancePct||0)+'%</div><div class="report-stat-label">Avg Attendance</div></div>'+
+      '<div class="report-stat"><div class="report-stat-value">'+escC(s.tests||0)+'</div><div class="report-stat-label">Tests Recorded</div></div>'+
+      '<div class="report-stat"><div class="report-stat-value">'+escC(s.avgTestPct||0)+'%</div><div class="report-stat-label">Avg Test Score</div></div>'+
+    '</div>'+
+    '<div class="admin-table-wrap"><table class="admin-table"><thead><tr>'+
+      '<th>Centre</th><th>Centre Target</th><th>Counsellor Target Sum</th><th>Revenue Achieved</th><th>Revenue Gap</th><th>Fee Collected</th><th>Outstanding</th><th>Attendance</th><th>Tests</th>'+
+    '</tr></thead><tbody>';
+  html += rows.map(function(r){
+    var target=Number(r.targetGst)||0, achieved=Number(r.achievedGst)||0, gap=Math.max(target-achieved,0);
+    return '<tr>'+
+      '<td><strong>'+escC(r.centre)+'</strong><div style="font-size:10px;color:var(--muted)">'+escC(r.batches||0)+' batches · '+escC(r.students||0)+' fee records</div></td>'+
+      '<td><strong>'+money(target)+'</strong><div style="font-size:10px;color:var(--muted)">'+adminPct(achieved,target)+'% achieved</div></td>'+
+      '<td>'+money(r.counsellorTargetGst||0)+'</td>'+
+      '<td><strong style="color:#1a7a3c">'+money(achieved)+'</strong></td>'+
+      '<td><strong style="color:'+(gap?'var(--red)':'#1a7a3c')+'">'+money(gap)+'</strong></td>'+
+      '<td>'+money(r.feeCollected||0)+'</td>'+
+      '<td>'+money(r.feeOutstanding||0)+'</td>'+
+      '<td>'+escC(r.attendancePct||0)+'%</td>'+
+      '<td>'+escC(r.tests||0)+'</td>'+
+    '</tr>';
+  }).join('');
+  html += '</tbody></table></div>'+
+    '<div class="admin-action-row"><button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="downloadAdminDashboardCsv()">Download Admin CSV</button><button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="loadAdminDashboard(true)">Refresh</button></div>';
+  wrap.innerHTML = html;
+}
+
+function renderAdminFeeOverview() {
+  var wrap=document.getElementById('admin-fee-wrap');
+  if(!wrap) return;
+  var fee=(adminDashboardData&&adminDashboardData.fee)||{}, n=fee.national||{}, centres=fee.centres||[], batches=fee.batches||[];
+  var html =
+    '<div class="report-summary">'+
+      '<div class="report-stat"><div class="report-stat-value">'+money(n.expected||0)+'</div><div class="report-stat-label">Expected</div></div>'+
+      '<div class="report-stat"><div class="report-stat-value">'+money(n.collected||0)+'</div><div class="report-stat-label">Collected</div></div>'+
+      '<div class="report-stat"><div class="report-stat-value">'+money(n.outstanding||0)+'</div><div class="report-stat-label">Outstanding</div></div>'+
+    '</div>'+
+    '<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Centre</th><th>Collected</th><th>Outstanding</th><th>Overdue</th><th>Paid</th><th>Partial</th><th>Pending</th><th>Students</th></tr></thead><tbody>'+
+    centres.sort(function(a,b){return String(a.centre).localeCompare(String(b.centre));}).map(function(c){
+      return '<tr><td><strong>'+escC(c.centre)+'</strong></td><td>'+money(c.collected||0)+'</td><td>'+money(c.outstanding||0)+'</td><td>'+money(c.overdue||0)+'</td><td>'+escC(c.paid||0)+'</td><td>'+escC(c.partial||0)+'</td><td>'+escC(c.pending||0)+'</td><td>'+escC(c.students||0)+'</td></tr>';
+    }).join('')+
+    '</tbody></table></div>'+
+    '<div class="admin-mini-note">Batch fee records remain editable below through the existing batch selector.</div>';
+  if(batches.length){
+    html += '<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Batch</th><th>Centre</th><th>Course</th><th>Collected</th><th>Outstanding</th><th>Overdue</th><th>Students</th></tr></thead><tbody>'+
+      batches.sort(function(a,b){return (Number(b.outstanding)||0)-(Number(a.outstanding)||0);}).slice(0,40).map(function(b){
+        return '<tr><td><strong>'+escC(b.batchCode)+'</strong></td><td>'+escC(b.centre)+'</td><td>'+escC(b.course)+'</td><td>'+money(b.collected||0)+'</td><td>'+money(b.outstanding||0)+'</td><td>'+money(b.overdue||0)+'</td><td>'+escC(b.students||0)+'</td></tr>';
+      }).join('')+'</tbody></table></div>';
+  }
+  wrap.innerHTML = html;
+}
+
+function renderAdminReportOverview() {
+  var wrap=document.getElementById('admin-report-wrap');
+  if(!wrap) return;
+  var attendance=(adminDashboardData&&adminDashboardData.attendance)||{}, tests=(adminDashboardData&&adminDashboardData.tests)||{};
+  var ac=attendance.centres||{}, tc=tests.centres||{}, centreNames={};
+  Object.keys(ac).forEach(function(c){centreNames[c]=1;}); Object.keys(tc).forEach(function(c){centreNames[c]=1;});
+  var html =
+    '<div class="report-summary">'+
+      '<div class="report-stat"><div class="report-stat-value">'+escC((attendance.national||{}).avgPct||0)+'%</div><div class="report-stat-label">Avg Attendance</div></div>'+
+      '<div class="report-stat"><div class="report-stat-value">'+escC((attendance.national||{}).atRisk||0)+'</div><div class="report-stat-label">Low Attendance</div></div>'+
+      '<div class="report-stat"><div class="report-stat-value">'+escC((tests.national||{}).lowScore||0)+'</div><div class="report-stat-label">Low Test Scores</div></div>'+
+    '</div>'+
+    '<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Centre</th><th>Attendance</th><th>At Risk</th><th>Sessions</th><th>Tests</th><th>Avg Test</th><th>Appeared</th><th>Passed</th></tr></thead><tbody>'+
+    Object.keys(centreNames).sort().map(function(c){
+      var a=ac[c]||{}, t=tc[c]||{};
+      return '<tr><td><strong>'+escC(c)+'</strong></td><td>'+escC(a.avgPct||0)+'%</td><td>'+escC(a.atRisk||0)+'</td><td>'+escC(a.sessions||0)+'</td><td>'+escC(t.tests||0)+'</td><td>'+escC(t.avgPct||0)+'%</td><td>'+escC(t.appeared||0)+'</td><td>'+escC(t.passed||0)+'</td></tr>';
+    }).join('')+'</tbody></table></div>';
+  var low=(tests.lowScore||[]).slice(0,25);
+  if(low.length){
+    html += '<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Low Score Student</th><th>Centre</th><th>Batch</th><th>Assessment</th><th>Score</th><th>Result</th></tr></thead><tbody>'+
+      low.map(function(x){return '<tr><td><strong>'+escC(x.name)+'</strong><div style="font-size:10px;color:var(--muted)">'+escC(x.studentId)+'</div></td><td>'+escC(x.centre)+'</td><td>'+escC(x.batchCode)+'</td><td>'+escC(x.assessmentId)+'</td><td>'+escC(x.pct)+'%</td><td>'+escC(x.result)+'</td></tr>';}).join('')+
+      '</tbody></table></div>';
+  }
+  wrap.innerHTML = html;
+}
+
+function downloadAdminDashboardCsv() {
+  if(!adminDashboardData) return;
+  var lines=[['Centre','Centre Target GST','Counsellor Target GST','Revenue Achieved GST','Fee Collected','Fee Outstanding','Attendance %','Tests']];
+  (adminDashboardData.centreRows||[]).forEach(function(r){
+    lines.push([r.centre,r.targetGst,r.counsellorTargetGst,r.achievedGst,r.feeCollected,r.feeOutstanding,r.attendancePct,r.tests]);
+  });
+  var csv=lines.map(function(row){return row.map(function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';}).join(',');}).join('\n');
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;a.download='admin-centre-performance-2026-27.csv';a.click();
+  URL.revokeObjectURL(url);
 }
 
 // -- Revenue (redesign v2) -----------------------------------------------
@@ -2401,15 +2580,44 @@ function renderAdminTargetPanel() {
   var wrap = document.getElementById('rev-target-panel-wrap');
   if (!wrap || !isAdmin) return;
   var tmap = {};
+  var cmap = {};
   ((revenueData && revenueData.targetRows)||[]).forEach(function(r){
     tmap[revCanonical(r.counsellor)+'|'+r.centre] = r;
   });
+  ((revenueData && revenueData.centreTargetRows)||[]).forEach(function(r){
+    cmap[r.centre] = r;
+  });
   var rows = adminTargetRows();
+  var centreRows = (CENTRES||[]).filter(function(c){ return c !== 'Pune'; });
   var html =
+    '<div class="admin-target-split">'+
     '<div class="rev-target-panel">'+
       '<div class="rev-target-panel-head">'+
-        '<div><h3>2026-27 Annual Targets — Course Fee + GST</h3>'+
-          '<div class="sub">Enter course fee (excl. GST). System adds 18% automatically. Targets lock after first save.</div>'+
+        '<div><h3>2026-27 Centre Annual Targets — Course Fee + GST</h3>'+
+          '<div class="sub">Set branch-level targets separately from counsellor targets. Use Revise with a reason to change saved targets.</div>'+
+        '</div>'+
+      '</div>'+
+      '<table class="rev-target-table">'+
+        '<thead><tr><th>Centre</th><th>Annual Course Fee &#8377;</th><th>Incl. GST (auto)</th><th>Revision Reason</th><th>Status</th></tr></thead><tbody>';
+  centreRows.forEach(function(centre) {
+    var saved = cmap[centre] || {};
+    var locked = !!(saved.updatedAt || Number(saved.targetCourse) || Number(saved.targetGst));
+    var courseFee = locked ? (Number(saved.targetCourse)||0) : '';
+    var gstAmt = locked ? (Number(saved.targetGst)||0) : 0;
+    html +=
+      '<tr data-centre-target="'+escC(centre)+'">'+
+        '<td><strong>'+escC(centre)+'</strong></td>'+
+        '<td><input type="number" class="rev-target-input rta-course" min="0" placeholder="e.g. 20000000"'+(locked?' readonly':'')+' value="'+escC(courseFee)+'" oninput="revTargetSyncGst(this)"></td>'+
+        '<td><span class="rev-target-gst rta-gst-label">'+(gstAmt?'<b>'+money(gstAmt)+'</b>':'<span style="color:var(--muted)">—</span>')+'</span></td>'+
+        '<td><input type="text" class="rev-target-input rta-notes" style="width:190px;text-align:left" placeholder="Required for revise" '+(locked?'':'disabled')+'></td>'+
+        '<td>'+(locked?'<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="rta-revise" onchange="revToggleRevision(this)"> <span class="rev-target-locked">&#10003; Set</span></label>':'<span class="rev-target-missing">Not set</span>')+'</td>'+
+      '</tr>';
+  });
+  html += '</tbody></table></div>'+
+    '<div class="rev-target-panel">'+
+      '<div class="rev-target-panel-head">'+
+        '<div><h3>2026-27 Counsellor Annual Targets — Course Fee + GST</h3>'+
+          '<div class="sub">Set individual counsellor accountability targets. Use Revise with a reason to change saved targets.</div>'+
         '</div>'+
       '</div>'+
       '<table class="rev-target-table">'+
@@ -2417,6 +2625,7 @@ function renderAdminTargetPanel() {
           '<th>Counsellor</th><th>Centre</th>'+
           '<th>Annual Course Fee &#8377;</th>'+
           '<th>Incl. GST (auto)</th>'+
+          '<th>Revision Reason</th>'+
           '<th>Status</th>'+
         '</tr></thead>'+
         '<tbody>';
@@ -2443,7 +2652,8 @@ function renderAdminTargetPanel() {
         '<td><span class="rev-target-gst rta-gst-label">'+
           (gstAmt ? '<b>'+money(gstAmt)+'</b>' : '<span style="color:var(--muted)">—</span>')+
         '</span></td>'+
-        '<td>'+statusHtml+'</td>'+
+        '<td><input type="text" class="rev-target-input rta-notes" style="width:190px;text-align:left" placeholder="Required for revise" '+(locked?'':'disabled')+'></td>'+
+        '<td>'+(locked?'<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="rta-revise" onchange="revToggleRevision(this)"> '+statusHtml+'</label>':statusHtml)+'</td>'+
       '</tr>';
   });
   html +=
@@ -2453,10 +2663,19 @@ function renderAdminTargetPanel() {
         '<span class="rev-target-meta" id="rev-target-save-meta"></span>'+
         '<button class="btn btn-outline" style="width:auto;padding:8px 16px;font-size:12px" onclick="saveAllAdminTargets()">Save Targets</button>'+
       '</div>'+
-    '</div>';
+    '</div></div>';
   wrap.innerHTML = html;
   // Sync GST display for pre-filled values
   Array.from(wrap.querySelectorAll('.rta-course')).forEach(function(inp){ if(inp.value) revTargetSyncGst(inp); });
+}
+
+function revToggleRevision(box) {
+  var tr = box.closest('tr');
+  if (!tr) return;
+  var inp = tr.querySelector('.rta-course');
+  var notes = tr.querySelector('.rta-notes');
+  if (inp) inp.readOnly = !box.checked;
+  if (notes) notes.disabled = !box.checked;
 }
 
 function revTargetSyncGst(input) {
@@ -2473,30 +2692,57 @@ function saveAllAdminTargets() {
   var wrap  = document.getElementById('rev-target-panel-wrap');
   var meta  = document.getElementById('rev-target-save-meta');
   var rows  = [];
+  var centreRows = [];
   var tmap  = {};
+  var cmap  = {};
   ((revenueData && revenueData.targetRows)||[]).forEach(function(r){
     tmap[revCanonical(r.counsellor)+'|'+r.centre] = r;
+  });
+  ((revenueData && revenueData.centreTargetRows)||[]).forEach(function(r){ cmap[r.centre] = r; });
+  Array.from(wrap.querySelectorAll('tr[data-centre-target]')).forEach(function(tr) {
+    var centre = tr.getAttribute('data-centre-target');
+    var inp = tr.querySelector('.rta-course');
+    var revise = tr.querySelector('.rta-revise');
+    var notes = tr.querySelector('.rta-notes');
+    if (!inp || !inp.value) return;
+    var course = Number(inp.value)||0;
+    if (!course) return;
+    var locked = !!(cmap[centre] && (Number(cmap[centre].targetCourse)||0));
+    if (locked && !(revise && revise.checked)) return;
+    if (locked && !(notes && notes.value.trim())) {
+      if (meta) meta.textContent = 'Revision reason is required for locked centre targets.';
+      return;
+    }
+    centreRows.push({period:'2026-27', centre:centre, targetCourse:course, targetGst:revenueGst(course), notes:(notes&&notes.value.trim())||'', revise:locked?'Y':'N'});
   });
   Array.from(wrap.querySelectorAll('tr[data-counsellor]')).forEach(function(tr) {
     var counsellor = tr.getAttribute('data-counsellor');
     var centre     = tr.getAttribute('data-centre');
     var inp        = tr.querySelector('.rta-course');
-    if (!inp || inp.readOnly || !inp.value) return; // skip locked or empty
+    var revise     = tr.querySelector('.rta-revise');
+    var notes      = tr.querySelector('.rta-notes');
+    if (!inp || !inp.value) return;
     var course = Number(inp.value)||0;
     if (!course) return;
     var key = revCanonical(counsellor)+'|'+centre;
-    if (tmap[key] && (Number(tmap[key].targetCourse)||0)) return; // already locked
+    var locked = !!(tmap[key] && (Number(tmap[key].targetCourse)||0));
+    if (locked && !(revise && revise.checked)) return;
+    if (locked && !(notes && notes.value.trim())) {
+      if (meta) meta.textContent = 'Revision reason is required for locked counsellor targets.';
+      return;
+    }
     rows.push({period:'2026-27', counsellor:counsellor, centre:centre,
-      targetCourse:course, targetGst:revenueGst(course), notes:''});
+      targetCourse:course, targetGst:revenueGst(course), notes:(notes&&notes.value.trim())||'', revise:locked?'Y':'N'});
   });
-  if (!rows.length) {
-    if (meta) meta.textContent = 'No new targets to save. Locked targets cannot be changed here.';
+  if (!rows.length && !centreRows.length) {
+    if (meta) meta.textContent = 'No new or revised targets to save.';
     return;
   }
-  if (meta) meta.textContent = 'Saving '+rows.length+' target'+(rows.length===1?'':'s')+'\u2026';
+  var total = rows.length + centreRows.length;
+  if (meta) meta.textContent = 'Saving '+total+' target'+(total===1?'':'s')+'\u2026';
   var params = Object.assign(revenueRequestParams(), {
     action:'saveRevenueTargets',
-    centreTargets:'[]',
+    centreTargets:JSON.stringify(centreRows),
     targets:JSON.stringify(rows),
     monthlyRows:'[]', monthlyScope:'null',
     updatedBy:'Admin'
@@ -2507,10 +2753,12 @@ function saveAllAdminTargets() {
       showToast('Could not save targets.','error');
       return;
     }
-    showToast('Targets saved for '+rows.length+' counsellor'+(rows.length===1?'':'s')+' \u2713');
-    if(meta) meta.textContent = 'Saved '+rows.length+' target'+(rows.length===1?'':'s')+'.';
+    showToast('Saved '+total+' target'+(total===1?'':'s')+' \u2713');
+    if(meta) meta.textContent = 'Saved '+total+' target'+(total===1?'':'s')+'.';
     revenueData = null;
+    adminDashboardData = null;
     loadRevenueDashboard();
+    loadAdminDashboard(true);
   });
 }
 

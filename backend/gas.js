@@ -35,6 +35,7 @@ const SH_REVENUE_TARGETS = 'Revenue_Targets';
 const SH_REVENUE_CENTRE_TARGETS = 'Revenue_Centre_Targets';
 const SH_REVENUE_ANNUAL_TARGETS = 'Revenue_Annual_Targets';
 const SH_REVENUE_MONTHLY_ACHIEVED = 'Revenue_Monthly_Achieved';
+const SH_REVENUE_TARGET_REVISIONS = 'Revenue_Target_Revisions';
 const REVENUE_BACKEND_VERSION = 'revenue-redesign-v2-2026-06-02';
 const SH_USER_CREDENTIALS = 'User_Credentials';
 const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
@@ -1972,6 +1973,12 @@ function doGet(e) {
       return respond(buildRevenueDashboard(ss,p));
     }
 
+    if (act==='getAdminDashboard') {
+      ensureSheets(ss);
+      if (String(p.isAdmin)!=='true') return respond({status:'error',reason:'auth'});
+      return respond(buildAdminDashboard(ss,p));
+    }
+
     if (act==='saveRevenueTargets') {
       ensureSheets(ss);
       var rows=[], centreRows=[], monthlyRows=[], monthlyScope=null;
@@ -2285,6 +2292,7 @@ function ensureSheets(ss) {
     [SH_REVENUE_CENTRE_TARGETS]: ['Period','Centre','Annual Course Fee Target','Annual Course Fee + GST Target','Notes','Updated By','Updated At'],
     [SH_REVENUE_ANNUAL_TARGETS]: ['Period','Counsellor','Assigned Centre','Annual Course Fee Target','Annual Course Fee + GST Target','Notes','Updated By','Updated At'],
     [SH_REVENUE_MONTHLY_ACHIEVED]: ['Month','Period','Counsellor','Assigned Centre','Business Centre','Business Type','Student Count','Achieved Course Fee','Achieved Course Fee + GST','Notes','Updated By','Locked','Updated At'],
+    [SH_REVENUE_TARGET_REVISIONS]: ['Revised At','Target Type','Period','Centre','Counsellor','Old Course Fee Target','Old Course Fee + GST Target','New Course Fee Target','New Course Fee + GST Target','Reason','Updated By'],
     [SH_USER_CREDENTIALS]: ['Role','Name','Centres','Password Hash','Salt','Must Change Password','Updated At','Active'],
     [SH_HOLIDAYS]:     ['Date','Holiday Name','Centre','Added At'],
     [SH_ASSESSMENTS]:  ['Assessment ID','Batch Code','Test Name','Test Type','Test Date','Total Marks','Instructor','Created At'],
@@ -2310,6 +2318,8 @@ function ensureSheets(ss) {
       ensureRevenueAnnualTargetHeaders(sh);
     } else if (name===SH_REVENUE_MONTHLY_ACHIEVED) {
       ensureRevenueMonthlyAchievedHeaders(sh);
+    } else if (name===SH_REVENUE_TARGET_REVISIONS) {
+      ensureRevenueTargetRevisionHeaders(sh);
     } else if (name===SH_USER_CREDENTIALS) {
       ensureUserCredentialHeaders(sh);
     }
@@ -2520,6 +2530,135 @@ function buildRevenueDashboard(ss,p) {
     businessCentres:Object.keys(byBusinessCentre).sort().map(function(k){return Object.assign({centre:k},byBusinessCentre[k]);})};
 }
 
+function buildAdminDashboard(ss,p) {
+  var period=revenuePeriod(p);
+  var revenue=buildRevenueDashboard(ss,Object.assign({},p,{isAdmin:'true',centres:'',centre:'',counsellor:'',viewerCounsellor:'',viewMode:'assigned'}));
+  var shBatch=ss.getSheetByName(SH_BATCHES);
+  var batchRows=shBatch&&shBatch.getLastRow()>1?shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues().filter(function(r){return r[0];}):[];
+  var batchMap={};
+  batchRows.forEach(function(b){
+    var code=String(b[0]).toUpperCase();
+    batchMap[code]={batchCode:code,centre:b[1]||'',course:b[2]||'',type:b[3]||'',instructor:detectSlotOrDate(b[4])?(b[9]||''):(b[8]||'')};
+  });
+
+  var feeRows=getAdminFeeSummaryRows(ss);
+  var feeNational={expected:0,collected:0,outstanding:0,overdue:0,paid:0,partial:0,pending:0,overdueStudents:0,students:0};
+  var feeByCentre={}, feeByBatch={};
+  feeRows.forEach(function(fr){
+    var st=fr.feeStatus;
+    feeNational.expected+=fr.netPayable;feeNational.collected+=fr.collected;feeNational.outstanding+=fr.outstanding;feeNational.students++;
+    if(st==='Paid')feeNational.paid++;
+    if(st==='Partial')feeNational.partial++;
+    if(st==='Pending')feeNational.pending++;
+    if(st==='Overdue'){feeNational.overdue+=fr.outstanding;feeNational.overdueStudents++;}
+    if(!feeByCentre[fr.centre])feeByCentre[fr.centre]={centre:fr.centre,expected:0,collected:0,outstanding:0,overdue:0,students:0,paid:0,partial:0,pending:0,overdueStudents:0,batches:{}};
+    var fc=feeByCentre[fr.centre];
+    fc.expected+=fr.netPayable;fc.collected+=fr.collected;fc.outstanding+=fr.outstanding;fc.students++;fc.batches[fr.batchCode]=1;
+    if(st==='Paid')fc.paid++;if(st==='Partial')fc.partial++;if(st==='Pending')fc.pending++;if(st==='Overdue'){fc.overdue+=fr.outstanding;fc.overdueStudents++;}
+    if(!feeByBatch[fr.batchCode])feeByBatch[fr.batchCode]={batchCode:fr.batchCode,centre:fr.centre,course:fr.course,expected:0,collected:0,outstanding:0,overdue:0,students:0,paid:0,partial:0,pending:0,overdueStudents:0};
+    var fb=feeByBatch[fr.batchCode];
+    fb.expected+=fr.netPayable;fb.collected+=fr.collected;fb.outstanding+=fr.outstanding;fb.students++;
+    if(st==='Paid')fb.paid++;if(st==='Partial')fb.partial++;if(st==='Pending')fb.pending++;if(st==='Overdue'){fb.overdue+=fr.outstanding;fb.overdueStudents++;}
+  });
+
+  var attendance=buildAdminAttendanceSummary(ss,batchRows);
+  var tests=buildAdminTestSummary(ss,batchMap);
+  var centreTargetMap={}, counsellorTargetMap={};
+  (revenue.centreTargetRows||[]).forEach(function(r){centreTargetMap[r.centre]=r;});
+  (revenue.targetRows||[]).forEach(function(r){counsellorTargetMap[revenueNameAliases(r.counsellor)[0]+'|'+r.centre]=r;});
+
+  var revCentreMap={};(revenue.centres||[]).forEach(function(r){revCentreMap[r.centre]=r;});
+  var centreNames={};
+  Object.keys(CENTRE_CODES).forEach(function(c){centreNames[c]=1;});
+  Object.keys(feeByCentre).forEach(function(c){centreNames[c]=1;});
+  Object.keys(revCentreMap).forEach(function(c){centreNames[c]=1;});
+  var centreRows=Object.keys(centreNames).sort().map(function(c){
+    var rt=centreTargetMap[c]||{}, rv=revCentreMap[c]||{}, ff=feeByCentre[c]||{};
+    return {
+      centre:c,targetCourse:Number(rt.targetCourse)||0,targetGst:Number(rt.targetGst)||0,
+      achievedCourse:Number(rv.achievedCourse)||0,achievedGst:Number(rv.achievedGst)||0,
+      counsellorTargetGst:Number(rv.targetGst)||0,feeExpected:Number(ff.expected)||0,
+      feeCollected:Number(ff.collected)||0,feeOutstanding:Number(ff.outstanding)||0,
+      overdue:Number(ff.overdue)||0,students:Number(ff.students)||0,batches:ff.batches?Object.keys(ff.batches).length:0,
+      attendancePct:(attendance.centres[c]&&attendance.centres[c].avgPct)||0,
+      tests:(tests.centres[c]&&tests.centres[c].tests)||0
+    };
+  });
+
+  return {status:'ok',period:period,summary:{
+      centres:centreRows.length,batches:batchRows.length,students:getStudentRows(ss).filter(function(s){return s.status==='Active';}).length,
+      feeExpected:feeNational.expected,feeCollected:feeNational.collected,feeOutstanding:feeNational.outstanding,feeOverdue:feeNational.overdue,
+      attendancePct:attendance.national.avgPct,tests:tests.national.tests,avgTestPct:tests.national.avgPct
+    },
+    centreRows:centreRows,fee:{national:feeNational,centres:Object.values(feeByCentre),batches:Object.values(feeByBatch)},
+    attendance:attendance,tests:tests,revenue:revenue};
+}
+
+function getAdminFeeSummaryRows(ss) {
+  var sh=ss.getSheetByName(SH_FEES);
+  if(!sh||sh.getLastRow()<2)return [];
+  return sh.getRange(2,1,sh.getLastRow()-1,41).getValues().filter(function(r){return r[0];}).map(function(r){
+    var ft=normalizedFeeTotals(r);
+    return {studentId:r[0],studentName:r[1],batchCode:String(r[2]).toUpperCase(),centre:r[3]||'',course:r[4]||'',
+      netPayable:ft.netPayable,collected:ft.collected,outstanding:ft.outstanding,feeStatus:ft.feeStatus};
+  });
+}
+
+function buildAdminAttendanceSummary(ss,batchRows) {
+  var shSess=ss.getSheetByName(SH_SESSIONS), shFb=ss.getSheetByName(SH_FEEDBACK);
+  var sessions=shSess&&shSess.getLastRow()>1?shSess.getRange(2,1,shSess.getLastRow()-1,9).getValues().filter(function(r){return r[0];}):[];
+  var feedback=shFb&&shFb.getLastRow()>1?shFb.getRange(2,1,shFb.getLastRow()-1,17).getValues().filter(function(r){return r[0];}):[];
+  var fbByBatchStudent={};
+  feedback.forEach(function(f){
+    var key=String(f[3]).toUpperCase()+'|'+String(f[1]).toUpperCase();
+    if(!fbByBatchStudent[key])fbByBatchStudent[key]={};
+    fbByBatchStudent[key][String(f[0]).toUpperCase()]=1;
+  });
+  var centres={}, batches=[], totalPct=0, pctCount=0, atRisk=[];
+  batchRows.forEach(function(b){
+    var code=String(b[0]).toUpperCase(), centre=b[1]||'';
+    var bSess=sessions.filter(function(s){return String(s[1]).toUpperCase()===code;});
+    var students=getStudentsForBatch(ss,code);
+    var sumPct=0, localCount=0, localRisk=0;
+    students.forEach(function(s){
+      var attended=Object.keys(fbByBatchStudent[code+'|'+String(s.enrollmentNo).toUpperCase()]||{}).length;
+      var pct=bSess.length?Math.round(attended/bSess.length*100):0;
+      if(bSess.length){sumPct+=pct;localCount++;totalPct+=pct;pctCount++;}
+      if(bSess.length>=4&&pct<75){localRisk++;atRisk.push({centre:centre,batchCode:code,studentId:s.enrollmentNo,name:s.name,pct:pct,attended:attended,total:bSess.length});}
+    });
+    var avg=localCount?Math.round(sumPct/localCount):0;
+    batches.push({batchCode:code,centre:centre,course:b[2]||'',students:students.length,sessions:bSess.length,avgPct:avg,atRisk:localRisk});
+    if(!centres[centre])centres[centre]={centre:centre,batches:0,students:0,sessions:0,avgTotal:0,avgCount:0,atRisk:0,avgPct:0};
+    centres[centre].batches++;centres[centre].students+=students.length;centres[centre].sessions+=bSess.length;centres[centre].atRisk+=localRisk;
+    if(localCount){centres[centre].avgTotal+=avg;centres[centre].avgCount++;}
+  });
+  Object.keys(centres).forEach(function(c){centres[c].avgPct=centres[c].avgCount?Math.round(centres[c].avgTotal/centres[c].avgCount):0;});
+  return {national:{avgPct:pctCount?Math.round(totalPct/pctCount):0,atRisk:atRisk.length},centres:centres,batches:batches,atRisk:atRisk.slice(0,80)};
+}
+
+function buildAdminTestSummary(ss,batchMap) {
+  var shA=ss.getSheetByName(SH_ASSESSMENTS), shM=ss.getSheetByName(SH_MARKS);
+  var aData=shA&&shA.getLastRow()>1?shA.getRange(2,1,shA.getLastRow()-1,8).getValues().filter(function(r){return r[0];}):[];
+  var mData=shM&&shM.getLastRow()>1?shM.getRange(2,1,shM.getLastRow()-1,9).getValues().filter(function(r){return r[0];}):[];
+  var marksByAssessment={};
+  mData.forEach(function(m){var id=String(m[0]).toUpperCase();if(!marksByAssessment[id])marksByAssessment[id]=[];marksByAssessment[id].push(m);});
+  var centres={}, batches={}, totalPct=0, pctCount=0, low=[];
+  var assessments=aData.map(function(a){
+    var id=String(a[0]).toUpperCase(), batchCode=String(a[1]).toUpperCase(), batch=batchMap[batchCode]||{}, centre=batch.centre||'';
+    var marks=marksByAssessment[id]||[], appeared=marks.filter(function(m){return m[3]!=='DNA';}), passed=appeared.filter(function(m){return m[5]==='Pass';});
+    var avg=appeared.length?Math.round(appeared.reduce(function(s,m){return s+(Number(m[4])||0);},0)/appeared.length):0;
+    if(appeared.length){totalPct+=avg;pctCount++;}
+    appeared.forEach(function(m){if((Number(m[4])||0)<PASS_THRESHOLD)low.push({centre:centre,batchCode:batchCode,assessmentId:a[0],studentId:m[1],name:m[2],pct:m[4],result:m[5]});});
+    if(!centres[centre])centres[centre]={centre:centre,tests:0,appeared:0,passed:0,avgTotal:0,avgCount:0,avgPct:0};
+    centres[centre].tests++;centres[centre].appeared+=appeared.length;centres[centre].passed+=passed.length;if(appeared.length){centres[centre].avgTotal+=avg;centres[centre].avgCount++;}
+    if(!batches[batchCode])batches[batchCode]={batchCode:batchCode,centre:centre,course:batch.course||'',tests:0,appeared:0,passed:0,avgTotal:0,avgCount:0,avgPct:0};
+    batches[batchCode].tests++;batches[batchCode].appeared+=appeared.length;batches[batchCode].passed+=passed.length;if(appeared.length){batches[batchCode].avgTotal+=avg;batches[batchCode].avgCount++;}
+    return {assessmentId:a[0],batchCode:batchCode,centre:centre,course:batch.course||'',testName:a[2],testType:a[3],testDate:a[4]?new Date(a[4]).toLocaleDateString('en-IN'):'',instructor:a[6],appeared:appeared.length,passed:passed.length,avgPct:avg,passRate:appeared.length?Math.round(passed.length/appeared.length*100):0};
+  });
+  [centres,batches].forEach(function(map){Object.keys(map).forEach(function(k){map[k].avgPct=map[k].avgCount?Math.round(map[k].avgTotal/map[k].avgCount):0;});});
+  return {national:{tests:assessments.length,avgPct:pctCount?Math.round(totalPct/pctCount):0,lowScore:low.length},centres:centres,batches:Object.values(batches),assessments:assessments,lowScore:low.slice(0,80)};
+}
+
 function getRevenueCentreTargetRows(ss) {
   var sh=ss.getSheetByName(SH_REVENUE_CENTRE_TARGETS);
   if(!sh||sh.getLastRow()<2)return [];
@@ -2587,6 +2726,7 @@ function getRevenueMonthlyAchievedRows(ss) {
 function saveRevenueCentreTargetRows(ss,rows,updatedBy) {
   var sh=ss.getSheetByName(SH_REVENUE_CENTRE_TARGETS);
   ensureRevenueCentreTargetHeaders(sh);
+  var existingRows=getRevenueCentreTargetRows(ss);
   var existing=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,2).getValues():[];
   var rowMap={};
   existing.forEach(function(r,i){rowMap[String(r[0])+'|'+String(r[1])]=i+2;});
@@ -2594,9 +2734,16 @@ function saveRevenueCentreTargetRows(ss,rows,updatedBy) {
   rows.forEach(function(r){
     var period=String(r.period||'2026-27').trim(), centre=String(r.centre||'').trim();
     if(!period||!centre)return;
+    if(!Number(r.targetCourse)&&!Number(r.targetGst))return;
     var row=[period,centre,Number(r.targetCourse)||0,Number(r.targetGst)||0,r.notes||'',updatedBy,new Date().toISOString()];
     var key=period+'|'+centre;
-    if(rowMap[key])sh.getRange(rowMap[key],1,1,row.length).setValues([row]);
+    if(rowMap[key]){
+      var old=existingRows.find(function(x){return x.period===period&&x.centre===centre;})||{};
+      if(String(r.revise||'')!=='Y')return;
+      if(!String(r.notes||'').trim())return;
+      logRevenueTargetRevision(ss,'Centre',period,centre,'',old.targetCourse,old.targetGst,row[2],row[3],r.notes||'',updatedBy);
+      sh.getRange(rowMap[key],1,1,row.length).setValues([row]);
+    }
     else{sh.appendRow(row);rowMap[key]=sh.getLastRow();}
     saved++;
   });
@@ -2615,14 +2762,29 @@ function saveRevenueAnnualTargetRows(ss,rows,updatedBy) {
     var period=String(r.period||'2026-27').trim(), counsellor=String(r.counsellor||'').trim(), centre=String(r.centre||'').trim();
     if(!period||!counsellor||!centre)return;
     if(!Number(r.targetCourse)&&!Number(r.targetGst))return;
-    if(locked.some(function(x){return x.period===period&&x.centre===centre&&revenueSameCounsellor(x.counsellor,counsellor);}))return;
+    var old=locked.find(function(x){return x.period===period&&x.centre===centre&&revenueSameCounsellor(x.counsellor,counsellor);})||null;
     var row=[period,counsellor,centre,Number(r.targetCourse)||0,Number(r.targetGst)||0,r.notes||'',updatedBy,new Date().toISOString()];
     var key=period+'|'+counsellor+'|'+centre;
-    if(rowMap[key])return;
-    sh.appendRow(row);rowMap[key]=sh.getLastRow();
+    if(old){
+      if(String(r.revise||'')!=='Y')return;
+      if(!String(r.notes||'').trim())return;
+      logRevenueTargetRevision(ss,'Counsellor',period,centre,counsellor,old.targetCourse,old.targetGst,row[3],row[4],r.notes||'',updatedBy);
+      var existingKey=Object.keys(rowMap).find(function(k){var parts=k.split('|');return parts[0]===period&&parts[2]===centre&&revenueSameCounsellor(parts[1],counsellor);});
+      if(existingKey)sh.getRange(rowMap[existingKey],1,1,row.length).setValues([row]);
+      else sh.appendRow(row);
+    } else {
+      if(rowMap[key])return;
+      sh.appendRow(row);rowMap[key]=sh.getLastRow();
+    }
     saved++;
   });
   return saved;
+}
+
+function logRevenueTargetRevision(ss,type,period,centre,counsellor,oldCourse,oldGst,newCourse,newGst,reason,updatedBy) {
+  var sh=getOrCreateSheet(ss,SH_REVENUE_TARGET_REVISIONS);
+  ensureRevenueTargetRevisionHeaders(sh);
+  sh.appendRow([new Date().toISOString(),type,period,centre,counsellor||'',Number(oldCourse)||0,Number(oldGst)||0,Number(newCourse)||0,Number(newGst)||0,reason||'',updatedBy||'Admin']);
 }
 
 function saveRevenueMonthlyAchievedRows(ss,rows,updatedBy,scope) {
@@ -2740,6 +2902,19 @@ function ensureRevenueMonthlyAchievedHeaders(sh) {
     current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);
   }
   if (current[0]!==h[0] || current[5]!==h[5] || current[12]!==h[12]) {
+    sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
+    sh.setFrozenRows(1);
+  }
+}
+function ensureRevenueTargetRevisionHeaders(sh) {
+  const h=['Revised At','Target Type','Period','Centre','Counsellor','Old Course Fee Target','Old Course Fee + GST Target','New Course Fee Target','New Course Fee + GST Target','Reason','Updated By'];
+  if (sh.getLastRow()===0 || sh.getRange(1,1).getValue()==='') {
+    sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
+    sh.setFrozenRows(1);
+    return;
+  }
+  const current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);
+  if (current[0]!==h[0] || current[10]!==h[10]) {
     sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
     sh.setFrozenRows(1);
   }

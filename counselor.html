@@ -568,7 +568,10 @@
       <div class="section-tag">Admin Dashboard</div>
       <h2>Centre Performance</h2>
       <p class="sub">Revenue targets, fee collection, attendance, and test records across all centres.</p>
-      <div id="admin-dashboard-wrap"><div class="spinner-wrap"><div class="spinner"></div><p>Loading admin dashboard...</p></div></div>
+      <div id="admin-dashboard-wrap">
+        <div style="font-size:12px;color:var(--muted);padding:6px 0">This full report is slower because it combines fee, attendance, test, and revenue data. Targets below open immediately.</div>
+        <div class="admin-action-row" style="justify-content:flex-start"><button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="loadAdminDashboard(true)">Refresh Centre Performance</button></div>
+      </div>
     </div>
 
     <!-- MY REVENUE: KPI + Cards -->
@@ -765,7 +768,6 @@ function doLogin() {
     loadBatchDropdowns();
     loadMyBatches();
     loadHolidayList();
-    if (isAdmin) loadAdminDashboard();
   });
 }
 
@@ -915,7 +917,7 @@ function switchTab(id) {
       });
     }
   }
-  if (id==='t-revenue') { initRevenueTab(); if (isAdmin) loadAdminDashboard(); }
+  if (id==='t-revenue') initRevenueTab();
   if (id==='t-holidays') loadHolidayList();
 }
 
@@ -2089,7 +2091,14 @@ function revenueRequestParams() {
 function loadRevenueDashboard() {
   if (!document.getElementById('t-revenue').classList.contains('active')) return;
   var grid = document.getElementById('rev-month-grid');
-  grid.innerHTML = loadingState('Loading revenue data…');
+  if (isAdmin) {
+    revenueData = revenueData || { status:'ok', months:[], monthlyRows:[], targetRows:[],
+      centreTargetRows:[], centres:[], counsellors:[],
+      summary:{targetGst:0,achievedGst:0,studentCount:0} };
+    renderAdminTargetPanel();
+  } else if (grid) {
+    grid.innerHTML = loadingState('Loading revenue data…');
+  }
   gasGet(revenueRequestParams(), function(e,d) {
     if (e || !d || d.status !== 'ok') {
       // Backend error — render all month cards as open so counsellor can still enter data
@@ -2099,6 +2108,7 @@ function loadRevenueDashboard() {
       var eb = document.getElementById('rev-err');
       if (eb) { eb.style.display='block'; eb.textContent='⚠ Saved data could not be loaded (backend unreachable). You can still enter and save revenue — the form will work normally.'; }
       renderMyRevenue();
+      if (isAdmin) { renderAdminTargetPanel(); renderRevenueRollups(); }
       return;
     }
     var eb = document.getElementById('rev-err');
@@ -2754,12 +2764,18 @@ function saveAllAdminTargets() {
       showToast(msg,'error');
       return;
     }
-    showToast('Saved '+total+' target'+(total===1?'':'s')+' \u2713');
-    if(meta) meta.textContent = 'Saved '+total+' target'+(total===1?'':'s')+'.';
+    var savedCount = Number(d.savedCentre || 0) + Number(d.savedTargets || 0);
+    if (!savedCount) {
+      var noSaveMsg = 'No targets were saved. If you are changing an already-set target, tick Revise and add a reason.';
+      if(meta) meta.textContent = noSaveMsg;
+      showToast(noSaveMsg,'error');
+      return;
+    }
+    showToast('Saved '+savedCount+' target'+(savedCount===1?'':'s')+' \u2713');
+    if(meta) meta.textContent = 'Saved '+savedCount+' target'+(savedCount===1?'':'s')+'.';
     revenueData = null;
     adminDashboardData = null;
     loadRevenueDashboard();
-    loadAdminDashboard(true);
   });
 }
 

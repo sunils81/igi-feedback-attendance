@@ -58,6 +58,10 @@
 .tl-title{font-size:12px;font-weight:700;color:var(--navy)}
 .tl-meta{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tl-count{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--navy)}
+.account-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;margin-bottom:12px}
+.password-card{display:none;border:1px solid rgba(201,168,76,.35);background:#FFF9E6}
+.password-card.required{display:block}
+.password-card .grid2{margin-top:10px}
 </style>
 </head>
 <body>
@@ -72,7 +76,7 @@
           <img src="assets/igi-school-of-gemology-white-logo.svg" style="height:38px;width:auto;display:block">
         </div>
         <div style="font-size:17px;font-weight:600;color:var(--navy)">Instructor Portal</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:4px">IGI Lecture Attendance & Feedback System</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">IGI Academic Operations Portal</div>
       </div>
       <div class="field"><label>Your Name *</label>
         <select id="lg-name"><option value="">Select your name</option></select>
@@ -97,6 +101,23 @@
       <div class="hdr-label">Instructor Portal — <span id="portal-name">—</span></div>
       <div class="hdr-sub">Session Management · Attendance · Assessment Marks</div>
     </div>
+  </div>
+
+  <div class="account-actions">
+    <button class="btn btn-outline" style="width:auto;padding:8px 12px;font-size:12px" id="change-pass-toggle" onclick="togglePasswordCard()">Change Password</button>
+  </div>
+
+  <div class="card password-card" id="password-card">
+    <div class="section-tag">Account Security</div>
+    <h2 id="password-card-title">Change Password</h2>
+    <p class="sub" id="password-card-copy">Use a password that is not based on your name, centre, or the old default PIN.</p>
+    <div class="grid2">
+      <div class="field"><label>Current Password *</label><input type="password" id="cp-old" placeholder="Current password"></div>
+      <div class="field"><label>New Password *</label><input type="password" id="cp-new" placeholder="At least 6 characters"></div>
+    </div>
+    <div class="field"><label>Confirm New Password *</label><input type="password" id="cp-confirm" placeholder="Repeat new password"></div>
+    <button class="btn btn-gold" id="cp-btn" onclick="changePassword()">Save Password</button>
+    <div class="err-box" id="cp-err"></div>
   </div>
 
   <div class="tab-bar">
@@ -298,6 +319,8 @@
 
 <script>
 let instructorName = '';
+let instructorAuthRole = 'Instructor';
+let instructorMustChangePassword = false;
 let isDualRole     = false;
 let dualCentres    = [];
 let currentBatch   = '';
@@ -348,6 +371,8 @@ function doLogin() {
     btn.textContent='Sign in →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') { err.classList.add('show'); return; }
     instructorName = name;
+    instructorAuthRole = d.authRole || 'Instructor';
+    instructorMustChangePassword = !!d.mustChangePassword;
     isDualRole     = !!d.isDualRole;
     dualCentres    = d.centres || [];
     document.getElementById('portal-name').textContent = name;
@@ -356,8 +381,64 @@ function doLogin() {
       document.getElementById('t-batchmgmt-tab').style.display = 'flex';
     }
     showScreen('s-main');
+    applyPasswordChangeState();
     loadInstructorBatches();
     loadTodaySessions();
+  });
+}
+
+function applyPasswordChangeState() {
+  const card = document.getElementById('password-card');
+  const toggle = document.getElementById('change-pass-toggle');
+  if (!card || !toggle) return;
+  toggle.style.display = instructorMustChangePassword ? 'none' : 'inline-flex';
+  card.classList.toggle('required', instructorMustChangePassword);
+  card.style.display = instructorMustChangePassword ? 'block' : 'none';
+  document.getElementById('password-card-title').textContent = instructorMustChangePassword ? 'Set Your Password' : 'Change Password';
+  document.getElementById('password-card-copy').textContent = instructorMustChangePassword
+    ? 'Please replace the default PIN before continuing.'
+    : 'Use a password that is not based on your name, centre, or the old default PIN.';
+  document.querySelector('.tab-bar').style.display = instructorMustChangePassword ? 'none' : 'flex';
+}
+
+function togglePasswordCard() {
+  const card = document.getElementById('password-card');
+  if (!card || instructorMustChangePassword) return;
+  card.style.display = card.style.display === 'block' ? 'none' : 'block';
+}
+
+function changePassword() {
+  const oldPassword = document.getElementById('cp-old').value.trim();
+  const newPassword = document.getElementById('cp-new').value.trim();
+  const confirmPassword = document.getElementById('cp-confirm').value.trim();
+  const err = document.getElementById('cp-err');
+  const btn = document.getElementById('cp-btn');
+  err.classList.remove('show');
+  if (!oldPassword || !newPassword || !confirmPassword) {
+    err.textContent = 'Please fill all password fields.';
+    err.classList.add('show');
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    err.textContent = 'New password and confirmation do not match.';
+    err.classList.add('show');
+    return;
+  }
+  btn.textContent = 'Saving...';
+  btn.disabled = true;
+  gasGet({action:'changeUserPassword', role:instructorAuthRole, name:instructorName, oldPassword, newPassword}, function(e,d) {
+    btn.textContent = 'Save Password';
+    btn.disabled = false;
+    if (e || !d || d.status !== 'ok') {
+      err.textContent = d && d.message ? d.message : 'Could not change password. Check your current password and try again.';
+      err.classList.add('show');
+      showToast('Could not change password.', 'error');
+      return;
+    }
+    ['cp-old','cp-new','cp-confirm'].forEach(id => document.getElementById(id).value = '');
+    instructorMustChangePassword = false;
+    applyPasswordChangeState();
+    showToast('Password updated.');
   });
 }
 

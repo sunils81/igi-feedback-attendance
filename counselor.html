@@ -114,6 +114,10 @@
 .revenue-editor th{position:sticky;top:0;background:var(--navy);color:var(--gold);text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:9px}
 .revenue-editor td{border-bottom:1px solid var(--border);padding:8px}
 .revenue-editor input{width:100%;border:1px solid var(--border);border-radius:6px;padding:7px 8px;font-family:"DM Sans",sans-serif;font-size:12px;color:var(--navy);background:var(--off)}
+.account-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;margin-bottom:12px}
+.password-card{display:none;border:1px solid rgba(201,168,76,.35);background:#FFF9E6}
+.password-card.required{display:block}
+.password-card .grid2{margin-top:10px}
 @media(max-width:760px){.fee-form-head,.inst-grid{grid-template-columns:1fr}.inst-grid{gap:10px}}
 @media(max-width:620px){
   .grid2,.report-summary,.attendance-body,.revenue-filters{grid-template-columns:1fr}
@@ -135,7 +139,7 @@
           <img src="assets/igi-school-of-gemology-white-logo.svg" style="height:40px;width:auto;display:block">
         </div>
         <div style="font-size:17px;font-weight:600;color:var(--navy)">Counselor Panel</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:4px">IGI Lecture Attendance & Feedback</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">IGI Counselor Operations Dashboard</div>
       </div>
       <div class="field"><label>Your Name *</label>
         <select id="lg-name">
@@ -172,8 +176,25 @@
     <div class="hdr-divider"></div>
     <div class="hdr-band">
       <div class="hdr-label">Counselor Panel &nbsp;<span id="counselor-name-badge" style="display:none;font-size:10px;background:var(--gold);color:var(--navy);padding:2px 8px;border-radius:8px;font-weight:700;letter-spacing:.03em"></span></div>
-      <div class="hdr-sub">IGI Lecture Attendance & Feedback System</div>
+      <div class="hdr-sub">IGI Counselor Operations Dashboard</div>
     </div>
+  </div>
+
+  <div class="account-actions">
+    <button class="del-btn" id="change-pass-toggle" onclick="togglePasswordCard()">Change Password</button>
+  </div>
+
+  <div class="card password-card" id="password-card">
+    <div class="section-tag">Account Security</div>
+    <h2 id="password-card-title">Change Password</h2>
+    <p class="sub" id="password-card-copy">Use a password that is not based on your name, centre, or the old default PIN.</p>
+    <div class="grid2">
+      <div class="field"><label>Current Password *</label><input type="password" id="cp-old" placeholder="Current password"></div>
+      <div class="field"><label>New Password *</label><input type="password" id="cp-new" placeholder="At least 6 characters"></div>
+    </div>
+    <div class="field"><label>Confirm New Password *</label><input type="password" id="cp-confirm" placeholder="Repeat new password"></div>
+    <button class="btn btn-gold" id="cp-btn" onclick="changePassword()">Save Password</button>
+    <div class="err-box" id="cp-err"></div>
   </div>
 
   <div class="tab-bar">
@@ -498,6 +519,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ── Login ─────────────────────────────────────────────────────
 let counselorName    = '';
+let counselorAuthRole = 'Counselor';
+let counselorMustChangePassword = false;
 let allowedCentres  = [];
 let isAdmin         = false;
 let allBatches      = [];
@@ -536,6 +559,8 @@ function doLogin() {
     btn.textContent = 'Sign in →'; btn.disabled = false;
     if (e || !d || d.status !== 'ok') { err.classList.add('show'); return; }
     counselorName   = d.counselorName || nameVal;
+    counselorAuthRole = d.authRole || (nameVal==='__admin__' ? 'Admin' : 'Counselor');
+    counselorMustChangePassword = !!d.mustChangePassword;
     allowedCentres  = d.centres || [];
     isAdmin         = !!d.isAdmin;
     // Update header
@@ -544,9 +569,70 @@ function doLogin() {
     // Lock centre dropdown to allowed centres
     applyCentreFilter();
     showScreen('s-main');
+    applyPasswordChangeState();
     loadBatchDropdowns();
     loadMyBatches();
     loadHolidayList();
+  });
+}
+
+function applyPasswordChangeState() {
+  const card = document.getElementById('password-card');
+  const toggle = document.getElementById('change-pass-toggle');
+  if (!card || !toggle) return;
+  if (counselorAuthRole === 'Admin') {
+    toggle.style.display = 'none';
+    card.style.display = 'none';
+    return;
+  }
+  toggle.style.display = counselorMustChangePassword ? 'none' : 'inline-flex';
+  card.classList.toggle('required', counselorMustChangePassword);
+  card.style.display = counselorMustChangePassword ? 'block' : 'none';
+  document.getElementById('password-card-title').textContent = counselorMustChangePassword ? 'Set Your Password' : 'Change Password';
+  document.getElementById('password-card-copy').textContent = counselorMustChangePassword
+    ? 'Please replace the default PIN before continuing.'
+    : 'Use a password that is not based on your name, centre, or the old default PIN.';
+  document.querySelector('.tab-bar').style.display = counselorMustChangePassword ? 'none' : 'flex';
+}
+
+function togglePasswordCard() {
+  const card = document.getElementById('password-card');
+  if (!card || counselorMustChangePassword) return;
+  card.style.display = card.style.display === 'block' ? 'none' : 'block';
+}
+
+function changePassword() {
+  const oldPassword = document.getElementById('cp-old').value.trim();
+  const newPassword = document.getElementById('cp-new').value.trim();
+  const confirmPassword = document.getElementById('cp-confirm').value.trim();
+  const err = document.getElementById('cp-err');
+  const btn = document.getElementById('cp-btn');
+  err.classList.remove('show');
+  if (!oldPassword || !newPassword || !confirmPassword) {
+    err.textContent = 'Please fill all password fields.';
+    err.classList.add('show');
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    err.textContent = 'New password and confirmation do not match.';
+    err.classList.add('show');
+    return;
+  }
+  btn.textContent = 'Saving...';
+  btn.disabled = true;
+  gasGet({action:'changeUserPassword', role:counselorAuthRole, name:counselorName, oldPassword, newPassword}, function(e,d) {
+    btn.textContent = 'Save Password';
+    btn.disabled = false;
+    if (e || !d || d.status !== 'ok') {
+      err.textContent = d && d.message ? d.message : 'Could not change password. Check your current password and try again.';
+      err.classList.add('show');
+      showToast('Could not change password.', 'error');
+      return;
+    }
+    ['cp-old','cp-new','cp-confirm'].forEach(id => document.getElementById(id).value = '');
+    counselorMustChangePassword = false;
+    applyPasswordChangeState();
+    showToast('Password updated.');
   });
 }
 

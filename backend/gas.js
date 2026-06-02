@@ -32,6 +32,7 @@ const COURSE_FEES = {
 };
 const SH_FEES     = 'Student_Fees';
 const SH_REVENUE_TARGETS = 'Revenue_Targets';
+const SH_USER_CREDENTIALS = 'User_Credentials';
 const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
   'RTGS / Bank Transfer','Collexo (Online)','Cheque','Demand Draft'];                 // % pass mark
 const STUDENT_PORTAL_URL = 'https://igi-feedback-attendance.vercel.app/student';
@@ -117,6 +118,118 @@ const INSTRUCTORS = [
   'Preeti Agarwala','Sayan Banerjee','Deepak Nachankar','Sharoon Joy',
   'Seema Athavale'
 ];
+
+function hexDigest(bytes) {
+  return bytes.map(function(b){var v=(b<0?b+256:b).toString(16);return v.length===1?'0'+v:v;}).join('');
+}
+
+function hashPassword(password,salt) {
+  return hexDigest(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,String(salt||'')+'|'+String(password||''),Utilities.Charset.UTF_8));
+}
+
+function credentialKey(role,name) {
+  return String(role||'').trim().toUpperCase()+'|'+String(name||'').trim().toUpperCase();
+}
+
+function ensureUserCredentialHeaders(sh) {
+  const h=['Role','Name','Centres','Password Hash','Salt','Must Change Password','Updated At','Active'];
+  if (sh.getLastRow()===0 || sh.getRange(1,1).getValue()==='') {
+    sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
+    sh.setFrozenRows(1);
+    return;
+  }
+  const current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);
+  if (current[0]!==h[0] || current[7]!==h[7]) {
+    sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
+    sh.setFrozenRows(1);
+  }
+}
+
+function defaultCredentialRows() {
+  var rows=[];
+  Object.keys(COUNSELOR_CREDS).forEach(function(name){
+    rows.push({role:'Counselor',name:name,password:COUNSELOR_CREDS[name].pin,centres:COUNSELOR_CREDS[name].centres.join(',')});
+  });
+  Object.keys(INSTRUCTOR_CREDS).forEach(function(name){
+    rows.push({role:'Instructor',name:name,password:INSTRUCTOR_CREDS[name],centres:(DUAL_ROLE[name]&&DUAL_ROLE[name].centres||[]).join(',')});
+  });
+  return rows;
+}
+
+function ensureUserCredentials(ss) {
+  var sh=ss.getSheetByName(SH_USER_CREDENTIALS);
+  if(!sh)sh=ss.insertSheet(SH_USER_CREDENTIALS);
+  ensureUserCredentialHeaders(sh);
+  var existing={};
+  if(sh.getLastRow()>1){
+    sh.getRange(2,1,sh.getLastRow()-1,8).getValues().forEach(function(r){
+      existing[credentialKey(r[0],r[1])]=true;
+    });
+  }
+  defaultCredentialRows().forEach(function(u){
+    var key=credentialKey(u.role,u.name);
+    if(existing[key])return;
+    var salt=Utilities.getUuid();
+    sh.appendRow([u.role,u.name,u.centres,hashPassword(u.password,salt),salt,'Y',new Date().toISOString(),'Y']);
+    existing[key]=true;
+  });
+  return sh;
+}
+
+function findUserCredential(ss,role,name) {
+  var sh=ensureUserCredentials(ss);
+  if(sh.getLastRow()<2)return null;
+  var key=credentialKey(role,name);
+  var rows=sh.getRange(2,1,sh.getLastRow()-1,8).getValues();
+  for(var i=0;i<rows.length;i++){
+    if(credentialKey(rows[i][0],rows[i][1])===key){
+      return {rowIndex:i+2,role:rows[i][0],name:rows[i][1],centres:String(rows[i][2]||''),hash:rows[i][3],salt:rows[i][4],mustChange:String(rows[i][5]||'N')==='Y',active:String(rows[i][7]||'Y')!=='N'};
+    }
+  }
+  return null;
+}
+
+function authenticateUser(ss,role,name,password) {
+  var cred=findUserCredential(ss,role,name);
+  if(!cred||!cred.active)return {ok:false};
+  if(hashPassword(password,cred.salt)!==cred.hash)return {ok:false};
+  return {ok:true,credential:cred};
+}
+
+function validateNewPassword(name,newPassword,oldCredential) {
+  var pw=String(newPassword||'');
+  var low=pw.toLowerCase();
+  var compactLow=low.replace(/\s+/g,'');
+  var common=['123456','password','igi2026','igimaster2026','admin123','111111','000000'];
+  if(pw.length<6)return 'Password must be at least 6 characters.';
+  if(common.indexOf(low)>=0)return 'Choose a less predictable password.';
+  if(String(name||'')&&compactLow.indexOf(String(name).toLowerCase().replace(/\s+/g,''))>=0)return 'Password cannot contain your name.';
+  if(oldCredential&&hashPassword(pw,oldCredential.salt)===oldCredential.hash)return 'New password cannot match the current password.';
+  return '';
+}
+
+function changeUserPassword(ss,role,name,oldPassword,newPassword) {
+  var auth=authenticateUser(ss,role,name,oldPassword);
+  if(!auth.ok)return {status:'error',reason:'wrong_current_password'};
+  var validation=validateNewPassword(name,newPassword,auth.credential);
+  if(validation)return {status:'error',reason:'weak_password',message:validation};
+  var sh=ss.getSheetByName(SH_USER_CREDENTIALS);
+  var salt=Utilities.getUuid();
+  sh.getRange(auth.credential.rowIndex,4,1,5).setValues([[hashPassword(newPassword,salt),salt,'N',new Date().toISOString(),'Y']]);
+  return {status:'ok'};
+}
+
+function resetUserPassword(ss,role,name,tempPassword) {
+  var cred=findUserCredential(ss,role,name);
+  if(!cred)return {status:'error',reason:'user_not_found'};
+  var validation=validateNewPassword(name,tempPassword,null);
+  if(validation)return {status:'error',reason:'weak_password',message:validation};
+  var sh=ss.getSheetByName(SH_USER_CREDENTIALS);
+  var salt=Utilities.getUuid();
+  sh.getRange(cred.rowIndex,4,1,5).setValues([[hashPassword(tempPassword,salt),salt,'Y',new Date().toISOString(),'Y']]);
+  return {status:'ok',mustChangePassword:true};
+}
+
 
 function sameName(a,b) {
   return String(a||'').trim().toUpperCase() === String(b||'').trim().toUpperCase();
@@ -639,22 +752,31 @@ function doGet(e) {
     if (act==='counselorLogin') {
       // Admin override
       if (p.pass===ADMIN_PASS) {
-        return respond({status:'ok', counselorName:'Admin', centres:Object.keys(CENTRE_CODES), isAdmin:true});
+        return respond({status:'ok', counselorName:'Admin', centres:Object.keys(CENTRE_CODES), isAdmin:true, authRole:'Admin', mustChangePassword:false});
       }
       const name = p.name||'';
       const pin  = p.pin ||p.pass||'';
       // Check counselor credentials first
       const cred = COUNSELOR_CREDS[name];
-      if (cred && cred.pin===pin) {
-        return respond({status:'ok', counselorName:name, centres:cred.centres, isAdmin:false});
+      const sheetCred = cred ? authenticateUser(ss,'Counselor',name,pin) : {ok:false};
+      if (cred && sheetCred.ok) {
+        return respond({status:'ok', counselorName:name, centres:cred.centres, isAdmin:false, authRole:'Counselor', mustChangePassword:sheetCred.credential.mustChange});
       }
       // Check dual-role instructor credentials (Arjun, Piyush, Anuradha)
       const dual = DUAL_ROLE[name];
-      const instrCred = INSTRUCTOR_CREDS[name];
-      if (dual && instrCred && instrCred===pin) {
-        return respond({status:'ok', counselorName:name, centres:dual.centres, isAdmin:false, isDualRole:true});
+      const instrCred = dual ? authenticateUser(ss,'Instructor',name,pin) : {ok:false};
+      if (dual && instrCred.ok) {
+        return respond({status:'ok', counselorName:name, centres:dual.centres, isAdmin:false, isDualRole:true, authRole:'Instructor', mustChangePassword:instrCred.credential.mustChange});
       }
       return respond({status:'error', reason:'wrong_credentials'});
+    }
+    if (act==='changeUserPassword') {
+      if(p.role==='Admin')return respond({status:'error',reason:'admin_password_not_supported'});
+      return respond(changeUserPassword(ss,p.role,p.name,p.oldPassword||p.oldPin||'',p.newPassword||p.newPin||''));
+    }
+    if (act==='resetUserPassword') {
+      if(p.adminPass!==ADMIN_PASS)return respond({status:'error',reason:'auth'});
+      return respond(resetUserPassword(ss,p.role,p.name,p.tempPassword||''));
     }
     if (act==='masterLogin')    return respond({status: p.pass===MASTER_PASS?'ok':'error'});
 
@@ -1199,14 +1321,17 @@ function doGet(e) {
     if (act==='instructorLogin') {
       const name = p.name||'';
       const pin  = p.pin ||'';
-      if (!INSTRUCTOR_CREDS[name] || INSTRUCTOR_CREDS[name]!==pin)
+      const auth=INSTRUCTOR_CREDS[name] ? authenticateUser(ss,'Instructor',name,pin) : {ok:false};
+      if (!auth.ok)
         return respond({status:'error',reason:'wrong_credentials'});
       const dual = DUAL_ROLE[name];
       return respond({
         status:'ok',
         instructorName: name,
         isDualRole:  !!dual,
-        centres:     dual ? dual.centres : []
+        centres:     dual ? dual.centres : [],
+        authRole:    'Instructor',
+        mustChangePassword: auth.credential.mustChange
       });
     }
 
@@ -2128,6 +2253,7 @@ function ensureSheets(ss) {
                     'Inst 3 Amount','Inst 3 Due','Inst 3 Paid','Inst 3 Paid Date','Inst 3 Mode','Inst 3 Reference',
                     'Collected','Outstanding','Fee Status','Entered By','Updated At'],
     [SH_REVENUE_TARGETS]: ['Month','Counsellor','Centre','Target Course Fee','Target Course Fee + GST','Notes','Updated By','Updated At'],
+    [SH_USER_CREDENTIALS]: ['Role','Name','Centres','Password Hash','Salt','Must Change Password','Updated At','Active'],
     [SH_HOLIDAYS]:     ['Date','Holiday Name','Centre','Added At'],
     [SH_ASSESSMENTS]:  ['Assessment ID','Batch Code','Test Name','Test Type','Test Date','Total Marks','Instructor','Created At'],
     [SH_MARKS]:        ['Assessment ID','Student ID','Student Name','Marks Obtained','Percentage','Result','Remarks','Total Marks','Updated At']
@@ -2146,8 +2272,11 @@ function ensureSheets(ss) {
       ensureFeeHeaders(sh);
     } else if (name===SH_REVENUE_TARGETS) {
       ensureRevenueTargetHeaders(sh);
+    } else if (name===SH_USER_CREDENTIALS) {
+      ensureUserCredentialHeaders(sh);
     }
   });
+  ensureUserCredentials(ss);
 }
 function ensureStudentHeaders(sh) {
   const h=['Student ID','Primary Batch Code','Name','Mobile Last 4','Mobile','Email','Status','Created At','Welcome Email Status','Welcome Email Sent At'];

@@ -2381,19 +2381,19 @@ function revSaveMonthCard(btn) {
 
   // Bucket 1 — Own centre
   var course1 = Number(body.querySelector('.rmc-course').value) || 0;
-  var gst1 = Number(body.querySelector('.rmc-gst').value) || revenueGst(course1);
+  var gst1 = revenueGst(course1);
   var stu1 = Number(body.querySelector('.rmc-students').value) || 0;
   var notes1 = (body.querySelector('.rmc-notes').value || '').trim();
 
   // Bucket 2 — Other centre (only if course fee or students entered)
   var course2 = Number(body.querySelector('.rmc-xcourse').value) || 0;
-  var gst2 = Number(body.querySelector('.rmc-xgst').value) || revenueGst(course2);
+  var gst2 = revenueGst(course2);
   var stu2 = Number(body.querySelector('.rmc-xstudents').value) || 0;
   var biz2 = body.querySelector('.rmc-business').value || assignedCentre;
 
   // Bucket 3 — Corporate (only if course fee or students entered)
   var course3 = Number(body.querySelector('.rmc-ccourse').value) || 0;
-  var gst3 = Number(body.querySelector('.rmc-cgst').value) || revenueGst(course3);
+  var gst3 = revenueGst(course3);
   var stu3 = Number(body.querySelector('.rmc-cstudents').value) || 0;
 
   if (!course1 && !stu1 && !course2 && !stu2 && !course3 && !stu3) {
@@ -2476,7 +2476,7 @@ function saveRevenueCentreTarget() {
     updatedBy:counselorName||'Admin'
   });
   gasGet(params, function(e,d) {
-    if (e||!d||d.status!=='ok') { showToast('Could not save centre target.','error'); return; }
+    if (e||!d||d.status!=='ok') { showToast((d&&d.message)||'Could not save centre target.','error'); return; }
     showToast('Centre target saved.');
     revenueData = null;
     loadRevenueDashboard();
@@ -2503,7 +2503,7 @@ function saveRevenueAnnualTarget() {
     updatedBy:counselorName||'Admin'
   });
   gasGet(params, function(e,d) {
-    if (e||!d||d.status!=='ok') { showToast('Could not save annual target.','error'); return; }
+    if (e||!d||d.status!=='ok') { showToast((d&&d.message)||'Could not save annual target.','error'); return; }
     showToast('Annual target saved.');
     revenueData = null;
     loadRevenueDashboard();
@@ -2707,7 +2707,7 @@ function saveAllAdminTargets() {
     if (!inp || !inp.value) return;
     var course = Number(inp.value)||0;
     if (!course) return;
-    var locked = !!(cmap[centre] && (Number(cmap[centre].targetCourse)||0));
+    var locked = !!(cmap[centre] && ((Number(cmap[centre].targetCourse)||0) || (Number(cmap[centre].targetGst)||0)));
     if (locked && !(revise && revise.checked)) return;
     if (locked && !(notes && notes.value.trim())) {
       if (meta) meta.textContent = 'Revision reason is required for locked centre targets.';
@@ -2725,7 +2725,7 @@ function saveAllAdminTargets() {
     var course = Number(inp.value)||0;
     if (!course) return;
     var key = revCanonical(counsellor)+'|'+centre;
-    var locked = !!(tmap[key] && (Number(tmap[key].targetCourse)||0));
+    var locked = !!(tmap[key] && ((Number(tmap[key].targetCourse)||0) || (Number(tmap[key].targetGst)||0)));
     if (locked && !(revise && revise.checked)) return;
     if (locked && !(notes && notes.value.trim())) {
       if (meta) meta.textContent = 'Revision reason is required for locked counsellor targets.';
@@ -2749,8 +2749,9 @@ function saveAllAdminTargets() {
   });
   gasGet(params, function(e,d) {
     if (e||!d||d.status!=='ok') {
-      if(meta) meta.textContent = 'Save failed. Please try again.';
-      showToast('Could not save targets.','error');
+      var msg = (d && d.message) || 'Could not save targets.';
+      if(meta) meta.textContent = msg;
+      showToast(msg,'error');
       return;
     }
     showToast('Saved '+total+' target'+(total===1?'':'s')+' \u2713');

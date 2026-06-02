@@ -30,7 +30,7 @@ function gasGet(params, cb) {
   s.onerror = function(){ if(!done){done=true;delete window[cbName];try{document.body.removeChild(s);}catch(x){}cb(new Error('network'),null);} };
   s.src = GAS_URL + '?' + qs + '&callback=' + cbName;
   document.body.appendChild(s);
-  setTimeout(function(){ if(!done){done=true;delete window[cbName];try{document.body.removeChild(s);}catch(x){}cb(new Error('timeout'),null);} }, 12000);
+  setTimeout(function(){ if(!done){done=true;delete window[cbName];try{document.body.removeChild(s);}catch(x){}cb(new Error('timeout'),null);} }, 30000);
 }
 
 function ensureToastHost() {

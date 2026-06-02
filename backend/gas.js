@@ -35,6 +35,7 @@ const SH_REVENUE_TARGETS = 'Revenue_Targets';
 const SH_REVENUE_CENTRE_TARGETS = 'Revenue_Centre_Targets';
 const SH_REVENUE_ANNUAL_TARGETS = 'Revenue_Annual_Targets';
 const SH_REVENUE_MONTHLY_ACHIEVED = 'Revenue_Monthly_Achieved';
+const REVENUE_BACKEND_VERSION = 'revenue-save-split-2026-06-02';
 const SH_USER_CREDENTIALS = 'User_Credentials';
 const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
   'RTGS / Bank Transfer','Collexo (Online)','Cheque','Demand Draft'];                 // % pass mark
@@ -1985,12 +1986,12 @@ function doGet(e) {
         monthlyRows=monthlyRows.filter(function(r){return revenueSameCounsellor(r.counsellor,effectiveCounsellor);});
         if(monthlyScope)monthlyScope.counsellor=effectiveCounsellor;
       }
-      if(!rows.length&&!centreRows.length&&!monthlyRows.length) return respond({status:'error',reason:'no_targets'});
+      if(!rows.length&&!centreRows.length&&!monthlyRows.length) return respond({status:'error',reason:'no_revenue_rows',message:'No annual target or monthly revenue rows were submitted.'});
       var actor=p.updatedBy||p.counsellor||'Counselor';
       var savedCentre=saveRevenueCentreTargetRows(ss,centreRows,actor);
       var savedTargets=saveRevenueAnnualTargetRows(ss,rows,actor);
       var savedMonthly=saveRevenueMonthlyAchievedRows(ss,monthlyRows,actor,monthlyScope);
-      return respond({status:'ok',saved:savedCentre+savedTargets+savedMonthly,savedCentre:savedCentre,savedTargets:savedTargets,savedMonthly:savedMonthly,dashboard:buildRevenueDashboard(ss,p)});
+      return respond({status:'ok',saved:savedCentre+savedTargets+savedMonthly,savedCentre:savedCentre,savedTargets:savedTargets,savedMonthly:savedMonthly,savedAt:new Date().toISOString(),backendVersion:REVENUE_BACKEND_VERSION,dashboard:buildRevenueDashboard(ss,p)});
     }
 
     return respond({status:'error',reason:'unknown_action'});
@@ -2500,7 +2501,7 @@ function buildRevenueDashboard(ss,p) {
     var b=byMonth[m.key]||revenueBlankBucket();
     return Object.assign({month:m.key,label:m.label},b);
   });
-  return {status:'ok',period:period,months:monthRows,centreTargetRows:centreTargetRows,targetRows:targetRows,monthlyRows:achievedRows,crossRows:crossRows,
+  return {status:'ok',backendVersion:REVENUE_BACKEND_VERSION,period:period,months:monthRows,centreTargetRows:centreTargetRows,targetRows:targetRows,monthlyRows:achievedRows,crossRows:crossRows,
     summary:{targetCourse:totalTargetCourse,targetGst:totalTargetGst,achievedCourse:achievedCourse,achievedGst:achievedGst,monthlyTargetCourse:monthlyTargetCourse,monthlyTargetGst:monthlyTargetGst,monthsInPeriod:fullMonths.length,centreTargetCourse:centreTargetCourse,centreTargetGst:centreTargetGst,splitTargetCourse:splitTargetCourse,splitTargetGst:splitTargetGst},
     counsellors:Object.keys(byCounsellor).sort().map(function(k){return Object.assign({counsellor:k},byCounsellor[k]);}),
     centres:Object.keys(byCentre).sort().map(function(k){return Object.assign({centre:k},byCentre[k]);}),
@@ -2618,7 +2619,7 @@ function saveRevenueMonthlyAchievedRows(ss,rows,updatedBy,scope) {
     for(var i=scoped.length-1;i>=0;i--){
       var r=scoped[i];
       var month=String(r[0]).slice(0,7);
-      if(deleteMonths[month]&&String(r[1])===String(scope.period)&&String(r[2])===String(scope.counsellor)&&String(r[3])===String(scope.assignedCentre)){
+      if(deleteMonths[month]&&String(r[1])===String(scope.period)&&revenueSameCounsellor(r[2],scope.counsellor)&&String(r[3])===String(scope.assignedCentre)){
         sh.deleteRow(i+2);
       }
     }

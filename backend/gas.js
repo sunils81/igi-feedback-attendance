@@ -35,7 +35,7 @@ const SH_REVENUE_TARGETS = 'Revenue_Targets';
 const SH_REVENUE_CENTRE_TARGETS = 'Revenue_Centre_Targets';
 const SH_REVENUE_ANNUAL_TARGETS = 'Revenue_Annual_Targets';
 const SH_REVENUE_MONTHLY_ACHIEVED = 'Revenue_Monthly_Achieved';
-const REVENUE_BACKEND_VERSION = 'revenue-lock-students-split-2026-06-02';
+const REVENUE_BACKEND_VERSION = 'revenue-redesign-v2-2026-06-02';
 const SH_USER_CREDENTIALS = 'User_Credentials';
 const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
   'RTGS / Bank Transfer','Collexo (Online)','Cheque','Demand Draft'];                 // % pass mark
@@ -2284,7 +2284,7 @@ function ensureSheets(ss) {
     [SH_REVENUE_TARGETS]: ['Month','Counsellor','Centre','Target Course Fee','Target Course Fee + GST','Notes','Updated By','Updated At'],
     [SH_REVENUE_CENTRE_TARGETS]: ['Period','Centre','Annual Course Fee Target','Annual Course Fee + GST Target','Notes','Updated By','Updated At'],
     [SH_REVENUE_ANNUAL_TARGETS]: ['Period','Counsellor','Assigned Centre','Annual Course Fee Target','Annual Course Fee + GST Target','Notes','Updated By','Updated At'],
-    [SH_REVENUE_MONTHLY_ACHIEVED]: ['Month','Period','Counsellor','Assigned Centre','Business Centre','Business Type','Achieved Course Fee','Achieved Course Fee + GST','Notes','Updated By','Updated At'],
+    [SH_REVENUE_MONTHLY_ACHIEVED]: ['Month','Period','Counsellor','Assigned Centre','Business Centre','Business Type','Student Count','Achieved Course Fee','Achieved Course Fee + GST','Notes','Updated By','Locked','Updated At'],
     [SH_USER_CREDENTIALS]: ['Role','Name','Centres','Password Hash','Salt','Must Change Password','Updated At','Active'],
     [SH_HOLIDAYS]:     ['Date','Holiday Name','Centre','Added At'],
     [SH_ASSESSMENTS]:  ['Assessment ID','Batch Code','Test Name','Test Type','Test Date','Total Marks','Instructor','Created At'],

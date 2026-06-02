@@ -2798,6 +2798,13 @@ function saveRevenueMonthlyAchievedRows(ss,rows,updatedBy,scope) {
   getRevenueMonthlyAchievedRows(ss).forEach(function(r){
     if(r.locked)lockedMonths[r.month+'|'+r.period+'|'+revenueNameAliases(r.counsellor)[0]+'|'+r.assignedCentre]=true;
   });
+  var revisionMonths={};
+  rows.forEach(function(r){
+    var month=String(r.month||'').slice(0,7), period=String(r.period||'2026-27').trim(), counsellor=String(r.counsellor||'').trim(), assigned=String(r.assignedCentre||r.centre||'').trim();
+    if(month&&period&&counsellor&&assigned&&String(r.revise||'')==='Y'&&String(r.notes||'').trim()){
+      revisionMonths[month+'|'+period+'|'+revenueNameAliases(counsellor)[0]+'|'+assigned]=true;
+    }
+  });
   if(scope&&scope.period&&scope.counsellor&&scope.assignedCentre&&scope.months&&scope.months.length&&sh.getLastRow()>1){
     var deleteMonths={};
     scope.months.forEach(function(m){deleteMonths[String(m).slice(0,7)]=true;});
@@ -2807,7 +2814,8 @@ function saveRevenueMonthlyAchievedRows(ss,rows,updatedBy,scope) {
       var r=scoped[i];
       var month=String(r[0]).slice(0,7);
       var locked=String(rowCell(r,map,'Locked',11)||'Y').trim()!=='N';
-      if(!locked&&deleteMonths[month]&&String(r[1])===String(scope.period)&&revenueSameCounsellor(r[2],scope.counsellor)&&String(r[3])===String(scope.assignedCentre)){
+      var lockKey=month+'|'+String(scope.period)+'|'+revenueNameAliases(scope.counsellor)[0]+'|'+String(scope.assignedCentre);
+      if((!locked||revisionMonths[lockKey])&&deleteMonths[month]&&String(r[1])===String(scope.period)&&revenueSameCounsellor(r[2],scope.counsellor)&&String(r[3])===String(scope.assignedCentre)){
         sh.deleteRow(i+2);
       }
     }
@@ -2821,7 +2829,7 @@ function saveRevenueMonthlyAchievedRows(ss,rows,updatedBy,scope) {
     var businessType=String(r.businessType||'Centre Revenue').trim();
     if(!month||!period||!counsellor||!assigned||!business)return;
     var lockKey=month+'|'+period+'|'+revenueNameAliases(counsellor)[0]+'|'+assigned;
-    if(lockedMonths[lockKey])return;
+    if(lockedMonths[lockKey]&&!revisionMonths[lockKey])return;
     var row=[month,period,counsellor,assigned,business,businessType,Number(r.studentCount)||0,Number(r.achievedCourse)||0,Number(r.achievedGst)||0,r.notes||'',updatedBy,'Y',new Date().toISOString()];
     var key=month+'|'+period+'|'+counsellor+'|'+assigned+'|'+business+'|'+businessType;
     if(rowMap[key])sh.getRange(rowMap[key],1,1,row.length).setValues([row]);

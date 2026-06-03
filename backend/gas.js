@@ -36,7 +36,7 @@ const SH_REVENUE_CENTRE_TARGETS = 'Revenue_Centre_Targets';
 const SH_REVENUE_ANNUAL_TARGETS = 'Revenue_Annual_Targets';
 const SH_REVENUE_MONTHLY_ACHIEVED = 'Revenue_Monthly_Achieved';
 const SH_REVENUE_TARGET_REVISIONS = 'Revenue_Target_Revisions';
-const REVENUE_BACKEND_VERSION = 'revenue-ledger-v8-2026-06-03';
+const REVENUE_BACKEND_VERSION = 'revenue-ledger-v9-2026-06-03';
 const SH_USER_CREDENTIALS = 'User_Credentials';
 const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
   'RTGS / Bank Transfer','Collexo (Online)','Cheque','Demand Draft'];                 // % pass mark
@@ -2848,35 +2848,29 @@ function parseRevenueMonthlyAchievedSheet(sh) {
 }
 
 function getRevenueMonthlyAchievedRows(ss) {
-  var sh=ss.getSheetByName(SH_REVENUE_MONTHLY_ACHIEVED);
-  var sharedRows = parseRevenueMonthlyAchievedSheet(sh);
-  if (sharedRows && sharedRows.length > 0) {
-    // Fast path: if the consolidated ledger is populated, read ONLY from it and deduplicate.
-    var byKey={};
-    sharedRows.forEach(function(r){
-      var key=revenueMonthlyLedgerKey(r);
-      var prev=byKey[key];
-      if(!prev || String(r.updatedAt||'')>=String(prev.updatedAt||''))byKey[key]=r;
-    });
-    return Object.keys(byKey).map(function(k){return byKey[k];});
-  }
-  
-  // Legacy fallback: if consolidated ledger is empty, merge individual counsellor sheets.
-  var byKey={};
-  function absorb(rows){
-    rows.forEach(function(r){
-      var key=revenueMonthlyLedgerKey(r);
-      var prev=byKey[key];
-      if(!prev || String(r.updatedAt||'')>=String(prev.updatedAt||''))byKey[key]=r;
+  // Always merge ALL sources: shared ledger + every per-counsellor sheet.
+  // Deduplication is by revenueMonthlyLedgerKey; latest updatedAt wins.
+  // This fixes the bug where per-counsellor legacy sheets (e.g. Revenue_Monthly_Bianca)
+  // were skipped when the shared ledger already had any rows.
+  var byKey = {};
+  function absorb(rows) {
+    rows.forEach(function(r) {
+      var key = revenueMonthlyLedgerKey(r);
+      var prev = byKey[key];
+      if (!prev || String(r.updatedAt||'') >= String(prev.updatedAt||'')) byKey[key] = r;
     });
   }
-  absorb(sharedRows);
-  ss.getSheets().forEach(function(s){
-    if(s.getName().indexOf('Revenue_Monthly_')===0 && s.getName()!==SH_REVENUE_MONTHLY_ACHIEVED){
+  // 1. Shared consolidated ledger (highest priority for same key — written last)
+  var sh = ss.getSheetByName(SH_REVENUE_MONTHLY_ACHIEVED);
+  absorb(parseRevenueMonthlyAchievedSheet(sh));
+  // 2. Per-counsellor sheets (handles legacy data not yet migrated to shared ledger,
+  //    and also cross-centre rows that must appear in both counsellors' and target centre's views)
+  ss.getSheets().forEach(function(s) {
+    if (s.getName().indexOf('Revenue_Monthly_') === 0 && s.getName() !== SH_REVENUE_MONTHLY_ACHIEVED) {
       absorb(parseRevenueMonthlyAchievedSheet(s));
     }
   });
-  return Object.keys(byKey).map(function(k){return byKey[k];});
+  return Object.keys(byKey).map(function(k) { return byKey[k]; });
 }
 
 function saveRevenueCentreTargetRows(ss,rows,updatedBy) {

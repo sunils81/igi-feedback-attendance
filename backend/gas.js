@@ -36,7 +36,7 @@ const SH_REVENUE_CENTRE_TARGETS = 'Revenue_Centre_Targets';
 const SH_REVENUE_ANNUAL_TARGETS = 'Revenue_Annual_Targets';
 const SH_REVENUE_MONTHLY_ACHIEVED = 'Revenue_Monthly_Achieved';
 const SH_REVENUE_TARGET_REVISIONS = 'Revenue_Target_Revisions';
-const REVENUE_BACKEND_VERSION = 'revenue-ledger-v1-2026-06-03';
+const REVENUE_BACKEND_VERSION = 'revenue-ledger-v2-2026-06-03';
 const SH_USER_CREDENTIALS = 'User_Credentials';
 const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
   'RTGS / Bank Transfer','Collexo (Online)','Cheque','Demand Draft'];                 // % pass mark
@@ -2090,6 +2090,7 @@ function doGet(e) {
       var savedCentre=saveRevenueCentreTargetRows(ss,centreRows,actor);
       var savedTargets=saveRevenueAnnualTargetRows(ss,rows,actor);
       var savedMonthly=saveRevenueMonthlyAchievedRows(ss,monthlyRows,actor,monthlyScope);
+      try { SpreadsheetApp.flush(); } catch(_flushErr) {}
       if(submittedMonthlyRows&&!savedMonthly&&!savedCentre&&!savedTargets){
         return respond({status:'error',reason:'monthly_revenue_not_saved',message:'This month is already locked or the submitted counsellor does not match your login.',savedMonthly:0,backendVersion:REVENUE_BACKEND_VERSION,dashboard:buildRevenueDashboard(ss,p)});
       }
@@ -2098,7 +2099,6 @@ function doGet(e) {
         cacheRemove(revenueDashboardCacheKeysForSave(p,effectiveCounsellor));
       } catch(_e){}
       var freshDashboard=buildRevenueDashboard(ss,p);
-      cachePut(revenueDashboardCacheKey(p),freshDashboard);
       return respond({status:'ok',saved:savedCentre+savedTargets+savedMonthly,savedCentre:savedCentre,savedTargets:savedTargets,savedMonthly:savedMonthly,savedAt:new Date().toISOString(),backendVersion:REVENUE_BACKEND_VERSION,dashboard:freshDashboard});
     }
 

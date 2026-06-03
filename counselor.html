@@ -816,8 +816,17 @@ function doLogin() {
     showScreen('s-main');
     applyPasswordChangeState();
     applyAdminVisibility();
-    loadBatchDropdowns(); // uses sessionStorage cache if available
-    loadMyBatches();
+    // Batches arrive bundled in the login response — no extra GAS call needed
+    if (d.batches && d.batches.length) {
+      // Store in sessionStorage for future tab switches / page refreshes
+      try { sessionStorage.setItem(_batchCacheKey(), JSON.stringify(d.batches)); } catch(ex) {}
+      _applyBatchData(d.batches);
+      loadMyBatches(); // will use allBatches immediately — no GAS call
+    } else {
+      // Fallback: fetch separately (old GAS deploy or empty batch list)
+      loadBatchDropdowns();
+      loadMyBatches();
+    }
     // Holidays loaded lazily when the tab is opened (see switchTab)
   });
 }
@@ -3271,16 +3280,14 @@ function whatsappLink() {
 function loadMyBatches() {
   const el = document.getElementById('mb-list');
   const health = document.getElementById('mb-health');
-  el.innerHTML = loadingState('Loading batch overview...');
-  if (health) health.innerHTML = loadingState('Checking setup details...');
-  const centresParam = isAdmin ? '' : allowedCentres.join(',');
-  gasGet({action:'getBatches', centres:centresParam}, function(e,d) {
-    if (e||!d||!d.batches||!d.batches.length) {
+  function renderMyBatchList(batches) {
+    if (!batches || !batches.length) {
       if (health) health.innerHTML = '<div class="health-item ok"><span class="health-icon">✓</span><div>No batches to check yet.</div></div>';
-      el.innerHTML=emptyState('🏫', 'No batches created yet', 'Create a batch from Batch Setup and it will appear here.'); return;
+      el.innerHTML = emptyState('🏫', 'No batches created yet', 'Create a batch from Batch Setup and it will appear here.');
+      return;
     }
-    renderBatchHealth(d.batches);
-    el.innerHTML = d.batches.map(b=>`
+    renderBatchHealth(batches);
+    el.innerHTML = batches.map(b=>`
       <div class="batch-row">
         <div class="bc">${b.batchCode}</div>
         <div class="bm">${b.course} &nbsp;·&nbsp; ${b.centre} &nbsp;·&nbsp; ${b.type} &nbsp;·&nbsp; ${b.startDate}${b.endDate?' → '+b.endDate:''}</div>
@@ -3290,6 +3297,19 @@ function loadMyBatches() {
         </div>
         ${b.instructor?'':renderInlineInstructorAssign(b.batchCode)}
       </div>`).join('');
+  }
+  // Reuse allBatches if already loaded — avoids a duplicate GAS call at login
+  if (allBatches && allBatches.length) {
+    renderMyBatchList(allBatches);
+    return;
+  }
+  el.innerHTML = loadingState('Loading batch overview...');
+  if (health) health.innerHTML = loadingState('Checking setup details...');
+  const centresParam = isAdmin ? '' : allowedCentres.join(',');
+  gasGet({action:'getBatches', centres:centresParam}, function(e,d) {
+    if (e||!d||!d.batches) { renderMyBatchList([]); return; }
+    allBatches = d.batches;
+    renderMyBatchList(d.batches);
   });
 }
 

@@ -744,6 +744,35 @@ function calendarEventObject(d,extra) {
   },extra);
 }
 
+// ── fetchBatches helper — used by getBatches and counselorLogin ─
+function fetchBatches(ss, centres, centre) {
+  const sh = ss.getSheetByName(SH_BATCHES);
+  if (!sh || sh.getLastRow() < 2) return [];
+  const data = sh.getRange(2, 1, sh.getLastRow()-1, 10).getValues();
+  const fmtDate = function(v) {
+    if (!v) return '';
+    if (v instanceof Date) return v.toLocaleDateString('en-IN');
+    const d = new Date(v);
+    return isNaN(d) ? '' : d.toLocaleDateString('en-IN');
+  };
+  return data
+    .filter(r => r[0] && (!centre || r[1]===centre) && (!centres || !centres.length || centres.includes(r[1])))
+    .map(r => {
+      const isNew = detectSlotOrDate(r[4]);
+      return {
+        batchCode:  r[0],
+        centre:     r[1],
+        course:     r[2],
+        type:       r[3],
+        batchSlot:  isNew ? String(r[4]).trim() : 'Full Day',
+        startDate:  fmtDate(isNew ? r[5] : r[4]),
+        endDate:    fmtDate(isNew ? r[6] : r[5]),
+        counselor:  isNew ? (r[7]||'') : (r[6]||''),
+        instructor: isNew ? (r[9]||'') : (r[8]||'')
+      };
+    });
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  doGet
 // ═══════════════════════════════════════════════════════════════
@@ -769,7 +798,8 @@ function doGet(e) {
     if (act==='counselorLogin') {
       // Admin override
       if (p.pass===ADMIN_PASS) {
-        return respond({status:'ok', counselorName:'Admin', centres:Object.keys(CENTRE_CODES), isAdmin:true, authRole:'Admin', mustChangePassword:false});
+        const adminBatches = fetchBatches(ss, [], '');
+        return respond({status:'ok', counselorName:'Admin', centres:Object.keys(CENTRE_CODES), isAdmin:true, authRole:'Admin', mustChangePassword:false, batches:adminBatches});
       }
       const name = p.name||'';
       const pin  = p.pin ||p.pass||'';
@@ -777,13 +807,15 @@ function doGet(e) {
       const cred = COUNSELOR_CREDS[name];
       const sheetCred = cred ? authenticateUser(ss,'Counselor',name,pin) : {ok:false};
       if (cred && sheetCred.ok) {
-        return respond({status:'ok', counselorName:name, centres:cred.centres, isAdmin:false, authRole:'Counselor', mustChangePassword:sheetCred.credential.mustChange});
+        const batches = fetchBatches(ss, cred.centres, '');
+        return respond({status:'ok', counselorName:name, centres:cred.centres, isAdmin:false, authRole:'Counselor', mustChangePassword:sheetCred.credential.mustChange, batches});
       }
       // Check dual-role instructor credentials (Arjun, Piyush, Anuradha)
       const dual = DUAL_ROLE[name];
       const instrCred = dual ? authenticateUser(ss,'Instructor',name,pin) : {ok:false};
       if (dual && instrCred.ok) {
-        return respond({status:'ok', counselorName:name, centres:dual.centres, isAdmin:false, isDualRole:true, authRole:'Instructor', mustChangePassword:instrCred.credential.mustChange});
+        const batches = fetchBatches(ss, dual.centres, '');
+        return respond({status:'ok', counselorName:name, centres:dual.centres, isAdmin:false, isDualRole:true, authRole:'Instructor', mustChangePassword:instrCred.credential.mustChange, batches});
       }
       return respond({status:'error', reason:'wrong_credentials'});
     }
@@ -841,28 +873,9 @@ function doGet(e) {
 
     // ── getBatches ─────────────────────────────────────────────
     if (act==='getBatches') {
-      const sh = ss.getSheetByName(SH_BATCHES);
-      if (sh.getLastRow()<2) return respond({status:'ok',batches:[]});
-      const data=sh.getRange(2,1,sh.getLastRow()-1,10).getValues();
       const centre=(p.centre||'').trim();
       const centres=(p.centres||'').split(',').map(s=>s.trim()).filter(Boolean);
-      return respond({status:'ok',batches:data.filter(r=>r[0]&&(!centre||r[1]===centre)&&(!centres.length||centres.includes(r[1]))).map(r=>{
-        const isNew = detectSlotOrDate(r[4]);
-        const sdRaw = isNew ? r[5] : r[4];
-        const edRaw = isNew ? r[6] : r[5];
-        const fmtDate = function(v){ if(!v) return ''; if(v instanceof Date) return v.toLocaleDateString('en-IN'); const d=new Date(v); return isNaN(d)?'':d.toLocaleDateString('en-IN'); };
-        return {
-          batchCode:  r[0],
-          centre:     r[1],
-          course:     r[2],
-          type:       r[3],
-          batchSlot:  isNew ? String(r[4]).trim() : 'Full Day',
-          startDate:  fmtDate(sdRaw),
-          endDate:    fmtDate(edRaw),
-          counselor:  isNew ? (r[7]||'') : (r[6]||''),
-          instructor: isNew ? (r[9]||'') : (r[8]||'')
-        };
-      })});
+      return respond({status:'ok', batches: fetchBatches(ss, centres, centre)});
     }
 
     // ── getNextEnrollment ──────────────────────────────────────

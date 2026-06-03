@@ -36,7 +36,7 @@ const SH_REVENUE_CENTRE_TARGETS = 'Revenue_Centre_Targets';
 const SH_REVENUE_ANNUAL_TARGETS = 'Revenue_Annual_Targets';
 const SH_REVENUE_MONTHLY_ACHIEVED = 'Revenue_Monthly_Achieved';
 const SH_REVENUE_TARGET_REVISIONS = 'Revenue_Target_Revisions';
-const REVENUE_BACKEND_VERSION = 'revenue-ledger-v3-2026-06-03';
+const REVENUE_BACKEND_VERSION = 'revenue-ledger-v4-2026-06-03';
 const SH_USER_CREDENTIALS = 'User_Credentials';
 const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
   'RTGS / Bank Transfer','Collexo (Online)','Cheque','Demand Draft'];                 // % pass mark
@@ -2866,24 +2866,47 @@ function saveRevenueCentreTargetRows(ss,rows,updatedBy) {
   var sh=ss.getSheetByName(SH_REVENUE_CENTRE_TARGETS);
   ensureRevenueCentreTargetHeaders(sh);
   var existingRows=getRevenueCentreTargetRows(ss);
-  var existing=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,2).getValues():[];
-  var rowMap={};
-  existing.forEach(function(r,i){rowMap[String(r[0])+'|'+String(r[1])]=i+2;});
   var saved=0;
+  
   rows.forEach(function(r){
     var period=String(r.period||'2026-27').trim(), centre=String(r.centre||'').trim();
     if(!period||!centre)return;
     if(!Number(r.targetCourse)&&!Number(r.targetGst))return;
+    
+    var old=existingRows.find(function(x){return x.period===period&&x.centre===centre;})||null;
     var row=[period,centre,Number(r.targetCourse)||0,Number(r.targetGst)||0,r.notes||'',updatedBy,new Date().toISOString()];
-    var key=period+'|'+centre;
-    if(rowMap[key]){
-      var old=existingRows.find(function(x){return x.period===period&&x.centre===centre;})||{};
+    
+    if(old){
       if(String(r.revise||'')!=='Y')return;
       if(!String(r.notes||'').trim())return;
       logRevenueTargetRevision(ss,'Centre',period,centre,'',old.targetCourse,old.targetGst,row[2],row[3],r.notes||'',updatedBy);
-      sh.getRange(rowMap[key],1,1,row.length).setValues([row]);
+      
+      var values=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,2).getValues():[];
+      var matches=[];
+      values.forEach(function(vals,idx){
+        var rowNum=idx+2;
+        if(String(vals[0]).trim()===period && String(vals[1]).trim()===centre){
+          matches.push(rowNum);
+        }
+      });
+      
+      if(matches.length>0){
+        sh.getRange(matches[0],1,1,row.length).setValues([row]);
+        for(var i=matches.length-1; i>0; i--){
+          sh.deleteRow(matches[i]);
+        }
+      } else {
+        sh.appendRow(row);
+      }
+    } else {
+      var values=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,2).getValues():[];
+      var dup=values.some(function(vals){
+        return String(vals[0]).trim()===period && String(vals[1]).trim()===centre;
+      });
+      if(!dup){
+        sh.appendRow(row);
+      }
     }
-    else{sh.appendRow(row);rowMap[key]=sh.getLastRow();}
     saved++;
   });
   return saved;
@@ -2893,27 +2916,46 @@ function saveRevenueAnnualTargetRows(ss,rows,updatedBy) {
   var sh=ss.getSheetByName(SH_REVENUE_ANNUAL_TARGETS);
   ensureRevenueAnnualTargetHeaders(sh);
   var locked=getRevenueAnnualTargetRows(ss);
-  var existing=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,3).getValues():[];
-  var rowMap={};
-  existing.forEach(function(r,i){rowMap[String(r[0])+'|'+String(r[1])+'|'+String(r[2])]=i+2;});
   var saved=0;
+  
   rows.forEach(function(r){
     var period=String(r.period||'2026-27').trim(), counsellor=String(r.counsellor||'').trim(), centre=String(r.centre||'').trim();
     if(!period||!counsellor||!centre)return;
     if(!Number(r.targetCourse)&&!Number(r.targetGst))return;
+    
     var old=locked.find(function(x){return x.period===period&&x.centre===centre&&revenueSameCounsellor(x.counsellor,counsellor);})||null;
     var row=[period,counsellor,centre,Number(r.targetCourse)||0,Number(r.targetGst)||0,r.notes||'',updatedBy,new Date().toISOString()];
-    var key=period+'|'+counsellor+'|'+centre;
+    
     if(old){
       if(String(r.revise||'')!=='Y')return;
       if(!String(r.notes||'').trim())return;
       logRevenueTargetRevision(ss,'Counsellor',period,centre,counsellor,old.targetCourse,old.targetGst,row[3],row[4],r.notes||'',updatedBy);
-      var existingKey=Object.keys(rowMap).find(function(k){var parts=k.split('|');return parts[0]===period&&parts[2]===centre&&revenueSameCounsellor(parts[1],counsellor);});
-      if(existingKey)sh.getRange(rowMap[existingKey],1,1,row.length).setValues([row]);
-      else sh.appendRow(row);
+      
+      var values=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,3).getValues():[];
+      var matches=[];
+      values.forEach(function(vals,idx){
+        var rowNum=idx+2;
+        if(String(vals[0]).trim()===period && String(vals[2]).trim()===centre && revenueSameCounsellor(vals[1],counsellor)){
+          matches.push(rowNum);
+        }
+      });
+      
+      if(matches.length>0){
+        sh.getRange(matches[0],1,1,row.length).setValues([row]);
+        for(var i=matches.length-1; i>0; i--){
+          sh.deleteRow(matches[i]);
+        }
+      } else {
+        sh.appendRow(row);
+      }
     } else {
-      if(rowMap[key])return;
-      sh.appendRow(row);rowMap[key]=sh.getLastRow();
+      var values=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,3).getValues():[];
+      var dup=values.some(function(vals){
+        return String(vals[0]).trim()===period && String(vals[2]).trim()===centre && revenueSameCounsellor(vals[1],counsellor);
+      });
+      if(!dup){
+        sh.appendRow(row);
+      }
     }
     saved++;
   });

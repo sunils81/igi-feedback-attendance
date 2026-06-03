@@ -1016,6 +1016,16 @@
 <script>
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
+  // Clear any stale revenue cache when the page loads fresh
+  try {
+    for (var i = sessionStorage.length - 1; i >= 0; i--) {
+      var key = sessionStorage.key(i);
+      if (key && key.indexOf('igiRev_') === 0) {
+        sessionStorage.removeItem(key);
+      }
+    }
+  } catch(e) {}
+
   CENTRES.forEach(c => {
     ['b-centre'].forEach(id => {
       const o = document.createElement('option'); o.value=c; o.textContent=c;
@@ -2433,7 +2443,7 @@ function downloadAdminDashboardCsv() {
 }
 
 // -- Revenue (redesign v2) -----------------------------------------------
-const REVENUE_FRONTEND_VERSION = 'revenue-ledger-v3-2026-06-03';
+const REVENUE_FRONTEND_VERSION = 'revenue-ledger-v4-2026-06-03';
 const MUMBAI_COUNSELLORS = ['Anuradha','Bianca','Omkar Kadam'];
 const BUSINESS_TYPES = ['Centre Revenue','Corporate Programs','Seminars','Other Centre Business'];
 
@@ -2444,6 +2454,21 @@ function revCanonical(name) {
 }
 
 function revSameCounsellor(a,b) { return revCanonical(a) === revCanonical(b); }
+
+function revDeduplicateTargetRows(rows) {
+  if (!rows || !rows.length) return [];
+  var uniqueRows = [];
+  var seen = {};
+  for (var i = rows.length - 1; i >= 0; i--) {
+    var r = rows[i];
+    var key = revCanonical(r.counsellor) + '|' + (r.period || '2026-27') + '|' + (r.centre || r.assignedCentre || '');
+    if (!seen[key]) {
+      seen[key] = true;
+      uniqueRows.push(r);
+    }
+  }
+  return uniqueRows.reverse();
+}
 
 function revIsMumbai(name) {
   return MUMBAI_COUNSELLORS.some(function(c){ return revSameCounsellor(c, name); });
@@ -2497,7 +2522,8 @@ function revCentreTargetMap() {
 }
 
 function revAnnualTargetForCounsellor(counsellor) {
-  var rows = ((revenueData && revenueData.targetRows)||[]).filter(function(r){
+  var allRows = (revenueData && revenueData.targetRows) || [];
+  var rows = revDeduplicateTargetRows(allRows).filter(function(r){
     return revSameCounsellor(r.counsellor, counsellor);
   });
   return rows.reduce(function(sum,r){ return sum + (Number(r.targetGst)||0); }, 0);
@@ -2950,7 +2976,8 @@ function revPreviewRows() {
 }
 
 function revPreviewTargets() {
-  return (revenueData && (revenueData.monthlyPreviewTargets || revenueData.targetRows)) || [];
+  var raw = (revenueData && (revenueData.monthlyPreviewTargets || revenueData.targetRows)) || [];
+  return revDeduplicateTargetRows(raw);
 }
 
 function revMonthlyTargetForCounsellor(counsellor) {

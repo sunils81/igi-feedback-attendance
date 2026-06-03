@@ -36,7 +36,7 @@ const SH_REVENUE_CENTRE_TARGETS = 'Revenue_Centre_Targets';
 const SH_REVENUE_ANNUAL_TARGETS = 'Revenue_Annual_Targets';
 const SH_REVENUE_MONTHLY_ACHIEVED = 'Revenue_Monthly_Achieved';
 const SH_REVENUE_TARGET_REVISIONS = 'Revenue_Target_Revisions';
-const REVENUE_BACKEND_VERSION = 'revenue-ledger-v2-2026-06-03';
+const REVENUE_BACKEND_VERSION = 'revenue-ledger-v3-2026-06-03';
 const SH_USER_CREDENTIALS = 'User_Credentials';
 const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
   'RTGS / Bank Transfer','Collexo (Online)','Cheque','Demand Draft'];                 // % pass mark
@@ -2806,8 +2806,13 @@ function getRevenueAnnualTargetRows(ss) {
   }).filter(function(r){return r.period&&r.counsellor&&r.centre;});
 }
 
-function getRevenueMonthlyAchievedRows(ss) {
-  var sh=ss.getSheetByName(SH_REVENUE_MONTHLY_ACHIEVED);
+function revenueCounsellorMonthlySheetName(counsellor) {
+  var base=String(counsellor||'Counsellor').trim().replace(/[\\\/\?\*\[\]\:]/g,' ').replace(/\s+/g,' ');
+  if(!base)base='Counsellor';
+  return ('Revenue_Monthly_'+base).slice(0,99);
+}
+
+function parseRevenueMonthlyAchievedSheet(sh) {
   if(!sh||sh.getLastRow()<2)return [];
   var map=sheetHeaderMap(sh);
   return sh.getRange(2,1,sh.getLastRow()-1,Math.max(sh.getLastColumn(),13)).getValues().map(function(r,i){
@@ -2831,9 +2836,29 @@ function getRevenueMonthlyAchievedRows(ss) {
       locked:String((newerShape?rowCell(r,map,'Locked',11):'Y')||'Y').trim()!=='N',
       notes:oldShape?r[7]||'':rowCell(r,map,'Notes',newerShape?9:8)||'',
       updatedBy:oldShape?r[8]||'':rowCell(r,map,'Updated By',newerShape?10:9)||'',
-      updatedAt:oldShape?r[9]||'':rowCell(r,map,'Updated At',newerShape?12:10)||''
+      updatedAt:oldShape?r[9]||'':rowCell(r,map,'Updated At',newerShape?12:10)||'',
+      sourceSheet:sh.getName()
     };
   }).filter(function(r){return r.month&&r.period&&r.counsellor&&r.assignedCentre&&r.businessCentre;});
+}
+
+function getRevenueMonthlyAchievedRows(ss) {
+  var byKey={};
+  function absorb(rows){
+    rows.forEach(function(r){
+      var key=revenueMonthlyLedgerKey(r);
+      var prev=byKey[key];
+      if(!prev || String(r.updatedAt||'')>=String(prev.updatedAt||''))byKey[key]=r;
+    });
+  }
+  var sh=ss.getSheetByName(SH_REVENUE_MONTHLY_ACHIEVED);
+  absorb(parseRevenueMonthlyAchievedSheet(sh));
+  ss.getSheets().forEach(function(s){
+    if(s.getName().indexOf('Revenue_Monthly_')===0 && s.getName()!==SH_REVENUE_MONTHLY_ACHIEVED){
+      absorb(parseRevenueMonthlyAchievedSheet(s));
+    }
+  });
+  return Object.keys(byKey).map(function(k){return byKey[k];});
 }
 
 function saveRevenueCentreTargetRows(ss,rows,updatedBy) {
@@ -2934,8 +2959,19 @@ function saveRevenueMonthlyAchievedRows(ss,rows,updatedBy,scope) {
       revisionMonthKeys[month+'|'+period+'|'+revenueNameAliases(counsellor)[0]+'|'+assigned]=true;
     }
   });
-  var rowMap={};
-  existingRows.forEach(function(r){rowMap[revenueMonthlyLedgerKey(r)]=r.rowIndex;});
+  // Build row maps for shared sheet and per-counsellor sheets (write targets)
+  var sharedRowMap={};
+  var counsellorSheets={};   // counsellor canonical name → {sh, rowMap}
+  existingRows.forEach(function(r){
+    var key=revenueMonthlyLedgerKey(r);
+    if(r.sourceSheet===SH_REVENUE_MONTHLY_ACHIEVED){
+      sharedRowMap[key]=r.rowIndex;
+    } else {
+      var cName=revenueNameAliases(r.counsellor)[0];
+      if(!counsellorSheets[cName]) counsellorSheets[cName]={sh:ss.getSheetByName(r.sourceSheet),rowMap:{}};
+      counsellorSheets[cName].rowMap[key]=r.rowIndex;
+    }
+  });
   var saved=0;
   rows.forEach(function(r){
     var month=String(r.month||'').slice(0,7), period=String(r.period||'2026-27').trim(), counsellor=String(r.counsellor||'').trim(), assigned=String(r.assignedCentre||r.centre||'').trim(), business=String(r.businessCentre||assigned).trim();
@@ -2946,8 +2982,20 @@ function saveRevenueMonthlyAchievedRows(ss,rows,updatedBy,scope) {
     var canRevise=revisionKeys[key]||revisionMonthKeys[monthLockKey];
     if((lockedKeys[key]||lockedMonthKeys[monthLockKey])&&!canRevise)return;
     var row=[month,period,counsellor,assigned,business,businessType,Number(r.studentCount)||0,Number(r.achievedCourse)||0,Number(r.achievedGst)||0,r.notes||'',updatedBy,'Y',new Date().toISOString()];
-    if(rowMap[key])sh.getRange(rowMap[key],1,1,row.length).setValues([row]);
-    else{sh.appendRow(row);rowMap[key]=sh.getLastRow();}
+    // 1. Write to shared ledger sheet
+    if(sharedRowMap[key])sh.getRange(sharedRowMap[key],1,1,row.length).setValues([row]);
+    else{sh.appendRow(row);sharedRowMap[key]=sh.getLastRow();}
+    // 2. Write to per-counsellor sheet (clean, guaranteed-correct copy)
+    var cName=revenueNameAliases(counsellor)[0];
+    if(!counsellorSheets[cName]){
+      var cShName=revenueCounsellorMonthlySheetName(counsellor);
+      var cSh=getOrCreateSheet(ss,cShName);
+      ensureRevenueMonthlyAchievedHeaders(cSh);
+      counsellorSheets[cName]={sh:cSh,rowMap:{}};
+    }
+    var cEntry=counsellorSheets[cName];
+    if(cEntry.rowMap[key])cEntry.sh.getRange(cEntry.rowMap[key],1,1,row.length).setValues([row]);
+    else{cEntry.sh.appendRow(row);cEntry.rowMap[key]=cEntry.sh.getLastRow();}
     saved++;
   });
   return saved;

@@ -324,7 +324,39 @@
 .rev-breakdown-item {
   display: inline-block;
 }
-@media(max-width:620px){.rev-kpi-bar{grid-template-columns:1fr 1fr}.rev-month-grid{grid-template-columns:1fr}}
+.rev-breakdown-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+.rev-bd-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 1px 2px rgba(13,27,46,0.02);
+}
+.rev-bd-card .icon {
+  font-size: 13px;
+}
+.rev-bd-card strong {
+  font-family: "DM Mono", monospace;
+  font-size: 12px;
+  color: var(--navy);
+  margin-left: auto;
+}
+@media(max-width:620px){
+  .rev-kpi-bar{grid-template-columns:1fr 1fr}.rev-month-grid{grid-template-columns:1fr}
+  .rev-breakdown-row {grid-template-columns: 1fr; gap: 6px;}
+}
 /* legacy compat - kept but not primary */
 .revenue-month{border:1px solid var(--border);border-radius:8px;background:var(--white);padding:11px 12px;min-width:0}
 .revenue-month.locked{background:var(--off);opacity:.78}
@@ -737,6 +769,13 @@
         <div class="rev-kpi"><div class="k">Students This Year</div><div class="v" id="rev-kpi-students">—</div><div class="s" id="rev-kpi-students-s">2026-27</div></div>
       </div>
       <div class="rev-progress-wrap"><div class="rev-progress-bar" id="rev-progress-bar" style="width:0%"></div></div>
+
+      <!-- Revenue Breakdown Row -->
+      <div class="rev-breakdown-row" id="rev-breakdown-row" style="display:none">
+        <div class="rev-bd-card"><span class="icon">🏫</span> Own Centre <strong id="rev-bd-own">—</strong></div>
+        <div class="rev-bd-card"><span class="icon">🌐</span> Other Centres <strong id="rev-bd-other">—</strong></div>
+        <div class="rev-bd-card"><span class="icon">💼</span> Corporate <strong id="rev-bd-corp">—</strong></div>
+      </div>
 
       <!-- Monthly-only motivation preview -->
       <div id="rev-month-preview" class="rev-month-preview"></div>
@@ -2314,13 +2353,22 @@ function revAnnualTargetForCounsellor(counsellor) {
 
 function revAchievedForCounsellor(counsellor) {
   var achieved = 0, students = 0;
+  var ownAchieved = 0, otherAchieved = 0, corpAchieved = 0;
   ((revenueData && revenueData.monthlyRows)||[]).forEach(function(r){
     if (revSameCounsellor(r.counsellor, counsellor)) {
-      achieved += Number(r.achievedGst)||0;
+      var gst = Number(r.achievedGst)||0;
+      achieved += gst;
       students += Number(r.studentCount)||0;
+      if (revIsCorporate(r)) {
+        corpAchieved += gst;
+      } else if (r.businessCentre !== r.assignedCentre) {
+        otherAchieved += gst;
+      } else {
+        ownAchieved += gst;
+      }
     }
   });
-  return {achieved:achieved, students:students};
+  return {achieved:achieved, students:students, ownAchieved:ownAchieved, otherAchieved:otherAchieved, corpAchieved:corpAchieved};
 }
 
 function revCentreAchievedAll(centre) {
@@ -2477,10 +2525,11 @@ function renderRevenueFastShell() {
     subEl.textContent = 'Dashboard opens immediately. Latest targets and achieved revenue are loading from backend.';
     subEl.style.color = '';
   }
-  [['rev-kpi-target','-'],['rev-kpi-achieved','-'],['rev-kpi-gap','-'],['rev-kpi-students','-'],['rev-kpi-pct','Fetching...'],['rev-kpi-gap-s','Fetching...']].forEach(function(pair){
+  [['rev-kpi-target','-'],['rev-kpi-achieved','-'],['rev-kpi-gap','-'],['rev-kpi-students','-'],['rev-kpi-pct','Fetching...'],['rev-kpi-gap-s','Fetching...'],['rev-bd-own','-'],['rev-bd-other','-'],['rev-bd-corp','-']].forEach(function(pair){
     var el=document.getElementById(pair[0]);
     if(el) el.textContent=pair[1];
   });
+  var bdRow = document.getElementById('rev-breakdown-row'); if(bdRow) bdRow.style.display='none';
   var pb=document.getElementById('rev-progress-bar'); if(pb) pb.style.width='0%';
   var preview=document.getElementById('rev-month-preview');
   if(preview) preview.innerHTML = '<div class="rev-preview-panel"><div><div class="rev-preview-title">This Month Preview</div><div class="rev-preview-big">Loading</div><div class="rev-preview-sub">Monthly motivation data is fetching from backend.</div></div></div>';
@@ -2667,6 +2716,22 @@ function renderMyRevenue() {
   var gs=document.getElementById('rev-kpi-gap-s'); if(gs) gs.textContent = pct>=100 ? 'Target met! 🎉' : 'Still to achieve';
   var s=document.getElementById('rev-kpi-students'); if(s) s.textContent = students;
   var pb=document.getElementById('rev-progress-bar'); if(pb) pb.style.width = pct+'%';
+
+  // Update Breakdown Cards
+  var bdRow = document.getElementById('rev-breakdown-row');
+  var bdOwn = document.getElementById('rev-bd-own');
+  var bdOther = document.getElementById('rev-bd-other');
+  var bdCorp = document.getElementById('rev-bd-corp');
+  if (bdRow) {
+    if (me && !isAdmin && achieved > 0) {
+      bdRow.style.display = 'grid';
+      if (bdOwn) bdOwn.textContent = money(stats.ownAchieved || 0);
+      if (bdOther) bdOther.textContent = money(stats.otherAchieved || 0);
+      if (bdCorp) bdCorp.textContent = money(stats.corpAchieved || 0);
+    } else {
+      bdRow.style.display = 'none';
+    }
+  }
 
   // Colour the gap tile
   var gapKpi = document.getElementById('rev-kpi-gap');

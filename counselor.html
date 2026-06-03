@@ -2887,15 +2887,22 @@ function revSaveMonthCard(btn) {
       showToast(noSaveMsg, 'error');
       if (d.dashboard && d.dashboard.status === 'ok') {
         revenueData = d.dashboard;
+        _revCacheWrite(revenueData);
         renderMyRevenue();
       }
       return;
     }
     showToast(monthLabel + (isRevision ? ' revision saved ✓' : ' revenue saved and locked ✓'));
     if (d.dashboard && d.dashboard.status === 'ok') {
+      // GAS returned fresh full data — use it directly.
+      // Do NOT run revApplySavedMonthlyRows on top of it; that would remove
+      // other months' rows (e.g. Jan becomes 0 after saving Feb).
       revenueData = d.dashboard;
+      _revCacheWrite(revenueData);
+    } else {
+      // No dashboard in response — apply optimistic update so UI reflects the save
+      revApplySavedMonthlyRows(rows, me, assignedCentre, monthKey);
     }
-    revApplySavedMonthlyRows(rows, me, assignedCentre, monthKey);
     renderMyRevenue();
   });
 }

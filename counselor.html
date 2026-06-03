@@ -257,6 +257,73 @@
 .revenue-save-meta strong{color:var(--navy)}
 .revenue-alert{display:none;border-radius:8px;padding:9px 11px;background:#FFF9E6;border:1px solid rgba(201,168,76,.3);font-size:12px;color:var(--navy);margin-top:10px}
 .revenue-alert.show{display:block}
+.rev-compact-row.four {
+  grid-template-columns: 70px 1fr 1fr 24px;
+}
+.rev-ci-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  margin-top: 14px;
+}
+.rev-row-remove-btn {
+  background: none;
+  border: none;
+  color: var(--red);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.rev-row-remove-btn:hover {
+  background: rgba(201, 74, 74, 0.1);
+}
+.rev-btn-add-centre {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 1px dashed var(--gold);
+  color: #98710E;
+  padding: 5px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: all 0.15s;
+}
+.rev-btn-add-centre:hover {
+  background: rgba(201, 168, 76, 0.1);
+  border-style: solid;
+}
+.rev-other-centre-item {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed rgba(13, 27, 46, 0.06);
+}
+.rev-other-centre-item:last-child {
+  border-bottom: none;
+  margin-bottom: 4px;
+  padding-bottom: 0;
+}
+.rev-saved-breakdown-row {
+  font-size: 10px;
+  color: var(--navy);
+  background: rgba(13,27,46,.03);
+  border-radius: 4px;
+  padding: 4px 6px;
+  margin: 4px 0 8px;
+  line-height: 1.4;
+}
+.rev-breakdown-item {
+  display: inline-block;
+}
 @media(max-width:620px){.rev-kpi-bar{grid-template-columns:1fr 1fr}.rev-month-grid{grid-template-columns:1fr}}
 /* legacy compat - kept but not primary */
 .revenue-month{border:1px solid var(--border);border-radius:8px;background:var(--white);padding:11px 12px;min-width:0}
@@ -2819,11 +2886,25 @@ function renderRevenueSavedBreakup(rows, designatedCentre, counsellor) {
   var totals = revTotalsFromRows(rows, designatedCentre);
   var last = rows[rows.length-1] || {};
   var draftText = last.locked === false ? ' <span style="color:#C06010;font-weight:bold">(Draft)</span> &middot;' : '';
+  
+  // Find individual other centres
+  var otherRows = rows.filter(function(r){ return !revIsCorporate(r) && r.businessCentre !== designatedCentre; });
+  var otherBreakdownHtml = '';
+  if (otherRows.length > 0) {
+    var items = otherRows.map(function(r){
+      var feeStr = money(r.achievedGst || 0);
+      var stuStr = r.studentCount ? ' (' + r.studentCount + ' stu)' : '';
+      return '<span class="rev-breakdown-item">' + escC(r.businessCentre) + ': <strong>' + feeStr + '</strong>' + stuStr + '</span>';
+    }).join(' &middot; ');
+    otherBreakdownHtml = '<div class="rev-saved-breakdown-row">Other Centres &middot; ' + items + '</div>';
+  }
+
   return '<div class="rev-saved-grid" style="margin-top:10px">'+
       '<div class="rev-saved-cell">Own Centre<strong>'+money(totals.ownGst)+'</strong></div>'+
       '<div class="rev-saved-cell">Other Centre<strong>'+money(totals.otherGst)+'</strong></div>'+
       '<div class="rev-saved-cell">Corporate<strong>'+money(totals.corpGst)+'</strong></div>'+
     '</div>'+
+    otherBreakdownHtml +
     '<div class="rev-saved-meta">'+totals.students+' student'+(totals.students===1?'':'s')+' &middot;' +
       draftText + (last.updatedAt?' Saved by '+escC(last.updatedBy||counsellor)+' &middot; '+escC(formatDateTime(last.updatedAt)):'')+
     '</div>';
@@ -2832,13 +2913,35 @@ function renderRevenueSavedBreakup(rows, designatedCentre, counsellor) {
 function renderRevenueEntryPanel(m, designatedCentre, otherDefault, existingRows, isRevision) {
   existingRows = existingRows || [];
   var existingOwn = existingRows.filter(function(r){ return !revIsCorporate(r) && r.businessCentre === designatedCentre; })[0] || {};
-  var existingOther = existingRows.filter(function(r){ return !revIsCorporate(r) && r.businessCentre !== designatedCentre; })[0] || {};
+  var existingOthers = existingRows.filter(function(r){ return !revIsCorporate(r) && r.businessCentre !== designatedCentre; });
+  if (existingOthers.length === 0) {
+    existingOthers = [{ businessCentre: otherDefault, studentCount: '', achievedCourse: '', achievedGst: 0 }];
+  }
   var existingCorp = existingRows.filter(function(r){ return revIsCorporate(r); })[0] || {};
-  var selectedOther = existingOther.businessCentre || otherDefault;
-  var centreOpts = CENTRES.map(function(cc){
-    var sel = (cc===selectedOther) ? ' selected' : '';
-    return '<option value="'+escC(cc)+'"'+sel+'>'+escC(cc)+'</option>';
+  
+  var hasAnyOtherValue = existingOthers.some(function(oth){ return oth.achievedCourse || oth.studentCount; });
+  
+  var othersHtml = existingOthers.map(function(oth) {
+    var centreOpts = CENTRES.map(function(cc){
+      var sel = (cc===(oth.businessCentre || otherDefault)) ? ' selected' : '';
+      return '<option value="'+escC(cc)+'"'+sel+'>'+escC(cc)+'</option>';
+    }).join('');
+    
+    var removeBtnStyle = existingOthers.length > 1 ? 'display:flex' : 'display:none';
+    
+    return '<div class="rev-other-centre-item">'+
+      '<div class="rev-compact-row four">'+
+        '<div class="rev-ci"><label>Centre</label><select class="rmc-business" onchange="revUpdateTotal(this)">'+centreOpts+'</select></div>'+
+        '<div class="rev-ci"><label>Students</label><input type="number" class="rmc-xstudents" min="0" placeholder="0" value="'+escC(oth.studentCount||'')+'" oninput="revUpdateTotal(this)"></div>'+
+        '<div class="rev-ci"><label>Course Fee &#8377;</label><input type="number" class="rmc-xcourse" min="0" placeholder="0" value="'+escC(oth.achievedCourse||'')+'" oninput="revCalcGst(this,\'other\');revUpdateTotal(this)"></div>'+
+        '<div class="rev-ci-btn">'+
+          '<button type="button" class="rev-row-remove-btn" style="'+removeBtnStyle+'" onclick="revRemoveOtherCentreRow(this)">&#10005;</button>'+
+        '</div>'+
+      '</div>'+
+      '<div class="rev-gst-inline rmc-xgst-display">GST: <b>'+money(oth.achievedGst||0)+'</b></div>'+
+    '</div>';
   }).join('');
+
   var reasonText = isRevision ? '<div class="rev-revise-note">Revision requires a reason. Saving will replace the locked month after backend approval.</div>' : '';
   return '<div class="rev-entry-panel" data-revise="'+(isRevision?'Y':'N')+'">'+
     reasonText+
@@ -2851,14 +2954,10 @@ function renderRevenueEntryPanel(m, designatedCentre, otherDefault, existingRows
       '<div class="rev-gst-inline" id="rev-gst-own-'+escC(m.key)+'">GST: <b>'+money(existingOwn.achievedGst||0)+'</b></div>'+
       '<div class="rev-notes-row"><input type="text" class="rmc-notes" placeholder="'+(isRevision?'Revision reason (required)':'Notes (optional)')+'"></div>'+
     '</div>'+
-    '<div class="rev-expand-row" onclick="revToggleBucket(this)"><span class="rev-expand-chevron'+(existingOther.achievedCourse||existingOther.studentCount?' open':'')+'">&#9658;</span><span class="rev-expand-label">Other Centre Revenue</span><span class="rev-expand-badge '+(existingOther.achievedCourse||existingOther.studentCount?'filled':'opt')+'">'+(existingOther.achievedCourse||existingOther.studentCount?'Filled':'Optional')+'</span></div>'+
-    '<div class="rev-bucket-body'+(existingOther.achievedCourse||existingOther.studentCount?' open':'')+'" data-bucket="other">'+
-      '<div class="rev-compact-row three">'+
-        '<div class="rev-ci"><label>Centre</label><select class="rmc-business">'+centreOpts+'</select></div>'+
-        '<div class="rev-ci"><label>Students</label><input type="number" class="rmc-xstudents" min="0" placeholder="0" value="'+escC(existingOther.studentCount||'')+'" oninput="revUpdateTotal(this)"></div>'+
-        '<div class="rev-ci"><label>Course Fee &#8377;</label><input type="number" class="rmc-xcourse" min="0" placeholder="0" value="'+escC(existingOther.achievedCourse||'')+'" oninput="revCalcGst(this,\'other\');revUpdateTotal(this)"></div>'+
-      '</div>'+
-      '<div class="rev-gst-inline" id="rev-gst-other-'+escC(m.key)+'">GST: <b>'+money(existingOther.achievedGst||0)+'</b></div>'+
+    '<div class="rev-expand-row" onclick="revToggleBucket(this)"><span class="rev-expand-chevron'+(hasAnyOtherValue?' open':'')+'">&#9658;</span><span class="rev-expand-label">Other Centre Revenue</span><span class="rev-expand-badge '+(hasAnyOtherValue?'filled':'opt')+'">'+(hasAnyOtherValue?'Filled':'Optional')+'</span></div>'+
+    '<div class="rev-bucket-body'+(hasAnyOtherValue?' open':'')+'" data-bucket="other">'+
+      '<div class="rev-other-centre-list">'+othersHtml+'</div>'+
+      '<button type="button" class="rev-btn-add-centre" onclick="revAddOtherCentreRow(this)">+ Add Another Centre</button>'+
     '</div>'+
     '<div class="rev-expand-row" onclick="revToggleBucket(this)"><span class="rev-expand-chevron'+(existingCorp.achievedCourse||existingCorp.studentCount?' open':'')+'">&#9658;</span><span class="rev-expand-label">Corporate Program Revenue</span><span class="rev-expand-badge '+(existingCorp.achievedCourse||existingCorp.studentCount?'filled':'opt')+'">'+(existingCorp.achievedCourse||existingCorp.studentCount?'Filled':'Optional')+'</span></div>'+
     '<div class="rev-bucket-body'+(existingCorp.achievedCourse||existingCorp.studentCount?' open':'')+'" data-bucket="corp">'+
@@ -2902,14 +3001,20 @@ function revToggleBucket(row) {
 }
 
 function revCalcGst(input, bucket) {
-  var body = input.closest('.rev-entry-panel') || input.closest('.rev-month-body');
-  if (!body) return;
-  var saveBtn = body.querySelector('.rev-save-btn');
-  if (!saveBtn) return;
-  var monthKey = saveBtn.getAttribute('data-month');
   var gst = revenueGst(input.value || 0);
-  var el = document.getElementById('rev-gst-'+bucket+'-'+monthKey);
-  if (el) el.innerHTML = 'GST: <b>' + money(gst) + '</b>';
+  if (bucket === 'other') {
+    var item = input.closest('.rev-other-centre-item');
+    var el = item ? item.querySelector('.rmc-xgst-display') : null;
+    if (el) el.innerHTML = 'GST: <b>' + money(gst) + '</b>';
+  } else {
+    var body = input.closest('.rev-entry-panel') || input.closest('.rev-month-body');
+    if (!body) return;
+    var saveBtn = body.querySelector('.rev-save-btn');
+    if (!saveBtn) return;
+    var monthKey = saveBtn.getAttribute('data-month');
+    var el = document.getElementById('rev-gst-'+bucket+'-'+monthKey);
+    if (el) el.innerHTML = 'GST: <b>' + money(gst) + '</b>';
+  }
 }
 
 function revUpdateTotal(input) {
@@ -2920,7 +3025,13 @@ function revUpdateTotal(input) {
   var monthKey = saveBtn.getAttribute('data-month');
 
   var ownCourse = Number((body.querySelector('.rmc-course')||{}).value)||0;
-  var othCourse = Number((body.querySelector('.rmc-xcourse')||{}).value)||0;
+  
+  var othCourse = 0;
+  var xcourses = body.querySelectorAll('.rmc-xcourse');
+  for (var i = 0; i < xcourses.length; i++) {
+    othCourse += Number(xcourses[i].value) || 0;
+  }
+  
   var corCourse = Number((body.querySelector('.rmc-ccourse')||{}).value)||0;
   var total = revenueGst(ownCourse) + revenueGst(othCourse) + revenueGst(corCourse);
 
@@ -2939,30 +3050,71 @@ function revUpdateTotal(input) {
   });
 }
 
+function revUpdateRemoveButtons(container) {
+  var items = container.querySelectorAll('.rev-other-centre-item');
+  for (var i = 0; i < items.length; i++) {
+    var btn = items[i].querySelector('.rev-row-remove-btn');
+    if (btn) {
+      btn.style.display = (items.length > 1) ? 'flex' : 'none';
+    }
+  }
+}
+
+function revAddOtherCentreRow(btn) {
+  var body = btn.closest('.rev-bucket-body');
+  if (!body) return;
+  var container = body.querySelector('.rev-other-centre-list');
+  if (!container) return;
+  
+  var designatedCentre = (allowedCentres && allowedCentres.length) ? allowedCentres[0] : (CENTRES[0]||'');
+  var otherDefault = CENTRES.filter(function(c){ return c !== designatedCentre; })[0] || CENTRES[0];
+  
+  var centreOpts = CENTRES.map(function(cc){
+    var sel = (cc===otherDefault) ? ' selected' : '';
+    return '<option value="'+escC(cc)+'"'+sel+'>'+escC(cc)+'</option>';
+  }).join('');
+  
+  var rowHtml = '<div class="rev-other-centre-item">'+
+    '<div class="rev-compact-row four">'+
+      '<div class="rev-ci"><label>Centre</label><select class="rmc-business" onchange="revUpdateTotal(this)">'+centreOpts+'</select></div>'+
+      '<div class="rev-ci"><label>Students</label><input type="number" class="rmc-xstudents" min="0" placeholder="0" value="" oninput="revUpdateTotal(this)"></div>'+
+      '<div class="rev-ci"><label>Course Fee &#8377;</label><input type="number" class="rmc-xcourse" min="0" placeholder="0" value="" oninput="revCalcGst(this,\'other\');revUpdateTotal(this)"></div>'+
+      '<div class="rev-ci-btn">'+
+        '<button type="button" class="rev-row-remove-btn" onclick="revRemoveOtherCentreRow(this)">&#10005;</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="rev-gst-inline rmc-xgst-display">GST: <b>'+money(0)+'</b></div>'+
+  '</div>';
+  
+  var temp = document.createElement('div');
+  temp.innerHTML = rowHtml;
+  var newRow = temp.firstChild;
+  container.appendChild(newRow);
+  
+  revUpdateRemoveButtons(container);
+  revUpdateTotal(newRow.querySelector('.rmc-xcourse'));
+}
+
+function revRemoveOtherCentreRow(btn) {
+  var item = btn.closest('.rev-other-centre-item');
+  if (!item) return;
+  var container = item.parentElement;
+  var entryPanel = btn.closest('.rev-entry-panel');
+  item.remove();
+  if (container) {
+    revUpdateRemoveButtons(container);
+  }
+  if (entryPanel) {
+    var anyInput = entryPanel.querySelector('.rmc-course') || entryPanel.querySelector('.rmc-xstudents') || entryPanel.querySelector('.rmc-ccourse');
+    if (anyInput) {
+      revUpdateTotal(anyInput);
+    }
+  }
+}
 
 function revIsCorporate(row) {
   return String(row.businessType||'').toLowerCase().indexOf('corporate') >= 0 ||
          String(row.businessCentre||'').toLowerCase().indexOf('corporate') >= 0;
-}
-
-function revSyncBucketGst(input, gstClass) {
-  var body = input.closest('.rev-month-body');
-  if (!body) return;
-  var gstEl = body.querySelector('.' + gstClass);
-  if (gstEl) gstEl.value = input.value ? revenueGst(input.value) : '';
-}
-
-function revUpdateMonthTotal(input) {
-  var body = input.closest('.rev-month-body');
-  if (!body) return;
-  var btn = body.querySelector('.rev-save-btn');
-  if (!btn) return;
-  var monthKey = btn.getAttribute('data-month');
-  var gst1 = Number(body.querySelector('.rmc-gst') ? body.querySelector('.rmc-gst').value : 0) || 0;
-  var gst2 = Number(body.querySelector('.rmc-xgst') ? body.querySelector('.rmc-xgst').value : 0) || 0;
-  var gst3 = Number(body.querySelector('.rmc-cgst') ? body.querySelector('.rmc-cgst').value : 0) || 0;
-  var totEl = document.getElementById('revtot-' + monthKey);
-  if (totEl) totEl.textContent = money(gst1 + gst2 + gst3);
 }
 
 function revSaveMonthCard(btn) {
@@ -2989,18 +3141,36 @@ function revSaveMonthCard(btn) {
     return;
   }
 
-  // Bucket 2 — Other centre (only if course fee or students entered)
-  var course2 = Number(body.querySelector('.rmc-xcourse').value) || 0;
-  var gst2 = revenueGst(course2);
-  var stu2 = Number(body.querySelector('.rmc-xstudents').value) || 0;
-  var biz2 = body.querySelector('.rmc-business').value || assignedCentre;
+  // Bucket 2 — Multiple other centres
+  var totalGst2 = 0;
+  var otherFilled = false;
+  var otherItems = body.querySelectorAll('.rev-other-centre-item');
+  var otherRows = [];
+  for (var i = 0; i < otherItems.length; i++) {
+    var item = otherItems[i];
+    var bizVal = item.querySelector('.rmc-business').value || assignedCentre;
+    var stuVal = Number(item.querySelector('.rmc-xstudents').value) || 0;
+    var courseVal = Number(item.querySelector('.rmc-xcourse').value) || 0;
+    var gstVal = revenueGst(courseVal);
+    
+    if (courseVal || stuVal) {
+      otherFilled = true;
+      totalGst2 += gstVal;
+      otherRows.push({
+        month: monthKey, period: '2026-27', counsellor: me, assignedCentre: assignedCentre,
+        businessCentre: bizVal, businessType: 'Centre Revenue',
+        studentCount: stuVal, achievedCourse: courseVal, achievedGst: gstVal, notes: isRevision ? notes1 : '',
+        revise: isRevision ? 'Y' : 'N', locked: isLock ? 'Y' : 'N'
+      });
+    }
+  }
 
   // Bucket 3 — Corporate (only if course fee or students entered)
   var course3 = Number(body.querySelector('.rmc-ccourse').value) || 0;
   var gst3 = revenueGst(course3);
   var stu3 = Number(body.querySelector('.rmc-cstudents').value) || 0;
 
-  if (!course1 && !stu1 && !course2 && !stu2 && !course3 && !stu3) {
+  if (!course1 && !stu1 && !otherFilled && !course3 && !stu3) {
     if (note) { note.textContent = '⚠ Enter at least one value before saving.'; note.style.color = 'var(--red)'; }
     return;
   }
@@ -3013,16 +3183,11 @@ function revSaveMonthCard(btn) {
     studentCount: stu1, achievedCourse: course1, achievedGst: gst1, notes: notes1,
     revise: isRevision ? 'Y' : 'N', locked: isLock ? 'Y' : 'N'
   });
-  // Bucket 2 only if filled
-  if (course2 || stu2) {
-    rows.push({
-      month: monthKey, period: '2026-27', counsellor: me, assignedCentre: assignedCentre,
-      businessCentre: biz2, businessType: 'Centre Revenue',
-      studentCount: stu2, achievedCourse: course2, achievedGst: gst2, notes: isRevision ? notes1 : '',
-      revise: isRevision ? 'Y' : 'N', locked: isLock ? 'Y' : 'N'
-    });
+  // Add other centre rows
+  for (var j = 0; j < otherRows.length; j++) {
+    rows.push(otherRows[j]);
   }
-  // Bucket 3 only if filled
+  // Add corporate row
   if (course3 || stu3) {
     rows.push({
       month: monthKey, period: '2026-27', counsellor: me, assignedCentre: assignedCentre,
@@ -3082,7 +3247,7 @@ function revSaveMonthCard(btn) {
     renderMyRevenue();
 
     // Trigger confetti celebration on target beat
-    var totalGst = gst1 + gst2 + gst3;
+    var totalGst = gst1 + totalGst2 + gst3;
     var target = revAnnualTargetForCounsellor(me);
     var monthsCount = revenueMonths().length || 15;
     var runRate = Number((revenueData && revenueData.summary && revenueData.summary.monthlyTargetGst)||0) || (target ? Math.round(target / monthsCount) : 0);

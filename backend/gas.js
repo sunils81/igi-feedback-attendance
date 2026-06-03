@@ -36,7 +36,7 @@ const SH_REVENUE_CENTRE_TARGETS = 'Revenue_Centre_Targets';
 const SH_REVENUE_ANNUAL_TARGETS = 'Revenue_Annual_Targets';
 const SH_REVENUE_MONTHLY_ACHIEVED = 'Revenue_Monthly_Achieved';
 const SH_REVENUE_TARGET_REVISIONS = 'Revenue_Target_Revisions';
-const REVENUE_BACKEND_VERSION = 'revenue-ledger-v4-2026-06-03';
+const REVENUE_BACKEND_VERSION = 'revenue-ledger-v5-2026-06-03';
 const SH_USER_CREDENTIALS = 'User_Credentials';
 const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
   'RTGS / Bank Transfer','Collexo (Online)','Cheque','Demand Draft'];                 // % pass mark
@@ -2504,9 +2504,12 @@ function revenueMonthList(fromMonth,toMonth) {
 
 function revenueMonthKey(value) {
   if(!value)return '';
+  var str=String(value).trim();
+  if(str.match(/^\d{4}-\d{2}$/))return str;
   var d=value instanceof Date?value:new Date(value);
-  if(isNaN(d))return String(value).slice(0,7);
-  return Utilities.formatDate(d,Session.getScriptTimeZone(),'yyyy-MM');
+  if(isNaN(d.getTime()))return str.slice(0,7);
+  var corrected = new Date(d.getTime() + (d.getTimezoneOffset() ? 0 : 12 * 60 * 60 * 1000));
+  return Utilities.formatDate(corrected,Session.getScriptTimeZone(),'yyyy-MM');
 }
 
 function revenueBlankBucket() {
@@ -2825,7 +2828,7 @@ function parseRevenueMonthlyAchievedSheet(sh) {
     if(newerShape){course=rowCell(r,map,'Achieved Course Fee',7);gst=rowCell(r,map,'Achieved Course Fee + GST',8);}
     return {
       rowIndex:i+2,
-      month:String(rowCell(r,map,'Month',0)||'').slice(0,7),
+      month:revenueMonthKey(rowCell(r,map,'Month',0)),
       period:String(rowCell(r,map,'Period',1)||'2026-27').trim(),
       counsellor:String(rowCell(r,map,'Counsellor',2)||'').trim(),
       assignedCentre:String(rowCell(r,map,'Assigned Centre',3)||'').trim(),

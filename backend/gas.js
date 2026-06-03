@@ -36,7 +36,7 @@ const SH_REVENUE_CENTRE_TARGETS = 'Revenue_Centre_Targets';
 const SH_REVENUE_ANNUAL_TARGETS = 'Revenue_Annual_Targets';
 const SH_REVENUE_MONTHLY_ACHIEVED = 'Revenue_Monthly_Achieved';
 const SH_REVENUE_TARGET_REVISIONS = 'Revenue_Target_Revisions';
-const REVENUE_BACKEND_VERSION = 'revenue-redesign-v2-2026-06-03';
+const REVENUE_BACKEND_VERSION = 'revenue-ledger-v1-2026-06-03';
 const SH_USER_CREDENTIALS = 'User_Credentials';
 const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
   'RTGS / Bank Transfer','Collexo (Online)','Cheque','Demand Draft'];                 // % pass mark
@@ -2810,7 +2810,7 @@ function getRevenueMonthlyAchievedRows(ss) {
   var sh=ss.getSheetByName(SH_REVENUE_MONTHLY_ACHIEVED);
   if(!sh||sh.getLastRow()<2)return [];
   var map=sheetHeaderMap(sh);
-  return sh.getRange(2,1,sh.getLastRow()-1,Math.max(sh.getLastColumn(),13)).getValues().map(function(r){
+  return sh.getRange(2,1,sh.getLastRow()-1,Math.max(sh.getLastColumn(),13)).getValues().map(function(r,i){
     var rawType=rowCell(r,map,'Business Type',5);
     var oldShape=typeof rawType==='number'||(rawType!==''&&String(rawType||'').match(/^\d+(\.\d+)?$/));
     var course=oldShape?r[5]:rowCell(r,map,'Achieved Course Fee',6);
@@ -2818,6 +2818,7 @@ function getRevenueMonthlyAchievedRows(ss) {
     var newerShape=map['Student Count']!==undefined;
     if(newerShape){course=rowCell(r,map,'Achieved Course Fee',7);gst=rowCell(r,map,'Achieved Course Fee + GST',8);}
     return {
+      rowIndex:i+2,
       month:String(rowCell(r,map,'Month',0)||'').slice(0,7),
       period:String(rowCell(r,map,'Period',1)||'2026-27').trim(),
       counsellor:String(rowCell(r,map,'Counsellor',2)||'').trim(),
@@ -2899,47 +2900,52 @@ function logRevenueTargetRevision(ss,type,period,centre,counsellor,oldCourse,old
   sh.appendRow([new Date().toISOString(),type,period,centre,counsellor||'',Number(oldCourse)||0,Number(oldGst)||0,Number(newCourse)||0,Number(newGst)||0,reason||'',updatedBy||'Admin']);
 }
 
+function revenueMonthlyLedgerKey(row) {
+  return [
+    String(row.month||'').slice(0,7),
+    String(row.period||'2026-27').trim(),
+    revenueNameAliases(row.counsellor)[0],
+    String(row.assignedCentre||row.centre||'').trim(),
+    String(row.businessCentre||row.assignedCentre||row.centre||'').trim(),
+    String(row.businessType||'Centre Revenue').trim()
+  ].join('|');
+}
+
 function saveRevenueMonthlyAchievedRows(ss,rows,updatedBy,scope) {
-  var sh=ss.getSheetByName(SH_REVENUE_MONTHLY_ACHIEVED);
+  var sh=getOrCreateSheet(ss,SH_REVENUE_MONTHLY_ACHIEVED);
   ensureRevenueMonthlyAchievedHeaders(sh);
-  var lockedMonths={};
-  getRevenueMonthlyAchievedRows(ss).forEach(function(r){
-    if(r.locked)lockedMonths[r.month+'|'+r.period+'|'+revenueNameAliases(r.counsellor)[0]+'|'+r.assignedCentre]=true;
+  var existingRows=getRevenueMonthlyAchievedRows(ss);
+  var lockedKeys={};
+  var lockedMonthKeys={};
+  existingRows.forEach(function(r){
+    var key=revenueMonthlyLedgerKey(r);
+    var monthKey=r.month+'|'+r.period+'|'+revenueNameAliases(r.counsellor)[0]+'|'+r.assignedCentre;
+    if(r.locked){
+      lockedKeys[key]=true;
+      lockedMonthKeys[monthKey]=true;
+    }
   });
-  var revisionMonths={};
+  var revisionKeys={};
+  var revisionMonthKeys={};
   rows.forEach(function(r){
     var month=String(r.month||'').slice(0,7), period=String(r.period||'2026-27').trim(), counsellor=String(r.counsellor||'').trim(), assigned=String(r.assignedCentre||r.centre||'').trim();
     if(month&&period&&counsellor&&assigned&&String(r.revise||'')==='Y'&&String(r.notes||'').trim()){
-      revisionMonths[month+'|'+period+'|'+revenueNameAliases(counsellor)[0]+'|'+assigned]=true;
+      revisionKeys[revenueMonthlyLedgerKey(r)]=true;
+      revisionMonthKeys[month+'|'+period+'|'+revenueNameAliases(counsellor)[0]+'|'+assigned]=true;
     }
   });
-  if(scope&&scope.period&&scope.counsellor&&scope.assignedCentre&&scope.months&&scope.months.length&&sh.getLastRow()>1){
-    var deleteMonths={};
-    scope.months.forEach(function(m){deleteMonths[String(m).slice(0,7)]=true;});
-    var scoped=sh.getRange(2,1,sh.getLastRow()-1,Math.max(sh.getLastColumn(),12)).getValues();
-    var map=sheetHeaderMap(sh);
-    for(var i=scoped.length-1;i>=0;i--){
-      var r=scoped[i];
-      var month=String(r[0]).slice(0,7);
-      var locked=String(rowCell(r,map,'Locked',11)||'Y').trim()!=='N';
-      var lockKey=month+'|'+String(scope.period)+'|'+revenueNameAliases(scope.counsellor)[0]+'|'+String(scope.assignedCentre);
-      if((!locked||revisionMonths[lockKey])&&deleteMonths[month]&&String(r[1])===String(scope.period)&&revenueSameCounsellor(r[2],scope.counsellor)&&String(r[3])===String(scope.assignedCentre)){
-        sh.deleteRow(i+2);
-      }
-    }
-  }
-  var existing=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,6).getValues():[];
   var rowMap={};
-  existing.forEach(function(r,i){rowMap[String(r[0])+'|'+String(r[1])+'|'+String(r[2])+'|'+String(r[3])+'|'+String(r[4])+'|'+String(r[5]||'Centre Revenue')]=i+2;});
+  existingRows.forEach(function(r){rowMap[revenueMonthlyLedgerKey(r)]=r.rowIndex;});
   var saved=0;
   rows.forEach(function(r){
     var month=String(r.month||'').slice(0,7), period=String(r.period||'2026-27').trim(), counsellor=String(r.counsellor||'').trim(), assigned=String(r.assignedCentre||r.centre||'').trim(), business=String(r.businessCentre||assigned).trim();
     var businessType=String(r.businessType||'Centre Revenue').trim();
     if(!month||!period||!counsellor||!assigned||!business)return;
-    var lockKey=month+'|'+period+'|'+revenueNameAliases(counsellor)[0]+'|'+assigned;
-    if(lockedMonths[lockKey]&&!revisionMonths[lockKey])return;
+    var key=revenueMonthlyLedgerKey({month:month,period:period,counsellor:counsellor,assignedCentre:assigned,businessCentre:business,businessType:businessType});
+    var monthLockKey=month+'|'+period+'|'+revenueNameAliases(counsellor)[0]+'|'+assigned;
+    var canRevise=revisionKeys[key]||revisionMonthKeys[monthLockKey];
+    if((lockedKeys[key]||lockedMonthKeys[monthLockKey])&&!canRevise)return;
     var row=[month,period,counsellor,assigned,business,businessType,Number(r.studentCount)||0,Number(r.achievedCourse)||0,Number(r.achievedGst)||0,r.notes||'',updatedBy,'Y',new Date().toISOString()];
-    var key=month+'|'+period+'|'+counsellor+'|'+assigned+'|'+business+'|'+businessType;
     if(rowMap[key])sh.getRange(rowMap[key],1,1,row.length).setValues([row]);
     else{sh.appendRow(row);rowMap[key]=sh.getLastRow();}
     saved++;

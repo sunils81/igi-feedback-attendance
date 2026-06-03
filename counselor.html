@@ -5,6 +5,7 @@
 <title>IGI — Counselor Panel</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="assets/shared.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
 <style>
 .qr-wrap{text-align:center;padding:16px;background:var(--white);border-radius:8px;border:1px solid var(--border);margin-top:12px}
@@ -165,6 +166,13 @@
 .rev-save-btn.draft{background:rgba(220,120,40,.07);border:1px solid rgba(220,120,40,.4);color:#C06010}
 .rev-save-btn.draft:hover{background:rgba(220,120,40,.15)}
 .rev-ach-chip.draft{background:rgba(220,120,40,.12);color:#C06010}
+.rev-run-card.beat{border-color:rgba(205,164,52,.6);box-shadow:0 0 12px rgba(205,164,52,.12);position:relative;overflow:hidden}
+.rev-run-card.beat::before{content:"";position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#CDA434,#F3E5AB,#CDA434)}
+.rev-ach-chip.beat{background:rgba(201,168,76,.18);color:#98710E;border:1px solid rgba(201,168,76,.3);animation:goldPulse 2s infinite alternate}
+@keyframes goldPulse{
+  0%{box-shadow:0 0 3px rgba(201,168,76,.2)}
+  100%{box-shadow:0 0 9px rgba(201,168,76,.55)}
+}
 .rev-save-note{font-size:10px;color:var(--muted);margin-top:4px;min-height:13px;text-align:center}
 /* Saved read-only view */
 .rev-saved-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px}
@@ -2410,6 +2418,67 @@ function renderRevenueRunRateSkeleton() {
   }).join('')+'</div>';
 }
 
+function revGetPersonalBest(counsellor) {
+  var bestMonth = null;
+  var bestAmt = 0;
+  var monthsMap = {};
+  ((revenueData && revenueData.monthlyRows)||[]).forEach(function(r){
+    if (revSameCounsellor(r.counsellor, counsellor)) {
+      if (!monthsMap[r.month]) monthsMap[r.month] = 0;
+      monthsMap[r.month] += Number(r.achievedGst)||0;
+    }
+  });
+  Object.keys(monthsMap).forEach(function(mKey){
+    if (monthsMap[mKey] > bestAmt) {
+      bestAmt = monthsMap[mKey];
+      bestMonth = mKey;
+    }
+  });
+  if (bestMonth) {
+    var mLabel = revenueMonths().filter(function(m){ return m.key === bestMonth; })[0];
+    return { month: mLabel ? mLabel.label : bestMonth, amount: bestAmt };
+  }
+  return null;
+}
+
+function revGetTargetProjection(counsellor, annualTarget) {
+  if (!annualTarget) return null;
+  var months = revenueMonths();
+  var savedMonthsCount = 0;
+  var totalSavedAchieved = 0;
+  var assignedCentre = (allowedCentres && allowedCentres.length) ? allowedCentres[0] : '';
+  months.forEach(function(m){
+    var rows = revRowsForMonth(m.key, counsellor, assignedCentre);
+    if (rows.length > 0) {
+      savedMonthsCount++;
+      totalSavedAchieved += revTotalsFromRows(rows, assignedCentre).totalGst;
+    }
+  });
+  if (savedMonthsCount === 0 || totalSavedAchieved === 0) return null;
+  var averagePerMonth = totalSavedAchieved / savedMonthsCount;
+  if (totalSavedAchieved >= annualTarget) {
+    return { status: 'achieved' };
+  }
+  var remaining = annualTarget - totalSavedAchieved;
+  var monthsNeeded = Math.ceil(remaining / averagePerMonth);
+  var lastSavedMonthKey = '2026-01';
+  months.forEach(function(m){
+    var rows = revRowsForMonth(m.key, counsellor, assignedCentre);
+    if (rows.length > 0 && m.key > lastSavedMonthKey) {
+      lastSavedMonthKey = m.key;
+    }
+  });
+  var parts = lastSavedMonthKey.split('-');
+  var yr = Number(parts[0]);
+  var mo = Number(parts[1]) - 1;
+  var projDate = new Date(yr, mo + monthsNeeded, 1);
+  return {
+    status: 'projected',
+    monthsNeeded: monthsNeeded,
+    dateLabel: projDate.toLocaleString('en-IN', { month: 'short', year: 'numeric' })
+  };
+}
+
 function renderMyRevenue() {
   if (!revenueData) return;
   var me = counselorName || '';
@@ -2426,7 +2495,23 @@ function renderMyRevenue() {
   if(titleEl) titleEl.textContent = me ? me+"'s Revenue — 2026-27" : "Revenue Dashboard — 2026-27";
   if(subEl) {
     if (target) {
-      subEl.textContent = 'Your annual target is '+money(target)+' (incl. GST). Enter monthly revenue below — each month locks after saving.';
+      var html = 'Your annual target is '+money(target)+' (incl. GST). Enter monthly revenue below — each month locks after saving.';
+      var pb = revGetPersonalBest(me);
+      var proj = revGetTargetProjection(me, target);
+      
+      var badges = '<div class="rev-header-motivate" style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap">';
+      if (pb) {
+        badges += '<span class="rev-motivate-badge best" style="background:#EEF2F6;border:1px solid #D0DBE5;color:var(--navy);border-radius:6px;padding:4px 8px;font-size:10px;font-weight:700">🏆 Personal Best: <strong>' + money(pb.amount) + '</strong> (' + pb.month + ')</span>';
+      }
+      if (proj) {
+        if (proj.status === 'achieved') {
+          badges += '<span class="rev-motivate-badge projection" style="background:#E0F5EA;border:1px solid #B0E5CB;color:#16785B;border-radius:6px;padding:4px 8px;font-size:10px;font-weight:700">🎉 Annual Target Achieved!</span>';
+        } else {
+          badges += '<span class="rev-motivate-badge projection" style="background:#FDF5E6;border:1px solid #F5D3A0;color:#98710E;border-radius:6px;padding:4px 8px;font-size:10px;font-weight:700">📈 Projected to hit target by: <strong>' + proj.dateLabel + '</strong></span>';
+        }
+      }
+      badges += '</div>';
+      subEl.innerHTML = '<div>' + html + '</div>' + badges;
       subEl.style.color = '';
     } else {
       subEl.innerHTML = '⚠️ Annual target not set yet. <strong>Ask your admin (Sunil) to log in and set your target.</strong> You can still enter monthly revenue now.';
@@ -2615,10 +2700,11 @@ function renderRevenueMonthCards(counsellor) {
     var variance = totals.totalGst - runRate;
     var status = !open ? 'Future' : (saved ? (variance >= 0 ? 'Ahead' : 'Behind') : 'Open');
     var state = !open ? 'future' : (saved ? (variance >= 0 ? 'saved' : 'behind') : 'open');
+    var beatClass = (open && pct >= 100) ? ' beat' : '';
     var barWidth = Math.max(0, Math.min(pct, 100));
     var streak = revStreakEndingAt(counsellor, designatedCentre, runRate, m.key);
     html +=
-      '<div class="rev-run-card '+state+'" id="rmc-'+escC(m.key)+'">'+
+      '<div class="rev-run-card '+state+beatClass+'" id="rmc-'+escC(m.key)+'">'+
         '<div class="rev-run-head"><div class="rev-run-title">'+escC(m.label)+'</div><div class="rev-run-pct">'+escC(pct)+'%</div></div>'+
         '<div class="rev-run-bar"><span style="width:'+barWidth+'%"></span></div>'+
         '<div class="rev-run-meta">'+
@@ -2922,7 +3008,42 @@ function revSaveMonthCard(btn) {
       revApplySavedMonthlyRows(rows, me, assignedCentre, monthKey);
     }
     renderMyRevenue();
+
+    // Trigger confetti celebration on target beat
+    var totalGst = gst1 + gst2 + gst3;
+    var target = revAnnualTargetForCounsellor(me);
+    var monthsCount = revenueMonths().length || 15;
+    var runRate = Number((revenueData && revenueData.summary && revenueData.summary.monthlyTargetGst)||0) || (target ? Math.round(target / monthsCount) : 0);
+    if (totalGst >= runRate && totalGst > 0) {
+      triggerConfettiCelebration();
+    }
   });
+}
+
+function triggerConfettiCelebration() {
+  if (typeof confetti === 'function') {
+    var duration = 1.8 * 1000;
+    var end = Date.now() + duration;
+    (function frame() {
+      confetti({
+        particleCount: 5,
+        angle: 60,
+        spread: 55,
+        origin: { x: 0, y: 0.85 },
+        colors: ['#CDA434', '#0D1B2E', '#1D9E75']
+      });
+      confetti({
+        particleCount: 5,
+        angle: 120,
+        spread: 55,
+        origin: { x: 1, y: 0.85 },
+        colors: ['#CDA434', '#0D1B2E', '#1D9E75']
+      });
+      if (Date.now() < end) {
+        requestAnimationFrame(frame);
+      }
+    }());
+  }
 }
 
 function revDashboardHasSubmittedMonth(data, monthKey, counsellor, assignedCentre) {

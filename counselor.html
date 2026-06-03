@@ -827,6 +827,8 @@ function doLogin() {
       loadBatchDropdowns();
       loadMyBatches();
     }
+    // Kick off revenue prefetch in background — ready before user clicks the tab
+    prefetchRevenue();
     // Holidays loaded lazily when the tab is opened (see switchTab)
   });
 }
@@ -1186,8 +1188,24 @@ function loadCounselorReport() {
     return;
   }
   loadCounselorAttendanceCalendar(counselorCalendarMonth);
-  wrap.innerHTML = loadingState('Preparing attendance report...');
   marksCard.style.display = 'none';
+
+  // Use sessionStorage cache for report — keyed by batchCode
+  var rpCacheKey = 'igiReport_' + batch;
+  try {
+    var cached = sessionStorage.getItem(rpCacheKey);
+    if (cached) {
+      var cd = JSON.parse(cached);
+      if (cd && cd.status === 'ok') {
+        counselorReportData = cd;
+        setupAttendanceExtract(cd);
+        _renderCounselorReportData(cd, wrap, requestId);
+        return;
+      }
+    }
+  } catch(ex) {}
+
+  wrap.innerHTML = loadingState('Preparing attendance report...');
   var slowTimer = setTimeout(function() {
     if (requestId !== counselorReportRequestId) return;
     wrap.innerHTML = '<p style="color:var(--red);font-size:13px">This report is taking too long to load. Please try again, or choose another batch and come back.</p><button class="btn btn-outline" style="margin-top:10px" onclick="loadCounselorReport()">Retry</button>';
@@ -1196,6 +1214,7 @@ function loadCounselorReport() {
   gasGet({action:'getSessionReport', batchCode:batch, reportPass:COUNSELOR_PASS_LOCAL}, function(e, d) {
     if (requestId !== counselorReportRequestId) return;
     clearTimeout(slowTimer);
+    if (d && d.status === 'ok') { try { sessionStorage.setItem(rpCacheKey, JSON.stringify(d)); } catch(ex){} }
     if (e || !d || d.status !== 'ok') {
       counselorReportData = null;
       document.getElementById('rp-extract-card').style.display = 'none';
@@ -1204,11 +1223,18 @@ function loadCounselorReport() {
     }
     counselorReportData = d;
     setupAttendanceExtract(d);
-    if (!d.sessions || !d.sessions.length) {
-      wrap.innerHTML = emptyState('🗓', 'No sessions recorded yet', 'Once an instructor starts class, attendance and feedback details will appear here.');
-      return;
-    }
-    var today = new Date(); today.setHours(0, 0, 0, 0);
+    _renderCounselorReportData(d, wrap, requestId);
+  });
+}
+
+function _renderCounselorReportData(d, wrap, requestId) {
+  var batch = document.getElementById('rp-batch').value;
+  var marksCard = document.getElementById('rp-marks-card');
+  if (!d.sessions || !d.sessions.length) {
+    wrap.innerHTML = emptyState('🗓', 'No sessions recorded yet', 'Once an instructor starts class, attendance and feedback details will appear here.');
+    return;
+  }
+  var today = new Date(); today.setHours(0, 0, 0, 0);
     var html = '';
     html += '<div class="report-summary">';
     html += '<div class="report-stat"><div class="report-stat-value">' + d.totalStudents + '</div><div class="report-stat-label">Students</div></div>';
@@ -1303,7 +1329,6 @@ function loadCounselorReport() {
         document.getElementById('rp-marks-wrap').innerHTML = mHtml;
       }
     });
-  });
 }
 
 function setupAttendanceExtract(d) {
@@ -2271,6 +2296,33 @@ function revenueRequestParams() {
   };
 }
 
+// ── Revenue sessionStorage cache ──────────────────────────────
+function _revCacheKey() {
+  return 'igiRev_' + (counselorName||'admin') + '_2026-27';
+}
+function _revCacheRead() {
+  try { var v=sessionStorage.getItem(_revCacheKey()); return v?JSON.parse(v):null; } catch(ex){return null;}
+}
+function _revCacheWrite(d) {
+  try { sessionStorage.setItem(_revCacheKey(), JSON.stringify(d)); } catch(ex){}
+}
+function _revCacheClear() {
+  try { sessionStorage.removeItem(_revCacheKey()); } catch(ex){}
+}
+
+/* Start fetching revenue in the background right after login.
+   Result is stored in revenueData and cache so the tab renders instantly. */
+function prefetchRevenue() {
+  if (isAdmin) return; // admin revenue is on-demand
+  var cached = _revCacheRead();
+  if (cached) { revenueData = cached; return; } // already warm
+  gasGet(revenueRequestParams(), function(e,d) {
+    if (e||!d||d.status!=='ok') return;
+    revenueData = d;
+    _revCacheWrite(d);
+  });
+}
+
 function loadRevenueDashboard() {
   if (!document.getElementById('t-revenue').classList.contains('active')) return;
   var grid = document.getElementById('rev-month-grid');
@@ -2279,27 +2331,47 @@ function loadRevenueDashboard() {
       centreTargetRows:[], centres:[], counsellors:[],
       summary:{targetGst:0,achievedGst:0,studentCount:0} };
     renderAdminTargetPanel();
-  } else if (grid && !revenueData) {
-    grid.innerHTML = '<div class="rev-loading-note">Fetching saved revenue from backend...</div>' + renderRevenueRunRateSkeleton();
+    // Admin always fetches fresh
+    gasGet(revenueRequestParams(), function(e,d) {
+      if (e||!d||d.status!=='ok') { renderAdminTargetPanel(); renderRevenueRollups(); return; }
+      revenueData = d;
+      renderRevenueCentreTargetEditor(); renderRevenueRollups();
+    });
+    return;
   }
-  gasGet(revenueRequestParams(), function(e,d) {
-    if (e || !d || d.status !== 'ok') {
-      // Backend error — render all month cards as open so counsellor can still enter data
-      revenueData = { status:'ok', months:[], monthlyRows:[], targetRows:[],
-        centreTargetRows:[], centres:[], counsellors:[],
-        summary:{targetGst:0,achievedGst:0,studentCount:0} };
-      var eb = document.getElementById('rev-err');
-      if (eb) { eb.style.display='block'; eb.textContent='⚠ Saved data could not be loaded (backend unreachable). You can still enter and save revenue — the form will work normally.'; }
-      renderMyRevenue();
-      if (isAdmin) { renderAdminTargetPanel(); renderRevenueRollups(); }
-      return;
-    }
+  // Non-admin: if prefetch already delivered data, render instantly
+  if (revenueData) {
     var eb = document.getElementById('rev-err');
-    if (eb) eb.style.display='none';
-    revenueData = d;
+    if (eb) eb.style.display = 'none';
     renderMyRevenue();
-    if (isAdmin) { renderRevenueCentreTargetEditor(); renderRevenueRollups(); }
-  });
+    return;
+  }
+  // Still waiting on prefetch — show skeleton and wait
+  if (grid) grid.innerHTML = '<div class="rev-loading-note">Loading revenue data…</div>' + renderRevenueRunRateSkeleton();
+  var waited = 0;
+  var poll = setInterval(function() {
+    waited += 200;
+    if (revenueData) {
+      clearInterval(poll);
+      var eb = document.getElementById('rev-err');
+      if (eb) eb.style.display = 'none';
+      renderMyRevenue();
+    } else if (waited >= 12000) {
+      clearInterval(poll);
+      // Prefetch timed out — fetch directly now
+      gasGet(revenueRequestParams(), function(e,d) {
+        if (e||!d||d.status!=='ok') {
+          revenueData = {status:'ok',months:[],monthlyRows:[],targetRows:[],centreTargetRows:[],centres:[],counsellors:[],summary:{targetGst:0,achievedGst:0,studentCount:0}};
+          var eb2=document.getElementById('rev-err');
+          if(eb2){eb2.style.display='block';eb2.textContent='⚠ Saved data could not be loaded. You can still enter revenue normally.';}
+          renderMyRevenue(); return;
+        }
+        revenueData=d; _revCacheWrite(d);
+        var eb2=document.getElementById('rev-err'); if(eb2) eb2.style.display='none';
+        renderMyRevenue();
+      });
+    }
+  }, 200);
 }
 
 function renderRevenueFastShell() {
@@ -2855,6 +2927,8 @@ function revApplySavedMonthlyRows(rows, counsellor, assignedCentre, monthKey) {
   revenueData.summary = revenueData.summary || {};
   revenueData.summary.achievedGst = total;
   revenueData.summary.studentCount = students;
+  // Keep sessionStorage cache in sync after save
+  _revCacheWrite(revenueData);
 }
 
 // Admin: Centre target save

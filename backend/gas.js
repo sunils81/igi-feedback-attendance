@@ -2481,22 +2481,25 @@ function buildRevenueDashboard(ss,p) {
   var fullMonths=revenueMonthList('2026-01','2027-03');
   var monthKeys={};months.forEach(function(m){monthKeys[m.key]=true;});
   var period=revenuePeriod(p);
+  // Read each sheet exactly once, then filter in memory
+  var allAnnualTargets=getRevenueAnnualTargetRows(ss);
+  var allMonthlyAchieved=getRevenueMonthlyAchievedRows(ss);
   var centreTargetRows=getRevenueCentreTargetRows(ss).filter(function(r){
     return r.period===period&&revenueAllowedCentre(r.centre,p);
   });
-  var targetRows=getRevenueAnnualTargetRows(ss).filter(function(r){
+  var targetRows=allAnnualTargets.filter(function(r){
     return r.period===period&&revenueAllowedCentre(r.centre,p)&&revenueAllowedCounsellor(r.counsellor,p);
   });
-  var monthlyPreviewTargets=getRevenueAnnualTargetRows(ss).filter(function(r){
+  var monthlyPreviewTargets=allAnnualTargets.filter(function(r){
     return r.period===period&&revenueAllowedCentre(r.centre,p);
   });
-  var achievedRows=getRevenueMonthlyAchievedRows(ss).filter(function(r){
+  var achievedRows=allMonthlyAchieved.filter(function(r){
     if(r.period!==period||!monthKeys[r.month])return false;
     if(!revenueAllowedCounsellor(r.counsellor,p))return false;
     if(p.crossOnly==='true'&&r.assignedCentre===r.businessCentre)return false;
     return revenueAllowedViewCentre(r,p);
   });
-  var monthlyPreviewRows=getRevenueMonthlyAchievedRows(ss).filter(function(r){
+  var monthlyPreviewRows=allMonthlyAchieved.filter(function(r){
     if(r.period!==period||!monthKeys[r.month])return false;
     if(p.crossOnly==='true'&&r.assignedCentre===r.businessCentre)return false;
     return revenueAllowedViewCentre(r,p);

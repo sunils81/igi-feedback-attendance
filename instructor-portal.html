@@ -35,9 +35,10 @@
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:500px){.grid2{grid-template-columns:1fr}}
 
-.day-batch-card{background:var(--off);border-radius:10px;padding:16px;margin-bottom:14px;border:1.5px solid var(--border)}
-.day-batch-card .dbc-title{font-weight:700;font-size:14px;color:var(--navy)}
-.day-batch-card .dbc-meta{font-size:11px;color:var(--muted);margin-top:2px;margin-bottom:12px}
+.day-batch-card{background:var(--off);border-radius:10px;padding:16px;margin-bottom:14px;border:1.5px solid var(--border);position:relative}
+.day-batch-card.created{background:var(--white);border-left:4px solid #1D9E75;border-color:var(--border) var(--border) var(--border) #1D9E75}
+.created-live-badge{position:absolute;top:16px;right:16px;background:#E8F5EE;color:#1d9e75;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;display:flex;align-items:center;gap:4px}
+.created-live-badge .live-dot-pulse{width:6px;height:6px;background:#1d9e75;border-radius:50%;animation:pulse 1.5s infinite}
 .day-badge{display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;margin-right:6px}
 .day-badge-first{background:#EEF4FB;color:var(--blue)}
 .day-badge-second{background:var(--gold-pale);color:#B87A10}
@@ -622,7 +623,8 @@ function renderTodaySessions(sessions) {
     }
     var displayTopic = (s.topic && s.topic.indexOf('CANCELLED') !== 0) ? s.topic : '';
     var autoTxt = s.autoCreated ? ' <span style="font-size:10px;color:#1D9E75;font-weight:600">Auto</span>' : '';
-    html += '<div class="day-batch-card" id="dbc-' + escH(s.sessionCode) + '">';
+    html += '<div class="day-batch-card created" id="dbc-' + escH(s.sessionCode) + '">';
+    html += '<div class="created-live-badge"><span class="live-dot-pulse"></span>Created & Live</div>';
     html += '<div class="dbc-title">' + escH(s.batchCode);
     html += '<span style="font-family:monospace;font-size:10px;color:var(--muted);margin-left:8px">' + escH(s.sessionCode) + '</span>';
     html += autoTxt + '</div>';
@@ -635,7 +637,8 @@ function renderTodaySessions(sessions) {
     html += '<div style="font-size:11px;color:var(--muted);margin-bottom:5px">Override topic if different today:</div>';
     html += '<input type="text" class="topic-override" id="tov-' + escH(s.sessionCode) + '" placeholder="' + escH(displayTopic || s.scheduledTopic || 'Leave blank to keep scheduled topic') + '" value="' + escH(displayTopic) + '">';
     html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">';
-    html += '<button class="btn btn-gold" style="flex:1;font-size:12px;padding:9px 12px" data-sess="' + escH(s.sessionCode) + '" onclick="updateTopic(this.dataset.sess)">Confirm Topic</button>';
+    html += '<button class="btn btn-outline" style="flex:1;font-size:12px;padding:9px 12px;border-color:#1D9E75;color:#1D9E75" data-sess="' + escH(s.sessionCode) + '" onclick="updateTopic(this.dataset.sess)">Confirm Topic</button>';
+    html += '<button class="btn btn-gold" style="flex:1.5;font-size:12px;padding:9px 12px;display:inline-flex;align-items:center;justify-content:center;gap:4px" data-batch="' + escH(s.batchCode) + '" data-sess="' + escH(s.sessionCode) + '" onclick="openAttendanceFor(this.dataset.batch, this.dataset.sess)">Open Attendance 👥</button>';
     html += '<button style="flex:1;padding:9px 12px;border:1.5px solid #C94A4A;color:#C94A4A;border-radius:8px;background:transparent;font-size:12px;cursor:pointer" data-sess="' + escH(s.sessionCode) + '" data-batch="' + escH(s.batchCode) + '" onclick="showCancelDialog(this.dataset.sess,this.dataset.batch)">Cancel Session</button>';
     html += '</div></div>';
   }

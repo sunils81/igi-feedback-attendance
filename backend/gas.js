@@ -36,7 +36,7 @@ const SH_REVENUE_CENTRE_TARGETS = 'Revenue_Centre_Targets';
 const SH_REVENUE_ANNUAL_TARGETS = 'Revenue_Annual_Targets';
 const SH_REVENUE_MONTHLY_ACHIEVED = 'Revenue_Monthly_Achieved';
 const SH_REVENUE_TARGET_REVISIONS = 'Revenue_Target_Revisions';
-const REVENUE_BACKEND_VERSION = 'revenue-ledger-v5-2026-06-03';
+const REVENUE_BACKEND_VERSION = 'revenue-ledger-v6-2026-06-03';
 const SH_USER_CREDENTIALS = 'User_Credentials';
 const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
   'RTGS / Bank Transfer','Collexo (Online)','Cheque','Demand Draft'];                 // % pass mark
@@ -2056,11 +2056,7 @@ function doGet(e) {
 
     if (act==='getRevenueDashboard') {
       ensureSheets(ss);
-      const rKey=revenueDashboardCacheKey(p);
-      const cached=cacheGet(rKey);
-      if(cached) return respond(cached);
       const result=buildRevenueDashboard(ss,p);
-      cachePut(rKey, result);
       return respond(result);
     }
 
@@ -2504,11 +2500,16 @@ function revenueMonthList(fromMonth,toMonth) {
 
 function revenueMonthKey(value) {
   if(!value)return '';
+  if(value instanceof Date) {
+    return Utilities.formatDate(value,Session.getScriptTimeZone(),'yyyy-MM');
+  }
   var str=String(value).trim();
-  if(str.match(/^\d{4}-\d{2}$/))return str;
-  var d=value instanceof Date?value:new Date(value);
+  if(str.match(/^\d{4}-\d{2}/)) {
+    return str.slice(0,7);
+  }
+  var d=new Date(str);
   if(isNaN(d.getTime()))return str.slice(0,7);
-  var corrected = new Date(d.getTime() + (d.getTimezoneOffset() ? 0 : 12 * 60 * 60 * 1000));
+  var corrected = new Date(d.getTime() + 12 * 60 * 60 * 1000);
   return Utilities.formatDate(corrected,Session.getScriptTimeZone(),'yyyy-MM');
 }
 

@@ -36,7 +36,7 @@ const SH_REVENUE_CENTRE_TARGETS = 'Revenue_Centre_Targets';
 const SH_REVENUE_ANNUAL_TARGETS = 'Revenue_Annual_Targets';
 const SH_REVENUE_MONTHLY_ACHIEVED = 'Revenue_Monthly_Achieved';
 const SH_REVENUE_TARGET_REVISIONS = 'Revenue_Target_Revisions';
-const REVENUE_BACKEND_VERSION = 'revenue-ledger-v6-2026-06-03';
+const REVENUE_BACKEND_VERSION = 'revenue-ledger-v7-2026-06-03';
 const SH_USER_CREDENTIALS = 'User_Credentials';
 const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
   'RTGS / Bank Transfer','Collexo (Online)','Cheque','Demand Draft'];                 // % pass mark
@@ -2848,6 +2848,14 @@ function parseRevenueMonthlyAchievedSheet(sh) {
 }
 
 function getRevenueMonthlyAchievedRows(ss) {
+  var sh=ss.getSheetByName(SH_REVENUE_MONTHLY_ACHIEVED);
+  var sharedRows = parseRevenueMonthlyAchievedSheet(sh);
+  if (sharedRows && sharedRows.length > 0) {
+    // Fast path: if the consolidated ledger is populated, read ONLY from it.
+    return sharedRows;
+  }
+  
+  // Legacy fallback: if consolidated ledger is empty, merge individual counsellor sheets.
   var byKey={};
   function absorb(rows){
     rows.forEach(function(r){
@@ -2856,8 +2864,7 @@ function getRevenueMonthlyAchievedRows(ss) {
       if(!prev || String(r.updatedAt||'')>=String(prev.updatedAt||''))byKey[key]=r;
     });
   }
-  var sh=ss.getSheetByName(SH_REVENUE_MONTHLY_ACHIEVED);
-  absorb(parseRevenueMonthlyAchievedSheet(sh));
+  absorb(sharedRows);
   ss.getSheets().forEach(function(s){
     if(s.getName().indexOf('Revenue_Monthly_')===0 && s.getName()!==SH_REVENUE_MONTHLY_ACHIEVED){
       absorb(parseRevenueMonthlyAchievedSheet(s));

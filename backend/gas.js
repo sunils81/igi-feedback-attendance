@@ -36,7 +36,7 @@ const SH_REVENUE_CENTRE_TARGETS = 'Revenue_Centre_Targets';
 const SH_REVENUE_ANNUAL_TARGETS = 'Revenue_Annual_Targets';
 const SH_REVENUE_MONTHLY_ACHIEVED = 'Revenue_Monthly_Achieved';
 const SH_REVENUE_TARGET_REVISIONS = 'Revenue_Target_Revisions';
-const REVENUE_BACKEND_VERSION = 'revenue-ledger-v9-2026-06-03';
+const REVENUE_BACKEND_VERSION = 'revenue-ledger-v10-2026-06-03';
 const SH_USER_CREDENTIALS = 'User_Credentials';
 const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
   'RTGS / Bank Transfer','Collexo (Online)','Cheque','Demand Draft'];                 // % pass mark
@@ -805,7 +805,7 @@ function cacheRemove(keys) {
 }
 
 function revenueDashboardCacheKey(p) {
-  return 'rev|'+((p&&p.counsellor)||'')+'|'+((p&&p.centres)||'')+'|'+((p&&p.period)||'2026-27')+'|'+((p&&p.isAdmin)||'false');
+  return 'rev|'+REVENUE_BACKEND_VERSION+'|'+((p&&p.counsellor)||'')+'|'+((p&&p.centres)||'')+'|'+((p&&p.period)||'2026-27')+'|'+((p&&p.isAdmin)||'false');
 }
 
 function revenueDashboardCacheKeysForSave(p,effectiveCounsellor) {
@@ -2060,6 +2060,14 @@ function doGet(e) {
       return respond(result);
     }
 
+    if (act==='migrateRevenueData') {
+      return respond(migrateRevenueMonthlyData(ss, p.adminPass||p.pass||''));
+    }
+
+    if (act==='getRevenueDiagnostic') {
+      return respond(getRevenueDiagnostic(ss, p.adminPass||p.pass||''));
+    }
+
     if (act==='getAdminDashboard') {
       ensureSheets(ss);
       if (String(p.isAdmin)!=='true') return respond({status:'error',reason:'auth'});
@@ -2847,11 +2855,19 @@ function parseRevenueMonthlyAchievedSheet(sh) {
   }).filter(function(r){return r.month&&r.period&&r.counsellor&&r.assignedCentre&&r.businessCentre;});
 }
 
+// Returns the canonical list of all known counsellor/dual-role names for sheet lookups
+function revenueKnownCounsellorNames() {
+  var names = {};
+  Object.keys(COUNSELOR_CREDS).forEach(function(n){ names[n]=true; });
+  Object.keys(DUAL_ROLE).forEach(function(n){ names[n]=true; });
+  return Object.keys(names);
+}
+
 function getRevenueMonthlyAchievedRows(ss) {
-  // Always merge ALL sources: shared ledger + every per-counsellor sheet.
-  // Deduplication is by revenueMonthlyLedgerKey; latest updatedAt wins.
-  // This fixes the bug where per-counsellor legacy sheets (e.g. Revenue_Monthly_Bianca)
-  // were skipped when the shared ledger already had any rows.
+  // Merges shared ledger + per-counsellor sheets by KNOWN counsellor names.
+  // Using ss.getSheetByName() per counsellor is ~10x faster than ss.getSheets()
+  // which scans the entire spreadsheet (causes the 10-15s load time).
+  // Deduplication: same revenueMonthlyLedgerKey → latest updatedAt wins.
   var byKey = {};
   function absorb(rows) {
     rows.forEach(function(r) {
@@ -2860,17 +2876,80 @@ function getRevenueMonthlyAchievedRows(ss) {
       if (!prev || String(r.updatedAt||'') >= String(prev.updatedAt||'')) byKey[key] = r;
     });
   }
-  // 1. Shared consolidated ledger (highest priority for same key — written last)
+  // 1. Shared consolidated ledger
   var sh = ss.getSheetByName(SH_REVENUE_MONTHLY_ACHIEVED);
   absorb(parseRevenueMonthlyAchievedSheet(sh));
-  // 2. Per-counsellor sheets (handles legacy data not yet migrated to shared ledger,
-  //    and also cross-centre rows that must appear in both counsellors' and target centre's views)
-  ss.getSheets().forEach(function(s) {
-    if (s.getName().indexOf('Revenue_Monthly_') === 0 && s.getName() !== SH_REVENUE_MONTHLY_ACHIEVED) {
-      absorb(parseRevenueMonthlyAchievedSheet(s));
-    }
+  // 2. Per-counsellor legacy sheets — look up by known name only (fast, no full sheet scan)
+  var seenSheet = {};
+  seenSheet[SH_REVENUE_MONTHLY_ACHIEVED] = true;
+  revenueKnownCounsellorNames().forEach(function(name) {
+    var sheetName = revenueCounsellorMonthlySheetName(name);
+    if (seenSheet[sheetName]) return;
+    seenSheet[sheetName] = true;
+    var s = ss.getSheetByName(sheetName);
+    if (s) absorb(parseRevenueMonthlyAchievedSheet(s));
   });
   return Object.keys(byKey).map(function(k) { return byKey[k]; });
+}
+
+// ── One-time migration: copy all per-counsellor sheet rows into shared ledger ──
+// Run once via action=migrateRevenueData (admin only) after deploying this fix.
+// After migration, shared ledger is the single source of truth.
+function migrateRevenueMonthlyData(ss, adminPass) {
+  if (adminPass !== ADMIN_PASS) return {status:'error', reason:'auth'};
+  var sharedSh = getOrCreateSheet(ss, SH_REVENUE_MONTHLY_ACHIEVED);
+  ensureRevenueMonthlyAchievedHeaders(sharedSh);
+  // Read current shared ledger for deduplication
+  var existing = parseRevenueMonthlyAchievedSheet(sharedSh);
+  var byKey = {};
+  existing.forEach(function(r){ byKey[revenueMonthlyLedgerKey(r)] = r.rowIndex; });
+  var migrated = 0, skipped = 0;
+  revenueKnownCounsellorNames().forEach(function(name) {
+    var sheetName = revenueCounsellorMonthlySheetName(name);
+    if (sheetName === SH_REVENUE_MONTHLY_ACHIEVED) return;
+    var s = ss.getSheetByName(sheetName);
+    if (!s) return;
+    var rows = parseRevenueMonthlyAchievedSheet(s);
+    rows.forEach(function(r) {
+      var key = revenueMonthlyLedgerKey(r);
+      if (byKey[key]) { skipped++; return; } // already in shared ledger
+      var row = [r.month, r.period, r.counsellor, r.assignedCentre, r.businessCentre,
+                 r.businessType, r.studentCount, r.achievedCourse, r.achievedGst,
+                 r.notes, r.updatedBy, r.locked ? 'Y' : 'N', r.updatedAt || new Date().toISOString()];
+      sharedSh.appendRow(row);
+      byKey[key] = sharedSh.getLastRow();
+      migrated++;
+    });
+  });
+  try { SpreadsheetApp.flush(); } catch(_e) {}
+  // Bust cache so next fetch sees migrated data
+  try { CacheService.getScriptCache().removeAll(Object.keys(CENTRE_CODES).map(function(c){ return 'rev|'+REVENUE_BACKEND_VERSION+'|'+c; })); } catch(_e2) {}
+  return {status:'ok', migrated: migrated, skipped: skipped};
+}
+
+// ── Diagnostic: show what's in each Revenue_Monthly_* sheet ──
+function getRevenueDiagnostic(ss, adminPass) {
+  if (adminPass !== ADMIN_PASS) return {status:'error', reason:'auth'};
+  var report = [];
+  // Shared ledger
+  var sh = ss.getSheetByName(SH_REVENUE_MONTHLY_ACHIEVED);
+  var sharedRows = parseRevenueMonthlyAchievedSheet(sh);
+  report.push({sheet: SH_REVENUE_MONTHLY_ACHIEVED, rowCount: sharedRows.length,
+    summary: sharedRows.reduce(function(m,r){
+      var k=r.counsellor||'?'; m[k]=(m[k]||0)+r.achievedGst; return m;
+    },{})});
+  // Per-counsellor sheets
+  revenueKnownCounsellorNames().forEach(function(name) {
+    var sheetName = revenueCounsellorMonthlySheetName(name);
+    var s = ss.getSheetByName(sheetName);
+    if (!s) { report.push({sheet: sheetName, exists: false}); return; }
+    var rows = parseRevenueMonthlyAchievedSheet(s);
+    report.push({sheet: sheetName, exists: true, rowCount: rows.length,
+      summary: rows.reduce(function(m,r){
+        var k=r.month+'|'+r.businessCentre; m[k]=(m[k]||0)+r.achievedGst; return m;
+      },{})});
+  });
+  return {status:'ok', report: report};
 }
 
 function saveRevenueCentreTargetRows(ss,rows,updatedBy) {

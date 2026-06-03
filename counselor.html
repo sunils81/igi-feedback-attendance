@@ -2148,7 +2148,7 @@ function downloadAdminDashboardCsv() {
 }
 
 // -- Revenue (redesign v2) -----------------------------------------------
-const REVENUE_FRONTEND_VERSION = 'revenue-ledger-v2-2026-06-03';
+const REVENUE_FRONTEND_VERSION = 'revenue-ledger-v3-2026-06-03';
 const MUMBAI_COUNSELLORS = ['Anuradha','Bianca','Omkar Kadam'];
 const BUSINESS_TYPES = ['Centre Revenue','Corporate Programs','Seminars','Other Centre Business'];
 
@@ -2886,7 +2886,7 @@ function revSaveMonthCard(btn) {
       if (note) { note.textContent = '⚠ ' + noSaveMsg; note.style.color = 'var(--red)'; }
       showToast(noSaveMsg, 'error');
       if (d.dashboard && d.dashboard.status === 'ok') {
-        revenueData = d.dashboard;
+        revMergeDashboardAfterSave(d.dashboard, rows, me, assignedCentre, monthKey);
         _revCacheWrite(revenueData);
         renderMyRevenue();
       }
@@ -2894,13 +2894,10 @@ function revSaveMonthCard(btn) {
     }
     showToast(monthLabel + (isRevision ? ' revision saved ✓' : ' revenue saved and locked ✓'));
     if (d.dashboard && d.dashboard.status === 'ok') {
-      revenueData = d.dashboard;
-      if (!revDashboardHasSubmittedMonth(revenueData, monthKey, me, assignedCentre)) {
-        revApplySavedMonthlyRows(rows, me, assignedCentre, monthKey);
-      }
+      revMergeDashboardAfterSave(d.dashboard, rows, me, assignedCentre, monthKey);
       _revCacheWrite(revenueData);
     } else {
-      // No dashboard in response — apply optimistic update so UI reflects the save
+      // No dashboard in response — optimistic update only
       revApplySavedMonthlyRows(rows, me, assignedCentre, monthKey);
     }
     renderMyRevenue();
@@ -2913,11 +2910,71 @@ function revDashboardHasSubmittedMonth(data, monthKey, counsellor, assignedCentr
   });
 }
 
+function revRevenueRowKey(r) {
+  return [
+    r.period || '2026-27',
+    r.month || '',
+    revCanonical(r.counsellor),
+    r.assignedCentre || '',
+    r.businessCentre || '',
+    r.businessType || ''
+  ].join('|');
+}
+
+function revSameSavedMonthScope(r, monthKey, counsellor, assignedCentre) {
+  return r.month === monthKey && revSameCounsellor(r.counsellor, counsellor) && r.assignedCentre === assignedCentre;
+}
+
+function revMergeMonthlyRowsForSave(previousRows, dashboardRows, counsellor, assignedCentre, monthKey) {
+  var byKey = {};
+  var order = [];
+  function addRow(r) {
+    if (!r) return;
+    var k = revRevenueRowKey(r);
+    if (!byKey.hasOwnProperty(k)) order.push(k);
+    byKey[k] = r;
+  }
+  (previousRows || []).forEach(function(r){
+    if (!revSameSavedMonthScope(r, monthKey, counsellor, assignedCentre)) addRow(r);
+  });
+  (dashboardRows || []).forEach(addRow);
+  return order.map(function(k){ return byKey[k]; });
+}
+
+function revRefreshRevenueSummaryTotals(data) {
+  if (!data) return data;
+  var total = 0, students = 0;
+  (data.monthlyRows || []).forEach(function(r){
+    total += Number(r.achievedGst) || 0;
+    students += Number(r.studentCount) || 0;
+  });
+  data.summary = data.summary || {};
+  data.summary.achievedGst = total;
+  data.summary.studentCount = students;
+  return data;
+}
+
+function revMergeDashboardAfterSave(dashboard, submittedRows, counsellor, assignedCentre, monthKey) {
+  var previous = revenueData || {status:'ok', months:[], monthlyRows:[], targetRows:[], centreTargetRows:[], centres:[], counsellors:[], summary:{}};
+  var incomingRows = (dashboard && dashboard.monthlyRows) || [];
+  var incomingPreviewRows = (dashboard && (dashboard.monthlyPreviewRows || dashboard.monthlyRows)) || [];
+  var previousPreviewRows = previous.monthlyPreviewRows || previous.monthlyRows || [];
+
+  revenueData = Object.assign({}, previous, dashboard || {});
+  revenueData.monthlyRows = revMergeMonthlyRowsForSave(previous.monthlyRows, incomingRows, counsellor, assignedCentre, monthKey);
+  revenueData.monthlyPreviewRows = revMergeMonthlyRowsForSave(previousPreviewRows, incomingPreviewRows, counsellor, assignedCentre, monthKey);
+  revRefreshRevenueSummaryTotals(revenueData);
+
+  if (!revDashboardHasSubmittedMonth(revenueData, monthKey, counsellor, assignedCentre)) {
+    revApplySavedMonthlyRows(submittedRows, counsellor, assignedCentre, monthKey);
+  }
+}
+
 function revApplySavedMonthlyRows(rows, counsellor, assignedCentre, monthKey) {
   revenueData = revenueData || {status:'ok', months:[], monthlyRows:[], targetRows:[], centreTargetRows:[], centres:[], counsellors:[], summary:{}};
   var existing = revenueData.monthlyRows || [];
   revenueData.monthlyRows = existing.filter(function(r){
-    return !(r.month === monthKey && revSameCounsellor(r.counsellor, counsellor) && r.assignedCentre === assignedCentre);
+    return !revSameSavedMonthScope(r, monthKey, counsellor, assignedCentre);
   }).concat(rows.map(function(r){
     return Object.assign({}, r, {
       locked: true,
@@ -2927,7 +2984,7 @@ function revApplySavedMonthlyRows(rows, counsellor, assignedCentre, monthKey) {
   }));
   var previewExisting = revenueData.monthlyPreviewRows || revenueData.monthlyRows || [];
   revenueData.monthlyPreviewRows = previewExisting.filter(function(r){
-    return !(r.month === monthKey && revSameCounsellor(r.counsellor, counsellor) && r.assignedCentre === assignedCentre);
+    return !revSameSavedMonthScope(r, monthKey, counsellor, assignedCentre);
   }).concat(rows.map(function(r){
     return Object.assign({}, r, {
       locked: true,
@@ -2935,11 +2992,7 @@ function revApplySavedMonthlyRows(rows, counsellor, assignedCentre, monthKey) {
       updatedAt: new Date().toISOString()
     });
   }));
-  var total = revenueData.monthlyRows.reduce(function(sum,r){ return sum + (Number(r.achievedGst)||0); }, 0);
-  var students = revenueData.monthlyRows.reduce(function(sum,r){ return sum + (Number(r.studentCount)||0); }, 0);
-  revenueData.summary = revenueData.summary || {};
-  revenueData.summary.achievedGst = total;
-  revenueData.summary.studentCount = students;
+  revRefreshRevenueSummaryTotals(revenueData);
   // Keep sessionStorage cache in sync after save
   _revCacheWrite(revenueData);
 }

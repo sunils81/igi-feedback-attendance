@@ -2552,8 +2552,9 @@ function revenueAllowedCounsellor(counsellor,p) {
 }
 
 function revenueAllowedViewCentre(row,p) {
-  var centre=String((p.viewMode==='business'?row.businessCentre:row.assignedCentre)||row.centre||'');
-  return revenueAllowedCentre(centre,p);
+  var assigned = String(row.assignedCentre||row.centre||'');
+  var business = String(row.businessCentre||row.centre||'');
+  return revenueAllowedCentre(assigned,p) || revenueAllowedCentre(business,p);
 }
 
 function revenuePeriod(p) {

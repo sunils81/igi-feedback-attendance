@@ -406,6 +406,104 @@
   font-weight: 800;
   margin-left: auto;
 }
+/* Reconciliation & Rollup Expander Styles */
+.rev-recon-section {
+  margin-bottom: 24px;
+}
+.rev-recon-section h3 {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--navy);
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+.rev-recon-trigger {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.rev-recon-trigger:hover {
+  background: rgba(13, 27, 46, 0.03);
+}
+.rev-recon-trigger.expanded {
+  background: rgba(201, 168, 76, 0.05);
+}
+.rev-recon-detail {
+  background: #FFFDF8;
+}
+.rev-recon-detail td {
+  padding: 6px 12px !important;
+}
+.sub-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 4px 0 8px;
+  background: var(--white);
+  border: 1px solid rgba(13,27,46,0.06);
+  border-radius: 6px;
+}
+.sub-table th {
+  background: rgba(13, 27, 46, 0.03) !important;
+  color: var(--muted) !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.04em !important;
+  padding: 4px 8px !important;
+}
+.sub-table td {
+  font-size: 10px !important;
+  padding: 4px 8px !important;
+  border-bottom: 1px solid rgba(13,27,46,0.04) !important;
+}
+.sub-table tr:last-child td {
+  border-bottom: none !important;
+}
+.rev-type-badge {
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin-left: 6px;
+  display: inline-block;
+  vertical-align: middle;
+}
+.rev-type-badge.assigned {
+  background: rgba(29, 158, 117, 0.08);
+  color: #16785B;
+  border: 1px solid rgba(29, 158, 117, 0.16);
+}
+.rev-type-badge.cross {
+  background: rgba(201, 168, 76, 0.1);
+  color: #98710E;
+  border: 1px solid rgba(201, 168, 76, 0.2);
+}
+.rev-type-badge.corp {
+  background: rgba(13, 27, 46, 0.06);
+  color: var(--navy);
+  border: 1px solid rgba(13, 27, 46, 0.12);
+}
+
+/* Counselor combined progress bar breakdown item */
+.rev-centre-bar-breakdown {
+  font-size: 9px;
+  color: rgba(255,255,255,0.7);
+  background: rgba(255,255,255,0.08);
+  border-radius: 5px;
+  padding: 4px 8px;
+  margin-top: 8px;
+  line-height: 1.4;
+}
+.rev-bar-bd-item {
+  display: inline-block;
+}
+.rev-bar-bd-item strong {
+  color: var(--gold);
+}
+
 @media(max-width:620px){
   .rev-kpi-bar{grid-template-columns:1fr 1fr}.rev-month-grid{grid-template-columns:1fr}
   .rev-breakdown-row {grid-template-columns: 1fr; gap: 6px;}
@@ -812,6 +910,7 @@
         <div class="title" id="rev-centre-bar-title">Mumbai Centre — Combined Achievement</div>
         <div class="row" id="rev-centre-bar-row"></div>
         <div class="cprog"><span id="rev-centre-bar-prog" style="width:0%"></span></div>
+        <div class="rev-centre-bar-breakdown" id="rev-centre-bar-breakdown" style="display:none"></div>
       </div>
 
       <!-- My KPI tiles -->
@@ -2425,17 +2524,27 @@ function revAchievedForCounsellor(counsellor) {
 }
 
 function revCentreAchievedAll(centre) {
-  // sum across ALL counsellors for a centre
   var achieved = 0, students = 0;
-  ((revenueData && revenueData.monthlyRows)||[]).forEach(function(r){
-    if (r.assignedCentre === centre) {
-      achieved += Number(r.achievedGst)||0;
-      students += Number(r.studentCount)||0;
+  var contributors = {};
+  var rows = (revenueData && (revenueData.monthlyPreviewRows || revenueData.monthlyRows)) || [];
+  rows.forEach(function(r){
+    if (r.businessCentre === centre) {
+      var gst = Number(r.achievedGst)||0;
+      var st = Number(r.studentCount)||0;
+      achieved += gst;
+      students += st;
+      
+      var name = r.counsellor || 'Unknown';
+      if (!contributors[name]) {
+        contributors[name] = { achieved: 0, students: 0 };
+      }
+      contributors[name].achieved += gst;
+      contributors[name].students += st;
     }
   });
   var cmap = revCentreTargetMap();
   var target = Number((cmap['2026-27|'+centre]||{}).targetGst)||0;
-  return {achieved:achieved, students:students, target:target};
+  return {achieved:achieved, students:students, target:target, contributors:contributors};
 }
 
 function initRevenueTab() {
@@ -2818,6 +2927,22 @@ function renderMumbaiCentreBar(counsellor) {
     '<div class="item"><div class="v">'+cpct+'%</div><div class="k">Achievement</div></div>';
   var prog = document.getElementById('rev-centre-bar-prog');
   if(prog) prog.style.width = cpct+'%';
+
+  // Render contributors breakdown list
+  var bdnEl = document.getElementById('rev-centre-bar-breakdown');
+  if (bdnEl) {
+    var cNames = Object.keys(cs.contributors || {});
+    if (cNames.length > 0) {
+      bdnEl.style.display = 'block';
+      var breakdownItems = cNames.map(function(name) {
+        var cData = cs.contributors[name];
+        return '<span class="rev-bar-bd-item"><strong>' + escC(name) + '</strong>: ' + money(cData.achieved) + ' (' + cData.students + ' stu)</span>';
+      }).join(' &middot; ');
+      bdnEl.innerHTML = 'Contributors &middot; ' + breakdownItems;
+    } else {
+      bdnEl.style.display = 'none';
+    }
+  }
 }
 
 function revPreviewRows() {
@@ -3577,27 +3702,140 @@ function revSyncCentreGst() {
 }
 
 function renderRevenueRollups() {
-  // Render the inline target editor for admin
   renderAdminTargetPanel();
-  // Rollup table
   var wrap = document.getElementById('rev-rollups');
   if (!wrap || !revenueData) return;
   var centres   = revenueData.centres   || [];
   var counsellors = revenueData.counsellors || [];
+  var monthlyRows = (revenueData.monthlyPreviewRows || revenueData.monthlyRows) || [];
+
   if (!centres.length && !counsellors.length) {
     wrap.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px 0">No data yet for this period.</div>';
     return;
   }
-  var html = '<table class="compact-table"><thead><tr><th>Name</th><th>Target (GST)</th><th>Achieved (GST)</th><th>Gap</th><th>%</th></tr></thead><tbody>';
+
+  var html = '<div class="rev-recon-section"><h3>🏫 Centre Performance &amp; Reconciliation</h3>';
+  html += '<p class="sub" style="font-size:10px;color:var(--muted);margin-bottom:8px">Click on any Centre or Counsellor to view detailed cross-centre contribution breakdowns.</p>';
+  html += '<table class="compact-table"><thead><tr><th>Centre</th><th>Target (GST)</th><th>Achieved (GST)</th><th>Remaining</th><th>%</th></tr></thead><tbody>';
+
   centres.forEach(function(r) {
     var pct = r.targetGst ? Math.round(r.achievedGst/r.targetGst*100) : (r.achievedGst?100:0);
-    html += '<tr><td><strong>'+escC(r.centre)+'</strong></td><td>'+money(r.targetGst)+'</td><td>'+money(r.achievedGst)+'</td><td>'+money(Math.abs(r.achievedGst-r.targetGst))+'</td><td>'+pct+'%</td></tr>';
+    var remaining = Math.max(r.targetGst - r.achievedGst, 0);
+    var centreKey = 'c-' + escC(r.centre).replace(/\s+/g, '-');
+    
+    // Find all contributors to this centre
+    var contributors = {};
+    monthlyRows.forEach(function(row) {
+      if (row.businessCentre === r.centre) {
+        var cName = row.counsellor || 'Unknown';
+        var gst = Number(row.achievedGst) || 0;
+        var st = Number(row.studentCount) || 0;
+        var fee = Number(row.achievedCourse) || 0;
+        
+        if (!contributors[cName]) {
+          contributors[cName] = { own: false, gst: 0, fee: 0, students: 0, assignedCentre: row.assignedCentre };
+        }
+        contributors[cName].gst += gst;
+        contributors[cName].fee += fee;
+        contributors[cName].students += st;
+        if (row.assignedCentre === row.businessCentre) {
+          contributors[cName].own = true;
+        }
+      }
+    });
+
+    var contribRows = Object.keys(contributors).map(function(cName) {
+      var cInfo = contributors[cName];
+      var typeBadge = cInfo.own ? 
+        '<span class="rev-type-badge assigned">Assigned</span>' : 
+        '<span class="rev-type-badge cross">Other: ' + escC(cInfo.assignedCentre) + '</span>';
+      return '<tr>' +
+        '<td style="padding-left:15px">' + escC(cName) + ' ' + typeBadge + '</td>' +
+        '<td>' + cInfo.students + ' stu</td>' +
+        '<td>' + money(cInfo.gst) + '</td>' +
+      '</tr>';
+    }).join('');
+
+    var detailHtml = contribRows ? 
+      '<tr class="rev-recon-detail" id="detail-' + centreKey + '" style="display:none"><td colspan="5"><table class="compact-table sub-table"><thead><tr><th>Counsellor</th><th>Students</th><th>Achieved (incl. GST)</th></tr></thead><tbody>' + contribRows + '</tbody></table></td></tr>' :
+      '<tr class="rev-recon-detail" id="detail-' + centreKey + '" style="display:none"><td colspan="5" style="padding-left:15px;color:var(--muted);font-style:italic">No logs recorded for this centre yet.</td></tr>';
+
+    html += '<tr class="rev-recon-trigger" onclick="revToggleRecon(\'' + centreKey + '\')">' +
+      '<td><strong>📄 ' + escC(r.centre) + '</strong></td>' +
+      '<td>' + money(r.targetGst) + '</td>' +
+      '<td>' + money(r.achievedGst) + '</td>' +
+      '<td>' + money(remaining) + '</td>' +
+      '<td>' + pct + '%</td>' +
+      '</tr>' + detailHtml;
   });
+
+  html += '</tbody></table></div>';
+
+  html += '<div class="rev-recon-section" style="margin-top:20px"><h3>👤 Counsellor Performance &amp; Reconciliation</h3>';
+  html += '<table class="compact-table"><thead><tr><th>Counsellor</th><th>Target (GST)</th><th>Achieved (GST)</th><th>Remaining</th><th>%</th></tr></thead><tbody>';
+
   counsellors.forEach(function(r) {
     var pct = r.targetGst ? Math.round(r.achievedGst/r.targetGst*100) : (r.achievedGst?100:0);
-    html += '<tr><td>'+escC(r.counsellor)+'</td><td>'+money(r.targetGst)+'</td><td>'+money(r.achievedGst)+'</td><td>'+money(Math.abs(r.achievedGst-r.targetGst))+'</td><td>'+pct+'%</td></tr>';
+    var remaining = Math.max(r.targetGst - r.achievedGst, 0);
+    var counsKey = 'usr-' + escC(r.counsellor).replace(/\s+/g, '-');
+
+    // Find all centers this counsellor contributed to
+    var destinations = {};
+    monthlyRows.forEach(function(row) {
+      if (revSameCounsellor(row.counsellor, r.counsellor)) {
+        var dest = row.businessCentre || 'Unknown';
+        var gst = Number(row.achievedGst) || 0;
+        var st = Number(row.studentCount) || 0;
+        var type = revIsCorporate(row) ? 'Corporate Programs' : dest;
+        
+        if (!destinations[type]) {
+          destinations[type] = { gst: 0, students: 0, isCorporate: revIsCorporate(row), isOwn: (dest === row.assignedCentre && !revIsCorporate(row)) };
+        }
+        destinations[type].gst += gst;
+        destinations[type].students += st;
+      }
+    });
+
+    var destRows = Object.keys(destinations).map(function(type) {
+      var dInfo = destinations[type];
+      var typeBadge = dInfo.isCorporate ? 
+        '<span class="rev-type-badge corp">Corporate</span>' : 
+        (dInfo.isOwn ? '<span class="rev-type-badge assigned">Own Centre</span>' : '<span class="rev-type-badge cross">Other Centre</span>');
+      return '<tr>' +
+        '<td style="padding-left:15px">' + escC(type) + ' ' + typeBadge + '</td>' +
+        '<td>' + dInfo.students + ' stu</td>' +
+        '<td>' + money(dInfo.gst) + '</td>' +
+      '</tr>';
+    }).join('');
+
+    var detailHtml = destRows ? 
+      '<tr class="rev-recon-detail" id="detail-' + counsKey + '" style="display:none"><td colspan="5"><table class="compact-table sub-table"><thead><tr><th>Destination</th><th>Students</th><th>Achieved (incl. GST)</th></tr></thead><tbody>' + destRows + '</tbody></table></td></tr>' :
+      '<tr class="rev-recon-detail" id="detail-' + counsKey + '" style="display:none"><td colspan="5" style="padding-left:15px;color:var(--muted);font-style:italic">No logs recorded for this counsellor yet.</td></tr>';
+
+    html += '<tr class="rev-recon-trigger" onclick="revToggleRecon(\'' + counsKey + '\')">' +
+      '<td><strong>👤 ' + escC(r.counsellor) + '</strong></td>' +
+      '<td>' + money(r.targetGst) + '</td>' +
+      '<td>' + money(r.achievedGst) + '</td>' +
+      '<td>' + money(remaining) + '</td>' +
+      '<td>' + pct + '%</td>' +
+      '</tr>' + detailHtml;
   });
-  wrap.innerHTML = html + '</tbody></table>';
+
+  html += '</tbody></table></div>';
+  wrap.innerHTML = html;
+}
+
+function revToggleRecon(key) {
+  var el = document.getElementById('detail-' + key);
+  if (!el) return;
+  var isHidden = el.style.display === 'none';
+  el.style.display = isHidden ? 'table-row' : 'none';
+  
+  // Highlight the trigger row slightly
+  var trigger = el.previousElementSibling;
+  if (trigger) {
+    trigger.classList.toggle('expanded', isHidden);
+  }
 }
 
 // All counsellors with their designated centres for target setting
@@ -3849,17 +4087,32 @@ function renderRevenueSplitWarning() {}
 
 function downloadRevenueCsv() {
   if (!revenueData) return;
-  var months = revenueData.months || [];
-  var lines = [['Month','Target (GST)','Achieved (GST)','Gap','Achievement %']];
-  months.forEach(function(m) {
-    var pct = m.targetGst ? Math.round(m.achievedGst/m.targetGst*100) : (m.achievedGst?100:0);
-    lines.push([m.label, m.targetGst, m.achievedGst, m.achievedGst-m.targetGst, pct]);
+  var rows = (revenueData.monthlyPreviewRows || revenueData.monthlyRows) || [];
+  var lines = [['Month','Period','Counsellor','Designated Centre','Admitted Centre','Category','Students','Course Fee (excl. GST)','GST (incl.)','Status','Saved By','Saved At','Notes']];
+  rows.forEach(function(r) {
+    var category = revIsCorporate(r) ? 'Corporate Programs' : (r.assignedCentre === r.businessCentre ? 'Own Centre' : 'Other Centre');
+    var status = (r.locked === 'N' || r.locked === false || String(r.locked).toLowerCase() === 'n') ? 'Draft' : 'Locked';
+    lines.push([
+      r.month || '',
+      r.period || '2026-27',
+      r.counsellor || '',
+      r.assignedCentre || '',
+      r.businessCentre || '',
+      category,
+      Number(r.studentCount) || 0,
+      Number(r.achievedCourse) || 0,
+      Number(r.achievedGst) || 0,
+      status,
+      r.updatedBy || '',
+      r.updatedAt || '',
+      r.notes || ''
+    ]);
   });
-  var csv = lines.map(function(row){ return row.map(function(v){ return '"'+String(v).replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
+  var csv = lines.map(function(row){ return row.map(function(v){ return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
   var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
-  a.href = url; a.download = 'revenue-dashboard.csv'; a.click();
+  a.href = url; a.download = 'revenue-reconciliation-ledger.csv'; a.click();
   URL.revokeObjectURL(url);
 }
 

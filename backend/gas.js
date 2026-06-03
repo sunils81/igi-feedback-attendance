@@ -36,7 +36,7 @@ const SH_REVENUE_CENTRE_TARGETS = 'Revenue_Centre_Targets';
 const SH_REVENUE_ANNUAL_TARGETS = 'Revenue_Annual_Targets';
 const SH_REVENUE_MONTHLY_ACHIEVED = 'Revenue_Monthly_Achieved';
 const SH_REVENUE_TARGET_REVISIONS = 'Revenue_Target_Revisions';
-const REVENUE_BACKEND_VERSION = 'revenue-redesign-v2-2026-06-02';
+const REVENUE_BACKEND_VERSION = 'revenue-redesign-v2-2026-06-03';
 const SH_USER_CREDENTIALS = 'User_Credentials';
 const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
   'RTGS / Bank Transfer','Collexo (Online)','Cheque','Demand Draft'];                 // % pass mark
@@ -802,6 +802,29 @@ function cacheRemove(keys) {
     if (Array.isArray(keys)) c.removeAll(keys);
     else c.remove(keys);
   } catch(ex) {}
+}
+
+function revenueDashboardCacheKey(p) {
+  return 'rev|'+((p&&p.counsellor)||'')+'|'+((p&&p.centres)||'')+'|'+((p&&p.period)||'2026-27')+'|'+((p&&p.isAdmin)||'false');
+}
+
+function revenueDashboardCacheKeysForSave(p,effectiveCounsellor) {
+  var period=(p&&p.period)||'2026-27';
+  var centres=(p&&p.centres)||'';
+  var counsellor=(p&&p.counsellor)||'';
+  var viewer=(p&&p.viewerCounsellor)||'';
+  var effective=effectiveCounsellor||viewer||counsellor||'';
+  var keys=[
+    revenueDashboardCacheKey(p),
+    'rev|'+counsellor+'|'+centres+'|'+period+'|false',
+    'rev|'+viewer+'|'+centres+'|'+period+'|false',
+    'rev|'+effective+'|'+centres+'|'+period+'|false',
+    'rev|'+effective+'||'+period+'|false',
+    'rev||'+centres+'|'+period+'|true',
+    'rev|||'+period+'|true'
+  ];
+  var seen={};
+  return keys.filter(function(k){if(seen[k])return false;seen[k]=true;return true;});
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2033,7 +2056,7 @@ function doGet(e) {
 
     if (act==='getRevenueDashboard') {
       ensureSheets(ss);
-      const rKey='rev|'+(p.counsellor||'')+'|'+(p.centres||'')+'|'+(p.period||'2026-27')+'|'+(p.isAdmin||'false');
+      const rKey=revenueDashboardCacheKey(p);
       const cached=cacheGet(rKey);
       if(cached) return respond(cached);
       const result=buildRevenueDashboard(ss,p);
@@ -2070,15 +2093,13 @@ function doGet(e) {
       if(submittedMonthlyRows&&!savedMonthly&&!savedCentre&&!savedTargets){
         return respond({status:'error',reason:'monthly_revenue_not_saved',message:'This month is already locked or the submitted counsellor does not match your login.',savedMonthly:0,backendVersion:REVENUE_BACKEND_VERSION,dashboard:buildRevenueDashboard(ss,p)});
       }
-      // Invalidate all revenue cache entries so next fetch reflects new data
+      // Invalidate all revenue cache entries so next fetch reflects new data.
       try {
-        var revCounsellor=p.viewerCounsellor||p.counsellor||'';
-        var revCentres=p.centres||'';
-        cacheRemove(['rev|'+revCounsellor+'|'+revCentres+'|2026-27|false',
-                     'rev||'+revCentres+'|2026-27|true',
-                     'rev|'+revCounsellor+'||2026-27|false']);
+        cacheRemove(revenueDashboardCacheKeysForSave(p,effectiveCounsellor));
       } catch(_e){}
-      return respond({status:'ok',saved:savedCentre+savedTargets+savedMonthly,savedCentre:savedCentre,savedTargets:savedTargets,savedMonthly:savedMonthly,savedAt:new Date().toISOString(),backendVersion:REVENUE_BACKEND_VERSION,dashboard:buildRevenueDashboard(ss,p)});
+      var freshDashboard=buildRevenueDashboard(ss,p);
+      cachePut(revenueDashboardCacheKey(p),freshDashboard);
+      return respond({status:'ok',saved:savedCentre+savedTargets+savedMonthly,savedCentre:savedCentre,savedTargets:savedTargets,savedMonthly:savedMonthly,savedAt:new Date().toISOString(),backendVersion:REVENUE_BACKEND_VERSION,dashboard:freshDashboard});
     }
 
     return respond({status:'error',reason:'unknown_action'});

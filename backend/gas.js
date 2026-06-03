@@ -2981,7 +2981,8 @@ function saveRevenueMonthlyAchievedRows(ss,rows,updatedBy,scope) {
     var monthLockKey=month+'|'+period+'|'+revenueNameAliases(counsellor)[0]+'|'+assigned;
     var canRevise=revisionKeys[key]||revisionMonthKeys[monthLockKey];
     if((lockedKeys[key]||lockedMonthKeys[monthLockKey])&&!canRevise)return;
-    var row=[month,period,counsellor,assigned,business,businessType,Number(r.studentCount)||0,Number(r.achievedCourse)||0,Number(r.achievedGst)||0,r.notes||'',updatedBy,'Y',new Date().toISOString()];
+    var isLock = (r.locked === 'N' || r.locked === false || String(r.locked).toLowerCase() === 'n') ? 'N' : 'Y';
+    var row=[month,period,counsellor,assigned,business,businessType,Number(r.studentCount)||0,Number(r.achievedCourse)||0,Number(r.achievedGst)||0,r.notes||'',updatedBy,isLock,new Date().toISOString()];
     // 1. Write to shared ledger sheet
     if(sharedRowMap[key])sh.getRange(sharedRowMap[key],1,1,row.length).setValues([row]);
     else{sh.appendRow(row);sharedRowMap[key]=sh.getLastRow();}

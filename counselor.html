@@ -160,6 +160,11 @@
 .rev-save-btn{width:100%;padding:9px;font-size:12px;font-weight:700;border-radius:7px;border:none;cursor:pointer;background:var(--gold);color:var(--navy);letter-spacing:.02em;transition:opacity .15s}
 .rev-save-btn:hover{opacity:.88}
 .rev-save-btn:disabled{opacity:.45;cursor:not-allowed}
+.rev-btn-group{display:flex;gap:8px;margin-top:10px;width:100%}
+.rev-btn-group .rev-save-btn{width:auto;flex:1}
+.rev-save-btn.draft{background:rgba(220,120,40,.07);border:1px solid rgba(220,120,40,.4);color:#C06010}
+.rev-save-btn.draft:hover{background:rgba(220,120,40,.15)}
+.rev-ach-chip.draft{background:rgba(220,120,40,.12);color:#C06010}
 .rev-save-note{font-size:10px;color:var(--muted);margin-top:4px;min-height:13px;text-align:center}
 /* Saved read-only view */
 .rev-saved-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px}
@@ -2549,6 +2554,8 @@ function revCurrentStreak(counsellor, assignedCentre, runRate) {
 function revAchievementChips(open, rows, pct, streak) {
   if (!open) return '<div class="rev-motive-row"><span class="rev-ach-chip build">Scheduled</span></div>';
   var html = '<div class="rev-motive-row">';
+  var isDraft = rows.length > 0 && rows.every(function(r){ return r.locked === false; });
+  if (isDraft) html += '<span class="rev-ach-chip draft">&#9999; Draft</span>';
   if (pct >= 100) html += '<span class="rev-ach-chip beat">&#127942; Target Beat</span>';
   else if (pct >= 80) html += '<span class="rev-ach-chip track">&#9889; On Track</span>';
   else html += '<span class="rev-ach-chip build">'+(rows.length?'Building':'Ready')+'</span>';
@@ -2621,9 +2628,9 @@ function renderRevenueMonthCards(counsellor) {
           '<div>Status<strong>'+escC(status)+'</strong></div>'+
         '</div>'+
         revAchievementChips(open, rows, pct, streak)+
-        (saved ? renderRevenueSavedBreakup(rows, designatedCentre, counsellor) : '')+
+        ((saved || rows.length > 0) ? renderRevenueSavedBreakup(rows, designatedCentre, counsellor) : '')+
         (open && saved ? '<div class="rev-run-actions"><button type="button" class="rev-run-toggle" onclick="revToggleEntry(this)">Revise '+escC(m.label)+'</button></div>'+renderRevenueEntryPanel(m, designatedCentre, otherDefault, rows, true) : '')+
-        (open && !saved ? '<div class="rev-run-actions"><button type="button" class="rev-run-toggle" onclick="revToggleEntry(this)">Enter / Save '+escC(m.label)+'</button></div>'+renderRevenueEntryPanel(m, designatedCentre, otherDefault) : '')+
+        (open && !saved ? '<div class="rev-run-actions"><button type="button" class="rev-run-toggle" onclick="revToggleEntry(this)">Enter / Save '+escC(m.label)+'</button></div>'+renderRevenueEntryPanel(m, designatedCentre, otherDefault, rows, false) : '')+
       '</div>';
   });
   html += '</div>';
@@ -2653,13 +2660,14 @@ function renderRevenueSavedBreakup(rows, designatedCentre, counsellor) {
   if (!rows.length) return '';
   var totals = revTotalsFromRows(rows, designatedCentre);
   var last = rows[rows.length-1] || {};
+  var draftText = last.locked === false ? ' <span style="color:#C06010;font-weight:bold">(Draft)</span> &middot;' : '';
   return '<div class="rev-saved-grid" style="margin-top:10px">'+
       '<div class="rev-saved-cell">Own Centre<strong>'+money(totals.ownGst)+'</strong></div>'+
       '<div class="rev-saved-cell">Other Centre<strong>'+money(totals.otherGst)+'</strong></div>'+
       '<div class="rev-saved-cell">Corporate<strong>'+money(totals.corpGst)+'</strong></div>'+
     '</div>'+
-    '<div class="rev-saved-meta">'+totals.students+' student'+(totals.students===1?'':'s')+
-      (last.updatedAt?' &middot; Saved by '+escC(last.updatedBy||counsellor)+' &middot; '+escC(formatDateTime(last.updatedAt)):'')+
+    '<div class="rev-saved-meta">'+totals.students+' student'+(totals.students===1?'':'s')+' &middot;' +
+      draftText + (last.updatedAt?' Saved by '+escC(last.updatedBy||counsellor)+' &middot; '+escC(formatDateTime(last.updatedAt)):'')+
     '</div>';
 }
 
@@ -2704,7 +2712,13 @@ function renderRevenueEntryPanel(m, designatedCentre, otherDefault, existingRows
     '</div>'+
     '<div class="rev-card-footer">'+
       '<div class="rev-total-row"><span class="k">Total This Month (incl. GST)</span><span class="v" id="revtot-'+escC(m.key)+'">'+money(revTotalsFromRows(existingRows, designatedCentre).totalGst||0)+'</span></div>'+
-      '<button type="button" class="rev-save-btn" data-month="'+escC(m.key)+'" data-label="'+escC(m.label)+'" data-centre="'+escC(designatedCentre)+'" data-revise="'+(isRevision?'Y':'N')+'" onclick="revSaveMonthCard(this)">'+(isRevision?'Save Revision ':'Save &amp; Lock ')+escC(m.label)+'</button>'+
+      (isRevision ? 
+        '<button type="button" class="rev-save-btn" data-month="'+escC(m.key)+'" data-label="'+escC(m.label)+'" data-centre="'+escC(designatedCentre)+'" data-revise="Y" data-lock="Y" onclick="revSaveMonthCard(this)">Save Revision '+escC(m.label)+'</button>' : 
+        '<div class="rev-btn-group">'+
+          '<button type="button" class="rev-save-btn draft" data-month="'+escC(m.key)+'" data-label="'+escC(m.label)+'" data-centre="'+escC(designatedCentre)+'" data-revise="N" data-lock="N" onclick="revSaveMonthCard(this)">Save Draft</button>'+
+          '<button type="button" class="rev-save-btn lock" data-month="'+escC(m.key)+'" data-label="'+escC(m.label)+'" data-centre="'+escC(designatedCentre)+'" data-revise="N" data-lock="Y" onclick="revSaveMonthCard(this)">Save &amp; Lock '+escC(m.label)+'</button>'+
+        '</div>'
+      )+
       '<div class="rev-save-note"></div>'+
     '</div>'+
   '</div>';
@@ -2801,6 +2815,7 @@ function revSaveMonthCard(btn) {
   var note = body.querySelector('.rev-save-note');
   var me = counselorName || '';
   var isRevision = btn.getAttribute('data-revise') === 'Y' || body.getAttribute('data-revise') === 'Y';
+  var isLock = btn.getAttribute('data-lock') === 'Y';
   if (!me || isAdmin) {
     if (note) { note.textContent = '⚠ Please sign in as a counsellor before saving monthly revenue.'; note.style.color = 'var(--red)'; }
     return;
@@ -2833,18 +2848,20 @@ function revSaveMonthCard(btn) {
   }
 
   var rows = [];
-  // Always include bucket 1 (own centre) — even if zero, it establishes the lock
+  // Always include bucket 1 (own centre) — even if zero, it establishes the lock/draft
   rows.push({
     month: monthKey, period: '2026-27', counsellor: me, assignedCentre: assignedCentre,
     businessCentre: assignedCentre, businessType: 'Centre Revenue',
-    studentCount: stu1, achievedCourse: course1, achievedGst: gst1, notes: notes1, revise: isRevision ? 'Y' : 'N'
+    studentCount: stu1, achievedCourse: course1, achievedGst: gst1, notes: notes1,
+    revise: isRevision ? 'Y' : 'N', locked: isLock ? 'Y' : 'N'
   });
   // Bucket 2 only if filled
   if (course2 || stu2) {
     rows.push({
       month: monthKey, period: '2026-27', counsellor: me, assignedCentre: assignedCentre,
       businessCentre: biz2, businessType: 'Centre Revenue',
-      studentCount: stu2, achievedCourse: course2, achievedGst: gst2, notes: isRevision ? notes1 : '', revise: isRevision ? 'Y' : 'N'
+      studentCount: stu2, achievedCourse: course2, achievedGst: gst2, notes: isRevision ? notes1 : '',
+      revise: isRevision ? 'Y' : 'N', locked: isLock ? 'Y' : 'N'
     });
   }
   // Bucket 3 only if filled
@@ -2852,12 +2869,16 @@ function revSaveMonthCard(btn) {
     rows.push({
       month: monthKey, period: '2026-27', counsellor: me, assignedCentre: assignedCentre,
       businessCentre: assignedCentre, businessType: 'Corporate Programs',
-      studentCount: stu3, achievedCourse: course3, achievedGst: gst3, notes: isRevision ? notes1 : '', revise: isRevision ? 'Y' : 'N'
+      studentCount: stu3, achievedCourse: course3, achievedGst: gst3, notes: isRevision ? notes1 : '',
+      revise: isRevision ? 'Y' : 'N', locked: isLock ? 'Y' : 'N'
     });
   }
 
-  btn.disabled = true;
-  btn.textContent = isRevision ? 'Saving revision…' : 'Saving…';
+  var footer = btn.closest('.rev-card-footer');
+  var btns = footer ? footer.querySelectorAll('.rev-save-btn') : [btn];
+  Array.from(btns).forEach(function(b){ b.disabled = true; });
+  var oldText = btn.textContent;
+  btn.textContent = isRevision ? 'Saving revision…' : (isLock ? 'Saving…' : 'Saving draft…');
   if (note) { note.textContent = ''; note.style.color = 'var(--muted)'; }
 
   var scope = { period: '2026-27', counsellor: me, assignedCentre: assignedCentre, months: [monthKey] };
@@ -2872,16 +2893,16 @@ function revSaveMonthCard(btn) {
 
   gasGet(params, function(e, d) {
     if (e || !d || d.status !== 'ok') {
-      btn.disabled = false;
-      btn.textContent = (isRevision ? 'Save Revision ' : 'Save & Lock ') + monthLabel;
+      Array.from(btns).forEach(function(b){ b.disabled = false; });
+      btn.textContent = oldText;
       var errMsg = (d && d.message) ? d.message : 'Save failed — please try again.';
       if (note) { note.textContent = '⚠ ' + errMsg; note.style.color = 'var(--red)'; }
       showToast(errMsg, 'error');
       return;
     }
     if (Number(d.savedMonthly || 0) < 1) {
-      btn.disabled = false;
-      btn.textContent = (isRevision ? 'Save Revision ' : 'Save & Lock ') + monthLabel;
+      Array.from(btns).forEach(function(b){ b.disabled = false; });
+      btn.textContent = oldText;
       var noSaveMsg = d.message || 'This month was not saved. It may already be locked; refresh and check the saved card.';
       if (note) { note.textContent = '⚠ ' + noSaveMsg; note.style.color = 'var(--red)'; }
       showToast(noSaveMsg, 'error');
@@ -2892,7 +2913,7 @@ function revSaveMonthCard(btn) {
       }
       return;
     }
-    showToast(monthLabel + (isRevision ? ' revision saved ✓' : ' revenue saved and locked ✓'));
+    showToast(monthLabel + (isRevision ? ' revision saved ✓' : (isLock ? ' revenue saved and locked ✓' : ' draft saved ✓')));
     if (d.dashboard && d.dashboard.status === 'ok' && d.dashboard.monthlyRows && d.dashboard.monthlyRows.length > 0) {
       revMergeDashboardAfterSave(d.dashboard, rows, me, assignedCentre, monthKey);
       _revCacheWrite(revenueData);
@@ -2977,7 +2998,7 @@ function revApplySavedMonthlyRows(rows, counsellor, assignedCentre, monthKey) {
     return !revSameSavedMonthScope(r, monthKey, counsellor, assignedCentre);
   }).concat(rows.map(function(r){
     return Object.assign({}, r, {
-      locked: true,
+      locked: r.locked !== 'N' && r.locked !== false && String(r.locked).toLowerCase() !== 'n',
       updatedBy: counsellor || 'Counselor',
       updatedAt: new Date().toISOString()
     });
@@ -2987,7 +3008,7 @@ function revApplySavedMonthlyRows(rows, counsellor, assignedCentre, monthKey) {
     return !revSameSavedMonthScope(r, monthKey, counsellor, assignedCentre);
   }).concat(rows.map(function(r){
     return Object.assign({}, r, {
-      locked: true,
+      locked: r.locked !== 'N' && r.locked !== false && String(r.locked).toLowerCase() !== 'n',
       updatedBy: counsellor || 'Counselor',
       updatedAt: new Date().toISOString()
     });

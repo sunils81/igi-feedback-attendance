@@ -816,9 +816,9 @@ function doLogin() {
     showScreen('s-main');
     applyPasswordChangeState();
     applyAdminVisibility();
-    loadBatchDropdowns();
+    loadBatchDropdowns(); // uses sessionStorage cache if available
     loadMyBatches();
-    loadHolidayList();
+    // Holidays loaded lazily when the tab is opened (see switchTab)
   });
 }
 
@@ -1030,18 +1030,18 @@ function addHoliday() {
     if (e||!d||d.status!=='ok') { errEl.textContent='Could not add holiday.'; errEl.classList.add('show'); return; }
     document.getElementById('hol-date').value='';
     document.getElementById('hol-name').value='';
-    loadHolidayList();
+    try { sessionStorage.removeItem('igiHolidays'); } catch(ex) {}
+    loadHolidayList(true);
   });
 }
 
-function loadHolidayList() {
+function loadHolidayList(forceRefresh) {
   const el = document.getElementById('hol-list');
   if (!el) return;
-  el.innerHTML = loadingState('Loading holiday calendar...');
-  gasGet({action:'getHolidays'}, function(e,d) {
-    if (e||!d||!d.holidays) { el.innerHTML='<p style="color:var(--muted);font-size:13px">Could not load holidays.</p>'; return; }
+  const CACHE_KEY = 'igiHolidays';
+  function renderHolidays(holidays) {
     const today = new Date().toISOString().split('T')[0];
-    const upcoming = d.holidays.filter(h=>h.date>=today).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,20);
+    const upcoming = holidays.filter(h=>h.date>=today).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,20);
     if (!upcoming.length) { el.innerHTML='<p style="color:var(--muted);font-size:13px">No upcoming holidays found.</p>'; return; }
     el.innerHTML = upcoming.map(h=>`
       <div class="batch-row" style="cursor:default">
@@ -1050,6 +1050,19 @@ function loadHolidayList() {
           ${h.type==='national'?'<span class="badge badge-blue" style="margin-left:6px">National</span>':'<span class="badge badge-amber" style="margin-left:6px">Custom</span>'}
         </div>
       </div>`).join('');
+  }
+  // Use cached holidays if available and not forced refresh
+  if (!forceRefresh) {
+    try {
+      const cached = sessionStorage.getItem(CACHE_KEY);
+      if (cached) { renderHolidays(JSON.parse(cached)); return; }
+    } catch(ex) {}
+  }
+  el.innerHTML = loadingState('Loading holiday calendar...');
+  gasGet({action:'getHolidays'}, function(e,d) {
+    if (e||!d||!d.holidays) { el.innerHTML='<p style="color:var(--muted);font-size:13px">Could not load holidays.</p>'; return; }
+    try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(d.holidays)); } catch(ex) {}
+    renderHolidays(d.holidays);
   });
 }
 
@@ -1082,7 +1095,7 @@ function createBatch() {
       errEl.classList.add('show'); return;
     }
     gasGet({action:'assignInstructor', batchCode, instructor}, function() {
-      loadBatchDropdowns();
+      refreshBatchDropdowns();
       loadMyBatches();
       loadHolidayList();
       showToast('Batch ' + batchCode + ' created successfully.');
@@ -1096,29 +1109,57 @@ function createBatch() {
   });
 }
 
-// ── Load batch dropdowns ──────────────────────────────────────
-function loadBatchDropdowns(onDone) {
+// ── Load batch dropdowns (with sessionStorage cache) ─────────
+function _batchCacheKey() {
+  return 'igiBatches_' + (isAdmin ? 'admin' : allowedCentres.join('|'));
+}
+
+function _applyBatchData(batches, onDone) {
+  allBatches = batches;
+  updateCounselorSummary(allBatches);
+  ['st-batch','rp-batch','fee-batch'].forEach(function(id) {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Select a batch</option>';
+    batches.forEach(function(b) {
+      const o = document.createElement('option');
+      o.value = b.batchCode;
+      o.textContent = b.batchCode + ' — ' + b.course + ' (' + b.centre + ')';
+      sel.appendChild(o);
+    });
+    if (cur) sel.value = cur;
+  });
+  renderStudentBatchChoices();
+  if (onDone) onDone();
+}
+
+function loadBatchDropdowns(onDone, forceRefresh) {
   const centresParam = isAdmin ? '' : allowedCentres.join(',');
+  const cacheKey = _batchCacheKey();
+  // Try sessionStorage first (skip network if data is fresh this session)
+  if (!forceRefresh) {
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        const batches = JSON.parse(cached);
+        if (Array.isArray(batches) && batches.length) {
+          _applyBatchData(batches, onDone);
+          return;
+        }
+      }
+    } catch(ex) { /* ignore parse errors */ }
+  }
   gasGet({action:'getBatches', centres:centresParam}, function(e,d) {
     if (e||!d||!d.batches) { if(onDone) onDone(); return; }
-    allBatches = d.batches || [];
-    updateCounselorSummary(allBatches);
-    ['st-batch','rp-batch','fee-batch'].forEach(id => {
-      const sel = document.getElementById(id);
-      if (!sel) return;
-      const cur = sel.value;
-      sel.innerHTML = '<option value="">Select a batch</option>';
-      d.batches.forEach(b => {
-        const o = document.createElement('option');
-        o.value = b.batchCode;
-        o.textContent = b.batchCode + ' — ' + b.course + ' (' + b.centre + ')';
-        sel.appendChild(o);
-      });
-      if (cur) sel.value = cur;
-    });
-    renderStudentBatchChoices();
-    if (onDone) onDone();
+    try { sessionStorage.setItem(cacheKey, JSON.stringify(d.batches)); } catch(ex) {}
+    _applyBatchData(d.batches, onDone);
   });
+}
+
+/* Call this to force a fresh batch load (e.g. after creating a new batch) */
+function refreshBatchDropdowns(onDone) {
+  loadBatchDropdowns(onDone, true);
 }
 
 function loadCounselorReport() {
@@ -1771,15 +1812,54 @@ function renderInstallments(existing) {
   let html = '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:12px 0 8px">Installments</div>';
   for (let i = 1; i <= n; i++) {
     const inst = rec['inst' + i] || {};
+    const hasExisting = inst.amt !== undefined && inst.amt !== '';
     html += '<div class="inst-grid">' +
-      '<div class="field"><label>Amount ' + i + '</label><input type="number" id="fee-inst' + i + '-amt" value="' + escC(inst.amt || '') + '" oninput="recalcFeeForm()"></div>' +
+      '<div class="field"><label>Amount ' + i + '</label><input type="number" id="fee-inst' + i + '-amt" value="' + escC(inst.amt || '') + '" data-manual="' + (hasExisting ? '1' : '0') + '" oninput="feeInstManualInput(this,' + i + ')"></div>' +
       '<div class="field"><label>Due Date</label><input type="date" id="fee-inst' + i + '-due" value="' + dateForInput(inst.due) + '"></div>' +
       '<div class="field"><label>Paid?</label><select id="fee-inst' + i + '-paid" onchange="recalcFeeForm()"><option value="N">No</option><option value="Y" ' + (inst.paid === 'Y' ? 'selected' : '') + '>Yes</option></select></div>' +
       '<div class="field"><label>Mode</label><select id="fee-inst' + i + '-mode">' + modes.map(m => '<option value="' + m + '" ' + (inst.mode === m ? 'selected' : '') + '>' + (m || 'Select') + '</option>').join('') + '</select></div>' +
       '<div class="field"><label>Reference</label><input type="text" id="fee-inst' + i + '-ref" value="' + escC(inst.ref || '') + '" placeholder="Receipt / UTR"></div>' +
     '</div>';
   }
+  html += '<div id="fee-inst-warn" style="display:none;font-size:12px;color:#b94a00;background:#fff3eb;border:1px solid #f5c09a;border-radius:6px;padding:6px 10px;margin-top:6px"></div>';
   wrap.innerHTML = html;
+  recalcFeeForm();
+}
+
+/* Called when a user manually types in an installment amount field.
+   Marks that field as manual, clears manual flag on cleared fields,
+   then auto-distributes remaining balance to non-manual fields. */
+function feeInstManualInput(el, idx) {
+  const n = Number(document.getElementById('fee-n-inst').value) || 1;
+  // If field is cleared, unmark it as manual so it auto-fills again
+  el.dataset.manual = el.value !== '' ? '1' : '0';
+  const calc = feeCalc();
+  const net = calc.net;
+  // Sum of manually-set fields
+  let manualSum = 0;
+  let autoCount = 0;
+  for (let i = 1; i <= n; i++) {
+    const el2 = document.getElementById('fee-inst' + i + '-amt');
+    if (!el2) continue;
+    if (el2.dataset.manual === '1') manualSum += Number(el2.value) || 0;
+    else autoCount++;
+  }
+  // Distribute remainder evenly across auto fields
+  const remainder = net - manualSum;
+  if (autoCount > 0) {
+    const share = Math.round(remainder / autoCount);
+    let distributed = 0;
+    let lastAutoEl = null;
+    for (let i = 1; i <= n; i++) {
+      const el2 = document.getElementById('fee-inst' + i + '-amt');
+      if (!el2 || el2.dataset.manual === '1') continue;
+      lastAutoEl = el2;
+      el2.value = share;
+      distributed += share;
+    }
+    // Fix rounding: put remainder on last auto field
+    if (lastAutoEl) lastAutoEl.value = Number(lastAutoEl.value) + (remainder - distributed);
+  }
   recalcFeeForm();
 }
 
@@ -1795,15 +1875,37 @@ function recalcFeeForm() {
   const calc = feeCalc();
   const n = Number(document.getElementById('fee-n-inst').value) || 1;
   let collected = 0;
+  let instTotal = 0;
+  let allManual = true;
   for (let i = 1; i <= n; i++) {
     const amtEl = document.getElementById('fee-inst' + i + '-amt');
     const paidEl = document.getElementById('fee-inst' + i + '-paid');
-    if (amtEl && !amtEl.value) amtEl.value = Math.round(calc.net / n);
+    // Auto-fill empty fields (no manual flag) with even split
+    if (amtEl && !amtEl.value && amtEl.dataset.manual !== '1') {
+      amtEl.value = Math.round(calc.net / n);
+    }
+    if (amtEl && amtEl.dataset.manual !== '1') allManual = false;
+    if (amtEl) instTotal += Number(amtEl.value) || 0;
     if (amtEl && paidEl && paidEl.value === 'Y') collected += Number(amtEl.value) || 0;
   }
   document.getElementById('fee-net').textContent = money(calc.net);
   document.getElementById('fee-paid').textContent = money(collected);
   document.getElementById('fee-out').textContent = money(Math.max(calc.net - collected, 0));
+  // Show warning if all installments are manually set and don't match net
+  const warnEl = document.getElementById('fee-inst-warn');
+  if (warnEl && n > 1 && allManual && calc.net > 0) {
+    const diff = instTotal - calc.net;
+    if (Math.abs(diff) > 1) {
+      warnEl.style.display = 'block';
+      warnEl.textContent = diff > 0
+        ? '⚠ Installment total exceeds net payable by ' + money(diff) + '. Please adjust.'
+        : '⚠ Installment total is ' + money(-diff) + ' short of net payable. Please adjust.';
+    } else {
+      warnEl.style.display = 'none';
+    }
+  } else if (warnEl) {
+    warnEl.style.display = 'none';
+  }
 }
 
 function saveFeeRecord() {

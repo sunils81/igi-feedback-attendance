@@ -36,7 +36,7 @@ const SH_REVENUE_CENTRE_TARGETS = 'Revenue_Centre_Targets';
 const SH_REVENUE_ANNUAL_TARGETS = 'Revenue_Annual_Targets';
 const SH_REVENUE_MONTHLY_ACHIEVED = 'Revenue_Monthly_Achieved';
 const SH_REVENUE_TARGET_REVISIONS = 'Revenue_Target_Revisions';
-const REVENUE_BACKEND_VERSION = 'revenue-ledger-v10-2026-06-03';
+const REVENUE_BACKEND_VERSION = 'revenue-ledger-v11-2026-06-04';
 const SH_USER_CREDENTIALS = 'User_Credentials';
 const PAYMENT_MODES = ['Cash (Branch)','Card Swipe (Branch)','UPI (Branch)',
   'RTGS / Bank Transfer','Collexo (Online)','Cheque','Demand Draft'];                 // % pass mark
@@ -2064,6 +2064,37 @@ function doGet(e) {
       return respond(migrateRevenueMonthlyData(ss, p.adminPass||p.pass||''));
     }
 
+    if (act==='restoreRevenueFromLegacy') {
+      return respond(restoreRevenueFromLegacy(ss, p.adminPass||p.pass||''));
+    }
+
+    if (act==='repairSharedLedger') {
+      return respond(repairSharedLedger(ss, p.adminPass||p.pass||''));
+    }
+
+    if (act==='debugRevenueCounsellor') {
+      if((p.adminPass||p.pass||'')!==ADMIN_PASS)return respond({status:'error',reason:'auth'});
+      var debugName=String(p.counsellor||'Bianca').trim();
+      var debugCentres=String(p.centres||'Mumbai').trim();
+      var allDbRows=getRevenueMonthlyAchievedRows(ss);
+      var dbRows=allDbRows.filter(function(r){return revenueSameCounsellor(r.counsellor,debugName);});
+      var dbPeriod='2026-27';
+      var dbMonths=revenueMonthList('2026-01','2027-03');
+      var dbMonthKeys={};dbMonths.forEach(function(m){dbMonthKeys[m.key]=true;});
+      var dbP={counsellor:debugName,centres:debugCentres,centre:'',period:dbPeriod,isAdmin:'false',viewerCounsellor:debugName};
+      var dbPassed=[],dbFailed=[];
+      dbRows.forEach(function(r){
+        var reason='';
+        if(r.period!==dbPeriod)reason='wrong period: '+r.period;
+        else if(!dbMonthKeys[r.month])reason='month out of range: '+r.month;
+        else if(!revenueAllowedViewCentre(r,dbP))reason='centre not in ['+debugCentres+']: assigned='+r.assignedCentre+' business='+r.businessCentre;
+        var obj={month:r.month,period:r.period,assignedCentre:r.assignedCentre,businessCentre:r.businessCentre,businessType:r.businessType,achievedGst:r.achievedGst,locked:r.locked,updatedAt:String(r.updatedAt||'').slice(0,19),source:r.sourceSheet};
+        if(reason){obj.filteredReason=reason;dbFailed.push(obj);}
+        else dbPassed.push(obj);
+      });
+      return respond({status:'ok',counsellor:debugName,totalAllRows:allDbRows.length,totalCounsellorRows:dbRows.length,passed:dbPassed.length,failed:dbFailed.length,passedRows:dbPassed,failedRows:dbFailed});
+    }
+
     if (act==='getRevenueDiagnostic') {
       return respond(getRevenueDiagnostic(ss, p.adminPass||p.pass||''));
     }
@@ -2863,23 +2894,50 @@ function revenueKnownCounsellorNames() {
   return Object.keys(names);
 }
 
+// Normalise updatedAt for deduplication sorting.
+// If the value is not an ISO-style timestamp (e.g. a counsellor name like "Bianca"
+// ended up in that column due to a column-format mismatch), treat it as the oldest
+// possible value so it always LOSES to a proper timestamp.
+function revenueRowSortKey(updatedAt) {
+  var t = String(updatedAt||'').trim();
+  return /^\d{4}-\d{2}/.test(t) ? t : '0000-00-00T00:00:00';
+}
+
+// Option 2 — Smart fast-path detector.
+// Returns true when every shared-ledger row has a valid ISO updatedAt timestamp,
+// meaning the shared ledger is clean and per-counsellor sheets can be skipped.
+// Run action=repairSharedLedger once to permanently enable this fast-path.
+function revenueSharedLedgerIsClean(sharedRows) {
+  for (var i = 0; i < sharedRows.length; i++) {
+    if (!/^\d{4}-\d{2}/.test(String(sharedRows[i].updatedAt||'').trim())) return false;
+  }
+  return true;
+}
+
 function getRevenueMonthlyAchievedRows(ss) {
-  // Merges shared ledger + per-counsellor sheets by KNOWN counsellor names.
-  // Using ss.getSheetByName() per counsellor is ~10x faster than ss.getSheets()
-  // which scans the entire spreadsheet (causes the 10-15s load time).
-  // Deduplication: same revenueMonthlyLedgerKey → latest updatedAt wins.
+  // Deduplication: same revenueMonthlyLedgerKey → latest valid updatedAt wins.
+  // Garbage updatedAt values (e.g. "Bianca") are treated as epoch so they lose.
   var byKey = {};
   function absorb(rows) {
     rows.forEach(function(r) {
       var key = revenueMonthlyLedgerKey(r);
       var prev = byKey[key];
-      if (!prev || String(r.updatedAt||'') >= String(prev.updatedAt||'')) byKey[key] = r;
+      if (!prev || revenueRowSortKey(r.updatedAt) >= revenueRowSortKey(prev ? prev.updatedAt : '')) byKey[key] = r;
     });
   }
-  // 1. Shared consolidated ledger
+  // Always read shared ledger first (one sheet read, always fast)
   var sh = ss.getSheetByName(SH_REVENUE_MONTHLY_ACHIEVED);
-  absorb(parseRevenueMonthlyAchievedSheet(sh));
-  // 2. Per-counsellor legacy sheets — look up by known name only (fast, no full sheet scan)
+  var sharedRows = parseRevenueMonthlyAchievedSheet(sh);
+  absorb(sharedRows);
+  // FAST-PATH (Option 2): if shared ledger is clean (all ISO timestamps),
+  // it is the complete source of truth — return immediately, no more sheet reads.
+  // After running action=repairSharedLedger this will always be true → ~200ms load.
+  if (revenueSharedLedgerIsClean(sharedRows)) {
+    return Object.keys(byKey).map(function(k) { return byKey[k]; });
+  }
+  // SLOW FALLBACK: garbage timestamps detected — merge per-counsellor sheets so
+  // correct data (with proper timestamps) wins deduplication.
+  // Targeted getSheetByName() per counsellor — no expensive ss.getSheets() scan.
   var seenSheet = {};
   seenSheet[SH_REVENUE_MONTHLY_ACHIEVED] = true;
   revenueKnownCounsellorNames().forEach(function(name) {
@@ -2892,9 +2950,152 @@ function getRevenueMonthlyAchievedRows(ss) {
   return Object.keys(byKey).map(function(k) { return byKey[k]; });
 }
 
+// ── Option 1: One-time repair — fix garbage updatedAt rows in shared ledger ──────
+// After this runs, revenueSharedLedgerIsClean() returns true permanently and
+// getRevenueMonthlyAchievedRows() uses the fast-path (~200ms instead of 15-25s).
+// Run once via: YOUR_GAS_URL?action=repairSharedLedger&adminPass=IGI2026
+function repairSharedLedger(ss, adminPass) {
+  if (adminPass !== ADMIN_PASS) return {status:'error', reason:'auth'};
+  var sharedSh = ss.getSheetByName(SH_REVENUE_MONTHLY_ACHIEVED);
+  if (!sharedSh) return {status:'error', reason:'no_shared_ledger'};
+
+  // Read shared ledger — find rows with garbage updatedAt (non-ISO value)
+  var sharedRows = parseRevenueMonthlyAchievedSheet(sharedSh);
+  var sharedByKey = {};  // key → parsed row (latest updatedAt per key)
+  sharedRows.forEach(function(r) {
+    var key = revenueMonthlyLedgerKey(r);
+    var prev = sharedByKey[key];
+    if (!prev || revenueRowSortKey(r.updatedAt) >= revenueRowSortKey(prev.updatedAt)) sharedByKey[key] = r;
+  });
+  var garbageKeys = {};
+  Object.keys(sharedByKey).forEach(function(key) {
+    if (!/^\d{4}-\d{2}/.test(String(sharedByKey[key].updatedAt||'').trim())) garbageKeys[key] = true;
+  });
+  var totalGarbage = Object.keys(garbageKeys).length;
+  if (totalGarbage === 0) {
+    return {status:'ok', repaired:0, stillGarbage:0,
+      message:'Shared ledger is already clean. Fast-path is active — loads should be fast.'};
+  }
+
+  // For each garbage key, find the best replacement from per-counsellor sheets
+  var replacements = {};
+  revenueKnownCounsellorNames().forEach(function(name) {
+    var sheetName = revenueCounsellorMonthlySheetName(name);
+    if (sheetName === SH_REVENUE_MONTHLY_ACHIEVED) return;
+    var s = ss.getSheetByName(sheetName);
+    if (!s) return;
+    parseRevenueMonthlyAchievedSheet(s).forEach(function(r) {
+      var key = revenueMonthlyLedgerKey(r);
+      if (!garbageKeys[key]) return;
+      var prev = replacements[key];
+      // Prefer row with highest achievedGst; break ties by latest proper timestamp
+      var rBetter = !prev || r.achievedGst > prev.achievedGst ||
+        (r.achievedGst === prev.achievedGst && revenueRowSortKey(r.updatedAt) > revenueRowSortKey(prev.updatedAt));
+      if (rBetter) replacements[key] = r;
+    });
+  });
+
+  var repaired = 0, stillGarbage = 0;
+  var details = [];
+  var updatedAtCol = 13; // 1-indexed column position of 'Updated At' in 13-col schema
+
+  Object.keys(garbageKeys).forEach(function(key) {
+    var current = sharedByKey[key];
+    var rep = replacements[key];
+    if (rep) {
+      // Write correct values back into the shared ledger row
+      var goodAt = /^\d{4}-\d{2}/.test(String(rep.updatedAt||'').trim())
+        ? rep.updatedAt : new Date().toISOString();
+      var row = [rep.month, rep.period, rep.counsellor, rep.assignedCentre, rep.businessCentre,
+                 rep.businessType, rep.studentCount, rep.achievedCourse, rep.achievedGst,
+                 rep.notes, rep.updatedBy, rep.locked ? 'Y' : 'N', goodAt];
+      sharedSh.getRange(current.rowIndex, 1, 1, row.length).setValues([row]);
+      details.push({month:rep.month, counsellor:rep.counsellor,
+                    restoredGst:rep.achievedGst, oldUpdatedAt:current.updatedAt});
+      repaired++;
+    } else {
+      // No per-counsellor replacement — at minimum stamp a valid placeholder timestamp
+      // so the row no longer triggers the slow fallback path
+      sharedSh.getRange(current.rowIndex, updatedAtCol).setValue('2000-01-01T00:00:00.000Z');
+      stillGarbage++;
+    }
+  });
+
+  try { SpreadsheetApp.flush(); } catch(_e) {}
+  // Bust GAS cache so next request gets fresh repaired data
+  try {
+    var cacheKeys = revenueKnownCounsellorNames().map(function(name) {
+      var c = COUNSELOR_CREDS[name]||{};
+      return 'rev|'+REVENUE_BACKEND_VERSION+'|'+name+'|'+((c.centres||[]).join(','))+'|2026-27|false';
+    });
+    cacheKeys.push('rev|'+REVENUE_BACKEND_VERSION+'|||2026-27|true');
+    CacheService.getScriptCache().removeAll(cacheKeys);
+  } catch(_e2) {}
+
+  return {status:'ok', repaired:repaired, stillGarbage:stillGarbage,
+    message: stillGarbage === 0
+      ? 'All '+repaired+' garbage rows repaired. Fast-path now active — loads will be ~200ms.'
+      : repaired+' rows repaired, '+stillGarbage+' had no per-counsellor replacement (stamped with placeholder timestamp).',
+    details:details};
+}
+
 // ── One-time migration: copy all per-counsellor sheet rows into shared ledger ──
 // Run once via action=migrateRevenueData (admin only) after deploying this fix.
 // After migration, shared ledger is the single source of truth.
+// ── Restore: replace ₹0 entries in shared ledger with original positive values ──
+// Run once via action=restoreRevenueFromLegacy (admin only).
+// What happened: the old fast-path bug made some months appear invisible, causing
+// accidental ₹0 saves that stamped newer timestamps over the original data.
+// Per-counsellor sheets (e.g. Revenue_Monthly_Bianca) still hold the original rows.
+// This function finds keys where shared ledger=₹0 but per-counsellor sheet has a
+// positive value, and restores the positive value to the shared ledger.
+function restoreRevenueFromLegacy(ss, adminPass) {
+  if (adminPass !== ADMIN_PASS) return {status:'error', reason:'auth'};
+  var sharedSh = ss.getSheetByName(SH_REVENUE_MONTHLY_ACHIEVED);
+  if (!sharedSh) return {status:'error', reason:'no_shared_ledger'};
+  // Read shared ledger — build map of key → {rowIndex, achievedGst}
+  var sharedRows = parseRevenueMonthlyAchievedSheet(sharedSh);
+  var sharedByKey = {};
+  sharedRows.forEach(function(r) {
+    var key = revenueMonthlyLedgerKey(r);
+    var prev = sharedByKey[key];
+    if (!prev || String(r.updatedAt||'') >= String(prev.updatedAt||'')) {
+      sharedByKey[key] = {rowIndex:r.rowIndex, achievedGst:r.achievedGst, achievedCourse:r.achievedCourse, studentCount:r.studentCount};
+    }
+  });
+  var restored = 0, details = [];
+  // For each known counsellor's per-counsellor sheet
+  revenueKnownCounsellorNames().forEach(function(name) {
+    var sheetName = revenueCounsellorMonthlySheetName(name);
+    var s = ss.getSheetByName(sheetName);
+    if (!s) return;
+    var perRows = parseRevenueMonthlyAchievedSheet(s);
+    // For each unique key, find the row with the HIGHEST achievedGst (original data)
+    var bestPerKey = {};
+    perRows.forEach(function(r) {
+      var key = revenueMonthlyLedgerKey(r);
+      if (!bestPerKey[key] || r.achievedGst > bestPerKey[key].achievedGst) bestPerKey[key] = r;
+    });
+    Object.keys(bestPerKey).forEach(function(key) {
+      var best = bestPerKey[key];
+      if (!best || best.achievedGst <= 0) return; // nothing positive to restore
+      var current = sharedByKey[key];
+      if (!current) return; // key not in shared ledger — not restoring (use migrate for that)
+      if (current.achievedGst > 0) return; // shared ledger already has positive value — skip
+      // Restore: shared ledger has ₹0 but per-counsellor has positive value
+      var row = [best.month, best.period, best.counsellor, best.assignedCentre, best.businessCentre,
+                 best.businessType, best.studentCount, best.achievedCourse, best.achievedGst,
+                 best.notes, best.updatedBy, best.locked ? 'Y' : 'N', new Date().toISOString()];
+      sharedSh.getRange(current.rowIndex, 1, 1, row.length).setValues([row]);
+      sharedByKey[key].achievedGst = best.achievedGst; // update in-memory map
+      details.push({key:key, restoredGst:best.achievedGst, counsellor:best.counsellor, month:best.month});
+      restored++;
+    });
+  });
+  try { SpreadsheetApp.flush(); } catch(_e) {}
+  return {status:'ok', restored:restored, details:details};
+}
+
 function migrateRevenueMonthlyData(ss, adminPass) {
   if (adminPass !== ADMIN_PASS) return {status:'error', reason:'auth'};
   var sharedSh = getOrCreateSheet(ss, SH_REVENUE_MONTHLY_ACHIEVED);

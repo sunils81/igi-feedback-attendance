@@ -1350,44 +1350,52 @@ function renderRevenueTab() {
   const rows = d.centreRows || [];
   const rev = d.revenue || {};
   
-  // Calculate total targets and achieved YTD
-  let totalTarget = 0;
-  let totalAchieved = 0;
+  // Calculate total targets and achieved YTD (both course fee and GST)
+  let totalTargetCourse = 0;
+  let totalTargetGst = 0;
+  let totalAchievedCourse = 0;
+  let totalAchievedGst = 0;
   rows.forEach(function(r) {
-    totalTarget += Number(r.targetGst) || 0;
-    totalAchieved += Number(r.achievedGst) || 0;
+    totalTargetCourse += Number(r.targetCourse) || 0;
+    totalTargetGst += Number(r.targetGst) || 0;
+    totalAchievedCourse += Number(r.achievedCourse) || 0;
+    totalAchievedGst += Number(r.achievedGst) || 0;
   });
   
-  const pctOverall = totalTarget ? Math.round(totalAchieved / totalTarget * 100) : 0;
+  const pctOverall = totalTargetCourse ? Math.round(totalAchievedCourse / totalTargetCourse * 100) : 0;
   
   // Run Rate & Pacing
   const now = new Date();
   const endOfFY = new Date(2027, 2, 31); // ends March 31, 2027
   const msDiff = endOfFY - now;
   const monthsLeft = Math.max(Math.ceil(msDiff / (1000 * 60 * 60 * 24 * 30.4375)), 1);
-  const gapVal = Math.max(totalTarget - totalAchieved, 0);
-  const reqMonthlyRunRate = monthsLeft ? Math.round(gapVal / monthsLeft) : 0;
   
-  // KPI Command Strip (Rebuild innerHTML to avoid null element crashes)
+  const gapValCourse = Math.max(totalTargetCourse - totalAchievedCourse, 0);
+  const gapValGst = Math.max(totalTargetGst - totalAchievedGst, 0);
+  
+  const reqMonthlyRunRateCourse = monthsLeft ? Math.round(gapValCourse / monthsLeft) : 0;
+  const reqMonthlyRunRateGst = monthsLeft ? Math.round(gapValGst / monthsLeft) : 0;
+  
+  // KPI Command Strip (Rebuild innerHTML with Course Fee as primary and Incl. GST in sub-text)
   const kpiHtml = 
-    '<div class="kpi-card"><div class="kpi-label">Annual Target</div><div class="kpi-value">' + money(totalTarget) + '</div><div class="kpi-meta">FY 2026-27 (With GST)</div></div>' +
-    '<div class="kpi-card hit"><div class="kpi-label">YTD Achieved</div><div class="kpi-value">' + money(totalAchieved) + '</div><div class="kpi-meta hit">' + pctOverall + '% Target Hit YTD</div></div>' +
-    '<div class="kpi-card"><div class="kpi-label">Required Run Rate</div><div class="kpi-value">' + money(reqMonthlyRunRate) + '/mo</div><div class="kpi-meta">Required over ' + monthsLeft + ' months</div></div>' +
-    '<div class="kpi-card"><div class="kpi-label">Remaining Shortfall</div><div class="kpi-value">' + money(gapVal) + '</div><div class="kpi-meta">To close target gap</div></div>';
+    '<div class="kpi-card"><div class="kpi-label">Annual Target</div><div class="kpi-value">' + money(totalTargetCourse) + '</div><div class="kpi-meta">Course Fee (Excl. GST)<br>Incl. GST: ' + money(totalTargetGst) + '</div></div>' +
+    '<div class="kpi-card hit"><div class="kpi-label">YTD Achieved</div><div class="kpi-value">' + money(totalAchievedCourse) + '</div><div class="kpi-meta hit">' + pctOverall + '% Target Hit YTD<br>Incl. GST: ' + money(totalAchievedGst) + '</div></div>' +
+    '<div class="kpi-card"><div class="kpi-label">Required Run Rate</div><div class="kpi-value">' + money(reqMonthlyRunRateCourse) + '/mo</div><div class="kpi-meta">Excl. GST over ' + monthsLeft + ' months<br>Incl. GST: ' + money(reqMonthlyRunRateGst) + '/mo</div></div>' +
+    '<div class="kpi-card"><div class="kpi-label">Remaining Shortfall</div><div class="kpi-value">' + money(gapValCourse) + '</div><div class="kpi-meta">Shortfall Excl. GST<br>Incl. GST: ' + money(gapValGst) + '</div></div>';
   document.getElementById('revenue-kpis').innerHTML = kpiHtml;
   
   // Live Target Progress Bar
   document.getElementById('pct-label-live').textContent = pctOverall + '%';
   document.getElementById('progressFill-live').style.width = pctOverall + '%';
-  document.getElementById('progress-desc-live').innerHTML = 'YTD collections: <strong>' + money(totalAchieved) + '</strong> against <strong>' + money(totalTarget) + '</strong> baseline targets.';
-  document.getElementById('progress-target-live').textContent = 'Target: ' + money(totalTarget);
+  document.getElementById('progress-desc-live').innerHTML = 'YTD Course Fees: <strong>' + money(totalAchievedCourse) + '</strong> against <strong>' + money(totalTargetCourse) + '</strong> baseline targets.';
+  document.getElementById('progress-target-live').textContent = 'Target (Excl. GST): ' + money(totalTargetCourse);
 
   // Pacing Description
   let pacingHtml = '';
   if (pctOverall >= 75) {
     pacingHtml = '<strong>Pacing Status: Excellent!</strong> Combined branches are performing well above pacing targets. EOY projections show highly likelihood of exceeding overall targets. Maintain current counselor focus.';
   } else if (pctOverall >= 40) {
-    pacingHtml = '<strong>Pacing Status: Steady.</strong> Currently tracking toward <strong>' + pctOverall + '%</strong> of target. To close the remaining shortfall of <strong>' + money(gapVal) + '</strong>, branch operations must secure average monthly collections of <strong>' + money(reqMonthlyRunRate) + '</strong>.';
+    pacingHtml = '<strong>Pacing Status: Steady.</strong> Currently tracking toward <strong>' + pctOverall + '%</strong> of target. To close the remaining shortfall of <strong>' + money(gapValCourse) + '</strong>, branch operations must secure average monthly collections of <strong>' + money(reqMonthlyRunRateCourse) + '</strong>.';
   } else {
     pacingHtml = '<strong>Pacing Status: Shortfall Warning.</strong> Low overall target achievements YTD. A daily pacing rate increase and strategic target optimization are recommended to close the shortfall.';
   }
@@ -1399,8 +1407,8 @@ function renderRevenueTab() {
   // Counselor Leaderboard
   renderCounselorLeaderboard(rev);
 
-  // Render Chart.js
-  renderRevenueCharts(totalAchieved, rows);
+  // Render Chart.js (YTD Comparison uses GST YTD to match historical GST YoY reference)
+  renderRevenueCharts(totalAchievedGst, rows);
 }
 
 function renderBranchHealthGrid(rows, rev) {
@@ -1413,19 +1421,20 @@ function renderBranchHealthGrid(rows, rev) {
     const c = tr.centre;
     if (!counsellorsByCentre[c]) counsellorsByCentre[c] = [];
     const achRow = (rev.counsellors || []).find(rRow => rRow.counsellor === tr.counsellor);
-    const achGst = achRow ? achRow.achievedGst : 0;
-    const achPct = tr.targetGst ? Math.round(achGst / tr.targetGst * 100) : 0;
+    const achCourse = achRow ? achRow.achievedCourse : 0;
+    const targetCourse = tr.targetCourse || 0;
+    const achPct = targetCourse ? Math.round(achCourse / targetCourse * 100) : 0;
     counsellorsByCentre[c].push({
       counsellor: tr.counsellor,
-      target: tr.targetGst,
-      achieved: achGst,
+      target: targetCourse,
+      achieved: achCourse,
       pct: achPct
     });
   });
 
   grid.innerHTML = rows.map(function(r) {
-    const target = Number(r.targetGst) || 0;
-    const achieved = Number(r.achievedGst) || 0;
+    const target = Number(r.targetCourse) || 0;
+    const achieved = Number(r.achievedCourse) || 0;
     const pct = target ? Math.round(achieved / target * 100) : (achieved ? 100 : 0);
     const colorClass = pct >= 75 ? 'green' : (pct >= 40 ? 'amber' : 'red');
     
@@ -1507,8 +1516,8 @@ function renderCounselorLeaderboard(rev) {
   
   const leaders = [];
   (rev.counsellors || []).forEach(function(c) {
-    const target = c.targetGst || 0;
-    const achieved = c.achievedGst || 0;
+    const target = c.targetCourse || 0;
+    const achieved = c.achievedCourse || 0;
     const pct = target ? Math.round(achieved / target * 100) : (achieved ? 100 : 0);
     
     const tRow = (rev.targetRows || []).find(t => t.counsellor === c.counsellor);

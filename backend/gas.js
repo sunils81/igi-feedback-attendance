@@ -1441,13 +1441,16 @@ function doGet(e) {
         return respond({status:'error',reason:'wrong_credentials'});
       const dual = DUAL_ROLE[name];
       const isHead = name==='Bhavin Patel';
+      const mgr  = MANAGER_ROLE[name];
       return respond({
         status:'ok',
         instructorName: name,
-        isDualRole:  !!dual,
+        isDualRole:     !!dual,
         isAcademicHead: isHead,
+        isRevenueManager: !!mgr,
+        managerCentres: mgr ? mgr.centres : [],
         centres:     dual ? dual.centres : [],
-        authRole:    isHead ? 'Academic Head' : 'Instructor',
+        authRole:    mgr ? 'Revenue Manager' : (isHead ? 'Academic Head' : 'Instructor'),
         mustChangePassword: auth.credential.mustChange
       });
     }

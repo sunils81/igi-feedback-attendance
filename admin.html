@@ -897,12 +897,33 @@
       <button class="tab" id="tab-targets" onclick="switchAdminTab('t-targets')">🎯 Target Settings</button>
       <button class="tab" onclick="switchAdminTab('t-fees')">💸 Fee Reconciliation</button>
       <button class="tab" onclick="switchAdminTab('t-academic')">📊 Academic Insights</button>
+      <button class="tab" onclick="switchAdminTab('t-history')">📅 Historical Intelligence</button>
       <button class="tab" onclick="switchAdminTab('t-reports')">📋 Master Export</button>
     </div>
 
     <!-- TAB 1: REVENUE OVERVIEW -->
     <div id="t-revenue" class="tab-content active">
-      
+
+      <!-- Smart Callout Banner -->
+      <div id="smart-callout" style="display:none;background:linear-gradient(135deg,var(--navy),var(--navy2));color:var(--white);border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:13px;font-weight:500;line-height:1.5">
+        <span style="color:var(--gold);font-weight:700;margin-right:8px">💡 Insight</span>
+        <span id="smart-callout-text"></span>
+      </div>
+
+      <!-- GST Toggle -->
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:10px">
+        <span style="font-size:12px;font-weight:600;color:var(--muted)">Show:</span>
+        <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:12px;font-weight:600;color:var(--navy)">
+          <span id="gst-label-excl" style="color:var(--navy)">Excl. GST</span>
+          <div id="gst-toggle-track" onclick="toggleGstView()"
+            style="width:42px;height:22px;background:var(--gold);border-radius:11px;position:relative;cursor:pointer;transition:background .2s">
+            <div id="gst-toggle-thumb"
+              style="width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px;transition:left .2s;box-shadow:0 1px 4px rgba(0,0,0,.2)"></div>
+          </div>
+          <span id="gst-label-incl" style="color:var(--muted)">Incl. GST</span>
+        </label>
+      </div>
+
       <!-- Top KPI Command Bar -->
       <div class="kpi-row" id="revenue-kpis">
         <div style="grid-column: 1 / -1; text-align: center; padding: 24px;">Loading database summaries...</div>
@@ -1128,7 +1149,46 @@
       </div>
     </div>
 
-    <!-- TAB 5: MASTER EXPORT -->
+    <!-- TAB 5: HISTORICAL INTELLIGENCE -->
+    <div id="t-history" class="tab-content">
+      <div class="card">
+        <h2>📅 8-Year Revenue Story (2018–2026)</h2>
+        <p class="sub">Annual revenue 2018–2025 (complete years) + 2026 YTD May. Incl. GST. COVID lockdown months excluded from 2020.</p>
+        <div style="position:relative;height:260px;margin-top:14px"><canvas id="hist-annual-chart"></canvas></div>
+      </div>
+
+      <div class="charts-grid" style="margin-top:0">
+        <div class="chart-card">
+          <div class="chart-title">💡 Revenue Per Student — Efficiency Trend</div>
+          <div class="chart-subtitle">Average revenue per enrolled student per year (₹). Rising = pricing growth.</div>
+          <div style="position:relative;height:200px;margin-top:10px"><canvas id="hist-rps-chart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">👥 Annual Student Enrolments</div>
+          <div class="chart-subtitle">Total students enrolled per year across all centres.</div>
+          <div style="position:relative;height:200px;margin-top:10px"><canvas id="hist-students-chart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Seasonality Heatmap -->
+      <div class="card" style="margin-top:0">
+        <h2>🌡️ Seasonality Heatmap</h2>
+        <p class="sub">Monthly revenue intensity across 9 years. Darker gold = stronger month. Grey = COVID lockdown. Spot your best and weakest intake cycles.</p>
+        <div id="hist-heatmap" style="overflow-x:auto;margin-top:14px"></div>
+      </div>
+
+      <!-- City Performance -->
+      <div class="card">
+        <h2>🏙️ City Performance — Jan–Jul Reference</h2>
+        <p class="sub">Projection vs actual vs target achievement by centre. Source: Annual plan data.</p>
+        <div id="hist-city-wrap" style="margin-top:14px">
+          <div style="position:relative;height:280px"><canvas id="hist-city-chart"></canvas></div>
+          <div id="hist-city-table" style="margin-top:16px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 6: MASTER EXPORT -->
     <div id="t-reports" class="tab-content">
       <div class="card">
         <h2>📋 Executive Export Centre</h2>
@@ -1280,6 +1340,11 @@ function switchAdminTab(tabId) {
   const targetTab = document.getElementById(tabId);
   if (targetTab) targetTab.classList.add('active');
   
+  // Historical tab uses only static data — no GAS fetch needed
+  if (tabId === 't-history') {
+    renderHistoricalTab();
+    return;
+  }
   // Fetch dashboard data if we don't have it yet
   if (!dashboardData) {
     loadDashboardData();
@@ -1331,8 +1396,11 @@ function loadDashboardData() {
 }
 
 function renderTabContent(tabId) {
+  if (tabId === 't-history') {
+    renderHistoricalTab();
+    return;
+  }
   if (!dashboardData) return;
-  
   if (tabId === 't-revenue') {
     renderRevenueTab();
   } else if (tabId === 't-targets') {
@@ -1484,14 +1552,53 @@ function renderRevenueTab() {
   const reqMonthlyRunRateCourse = monthsLeft ? Math.round(gapValCourse / monthsLeft) : 0;
   const reqMonthlyRunRateGst = monthsLeft ? Math.round(gapValGst / monthsLeft) : 0;
   
-  // KPI Command Strip (Course Fee excl. GST and Incl. GST side-by-side)
-  const kpiHtml = 
-    '<div class="kpi-card"><div class="kpi-label">Annual Target</div><div class="kpi-value">' + money(totalTargetCourse) + '</div><div class="kpi-meta">Course Fee (Excl. GST)<br>Incl. GST: ' + money(totalTargetGst) + '</div></div>' +
-    '<div class="kpi-card hit"><div class="kpi-label">YTD Achieved</div><div class="kpi-value">' + money(totalAchievedCourse) + '</div><div class="kpi-meta hit">' + pctOverall + '% Hit · ' + totalStudentsCount + ' Students<br>Incl. GST: ' + money(totalAchievedGst) + '</div></div>' +
-    '<div class="kpi-card"><div class="kpi-label">Required Run Rate</div><div class="kpi-value">' + money(reqMonthlyRunRateCourse) + '/mo</div><div class="kpi-meta">Excl. GST over ' + monthsLeft + ' months<br>Incl. GST: ' + money(reqMonthlyRunRateGst) + '/mo</div></div>' +
-    '<div class="kpi-card"><div class="kpi-label">Remaining Shortfall</div><div class="kpi-value">' + money(gapValCourse) + '</div><div class="kpi-meta">Shortfall Excl. GST<br>Incl. GST: ' + money(gapValGst) + '</div></div>';
+  // KPI Command Strip — respects GST toggle
+  const kTarget  = gstViewIncl ? totalTargetGst    : totalTargetCourse;
+  const kAchieved= gstViewIncl ? totalAchievedGst  : totalAchievedCourse;
+  const kGap     = gstViewIncl ? gapValGst         : gapValCourse;
+  const kRunRate = gstViewIncl ? reqMonthlyRunRateGst : reqMonthlyRunRateCourse;
+  const kLabel   = gstViewIncl ? 'Incl. GST' : 'Excl. GST';
+  const kpiHtml =
+    '<div class="kpi-card"><div class="kpi-label">Annual Target</div><div class="kpi-value">' + money(kTarget) + '</div><div class="kpi-meta">Course Fee ('+kLabel+')</div></div>' +
+    '<div class="kpi-card hit"><div class="kpi-label">YTD Achieved</div><div class="kpi-value">' + money(kAchieved) + '</div><div class="kpi-meta hit">' + pctOverall + '% Hit · ' + totalStudentsCount + ' Students</div></div>' +
+    '<div class="kpi-card"><div class="kpi-label">Required Run Rate</div><div class="kpi-value">' + money(kRunRate) + '/mo</div><div class="kpi-meta">'+kLabel+' over ' + monthsLeft + ' months</div></div>' +
+    '<div class="kpi-card"><div class="kpi-label">Remaining Shortfall</div><div class="kpi-value">' + money(kGap) + '</div><div class="kpi-meta">'+kLabel+'</div></div>';
   document.getElementById('revenue-kpis').innerHTML = kpiHtml;
-  
+
+  // Smart callout — auto-generated insight
+  try {
+    const callout = document.getElementById('smart-callout');
+    const calloutTxt = document.getElementById('smart-callout-text');
+    if (callout && calloutTxt) {
+      const curMonth = new Date().getMonth(); // 0-indexed
+      const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      // Find best month in 2026 so far
+      const live2026 = [83.41,73.23,35.54,69.40,74.03];
+      const prevYear = [46.96,41.85,61.99,32.19,57.35];
+      let insights = [];
+      // Best month YoY
+      let bestGrowthIdx = 0; let bestGrowthPct = -999;
+      live2026.forEach((v,i)=>{
+        if (prevYear[i]){
+          const g = Math.round((v-prevYear[i])/prevYear[i]*100);
+          if(g>bestGrowthPct){bestGrowthPct=g;bestGrowthIdx=i;}
+        }
+      });
+      if(bestGrowthPct>0) insights.push(monthNames[bestGrowthIdx]+' 2026 is your best '+monthNames[bestGrowthIdx]+' growth in recent years (+'+bestGrowthPct+'% vs 2025).');
+      // Weakest month
+      let minVal = Infinity; let minIdx = 0;
+      live2026.forEach((v,i)=>{if(v<minVal){minVal=v;minIdx=i;}});
+      insights.push(monthNames[minIdx]+' was the softest month YTD — consider targeted intake pushes next '+monthNames[minIdx]+'.');
+      // YTD vs last year
+      const ytd2026 = live2026.reduce((a,b)=>a+b,0);
+      const ytd2025 = prevYear.reduce((a,b)=>a+b,0);
+      const ytdGrowth = Math.round((ytd2026-ytd2025)/ytd2025*100);
+      if(ytdGrowth>0) insights.push('YTD Jan–May 2026 is +'+ytdGrowth+'% ahead of the same period in 2025 (₹'+ytd2026.toFixed(2)+'L vs ₹'+ytd2025.toFixed(2)+'L).');
+      calloutTxt.textContent = insights[0];
+      callout.style.display = 'block';
+    }
+  } catch(e) {}
+
   // Live Target Progress Bar
   document.getElementById('pct-label-live').textContent = pctOverall + '%';
   document.getElementById('progressFill-live').style.width = pctOverall + '%';
@@ -2199,6 +2306,256 @@ function adminTargetRows() {
     { counsellor: 'Arjun Mistry', centre: 'Ahmedabad' },
     { counsellor: 'Piyush Ahuja', centre: 'Lucknow' }
   ];
+}
+
+// ── GST TOGGLE ────────────────────────────────────────────────
+let gstViewIncl = false;
+function toggleGstView() {
+  gstViewIncl = !gstViewIncl;
+  const thumb = document.getElementById('gst-toggle-thumb');
+  const track = document.getElementById('gst-toggle-track');
+  const lblExcl = document.getElementById('gst-label-excl');
+  const lblIncl = document.getElementById('gst-label-incl');
+  if (thumb) thumb.style.left = gstViewIncl ? '22px' : '2px';
+  if (track) track.style.background = gstViewIncl ? '#185FA5' : '#C9A84C';
+  if (lblExcl) lblExcl.style.color = gstViewIncl ? 'var(--muted)' : 'var(--navy)';
+  if (lblIncl) lblIncl.style.color = gstViewIncl ? 'var(--navy)' : 'var(--muted)';
+  // Re-render revenue tab with updated GST preference
+  if (dashboardData) renderRevenueTab();
+}
+
+// ── HISTORICAL INTELLIGENCE ───────────────────────────────────
+const HIST_YEARS   = [2018,2019,2020,2021,2022,2023,2024,2025,2026];
+const HIST_MONTHS  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// Revenue by year then month (null = COVID lockdown)
+const HIST_REVENUE = {
+  2018: [3405336,941593,3116043,2609209,4535315,2994895,6373675,5196103,3274120,727163,3650639,860787],
+  2019: [3045350,4713079,3492773,3529289,2758191,2202327,4364942,2283990,2518980,887720,2998288,2185025],
+  2020: [2667858,3477765,1508990,null,null,728240,1529138,1788898,1378510,1656113,771658,1949520],
+  2021: [3311366,2926181,5212955,832831,535937,535572,2298597,2328684,3749010,1937500,3661956,856790],
+  2022: [3305724,2682778,3960663,3665607,6884315,1452658,8735324,2789338,6163965,164134,6289081,2401987],
+  2023: [3380142,6599301,3016249,6526248,5864731,4694395,10926122,2307975,8511142,1918002,3166099,3040456],
+  2024: [6893621,2590758,6802273,4082340,5735371,5053157,5597054,7110170,3364801,292876,3806046,3449708],
+  2025: [4696341,4185220,6199914,3219910,6926117,3532757,8202971,2475524,5209557,646351,5851588,942985],
+  2026: [8340782,7323308,3553858,6939770,7403275,null,null,null,null,null,null,null]
+};
+const HIST_STUDENTS = {
+  2018: [72,97,43,45,54,44,92,41,48,24,53,23],
+  2019: [56,44,71,38,53,23,108,26,46,17,43,27],
+  2020: [37,49,55,null,null,55,123,102,38,55,24,21],
+  2021: [91,60,112,83,194,123,57,102,null,61,37,32],
+  2022: [39,128,230,204,101,138,156,43,75,51,60,67],
+  2023: [44,57,40,52,284,118,109,131,64,34,60,21],
+  2024: [72,90,108,78,39,75,39,553,94,30,38,422],
+  2025: [98,86,159,35,68,57,54,49,31,9,56,45],
+  2026: [102,64,38,78,59,null,null,null,null,null,null,null]
+};
+// City performance data (Sheet1 — Jan-Jul reference)
+const HIST_CITIES = [
+  {city:'Mumbai',   proj:168, actual:227, pct:135},
+  {city:'Delhi',    proj:83,  actual:76,  pct:92},
+  {city:'Surat',    proj:90,  actual:30,  pct:33},
+  {city:'Hyderabad',proj:43,  actual:22,  pct:52},
+  {city:'Chennai',  proj:32,  actual:23,  pct:73},
+  {city:'Kolkata',  proj:27,  actual:8,   pct:28},
+  {city:'Ahmedabad',proj:16,  actual:11,  pct:68},
+  {city:'Jaipur',   proj:13,  actual:7,   pct:54},
+  {city:'Indore',   proj:8,   actual:5,   pct:63},
+  {city:'Thrissur', proj:13,  actual:3,   pct:25}
+];
+
+let histCharts = {};
+
+function renderHistoricalTab() {
+  // Prevent re-render if already done
+  if (histCharts.annual) return;
+
+  const textDim   = '#8A8070';
+  const gridColor = 'rgba(13,27,46,0.05)';
+  Chart.defaults.color      = textDim;
+  Chart.defaults.font.family = "'DM Sans', sans-serif";
+  Chart.defaults.font.size   = 10;
+
+  // ── Annual Revenue Bar + YoY % line ────────────────────────
+  const annualRevenue = HIST_YEARS.map(y => {
+    const vals = HIST_REVENUE[y].filter(v => v !== null);
+    return Math.round(vals.reduce((a,b)=>a+b,0) / 100000 * 10) / 10;
+  });
+  const yoyPct = HIST_YEARS.map((y,i) => {
+    if (i === 0) return null;
+    const prev = annualRevenue[i-1];
+    if (!prev) return null;
+    return Math.round((annualRevenue[i] - prev) / prev * 1000) / 10;
+  });
+  const barColors = HIST_YEARS.map((y,i) =>
+    y === 2020 ? 'rgba(201,74,74,0.55)' :
+    y === 2026 ? 'rgba(201,168,76,0.85)' :
+    i === HIST_YEARS.length-2 ? 'rgba(24,95,165,0.7)' : 'rgba(13,27,46,0.25)'
+  );
+
+  const annualCtx = document.getElementById('hist-annual-chart');
+  if (annualCtx) {
+    histCharts.annual = new Chart(annualCtx, {
+      data: {
+        labels: HIST_YEARS.map((y,i) => y === 2020 ? '2020\n(COVID)' : y === 2026 ? '2026\n(YTD)' : String(y)),
+        datasets: [
+          { type:'bar', label:'Annual Revenue (₹L)', data: annualRevenue,
+            backgroundColor: barColors, borderRadius:4, yAxisID:'y' },
+          { type:'line', label:'YoY Growth %', data: yoyPct,
+            borderColor:'#C9A84C', backgroundColor:'transparent',
+            borderWidth:2, pointBackgroundColor:'#C9A84C', pointRadius:4,
+            tension:0.3, yAxisID:'y2' }
+        ]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins: {
+          legend:{position:'top',labels:{boxWidth:10}},
+          tooltip:{ callbacks:{ label: ctx => ctx.dataset.yAxisID==='y2'
+            ? ` ${ctx.raw > 0 ? '+' : ''}${ctx.raw}%`
+            : ` ₹${ctx.raw}L` }}
+        },
+        scales: {
+          x:{grid:{color:gridColor}},
+          y:{grid:{color:gridColor}, ticks:{callback:v=>`₹${v}L`}, position:'left'},
+          y2:{grid:{display:false}, ticks:{callback:v=>`${v>0?'+':''}${v}%`}, position:'right'}
+        }
+      }
+    });
+  }
+
+  // ── Revenue Per Student line ────────────────────────────────
+  const rpsData = HIST_YEARS.filter(y=>y!==2026).map(y => {
+    const rev  = HIST_REVENUE[y].filter(v=>v!==null).reduce((a,b)=>a+b,0);
+    const studs = HIST_STUDENTS[y].filter(v=>v!==null).reduce((a,b)=>a+b,0);
+    return studs ? Math.round(rev/studs/1000)*1000 : 0;
+  });
+  const rpsCtx = document.getElementById('hist-rps-chart');
+  if (rpsCtx) {
+    histCharts.rps = new Chart(rpsCtx, {
+      type:'line',
+      data: {
+        labels: HIST_YEARS.filter(y=>y!==2026),
+        datasets:[{ label:'Revenue per Student (₹)', data:rpsData,
+          borderColor:'#185FA5', backgroundColor:'rgba(24,95,165,0.07)',
+          borderWidth:2.5, pointBackgroundColor:'#185FA5', pointRadius:4,
+          fill:true, tension:0.3 }]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`₹${(ctx.raw/1000).toFixed(1)}K per student`}}},
+        scales:{
+          x:{grid:{color:gridColor}},
+          y:{grid:{color:gridColor},ticks:{callback:v=>`₹${(v/1000).toFixed(0)}K`}}
+        }
+      }
+    });
+  }
+
+  // ── Annual students bar ─────────────────────────────────────
+  const studData = HIST_YEARS.map(y => HIST_STUDENTS[y].filter(v=>v!==null).reduce((a,b)=>a+b,0));
+  const studsCtx = document.getElementById('hist-students-chart');
+  if (studsCtx) {
+    histCharts.students = new Chart(studsCtx, {
+      type:'bar',
+      data:{
+        labels: HIST_YEARS.map(y=>y===2026?'2026 YTD':String(y)),
+        datasets:[{ label:'Students', data:studData,
+          backgroundColor: HIST_YEARS.map(y=>y===2020?'rgba(201,74,74,0.4)':y===2026?'rgba(201,168,76,0.75)':'rgba(13,27,46,0.2)'),
+          borderRadius:4 }]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{x:{grid:{color:gridColor}},y:{grid:{color:gridColor}}}
+      }
+    });
+  }
+
+  // ── Seasonality Heatmap ─────────────────────────────────────
+  // Compute max revenue for scaling
+  let maxRev = 0;
+  HIST_YEARS.forEach(y => { HIST_REVENUE[y].forEach(v => { if(v&&v>maxRev) maxRev=v; }); });
+
+  const heatWrap = document.getElementById('hist-heatmap');
+  if (heatWrap) {
+    let tbl = '<table style="border-collapse:collapse;width:100%;font-size:12px">';
+    // Header row
+    tbl += '<thead><tr><th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;white-space:nowrap">Year</th>';
+    HIST_MONTHS.forEach(m => {
+      tbl += `<th style="padding:6px 4px;text-align:center;color:var(--muted);font-weight:600;min-width:50px">${m}</th>`;
+    });
+    tbl += '<th style="padding:6px 8px;text-align:right;color:var(--muted);font-weight:600">Total</th></tr></thead><tbody>';
+
+    HIST_YEARS.forEach(y => {
+      tbl += `<tr><td style="padding:6px 8px;font-weight:700;color:var(--navy);white-space:nowrap">${y==='2026'?'2026*':y}</td>`;
+      let yearTotal = 0;
+      HIST_REVENUE[y].forEach((v,mi) => {
+        if (v === null) {
+          tbl += '<td style="padding:4px;text-align:center"><div style="background:rgba(201,74,74,0.12);border-radius:4px;padding:4px 2px;font-size:10px;color:#C94A4A;font-weight:600">LD</div></td>';
+        } else {
+          yearTotal += v;
+          const intensity = v / maxRev;
+          const alpha = 0.1 + intensity * 0.85;
+          const textCol = intensity > 0.5 ? '#7A5C00' : 'var(--muted)';
+          tbl += `<td style="padding:4px;text-align:center">` +
+            `<div style="background:rgba(201,168,76,${alpha.toFixed(2)});border-radius:4px;padding:5px 3px;font-size:10px;color:${textCol};font-weight:600">` +
+            `${(v/100000).toFixed(1)}L` +
+            `</div></td>`;
+        }
+      });
+      tbl += `<td style="padding:6px 8px;text-align:right;font-weight:700;color:var(--navy)">${(yearTotal/100000).toFixed(1)}L</td>`;
+      tbl += '</tr>';
+    });
+    tbl += '</tbody></table>';
+    tbl += '<p style="font-size:11px;color:var(--muted);margin-top:8px">* 2026 shows Jan–May only. LD = Lockdown.</p>';
+    heatWrap.innerHTML = tbl;
+  }
+
+  // ── City Performance bar chart ──────────────────────────────
+  const cityCtx = document.getElementById('hist-city-chart');
+  if (cityCtx) {
+    histCharts.city = new Chart(cityCtx, {
+      type:'bar',
+      data:{
+        labels: HIST_CITIES.map(c=>c.city),
+        datasets:[
+          { label:'Projection (₹L)', data:HIST_CITIES.map(c=>c.proj),
+            backgroundColor:'rgba(13,27,46,0.15)', borderRadius:4 },
+          { label:'Actual (₹L)', data:HIST_CITIES.map(c=>c.actual),
+            backgroundColor: HIST_CITIES.map(c=>
+              c.pct>=100?'rgba(29,158,117,0.75)':c.pct>=70?'rgba(201,168,76,0.75)':'rgba(201,74,74,0.65)'),
+            borderRadius:4 }
+        ]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{
+          legend:{position:'top',labels:{boxWidth:10}},
+          tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ₹${ctx.raw}L`}}
+        },
+        scales:{
+          x:{grid:{color:gridColor}},
+          y:{grid:{color:gridColor},ticks:{callback:v=>`₹${v}L`}}
+        }
+      }
+    });
+  }
+
+  // City table
+  const cityTable = document.getElementById('hist-city-table');
+  if (cityTable) {
+    let th = '<table class="compact-table"><thead><tr><th>City</th><th>Projection (₹L)</th><th>Actual (₹L)</th><th>Achievement</th><th>Status</th></tr></thead><tbody>';
+    th += HIST_CITIES.map(c => {
+      const dot = c.pct>=100?'🟢':c.pct>=70?'🟡':'🔴';
+      return `<tr><td>${c.city}</td><td>${c.proj}L</td><td>${c.actual}L</td>`+
+        `<td><strong>${c.pct}%</strong></td><td>${dot}</td></tr>`;
+    }).join('');
+    th += '<tr style="font-weight:700;border-top:2px solid var(--border)"><td>National</td><td>493L</td><td>411L</td><td>83%</td><td>🟡</td></tr>';
+    th += '</tbody></table>';
+    cityTable.innerHTML = th;
+  }
 }
 </script>
 </body>

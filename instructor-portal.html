@@ -5,6 +5,7 @@
 <title>IGI — Instructor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="assets/shared.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style id="dyn-css"></style>
 <style>
 .att-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600}
@@ -266,6 +267,7 @@
     <button class="tab" onclick="iTab('t-mybatches')">🗂 My Batches</button>
     <button class="tab" id="t-batchmgmt-tab" style="display:none" onclick="iTab('t-batchmgmt')">🏫 Batches</button>
     <button class="tab" id="t-academic-tab" style="display:none" onclick="iTab('t-academic')">🎓 Academic Overview</button>
+    <button class="tab" id="t-revenue-tab" style="display:none" onclick="iTab('t-revenue')">📈 Revenue & Team</button>
   </div>
 
   <div id="instructor-summary" class="dashboard-summary" style="display:none"></div>
@@ -454,30 +456,43 @@
     </div>
   </div>
 
-  <!-- ── TAB 6: ACADEMIC OVERVIEW (academic head only) ── -->
+  <!-- ── TAB 6: ACADEMIC OVERVIEW (Bhavin only — isAcademicHead) ── -->
   <div id="t-academic" class="tab-content">
-    <!-- Academic summary widgets -->
+    <!-- KPI summary row -->
     <div id="academic-summary-wrap" class="academic-summary-row"></div>
 
     <div class="grid2" style="grid-template-columns: 1fr; gap: 16px;">
-      <!-- Instructors ratings card -->
+
+      <!-- Instructor Rating Cards (visual, not table) -->
       <div class="card">
         <div class="section-tag">Team Performance</div>
-        <h2>Instructor Ratings</h2>
-        <div id="academic-ratings-wrap"><div class="spinner-wrap"><div class="spinner"></div><p>Fetching team scores…</p></div></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:4px">
+          <h2 style="margin:0">Instructor Ratings</h2>
+          <span style="font-size:11px;color:var(--muted);font-style:italic">Your own profile is shown in Session & Marks tabs</span>
+        </div>
+        <p class="sub">Average student ratings. Your own data excluded from this team view.</p>
+        <div id="academic-ratings-wrap" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:12px">
+          <div class="spinner-wrap"><div class="spinner"></div><p>Fetching team scores…</p></div>
+        </div>
       </div>
-      
-      <!-- Student Voice / Comments Card -->
+
+      <!-- Student Voice with instructor filter -->
       <div class="card">
         <div class="section-tag">Student Voice</div>
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:8px">
           <h2 style="margin:0">Feedback Messages Ledger</h2>
-          <label style="font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
-            <input type="checkbox" id="anon-only-toggle" onchange="filterAcademicComments()" style="width:16px;height:16px;accent-color:var(--gold)">
-            Anonymous Feedback Only
-          </label>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <select id="acad-instructor-filter" onchange="filterAcademicComments()"
+              style="font-size:12px;padding:5px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy);font-family:'DM Sans',sans-serif">
+              <option value="">All Instructors</option>
+            </select>
+            <label style="font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="anon-only-toggle" onchange="filterAcademicComments()" style="width:16px;height:16px;accent-color:var(--gold)">
+              Anon Only
+            </label>
+          </div>
         </div>
-        <p class="sub">Raw comments left by students, including ratings, suggestions, and messages meant for management.</p>
+        <p class="sub">Raw student comments. Filter by instructor or anonymous feedback.</p>
         <div id="academic-comments-wrap" style="max-height:600px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--off)"></div>
       </div>
 
@@ -485,11 +500,11 @@
       <div class="card">
         <div class="section-tag">Attendance Tracker</div>
         <h2>Batch Attendance Health</h2>
-        <p class="sub">Attendance averages across active batches. Highlights low-performing batches (&lt;75% avg attendance).</p>
+        <p class="sub">Attendance averages across active batches. Batches below 75% highlighted in red.</p>
         <div id="academic-attendance-wrap"></div>
       </div>
 
-      <!-- Academic Test Marks watch list -->
+      <!-- Test Marks watchlist -->
       <div class="card">
         <div class="section-tag">Academic Assessment</div>
         <h2>Test Marks Watchlist</h2>
@@ -498,6 +513,83 @@
       </div>
     </div>
   </div>
+
+  <!-- ── TAB 7: REVENUE & TEAM (Amit only — isRevenueManager) ── -->
+  <div id="t-revenue" class="tab-content">
+
+    <!-- Hero YTD ring + KPIs -->
+    <div class="card" id="rev-hero-card">
+      <div class="section-tag">National Performance — Current Year</div>
+      <div id="rev-loading" style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Loading revenue data…</div>
+      <div id="rev-hero-inner" style="display:none">
+        <div style="display:flex;align-items:center;gap:28px;flex-wrap:wrap;margin-bottom:20px">
+          <!-- Circular progress ring -->
+          <div style="position:relative;width:110px;height:110px;flex-shrink:0">
+            <svg width="110" height="110" style="transform:rotate(-90deg)">
+              <circle cx="55" cy="55" r="44" fill="none" stroke="rgba(201,168,76,0.15)" stroke-width="9"/>
+              <circle id="rev-ring-fill" cx="55" cy="55" r="44" fill="none" stroke="#C9A84C" stroke-width="9"
+                stroke-dasharray="276.5" stroke-dashoffset="276.5" stroke-linecap="round"
+                style="transition:stroke-dashoffset 1s ease"/>
+            </svg>
+            <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+              <span id="rev-ring-pct" style="font-size:18px;font-weight:700;color:var(--navy)">0%</span>
+              <span style="font-size:9px;color:var(--muted);font-weight:600">of target</span>
+            </div>
+          </div>
+          <!-- KPI chips -->
+          <div style="display:flex;gap:12px;flex-wrap:wrap;flex:1">
+            <div class="kpi-card" style="min-width:140px">
+              <div class="kpi-label">YTD Collected</div>
+              <div class="kpi-value" id="rev-ytd-val">—</div>
+              <div class="kpi-meta" id="rev-ytd-meta">Incl. GST</div>
+            </div>
+            <div class="kpi-card" style="min-width:140px">
+              <div class="kpi-label">Annual Target</div>
+              <div class="kpi-value" id="rev-target-val">—</div>
+              <div class="kpi-meta">Excl. GST</div>
+            </div>
+            <div class="kpi-card" style="min-width:140px">
+              <div class="kpi-label">Students Enrolled</div>
+              <div class="kpi-value" id="rev-students-val">—</div>
+              <div class="kpi-meta" id="rev-months-left">—</div>
+            </div>
+          </div>
+        </div>
+        <!-- Progress bar -->
+        <div style="background:rgba(201,168,76,0.12);border-radius:8px;height:8px;margin-bottom:6px">
+          <div id="rev-progress-bar" style="height:8px;border-radius:8px;background:var(--gold);width:0%;transition:width 1s ease"></div>
+        </div>
+        <div id="rev-pacing-note" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+      </div>
+    </div>
+
+    <!-- Monthly chart: 2026 vs 2025 -->
+    <div class="card">
+      <div class="section-tag">Monthly Trajectory</div>
+      <h2 style="font-size:15px;font-weight:700;margin-bottom:2px">2026 Collections vs 2025</h2>
+      <p class="sub">Current year monthly actuals (gold) against last year (grey). Incl. GST.</p>
+      <div style="position:relative;height:220px;margin-top:12px">
+        <canvas id="amitMonthlyChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Centre target cards -->
+    <div class="card">
+      <div class="section-tag">Centre Performance</div>
+      <h2 style="font-size:15px;font-weight:700;margin-bottom:4px">Target vs Achieved — By Centre</h2>
+      <p class="sub">Read-only. Colour indicates target achievement health.</p>
+      <div id="rev-centre-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:14px"></div>
+    </div>
+
+    <!-- Counsellor rank board -->
+    <div class="card">
+      <div class="section-tag">Team Leaderboard</div>
+      <h2 style="font-size:15px;font-weight:700;margin-bottom:4px">Counsellor Rankings</h2>
+      <p class="sub">Ranked by YTD target achievement percentage.</p>
+      <div id="rev-rank-board" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:14px"></div>
+    </div>
+
+  </div><!-- /t-revenue -->
 
 </div><!-- /wrap -->
 </div><!-- /s-main -->
@@ -508,6 +600,10 @@ let instructorAuthRole = 'Instructor';
 let instructorMustChangePassword = false;
 let isDualRole     = false;
 let isAcademicHead = false;
+let isRevenueManager = false;
+let managerCentres   = [];
+let revenueDashData  = null;
+let amitChart        = null;
 let academicDashboardData = null;
 let academicDashboardLoading = false;
 let dualCentres    = [];
@@ -539,12 +635,18 @@ function showScreen(id) {
 function iTab(id) {
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-  const idx = ['t-session','t-attendance','t-marks','t-mybatches','t-batchmgmt','t-academic'].indexOf(id);
-  document.querySelectorAll('.tab')[idx].classList.add('active');
+  const el = document.getElementById(id);
+  if (el) el.classList.add('active');
+  // Match active tab button by onclick attribute
+  document.querySelectorAll('.tab').forEach(function(btn) {
+    if (btn.getAttribute('onclick') && btn.getAttribute('onclick').includes("'"+id+"'")) {
+      btn.classList.add('active');
+    }
+  });
   if (id==='t-attendance') stopAttendanceRefresh();
   if (id==='t-mybatches')  loadMyBatches();
   if (id==='t-academic')   loadAcademicDashboard(false);
+  if (id==='t-revenue')    loadAmitRevenueDashboard();
 }
 
 // ── Login ─────────────────────────────────────────────────────
@@ -562,9 +664,11 @@ function doLogin() {
     instructorName = name;
     instructorAuthRole = d.authRole || 'Instructor';
     instructorMustChangePassword = !!d.mustChangePassword;
-    isDualRole     = !!d.isDualRole;
-    dualCentres    = d.centres || [];
-    isAcademicHead = !!d.isAcademicHead;
+    isDualRole       = !!d.isDualRole;
+    dualCentres      = d.centres || [];
+    isAcademicHead   = !!d.isAcademicHead;
+    isRevenueManager = !!d.isRevenueManager;
+    managerCentres   = d.managerCentres || [];
     document.getElementById('portal-name').textContent = name;
     // Show batch management tab for dual-role
     if (isDualRole) {
@@ -574,6 +678,10 @@ function doLogin() {
     if (isAcademicHead) {
       document.getElementById('t-academic-tab').style.display = 'flex';
       setTimeout(function(){ iTab('t-academic'); }, 100);
+    }
+    // Show revenue tab for Amit
+    if (isRevenueManager) {
+      document.getElementById('t-revenue-tab').style.display = 'flex';
     }
     showScreen('s-main');
     applyPasswordChangeState();
@@ -1306,28 +1414,49 @@ function renderAcademicDashboard() {
       '</div>';
   }
 
-  // 2. Render Instructor Ratings Scorecard
+  // 2. Render Instructor Rating Cards (visual, exclude Bhavin himself)
   var ratingsWrap = document.getElementById('academic-ratings-wrap');
   if (ratingsWrap) {
-    if (!d.instructorStats || !d.instructorStats.length) {
-      ratingsWrap.innerHTML = '<p style="color:var(--muted)">No ratings recorded yet.</p>';
+    var teamStats = (d.instructorStats || []).filter(function(s) {
+      return s.instructor !== instructorName; // Bhavin sees himself in his own tabs
+    });
+    if (!teamStats.length) {
+      ratingsWrap.innerHTML = '<p style="color:var(--muted);font-size:13px;grid-column:1/-1">No team ratings recorded yet.</p>';
     } else {
-      var html = '<table class="instructor-ratings-table"><thead><tr><th>Instructor</th><th>Average Rating</th><th>Total Ratings</th><th>Sessions Taught</th></tr></thead><tbody>';
-      html += d.instructorStats.map(function(s) {
-        var stars = '★'.repeat(Math.round(s.avgRating)) + '☆'.repeat(5 - Math.round(s.avgRating));
-        return '<tr>' +
-          '<td><strong>' + escHtml(s.instructor) + '</strong></td>' +
-          '<td><span class="star-rating">' + stars + '</span> <strong>' + s.avgRating + '</strong> / 5</td>' +
-          '<td>' + s.ratingsCount + ' reviews</td>' +
-          '<td>' + s.sessionsCount + ' active sessions</td>' +
-        '</tr>';
+      ratingsWrap.innerHTML = teamStats.map(function(s) {
+        var pct = Math.round((s.avgRating / 5) * 100);
+        var col = pct >= 80 ? '#1D9E75' : (pct >= 60 ? '#C9A84C' : '#C94A4A');
+        var stars = '';
+        for (var k=1;k<=5;k++) {
+          stars += '<span style="color:'+(k<=Math.round(s.avgRating)?'#C9A84C':'rgba(138,128,112,0.3)')+';font-size:14px">★</span>';
+        }
+        return '<div style="background:var(--off);border:1.5px solid var(--border);border-radius:10px;padding:14px">' +
+          '<div style="font-size:13px;font-weight:700;margin-bottom:4px">'+escHtml(s.instructor)+'</div>' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+            stars +
+            '<span style="font-size:16px;font-weight:700;color:'+col+'">'+s.avgRating+'</span>' +
+            '<span style="font-size:11px;color:var(--muted)">/ 5</span>' +
+          '</div>' +
+          '<div style="background:rgba(0,0,0,0.07);border-radius:4px;height:5px;margin-bottom:6px">' +
+            '<div style="width:'+pct+'%;height:5px;border-radius:4px;background:'+col+'"></div>' +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--muted)">'+s.ratingsCount+' reviews · '+s.sessionsCount+' sessions</div>' +
+        '</div>';
       }).join('');
-      html += '</tbody></table>';
-      ratingsWrap.innerHTML = html;
     }
   }
 
-  // 3. Render Feedback Comments Ledger
+  // 3. Populate instructor filter dropdown + render comments
+  var filterSel = document.getElementById('acad-instructor-filter');
+  if (filterSel) {
+    var instructors = [];
+    (d.instructorStats || []).forEach(function(s) {
+      if (s.instructor !== instructorName) instructors.push(s.instructor);
+    });
+    var currentVal = filterSel.value;
+    filterSel.innerHTML = '<option value="">All Instructors</option>' +
+      instructors.map(function(n){ return '<option value="'+escHtml(n)+'"'+(n===currentVal?' selected':'')+'>'+escHtml(n)+'</option>'; }).join('');
+  }
   filterAcademicComments();
 
   // 4. Render Batch Attendance Health
@@ -1405,10 +1534,14 @@ function filterAcademicComments() {
   var commentsWrap = document.getElementById('academic-comments-wrap');
   if (!commentsWrap) return;
 
-  var anonOnly = document.getElementById('anon-only-toggle').checked;
+  var anonOnly = document.getElementById('anon-only-toggle') && document.getElementById('anon-only-toggle').checked;
+  var instrFilter = document.getElementById('acad-instructor-filter') ? document.getElementById('acad-instructor-filter').value : '';
   var filtered = d.comments || [];
   if (anonOnly) {
     filtered = filtered.filter(function(c){ return c.isAnonymous; });
+  }
+  if (instrFilter) {
+    filtered = filtered.filter(function(c){ return c.instructor === instrFilter; });
   }
 
   if (!filtered.length) {
@@ -1446,6 +1579,221 @@ function filterAcademicComments() {
   }).join('');
   
   commentsWrap.innerHTML = html;
+}
+
+// ── AMIT: Revenue & Team Dashboard ───────────────────────────
+function loadAmitRevenueDashboard() {
+  if (!isRevenueManager) return;
+  if (revenueDashData) { renderAmitRevenue(); return; }
+
+  document.getElementById('rev-loading').style.display = 'block';
+  document.getElementById('rev-hero-inner').style.display = 'none';
+
+  gasGet({
+    action: 'getAdminDashboard',
+    isAdmin: 'true',
+    isManager: 'true',
+    period: '2026-27',
+    fromMonth: '2026-01',
+    toMonth: '2027-03'
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      document.getElementById('rev-loading').textContent = 'Could not load revenue data. Please try again.';
+      return;
+    }
+    revenueDashData = d;
+    renderAmitRevenue();
+  });
+}
+
+function renderAmitRevenue() {
+  var d = revenueDashData;
+  var rev = d.revenue || {};
+  var rows = d.centreRows || [];
+
+  // ── Build counsellor data (same logic as admin) ──────────────
+  var counsellorsByCentre = {};
+  var rowsToCheck = rev.monthlyPreviewRows || rev.monthlyRows || [];
+
+  rows.forEach(function(r) { counsellorsByCentre[r.centre] = []; });
+
+  var seen = {};
+  rowsToCheck.forEach(function(mr) {
+    if (!mr.counsellor) return;
+    var key = mr.counsellor + '|' + mr.assignedCentre;
+    if (!counsellorsByCentre[mr.assignedCentre]) counsellorsByCentre[mr.assignedCentre] = [];
+    if (!seen[key]) {
+      seen[key] = { counsellor: mr.counsellor, centre: mr.assignedCentre,
+        achievedCourse:0, achievedGst:0, studentCount:0, targetCourse:0, targetGst:0 };
+      counsellorsByCentre[mr.assignedCentre].push(seen[key]);
+    }
+    seen[key].achievedCourse += Number(mr.achievedCourse)||0;
+    seen[key].achievedGst    += Number(mr.achievedGst)||0;
+    seen[key].studentCount   += Number(mr.studentCount)||0;
+  });
+
+  (rev.targetRows || []).forEach(function(tr) {
+    var key = tr.counsellor + '|' + tr.centre;
+    if (seen[key]) {
+      seen[key].targetCourse = Number(tr.targetCourse)||0;
+      seen[key].targetGst    = Number(tr.targetGst)||0;
+    }
+  });
+  Object.values(seen).forEach(function(c) {
+    c.pct = c.targetCourse ? Math.round(c.achievedCourse / c.targetCourse * 100) : (c.achievedCourse ? 100 : 0);
+  });
+
+  // ── Totals ──────────────────────────────────────────────────
+  var totTarget=0, totAchieved=0, totAchGst=0, totStudents=0, totTarGst=0;
+  rows.forEach(function(r) {
+    totTarget  += Number(r.targetCourse)||0;
+    totTarGst  += Number(r.targetGst)||0;
+    (counsellorsByCentre[r.centre]||[]).forEach(function(c) {
+      totAchieved  += c.achievedCourse;
+      totAchGst    += c.achievedGst;
+      totStudents  += c.studentCount;
+    });
+  });
+  var pct = totTarget ? Math.round(totAchieved / totTarget * 100) : 0;
+  var now = new Date();
+  var endFY = new Date(2027,2,31);
+  var monthsLeft = Math.max(Math.ceil((endFY-now)/(1000*60*60*24*30.44)),1);
+  var gap = Math.max(totTarget - totAchieved, 0);
+
+  // ── Hero ring ───────────────────────────────────────────────
+  document.getElementById('rev-loading').style.display = 'none';
+  document.getElementById('rev-hero-inner').style.display = 'block';
+
+  var circumference = 2 * Math.PI * 44; // 276.46
+  var offset = circumference - Math.min(pct/100, 1) * circumference;
+  var ring = document.getElementById('rev-ring-fill');
+  if (ring) { setTimeout(function(){ ring.style.strokeDashoffset = offset; }, 100); }
+  document.getElementById('rev-ring-pct').textContent = pct + '%';
+  document.getElementById('rev-ring-fill').style.stroke = pct >= 75 ? '#1D9E75' : (pct >= 40 ? '#C9A84C' : '#C94A4A');
+
+  document.getElementById('rev-ytd-val').textContent    = amtL(totAchGst);
+  document.getElementById('rev-ytd-meta').textContent   = amtL(totAchieved) + ' excl. GST';
+  document.getElementById('rev-target-val').textContent = amtL(totTarget);
+  document.getElementById('rev-students-val').textContent = totStudents + ' students';
+  document.getElementById('rev-months-left').textContent  = monthsLeft + ' months left in FY';
+
+  var bar = document.getElementById('rev-progress-bar');
+  if (bar) { setTimeout(function(){ bar.style.width = Math.min(pct,100)+'%'; },100); }
+  bar.style.background = pct>=75?'#1D9E75':(pct>=40?'#C9A84C':'#C94A4A');
+
+  var pacingNote = '';
+  if (pct >= 75) pacingNote = '✅ Excellent pacing — on track to exceed annual target.';
+  else if (pct >= 40) pacingNote = '⚡ Steady. Need ₹' + amtL(Math.round(gap/monthsLeft)) + '/month over ' + monthsLeft + ' months to hit target.';
+  else pacingNote = '⚠️ Below pacing. Significant acceleration needed across centres.';
+  document.getElementById('rev-pacing-note').textContent = pacingNote;
+
+  // ── Monthly chart ───────────────────────────────────────────
+  var baseline2025 = [46.96, 41.85, 61.99, 32.19, 57.35, 35.33, 82.03, 24.76, 52.10, 6.46, 58.52, 9.43];
+  var live2026 = [83.41, 73.23, 35.54, 69.40, 74.03, 0, 0, 0, 0, 0, 0, 0];
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // Fill Jun+ from live monthly rows
+  rowsToCheck.forEach(function(mr) {
+    var mKey = String(mr.month||'').split('-')[1];
+    var idx = parseInt(mKey,10) - 1;
+    if (idx >= 5 && idx < 12) live2026[idx] = (live2026[idx]||0) + (Number(mr.achievedGst)||0)/100000;
+  });
+
+  if (amitChart) amitChart.destroy();
+  var ctx = document.getElementById('amitMonthlyChart');
+  if (ctx) {
+    amitChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: months,
+        datasets: [
+          { label: '2025', data: baseline2025,
+            backgroundColor: 'rgba(13,27,46,0.08)', borderColor: 'rgba(13,27,46,0.2)',
+            borderWidth:1.5, borderRadius:3 },
+          { label: '2026', data: live2026,
+            backgroundColor: 'rgba(201,168,76,0.75)', borderColor: '#C9A84C',
+            borderWidth:1.5, borderRadius:3 }
+        ]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins: {
+          legend: { position:'top', labels:{boxWidth:10, font:{size:11}} },
+          tooltip: { callbacks: { label: function(ctx){ return ctx.dataset.label+': ₹'+ctx.raw.toFixed(2)+'L'; } } }
+        },
+        scales: {
+          x: { grid:{color:'rgba(13,27,46,0.04)'} },
+          y: { grid:{color:'rgba(13,27,46,0.04)'}, ticks:{ callback:function(v){return '₹'+v+'L';} } }
+        }
+      }
+    });
+  }
+
+  // ── Centre cards ────────────────────────────────────────────
+  var centreHtml = rows.map(function(r) {
+    var cs = counsellorsByCentre[r.centre] || [];
+    var ach=0, achGst=0, studs=0;
+    cs.forEach(function(c){ ach+=c.achievedCourse; achGst+=c.achievedGst; studs+=c.studentCount; });
+    var tgt = Number(r.targetCourse)||0;
+    var p   = tgt ? Math.round(ach/tgt*100) : (ach?100:0);
+    var col = p>=75?'#1D9E75':(p>=40?'#C9A84C':'#C94A4A');
+    var bgCol = p>=75?'rgba(29,158,117,0.06)':(p>=40?'rgba(201,168,76,0.06)':'rgba(201,74,74,0.06)');
+    var dot = p>=75?'🟢':(p>=40?'🟡':'🔴');
+    return '<div style="background:'+bgCol+';border:1.5px solid '+col+';border-radius:10px;padding:14px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+        '<strong style="font-size:13px">'+dot+' '+escHtml(r.centre)+'</strong>' +
+        '<span style="font-size:18px;font-weight:700;color:'+col+'">'+p+'%</span>' +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--muted)">Target: <strong>'+amtL(tgt)+'</strong></div>' +
+      '<div style="font-size:11px;color:var(--muted)">YTD: <strong>'+amtL(ach)+'</strong> excl. / <strong>'+amtL(achGst)+'</strong> incl.</div>' +
+      '<div style="font-size:11px;color:var(--muted)">'+studs+' student'+(studs!==1?'s':'')+'</div>' +
+      '<div style="background:rgba(0,0,0,0.07);border-radius:4px;height:5px;margin-top:8px">' +
+        '<div style="width:'+Math.min(p,100)+'%;height:5px;border-radius:4px;background:'+col+'"></div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  document.getElementById('rev-centre-cards').innerHTML = centreHtml || '<p style="color:var(--muted);font-size:13px">No centre data available.</p>';
+
+  // ── Counsellor rank board ────────────────────────────────────
+  var allC = [];
+  Object.values(counsellorsByCentre).forEach(function(cs) {
+    cs.forEach(function(c) { allC.push(c); });
+  });
+  allC.sort(function(a,b){ return b.pct - a.pct; });
+
+  var medals = ['🥇','🥈','🥉'];
+  var rankHtml = allC.map(function(c, i) {
+    var col = c.pct>=75?'#1D9E75':(c.pct>=40?'#C9A84C':'#C94A4A');
+    var badge = i < 3 ? medals[i] : ('<span style="font-size:11px;color:var(--muted);font-weight:700">#'+(i+1)+'</span>');
+    var warn = c.pct < 40 ? '<span style="font-size:9px;background:#FEF2F2;color:#C94A4A;padding:1px 5px;border-radius:3px;margin-left:6px">Needs Support</span>' : '';
+    return '<div style="background:var(--off);border:1.5px solid var(--border);border-radius:10px;padding:12px 14px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">' +
+        '<div>' +
+          '<div style="font-size:13px;font-weight:600">'+badge+' '+escHtml(c.counsellor)+warn+'</div>' +
+          '<div style="font-size:11px;color:var(--muted)">'+escHtml(c.centre)+'</div>' +
+        '</div>' +
+        '<span style="font-size:20px;font-weight:700;color:'+col+'">'+c.pct+'%</span>' +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">' +
+        'YTD: <strong>'+amtL(c.achievedCourse)+'</strong> of <strong>'+amtL(c.targetCourse)+'</strong> · '+c.studentCount+' students' +
+      '</div>' +
+      '<div style="background:rgba(0,0,0,0.07);border-radius:4px;height:5px">' +
+        '<div style="width:'+Math.min(c.pct,100)+'%;height:5px;border-radius:4px;background:'+col+'"></div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  document.getElementById('rev-rank-board').innerHTML = rankHtml || '<p style="color:var(--muted);font-size:13px">No counsellor data.</p>';
+}
+
+function amtL(v) {
+  v = Number(v)||0;
+  if (v >= 10000000) return '₹'+(v/10000000).toFixed(2)+'Cr';
+  if (v >= 100000)   return '₹'+(v/100000).toFixed(2)+'L';
+  if (v >= 1000)     return '₹'+(v/1000).toFixed(1)+'K';
+  return '₹'+v;
+}
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 </script>
 </body>

@@ -2861,7 +2861,22 @@ function buildAdminDashboard(ss,p) {
     };
   });
 
-  return {status:'ok',period:period,summary:{
+  // ── Pre-cycle total: Jan–Mar 2026 (excluded from Apr 2026–Mar 2027 appraisal cycle) ──
+  var preCycleCourse = 0, preCycleGst = 0, preCycleStudents = 0;
+  var preCycleMonths = ['2026-01','2026-02','2026-03'];
+  var allMonthlyRows = getRevenueMonthlyAchievedRows(ss);
+  allMonthlyRows.forEach(function(r) {
+    if (preCycleMonths.indexOf(String(r.month||'').slice(0,7)) !== -1) {
+      preCycleCourse   += Number(r.achievedCourse) || 0;
+      preCycleGst      += Number(r.achievedGst)    || 0;
+      preCycleStudents += Number(r.studentCount)   || 0;
+    }
+  });
+
+  return {status:'ok',period:period,
+    preCycle:{course:preCycleCourse, gst:preCycleGst, students:preCycleStudents,
+              months:'Jan–Mar 2026', note:'Pre-cycle: collected but outside Apr 2026–Mar 2027 appraisal window'},
+    summary:{
       centres:centreRows.length,batches:batchRows.length,students:getStudentRows(ss).filter(function(s){return s.status==='Active';}).length,
       feeExpected:feeNational.expected,feeCollected:feeNational.collected,feeOutstanding:feeNational.outstanding,feeOverdue:feeNational.overdue,
       attendancePct:attendance.national.avgPct,tests:tests.national.tests,avgTestPct:tests.national.avgPct

@@ -1594,7 +1594,7 @@ function loadAmitRevenueDashboard() {
     isAdmin: 'true',
     isManager: 'true',
     period: '2026-27',
-    fromMonth: '2026-01',
+    fromMonth: '2026-04',
     toMonth: '2027-03'
   }, function(e, d) {
     if (e || !d || d.status !== 'ok') {
@@ -1687,16 +1687,23 @@ function renderAmitRevenue() {
   else pacingNote = '⚠️ Below pacing. Significant acceleration needed across centres.';
   document.getElementById('rev-pacing-note').textContent = pacingNote;
 
-  // ── Monthly chart ───────────────────────────────────────────
-  var baseline2025 = [46.96, 41.85, 61.99, 32.19, 57.35, 35.33, 82.03, 24.76, 52.10, 6.46, 58.52, 9.43];
-  var live2026 = [83.41, 73.23, 35.54, 69.40, 74.03, 0, 0, 0, 0, 0, 0, 0];
-  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  // ── Monthly chart — Appraisal cycle Apr→Mar ─────────────────
+  var cycleMonths = ['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar'];
+  // FY 25-26 baseline: Apr2025→Mar2026
+  var baseline_fy2526 = [32.19, 57.35, 35.33, 82.03, 24.76, 52.10, 6.46, 58.52, 9.43, 83.41, 73.23, 35.54];
+  // FY 26-27 actuals: Apr=69.40, May=74.03 confirmed; rest from live data
+  var live_fy2627 = [69.40, 74.03, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
-  // Fill Jun+ from live monthly rows
   rowsToCheck.forEach(function(mr) {
-    var mKey = String(mr.month||'').split('-')[1];
-    var idx = parseInt(mKey,10) - 1;
-    if (idx >= 5 && idx < 12) live2026[idx] = (live2026[idx]||0) + (Number(mr.achievedGst)||0)/100000;
+    var mStr = String(mr.month||'');
+    var parts = mStr.split('-');
+    var yr = parseInt(parts[0],10), mo = parseInt(parts[1],10);
+    var cycleIdx = -1;
+    if (yr===2026 && mo>=4) cycleIdx = mo-4;
+    if (yr===2027 && mo<=3) cycleIdx = mo+8;
+    if (cycleIdx >= 2 && cycleIdx < 12) {
+      live_fy2627[cycleIdx] = (live_fy2627[cycleIdx]||0) + (Number(mr.achievedGst)||0)/100000;
+    }
   });
 
   if (amitChart) amitChart.destroy();
@@ -1705,12 +1712,12 @@ function renderAmitRevenue() {
     amitChart = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: months,
+        labels: cycleMonths,
         datasets: [
-          { label: '2025', data: baseline2025,
+          { label: 'FY 25–26', data: baseline_fy2526,
             backgroundColor: 'rgba(13,27,46,0.08)', borderColor: 'rgba(13,27,46,0.2)',
             borderWidth:1.5, borderRadius:3 },
-          { label: '2026', data: live2026,
+          { label: 'FY 26–27', data: live_fy2627,
             backgroundColor: 'rgba(201,168,76,0.75)', borderColor: '#C9A84C',
             borderWidth:1.5, borderRadius:3 }
         ]

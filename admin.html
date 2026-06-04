@@ -963,7 +963,7 @@
         </div>
         <div class="chart-card">
           <div class="chart-title">Monthly Collections Trajectory</div>
-          <div class="chart-subtitle">Revenue trend comparison (2025 vs 2026)</div>
+          <div class="chart-subtitle">Appraisal cycle Apr→Mar · FY 26–27 (gold) vs FY 25–26 (grey) · Incl. GST</div>
           <div class="chart-wrap">
             <canvas id="monthlyTrendChart"></canvas>
           </div>
@@ -985,30 +985,33 @@
           <div class="leaderboard-list" id="leaderboard-list"></div>
         </div>
         <div class="chart-card">
-          <div class="chart-title">📊 Historical YoY Summary Table</div>
-          <div class="chart-subtitle">Archived YTD metrics (Jan–May)</div>
+          <div class="chart-title">📊 Appraisal Cycle YoY — Apr Onwards</div>
+          <div class="chart-subtitle">Cycle starts April. Jan–Mar 2026 excluded (pre-cycle). Incl. GST.</div>
           <table class="compact-table" style="margin-top:10px">
             <thead>
               <tr>
                 <th>Month</th>
-                <th>2024 (₹)</th>
-                <th>2025 (₹)</th>
-                <th>2026 (₹)</th>
+                <th>FY24–25 (₹)</th>
+                <th>FY25–26 (₹)</th>
+                <th>FY26–27 (₹)</th>
                 <th>YoY Growth</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td>January</td><td>68,93,621</td><td>46,96,341</td><td>83,40,782</td><td style="color:var(--teal)">+77.6%</td></tr>
-              <tr><td>February</td><td>25,90,758</td><td>41,85,220</td><td>73,23,308</td><td style="color:var(--teal)">+75.0%</td></tr>
-              <tr><td>March</td><td>68,02,273</td><td>61,99,914</td><td>35,53,858</td><td style="color:var(--red)">−42.7%</td></tr>
-              <tr><td>April</td><td>40,82,340</td><td>32,19,910</td><td>69,39,770</td><td style="color:var(--teal)">+115.5%</td></tr>
-              <tr><td>May</td><td>57,35,371</td><td>57,35,371</td><td>74,03,275</td><td style="color:var(--teal)">+29.1%</td></tr>
+              <tr><td>April <span style="font-size:9px;color:var(--muted)">(M1)</span></td><td>40,82,340</td><td>32,19,910</td><td>69,39,770</td><td style="color:var(--teal)">+115.5%</td></tr>
+              <tr><td>May <span style="font-size:9px;color:var(--muted)">(M2)</span></td><td>57,35,371</td><td>57,35,371</td><td>74,03,275</td><td style="color:var(--teal)">+29.1%</td></tr>
+              <tr style="color:var(--muted);font-style:italic"><td colspan="5" style="font-size:11px;padding:6px 8px">Jun–Mar: data will populate as months are entered</td></tr>
               <tr style="border-top:1.5px solid var(--border);font-weight:bold;color:var(--gold)">
-                <td>YTD Total</td>
-                <td>2,61,04,363</td>
-                <td>2,40,36,756</td>
-                <td>3,35,60,993</td>
-                <td style="color:var(--teal)">+39.6%</td>
+                <td>Cycle YTD (Apr–May)</td>
+                <td>98,17,711</td>
+                <td>89,55,281</td>
+                <td>1,43,43,045</td>
+                <td style="color:var(--teal)">+60.2%</td>
+              </tr>
+              <tr style="background:rgba(201,74,74,0.04);font-size:11px">
+                <td colspan="5" style="padding:6px 8px;color:var(--muted)">
+                  ⚠️ <em>Jan–Mar 2026 (pre-cycle): ₹83.4L + ₹73.2L + ₹35.5L = ₹1.92Cr collected — not counted above</em>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -1377,7 +1380,7 @@ function loadDashboardData() {
     isAdmin: 'true',
     isManager: adminUser.isManager ? 'true' : 'false',
     period: '2026-27',
-    fromMonth: '2026-01',
+    fromMonth: '2026-04',
     toMonth: '2027-03'
   };
   
@@ -1565,45 +1568,64 @@ function renderRevenueTab() {
     '<div class="kpi-card"><div class="kpi-label">Remaining Shortfall</div><div class="kpi-value">' + money(kGap) + '</div><div class="kpi-meta">'+kLabel+'</div></div>';
   document.getElementById('revenue-kpis').innerHTML = kpiHtml;
 
+  // Pre-cycle banner (Jan–Mar 2026 — outside appraisal window)
+  try {
+    const pc = dashboardData.preCycle;
+    const pcBanner = document.getElementById('smart-callout');
+    const pcTxt    = document.getElementById('smart-callout-text');
+    if (pcBanner && pcTxt && pc && (pc.gst > 0 || pc.course > 0)) {
+      pcTxt.innerHTML =
+        '<strong>Pre-Cycle Collections (Jan–Mar 2026):</strong> ' +
+        money(pc.gst) + ' incl. GST &nbsp;|&nbsp; ' +
+        money(pc.course) + ' excl. GST &nbsp;|&nbsp; ' +
+        pc.students + ' students — <em>collected but outside the Apr 2026–Mar 2027 appraisal window. Not counted toward targets.</em>';
+      pcBanner.style.display = 'block';
+      // Change banner color to muted info style (not gold/dark)
+      pcBanner.style.background = 'rgba(24,95,165,0.08)';
+      pcBanner.style.color = '#0D1B2E';
+      pcBanner.style.border = '1px solid rgba(24,95,165,0.2)';
+      pcBanner.querySelector('span').style.color = '#185FA5';
+      pcBanner.querySelector('span').textContent = 'ℹ️ Pre-Cycle';
+    }
+  } catch(e) {}
+
   // Smart callout — auto-generated insight
   try {
     const callout = document.getElementById('smart-callout');
     const calloutTxt = document.getElementById('smart-callout-text');
-    if (callout && calloutTxt) {
-      const curMonth = new Date().getMonth(); // 0-indexed
-      const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      // Find best month in 2026 so far
-      const live2026 = [83.41,73.23,35.54,69.40,74.03];
-      const prevYear = [46.96,41.85,61.99,32.19,57.35];
+    if (callout && calloutTxt && callout.style.display === 'none') {
+      // Only show smart insight if pre-cycle banner isn't already showing
+      const monthNames = ['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar'];
+      // Cycle months: Apr=0, May=1 (actuals so far in new cycle)
+      const liveCycle  = [69.40, 74.03]; // Apr, May 2026
+      const prevCycle  = [32.19, 57.35]; // Apr, May 2025
       let insights = [];
-      // Best month YoY
-      let bestGrowthIdx = 0; let bestGrowthPct = -999;
-      live2026.forEach((v,i)=>{
-        if (prevYear[i]){
-          const g = Math.round((v-prevYear[i])/prevYear[i]*100);
-          if(g>bestGrowthPct){bestGrowthPct=g;bestGrowthIdx=i;}
+      let bestGrowthPct = -999; let bestGrowthIdx = 0;
+      liveCycle.forEach((v,i) => {
+        if (prevCycle[i]) {
+          const g = Math.round((v - prevCycle[i]) / prevCycle[i] * 100);
+          if (g > bestGrowthPct) { bestGrowthPct = g; bestGrowthIdx = i; }
         }
       });
-      if(bestGrowthPct>0) insights.push(monthNames[bestGrowthIdx]+' 2026 is your best '+monthNames[bestGrowthIdx]+' growth in recent years (+'+bestGrowthPct+'% vs 2025).');
-      // Weakest month
-      let minVal = Infinity; let minIdx = 0;
-      live2026.forEach((v,i)=>{if(v<minVal){minVal=v;minIdx=i;}});
-      insights.push(monthNames[minIdx]+' was the softest month YTD — consider targeted intake pushes next '+monthNames[minIdx]+'.');
-      // YTD vs last year
-      const ytd2026 = live2026.reduce((a,b)=>a+b,0);
-      const ytd2025 = prevYear.reduce((a,b)=>a+b,0);
-      const ytdGrowth = Math.round((ytd2026-ytd2025)/ytd2025*100);
-      if(ytdGrowth>0) insights.push('YTD Jan–May 2026 is +'+ytdGrowth+'% ahead of the same period in 2025 (₹'+ytd2026.toFixed(2)+'L vs ₹'+ytd2025.toFixed(2)+'L).');
-      calloutTxt.textContent = insights[0];
-      callout.style.display = 'block';
+      if (bestGrowthPct > 0) insights.push(monthNames[bestGrowthIdx] + ' 2026 is your best ' + monthNames[bestGrowthIdx] + ' in recent years (+' + bestGrowthPct + '% vs last year).');
+      const ytdNew = liveCycle.reduce((a,b)=>a+b,0);
+      const ytdPrev = prevCycle.reduce((a,b)=>a+b,0);
+      const g = Math.round((ytdNew-ytdPrev)/ytdPrev*100);
+      if (g > 0) insights.push('Apr–May 2026 cycle start is +'+g+'% ahead of Apr–May 2025 (₹'+ytdNew.toFixed(2)+'L vs ₹'+ytdPrev.toFixed(2)+'L).');
+      if (insights.length) { calloutTxt.textContent = insights[0]; callout.style.display = 'block'; }
+    }
+    // If pre-cycle banner already showing, update the insight text alongside it
+    const calloutTxtEl = document.getElementById('smart-callout-text');
+    if (calloutTxtEl && callout && callout.style.display === 'block') {
+      // already handled above
     }
   } catch(e) {}
 
-  // Live Target Progress Bar
+  // Live Target Progress Bar — labelled as new appraisal cycle
   document.getElementById('pct-label-live').textContent = pctOverall + '%';
   document.getElementById('progressFill-live').style.width = pctOverall + '%';
-  document.getElementById('progress-desc-live').innerHTML = 'YTD Course Fees: <strong>' + money(totalAchievedCourse) + '</strong> (Excl. GST) | <strong>' + money(totalAchievedGst) + '</strong> (Incl. GST) against <strong>' + money(totalTargetCourse) + '</strong> targets.';
-  document.getElementById('progress-target-live').textContent = 'Target (Excl. GST): ' + money(totalTargetCourse);
+  document.getElementById('progress-desc-live').innerHTML = 'Appraisal Cycle Apr 2026–Mar 2027 &nbsp;|&nbsp; YTD: <strong>' + money(totalAchievedCourse) + '</strong> (Excl. GST) | <strong>' + money(totalAchievedGst) + '</strong> (Incl. GST) against <strong>' + money(totalTargetCourse) + '</strong> annual target.';
+  document.getElementById('progress-target-live').textContent = 'FY Target (Excl. GST): ' + money(totalTargetCourse);
 
   // Pacing Description
   let pacingHtml = '';
@@ -1814,37 +1836,43 @@ function renderRevenueCharts(totalAchieved, rows) {
     });
   }
   
-  // Monthly trajectory
+  // Monthly trajectory — Apr 2026–Mar 2027 cycle (Apr = M1)
   const trendCtx = document.getElementById('monthlyTrendChart');
   if (trendCtx) {
-    const baseline2025 = [46.96, 41.85, 61.99, 32.19, 57.35];
-    const liveMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const liveData = [83.41, 73.23, 35.54, 69.40, 74.03];
-    
+    // Cycle months: Apr(M1)→Mar(M12)
+    const cycleMonths = ['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar'];
+    // FY25-26 baseline: Apr2025→Mar2026
+    const baseline_fy2526 = [32.19, 57.35, 35.33, 82.03, 24.76, 52.10, 6.46, 58.52, 9.43, 83.41, 73.23, 35.54];
+    // FY26-27 actuals: Apr2026=69.40, May2026=74.03; rest from live data
+    const liveData_fy2627 = [69.40, 74.03, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+    // Fill Jun 2026 onwards (cycle months 3–9 = calendar months 6–12)
     const dynamicMonthly = {};
     if (dashboardData.revenue && dashboardData.revenue.monthlyRows) {
       dashboardData.revenue.monthlyRows.forEach(mr => {
-        const mKey = String(mr.month).split('-')[1];
-        const idx = parseInt(mKey, 10) - 1;
-        if (idx >= 5) {
-          if (!dynamicMonthly[idx]) dynamicMonthly[idx] = 0;
-          dynamicMonthly[idx] += (Number(mr.achievedGst) || 0) / 100000;
+        const mStr = String(mr.month || '');
+        const [yr, mo] = mStr.split('-').map(Number);
+        // Map to cycle index: Apr2026=0, May=1, Jun=2...Dec=8, Jan2027=9, Feb=10, Mar=11
+        let cycleIdx = -1;
+        if (yr === 2026 && mo >= 4)  cycleIdx = mo - 4;       // Apr=0..Dec=8
+        if (yr === 2027 && mo <= 3)  cycleIdx = mo + 8;       // Jan=9, Feb=10, Mar=11
+        if (cycleIdx >= 2 && cycleIdx < 12) {
+          dynamicMonthly[cycleIdx] = (dynamicMonthly[cycleIdx] || 0) + (Number(mr.achievedGst) || 0) / 100000;
         }
       });
     }
-    
-    for (let i = 5; i < 12; i++) {
-      liveData.push(dynamicMonthly[i] || 0);
+    for (let i = 2; i < 12; i++) {
+      liveData_fy2627[i] = dynamicMonthly[i] || 0;
     }
-    
+
     charts.monthlyTrend = new Chart(trendCtx, {
       type: 'line',
       data: {
-        labels: liveMonths,
+        labels: cycleMonths,
         datasets: [
           {
-            label: '2025 Baseline',
-            data: baseline2025,
+            label: 'FY 25–26 (Apr–Mar)',
+            data: baseline_fy2526,
             borderColor: 'rgba(13,27,46,0.3)',
             backgroundColor: 'transparent',
             borderWidth: 1.5,
@@ -1852,8 +1880,8 @@ function renderRevenueCharts(totalAchieved, rows) {
             pointRadius: 2
           },
           {
-            label: '2026-27 Live YTD',
-            data: liveData,
+            label: 'FY 26–27 Live',
+            data: liveData_fy2627,
             borderColor: '#C9A84C',
             backgroundColor: 'rgba(201,168,76,0.08)',
             borderWidth: 2,

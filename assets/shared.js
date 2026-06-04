@@ -315,5 +315,28 @@ const COURSE_FEES_JS = {
   'JD-CAD':                              {fee:82900, regFee:0,    gst:18},
   'Smart Learning DG':                   {fee:114900,regFee:0,    gst:18},
   'Smart Learning CSG':                  {fee:114900,regFee:0,    gst:18},
-  'Smart Learning GG':                   {fee:229800,regFee:0,    gst:18}
+  'Smart Learning GG':                   {fee:229800,regFee:25000,gst:18}
 };
+
+// ── Central Money Formatting Utilities ────────────────────────
+function money(v) {
+  return '₹' + Math.round(Number(v) || 0).toLocaleString('en-IN');
+}
+
+function moneyShort(v) {
+  const val = Number(v) || 0;
+  if (val >= 10000000) {
+    return '₹' + (val / 10000000).toFixed(2) + ' Cr';
+  } else if (val >= 100000) {
+    return '₹' + (val / 100000).toFixed(2) + 'L';
+  }
+  return '₹' + Math.round(val).toLocaleString('en-IN');
+}
+
+function amtL(v) {
+  v = Number(v)||0;
+  if (v >= 10000000) return '₹'+(v/10000000).toFixed(2)+'Cr';
+  if (v >= 100000)   return '₹'+(v/100000).toFixed(2)+'L';
+  if (v >= 1000)     return '₹'+(v/1000).toFixed(1)+'K';
+  return '₹'+v;
+}

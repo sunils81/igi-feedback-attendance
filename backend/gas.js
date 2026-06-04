@@ -2639,10 +2639,10 @@ function normalizedFeeTotals(r) {
 }
 
 function revenueMonthList(fromMonth,toMonth) {
-  var from=String(fromMonth||'2026-01').match(/^\d{4}-\d{2}$/)?String(fromMonth):'2026-01';
-  var to=String(toMonth||'2027-03').match(/^\d{4}-\d{2}$/)?String(toMonth):'2027-03';
+  var from = (fromMonth && String(fromMonth).match(/^\d{4}-\d{2}$/)) ? String(fromMonth) : '2026-01';
+  var to = (toMonth && String(toMonth).match(/^\d{4}-\d{2}$/)) ? String(toMonth) : '2027-03';
   var start=new Date(from+'-01'), end=new Date(to+'-01'), out=[];
-  if(isNaN(start)||isNaN(end)||start>end){start=new Date('2026-01-01');end=new Date('2027-03-01');}
+  if(isNaN(start.getTime())||isNaN(end.getTime())||start>end){start=new Date('2026-01-01');end=new Date('2027-03-01');}
   var cur=new Date(start);
   while(cur<=end){
     var key=Utilities.formatDate(cur,Session.getScriptTimeZone(),'yyyy-MM');

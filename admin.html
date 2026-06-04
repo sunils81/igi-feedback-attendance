@@ -1,0 +1,2216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IGI — HOD & Manager Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="assets/shared.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+<style>
+  :root {
+    --gold: #C9A84C;
+    --gold-light: #E8C97A;
+    --gold-pale: #F9F3E3;
+    --gold-dim: rgba(201,168,76,0.12);
+    --dark: #0A0F18;
+    --dark-2: #101726;
+    --dark-3: #182235;
+    --dark-4: #222F47;
+    --text: #F1F5F9;
+    --text-dim: #94A3B8;
+    --border: rgba(201,168,76,0.18);
+    --green: #10B981;
+    --green-dim: rgba(16,185,129,0.12);
+    --red: #EF4444;
+    --red-dim: rgba(239,68,68,0.12);
+    --blue: #3B82F6;
+    --radius: 12px;
+    --shadow: 0 8px 32px rgba(0,0,0,0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--dark);
+    color: var(--text);
+    font-family: "DM Sans", sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.35;
+  }
+
+  .wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 30px 20px 80px;
+  }
+
+  .toast-host {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    display: grid;
+    gap: 10px;
+    z-index: 9999;
+    max-width: min(380px, calc(100vw - 48px));
+  }
+
+  .toast {
+    transform: translateY(12px);
+    opacity: 0;
+    border-radius: 8px;
+    padding: 14px 18px;
+    background: var(--dark-3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    box-shadow: var(--shadow);
+    font-size: 13px;
+    font-weight: 500;
+    transition: opacity 0.22s, transform 0.22s;
+  }
+
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast-error { border-color: var(--red); color: #FCA5A5; }
+
+  /* Login Panel */
+  .login-screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .login-card {
+    background: var(--dark-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 40px 32px;
+    width: 100%;
+    max-width: 440px;
+    box-shadow: var(--shadow);
+    text-align: center;
+  }
+
+  .login-logo {
+    margin-bottom: 24px;
+    display: flex;
+    justify-content: center;
+  }
+
+  .login-logo img {
+    height: 48px;
+    width: auto;
+  }
+
+  .login-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 32px;
+    font-weight: 300;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+
+  .login-subtitle {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 30px;
+    letter-spacing: 0.05em;
+  }
+
+  .field {
+    margin-bottom: 20px;
+    text-align: left;
+  }
+
+  .field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 7px;
+  }
+
+  .field input, .field select {
+    width: 100%;
+    padding: 12px 14px;
+    background: var(--dark-3);
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .field input:focus, .field select:focus {
+    border-color: var(--gold-light);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-family: "DM Sans", sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+  }
+
+  .btn-gold {
+    background: var(--gold);
+    color: var(--dark);
+    width: 100%;
+  }
+
+  .btn-gold:hover { background: var(--gold-light); }
+  .btn-gold:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-outline {
+    background: transparent;
+    border: 1.5px solid var(--border);
+    color: var(--text-dim);
+  }
+
+  .btn-outline:hover {
+    border-color: var(--gold);
+    color: var(--text);
+  }
+
+  .err-box {
+    background: var(--red-dim);
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 12px;
+    color: #FCA5A5;
+    margin-top: 14px;
+    display: none;
+    text-align: left;
+  }
+
+  .err-box.show { display: block; }
+
+  /* Main Application Views */
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  /* Header */
+  .site-header {
+    background: linear-gradient(135deg, var(--dark-2), var(--dark-3));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: var(--shadow);
+  }
+
+  .hdr-logo-area {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .hdr-logo-area img {
+    height: 38px;
+    width: auto;
+  }
+
+  .hdr-info {
+    border-left: 1px solid var(--border);
+    padding-left: 16px;
+  }
+
+  .hdr-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 26px;
+    line-height: 1.1;
+  }
+
+  .hdr-title span {
+    color: var(--gold-light);
+    font-weight: 600;
+  }
+
+  .hdr-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .hdr-user-area {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .user-badge {
+    background: var(--gold-dim);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    text-align: right;
+  }
+
+  .user-badge .name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .user-badge .role {
+    font-size: 10px;
+    color: var(--gold-light);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  /* Tab Bar */
+  .tab-bar {
+    display: flex;
+    gap: 6px;
+    background: var(--dark-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px;
+    margin-bottom: 24px;
+    overflow-x: auto;
+    position: sticky;
+    top: 12px;
+    z-index: 99;
+    box-shadow: var(--shadow);
+  }
+
+  .tab {
+    flex: 1;
+    min-width: max-content;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    cursor: pointer;
+    color: var(--text-dim);
+    transition: all 0.2s;
+    border: none;
+    background: transparent;
+    font-family: "DM Sans", sans-serif;
+  }
+
+  .tab:hover {
+    color: var(--text);
+    background: rgba(255,255,255,0.02);
+  }
+
+  .tab.active {
+    background: var(--gold);
+    color: var(--dark);
+  }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* Cards & Layout Grid */
+  .card {
+    background: var(--dark-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+  }
+
+  .section-tag {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--gold-light);
+    margin-bottom: 6px;
+  }
+
+  .card h2 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 26px;
+    font-weight: 400;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+
+  .card .sub {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+
+  /* Executive summary KPIs */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .kpi-card {
+    background: var(--dark-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .kpi-card::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--gold);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.4s ease;
+  }
+
+  .kpi-card:hover::after { transform: scaleX(1); }
+
+  .kpi-label {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .kpi-value {
+    font-family: 'DM Mono', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.1;
+  }
+
+  .kpi-meta {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 6px;
+  }
+
+  .kpi-meta.hit { color: var(--green); font-weight: 600; }
+
+  /* Charts Panel Grid */
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .chart-card {
+    background: var(--dark-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+  }
+
+  .chart-card.full { grid-column: 1 / -1; }
+
+  .chart-title {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 6px;
+  }
+
+  .chart-subtitle {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 18px;
+    color: var(--text);
+    margin-bottom: 18px;
+  }
+
+  .chart-wrap {
+    position: relative;
+    height: 230px;
+  }
+
+  /* Branch Performance Radial Health Dials */
+  .centre-health-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 14px;
+  }
+
+  .centre-health-card {
+    background: var(--dark-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    cursor: pointer;
+    transition: border-color 0.2s, transform 0.2s;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .centre-health-card:hover {
+    border-color: var(--gold);
+    transform: translateY(-2px);
+  }
+
+  .centre-health-card .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .centre-health-card h3 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 20px;
+    color: var(--text);
+  }
+
+  .centre-health-card .pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    position: relative;
+  }
+
+  .centre-health-card .pulse-dot.green { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .centre-health-card .pulse-dot.amber { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+  .centre-health-card .pulse-dot.red { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+  .centre-health-card .card-body {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .centre-health-card .stats-left {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+  }
+
+  .centre-health-card .stat-row { color: var(--text-dim); }
+  .centre-health-card .stat-row strong { color: var(--text); font-family: 'DM Mono', monospace; }
+
+  .centre-health-card .gauge-right {
+    position: relative;
+    width: 66px;
+    height: 66px;
+    flex-shrink: 0;
+  }
+
+  .gauge-svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+  }
+
+  .gauge-bg {
+    fill: none;
+    stroke: var(--dark-4);
+    stroke-width: 6;
+  }
+
+  .gauge-fill {
+    fill: none;
+    stroke-width: 6;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.6s ease;
+  }
+
+  .gauge-fill.green { stroke: var(--green); }
+  .gauge-fill.amber { stroke: var(--gold); }
+  .gauge-fill.red { stroke: var(--red); }
+
+  .gauge-text {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  /* Accordion detail inside card */
+  .centre-detail-accordion {
+    border-top: 1px solid var(--border);
+    margin-top: 12px;
+    padding-top: 10px;
+    width: 100%;
+  }
+
+  .centre-detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+
+  .centre-detail-table th {
+    color: var(--text-dim);
+    text-align: left;
+    padding-bottom: 6px;
+    text-transform: uppercase;
+    font-size: 8px;
+    letter-spacing: 0.1em;
+  }
+
+  .centre-detail-table td {
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    color: var(--text);
+  }
+
+  .centre-detail-table tr:last-child td { border: none; }
+
+  /* Leaderboard & Tables */
+  .leaderboard-card {
+    background: var(--dark-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+
+  .leaderboard-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .leaderboard-row {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--dark-2);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    transition: border-color 0.2s;
+  }
+
+  .leaderboard-row:hover { border-color: var(--border); }
+
+  .leaderboard-row .rank {
+    width: 32px;
+    font-family: 'DM Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--gold-light);
+  }
+
+  .leaderboard-row .info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .leaderboard-row .name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .leaderboard-row .centre {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  .leaderboard-row .stats-right {
+    text-align: right;
+  }
+
+  .leaderboard-row .val {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .leaderboard-row .pct {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--gold-light);
+    margin-top: 2px;
+  }
+
+  /* Compact dashboard table style */
+  .compact-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .compact-table th {
+    text-align: right;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    padding: 8px 12px;
+    border-bottom: 1.5px solid var(--border);
+  }
+
+  .compact-table th:first-child { text-align: left; }
+
+  .compact-table td {
+    padding: 11px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    color: var(--text);
+    vertical-align: middle;
+  }
+
+  .compact-table td:first-child { font-weight: 600; text-align: left; }
+  .compact-table td:last-child { text-align: right; }
+
+  .compact-table tr:hover td { background: rgba(255,255,255,0.01); }
+
+  /* Admin Target Set panels */
+  .admin-target-split {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 20px;
+  }
+
+  .rev-target-panel {
+    background: var(--dark-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+
+  .rev-target-panel-head {
+    margin-bottom: 16px;
+  }
+
+  .rev-target-panel h3 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 22px;
+    color: var(--text);
+  }
+
+  .rev-target-panel .sub {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 3px;
+  }
+
+  .rev-target-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .rev-target-table th {
+    color: var(--text-dim);
+    text-transform: uppercase;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+
+  .rev-target-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    color: var(--text);
+  }
+
+  .rev-target-input {
+    width: 100%;
+    padding: 6px 10px;
+    background: var(--dark-2);
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text);
+    outline: none;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .rev-target-input:focus { border-color: var(--gold-light); }
+  .rev-target-input[readonly] { background: transparent; border-color: transparent; font-weight: 700; cursor: default; }
+
+  .rev-target-gst {
+    font-family: 'DM Mono', monospace;
+    font-weight: 500;
+  }
+
+  .rev-target-missing {
+    color: var(--text-dim);
+    font-style: italic;
+  }
+
+  .rev-target-locked {
+    color: var(--green);
+    font-weight: 600;
+  }
+
+  .rev-target-save-row {
+    margin-top: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .rev-target-meta {
+    font-size: 11px;
+    color: var(--gold-light);
+  }
+
+  /* Academic elements */
+  .timeline-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .timeline-card {
+    background: var(--dark-3);
+    border-left: 3px solid var(--gold);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    padding: 16px 20px;
+  }
+
+  .timeline-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+  }
+
+  .timeline-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .timeline-meta {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .timeline-topic {
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.5;
+  }
+
+  .star-rating {
+    color: var(--gold);
+    font-size: 14px;
+  }
+
+  /* Runrate Alerts */
+  .runrate-alert {
+    background: var(--gold-dim);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-top: 12px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .spinner-wrap {
+    text-align: center;
+    padding: 48px;
+  }
+
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3.5px solid var(--border);
+    border-top-color: var(--gold-light);
+    border-radius: 50%;
+    animation: spin 0.75s linear infinite;
+    margin: 0 auto 16px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .spinner-wrap p {
+    font-size: 13px;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+  }
+
+  /* Footer signatures */
+  .footer-sig-bar {
+    border-top: 1px solid var(--border);
+    padding-top: 24px;
+    margin-top: 48px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .footer-sig-bar strong {
+    color: var(--text);
+    display: block;
+    font-size: 14px;
+    font-family: 'Cormorant Garamond', serif;
+    margin-bottom: 2px;
+  }
+
+  /* Target progress bar */
+  .target-bar-section {
+    background: var(--dark-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 12px;
+  }
+
+  .progress-label-left {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--gold-light);
+  }
+
+  .progress-label-right {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 24px;
+    color: var(--text);
+  }
+
+  .progress-track {
+    height: 6px;
+    background: var(--dark-4);
+    border-radius: 3px;
+    overflow: visible;
+    position: relative;
+    margin-bottom: 10px;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--gold), var(--gold-light));
+    border-radius: 3px;
+    width: 0%;
+    transition: width 1.4s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+  }
+
+  .progress-fill::after {
+    content: '';
+    position: absolute;
+    right: -2px; top: -3px;
+    width: 12px; height: 12px;
+    background: var(--gold-light);
+    border-radius: 50%;
+    box-shadow: 0 0 12px var(--gold);
+  }
+
+  .progress-notes {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+</style>
+</head>
+<body>
+
+<!-- SCREEN 1: LOGIN -->
+<div id="s-login" class="screen active login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <img src="assets/shared.js" style="display:none" id="logo-mock"> <!-- shared.js is referenced below -->
+      <!-- Clean, modern text logo -->
+      <span style="font-family:'Cormorant Garamond',serif;font-size:36px;letter-spacing:0.12em;font-weight:700;color:var(--text)">I G I</span>
+    </div>
+    <div class="login-title">Executive Sign In</div>
+    <div class="login-subtitle">HOD & OPERATIONS MANAGEMENT PANEL</div>
+    
+    <div class="field">
+      <label>Choose Account</label>
+      <select id="lg-name">
+        <option value="__admin__">Sunil Sharma (Super Admin)</option>
+        <option value="Amit Sidpura">Amit Sidpura (Operations Manager)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>PIN / Password</label>
+      <input type="password" id="lg-pass" placeholder="Enter your credentials">
+    </div>
+    <button class="btn btn-gold" id="lg-btn" onclick="doAdminLogin()">Sign In →</button>
+    <div class="err-box" id="lg-err"></div>
+  </div>
+</div>
+
+<!-- SCREEN 2: MAIN DASHBOARD -->
+<div id="s-main" class="screen">
+  <div class="wrap">
+    
+    <!-- Site Header -->
+    <div class="site-header">
+      <div class="hdr-logo-area">
+        <span style="font-family:'Cormorant Garamond',serif;font-size:28px;letter-spacing:0.1em;font-weight:700;color:var(--text)">I G I</span>
+        <div class="hdr-info">
+          <div class="hdr-label">School of Gemology</div>
+          <div class="hdr-title">HOD Executive <span>Dashboard</span></div>
+        </div>
+      </div>
+      <div class="hdr-user-area">
+        <div class="user-badge">
+          <div class="name" id="user-badge-name">—</div>
+          <div class="role" id="user-badge-role">—</div>
+        </div>
+        <button class="btn btn-outline" style="padding:8px 14px;font-size:12px" onclick="doAdminLogout()">Log Out</button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="tab-bar" id="tab-bar">
+      <button class="tab active" onclick="switchAdminTab('t-revenue')">📈 Revenue Overview</button>
+      <button class="tab" id="tab-targets" onclick="switchAdminTab('t-targets')">🎯 Target Settings</button>
+      <button class="tab" onclick="switchAdminTab('t-fees')">💸 Fee Reconciliation</button>
+      <button class="tab" onclick="switchAdminTab('t-academic')">📊 Academic Insights</button>
+      <button class="tab" onclick="switchAdminTab('t-reports')">📋 Master Export</button>
+    </div>
+
+    <!-- TAB 1: REVENUE OVERVIEW -->
+    <div id="t-revenue" class="tab-content active">
+      
+      <!-- Top KPI command strip -->
+      <div class="kpi-row" id="revenue-kpis">
+        <div class="kpi-card"><div class="kpi-label">Annual Target</div><div class="kpi-value" id="kpi-target">—</div><div class="kpi-meta">FY 2026-27 (With GST)</div></div>
+        <div class="kpi-card"><div class="kpi-label">YTD Achieved</div><div class="kpi-value" id="kpi-achieved">—</div><div class="kpi-meta hit" id="kpi-hit">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Required Run Rate</div><div class="kpi-value" id="kpi-runrate">—</div><div class="kpi-meta" id="kpi-months-left">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Remaining Shortfall</div><div class="kpi-value" id="kpi-shortfall">—</div><div class="kpi-meta">To close target gap</div></div>
+      </div>
+
+      <!-- FY Target progress bar -->
+      <div class="target-bar-section">
+        <div class="chart-title">Target Progress Tracking</div>
+        <div class="progress-label">
+          <span class="progress-label-left">YTD Collections vs Annual Target</span>
+          <span class="progress-label-right" id="pct-label-live">0%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progressFill-live"></div>
+        </div>
+        <div class="progress-notes">
+          <span>₹0</span>
+          <span id="progress-desc-live">Calculating YTD performance...</span>
+          <span id="progress-target-live">Target: ₹0</span>
+        </div>
+      </div>
+
+      <!-- Projections Panel -->
+      <div class="card">
+        <h2>📈 Projections & Run Rate Pacer</h2>
+        <div class="runrate-alert" id="runrate-pacing-desc">—</div>
+      </div>
+
+      <!-- Charts Row (Chart.js) -->
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-title">YTD Historical Comparison</div>
+          <div class="chart-subtitle">YTD collections compared to last few years (₹ Lakhs)</div>
+          <div class="chart-wrap">
+            <canvas id="ytdComparisonChart"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Monthly Collections Trajectory</div>
+          <div class="chart-subtitle">Revenue trend comparison (2025 vs 2026)</div>
+          <div class="chart-wrap">
+            <canvas id="monthlyTrendChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Branch Health Section -->
+      <div class="card">
+        <h2>🏫 Branch Performance Health</h2>
+        <p class="sub">Click on any card to view detailed counselor-level contribution breakdowns.</p>
+        <div class="centre-health-grid" id="admin-branch-grid"></div>
+      </div>
+
+      <!-- Counselor Leaderboard & YTD summary table -->
+      <div class="charts-grid" style="margin-top:20px">
+        <div class="chart-card">
+          <div class="chart-title">🏆 Counselor Leaderboard</div>
+          <div class="chart-subtitle">Rankings by YTD target hit %</div>
+          <div class="leaderboard-list" id="leaderboard-list"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">📊 Historical YoY Summary Table</div>
+          <div class="chart-subtitle">Archived YTD metrics (Jan–May)</div>
+          <table class="compact-table" style="margin-top:12px">
+            <thead>
+              <tr>
+                <th>Month</th>
+                <th>2024 (₹)</th>
+                <th>2025 (₹)</th>
+                <th>2026 (₹)</th>
+                <th>YoY Growth</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>January</td><td>68,93,621</td><td>46,96,341</td><td>83,40,782</td><td style="color:var(--green)">+77.6%</td></tr>
+              <tr><td>February</td><td>25,90,758</td><td>41,85,220</td><td>73,23,308</td><td style="color:var(--green)">+75.0%</td></tr>
+              <tr><td>March</td><td>68,02,273</td><td>61,99,914</td><td>35,53,858</td><td style="color:var(--red)">−42.7%</td></tr>
+              <tr><td>April</td><td>40,82,340</td><td>32,19,910</td><td>69,39,770</td><td style="color:var(--green)">+115.5%</td></tr>
+              <tr><td>May</td><td>57,35,371</td><td>57,35,371</td><td>74,03,275</td><td style="color:var(--green)">+29.1%</td></tr>
+              <tr style="border-top:1.5px solid var(--border);font-weight:bold;color:var(--gold-light)">
+                <td>YTD Total</td>
+                <td>2,61,04,363</td>
+                <td>2,40,36,756</td>
+                <td>3,35,60,993</td>
+                <td style="color:var(--green)">+39.6%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- TAB 2: TARGET SETTING -->
+    <div id="t-targets" class="tab-content">
+      <div class="card">
+        <h2>🎯 Annual Target Configurations</h2>
+        <p class="sub">Configure fiscal year targets. Saved values require checking 'Revise' and specifying a reason before edits are allowed.</p>
+        <div class="admin-target-split" id="target-editor-split">
+          <div style="font-size:13px;color:var(--text-dim)">Loading target panel...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: FEE RECONCILIATION -->
+    <div id="t-fees" class="tab-content">
+      <div class="card">
+        <h2>💸 National Fee Summary</h2>
+        <p class="sub">Current collections and outstanding status across all registered student records.</p>
+        
+        <div class="kpi-row" id="fee-kpis">
+          <div class="kpi-card"><div class="kpi-label">Expected Net Fees</div><div class="kpi-value" id="fee-kpi-expected">—</div></div>
+          <div class="kpi-card"><div class="kpi-label">Total Collected</div><div class="kpi-value" id="fee-kpi-collected">—</div></div>
+          <div class="kpi-card"><div class="kpi-label">Outstanding Balances</div><div class="kpi-value" id="fee-kpi-outstanding">—</div></div>
+          <div class="kpi-card"><div class="kpi-label">Total Overdue</div><div class="kpi-value" id="fee-kpi-overdue" style="color:var(--red)">—</div></div>
+        </div>
+
+        <div style="margin-top:24px">
+          <h3 style="font-family:'Cormorant Garamond',serif;font-size:22px;margin-bottom:12px">🏫 Collections by Centre</h3>
+          <table class="compact-table">
+            <thead>
+              <tr>
+                <th>Centre</th>
+                <th>Students</th>
+                <th>Expected (₹)</th>
+                <th>Collected (₹)</th>
+                <th>Outstanding (₹)</th>
+                <th>Overdue (₹)</th>
+              </tr>
+            </thead>
+            <tbody id="fee-centre-tbody">
+              <tr><td colspan="6" style="text-align:center;color:var(--text-dim)">Loading fee data...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="margin-top:32px">
+          <h3 style="font-family:'Cormorant Garamond',serif;font-size:22px;margin-bottom:12px">📦 Collections by Batch</h3>
+          <table class="compact-table">
+            <thead>
+              <tr>
+                <th>Batch Code</th>
+                <th>Course</th>
+                <th>Students</th>
+                <th>Expected (₹)</th>
+                <th>Collected (₹)</th>
+                <th>Outstanding (₹)</th>
+                <th>Overdue (₹)</th>
+              </tr>
+            </thead>
+            <tbody id="fee-batch-tbody">
+              <tr><td colspan="7" style="text-align:center;color:var(--text-dim)">Loading fee data...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: ACADEMIC INSIGHTS -->
+    <div id="t-academic" class="tab-content">
+      <div class="card">
+        <h2>📊 Academic Summary & Instructor Health</h2>
+        <p class="sub">consolidated ratings, session-wise feedback, and test completion benchmarks.</p>
+        
+        <div class="charts-grid">
+          <div class="chart-card">
+            <div class="chart-title">⭐ Instructor Quality Scores</div>
+            <div class="chart-subtitle">Average student rating out of 5 stars</div>
+            <table class="compact-table" style="margin-top:10px">
+              <thead>
+                <tr>
+                  <th>Instructor</th>
+                  <th>Total Ratings</th>
+                  <th>Average Rating</th>
+                </tr>
+              </thead>
+              <tbody id="acad-rating-tbody">
+                <tr><td colspan="3" style="text-align:center;color:var(--text-dim)">Loading feedback metrics...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="chart-card">
+            <div class="chart-title">💬 Student Voice Comments Timeline</div>
+            <div class="chart-subtitle">Verbatim comments (Anonymous comments masked appropriately)</div>
+            <div class="timeline-list" id="acad-comments-list" style="margin-top:12px;max-height:350px;overflow:auto;padding-right:6px">
+              <div style="font-size:12px;color:var(--text-dim);text-align:center;padding:12px">Loading comment feeds...</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="charts-grid" style="margin-top:20px">
+          <div class="chart-card">
+            <div class="chart-title">📅 Attendance Tracking (By Branch)</div>
+            <div class="chart-subtitle">Average batch attendance percentages</div>
+            <table class="compact-table" style="margin-top:10px">
+              <thead>
+                <tr>
+                  <th>Branch / Centre</th>
+                  <th>Attendance %</th>
+                </tr>
+              </thead>
+              <tbody id="acad-attendance-tbody">
+                <tr><td colspan="2" style="text-align:center;color:var(--text-dim)">Loading attendance logs...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="chart-card">
+            <div class="chart-title">📝 Test Watchlist</div>
+            <div class="chart-subtitle">Consolidated test completion indicators</div>
+            <table class="compact-table" style="margin-top:10px">
+              <thead>
+                <tr>
+                  <th>Centre</th>
+                  <th>Total Assessments Marked</th>
+                </tr>
+              </thead>
+              <tbody id="acad-test-tbody">
+                <tr><td colspan="2" style="text-align:center;color:var(--text-dim)">Loading test trackers...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 5: MASTER EXPORT -->
+    <div id="t-reports" class="tab-content">
+      <div class="card">
+        <h2>📋 Executive Export Centre</h2>
+        <p class="sub">Download master CSVs and reconciliations for offline auditing.</p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <button class="btn btn-gold" style="width:auto" onclick="downloadAdminRevenueCsv()">Download Live YTD Revenue CSV</button>
+          <button class="btn btn-outline" onclick="downloadAdminFeesCsv()">Download Fee Reconciliation CSV</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer signatures -->
+    <div class="footer-sig-bar">
+      <div>
+        <strong id="footer-sig-name">—</strong>
+        <span id="footer-sig-role">—</span>
+      </div>
+      <div style="text-align:right">
+        CONFIDENTIAL — EXECUTIVE REPORTING<br>
+        DATA REFRESHED ON DEMAND
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── Global App State ──────────────────────────────────────────
+let adminUser       = null; // { name, isManager, isAdmin, centres }
+let dashboardData   = null;
+let charts          = {};
+
+// ── Init on DOM Content Loaded ────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  // Check if session exists in localStorage
+  try {
+    const saved = localStorage.getItem('igi_admin_session');
+    if (saved) {
+      adminUser = JSON.parse(saved);
+      showMainScreen();
+    }
+  } catch(e) {}
+  
+  // Login Enter Key handler
+  document.getElementById('lg-pass').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doAdminLogin();
+  });
+});
+
+// ── Auth Handling ─────────────────────────────────────────────
+function doAdminLogin() {
+  const nameVal = document.getElementById('lg-name').value;
+  const pass    = document.getElementById('lg-pass').value.trim();
+  const btn     = document.getElementById('lg-btn');
+  const err     = document.getElementById('lg-err');
+  
+  err.classList.remove('show');
+  if (!pass) {
+    err.textContent = 'Please enter your password or PIN.';
+    err.classList.add('show');
+    return;
+  }
+  
+  btn.textContent = 'Signing in…';
+  btn.disabled = true;
+  
+  const params = nameVal === '__admin__'
+    ? { action: 'counselorLogin', pass: pass }
+    : { action: 'counselorLogin', name: nameVal, pin: pass };
+    
+  gasGet(params, function(e, d) {
+    btn.textContent = 'Sign in →';
+    btn.disabled = false;
+    
+    if (e || !d || d.status !== 'ok' || !d.isAdmin) {
+      err.textContent = (d && d.reason === 'wrong_credentials') 
+        ? 'Invalid PIN or password.' 
+        : 'Access denied or invalid credentials.';
+      err.classList.add('show');
+      return;
+    }
+    
+    // Store Session
+    adminUser = {
+      name: d.counselorName || (nameVal === '__admin__' ? 'Sunil Sharma' : nameVal),
+      isManager: !!d.isManager,
+      isAdmin: true,
+      authRole: d.authRole || (nameVal === '__admin__' ? 'Super Admin' : 'Manager'),
+      centres: d.centres || []
+    };
+    
+    try {
+      localStorage.setItem('igi_admin_session', JSON.stringify(adminUser));
+    } catch(ex) {}
+    
+    showMainScreen();
+    
+    // Confetti on Super Admin login
+    if (!adminUser.isManager) {
+      try { confetti({ particleCount: 80, spread: 60, origin: { y: 0.8 } }); } catch(_) {}
+    }
+  });
+}
+
+function doAdminLogout() {
+  try { localStorage.removeItem('igi_admin_session'); } catch(e) {}
+  adminUser = null;
+  dashboardData = null;
+  
+  // Clear charts
+  Object.values(charts).forEach(c => c.destroy());
+  charts = {};
+  
+  document.getElementById('s-main').classList.remove('active');
+  document.getElementById('s-login').classList.add('active');
+  document.getElementById('lg-pass').value = '';
+}
+
+function showMainScreen() {
+  document.getElementById('s-login').classList.remove('active');
+  document.getElementById('s-main').classList.add('active');
+  
+  // Update header badges
+  document.getElementById('user-badge-name').textContent = adminUser.name;
+  document.getElementById('user-badge-role').textContent = adminUser.isManager ? 'Operations Manager' : 'HOD / Super Admin';
+  document.getElementById('footer-sig-name').textContent = adminUser.name;
+  document.getElementById('footer-sig-role').textContent = adminUser.isManager ? 'Operations Manager · IGI India' : 'Head of Education — National · IGI India';
+  
+  // Hide Target Tab if Manager
+  const targetTabBtn = document.getElementById('tab-targets');
+  if (targetTabBtn) {
+    targetTabBtn.style.display = adminUser.isManager ? 'none' : 'block';
+  }
+  
+  switchAdminTab('t-revenue');
+}
+
+// ── Tab Navigation ────────────────────────────────────────────
+function switchAdminTab(tabId) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(el => {
+    el.classList.remove('active');
+    // Check click target matching
+    if (el.getAttribute('onclick').includes(tabId)) {
+      el.classList.add('active');
+    }
+  });
+  
+  const targetTab = document.getElementById(tabId);
+  if (targetTab) targetTab.classList.add('active');
+  
+  // Fetch dashboard data if we don't have it yet
+  if (!dashboardData) {
+    loadDashboardData();
+  } else {
+    renderTabContent(tabId);
+  }
+}
+
+// ── Fetch Dashboard Data ──────────────────────────────────────
+function loadDashboardData() {
+  // Loading indicator across sheets
+  ['revenue-kpis', 'target-editor-split', 'fee-centre-tbody', 'acad-rating-tbody'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      if (el.tagName === 'TBODY') {
+        el.innerHTML = '<tr><td colspan="100" style="text-align:center;padding:24px">' + loadingState('Loading database summaries...') + '</td></tr>';
+      } else {
+        el.innerHTML = loadingState('Loading national database summaries...');
+      }
+    }
+  });
+  
+  const params = {
+    action: 'getAdminDashboard',
+    isAdmin: 'true',
+    isManager: adminUser.isManager ? 'true' : 'false',
+    period: '2026-27',
+    fromMonth: '2026-01',
+    toMonth: '2027-03'
+  };
+  
+  gasGet(params, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      showToast('Could not fetch dashboard summary from spreadsheet.', 'error');
+      return;
+    }
+    
+    dashboardData = d;
+    renderTabContent('t-revenue');
+    renderTabContent('t-targets');
+    renderTabContent('t-fees');
+    renderTabContent('t-academic');
+  });
+}
+
+function renderTabContent(tabId) {
+  if (!dashboardData) return;
+  
+  if (tabId === 't-revenue') {
+    renderRevenueTab();
+  } else if (tabId === 't-targets') {
+    renderTargetsTab();
+  } else if (tabId === 't-fees') {
+    renderFeesTab();
+  } else if (tabId === 't-academic') {
+    renderAcademicTab();
+  }
+}
+
+// ── Render Tab 1: Revenue ─────────────────────────────────────
+function renderRevenueTab() {
+  const d = dashboardData;
+  const s = d.summary || {};
+  const rows = d.centreRows || [];
+  const rev = d.revenue || {};
+  
+  // Calculate total targets and achieved YTD
+  let totalTarget = 0;
+  let totalAchieved = 0;
+  rows.forEach(function(r) {
+    totalTarget += Number(r.targetGst) || 0;
+    totalAchieved += Number(r.achievedGst) || 0;
+  });
+  
+  const pctOverall = totalTarget ? Math.round(totalAchieved / totalTarget * 100) : 0;
+  
+  // Run Rate & Pacing
+  const now = new Date();
+  const endOfFY = new Date(2027, 2, 31); // ends March 31, 2027
+  const msDiff = endOfFY - now;
+  const monthsLeft = Math.max(Math.ceil(msDiff / (1000 * 60 * 60 * 24 * 30.4375)), 1);
+  const gapVal = Math.max(totalTarget - totalAchieved, 0);
+  const reqMonthlyRunRate = monthsLeft ? Math.round(gapVal / monthsLeft) : 0;
+  
+  // KPI Command Strip values
+  document.getElementById('kpi-target').textContent = money(totalTarget);
+  document.getElementById('kpi-achieved').textContent = money(totalAchieved);
+  document.getElementById('kpi-hit').textContent = pctOverall + '% Target Hit YTD';
+  document.getElementById('kpi-runrate').textContent = money(reqMonthlyRunRate) + '/mo';
+  document.getElementById('kpi-months-left').textContent = 'Required over ' + monthsLeft + ' months';
+  document.getElementById('kpi-shortfall').textContent = money(gapVal);
+  
+  // Live Target Progress Bar
+  document.getElementById('pct-label-live').textContent = pctOverall + '%';
+  document.getElementById('progressFill-live').style.width = pctOverall + '%';
+  document.getElementById('progress-desc-live').innerHTML = 'YTD collections: <strong>' + money(totalAchieved) + '</strong> against <strong>' + money(totalTarget) + '</strong> baseline targets.';
+  document.getElementById('progress-target-live').textContent = 'Target: ' + money(totalTarget);
+
+  // Pacing Description
+  let pacingHtml = '';
+  if (pctOverall >= 75) {
+    pacingHtml = '<strong>Pacing Status: Excellent!</strong> Combined branches are performing well above pacing targets. EOY projections show highly likelihood of exceeding overall targets. Maintain current counselor focus.';
+  } else if (pctOverall >= 40) {
+    pacingHtml = '<strong>Pacing Status: Steady.</strong> Currently tracking toward <strong>' + pctOverall + '%</strong> of target. To close the remaining shortfall of <strong>' + money(gapVal) + '</strong>, branch operations must secure average monthly collections of <strong>' + money(reqMonthlyRunRate) + '</strong>.';
+  } else {
+    pacingHtml = '<strong>Pacing Status: Shortfall Warning.</strong> Low overall target achievements YTD. A daily pacing rate increase and strategic target optimization are recommended to close the shortfall.';
+  }
+  document.getElementById('runrate-pacing-desc').innerHTML = pacingHtml;
+
+  // Branch Health Dials Grid
+  renderBranchHealthGrid(rows, rev);
+  
+  // Counselor Leaderboard
+  renderCounselorLeaderboard(rev);
+
+  // Render Chart.js
+  renderRevenueCharts(totalAchieved, rows);
+}
+
+function renderBranchHealthGrid(rows, rev) {
+  const grid = document.getElementById('admin-branch-grid');
+  if (!grid) return;
+  
+  // Group counselor targets/achieved by branch
+  const counsellorsByCentre = {};
+  (rev.targetRows || []).forEach(function(tr) {
+    const c = tr.centre;
+    if (!counsellorsByCentre[c]) counsellorsByCentre[c] = [];
+    const achRow = (rev.counsellors || []).find(rRow => rRow.counsellor === tr.counsellor);
+    const achGst = achRow ? achRow.achievedGst : 0;
+    const achPct = tr.targetGst ? Math.round(achGst / tr.targetGst * 100) : 0;
+    counsellorsByCentre[c].push({
+      counsellor: tr.counsellor,
+      target: tr.targetGst,
+      achieved: achGst,
+      pct: achPct
+    });
+  });
+
+  grid.innerHTML = rows.map(function(r) {
+    const target = Number(r.targetGst) || 0;
+    const achieved = Number(r.achievedGst) || 0;
+    const pct = target ? Math.round(achieved / target * 100) : (achieved ? 100 : 0);
+    const colorClass = pct >= 75 ? 'green' : (pct >= 40 ? 'amber' : 'red');
+    
+    // SVG circular stroke offsets
+    const strokeDash = Math.round(2 * Math.PI * 30);
+    let dashOffset = strokeDash - (pct / 100) * strokeDash;
+    if (pct > 100) dashOffset = 0;
+    if (pct <= 0) dashOffset = strokeDash;
+    
+    const centreId = 'centre-detail-' + r.centre.replace(/\s+/g, '-');
+    const iconId = 'centre-icon-' + r.centre.replace(/\s+/g, '-');
+    
+    // Expandable accordion counselors list
+    const branchCounsellors = counsellorsByCentre[r.centre] || [];
+    let accordionHtml = '';
+    if (branchCounsellors.length) {
+      accordionHtml = 
+        '<div class="centre-detail-accordion" id="' + centreId + '" style="display:none" onclick="event.stopPropagation()">' +
+          '<table class="centre-detail-table">' +
+            '<thead><tr><th>Counselor</th><th style="text-align:right">Target</th><th style="text-align:right">YTD</th><th style="text-align:right">%</th></tr></thead>' +
+            '<tbody>' +
+              branchCounsellors.map(lc => {
+                return '<tr>' +
+                  '<td><strong>' + escC(lc.counsellor) + '</strong></td>' +
+                  '<td style="text-align:right">' + moneyShort(lc.target) + '</td>' +
+                  '<td style="text-align:right;color:var(--green)">' + moneyShort(lc.achieved) + '</td>' +
+                  '<td style="text-align:right;font-weight:600">' + lc.pct + '%</td>' +
+                '</tr>';
+              }).join('') +
+            '</tbody>' +
+          '</table>' +
+        '</div>';
+    } else {
+      accordionHtml = 
+        '<div class="centre-detail-accordion" id="' + centreId + '" style="display:none" onclick="event.stopPropagation()">' +
+          '<div style="font-size:10px;color:var(--text-dim);text-align:center;padding:4px">No counselors mapped.</div>' +
+        '</div>';
+    }
+
+    return '<div class="centre-health-card" onclick="toggleAdminCentreCard(\'' + escC(r.centre) + '\')">' +
+      '<div class="card-header">' +
+        '<h3><span id="' + iconId + '" style="font-size:9px;color:var(--text-dim);margin-right:6px">▶</span>' + escC(r.centre) + '</h3>' +
+        '<span class="pulse-dot ' + colorClass + '"></span>' +
+      '</div>' +
+      '<div class="card-body">' +
+        '<div class="stats-left">' +
+          '<div class="stat-row">Target: <strong>' + moneyShort(target) + '</strong></div>' +
+          '<div class="stat-row">YTD: <strong style="color:var(--green)">' + moneyShort(achieved) + '</strong></div>' +
+          '<div class="stat-row">Fees: <strong>' + moneyShort(r.feeCollected) + '</strong></div>' +
+          '<div class="stat-row" style="font-size:9px;color:var(--text-dim)">' + escC(r.batches || 0) + ' batches · ' + escC(r.students || 0) + ' students</div>' +
+        '</div>' +
+        '<div class="gauge-right">' +
+          '<svg class="gauge-svg" viewBox="0 0 70 70">' +
+            '<circle class="gauge-bg" cx="35" cy="35" r="30"></circle>' +
+            '<circle class="gauge-fill ' + colorClass + '" cx="35" cy="35" r="30" stroke-dasharray="' + strokeDash + '" stroke-dashoffset="' + dashOffset + '"></circle>' +
+          '</svg>' +
+          '<div class="gauge-text">' + pct + '%</div>' +
+        '</div>' +
+      '</div>' +
+      accordionHtml +
+    '</div>';
+  }).join('');
+}
+
+function toggleAdminCentreCard(centreName) {
+  const id = 'centre-detail-' + centreName.replace(/\s+/g, '-');
+  const el = document.getElementById(id);
+  if (el) {
+    const isHidden = el.style.display === 'none';
+    el.style.display = isHidden ? 'block' : 'none';
+    const icon = document.getElementById('centre-icon-' + centreName.replace(/\s+/g, '-'));
+    if (icon) icon.textContent = isHidden ? '▼' : '▶';
+  }
+}
+
+function renderCounselorLeaderboard(rev) {
+  const container = document.getElementById('leaderboard-list');
+  if (!container) return;
+  
+  const leaders = [];
+  (rev.counsellors || []).forEach(function(c) {
+    const target = c.targetGst || 0;
+    const achieved = c.achievedGst || 0;
+    const pct = target ? Math.round(achieved / target * 100) : (achieved ? 100 : 0);
+    
+    // Find designated centre
+    const tRow = (rev.targetRows || []).find(t => t.counsellor === c.counsellor);
+    const centreName = tRow ? tRow.centre : 'Mumbai';
+    
+    leaders.push({
+      counsellor: c.counsellor,
+      centre: centreName,
+      target: target,
+      achieved: achieved,
+      pct: pct
+    });
+  });
+  
+  // Sort descending
+  leaders.sort((a,b) => b.pct - a.pct);
+  
+  container.innerHTML = leaders.map((l, index) => {
+    const warningStyle = l.pct < 40 ? 'border-left: 3px solid var(--red);' : '';
+    const alertLabel = l.pct < 40 ? '<span style="font-size:9px;background:var(--red-dim);color:var(--red);padding:1px 5px;border-radius:3px;margin-left:6px;font-weight:700">Needs Support</span>' : '';
+    
+    return '<div class="leaderboard-row" style="' + warningStyle + '">' +
+      '<div class="rank">#' + (index + 1) + '</div>' +
+      '<div class="info">' +
+        '<div class="name">' + escC(l.counsellor) + alertLabel + '</div>' +
+        '<div class="centre">' + escC(l.centre) + '</div>' +
+      '</div>' +
+      '<div class="stats-right">' +
+        '<div class="val">' + moneyShort(l.achieved) + '</div>' +
+        '<div class="pct">' + l.pct + '% hit</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// ── Render Chart.js ───────────────────────────────────────────
+function renderRevenueCharts(totalAchieved, rows) {
+  const textDim = '#94A3B8';
+  const gridColor = 'rgba(255,255,255,0.04)';
+  
+  Chart.defaults.color = textDim;
+  Chart.defaults.font.family = "'DM Mono', monospace";
+  Chart.defaults.font.size = 10;
+  
+  // Destroy existing charts if they exist
+  if (charts.ytdComparison) charts.ytdComparison.destroy();
+  if (charts.monthlyTrend) charts.monthlyTrend.destroy();
+  
+  // YTD Historical Comparison
+  const ytdCtx = document.getElementById('ytdComparisonChart');
+  if (ytdCtx) {
+    charts.ytdComparison = new Chart(ytdCtx, {
+      type: 'bar',
+      data: {
+        labels: ['YTD 2024', 'YTD 2025', 'YTD 2026', 'YTD 2027 (Current)'],
+        datasets: [{
+          label: 'Revenue YTD (₹ Lakhs)',
+          data: [261.04, 240.36, 335.60, (totalAchieved / 100000)], // convert live collections to lakhs
+          backgroundColor: ['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.12)', 'rgba(76,124,158,0.7)', 'rgba(201,168,76,0.8)'],
+          borderColor: ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.2)', '#4C7C9E', '#C9A84C'],
+          borderWidth: 1.5,
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#101726',
+            borderColor: '#C9A84C',
+            borderWidth: 1,
+            callbacks: { label: ctx => ` ₹${ctx.raw.toFixed(2)}L` }
+          }
+        },
+        scales: {
+          x: { grid: { color: gridColor } },
+          y: { grid: { color: gridColor }, ticks: { callback: v => `₹${v}L` } }
+        }
+      }
+    });
+  }
+  
+  // Monthly collections trend (combines user's historical 2025 data + live 2026 data dynamically)
+  const trendCtx = document.getElementById('monthlyTrendChart');
+  if (trendCtx) {
+    // 2025 baseline monthly lakhs (with GST)
+    const baseline2025 = [46.96, 41.85, 61.99, 32.19, 57.35];
+    
+    // Populate current year live month collections
+    const liveMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const liveData = [83.41, 73.23, 35.54, 69.40, 74.03]; // reference YTD
+    
+    // Fetch remaining from dynamic sheet if available
+    const dynamicMonthly = {};
+    if (dashboardData.revenue && dashboardData.revenue.monthlyRows) {
+      dashboardData.revenue.monthlyRows.forEach(mr => {
+        const mKey = String(mr.month).split('-')[1]; // e.g. "06"
+        const idx = parseInt(mKey, 10) - 1;
+        if (idx >= 5) { // Jun onwards
+          if (!dynamicMonthly[idx]) dynamicMonthly[idx] = 0;
+          dynamicMonthly[idx] += (Number(mr.achievedGst) || 0) / 100000;
+        }
+      });
+    }
+    
+    for (let i = 5; i < 12; i++) {
+      liveData.push(dynamicMonthly[i] || 0);
+    }
+    
+    charts.monthlyTrend = new Chart(trendCtx, {
+      type: 'line',
+      data: {
+        labels: liveMonths,
+        datasets: [
+          {
+            label: '2025 Baseline',
+            data: baseline2025,
+            borderColor: 'rgba(255,255,255,0.2)',
+            backgroundColor: 'transparent',
+            borderWidth: 1.5,
+            borderDash: [5, 5],
+            pointRadius: 2
+          },
+          {
+            label: '2026-27 Live Track',
+            data: liveData,
+            borderColor: '#C9A84C',
+            backgroundColor: 'rgba(201,168,76,0.06)',
+            borderWidth: 2,
+            pointBackgroundColor: '#C9A84C',
+            pointRadius: 4,
+            fill: true,
+            tension: 0.3
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top', labels: { boxWidth: 10 } },
+          tooltip: {
+            backgroundColor: '#101726',
+            borderColor: '#C9A84C',
+            borderWidth: 1,
+            callbacks: { label: ctx => ` ${ctx.dataset.label}: ₹${ctx.raw.toFixed(2)}L` }
+          }
+        },
+        scales: {
+          x: { grid: { color: gridColor } },
+          y: { grid: { color: gridColor }, ticks: { callback: v => `₹${v}L` } }
+        }
+      }
+    });
+  }
+}
+
+// ── Render Tab 2: Targets (Sunil Only) ────────────────────────
+function renderTargetsTab() {
+  if (adminUser.isManager) return; // double protection
+  
+  const d = dashboardData;
+  const rev = d.revenue || {};
+  const tmap = {};
+  const cmap = {};
+  
+  (rev.targetRows || []).forEach(r => tmap[revCanonical(r.counsellor)+'|'+r.centre] = r);
+  (rev.centreTargetRows || []).forEach(r => cmap[r.centre] = r);
+  
+  const rowMapping = adminTargetRows();
+  const centreRows = CENTRES.filter(c => c !== 'Pune');
+  
+  let html = 
+    '<div class="rev-target-panel">' +
+      '<div class="rev-target-panel-head">' +
+        '<h3>2026-27 Centre Annual Targets (Course Fee + GST)</h3>' +
+        '<div class="sub">Set branch-level targets. Tick Revise and enter a reason to update.</div>' +
+      '</div>' +
+      '<table class="rev-target-table" style="margin-bottom:20px">' +
+        '<thead><tr><th>Centre</th><th>Annual Course Fee &#8377;</th><th>Incl. GST (18%)</th><th>Revision Reason</th><th>Status</th></tr></thead>' +
+        '<tbody>';
+        
+  centreRows.forEach(centre => {
+    const saved = cmap[centre] || {};
+    const locked = !!(saved.updatedAt || Number(saved.targetCourse) || Number(saved.targetGst));
+    const courseFee = locked ? (Number(saved.targetCourse)||0) : '';
+    const gstAmt = locked ? (Number(saved.targetGst)||0) : 0;
+    
+    html += 
+      '<tr data-centre-target="' + escC(centre) + '">' +
+        '<td><strong>' + escC(centre) + '</strong></td>' +
+        '<td><input type="number" class="rev-target-input rta-course" min="0" placeholder="e.g. 20000000" ' + (locked?'readonly':'') + ' value="' + escC(courseFee) + '" oninput="syncGstInline(this)"></td>' +
+        '<td><span class="rev-target-gst rta-gst-label">' + (gstAmt ? '<b>' + money(gstAmt) + '</b>' : '—') + '</span></td>' +
+        '<td><input type="text" class="rev-target-input rta-notes" placeholder="Reason to update" ' + (locked?'':'disabled') + '></td>' +
+        '<td>' + (locked ? '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="rta-revise" onchange="toggleTargetRevision(this)"> <span class="rev-target-locked">✓ Set</span></label>' : '<span class="rev-target-missing">Not set</span>') + '</td>' +
+      '</tr>';
+  });
+  
+  html += 
+        '</tbody>' +
+      '</table>' +
+    '</div>' +
+    
+    '<div class="rev-target-panel">' +
+      '<div class="rev-target-panel-head">' +
+        '<h3>2026-27 Counsellor Annual Targets</h3>' +
+        '<div class="sub">Set counselor targets. Tick Revise and enter a reason to update.</div>' +
+      '</div>' +
+      '<table class="rev-target-table">' +
+        '<thead><tr><th>Counsellor</th><th>Centre</th><th>Annual Course Fee &#8377;</th><th>Incl. GST (18%)</th><th>Revision Reason</th><th>Status</th></tr></thead>' +
+        '<tbody>';
+        
+  rowMapping.forEach(row => {
+    const key = revCanonical(row.counsellor) + '|' + row.centre;
+    const saved = tmap[key] || {};
+    const locked = !!(saved.updatedAt || Number(saved.targetCourse) || Number(saved.targetGst));
+    const courseFee = locked ? (Number(saved.targetCourse)||0) : '';
+    const gstAmt = locked ? (Number(saved.targetGst)||0) : 0;
+    
+    html += 
+      '<tr data-counsellor="' + escC(row.counsellor) + '" data-centre="' + escC(row.centre) + '">' +
+        '<td><strong>' + escC(row.counsellor) + '</strong></td>' +
+        '<td>' + escC(row.centre) + '</td>' +
+        '<td><input type="number" class="rev-target-input rta-course" min="0" placeholder="e.g. 6500000" ' + (locked?'readonly':'') + ' value="' + escC(courseFee) + '" oninput="syncGstInline(this)"></td>' +
+        '<td><span class="rev-target-gst rta-gst-label">' + (gstAmt ? '<b>' + money(gstAmt) + '</b>' : '—') + '</span></td>' +
+        '<td><input type="text" class="rev-target-input rta-notes" placeholder="Reason to update" ' + (locked?'':'disabled') + '></td>' +
+        '<td>' + (locked ? '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="rta-revise" onchange="toggleTargetRevision(this)"> <span class="rev-target-locked">✓ Set</span></label>' : '<span class="rev-target-missing">Not set</span>') + '</td>' +
+      '</tr>';
+  });
+  
+  html += 
+        '</tbody>' +
+      '</table>' +
+      '<div class="rev-target-save-row">' +
+        '<span class="rev-target-meta" id="rev-target-save-meta"></span>' +
+        '<button class="btn btn-gold" style="width:auto;padding:8px 24px" onclick="saveAdminTargets()">Save Annual Targets</button>' +
+      '</div>' +
+    '</div>';
+    
+  document.getElementById('target-editor-split').innerHTML = html;
+}
+
+function syncGstInline(input) {
+  const tr = input.closest('tr');
+  if (!tr) return;
+  const label = tr.querySelector('.rta-gst-label');
+  if (!label) return;
+  const gst = revenueGst(input.value || 0);
+  label.innerHTML = input.value ? '<b>' + money(gst) + '</b>' : '—';
+}
+
+function toggleTargetRevision(box) {
+  const tr = box.closest('tr');
+  if (!tr) return;
+  const inp = tr.querySelector('.rta-course');
+  const notes = tr.querySelector('.rta-notes');
+  if (inp) inp.readOnly = !box.checked;
+  if (notes) notes.disabled = !box.checked;
+}
+
+function saveAdminTargets() {
+  if (adminUser.isManager) return;
+  
+  const wrap = document.getElementById('target-editor-split');
+  const meta = document.getElementById('rev-target-save-meta');
+  const rows = [];
+  const centreRows = [];
+  
+  const tmap = {};
+  const cmap = {};
+  const rev = dashboardData.revenue || {};
+  (rev.targetRows || []).forEach(r => tmap[revCanonical(r.counsellor)+'|'+r.centre] = r);
+  (rev.centreTargetRows || []).forEach(r => cmap[r.centre] = r);
+  
+  // Centre targets check
+  let valid = true;
+  Array.from(wrap.querySelectorAll('tr[data-centre-target]')).forEach(tr => {
+    const centre = tr.getAttribute('data-centre-target');
+    const inp = tr.querySelector('.rta-course');
+    const revise = tr.querySelector('.rta-revise');
+    const notes = tr.querySelector('.rta-notes');
+    if (!inp || !inp.value) return;
+    
+    const course = Number(inp.value)||0;
+    if (!course) return;
+    
+    const locked = !!(cmap[centre] && ((Number(cmap[centre].targetCourse)||0) || (Number(cmap[centre].targetGst)||0)));
+    if (locked && !(revise && revise.checked)) return;
+    if (locked && !(notes && notes.value.trim())) {
+      meta.textContent = 'Revision reason is required for locked centre targets (' + centre + ').';
+      valid = false;
+    }
+    centreRows.push({
+      period: '2026-27',
+      centre: centre,
+      targetCourse: course,
+      targetGst: revenueGst(course),
+      notes: (notes && notes.value.trim()) || '',
+      revise: locked ? 'Y' : 'N'
+    });
+  });
+  
+  if (!valid) return;
+  
+  // Counselor targets check
+  Array.from(wrap.querySelectorAll('tr[data-counsellor]')).forEach(tr => {
+    const counsellor = tr.getAttribute('data-counsellor');
+    const centre = tr.getAttribute('data-centre');
+    const inp = tr.querySelector('.rta-course');
+    const revise = tr.querySelector('.rta-revise');
+    const notes = tr.querySelector('.rta-notes');
+    if (!inp || !inp.value) return;
+    
+    const course = Number(inp.value)||0;
+    if (!course) return;
+    
+    const key = revCanonical(counsellor) + '|' + centre;
+    const locked = !!(tmap[key] && ((Number(tmap[key].targetCourse)||0) || (Number(tmap[key].targetGst)||0)));
+    if (locked && !(revise && revise.checked)) return;
+    if (locked && !(notes && notes.value.trim())) {
+      meta.textContent = 'Revision reason is required for locked counsellor targets (' + counsellor + ').';
+      valid = false;
+    }
+    rows.push({
+      period: '2026-27',
+      counsellor: counsellor,
+      centre: centre,
+      targetCourse: course,
+      targetGst: revenueGst(course),
+      notes: (notes && notes.value.trim()) || '',
+      revise: locked ? 'Y' : 'N'
+    });
+  });
+  
+  if (!valid) return;
+  
+  if (!rows.length && !centreRows.length) {
+    meta.textContent = 'No target changes to save.';
+    return;
+  }
+  
+  const totalCount = rows.length + centreRows.length;
+  meta.textContent = 'Saving ' + totalCount + ' targets...';
+  
+  const params = {
+    action: 'saveRevenueTargets',
+    centreTargets: JSON.stringify(centreRows),
+    targets: JSON.stringify(rows),
+    monthlyRows: '[]',
+    monthlyScope: 'null',
+    period: '2026-27',
+    isAdmin: 'true',
+    isManager: 'false',
+    updatedBy: adminUser.name
+  };
+  
+  gasGet(params, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      const msg = (d && d.message) || 'Error saving targets.';
+      meta.textContent = msg;
+      showToast(msg, 'error');
+      return;
+    }
+    showToast('Saved ' + totalCount + ' annual target configurations successfully.');
+    dashboardData = null; // force reload
+    loadDashboardData();
+  });
+}
+
+// ── Render Tab 3: Fees Summary ────────────────────────────────
+function renderFeesTab() {
+  const d = dashboardData;
+  const f = d.fee || {};
+  const national = f.national || {};
+  const centres = f.centres || [];
+  const batches = f.batches || [];
+  
+  // Set KPI Command Bar
+  document.getElementById('fee-kpi-expected').textContent = money(national.expected);
+  document.getElementById('fee-kpi-collected').textContent = money(national.collected);
+  document.getElementById('fee-kpi-outstanding').textContent = money(national.outstanding);
+  document.getElementById('fee-kpi-overdue').textContent = money(national.overdue);
+  
+  // Centres Tbody
+  const centreBody = document.getElementById('fee-centre-tbody');
+  if (centres.length) {
+    centreBody.innerHTML = centres.map(c => {
+      return '<tr>' +
+        '<td><strong>' + escC(c.centre) + '</strong></td>' +
+        '<td style="text-align:right">' + c.students + '</td>' +
+        '<td style="text-align:right">' + money(c.expected) + '</td>' +
+        '<td style="text-align:right;color:var(--green)">' + money(c.collected) + '</td>' +
+        '<td style="text-align:right">' + money(c.outstanding) + '</td>' +
+        '<td style="text-align:right;color:var(--red)">' + money(c.overdue) + '</td>' +
+      '</tr>';
+    }).join('');
+  } else {
+    centreBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-dim)">No fee collections recorded.</td></tr>';
+  }
+  
+  // Batches Tbody
+  const batchBody = document.getElementById('fee-batch-tbody');
+  if (batches.length) {
+    // Sort by expected collections descending
+    batches.sort((a,b) => b.expected - a.expected);
+    batchBody.innerHTML = batches.map(b => {
+      return '<tr>' +
+        '<td><strong>' + escC(b.batchCode) + '</strong></td>' +
+        '<td>' + escC(b.course) + '</td>' +
+        '<td style="text-align:right">' + b.students + '</td>' +
+        '<td style="text-align:right">' + money(b.expected) + '</td>' +
+        '<td style="text-align:right;color:var(--green)">' + money(b.collected) + '</td>' +
+        '<td style="text-align:right">' + money(b.outstanding) + '</td>' +
+        '<td style="text-align:right;color:var(--red)">' + money(b.overdue) + '</td>' +
+      '</tr>';
+    }).join('');
+  } else {
+    batchBody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-dim)">No fee logs recorded.</td></tr>';
+  }
+}
+
+// ── Render Tab 4: Academic Summary ────────────────────────────
+function renderAcademicTab() {
+  // We will load Bhavin's dashboard endpoint so Sunil and Amit get all student comments, ratings, and attendance watchlists!
+  const params = {
+    action: 'getAcademicHeadDashboard',
+    name: 'Bhavin Patel' // Academic Head auth context
+  };
+  
+  gasGet(params, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      document.getElementById('acad-rating-tbody').innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--red)">Could not load academic ratings.</td></tr>';
+      return;
+    }
+    
+    // Ratings Table
+    const ratings = Object.values(d.instructorStats || {});
+    const rBody = document.getElementById('acad-rating-tbody');
+    if (ratings.length) {
+      rBody.innerHTML = ratings.map(inst => {
+        const avg = inst.ratingCount ? (inst.totalRating / inst.ratingCount).toFixed(1) : 'N/A';
+        const stars = inst.ratingCount ? '⭐'.repeat(Math.round(inst.totalRating / inst.ratingCount)) : '—';
+        return '<tr>' +
+          '<td><strong>' + escC(inst.name) + '</strong></td>' +
+          '<td style="text-align:right">' + inst.ratingCount + ' ratings</td>' +
+          '<td style="text-align:right;font-weight:600"><span class="star-rating">' + stars + '</span> (' + avg + '/5.0)</td>' +
+        '</tr>';
+      }).join('');
+    } else {
+      rBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-dim)">No instructor ratings logs yet.</td></tr>';
+    }
+    
+    // Comments List (Student voice)
+    const comms = d.comments || [];
+    const cList = document.getElementById('acad-comments-list');
+    if (comms.length) {
+      cList.innerHTML = comms.map(c => {
+        const ratingStars = '⭐'.repeat(Number(c.rating) || 0);
+        return '<div class="timeline-card">' +
+          '<div class="timeline-head">' +
+            '<div class="timeline-title">Session: ' + escC(c.sessionCode || 'General') + '</div>' +
+            '<div class="timeline-meta">' + escC(c.studentName || '[Anonymous]') + ' · <span class="star-rating">' + ratingStars + '</span></div>' +
+          '</div>' +
+          '<div class="timeline-topic">Instructor: <strong>' + escC(c.instructor) + '</strong><br>' + escC(c.comment) + '</div>' +
+        '</div>';
+      }).join('');
+    } else {
+      cList.innerHTML = '<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:12px">No text comments recorded.</div>';
+    }
+    
+    // Attendance by centre
+    const attCentres = d.attendance ? Object.values(d.attendance.centres || {}) : [];
+    const aBody = document.getElementById('acad-attendance-tbody');
+    if (attCentres.length) {
+      aBody.innerHTML = attCentres.map(c => {
+        const color = c.avgPct >= 75 ? 'var(--green)' : (c.avgPct >= 40 ? 'var(--gold)' : 'var(--red)');
+        return '<tr>' +
+          '<td><strong>' + escC(c.centre) + '</strong></td>' +
+          '<td style="text-align:right;font-weight:bold;color:' + color + '">' + c.avgPct + '% avg</td>' +
+        '</tr>';
+      }).join('');
+    } else {
+      aBody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:var(--text-dim)">No attendance records.</td></tr>';
+    }
+    
+    // Test Watchlist
+    const tests = d.tests ? Object.values(d.tests.centres || {}) : [];
+    const tBody = document.getElementById('acad-test-tbody');
+    if (tests.length) {
+      tBody.innerHTML = tests.map(c => {
+        return '<tr>' +
+          '<td><strong>' + escC(c.centre) + '</strong></td>' +
+          '<td style="text-align:right;font-weight:bold">' + c.tests + ' tests conducted</td>' +
+        '</tr>';
+      }).join('');
+    } else {
+      tBody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:var(--text-dim)">No test records.</td></tr>';
+    }
+  });
+}
+
+// ── Export CSV Utilities ──────────────────────────────────────
+function downloadAdminRevenueCsv() {
+  if (!dashboardData || !dashboardData.revenue) return;
+  const rows = (dashboardData.revenue.monthlyPreviewRows || dashboardData.revenue.monthlyRows) || [];
+  const lines = [['Month','Period','Counsellor','Designated Centre','Admitted Centre','Category','Students','Course Fee','GST','Saved By','Notes']];
+  rows.forEach(function(r) {
+    const category = r.assignedCentre === r.businessCentre ? 'Own Centre' : 'Other Centre';
+    lines.push([
+      r.month, r.period, r.counsellor, r.assignedCentre, r.businessCentre, category,
+      r.studentCount, r.achievedCourse, r.achievedGst, r.updatedBy || 'System', r.notes || ''
+    ]);
+  });
+  triggerCsvDownload(lines, 'HOD-YTD-Revenue-Report-2026-27.csv');
+}
+
+function downloadAdminFeesCsv() {
+  if (!dashboardData || !dashboardData.fee) return;
+  const batches = dashboardData.fee.batches || [];
+  const lines = [['Batch Code','Course','Students','Expected Net Fees','Total Collected','Outstanding Balances','Overdue Total']];
+  batches.forEach(b => {
+    lines.push([
+      b.batchCode, b.course, b.students, b.expected, b.collected, b.outstanding, b.overdue
+    ]);
+  });
+  triggerCsvDownload(lines, 'National-Fee-Reconciliation-Report.csv');
+}
+
+function triggerCsvDownload(lines, filename) {
+  const csv = lines.map(line => line.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Helper Utilities ──────────────────────────────────────────
+function money(v) {
+  return '₹' + Math.round(Number(v) || 0).toLocaleString('en-IN');
+}
+
+function moneyShort(v) {
+  const val = Number(v) || 0;
+  if (val >= 10000000) {
+    return '₹' + (val / 10000000).toFixed(2) + ' Cr';
+  } else if (val >= 100000) {
+    return '₹' + (val / 100000).toFixed(2) + 'L';
+  }
+  return '₹' + Math.round(val).toLocaleString('en-IN');
+}
+
+function revenueGst(v) {
+  return Math.round((Number(v) || 0) * 1.18);
+}
+
+function escC(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function revCanonical(name) {
+  var k = String(name||'').trim().toLowerCase().replace(/\s+/g,' ');
+  if (k === 'omkar kadam' || k === 'omkar') return 'omkar';
+  return k;
+}
+
+function adminTargetRows() {
+  return [
+    { counsellor: 'Anuradha', centre: 'Mumbai' },
+    { counsellor: 'Bianca', centre: 'Mumbai' },
+    { counsellor: 'Omkar Kadam', centre: 'Mumbai' },
+    { counsellor: 'Sunita', centre: 'Delhi' },
+    { counsellor: 'Arpita', centre: 'Kolkata' },
+    { counsellor: 'Rohit', centre: 'Surat' },
+    { counsellor: 'Preethy', centre: 'Chennai' },
+    { counsellor: 'Nadiya', centre: 'Bangalore' },
+    { counsellor: 'Rajini', centre: 'Hyderabad' },
+    { counsellor: 'Kripa', centre: 'Jaipur' },
+    { counsellor: 'Arjun Mistry', centre: 'Ahmedabad' },
+    { counsellor: 'Piyush Ahuja', centre: 'Lucknow' }
+  ];
+}
+</script>
+</body>
+</html>

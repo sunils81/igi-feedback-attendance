@@ -71,12 +71,17 @@ const DUAL_ROLE = {
   'Anuradha':      { centres:['Mumbai','Lucknow','Ahmedabad'] }
 };
 
+// ── Manager roles (dashboard access, view-only, reporting control) ─
+const MANAGER_ROLE = {
+  'Amit Sidpura': { centres: ['Mumbai','Lucknow','Ahmedabad','Chennai','Delhi','Surat','Kolkata','Bangalore','Hyderabad','Jaipur'] }
+};
+
 // ── Instructor credentials (Option B — unique per instructor) ─
 const INSTRUCTOR_CREDS = {
   'Amit Sidpura':     'IGIAmit2026',
   'Asmita Saroday':   'IGIAsmita2026',
   'Arjun Mistry':     'IGIArjun2026',
-  'Bhavin Patel':     'IGIBhavin2026',
+  'Bhavin Patel':     '*Apple321',
   'Sneha Garodia':    'IGISneha2026',
   'Khorehmand Kasad': 'IGIKhore2026',
   'Nishchay Kapoor':  'IGINishchay2026',
@@ -857,6 +862,13 @@ function doGet(e) {
       }
       const name = p.name||'';
       const pin  = p.pin ||p.pass||'';
+      // Check manager credentials
+      const mgr = MANAGER_ROLE[name];
+      const mgrCred = mgr ? authenticateUser(ss,'Instructor',name,pin) : {ok:false};
+      if (mgr && mgrCred.ok) {
+        const adminBatches = fetchBatches(ss, [], '');
+        return respond({status:'ok', counselorName:name, centres:Object.keys(CENTRE_CODES), isAdmin:true, isManager:true, authRole:'Manager', mustChangePassword:mgrCred.credential.mustChange, batches:adminBatches});
+      }
       // Check counselor credentials first
       const cred = COUNSELOR_CREDS[name];
       const sheetCred = cred ? authenticateUser(ss,'Counselor',name,pin) : {ok:false};
@@ -1428,12 +1440,14 @@ function doGet(e) {
       if (!auth.ok)
         return respond({status:'error',reason:'wrong_credentials'});
       const dual = DUAL_ROLE[name];
+      const isHead = name==='Bhavin Patel';
       return respond({
         status:'ok',
         instructorName: name,
         isDualRole:  !!dual,
+        isAcademicHead: isHead,
         centres:     dual ? dual.centres : [],
-        authRole:    'Instructor',
+        authRole:    isHead ? 'Academic Head' : 'Instructor',
         mustChangePassword: auth.credential.mustChange
       });
     }
@@ -2105,8 +2119,109 @@ function doGet(e) {
       return respond(buildAdminDashboard(ss,p));
     }
 
+    if (act==='getAcademicHeadDashboard') {
+      ensureSheets(ss);
+      if (p.name !== 'Bhavin Patel') return respond({status:'error',reason:'auth'});
+      
+      var shFb = ss.getSheetByName(SH_FEEDBACK);
+      var feedbackRows = shFb && shFb.getLastRow() > 1 
+        ? shFb.getRange(2, 1, shFb.getLastRow() - 1, 17).getValues() 
+        : [];
+      
+      var instructorStats = {};
+      var comments = [];
+      
+      feedbackRows.forEach(function(r) {
+        var inst = String(r[6] || '').trim();
+        var rating = Number(r[9]) || 0;
+        var isAnon = String(r[15]).toUpperCase() === 'Y';
+        var studentName = isAnon ? '[Anonymous]' : String(r[2] || '').trim();
+        
+        if (inst) {
+          if (!instructorStats[inst]) {
+            instructorStats[inst] = { name: inst, totalRating: 0, ratingCount: 0, sessions: {} };
+          }
+          if (rating > 0) {
+            instructorStats[inst].totalRating += rating;
+            instructorStats[inst].ratingCount += 1;
+          }
+          if (r[0]) {
+            instructorStats[inst].sessions[String(r[0]).toUpperCase()] = 1;
+          }
+        }
+        
+        var q3 = String(r[11] || '').trim();
+        var q4 = String(r[12] || '').trim();
+        var q5 = String(r[13] || '').trim();
+        var q6 = String(r[14] || '').trim();
+        
+        if (q3 || q4 || q5 || q6) {
+          comments.push({
+            sessionCode: r[0],
+            studentId: r[1],
+            studentName: studentName,
+            batchCode: r[3],
+            centre: r[4],
+            course: r[5],
+            instructor: inst,
+            topic: r[7],
+            rating: rating,
+            q3: q3,
+            q4: q4,
+            q5: q5,
+            q6: q6,
+            isAnonymous: isAnon,
+            timestamp: r[16] ? (r[16] instanceof Date ? r[16].toISOString() : String(r[16])) : ''
+          });
+        }
+      });
+      
+      var statsList = Object.keys(instructorStats).map(function(k) {
+        var s = instructorStats[k];
+        return {
+          instructor: s.name,
+          avgRating: s.ratingCount ? Math.round((s.totalRating / s.ratingCount) * 10) / 10 : 0,
+          ratingsCount: s.ratingCount,
+          sessionsCount: Object.keys(s.sessions).length
+        };
+      });
+      
+      comments.sort(function(a,b) { return String(b.timestamp).localeCompare(String(a.timestamp)); });
+      
+      var shBatch = ss.getSheetByName(SH_BATCHES);
+      var batchRows = shBatch && shBatch.getLastRow() > 1 
+        ? shBatch.getRange(2, 1, shBatch.getLastRow() - 1, 10).getValues().filter(function(r) { return r[0]; }) 
+        : [];
+      
+      var attendance = buildAdminAttendanceSummary(ss, batchRows);
+      
+      var batchMap = {};
+      batchRows.forEach(function(b) {
+        var code = String(b[0]).toUpperCase();
+        batchMap[code] = {
+          batchCode: code,
+          centre: b[1] || '',
+          course: b[2] || '',
+          type: b[3] || '',
+          instructor: detectSlotOrDate(b[4]) ? (b[9] || '') : (b[8] || '')
+        };
+      });
+      var testSummary = buildAdminTestSummary(ss, batchMap);
+      
+      return respond({
+        status: 'ok',
+        instructorStats: statsList,
+        comments: comments.slice(0, 150),
+        attendance: attendance,
+        tests: testSummary
+      });
+    }
+
     if (act==='saveRevenueTargets') {
       ensureSheets(ss);
+      if (String(p.isManager)==='true') {
+        return respond({status:'error', reason:'auth', message:'Managers are not allowed to save or modify annual targets.'});
+      }
       var rows=[], centreRows=[], monthlyRows=[], monthlyScope=null;
       try { rows=JSON.parse(p.targets||'[]'); } catch(_e) { rows=[]; }
       try { centreRows=JSON.parse(p.centreTargets||'[]'); } catch(_e2) { centreRows=[]; }

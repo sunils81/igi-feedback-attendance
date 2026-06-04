@@ -63,6 +63,144 @@
 .password-card{display:none;border:1px solid rgba(201,168,76,.35);background:#FFF9E6}
 .password-card.required{display:block}
 .password-card .grid2{margin-top:10px}
+
+/* ── Academic Head Dashboard Styles ── */
+.academic-summary-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.ac-kpi-card {
+  background: linear-gradient(135deg, var(--navy) 0%, #1A2E44 100%);
+  border: 1.5px solid rgba(201, 168, 76, 0.25);
+  border-radius: 12px;
+  padding: 16px;
+  color: var(--white);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  transition: transform 0.2s;
+}
+.ac-kpi-card:hover {
+  transform: translateY(-2px);
+}
+.ac-kpi-card .lbl {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.6);
+  margin-bottom: 4px;
+}
+.ac-kpi-card .val {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--gold);
+  font-family: 'DM Mono', monospace;
+}
+.ac-kpi-card .sub-meta {
+  font-size: 11px;
+  color: rgba(255,255,255,0.4);
+  margin-top: 4px;
+}
+
+.instructor-ratings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.instructor-ratings-table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 2px solid var(--border);
+  padding: 8px 10px;
+}
+.instructor-ratings-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--off);
+  vertical-align: middle;
+}
+.star-rating {
+  color: #D4AF37;
+  font-size: 14px;
+  margin-right: 4px;
+}
+
+.comment-bubble {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
+  position: relative;
+  transition: border-color 0.2s;
+}
+.comment-bubble:hover {
+  border-color: var(--gold);
+}
+.comment-bubble .comment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  border-bottom: 1px dashed var(--off);
+  padding-bottom: 6px;
+}
+.comment-bubble .comment-inst {
+  font-weight: 700;
+  color: var(--navy);
+}
+.comment-bubble .comment-text-section {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--navy);
+  margin-top: 6px;
+}
+.comment-bubble .comment-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.comment-bubble .comment-val {
+  margin-bottom: 8px;
+  font-family: sans-serif;
+  white-space: pre-wrap;
+}
+.comment-bubble .comment-q6-box {
+  background: #FFFBEB;
+  border-left: 3px solid #D97706;
+  padding: 8px 10px;
+  border-radius: 0 6px 6px 0;
+  margin-top: 8px;
+}
+.anon-badge {
+  background: #FEF2F2;
+  color: #C94A4A;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.at-risk-row {
+  background-color: #FEF2F2 !important;
+  color: #C94A4A !important;
+}
+.at-risk-badge {
+  background: #FEF2F2;
+  color: #C94A4A;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 8px;
+  display: inline-block;
+}
 </style>
 </head>
 <body>
@@ -127,6 +265,7 @@
     <button class="tab" onclick="iTab('t-marks')">📝 Marks</button>
     <button class="tab" onclick="iTab('t-mybatches')">🗂 My Batches</button>
     <button class="tab" id="t-batchmgmt-tab" style="display:none" onclick="iTab('t-batchmgmt')">🏫 Batches</button>
+    <button class="tab" id="t-academic-tab" style="display:none" onclick="iTab('t-academic')">🎓 Academic Overview</button>
   </div>
 
   <div id="instructor-summary" class="dashboard-summary" style="display:none"></div>
@@ -315,6 +454,51 @@
     </div>
   </div>
 
+  <!-- ── TAB 6: ACADEMIC OVERVIEW (academic head only) ── -->
+  <div id="t-academic" class="tab-content">
+    <!-- Academic summary widgets -->
+    <div id="academic-summary-wrap" class="academic-summary-row"></div>
+
+    <div class="grid2" style="grid-template-columns: 1fr; gap: 16px;">
+      <!-- Instructors ratings card -->
+      <div class="card">
+        <div class="section-tag">Team Performance</div>
+        <h2>Instructor Ratings</h2>
+        <div id="academic-ratings-wrap"><div class="spinner-wrap"><div class="spinner"></div><p>Fetching team scores…</p></div></div>
+      </div>
+      
+      <!-- Student Voice / Comments Card -->
+      <div class="card">
+        <div class="section-tag">Student Voice</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:8px">
+          <h2 style="margin:0">Feedback Messages Ledger</h2>
+          <label style="font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="anon-only-toggle" onchange="filterAcademicComments()" style="width:16px;height:16px;accent-color:var(--gold)">
+            Anonymous Feedback Only
+          </label>
+        </div>
+        <p class="sub">Raw comments left by students, including ratings, suggestions, and messages meant for management.</p>
+        <div id="academic-comments-wrap" style="max-height:600px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--off)"></div>
+      </div>
+
+      <!-- Batch Attendance health -->
+      <div class="card">
+        <div class="section-tag">Attendance Tracker</div>
+        <h2>Batch Attendance Health</h2>
+        <p class="sub">Attendance averages across active batches. Highlights low-performing batches (&lt;75% avg attendance).</p>
+        <div id="academic-attendance-wrap"></div>
+      </div>
+
+      <!-- Academic Test Marks watch list -->
+      <div class="card">
+        <div class="section-tag">Academic Assessment</div>
+        <h2>Test Marks Watchlist</h2>
+        <p class="sub">Aggregated pass rates and low score watchlists across all batches.</p>
+        <div id="academic-tests-wrap"></div>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /wrap -->
 </div><!-- /s-main -->
 
@@ -323,6 +507,9 @@ let instructorName = '';
 let instructorAuthRole = 'Instructor';
 let instructorMustChangePassword = false;
 let isDualRole     = false;
+let isAcademicHead = false;
+let academicDashboardData = null;
+let academicDashboardLoading = false;
 let dualCentres    = [];
 let currentBatch   = '';
 let currentAssessmentId = '';
@@ -353,10 +540,11 @@ function iTab(id) {
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const idx = ['t-session','t-attendance','t-marks','t-mybatches','t-batchmgmt'].indexOf(id);
+  const idx = ['t-session','t-attendance','t-marks','t-mybatches','t-batchmgmt','t-academic'].indexOf(id);
   document.querySelectorAll('.tab')[idx].classList.add('active');
   if (id==='t-attendance') stopAttendanceRefresh();
   if (id==='t-mybatches')  loadMyBatches();
+  if (id==='t-academic')   loadAcademicDashboard(false);
 }
 
 // ── Login ─────────────────────────────────────────────────────
@@ -376,10 +564,16 @@ function doLogin() {
     instructorMustChangePassword = !!d.mustChangePassword;
     isDualRole     = !!d.isDualRole;
     dualCentres    = d.centres || [];
+    isAcademicHead = !!d.isAcademicHead;
     document.getElementById('portal-name').textContent = name;
     // Show batch management tab for dual-role
     if (isDualRole) {
       document.getElementById('t-batchmgmt-tab').style.display = 'flex';
+    }
+    // Show academic tab for Bhavin
+    if (isAcademicHead) {
+      document.getElementById('t-academic-tab').style.display = 'flex';
+      setTimeout(function(){ iTab('t-academic'); }, 100);
     }
     showScreen('s-main');
     applyPasswordChangeState();
@@ -1057,6 +1251,201 @@ function renderInstructorSummary() {
     '<div class="summary-tile"><div class="k">Attendance Count</div><div class="v">' + started + '</div><div class="s">Sessions accepting attendance</div></div>' +
     '<div class="summary-tile ' + (pendingSessions ? 'warn' : 'ok') + '"><div class="k">Pending Marks</div><div class="v">' + pendingSessions + '</div><div class="s">Sessions still to start</div></div>' +
     '<div class="summary-tile"><div class="k">Upcoming Tests</div><div class="v">' + upcoming + '</div><div class="s">' + instructorBatchesCache.length + ' assigned batches</div></div>';
+}
+
+function loadAcademicDashboard(force) {
+  if (!isAcademicHead) return;
+  if (academicDashboardLoading) return;
+  if (academicDashboardData && !force) { renderAcademicDashboard(); return; }
+  academicDashboardLoading = true;
+  
+  document.getElementById('academic-ratings-wrap').innerHTML = loadingState('Fetching academic dashboard stats...');
+  document.getElementById('academic-comments-wrap').innerHTML = loadingState('Loading feedbacks...');
+  
+  gasGet({action: 'getAcademicHeadDashboard', name: instructorName}, function(e, d) {
+    academicDashboardLoading = false;
+    if (e || !d || d.status !== 'ok') {
+      showToast('Could not load academic dashboard.', 'error');
+      document.getElementById('academic-ratings-wrap').innerHTML = '<p style="color:var(--red);font-size:13px">Failed to load academic dashboard.</p>';
+      return;
+    }
+    academicDashboardData = d;
+    renderAcademicDashboard();
+  });
+}
+
+function renderAcademicDashboard() {
+  if (!academicDashboardData) return;
+  var d = academicDashboardData;
+  
+  // 1. Render Summary KPI Cards
+  var avgTotal = 0, countTotal = 0;
+  (d.instructorStats || []).forEach(function(i) {
+    avgTotal += i.avgRating * i.ratingsCount;
+    countTotal += i.ratingsCount;
+  });
+  var overallAvg = countTotal ? Math.round(avgTotal / countTotal * 10) / 10 : 0;
+  
+  var summaryWrap = document.getElementById('academic-summary-wrap');
+  if (summaryWrap) {
+    summaryWrap.innerHTML = 
+      '<div class="ac-kpi-card">' +
+        '<div class="lbl">Avg Instructor Rating</div>' +
+        '<div class="val">★ ' + overallAvg + '</div>' +
+        '<div class="sub-meta">Across ' + countTotal + ' student feedbacks</div>' +
+      '</div>' +
+      '<div class="ac-kpi-card">' +
+        '<div class="lbl">Institutional Attendance</div>' +
+        '<div class="val">' + (d.attendance && d.attendance.national && d.attendance.national.avgPct || 0) + '%</div>' +
+        '<div class="sub-meta">' + (d.attendance && d.attendance.national && d.attendance.national.atRisk || 0) + ' students at risk (&lt;75%)</div>' +
+      '</div>' +
+      '<div class="ac-kpi-card">' +
+        '<div class="lbl">Total Assessments</div>' +
+        '<div class="val">' + (d.tests && d.tests.national && d.tests.national.tests || 0) + '</div>' +
+        '<div class="sub-meta">Avg Class score: ' + (d.tests && d.tests.national && d.tests.national.avgPct || 0) + '%</div>' +
+      '</div>';
+  }
+
+  // 2. Render Instructor Ratings Scorecard
+  var ratingsWrap = document.getElementById('academic-ratings-wrap');
+  if (ratingsWrap) {
+    if (!d.instructorStats || !d.instructorStats.length) {
+      ratingsWrap.innerHTML = '<p style="color:var(--muted)">No ratings recorded yet.</p>';
+    } else {
+      var html = '<table class="instructor-ratings-table"><thead><tr><th>Instructor</th><th>Average Rating</th><th>Total Ratings</th><th>Sessions Taught</th></tr></thead><tbody>';
+      html += d.instructorStats.map(function(s) {
+        var stars = '★'.repeat(Math.round(s.avgRating)) + '☆'.repeat(5 - Math.round(s.avgRating));
+        return '<tr>' +
+          '<td><strong>' + escHtml(s.instructor) + '</strong></td>' +
+          '<td><span class="star-rating">' + stars + '</span> <strong>' + s.avgRating + '</strong> / 5</td>' +
+          '<td>' + s.ratingsCount + ' reviews</td>' +
+          '<td>' + s.sessionsCount + ' active sessions</td>' +
+        '</tr>';
+      }).join('');
+      html += '</tbody></table>';
+      ratingsWrap.innerHTML = html;
+    }
+  }
+
+  // 3. Render Feedback Comments Ledger
+  filterAcademicComments();
+
+  // 4. Render Batch Attendance Health
+  var attWrap = document.getElementById('academic-attendance-wrap');
+  if (attWrap) {
+    var batches = d.attendance && d.attendance.batches || [];
+    if (!batches.length) {
+      attWrap.innerHTML = '<p style="color:var(--muted)">No batches found.</p>';
+    } else {
+      var html = '<table class="instructor-ratings-table"><thead><tr><th>Batch Code</th><th>Centre</th><th>Course</th><th>Students</th><th>Avg Attendance</th><th>Alerts</th></tr></thead><tbody>';
+      html += batches.map(function(b) {
+        var trClass = b.avgPct < 75 ? 'class="at-risk-row"' : '';
+        var alertBadge = b.avgPct < 75 ? '<span class="at-risk-badge">Low Attendance (' + b.atRisk + ' at risk)</span>' : 'Normal';
+        return '<tr ' + trClass + '>' +
+          '<td><strong>' + escHtml(b.batchCode) + '</strong></td>' +
+          '<td>' + escHtml(b.centre) + '</td>' +
+          '<td>' + escHtml(b.course) + '</td>' +
+          '<td>' + b.students + '</td>' +
+          '<td><strong>' + b.avgPct + '%</strong></td>' +
+          '<td>' + alertBadge + '</td>' +
+        '</tr>';
+      }).join('');
+      html += '</tbody></table>';
+      attWrap.innerHTML = html;
+    }
+  }
+
+  // 5. Render Test Marks Summary
+  var testsWrap = document.getElementById('academic-tests-wrap');
+  if (testsWrap) {
+    var assessments = d.tests && d.tests.assessments || [];
+    var lowScores = d.tests && d.tests.lowScore || [];
+    
+    var html = '<div style="margin-bottom:12px;font-size:12px;font-weight:700;color:var(--navy)">Assessments Conducted</div>';
+    if (!assessments.length) {
+      html += '<p style="color:var(--muted)">No tests conducted yet.</p>';
+    } else {
+      html += '<div style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 20px;"><table class="instructor-ratings-table"><thead><tr><th>Test Details</th><th>Course & Batch</th><th>Appeared</th><th>Avg Score</th><th>Pass Rate</th></tr></thead><tbody>';
+      html += assessments.map(function(a) {
+        return '<tr>' +
+          '<td><strong>' + escHtml(a.testName) + '</strong><div style="font-size:10px;color:var(--muted)">' + a.testType + ' · ' + a.testDate + ' · ' + escHtml(a.instructor) + '</div></td>' +
+          '<td>' + escHtml(a.course) + '<div style="font-size:10px;color:var(--muted);font-family:monospace">' + escHtml(a.batchCode) + '</div></td>' +
+          '<td>' + a.appeared + ' students</td>' +
+          '<td><strong>' + a.avgPct + '%</strong></td>' +
+          '<td><strong>' + a.passRate + '%</strong></td>' +
+        '</tr>';
+      }).join('');
+      html += '</tbody></table></div>';
+    }
+
+    html += '<div style="margin-bottom:8px;font-size:12px;font-weight:700;color:var(--red)">Low Score Watchlist (&lt; 60%)</div>';
+    if (!lowScores.length) {
+      html += '<p style="color:var(--muted)">No students flagged on watchlist.</p>';
+    } else {
+      html += '<div style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px;"><table class="instructor-ratings-table"><thead><tr><th>Student</th><th>Batch</th><th>Assessment</th><th>Score</th><th>Result</th></tr></thead><tbody>';
+      html += lowScores.map(function(ls) {
+        return '<tr>' +
+          '<td><strong>' + escHtml(ls.name) + '</strong><div style="font-size:10px;color:var(--muted);font-family:monospace">' + escHtml(ls.studentId) + '</div></td>' +
+          '<td>' + escHtml(ls.batchCode) + '</td>' +
+          '<td>' + escHtml(ls.assessmentId) + '</td>' +
+          '<td style="color:var(--red);font-weight:bold">' + ls.pct + '%</td>' +
+          '<td><span class="result-badge rb-fail">Fail</span></td>' +
+        '</tr>';
+      }).join('');
+      html += '</tbody></table></div>';
+    }
+    
+    testsWrap.innerHTML = html;
+  }
+}
+
+function filterAcademicComments() {
+  if (!academicDashboardData) return;
+  var d = academicDashboardData;
+  var commentsWrap = document.getElementById('academic-comments-wrap');
+  if (!commentsWrap) return;
+
+  var anonOnly = document.getElementById('anon-only-toggle').checked;
+  var filtered = d.comments || [];
+  if (anonOnly) {
+    filtered = filtered.filter(function(c){ return c.isAnonymous; });
+  }
+
+  if (!filtered.length) {
+    commentsWrap.innerHTML = '<p style="color:var(--muted);text-align:center;padding:12px">No feedback comments match the filter.</p>';
+    return;
+  }
+
+  var html = filtered.map(function(c) {
+    var nameLabel = c.isAnonymous ? '<span class="anon-badge">[Anonymous]</span>' : '<strong>' + escHtml(c.studentName) + '</strong>';
+    var dateStr = c.timestamp ? new Date(c.timestamp).toLocaleDateString('en-IN', {day:'2-digit',month:'short',year:'numeric'}) : '';
+    
+    var contentHtml = '';
+    if (c.q3) contentHtml += '<div class="comment-text-section"><div class="comment-label">What went well:</div><div class="comment-val">' + escHtml(c.q3) + '</div></div>';
+    if (c.q4) contentHtml += '<div class="comment-text-section"><div class="comment-label">Areas to improve:</div><div class="comment-val">' + escHtml(c.q4) + '</div></div>';
+    if (c.q5) contentHtml += '<div class="comment-text-section"><div class="comment-label">Suggestions:</div><div class="comment-val">' + escHtml(c.q5) + '</div></div>';
+    if (c.q6) {
+      contentHtml += 
+        '<div class="comment-q6-box">' +
+          '<div class="comment-label" style="color:#D97706">Message for Management / HOD:</div>' +
+          '<div class="comment-val" style="font-weight:500">' + escHtml(c.q6) + '</div>' +
+        '</div>';
+    }
+
+    return '<div class="comment-bubble">' +
+      '<div class="comment-header">' +
+        '<div>' + nameLabel + ' &middot; <span style="font-family:monospace">' + escHtml(c.studentId) + '</span></div>' +
+        '<div>Rating: <strong>★ ' + c.rating + ' / 5</strong></div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">' +
+        'Course: <strong>' + escHtml(c.course) + '</strong> &middot; Batch: <strong>' + escHtml(c.batchCode) + '</strong> &middot; Instructor: <span class="comment-inst">' + escHtml(c.instructor) + '</span> &middot; ' + dateStr +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--navy);font-style:italic;margin-bottom:8px">Topic: ' + escHtml(c.topic) + '</div>' +
+      contentHtml +
+    '</div>';
+  }).join('');
+  
+  commentsWrap.innerHTML = html;
 }
 </script>
 </body>

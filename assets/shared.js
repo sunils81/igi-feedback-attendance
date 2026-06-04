@@ -315,7 +315,7 @@ const COURSE_FEES_JS = {
   'JD-CAD':                              {fee:82900, regFee:0,    gst:18},
   'Smart Learning DG':                   {fee:114900,regFee:0,    gst:18},
   'Smart Learning CSG':                  {fee:114900,regFee:0,    gst:18},
-  'Smart Learning GG':                   {fee:229800,regFee:25000,gst:18}
+  'Smart Learning GG':                   {fee:229800,regFee:0,    gst:18}
 };
 
 // ── Central Money Formatting Utilities ────────────────────────

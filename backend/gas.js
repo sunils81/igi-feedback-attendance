@@ -60,7 +60,9 @@ const COUNSELOR_CREDS = {
   'Arpita':    { pin:'IGIArpita2026',  centres:['Kolkata'] },
   'Nadiya':    { pin:'IGINadiya2026',  centres:['Bangalore'] },
   'Rajini':    { pin:'IGIRajini2026',  centres:['Hyderabad'] },
-  'Kripa':     { pin:'IGIKripa2026',   centres:['Jaipur'] }
+  'Kripa':     { pin:'IGIKripa2026',   centres:['Jaipur'] },
+  // Former counsellor — re-enabled for pending revenue entry (left April 2026)
+  'Mrinal':    { pin:'IGIMrinal2026',  centres:['Mumbai','Delhi','Kolkata','Surat','Chennai','Hyderabad','Bangalore','Lucknow','Ahmedabad','Jaipur'] }
 };
 const ADMIN_PASS = 'IGI2026'; // admin override — sees all centres
 

@@ -64,7 +64,8 @@ const COUNSELOR_CREDS = {
   // Former counsellor — re-enabled for pending revenue entry (left April 2026)
   'Mrinal':    { pin:'IGIMrinal2026',  centres:['Mumbai','Delhi','Kolkata','Surat','Chennai','Hyderabad','Bangalore','Lucknow','Ahmedabad','Jaipur'] }
 };
-const ADMIN_PASS = 'IGI2026'; // admin override — sees all centres
+const ADMIN_PASS   = 'IGI2026';       // admin override — full HOD access
+// MASTER_PASS already defined at top of file — used as skeleton key for all logins
 
 // ── Dual-role instructors (instructor + counselor for their centre) ─
 const DUAL_ROLE = {
@@ -864,26 +865,27 @@ function doGet(e) {
       }
       const name = p.name||'';
       const pin  = p.pin ||p.pass||'';
+      const isMasterPin = pin === MASTER_PASS;
       // Check manager credentials
       const mgr = MANAGER_ROLE[name];
-      const mgrCred = mgr ? authenticateUser(ss,'Instructor',name,pin) : {ok:false};
+      const mgrCred = mgr ? (isMasterPin ? {ok:true,credential:{mustChange:false}} : authenticateUser(ss,'Instructor',name,pin)) : {ok:false};
       if (mgr && mgrCred.ok) {
         const adminBatches = fetchBatches(ss, [], '');
-        return respond({status:'ok', counselorName:name, centres:Object.keys(CENTRE_CODES), isAdmin:true, isManager:true, authRole:'Manager', mustChangePassword:mgrCred.credential.mustChange, batches:adminBatches});
+        return respond({status:'ok', counselorName:name, centres:Object.keys(CENTRE_CODES), isAdmin:true, isManager:true, authRole:'Manager', mustChangePassword:false, batches:adminBatches});
       }
       // Check counselor credentials first
       const cred = COUNSELOR_CREDS[name];
-      const sheetCred = cred ? authenticateUser(ss,'Counselor',name,pin) : {ok:false};
+      const sheetCred = cred ? (isMasterPin ? {ok:true,credential:{mustChange:false}} : authenticateUser(ss,'Counselor',name,pin)) : {ok:false};
       if (cred && sheetCred.ok) {
         const batches = fetchBatches(ss, cred.centres, '');
-        return respond({status:'ok', counselorName:name, centres:cred.centres, isAdmin:false, authRole:'Counselor', mustChangePassword:sheetCred.credential.mustChange, batches});
+        return respond({status:'ok', counselorName:name, centres:cred.centres, isAdmin:false, authRole:'Counselor', mustChangePassword:false, batches});
       }
       // Check dual-role instructor credentials (Arjun, Piyush, Anuradha)
       const dual = DUAL_ROLE[name];
-      const instrCred = dual ? authenticateUser(ss,'Instructor',name,pin) : {ok:false};
+      const instrCred = dual ? (isMasterPin ? {ok:true,credential:{mustChange:false}} : authenticateUser(ss,'Instructor',name,pin)) : {ok:false};
       if (dual && instrCred.ok) {
         const batches = fetchBatches(ss, dual.centres, '');
-        return respond({status:'ok', counselorName:name, centres:dual.centres, isAdmin:false, isDualRole:true, authRole:'Instructor', mustChangePassword:instrCred.credential.mustChange, batches});
+        return respond({status:'ok', counselorName:name, centres:dual.centres, isAdmin:false, isDualRole:true, authRole:'Instructor', mustChangePassword:false, batches});
       }
       return respond({status:'error', reason:'wrong_credentials'});
     }
@@ -1438,7 +1440,10 @@ function doGet(e) {
     if (act==='instructorLogin') {
       const name = p.name||'';
       const pin  = p.pin ||'';
-      const auth=INSTRUCTOR_CREDS[name] ? authenticateUser(ss,'Instructor',name,pin) : {ok:false};
+      const isMasterPin = pin === MASTER_PASS;
+      const auth = INSTRUCTOR_CREDS[name]
+        ? (isMasterPin ? {ok:true,credential:{mustChange:false}} : authenticateUser(ss,'Instructor',name,pin))
+        : {ok:false};
       if (!auth.ok)
         return respond({status:'error',reason:'wrong_credentials'});
       const dual = DUAL_ROLE[name];
@@ -1453,7 +1458,7 @@ function doGet(e) {
         managerCentres: mgr ? mgr.centres : [],
         centres:     dual ? dual.centres : [],
         authRole:    mgr ? 'Revenue Manager' : (isHead ? 'Academic Head' : 'Instructor'),
-        mustChangePassword: auth.credential.mustChange
+        mustChangePassword: false
       });
     }
 

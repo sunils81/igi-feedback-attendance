@@ -200,7 +200,7 @@
 .rev-run-card{border:1px solid var(--border);border-radius:8px;background:var(--white);padding:12px 13px;min-width:0}
 .rev-run-card.open{background:#FFF9E6;border-color:rgba(201,168,76,.34)}
 .rev-run-card.saved{background:#F4FBF7;border-color:rgba(29,158,117,.26)}
-.rev-run-card.behind{background:#FFF8F5;border-color:rgba(201,74,74,.22)}
+.rev-run-card.behind{background:#FFFBF0;border-color:rgba(201,140,30,.28)}
 .rev-run-card.future{opacity:.62;background:var(--off)}
 .rev-run-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
 .rev-run-title{font-size:13px;font-weight:800;color:var(--navy)}
@@ -214,7 +214,7 @@
 .rev-run-bar{height:7px;background:rgba(13,27,46,.08);border-radius:999px;overflow:hidden;margin-bottom:10px}
 .rev-run-bar span{display:block;height:100%;border-radius:999px;background:var(--gold)}
 .rev-run-card.saved .rev-run-bar span{background:#1D9E75}
-.rev-run-card.behind .rev-run-bar span{background:#C94A4A}
+.rev-run-card.behind .rev-run-bar span{background:#C9A030}
 .rev-run-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;font-size:10px;color:var(--muted)}
 .rev-run-meta strong{display:block;font-family:"DM Mono",monospace;font-size:12px;color:var(--navy);margin-top:2px}
 .rev-run-actions{margin-top:10px}
@@ -238,7 +238,7 @@
 .rev-personal-pulse{border-left:3px solid var(--gold);padding-left:10px;display:flex;flex-direction:column;justify-content:center}
 @media(max-width:860px){.rev-preview-panel{grid-template-columns:1fr}.rev-leader-row{grid-template-columns:26px 1fr}.rev-leader-amt{grid-column:2}}
 /* Centre bar */
-.rev-centre-bar{background:var(--navy);border-radius:10px;padding:14px 16px;color:var(--white);margin-bottom:16px;display:none}
+.rev-centre-bar{background:#1C2E44;border-radius:10px;padding:14px 16px;color:var(--white);margin-bottom:16px;display:none}
 .rev-centre-bar.show{display:block}
 .rev-centre-bar .title{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.55);margin-bottom:8px}
 .rev-centre-bar .row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
@@ -915,7 +915,7 @@
 
       <!-- My KPI tiles -->
       <div class="rev-kpi-bar" id="rev-kpi-bar">
-        <div class="rev-kpi"><div class="k">Annual Target</div><div class="v" id="rev-kpi-target">—</div><div class="s">2026-27</div></div>
+        <div class="rev-kpi"><div class="k">My Revenue Target <span style="font-weight:500;opacity:.7">(excl. GST)</span></div><div class="v" id="rev-kpi-target">—</div><div class="s">2026-27</div></div>
         <div class="rev-kpi ok"><div class="k">Total Achieved</div><div class="v" id="rev-kpi-achieved">—</div><div class="s" id="rev-kpi-pct">—</div></div>
         <div class="rev-kpi warn"><div class="k">Remaining</div><div class="v" id="rev-kpi-gap">—</div><div class="s" id="rev-kpi-gap-s">—</div></div>
         <div class="rev-kpi"><div class="k">Students This Year</div><div class="v" id="rev-kpi-students">—</div><div class="s" id="rev-kpi-students-s">2026-27</div></div>
@@ -2443,7 +2443,7 @@ function downloadAdminDashboardCsv() {
 }
 
 // -- Revenue (redesign v2) -----------------------------------------------
-const REVENUE_FRONTEND_VERSION = 'revenue-ledger-v10-2026-06-03';
+const REVENUE_FRONTEND_VERSION = 'revenue-ledger-v11-2026-06-04';
 const MUMBAI_COUNSELLORS = ['Anuradha','Bianca','Omkar Kadam'];
 const BUSINESS_TYPES = ['Centre Revenue','Corporate Programs','Seminars','Other Centre Business'];
 
@@ -2526,7 +2526,8 @@ function revAnnualTargetForCounsellor(counsellor) {
   var rows = revDeduplicateTargetRows(allRows).filter(function(r){
     return revSameCounsellor(r.counsellor, counsellor);
   });
-  return rows.reduce(function(sum,r){ return sum + (Number(r.targetGst)||0); }, 0);
+  // Use course fee (excl. GST) as the target — consistent with how counsellors enter revenue
+  return rows.reduce(function(sum,r){ return sum + (Number(r.targetCourse)||0); }, 0);
 }
 
 function revAchievedForCounsellor(counsellor) {
@@ -2534,15 +2535,16 @@ function revAchievedForCounsellor(counsellor) {
   var ownAchieved = 0, otherAchieved = 0, corpAchieved = 0;
   ((revenueData && revenueData.monthlyRows)||[]).forEach(function(r){
     if (revSameCounsellor(r.counsellor, counsellor)) {
-      var gst = Number(r.achievedGst)||0;
-      achieved += gst;
+      // Use course fee (excl. GST) to match the target basis
+      var fee = Number(r.achievedCourse)||0;
+      achieved += fee;
       students += Number(r.studentCount)||0;
       if (revIsCorporate(r)) {
-        corpAchieved += gst;
+        corpAchieved += fee;
       } else if (r.businessCentre !== r.assignedCentre) {
-        otherAchieved += gst;
+        otherAchieved += fee;
       } else {
-        ownAchieved += gst;
+        ownAchieved += fee;
       }
     }
   });
@@ -2555,21 +2557,18 @@ function revCentreAchievedAll(centre) {
   var rows = (revenueData && (revenueData.monthlyPreviewRows || revenueData.monthlyRows)) || [];
   rows.forEach(function(r){
     if (r.businessCentre === centre) {
-      var gst = Number(r.achievedGst)||0;
+      var fee = Number(r.achievedCourse)||0;
       var st = Number(r.studentCount)||0;
-      achieved += gst;
+      achieved += fee;
       students += st;
-      
       var name = r.counsellor || 'Unknown';
-      if (!contributors[name]) {
-        contributors[name] = { achieved: 0, students: 0 };
-      }
-      contributors[name].achieved += gst;
+      if (!contributors[name]) contributors[name] = { achieved: 0, students: 0 };
+      contributors[name].achieved += fee;
       contributors[name].students += st;
     }
   });
   var cmap = revCentreTargetMap();
-  var target = Number((cmap['2026-27|'+centre]||{}).targetGst)||0;
+  var target = Number((cmap['2026-27|'+centre]||{}).targetCourse)||0;
   return {achieved:achieved, students:students, target:target, contributors:contributors};
 }
 
@@ -2847,7 +2846,7 @@ function renderMyRevenue() {
   if(titleEl) titleEl.textContent = me ? me+"'s Revenue — 2026-27" : "Revenue Dashboard — 2026-27";
   if(subEl) {
     if (target) {
-      var html = 'Your annual target is '+money(target)+' (incl. GST). Enter monthly revenue below — each month locks after saving.';
+      var html = 'Your course fee target is '+money(target)+' (excl. GST). Enter monthly revenue below — each month locks after saving.';
       var pb = revGetPersonalBest(me);
       var proj = revGetTargetProjection(me, target);
       
@@ -2899,11 +2898,23 @@ function renderMyRevenue() {
   var t=document.getElementById('rev-kpi-target'); if(t) t.textContent = target ? money(target) : 'Not set';
   var tkpi = t && t.closest('.rev-kpi'); if(tkpi) tkpi.style.borderColor = target ? '' : 'rgba(201,74,74,.3)';
   var a=document.getElementById('rev-kpi-achieved'); if(a) a.textContent = money(achieved);
-  var p=document.getElementById('rev-kpi-pct'); if(p) p.textContent = target ? pct+'% of annual target' : 'No target set';
+  var p=document.getElementById('rev-kpi-pct'); if(p) p.textContent = target ? pct+'% of course fee target' : 'No target set';
   var g=document.getElementById('rev-kpi-gap'); if(g) g.textContent = money(gap);
   var gs=document.getElementById('rev-kpi-gap-s'); if(gs) gs.textContent = pct>=100 ? 'Target met! 🎉' : 'Still to achieve';
   var s=document.getElementById('rev-kpi-students'); if(s) s.textContent = students;
-  var pb=document.getElementById('rev-progress-bar'); if(pb) pb.style.width = pct+'%';
+  // Dynamic tint on Achieved KPI
+  var akpi = a && a.closest('.rev-kpi');
+  if (akpi) {
+    akpi.classList.toggle('ok', pct >= 100);
+    akpi.classList.toggle('warn', pct > 0 && pct < 50);
+    if (pct >= 50 && pct < 100) { akpi.classList.remove('ok'); akpi.classList.remove('warn'); }
+  }
+  // Progress bar: green at 100%, gold→amber gradient otherwise
+  var pb=document.getElementById('rev-progress-bar');
+  if(pb) {
+    pb.style.width = pct+'%';
+    pb.style.background = pct >= 100 ? '#1D9E75' : (pct >= 70 ? 'linear-gradient(90deg,var(--gold),#2AB08A)' : 'var(--gold)');
+  }
 
   // Update Breakdown Cards
   var bdRow = document.getElementById('rev-breakdown-row');
@@ -2984,7 +2995,7 @@ function revMonthlyTargetForCounsellor(counsellor) {
   var months = revenueMonths();
   var target = revPreviewTargets().filter(function(r){
     return revSameCounsellor(r.counsellor, counsellor);
-  }).reduce(function(sum,r){ return sum + (Number(r.targetGst)||0); }, 0);
+  }).reduce(function(sum,r){ return sum + (Number(r.targetCourse)||0); }, 0);
   return target && months.length ? Math.round(target / months.length) : 0;
 }
 
@@ -2994,13 +3005,13 @@ function revMonthTotalsByCounsellor(monthKey) {
     if (r.month !== monthKey) return;
     var key = revCanonical(r.counsellor);
     if (!out[key]) out[key] = {counsellor:r.counsellor, achievedGst:0, studentCount:0, targetGst:0};
-    out[key].achievedGst += Number(r.achievedGst)||0;
+    out[key].achievedGst += Number(r.achievedCourse)||0;
     out[key].studentCount += Number(r.studentCount)||0;
   });
   revPreviewTargets().forEach(function(r){
     var key = revCanonical(r.counsellor);
     if (!out[key]) out[key] = {counsellor:r.counsellor, achievedGst:0, studentCount:0, targetGst:0};
-    out[key].targetGst += Number(r.targetGst)||0;
+    out[key].targetGst += Number(r.targetCourse)||0;
   });
   Object.keys(out).forEach(function(k){
     out[k].runRateGst = revMonthlyTargetForCounsellor(out[k].counsellor);
@@ -3141,12 +3152,13 @@ function revRowsForMonth(monthKey, counsellor, assignedCentre) {
 function revTotalsFromRows(rows, designatedCentre) {
   var out = {ownGst:0, otherGst:0, corpGst:0, totalGst:0, students:0};
   rows.forEach(function(r){
-    var gst = Number(r.achievedGst)||0;
-    out.totalGst += gst;
+    // Use course fee (excl. GST) to match the target basis
+    var fee = Number(r.achievedCourse)||0;
+    out.totalGst += fee;
     out.students += Number(r.studentCount)||0;
-    if (revIsCorporate(r)) out.corpGst += gst;
-    else if (r.businessCentre !== designatedCentre) out.otherGst += gst;
-    else out.ownGst += gst;
+    if (revIsCorporate(r)) out.corpGst += fee;
+    else if (r.businessCentre !== designatedCentre) out.otherGst += fee;
+    else out.ownGst += fee;
   });
   return out;
 }
@@ -3162,7 +3174,7 @@ function renderRevenueSavedBreakup(rows, designatedCentre, counsellor) {
   var otherBreakdownHtml = '';
   if (otherRows.length > 0) {
     var items = otherRows.map(function(r){
-      var feeStr = money(r.achievedGst || 0);
+      var feeStr = money(r.achievedCourse || 0);
       var stuStr = r.studentCount ? ' (' + r.studentCount + ' stu)' : '';
       return '<span class="rev-breakdown-item">' + escC(r.businessCentre) + ': <strong>' + feeStr + '</strong>' + stuStr + '</span>';
     }).join(' &middot; ');

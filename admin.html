@@ -202,6 +202,7 @@
   /* Main Screens */
   .screen { display: none; }
   .screen.active { display: block; }
+  .screen.active.login-screen { display: flex; }
 
   /* Header */
   .site-header {
@@ -1350,16 +1351,123 @@ function renderRevenueTab() {
   const rows = d.centreRows || [];
   const rev = d.revenue || {};
   
-  // Calculate total targets and achieved YTD (both course fee and GST)
+  // 1. Group counselor achievements and targets by designated branch to guarantee perfect tallies
+  const mapping = adminTargetRows();
+  const counsellorsByCentre = {};
+  
+  // Initialize counsellorsByCentre for all active branches
+  CENTRES.forEach(c => {
+    if (c !== 'Pune') {
+      counsellorsByCentre[c] = [];
+    }
+  });
+  
+  const mappedCounsellors = new Set();
+  const rowsToCheck = rev.monthlyPreviewRows || rev.monthlyRows || [];
+  
+  // A. Process counselors from the canonical mapping list
+  mapping.forEach(row => {
+    mappedCounsellors.add(revCanonical(row.counsellor));
+    const c = row.centre;
+    if (!counsellorsByCentre[c]) counsellorsByCentre[c] = [];
+    
+    // Find targets configured in rev.targetRows for this counselor/branch
+    const tRow = (rev.targetRows || []).find(tr => revCanonical(tr.counsellor) === revCanonical(row.counsellor) && tr.centre === c);
+    const targetCourse = tRow ? (Number(tRow.targetCourse) || 0) : 0;
+    const targetGst = tRow ? (Number(tRow.targetGst) || 0) : 0;
+    
+    // Sum dynamic actual collections and student count from database rows for this counselor/branch
+    let achievedCourse = 0;
+    let achievedGst = 0;
+    let studentCount = 0;
+    
+    rowsToCheck.forEach(mr => {
+      if (revCanonical(mr.counsellor) === revCanonical(row.counsellor) && mr.assignedCentre === c) {
+        achievedCourse += Number(mr.achievedCourse) || 0;
+        achievedGst += Number(mr.achievedGst) || 0;
+        studentCount += Number(mr.studentCount) || 0;
+      }
+    });
+    
+    const pct = targetCourse ? Math.round(achievedCourse / targetCourse * 100) : (achievedCourse ? 100 : 0);
+    
+    counsellorsByCentre[c].push({
+      counsellor: row.counsellor,
+      targetCourse: targetCourse,
+      targetGst: targetGst,
+      achievedCourse: achievedCourse,
+      achievedGst: achievedGst,
+      studentCount: studentCount,
+      pct: pct
+    });
+  });
+  
+  // B. Catch any other counselor in targets/monthly database that is not in hardcoded mapping list
+  const allSourceCounsellors = new Set();
+  rowsToCheck.forEach(mr => { if (mr.counsellor) allSourceCounsellors.add(mr.counsellor); });
+  (rev.targetRows || []).forEach(tr => { if (tr.counsellor) allSourceCounsellors.add(tr.counsellor); });
+  
+  allSourceCounsellors.forEach(cName => {
+    const cKey = revCanonical(cName);
+    if (!mappedCounsellors.has(cKey)) {
+      let detectedCentre = 'Mumbai';
+      const firstRow = rowsToCheck.find(mr => revCanonical(mr.counsellor) === cKey);
+      if (firstRow && firstRow.assignedCentre) {
+        detectedCentre = firstRow.assignedCentre;
+      } else {
+        const firstTar = (rev.targetRows || []).find(tr => revCanonical(tr.counsellor) === cKey);
+        if (firstTar && firstTar.centre) detectedCentre = firstTar.centre;
+      }
+      
+      mappedCounsellors.add(cKey);
+      if (!counsellorsByCentre[detectedCentre]) counsellorsByCentre[detectedCentre] = [];
+      
+      const tRow = (rev.targetRows || []).find(tr => revCanonical(tr.counsellor) === cKey && tr.centre === detectedCentre);
+      const targetCourse = tRow ? (Number(tRow.targetCourse) || 0) : 0;
+      const targetGst = tRow ? (Number(tRow.targetGst) || 0) : 0;
+      
+      let achievedCourse = 0;
+      let achievedGst = 0;
+      let studentCount = 0;
+      rowsToCheck.forEach(mr => {
+        if (revCanonical(mr.counsellor) === cKey && mr.assignedCentre === detectedCentre) {
+          achievedCourse += Number(mr.achievedCourse) || 0;
+          achievedGst += Number(mr.achievedGst) || 0;
+          studentCount += Number(mr.studentCount) || 0;
+        }
+      });
+      
+      const pct = targetCourse ? Math.round(achievedCourse / targetCourse * 100) : (achievedCourse ? 100 : 0);
+      
+      counsellorsByCentre[detectedCentre].push({
+        counsellor: cName,
+        targetCourse: targetCourse,
+        targetGst: targetGst,
+        achievedCourse: achievedCourse,
+        achievedGst: achievedGst,
+        studentCount: studentCount,
+        pct: pct
+      });
+    }
+  });
+  
+  // Calculate total targets and achieved YTD from the newly grouped structures
   let totalTargetCourse = 0;
   let totalTargetGst = 0;
   let totalAchievedCourse = 0;
   let totalAchievedGst = 0;
+  let totalStudentsCount = 0;
+  
   rows.forEach(function(r) {
     totalTargetCourse += Number(r.targetCourse) || 0;
     totalTargetGst += Number(r.targetGst) || 0;
-    totalAchievedCourse += Number(r.achievedCourse) || 0;
-    totalAchievedGst += Number(r.achievedGst) || 0;
+    
+    const branchCounsellors = counsellorsByCentre[r.centre] || [];
+    branchCounsellors.forEach(lc => {
+      totalAchievedCourse += lc.achievedCourse;
+      totalAchievedGst += lc.achievedGst;
+      totalStudentsCount += lc.studentCount;
+    });
   });
   
   const pctOverall = totalTargetCourse ? Math.round(totalAchievedCourse / totalTargetCourse * 100) : 0;
@@ -1376,10 +1484,10 @@ function renderRevenueTab() {
   const reqMonthlyRunRateCourse = monthsLeft ? Math.round(gapValCourse / monthsLeft) : 0;
   const reqMonthlyRunRateGst = monthsLeft ? Math.round(gapValGst / monthsLeft) : 0;
   
-  // KPI Command Strip (Rebuild innerHTML with Course Fee as primary and Incl. GST in sub-text)
+  // KPI Command Strip (Course Fee excl. GST and Incl. GST side-by-side)
   const kpiHtml = 
     '<div class="kpi-card"><div class="kpi-label">Annual Target</div><div class="kpi-value">' + money(totalTargetCourse) + '</div><div class="kpi-meta">Course Fee (Excl. GST)<br>Incl. GST: ' + money(totalTargetGst) + '</div></div>' +
-    '<div class="kpi-card hit"><div class="kpi-label">YTD Achieved</div><div class="kpi-value">' + money(totalAchievedCourse) + '</div><div class="kpi-meta hit">' + pctOverall + '% Target Hit YTD<br>Incl. GST: ' + money(totalAchievedGst) + '</div></div>' +
+    '<div class="kpi-card hit"><div class="kpi-label">YTD Achieved</div><div class="kpi-value">' + money(totalAchievedCourse) + '</div><div class="kpi-meta hit">' + pctOverall + '% Hit · ' + totalStudentsCount + ' Students<br>Incl. GST: ' + money(totalAchievedGst) + '</div></div>' +
     '<div class="kpi-card"><div class="kpi-label">Required Run Rate</div><div class="kpi-value">' + money(reqMonthlyRunRateCourse) + '/mo</div><div class="kpi-meta">Excl. GST over ' + monthsLeft + ' months<br>Incl. GST: ' + money(reqMonthlyRunRateGst) + '/mo</div></div>' +
     '<div class="kpi-card"><div class="kpi-label">Remaining Shortfall</div><div class="kpi-value">' + money(gapValCourse) + '</div><div class="kpi-meta">Shortfall Excl. GST<br>Incl. GST: ' + money(gapValGst) + '</div></div>';
   document.getElementById('revenue-kpis').innerHTML = kpiHtml;
@@ -1387,54 +1495,49 @@ function renderRevenueTab() {
   // Live Target Progress Bar
   document.getElementById('pct-label-live').textContent = pctOverall + '%';
   document.getElementById('progressFill-live').style.width = pctOverall + '%';
-  document.getElementById('progress-desc-live').innerHTML = 'YTD Course Fees: <strong>' + money(totalAchievedCourse) + '</strong> against <strong>' + money(totalTargetCourse) + '</strong> baseline targets.';
+  document.getElementById('progress-desc-live').innerHTML = 'YTD Course Fees: <strong>' + money(totalAchievedCourse) + '</strong> (Excl. GST) | <strong>' + money(totalAchievedGst) + '</strong> (Incl. GST) against <strong>' + money(totalTargetCourse) + '</strong> targets.';
   document.getElementById('progress-target-live').textContent = 'Target (Excl. GST): ' + money(totalTargetCourse);
 
   // Pacing Description
   let pacingHtml = '';
   if (pctOverall >= 75) {
-    pacingHtml = '<strong>Pacing Status: Excellent!</strong> Combined branches are performing well above pacing targets. EOY projections show highly likelihood of exceeding overall targets. Maintain current counselor focus.';
+    pacingHtml = '<strong>Pacing Status: Excellent!</strong> Combined branches are performing well above pacing targets. EOY projections show high likelihood of exceeding overall targets. Maintain current counselor focus.';
   } else if (pctOverall >= 40) {
-    pacingHtml = '<strong>Pacing Status: Steady.</strong> Currently tracking toward <strong>' + pctOverall + '%</strong> of target. To close the remaining shortfall of <strong>' + money(gapValCourse) + '</strong>, branch operations must secure average monthly collections of <strong>' + money(reqMonthlyRunRateCourse) + '</strong>.';
+    pacingHtml = '<strong>Pacing Status: Steady.</strong> Currently tracking toward <strong>' + pctOverall + '%</strong> of target. To close the remaining shortfall of <strong>' + money(gapValCourse) + '</strong> (Excl. GST) or <strong>' + money(gapValGst) + '</strong> (Incl. GST), branch operations must secure average monthly collections of <strong>' + money(reqMonthlyRunRateCourse) + '</strong>.';
   } else {
     pacingHtml = '<strong>Pacing Status: Shortfall Warning.</strong> Low overall target achievements YTD. A daily pacing rate increase and strategic target optimization are recommended to close the shortfall.';
   }
   document.getElementById('runrate-pacing-desc').innerHTML = pacingHtml;
 
   // Branch Health Dials Grid
-  renderBranchHealthGrid(rows, rev);
+  renderBranchHealthGrid(rows, rev, counsellorsByCentre);
   
   // Counselor Leaderboard
-  renderCounselorLeaderboard(rev);
+  renderCounselorLeaderboard(rev, counsellorsByCentre);
 
   // Render Chart.js (YTD Comparison uses GST YTD to match historical GST YoY reference)
   renderRevenueCharts(totalAchievedGst, rows);
 }
 
-function renderBranchHealthGrid(rows, rev) {
+function renderBranchHealthGrid(rows, rev, counsellorsByCentre) {
   const grid = document.getElementById('admin-branch-grid');
   if (!grid) return;
   
-  // Group counselor targets/achieved by branch
-  const counsellorsByCentre = {};
-  (rev.targetRows || []).forEach(function(tr) {
-    const c = tr.centre;
-    if (!counsellorsByCentre[c]) counsellorsByCentre[c] = [];
-    const achRow = (rev.counsellors || []).find(rRow => rRow.counsellor === tr.counsellor);
-    const achCourse = achRow ? achRow.achievedCourse : 0;
-    const targetCourse = tr.targetCourse || 0;
-    const achPct = targetCourse ? Math.round(achCourse / targetCourse * 100) : 0;
-    counsellorsByCentre[c].push({
-      counsellor: tr.counsellor,
-      target: targetCourse,
-      achieved: achCourse,
-      pct: achPct
-    });
-  });
-
   grid.innerHTML = rows.map(function(r) {
+    const branchCounsellors = counsellorsByCentre[r.centre] || [];
+    
     const target = Number(r.targetCourse) || 0;
-    const achieved = Number(r.achievedCourse) || 0;
+    const targetGst = Number(r.targetGst) || 0;
+    let achieved = 0;
+    let achievedGst = 0;
+    let studentCount = 0;
+    
+    branchCounsellors.forEach(lc => {
+      achieved += lc.achievedCourse;
+      achievedGst += lc.achievedGst;
+      studentCount += lc.studentCount;
+    });
+    
     const pct = target ? Math.round(achieved / target * 100) : (achieved ? 100 : 0);
     const colorClass = pct >= 75 ? 'green' : (pct >= 40 ? 'amber' : 'red');
     
@@ -1448,19 +1551,19 @@ function renderBranchHealthGrid(rows, rev) {
     const iconId = 'centre-icon-' + r.centre.replace(/\s+/g, '-');
     
     // Expandable accordion counselors list
-    const branchCounsellors = counsellorsByCentre[r.centre] || [];
     let accordionHtml = '';
     if (branchCounsellors.length) {
       accordionHtml = 
         '<div class="centre-detail-accordion" id="' + centreId + '" style="display:none" onclick="event.stopPropagation()">' +
           '<table class="centre-detail-table">' +
-            '<thead><tr><th>Counselor</th><th style="text-align:right">Target</th><th style="text-align:right">YTD</th><th style="text-align:right">%</th></tr></thead>' +
+            '<thead><tr><th>Counselor</th><th style="text-align:right">Target (Excl/Incl)</th><th style="text-align:right">YTD (Excl/Incl)</th><th style="text-align:right">Students</th><th style="text-align:right">% Hit</th></tr></thead>' +
             '<tbody>' +
               branchCounsellors.map(lc => {
                 return '<tr>' +
                   '<td><strong>' + escC(lc.counsellor) + '</strong></td>' +
-                  '<td style="text-align:right">' + moneyShort(lc.target) + '</td>' +
-                  '<td style="text-align:right;color:var(--green)">' + moneyShort(lc.achieved) + '</td>' +
+                  '<td style="text-align:right">' + moneyShort(lc.targetCourse) + ' / ' + moneyShort(lc.targetGst) + '</td>' +
+                  '<td style="text-align:right;color:var(--green)">' + moneyShort(lc.achievedCourse) + ' / ' + moneyShort(lc.achievedGst) + '</td>' +
+                  '<td style="text-align:right">' + lc.studentCount + '</td>' +
                   '<td style="text-align:right;font-weight:600">' + lc.pct + '%</td>' +
                 '</tr>';
               }).join('') +
@@ -1481,10 +1584,10 @@ function renderBranchHealthGrid(rows, rev) {
       '</div>' +
       '<div class="card-body">' +
         '<div class="stats-left">' +
-          '<div class="stat-row">Target: <strong>' + moneyShort(target) + '</strong></div>' +
-          '<div class="stat-row">YTD: <strong style="color:var(--green)">' + moneyShort(achieved) + '</strong></div>' +
-          '<div class="stat-row">Fees: <strong>' + moneyShort(r.feeCollected) + '</strong></div>' +
-          '<div class="stat-row" style="font-size:9px;color:var(--muted)">' + escC(r.batches || 0) + ' batches · ' + escC(r.students || 0) + ' students</div>' +
+          '<div class="stat-row">Target: <strong>' + moneyShort(target) + '</strong> <span style="font-size:9.5px;color:var(--muted)">Excl</span> | <strong>' + moneyShort(targetGst) + '</strong> <span style="font-size:9.5px;color:var(--muted)">Incl</span></div>' +
+          '<div class="stat-row">YTD: <strong style="color:var(--green)">' + moneyShort(achieved) + '</strong> <span style="font-size:9.5px;color:var(--muted)">Excl</span> | <strong style="color:var(--green)">' + moneyShort(achievedGst) + '</strong> <span style="font-size:9.5px;color:var(--muted)">Incl</span></div>' +
+          '<div class="stat-row">Fees Coll: <strong>' + moneyShort(r.feeCollected) + '</strong></div>' +
+          '<div class="stat-row" style="font-size:9px;color:var(--muted)">' + escC(r.batches || 0) + ' batches · ' + studentCount + ' YTD admissions</div>' +
         '</div>' +
         '<div class="gauge-right">' +
           '<svg class="gauge-svg" viewBox="0 0 70 70">' +
@@ -1510,25 +1613,23 @@ function toggleAdminCentreCard(centreName) {
   }
 }
 
-function renderCounselorLeaderboard(rev) {
+function renderCounselorLeaderboard(rev, counsellorsByCentre) {
   const container = document.getElementById('leaderboard-list');
   if (!container) return;
   
   const leaders = [];
-  (rev.counsellors || []).forEach(function(c) {
-    const target = c.targetCourse || 0;
-    const achieved = c.achievedCourse || 0;
-    const pct = target ? Math.round(achieved / target * 100) : (achieved ? 100 : 0);
-    
-    const tRow = (rev.targetRows || []).find(t => t.counsellor === c.counsellor);
-    const centreName = tRow ? tRow.centre : 'Mumbai';
-    
-    leaders.push({
-      counsellor: c.counsellor,
-      centre: centreName,
-      target: target,
-      achieved: achieved,
-      pct: pct
+  Object.keys(counsellorsByCentre).forEach(centre => {
+    counsellorsByCentre[centre].forEach(lc => {
+      leaders.push({
+        counsellor: lc.counsellor,
+        centre: centre,
+        target: lc.targetCourse,
+        targetGst: lc.targetGst,
+        achieved: lc.achievedCourse,
+        achievedGst: lc.achievedGst,
+        students: lc.studentCount,
+        pct: lc.pct
+      });
     });
   });
   
@@ -1545,8 +1646,12 @@ function renderCounselorLeaderboard(rev) {
         '<div class="centre">' + escC(l.centre) + '</div>' +
       '</div>' +
       '<div class="stats-right">' +
-        '<div class="val">' + moneyShort(l.achieved) + '</div>' +
-        '<div class="pct">' + l.pct + '% hit</div>' +
+        '<div class="val">YTD: <strong>' + moneyShort(l.achieved) + '</strong> <span style="font-size:9px;color:var(--muted)">Excl</span> / <strong>' + moneyShort(l.achievedGst) + '</strong> <span style="font-size:9px;color:var(--muted)">Incl</span></div>' +
+        '<div class="pct" style="font-size:9.5px;color:var(--muted)">' +
+          'Target: ' + moneyShort(l.target) + ' / ' + moneyShort(l.targetGst) + ' · ' +
+          '<strong>' + l.pct + '% hit</strong> · ' +
+          l.students + ' studs' +
+        '</div>' +
       '</div>' +
     '</div>';
   }).join('');

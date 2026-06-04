@@ -899,6 +899,13 @@ function doGet(e) {
     }
     if (act==='masterLogin')    return respond({status: p.pass===MASTER_PASS?'ok':'error'});
 
+    // ── clearEnsureCache — force ensureSheets to re-run on next request ──
+    if (act==='clearEnsureCache') {
+      if (p.adminPass !== ADMIN_PASS) return respond({status:'error',reason:'auth'});
+      try { CacheService.getScriptCache().remove('ensureSheets_ok'); } catch(_e){}
+      return respond({status:'ok', message:'ensureSheets cache cleared — will re-run on next request'});
+    }
+
     // ── getBatchCode ───────────────────────────────────────────
     if (act==='getBatchCode') {
       const cc   = CENTRE_CODES[p.centre]||p.centre.substring(0,3).toUpperCase();
@@ -2534,6 +2541,14 @@ function getStudentsForBatch(ss, batchCode) {
 }
 
 function ensureSheets(ss) {
+  // ── Fast-path: skip if verified recently (saves ~2-4s per request) ──
+  // Sheets are stable after initial setup — no need to re-check on every call.
+  // Cache flag lives for 6 hours. Clear manually via ?action=clearEnsureCache&adminPass=IGI2026 if needed.
+  try {
+    var sc = CacheService.getScriptCache();
+    if (sc.get('ensureSheets_ok') === '1') return;
+  } catch(_ec) {}
+
   const defs = {
     [SH_BATCHES]:  ['Batch Code','Centre','Course','Type','Batch Slot','Start Date','End Date','Created By','Created At','Assigned Instructor'],
     [SH_STUDENTS]: ['Student ID','Primary Batch Code','Name','Mobile Last 4','Mobile','Email','Status','Created At','Welcome Email Status','Welcome Email Sent At'],
@@ -2586,6 +2601,8 @@ function ensureSheets(ss) {
     }
   });
   ensureUserCredentials(ss);
+  // Mark as done — skip for next 6 hours
+  try { CacheService.getScriptCache().put('ensureSheets_ok', '1', 21600); } catch(_es) {}
 }
 function ensureStudentHeaders(sh) {
   const h=['Student ID','Primary Batch Code','Name','Mobile Last 4','Mobile','Email','Status','Created At','Welcome Email Status','Welcome Email Sent At'];

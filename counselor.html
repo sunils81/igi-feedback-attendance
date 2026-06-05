@@ -92,7 +92,7 @@
 .fee-readonly{background:var(--off);border-radius:8px;padding:10px 12px;min-width:0}
 .fee-readonly .k{font-size:9px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
 .fee-readonly .v{font-size:13px;font-weight:700;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-.inst-grid{display:grid;grid-template-columns:1fr 1fr .8fr 1fr 1fr;gap:8px;align-items:end;margin-bottom:8px}
+.inst-grid{display:grid;grid-template-columns:1fr 1.1fr .8fr 1.1fr 1fr 1.1fr;gap:8px;align-items:end;margin-bottom:8px}
 .inst-grid .field{margin-bottom:0}
 .revenue-filters{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;align-items:end;margin:12px 0 14px}
 .revenue-filters .field{margin-bottom:0}
@@ -1229,9 +1229,15 @@
         <div class="field" id="fee-custom-disc-wrap" style="display:none"><label>Custom Discount %</label><input type="number" id="fee-custom-disc" min="0" max="100" oninput="recalcFeeForm()"></div>
         <div class="field"><label>Discount Reason</label><input type="text" id="fee-disc-reason" placeholder="Optional"></div>
         <div class="field"><label>TDS %</label><input type="number" id="fee-tds-pct" value="0" min="0" max="100" oninput="recalcFeeForm()"></div>
-        <div class="field"><label>Installments</label>
+        <div class="field"><label>Payment Plan</label>
+          <select id="fee-payment-plan" onchange="togglePaymentPlan()">
+            <option value="full">Full Payment</option>
+            <option value="installments">Instalments</option>
+          </select>
+        </div>
+        <div class="field" id="fee-n-inst-wrap" style="display:none"><label>No. of Installments</label>
           <select id="fee-n-inst" onchange="renderInstallments();recalcFeeForm()">
-            <option value="1">1 installment</option>
+            <option value="1" style="display:none">1 installment</option>
             <option value="2">2 installments</option>
             <option value="3">3 installments</option>
           </select>
@@ -2637,7 +2643,10 @@ function openFeeForm(studentId) {
   document.getElementById('fee-disc-pct').value = ['0','5','7','10'].includes(String(disc)) ? String(disc) : 'custom';
   document.getElementById('fee-custom-disc').value = ['0','5','7','10'].includes(String(disc)) ? '' : disc;
   document.getElementById('fee-disc-reason').value = existing ? (existing.discReason || '') : '';
-  document.getElementById('fee-n-inst').value = existing ? (existing.nInst || 1) : 1;
+  const nInst = existing ? (existing.nInst || 1) : 1;
+  document.getElementById('fee-n-inst').value = nInst;
+  document.getElementById('fee-payment-plan').value = nInst > 1 ? 'installments' : 'full';
+  document.getElementById('fee-n-inst-wrap').style.display = nInst > 1 ? 'block' : 'none';
   toggleCustomDiscount();
   renderInstallments(existing);
   recalcFeeForm();
@@ -2654,6 +2663,38 @@ function hideFeeForm() {
 function toggleCustomDiscount() {
   document.getElementById('fee-custom-disc-wrap').style.display =
     document.getElementById('fee-disc-pct').value === 'custom' ? 'block' : 'none';
+}
+
+function togglePaymentPlan() {
+  const plan = document.getElementById('fee-payment-plan').value;
+  const instWrap = document.getElementById('fee-n-inst-wrap');
+  const instSelect = document.getElementById('fee-n-inst');
+  if (plan === 'full') {
+    instWrap.style.display = 'none';
+    instSelect.value = '1';
+  } else {
+    instWrap.style.display = 'block';
+    if (instSelect.value === '1') {
+      instSelect.value = '2';
+    }
+  }
+  renderInstallments();
+}
+
+function onFeePaidChange(idx) {
+  const paidVal = document.getElementById('fee-inst' + idx + '-paid').value;
+  const wrap = document.getElementById('fee-inst' + idx + '-paid-date-wrap');
+  const dateInput = document.getElementById('fee-inst' + idx + '-paid-date');
+  if (paidVal === 'Y') {
+    if (wrap) wrap.style.display = 'block';
+    if (dateInput && !dateInput.value) {
+      dateInput.value = new Date().toISOString().slice(0, 10);
+    }
+  } else {
+    if (wrap) wrap.style.display = 'none';
+    if (dateInput) dateInput.value = '';
+  }
+  recalcFeeForm();
 }
 
 function currentDiscountPct() {
@@ -2688,7 +2729,8 @@ function renderInstallments(existing) {
     html += '<div class="inst-grid">' +
       '<div class="field"><label>Amount ' + i + '</label><input type="number" id="fee-inst' + i + '-amt" value="' + escC(inst.amt || '') + '" data-manual="' + (hasExisting ? '1' : '0') + '" oninput="feeInstManualInput(this,' + i + ')"></div>' +
       '<div class="field"><label>Due Date</label><input type="date" id="fee-inst' + i + '-due" value="' + dateForInput(inst.due) + '"></div>' +
-      '<div class="field"><label>Paid?</label><select id="fee-inst' + i + '-paid" onchange="recalcFeeForm()"><option value="N">No</option><option value="Y" ' + (inst.paid === 'Y' ? 'selected' : '') + '>Yes</option></select></div>' +
+      '<div class="field"><label>Paid?</label><select id="fee-inst' + i + '-paid" onchange="onFeePaidChange(' + i + ')"><option value="N">No</option><option value="Y" ' + (inst.paid === 'Y' ? 'selected' : '') + '>Yes</option></select></div>' +
+      '<div class="field" id="fee-inst' + i + '-paid-date-wrap" style="display:' + (inst.paid === 'Y' ? 'block' : 'none') + '"><label>Payment Date</label><input type="date" id="fee-inst' + i + '-paid-date" value="' + dateForInput(inst.paidDate || '') + '"></div>' +
       '<div class="field"><label>Mode</label><select id="fee-inst' + i + '-mode">' + modes.map(m => '<option value="' + m + '" ' + (inst.mode === m ? 'selected' : '') + '>' + (m || 'Select') + '</option>').join('') + '</select></div>' +
       '<div class="field"><label>Reference</label><input type="text" id="fee-inst' + i + '-ref" value="' + escC(inst.ref || '') + '" placeholder="Receipt / UTR"></div>' +
     '</div>';
@@ -2808,7 +2850,7 @@ function saveFeeRecord() {
     payload['inst' + i + 'Amt'] = i <= n ? (document.getElementById('fee-inst' + i + '-amt').value || 0) : 0;
     payload['inst' + i + 'Due'] = i <= n ? (document.getElementById('fee-inst' + i + '-due').value || '') : '';
     payload['inst' + i + 'Paid'] = i <= n ? (document.getElementById('fee-inst' + i + '-paid').value || 'N') : 'N';
-    payload['inst' + i + 'PaidDate'] = payload['inst' + i + 'Paid'] === 'Y' ? new Date().toISOString().slice(0,10) : '';
+    payload['inst' + i + 'PaidDate'] = payload['inst' + i + 'Paid'] === 'Y' ? (document.getElementById('fee-inst' + i + '-paid-date').value || '') : '';
     payload['inst' + i + 'Mode'] = i <= n ? (document.getElementById('fee-inst' + i + '-mode').value || '') : '';
     payload['inst' + i + 'Ref'] = i <= n ? (document.getElementById('fee-inst' + i + '-ref').value || '') : '';
   }

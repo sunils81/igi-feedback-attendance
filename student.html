@@ -60,10 +60,10 @@
 .hist-meta{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hist-pct{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--navy)}
 
-.fee-card{background:var(--white);border-radius:var(--radius);border:1.5px solid var(--border);padding:16px;margin-bottom:10px}
-.fee-card.fee-paid{border-color:#1D9E75;background:#F0FAF5}
-.fee-card.fee-overdue{border-color:#C94A4A;background:#FEF2F2}
-.fee-card.fee-partial{border-color:var(--gold);background:var(--gold-pale)}
+.fee-card{background:var(--white);border-radius:var(--radius);border:1.5px solid var(--border);padding:16px;margin-bottom:10px;--card-bg:var(--white)}
+.fee-card.fee-paid{border-color:#1D9E75;background:#F0FAF5;--card-bg:#F0FAF5}
+.fee-card.fee-overdue{border-color:#C94A4A;background:#FEF2F2;--card-bg:#FEF2F2}
+.fee-card.fee-partial{border-color:var(--gold);background:var(--gold-pale);--card-bg:var(--gold-pale)}
 .fee-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
 .fee-title{font-size:14px;font-weight:700;color:var(--navy);line-height:1.25}
 .fee-meta{font-size:11px;color:var(--muted);margin-top:2px}
@@ -82,9 +82,10 @@
 .fee-next{display:flex;justify-content:space-between;gap:10px;border-radius:8px;padding:9px 10px;font-size:12px;margin-bottom:12px;background:rgba(255,255,255,.7);border:1px solid var(--border)}
 .fee-next span{color:var(--muted)}
 .fee-next strong{font-family:'JetBrains Mono',monospace;color:var(--navy);text-align:right}
-.fee-inst{display:grid;gap:7px;margin-top:8px}
-.fee-inst-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;border-top:1px solid rgba(17,34,64,.08);padding-top:8px;font-size:11px;color:var(--muted)}
-.fee-inst-dot{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:900}
+.fee-inst{display:grid;gap:7px;margin-top:8px;position:relative}
+.fee-inst::before{content:'';position:absolute;left:9px;top:8px;bottom:8px;width:2px;background:rgba(17,34,64,.08);z-index:0}
+.fee-inst-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;border-top:1px solid rgba(17,34,64,.08);padding-top:8px;font-size:11px;color:var(--muted);position:relative;z-index:1;background:transparent}
+.fee-inst-dot{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;position:relative;z-index:2;box-shadow:0 0 0 3px var(--card-bg, var(--white))}
 .fee-inst-row.paid .fee-inst-dot{background:#1D9E75;color:#fff}
 .fee-inst-row.due .fee-inst-dot{background:#C94A4A;color:#fff}
 .fee-inst-row.pending .fee-inst-dot{background:var(--gold-pale);color:#946300}
@@ -95,7 +96,131 @@
 .fee-empty{border-style:dashed;background:rgba(255,255,255,.74)}
 .fee-empty .fee-title{margin-bottom:4px}
 .fee-empty-copy{font-size:12px;color:var(--muted);line-height:1.5}
+.fee-ledger-details {
+  border-top: 1px solid rgba(17, 34, 64, 0.08);
+  margin-top: 12px;
+  padding-top: 8px;
+}
+.fee-ledger-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--navy);
+  cursor: pointer;
+  list-style: none;
+  padding: 6px 0;
+  user-select: none;
+}
+.fee-ledger-summary::-webkit-details-marker {
+  display: none;
+}
+.fee-ledger-toggle-icon {
+  font-size: 10px;
+  transition: transform 0.2s ease;
+  color: var(--muted);
+}
+.fee-ledger-details[open] .fee-ledger-toggle-icon {
+  transform: rotate(180deg);
+}
 @media(max-width:420px){.fee-money-grid{grid-template-columns:1fr}.fee-inst-row{grid-template-columns:auto 1fr}.fee-inst-side{grid-column:2;text-align:left}}
+
+/* Glassmorphism Welcome Bar */
+.welcome-bar {
+  background: linear-gradient(135deg, var(--navy) 0%, #1e3557 100%);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  box-shadow: 0 4px 20px rgba(13, 27, 46, 0.15);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* Glowing Pulse Indicator */
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  background-color: #1d9e75;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 0 0 rgba(29, 158, 117, 0.7);
+  animation: pulse-glow 1.6s infinite;
+  margin-right: 6px;
+}
+@keyframes pulse-glow {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(29, 158, 117, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(29, 158, 117, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(29, 158, 117, 0); }
+}
+
+/* Progress circle dial classes */
+.att-ring-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+}
+.att-circle-bg {
+  fill: none;
+  stroke: rgba(13, 27, 46, 0.06);
+  stroke-width: 3.8;
+}
+.att-circle-fg {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 3.8;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transition: stroke-dasharray 0.6s ease;
+}
+
+/* Syllabus progression bar */
+.bc-syllabus-wrap {
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+.bc-syllabus-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+.bc-syllabus-bar {
+  height: 6px;
+  background: rgba(13, 27, 46, 0.06);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.bc-syllabus-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--gold);
+  transition: width 0.5s ease;
+}
+
+/* Customized dashboard tiles */
+.summary-tile {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.summary-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+.summary-tile .k {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
 </style>
 </head>
 <body>
@@ -354,9 +479,47 @@ function fetchPortalData(enrol, mobileLast4, btn, err) {
   });
 }
 
+function renderSyllabusProgress(b) {
+  function estimateTotalSessions(courseName) {
+    const cn = (courseName || '').toLowerCase();
+    if (cn.includes('gemology')) return 40;
+    if (cn.includes('diamond')) return 30;
+    if (cn.includes('design')) return 30;
+    if (cn.includes('colored stone') || cn.includes('stone')) return 20;
+    return 30;
+  }
+  const lastSessNo = (b.history && b.history.length) ? Math.max(...b.history.map(h => Number(h.sessNo) || 0)) : 0;
+  const currentSess = b.sessNo ? (Number(b.sessNo) || (lastSessNo + 1)) : lastSessNo;
+  let estTotal = estimateTotalSessions(b.course);
+  if (currentSess > estTotal) estTotal = currentSess;
+  const progressPct = estTotal > 0 ? Math.min(100, Math.round((currentSess / estTotal) * 100)) : 0;
+  
+  return `
+    <div class="bc-syllabus-wrap">
+      <div class="bc-syllabus-label">
+        <span>Syllabus Progress</span>
+        <span>Session ${currentSess} of ${estTotal} (${progressPct}%)</span>
+      </div>
+      <div class="bc-syllabus-bar">
+        <div class="bc-syllabus-fill" style="width: ${progressPct}%;"></div>
+      </div>
+    </div>
+  `;
+}
+
 function renderPortal(d) {
-  document.getElementById('wb-name').textContent = d.studentName;
-  document.getElementById('wb-date').textContent = new Date().toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+  const hrs = new Date().getHours();
+  let greet = "Hello";
+  if (hrs >= 5 && hrs < 12) greet = "Good morning";
+  else if (hrs >= 12 && hrs < 17) greet = "Good afternoon";
+  else greet = "Good evening";
+  const firstName = d.studentName ? d.studentName.split(' ')[0] : 'Student';
+  document.getElementById('wb-name').textContent = `${greet}, ${firstName}! 👋`;
+  
+  const dateStr = new Date().toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+  const centreStr = (d.batches && d.batches.length) ? `${d.batches[0].centre} · ` : '';
+  document.getElementById('wb-date').textContent = centreStr + dateStr;
+  
   const wrap = document.getElementById('portal-batches');
   renderStudentSummary(d);
   loadStudentFees();
@@ -376,6 +539,7 @@ function renderPortal(d) {
         <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
         <div class="bc-course">${b.course}</div>
         <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''}</div>
+        ${renderSyllabusProgress(b)}
         <div class="bc-done">✅ Attendance marked &amp; feedback submitted</div>
       </div>${renderHistory(b)}`;
     }
@@ -385,6 +549,7 @@ function renderPortal(d) {
         <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
         <div class="bc-course">${b.course}</div>
         <div class="bc-meta">${b.batchCode} · ${b.centre}</div>
+        ${renderSyllabusProgress(b)}
         <div class="bc-waiting">⏳ Session not yet started by instructor. Please check back later.</div>
         <div class="refresh-note">Auto-refreshing in <span id="refresh-cd-${b.batchCode}">60</span>s</div>
       </div>${renderHistory(b)}`;
@@ -398,6 +563,7 @@ function renderPortal(d) {
         <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
         <div class="bc-course">${b.course}</div>
         <div class="bc-meta">${b.batchCode} · ${b.centre}</div>
+        ${renderSyllabusProgress(b)}
         <div class="bc-inactive"><span class="time-badge">⏰ ${timeMsg}</span></div>
       </div>${renderHistory(b)}`;
     }
@@ -405,10 +571,11 @@ function renderPortal(d) {
     // Active — can submit
     const topicLine = b.topic ? `<div class="bc-topic">📖 ${b.topic}</div>` : '';
     return `<div class="batch-card active-card">
-      <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
+      <span class="slot-badge ${slotBadgeClass}" style="display:inline-flex; align-items:center;"><span class="pulse-dot"></span>${slotLabel}</span>
       <div class="bc-course">${b.course}</div>
       <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''} · Session ${b.sessNo}</div>
       ${topicLine}
+      ${renderSyllabusProgress(b)}
       <button class="btn btn-gold" onclick="openFeedback('${b.batchCode}')">Mark Attendance &amp; Submit Feedback →</button>
     </div>${renderHistory(b)}`;
   }).join('');
@@ -470,18 +637,64 @@ function renderStudentSummary(d) {
   const active = batches.find(b => b.sessionExists && b.windowActive && !b.alreadySubmitted);
   const submitted = batches.filter(b => b.alreadySubmitted).length;
   const next = active || batches.find(b => b.sessionExists) || batches[0];
-  let pct = '—';
+  
+  let percentage = 0;
+  let hasHistory = false;
   for (let i = 0; i < batches.length; i++) {
     if (batches[i].historySummary && batches[i].historySummary.total) {
-      pct = batches[i].historySummary.pct + '%';
+      percentage = Number(batches[i].historySummary.pct) || 0;
+      hasHistory = true;
       break;
     }
   }
+  let color = '#A49A87'; // default grey if no attendance history
+  if (hasHistory) {
+    if (percentage >= 85) color = '#1D9E75';
+    else if (percentage >= 75) color = '#C9A84C';
+    else color = '#C94A4A';
+  }
+  const circumference = 2 * Math.PI * 18; // ~113.1
+  const dashoffset = hasHistory ? (circumference - (percentage / 100) * circumference) : circumference;
+  const displayPct = hasHistory ? percentage + '%' : '—';
+
+  let statusVal = 'Wait';
+  let statusSub = 'No open window yet';
+  let statusClass = '';
+  if (submitted) {
+    statusVal = 'Done';
+    statusSub = 'Attendance marked';
+    statusClass = 'ok';
+  } else if (active) {
+    statusVal = `<span class="pulse-dot"></span>Open`;
+    statusSub = 'Ready to submit';
+    statusClass = 'active';
+  }
+
   el.innerHTML =
-    '<div class="summary-tile ' + (submitted ? 'ok' : '') + '"><div class="k">Today\'s Status</div><div class="v">' + (submitted ? 'Done' : active ? 'Open' : 'Wait') + '</div><div class="s">' + (submitted ? 'Attendance submitted' : active ? 'Ready to submit' : 'No open window yet') + '</div></div>' +
-    '<div class="summary-tile"><div class="k">Upcoming Class</div><div class="v">' + (next ? 'S' + (next.sessNo || '—') : '—') + '</div><div class="s">' + (next ? (next.course || next.batchCode || 'Assigned batch') : 'No batch today') + '</div></div>' +
-    '<div class="summary-tile ok"><div class="k">Attendance %</div><div class="v">' + pct + '</div><div class="s">From recent history</div></div>' +
-    '<div class="summary-tile"><div class="k">Feedback</div><div class="v">' + submitted + '</div><div class="s">Submitted today</div></div>';
+    `<div class="summary-tile ${statusClass}"><div class="k">📅 Today's Status</div><div class="v" style="display:flex; align-items:center; gap:6px; margin-top:8px;">${statusVal}</div><div class="s">${statusSub}</div></div>` +
+    `<div class="summary-tile"><div class="k">🎓 Upcoming Class</div><div class="v" style="margin-top:8px;">${next ? 'S' + (next.sessNo || '—') : '—'}</div><div class="s" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${next ? (next.course || next.batchCode) : ''}">${next ? (next.course || next.batchCode || 'Assigned batch') : 'No batch today'}</div></div>` +
+    `<div class="summary-tile ok att-ring-wrap" style="display:flex; flex-direction:column; align-items:center; justify-content:center;">` +
+      `<div class="k" style="margin-bottom:6px">📊 Attendance %</div>` +
+      `<div style="position:relative; display:inline-flex;">` +
+        `<svg width="60" height="60" viewBox="0 0 44 44">` +
+          `<circle class="att-circle-bg" cx="22" cy="22" r="18"></circle>` +
+          `<circle id="att-ring-fg" class="att-circle-fg" cx="22" cy="22" r="18" stroke="${color}" stroke-dasharray="${circumference}" stroke-dashoffset="${circumference}"></circle>` +
+          `<text x="22" y="25" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="800" fill="var(--navy)">${displayPct}</text>` +
+        `</svg>` +
+      `</div>` +
+      `<div class="s" style="margin-top:4px; font-size:10px; color:var(--muted); text-align:center;">From history</div>` +
+    `</div>` +
+    `<div class="summary-tile"><div class="k">💬 Feedback</div><div class="v" style="margin-top:8px;">${submitted}</div><div class="s">Submitted today</div></div>`;
+
+  // Animate the SVG ring loading transition
+  if (hasHistory) {
+    setTimeout(() => {
+      const circle = document.getElementById('att-ring-fg');
+      if (circle) {
+        circle.style.strokeDashoffset = dashoffset;
+      }
+    }, 100);
+  }
 }
 
 function startRefreshCountdowns(batches) {
@@ -715,6 +928,13 @@ function renderStudentFeeDashboard(summaries) {
       html+='<div class="fee-next"><span>'+ (f.feeStatus==='Overdue'?'Overdue since':'Next due') +'</span><strong>'+escShared(f.nextDueDate)+' · '+studentMoney(f.nextDueAmt)+'</strong></div>';
     }
     html += renderStudentInstallments(f.installments || []);
+    
+    // Add print statement button bar
+    html+='<div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; border-top:1px solid rgba(17,34,64,0.06); padding-top:10px;">';
+    html+='<button onclick="printFeeStatement(\''+escJ(f.course)+'\', \''+escJ(f.batchCode)+'\', \''+studentMoney(f.netPayable)+'\', \''+studentMoney(f.collected)+'\', \''+studentMoney(balance)+'\', \''+escJ(f.feeStatus)+'\', \''+encodeURIComponent(JSON.stringify(f.installments || []))+'\')" class="btn btn-outline" style="padding: 5px 10px; font-size: 11px; width: auto; margin: 0; display: inline-flex; align-items: center; gap: 5px; height: 28px;">🖨️ Print Statement</button>';
+    html+='<span style="font-size:10px;color:var(--muted)">Official ledger</span>';
+    html+='</div>';
+
     html+='<div class="fee-note">For payment updates or receipt corrections, please contact your counselor.</div>';
     html+='</div>';
   });
@@ -724,22 +944,85 @@ function renderStudentFeeDashboard(summaries) {
 function renderStudentInstallments(installments) {
   var visible = installments.filter(function(x){ return Number(x.amount) > 0 || x.dueDate; });
   if (!visible.length) return '';
-  var html='<div class="fee-inst">';
+  
+  var html='<details class="fee-ledger-details" open>';
+  html+='<summary class="fee-ledger-summary"><span>Installment Timeline</span><span class="fee-ledger-toggle-icon">▼</span></summary>';
+  html+='<div class="fee-inst">';
+  
   visible.forEach(function(inst, idx) {
     var paid = inst.paid === 'Y';
     var state = paid ? 'paid' : (inst.overdue ? 'due' : 'pending');
-    var dot = paid ? '✓' : String(idx + 1);
+    var dot = paid ? '✓' : (inst.overdue ? '⚠' : String(idx + 1));
     var label = paid ? 'Paid' : (inst.overdue ? 'Overdue' : 'Pending');
     var date = paid && inst.paidDate ? 'Paid on ' + inst.paidDate : (inst.dueDate ? 'Due ' + inst.dueDate : 'Due date not set');
     html+='<div class="fee-inst-row '+state+'"><span class="fee-inst-dot">'+dot+'</span><div class="fee-inst-main"><strong>Installment '+(idx+1)+' · '+label+'</strong><span>'+escShared(date)+'</span></div><div class="fee-inst-side">'+studentMoney(inst.amount)+'</div></div>';
   });
-  html+='</div>';
+  
+  html+='</div></details>';
   return html;
 }
 
 function studentMoney(value) {
   return '₹' + Number(value || 0).toLocaleString('en-IN');
 }
+
+window.printFeeStatement = function(course, batchCode, totalPayable, paid, balance, status, installmentsJSON) {
+  const installments = JSON.parse(decodeURIComponent(installmentsJSON));
+  const printWindow = window.open('', '_blank', 'width=800,height=600');
+  
+  let instRowsHtml = '';
+  installments.forEach((inst, idx) => {
+    const paidLabel = inst.paid === 'Y' ? 'Paid' : (inst.overdue ? 'Overdue' : 'Pending');
+    const date = inst.paid === 'Y' && inst.paidDate ? 'Paid on ' + inst.paidDate : (inst.dueDate ? 'Due ' + inst.dueDate : '—');
+    const statusClass = inst.paid === 'Y' ? 'status-paid' : (inst.overdue ? 'status-overdue' : 'status-pending');
+    instRowsHtml += '<tr>' +
+      '<td>Installment ' + (idx + 1) + '</td>' +
+      '<td>₹' + Math.round(Number(inst.amount) || 0).toLocaleString('en-IN') + '</td>' +
+      '<td>' + date + '</td>' +
+      '<td><span class="status-badge ' + statusClass + '">' + paidLabel + '</span></td>' +
+    '</tr>';
+  });
+
+  printWindow.document.write('<html><head><title>Fee Statement — ' + (portalData ? portalData.studentName : '') + '</title>' +
+    '<style>' +
+      'body { font-family: "Plus Jakarta Sans", sans-serif; color: #112240; padding: 40px; line-height: 1.5; }' +
+      '.header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #112240; padding-bottom: 20px; margin-bottom: 30px; }' +
+      '.logo { font-size: 24px; font-weight: 800; letter-spacing: 1px; color: #112240; }' +
+      '.title { text-align: right; }' +
+      '.title h1 { margin: 0; font-size: 20px; text-transform: uppercase; }' +
+      '.title p { margin: 5px 0 0 0; font-size: 12px; color: #606b7d; }' +
+      '.details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 40px; }' +
+      '.details-block h3 { margin: 0 0 8px 0; font-size: 14px; text-transform: uppercase; color: #606b7d; letter-spacing: 0.5px; }' +
+      '.details-block p { margin: 4px 0; font-size: 14px; }' +
+      '.summary-box { background: #f4f6f9; border-radius: 8px; padding: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 40px; border: 1px solid #e2e8f0; }' +
+      '.summary-item h4 { margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase; color: #606b7d; }' +
+      '.summary-item p { margin: 0; font-size: 18px; font-weight: 700; font-family: "JetBrains Mono", monospace; }' +
+      '.summary-item p.good { color: #1d9e75; }' +
+      '.summary-item p.due { color: #c94a4a; }' +
+      'table { width: 100%; border-collapse: collapse; margin-bottom: 40px; }' +
+      'th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 14px; }' +
+      'th { background: #112240; color: #ffffff; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }' +
+      '.status-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; }' +
+      '.status-paid { background: #ddf4e8; color: #126b35; }' +
+      '.status-overdue { background: #fce4e4; color: #b42323; }' +
+      '.status-pending { background: #f1f3f5; color: #606b7d; }' +
+      '.footer { text-align: center; font-size: 11px; color: #606b7d; border-top: 1px solid #e2e8f0; padding-top: 20px; margin-top: 50px; }' +
+    '</style></head><body>' +
+    '<div class="header"><div class="logo">IGI School of Gemology</div><div class="title"><h1>Fee Statement</h1><p>Generated on ' + new Date().toLocaleDateString('en-IN') + '</p></div></div>' +
+    '<div class="details-grid">' +
+      '<div class="details-block"><h3>Student Information</h3><p><strong>Name:</strong> ' + (portalData ? portalData.studentName : '') + '</p><p><strong>Student ID:</strong> ' + (portalData ? portalData.enrollmentNo : '') + '</p></div>' +
+      '<div class="details-block"><h3>Course Details</h3><p><strong>Course:</strong> ' + course + '</p><p><strong>Batch:</strong> ' + batchCode + '</p></div>' +
+    '</div>' +
+    '<div class="summary-box">' +
+      '<div class="summary-item"><h4>Total Payable</h4><p>' + totalPayable + '</p></div>' +
+      '<div class="summary-item"><h4>Amount Paid</h4><p class="good">' + paid + '</p></div>' +
+      '<div class="summary-item"><h4>Balance Due</h4><p class="due">' + balance + '</p></div>' +
+    '</div>' +
+    '<table><thead><tr><th>Installment</th><th>Amount</th><th>Due/Paid Date</th><th>Status</th></tr></thead><tbody>' + instRowsHtml + '</tbody></table>' +
+    '<div class="footer"><p>This is a computer-generated fee statement for informational purposes.</p><p>For any queries, please reach out to your counselor.</p></div>' +
+    '<script>window.onload = function() { window.print(); };<' + '/script></body></html>');
+  printWindow.document.close();
+};
 </script>
 </body>
 </html>

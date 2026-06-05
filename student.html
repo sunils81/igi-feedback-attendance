@@ -221,6 +221,77 @@
   align-items: center;
   gap: 5px;
 }
+
+/* Portal Tab Switcher System */
+.portal-nav {
+  display: flex;
+  background: var(--off);
+  border-radius: 12px;
+  padding: 4px;
+  gap: 4px;
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
+}
+.nav-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 8px 4px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.nav-tab:hover {
+  color: var(--navy);
+}
+.nav-tab.active {
+  background: var(--white);
+  color: var(--navy);
+  box-shadow: 0 2px 8px rgba(13, 27, 46, 0.06);
+}
+.tab-content {
+  display: none;
+}
+.tab-content.active {
+  display: block;
+}
+
+/* Collapsible Course History Details & Summary */
+.hist-details {
+  border-top: 1px dashed var(--border);
+  margin-top: 10px;
+  padding-top: 8px;
+}
+.hist-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--navy);
+  cursor: pointer;
+  list-style: none;
+  padding: 6px 0;
+  user-select: none;
+}
+.hist-summary::-webkit-details-marker {
+  display: none;
+}
+.hist-toggle-icon {
+  font-size: 10px;
+  transition: transform 0.2s ease;
+  color: var(--muted);
+}
+.hist-details[open] .hist-toggle-icon {
+  transform: rotate(180deg);
+}
 </style>
 </head>
 <body>
@@ -265,10 +336,35 @@
       </div>
       <button class="wb-logout" onclick="doLogout()">Sign out</button>
     </div>
-    <div id="student-summary" class="dashboard-summary"></div>
-    <div id="portal-fees" style="margin-top:8px"></div>
-    <div id="portal-calendar"></div>
-    <div id="portal-batches"></div>
+
+    <!-- Segmented Tab Navigation -->
+    <div class="portal-nav">
+      <button class="nav-tab active" onclick="switchTab('tab-today', this)">📅 Today</button>
+      <button class="nav-tab" onclick="switchTab('tab-courses', this)">📚 Courses</button>
+      <button class="nav-tab" onclick="switchTab('tab-calendar', this)">🗓️ Calendar</button>
+      <button class="nav-tab" onclick="switchTab('tab-fees', this)">💰 Fees</button>
+    </div>
+
+    <!-- Today Tab Content -->
+    <div id="tab-today" class="tab-content active">
+      <div id="portal-batches-today"></div>
+      <div id="student-summary" class="dashboard-summary" style="margin-top: 14px;"></div>
+    </div>
+
+    <!-- Courses Tab Content -->
+    <div id="tab-courses" class="tab-content">
+      <div id="portal-batches-courses"></div>
+    </div>
+
+    <!-- Calendar Tab Content -->
+    <div id="tab-calendar" class="tab-content">
+      <div id="portal-calendar"></div>
+    </div>
+
+    <!-- Fees Tab Content -->
+    <div id="tab-fees" class="tab-content">
+      <div id="portal-fees"></div>
+    </div>
   </div>
 
   <!-- ══ FEEDBACK MODAL ══ -->
@@ -439,6 +535,19 @@ function showScreen(id) {
   document.getElementById(id).classList.add('active');
 }
 
+function switchTab(tabId, el) {
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  const target = document.getElementById(tabId);
+  if (target) target.classList.add('active');
+  
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  
+  if (tabId === 'tab-today' && portalData) {
+    renderStudentSummary(portalData);
+  }
+}
+
 // ── Login ─────────────────────────────────────────────────────
 function doLogin() {
   const enrol = document.getElementById('lg-enrol').value.trim();
@@ -520,65 +629,131 @@ function renderPortal(d) {
   const centreStr = (d.batches && d.batches.length) ? `${d.batches[0].centre} · ` : '';
   document.getElementById('wb-date').textContent = centreStr + dateStr;
   
-  const wrap = document.getElementById('portal-batches');
+  const todayWrap = document.getElementById('portal-batches-today');
+  const coursesWrap = document.getElementById('portal-batches-courses');
+
+  // Reset active tab to Today when rendering the portal
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  const todayTabBtn = document.querySelector('.nav-tab[onclick*="tab-today"]');
+  if (todayTabBtn) todayTabBtn.classList.add('active');
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  const todayTabContent = document.getElementById('tab-today');
+  if (todayTabContent) todayTabContent.classList.add('active');
+
   renderStudentSummary(d);
   loadStudentFees();
   loadStudentAttendanceCalendar(studentCalendarMonth);
 
   if (!d.batches||!d.batches.length) {
-    wrap.innerHTML=emptyState('📚', 'No active sessions today', 'You have no active batch for today, or today is a holiday or weekend.');
-    showScreen('s-portal'); return;
+    const emptyHtml = emptyState('📚', 'No active sessions today', 'You have no active batch for today, or today is a holiday or weekend.');
+    if (todayWrap) todayWrap.innerHTML = emptyHtml;
+    if (coursesWrap) coursesWrap.innerHTML = emptyHtml;
+    showScreen('s-portal');
+    return;
   }
 
-  wrap.innerHTML = d.batches.map(b => {
-    const slotBadgeClass = b.batchSlot==='First Half'?'slot-first':b.batchSlot==='Second Half'?'slot-second':'slot-full';
-    const slotLabel      = b.batchSlot==='First Half'?'🌅 First Half':b.batchSlot==='Second Half'?'🌆 Second Half':'☀️ Full Day';
+  // Today's View Batches (No history timeline lists to keep it compact and clean)
+  if (todayWrap) {
+    todayWrap.innerHTML = d.batches.map(b => {
+      const slotBadgeClass = b.batchSlot==='First Half'?'slot-first':b.batchSlot==='Second Half'?'slot-second':'slot-full';
+      const slotLabel      = b.batchSlot==='First Half'?'🌅 First Half':b.batchSlot==='Second Half'?'🌆 Second Half':'☀️ Full Day';
 
-    if (b.alreadySubmitted) {
-      return `<div class="batch-card done-card">
-        <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
+      if (b.alreadySubmitted) {
+        return `<div class="batch-card done-card">
+          <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
+          <div class="bc-course">${b.course}</div>
+          <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''}</div>
+          ${renderSyllabusProgress(b)}
+          <div class="bc-done">✅ Attendance marked &amp; feedback submitted</div>
+        </div>`;
+      }
+
+      if (!b.sessionExists) {
+        return `<div class="batch-card inactive-card">
+          <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
+          <div class="bc-course">${b.course}</div>
+          <div class="bc-meta">${b.batchCode} · ${b.centre}</div>
+          ${renderSyllabusProgress(b)}
+          <div class="bc-waiting">⏳ Session not yet started by instructor. Please check back later.</div>
+          <div class="refresh-note">Auto-refreshing in <span id="refresh-cd-${b.batchCode}">60</span>s</div>
+        </div>`;
+      }
+
+      if (!b.windowActive) {
+        const timeMsg = !b.windowOpen
+          ? `Session opens at ${b.windowOpenHr}:00`
+          : `Session window closed at ${b.windowCloseHr}:00`;
+        return `<div class="batch-card inactive-card">
+          <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
+          <div class="bc-course">${b.course}</div>
+          <div class="bc-meta">${b.batchCode} · ${b.centre}</div>
+          ${renderSyllabusProgress(b)}
+          <div class="bc-inactive"><span class="time-badge">⏰ ${timeMsg}</span></div>
+        </div>`;
+      }
+
+      // Active — can submit
+      const topicLine = b.topic ? `<div class="bc-topic">📖 ${b.topic}</div>` : '';
+      return `<div class="batch-card active-card">
+        <span class="slot-badge ${slotBadgeClass}" style="display:inline-flex; align-items:center;"><span class="pulse-dot"></span>${slotLabel}</span>
         <div class="bc-course">${b.course}</div>
-        <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''}</div>
+        <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''} · Session ${b.sessNo}</div>
+        ${topicLine}
         ${renderSyllabusProgress(b)}
-        <div class="bc-done">✅ Attendance marked &amp; feedback submitted</div>
-      </div>${renderHistory(b)}`;
-    }
+        <button class="btn btn-gold" onclick="openFeedback('${b.batchCode}')">Mark Attendance &amp; Submit Feedback →</button>
+      </div>`;
+    }).join('');
+  }
 
-    if (!b.sessionExists) {
-      return `<div class="batch-card inactive-card">
-        <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
-        <div class="bc-course">${b.course}</div>
-        <div class="bc-meta">${b.batchCode} · ${b.centre}</div>
-        ${renderSyllabusProgress(b)}
-        <div class="bc-waiting">⏳ Session not yet started by instructor. Please check back later.</div>
-        <div class="refresh-note">Auto-refreshing in <span id="refresh-cd-${b.batchCode}">60</span>s</div>
-      </div>${renderHistory(b)}`;
-    }
+  // Course View Batches (With syllabus progress and collapsible history timeline lists)
+  if (coursesWrap) {
+    coursesWrap.innerHTML = d.batches.map(b => {
+      const slotBadgeClass = b.batchSlot==='First Half'?'slot-first':b.batchSlot==='Second Half'?'slot-second':'slot-full';
+      const slotLabel      = b.batchSlot==='First Half'?'🌅 First Half':b.batchSlot==='Second Half'?'🌆 Second Half':'☀️ Full Day';
 
-    if (!b.windowActive) {
-      const timeMsg = !b.windowOpen
-        ? `Session opens at ${b.windowOpenHr}:00`
-        : `Session window closed at ${b.windowCloseHr}:00`;
-      return `<div class="batch-card inactive-card">
-        <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
-        <div class="bc-course">${b.course}</div>
-        <div class="bc-meta">${b.batchCode} · ${b.centre}</div>
-        ${renderSyllabusProgress(b)}
-        <div class="bc-inactive"><span class="time-badge">⏰ ${timeMsg}</span></div>
-      </div>${renderHistory(b)}`;
-    }
-
-    // Active — can submit
-    const topicLine = b.topic ? `<div class="bc-topic">📖 ${b.topic}</div>` : '';
-    return `<div class="batch-card active-card">
-      <span class="slot-badge ${slotBadgeClass}" style="display:inline-flex; align-items:center;"><span class="pulse-dot"></span>${slotLabel}</span>
-      <div class="bc-course">${b.course}</div>
-      <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''} · Session ${b.sessNo}</div>
-      ${topicLine}
-      ${renderSyllabusProgress(b)}
-      <button class="btn btn-gold" onclick="openFeedback('${b.batchCode}')">Mark Attendance &amp; Submit Feedback →</button>
-    </div>${renderHistory(b)}`;
-  }).join('');
+      let innerCard = '';
+      if (b.alreadySubmitted) {
+        innerCard = `<div class="batch-card done-card" style="margin-bottom:0px; border-bottom-left-radius:0; border-bottom-right-radius:0; border-bottom:none;">
+          <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
+          <div class="bc-course">${b.course}</div>
+          <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''}</div>
+          ${renderSyllabusProgress(b)}
+          <div class="bc-done">✅ Attendance marked &amp; feedback submitted</div>
+        </div>`;
+      } else if (!b.sessionExists) {
+        innerCard = `<div class="batch-card inactive-card" style="margin-bottom:0px; border-bottom-left-radius:0; border-bottom-right-radius:0; border-bottom:none;">
+          <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
+          <div class="bc-course">${b.course}</div>
+          <div class="bc-meta">${b.batchCode} · ${b.centre}</div>
+          ${renderSyllabusProgress(b)}
+          <div class="bc-waiting">⏳ Session not yet started by instructor. Please check back later.</div>
+        </div>`;
+      } else if (!b.windowActive) {
+        const timeMsg = !b.windowOpen
+          ? `Session opens at ${b.windowOpenHr}:00`
+          : `Session window closed at ${b.windowCloseHr}:00`;
+        innerCard = `<div class="batch-card inactive-card" style="margin-bottom:0px; border-bottom-left-radius:0; border-bottom-right-radius:0; border-bottom:none;">
+          <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
+          <div class="bc-course">${b.course}</div>
+          <div class="bc-meta">${b.batchCode} · ${b.centre}</div>
+          ${renderSyllabusProgress(b)}
+          <div class="bc-inactive"><span class="time-badge">⏰ ${timeMsg}</span></div>
+        </div>`;
+      } else {
+        const topicLine = b.topic ? `<div class="bc-topic">📖 ${b.topic}</div>` : '';
+        innerCard = `<div class="batch-card active-card" style="margin-bottom:0px; border-bottom-left-radius:0; border-bottom-right-radius:0; border-bottom:none;">
+          <span class="slot-badge ${slotBadgeClass}" style="display:inline-flex; align-items:center;"><span class="pulse-dot"></span>${slotLabel}</span>
+          <div class="bc-course">${b.course}</div>
+          <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''} · Session ${b.sessNo}</div>
+          ${topicLine}
+          ${renderSyllabusProgress(b)}
+          <button class="btn btn-gold" onclick="openFeedback('${b.batchCode}')">Mark Attendance &amp; Submit Feedback →</button>
+        </div>`;
+      }
+      
+      return `<div style="margin-bottom:14px;">${innerCard}${renderHistory(b, true)}</div>`;
+    }).join('');
+  }
 
   showScreen('s-portal');
   // Start countdown refresh for waiting sessions
@@ -605,19 +780,13 @@ function loadStudentAttendanceCalendar(anchor) {
   });
 }
 
-function renderHistory(b) {
+function renderHistory(b, collapsible) {
   const h = b.history || [];
   const s = b.historySummary || {attended:0,total:0,pct:0};
   if (!h.length) return '';
-  return `<div class="hist-card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <div>
-        <div class="section-tag" style="margin-bottom:0">Attendance History</div>
-        <div style="font-size:11px;color:var(--muted)">${s.attended}/${s.total} sessions attended</div>
-      </div>
-      <div class="hist-pct">${s.pct}%</div>
-    </div>
-    <div class="timeline-list">
+  
+  const content = `
+    <div class="timeline-list" style="margin-top: 10px;">
     ${h.map(x=>`<div class="timeline-card hist-row ${x.attended?'':'missed'}">
       <span class="hist-dot ${x.attended?'present':'missed'}"></span>
       <div class="hist-main">
@@ -627,7 +796,36 @@ function renderHistory(b) {
       <span class="badge ${x.attended?'badge-green':'badge-amber'}">${x.attended?'Present':'Not marked'}</span>
     </div>`).join('')}
     </div>
-  </div>`;
+  `;
+  
+  if (collapsible) {
+    return `<div class="hist-card" style="border-top:none; border-top-left-radius:0; border-top-right-radius:0;">
+      <details class="hist-details">
+        <summary class="hist-summary">
+          <div style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-right:10px;">
+            <div>
+              <div class="section-tag" style="margin-bottom:0">Attendance History</div>
+              <div style="font-size:11px;color:var(--muted);font-weight:normal;">${s.attended}/${s.total} sessions attended</div>
+            </div>
+            <div class="hist-pct" style="margin-left:auto; margin-right:12px;">${s.pct}%</div>
+          </div>
+          <span class="hist-toggle-icon">▼</span>
+        </summary>
+        ${content}
+      </details>
+    </div>`;
+  } else {
+    return `<div class="hist-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div>
+          <div class="section-tag" style="margin-bottom:0">Attendance History</div>
+          <div style="font-size:11px;color:var(--muted)">${s.attended}/${s.total} sessions attended</div>
+        </div>
+        <div class="hist-pct">${s.pct}%</div>
+      </div>
+      ${content}
+    </div>`;
+  }
 }
 
 function renderStudentSummary(d) {

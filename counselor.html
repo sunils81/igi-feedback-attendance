@@ -3764,12 +3764,16 @@ function renderCounsellorRankings() {
     return;
   }
 
+  // Use preview targets and rows to show all counsellors in the centre
+  var previewTargets = revenueData.monthlyPreviewTargets || revenueData.targetRows || [];
+  var previewRows = revenueData.monthlyPreviewRows || revenueData.monthlyRows || [];
+
   var allCounsellorNames = {};
-  ((revenueData && revenueData.targetRows) || []).forEach(function(tr) {
+  previewTargets.forEach(function(tr) {
     if (tr.counsellor) allCounsellorNames[revCanonical(tr.counsellor)] = tr.counsellor;
   });
-  ((revenueData && revenueData.counsellors) || []).forEach(function(c) {
-    if (c.counsellor) allCounsellorNames[revCanonical(c.counsellor)] = c.counsellor;
+  previewRows.forEach(function(r) {
+    if (r.counsellor) allCounsellorNames[revCanonical(r.counsellor)] = r.counsellor;
   });
 
   var counsellorKeys = Object.keys(allCounsellorNames);
@@ -3782,15 +3786,32 @@ function renderCounsellorRankings() {
 
   // Helper to find designated centre
   function getCounsellorCentre(name) {
-    var targetRow = (revenueData.targetRows || []).find(function(tr) {
+    var targetRow = previewTargets.find(function(tr) {
       return revSameCounsellor(tr.counsellor, name);
     });
     if (targetRow && targetRow.centre) return targetRow.centre;
-    var mRow = (revenueData.monthlyRows || []).find(function(r) {
+    var mRow = previewRows.find(function(r) {
       return revSameCounsellor(r.counsellor, name);
     });
     if (mRow && mRow.assignedCentre) return mRow.assignedCentre;
     return 'Unmapped';
+  }
+
+  // Helper to find target
+  function getCounsellorAnnualTarget(name) {
+    var rows = revDeduplicateTargetRows(previewTargets).filter(function(r) {
+      return revSameCounsellor(r.counsellor, name);
+    });
+    return rows.reduce(function(sum, r) { return sum + (Number(r.targetCourse) || 0); }, 0);
+  }
+
+  // Helper to find annual YTD achieved
+  function getCounsellorAnnualAchieved(name) {
+    return previewRows.filter(function(r) {
+      return revSameCounsellor(r.counsellor, name);
+    }).reduce(function(sum, r) {
+      return sum + (Number(r.achievedCourse) || 0);
+    }, 0);
   }
 
   // Calculate Quarter details
@@ -3817,23 +3838,20 @@ function renderCounsellorRankings() {
     quarterMonths = [yearNum + '-01', yearNum + '-02', yearNum + '-03'];
   }
 
-  // Accumulate quarterly achievements by counselor (excluding GST)
-  var quarterAchievedByCounsellor = {};
-  ((revenueData && revenueData.monthlyRows) || []).forEach(function(r) {
-    if (quarterMonths.indexOf(r.month) >= 0) {
-      var key = revCanonical(r.counsellor);
-      if (!quarterAchievedByCounsellor[key]) {
-        quarterAchievedByCounsellor[key] = 0;
-      }
-      quarterAchievedByCounsellor[key] += Number(r.achievedCourse) || 0;
-    }
-  });
+  // Helper to find quarterly achieved
+  function getCounsellorQuarterAchieved(name) {
+    return previewRows.filter(function(r) {
+      return revSameCounsellor(r.counsellor, name) && quarterMonths.indexOf(r.month) >= 0;
+    }).reduce(function(sum, r) {
+      return sum + (Number(r.achievedCourse) || 0);
+    }, 0);
+  }
 
   // Build Annual rankings list
   var annualList = counsellorKeys.map(function(k) {
     var name = allCounsellorNames[k];
-    var target = revAnnualTargetForCounsellor(name);
-    var achieved = revAchievedForCounsellor(name).achieved;
+    var target = getCounsellorAnnualTarget(name);
+    var achieved = getCounsellorAnnualAchieved(name);
     var pct = target ? Math.round(achieved / target * 100) : 0;
     return { name: name, centre: getCounsellorCentre(name), target: target, achieved: achieved, pct: pct };
   }).sort(function(a, b) {
@@ -3843,8 +3861,8 @@ function renderCounsellorRankings() {
   // Build Quarterly rankings list
   var quarterList = counsellorKeys.map(function(k) {
     var name = allCounsellorNames[k];
-    var target = revAnnualTargetForCounsellor(name) / 4;
-    var achieved = quarterAchievedByCounsellor[k] || 0;
+    var target = getCounsellorAnnualTarget(name) / 4;
+    var achieved = getCounsellorQuarterAchieved(name);
     var pct = target ? Math.round(achieved / target * 100) : 0;
     return { name: name, centre: getCounsellorCentre(name), target: target, achieved: achieved, pct: pct };
   }).sort(function(a, b) {

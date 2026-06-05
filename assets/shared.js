@@ -276,15 +276,19 @@ body{font-family:"Plus Jakarta Sans",sans-serif;background:linear-gradient(180de
 .att-cal-day.today{border-color:var(--gold);background:var(--gold-pale)}
 .att-cal-num{font-family:"JetBrains Mono",monospace;font-size:12px;font-weight:800}
 .att-cal-dots{display:flex;gap:3px;flex-wrap:wrap}
-.att-cal-dots i,.att-cal-legend i{width:8px;height:8px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center}
+.att-cal-dots i,.att-cal-legend i{width:12px;height:12px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center}
 .att-cal-dots i{box-shadow:0 0 0 2px rgba(253,252,249,.95)}
 .att-cal-more{font-size:9px;color:var(--muted)}
 .att-cal-legend{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0 12px;font-size:11px;color:var(--muted)}
 .att-cal-legend span{display:inline-flex;align-items:center;gap:5px}
-.att-cal-dots .completed,.att-cal-legend .completed,.att-status.completed{background:#E8F5EE;color:#1a7a3c}
-.att-cal-dots .pending,.att-cal-legend .pending,.att-status.pending{background:#FEF2F2;color:var(--red)}
-.att-cal-dots .upcoming,.att-cal-legend .upcoming,.att-status.upcoming{background:var(--gold-pale);color:#B87A10}
-.att-cal-dots .cancelled,.att-cal-legend .cancelled,.att-status.cancelled{background:#E5E1D8;color:var(--muted)}
+.att-cal-dots .completed,.att-cal-legend .completed{background:#168B57;color:#fff}
+.att-cal-dots .pending,.att-cal-legend .pending{background:var(--red);color:#fff}
+.att-cal-dots .upcoming,.att-cal-legend .upcoming{background:var(--gold);color:#fff}
+.att-cal-dots .cancelled,.att-cal-legend .cancelled{background:var(--muted);color:#fff}
+.att-status.completed{background:#E8F5EE;color:#1a7a3c}
+.att-status.pending{background:#FEF2F2;color:var(--red)}
+.att-status.upcoming{background:var(--gold-pale);color:#B87A10}
+.att-status.cancelled{background:#E5E1D8;color:var(--muted)}
 .att-cal-dots .student-present,.att-cal-legend .student-present{width:14px;height:14px;background:#168B57;color:#fff;font-size:9px;font-weight:900;line-height:1}
 .att-cal-dots .student-missed,.att-cal-legend .student-missed{width:12px;height:12px;background:var(--red);color:#fff}
 .att-agenda{display:grid;gap:8px}

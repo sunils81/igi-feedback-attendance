@@ -2833,7 +2833,8 @@ function buildRevenueDashboard(ss,p) {
     counsellors:Object.keys(byCounsellor).sort().map(function(k){return Object.assign({counsellor:k},byCounsellor[k]);}),
     centres:Object.keys(byCentre).sort().map(function(k){return Object.assign({centre:k},byCentre[k]);}),
     businessCentres:Object.keys(byBusinessCentre).sort().map(function(k){return Object.assign({centre:k},byBusinessCentre[k]);}),
-    centreStandings:getGlobalCentreStandings(ss, period, currentMonthKey, allAnnualTargets, allMonthlyAchieved)};
+    centreStandings:getGlobalCentreStandings(ss, period, currentMonthKey, allAnnualTargets, allMonthlyAchieved),
+    counsellorStandings:getGlobalCounsellorStandings(ss, period, currentMonthKey, allAnnualTargets, allMonthlyAchieved)};
 }
 
 function getGlobalCentreStandings(ss, period, currentMonthKey, allAnnualTargets, allMonthlyAchieved) {
@@ -2885,6 +2886,59 @@ function getGlobalCentreStandings(ss, period, currentMonthKey, allAnnualTargets,
   // 4. Compute quarterly targets
   return Object.keys(globalCentreMap).map(function(k) {
     var item = globalCentreMap[k];
+    item.qtdTarget = item.annualTarget / 4;
+    return item;
+  });
+}
+
+function getGlobalCounsellorStandings(ss, period, currentMonthKey, allAnnualTargets, allMonthlyAchieved) {
+  var globalCounsellorMap = {};
+  
+  // 1. Rollup targets from allAnnualTargets
+  allAnnualTargets.forEach(function(r) {
+    if (r.period === period && r.counsellor) {
+      var name = r.counsellor.trim();
+      if (name === 'Arjun Mistry' || name === 'Piyush' || name === 'Piyush Ahuja') return;
+      if (!globalCounsellorMap[name]) {
+        globalCounsellorMap[name] = { counsellor: name, centre: r.centre, annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
+      }
+      globalCounsellorMap[name].annualTarget += Number(r.targetCourse) || 0;
+    }
+  });
+
+  // 2. Parse current Quarter months
+  var monthNum = parseInt(currentMonthKey.split('-')[1], 10);
+  var yearNum = parseInt(currentMonthKey.split('-')[0], 10);
+  var quarterMonths = [yearNum + '-04', yearNum + '-05', yearNum + '-06'];
+  if (monthNum >= 7 && monthNum <= 9) {
+    quarterMonths = [yearNum + '-07', yearNum + '-08', yearNum + '-09'];
+  } else if (monthNum >= 10 && monthNum <= 12) {
+    quarterMonths = [yearNum + '-10', yearNum + '-11', yearNum + '-12'];
+  } else if (monthNum >= 1 && monthNum <= 3) {
+    quarterMonths = [yearNum + '-01', yearNum + '-02', yearNum + '-03'];
+  }
+
+  // 3. Rollup achievements (excluding GST, matching course target)
+  allMonthlyAchieved.forEach(function(r) {
+    if (r.period === period && r.counsellor) {
+      var name = r.counsellor.trim();
+      if (name === 'Arjun Mistry' || name === 'Piyush' || name === 'Piyush Ahuja') return;
+      if (!globalCounsellorMap[name]) {
+        globalCounsellorMap[name] = { counsellor: name, centre: r.assignedCentre || r.centre || 'Unmapped', annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
+      }
+      // Strictly measure performance from April 2026 to March 2027
+      if (r.month >= '2026-04' && r.month <= '2027-03') {
+        var fee = Number(r.achievedCourse) || 0;
+        globalCounsellorMap[name].annualAchieved += fee;
+        if (quarterMonths.indexOf(r.month) >= 0) {
+          globalCounsellorMap[name].qtdAchieved += fee;
+        }
+      }
+    }
+  });
+
+  return Object.keys(globalCounsellorMap).map(function(k) {
+    var item = globalCounsellorMap[k];
     item.qtdTarget = item.annualTarget / 4;
     return item;
   });

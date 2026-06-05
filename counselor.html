@@ -3905,60 +3905,18 @@ function revMoneyAbbr(val) {
 function renderCounsellorRankings() {
   var wrap = document.getElementById('rev-rankings-card');
   if (!wrap) return;
-  if (!revenueData) {
+  if (!revenueData || !revenueData.counsellorStandings) {
     wrap.style.display = 'none';
     return;
   }
 
-  // Use preview targets and rows to show all counsellors in the centre
-  var previewTargets = revenueData.monthlyPreviewTargets || revenueData.targetRows || [];
-  var previewRows = revenueData.monthlyPreviewRows || revenueData.monthlyRows || [];
-
-  var allCounsellorNames = {};
-  previewTargets.forEach(function(tr) {
-    if (tr.counsellor) allCounsellorNames[revCanonical(tr.counsellor)] = tr.counsellor;
-  });
-  previewRows.forEach(function(r) {
-    if (r.counsellor) allCounsellorNames[revCanonical(r.counsellor)] = r.counsellor;
-  });
-
-  var counsellorKeys = Object.keys(allCounsellorNames);
-  if (!counsellorKeys.length) {
+  var list = revenueData.counsellorStandings || [];
+  if (!list.length) {
     wrap.style.display = 'none';
     return;
   }
 
   wrap.style.display = 'block';
-
-  // Helper to find designated centre
-  function getCounsellorCentre(name) {
-    var targetRow = previewTargets.find(function(tr) {
-      return revSameCounsellor(tr.counsellor, name);
-    });
-    if (targetRow && targetRow.centre) return targetRow.centre;
-    var mRow = previewRows.find(function(r) {
-      return revSameCounsellor(r.counsellor, name);
-    });
-    if (mRow && mRow.assignedCentre) return mRow.assignedCentre;
-    return 'Unmapped';
-  }
-
-  // Helper to find target
-  function getCounsellorAnnualTarget(name) {
-    var rows = revDeduplicateTargetRows(previewTargets).filter(function(r) {
-      return revSameCounsellor(r.counsellor, name);
-    });
-    return rows.reduce(function(sum, r) { return sum + (Number(r.targetCourse) || 0); }, 0);
-  }
-
-  // Helper to find annual YTD achieved
-  function getCounsellorAnnualAchieved(name) {
-    return previewRows.filter(function(r) {
-      return revSameCounsellor(r.counsellor, name);
-    }).reduce(function(sum, r) {
-      return sum + (Number(r.achievedCourse) || 0);
-    }, 0);
-  }
 
   // Calculate Quarter details
   var currentMonth = revenueCurrentMonthKey();
@@ -3968,57 +3926,38 @@ function renderCounsellorRankings() {
 
   var quarterBadge = 'Q1';
   var quarterLabel = '(Apr–Jun)';
-  var quarterMonths = [yearNum + '-04', yearNum + '-05', yearNum + '-06'];
 
   if (monthNum >= 7 && monthNum <= 9) {
     quarterBadge = 'Q2';
     quarterLabel = '(Jul–Sep)';
-    quarterMonths = [yearNum + '-07', yearNum + '-08', yearNum + '-09'];
   } else if (monthNum >= 10 && monthNum <= 12) {
     quarterBadge = 'Q3';
     quarterLabel = '(Oct–Dec)';
-    quarterMonths = [yearNum + '-10', yearNum + '-11', yearNum + '-12'];
   } else if (monthNum >= 1 && monthNum <= 3) {
     quarterBadge = 'Q4';
     quarterLabel = '(Jan–Mar)';
-    quarterMonths = [yearNum + '-01', yearNum + '-02', yearNum + '-03'];
-  }
-
-  // Helper to find quarterly achieved
-  function getCounsellorQuarterAchieved(name) {
-    return previewRows.filter(function(r) {
-      return revSameCounsellor(r.counsellor, name) && quarterMonths.indexOf(r.month) >= 0;
-    }).reduce(function(sum, r) {
-      return sum + (Number(r.achievedCourse) || 0);
-    }, 0);
   }
 
   // Build Annual rankings list
-  var annualList = counsellorKeys.map(function(k) {
-    var name = allCounsellorNames[k];
-    var target = getCounsellorAnnualTarget(name);
-    var achieved = getCounsellorAnnualAchieved(name);
-    var pct = target ? Math.round(achieved / target * 100) : 0;
-    return { name: name, centre: getCounsellorCentre(name), target: target, achieved: achieved, pct: pct };
+  var annualList = list.map(function(item) {
+    var pct = item.annualTarget ? Math.round(item.annualAchieved / item.annualTarget * 100) : 0;
+    return { name: item.counsellor, centre: item.centre, target: item.annualTarget, achieved: item.annualAchieved, pct: pct };
   }).sort(function(a, b) {
     return b.pct - a.pct || b.achieved - a.achieved || a.name.localeCompare(b.name);
   });
 
   // Build Quarterly rankings list
-  var quarterList = counsellorKeys.map(function(k) {
-    var name = allCounsellorNames[k];
-    var target = getCounsellorAnnualTarget(name) / 4;
-    var achieved = getCounsellorQuarterAchieved(name);
-    var pct = target ? Math.round(achieved / target * 100) : 0;
-    return { name: name, centre: getCounsellorCentre(name), target: target, achieved: achieved, pct: pct };
+  var quarterList = list.map(function(item) {
+    var pct = item.qtdTarget ? Math.round(item.qtdAchieved / item.qtdTarget * 100) : 0;
+    return { name: item.counsellor, centre: item.centre, target: item.qtdTarget, achieved: item.qtdAchieved, pct: pct };
   }).sort(function(a, b) {
     return b.pct - a.pct || b.achieved - a.achieved || a.name.localeCompare(b.name);
   });
 
   // Helper to build list items HTML
-  function buildLeaderboardHtml(list) {
-    if (!list.length) return '<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px">No counsellors found.</div>';
-    return list.map(function(item, idx) {
+  function buildLeaderboardHtml(listItems) {
+    if (!listItems.length) return '<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px">No counsellors found.</div>';
+    return listItems.map(function(item, idx) {
       var rank = idx + 1;
       var rankIcon = rank === 1 ? '🥇' : (rank === 2 ? '🥈' : (rank === 3 ? '🥉' : '#' + rank));
       var badgeStyle = 'background:var(--off);color:var(--muted);border:1px solid var(--border);';

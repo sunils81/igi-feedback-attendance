@@ -1810,7 +1810,44 @@ function doGet(e) {
       // Sort: First Half → Second Half → Full Day
       const slotOrder = {'First Half':0,'Second Half':1,'Full Day':2};
       batchCards.sort((a,b)=>(slotOrder[a.batchSlot]||2)-(slotOrder[b.batchSlot]||2));
-      return respond({status:'ok', studentName, enrollmentNo:enrollNo, batches:batchCards});
+
+      // Get all assessment marks for this student
+      const shAss   = ss.getSheetByName(SH_ASSESSMENTS);
+      const assData = shAss&&shAss.getLastRow()>1?shAss.getRange(2,1,shAss.getLastRow()-1,8).getValues():[];
+      const shMarks = ss.getSheetByName(SH_MARKS);
+      const marksData = shMarks&&shMarks.getLastRow()>1?shMarks.getRange(2,1,shMarks.getLastRow()-1,9).getValues():[];
+
+      const studentAssessments = [];
+      marksData.forEach(r => {
+        const studentId = String(r[1]).trim().toUpperCase();
+        if (studentId === enrollNo) {
+          const assId = String(r[0]).toUpperCase();
+          const ass = assData.find(a => String(a[0]).toUpperCase() === assId);
+          if (ass) {
+            studentAssessments.push({
+              assessmentId: assId,
+              batchCode: ass[1],
+              testName: ass[2],
+              testType: ass[3],
+              testDate: ass[4] ? dateKey(new Date(ass[4])) : '',
+              totalMarks: ass[5],
+              marksObtained: r[3],
+              percentage: r[4],
+              result: r[5],
+              remarks: r[6]
+            });
+          }
+        }
+      });
+
+      return respond({
+        status: 'ok',
+        studentName,
+        enrollmentNo: enrollNo,
+        mobileLast4: storedLast4 || mobileColLast4,
+        batches: batchCards,
+        assessments: studentAssessments
+      });
     }
 
     // ── fixOldBatches (one-time utility to insert Batch Slot col) ─

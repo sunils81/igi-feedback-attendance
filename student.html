@@ -221,6 +221,14 @@
   align-items: center;
   gap: 5px;
 }
+.summary-tile .v {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 24px !important;
+  font-weight: 800 !important;
+  color: var(--navy) !important;
+  margin-top: 6px !important;
+  letter-spacing: -0.02em !important;
+}
 
 /* Portal Tab Switcher System */
 .portal-nav {
@@ -292,6 +300,152 @@
 .hist-details[open] .hist-toggle-icon {
   transform: rotate(180deg);
 }
+
+/* Marks Tab Styles */
+.marks-summary-card {
+  background: linear-gradient(135deg, var(--navy) 0%, #1e3a61 100%);
+  color: var(--white);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 12px rgba(13, 27, 46, 0.15);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.marks-summary-stat {
+  display: flex;
+  flex-direction: column;
+}
+.marks-summary-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.7);
+}
+.marks-summary-val {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 26px;
+  font-weight: 800;
+  margin-top: 4px;
+}
+.marks-summary-sub {
+  font-size: 11px;
+  color: var(--gold);
+  font-weight: 600;
+  margin-top: 2px;
+}
+.marks-divider {
+  width: 1px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.15);
+}
+.marks-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.marks-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+.marks-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.marks-title-wrap {
+  flex: 1;
+}
+.marks-badge-type {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-radius: 4px;
+  background: rgba(13, 27, 46, 0.05);
+  color: var(--navy);
+  margin-bottom: 6px;
+}
+.marks-test-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--navy);
+  line-height: 1.3;
+}
+.marks-meta {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.marks-score-wrap {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.marks-score {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--navy);
+}
+.marks-score-total {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.marks-percent {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold);
+  margin-top: 2px;
+}
+.badge-pass {
+  background: #e6f9ed;
+  color: #15803d;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  margin-top: 6px;
+  display: inline-block;
+}
+.badge-fail {
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  margin-top: 6px;
+  display: inline-block;
+}
+.marks-remarks-box {
+  background: var(--off);
+  border-left: 3px solid var(--gold);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--navy);
+  margin-top: 10px;
+  font-style: italic;
+}
+
+@media(max-width:380px){
+  .nav-tab {
+    font-size: 9px !important;
+    padding: 8px 2px !important;
+  }
+}
 </style>
 </head>
 <body>
@@ -342,6 +496,7 @@
       <button class="nav-tab active" onclick="switchTab('tab-today', this)">📅 Today</button>
       <button class="nav-tab" onclick="switchTab('tab-courses', this)">📚 Courses</button>
       <button class="nav-tab" onclick="switchTab('tab-calendar', this)">🗓️ Calendar</button>
+      <button class="nav-tab" onclick="switchTab('tab-marks', this)">📝 Marks</button>
       <button class="nav-tab" onclick="switchTab('tab-fees', this)">💰 Fees</button>
     </div>
 
@@ -359,6 +514,11 @@
     <!-- Calendar Tab Content -->
     <div id="tab-calendar" class="tab-content">
       <div id="portal-calendar"></div>
+    </div>
+
+    <!-- Marks Tab Content -->
+    <div id="tab-marks" class="tab-content">
+      <div id="portal-marks"></div>
     </div>
 
     <!-- Fees Tab Content -->
@@ -643,6 +803,7 @@ function renderPortal(d) {
   renderStudentSummary(d);
   loadStudentFees();
   loadStudentAttendanceCalendar(studentCalendarMonth);
+  renderStudentMarks(d.assessments || []);
 
   if (!d.batches||!d.batches.length) {
     const emptyHtml = emptyState('📚', 'No active sessions today', 'You have no active batch for today, or today is a holiday or weekend.');
@@ -767,7 +928,7 @@ function loadStudentAttendanceCalendar(anchor) {
   studentCalendarMonth = anchor || studentCalendarMonth || new Date();
   const range = monthRange(studentCalendarMonth);
   wrap.innerHTML = loadingState('Loading attendance calendar...');
-  gasGet({action:'getAttendanceCalendar', role:'student', studentId:portalData.enrollmentNo, mobileLast4:saved.mobileLast4 || '', fromDate:range.fromDate, toDate:range.toDate}, function(e,d) {
+  gasGet({action:'getAttendanceCalendar', role:'student', studentId:portalData.enrollmentNo, mobileLast4:portalData.mobileLast4 || saved.mobileLast4 || '', fromDate:range.fromDate, toDate:range.toDate}, function(e,d) {
     if (e || !d || d.status !== 'ok') {
       wrap.innerHTML = '<p style="color:var(--red);font-size:13px">Could not load attendance calendar.</p>';
       return;
@@ -877,7 +1038,7 @@ function renderStudentSummary(d) {
         `<svg width="60" height="60" viewBox="0 0 44 44">` +
           `<circle class="att-circle-bg" cx="22" cy="22" r="18"></circle>` +
           `<circle id="att-ring-fg" class="att-circle-fg" cx="22" cy="22" r="18" stroke="${color}" stroke-dasharray="${circumference}" stroke-dashoffset="${circumference}"></circle>` +
-          `<text x="22" y="25" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="800" fill="var(--navy)">${displayPct}</text>` +
+          `<text x="22" y="25.5" text-anchor="middle" font-family="'Plus Jakarta Sans', sans-serif" font-size="8.5" font-weight="800" fill="var(--navy)">${displayPct}</text>` +
         `</svg>` +
       `</div>` +
       `<div class="s" style="margin-top:4px; font-size:10px; color:var(--muted); text-align:center;">From history</div>` +
@@ -1074,6 +1235,105 @@ function showThanks(alreadyDone) {
 }
 
 function backToPortal() { showScreen('s-portal'); }
+
+function renderStudentMarks(assessments) {
+  const wrap = document.getElementById('portal-marks');
+  if (!wrap) return;
+
+  if (!assessments || !assessments.length) {
+    wrap.innerHTML = '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;padding:0 2px">Report Card</div>' +
+      emptyState('📝', 'No assessment records', 'Your instructor has not uploaded any test marks for your batches yet. Once entered, they will show up here.');
+    return;
+  }
+
+  // Calculate overall performance
+  let totalPct = 0;
+  let gradedCount = 0;
+  let passCount = 0;
+  
+  assessments.forEach(ass => {
+    const pct = parseFloat(ass.percentage);
+    if (!isNaN(pct)) {
+      totalPct += pct;
+      gradedCount++;
+    }
+    if (String(ass.result || '').toLowerCase() === 'pass') {
+      passCount++;
+    }
+  });
+
+  const avgPct = gradedCount > 0 ? Math.round(totalPct / gradedCount) : 0;
+  const passRate = `${passCount} / ${assessments.length}`;
+
+  let html = `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;padding:0 2px">Report Card</div>`;
+
+  // Summary Card
+  html += `
+    <div class="marks-summary-card">
+      <div class="marks-summary-stat">
+        <div class="marks-summary-label">Average Score</div>
+        <div class="marks-summary-val">${avgPct}%</div>
+        <div class="marks-summary-sub">Across graded tests</div>
+      </div>
+      <div class="marks-divider"></div>
+      <div class="marks-summary-stat" style="align-items: flex-end;">
+        <div class="marks-summary-label">Tests Passed</div>
+        <div class="marks-summary-val">${passRate}</div>
+        <div class="marks-summary-sub">Passing status</div>
+      </div>
+    </div>
+  `;
+
+  // List of test cards
+  html += assessments.map(ass => {
+    const isPass = String(ass.result || '').toLowerCase() === 'pass';
+    const badgeClass = isPass ? 'badge-pass' : 'badge-fail';
+    const badgeText = isPass ? 'Pass' : 'Fail';
+    
+    // Formatting date
+    let formattedDate = '—';
+    if (ass.testDate) {
+      try {
+        const parts = ass.testDate.split('-');
+        if (parts.length === 3) {
+          const dObj = new Date(parts[0], parts[1] - 1, parts[2]);
+          formattedDate = dObj.toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'});
+        } else {
+          formattedDate = ass.testDate;
+        }
+      } catch(e) {
+        formattedDate = ass.testDate;
+      }
+    }
+
+    const typeBadge = ass.testType ? `<span class="marks-badge-type">${ass.testType}</span>` : '';
+    const scoreVal = ass.marksObtained !== undefined && ass.marksObtained !== null && ass.marksObtained !== '' ? ass.marksObtained : '—';
+    const totalVal = ass.totalMarks ? ` / ${ass.totalMarks}` : '';
+    const pctVal = ass.percentage !== undefined && ass.percentage !== null && ass.percentage !== '' ? `${ass.percentage}%` : '';
+
+    const remarksHtml = ass.remarks ? `<div class="marks-remarks-box">💬 "${escShared(ass.remarks)}"</div>` : '';
+
+    return `
+      <div class="marks-card">
+        <div class="marks-header">
+          <div class="marks-title-wrap">
+            ${typeBadge}
+            <div class="marks-test-name">${escShared(ass.testName || 'Test')}</div>
+            <div class="marks-meta">${escShared(ass.batchCode || '')} · ${formattedDate}</div>
+          </div>
+          <div class="marks-score-wrap">
+            <div class="marks-score">${scoreVal}<span class="marks-score-total">${totalVal}</span></div>
+            ${pctVal ? `<div class="marks-percent">${pctVal}</div>` : ''}
+            <span class="${badgeClass}">${badgeText}</span>
+          </div>
+        </div>
+        ${remarksHtml}
+      </div>
+    `;
+  }).join('');
+
+  wrap.innerHTML = html;
+}
 
 function loadStudentFees() {
   var feeWrap = document.getElementById('portal-fees');

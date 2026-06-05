@@ -69,8 +69,6 @@ const ADMIN_PASS   = 'IGI2026';       // admin override — full HOD access
 
 // ── Dual-role instructors (instructor + counselor for their centre) ─
 const DUAL_ROLE = {
-  'Arjun Mistry':  { centres:['Ahmedabad'] },
-  'Piyush Ahuja':  { centres:['Lucknow'] },
   'Anuradha':      { centres:['Mumbai','Lucknow','Ahmedabad'] }
 };
 

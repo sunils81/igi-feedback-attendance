@@ -2819,11 +2819,72 @@ function buildRevenueDashboard(ss,p) {
     var b=byMonth[m.key]||revenueBlankBucket();
     return Object.assign({month:m.key,label:m.label},b);
   });
+  var currentMonthKey = p.currentMonth || '';
+  if (!currentMonthKey) {
+    var today = new Date();
+    var periodStart = new Date(2026,3,1);
+    var periodEnd = new Date(2027,2,1);
+    var current = today < periodStart ? periodStart : (today > periodEnd ? periodEnd : today);
+    currentMonthKey = current.getFullYear()+'-'+String(current.getMonth()+1).padStart(2,'0');
+  }
+
   return {status:'ok',backendVersion:REVENUE_BACKEND_VERSION,period:period,months:monthRows,centreTargetRows:centreTargetRows,targetRows:targetRows,monthlyRows:achievedRows,monthlyPreviewRows:monthlyPreviewRows,monthlyPreviewTargets:monthlyPreviewTargets,crossRows:crossRows,
     summary:{targetCourse:totalTargetCourse,targetGst:totalTargetGst,achievedCourse:achievedCourse,achievedGst:achievedGst,studentCount:studentCount,designatedCourse:designatedCourse,designatedGst:designatedGst,otherCentreCourse:otherCentreCourse,otherCentreGst:otherCentreGst,corporateCourse:corporateCourse,corporateGst:corporateGst,monthlyTargetCourse:monthlyTargetCourse,monthlyTargetGst:monthlyTargetGst,monthsInPeriod:fullMonths.length,centreTargetCourse:centreTargetCourse,centreTargetGst:centreTargetGst,splitTargetCourse:splitTargetCourse,splitTargetGst:splitTargetGst},
     counsellors:Object.keys(byCounsellor).sort().map(function(k){return Object.assign({counsellor:k},byCounsellor[k]);}),
     centres:Object.keys(byCentre).sort().map(function(k){return Object.assign({centre:k},byCentre[k]);}),
-    businessCentres:Object.keys(byBusinessCentre).sort().map(function(k){return Object.assign({centre:k},byBusinessCentre[k]);})};
+    businessCentres:Object.keys(byBusinessCentre).sort().map(function(k){return Object.assign({centre:k},byBusinessCentre[k]);}),
+    centreStandings:getGlobalCentreStandings(ss, period, currentMonthKey, allAnnualTargets, allMonthlyAchieved)};
+}
+
+function getGlobalCentreStandings(ss, period, currentMonthKey, allAnnualTargets, allMonthlyAchieved) {
+  var globalCentreMap = {};
+  
+  // 1. Rollup targets from centreTargetRows
+  getRevenueCentreTargetRows(ss).forEach(function(r) {
+    if (r.period === period) {
+      var c = r.centre;
+      if (!globalCentreMap[c]) {
+        globalCentreMap[c] = { centre: c, annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
+      }
+      globalCentreMap[c].annualTarget += Number(r.targetCourse) || 0;
+    }
+  });
+
+  // 2. Parse current Quarter months
+  var monthNum = parseInt(currentMonthKey.split('-')[1], 10);
+  var yearNum = parseInt(currentMonthKey.split('-')[0], 10);
+  var quarterMonths = [yearNum + '-04', yearNum + '-05', yearNum + '-06'];
+  if (monthNum >= 7 && monthNum <= 9) {
+    quarterMonths = [yearNum + '-07', yearNum + '-08', yearNum + '-09'];
+  } else if (monthNum >= 10 && monthNum <= 12) {
+    quarterMonths = [yearNum + '-10', yearNum + '-11', yearNum + '-12'];
+  } else if (monthNum >= 1 && monthNum <= 3) {
+    quarterMonths = [yearNum + '-01', yearNum + '-02', yearNum + '-03'];
+  }
+
+  // 3. Rollup achievements (excluding GST, matching course target)
+  allMonthlyAchieved.forEach(function(r) {
+    if (r.period === period) {
+      var c = r.assignedCentre || r.centre;
+      if (c) {
+        if (!globalCentreMap[c]) {
+          globalCentreMap[c] = { centre: c, annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
+        }
+        var fee = Number(r.achievedCourse) || 0;
+        globalCentreMap[c].annualAchieved += fee;
+        if (quarterMonths.indexOf(r.month) >= 0) {
+          globalCentreMap[c].qtdAchieved += fee;
+        }
+      }
+    }
+  });
+
+  // 4. Compute quarterly targets
+  return Object.keys(globalCentreMap).map(function(k) {
+    var item = globalCentreMap[k];
+    item.qtdTarget = item.annualTarget / 4;
+    return item;
+  });
 }
 
 function buildAdminDashboard(ss,p) {

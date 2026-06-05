@@ -2783,7 +2783,10 @@ function revenuePeriod(p) {
 
 function buildRevenueDashboard(ss,p) {
   var months=revenueMonthList(p.fromMonth,p.toMonth);
-  var fullMonths=revenueMonthList('2026-01','2027-03');
+  // fullMonths = the appraisal cycle months (Apr 2026–Mar 2027 = 12 months).
+  // Previously hardcoded to Jan 2026–Mar 2027 (15 months), which made monthly
+  // pacing targets 25% too low. Now aligned to the requested cycle window.
+  var fullMonths=months.length>0?months:revenueMonthList('2026-04','2027-03');
   var monthKeys={};months.forEach(function(m){monthKeys[m.key]=true;});
   var period=revenuePeriod(p);
   // Read each sheet exactly once, then filter in memory

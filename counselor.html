@@ -100,6 +100,10 @@
 .revenue-actions .btn{width:auto;padding:8px 12px;font-size:12px}
 .revenue-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-bottom:14px}
 /* ── Revenue redesign v3 ── */
+.rev-sub-tabs{display:flex;gap:12px;margin:10px 0 20px;border-bottom:2px solid rgba(13,27,46,.08);padding-bottom:2px}
+.rev-sub-tab{background:none;border:none;font-family:"Plus Jakarta Sans",sans-serif;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;padding:8px 12px;border-bottom:3px solid transparent;transition:all .2s ease;outline:none}
+.rev-sub-tab:hover{color:var(--navy)}
+.rev-sub-tab.active{color:var(--navy);border-bottom-color:var(--gold)}
 .rev-kpi-bar{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
 .rev-kpi{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:13px 14px}
 .rev-kpi.ok{background:#F4FBF7;border-color:rgba(29,158,117,.22)}
@@ -1264,43 +1268,74 @@
       <div class="section-tag">My Revenue</div>
       <h2 id="rev-my-title">Revenue Dashboard</h2>
       <p class="sub" id="rev-my-sub">Loading your revenue data…</p>
-      <div id="rev-milestones" style="display:none"></div>
 
-      <!-- Mumbai centre combined bar (only shown for Mumbai counsellors) -->
-      <div class="rev-centre-bar" id="rev-centre-bar">
-        <div class="title" id="rev-centre-bar-title">Mumbai Centre — Combined Achievement</div>
-        <div class="row" id="rev-centre-bar-row"></div>
-        <div class="cprog"><span id="rev-centre-bar-prog" style="width:0%"></span></div>
-        <div class="rev-centre-bar-breakdown" id="rev-centre-bar-breakdown" style="display:none"></div>
+      <!-- Sub-Navigation Bar -->
+      <div class="rev-sub-tabs" id="rev-sub-tab-nav" style="display:none">
+        <button class="rev-sub-tab active" id="btn-rev-sub-dashboard" onclick="switchRevSubTab('rev-subtab-dashboard')">📊 My Dashboard & Entry</button>
+        <button class="rev-sub-tab" id="btn-rev-sub-counsellors" onclick="switchRevSubTab('rev-subtab-counsellors')">🏆 Counsellor Leaderboard</button>
+        <button class="rev-sub-tab" id="btn-rev-sub-centres" onclick="switchRevSubTab('rev-subtab-centres')">🏢 Centre Standings</button>
       </div>
 
-      <!-- My KPI tiles -->
-      <div class="rev-kpi-bar" id="rev-kpi-bar">
-        <div class="rev-kpi"><div class="k">My Revenue Target <span style="font-weight:500;opacity:.7">(excl. GST)</span></div><div class="v" id="rev-kpi-target">—</div><div class="s">2026-27</div></div>
-        <div class="rev-kpi ok"><div class="k">Total Achieved</div><div class="v" id="rev-kpi-achieved">—</div><div class="s" id="rev-kpi-pct">—</div></div>
-        <div class="rev-kpi warn"><div class="k">Remaining</div><div class="v" id="rev-kpi-gap">—</div><div class="s" id="rev-kpi-gap-s">—</div></div>
-        <div class="rev-kpi"><div class="k">Students This Year</div><div class="v" id="rev-kpi-students">—</div><div class="s" id="rev-kpi-students-s">2026-27</div></div>
+      <!-- SUBTAB 1: My Dashboard & Entry -->
+      <div id="rev-subtab-dashboard">
+        <div id="rev-milestones" style="display:none"></div>
+
+        <!-- My KPI tiles -->
+        <div class="rev-kpi-bar" id="rev-kpi-bar">
+          <div class="rev-kpi"><div class="k">My Revenue Target <span style="font-weight:500;opacity:.7">(excl. GST)</span></div><div class="v" id="rev-kpi-target">—</div><div class="s">2026-27</div></div>
+          <div class="rev-kpi ok"><div class="k">Total Achieved</div><div class="v" id="rev-kpi-achieved">—</div><div class="s" id="rev-kpi-pct">—</div></div>
+          <div class="rev-kpi warn"><div class="k">Remaining</div><div class="v" id="rev-kpi-gap">—</div><div class="s" id="rev-kpi-gap-s">—</div></div>
+          <div class="rev-kpi"><div class="k">Students This Year</div><div class="v" id="rev-kpi-students">—</div><div class="s" id="rev-kpi-students-s">2026-27</div></div>
+        </div>
+        <div class="rev-progress-wrap"><div class="rev-progress-bar" id="rev-progress-bar" style="width:0%"></div></div>
+
+        <!-- Revenue Breakdown Row -->
+        <div class="rev-breakdown-row" id="rev-breakdown-row" style="display:none">
+          <div class="rev-bd-card own"><div class="icon-wrap">🏫</div> Own Centre <strong id="rev-bd-own">—</strong></div>
+          <div class="rev-bd-card other"><div class="icon-wrap">🌐</div> Other Centres <strong id="rev-bd-other">—</strong></div>
+          <div class="rev-bd-card corp"><div class="icon-wrap">💼</div> Corporate <strong id="rev-bd-corp">—</strong></div>
+        </div>
+
+        <!-- Focused View Selector & Month Switcher -->
+        <div id="rev-view-selector-wrap" style="display:none; margin-top:16px">
+          <div class="rev-view-selector" style="display:flex;justify-content:space-between;align-items:center;background:var(--off);padding:8px 12px;border-radius:8px;border:1px solid var(--border);margin-bottom:14px">
+            <div style="font-size:12px;font-weight:700;color:var(--navy)">Monthly Submissions View</div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-outline" id="btn-rev-view-single" style="width:auto;padding:5px 10px;font-size:11px;font-weight:700;margin:0" onclick="setRevMonthView('single')">👁 Single Month Focus</button>
+              <button class="btn btn-outline" id="btn-rev-view-all" style="width:auto;padding:5px 10px;font-size:11px;font-weight:700;margin:0" onclick="setRevMonthView('all')">🗂 All 12 Months Grid</button>
+            </div>
+          </div>
+          <div id="rev-single-month-switcher" style="display:none;align-items:center;justify-content:center;gap:16px;margin:10px 0 14px">
+            <button class="btn btn-outline" style="width:auto;padding:5px 12px;margin:0" onclick="changeSelectedRevMonth(-1)">← Previous</button>
+            <span id="rev-selected-month-label" style="font-size:14px;font-weight:700;color:var(--navy);min-width:120px;text-align:center">June 2026</span>
+            <button class="btn btn-outline" style="width:auto;padding:5px 12px;margin:0" onclick="changeSelectedRevMonth(1)">Next →</button>
+          </div>
+        </div>
+
+        <!-- Month cards -->
+        <div id="rev-month-grid" style="margin-top:14px"></div>
       </div>
-      <div class="rev-progress-wrap"><div class="rev-progress-bar" id="rev-progress-bar" style="width:0%"></div></div>
 
-      <!-- Revenue Breakdown Row -->
-      <div class="rev-breakdown-row" id="rev-breakdown-row" style="display:none">
-        <div class="rev-bd-card own"><div class="icon-wrap">🏫</div> Own Centre <strong id="rev-bd-own">—</strong></div>
-        <div class="rev-bd-card other"><div class="icon-wrap">🌐</div> Other Centres <strong id="rev-bd-other">—</strong></div>
-        <div class="rev-bd-card corp"><div class="icon-wrap">💼</div> Corporate <strong id="rev-bd-corp">—</strong></div>
+      <!-- SUBTAB 2: Counsellor Leaderboard -->
+      <div id="rev-subtab-counsellors" style="display:none">
+        <!-- Monthly-only motivation preview -->
+        <div id="rev-month-preview" class="rev-month-preview"></div>
+        <!-- Rankings Leaderboard Card -->
+        <div id="rev-rankings-card" class="card" style="margin-top:14px; border:none; box-shadow:none; padding:0"></div>
       </div>
 
-      <!-- Monthly-only motivation preview -->
-      <div id="rev-month-preview" class="rev-month-preview"></div>
-
-      <!-- Rankings Leaderboard Card -->
-      <div id="rev-rankings-card" class="card" style="margin-top:14px; display:none"></div>
-
-      <!-- Centre Standings Card -->
-      <div id="rev-centre-rankings-card" class="card" style="margin-top:14px; display:none"></div>
-
-      <!-- Month cards -->
-      <div id="rev-month-grid" style="margin-top:14px"></div>
+      <!-- SUBTAB 3: Centre Standings -->
+      <div id="rev-subtab-centres" style="display:none">
+        <!-- Mumbai centre combined bar (only shown for Mumbai counsellors) -->
+        <div class="rev-centre-bar" id="rev-centre-bar">
+          <div class="title" id="rev-centre-bar-title">Mumbai Centre — Combined Achievement</div>
+          <div class="row" id="rev-centre-bar-row"></div>
+          <div class="cprog"><span id="rev-centre-bar-prog" style="width:0%"></span></div>
+          <div class="rev-centre-bar-breakdown" id="rev-centre-bar-breakdown" style="display:none"></div>
+        </div>
+        <!-- Centre Standings Card -->
+        <div id="rev-centre-rankings-card" class="card" style="margin-top:14px; border:none; box-shadow:none; padding:0"></div>
+      </div>
 
       <!-- hidden inputs kept for admin filter parity -->
       <select id="rev-centre" style="display:none"></select>
@@ -1683,6 +1718,112 @@ function switchTab(id) {
   }
   if (id==='t-revenue') initRevenueTab();
   if (id==='t-holidays') loadHolidayList();
+}
+
+// ── Revenue Dashboard Sub-tabs Helper functions ────────────────────
+var revenueViewType = 'single';
+var selectedRevenueMonthKey = '';
+
+function initRevenueSubTabs() {
+  var nav = document.getElementById('rev-sub-tab-nav');
+  var selWrap = document.getElementById('rev-view-selector-wrap');
+  if (!nav) return;
+  if (!isAdmin) {
+    nav.style.display = 'flex';
+    if (selWrap) selWrap.style.display = 'block';
+  } else {
+    nav.style.display = 'none';
+    if (selWrap) selWrap.style.display = 'none';
+  }
+}
+
+function switchRevSubTab(tabId) {
+  var tabs = ['rev-subtab-dashboard', 'rev-subtab-counsellors', 'rev-subtab-centres'];
+  var buttons = ['btn-rev-sub-dashboard', 'btn-rev-sub-counsellors', 'btn-rev-sub-centres'];
+  
+  tabs.forEach(function(t) {
+    var el = document.getElementById(t);
+    if (el) el.style.display = (t === tabId) ? 'block' : 'none';
+  });
+  
+  buttons.forEach(function(b) {
+    var el = document.getElementById(b);
+    if (el) {
+      if (b === 'btn-' + tabId.replace('rev-subtab-', 'rev-sub-')) {
+        el.classList.add('active');
+      } else {
+        el.classList.remove('active');
+      }
+    }
+  });
+}
+
+function setRevMonthView(viewType) {
+  revenueViewType = viewType;
+  applyRevenueMonthVisibility();
+}
+
+function applyRevenueMonthVisibility() {
+  var grid = document.getElementById('rev-month-grid');
+  if (!grid) return;
+  var switcher = document.getElementById('rev-single-month-switcher');
+  var label = document.getElementById('rev-selected-month-label');
+  
+  var months = revenueMonths();
+  if (!selectedRevenueMonthKey) {
+    selectedRevenueMonthKey = revenueCurrentMonthKey();
+  }
+  var currentIndex = months.findIndex(function(m){ return m.key === selectedRevenueMonthKey; });
+  if (currentIndex < 0) {
+    selectedRevenueMonthKey = revenueCurrentMonthKey();
+    currentIndex = months.findIndex(function(m){ return m.key === selectedRevenueMonthKey; });
+  }
+  if (currentIndex < 0 && months.length > 0) {
+    selectedRevenueMonthKey = months[0].key;
+    currentIndex = 0;
+  }
+  
+  var singleBtn = document.getElementById('btn-rev-view-single');
+  var allBtn = document.getElementById('btn-rev-view-all');
+  
+  if (revenueViewType === 'single') {
+    if (singleBtn) { singleBtn.style.background = 'var(--navy)'; singleBtn.style.color = 'var(--gold)'; }
+    if (allBtn) { allBtn.style.background = 'var(--white)'; allBtn.style.color = 'var(--navy)'; }
+    
+    if (switcher) switcher.style.display = 'flex';
+    if (label && currentIndex >= 0) {
+      label.textContent = months[currentIndex].label;
+    }
+    
+    months.forEach(function(m) {
+      var card = document.getElementById('rmc-' + m.key);
+      if (card) {
+        card.style.display = (m.key === selectedRevenueMonthKey) ? 'block' : 'none';
+      }
+    });
+  } else {
+    if (singleBtn) { singleBtn.style.background = 'var(--white)'; singleBtn.style.color = 'var(--navy)'; }
+    if (allBtn) { allBtn.style.background = 'var(--navy)'; allBtn.style.color = 'var(--gold)'; }
+    
+    if (switcher) switcher.style.display = 'none';
+    
+    months.forEach(function(m) {
+      var card = document.getElementById('rmc-' + m.key);
+      if (card) card.style.display = 'block';
+    });
+  }
+}
+
+function changeSelectedRevMonth(direction) {
+  var months = revenueMonths();
+  var currentIndex = months.findIndex(function(m){ return m.key === selectedRevenueMonthKey; });
+  if (currentIndex < 0) return;
+  
+  var newIndex = currentIndex + direction;
+  if (newIndex >= 0 && newIndex < months.length) {
+    selectedRevenueMonthKey = months[newIndex].key;
+    applyRevenueMonthVisibility();
+  }
 }
 
 // ── Batch Code Generator ──────────────────────────────────────
@@ -3577,6 +3718,9 @@ function renderMyRevenue() {
   var gapKpi = document.getElementById('rev-kpi-gap');
   if(gapKpi) { gapKpi = gapKpi.closest('.rev-kpi'); if(gapKpi) { gapKpi.classList.toggle('ok', pct>=100); gapKpi.classList.toggle('warn', pct<100); } }
 
+  // Initialize sub-tabs navigation
+  initRevenueSubTabs();
+
   // Mumbai combined bar
   renderMumbaiCentreBar(me);
   renderRevenueMotivation(me, target);
@@ -4062,6 +4206,7 @@ function renderRevenueMonthCards(counsellor) {
   });
   html += '</div>';
   grid.innerHTML = html;
+  applyRevenueMonthVisibility();
 }
 
 function revRowsForMonth(monthKey, counsellor, assignedCentre) {

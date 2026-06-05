@@ -2870,10 +2870,13 @@ function getGlobalCentreStandings(ss, period, currentMonthKey, allAnnualTargets,
         if (!globalCentreMap[c]) {
           globalCentreMap[c] = { centre: c, annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
         }
-        var fee = Number(r.achievedCourse) || 0;
-        globalCentreMap[c].annualAchieved += fee;
-        if (quarterMonths.indexOf(r.month) >= 0) {
-          globalCentreMap[c].qtdAchieved += fee;
+        // Strictly measure performance from April 2026 to March 2027
+        if (r.month >= '2026-04' && r.month <= '2027-03') {
+          var fee = Number(r.achievedCourse) || 0;
+          globalCentreMap[c].annualAchieved += fee;
+          if (quarterMonths.indexOf(r.month) >= 0) {
+            globalCentreMap[c].qtdAchieved += fee;
+          }
         }
       }
     }

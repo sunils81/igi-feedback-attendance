@@ -2540,6 +2540,34 @@ function otRenderMyResults(weekly, final_, weeklyAvg, specials, cumHonour) {
       +b.icon+' '+escHtmlSt(b.name)+'</span>';
   }
 
+  function otRenderQuestionBreakdown(r) {
+    var qs = r.questionBreakdown || [];
+    if ((r.resultsMode || 'summary') !== 'full' || !qs.length) return '';
+    var html = '<details style="margin-top:12px;border-top:1px solid #f3f4f6;padding-top:10px;">'
+      + '<summary style="cursor:pointer;font-size:12px;font-weight:800;color:#0D1B2E;list-style:none;">Answer feedback</summary>'
+      + '<div style="display:grid;gap:8px;margin-top:10px;">';
+    qs.forEach(function(q) {
+      var isTheory = q.type === 'Theory';
+      var ok = q.isCorrect === true;
+      var missed = !q.studentAnswer;
+      var border = isTheory ? '#dbeafe' : ok ? '#a7f3d0' : '#fecaca';
+      var bg = isTheory ? '#eff6ff' : ok ? '#f0fdf4' : '#fff7f7';
+      var label = isTheory ? (q.graded ? 'Graded' : 'Theory') : ok ? 'Correct' : missed ? 'Not answered' : 'Wrong';
+      var labelColor = isTheory ? '#1d4ed8' : ok ? '#047857' : '#dc2626';
+      html += '<div style="border:1.5px solid '+border+';background:'+bg+';border-radius:10px;padding:10px 12px;">'
+        + '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:6px;">'
+        + '<div style="font-size:12px;font-weight:800;color:#111827;line-height:1.45;">Q'+escHtmlSt(String(q.qNo||''))+'. '+escHtmlSt(q.question||'')+'</div>'
+        + '<span style="flex-shrink:0;font-size:10px;font-weight:800;color:'+labelColor+';background:#fff;border-radius:999px;padding:2px 8px;">'+label+'</span>'
+        + '</div>'
+        + '<div style="font-size:11px;color:#4b5563;line-height:1.5;">Your answer: <b>'+escHtmlSt(q.studentAnswer||'—')+'</b></div>'
+        + (!isTheory ? '<div style="font-size:11px;color:#4b5563;line-height:1.5;">Correct answer: <b>'+escHtmlSt(q.correctAnswer||'—')+'</b></div>' : '')
+        + '<div style="font-size:11px;color:#6b7280;margin-top:4px;">Score: <b>'+escHtmlSt(String(q.score!==undefined&&q.score!==''?q.score:'—'))+'</b> / '+escHtmlSt(String(q.maxMarks||q.marks||''))+'</div>'
+        + '</div>';
+    });
+    html += '</div></details>';
+    return html;
+  }
+
   var html = '';
 
   // Cumulative Honour Banner
@@ -2601,6 +2629,7 @@ function otRenderMyResults(weekly, final_, weeklyAvg, specials, cumHonour) {
         +   '<div style="height:100%;width:'+(pct!==null?Math.min(pct,100):0)+'%;background:'+(pass?'#10b981':pend?'#d1d5db':'#ef4444')+';border-radius:2px;transition:width .5s;"></div>'
         + '</div>'
         + '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Passing: '+ps+'%'+(r.attemptNo>1?' · Attempt '+r.attemptNo:'')+'</div>'
+        + otRenderQuestionBreakdown(r)
         + '</div>';
     });
 
@@ -2645,6 +2674,7 @@ function otRenderMyResults(weekly, final_, weeklyAvg, specials, cumHonour) {
         +   '<div style="height:100%;width:'+(pct!==null?Math.min(pct,100):0)+'%;background:'+(pass?'#10b981':pend?'#d1d5db':'#ef4444')+';border-radius:3px;"></div>'
         + '</div>'
         + '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Passing: '+ps+'%'+(r.attemptNo>1?' · Attempt '+r.attemptNo:'')+'</div>'
+        + otRenderQuestionBreakdown(r)
         + '</div>';
     });
   }

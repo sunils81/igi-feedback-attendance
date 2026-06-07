@@ -4381,7 +4381,8 @@ function otGetStudentActiveTest(ss, p) {
   var submissions=rRows.filter(function(r){return String(r[1])===String(activeTest.testId)&&String(r[2])===String(p.studentId);});
   if (submissions.length>0 && activeTest.allowRetake!=='Yes') {
     return {status:'ok',activeTest:null,alreadySubmitted:true,
-            testLabel:activeTest.testLabel,attemptCount:submissions.length,allowRetake:'No'};
+            testId:activeTest.testId,testLabel:activeTest.testLabel,
+            attemptCount:submissions.length,allowRetake:'No'};
   }
   var attemptNo=submissions.length+1;
   activeTest.attemptNo=attemptNo;
@@ -5092,10 +5093,83 @@ function otGetStudentResultsV3(ss, p) {
   ensureOnlineTestSheets(ss);
   var shR=ss.getSheetByName(SH_OT_RESPONSES);
   var rRows=shR.getLastRow()>1?shR.getRange(2,1,shR.getLastRow()-1,16).getValues():[];
-  var myResponses=rRows.filter(function(r){return String(r[2])===String(p.studentId);});
   var shOT=ss.getSheetByName(SH_ONLINE_TESTS);
   var otRows=shOT.getLastRow()>1?shOT.getRange(2,1,shOT.getLastRow()-1,23).getValues():[];
   var testMap={};otRows.forEach(function(r){testMap[r[0]]=r;});
+  var myResponses=rRows.filter(function(r){
+    if (String(r[2])!==String(p.studentId)) return false;
+    if (String(r[4])===String(p.batchCode)) return true;
+    var t=testMap[r[1]]||[];
+    var batches=String(t[3]||'').split(',').map(function(s){return s.trim();});
+    return batches.indexOf(String(p.batchCode))!==-1;
+  });
+  var questionRowsByTest={};
+  var manualRowsByKey={};
+  function getQuestionRows(testId) {
+    if (questionRowsByTest[testId]) return questionRowsByTest[testId];
+    var shQ=ss.getSheetByName(SH_OT_QUESTIONS);
+    var qRows=shQ.getLastRow()>1?shQ.getRange(2,1,shQ.getLastRow()-1,13).getValues():[];
+    questionRowsByTest[testId]=qRows.filter(function(q){return String(q[0])===String(testId);})
+      .sort(function(a,b){return(a[12]||0)-(b[12]||0);});
+    return questionRowsByTest[testId];
+  }
+  function getManualMap(testId, studentId) {
+    var key=String(testId)+'|'+String(studentId);
+    if (manualRowsByKey[key]) return manualRowsByKey[key];
+    var map={};
+    var shMG=ss.getSheetByName(SH_OT_MANUAL_GRADES);
+    var mgRows=shMG.getLastRow()>1?shMG.getRange(2,1,shMG.getLastRow()-1,8).getValues():[];
+    mgRows.forEach(function(m){
+      if (String(m[0])===String(testId)&&String(m[1])===String(studentId)) {
+        map[m[2]]={studentAnswer:m[3],score:m[4],maxMarks:m[5],graded:m[4]!==''&&m[4]!==null};
+      }
+    });
+    manualRowsByKey[key]=map;
+    return map;
+  }
+  function optionText(q, val) {
+    if (val===undefined||val===null||val==='') return '';
+    var type=q[9]||'MCQ';
+    if (type==='MCQ') {
+      var idx=parseInt(val,10);
+      return idx>=1&&idx<=4 ? String(q[3+idx]||'') : String(val);
+    }
+    return String(val);
+  }
+  function buildBreakdown(responseRow, testRow) {
+    if ((testRow[12]||'summary')!=='full') return [];
+    var answers={};
+    try{answers=JSON.parse(responseRow[14]||'{}');}catch(e){}
+    var negEnabled=testRow[7]==='Yes';
+    var negVal=parseFloat(testRow[8])||0.25;
+    var manualMap=getManualMap(responseRow[1], responseRow[2]);
+    return getQuestionRows(responseRow[1]).map(function(q, i){
+      var qId=q[1], type=q[9]||'MCQ', marks=parseFloat(q[10])||1;
+      var raw=answers[qId]!==undefined?String(answers[qId]):'';
+      var correct=String(q[8]||'');
+      var item={qNo:i+1,qId:qId,type:type,question:q[3]||'',marks:marks,
+        studentAnswer:optionText(q, raw),rawStudentAnswer:raw,correctAnswer:optionText(q, correct),
+        isCorrect:null,score:'',maxMarks:marks};
+      if (type==='Theory') {
+        var mg=manualMap[qId]||{};
+        item.studentAnswer=mg.studentAnswer||raw;
+        item.correctAnswer='';
+        item.score=mg.score!==undefined?mg.score:'';
+        item.maxMarks=mg.maxMarks||marks;
+        item.graded=!!mg.graded;
+        return item;
+      }
+      if (!raw) {
+        item.isCorrect=false;
+        item.score=0;
+        return item;
+      }
+      if (type==='FillBlank') item.isCorrect=raw.trim().toLowerCase()===correct.trim().toLowerCase();
+      else item.isCorrect=String(raw)===correct;
+      item.score=item.isCorrect?marks:(negEnabled?-negVal:0);
+      return item;
+    });
+  }
   // Best score per test for retake
   var bestByTest={};
   myResponses.forEach(function(r){
@@ -5114,7 +5188,8 @@ function otGetStudentResultsV3(ss, p) {
       submittedAt:r[5],submitType:r[6],totalScore:r[10],totalMarks:r[11],
       percentage:pct,result:r[13],resultsMode:t[12]||'summary',
       attemptNo:r[15],allowRetake:t[18]||'No',
-      passingScore:ps,badge:badge,classRank:rank};
+      passingScore:ps,badge:badge,classRank:rank,
+      questionBreakdown:buildBreakdown(r,t)};
   }).filter(Boolean);
   var weekly=results.filter(function(r){return r.testType==='Weekly';});
   var final_=results.filter(function(r){return r.testType==='Final';});
@@ -5138,4 +5213,3 @@ function otGetStudentResultsV3(ss, p) {
       (final_.length===0||final_.some(function(r){return r.result==='Pass';}))
   };
 }
-

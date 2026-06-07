@@ -2269,6 +2269,95 @@ function doGet(e) {
       });
     }
 
+    if (act==='getStudentAlumni') {
+      ensureSheets(ss);
+      if (String(p.isAdmin) !== 'true' && !COUNSELOR_CREDS[p.counsellorName]) {
+        return respond({status: 'error', reason: 'auth', message: 'Unauthorized access to student alumni records.'});
+      }
+
+      var shBatch = ss.getSheetByName(SH_BATCHES);
+      var batchRows = shBatch && shBatch.getLastRow() > 1
+        ? shBatch.getRange(2, 1, shBatch.getLastRow() - 1, 10).getValues()
+        : [];
+      
+      var finishedBatchesMap = {};
+      var batchCourseMap = {};
+      var today = new Date();
+      
+      batchRows.forEach(function(r) {
+        if (!r[0]) return;
+        var code = String(r[0]).trim().toUpperCase();
+        var isNew = detectSlotOrDate(r[4]);
+        var endVal = isNew ? r[6] : r[5];
+        var isCompleted = false;
+        
+        if (endVal) {
+          var endDate = new Date(endVal);
+          if (!isNaN(endDate.getTime()) && endDate < today) {
+            isCompleted = true;
+          }
+        }
+        
+        if (isCompleted) {
+          finishedBatchesMap[code] = true;
+        }
+        batchCourseMap[code] = {
+          course: r[2] || '',
+          startDate: isNew ? r[5] : r[4]
+        };
+      });
+      
+      var studentsList = getStudentRows(ss);
+      var studentMap = {};
+      studentsList.forEach(function(s) {
+        studentMap[s.id] = s;
+      });
+      
+      var enrollments = getEnrollmentRows(ss);
+      var alumni = [];
+      var addedKeys = {};
+      
+      enrollments.forEach(function(e) {
+        var bCode = e.batchCode;
+        if (finishedBatchesMap[bCode]) {
+          var s = studentMap[e.studentId];
+          if (s) {
+            var key = s.id + '|' + bCode;
+            if (!addedKeys[key]) {
+              addedKeys[key] = true;
+              
+              var bInfo = batchCourseMap[bCode] || {};
+              var enrollMonth = '';
+              if (e.enrolledAt) {
+                var enrolDate = new Date(e.enrolledAt);
+                if (!isNaN(enrolDate.getTime())) {
+                  enrollMonth = enrolDate.toLocaleString('en-IN', { month: 'short', year: 'numeric' });
+                }
+              }
+              if (!enrollMonth && bInfo.startDate) {
+                var startDate = new Date(bInfo.startDate);
+                if (!isNaN(startDate.getTime())) {
+                  enrollMonth = startDate.toLocaleString('en-IN', { month: 'short', year: 'numeric' });
+                }
+              }
+              
+              alumni.push({
+                studentId: s.id,
+                name: s.name,
+                contact: s.mobile || '',
+                email: s.email || '',
+                course: bInfo.course || '',
+                batchCode: bCode,
+                enrolmentMonth: enrollMonth || 'N/A'
+              });
+            }
+          }
+        }
+      });
+      
+      return respond({ status: 'ok', alumni: alumni });
+    }
+
     if (act==='saveRevenueTargets') {
       ensureSheets(ss);
       if (String(p.isManager)==='true') {

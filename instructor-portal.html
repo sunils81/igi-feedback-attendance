@@ -906,7 +906,52 @@
 
 <script>
 
-// ── Fallback Money Formatting Utilities (in case of cached shared.js) ──
+// ── Fallback Utilities (in case shared.js is cached/outdated or fails to load) ──
+if (typeof INSTRUCTORS === 'undefined') {
+  window.INSTRUCTORS = [
+    'Amit Sidpura','Asmita Saroday','Arjun Mistry','Bhavin Patel',
+    'Sneha Garodia','Khorehmand Kasad','Nishchay Kapoor','Piyush Ahuja',
+    'Preeti Agarwala','Sayan Banerjee','Deepak Nachankar','Sharoon Joy','Seema Athavale'
+  ];
+}
+if (typeof GAS_URL === 'undefined') {
+  window.GAS_URL = 'https://script.google.com/macros/s/AKfycbxWiL5q9A3Z1odYYK0ZRR8ngqwPhzPnkX4maKJRlgM6QspoiV1abAzFjRwEJIZEDpC65Q/exec';
+}
+if (typeof gasGet === 'undefined') {
+  window.gasGet = function(params, cb) {
+    const cbName = '_cb_' + Date.now() + '_' + Math.floor(Math.random()*9999);
+    const qs     = Object.entries(params).map(([k,v])=>k+'='+encodeURIComponent(v||'')).join('&');
+    const s      = document.createElement('script');
+    let done     = false;
+    window[cbName] = function(d){ done=true; delete window[cbName]; try{document.body.removeChild(s);}catch(x){} cb(null,d); };
+    s.onerror = function(){ if(!done){done=true;delete window[cbName];try{document.body.removeChild(s);}catch(x){}cb(new Error('network'),null);} };
+    s.src = GAS_URL + '?' + qs + '&callback=' + cbName;
+    document.body.appendChild(s);
+    setTimeout(function(){ if(!done){done=true;delete window[cbName];try{document.body.removeChild(s);}catch(x){}cb(new Error('timeout'),null);} }, 30000);
+  };
+}
+if (typeof loadingState === 'undefined') {
+  window.loadingState = function(message) {
+    return '<div class="spinner-wrap"><div class="spinner"></div><p>' + (message || 'Loading...') + '</p></div>';
+  };
+}
+if (typeof emptyState === 'undefined') {
+  window.emptyState = function(icon, title, message, actionHtml) {
+    return '<div class="empty-state"><div class="empty-icon">' + icon + '</div><div class="empty-title">' + title + '</div><div class="empty-copy">' + message + '</div>' + (actionHtml || '') + '</div>';
+  };
+}
+if (typeof escShared === 'undefined') {
+  window.escShared = function(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function(c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  };
+}
+if (typeof showToast === 'undefined') {
+  window.showToast = function(message, type) {
+    console.log('Toast:', message, type);
+  };
+}
 if (typeof money === 'undefined') {
   window.money = function(v) {
     return '₹' + Math.round(Number(v) || 0).toLocaleString('en-IN');
@@ -955,15 +1000,22 @@ let instructorCalendarMonth = new Date();
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
-  INSTRUCTORS.forEach(i => {
-    const o = document.createElement('option'); o.value=i; o.textContent=i;
-    document.getElementById('lg-name').appendChild(o);
-  });
+  const selName = document.getElementById('lg-name');
+  if (selName) {
+    selName.innerHTML = '<option value="">Select your name</option>';
+    INSTRUCTORS.forEach(i => {
+      const o = document.createElement('option'); o.value=i; o.textContent=i;
+      selName.appendChild(o);
+    });
+  }
   const oldSessionDate = document.getElementById('ss-date');
   if (oldSessionDate) oldSessionDate.value = new Date().toISOString().split('T')[0];
-  document.getElementById('ct-date').value = new Date().toISOString().split('T')[0];
-  document.getElementById('ex-date').value = new Date().toISOString().split('T')[0];
-  document.getElementById('lg-pin').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+  const ctDate = document.getElementById('ct-date');
+  if (ctDate) ctDate.value = new Date().toISOString().split('T')[0];
+  const exDate = document.getElementById('ex-date');
+  if (exDate) exDate.value = new Date().toISOString().split('T')[0];
+  const lgPin = document.getElementById('lg-pin');
+  if (lgPin) lgPin.addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
 });
 
 function showScreen(id) {

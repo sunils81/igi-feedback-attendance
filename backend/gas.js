@@ -2813,6 +2813,10 @@ function buildRevenueDashboard(ss,p) {
     return revenueAllowedViewCentre(r,p);
   });
   var byMonth={},byCounsellor={},byCentre={},byBusinessCentre={},crossRows=[];
+  var activeNames = Object.keys(COUNSELOR_CREDS).filter(function(n) { return n !== 'Mrinal'; });
+  activeNames.forEach(function(name) {
+    byCounsellor[name] = revenueBlankBucket();
+  });
   months.forEach(function(m){byMonth[m.key]=revenueBlankBucket();});
   var totalTargetCourse=0,totalTargetGst=0, splitTargetCourse=0, splitTargetGst=0, centreTargetCourse=0, centreTargetGst=0;
   centreTargetRows.forEach(function(r){
@@ -2870,7 +2874,7 @@ function buildRevenueDashboard(ss,p) {
 
   return {status:'ok',backendVersion:REVENUE_BACKEND_VERSION,period:period,months:monthRows,centreTargetRows:centreTargetRows,targetRows:targetRows,monthlyRows:achievedRows,monthlyPreviewRows:monthlyPreviewRows,monthlyPreviewTargets:monthlyPreviewTargets,crossRows:crossRows,
     summary:{targetCourse:totalTargetCourse,targetGst:totalTargetGst,achievedCourse:achievedCourse,achievedGst:achievedGst,studentCount:studentCount,designatedCourse:designatedCourse,designatedGst:designatedGst,otherCentreCourse:otherCentreCourse,otherCentreGst:otherCentreGst,corporateCourse:corporateCourse,corporateGst:corporateGst,monthlyTargetCourse:monthlyTargetCourse,monthlyTargetGst:monthlyTargetGst,monthsInPeriod:fullMonths.length,centreTargetCourse:centreTargetCourse,centreTargetGst:centreTargetGst,splitTargetCourse:splitTargetCourse,splitTargetGst:splitTargetGst},
-    counsellors:Object.keys(byCounsellor).sort().map(function(k){return Object.assign({counsellor:k},byCounsellor[k]);}).filter(function(c){return c.targetCourse > 0;}),
+    counsellors:Object.keys(byCounsellor).sort().map(function(k){return Object.assign({counsellor:k},byCounsellor[k]);}).filter(function(c){return c.counsellor !== 'Mrinal';}),
     centres:Object.keys(byCentre).sort().map(function(k){return Object.assign({centre:k},byCentre[k]);}),
     businessCentres:Object.keys(byBusinessCentre).sort().map(function(k){return Object.assign({centre:k},byBusinessCentre[k]);}),
     centreStandings:getGlobalCentreStandings(ss, period, currentMonthKey, allAnnualTargets, allMonthlyAchieved),
@@ -2934,11 +2938,19 @@ function getGlobalCentreStandings(ss, period, currentMonthKey, allAnnualTargets,
 function getGlobalCounsellorStandings(ss, period, currentMonthKey, allAnnualTargets, allMonthlyAchieved) {
   var globalCounsellorMap = {};
   
+  // Initialize map with all active counselors from credentials, excluding former counselor 'Mrinal'
+  var activeNames = Object.keys(COUNSELOR_CREDS).filter(function(n) { return n !== 'Mrinal'; });
+  activeNames.forEach(function(name) {
+    var cred = COUNSELOR_CREDS[name];
+    var centre = (cred.centres && cred.centres.length) ? cred.centres[0] : 'Mumbai';
+    globalCounsellorMap[name] = { counsellor: name, centre: centre, annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
+  });
+  
   // 1. Rollup targets from allAnnualTargets
   allAnnualTargets.forEach(function(r) {
     if (r.period === period && r.counsellor) {
       var name = r.counsellor.trim();
-      if (name === 'Arjun Mistry' || name === 'Piyush' || name === 'Piyush Ahuja') return;
+      if (name === 'Arjun Mistry' || name === 'Piyush' || name === 'Piyush Ahuja' || name === 'Mrinal') return;
       if (!globalCounsellorMap[name]) {
         globalCounsellorMap[name] = { counsellor: name, centre: r.centre, annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
       }
@@ -2962,7 +2974,7 @@ function getGlobalCounsellorStandings(ss, period, currentMonthKey, allAnnualTarg
   allMonthlyAchieved.forEach(function(r) {
     if (r.period === period && r.counsellor) {
       var name = r.counsellor.trim();
-      if (name === 'Arjun Mistry' || name === 'Piyush' || name === 'Piyush Ahuja') return;
+      if (name === 'Arjun Mistry' || name === 'Piyush' || name === 'Piyush Ahuja' || name === 'Mrinal') return;
       if (!globalCounsellorMap[name]) {
         globalCounsellorMap[name] = { counsellor: name, centre: r.assignedCentre || r.centre || 'Unmapped', annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
       }
@@ -2981,8 +2993,6 @@ function getGlobalCounsellorStandings(ss, period, currentMonthKey, allAnnualTarg
     var item = globalCounsellorMap[k];
     item.qtdTarget = item.annualTarget / 4;
     return item;
-  }).filter(function(item) {
-    return item.annualTarget > 0;
   });
 }
 

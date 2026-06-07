@@ -1476,7 +1476,66 @@
 
 <script>
 
-// ── Fallback Money Formatting Utilities (in case of cached shared.js) ──
+// ── Fallback Utilities (in case shared.js is cached/outdated or fails to load) ──
+if (typeof CENTRES === 'undefined') {
+  window.CENTRES = ['Mumbai','Delhi','Kolkata','Surat','Chennai','Hyderabad','Pune','Bangalore','Lucknow','Ahmedabad','Jaipur'];
+}
+if (typeof COURSES === 'undefined') {
+  window.COURSES = [
+    'Diamond Graduate','Colored Stone Graduate','Jewelry Design','CAD Design',
+    'JewelPad Design','Diploma in Pearls','Polished Diamond Grading',
+    'Rough Diamond Graduate','Identification of RES','Small Diamond Assortment',
+    'Diamond Graduate Integrated','Coloured Stone Integrated',
+    'Corporate Programs','Seminars','Gem-A Foundation','Gem-A Diploma',
+    'Emerald','Pearl',
+    'Navratna Masterclass (10 Half Days)','Navratna Masterclass (5 Full Days)'
+  ];
+}
+if (typeof INSTRUCTORS === 'undefined') {
+  window.INSTRUCTORS = [
+    'Amit Sidpura','Asmita Saroday','Arjun Mistry','Bhavin Patel',
+    'Sneha Garodia','Khorehmand Kasad','Nishchay Kapoor','Piyush Ahuja',
+    'Preeti Agarwala','Sayan Banerjee','Deepak Nachankar','Sharoon Joy','Seema Athavale'
+  ];
+}
+if (typeof GAS_URL === 'undefined') {
+  window.GAS_URL = 'https://script.google.com/macros/s/AKfycbxWiL5q9A3Z1odYYK0ZRR8ngqwPhzPnkX4maKJRlgM6QspoiV1abAzFjRwEJIZEDpC65Q/exec';
+}
+if (typeof gasGet === 'undefined') {
+  window.gasGet = function(params, cb) {
+    const cbName = '_cb_' + Date.now() + '_' + Math.floor(Math.random()*9999);
+    const qs     = Object.entries(params).map(([k,v])=>k+'='+encodeURIComponent(v||'')).join('&');
+    const s      = document.createElement('script');
+    let done     = false;
+    window[cbName] = function(d){ done=true; delete window[cbName]; try{document.body.removeChild(s);}catch(x){} cb(null,d); };
+    s.onerror = function(){ if(!done){done=true;delete window[cbName];try{document.body.removeChild(s);}catch(x){}cb(new Error('network'),null);} };
+    s.src = GAS_URL + '?' + qs + '&callback=' + cbName;
+    document.body.appendChild(s);
+    setTimeout(function(){ if(!done){done=true;delete window[cbName];try{document.body.removeChild(s);}catch(x){}cb(new Error('timeout'),null);} }, 30000);
+  };
+}
+if (typeof loadingState === 'undefined') {
+  window.loadingState = function(message) {
+    return '<div class="spinner-wrap"><div class="spinner"></div><p>' + (message || 'Loading...') + '</p></div>';
+  };
+}
+if (typeof emptyState === 'undefined') {
+  window.emptyState = function(icon, title, message, actionHtml) {
+    return '<div class="empty-state"><div class="empty-icon">' + icon + '</div><div class="empty-title">' + title + '</div><div class="empty-copy">' + message + '</div>' + (actionHtml || '') + '</div>';
+  };
+}
+if (typeof escShared === 'undefined') {
+  window.escShared = function(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function(c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  };
+}
+if (typeof showToast === 'undefined') {
+  window.showToast = function(message, type) {
+    console.log('Toast:', message, type);
+  };
+}
 if (typeof money === 'undefined') {
   window.money = function(v) {
     return '₹' + Math.round(Number(v) || 0).toLocaleString('en-IN');
@@ -1504,7 +1563,7 @@ if (typeof amtL === 'undefined') {
 }
 
 // ── Init ──────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', function() {
+function initCounselorPortal() {
   // Clear any stale revenue cache when the page loads fresh
   try {
     for (var i = sessionStorage.length - 1; i >= 0; i--) {
@@ -1517,30 +1576,55 @@ document.addEventListener('DOMContentLoaded', function() {
 
   CENTRES.forEach(c => {
     ['b-centre'].forEach(id => {
-      const o = document.createElement('option'); o.value=c; o.textContent=c;
-      document.getElementById(id).appendChild(o);
+      const el = document.getElementById(id);
+      if (el) {
+        const o = document.createElement('option'); o.value=c; o.textContent=c;
+        el.appendChild(o);
+      }
     });
   });
   COURSES.forEach(c => {
     ['b-course'].forEach(id => {
-      const o = document.createElement('option'); o.value=c; o.textContent=c;
-      document.getElementById(id).appendChild(o);
+      const el = document.getElementById(id);
+      if (el) {
+        const o = document.createElement('option'); o.value=c; o.textContent=c;
+        el.appendChild(o);
+      }
     });
   });
-  INSTRUCTORS.forEach(i => {
-    const o = document.createElement('option'); o.value=i; o.textContent=i;
-    document.getElementById('b-instructor').appendChild(o);
-  });
-  document.getElementById('b-start').value  = new Date().toISOString().split('T')[0];
+  const instrSel = document.getElementById('b-instructor');
+  if (instrSel) {
+    const instList = [
+      'Amit Sidpura','Asmita Saroday','Arjun Mistry','Bhavin Patel',
+      'Sneha Garodia','Khorehmand Kasad','Nishchay Kapoor','Piyush Ahuja',
+      'Preeti Agarwala','Sayan Banerjee','Deepak Nachankar','Sharoon Joy','Seema Athavale'
+    ];
+    instList.forEach(i => {
+      const o = document.createElement('option'); o.value=i; o.textContent=i;
+      instrSel.appendChild(o);
+    });
+  }
+  const bStart = document.getElementById('b-start');
+  if (bStart) bStart.value  = new Date().toISOString().split('T')[0];
   // session creation moved to instructor portal
   // Populate holiday centre dropdown
   CENTRES.forEach(c => {
-    const o = document.createElement('option'); o.value=c; o.textContent=c;
-    document.getElementById('hol-centre').appendChild(o);
+    const el = document.getElementById('hol-centre');
+    if (el) {
+      const o = document.createElement('option'); o.value=c; o.textContent=c;
+      el.appendChild(o);
+    }
   });
   // Enter key on PIN
-  document.getElementById('lg-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
-});
+  const lgPass = document.getElementById('lg-pass');
+  if (lgPass) lgPass.addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initCounselorPortal);
+} else {
+  initCounselorPortal();
+}
 
 // ── Login ─────────────────────────────────────────────────────
 let counselorName    = '';
@@ -5349,7 +5433,12 @@ function loadMyBatches() {
 }
 
 function renderInlineInstructorAssign(batchCode) {
-  const opts = INSTRUCTORS.map(i=>`<option value="${i}">${i}</option>`).join('');
+  const instList = [
+    'Amit Sidpura','Asmita Saroday','Arjun Mistry','Bhavin Patel',
+    'Sneha Garodia','Khorehmand Kasad','Nishchay Kapoor','Piyush Ahuja',
+    'Preeti Agarwala','Sayan Banerjee','Deepak Nachankar','Sharoon Joy','Seema Athavale'
+  ];
+  const opts = instList.map(i=>`<option value="${i}">${i}</option>`).join('');
   return `<div class="inline-assign">
     <select id="assign-${batchCode}"><option value="">Assign instructor</option>${opts}</select>
     <button class="btn btn-outline" onclick="saveInlineInstructor('${batchCode}')">Save</button>

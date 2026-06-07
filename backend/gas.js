@@ -2906,7 +2906,7 @@ function getGlobalCentreStandings(ss, period, currentMonthKey, allAnnualTargets,
   // 3. Rollup achievements (excluding GST, matching course target)
   allMonthlyAchieved.forEach(function(r) {
     if (r.period === period) {
-      var c = r.assignedCentre || r.centre;
+      var c = r.businessCentre || r.centre;
       if (c) {
         if (!globalCentreMap[c]) {
           globalCentreMap[c] = { centre: c, annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
@@ -2988,7 +2988,7 @@ function getGlobalCounsellorStandings(ss, period, currentMonthKey, allAnnualTarg
 
 function buildAdminDashboard(ss,p) {
   var period=revenuePeriod(p);
-  var revenue=buildRevenueDashboard(ss,Object.assign({},p,{isAdmin:'true',centres:'',centre:'',counsellor:'',viewerCounsellor:'',viewMode:'assigned'}));
+  var revenue=buildRevenueDashboard(ss,Object.assign({},p,{isAdmin:'true',centres:'',centre:'',counsellor:'',viewerCounsellor:'',viewMode:'business'}));
   var shBatch=ss.getSheetByName(SH_BATCHES);
   var batchRows=shBatch&&shBatch.getLastRow()>1?shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues().filter(function(r){return r[0];}):[];
   var batchMap={};

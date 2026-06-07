@@ -1645,7 +1645,7 @@ function renderRevenueTab() {
     let studentCount = 0;
     
     rowsToCheck.forEach(mr => {
-      if (revCanonical(mr.counsellor) === revCanonical(row.counsellor) && mr.assignedCentre === c) {
+      if (revCanonical(mr.counsellor) === revCanonical(row.counsellor) && mr.businessCentre === c) {
         achievedCourse += Number(mr.achievedCourse) || 0;
         achievedGst += Number(mr.achievedGst) || 0;
         studentCount += Number(mr.studentCount) || 0;
@@ -1693,7 +1693,7 @@ function renderRevenueTab() {
       let achievedGst = 0;
       let studentCount = 0;
       rowsToCheck.forEach(mr => {
-        if (revCanonical(mr.counsellor) === cKey && mr.assignedCentre === detectedCentre) {
+        if (revCanonical(mr.counsellor) === cKey && mr.businessCentre === detectedCentre) {
           achievedCourse += Number(mr.achievedCourse) || 0;
           achievedGst += Number(mr.achievedGst) || 0;
           studentCount += Number(mr.studentCount) || 0;
@@ -2025,28 +2025,38 @@ function renderCounselorLeaderboard(rev, counsellorsByCentre) {
   
   // 2. Build and filter leaderboard items
   const leaders = [];
-  Object.keys(finalCounsellors).forEach(centre => {
+  const counsellorCentreMap = {};
+  (finalRev.targetRows || []).forEach(tr => {
+    if (tr.counsellor) {
+      counsellorCentreMap[revCanonical(tr.counsellor)] = tr.centre;
+    }
+  });
+
+  (finalRev.counsellors || []).forEach(c => {
+    if (c.targetCourse <= 0) return;
+    const nameKey = revCanonical(c.counsellor);
+    const centre = counsellorCentreMap[nameKey] || 'Unmapped';
+    
     // Branch Filter Check
     if (currentLeaderboardBranch !== 'all' && currentLeaderboardBranch !== centre) {
       return;
     }
     
-    finalCounsellors[centre].forEach(lc => {
-      if (lc.targetCourse <= 0) return;
-      // Tab Filter Check: Top Stars (>=75%), Needs Support (<40%)
-      if (currentLeaderboardTab === 'stars' && lc.pct < 75) return;
-      if (currentLeaderboardTab === 'support' && lc.pct >= 40) return;
-      
-      leaders.push({
-        counsellor: lc.counsellor,
-        centre: centre,
-        target: lc.targetCourse,
-        targetGst: lc.targetGst,
-        achieved: lc.achievedCourse,
-        achievedGst: lc.achievedGst,
-        students: lc.studentCount,
-        pct: lc.pct
-      });
+    const pct = c.targetCourse ? Math.round(c.achievedCourse / c.targetCourse * 100) : (c.achievedCourse ? 100 : 0);
+    
+    // Tab Filter Check: Top Stars (>=75%), Needs Support (<40%)
+    if (currentLeaderboardTab === 'stars' && pct < 75) return;
+    if (currentLeaderboardTab === 'support' && pct >= 40) return;
+    
+    leaders.push({
+      counsellor: c.counsellor,
+      centre: centre,
+      target: c.targetCourse,
+      targetGst: c.targetGst,
+      achieved: c.achievedCourse,
+      achievedGst: c.achievedGst,
+      students: c.studentCount,
+      pct: pct
     });
   });
   

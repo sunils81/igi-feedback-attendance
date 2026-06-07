@@ -1648,12 +1648,14 @@ function renderAmitRevenue() {
   var seen = {};
   rowsToCheck.forEach(function(mr) {
     if (!mr.counsellor) return;
-    var key = mr.counsellor + '|' + mr.assignedCentre;
-    if (!counsellorsByCentre[mr.assignedCentre]) counsellorsByCentre[mr.assignedCentre] = [];
+    var bCentre = mr.businessCentre || mr.centre || mr.assignedCentre;
+    if (!bCentre) return;
+    var key = mr.counsellor + '|' + bCentre;
+    if (!counsellorsByCentre[bCentre]) counsellorsByCentre[bCentre] = [];
     if (!seen[key]) {
-      seen[key] = { counsellor: mr.counsellor, centre: mr.assignedCentre,
+      seen[key] = { counsellor: mr.counsellor, centre: bCentre,
         achievedCourse:0, achievedGst:0, studentCount:0, targetCourse:0, targetGst:0 };
-      counsellorsByCentre[mr.assignedCentre].push(seen[key]);
+      counsellorsByCentre[bCentre].push(seen[key]);
     }
     seen[key].achievedCourse += Number(mr.achievedCourse)||0;
     seen[key].achievedGst    += Number(mr.achievedGst)||0;
@@ -1790,13 +1792,28 @@ function renderAmitRevenue() {
   document.getElementById('rev-centre-cards').innerHTML = centreHtml || '<p style="color:var(--muted);font-size:13px">No centre data available.</p>';
 
   // ── Counsellor rank board ────────────────────────────────────
+  var counsellorCentreMap = {};
+  (rev.targetRows || []).forEach(function(tr) {
+    if (tr.counsellor) {
+      counsellorCentreMap[tr.counsellor.trim().toLowerCase()] = tr.centre;
+    }
+  });
+
   var allC = [];
-  Object.values(counsellorsByCentre).forEach(function(cs) {
-    cs.forEach(function(c) {
-      if (c.targetCourse > 0) {
-        allC.push(c);
-      }
-    });
+  (rev.counsellors || []).forEach(function(c) {
+    if (c.targetCourse > 0) {
+      var nameKey = c.counsellor.trim().toLowerCase();
+      var centre = counsellorCentreMap[nameKey] || 'Unmapped';
+      var pct = c.targetCourse ? Math.round(c.achievedCourse / c.targetCourse * 100) : (c.achievedCourse ? 100 : 0);
+      allC.push({
+        counsellor: c.counsellor,
+        centre: centre,
+        pct: pct,
+        achievedCourse: c.achievedCourse,
+        targetCourse: c.targetCourse,
+        studentCount: c.studentCount
+      });
+    }
   });
   allC.sort(function(a,b){ return b.pct - a.pct; });
 

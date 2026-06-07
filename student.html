@@ -932,16 +932,26 @@ function showScreen(id) {
   document.getElementById(id).classList.add('active');
 }
 
+var stResultsRefreshTimer = null;
+
 function switchTab(tabId, el) {
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   const target = document.getElementById(tabId);
   if (target) target.classList.add('active');
-  
+
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   if (el) el.classList.add('active');
-  
+
   if (tabId === 'tab-today' && portalData) {
     renderStudentSummary(portalData);
+  }
+  // Auto-refresh My Tests every 90s when on that tab; stop when leaving
+  if (stResultsRefreshTimer) { clearInterval(stResultsRefreshTimer); stResultsRefreshTimer = null; }
+  if (tabId === 'tab-results') {
+    otLoadMyResults();
+    stResultsRefreshTimer = setInterval(function() {
+      if (!document.hidden) otLoadMyResults();
+    }, 90000);
   }
 }
 

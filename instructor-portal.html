@@ -245,8 +245,9 @@
     </div>
   </div>
 
-  <div class="account-actions">
+  <div class="account-actions" style="display:flex;align-items:center;gap:8px;">
     <button class="btn btn-outline" style="width:auto;padding:8px 12px;font-size:12px" id="change-pass-toggle" onclick="togglePasswordCard()">Change Password</button>
+    <button class="btn btn-outline" style="width:auto;padding:8px 12px;font-size:12px;color:#dc2626;border-color:#dc2626;" onclick="doLogout()">↩ Sign Out</button>
   </div>
 
   <div class="card password-card" id="password-card">
@@ -279,7 +280,13 @@
   <div id="t-session" class="tab-content active">
     <!-- Today's auto-sessions per batch -->
     <div class="card">
-      <div class="section-tag">Today's Sessions</div>
+      <div class="section-tag" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Today's Sessions</span>
+        <span class="ar-info" style="font-size:11px;color:#9ca3af;display:flex;align-items:center;gap:6px;">
+          🔄 <span id="ar-badge-today-sessions">–</span>
+          <button onclick="loadTodaySessions();arLastUpdated['today-sessions']=Date.now();arUpdateBadge('today-sessions')" style="padding:2px 8px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;cursor:pointer;font-size:10px;font-weight:600;">↺</button>
+        </span>
+      </div>
       <h2 id="today-title">—</h2>
       <p class="sub">Sessions for today are created automatically. You can update the topic if needed or add an extra session.</p>
       <div id="today-batches-wrap">
@@ -593,78 +600,71 @@
   <!-- ══════════════════════════════════════════════════════════ -->
   <div id="t-onlinetests" class="tab-content">
     <style>
-      .ot-subnav { display:flex; gap:6px; margin-bottom:18px; flex-wrap:wrap; }
-      .ot-subbtn { padding:7px 16px; border-radius:20px; border:1.5px solid var(--border,#ddd);
-                   background:#fff; cursor:pointer; font-size:13px; font-weight:500; transition:all .2s; }
-      .ot-subbtn.active { background:var(--navy,#0D1B2E); color:#fff; border-color:var(--navy,#0D1B2E); }
-      .ot-panel { display:none; } .ot-panel.active { display:block; }
-      .ot-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; margin-top:14px; }
-      .ot-card { background:#fff; border:1.5px solid var(--border,#e5e7eb); border-radius:12px;
-                 padding:16px; position:relative; transition:box-shadow .2s; }
-      .ot-card:hover { box-shadow:0 4px 16px rgba(0,0,0,.08); }
-      .ot-badge { display:inline-block; padding:2px 9px; border-radius:10px; font-size:11px; font-weight:600; }
-      .ot-badge.draft { background:#fef3c7; color:#92400e; }
-      .ot-badge.active { background:#d1fae5; color:#065f46; }
-      .ot-badge.closed { background:#f3f4f6; color:#4b5563; }
-      .ot-badge.released { background:#dbeafe; color:#1e40af; }
-      .ot-badge.weekly { background:#ede9fe; color:#5b21b6; }
-      .ot-badge.final { background:#fee2e2; color:#991b1b; }
-      .qb-table { width:100%; border-collapse:collapse; font-size:13px; }
-      .qb-table th { background:var(--navy,#0D1B2E); color:#fff; padding:8px 10px; text-align:left; position:sticky; top:0; }
-      .qb-table td { padding:8px 10px; border-bottom:1px solid #f0f0f0; vertical-align:top; }
-      .qb-table tr:hover td { background:#f9fafb; }
-      .qb-table tr.selected td { background:#eff6ff; }
-      .ot-form-row { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px; }
-      .ot-form-row label { font-size:12px; font-weight:600; color:#6b7280; display:block; margin-bottom:4px; }
-      .ot-form-row select, .ot-form-row input[type=text],
-      .ot-form-row input[type=number] { padding:8px 10px; border:1.5px solid #e5e7eb;
-        border-radius:8px; font-size:13px; min-width:140px; }
-      .ot-btn { padding:8px 18px; border-radius:8px; border:none; cursor:pointer;
-                font-size:13px; font-weight:600; transition:all .2s; }
-      .ot-btn.primary { background:var(--navy,#0D1B2E); color:#fff; }
-      .ot-btn.danger  { background:#dc2626; color:#fff; }
-      .ot-btn.success { background:#059669; color:#fff; }
-      .ot-btn.warn    { background:#d97706; color:#fff; }
-      .ot-btn.ghost   { background:#f3f4f6; color:#374151; border:1px solid #e5e7eb; }
-      .ot-btn:disabled { opacity:.5; cursor:not-allowed; }
-      .proctor-row { display:flex; align-items:center; gap:10px; padding:10px 14px;
-                     border-radius:10px; border:1px solid #e5e7eb; margin-bottom:8px; background:#fff; }
-      .proctor-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
-      .proctor-dot.submitted { background:#10b981; }
-      .proctor-dot.pending   { background:#f59e0b; }
-      .proctor-dot.warned    { background:#ef4444; }
-      .ot-warning-pill { display:inline-flex; align-items:center; gap:4px;
-                         background:#fee2e2; color:#dc2626; border-radius:12px;
-                         padding:2px 8px; font-size:11px; font-weight:600; }
-      .ot-stat-row { display:flex; gap:16px; margin-bottom:18px; flex-wrap:wrap; }
-      .ot-stat { text-align:center; padding:14px 20px; background:#f9fafb;
-                 border-radius:10px; border:1px solid #e5e7eb; flex:1; min-width:100px; }
-      .ot-stat .num { font-size:24px; font-weight:700; color:var(--navy,#0D1B2E); }
-      .ot-stat .lbl { font-size:11px; color:#6b7280; font-weight:500; margin-top:2px; }
-      .mg-student-block { border:1.5px solid #e5e7eb; border-radius:10px;
-                          margin-bottom:14px; overflow:hidden; }
-      .mg-student-hdr { padding:10px 14px; background:#f9fafb; font-weight:600;
-                        font-size:13px; border-bottom:1px solid #e5e7eb; }
-      .mg-q-row { padding:12px 14px; border-bottom:1px solid #f3f4f6; }
-      .mg-ans { background:#eff6ff; border-radius:6px; padding:8px 10px;
-                font-size:12px; margin:6px 0; color:#1e40af; font-style:italic; }
-      .cq-type-tabs { display:flex; gap:6px; margin-bottom:16px; }
-      .cq-type-btn { padding:6px 14px; border-radius:8px; border:1.5px solid #e5e7eb;
-                     background:#fff; cursor:pointer; font-size:12px; font-weight:600; }
-      .cq-type-btn.active { background:#0D1B2E; color:#fff; border-color:#0D1B2E; }
-      .cq-type-panel { display:none; } .cq-type-panel.active { display:block; }
-      .ot-results-table { width:100%; border-collapse:collapse; font-size:13px; }
-      .ot-results-table th { background:#0D1B2E; color:#fff; padding:9px 12px; text-align:left; }
-      .ot-results-table td { padding:9px 12px; border-bottom:1px solid #f0f0f0; }
-      .ot-results-table tr:hover td { background:#f9fafb; }
-      .pass-pill  { background:#d1fae5; color:#065f46; border-radius:10px; padding:2px 8px; font-weight:600; font-size:11px; }
-      .fail-pill  { background:#fee2e2; color:#991b1b; border-radius:10px; padding:2px 8px; font-weight:600; font-size:11px; }
-      .pend-pill  { background:#fef3c7; color:#92400e; border-radius:10px; padding:2px 8px; font-weight:600; font-size:11px; }
-      .ot-setup-banner { background:linear-gradient(135deg,#0D1B2E,#1e3a5f); color:#fff;
-                         border-radius:14px; padding:20px 24px; margin-bottom:18px; }
+      .ot-subnav{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap;}
+      .ot-subbtn{padding:7px 16px;border-radius:20px;border:1.5px solid var(--border,#ddd);background:#fff;cursor:pointer;font-size:13px;font-weight:500;transition:all .2s;}
+      .ot-subbtn.active{background:var(--navy,#0D1B2E);color:#fff;border-color:var(--navy,#0D1B2E);}
+      .ot-panel{display:none;} .ot-panel.active{display:block;}
+      .ot-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:14px;}
+      .ot-card{background:#fff;border:1.5px solid var(--border,#e5e7eb);border-radius:12px;padding:16px;position:relative;transition:box-shadow .2s;}
+      .ot-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.08);}
+      .ot-badge{display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;}
+      .ot-badge.draft{background:#fef3c7;color:#92400e;} .ot-badge.active{background:#d1fae5;color:#065f46;}
+      .ot-badge.closed{background:#f3f4f6;color:#4b5563;} .ot-badge.released{background:#dbeafe;color:#1e40af;}
+      .ot-badge.weekly{background:#ede9fe;color:#5b21b6;} .ot-badge.final{background:#fee2e2;color:#991b1b;}
+      .ot-badge.scheduled{background:#fef9c3;color:#713f12;}
+      .qb-table{width:100%;border-collapse:collapse;font-size:13px;}
+      .qb-table th{background:var(--navy,#0D1B2E);color:#fff;padding:8px 10px;text-align:left;position:sticky;top:0;}
+      .qb-table td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
+      .qb-table tr:hover td{background:#f9fafb;} .qb-table tr.selected td{background:#eff6ff;}
+      .qb-preview-row td{background:#f0f7ff!important;font-size:12px;padding:10px 14px;}
+      .ot-form-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;}
+      .ot-form-row label{font-size:12px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;}
+      .ot-form-row select,.ot-form-row input[type=text],.ot-form-row input[type=number],.ot-form-row input[type=datetime-local]{padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;min-width:140px;}
+      .ot-btn{padding:8px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s;}
+      .ot-btn.primary{background:var(--navy,#0D1B2E);color:#fff;} .ot-btn.danger{background:#dc2626;color:#fff;}
+      .ot-btn.success{background:#059669;color:#fff;} .ot-btn.warn{background:#d97706;color:#fff;}
+      .ot-btn.ghost{background:#f3f4f6;color:#374151;border:1px solid #e5e7eb;}
+      .ot-btn:disabled{opacity:.5;cursor:not-allowed;}
+      .ot-toggle-row{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:12px;}
+      .ot-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500;}
+      .ot-section-hdr{font-weight:700;font-size:13px;color:#374151;margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid #e5e7eb;}
+      .batch-check-list{display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;min-height:42px;}
+      .batch-chip{display:flex;align-items:center;gap:6px;background:#fff;border:1.5px solid #e5e7eb;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;}
+      .batch-chip.selected{background:#0D1B2E;color:#fff;border-color:#0D1B2E;}
+      .student-check-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;max-height:180px;overflow-y:auto;padding:8px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;}
+      .student-chip{display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 8px;border-radius:6px;cursor:pointer;transition:background .1s;}
+      .student-chip:hover{background:#e0e7ff;} .student-chip.selected{background:#eff6ff;}
+      .q-review-card{background:#fff;border:1px solid #eef0f2;border-radius:10px;padding:14px 16px;margin-bottom:8px;transition:box-shadow .15s;}
+      .q-review-card:hover{box-shadow:0 2px 8px rgba(0,0,0,.08);border-color:#c7d2fe;}
+      .q-opt-row{display:flex;gap:8px;align-items:center;margin:4px 0;font-size:13px;}
+      .q-opt-row input[type=radio]{accent-color:#0D1B2E;}
+      .q-opt-label{cursor:pointer;} .q-opt-label.correct{color:#059669;font-weight:600;}
+      .proctor-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;border:1px solid #e5e7eb;margin-bottom:8px;background:#fff;}
+      .proctor-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+      .proctor-dot.submitted{background:#10b981;} .proctor-dot.pending{background:#f59e0b;} .proctor-dot.warned{background:#ef4444;}
+      .ot-warning-pill{display:inline-flex;align-items:center;gap:4px;background:#fee2e2;color:#dc2626;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;}
+      .ot-stat-row{display:flex;gap:16px;margin-bottom:18px;flex-wrap:wrap;}
+      .ot-stat{text-align:center;padding:14px 20px;background:#f9fafb;border-radius:10px;border:1px solid #e5e7eb;flex:1;min-width:100px;}
+      .ot-stat .num{font-size:24px;font-weight:700;color:var(--navy,#0D1B2E);} .ot-stat .lbl{font-size:11px;color:#6b7280;font-weight:500;margin-top:2px;}
+      .mg-student-block{border:1.5px solid #e5e7eb;border-radius:10px;margin-bottom:14px;overflow:hidden;}
+      .mg-student-hdr{padding:10px 14px;background:#f9fafb;font-weight:600;font-size:13px;border-bottom:1px solid #e5e7eb;}
+      .mg-q-row{padding:12px 14px;border-bottom:1px solid #f3f4f6;}
+      .mg-ans{background:#eff6ff;border-radius:6px;padding:8px 10px;font-size:12px;margin:6px 0;color:#1e40af;font-style:italic;}
+      .cq-type-tabs{display:flex;gap:6px;margin-bottom:16px;} 
+      .cq-type-btn{padding:6px 14px;border-radius:8px;border:1.5px solid #e5e7eb;background:#fff;cursor:pointer;font-size:12px;font-weight:600;}
+      .cq-type-btn.active{background:#0D1B2E;color:#fff;border-color:#0D1B2E;}
+      .cq-type-panel{display:none;} .cq-type-panel.active{display:block;}
+      .ot-results-table{width:100%;border-collapse:collapse;font-size:13px;}
+      .ot-results-table th{background:#0D1B2E;color:#fff;padding:9px 12px;text-align:left;}
+      .ot-results-table td{padding:9px 12px;border-bottom:1px solid #f0f0f0;}
+      .ot-results-table tr:hover td{background:#f9fafb;}
+      .pass-pill{background:#d1fae5;color:#065f46;border-radius:10px;padding:2px 8px;font-weight:600;font-size:11px;}
+      .fail-pill{background:#fee2e2;color:#991b1b;border-radius:10px;padding:2px 8px;font-weight:600;font-size:11px;}
+      .pend-pill{background:#fef3c7;color:#92400e;border-radius:10px;padding:2px 8px;font-weight:600;font-size:11px;}
+      .ot-setup-banner{background:linear-gradient(135deg,#0D1B2E,#1e3a5f);color:#fff;border-radius:14px;padding:20px 24px;margin-bottom:18px;}
+      .expiry-opts label{display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-size:13px;}
     </style>
 
-    <!-- Sub-navigation -->
     <div class="ot-subnav">
       <button class="ot-subbtn active" onclick="otSubTab('qbank')">📚 Question Bank</button>
       <button class="ot-subbtn" onclick="otSubTab('create')">➕ Create Test</button>
@@ -678,10 +678,9 @@
     <div id="ot-qbank" class="ot-panel active">
       <div class="ot-setup-banner">
         <div style="font-size:15px;font-weight:700;margin-bottom:4px;">📚 Question Bank — 355 Questions</div>
-        <div style="font-size:12px;opacity:.85">DG · CSG · PDG · RDG · SDA — First time? Click "Import Questions" to load the bank from the Excel into Google Sheets.</div>
+        <div style="font-size:12px;opacity:.85">DG · CSG · PDG · RDG · SDA — First time? Click "Import Questions" to load the bank into Google Sheets.</div>
         <button class="ot-btn" style="margin-top:10px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3)" onclick="otImportBank()">⬆ Import / Refresh Question Bank</button>
       </div>
-
       <div class="ot-form-row">
         <div><label>Course</label>
           <select id="ot-qb-course" onchange="otFilterQB()">
@@ -691,92 +690,58 @@
             <option value="OTHER">Other (PDG/RDG/SDA)</option>
           </select>
         </div>
-        <div><label>Topic</label>
-          <select id="ot-qb-topic" onchange="otFilterQB()"><option value="">All Topics</option></select>
-        </div>
+        <div><label>Topic</label><select id="ot-qb-topic" onchange="otFilterQB()"><option value="">All Topics</option></select></div>
         <div style="display:flex;align-items:flex-end;gap:8px;">
           <button class="ot-btn primary" onclick="otSelectAllTopic()">☑ Select All Topic</button>
-          <button class="ot-btn ghost"   onclick="otClearSelection()">Clear</button>
-          <button class="ot-btn success" onclick="otSubTab('create')" id="ot-add-to-test-btn" style="display:none"></button>
+          <button class="ot-btn ghost" onclick="otClearSelection()">✕ Clear</button>
+          <button class="ot-btn success" id="ot-add-to-test-btn" style="display:none" onclick="otSubTab('create');otSyncSelectedPreview();"></button>
         </div>
       </div>
       <div style="font-size:12px;color:#6b7280;margin-bottom:8px;">
         <span id="ot-qb-selected-count">0 selected</span> · <span id="ot-qb-showing">showing all</span>
+        <span style="margin-left:12px;color:#9ca3af;font-size:11px;">💡 Click a row to preview the full question</span>
       </div>
-      <div style="max-height:480px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:10px;">
+      <div style="max-height:440px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:10px;">
         <table class="qb-table">
           <thead><tr>
             <th style="width:36px;"><input type="checkbox" id="ot-qb-all" onchange="otToggleAllQB(this.checked)"></th>
-            <th style="width:60px;">#</th><th>Question</th><th style="width:130px;">Topic</th><th style="width:70px;">Type</th>
+            <th style="width:60px;">#</th><th>Question</th><th style="width:130px;">Topic</th><th style="width:60px;">Type</th>
           </tr></thead>
-          <tbody id="ot-qb-tbody"><tr><td colspan="5" style="text-align:center;padding:24px;color:#9ca3af;">Load the question bank first →</td></tr></tbody>
+          <tbody id="ot-qb-tbody"><tr><td colspan="5" style="text-align:center;padding:24px;color:#9ca3af;">Import the question bank first →</td></tr></tbody>
         </table>
       </div>
-
       <!-- Custom Question Builder -->
-      <div style="margin-top:20px;">
-        <div style="font-weight:600;font-size:14px;margin-bottom:10px;">➕ Add a Custom Question</div>
+      <div style="margin-top:20px;border-top:1px solid #e5e7eb;padding-top:16px;">
+        <div class="ot-section-hdr">➕ Add a Custom Question</div>
         <div class="cq-type-tabs">
-          <button class="cq-type-btn active" onclick="cqType('MCQ')">MCQ</button>
-          <button class="cq-type-btn" onclick="cqType('TrueFalse')">True / False</button>
-          <button class="cq-type-btn" onclick="cqType('FillBlank')">Fill in Blank</button>
-          <button class="cq-type-btn" onclick="cqType('Theory')">Theory</button>
+          <button class="cq-type-btn active" onclick="cqType('MCQ',event)">MCQ</button>
+          <button class="cq-type-btn" onclick="cqType('TrueFalse',event)">True / False</button>
+          <button class="cq-type-btn" onclick="cqType('FillBlank',event)">Fill in Blank</button>
+          <button class="cq-type-btn" onclick="cqType('Theory',event)">Theory</button>
         </div>
         <div class="ot-form-row">
-          <div><label>Course</label>
-            <select id="cq-course"><option value="DG">DG</option><option value="CSG">CSG</option><option value="OTHER">Other</option></select>
-          </div>
+          <div><label>Course</label><select id="cq-course"><option value="DG">DG</option><option value="CSG">CSG</option><option value="OTHER">Other</option></select></div>
           <div><label>Topic</label><input type="text" id="cq-topic" placeholder="e.g. DG Rough" style="width:160px;"></div>
         </div>
         <div style="margin-bottom:10px;">
-          <label style="font-size:12px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;">Question</label>
-          <textarea id="cq-question" rows="2" style="width:100%;padding:8px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;box-sizing:border-box;" placeholder="Enter your question here..."></textarea>
+          <label style="font-size:12px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;">Question *</label>
+          <textarea id="cq-question" rows="2" style="width:100%;padding:8px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;box-sizing:border-box;" placeholder="Enter question text…"></textarea>
         </div>
-
-        <!-- MCQ Panel -->
         <div id="cq-MCQ" class="cq-type-panel active">
           <div class="ot-form-row">
-            <div><label>Option 1</label><input type="text" id="cq-o1" style="width:200px;" placeholder="Option A"></div>
-            <div><label>Option 2</label><input type="text" id="cq-o2" style="width:200px;" placeholder="Option B"></div>
-            <div><label>Option 3</label><input type="text" id="cq-o3" style="width:200px;" placeholder="Option C"></div>
-            <div><label>Option 4</label><input type="text" id="cq-o4" style="width:200px;" placeholder="Option D"></div>
+            <div><label>Option 1</label><input type="text" id="cq-o1" style="width:190px;" placeholder="Option A"></div>
+            <div><label>Option 2</label><input type="text" id="cq-o2" style="width:190px;" placeholder="Option B"></div>
+            <div><label>Option 3</label><input type="text" id="cq-o3" style="width:190px;" placeholder="Option C"></div>
+            <div><label>Option 4</label><input type="text" id="cq-o4" style="width:190px;" placeholder="Option D"></div>
           </div>
-          <div class="ot-form-row">
-            <div><label>Correct Option</label>
-              <select id="cq-correct-mcq">
-                <option value="1">Option 1</option><option value="2">Option 2</option>
-                <option value="3">Option 3</option><option value="4">Option 4</option>
-              </select>
-            </div>
-          </div>
+          <div class="ot-form-row"><div><label>Correct Option</label><select id="cq-correct-mcq"><option value="1">Option 1</option><option value="2">Option 2</option><option value="3">Option 3</option><option value="4">Option 4</option></select></div></div>
         </div>
-
-        <!-- True/False Panel -->
-        <div id="cq-TrueFalse" class="cq-type-panel">
-          <div class="ot-form-row">
-            <div><label>Correct Answer</label>
-              <select id="cq-correct-tf">
-                <option value="True">True</option><option value="False">False</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <!-- Fill in Blank Panel -->
-        <div id="cq-FillBlank" class="cq-type-panel">
-          <div class="ot-form-row">
-            <div><label>Expected Answer</label><input type="text" id="cq-blank-answer" style="width:300px;" placeholder="Exact answer (case-insensitive match)"></div>
-          </div>
-        </div>
-
-        <!-- Theory Panel -->
+        <div id="cq-TrueFalse" class="cq-type-panel"><div class="ot-form-row"><div><label>Correct Answer</label><select id="cq-correct-tf"><option value="True">True</option><option value="False">False</option></select></div></div></div>
+        <div id="cq-FillBlank" class="cq-type-panel"><div class="ot-form-row"><div><label>Expected Answer</label><input type="text" id="cq-blank-answer" style="width:300px;" placeholder="Exact answer (case-insensitive)"></div></div></div>
         <div id="cq-Theory" class="cq-type-panel">
-          <div class="ot-form-row">
-            <div><label>Max Marks</label><input type="number" id="cq-max-marks" value="5" min="1" max="20" style="width:90px;"></div>
-          </div>
-          <p style="font-size:12px;color:#6b7280;margin:0;">Students type a long-form answer. You grade this manually in the "Grade Theory" tab after the test.</p>
+          <div class="ot-form-row"><div><label>Max Marks</label><input type="number" id="cq-max-marks" value="5" min="1" max="20" style="width:80px;"></div></div>
+          <p style="font-size:12px;color:#6b7280;margin:0;">Instructor grades manually in the Grade Theory tab after the test.</p>
         </div>
-
         <button class="ot-btn primary" onclick="otSaveCustomQ()">💾 Save Custom Question</button>
         <span id="cq-status" style="margin-left:10px;font-size:12px;color:#059669;"></span>
       </div>
@@ -784,59 +749,189 @@
 
     <!-- ── Panel 2: Create Test ────────────────────────────── -->
     <div id="ot-create" class="ot-panel">
-      <div style="max-width:600px;">
-        <h3 style="margin:0 0 16px;font-size:15px;">Create New Online Test</h3>
-        <div class="ot-form-row">
-          <div style="flex:1;min-width:200px;">
-            <label>Test Label / Name</label>
-            <input type="text" id="ot-c-label" placeholder="e.g. Weekly Test 1 – DG" style="width:100%;">
-          </div>
-        </div>
-        <div class="ot-form-row">
-          <div><label>Test Type</label>
-            <select id="ot-c-type">
-              <option value="Weekly">Weekly Test</option>
-              <option value="Final">Final Exam</option>
-            </select>
-          </div>
-          <div><label>Course</label>
-            <select id="ot-c-course">
-              <option value="DG">Diamond Graduate</option>
-              <option value="CSG">Colored Stone Graduate</option>
-              <option value="ALL">All</option>
-            </select>
-          </div>
-          <div><label>Duration (minutes)</label>
-            <input type="number" id="ot-c-duration" value="30" min="5" max="180" style="width:90px;">
-          </div>
-        </div>
-        <div class="ot-form-row">
-          <div><label>Batch</label>
-            <select id="ot-c-batch"><option value="">— select batch —</option></select>
-          </div>
-        </div>
-        <div class="ot-form-row" style="align-items:center;gap:14px;">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;margin:0;">
-            <input type="checkbox" id="ot-c-negmark" onchange="otToggleNeg()"> Negative Marking
-          </label>
-          <div id="ot-neg-val-wrap" style="display:none;">
-            <label>Deduction per wrong answer</label>
-            <input type="number" id="ot-c-negval" value="0.25" step="0.25" min="0.25" max="2" style="width:80px;">
-          </div>
-        </div>
+      <style>
+        .ct-step{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:20px 22px;margin-bottom:16px;position:relative;border-left:4px solid #e5e7eb;box-shadow:0 1px 4px rgba(0,0,0,.04);}
+        .ct-step.s1{border-left-color:#0D1B2E;}
+        .ct-step.s2{border-left-color:#6366f1;}
+        .ct-step.s3{border-left-color:#10b981;}
+        .ct-step.s4{border-left-color:#f59e0b;}
+        .ct-step.s5{border-left-color:#ef4444;}
+        .ct-step.s6{border-left-color:#C9A84C;}
+        .ct-step-num{font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+        .ct-step-num::before{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;}
+        .ct-step.s1 .ct-step-num{color:#0D1B2E;}
+        .ct-step.s2 .ct-step-num{color:#6366f1;}
+        .ct-step.s3 .ct-step-num{color:#10b981;}
+        .ct-step.s4 .ct-step-num{color:#f59e0b;}
+        .ct-step.s5 .ct-step-num{color:#ef4444;}
+        .ct-step.s6 .ct-step-num{color:#C9A84C;}
+        .dur-pill{display:inline-flex;align-items:center;justify-content:center;min-width:48px;height:34px;padding:0 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;transition:all .15s;white-space:nowrap;}
+        .dur-pill:hover{border-color:#0D1B2E;color:#0D1B2E;}
+        .dur-pill.active{background:#0D1B2E;color:#fff;border-color:#0D1B2E;}
+        .pass-range{display:flex;align-items:center;gap:12px;margin-top:8px;}
+        .pass-range input[type=range]{flex:1;accent-color:#0D1B2E;height:4px;}
+        .pass-val{background:#0D1B2E;color:#C9A84C;font-weight:700;font-size:13px;padding:3px 10px;border-radius:8px;min-width:44px;text-align:center;}
+        .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+        @media(max-width:640px){.two-col{grid-template-columns:1fr;}}
+        .ct-label{font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;display:block;}
+        .ct-input{width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:9px;font-size:13px;box-sizing:border-box;transition:border .15s;}
+        .ct-input:focus{outline:none;border-color:#0D1B2E;}
+        .ct-select{padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:9px;font-size:13px;background:#fff;width:100%;}
+        .toggle-option{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1.5px solid #e5e7eb;border-radius:9px;cursor:pointer;font-size:13px;font-weight:500;transition:all .15s;}
+        .toggle-option:has(input:checked){border-color:#0D1B2E;background:#f0f4ff;}
+        .toggle-option input{accent-color:#0D1B2E;}
+        .ot-checkbox-opt{display:flex;align-items:center;gap:8px;padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:9px;cursor:pointer;font-size:13px;font-weight:500;transition:all .15s;}
+        .ot-checkbox-opt:has(input:checked){border-color:#0D1B2E;background:#f0f4ff;}
+        .ot-checkbox-opt input{accent-color:#0D1B2E;}
+      </style>
 
-        <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:16px;">
-          <div style="font-weight:600;font-size:13px;margin-bottom:8px;">Questions to include</div>
-          <div style="font-size:12px;color:#6b7280;margin-bottom:8px;">
-            Go to <b>Question Bank</b> tab, select questions, then come back here. Selected questions will appear below.
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+        <div>
+          <h3 style="margin:0;font-size:16px;font-weight:700;color:#0D1B2E;">Create New Online Test</h3>
+          <div style="font-size:12px;color:#9ca3af;margin-top:2px;">Fill in each section, then click Create Test at the bottom</div>
+        </div>
+      </div>
+
+      <!-- Step 1: Basics -->
+      <div class="ct-step s1">
+        <div class="ct-step-num">Step 1 · Basics</div>
+        <div style="margin-top:6px;">
+          <label class="ct-label">Test Label / Name *</label>
+          <input type="text" id="ot-c-label" class="ct-input" placeholder="e.g. Weekly Test 1 – DG Rough">
+        </div>
+        <div class="two-col" style="margin-top:12px;">
+          <div>
+            <label class="ct-label">Test Type</label>
+            <select id="ot-c-type" class="ct-select"><option value="Weekly">Weekly Test</option><option value="Final">Final Exam</option></select>
           </div>
-          <div id="ot-selected-q-preview" style="font-size:13px;">
-            <span style="color:#9ca3af;">No questions selected yet.</span>
+          <div>
+            <label class="ct-label">Course</label>
+            <select id="ot-c-course" class="ct-select"><option value="DG">Diamond Graduate</option><option value="CSG">Colored Stone Graduate</option><option value="ALL">All</option></select>
           </div>
         </div>
+        <div style="margin-top:12px;">
+          <label class="ct-label">Duration</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <div class="dur-pill" data-val="15" onclick="otSetDuration(15,this)">15m</div>
+            <div class="dur-pill active" data-val="30" onclick="otSetDuration(30,this)">30m</div>
+            <div class="dur-pill" data-val="45" onclick="otSetDuration(45,this)">45m</div>
+            <div class="dur-pill" data-val="60" onclick="otSetDuration(60,this)">60m</div>
+            <div class="dur-pill" data-val="90" onclick="otSetDuration(90,this)">90m</div>
+            <div class="dur-pill" data-val="120" onclick="otSetDuration(120,this)">2hr</div>
+            <div class="dur-pill" data-val="custom" onclick="otSetDuration('custom',this)">Custom</div>
+          </div>
+          <div id="ot-custom-dur-wrap" style="display:none;margin-top:8px;display:none;align-items:center;gap:8px;">
+            <input type="number" id="ot-c-duration-custom" min="5" max="300" value="30"
+              style="width:80px;padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;"
+              oninput="document.getElementById('ot-c-duration').value=this.value"
+              placeholder="mins">
+            <span style="font-size:12px;color:#6b7280;">minutes (5–300)</span>
+          </div>
+          <input type="hidden" id="ot-c-duration" value="30">
+        </div>
+      </div>
 
-        <button class="ot-btn primary" onclick="otCreateTest()">📝 Create Test (Draft)</button>
-        <span id="ot-create-status" style="margin-left:10px;font-size:12px;"></span>
+      <!-- Step 2: Instructions & Passing Score -->
+      <div class="ct-step s2">
+        <div class="ct-step-num">Step 2 · Rules</div>
+        <div style="margin-top:6px;">
+          <label class="ct-label">Test Instructions <span style="font-weight:400;text-transform:none;letter-spacing:0;">(shown to students before they begin)</span></label>
+          <textarea id="ot-c-instructions" class="ct-input" rows="2" style="resize:vertical;" placeholder="e.g. This test covers DG Rough topics. No calculators allowed. Read each question carefully."></textarea>
+        </div>
+        <div style="margin-top:14px;">
+          <label class="ct-label">Passing Score %</label>
+          <div class="pass-range">
+            <span style="font-size:12px;color:#9ca3af;">40%</span>
+            <input type="range" id="ot-c-passscore" min="40" max="90" value="60" step="5" oninput="document.getElementById('ot-pass-val').textContent=this.value+'%'">
+            <span style="font-size:12px;color:#9ca3af;">90%</span>
+            <div class="pass-val" id="ot-pass-val">60%</div>
+          </div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:4px;">Students need this score to pass. Default 60%.</div>
+        </div>
+      </div>
+
+      <!-- Step 3: Batches & Students -->
+      <div class="ct-step s3">
+        <div class="ct-step-num">Step 3 · Audience</div>
+        <div style="margin-top:6px;">
+          <label class="ct-label">Batch Selection <span style="font-weight:400;text-transform:none;letter-spacing:0;">(select one or more)</span></label>
+          <div id="ot-batch-chips" class="batch-check-list"><span style="color:#9ca3af;font-size:12px;">Loading your batches…</span></div>
+        </div>
+        <div style="margin-top:14px;">
+          <label class="ct-label">Student Targeting</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <label class="toggle-option"><input type="radio" name="ot-target-mode" value="ALL" checked onchange="otTargetModeChange()"> All enrolled students</label>
+            <label class="toggle-option"><input type="radio" name="ot-target-mode" value="SELECTED" onchange="otTargetModeChange()"> Selected students only</label>
+          </div>
+        </div>
+        <div id="ot-student-target-wrap" style="display:none;margin-top:10px;">
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <input type="text" id="ot-student-search" class="ct-input" placeholder="Search student name…" style="flex:1;" oninput="otFilterStudentList()">
+            <button class="ot-btn ghost" style="padding:6px 12px;font-size:12px;" onclick="otSelectAllStudents()">Select All</button>
+            <button class="ot-btn ghost" style="padding:6px 12px;font-size:12px;" onclick="otClearStudents()">Clear</button>
+          </div>
+          <div id="ot-student-check-list" class="student-check-list">
+            <span style="color:#9ca3af;font-size:12px;">← Select a batch above first to see students</span>
+          </div>
+          <div style="font-size:11px;color:#6b7280;margin-top:4px;"><span id="ot-student-sel-count">0</span> students selected</div>
+        </div>
+      </div>
+
+      <!-- Step 4: Timing -->
+      <div class="ct-step s4">
+        <div class="ct-step-num">Step 4 · Timing</div>
+        <div style="margin-top:6px;">
+          <label class="ct-label">Test Expiry</label>
+          <div style="display:flex;flex-direction:column;gap:6px;" class="expiry-opts">
+            <label class="toggle-option"><input type="radio" name="ot-expiry" value="manual" checked onchange="otExpiryChange()"> Manual — I close it from Proctor Room</label>
+            <label class="toggle-option"><input type="radio" name="ot-expiry" value="endofday" onchange="otExpiryChange()"> Today end of day (11:59 PM)</label>
+            <label class="toggle-option"><input type="radio" name="ot-expiry" value="custom" onchange="otExpiryChange()"> Custom date &amp; time →
+              <input type="datetime-local" id="ot-expiry-custom" style="display:none;margin-left:8px;padding:4px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">
+            </label>
+          </div>
+        </div>
+        <div style="margin-top:14px;">
+          <label class="ct-label">When to Activate</label>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <label class="toggle-option"><input type="radio" name="ot-activate-when" value="now" checked onchange="otActivateWhenChange()"> Activate immediately on create</label>
+            <label class="toggle-option"><input type="radio" name="ot-activate-when" value="manual" onchange="otActivateWhenChange()"> Save as Draft — activate manually later</label>
+            <label class="toggle-option"><input type="radio" name="ot-activate-when" value="scheduled" onchange="otActivateWhenChange()"> Schedule for a specific time →
+              <input type="datetime-local" id="ot-scheduled-at" style="display:none;margin-left:8px;padding:4px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">
+            </label>
+          </div>
+          <div id="ot-scheduled-wrap" style="display:none;"></div>
+        </div>
+      </div>
+
+      <!-- Step 5: Options -->
+      <div class="ct-step s5">
+        <div class="ct-step-num">Step 5 · Options</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+          <label class="ot-checkbox-opt"><input type="checkbox" id="ot-c-negmark" onchange="otToggleNeg()"> Negative Marking</label>
+          <label class="ot-checkbox-opt"><input type="checkbox" id="ot-c-shuffle"> Shuffle Questions</label>
+          <label class="ot-checkbox-opt"><input type="checkbox" id="ot-c-retake"> Allow Re-attempt</label>
+        </div>
+        <div id="ot-neg-val-wrap" style="display:none;margin-top:10px;display:flex;align-items:center;gap:10px;">
+          <label class="ct-label" style="margin:0;">Deduction per wrong answer:</label>
+          <select id="ot-c-negval" style="padding:6px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;">
+            <option value="0.25">−0.25 marks</option>
+            <option value="0.5">−0.5 marks</option>
+            <option value="1">−1 mark</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Step 6: Review Questions -->
+      <div class="ct-step s6">
+        <div class="ct-step-num">Step 6 · Questions</div>
+        <div id="ot-q-review-wrap" style="margin-top:6px;">
+          <div style="color:#9ca3af;font-size:13px;padding:10px 0;">No questions selected yet — go to <b>Question Bank</b> tab to select.</div>
+        </div>
+      </div>
+
+      <div style="margin-top:6px;display:flex;gap:10px;align-items:center;">
+        <button class="ot-btn primary" style="padding:12px 28px;font-size:14px;" onclick="otCreateTest()">📝 Create Test</button>
+        <span id="ot-create-status" style="font-size:12px;"></span>
       </div>
     </div>
 
@@ -852,20 +947,16 @@
     <!-- ── Panel 4: Proctor Room ───────────────────────────── -->
     <div id="ot-proctor" class="ot-panel">
       <div class="ot-form-row" style="margin-bottom:14px;">
-        <div><label>Select Active Test</label>
-          <select id="ot-proctor-test"><option value="">— select test —</option></select>
-        </div>
-        <div style="display:flex;align-items:flex-end;">
-          <button class="ot-btn primary" onclick="otLoadProctor()">👁 Open Proctor Room</button>
-        </div>
+        <div><label>Select Active Test</label><select id="ot-proctor-test"><option value="">— select test —</option></select></div>
+        <div style="display:flex;align-items:flex-end;"><button class="ot-btn primary" onclick="otLoadProctor()">👁 Open Proctor Room</button></div>
       </div>
       <div id="ot-proctor-room" style="display:none;">
         <div class="ot-stat-row" id="ot-proctor-stats"></div>
         <div style="font-weight:600;font-size:13px;margin-bottom:10px;">Student Status</div>
         <div id="ot-proctor-students"></div>
-        <div style="margin-top:14px;">
+        <div style="margin-top:14px;display:flex;gap:8px;align-items:center;">
           <button class="ot-btn danger" onclick="otCloseTest()">🔒 Close Test</button>
-          <span style="margin-left:8px;font-size:12px;color:#6b7280;">Closes test for all students</span>
+          <span style="font-size:12px;color:#6b7280;">Closes test for all students</span>
         </div>
         <div id="ot-proctor-refresh-info" style="font-size:11px;color:#9ca3af;margin-top:6px;"></div>
       </div>
@@ -874,27 +965,17 @@
     <!-- ── Panel 5: Grade Theory ───────────────────────────── -->
     <div id="ot-grading" class="ot-panel">
       <div class="ot-form-row" style="margin-bottom:14px;">
-        <div><label>Select Closed Test</label>
-          <select id="ot-grade-test"><option value="">— select test —</option></select>
-        </div>
-        <div style="display:flex;align-items:flex-end;">
-          <button class="ot-btn primary" onclick="otLoadGrading()">Load Pending Grades</button>
-        </div>
+        <div><label>Select Closed Test</label><select id="ot-grade-test"><option value="">— select test —</option></select></div>
+        <div style="display:flex;align-items:flex-end;"><button class="ot-btn primary" onclick="otLoadGrading()">Load Pending Grades</button></div>
       </div>
-      <div id="ot-grading-body">
-        <div style="color:#9ca3af;font-size:13px;">Select a test to see theory answers pending grading.</div>
-      </div>
+      <div id="ot-grading-body"><div style="color:#9ca3af;font-size:13px;">Select a test to see theory answers pending grading.</div></div>
     </div>
 
     <!-- ── Panel 6: Results ────────────────────────────────── -->
     <div id="ot-results" class="ot-panel">
       <div class="ot-form-row" style="margin-bottom:14px;">
-        <div><label>Select Test</label>
-          <select id="ot-results-test"><option value="">— select test —</option></select>
-        </div>
-        <div style="display:flex;align-items:flex-end;gap:8px;">
-          <button class="ot-btn primary" onclick="otLoadResults()">📊 Load Results</button>
-        </div>
+        <div><label>Select Test</label><select id="ot-results-test"><option value="">— select test —</option></select></div>
+        <div style="display:flex;align-items:flex-end;gap:8px;"><button class="ot-btn primary" onclick="otLoadResults()">📊 Load Results</button></div>
       </div>
       <div id="ot-results-body"></div>
     </div>
@@ -905,6 +986,20 @@
 </div><!-- /s-main -->
 
 <script>
+
+// ── Logout ───────────────────────────────────────────────────────────────
+function doLogout() {
+  arClearSession();
+  arStopAll();
+  instructorName = ''; instructorAuthRole = 'Instructor';
+  isDualRole = false; isAcademicHead = false; isRevenueManager = false;
+  dualCentres = []; managerCentres = [];
+  document.getElementById('portal-name').textContent = '';
+  // Hide role-specific tabs
+  var tabs = ['t-batchmgmt-tab','t-academic-tab','t-revenue-tab'];
+  tabs.forEach(function(id){ var el=document.getElementById(id); if(el) el.style.display='none'; });
+  showScreen('s-login');
+}
 
 // ── Fallback Money Formatting Utilities (in case of cached shared.js) ──
 if (typeof money === 'undefined') {
@@ -954,16 +1049,136 @@ let instructorTodayCache = [];
 let instructorCalendarMonth = new Date();
 
 // ── Init ──────────────────────────────────────────────────────
+// ── Session & Auto-Refresh Engine ─────────────────────────────────────
+var IP_SESSION_KEY = 'igi_instructor_session';
+var IP_SESSION_TTL = 12 * 60 * 60 * 1000; // 12 hours
+
+var arTimers = {}; // auto-refresh timers {id: intervalId}
+var arLastUpdated = {}; // {id: timestamp}
+var arPaused = false; // paused when tab not visible
+
+function arSaveSession(name, role, centres, isDual, isAcadHead, isRevMgr, managerCtrs) {
+  try {
+    localStorage.setItem(IP_SESSION_KEY, JSON.stringify({
+      name: name, role: role, centres: centres,
+      isDualRole: isDual, isAcademicHead: isAcadHead,
+      isRevenueManager: isRevMgr, managerCentres: managerCtrs,
+      savedAt: Date.now()
+    }));
+  } catch(e) {}
+}
+
+function arClearSession() {
+  try { localStorage.removeItem(IP_SESSION_KEY); } catch(e) {}
+}
+
+function arCheckSession() {
+  try {
+    var raw = localStorage.getItem(IP_SESSION_KEY);
+    if (!raw) return null;
+    var sess = JSON.parse(raw);
+    if (!sess || !sess.name || !sess.savedAt) return null;
+    if (Date.now() - sess.savedAt > IP_SESSION_TTL) { arClearSession(); return null; }
+    return sess;
+  } catch(e) { return null; }
+}
+
+function arRestoreSession(sess) {
+  // Restore all global state from saved session
+  instructorName      = sess.name;
+  instructorAuthRole  = sess.role || 'Instructor';
+  isDualRole          = !!sess.isDualRole;
+  dualCentres         = sess.centres || [];
+  isAcademicHead      = !!sess.isAcademicHead;
+  isRevenueManager    = !!sess.isRevenueManager;
+  managerCentres      = sess.managerCentres || [];
+  var el = document.getElementById('portal-name');
+  if (el) el.textContent = sess.name;
+  if (isDualRole) { var t=document.getElementById('t-batchmgmt-tab'); if(t) t.style.display='flex'; }
+  if (isAcademicHead) { var t=document.getElementById('t-academic-tab'); if(t) t.style.display='flex'; }
+  if (isRevenueManager) { var t=document.getElementById('t-revenue-tab'); if(t) t.style.display='flex'; }
+  showScreen('s-main');
+  applyPasswordChangeState();
+  loadInstructorBatches();
+  loadTodaySessions();
+  arStartAll();
+}
+
+// ── Auto-refresh registration ──────────────────────────────────────────────
+function arRegister(id, fn, intervalMs) {
+  if (arTimers[id]) clearInterval(arTimers[id]);
+  arLastUpdated[id] = Date.now();
+  arTimers[id] = setInterval(function() {
+    if (arPaused || document.hidden) return;
+    fn();
+    arLastUpdated[id] = Date.now();
+    arUpdateBadge(id);
+  }, intervalMs);
+}
+
+function arStop(id) {
+  if (arTimers[id]) { clearInterval(arTimers[id]); delete arTimers[id]; }
+}
+
+function arStopAll() { Object.keys(arTimers).forEach(arStop); }
+
+function arStartAll() {
+  // Session tab: reload today's sessions every 60s
+  arRegister('today-sessions', function() { if(instructorName) loadTodaySessions(); }, 60000);
+  // Academic overview: every 120s when on that tab
+  arRegister('academic', function() {
+    var el = document.getElementById('t-academic');
+    if (el && el.classList.contains('active') && instructorName) loadAcademicDashboard(false);
+  }, 120000);
+}
+
+function arUpdateBadge(id) {
+  var el = document.getElementById('ar-badge-'+id);
+  if (!el) return;
+  var ago = Math.round((Date.now() - (arLastUpdated[id]||Date.now())) / 1000);
+  el.textContent = ago < 5 ? 'just now' : ago < 60 ? ago+'s ago' : Math.floor(ago/60)+'m ago';
+}
+// Tick all badges every 15s
+setInterval(function(){ Object.keys(arLastUpdated).forEach(arUpdateBadge); }, 15000);
+
+// Pause auto-refresh when tab is not visible
+document.addEventListener('visibilitychange', function() {
+  arPaused = document.hidden;
+});
+
+// arInjectBadge removed — not needed, badges injected directly in HTML
+
 document.addEventListener('DOMContentLoaded', function() {
-  INSTRUCTORS.forEach(i => {
-    const o = document.createElement('option'); o.value=i; o.textContent=i;
-    document.getElementById('lg-name').appendChild(o);
-  });
-  const oldSessionDate = document.getElementById('ss-date');
+  // Instructor list — defined inline as fallback in case shared.js is slow/cached
+  var INSTRUCTOR_LIST = (typeof INSTRUCTORS !== 'undefined' && INSTRUCTORS.length)
+    ? INSTRUCTORS
+    : ['Amit Sidpura','Asmita Saroday','Arjun Mistry','Bhavin Patel',
+       'Sneha Garodia','Khorehmand Kasad','Nishchay Kapoor','Piyush Ahuja',
+       'Preeti Agarwala','Sayan Banerjee','Deepak Nachankar','Sharoon Joy','Seema Athavale'];
+  var sel = document.getElementById('lg-name');
+  if (sel) {
+    INSTRUCTOR_LIST.forEach(function(i) {
+      var o = document.createElement('option'); o.value=i; o.textContent=i;
+      sel.appendChild(o);
+    });
+  }
+  var oldSessionDate = document.getElementById('ss-date');
   if (oldSessionDate) oldSessionDate.value = new Date().toISOString().split('T')[0];
-  document.getElementById('ct-date').value = new Date().toISOString().split('T')[0];
-  document.getElementById('ex-date').value = new Date().toISOString().split('T')[0];
-  document.getElementById('lg-pin').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+  var ctDate = document.getElementById('ct-date');
+  if (ctDate) ctDate.value = new Date().toISOString().split('T')[0];
+  var exDate = document.getElementById('ex-date');
+  if (exDate) exDate.value = new Date().toISOString().split('T')[0];
+  var lgPin = document.getElementById('lg-pin');
+  if (lgPin) lgPin.addEventListener('keydown', function(e) { if(e.key==='Enter') doLogin(); });
+
+  // ── Auto-restore session if still valid ──
+  var savedSess = arCheckSession();
+  if (savedSess) {
+    // Show brief "Restoring session..." before auto-login
+    var loginBtn = document.getElementById('lg-btn');
+    if (loginBtn) { loginBtn.textContent = 'Restoring session…'; loginBtn.disabled = true; }
+    setTimeout(function() { arRestoreSession(savedSess); }, 200);
+  }
 });
 
 function showScreen(id) {
@@ -1021,10 +1236,13 @@ function doLogin() {
     if (isRevenueManager) {
       document.getElementById('t-revenue-tab').style.display = 'flex';
     }
+    // Save session for auto-restore on page refresh
+    arSaveSession(name, d.authRole||'Instructor', d.centres||[], !!d.isDualRole, !!d.isAcademicHead, !!d.isRevenueManager, d.managerCentres||[]);
     showScreen('s-main');
     applyPasswordChangeState();
     loadInstructorBatches();
     loadTodaySessions();
+    arStartAll();
   });
 }
 
@@ -2242,521 +2460,712 @@ function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// Instructor-side correct answer lookup (bank questions only)
+var QB_CORRECT_ANSWERS = {"QB0001":3,"QB0002":3,"QB0003":3,"QB0004":3,"QB0005":3,"QB0006":2,"QB0007":3,"QB0008":1,"QB0009":2,"QB0010":3,"QB0011":2,"QB0012":2,"QB0013":3,"QB0014":2,"QB0015":4,"QB0016":4,"QB0017":3,"QB0018":1,"QB0019":2,"QB0020":3,"QB0021":2,"QB0022":4,"QB0023":3,"QB0024":4,"QB0025":4,"QB0026":4,"QB0027":2,"QB0028":1,"QB0029":2,"QB0030":2,"QB0031":1,"QB0032":2,"QB0033":1,"QB0034":2,"QB0035":1,"QB0036":3,"QB0037":1,"QB0038":2,"QB0039":4,"QB0040":1,"QB0041":4,"QB0042":1,"QB0043":1,"QB0044":4,"QB0045":3,"QB0046":4,"QB0047":1,"QB0048":2,"QB0049":1,"QB0050":3,"QB0051":1,"QB0052":3,"QB0053":1,"QB0054":2,"QB0055":1,"QB0056":4,"QB0057":3,"QB0058":1,"QB0059":2,"QB0060":1,"QB0061":4,"QB0062":2,"QB0063":4,"QB0064":1,"QB0065":2,"QB0066":1,"QB0067":1,"QB0068":3,"QB0069":1,"QB0070":4,"QB0071":1,"QB0072":4,"QB0073":3,"QB0074":3,"QB0075":4,"QB0076":2,"QB0077":1,"QB0078":4,"QB0079":1,"QB0080":1,"QB0081":2,"QB0082":4,"QB0083":3,"QB0084":2,"QB0085":3,"QB0086":2,"QB0087":3,"QB0088":3,"QB0089":2,"QB0090":4,"QB0091":4,"QB0092":3,"QB0093":3,"QB0094":2,"QB0095":1,"QB0096":3,"QB0097":2,"QB0098":3,"QB0099":2,"QB0100":3,"QB0101":3,"QB0102":1,"QB0103":2,"QB0104":1,"QB0105":3,"QB0106":3,"QB0107":2,"QB0108":1,"QB0109":2,"QB0110":3,"QB0111":3,"QB0112":3,"QB0113":3,"QB0114":3,"QB0115":4,"QB0116":4,"QB0117":4,"QB0118":2,"QB0119":3,"QB0120":3,"QB0121":1,"QB0122":1,"QB0123":4,"QB0124":2,"QB0125":2,"QB0126":4,"QB0127":4,"QB0128":4,"QB0129":4,"QB0130":1,"QB0131":3,"QB0132":1,"QB0133":1,"QB0134":3,"QB0135":3,"QB0136":4,"QB0137":3,"QB0138":3,"QB0139":2,"QB0140":3,"QB0141":2,"QB0142":4,"QB0143":2,"QB0144":4,"QB0145":1,"QB0146":2,"QB0147":3,"QB0148":2,"QB0149":2,"QB0150":2,"QB0151":4,"QB0152":3,"QB0153":3,"QB0154":1,"QB0155":4,"QB0156":2,"QB0157":1,"QB0158":3,"QB0159":3,"QB0160":3,"QB0161":2,"QB0162":2,"QB0163":4,"QB0164":2,"QB0165":4,"QB0166":2,"QB0167":4,"QB0168":1,"QB0169":3,"QB0170":4,"QB0171":4,"QB0172":2,"QB0173":2,"QB0174":2,"QB0175":3,"QB0176":4,"QB0177":4,"QB0178":4,"QB0179":3,"QB0180":3,"QB0181":3,"QB0182":1,"QB0183":2,"QB0184":3,"QB0185":1,"QB0186":3,"QB0187":4,"QB0188":1,"QB0189":2,"QB0190":3,"QB0191":1,"QB0192":1,"QB0193":3,"QB0194":3,"QB0195":3,"QB0196":1,"QB0197":1,"QB0198":1,"QB0199":1,"QB0200":4,"QB0201":4,"QB0202":4,"QB0203":4,"QB0204":1,"QB0205":1,"QB0206":3,"QB0207":3,"QB0208":2,"QB0209":3,"QB0210":2,"QB0211":2,"QB0212":3,"QB0213":4,"QB0214":4,"QB0215":2,"QB0216":2,"QB0217":2,"QB0218":3,"QB0219":3,"QB0220":3,"QB0221":1,"QB0222":1,"QB0223":2,"QB0224":2,"QB0225":2,"QB0226":1,"QB0227":2,"QB0228":1,"QB0229":3,"QB0230":2,"QB0231":4,"QB0232":1,"QB0233":2,"QB0234":4,"QB0235":4,"QB0236":3,"QB0237":2,"QB0238":4,"QB0239":3,"QB0240":3,"QB0241":3,"QB0242":2,"QB0243":2,"QB0244":3,"QB0245":3,"QB0246":3,"QB0247":1,"QB0248":4,"QB0249":3,"QB0250":4,"QB0251":4,"QB0252":3,"QB0253":4,"QB0254":3,"QB0255":3,"QB0256":3,"QB0257":2,"QB0258":4,"QB0259":3,"QB0260":4,"QB0261":1,"QB0262":1,"QB0263":2,"QB0264":1,"QB0265":2,"QB0266":2,"QB0267":2,"QB0268":1,"QB0269":3,"QB0270":2,"QB0271":4,"QB0272":1,"QB0273":3,"QB0274":3,"QB0275":4,"QB0276":1,"QB0277":2,"QB0278":3,"QB0279":2,"QB0280":3,"QB0281":3,"QB0282":3,"QB0283":4,"QB0284":1,"QB0285":3,"QB0286":4,"QB0287":3,"QB0288":3,"QB0289":1,"QB0290":4,"QB0291":2,"QB0292":1,"QB0293":1,"QB0294":3,"QB0295":1,"QB0296":4,"QB0297":2,"QB0298":2,"QB0299":3,"QB0300":1,"QB0301":2,"QB0302":2,"QB0303":1,"QB0304":2,"QB0305":4,"QB0306":4,"QB0307":3,"QB0308":4,"QB0309":1,"QB0310":4,"QB0311":3,"QB0312":1,"QB0313":3,"QB0314":2,"QB0315":2,"QB0316":2,"QB0317":4,"QB0318":2,"QB0319":4,"QB0320":1,"QB0321":1,"QB0322":3,"QB0323":2,"QB0324":1,"QB0325":3,"QB0326":3,"QB0327":3,"QB0328":3,"QB0329":3,"QB0330":2,"QB0331":1,"QB0332":2,"QB0333":3,"QB0334":2,"QB0335":2,"QB0336":3,"QB0337":2,"QB0338":4,"QB0339":4,"QB0340":1,"QB0341":2,"QB0342":3,"QB0343":2,"QB0344":3,"QB0345":2,"QB0346":1,"QB0347":2,"QB0348":4,"QB0349":2,"QB0350":2,"QB0351":2,"QB0352":3,"QB0353":3,"QB0354":1,"QB0355":4};
+
 // ═══════════════════════════════════════════════════════════════
-// ONLINE TEST SYSTEM — Instructor JS
+// ONLINE TEST SYSTEM — Instructor JS v2
 // ═══════════════════════════════════════════════════════════════
 
-var otAllQuestions = [];      // full QB loaded from server
-var otFilteredQs  = [];       // after course/topic filter
-var otSelectedIds = new Set();// selected question IDs
-var otCurrentTests = [];      // list of tests
-var otActiveTestId = null;    // test open in proctor room
-var otProctorTimer = null;
-var otCurrentCQType = 'MCQ';
+var otAllQuestions   = [];
+var otFilteredQs     = [];
+var otSelectedIds    = new Set();
+var otCorrectOverrides = {};  // {qId: newCorrectAnswer}
+var otOrderOverrides   = {};  // {qId: order}
+var otCurrentTests   = [];
+var otActiveTestId   = null;
+var otProctorTimer   = null;
+var otCurrentCQType  = 'MCQ';
+var otAllStudents    = [];    // all students for selected batches
+var otSelectedStudents = new Set();
+var otSelectedBatches  = new Set();
 
 function otInit() {
   otLoadTests();
   otLoadQB();
+  otFetchBatches();
 }
 
-// ── Sub-tab routing ──────────────────────────────────────────
+// ── Sub-tab ──────────────────────────────────────────────────
 function otSubTab(panel) {
-  document.querySelectorAll('.ot-panel').forEach(function(p){ p.classList.remove('active'); });
-  document.querySelectorAll('.ot-subbtn').forEach(function(b){ b.classList.remove('active'); });
-  var el = document.getElementById('ot-'+panel);
-  if (el) el.classList.add('active');
-  // highlight button
+  document.querySelectorAll('.ot-panel').forEach(function(p){p.classList.remove('active');});
+  document.querySelectorAll('.ot-subbtn').forEach(function(b){b.classList.remove('active');});
+  var el=document.getElementById('ot-'+panel);
+  if(el) el.classList.add('active');
   document.querySelectorAll('.ot-subbtn').forEach(function(b){
-    if (b.getAttribute('onclick') && b.getAttribute('onclick').indexOf("'"+panel+"'") !== -1) b.classList.add('active');
+    if(b.getAttribute('onclick')&&b.getAttribute('onclick').indexOf("'"+panel+"'")!==-1) b.classList.add('active');
   });
-  if (panel === 'create') otSyncSelectedPreview();
-  if (panel === 'mytests') otLoadTests();
+  if(panel==='create') otSyncSelectedPreview();
+  if(panel==='mytests') otLoadTests();
 }
+
+// ── Fetch instructor batches ─────────────────────────────────
+function otFetchBatches() {
+  gasGet({action:'getInstructorBatches', instructor:instructorName}, function(err,d){
+    if(err||!d||d.status!=='ok') return;
+    instructorBatches = d.batches||[];
+    otRenderBatchChips(instructorBatches);
+    otPopulateTestDropdowns(otCurrentTests);
+  });
+}
+
+function otParseIndianDate(str) {
+  if (!str) return null;
+  // Handle Indian locale: D/M/YYYY or DD/MM/YYYY
+  var parts = String(str).split('/');
+  if (parts.length === 3) {
+    var d = parseInt(parts[0]), m = parseInt(parts[1])-1, y = parseInt(parts[2]);
+    if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
+      var dt = new Date(y, m, d); dt.setHours(0,0,0,0); return dt;
+    }
+  }
+  // Fallback: try ISO / other formats
+  var dt = new Date(str); dt.setHours(0,0,0,0);
+  return isNaN(dt.getTime()) ? null : dt;
+}
+function otBatchStatus(b) {
+  var now = new Date(); now.setHours(0,0,0,0);
+  var start = otParseIndianDate(b.startDate);
+  var end   = otParseIndianDate(b.endDate);
+  if (start && start > now) return 'upcoming';
+  if (end   && end   < now) return 'completed';
+  return 'active';
+}
+
+function otRenderBatchChips(batches) {
+  var el=document.getElementById('ot-batch-chips');
+  if(!el) return;
+  if(!batches||!batches.length){el.innerHTML='<span style="color:#9ca3af;font-size:12px;">No batches assigned</span>';return;}
+  el.innerHTML='';
+  batches.forEach(function(b){
+    var status = otBatchStatus(b);
+    var chip=document.createElement('div');
+    chip.className='batch-chip';
+    chip.dataset.code=b.batchCode;
+
+    var statusTag = '';
+    var chipExtra = '';
+    if (status==='upcoming') {
+      statusTag = '<span style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;margin-left:6px;">⏰ UPCOMING</span>';
+    } else if (status==='completed') {
+      statusTag = '<span style="background:#f3f4f6;color:#9ca3af;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;margin-left:6px;">✓ COMPLETED</span>';
+      chipExtra = 'opacity:.6;';
+    }
+
+    chip.style.cssText = chipExtra;
+    chip.innerHTML = '<input type="checkbox" style="accent-color:#fff;pointer-events:none;"> '
+      + '<span style="font-weight:600;">'+escHtml(b.batchCode)+'</span>'
+      + '<span style="opacity:.6;font-size:11px;margin-left:5px;">'+escHtml(b.courseName||b.course||'')+'</span>'
+      + statusTag;
+
+    // Make the whole chip clickable (not just the tiny checkbox)
+    chip.style.cursor = 'pointer';
+    chip.addEventListener('click', function(e) {
+      var cb = chip.querySelector('input');
+      cb.checked = !cb.checked;
+      cb.dispatchEvent(new Event('change'));
+    });
+    chip.querySelector('input').addEventListener('change',function(){
+      if(this.checked){
+        otSelectedBatches.add(b.batchCode);
+        chip.classList.add('selected');
+        if(status==='completed') {
+          setTimeout(function(){
+            var wrap=document.getElementById('ot-student-target-wrap')||document.getElementById('ot-batch-chips').parentElement;
+            if(wrap && !wrap.querySelector('.ot-completed-note')) {
+              var note=document.createElement('div');
+              note.className='ot-completed-note';
+              note.style='font-size:11px;color:#d97706;margin-top:6px;';
+              note.textContent='⚠ One or more selected batches are completed — tests will still work';
+              wrap.appendChild(note);
+            }
+          },100);
+        }
+      } else {
+        otSelectedBatches.delete(b.batchCode);
+        chip.classList.remove('selected');
+      }
+      otLoadStudentsForSelectedBatches();
+    });
+    el.appendChild(chip);
+  });
+}
+
+function otLoadStudentsForSelectedBatches() {
+  var codes=[...otSelectedBatches];
+  if(!codes.length){otAllStudents=[];otRenderStudentList([]);return;}
+  var el=document.getElementById('ot-student-check-list');
+  if(el) el.innerHTML='<span style="color:#9ca3af;font-size:12px;">Loading students…</span>';
+  gasGet({action:'getStudentsForBatches',instructor:instructorName,batchCodes:codes.join(',')},function(err,d){
+    if(err||!d) {
+      if(el) el.innerHTML='<span style="color:#dc2626;font-size:12px;">⚠ Network error. Check connection and try again.</span>';
+      return;
+    }
+    if(d.status!=='ok') {
+      var errMsg = d.reason==='unknown_action'
+        ? '⚠ Action not found in Code.gs. You need to ALSO update Code.gs (paste new gas.js content) and redeploy — not just OnlineTests.gs.'
+        : '⚠ '+(d.reason||'Error loading students');
+      if(el) el.innerHTML='<div style="color:#d97706;font-size:12px;line-height:1.5;">'+escHtml(errMsg)+'</div>';
+      return;
+    }
+    otAllStudents=d.students||[];
+    if(!otAllStudents.length && el) {
+      el.innerHTML='<span style="color:#9ca3af;font-size:12px;">No students enrolled in selected batch(es) yet.</span>';
+      return;
+    }
+    otRenderStudentList(otAllStudents);
+  });
+}
+
+function otRenderStudentList(students) {
+  var el=document.getElementById('ot-student-check-list');
+  if(!el) return;
+  if(!students.length){el.innerHTML='<span style="color:#9ca3af;font-size:12px;">No students found for selected batches</span>';return;}
+  el.innerHTML='';
+  students.forEach(function(s){
+    var chip=document.createElement('label');
+    chip.className='student-chip'+(otSelectedStudents.has(s.studentId)?' selected':'');
+    chip.innerHTML='<input type="checkbox" '+(otSelectedStudents.has(s.studentId)?'checked':'')+' style="accent-color:#0D1B2E;"> '+escHtml(s.studentName)+' <span style="opacity:.5;font-size:10px;">'+escHtml(s.batchCode)+'</span>';
+    chip.querySelector('input').addEventListener('change',function(){
+      if(this.checked){otSelectedStudents.add(s.studentId);chip.classList.add('selected');}
+      else{otSelectedStudents.delete(s.studentId);chip.classList.remove('selected');}
+      document.getElementById('ot-student-sel-count').textContent=otSelectedStudents.size;
+    });
+    el.appendChild(chip);
+  });
+  document.getElementById('ot-student-sel-count').textContent=otSelectedStudents.size;
+}
+
+function otFilterStudentList() {
+  var q=(document.getElementById('ot-student-search')||{}).value||'';
+  var filtered=q?otAllStudents.filter(function(s){return s.studentName.toLowerCase().indexOf(q.toLowerCase())!==-1;}):otAllStudents;
+  otRenderStudentList(filtered);
+}
+function otSelectAllStudents(){otAllStudents.forEach(function(s){otSelectedStudents.add(s.studentId);});otRenderStudentList(otAllStudents);document.getElementById('ot-student-sel-count').textContent=otSelectedStudents.size;}
+function otClearStudents(){otSelectedStudents.clear();otRenderStudentList(otAllStudents);document.getElementById('ot-student-sel-count').textContent=0;}
+function otSetDuration(val,el){
+  document.querySelectorAll('.dur-pill').forEach(function(p){p.classList.remove('active');});
+  el.classList.add('active');
+  var customWrap=document.getElementById('ot-custom-dur-wrap');
+  if(val==='custom'){
+    if(customWrap) customWrap.style.display='flex';
+    var cv=document.getElementById('ot-c-duration-custom');
+    var inp=document.getElementById('ot-c-duration');
+    if(cv&&inp) inp.value=cv.value||'30';
+  } else {
+    if(customWrap) customWrap.style.display='none';
+    var inp=document.getElementById('ot-c-duration');
+    if(inp) inp.value=val;
+  }
+}
+function otTargetModeChange(){var v=document.querySelector('input[name=ot-target-mode]:checked').value;document.getElementById('ot-student-target-wrap').style.display=v==='SELECTED'?'block':'none';}
+function otExpiryChange(){var v=document.querySelector('input[name=ot-expiry]:checked').value;var ci=document.getElementById('ot-expiry-custom');if(ci)ci.style.display=v==='custom'?'inline-block':'none';}
+function otActivateWhenChange(){var v=document.querySelector('input[name=ot-activate-when]:checked').value;var si=document.getElementById('ot-scheduled-at');if(si)si.style.display=v==='scheduled'?'inline-block':'none';}
+function otToggleNeg(){var cb=document.getElementById('ot-c-negmark');var w=document.getElementById('ot-neg-val-wrap');if(w)w.style.display=cb&&cb.checked?'flex':'none';}
 
 // ── Question Bank ────────────────────────────────────────────
 function otLoadQB() {
-  gasGet({action:'getQuestionBank', instructor:instructorName||'admin'}, function(err, d) {
-    if (err || !d || d.status !== 'ok') return;
-    otAllQuestions = d.questions || [];
-    otBuildTopicMap(d.topicMap || {});
+  gasGet({action:'getQuestionBank',instructor:instructorName||'admin'},function(err,d){
+    if(err||!d||d.status!=='ok') return;
+    otAllQuestions=d.questions||[];
+    otBuildTopicSelect(d.topicMap||{});
     otRenderQB(otAllQuestions);
   });
 }
 
 function otImportBank() {
-  if (!confirm('This will import/refresh all 355 questions from the embedded Excel data into Google Sheets. Continue?')) return;
-  gasGet({action:'setupQuestionBank', instructor:instructorName||'admin'}, function(err, d) {
-    if (err || !d) return alert('Import failed. Check network.');
-    if (d.status === 'ok') { alert('✅ Imported ' + d.imported + ' questions successfully!'); otLoadQB(); }
-    else alert('Error: ' + (d.reason || d.message));
+  if(!confirm('Import/refresh all 355 questions from the embedded Excel data into Google Sheets?')) return;
+  gasGet({action:'setupQuestionBank',instructor:instructorName||'admin'},function(err,d){
+    if(err||!d) return alert('Import failed.');
+    if(d.status==='ok'){alert('✅ Imported '+d.imported+' questions!');otLoadQB();}
+    else alert('Error: '+(d.reason||d.message));
   });
 }
 
-function otBuildTopicMap(topicMap) {
-  var courseEl = document.getElementById('ot-qb-course');
-  var topicEl  = document.getElementById('ot-qb-topic');
-  var course   = courseEl ? courseEl.value : '';
-  topicEl.innerHTML = '<option value="">All Topics</option>';
-  var topics = course && topicMap[course] ? topicMap[course] : Object.values(topicMap).flat();
-  var unique = [...new Set(topics)].sort();
-  unique.forEach(function(t) {
-    topicEl.innerHTML += '<option value="'+escHtml(t)+'">'+escHtml(t)+'</option>';
-  });
+function otBuildTopicSelect(topicMap) {
+  var courseEl=document.getElementById('ot-qb-course');
+  var topicEl=document.getElementById('ot-qb-topic');
+  var course=courseEl?courseEl.value:'';
+  topicEl.innerHTML='<option value="">All Topics</option>';
+  var topics=course&&topicMap[course]?topicMap[course]:Object.values(topicMap).flat();
+  [...new Set(topics)].sort().forEach(function(t){topicEl.innerHTML+='<option value="'+escHtml(t)+'">'+escHtml(t)+'</option>';});
 }
 
 function otFilterQB() {
-  var course = (document.getElementById('ot-qb-course')||{}).value || '';
-  var topic  = (document.getElementById('ot-qb-topic')||{}).value  || '';
-  // Rebuild topics for selected course
-  gasGet({action:'getQuestionBank', instructor:instructorName||'admin', course:course, topic:topic}, function(err, d) {
-    if (err || !d || d.status !== 'ok') return;
-    otAllQuestions = d.questions || [];
-    if (course) otBuildTopicMap({[course]: (d.topicMap||{})[course] || []});
+  var course=(document.getElementById('ot-qb-course')||{}).value||'';
+  var topic=(document.getElementById('ot-qb-topic')||{}).value||'';
+  gasGet({action:'getQuestionBank',instructor:instructorName||'admin',course:course,topic:topic},function(err,d){
+    if(err||!d||d.status!=='ok') return;
+    otAllQuestions=d.questions||[];
+    if(course) otBuildTopicSelect({[course]:(d.topicMap||{})[course]||[]});
     otRenderQB(otAllQuestions);
   });
 }
 
 function otRenderQB(qs) {
-  var tbody = document.getElementById('ot-qb-tbody');
-  if (!tbody) return;
-  if (!qs.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#9ca3af;">No questions found. Import the bank first.</td></tr>';
-    document.getElementById('ot-qb-showing').textContent = 'showing 0';
-    return;
-  }
-  var html = '';
-  qs.forEach(function(q, i) {
-    var checked = otSelectedIds.has(q.id) ? 'checked' : '';
-    var selCls  = otSelectedIds.has(q.id) ? ' selected' : '';
-    html += '<tr class="'+selCls+'" id="qb-row-'+escHtml(q.id)+'">'
-          + '<td><input type="checkbox" '+ checked +' data-qid="'+escHtml(q.id)+'" onchange="otToggleQ(this)"></td>'
-          + '<td style="color:#9ca3af;font-size:11px;">'+escHtml(q.id)+'</td>'
-          + '<td>'+escHtml(q.question)+'</td>'
-          + '<td><span class="ot-badge weekly">'+escHtml(q.topic)+'</span></td>'
-          + '<td><span class="ot-badge draft">MCQ</span></td>'
-          + '</tr>';
+  var tbody=document.getElementById('ot-qb-tbody');
+  if(!tbody) return;
+  if(!qs.length){tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#9ca3af;">No questions. Import the bank first.</td></tr>';document.getElementById('ot-qb-showing').textContent='0';return;}
+  var html='';
+  qs.forEach(function(q,i){
+    var checked=otSelectedIds.has(q.id)?'checked':'';
+    var selCls=otSelectedIds.has(q.id)?' selected':'';
+    var shortQ=q.question.length>80?q.question.substring(0,80)+'…':q.question;
+    html+='<tr class="'+selCls+'" id="qb-row-'+escHtml(q.id)+'" data-qid="'+escHtml(q.id)+'" onclick="otTogglePreview(this.dataset.qid,event)">'
+      +'<td onclick="event.stopPropagation()"><input type="checkbox" '+checked+' data-qid="'+escHtml(q.id)+'" onchange="otToggleQ(this)"></td>'
+      +'<td style="color:#9ca3af;font-size:11px;">'+escHtml(q.id)+'</td>'
+      +'<td>'+escHtml(shortQ)+'</td>'
+      +'<td><span class="ot-badge weekly" style="font-size:10px;">'+escHtml(q.topic)+'</span></td>'
+      +'<td><span class="ot-badge draft" style="font-size:10px;">'+escHtml(q.type||'MCQ')+'</span></td>'
+      +'</tr>';
   });
-  tbody.innerHTML = html;
-  document.getElementById('ot-qb-showing').textContent = 'showing ' + qs.length;
+  tbody.innerHTML=html;
+  document.getElementById('ot-qb-showing').textContent='showing '+qs.length;
   otUpdateSelCount();
+}
+
+var otPreviewOpenId=null;
+function otTogglePreview(qId, e) {
+  // Toggle inline preview row
+  var q=otAllQuestions.find(function(x){return x.id===qId;});
+  if(!q) return;
+  var existingPreview=document.getElementById('qb-preview-'+qId);
+  if(existingPreview){existingPreview.remove();otPreviewOpenId=null;return;}
+  if(otPreviewOpenId){var old=document.getElementById('qb-preview-'+otPreviewOpenId);if(old)old.remove();}
+  otPreviewOpenId=qId;
+  var row=document.getElementById('qb-row-'+qId);
+  if(!row) return;
+  var overrideAns=otCorrectOverrides[qId];
+  var opts=['opt1','opt2','opt3','opt4'].map(function(k,i){return q[k]?'<span style="'+(overrideAns===String(i+1)?'color:#059669;font-weight:600;':'')+'"><b>'+(i+1)+'.</b> '+escHtml(q[k])+'</span>':'';}).filter(Boolean).join(' &nbsp;|&nbsp; ');
+  var previewHtml='<tr class="qb-preview-row" id="qb-preview-'+qId+'"><td colspan="5">'
+    +'<div style="margin-bottom:6px;font-weight:600;font-size:13px;">'+escHtml(q.question)+'</div>'
+    +'<div style="font-size:12px;margin-bottom:8px;">'+opts+'</div>'
+    +'<div style="font-size:12px;color:#6b7280;margin-bottom:6px;">Current correct answer: <b style="color:#059669;">Option '+(otCorrectOverrides[qId]||'(from bank)')+'</b></div>'
+    +'<div style="font-size:12px;">Change correct answer: '
+    +[1,2,3,4].filter(function(n){return q['opt'+n];}).map(function(n){
+      return '<label style="margin-right:10px;cursor:pointer;"><input type="radio" name="cora-'+qId+'" value="'+n+'" '+(otCorrectOverrides[qId]===String(n)?'checked':'')+' data-qid="'+qId+'" data-n="'+n+'" onchange="otSetCorrectOverride(this.dataset.qid,this.dataset.n)" style="accent-color:#0D1B2E;"> Option '+n+'</label>';
+    }).join('')
+    +'&nbsp;<button class="ot-btn ghost" style="padding:3px 8px;font-size:11px;" data-qid="'+qId+'" onclick="otRemoveFromSelection(this.dataset.qid)">✕ Remove from selection</button>'
+    +'</div></td></tr>';
+  row.insertAdjacentHTML('afterend', previewHtml);
+}
+
+function otSetCorrectOverride(qId, val) {
+  otCorrectOverrides[qId]=val;
+  // Update preview display
+  var previewRow=document.getElementById('qb-preview-'+qId);
+  if(previewRow){var labels=previewRow.querySelectorAll('span b');/* styling handled by re-render */}
+  otSyncSelectedPreview(); // refresh review cards
+}
+
+function otRemoveFromSelection(qId) {
+  otSelectedIds.delete(qId);
+  delete otCorrectOverrides[qId];
+  delete otOrderOverrides[qId];
+  var cb=document.querySelector('input[data-qid="'+qId+'"]');
+  if(cb){cb.checked=false;var row=document.getElementById('qb-row-'+qId);if(row)row.classList.remove('selected');}
+  var preview=document.getElementById('qb-preview-'+qId);if(preview)preview.remove();
+  otUpdateSelCount();
+  otSyncSelectedPreview();
 }
 
 function otToggleQ(cb) {
-  var qid = cb.dataset.qid;
-  if (cb.checked) otSelectedIds.add(qid);
-  else otSelectedIds.delete(qid);
-  var row = document.getElementById('qb-row-'+qid);
-  if (row) { if (cb.checked) row.classList.add('selected'); else row.classList.remove('selected'); }
+  var qid=cb.dataset.qid;
+  if(cb.checked) otSelectedIds.add(qid);
+  else{otSelectedIds.delete(qid);delete otCorrectOverrides[qid];delete otOrderOverrides[qid];}
+  var row=document.getElementById('qb-row-'+qid);
+  if(row){if(cb.checked)row.classList.add('selected');else row.classList.remove('selected');}
   otUpdateSelCount();
 }
-
-function otToggleAllQB(checked) {
-  document.querySelectorAll('#ot-qb-tbody input[type=checkbox]').forEach(function(cb) {
-    cb.checked = checked;
-    var qid = cb.dataset.qid;
-    if (checked) otSelectedIds.add(qid);
-    else otSelectedIds.delete(qid);
-    var row = document.getElementById('qb-row-'+qid);
-    if (row) { if (checked) row.classList.add('selected'); else row.classList.remove('selected'); }
-  });
-  otUpdateSelCount();
-}
-
-function otSelectAllTopic() {
-  document.querySelectorAll('#ot-qb-tbody input[type=checkbox]').forEach(function(cb) {
-    cb.checked = true;
-    otSelectedIds.add(cb.dataset.qid);
-    var row = document.getElementById('qb-row-'+cb.dataset.qid);
-    if (row) row.classList.add('selected');
-  });
-  otUpdateSelCount();
-}
-
-function otClearSelection() {
-  otSelectedIds.clear();
-  document.querySelectorAll('#ot-qb-tbody input[type=checkbox]').forEach(function(cb) {
-    cb.checked = false;
-    var row = document.getElementById('qb-row-'+cb.dataset.qid);
-    if (row) row.classList.remove('selected');
-  });
-  otUpdateSelCount();
-}
+function otToggleAllQB(checked){document.querySelectorAll('#ot-qb-tbody input[type=checkbox]').forEach(function(cb){cb.checked=checked;var qid=cb.dataset.qid;if(checked)otSelectedIds.add(qid);else{otSelectedIds.delete(qid);delete otCorrectOverrides[qid];}var row=document.getElementById('qb-row-'+qid);if(row){if(checked)row.classList.add('selected');else row.classList.remove('selected');}});otUpdateSelCount();}
+function otSelectAllTopic(){document.querySelectorAll('#ot-qb-tbody input[type=checkbox]').forEach(function(cb){cb.checked=true;otSelectedIds.add(cb.dataset.qid);var row=document.getElementById('qb-row-'+cb.dataset.qid);if(row)row.classList.add('selected');});otUpdateSelCount();}
+function otClearSelection(){otSelectedIds.clear();otCorrectOverrides={};otOrderOverrides={};document.querySelectorAll('#ot-qb-tbody input[type=checkbox]').forEach(function(cb){cb.checked=false;var row=document.getElementById('qb-row-'+cb.dataset.qid);if(row)row.classList.remove('selected');});otUpdateSelCount();}
 
 function otUpdateSelCount() {
-  var el = document.getElementById('ot-qb-selected-count');
-  if (el) el.textContent = otSelectedIds.size + ' selected';
-  var addBtn = document.getElementById('ot-add-to-test-btn');
-  if (addBtn) {
-    if (otSelectedIds.size > 0) {
-      addBtn.style.display = 'inline-block';
-      addBtn.textContent = '→ Use ' + otSelectedIds.size + ' in Test';
-    } else addBtn.style.display = 'none';
-  }
+  var el=document.getElementById('ot-qb-selected-count');if(el)el.textContent=otSelectedIds.size+' selected';
+  var addBtn=document.getElementById('ot-add-to-test-btn');
+  if(addBtn){if(otSelectedIds.size>0){addBtn.style.display='inline-block';addBtn.textContent='→ Use '+otSelectedIds.size+' in Test';}else addBtn.style.display='none';}
 }
 
+// ── Question Review Cards ────────────────────────────────────
 function otSyncSelectedPreview() {
-  var el = document.getElementById('ot-selected-q-preview');
-  if (!el) return;
-  if (!otSelectedIds.size) {
-    el.innerHTML = '<span style="color:#9ca3af;">No questions selected yet. Go to Question Bank tab to select.</span>';
-    return;
-  }
-  el.innerHTML = '<span style="color:#059669;font-weight:600;">✓ ' + otSelectedIds.size + ' questions selected</span> — '
-    + [...otSelectedIds].slice(0,5).map(function(id){ return '<code>'+escHtml(id)+'</code>'; }).join(', ')
-    + (otSelectedIds.size > 5 ? ' …and ' + (otSelectedIds.size-5) + ' more' : '');
+  var el=document.getElementById('ot-q-review-wrap');
+  if(!el) return;
+  if(!otSelectedIds.size){el.innerHTML='<div style="color:#9ca3af;font-size:13px;padding:12px 0;">No questions selected yet — go to <b>Question Bank</b> tab to select.</div>';return;}
+  var ids=[...otSelectedIds];
+  // Check if any question is missing correctOption
+  var anyMissingCorrect = ids.some(function(qId){
+    var q=otAllQuestions.find(function(x){return x.id===qId;});
+    return q && !q.correctOption && !otCorrectOverrides[qId] && (q.type==='MCQ'||!q.type||q.type==='TrueFalse');
+  });
+  var html='<div style="font-size:12px;color:#059669;font-weight:600;margin-bottom:8px;">✓ '+ids.length+' questions selected · Total marks: '+ids.length+' (MCQ/T-F/FIB = 1 mark each)</div>';
+  if(anyMissingCorrect) html+='<div style="background:#fef3c7;border-radius:8px;padding:8px 12px;font-size:12px;color:#92400e;margin-bottom:8px;">⚠ Correct answers not showing? Go to <b>Question Bank → Import / Refresh Question Bank</b> then come back here.</div>';
+  html+='<div style="max-height:480px;overflow-y:auto;padding:0;">';
+  ids.forEach(function(qId,idx){
+    var q=otAllQuestions.find(function(x){return x.id===qId;});
+    if(!q) return;
+    var override=otCorrectOverrides[qId];
+    html+='<div class="q-review-card">'
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">'
+      +'<div style="font-size:11px;font-weight:600;color:#9ca3af;">Q'+(idx+1)+' · '+escHtml(q.id)+' · '+escHtml(q.topic)+'</div>'
+      +'<button class="ot-btn ghost" style="padding:2px 8px;font-size:11px;" data-qid="'+escHtml(qId)+'" onclick="otRemoveFromSelection(this.dataset.qid)">✕ Remove</button>'
+      +'</div>'
+      +'<div style="font-size:13px;font-weight:600;margin-bottom:8px;">'+escHtml(q.question)+'</div>';
+    if(q.type==='MCQ'||!q.type){
+      // Use server-returned correctOption OR fallback to embedded lookup
+      var bankCorrect = q.correctOption ? String(q.correctOption) : (QB_CORRECT_ANSWERS[q.id] ? String(QB_CORRECT_ANSWERS[q.id]) : null);
+      var effective=override||bankCorrect;
+      html+='<div style="font-size:12px;margin-bottom:6px;">';
+      [1,2,3,4].forEach(function(n){
+        if(!q['opt'+n]) return;
+        var ns=String(n), isEff=effective===ns, isBank=bankCorrect===ns&&!override;
+        html+='<div class="q-opt-row" style="'+(isEff?'background:#f0fdf4;border-radius:6px;padding:3px 6px;':'')+'">'  
+          +'<input type="radio" name="rev-'+escHtml(qId)+'" value="'+ns+'" '+(isEff?'checked ':'')+' data-qid="'+escHtml(qId)+'" data-n="'+ns+'" onchange="otSetCorrectOverride(this.dataset.qid,this.dataset.n)" style="accent-color:#0D1B2E;">'
+          +'<label style="cursor:pointer;'+(isEff?'color:#059669;font-weight:600;':'')+'"> Option '+ns+': '+escHtml(q['opt'+n])
+          +(isBank?' <span style="background:#d1fae5;color:#065f46;font-size:10px;border-radius:5px;padding:1px 5px;">✓ Bank Answer</span>':'')
+          +(override===ns?' <span style="background:#dbeafe;color:#1e40af;font-size:10px;border-radius:5px;padding:1px 5px;">Overridden</span>':'')
+          +'</label></div>';
+      });
+      html+='</div>';
+      if(!effective) html+='<div style="font-size:11px;color:#f59e0b;margin-top:4px;">⚠ Correct answer not loaded — click <b>Import / Refresh Question Bank</b> in the Question Bank tab, then re-select questions. Or select the correct option above manually.</div>';
+      else if(override) html+='<div style="font-size:11px;color:#1e40af;">✏️ Changed → Option '+escHtml(override)+'</div>';
+      else html+='<div style="font-size:11px;color:#059669;">✓ Bank answer: Option '+escHtml(bankCorrect)+'</div>';
+    } else if(q.type==='TrueFalse'){
+      // Use server-returned correctOption OR fallback to embedded lookup
+      var bankCorrect = q.correctOption ? String(q.correctOption) : (QB_CORRECT_ANSWERS[q.id] ? String(QB_CORRECT_ANSWERS[q.id]) : null);
+      var effective=override||bankCorrect;
+      html+='<div style="font-size:12px;display:flex;gap:12px;margin-bottom:4px;">';
+      ['True','False'].forEach(function(v){
+        var isEff=effective===v;
+        html+='<label style="display:flex;align-items:center;gap:5px;cursor:pointer;'+(isEff?'color:#059669;font-weight:600;':'')+'">'
+          +'<input type="radio" name="rev-'+escHtml(qId)+'" value="'+v+'" '+(isEff?'checked ':'')+' data-qid="'+escHtml(qId)+'" data-n="'+v+'" onchange="otSetCorrectOverride(this.dataset.qid,this.dataset.n)" style="accent-color:#0D1B2E;"> '+v
+          +(isEff&&!override?' <span style="background:#d1fae5;color:#065f46;font-size:10px;border-radius:5px;padding:1px 5px;">✓ Bank</span>':'')
+          +'</label>';
+      });
+      html+='</div>';
+    } else {
+      html+='<div style="font-size:12px;color:#6b7280;">Type: '+escHtml(q.type)+'</div>';
+    }
+    html+='</div>'; // close q-review-card
+  });
+  html+='</div>';
+  el.innerHTML=html;
 }
 
 // ── Custom Question ──────────────────────────────────────────
-function cqType(type) {
-  otCurrentCQType = type;
-  document.querySelectorAll('.cq-type-btn').forEach(function(b){ b.classList.remove('active'); });
-  document.querySelectorAll('.cq-type-panel').forEach(function(p){ p.classList.remove('active'); });
-  event.target.classList.add('active');
-  var panel = document.getElementById('cq-'+type);
-  if (panel) panel.classList.add('active');
+function cqType(type, e) {
+  otCurrentCQType=type;
+  document.querySelectorAll('.cq-type-btn').forEach(function(b){b.classList.remove('active');});
+  document.querySelectorAll('.cq-type-panel').forEach(function(p){p.classList.remove('active');});
+  if(e&&e.target) e.target.classList.add('active');
+  var panel=document.getElementById('cq-'+type);if(panel)panel.classList.add('active');
 }
-
 function otSaveCustomQ() {
-  var q = (document.getElementById('cq-question')||{}).value || '';
-  if (!q.trim()) return alert('Please enter a question.');
-  var type = otCurrentCQType;
-  var params = {
-    action:'addCustomQuestion', instructor:instructorName,
-    course:(document.getElementById('cq-course')||{}).value || 'DG',
-    topic:(document.getElementById('cq-topic')||{}).value || '',
-    question:q.trim(), type:type,
+  var q=(document.getElementById('cq-question')||{}).value||'';
+  if(!q.trim()) return alert('Please enter a question.');
+  var type=otCurrentCQType;
+  var correct=type==='MCQ'?(document.getElementById('cq-correct-mcq')||{}).value||'1':
+              type==='TrueFalse'?(document.getElementById('cq-correct-tf')||{}).value||'True':
+              (document.getElementById('cq-blank-answer')||{}).value||'';
+  gasGet({action:'addCustomQuestion',instructor:instructorName,
+    course:(document.getElementById('cq-course')||{}).value||'DG',
+    topic:(document.getElementById('cq-topic')||{}).value||'',
+    question:q.trim(),type:type,
     opt1:(document.getElementById('cq-o1')||{}).value||'',
     opt2:(document.getElementById('cq-o2')||{}).value||'',
     opt3:(document.getElementById('cq-o3')||{}).value||'',
     opt4:(document.getElementById('cq-o4')||{}).value||'',
-    correctAnswer: type==='MCQ'    ? (document.getElementById('cq-correct-mcq')||{}).value||'1' :
-                   type==='TrueFalse' ? (document.getElementById('cq-correct-tf')||{}).value||'True' :
-                   type==='FillBlank' ? (document.getElementById('cq-blank-answer')||{}).value||'' : '',
-    maxMarks: type==='Theory' ? (document.getElementById('cq-max-marks')||{}).value||'5' : '1'
-  };
-  gasGet(params, function(err, d) {
-    var st = document.getElementById('cq-status');
-    if (err || !d || d.status !== 'ok') { if(st) st.textContent='❌ Save failed'; return; }
-    if(st) { st.textContent = '✅ Saved! ID: '+d.cqId; setTimeout(function(){ st.textContent=''; },4000); }
-    // Clear form
-    ['cq-question','cq-o1','cq-o2','cq-o3','cq-o4','cq-blank-answer'].forEach(function(id){
-      var el = document.getElementById(id); if(el) el.value='';
-    });
+    correctAnswer:correct,
+    maxMarks:(document.getElementById('cq-max-marks')||{}).value||'5'
+  },function(err,d){
+    var st=document.getElementById('cq-status');
+    if(err||!d||d.status!=='ok'){if(st)st.textContent='❌ Save failed';return;}
+    if(st){st.textContent='✅ Saved! ID: '+d.cqId;setTimeout(function(){st.textContent='';},4000);}
+    ['cq-question','cq-o1','cq-o2','cq-o3','cq-o4','cq-blank-answer'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   });
 }
 
 // ── Create Test ──────────────────────────────────────────────
-function otToggleNeg() {
-  var cb = document.getElementById('ot-c-negmark');
-  var wrap = document.getElementById('ot-neg-val-wrap');
-  if (wrap) wrap.style.display = cb && cb.checked ? 'block' : 'none';
-}
-
 function otCreateTest() {
-  var label = (document.getElementById('ot-c-label')||{}).value || '';
-  var batch = (document.getElementById('ot-c-batch')||{}).value || '';
-  if (!label.trim()) return alert('Please enter a test label/name.');
-  if (!batch) return alert('Please select a batch.');
+  var label=(document.getElementById('ot-c-label')||{}).value||'';
+  if(!label.trim()) return alert('Please enter a test label/name.');
+  if(!otSelectedBatches.size) return alert('Please select at least one batch.');
+  if(!otSelectedIds.size) return alert('No questions selected. Go to Question Bank and select questions first.');
 
-  var qIds = [...otSelectedIds];
-  if (!qIds.length) return alert('No questions selected. Go to Question Bank and select questions first.');
+  var targetMode=document.querySelector('input[name=ot-target-mode]:checked').value;
+  var targetStudents=targetMode==='ALL'?'ALL':[...otSelectedStudents].join(',');
+  if(targetMode==='SELECTED'&&!otSelectedStudents.size) return alert('Please select at least one student, or switch to "All enrolled students".');
 
-  var params = {
+  var expiryMode=document.querySelector('input[name=ot-expiry]:checked').value;
+  var expiryAt='';
+  if(expiryMode==='custom'){expiryAt=(document.getElementById('ot-expiry-custom')||{}).value||'';if(!expiryAt)return alert('Please set a custom expiry date & time.');}
+
+  var activateWhen=document.querySelector('input[name=ot-activate-when]:checked').value;
+  var scheduledAt='';
+  if(activateWhen==='scheduled'){scheduledAt=(document.getElementById('ot-scheduled-at')||{}).value||'';if(!scheduledAt)return alert('Please set the scheduled activation date & time.');}
+
+  var st=document.getElementById('ot-create-status');
+  if(st){st.textContent='Creating…';st.style.color='#6b7280';}
+
+  var params={
     action:'createOnlineTest', instructor:instructorName,
     testLabel:label.trim(),
     testType:(document.getElementById('ot-c-type')||{}).value||'Weekly',
     course:(document.getElementById('ot-c-course')||{}).value||'DG',
-    batchCode:batch,
+    batchCodes:[...otSelectedBatches].join(','),
     duration:(document.getElementById('ot-c-duration')||{}).value||'30',
-    negativeMarking:(document.getElementById('ot-c-negmark')||{}).checked ? 'true':'false',
-    negMarkValue:(document.getElementById('ot-c-negval')||{}).value||'0.25'
+    instructions:(document.getElementById('ot-c-instructions')||{}).value||'',
+    targetStudents:targetStudents,
+    expiryMode:expiryMode, expiryAt:expiryAt,
+    scheduledActivateAt:activateWhen==='scheduled'?scheduledAt:'',
+    negativeMarking:(document.getElementById('ot-c-negmark')||{}).checked?'true':'false',
+    negMarkValue:(document.getElementById('ot-c-negval')||{}).value||'0.25',
+    shuffleQuestions:(document.getElementById('ot-c-shuffle')||{}).checked?'true':'false',
+    allowRetake:(document.getElementById('ot-c-retake')||{}).checked?'true':'false',
+    passingScore:(document.getElementById('ot-c-passscore')||{}).value||'60'
   };
 
-  var st = document.getElementById('ot-create-status');
-  if(st){ st.textContent='Creating…'; st.style.color='#6b7280'; }
-
-  gasGet(params, function(err, d) {
-    if (err || !d || d.status !== 'ok') {
-      if(st){ st.textContent='❌ '+(d&&d.reason||'Failed'); st.style.color='#dc2626'; } return;
-    }
-    var testId = d.testId;
-    // Now save questions
-    gasGet({action:'saveTestQuestions', instructor:instructorName, testId:testId, questionIds:JSON.stringify(qIds)}, function(e2, d2) {
-      if (e2 || !d2 || d2.status !== 'ok') {
-        if(st){ st.textContent='Test created but questions failed: '+(d2&&d2.reason||''); st.style.color='#d97706'; }
-        return;
+  gasGet(params, function(err,d){
+    if(err||!d||d.status!=='ok'){if(st){st.textContent='❌ '+(d&&d.reason||'Failed');st.style.color='#dc2626';}return;}
+    var testId=d.testId;
+    // Save questions with overrides
+    var qIds=[...otSelectedIds];
+    gasGet({action:'saveTestQuestions',instructor:instructorName,testId:testId,
+      questionIds:JSON.stringify(qIds),
+      correctOverrides:JSON.stringify(otCorrectOverrides),
+      orderOverrides:JSON.stringify(otOrderOverrides)
+    },function(e2,d2){
+      if(e2||!d2||d2.status!=='ok'){if(st){st.textContent='Test created but questions failed: '+(d2&&d2.reason||'');st.style.color='#d97706';}return;}
+      // If activate now
+      if(activateWhen==='now') {
+        gasGet({action:'activateTest',instructor:instructorName,testId:testId},function(e3,d3){
+          var msg=d3&&d3.status==='ok'?'✅ Test created & activated! Students can see it now.':'✅ Test created! Activation failed — activate from My Tests.';
+          if(st){st.textContent=msg;st.style.color='#059669';}
+          // Setup scheduled trigger in case needed for future
+          gasGet({action:'setupScheduledTrigger',instructor:instructorName},function(){});
+          otClearFormAndRefresh();
+        });
+      } else {
+        if(st){st.textContent='✅ Test created as '+(d.testStatus||'Draft')+'. ID: '+testId+' · '+d2.saved+' questions';st.style.color='#059669';}
+        if(activateWhen==='scheduled') gasGet({action:'setupScheduledTrigger',instructor:instructorName},function(){});
+        otClearFormAndRefresh();
       }
-      if(st){ st.textContent='✅ Test created! ID: '+testId+' · '+d2.saved+' questions · Total marks: '+d2.totalMarks; st.style.color='#059669'; }
-      otClearSelection();
-      otLoadTests();
-      setTimeout(function(){ otSubTab('mytests'); }, 1500);
     });
   });
 }
 
+function otClearFormAndRefresh() {
+  otSelectedIds.clear(); otCorrectOverrides={}; otOrderOverrides={};
+  otSelectedBatches.clear(); otSelectedStudents.clear();
+  otUpdateSelCount();
+  otLoadTests();
+  setTimeout(function(){otSubTab('mytests');},1500);
+}
+
 // ── My Tests ────────────────────────────────────────────────
 function otLoadTests() {
-  gasGet({action:'getInstructorTests', instructor:instructorName}, function(err, d) {
-    if (err || !d || d.status !== 'ok') return;
-    otCurrentTests = d.tests || [];
+  gasGet({action:'getInstructorTests',instructor:instructorName},function(err,d){
+    if(err||!d||d.status!=='ok') return;
+    otCurrentTests=d.tests||[];
     otRenderTests(otCurrentTests);
     otPopulateTestDropdowns(otCurrentTests);
   });
 }
 
 function otRenderTests(tests) {
-  var el = document.getElementById('ot-tests-list');
-  if (!el) return;
-  if (!tests.length) { el.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:20px 0;">No tests created yet. Go to Create Test tab.</div>'; return; }
-  var html = '<div class="ot-grid">';
-  tests.forEach(function(t) {
-    var badgeStatus = t.status === 'Draft' ? 'draft' : t.status === 'Active' ? 'active' : t.resultsReleased === 'Yes' ? 'released' : 'closed';
-    var actAt = t.activatedAt ? new Date(t.activatedAt).toLocaleString('en-IN') : '—';
-    html += '<div class="ot-card">'
-      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">'
-      +   '<span class="ot-badge '+(t.testType==='Final'?'final':'weekly')+'">'+escHtml(t.testType)+'</span>'
-      +   '<span class="ot-badge '+badgeStatus+'">'+escHtml(t.status+(t.resultsReleased==='Yes'?' · Released':''))+'</span>'
-      + '</div>'
-      + '<div style="font-weight:600;font-size:14px;margin-bottom:6px;">'+escHtml(t.testLabel)+'</div>'
-      + '<div style="font-size:12px;color:#6b7280;">Batch: <b>'+escHtml(t.batchCode)+'</b></div>'
-      + '<div style="font-size:12px;color:#6b7280;">Questions: <b>'+(t.questionCount||0)+'</b> · Duration: <b>'+t.duration+' min</b></div>'
-      + '<div style="font-size:12px;color:#6b7280;">Neg Marking: <b>'+escHtml(t.negativeMarking)+'</b></div>'
-      + (t.activatedAt ? '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Activated: '+actAt+'</div>' : '')
-      + '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
-      + (t.status === 'Draft' ? '<button class="ot-btn success" onclick="otActivateTest(\''+escHtml(t.testId)+'\')">▶ Activate</button>' : '')
-      + (t.status === 'Active' ? '<button class="ot-btn warn" onclick="otOpenProctorForTest(\''+escHtml(t.testId)+'\')">👁 Proctor Room</button>' : '')
-      + (t.status === 'Closed' && t.resultsReleased !== 'Yes' ? '<button class="ot-btn primary" onclick="otReleaseResultsFor(\''+escHtml(t.testId)+'\',\'summary\')">📢 Release Results</button>' : '')
-      + (t.status === 'Closed' && t.resultsReleased !== 'Yes' ? '<button class="ot-btn ghost" onclick="otReleaseResultsFor(\''+escHtml(t.testId)+'\',\'full\')">&amp; Show Breakdown</button>' : '')
-      + '<button class="ot-btn ghost" onclick="otViewResults(\''+escHtml(t.testId)+'\')">📊 Results</button>'
-      + '</div>'
-      + '</div>';
+  var el=document.getElementById('ot-tests-list');if(!el) return;
+  if(!tests.length){el.innerHTML='<div style="color:#9ca3af;font-size:13px;padding:20px 0;">No tests created yet.</div>';return;}
+  var html='<div class="ot-grid">';
+  tests.forEach(function(t){
+    var statusBadge=t.status==='Draft'?'draft':t.status==='Active'?'active':t.status==='Scheduled'?'scheduled':t.resultsReleased==='Yes'?'released':'closed';
+    var actAt=t.activatedAt?new Date(t.activatedAt).toLocaleString('en-IN'):'—';
+    var schedAt=t.scheduledActivateAt?new Date(t.scheduledActivateAt).toLocaleString('en-IN'):'';
+    html+='<div class="ot-card">'
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">'
+      +'<span class="ot-badge '+(t.testType==='Final'?'final':'weekly')+'">'+escHtml(t.testType)+'</span>'
+      +'<span class="ot-badge '+statusBadge+'">'+escHtml(t.status+(t.resultsReleased==='Yes'?' · Released':''))+'</span>'
+      +'</div>'
+      +'<div style="font-weight:700;font-size:14px;margin-bottom:6px;">'+escHtml(t.testLabel)+'</div>'
+      +'<div style="font-size:12px;color:#6b7280;">Batches: <b>'+escHtml(t.batchCodes)+'</b></div>'
+      +'<div style="font-size:12px;color:#6b7280;">Qs: <b>'+(t.questionCount||0)+'</b> · '+t.duration+' min</div>'
+      +'<div style="font-size:12px;color:#6b7280;">Target: <b>'+(t.targetStudents==='ALL'?'All students':t.targetStudents.split(',').length+' selected')+'</b></div>'
+      +(t.shuffleQuestions==='Yes'?'<div style="font-size:11px;color:#6b7280;">🔀 Shuffled · </div>':'')
+      +(t.allowRetake==='Yes'?'<span style="font-size:11px;color:#6b7280;">🔁 Retake allowed</span>':'')
+      +(schedAt?'<div style="font-size:11px;color:#92400e;margin-top:3px;">⏰ Scheduled: '+schedAt+'</div>':'')
+      +(t.activatedAt?'<div style="font-size:11px;color:#9ca3af;margin-top:3px;">Activated: '+actAt+'</div>':'')
+      +'<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
+      +(t.status==='Draft'?'<button class="ot-btn success" data-tid="'+escHtml(t.testId)+'" onclick="otActivateTest(this.dataset.tid)">▶ Activate</button>':'')
+      +(t.status==='Scheduled'?'<button class="ot-btn warn" data-tid="'+escHtml(t.testId)+'" onclick="otActivateTest(this.dataset.tid)">▶ Activate Now</button>':'')
+      +(t.status==='Active'?'<button class="ot-btn warn" data-tid="'+escHtml(t.testId)+'" onclick="otOpenProctorForTest(this.dataset.tid)">👁 Proctor Room</button>':'')
+      +(t.status==='Closed'&&t.resultsReleased!=='Yes'?'<button class="ot-btn primary" data-tid="'+escHtml(t.testId)+'" data-mode="summary" onclick="otReleaseResultsFor(this.dataset.tid,this.dataset.mode)">📢 Release</button>':'')
+      +(t.status==='Closed'&&t.resultsReleased!=='Yes'?'<button class="ot-btn ghost" data-tid="'+escHtml(t.testId)+'" data-mode="full" onclick="otReleaseResultsFor(this.dataset.tid,this.dataset.mode)">+ Breakdown</button>':'')
+      +'<button class="ot-btn ghost" data-tid="'+escHtml(t.testId)+'" onclick="otViewResults(this.dataset.tid)">📊</button>'
+      +'</div></div>';
   });
-  html += '</div>';
-  el.innerHTML = html;
+  html+='</div>';
+  el.innerHTML=html;
 }
 
 function otPopulateTestDropdowns(tests) {
-  ['ot-proctor-test','ot-grade-test','ot-results-test'].forEach(function(id) {
-    var el = document.getElementById(id);
-    if (!el) return;
-    var filter = id === 'ot-proctor-test' ? ['Active'] :
-                 id === 'ot-grade-test'   ? ['Closed','Active'] : null;
-    el.innerHTML = '<option value="">— select test —</option>';
-    tests.forEach(function(t) {
-      if (filter && !filter.includes(t.status)) return;
-      el.innerHTML += '<option value="'+escHtml(t.testId)+'">'+escHtml(t.testLabel)+' ('+escHtml(t.batchCode)+') — '+escHtml(t.status)+'</option>';
+  ['ot-proctor-test','ot-grade-test','ot-results-test'].forEach(function(id){
+    var el=document.getElementById(id);if(!el) return;
+    var filter=id==='ot-proctor-test'?['Active']:id==='ot-grade-test'?['Closed','Active']:null;
+    el.innerHTML='<option value="">— select test —</option>';
+    tests.forEach(function(t){
+      if(filter&&!filter.includes(t.status)) return;
+      el.innerHTML+='<option value="'+escHtml(t.testId)+'">'+escHtml(t.testLabel)+' ('+escHtml(t.batchCodes)+') — '+escHtml(t.status)+'</option>';
     });
   });
-
-  // Populate batch dropdown in Create Test
-  var batchSel = document.getElementById('ot-c-batch');
-  if (batchSel && instructorBatches && instructorBatches.length) {
-    batchSel.innerHTML = '<option value="">— select batch —</option>';
-    instructorBatches.forEach(function(b) {
-      batchSel.innerHTML += '<option value="'+escHtml(b.batchCode)+'">'+escHtml(b.batchCode)+' – '+escHtml(b.courseName||'')+'</option>';
-    });
-  }
 }
 
 function otActivateTest(testId) {
-  if (!confirm('Activate this test? Students in the batch will see it immediately.')) return;
-  gasGet({action:'activateTest', instructor:instructorName, testId:testId}, function(err, d) {
-    if (err || !d || d.status !== 'ok') return alert('Error: '+(d&&d.reason||'Failed'));
-    alert('✅ Test is now LIVE! Students can see it.');
+  if(!confirm('Activate this test? Students in the selected batches will see it immediately.')) return;
+  gasGet({action:'activateTest',instructor:instructorName,testId:testId},function(err,d){
+    if(err||!d||d.status!=='ok') return alert('Error: '+(d&&d.reason||'Failed'));
+    alert('✅ Test is now LIVE!');
     otLoadTests();
   });
 }
 
 function otReleaseResultsFor(testId, mode) {
-  var label = mode === 'full' ? 'full breakdown (questions right/wrong)' : 'summary (score + percentage only)';
-  if (!confirm('Release results in '+label+' mode?')) return;
-  gasGet({action:'releaseResults', instructor:instructorName, testId:testId, resultsMode:mode}, function(err, d) {
-    if (err || !d || d.status !== 'ok') return alert('Error releasing results');
+  if(!confirm('Release results in '+(mode==='full'?'full breakdown':'summary')+' mode?')) return;
+  gasGet({action:'releaseResults',instructor:instructorName,testId:testId,resultsMode:mode},function(err,d){
+    if(err||!d||d.status!=='ok') return alert('Error releasing results');
     alert('✅ Results released!');
     otLoadTests();
   });
 }
 
 function otOpenProctorForTest(testId) {
-  otActiveTestId = testId;
-  var el = document.getElementById('ot-proctor-test');
-  if (el) el.value = testId;
+  otActiveTestId=testId;
+  var el=document.getElementById('ot-proctor-test');if(el) el.value=testId;
   otSubTab('proctor');
   otLoadProctor();
 }
 
 // ── Proctor Room ─────────────────────────────────────────────
 function otLoadProctor() {
-  var testId = (document.getElementById('ot-proctor-test')||{}).value || '';
-  if (!testId) return;
-  otActiveTestId = testId;
-  gasGet({action:'getProctorRoom', instructor:instructorName, testId:testId}, function(err, d) {
-    if (err || !d || d.status !== 'ok') return;
-    var el = document.getElementById('ot-proctor-room');
-    if (el) el.style.display = 'block';
-
-    // Stats
-    document.getElementById('ot-proctor-stats').innerHTML =
+  var testId=(document.getElementById('ot-proctor-test')||{}).value||'';
+  if(!testId) return;
+  otActiveTestId=testId;
+  gasGet({action:'getProctorRoom',instructor:instructorName,testId:testId},function(err,d){
+    if(err||!d||d.status!=='ok') return;
+    var el=document.getElementById('ot-proctor-room');if(el) el.style.display='block';
+    document.getElementById('ot-proctor-stats').innerHTML=
       '<div class="ot-stat"><div class="num">'+d.total+'</div><div class="lbl">Enrolled</div></div>'
       +'<div class="ot-stat"><div class="num" style="color:#10b981">'+d.submitted+'</div><div class="lbl">Submitted</div></div>'
-      +'<div class="ot-stat"><div class="num" style="color:#f59e0b">'+d.pending+'</div><div class="lbl">Pending</div></div>';
-
-    // Students
-    var html = '';
-    // Show submitted
-    (d.submissions||[]).forEach(function(s) {
-      var warn = d.warnings[s.studentId];
-      html += '<div class="proctor-row">'
-        + '<div class="proctor-dot submitted" title="Submitted"></div>'
-        + '<div style="flex:1;"><b>'+escHtml(s.studentName||s.studentId)+'</b> <span style="font-size:11px;color:#6b7280;">('+escHtml(s.studentId)+')</span>'
-        + (warn && warn.count > 0 ? ' <span class="ot-warning-pill">⚠ '+warn.count+' warnings</span>' : '')
-        + '</div>'
-        + '<div style="font-size:12px;color:#6b7280;">'+escHtml(s.submitType==='auto'?'Auto-submitted':'Manual')+'</div>'
-        + (s.percentage!==null&&s.percentage!==''
-            ? '<div style="font-size:13px;font-weight:600;">'+(s.percentage||0)+'% <span class="'+(s.result==='Pass'?'pass-pill':'fail-pill')+'">'+escHtml(s.result||'')+'</span></div>'
-            : '<div class="pend-pill">Pending grades</div>')
-        + '</div>';
+      +'<div class="ot-stat"><div class="num" style="color:#f59e0b">'+d.pending+'</div><div class="lbl">Pending</div></div>'
+      +(d.expiryAt?'<div class="ot-stat"><div class="num" style="font-size:14px;">'+new Date(d.expiryAt).toLocaleTimeString('en-IN')+'</div><div class="lbl">Expires At</div></div>':'');
+    var html='';
+    var submittedIds=(d.submissions||[]).map(function(s){return s.studentId;});
+    (d.submissions||[]).forEach(function(s){
+      var warn=d.warnings[s.studentId];
+      html+='<div class="proctor-row"><div class="proctor-dot submitted"></div>'
+        +'<div style="flex:1;"><b>'+escHtml(s.studentName||s.studentId)+'</b>'
+        +(warn&&warn.count>0?' <span class="ot-warning-pill">⚠ '+warn.count+' warnings</span>':'')+'</div>'
+        +'<div style="font-size:12px;color:#6b7280;">'+escHtml(s.submitType==='auto'||s.submitType==='auto-warn'?'Auto-submitted':'Manual')+(s.attemptNo>1?' · Attempt '+s.attemptNo:'')+'</div>'
+        +(s.percentage!==null&&s.percentage!==''?'<div style="font-size:13px;font-weight:600;">'+(s.percentage||0)+'% <span class="'+(s.result==='Pass'?'pass-pill':'fail-pill')+'">'+escHtml(s.result||'')+'</span></div>':'<div class="pend-pill">Pending</div>')
+        +'</div>';
     });
-    // Show pending
-    var submittedIds = (d.submissions||[]).map(function(s){ return s.studentId; });
-    (d.enrolled||[]).filter(function(s){ return submittedIds.indexOf(s.studentId)===-1; }).forEach(function(s) {
-      var warn = d.warnings[s.studentId];
-      html += '<div class="proctor-row">'
-        + '<div class="proctor-dot pending" title="Not yet submitted"></div>'
-        + '<div style="flex:1;"><b>'+escHtml(s.studentName||s.studentId)+'</b>'
-        + (warn && warn.count > 0 ? ' <span class="ot-warning-pill">⚠ '+warn.count+' warnings</span>' : '')
-        + '</div>'
-        + '<div style="font-size:12px;color:#f59e0b;">In progress…</div>'
-        + '</div>';
+    (d.enrolled||[]).filter(function(s){return submittedIds.indexOf(s.studentId)===-1;}).forEach(function(s){
+      var warn=d.warnings[s.studentId];
+      html+='<div class="proctor-row"><div class="proctor-dot pending"></div>'
+        +'<div style="flex:1;"><b>'+escHtml(s.studentName||s.studentId)+'</b>'
+        +(warn&&warn.count>0?' <span class="ot-warning-pill">⚠ '+warn.count+' warnings</span>':'')+'</div>'
+        +'<div style="font-size:12px;color:#f59e0b;">In progress…</div></div>';
     });
-    var el2 = document.getElementById('ot-proctor-students');
-    if (el2) el2.innerHTML = html || '<div style="color:#9ca3af;font-size:13px;">No students connected yet.</div>';
-
-    var ri = document.getElementById('ot-proctor-refresh-info');
-    if(ri) ri.textContent = 'Last refreshed: ' + new Date().toLocaleTimeString('en-IN');
+    var el2=document.getElementById('ot-proctor-students');
+    if(el2) el2.innerHTML=html||'<div style="color:#9ca3af;font-size:13px;">No students yet.</div>';
+    var ri=document.getElementById('ot-proctor-refresh-info');
+    if(ri) ri.textContent='Last refreshed: '+new Date().toLocaleTimeString('en-IN');
   });
-
-  // Auto-refresh every 20s
-  if (otProctorTimer) clearInterval(otProctorTimer);
-  otProctorTimer = setInterval(otLoadProctor, 20000);
+  if(otProctorTimer) clearInterval(otProctorTimer);
+  otProctorTimer=setInterval(otLoadProctor,20000);
 }
 
 function otCloseTest() {
-  if (!otActiveTestId) return alert('No test selected.');
-  if (!confirm('Close this test? All in-progress student sessions will be ended.')) return;
-  gasGet({action:'closeTest', instructor:instructorName, testId:otActiveTestId}, function(err, d) {
-    if (err || !d || d.status !== 'ok') return alert('Error closing test');
+  if(!otActiveTestId) return alert('No test selected.');
+  if(!confirm('Close this test for all students?')) return;
+  gasGet({action:'closeTest',instructor:instructorName,testId:otActiveTestId},function(err,d){
+    if(err||!d||d.status!=='ok') return alert('Error closing test');
     clearInterval(otProctorTimer);
-    alert('✅ Test closed. Go to Results tab to release scores.');
-    otLoadTests();
-    otSubTab('mytests');
+    alert('✅ Test closed.');
+    otLoadTests();otSubTab('mytests');
   });
 }
 
 // ── Grade Theory ─────────────────────────────────────────────
 function otLoadGrading() {
-  var testId = (document.getElementById('ot-grade-test')||{}).value || '';
-  if (!testId) return;
-  gasGet({action:'getPendingManualGrades', instructor:instructorName, testId:testId}, function(err, d) {
-    var el = document.getElementById('ot-grading-body');
-    if (!el) return;
-    if (err || !d || d.status !== 'ok') { el.innerHTML='<div style="color:#dc2626;">Failed to load</div>'; return; }
-    if (!d.byStudent || !d.byStudent.length) {
-      el.innerHTML = '<div style="color:#059669;padding:20px 0;">✅ No theory questions pending grading for this test.</div>'; return;
-    }
-    var html = '<div style="font-size:13px;margin-bottom:14px;">Pending: <b>'+d.pendingCount+'</b> · Graded: <b>'+d.gradedCount+'</b></div>';
-    d.byStudent.forEach(function(s) {
-      html += '<div class="mg-student-block"><div class="mg-student-hdr">👤 Student: '+escHtml(s.studentId)+'</div>';
-      s.questions.forEach(function(q) {
-        html += '<div class="mg-q-row">'
-          + '<div style="font-size:12px;font-weight:600;margin-bottom:4px;">Q: '+escHtml(q.qId)+'</div>'
-          + '<div class="mg-ans">' + (q.studentAnswer ? escHtml(q.studentAnswer) : '<em style="color:#9ca3af;">No answer given</em>') + '</div>'
-          + (q.graded
-              ? '<div style="font-size:12px;color:#059669;">✅ Graded: '+escHtml(q.score)+' / '+escHtml(q.maxMarks)+'</div>'
-              : '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;">'
-                + '<label style="font-size:12px;font-weight:600;">Score (max '+escHtml(q.maxMarks)+'): </label>'
-                + '<input type="number" min="0" max="'+escHtml(q.maxMarks)+'" step="0.5" value="0" '
-                +   'id="mg-score-'+escHtml(s.studentId)+'-'+escHtml(q.qId)+'" style="width:70px;padding:4px 8px;border:1px solid #e5e7eb;border-radius:6px;">'
-                + '<button class="ot-btn success" style="padding:5px 12px;font-size:12px;" '
-                +   'onclick="otSaveMG(\''+escHtml(testId)+'\',\''+escHtml(s.studentId)+'\',\''+escHtml(q.qId)+'\','+escHtml(q.maxMarks)+')">Save</button>'
-                + '</div>')
-          + '</div>';
+  var testId=(document.getElementById('ot-grade-test')||{}).value||'';if(!testId) return;
+  gasGet({action:'getPendingManualGrades',instructor:instructorName,testId:testId},function(err,d){
+    var el=document.getElementById('ot-grading-body');if(!el) return;
+    if(err||!d||d.status!=='ok'){el.innerHTML='<div style="color:#dc2626;">Failed to load</div>';return;}
+    if(!d.byStudent||!d.byStudent.length){el.innerHTML='<div style="color:#059669;padding:20px 0;">✅ No theory questions pending grading.</div>';return;}
+    var html='<div style="font-size:13px;margin-bottom:14px;">Pending: <b>'+d.pendingCount+'</b> · Graded: <b>'+d.gradedCount+'</b></div>';
+    d.byStudent.forEach(function(s){
+      html+='<div class="mg-student-block"><div class="mg-student-hdr">👤 '+escHtml(s.studentId)+'</div>';
+      s.questions.forEach(function(q){
+        html+='<div class="mg-q-row"><div style="font-size:12px;font-weight:600;margin-bottom:4px;">Q: '+escHtml(q.qId)+'</div>'
+          +'<div class="mg-ans">'+(q.studentAnswer?escHtml(q.studentAnswer):'<em style="color:#9ca3af;">No answer given</em>')+'</div>'
+          +(q.graded?'<div style="font-size:12px;color:#059669;">✅ Graded: '+escHtml(q.score)+' / '+escHtml(q.maxMarks)+'</div>'
+            :'<div style="display:flex;align-items:center;gap:8px;margin-top:6px;"><label style="font-size:12px;font-weight:600;">Score (max '+escHtml(q.maxMarks)+'): </label>'
+            +'<input type="number" min="0" max="'+escHtml(q.maxMarks)+'" step="0.5" value="0" id="mg-score-'+escHtml(s.studentId)+'-'+escHtml(q.qId)+'" style="width:70px;padding:4px 8px;border:1px solid #e5e7eb;border-radius:6px;">'
+            +'<button class="ot-btn success" style="padding:5px 12px;font-size:12px;" onclick="otSaveMG(\''+escHtml(testId)+'\',\''+escHtml(s.studentId)+'\',\''+escHtml(q.qId)+'\','+escHtml(q.maxMarks)+')">Save</button></div>')
+          +'</div>';
       });
-      html += '</div>';
+      html+='</div>';
     });
-    el.innerHTML = html;
+    el.innerHTML=html;
   });
 }
 
-function otSaveMG(testId, studentId, qId, maxMarks) {
-  var scoreEl = document.getElementById('mg-score-'+studentId+'-'+qId);
-  var score = parseFloat((scoreEl||{}).value||'0');
-  if (score < 0 || score > maxMarks) return alert('Score must be between 0 and '+maxMarks);
-  gasGet({action:'saveManualGrade', instructor:instructorName, testId:testId,
-          studentId:studentId, qId:qId, score:score, maxMarks:maxMarks}, function(err, d) {
-    if (err || !d || d.status !== 'ok') return alert('Error saving grade');
-    if (d.allGraded) alert('✅ All theory questions graded for this student — total score updated!');
+function otSaveMG(testId,studentId,qId,maxMarks) {
+  var scoreEl=document.getElementById('mg-score-'+studentId+'-'+qId);
+  var score=parseFloat((scoreEl||{}).value||'0');
+  if(score<0||score>maxMarks) return alert('Score must be 0–'+maxMarks);
+  gasGet({action:'saveManualGrade',instructor:instructorName,testId:testId,studentId:studentId,qId:qId,score:score,maxMarks:maxMarks},function(err,d){
+    if(err||!d||d.status!=='ok') return alert('Error saving grade');
+    if(d.allGraded) alert('✅ All theory graded — total score updated!');
     otLoadGrading();
   });
 }
 
 // ── Results ──────────────────────────────────────────────────
-function otViewResults(testId) {
-  var el = document.getElementById('ot-results-test');
-  if (el) el.value = testId;
-  otSubTab('results');
-  otLoadResults();
-}
+function otViewResults(testId){var el=document.getElementById('ot-results-test');if(el)el.value=testId;otSubTab('results');otLoadResults();}
 
 function otLoadResults() {
-  var testId = (document.getElementById('ot-results-test')||{}).value || '';
-  if (!testId) return;
-  var el = document.getElementById('ot-results-body');
-  if (!el) return;
-  el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">Loading…</div>';
-  gasGet({action:'getTestResultsSummary', instructor:instructorName, testId:testId}, function(err, d) {
-    if (err || !d || d.status !== 'ok') { el.innerHTML='<div style="color:#dc2626;">Failed to load results</div>'; return; }
-    if (!d.responses || !d.responses.length) { el.innerHTML='<div style="color:#9ca3af;padding:20px 0;">No submissions yet.</div>'; return; }
-
-    var html = '<div class="ot-stat-row">'
-      + '<div class="ot-stat"><div class="num">'+d.total+'</div><div class="lbl">Total</div></div>'
-      + '<div class="ot-stat"><div class="num" style="color:#10b981">'+d.passed+'</div><div class="lbl">Passed</div></div>'
-      + '<div class="ot-stat"><div class="num" style="color:#dc2626">'+d.failed+'</div><div class="lbl">Failed</div></div>'
-      + '<div class="ot-stat"><div class="num">'+d.avgPercentage+'%</div><div class="lbl">Class Avg</div></div>'
-      + '</div>';
-
-    html += '<table class="ot-results-table"><thead><tr>'
-      + '<th>Student</th><th>Score</th><th>Total Marks</th><th>%</th><th>Result</th><th>Submitted</th><th>Type</th>'
-      + '</tr></thead><tbody>';
-    d.responses.forEach(function(r) {
-      var pct = r.percentage !== null && r.percentage !== '' ? r.percentage+'%' : '<span class="pend-pill">Pending</span>';
-      var res = r.result==='Pass' ? '<span class="pass-pill">Pass</span>' :
-                r.result==='Fail' ? '<span class="fail-pill">Fail</span>' :
-                                    '<span class="pend-pill">Pending</span>';
-      html += '<tr>'
-        + '<td><b>'+escHtml(r.studentName||r.studentId)+'</b><br><span style="font-size:11px;color:#9ca3af;">'+escHtml(r.studentId)+'</span></td>'
-        + '<td>'+escHtml(String(r.totalScore!==null&&r.totalScore!==''?r.totalScore:'—'))+'</td>'
-        + '<td>'+escHtml(String(r.totalMarks||''))+'</td>'
-        + '<td><b>'+pct+'</b></td>'
-        + '<td>'+res+'</td>'
-        + '<td style="font-size:11px;">'+escHtml(r.submittedAt?new Date(r.submittedAt).toLocaleString('en-IN'):'—')+'</td>'
-        + '<td>'+escHtml(r.submitType||'')+'</td>'
-        + '</tr>';
+  var testId=(document.getElementById('ot-results-test')||{}).value||'';if(!testId) return;
+  var el=document.getElementById('ot-results-body');if(!el) return;
+  el.innerHTML='<div style="color:#9ca3af;font-size:13px;">Loading…</div>';
+  gasGet({action:'getTestResultsSummary',instructor:instructorName,testId:testId},function(err,d){
+    if(err||!d||d.status!=='ok'){el.innerHTML='<div style="color:#dc2626;">Failed to load</div>';return;}
+    if(!d.responses||!d.responses.length){el.innerHTML='<div style="color:#9ca3af;padding:20px 0;">No submissions yet.</div>';return;}
+    var html='<div class="ot-stat-row">'
+      +'<div class="ot-stat"><div class="num">'+d.total+'</div><div class="lbl">Total</div></div>'
+      +'<div class="ot-stat"><div class="num" style="color:#10b981">'+d.passed+'</div><div class="lbl">Passed</div></div>'
+      +'<div class="ot-stat"><div class="num" style="color:#dc2626">'+d.failed+'</div><div class="lbl">Failed</div></div>'
+      +'<div class="ot-stat"><div class="num">'+d.avgPercentage+'%</div><div class="lbl">Class Avg</div></div>'
+      +'</div>';
+    html+='<table class="ot-results-table"><thead><tr><th>Student</th><th>Score</th><th>Total</th><th>%</th><th>Result</th><th>Submitted</th><th>Attempt</th></tr></thead><tbody>';
+    d.responses.forEach(function(r){
+      var pct=r.percentage!==null&&r.percentage!==''?r.percentage+'%':'<span class="pend-pill">Pending</span>';
+      var res=r.result==='Pass'?'<span class="pass-pill">Pass</span>':r.result==='Fail'?'<span class="fail-pill">Fail</span>':'<span class="pend-pill">Pending</span>';
+      html+='<tr><td><b>'+escHtml(r.studentName||r.studentId)+'</b></td><td>'+escHtml(String(r.totalScore!==null&&r.totalScore!==''?r.totalScore:'—'))+'</td><td>'+escHtml(String(r.totalMarks||''))+'</td><td><b>'+pct+'</b></td><td>'+res+'</td><td style="font-size:11px;">'+escHtml(r.submittedAt?new Date(r.submittedAt).toLocaleString('en-IN'):'—')+'</td><td>'+escHtml(String(r.attemptNo||1))+'</td></tr>';
     });
-    html += '</tbody></table>';
-
-    // Release buttons if not yet released
-    var testObj = otCurrentTests.find(function(t){ return t.testId===testId; });
-    if (testObj && testObj.resultsReleased !== 'Yes') {
-      html += '<div style="margin-top:16px;display:flex;gap:10px;">'
-        + '<button class="ot-btn primary" onclick="otReleaseResultsFor(\''+escHtml(testId)+'\',\'summary\')">📢 Release Results (Summary)</button>'
-        + '<button class="ot-btn ghost" onclick="otReleaseResultsFor(\''+escHtml(testId)+'\',\'full\')">Release Full Breakdown</button>'
-        + '</div>';
-    } else if (testObj && testObj.resultsReleased === 'Yes') {
-      html += '<div style="margin-top:14px;background:#d1fae5;color:#065f46;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;">✅ Results are released to students</div>';
+    html+='</tbody></table>';
+    var testObj=otCurrentTests.find(function(t){return t.testId===testId;});
+    if(testObj&&testObj.resultsReleased!=='Yes'){
+      html+='<div style="margin-top:16px;display:flex;gap:10px;">'
+        +'<button class="ot-btn primary" data-tid="'+escHtml(testId)+'" data-mode="summary" onclick="otReleaseResultsFor(this.dataset.tid,this.dataset.mode)">📢 Release (Summary)</button>'
+        +'<button class="ot-btn ghost" data-tid="'+escHtml(testId)+'" data-mode="full" onclick="otReleaseResultsFor(this.dataset.tid,this.dataset.mode)">Release Full Breakdown</button>'
+        +'</div>';
+    } else if(testObj&&testObj.resultsReleased==='Yes') {
+      html+='<div style="margin-top:14px;background:#d1fae5;color:#065f46;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;">✅ Results released to students</div>';
     }
-    el.innerHTML = html;
+    el.innerHTML=html;
   });
 }
+
+</script>
 </body>
 </html>

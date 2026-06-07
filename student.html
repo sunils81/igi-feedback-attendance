@@ -605,76 +605,161 @@
 
   </div>
 
-  <!-- ══ ONLINE TEST OVERLAY ══ -->
-  <div id="ot-test-screen" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0;
-    background:#f9fafb; z-index:9000; overflow-y:auto; font-family:'Plus Jakarta Sans',sans-serif;">
-
+  <!-- ══ ONLINE TEST OVERLAY — Premium v2 ══ -->
+  <div id="ot-test-screen" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;
+    background:#f4f6f9;z-index:9000;overflow-y:auto;font-family:'Plus Jakarta Sans',sans-serif;">
     <style>
-      #ot-test-screen { --navy:#0D1B2E; --gold:#C9A84C; }
-      .ot-test-header { background:var(--navy); color:#fff; padding:14px 20px;
-        display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:10; }
-      .ot-timer { background:#C9A84C; color:#0D1B2E; border-radius:8px;
-        padding:6px 14px; font-weight:700; font-size:16px; font-family:monospace; }
-      .ot-timer.warn { background:#ef4444; color:#fff; animation:timerPulse .8s infinite; }
-      @keyframes timerPulse { 0%,100%{opacity:1} 50%{opacity:.6} }
-      .ot-warning-bar { background:#fef3c7; border-left:4px solid #d97706;
-        padding:10px 16px; font-size:13px; font-weight:500; color:#92400e; }
-      .ot-q-card { background:#fff; border:1.5px solid #e5e7eb; border-radius:12px;
-        padding:18px 20px; margin-bottom:14px; }
-      .ot-q-num { font-size:11px; font-weight:600; color:#9ca3af; text-transform:uppercase;
-        letter-spacing:.5px; margin-bottom:6px; }
-      .ot-q-text { font-size:15px; font-weight:600; color:#111827; margin-bottom:14px; line-height:1.5; }
-      .ot-option { display:flex; align-items:flex-start; gap:10px; padding:10px 14px;
-        border:1.5px solid #e5e7eb; border-radius:10px; margin-bottom:8px; cursor:pointer; transition:all .15s; }
-      .ot-option:hover { border-color:#0D1B2E; background:#f0f4ff; }
-      .ot-option.selected { border-color:#0D1B2E; background:#eff6ff; }
-      .ot-option input[type=radio], .ot-option input[type=text] { accent-color:#0D1B2E; }
-      .ot-fill-input { width:100%; padding:10px 12px; border:1.5px solid #e5e7eb;
-        border-radius:8px; font-size:14px; box-sizing:border-box; }
-      .ot-fill-input:focus { outline:none; border-color:#0D1B2E; }
-      .ot-theory-input { width:100%; padding:10px 12px; border:1.5px solid #e5e7eb;
-        border-radius:8px; font-size:13px; min-height:100px; box-sizing:border-box; resize:vertical; }
-      .ot-nav-bar { background:#fff; border-top:1px solid #e5e7eb; padding:12px 20px;
-        display:flex; align-items:center; justify-content:space-between;
-        position:sticky; bottom:0; z-index:10; }
-      .ot-progress-row { display:flex; gap:5px; flex-wrap:wrap; margin:14px 20px; }
-      .ot-prog-dot { width:28px; height:28px; border-radius:6px; border:1.5px solid #e5e7eb;
-        font-size:11px; font-weight:600; display:flex; align-items:center; justify-content:center;
-        cursor:pointer; transition:all .15s; }
-      .ot-prog-dot.answered { background:#0D1B2E; color:#fff; border-color:#0D1B2E; }
-      .ot-prog-dot.current  { border-color:#C9A84C; box-shadow:0 0 0 2px #C9A84C44; }
-      .ot-submit-btn { background:#0D1B2E; color:#fff; border:none; border-radius:10px;
-        padding:12px 28px; font-size:15px; font-weight:700; cursor:pointer; width:100%; margin-top:8px; }
-      .ot-submit-btn:hover { background:#1e3a5f; }
+      #ot-test-screen{--navy:#0D1B2E;--gold:#C9A84C;--pass:#059669;--fail:#dc2626;}
+
+      /* ── Header ── */
+      .ot-header{background:var(--navy);color:#fff;display:flex;align-items:center;
+        justify-content:space-between;padding:0 20px;height:56px;position:sticky;top:0;z-index:20;
+        box-shadow:0 2px 12px rgba(0,0,0,.25);}
+      .ot-header-left{display:flex;flex-direction:column;justify-content:center;}
+      .ot-header-badge{font-size:10px;font-weight:700;opacity:.6;text-transform:uppercase;letter-spacing:.6px;}
+      .ot-header-title{font-size:14px;font-weight:700;margin-top:1px;}
+      .ot-timer-pill{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.12);
+        border:1.5px solid rgba(255,255,255,.25);border-radius:24px;padding:6px 14px;}
+      .ot-timer-pill .ot-timer-icon{font-size:14px;}
+      .ot-timer{font-size:18px;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--gold);}
+      .ot-timer.warn{color:#ef4444;animation:timerPulse .7s infinite;}
+      @keyframes timerPulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+      /* ── Top progress bar ── */
+      .ot-prog-track{height:3px;background:rgba(255,255,255,.15);position:sticky;top:56px;z-index:19;}
+      .ot-prog-fill{height:100%;background:var(--gold);transition:width .3s;border-radius:0 2px 2px 0;}
+
+      /* ── Warning bar ── */
+      .ot-warn-bar{display:none;background:#7f1d1d;color:#fecaca;padding:10px 20px;
+        font-size:13px;font-weight:600;text-align:center;animation:warnSlide .3s ease;}
+      @keyframes warnSlide{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+      .ot-warn-bar.w1{background:#92400e;color:#fef3c7;}
+      .ot-warn-bar.w2{background:#991b1b;color:#fee2e2;}
+      .ot-warn-bar.w3{background:#450a0a;color:#fca5a5;animation:warnPulse .5s 3;}
+      @keyframes warnPulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+      /* ── Layout ── */
+      .ot-body{display:flex;gap:0;max-width:900px;margin:0 auto;padding:20px 16px 100px;box-sizing:border-box;}
+      .ot-questions-col{flex:1;min-width:0;}
+      .ot-minimap{width:200px;flex-shrink:0;margin-left:20px;display:none;}
+      @media(min-width:900px){.ot-minimap{display:block;}}
+
+      /* ── Question card ── */
+      .ot-q-card{background:#fff;border-radius:16px;margin-bottom:16px;overflow:hidden;
+        box-shadow:0 1px 4px rgba(0,0,0,.06);border:1.5px solid #e5e7eb;transition:border-color .15s;}
+      .ot-q-card.answered{border-color:#a7f3d0;}
+      .ot-q-header{display:flex;align-items:center;justify-content:space-between;
+        padding:12px 16px;border-bottom:1px solid #f3f4f6;background:#fafafa;}
+      .ot-q-meta{font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;}
+      .ot-q-type-tag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;
+        background:#ede9fe;color:#5b21b6;}
+      .ot-q-type-tag.tf{background:#dbeafe;color:#1e40af;}
+      .ot-q-type-tag.fb{background:#fef3c7;color:#92400e;}
+      .ot-q-type-tag.th{background:#fce7f3;color:#9d174d;}
+      .ot-q-marks{font-size:11px;font-weight:600;color:#C9A84C;}
+      .ot-q-body{padding:16px;}
+      .ot-q-text{font-size:15px;font-weight:600;color:#111827;line-height:1.6;margin-bottom:16px;}
+
+      /* ── Options ── */
+      .ot-opt{display:flex;align-items:center;gap:12px;padding:12px 14px;
+        border:2px solid #e5e7eb;border-radius:12px;margin-bottom:8px;cursor:pointer;
+        transition:all .15s;position:relative;overflow:hidden;}
+      .ot-opt::before{content:'';position:absolute;inset:0;background:transparent;transition:background .15s;}
+      .ot-opt:hover{border-color:#6366f1;background:#f5f3ff;}
+      .ot-opt.selected{border-color:#0D1B2E;background:#eef2ff;}
+      .ot-opt.selected::before{background:rgba(13,27,46,.03);}
+      .ot-opt-letter{width:28px;height:28px;border-radius:50%;border:2px solid #e5e7eb;
+        display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;
+        color:#9ca3af;flex-shrink:0;transition:all .15s;}
+      .ot-opt.selected .ot-opt-letter{background:#0D1B2E;border-color:#0D1B2E;color:#C9A84C;}
+      .ot-opt-text{font-size:14px;color:#374151;line-height:1.4;}
+
+      /* ── Fill / Theory ── */
+      .ot-fill-input{width:100%;padding:12px 14px;border:2px solid #e5e7eb;border-radius:10px;
+        font-size:14px;box-sizing:border-box;transition:border .15s;outline:none;}
+      .ot-fill-input:focus{border-color:#0D1B2E;}
+      .ot-theory-input{width:100%;padding:12px 14px;border:2px solid #e5e7eb;border-radius:10px;
+        font-size:13px;min-height:120px;box-sizing:border-box;resize:vertical;outline:none;transition:border .15s;}
+      .ot-theory-input:focus{border-color:#0D1B2E;}
+
+      /* ── Mini-map (desktop) ── */
+      .ot-minimap-inner{position:sticky;top:76px;background:#fff;border-radius:14px;
+        padding:14px;border:1.5px solid #e5e7eb;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+      .ot-minimap-title{font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;
+        letter-spacing:.5px;margin-bottom:10px;}
+      .ot-mm-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;}
+      .ot-mm-dot{width:100%;aspect-ratio:1;border-radius:6px;border:1.5px solid #e5e7eb;
+        font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;
+        cursor:pointer;transition:all .15s;color:#9ca3af;}
+      .ot-mm-dot.ans{background:#0D1B2E;border-color:#0D1B2E;color:#C9A84C;}
+      .ot-mm-dot.cur{border-color:#C9A84C;box-shadow:0 0 0 2px rgba(201,168,76,.3);color:#C9A84C;}
+      .ot-mm-legend{display:flex;gap:8px;margin-top:10px;font-size:10px;color:#9ca3af;}
+      .ot-mm-legend span{display:flex;align-items:center;gap:3px;}
+
+      /* ── Bottom nav ── */
+      .ot-nav-bar{background:#fff;border-top:1px solid #e5e7eb;padding:12px 20px;
+        position:sticky;bottom:0;z-index:10;display:flex;align-items:center;
+        justify-content:space-between;box-shadow:0 -2px 12px rgba(0,0,0,.06);}
+      .ot-answered-info{font-size:12px;font-weight:600;color:#6b7280;}
+      .ot-answered-num{font-size:16px;font-weight:800;color:#0D1B2E;}
+      .ot-submit-btn{background:#0D1B2E;color:#fff;border:none;border-radius:12px;
+        padding:12px 28px;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;
+        display:flex;align-items:center;gap:8px;}
+      .ot-submit-btn:hover{background:#1e3a5f;transform:translateY(-1px);box-shadow:0 4px 12px rgba(13,27,46,.3);}
     </style>
 
-    <!-- Test Header -->
-    <div class="ot-test-header">
-      <div>
-        <div style="font-size:11px;opacity:.7;text-transform:uppercase;letter-spacing:.5px;">IGI Online Test</div>
-        <div style="font-size:14px;font-weight:600;" id="ot-th-label">—</div>
+    <!-- Header -->
+    <div class="ot-header">
+      <div class="ot-header-left">
+        <div class="ot-header-badge">IGI Online Test</div>
+        <div class="ot-header-title" id="ot-th-label">—</div>
       </div>
-      <div class="ot-timer" id="ot-timer">00:00</div>
+      <div class="ot-timer-pill">
+        <span class="ot-timer-icon">⏱</span>
+        <span class="ot-timer" id="ot-timer">00:00</span>
+      </div>
     </div>
 
-    <!-- Warning Bar -->
-    <div id="ot-warn-bar" class="ot-warning-bar" style="display:none;">
-      ⚠️ Warning <span id="ot-warn-num">1</span>/3 — Please stay on this page. On the 3rd warning your test will be auto-submitted.
+    <!-- Progress bar -->
+    <div class="ot-prog-track"><div class="ot-prog-fill" id="ot-prog-fill" style="width:0%"></div></div>
+
+    <!-- Warning bar -->
+    <div id="ot-warn-bar" class="ot-warn-bar">
+      ⚠️ Warning <span id="ot-warn-num">1</span>/3 — Return to the test immediately. 3rd warning = auto-submit.
     </div>
 
-    <!-- Progress dots -->
-    <div class="ot-progress-row" id="ot-prog-dots"></div>
+    <!-- Body: questions + minimap -->
+    <div class="ot-body">
+      <div class="ot-questions-col">
+        <!-- Progress dots (mobile, hidden on desktop via minimap) -->
+        <div id="ot-prog-dots" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:16px;"></div>
+        <div id="ot-questions-body"></div>
+      </div>
+      <!-- Desktop mini-map -->
+      <div class="ot-minimap" id="ot-minimap-panel">
+        <div class="ot-minimap-inner">
+          <div class="ot-minimap-title">Questions</div>
+          <div class="ot-mm-grid" id="ot-mm-grid"></div>
+          <div class="ot-mm-legend">
+            <span><span style="width:10px;height:10px;background:#0D1B2E;border-radius:3px;display:inline-block;"></span>Answered</span>
+            <span><span style="width:10px;height:10px;border:1.5px solid #e5e7eb;border-radius:3px;display:inline-block;"></span>Pending</span>
+          </div>
+          <div style="margin-top:12px;padding-top:10px;border-top:1px solid #f3f4f6;">
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">Answered</div>
+            <div style="font-size:20px;font-weight:800;color:#0D1B2E;"><span id="ot-answered-count">0</span><span style="font-size:12px;font-weight:400;color:#9ca3af;"> / <span id="ot-total-count">0</span></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-    <!-- Questions Container -->
-    <div style="padding:0 16px 100px;" id="ot-questions-body"></div>
-
-    <!-- Submit Bar -->
+    <!-- Bottom Nav -->
     <div class="ot-nav-bar">
-      <div style="font-size:12px;color:#6b7280;">
-        <span id="ot-answered-count">0</span> / <span id="ot-total-count">0</span> answered
+      <div class="ot-answered-info">
+        <span class="ot-answered-num" id="ot-answered-count-2">0</span>
+        <span> / </span><span id="ot-total-count-2">0</span><span> answered</span>
       </div>
-      <button class="ot-submit-btn" style="width:auto;padding:10px 24px;" onclick="otConfirmSubmit()">
-        Submit Test ✓
+      <button class="ot-submit-btn" onclick="otConfirmSubmit()">
+        Submit Test <span style="font-size:16px;">✓</span>
       </button>
     </div>
   </div>
@@ -1682,6 +1767,37 @@ function otShowBanner(t) {
 // ── Begin Test ───────────────────────────────────────────────
 function otBeginTest() {
   if (!otActiveTestInfo) return;
+  var instructions = otActiveTestInfo.instructions || '';
+  if (instructions && instructions.trim()) {
+    otShowInstructionsScreen(instructions);
+  } else {
+    otLoadAndStartTest();
+  }
+}
+
+function otShowInstructionsScreen(instructions) {
+  var scr = document.getElementById('ot-test-screen');
+  if (!scr) return;
+  scr.style.display = 'block';
+  var dots = document.getElementById('ot-prog-dots');
+  var nav = document.querySelector('.ot-nav-bar');
+  if(dots) dots.style.display='none';
+  if(nav)  nav.style.display='none';
+  var body = document.getElementById('ot-questions-body');
+  if (body) body.innerHTML =
+    '<div style="max-width:600px;margin:40px auto;background:#fff;border-radius:14px;border:1.5px solid #e5e7eb;padding:28px 30px;">' +
+    '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#9ca3af;margin-bottom:8px;">📋 Test Instructions</div>' +
+    '<div style="font-size:16px;font-weight:700;margin-bottom:14px;color:#0D1B2E;">' + escHtmlSt(otActiveTestInfo.testLabel||'Online Test') + '</div>' +
+    '<div style="font-size:13px;line-height:1.7;color:#374151;background:#f9fafb;border-radius:10px;padding:14px 16px;margin-bottom:20px;">' + escHtmlSt(instructions) + '</div>' +
+    '<div style="font-size:12px;color:#6b7280;margin-bottom:6px;">Duration: <b>' + otActiveTestInfo.duration + ' minutes</b></div>' +
+    (otActiveTestInfo.negativeMarking==='Yes' ? '<div style="font-size:12px;color:#dc2626;margin-bottom:6px;">⚠ Negative marking: -' + otActiveTestInfo.negMarkValue + ' per wrong answer</div>' : '') +
+    '<div style="font-size:12px;color:#6b7280;margin-bottom:20px;">3 tab-switch / fullscreen-exit warnings = auto-submit.</div>' +
+    '<button onclick="otLoadAndStartTest()" style="background:#0D1B2E;color:#fff;border:none;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;width:100%;">▶ Begin Test</button>' +
+    '</div>';
+}
+
+function otLoadAndStartTest() {
+  if (!otActiveTestInfo) return;
   var sid = portalData.enrollmentNo || portalData.studentId || '';
   var batch = otActiveTestInfo.batchCode;
 
@@ -1708,71 +1824,126 @@ function otRenderTestScreen() {
   var scr = document.getElementById('ot-test-screen');
   if (!scr) return;
   scr.style.display = 'block';
-
   var lbl = document.getElementById('ot-th-label');
   if (lbl && otTestData.test) lbl.textContent = otTestData.test.testLabel || 'Test';
-
-  var tc = document.getElementById('ot-total-count');
-  if (tc) tc.textContent = otTestData.questions.length;
-
+  var n = otTestData.questions.length;
+  ['ot-total-count','ot-total-count-2'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=n;});
+  var dots = document.getElementById('ot-prog-dots');
+  var nav = document.querySelector('.ot-nav-bar');
+  if(dots) dots.style.display='';
+  if(nav)  nav.style.display='';
   otRenderProgressDots();
+  otRenderMinimap();
   otRenderAllQuestions();
   otUpdateAnsweredCount();
 }
-
 function otRenderProgressDots() {
+  // Mobile dots (hidden on desktop where minimap shows)
   var el = document.getElementById('ot-prog-dots');
-  if (!el) return;
+  if (el) {
+    // On desktop hide dots panel (minimap handles it)
+    el.style.display = window.innerWidth >= 900 ? 'none' : 'flex';
+    var html = '';
+    otTestData.questions.forEach(function(q, i) {
+      var cls = (otAnswers[q.qId] !== undefined ? ' answered' : '') + (i === otCurrentQ ? ' current' : '');
+      html += '<div class="ot-prog-dot'+cls+'" onclick="otScrollToQ('+i+')" title="Q'+(i+1)+'">'+(i+1)+'</div>';
+    });
+    el.innerHTML = html;
+  }
+  otRenderMinimap();
+  otUpdateProgressBar();
+}
+
+function otRenderMinimap() {
+  var el = document.getElementById('ot-mm-grid');
+  if (!el || !otTestData) return;
   var html = '';
   otTestData.questions.forEach(function(q, i) {
-    var cls = (otAnswers[q.qId] !== undefined ? ' answered' : '') + (i === otCurrentQ ? ' current' : '');
-    html += '<div class="ot-prog-dot'+cls+'" onclick="otScrollToQ('+i+')" title="Q'+(i+1)+'">'+(i+1)+'</div>';
+    var cls = (otAnswers[q.qId] !== undefined ? ' ans' : '') + (i === otCurrentQ ? ' cur' : '');
+    html += '<div class="ot-mm-dot'+cls+'" onclick="otScrollToQ('+i+')" title="Q'+(i+1)+'">'+(i+1)+'</div>';
   });
   el.innerHTML = html;
+}
+
+function otUpdateProgressBar() {
+  var answered = Object.keys(otAnswers).length;
+  var total = otTestData ? otTestData.questions.length : 1;
+  var pct = total > 0 ? Math.round(answered/total*100) : 0;
+  var fill = document.getElementById('ot-prog-fill');
+  if (fill) fill.style.width = pct + '%';
 }
 
 function otRenderAllQuestions() {
   var el = document.getElementById('ot-questions-body');
   if (!el || !otTestData) return;
+  var letters = ['A','B','C','D'];
+  var typeClasses = {MCQ:'ot-q-type-tag',TrueFalse:'ot-q-type-tag tf',FillBlank:'ot-q-type-tag fb',Theory:'ot-q-type-tag th'};
   var html = '';
   otTestData.questions.forEach(function(q, i) {
-    html += '<div class="ot-q-card" id="ot-q-card-'+i+'">';
-    html += '<div class="ot-q-num">Question '+(i+1)+' of '+otTestData.questions.length
-          + ' · <span style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 6px;font-size:10px;">'+escHtmlSt(q.type)+'</span>'
-          + ' · <span style="color:#C9A84C;font-weight:700;">'+q.marks+' mark'+(q.marks>1?'s':'')+'</span></div>';
-    html += '<div class="ot-q-text">'+escHtmlSt(q.question)+'</div>';
-
+    var answered = otAnswers[q.qId] !== undefined;
+    var typeLabel = q.type==='TrueFalse'?'True/False':q.type==='FillBlank'?'Fill Blank':q.type;
+    html += '<div class="ot-q-card'+(answered?' answered':'')+'" id="ot-q-card-'+i+'">';
+    html += '<div class="ot-q-header">'
+          + '<span class="ot-q-meta">Q '+(i+1)+' of '+otTestData.questions.length+'</span>'
+          + '<div style="display:flex;align-items:center;gap:8px;">'
+          + '<span class="'+(typeClasses[q.type]||'ot-q-type-tag')+'">'+escHtmlSt(typeLabel)+'</span>'
+          + '<span class="ot-q-marks">'+q.marks+' mark'+(q.marks>1?'s':'')+'</span>'
+          + '</div></div>';
+    html += '<div class="ot-q-body"><div class="ot-q-text">'+escHtmlSt(q.question)+'</div>';
     if (q.type === 'MCQ') {
       ['opt1','opt2','opt3','opt4'].forEach(function(ok, oi) {
         if (!q[ok]) return;
         var optVal = String(oi+1);
-        var sel = otAnswers[q.qId] === optVal ? ' selected' : '';
-        html += '<div class="ot-option'+sel+'" onclick="otSelectOpt(\''+escHtmlSt(q.qId)+'\',\''+optVal+'\',this)">'
-              + '<input type="radio" name="q-'+escHtmlSt(q.qId)+'" value="'+optVal+'" '+(sel?' checked':'')+' style="margin-top:1px;flex-shrink:0;" onchange="otSelectOpt(\''+escHtmlSt(q.qId)+'\',\''+optVal+'\',this.parentElement)">'
-              + '<span>'+escHtmlSt(q[ok])+'</span>'
+        var sel = otAnswers[q.qId] === optVal;
+        html += '<div class="ot-opt'+(sel?' selected':'')+'" data-qid="'+escHtmlSt(q.qId)+'" data-val="'+optVal+'" onclick="otSelectOptEl(this)">'
+              + '<div class="ot-opt-letter">'+letters[oi]+'</div>'
+              + '<div class="ot-opt-text">'+escHtmlSt(q[ok])+'</div>'
+              + (sel?'<div style="margin-left:auto;color:#059669;font-size:18px;font-weight:700;">✓</div>':'')
               + '</div>';
       });
     } else if (q.type === 'TrueFalse') {
-      ['True','False'].forEach(function(v) {
-        var sel = otAnswers[q.qId] === v ? ' selected' : '';
-        html += '<div class="ot-option'+sel+'" onclick="otSelectOpt(\''+escHtmlSt(q.qId)+'\',\''+v+'\',this)">'
-              + '<input type="radio" name="q-'+escHtmlSt(q.qId)+'" value="'+v+'" '+(sel?' checked':'')+' style="flex-shrink:0;" onchange="otSelectOpt(\''+escHtmlSt(q.qId)+'\',\''+v+'\',this.parentElement)">'
-              + '<span>'+v+'</span></div>';
+      ['True','False'].forEach(function(v,vi){
+        var sel = otAnswers[q.qId] === v;
+        html += '<div class="ot-opt'+(sel?' selected':'')+'" data-qid="'+escHtmlSt(q.qId)+'" data-val="'+v+'" onclick="otSelectOptEl(this)">'
+              + '<div class="ot-opt-letter">'+(vi===0?'T':'F')+'</div>'
+              + '<div class="ot-opt-text">'+v+'</div>'
+              + (sel?'<div style="margin-left:auto;color:#059669;font-size:18px;font-weight:700;">✓</div>':'')
+              + '</div>';
       });
     } else if (q.type === 'FillBlank') {
-      html += '<input type="text" class="ot-fill-input" placeholder="Type your answer…" '
-            + 'value="'+escHtmlSt(otAnswers[q.qId]||'')+'" '
-            + 'oninput="otSaveFIB(\''+escHtmlSt(q.qId)+'\',this.value)">';
+      html += '<input type="text" class="ot-fill-input" placeholder="Type your answer here…" value="'+escHtmlSt(otAnswers[q.qId]||'')+'" data-qid="'+escHtmlSt(q.qId)+'" oninput="otSaveFIB(this.dataset.qid,this.value)">';
     } else if (q.type === 'Theory') {
-      html += '<textarea class="ot-theory-input" placeholder="Write your answer here…" '
-            + 'oninput="otSaveFIB(\''+escHtmlSt(q.qId)+'\',this.value)">'+escHtmlSt(otAnswers[q.qId]||'')+'</textarea>';
+      html += '<textarea class="ot-theory-input" placeholder="Write your detailed answer here…" data-qid="'+escHtmlSt(q.qId)+'" oninput="otSaveFIB(this.dataset.qid,this.value)">'+escHtmlSt(otAnswers[q.qId]||'')+'</textarea>';
     }
-    html += '</div>';
+    html += '</div></div>';
   });
   el.innerHTML = html;
 }
 
-function escHtmlSt(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function otSelectOptEl(el) {
+  var qId = el.dataset.qid; var val = el.dataset.val;
+  if (!qId || !val) return;
+  var card = el.closest('.ot-q-card');
+  if (card) {
+    card.querySelectorAll('.ot-opt').forEach(function(o){ o.classList.remove('selected'); var last=o.lastElementChild; if(last&&last.textContent==='✓') last.remove(); });
+    card.classList.add('answered');
+  }
+  el.classList.add('selected');
+  var tick=document.createElement('div'); tick.style='margin-left:auto;color:#059669;font-size:18px;font-weight:700;'; tick.textContent='✓';
+  el.appendChild(tick);
+  otAnswers[qId] = val;
+  otUpdateAnsweredCount();
+  otRenderProgressDots();
+  otSaveLocalState();
+  // Auto-scroll to next unanswered
+  if (otTestData) {
+    var idx=otTestData.questions.findIndex(function(q){return q.qId===qId;});
+    var nxt=null;
+    for(var i=idx+1;i<otTestData.questions.length;i++){if(otAnswers[otTestData.questions[i].qId]===undefined){nxt=i;break;}}
+    if(nxt!==null){setTimeout(function(){var nc=document.getElementById('ot-q-card-'+nxt);if(nc)nc.scrollIntoView({behavior:'smooth',block:'start'});otCurrentQ=nxt;},320);}
+  }
+}
+
 
 function otSelectOpt(qId, val, parentEl) {
   otAnswers[qId] = val;
@@ -1801,8 +1972,9 @@ function otScrollToQ(i) {
 }
 
 function otUpdateAnsweredCount() {
-  var el = document.getElementById('ot-answered-count');
-  if (el) el.textContent = Object.keys(otAnswers).length;
+  var n = Object.keys(otAnswers).length;
+  ['ot-answered-count','ot-answered-count-2'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=n;});
+  otUpdateProgressBar();
 }
 
 function otSaveLocalState() {
@@ -1858,20 +2030,19 @@ function otTriggerWarning(type) {
   otWarningCount++;
   var sid = portalData ? (portalData.enrollmentNo||portalData.studentId||'') : '';
   var sname = portalData ? (portalData.studentName||'') : '';
-
-  // Log to server
   gasGet({action:'logTestWarning', testId:otActiveTestInfo.testId,
           studentId:sid, studentName:sname, warningType:type}, function(){});
-
   var wb = document.getElementById('ot-warn-bar');
   var wn = document.getElementById('ot-warn-num');
-  if (wb) wb.style.display = 'block';
+  if (wb) {
+    wb.style.display = 'block';
+    wb.className = 'ot-warn-bar w'+Math.min(otWarningCount,3);
+  }
   if (wn) wn.textContent = otWarningCount;
-
   otSaveLocalState();
-
   if (otWarningCount >= 3) {
-    setTimeout(function(){ otAutoSubmit('auto-warning'); }, 800);
+    if(wb) wb.textContent = '🚨 3rd warning — Auto-submitting your test now…';
+    setTimeout(function(){ otAutoSubmit('auto-warning'); }, 1200);
   } else {
     otRequestFullscreen();
   }
@@ -1952,8 +2123,9 @@ function otLoadMyResults() {
 
   el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">Loading…</div>';
 
-  // Check all batches
+  // Check all batches — collect full V3 response
   var allWeekly = [], allFinal = [], weeklyAvg = null;
+  var allSpecials = [], cumHonour = null;
   var pending = batches.length;
 
   batches.forEach(function(b) {
@@ -1963,74 +2135,141 @@ function otLoadMyResults() {
         allWeekly = allWeekly.concat(d.weeklyResults || []);
         allFinal  = allFinal.concat(d.finalResults   || []);
         if (d.weeklyAverage !== null && d.weeklyAverage !== undefined) weeklyAvg = d.weeklyAverage;
+        if (d.specialBadges && d.specialBadges.length) allSpecials = allSpecials.concat(d.specialBadges);
+        if (d.cumulativeHonour) cumHonour = d.cumulativeHonour;
       }
-      if (pending === 0) otRenderMyResults(allWeekly, allFinal, weeklyAvg);
+      if (pending === 0) otRenderMyResults(allWeekly, allFinal, weeklyAvg, allSpecials, cumHonour);
     });
   });
 }
 
-function otRenderMyResults(weekly, final_, weeklyAvg) {
+function otRenderMyResults(weekly, final_, weeklyAvg, specials, cumHonour) {
   var el = document.getElementById('ot-results-wrap');
   if (!el) return;
 
   if (!weekly.length && !final_.length) {
-    el.innerHTML = '<div style="color:#9ca3af;font-size:14px;padding:30px 0;text-align:center;">'
-      + '📋 No test results available yet.<br><span style="font-size:12px;">Results appear here once your instructor releases them.</span></div>';
+    el.innerHTML = '<div style="text-align:center;padding:40px 20px;">'
+      + '<div style="font-size:40px;margin-bottom:12px;">📋</div>'
+      + '<div style="font-weight:600;font-size:15px;color:#374151;margin-bottom:6px;">No results yet</div>'
+      + '<div style="font-size:13px;color:#9ca3af;">Results appear here once your instructor releases them after a test.</div>'
+      + '</div>';
     return;
   }
 
-  var PASS_PCT = 60;
-  var html = '<h3 style="margin:0 0 16px;font-size:15px;font-weight:700;">My Test Results</h3>';
+  function gemBadge(b) {
+    if (!b) return '';
+    var colors = {diamond:'#0D1B2E',sapphire:'#1a4b8c',emerald:'#065f46',ruby:'#991b1b',pass:'#92400e',fail:'#6b7280'};
+    var bgs = {diamond:'#e8edf5',sapphire:'#dbeafe',emerald:'#d1fae5',ruby:'#fee2e2',pass:'#fef3c7',fail:'#f3f4f6'};
+    var t = b.tier||'pass';
+    return '<span style="display:inline-flex;align-items:center;gap:5px;background:'+bgs[t]+';color:'+colors[t]+';border-radius:20px;padding:3px 10px 3px 8px;font-size:12px;font-weight:700;">'
+      +b.icon+' '+escHtmlSt(b.name)+'</span>';
+  }
+
+  var html = '';
+
+  // Cumulative Honour Banner
+  if (cumHonour) {
+    html += '<div style="background:linear-gradient(135deg,#0D1B2E 0%,#1e3a5f 100%);border-radius:14px;padding:20px 22px;margin-bottom:20px;color:#fff;display:flex;align-items:center;gap:16px;">'
+      + '<div style="font-size:44px;line-height:1;">'+escHtmlSt(cumHonour.icon)+'</div>'
+      + '<div>'
+      + '<div style="font-size:11px;font-weight:600;opacity:.7;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Your Honour</div>'
+      + '<div style="font-size:20px;font-weight:800;color:#C9A84C;">'+escHtmlSt(cumHonour.title)+'</div>'
+      + '<div style="font-size:12px;opacity:.7;margin-top:2px;">'+(cumHonour.title.includes('Interim')?'Based on weekly average · Final exam will confirm':'Based on Final Exam')+'</div>'
+      + '</div></div>';
+  }
+
+  // Special Badges Row
+  if (specials && specials.length) {
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;">';
+    specials.forEach(function(s) {
+      html += '<div style="display:flex;align-items:center;gap:6px;background:#fff;border:1.5px solid #e5e7eb;border-radius:10px;padding:6px 12px;">'
+        + '<span style="font-size:18px;">'+escHtmlSt(s.icon)+'</span>'
+        + '<div><div style="font-size:12px;font-weight:700;color:#374151;">'+escHtmlSt(s.name)+'</div>'
+        + '<div style="font-size:10px;color:#9ca3af;">'+escHtmlSt(s.desc)+'</div></div>'
+        + '</div>';
+    });
+    html += '</div>';
+  }
 
   // Weekly Tests
   if (weekly.length) {
-    html += '<div style="font-weight:600;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Weekly Tests</div>';
-    weekly.forEach(function(r, i) {
-      var pct = r.percentage !== null && r.percentage !== '' ? r.percentage : '—';
-      var pass = r.result === 'Pass';
-      var pending = r.result === 'Pending';
-      html += '<div style="background:#fff;border:1.5px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
-        +   '<span style="font-weight:600;font-size:14px;">'+escHtmlSt(r.testLabel||'Weekly Test')+'</span>'
-        +   (pending ? '<span class="pend-pill">Pending Grading</span>'
-                     : '<span class="'+(pass?'pass-pill':'fail-pill')+'">'+(pass?'Pass':'Fail')+'</span>')
+    html += '<div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;">Weekly Tests</div>';
+    weekly.forEach(function(r) {
+      var pct = r.percentage !== null && r.percentage !== '' ? r.percentage : null;
+      var pass = r.result === 'Pass', pend = r.result === 'Pending';
+      var badge = r.badge;
+      var rank = r.classRank;
+      var ps = r.passingScore || 60;
+      html += '<div style="background:#fff;border:1.5px solid '+(pass?'#a7f3d0':pend?'#e5e7eb':'#fecaca')+';border-radius:14px;padding:16px 18px;margin-bottom:10px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">'
+        +   '<div>'
+        +     '<div style="font-weight:700;font-size:14px;color:#111827;">'+escHtmlSt(r.testLabel||'Weekly Test')+'</div>'
+        +     '<div style="font-size:11px;color:#9ca3af;margin-top:2px;">'+escHtmlSt(r.submittedAt?new Date(r.submittedAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'')+'</div>'
+        +   '</div>'
+        +   (badge ? gemBadge(badge) : pend ? '<span style="background:#fef3c7;color:#92400e;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:600;">⏳ Pending</span>' : '')
         + '</div>'
-        + '<div style="display:flex;gap:20px;font-size:13px;">'
-        +   '<div><span style="color:#6b7280;">Score </span><b>'+escHtmlSt(String(r.totalScore!==null&&r.totalScore!==''?r.totalScore:'—'))+'</b><span style="color:#9ca3af;font-size:11px;"> /'+escHtmlSt(String(r.totalMarks||''))+'</span></div>'
-        +   '<div><span style="color:#6b7280;">Percentage </span><b style="font-size:16px;color:'+(pass?'#059669':'#dc2626')+'">'+pct+'%</b></div>'
+        + '<div style="display:flex;gap:24px;align-items:center;">'
+        +   '<div>'
+        +     '<div style="font-size:11px;color:#6b7280;margin-bottom:2px;">Score</div>'
+        +     '<div style="font-size:18px;font-weight:800;color:#111827;">'+(r.totalScore!==null&&r.totalScore!==''?r.totalScore:'—')+'<span style="font-size:12px;font-weight:400;color:#9ca3af;"> /'+escHtmlSt(String(r.totalMarks||''))+'</span></div>'
+        +   '</div>'
+        +   '<div>'
+        +     '<div style="font-size:11px;color:#6b7280;margin-bottom:2px;">Percentage</div>'
+        +     '<div style="font-size:24px;font-weight:800;color:'+(pass?'#059669':pend?'#9ca3af':'#dc2626')+'">'+(pct!==null?pct+'%':'—')+'</div>'
+        +   '</div>'
+        +   (rank ? '<div style="margin-left:auto;text-align:right;">'
+        +     '<div style="font-size:11px;color:#6b7280;margin-bottom:2px;">Class Rank</div>'
+        +     '<div style="font-size:18px;font-weight:800;color:#0D1B2E;">#'+rank.rank+'<span style="font-size:12px;font-weight:400;color:#9ca3af;"> of '+rank.total+'</span></div>'
+        +   '</div>' : '')
         + '</div>'
-        + '<div style="font-size:11px;color:#9ca3af;margin-top:6px;">Passing: 60% · Submitted: '+escHtmlSt(r.submittedAt?new Date(r.submittedAt).toLocaleDateString('en-IN'):'—')+'</div>'
+        + '<div style="margin-top:10px;height:4px;background:#f3f4f6;border-radius:2px;overflow:hidden;">'
+        +   '<div style="height:100%;width:'+(pct!==null?Math.min(pct,100):0)+'%;background:'+(pass?'#10b981':pend?'#d1d5db':'#ef4444')+';border-radius:2px;transition:width .5s;"></div>'
+        + '</div>'
+        + '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Passing: '+ps+'%'+(r.attemptNo>1?' · Attempt '+r.attemptNo:'')+'</div>'
         + '</div>';
     });
 
     // Weekly Average
     if (weeklyAvg !== null) {
-      var avgPass = weeklyAvg >= PASS_PCT;
-      html += '<div style="background:'+(avgPass?'#d1fae5':'#fee2e2')+';border-radius:10px;padding:12px 16px;margin-bottom:18px;">'
-        + '<div style="font-weight:700;font-size:14px;color:'+(avgPass?'#065f46':'#991b1b')+';">Weekly Average: '+weeklyAvg+'%'
-        + ' <span style="font-size:12px;font-weight:500;">'+(avgPass?'✅ Passed':'❌ Below passing')+'</span></div>'
-        + '<div style="font-size:11px;color:'+(avgPass?'#065f46':'#991b1b')+';">Average of '+weekly.length+' weekly test'+(weekly.length>1?'s':'')+' · Passing: 60%</div>'
+      var defaultPS = (weekly[0] && weekly[0].passingScore) || 60;
+      var avgPass = weeklyAvg >= defaultPS;
+      html += '<div style="background:'+(avgPass?'linear-gradient(135deg,#059669,#047857)':'linear-gradient(135deg,#dc2626,#b91c1c)')+';border-radius:12px;padding:14px 18px;margin-bottom:20px;color:#fff;display:flex;justify-content:space-between;align-items:center;">'
+        + '<div>'
+        +   '<div style="font-size:11px;opacity:.8;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Weekly Average</div>'
+        +   '<div style="font-size:24px;font-weight:800;margin-top:2px;">'+weeklyAvg+'%</div>'
+        +   '<div style="font-size:11px;opacity:.8;margin-top:2px;">'+weekly.length+' test'+(weekly.length>1?'s':'')+' · Passing: '+defaultPS+'%</div>'
+        + '</div>'
+        + '<div style="font-size:32px;">'+(avgPass?'✅':'❌')+'</div>'
         + '</div>';
     }
   }
 
   // Final Exam
   if (final_.length) {
-    html += '<div style="font-weight:600;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Final Exam</div>';
+    html += '<div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;">Final Examination</div>';
     final_.forEach(function(r) {
-      var pct = r.percentage !== null && r.percentage !== '' ? r.percentage : '—';
-      var pass = r.result === 'Pass';
-      var pending = r.result === 'Pending';
-      html += '<div style="background:#fff;border:2px solid '+(pending?'#e5e7eb':pass?'#10b981':'#ef4444')+';border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
-        +   '<span style="font-weight:600;font-size:14px;">'+escHtmlSt(r.testLabel||'Final Exam')+'</span>'
-        +   (pending ? '<span class="pend-pill">Pending</span>'
-                     : '<span class="'+(pass?'pass-pill':'fail-pill')+'">'+(pass?'PASS':'FAIL')+'</span>')
+      var pct = r.percentage !== null && r.percentage !== '' ? r.percentage : null;
+      var pass = r.result === 'Pass', pend = r.result === 'Pending';
+      var badge = r.badge;
+      var rank = r.classRank;
+      var ps = r.passingScore || 60;
+      html += '<div style="background:#fff;border:2px solid '+(pass?'#10b981':pend?'#e5e7eb':'#ef4444')+';border-radius:14px;padding:18px 20px;margin-bottom:10px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">'
+        +   '<div>'
+        +     '<div style="font-weight:700;font-size:15px;color:#111827;">'+escHtmlSt(r.testLabel||'Final Exam')+'</div>'
+        +     '<div style="font-size:11px;color:#9ca3af;margin-top:2px;">'+escHtmlSt(r.submittedAt?new Date(r.submittedAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'')+'</div>'
+        +   '</div>'
+        +   (badge ? gemBadge(badge) : pend ? '<span style="background:#fef3c7;color:#92400e;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;">⏳ Pending</span>' : '')
         + '</div>'
-        + '<div style="display:flex;gap:20px;font-size:13px;">'
-        +   '<div><span style="color:#6b7280;">Score </span><b>'+escHtmlSt(String(r.totalScore!==null&&r.totalScore!==''?r.totalScore:'—'))+'</b><span style="color:#9ca3af;font-size:11px;"> /'+escHtmlSt(String(r.totalMarks||''))+'</span></div>'
-        +   '<div><span style="color:#6b7280;">Percentage </span><b style="font-size:20px;color:'+(pass?'#059669':'#dc2626')+'">'+pct+'%</b></div>'
+        + '<div style="display:flex;gap:30px;align-items:center;">'
+        +   '<div><div style="font-size:11px;color:#6b7280;margin-bottom:2px;">Score</div><div style="font-size:22px;font-weight:800;">'+(r.totalScore!==null&&r.totalScore!==''?r.totalScore:'—')+'<span style="font-size:13px;font-weight:400;color:#9ca3af;"> /'+escHtmlSt(String(r.totalMarks||''))+'</span></div></div>'
+        +   '<div><div style="font-size:11px;color:#6b7280;margin-bottom:2px;">Percentage</div><div style="font-size:32px;font-weight:800;color:'+(pass?'#059669':pend?'#9ca3af':'#dc2626')+'">'+(pct!==null?pct+'%':'—')+'</div></div>'
+        +   (rank ? '<div style="margin-left:auto;text-align:right;"><div style="font-size:11px;color:#6b7280;margin-bottom:2px;">Class Rank</div><div style="font-size:22px;font-weight:800;color:#0D1B2E;">#'+rank.rank+'<span style="font-size:12px;font-weight:400;color:#9ca3af;"> of '+rank.total+'</span></div></div>' : '')
         + '</div>'
+        + '<div style="margin-top:12px;height:6px;background:#f3f4f6;border-radius:3px;overflow:hidden;">'
+        +   '<div style="height:100%;width:'+(pct!==null?Math.min(pct,100):0)+'%;background:'+(pass?'#10b981':pend?'#d1d5db':'#ef4444')+';border-radius:3px;"></div>'
+        + '</div>'
+        + '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Passing: '+ps+'%'+(r.attemptNo>1?' · Attempt '+r.attemptNo:'')+'</div>'
         + '</div>';
     });
   }
@@ -2050,5 +2289,6 @@ function otStartPolling() {
 // Patch into portal load — call otStartPolling after portalData is set
 var _otPortalLoadOrig = window.onPortalLoad;
 window.addEventListener('portalReady', otStartPolling);
+</script>
 </body>
 </html>

@@ -2280,6 +2280,23 @@ function doGet(e) {
         ? shBatch.getRange(2, 1, shBatch.getLastRow() - 1, 10).getValues()
         : [];
       
+      var parseJsDate = function(val) {
+        if (!val) return null;
+        if (val instanceof Date) return val;
+        var s = String(val).trim();
+        var m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (m) {
+          return new Date(parseInt(m[3], 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10));
+        }
+        var m2 = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+        if (m2) {
+          return new Date(parseInt(m2[1], 10), parseInt(m2[2], 10) - 1, parseInt(m2[3], 10));
+        }
+        var d = new Date(s);
+        if (!isNaN(d.getTime())) return d;
+        return null;
+      };
+
       var finishedBatchesMap = {};
       var batchCourseMap = {};
       var today = new Date();
@@ -2292,8 +2309,8 @@ function doGet(e) {
         var isCompleted = false;
         
         if (endVal) {
-          var endDate = new Date(endVal);
-          if (!isNaN(endDate.getTime()) && endDate < today) {
+          var endDate = parseJsDate(endVal);
+          if (endDate && endDate < today) {
             isCompleted = true;
           }
         }
@@ -2303,7 +2320,8 @@ function doGet(e) {
         }
         batchCourseMap[code] = {
           course: r[2] || '',
-          startDate: isNew ? r[5] : r[4]
+          startDate: isNew ? r[5] : r[4],
+          centre: r[1] || ''
         };
       });
       
@@ -2329,14 +2347,14 @@ function doGet(e) {
               var bInfo = batchCourseMap[bCode] || {};
               var enrollMonth = '';
               if (e.enrolledAt) {
-                var enrolDate = new Date(e.enrolledAt);
-                if (!isNaN(enrolDate.getTime())) {
+                var enrolDate = parseJsDate(e.enrolledAt);
+                if (enrolDate) {
                   enrollMonth = enrolDate.toLocaleString('en-IN', { month: 'short', year: 'numeric' });
                 }
               }
               if (!enrollMonth && bInfo.startDate) {
-                var startDate = new Date(bInfo.startDate);
-                if (!isNaN(startDate.getTime())) {
+                var startDate = parseJsDate(bInfo.startDate);
+                if (startDate) {
                   enrollMonth = startDate.toLocaleString('en-IN', { month: 'short', year: 'numeric' });
                 }
               }
@@ -2347,6 +2365,7 @@ function doGet(e) {
                 contact: s.mobile || '',
                 email: s.email || '',
                 course: bInfo.course || '',
+                centre: bInfo.centre || '',
                 batchCode: bCode,
                 enrolmentMonth: enrollMonth || 'N/A'
               });

@@ -2353,19 +2353,53 @@ function otFetchBatches() {
   });
 }
 
+function otBatchStatus(b) {
+  var now = new Date(); now.setHours(0,0,0,0);
+  var start = b.startDate ? new Date(b.startDate) : null;
+  var end   = b.endDate   ? new Date(b.endDate)   : null;
+  if (start && start > now) return 'upcoming';
+  if (end   && end   < now) return 'completed';
+  return 'active';
+}
+
 function otRenderBatchChips(batches) {
   var el=document.getElementById('ot-batch-chips');
   if(!el) return;
   if(!batches||!batches.length){el.innerHTML='<span style="color:#9ca3af;font-size:12px;">No batches assigned</span>';return;}
   el.innerHTML='';
   batches.forEach(function(b){
+    var status = otBatchStatus(b);
     var chip=document.createElement('div');
     chip.className='batch-chip';
     chip.dataset.code=b.batchCode;
-    chip.innerHTML='<input type="checkbox" style="accent-color:#fff;"> <span>'+escHtml(b.batchCode)+'</span><span style="opacity:.6;font-size:11px;margin-left:4px;">'+escHtml(b.courseName||b.course||'')+'</span>';
+
+    var statusTag = '';
+    var chipExtra = '';
+    if (status==='upcoming') {
+      statusTag = '<span style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;margin-left:6px;">⏰ UPCOMING</span>';
+    } else if (status==='completed') {
+      statusTag = '<span style="background:#f3f4f6;color:#9ca3af;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;margin-left:6px;">✓ COMPLETED</span>';
+      chipExtra = 'opacity:.6;';
+    }
+
+    chip.style.cssText = chipExtra;
+    chip.innerHTML = '<input type="checkbox" style="accent-color:#fff;"> '
+      + '<span style="font-weight:600;">'+escHtml(b.batchCode)+'</span>'
+      + '<span style="opacity:.6;font-size:11px;margin-left:5px;">'+escHtml(b.courseName||b.course||'')+'</span>'
+      + statusTag;
+
     chip.querySelector('input').addEventListener('change',function(){
-      if(this.checked){otSelectedBatches.add(b.batchCode);chip.classList.add('selected');}
-      else{otSelectedBatches.delete(b.batchCode);chip.classList.remove('selected');}
+      if(this.checked){
+        otSelectedBatches.add(b.batchCode);
+        chip.classList.add('selected');
+        if(status==='completed') {
+          var w = document.getElementById('ot-student-check-list');
+          if(w) setTimeout(function(){ var note=document.createElement('div'); note.style='font-size:11px;color:#d97706;margin-top:4px;'; note.textContent='⚠ This batch is completed — tests will still work'; w.parentElement.appendChild(note); },100);
+        }
+      } else {
+        otSelectedBatches.delete(b.batchCode);
+        chip.classList.remove('selected');
+      }
       otLoadStudentsForSelectedBatches();
     });
     el.appendChild(chip);
@@ -2375,9 +2409,22 @@ function otRenderBatchChips(batches) {
 function otLoadStudentsForSelectedBatches() {
   var codes=[...otSelectedBatches];
   if(!codes.length){otAllStudents=[];otRenderStudentList([]);return;}
+  var el=document.getElementById('ot-student-check-list');
+  if(el) el.innerHTML='<span style="color:#9ca3af;font-size:12px;">Loading students…</span>';
   gasGet({action:'getStudentsForBatches',instructor:instructorName,batchCodes:codes.join(',')},function(err,d){
-    if(err||!d||d.status!=='ok') return;
+    if(err||!d) {
+      if(el) el.innerHTML='<span style="color:#dc2626;font-size:12px;">⚠ Network error. Check connection and try again.</span>';
+      return;
+    }
+    if(d.status!=='ok') {
+      if(el) el.innerHTML='<span style="color:#d97706;font-size:12px;">⚠ '+(d.reason==='unknown_action'?'Redeploy Apps Script to enable student list (OnlineTests.gs not deployed yet)':d.reason||'Error loading students')+'</span>';
+      return;
+    }
     otAllStudents=d.students||[];
+    if(!otAllStudents.length && el) {
+      el.innerHTML='<span style="color:#9ca3af;font-size:12px;">No students enrolled in selected batch(es) yet.</span>';
+      return;
+    }
     otRenderStudentList(otAllStudents);
   });
 }

@@ -2419,25 +2419,28 @@ function doGet(e) {
     }
 
     // ── ONLINE TEST SYSTEM ────────────────────────────────────
-    if (act==='setupQuestionBank')    return respond(otSetupQuestionBank(ss,p));
-    if (act==='getQuestionBank')      return respond(otGetQuestionBank(ss,p));
-    if (act==='createOnlineTest')     return respond(otCreateTest(ss,p));
-    if (act==='getInstructorTests')   return respond(otGetInstructorTests(ss,p));
-    if (act==='getTestDetails')       return respond(otGetTestDetails(ss,p));
-    if (act==='saveTestQuestions')    return respond(otSaveTestQuestions(ss,p));
-    if (act==='addCustomQuestion')    return respond(otAddCustomQuestion(ss,p));
-    if (act==='activateTest')         return respond(otActivateTest(ss,p));
-    if (act==='closeTest')            return respond(otCloseTest(ss,p));
-    if (act==='releaseResults')       return respond(otReleaseResults(ss,p));
-    if (act==='getStudentActiveTest') return respond(otGetStudentActiveTest(ss,p));
-    if (act==='getTestQuestions')     return respond(otGetTestQuestions(ss,p));
-    if (act==='submitTestResponse')   return respond(otSubmitTestResponse(ss,p));
-    if (act==='logTestWarning')       return respond(otLogTestWarning(ss,p));
-    if (act==='getProctorRoom')       return respond(otGetProctorRoom(ss,p));
-    if (act==='saveManualGrade')      return respond(otSaveManualGrade(ss,p));
-    if (act==='getPendingManualGrades') return respond(otGetPendingManualGrades(ss,p));
-    if (act==='getStudentResults')    return respond(otGetStudentResults(ss,p));
-    if (act==='getTestResultsSummary') return respond(otGetTestResultsSummary(ss,p));
+    if (act==='setupQuestionBank')       return respond(otSetupQuestionBank(ss,p));
+    if (act==='getQuestionBank')         return respond(otGetQuestionBank(ss,p));
+    if (act==='getStudentsForBatches')   return respond(otGetStudentsForBatches(ss,p));
+    if (act==='createOnlineTest')        return respond(otCreateTest(ss,p));
+    if (act==='getInstructorTests')      return respond(otGetInstructorTests(ss,p));
+    if (act==='getTestDetails')          return respond(otGetTestDetails(ss,p));
+    if (act==='saveTestQuestions')       return respond(otSaveTestQuestions(ss,p));
+    if (act==='addCustomQuestion')       return respond(otAddCustomQuestion(ss,p));
+    if (act==='activateTest')            return respond(otActivateTest(ss,p));
+    if (act==='scheduleTestActivation')  return respond(otScheduleTestActivation(ss,p));
+    if (act==='closeTest')               return respond(otCloseTest(ss,p));
+    if (act==='releaseResults')          return respond(otReleaseResults(ss,p));
+    if (act==='getStudentActiveTest')    return respond(otGetStudentActiveTest(ss,p));
+    if (act==='getTestQuestions')        return respond(otGetTestQuestions(ss,p));
+    if (act==='submitTestResponse')      return respond(otSubmitTestResponse(ss,p));
+    if (act==='logTestWarning')          return respond(otLogTestWarning(ss,p));
+    if (act==='getProctorRoom')          return respond(otGetProctorRoom(ss,p));
+    if (act==='saveManualGrade')         return respond(otSaveManualGrade(ss,p));
+    if (act==='getPendingManualGrades')  return respond(otGetPendingManualGrades(ss,p));
+    if (act==='getStudentResults')       return respond(otGetStudentResultsV3(ss,p));
+    if (act==='getTestResultsSummary')   return respond(otGetTestResultsSummary(ss,p));
+    if (act==='setupScheduledTrigger')   return respond(otSetupScheduledTrigger(ss,p));
 
     return respond({status:'error',reason:'unknown_action'});
   } catch(err){return respond({status:'error',message:err.toString()});}
@@ -3910,78 +3913,85 @@ function detectSlotOrDate(val) {
 function getOrCreateSheet(ss,name){let s=ss.getSheetByName(name);if(!s)s=ss.insertSheet(name);return s;}
 
 
-// ── New Sheet Names ────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// ONLINE TEST SYSTEM — OnlineTests.gs
+// Paste as a separate script file in Apps Script (alongside Code.gs)
+// Version 3 — Badges, Class Rank, Passing Score, Correct Answers for Instructors
+// ═══════════════════════════════════════════════════════════════
+
+// ── Sheet Names ────────────────────────────────────────────────
 const SH_QUESTION_BANK      = 'QuestionBank';
 const SH_CUSTOM_QUESTIONS   = 'CustomQuestions';
 const SH_ONLINE_TESTS       = 'OnlineTests';
-const SH_OT_QUESTIONS       = 'OT_Questions';   // questions per test
-const SH_OT_RESPONSES       = 'OT_Responses';   // student answers
+const SH_OT_QUESTIONS       = 'OT_Questions';
+const SH_OT_RESPONSES       = 'OT_Responses';
 const SH_OT_MANUAL_GRADES   = 'OT_ManualGrades';
 const SH_OT_WARNINGS        = 'OT_Warnings';
 
-// ── Constants ──────────────────────────────────────────────────
-const OT_PASS_PERCENT = 60;
+const OT_PASS_PERCENT = 60; // default — overridden per test
 
-// ════════════════════════════════════════════════════════════════
-// SECTION A — Sheet header & setup helpers
-// ════════════════════════════════════════════════════════════════
+// ── OnlineTests sheet columns (23 total) ──────────────────────
+// 1  Test ID          9  Neg Marks         17 Expiry Mode
+// 2  Test Label       10 Activated At      18 Expiry At
+// 23 Passing Score %
+// 3  Test Type        11 Closed At         19 Allow Retake
+// 4  Batch Codes      12 Results Released  20 Shuffle Questions
+// 5  Course           13 Results Mode      21 Instructions
+// 6  Duration (mins)  14 Created By        22 Scheduled Activate At
+// 7  Status           15 Created At
+// 8  Negative Marking 16 Target Students
 
 function ensureQBHeaders(sh) {
-  if (sh.getLastRow() > 0 && sh.getRange(1,1).getValue() !== '') return;
-  const h = ['QB_ID','Course','Topic','Question','Option1','Option2','Option3','Option4','CorrectOption','Type','Source','Added At'];
+  if (sh.getLastRow()>0&&sh.getRange(1,1).getValue()!=='') return;
+  const h=['QB_ID','Course','Topic','Question','Option1','Option2','Option3','Option4','CorrectOption','Type','Source','Added At'];
   sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
   sh.setFrozenRows(1);
-  [80,70,130,350,160,160,160,160,90,70,70,160].forEach((w,i)=>sh.setColumnWidth(i+1,w));
 }
-
 function ensureCQHeaders(sh) {
-  if (sh.getLastRow() > 0 && sh.getRange(1,1).getValue() !== '') return;
-  const h = ['CQ_ID','Course','Topic','Question','Option1','Option2','Option3','Option4','CorrectAnswer','Type','MaxMarks','CreatedBy','Created At'];
+  if (sh.getLastRow()>0&&sh.getRange(1,1).getValue()!=='') return;
+  const h=['CQ_ID','Course','Topic','Question','Option1','Option2','Option3','Option4','CorrectAnswer','Type','MaxMarks','CreatedBy','Created At'];
   sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
   sh.setFrozenRows(1);
-  [80,70,130,350,160,160,160,160,160,70,80,130,160].forEach((w,i)=>sh.setColumnWidth(i+1,w));
 }
-
 function ensureOTHeaders(sh) {
-  if (sh.getLastRow() > 0 && sh.getRange(1,1).getValue() !== '') return;
-  const h = ['Test ID','Test Label','Test Type','Batch Code','Course','Duration (mins)','Status','Negative Marking','Neg Marks','Activated At','Closed At','Results Released','Results Mode','Created By','Created At'];
+  if (sh.getLastRow()>0&&sh.getRange(1,1).getValue()!=='') return;
+  const h=[
+    'Test ID','Test Label','Test Type','Batch Codes','Course','Duration (mins)','Status',
+    'Negative Marking','Neg Marks','Activated At','Closed At','Results Released','Results Mode',
+    'Created By','Created At','Target Students','Expiry Mode','Expiry At',
+    'Allow Retake','Shuffle Questions','Instructions','Scheduled Activate At','Passing Score %'
+  ];
   sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
   sh.setFrozenRows(1);
-  [130,180,100,120,80,110,80,110,80,160,160,110,100,130,160].forEach((w,i)=>sh.setColumnWidth(i+1,w));
 }
-
 function ensureOTQHeaders(sh) {
-  if (sh.getLastRow() > 0 && sh.getRange(1,1).getValue() !== '') return;
-  const h = ['Test ID','Q_ID','Source','Question','Option1','Option2','Option3','Option4','CorrectOption','Type','Marks','MaxMarks','Order'];
+  if (sh.getLastRow()>0&&sh.getRange(1,1).getValue()!=='') return;
+  const h=['Test ID','Q_ID','Source','Question','Option1','Option2','Option3','Option4','CorrectOption','Type','Marks','MaxMarks','Order'];
   sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
   sh.setFrozenRows(1);
 }
-
 function ensureOTRHeaders(sh) {
-  if (sh.getLastRow() > 0 && sh.getRange(1,1).getValue() !== '') return;
-  const h = ['Response ID','Test ID','Student ID','Student Name','Batch Code','Submitted At','Submit Type','Total Questions','Auto Score','Manual Score','Total Score','Total Marks','Percentage','Result','Answers JSON'];
+  if (sh.getLastRow()>0&&sh.getRange(1,1).getValue()!=='') return;
+  const h=['Response ID','Test ID','Student ID','Student Name','Batch Code','Submitted At','Submit Type','Total Questions','Auto Score','Manual Score','Total Score','Total Marks','Percentage','Result','Answers JSON','Attempt No'];
   sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
   sh.setFrozenRows(1);
 }
-
 function ensureMGHeaders(sh) {
-  if (sh.getLastRow() > 0 && sh.getRange(1,1).getValue() !== '') return;
-  const h = ['Test ID','Student ID','Q_ID','Student Answer','Instructor Score','Max Marks','Graded By','Graded At'];
+  if (sh.getLastRow()>0&&sh.getRange(1,1).getValue()!=='') return;
+  const h=['Test ID','Student ID','Q_ID','Student Answer','Instructor Score','Max Marks','Graded By','Graded At'];
   sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
   sh.setFrozenRows(1);
 }
-
 function ensureOTWHeaders(sh) {
-  if (sh.getLastRow() > 0 && sh.getRange(1,1).getValue() !== '') return;
-  const h = ['Test ID','Student ID','Student Name','Warning Type','Warning Count','Timestamp'];
+  if (sh.getLastRow()>0&&sh.getRange(1,1).getValue()!=='') return;
+  const h=['Test ID','Student ID','Student Name','Warning Type','Warning Count','Timestamp'];
   sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
   sh.setFrozenRows(1);
 }
-
 function ensureOnlineTestSheets(ss) {
-  [SH_QUESTION_BANK, SH_CUSTOM_QUESTIONS, SH_ONLINE_TESTS,
-   SH_OT_QUESTIONS, SH_OT_RESPONSES, SH_OT_MANUAL_GRADES, SH_OT_WARNINGS].forEach(function(name) {
-    if (!ss.getSheetByName(name)) ss.insertSheet(name);
+  [SH_QUESTION_BANK,SH_CUSTOM_QUESTIONS,SH_ONLINE_TESTS,
+   SH_OT_QUESTIONS,SH_OT_RESPONSES,SH_OT_MANUAL_GRADES,SH_OT_WARNINGS].forEach(function(n){
+    if(!ss.getSheetByName(n)) ss.insertSheet(n);
   });
   ensureQBHeaders(ss.getSheetByName(SH_QUESTION_BANK));
   ensureCQHeaders(ss.getSheetByName(SH_CUSTOM_QUESTIONS));
@@ -3993,657 +4003,649 @@ function ensureOnlineTestSheets(ss) {
 }
 
 // ════════════════════════════════════════════════════════════════
-// SECTION B — Action Handlers (paste inside doGet before unknown_action)
+// ACTION HANDLERS — paste inside doGet() before unknown_action
 // ════════════════════════════════════════════════════════════════
-
-
+/*
+    if (act==='setupQuestionBank')       return respond(otSetupQuestionBank(ss,p));
+    if (act==='getQuestionBank')         return respond(otGetQuestionBank(ss,p));
+    if (act==='getStudentsForBatches')   return respond(otGetStudentsForBatches(ss,p));
+    if (act==='createOnlineTest')        return respond(otCreateTest(ss,p));
+    if (act==='getInstructorTests')      return respond(otGetInstructorTests(ss,p));
+    if (act==='getTestDetails')          return respond(otGetTestDetails(ss,p));
+    if (act==='saveTestQuestions')       return respond(otSaveTestQuestions(ss,p));
+    if (act==='addCustomQuestion')       return respond(otAddCustomQuestion(ss,p));
+    if (act==='activateTest')            return respond(otActivateTest(ss,p));
+    if (act==='scheduleTestActivation')  return respond(otScheduleTestActivation(ss,p));
+    if (act==='closeTest')               return respond(otCloseTest(ss,p));
+    if (act==='releaseResults')          return respond(otReleaseResults(ss,p));
+    if (act==='getStudentActiveTest')    return respond(otGetStudentActiveTest(ss,p));
+    if (act==='getTestQuestions')        return respond(otGetTestQuestions(ss,p));
+    if (act==='submitTestResponse')      return respond(otSubmitTestResponse(ss,p));
+    if (act==='logTestWarning')          return respond(otLogTestWarning(ss,p));
+    if (act==='getProctorRoom')          return respond(otGetProctorRoom(ss,p));
+    if (act==='saveManualGrade')         return respond(otSaveManualGrade(ss,p));
+    if (act==='getPendingManualGrades')  return respond(otGetPendingManualGrades(ss,p));
+    if (act==='getStudentResults')       return respond(otGetStudentResults(ss,p));
+    if (act==='getTestResultsSummary')   return respond(otGetTestResultsSummary(ss,p));
+    if (act==='setupScheduledTrigger')   return respond(otSetupScheduledTrigger(ss,p));
+*/
 
 // ════════════════════════════════════════════════════════════════
-// SECTION C — Implementation Functions
+// HELPER — parse test row into object (22 columns)
+// ════════════════════════════════════════════════════════════════
+function otParseTestRow(r) {
+  return {
+    testId:r[0], testLabel:r[1], testType:r[2], batchCodes:r[3], course:r[4],
+    duration:r[5], status:r[6], negativeMarking:r[7], negMarkValue:r[8],
+    activatedAt:r[9]?new Date(r[9]).toISOString():'',
+    closedAt:r[10]?new Date(r[10]).toISOString():'',
+    resultsReleased:r[11], resultsMode:r[12],
+    createdBy:r[13], createdAt:r[14]?new Date(r[14]).toISOString():'',
+    targetStudents:r[15]||'ALL',
+    expiryMode:r[16]||'manual',
+    expiryAt:r[17]?new Date(r[17]).toISOString():'',
+    allowRetake:r[18]||'No',
+    shuffleQuestions:r[19]||'No',
+    instructions:r[20]||'',
+    scheduledActivateAt:r[21]?new Date(r[21]).toISOString():'',
+    passingScore:r[22]!==undefined&&r[22]!==''?parseFloat(r[22]):OT_PASS_PERCENT
+  };
+}
+
+// ════════════════════════════════════════════════════════════════
+// IMPLEMENTATION FUNCTIONS
 // ════════════════════════════════════════════════════════════════
 
 function otSetupQuestionBank(ss, p) {
-  // Verify instructor auth
-  if (!p.instructor) return {status:'error', reason:'auth_required'};
+  if (!p.instructor) return {status:'error',reason:'auth_required'};
   ensureOnlineTestSheets(ss);
   var sh = ss.getSheetByName(SH_QUESTION_BANK);
   ensureQBHeaders(sh);
-
-  // Clear existing data (keep header)
-  if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1);
-
-  var data = QUESTION_BANK_DATA; // embedded below
-  var rows = data.map(function(q, i) {
-    return [q.id, q.course, q.topic, q.q, q.o1, q.o2, q.o3, q.o4, q.ans, q.type, 'Excel Import', new Date().toISOString()];
+  if (sh.getLastRow()>1) sh.deleteRows(2, sh.getLastRow()-1);
+  var rows = QUESTION_BANK_DATA.map(function(q){
+    return [q.id,q.course,q.topic,q.q,q.o1,q.o2,q.o3,q.o4,q.ans,q.type,'Excel Import',new Date().toISOString()];
   });
-  if (rows.length > 0) sh.getRange(2, 1, rows.length, 12).setValues(rows);
-  return {status:'ok', imported: rows.length};
+  if (rows.length>0) sh.getRange(2,1,rows.length,12).setValues(rows);
+  return {status:'ok', imported:rows.length};
 }
 
 function otGetQuestionBank(ss, p) {
-  if (!p.instructor) return {status:'error', reason:'auth_required'};
+  if (!p.instructor) return {status:'error',reason:'auth_required'};
   ensureOnlineTestSheets(ss);
-  var sh = ss.getSheetByName(SH_QUESTION_BANK);
-  var shCQ = ss.getSheetByName(SH_CUSTOM_QUESTIONS);
-  var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow()-1, 12).getValues() : [];
-  var course = (p.course||'').toLowerCase();
-  var topic  = (p.topic||'').toLowerCase();
-
-  var questions = rows
-    .filter(function(r){ return r[0] && r[3]; })
+  var sh=ss.getSheetByName(SH_QUESTION_BANK);
+  var shCQ=ss.getSheetByName(SH_CUSTOM_QUESTIONS);
+  var rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,12).getValues():[];
+  var course=(p.course||'').toLowerCase();
+  var topic=(p.topic||'').toLowerCase();
+  var inclCorr = p.includeCorrect==='true' && !!p.instructor;
+  var questions=rows.filter(function(r){return r[0]&&r[3];})
     .filter(function(r){
-      var ok = true;
-      if (course) ok = ok && String(r[1]).toLowerCase() === course;
-      if (topic)  ok = ok && String(r[2]).toLowerCase() === topic;
+      var ok=true;
+      if(course) ok=ok&&String(r[1]).toLowerCase()===course;
+      if(topic)  ok=ok&&String(r[2]).toLowerCase()===topic;
       return ok;
     })
     .map(function(r){
-      return {id:r[0], course:r[1], topic:r[2], question:r[3],
-              opt1:r[4], opt2:r[5], opt3:r[6], opt4:r[7],
-              type:r[9]||'MCQ'};
-      // NOTE: correct answer (r[8]) is intentionally omitted
+      var q={id:r[0],course:r[1],topic:r[2],question:r[3],opt1:r[4],opt2:r[5],opt3:r[6],opt4:r[7],type:r[9]||'MCQ'};
+      if(inclCorr) q.correctOption=r[8];
+      return q;
     });
-
-  // Also get custom questions if requested
-  var cqRows = shCQ.getLastRow() > 1 ? shCQ.getRange(2,1,shCQ.getLastRow()-1,13).getValues() : [];
-  var customQs = cqRows.filter(function(r){ return r[0]; }).map(function(r){
-    return {id:r[0], course:r[1], topic:r[2], question:r[3],
-            opt1:r[4], opt2:r[5], opt3:r[6], opt4:r[7],
-            correctAnswer:r[8], type:r[9], maxMarks:r[10], source:'custom'};
+  var cqRows=shCQ.getLastRow()>1?shCQ.getRange(2,1,shCQ.getLastRow()-1,13).getValues():[];
+  var customQs=cqRows.filter(function(r){return r[0];}).map(function(r){
+    return{id:r[0],course:r[1],topic:r[2],question:r[3],opt1:r[4],opt2:r[5],opt3:r[6],opt4:r[7],correctAnswer:r[8],type:r[9],maxMarks:r[10],source:'custom'};
   });
-
-  // Get topics list
-  var topicMap = {};
+  var topicMap={};
   rows.filter(function(r){return r[0];}).forEach(function(r){
-    var c = r[1], t = r[2];
-    if (!topicMap[c]) topicMap[c] = [];
-    if (topicMap[c].indexOf(t) === -1) topicMap[c].push(t);
+    if(!topicMap[r[1]]) topicMap[r[1]]=[];
+    if(topicMap[r[1]].indexOf(r[2])===-1) topicMap[r[1]].push(r[2]);
   });
+  return{status:'ok',questions:questions,customQuestions:customQs,topicMap:topicMap,total:questions.length};
+}
 
-  return {status:'ok', questions:questions, customQuestions:customQs, topicMap:topicMap, total:questions.length};
+function otGetStudentsForBatches(ss, p) {
+  if (!p.instructor || !p.batchCodes) return {status:'error',reason:'missing_params'};
+  var codes = String(p.batchCodes).split(',').map(function(s){return s.trim();}).filter(Boolean);
+  var shStu = ss.getSheetByName(SH_STUDENTS);
+  if (!shStu) return {status:'ok', students:[]};
+  var rows = shStu.getLastRow()>1 ? shStu.getRange(2,1,shStu.getLastRow()-1,10).getValues() : [];
+  var students = [];
+  rows.forEach(function(r){
+    if (codes.indexOf(String(r[1]))!==-1 && r[0]) {
+      students.push({studentId:String(r[0]), studentName:r[2]||r[3]||String(r[0]), batchCode:String(r[1])});
+    }
+  });
+  return {status:'ok', students:students};
 }
 
 function otCreateTest(ss, p) {
-  if (!p.instructor) return {status:'error', reason:'auth_required'};
+  if (!p.instructor) return {status:'error',reason:'auth_required'};
   ensureOnlineTestSheets(ss);
   var sh = ss.getSheetByName(SH_ONLINE_TESTS);
   ensureOTHeaders(sh);
-
   var now = new Date();
-  var testId = 'OT-' + now.getFullYear() + '-' + Utilities.formatDate(now, Session.getScriptTimeZone(), 'MMddHHmmss');
-  var negMarks = p.negativeMarking === 'true' ? (parseFloat(p.negMarkValue)||0.25) : 0;
-
+  var testId = 'OT-'+now.getFullYear()+'-'+Utilities.formatDate(now,Session.getScriptTimeZone(),'MMddHHmmss');
+  var negMarks = p.negativeMarking==='true'?(parseFloat(p.negMarkValue)||0.25):0;
+  // Determine status
+  var schedAt = p.scheduledActivateAt || '';
+  var status = schedAt ? 'Scheduled' : 'Draft';
+  // Expiry
+  var expiryMode = p.expiryMode || 'manual';
+  var expiryAt = '';
+  if (expiryMode==='endofday') {
+    var eod = new Date(); eod.setHours(23,59,59,0);
+    expiryAt = eod.toISOString();
+  } else if (expiryMode==='custom' && p.expiryAt) {
+    expiryAt = new Date(p.expiryAt).toISOString();
+  }
+  var passingScore = Math.min(90, Math.max(40, parseFloat(p.passingScore)||OT_PASS_PERCENT));
   sh.appendRow([
-    testId,
-    p.testLabel || 'Online Test',
-    p.testType  || 'Weekly',      // Weekly / Final
-    p.batchCode || '',
-    p.course    || '',
-    parseInt(p.duration)||30,
-    'Draft',                       // Status
-    p.negativeMarking==='true' ? 'Yes' : 'No',
-    negMarks,
-    '',  // Activated At
-    '',  // Closed At
-    'No',  // Results Released
-    'summary',  // Results Mode: summary | full
-    p.instructor,
-    now.toISOString()
+    testId, p.testLabel||'Online Test', p.testType||'Weekly',
+    p.batchCodes||'', p.course||'', parseInt(p.duration)||30, status,
+    p.negativeMarking==='true'?'Yes':'No', negMarks,
+    '','','No','summary', p.instructor, now.toISOString(),
+    p.targetStudents||'ALL', expiryMode, expiryAt,
+    p.allowRetake==='true'?'Yes':'No',
+    p.shuffleQuestions==='true'?'Yes':'No',
+    p.instructions||'', schedAt, passingScore
   ]);
-
-  return {status:'ok', testId:testId, message:'Test created as Draft'};
+  // If scheduled, set up trigger check
+  if (schedAt) otEnsureScheduledTrigger();
+  return {status:'ok', testId:testId, testStatus:status};
 }
 
 function otGetInstructorTests(ss, p) {
-  if (!p.instructor) return {status:'error', reason:'auth_required'};
+  if (!p.instructor) return {status:'error',reason:'auth_required'};
   ensureOnlineTestSheets(ss);
   var sh = ss.getSheetByName(SH_ONLINE_TESTS);
-  var rows = sh.getLastRow() > 1 ? sh.getRange(2,1,sh.getLastRow()-1,15).getValues() : [];
-
-  var tests = rows.filter(function(r){ return r[0]; }).map(function(r){
-    return {
-      testId:r[0], testLabel:r[1], testType:r[2], batchCode:r[3], course:r[4],
-      duration:r[5], status:r[6], negativeMarking:r[7], negMarkValue:r[8],
-      activatedAt:r[9]?new Date(r[9]).toISOString():'',
-      closedAt:r[10]?new Date(r[10]).toISOString():'',
-      resultsReleased:r[11], resultsMode:r[12],
-      createdBy:r[13], createdAt:r[14]?new Date(r[14]).toISOString():''
-    };
-  });
-
-  // Count questions per test
+  var rows = sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,22).getValues():[];
+  // Auto-check scheduled
+  otCheckScheduledActivations_(ss, rows, sh);
+  // Re-read after potential updates
+  rows = sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,22).getValues():[];
+  var tests = rows.filter(function(r){return r[0];}).map(otParseTestRow);
   var shOTQ = ss.getSheetByName(SH_OT_QUESTIONS);
-  var otqRows = shOTQ.getLastRow()>1 ? shOTQ.getRange(2,1,shOTQ.getLastRow()-1,1).getValues() : [];
+  var otqRows = shOTQ.getLastRow()>1?shOTQ.getRange(2,1,shOTQ.getLastRow()-1,1).getValues():[];
   var qCounts = {};
-  otqRows.forEach(function(r){ qCounts[r[0]] = (qCounts[r[0]]||0)+1; });
-  tests.forEach(function(t){ t.questionCount = qCounts[t.testId]||0; });
-
+  otqRows.forEach(function(r){qCounts[r[0]]=(qCounts[r[0]]||0)+1;});
+  tests.forEach(function(t){t.questionCount=qCounts[t.testId]||0;});
   return {status:'ok', tests:tests};
 }
 
 function otGetTestDetails(ss, p) {
-  if (!p.testId) return {status:'error', reason:'testId_required'};
+  if (!p.testId) return {status:'error',reason:'testId_required'};
   ensureOnlineTestSheets(ss);
   var sh = ss.getSheetByName(SH_ONLINE_TESTS);
-  var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,15).getValues() : [];
-  var testRow = rows.find(function(r){ return r[0]===p.testId; });
-  if (!testRow) return {status:'error', reason:'test_not_found'};
-
-  // Get questions for this test
+  var rows = sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,22).getValues():[];
+  var testRow = rows.find(function(r){return r[0]===p.testId;});
+  if (!testRow) return {status:'error',reason:'test_not_found'};
   var shOTQ = ss.getSheetByName(SH_OT_QUESTIONS);
-  var otqRows = shOTQ.getLastRow()>1 ? shOTQ.getRange(2,1,shOTQ.getLastRow()-1,13).getValues() : [];
-  var questions = otqRows
-    .filter(function(r){ return r[0]===p.testId; })
-    .map(function(r){
-      return {testId:r[0],qId:r[1],source:r[2],question:r[3],
-              opt1:r[4],opt2:r[5],opt3:r[6],opt4:r[7],
-              correct:r[8],type:r[9],marks:r[10],maxMarks:r[11],order:r[12]};
-    })
-    .sort(function(a,b){ return (a.order||0)-(b.order||0); });
-
-  return {
-    status:'ok',
-    test:{testId:testRow[0],testLabel:testRow[1],testType:testRow[2],batchCode:testRow[3],
-          course:testRow[4],duration:testRow[5],status:testRow[6],
-          negativeMarking:testRow[7],negMarkValue:testRow[8],
-          activatedAt:testRow[9]?new Date(testRow[9]).toISOString():'',
-          resultsReleased:testRow[11],resultsMode:testRow[12]},
-    questions:questions
-  };
+  var otqRows = shOTQ.getLastRow()>1?shOTQ.getRange(2,1,shOTQ.getLastRow()-1,13).getValues():[];
+  var questions = otqRows.filter(function(r){return r[0]===p.testId;})
+    .map(function(r){return{testId:r[0],qId:r[1],source:r[2],question:r[3],opt1:r[4],opt2:r[5],opt3:r[6],opt4:r[7],correct:r[8],type:r[9],marks:r[10],maxMarks:r[11],order:r[12]};})
+    .sort(function(a,b){return(a.order||0)-(b.order||0);});
+  return {status:'ok', test:otParseTestRow(testRow), questions:questions};
 }
 
 function otSaveTestQuestions(ss, p) {
-  if (!p.instructor || !p.testId) return {status:'error', reason:'missing_params'};
+  if (!p.instructor||!p.testId) return {status:'error',reason:'missing_params'};
   ensureOnlineTestSheets(ss);
-
-  // Verify test is in Draft
   var shOT = ss.getSheetByName(SH_ONLINE_TESTS);
-  var otRows = shOT.getLastRow()>1 ? shOT.getRange(2,1,shOT.getLastRow()-1,15).getValues() : [];
-  var testRowIdx = otRows.findIndex(function(r){ return r[0]===p.testId; });
-  if (testRowIdx === -1) return {status:'error', reason:'test_not_found'};
-  if (otRows[testRowIdx][6] !== 'Draft') return {status:'error', reason:'test_not_draft'};
-
-  // Parse question IDs submitted
-  var qIds = JSON.parse(p.questionIds || '[]');
-  if (!qIds.length) return {status:'error', reason:'no_questions'};
-
-  // Remove old questions for this test
+  var otRows = shOT.getLastRow()>1?shOT.getRange(2,1,shOT.getLastRow()-1,22).getValues():[];
+  var testRowIdx = otRows.findIndex(function(r){return r[0]===p.testId;});
+  if (testRowIdx===-1) return {status:'error',reason:'test_not_found'};
+  if (otRows[testRowIdx][6]!=='Draft'&&otRows[testRowIdx][6]!=='Scheduled') return {status:'error',reason:'test_not_draft'};
+  var qIds = JSON.parse(p.questionIds||'[]');
+  var correctOverrides = JSON.parse(p.correctOverrides||'{}'); // {qId: newCorrectAnswer}
+  var orderOverrides   = JSON.parse(p.orderOverrides||'{}');   // {qId: order}
+  if (!qIds.length) return {status:'error',reason:'no_questions'};
   var shOTQ = ss.getSheetByName(SH_OT_QUESTIONS);
-  var otqRows = shOTQ.getLastRow()>1 ? shOTQ.getRange(2,1,shOTQ.getLastRow()-1,1).getValues() : [];
-  var toDelete = [];
-  for (var i = otqRows.length-1; i >= 0; i--) {
-    if (otqRows[i][0] === p.testId) toDelete.push(i+2);
-  }
-  toDelete.forEach(function(r){ shOTQ.deleteRow(r); });
-
-  // Get question details from QuestionBank + CustomQuestions
-  var shQB = ss.getSheetByName(SH_QUESTION_BANK);
-  var qbRows = shQB.getLastRow()>1 ? shQB.getRange(2,1,shQB.getLastRow()-1,12).getValues() : [];
-  var qbMap = {};
-  qbRows.forEach(function(r){ if(r[0]) qbMap[r[0]] = r; });
-
-  var shCQ = ss.getSheetByName(SH_CUSTOM_QUESTIONS);
-  var cqRows = shCQ.getLastRow()>1 ? shCQ.getRange(2,1,shCQ.getLastRow()-1,13).getValues() : [];
-  var cqMap = {};
-  cqRows.forEach(function(r){ if(r[0]) cqMap[r[0]] = r; });
-
-  var order = 1;
-  var newRows = [];
-  var totalMarks = 0;
-
-  qIds.forEach(function(qId) {
+  // Remove old
+  var otqRows = shOTQ.getLastRow()>1?shOTQ.getRange(2,1,shOTQ.getLastRow()-1,1).getValues():[];
+  for (var i=otqRows.length-1;i>=0;i--) { if(otqRows[i][0]===p.testId) shOTQ.deleteRow(i+2); }
+  var shQB=ss.getSheetByName(SH_QUESTION_BANK);
+  var qbRows=shQB.getLastRow()>1?shQB.getRange(2,1,shQB.getLastRow()-1,12).getValues():[];
+  var qbMap={};qbRows.forEach(function(r){if(r[0])qbMap[r[0]]=r;});
+  var shCQ=ss.getSheetByName(SH_CUSTOM_QUESTIONS);
+  var cqRows=shCQ.getLastRow()>1?shCQ.getRange(2,1,shCQ.getLastRow()-1,13).getValues():[];
+  var cqMap={};cqRows.forEach(function(r){if(r[0])cqMap[r[0]]=r;});
+  var order=1, newRows=[], totalMarks=0;
+  qIds.forEach(function(qId){
+    var finalOrder = orderOverrides[qId] || order++;
     if (qbMap[qId]) {
-      var r = qbMap[qId];
-      var marks = 1; // MCQ/TF/FIB from bank = 1 mark
-      newRows.push([p.testId, qId, 'bank', r[3], r[4], r[5], r[6], r[7], r[8], r[9]||'MCQ', marks, marks, order++]);
-      totalMarks += marks;
+      var r=qbMap[qId], marks=1;
+      var correct = correctOverrides[qId]!==undefined ? correctOverrides[qId] : r[8];
+      newRows.push([p.testId,qId,'bank',r[3],r[4],r[5],r[6],r[7],correct,r[9]||'MCQ',marks,marks,finalOrder]);
+      totalMarks+=marks;
     } else if (cqMap[qId]) {
-      var r = cqMap[qId];
-      var marks = r[9]==='Theory' ? (parseFloat(r[10])||5) : 1;
-      newRows.push([p.testId, qId, 'custom', r[3], r[4], r[5], r[6], r[7], r[8], r[9], marks, marks, order++]);
-      totalMarks += marks;
+      var r=cqMap[qId], marks=r[9]==='Theory'?(parseFloat(r[10])||5):1;
+      var correct = correctOverrides[qId]!==undefined ? correctOverrides[qId] : r[8];
+      newRows.push([p.testId,qId,'custom',r[3],r[4],r[5],r[6],r[7],correct,r[9],marks,marks,finalOrder]);
+      totalMarks+=marks;
     }
   });
-
-  if (newRows.length > 0) shOTQ.getRange(shOTQ.getLastRow()+1, 1, newRows.length, 13).setValues(newRows);
-
+  if (newRows.length>0) shOTQ.getRange(shOTQ.getLastRow()+1,1,newRows.length,13).setValues(newRows);
   return {status:'ok', saved:newRows.length, totalMarks:totalMarks};
 }
 
 function otAddCustomQuestion(ss, p) {
-  if (!p.instructor) return {status:'error', reason:'auth_required'};
+  if (!p.instructor) return {status:'error',reason:'auth_required'};
   ensureOnlineTestSheets(ss);
-  var sh = ss.getSheetByName(SH_CUSTOM_QUESTIONS);
+  var sh=ss.getSheetByName(SH_CUSTOM_QUESTIONS);
   ensureCQHeaders(sh);
-
-  var now = new Date();
-  var cqId = 'CQ-' + Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyyMMddHHmmss') + '-' + Math.floor(Math.random()*1000);
-  var type = p.type || 'MCQ'; // MCQ, TrueFalse, FillBlank, Theory
-  var maxMarks = type === 'Theory' ? (parseFloat(p.maxMarks)||5) : 1;
-  var correct = p.correctAnswer || (type === 'MCQ' ? p.opt1 : type === 'TrueFalse' ? p.correctTF : p.blankAnswer) || '';
-
-  sh.appendRow([
-    cqId, p.course||'', p.topic||'', p.question||'',
-    p.opt1||'', p.opt2||'', p.opt3||'', p.opt4||'',
-    correct, type, maxMarks, p.instructor, now.toISOString()
-  ]);
-
+  var now=new Date();
+  var cqId='CQ-'+Utilities.formatDate(now,Session.getScriptTimeZone(),'yyyyMMddHHmmss')+'-'+Math.floor(Math.random()*1000);
+  var type=p.type||'MCQ';
+  var maxMarks=type==='Theory'?(parseFloat(p.maxMarks)||5):1;
+  var correct=p.correctAnswer||(type==='MCQ'?'1':type==='TrueFalse'?'True':p.blankAnswer)||'';
+  sh.appendRow([cqId,p.course||'',p.topic||'',p.question||'',p.opt1||'',p.opt2||'',p.opt3||'',p.opt4||'',correct,type,maxMarks,p.instructor,now.toISOString()]);
   return {status:'ok', cqId:cqId};
 }
 
 function otActivateTest(ss, p) {
-  if (!p.instructor || !p.testId) return {status:'error', reason:'missing_params'};
+  if (!p.instructor||!p.testId) return {status:'error',reason:'missing_params'};
   ensureOnlineTestSheets(ss);
+  var sh=ss.getSheetByName(SH_ONLINE_TESTS);
+  var rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,22).getValues():[];
+  var idx=rows.findIndex(function(r){return r[0]===p.testId;});
+  if (idx===-1) return {status:'error',reason:'test_not_found'};
+  if (rows[idx][6]!=='Draft'&&rows[idx][6]!=='Scheduled') return {status:'error',reason:'already_active_or_closed'};
+  var shOTQ=ss.getSheetByName(SH_OT_QUESTIONS);
+  var otqRows=shOTQ.getLastRow()>1?shOTQ.getRange(2,1,shOTQ.getLastRow()-1,1).getValues():[];
+  if (!otqRows.some(function(r){return r[0]===p.testId;})) return {status:'error',reason:'no_questions_in_test'};
+  var now=new Date();
+  sh.getRange(idx+2,7).setValue('Active');
+  sh.getRange(idx+2,10).setValue(now.toISOString());
+  // Set expiry for end-of-day mode
+  if (rows[idx][16]==='endofday') {
+    var eod=new Date(); eod.setHours(23,59,59,0);
+    sh.getRange(idx+2,18).setValue(eod.toISOString());
+  }
+  return {status:'ok', activatedAt:now.toISOString()};
+}
 
-  var sh = ss.getSheetByName(SH_ONLINE_TESTS);
-  var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,15).getValues() : [];
-  var idx = rows.findIndex(function(r){ return r[0]===p.testId; });
-  if (idx === -1) return {status:'error', reason:'test_not_found'};
-  if (rows[idx][6] !== 'Draft') return {status:'error', reason:'already_active_or_closed'};
+function otScheduleTestActivation(ss, p) {
+  if (!p.instructor||!p.testId||!p.scheduledAt) return {status:'error',reason:'missing_params'};
+  ensureOnlineTestSheets(ss);
+  var sh=ss.getSheetByName(SH_ONLINE_TESTS);
+  var rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,22).getValues():[];
+  var idx=rows.findIndex(function(r){return r[0]===p.testId;});
+  if (idx===-1) return {status:'error',reason:'test_not_found'};
+  sh.getRange(idx+2,7).setValue('Scheduled');
+  sh.getRange(idx+2,22).setValue(new Date(p.scheduledAt).toISOString());
+  otEnsureScheduledTrigger();
+  return {status:'ok', scheduledAt:p.scheduledAt};
+}
 
-  // Check questions exist
-  var shOTQ = ss.getSheetByName(SH_OT_QUESTIONS);
-  var otqRows = shOTQ.getLastRow()>1 ? shOTQ.getRange(2,1,shOTQ.getLastRow()-1,1).getValues() : [];
-  var hasQ = otqRows.some(function(r){ return r[0]===p.testId; });
-  if (!hasQ) return {status:'error', reason:'no_questions_in_test'};
+// ── Scheduled activation engine ──────────────────────────────
+function otCheckScheduledActivations_(ss, rows, sh) {
+  var now=new Date();
+  rows.forEach(function(r, i){
+    if (r[6]==='Scheduled' && r[21]) {
+      var schedAt=new Date(r[21]);
+      if (schedAt<=now) {
+        sh.getRange(i+2,7).setValue('Active');
+        sh.getRange(i+2,10).setValue(now.toISOString());
+        if (r[16]==='endofday') {
+          var eod=new Date(); eod.setHours(23,59,59,0);
+          sh.getRange(i+2,18).setValue(eod.toISOString());
+        }
+      }
+    }
+  });
+}
 
-  var now = new Date();
-  var rowNum = idx + 2;
-  sh.getRange(rowNum, 7).setValue('Active');
-  sh.getRange(rowNum, 10).setValue(now.toISOString());
+// Called by GAS time trigger every 5 minutes
+function otScheduledActivationTrigger() {
+  var ss=SpreadsheetApp.openById(SHEET_ID);
+  var sh=ss.getSheetByName(SH_ONLINE_TESTS);
+  if (!sh) return;
+  var rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,22).getValues():[];
+  otCheckScheduledActivations_(ss, rows, sh);
+}
 
-  return {status:'ok', activatedAt:now.toISOString(), message:'Test is now live for students'};
+function otEnsureScheduledTrigger() {
+  var triggers=ScriptApp.getProjectTriggers();
+  var exists=triggers.some(function(t){return t.getHandlerFunction()==='otScheduledActivationTrigger';});
+  if (!exists) {
+    ScriptApp.newTrigger('otScheduledActivationTrigger').timeBased().everyMinutes(5).create();
+  }
+}
+
+function otSetupScheduledTrigger(ss, p) {
+  if (!p.instructor) return {status:'error',reason:'auth_required'};
+  try {
+    otEnsureScheduledTrigger();
+    return {status:'ok', message:'Scheduled activation trigger is active (runs every 5 minutes)'};
+  } catch(e) {
+    return {status:'error', message:e.toString()};
+  }
 }
 
 function otCloseTest(ss, p) {
-  if (!p.instructor || !p.testId) return {status:'error', reason:'missing_params'};
+  if (!p.instructor||!p.testId) return {status:'error',reason:'missing_params'};
   ensureOnlineTestSheets(ss);
-  var sh = ss.getSheetByName(SH_ONLINE_TESTS);
-  var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,15).getValues() : [];
-  var idx = rows.findIndex(function(r){ return r[0]===p.testId; });
-  if (idx === -1) return {status:'error', reason:'test_not_found'};
-
-  var now = new Date();
-  sh.getRange(idx+2, 7).setValue('Closed');
-  sh.getRange(idx+2, 11).setValue(now.toISOString());
+  var sh=ss.getSheetByName(SH_ONLINE_TESTS);
+  var rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,22).getValues():[];
+  var idx=rows.findIndex(function(r){return r[0]===p.testId;});
+  if (idx===-1) return {status:'error',reason:'test_not_found'};
+  var now=new Date();
+  sh.getRange(idx+2,7).setValue('Closed');
+  sh.getRange(idx+2,11).setValue(now.toISOString());
   return {status:'ok', closedAt:now.toISOString()};
 }
 
 function otReleaseResults(ss, p) {
-  if (!p.instructor || !p.testId) return {status:'error', reason:'missing_params'};
+  if (!p.instructor||!p.testId) return {status:'error',reason:'missing_params'};
   ensureOnlineTestSheets(ss);
-  var sh = ss.getSheetByName(SH_ONLINE_TESTS);
-  var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,15).getValues() : [];
-  var idx = rows.findIndex(function(r){ return r[0]===p.testId; });
-  if (idx === -1) return {status:'error', reason:'test_not_found'};
-
-  var mode = p.resultsMode || 'summary'; // summary | full
-  sh.getRange(idx+2, 12).setValue('Yes');
-  sh.getRange(idx+2, 13).setValue(mode);
-  return {status:'ok', message:'Results released in '+mode+' mode'};
+  var sh=ss.getSheetByName(SH_ONLINE_TESTS);
+  var rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,22).getValues():[];
+  var idx=rows.findIndex(function(r){return r[0]===p.testId;});
+  if (idx===-1) return {status:'error',reason:'test_not_found'};
+  sh.getRange(idx+2,12).setValue('Yes');
+  sh.getRange(idx+2,13).setValue(p.resultsMode||'summary');
+  return {status:'ok', message:'Results released'};
 }
 
 function otGetStudentActiveTest(ss, p) {
-  // Called by student portal on load
-  // p.studentId, p.batchCode
-  if (!p.studentId || !p.batchCode) return {status:'ok', activeTest:null};
+  if (!p.studentId||!p.batchCode) return {status:'ok',activeTest:null};
   ensureOnlineTestSheets(ss);
-
-  var sh = ss.getSheetByName(SH_ONLINE_TESTS);
-  var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,15).getValues() : [];
-
-  // Find active test for this batch
-  var activeTest = null;
+  var sh=ss.getSheetByName(SH_ONLINE_TESTS);
+  var rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,22).getValues():[];
+  // Auto-activate any scheduled tests
+  otCheckScheduledActivations_(ss, rows, sh);
+  rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,22).getValues():[];
+  var now=new Date();
+  var activeTest=null;
   rows.forEach(function(r){
-    if (r[3]===p.batchCode && r[6]==='Active') {
-      activeTest = {
-        testId:r[0], testLabel:r[1], testType:r[2],
-        batchCode:r[3], course:r[4], duration:r[5],
-        activatedAt:r[9]?new Date(r[9]).toISOString():'',
-        negativeMarking:r[7], negMarkValue:r[8]
-      };
+    if (r[6]!=='Active') return;
+    // Check batch
+    var batches=String(r[3]).split(',').map(function(s){return s.trim();});
+    if (batches.indexOf(p.batchCode)===-1) return;
+    // Check expiry
+    if (r[17]) {
+      var expiry=new Date(r[17]);
+      if (now>expiry) return; // expired
     }
+    // Check target students
+    var target=String(r[15]||'ALL');
+    if (target!=='ALL') {
+      var allowed=target.split(',').map(function(s){return s.trim();});
+      if (allowed.indexOf(p.studentId)===-1) return;
+    }
+    activeTest=otParseTestRow(r);
   });
-
-  if (!activeTest) return {status:'ok', activeTest:null};
-
-  // Check if student already submitted
-  var shR = ss.getSheetByName(SH_OT_RESPONSES);
-  var rRows = shR.getLastRow()>1 ? shR.getRange(2,1,shR.getLastRow()-1,6).getValues() : [];
-  var alreadySubmitted = rRows.some(function(r){ return r[1]===activeTest.testId && r[2]===p.studentId; });
-  if (alreadySubmitted) return {status:'ok', activeTest:null, alreadySubmitted:true};
-
-  return {status:'ok', activeTest:activeTest};
+  if (!activeTest) return {status:'ok',activeTest:null};
+  // Check already submitted (unless retake allowed)
+  var shR=ss.getSheetByName(SH_OT_RESPONSES);
+  var rRows=shR.getLastRow()>1?shR.getRange(2,1,shR.getLastRow()-1,6).getValues():[];
+  var submissions=rRows.filter(function(r){return r[1]===activeTest.testId&&r[2]===p.studentId;});
+  if (submissions.length>0 && activeTest.allowRetake!=='Yes') {
+    return {status:'ok',activeTest:null,alreadySubmitted:true};
+  }
+  var attemptNo=submissions.length+1;
+  activeTest.attemptNo=attemptNo;
+  return {status:'ok',activeTest:activeTest};
 }
 
 function otGetTestQuestions(ss, p) {
-  // Called by student when beginning a test — NO correct answers sent
-  if (!p.testId || !p.studentId) return {status:'error', reason:'missing_params'};
+  if (!p.testId||!p.studentId) return {status:'error',reason:'missing_params'};
   ensureOnlineTestSheets(ss);
-
-  var shOT = ss.getSheetByName(SH_ONLINE_TESTS);
-  var otRows = shOT.getLastRow()>1 ? shOT.getRange(2,1,shOT.getLastRow()-1,15).getValues() : [];
-  var testRow = otRows.find(function(r){ return r[0]===p.testId; });
-  if (!testRow) return {status:'error', reason:'test_not_found'};
-  if (testRow[6] !== 'Active') return {status:'error', reason:'test_not_active'};
-
-  var shOTQ = ss.getSheetByName(SH_OT_QUESTIONS);
-  var otqRows = shOTQ.getLastRow()>1 ? shOTQ.getRange(2,1,shOTQ.getLastRow()-1,13).getValues() : [];
-  var questions = otqRows
-    .filter(function(r){ return r[0]===p.testId; })
-    .sort(function(a,b){ return (a[12]||0)-(b[12]||0); })
+  var shOT=ss.getSheetByName(SH_ONLINE_TESTS);
+  var otRows=shOT.getLastRow()>1?shOT.getRange(2,1,shOT.getLastRow()-1,22).getValues():[];
+  var testRow=otRows.find(function(r){return r[0]===p.testId;});
+  if (!testRow) return {status:'error',reason:'test_not_found'};
+  if (testRow[6]!=='Active') return {status:'error',reason:'test_not_active'};
+  var shOTQ=ss.getSheetByName(SH_OT_QUESTIONS);
+  var otqRows=shOTQ.getLastRow()>1?shOTQ.getRange(2,1,shOTQ.getLastRow()-1,13).getValues():[];
+  var questions=otqRows.filter(function(r){return r[0]===p.testId;})
+    .sort(function(a,b){return(a[12]||0)-(b[12]||0);})
     .map(function(r){
-      var q = {
-        qId:r[1], question:r[3], type:r[9]||'MCQ', marks:r[10]||1
-      };
-      if (r[9]==='MCQ') { q.opt1=r[4]; q.opt2=r[5]; q.opt3=r[6]; q.opt4=r[7]; }
-      else if (r[9]==='TrueFalse') { q.opt1='True'; q.opt2='False'; }
-      // FillBlank and Theory: no options
-      // NEVER send correct answer
-      return q;
+      var q={qId:r[1],question:r[3],type:r[9]||'MCQ',marks:r[10]||1};
+      if(r[9]==='MCQ'){q.opt1=r[4];q.opt2=r[5];q.opt3=r[6];q.opt4=r[7];}
+      else if(r[9]==='TrueFalse'){q.opt1='True';q.opt2='False';}
+      return q; // never send correct answer
     });
-
-  // Calculate server-side remaining time
-  var activatedAt = testRow[9] ? new Date(testRow[9]) : new Date();
-  var durationMs  = (parseInt(testRow[5])||30) * 60000;
-  var elapsed     = Date.now() - activatedAt.getTime();
-  var remainingSec = Math.max(0, Math.floor((durationMs - elapsed)/1000));
-
+  // Shuffle if enabled (seeded by studentId for consistency on refresh)
+  if (testRow[19]==='Yes') {
+    var seed=p.studentId.split('').reduce(function(a,c){return a+c.charCodeAt(0);},0);
+    questions=otShuffleSeeded(questions, seed);
+  }
+  var activatedAt=testRow[9]?new Date(testRow[9]):new Date();
+  var durationMs=(parseInt(testRow[5])||30)*60000;
+  var elapsed=Date.now()-activatedAt.getTime();
+  var remainingSec=Math.max(0,Math.floor((durationMs-elapsed)/1000));
+  // Check expiry
+  if (testRow[17]) {
+    var expiry=new Date(testRow[17]);
+    var toExpiry=Math.floor((expiry.getTime()-Date.now())/1000);
+    remainingSec=Math.min(remainingSec,Math.max(0,toExpiry));
+  }
   return {
     status:'ok',
-    test:{testId:testRow[0], testLabel:testRow[1], duration:testRow[5],
-          activatedAt:activatedAt.toISOString(), negativeMarking:testRow[7], negMarkValue:testRow[8]},
-    questions:questions,
-    remainingSec:remainingSec,
-    serverTime:new Date().toISOString()
+    test:{testId:testRow[0],testLabel:testRow[1],duration:testRow[5],
+          activatedAt:activatedAt.toISOString(),negativeMarking:testRow[7],negMarkValue:testRow[8],
+          instructions:testRow[20]||'',shuffled:testRow[19]==='Yes'},
+    questions:questions, remainingSec:remainingSec, serverTime:new Date().toISOString()
   };
+}
+
+function otShuffleSeeded(arr, seed) {
+  var a=arr.slice();
+  for(var i=a.length-1;i>0;i--){
+    seed=(seed*1664525+1013904223)&0xffffffff;
+    var j=Math.abs(seed)%(i+1);
+    var tmp=a[i];a[i]=a[j];a[j]=tmp;
+  }
+  return a;
 }
 
 function otSubmitTestResponse(ss, p) {
-  if (!p.testId || !p.studentId || !p.answers) return {status:'error', reason:'missing_params'};
+  if (!p.testId||!p.studentId||!p.answers) return {status:'error',reason:'missing_params'};
   ensureOnlineTestSheets(ss);
-
-  // Check for duplicate submission
-  var shR = ss.getSheetByName(SH_OT_RESPONSES);
-  var rRows = shR.getLastRow()>1 ? shR.getRange(2,1,shR.getLastRow()-1,3).getValues() : [];
-  if (rRows.some(function(r){ return r[1]===p.testId && r[2]===p.studentId; })) {
-    return {status:'error', reason:'already_submitted'};
-  }
-
-  // Verify test active or closed (allow submission just after close)
-  var shOT = ss.getSheetByName(SH_ONLINE_TESTS);
-  var otRows = shOT.getLastRow()>1 ? shOT.getRange(2,1,shOT.getLastRow()-1,15).getValues() : [];
-  var testRow = otRows.find(function(r){ return r[0]===p.testId; });
-  if (!testRow) return {status:'error', reason:'test_not_found'};
-  if (testRow[6] !== 'Active' && testRow[6] !== 'Closed') return {status:'error', reason:'test_not_active'};
-
-  // Get test questions with correct answers
-  var shOTQ = ss.getSheetByName(SH_OT_QUESTIONS);
-  var otqRows = shOTQ.getLastRow()>1 ? shOTQ.getRange(2,1,shOTQ.getLastRow()-1,13).getValues() : [];
-  var testQuestions = otqRows.filter(function(r){ return r[0]===p.testId; });
-
-  // Parse student answers {qId: answer}
-  var answers = {};
-  try { answers = JSON.parse(p.answers); } catch(e) {}
-
-  // Grade
-  var autoScore = 0, theoryCount = 0, totalMarks = 0;
-  var negEnabled = testRow[7]==='Yes';
-  var negVal = parseFloat(testRow[8])||0.25;
-
-  testQuestions.forEach(function(q) {
-    var qId = q[1], type = q[9]||'MCQ', correct = q[8], marks = parseFloat(q[10])||1;
-    totalMarks += marks;
-    if (type === 'Theory') { theoryCount++; return; }
-
-    var studentAns = answers[qId] !== undefined ? String(answers[qId]) : '';
-    if (!studentAns) return;
-
-    if (type === 'MCQ' || type === 'TrueFalse') {
-      if (String(studentAns) === String(correct)) {
-        autoScore += marks;
-      } else if (negEnabled && studentAns) {
-        autoScore -= negVal;
-      }
-    } else if (type === 'FillBlank') {
-      var sa = studentAns.trim().toLowerCase();
-      var ca = String(correct).trim().toLowerCase();
-      if (sa === ca) {
-        autoScore += marks;
-      } else if (negEnabled) {
-        autoScore -= negVal;
-      }
+  var shR=ss.getSheetByName(SH_OT_RESPONSES);
+  var rRows=shR.getLastRow()>1?shR.getRange(2,1,shR.getLastRow()-1,3).getValues():[];
+  var prevSubmissions=rRows.filter(function(r){return r[1]===p.testId&&r[2]===p.studentId;});
+  // Check retake policy
+  var shOT=ss.getSheetByName(SH_ONLINE_TESTS);
+  var otRows=shOT.getLastRow()>1?shOT.getRange(2,1,shOT.getLastRow()-1,22).getValues():[];
+  var testRow=otRows.find(function(r){return r[0]===p.testId;});
+  if (!testRow) return {status:'error',reason:'test_not_found'};
+  if (prevSubmissions.length>0&&testRow[18]!=='Yes') return {status:'error',reason:'already_submitted'};
+  if (testRow[6]!=='Active'&&testRow[6]!=='Closed') return {status:'error',reason:'test_not_active'};
+  var shOTQ=ss.getSheetByName(SH_OT_QUESTIONS);
+  var otqRows=shOTQ.getLastRow()>1?shOTQ.getRange(2,1,shOTQ.getLastRow()-1,13).getValues():[];
+  var testQuestions=otqRows.filter(function(r){return r[0]===p.testId;});
+  var answers={};
+  try{answers=JSON.parse(p.answers);}catch(e){}
+  var autoScore=0,theoryCount=0,totalMarks=0;
+  var negEnabled=testRow[7]==='Yes';
+  var negVal=parseFloat(testRow[8])||0.25;
+  testQuestions.forEach(function(q){
+    var qId=q[1],type=q[9]||'MCQ',correct=q[8],marks=parseFloat(q[10])||1;
+    totalMarks+=marks;
+    if(type==='Theory'){theoryCount++;return;}
+    var studentAns=answers[qId]!==undefined?String(answers[qId]):'';
+    if(!studentAns) return;
+    if(type==='MCQ'||type==='TrueFalse'){
+      if(String(studentAns)===String(correct)) autoScore+=marks;
+      else if(negEnabled&&studentAns) autoScore-=negVal;
+    } else if(type==='FillBlank'){
+      if(studentAns.trim().toLowerCase()===String(correct).trim().toLowerCase()) autoScore+=marks;
+      else if(negEnabled) autoScore-=negVal;
     }
   });
-
-  autoScore = Math.max(0, autoScore);
-  var hasTheory = theoryCount > 0;
-  var totalScore = hasTheory ? null : autoScore; // null until manual grades added
-  var pct = (totalMarks > 0 && !hasTheory) ? Math.round(autoScore/totalMarks*100) : null;
-  var result = (pct !== null) ? (pct >= OT_PASS_PERCENT ? 'Pass' : 'Fail') : 'Pending';
-
-  var now = new Date();
-  var responseId = 'RSP-' + Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyyMMddHHmmss') + '-' + p.studentId;
-
-  shR.appendRow([
-    responseId, p.testId, p.studentId, p.studentName||'', p.batchCode||'',
-    now.toISOString(), p.submitType||'manual',
-    testQuestions.length, autoScore, 0, totalScore, totalMarks, pct, result,
-    p.answers
-  ]);
-
-  // Store theory answers in ManualGrades sheet for instructor review
+  autoScore=Math.max(0,autoScore);
+  var hasTheory=theoryCount>0;
+  var totalScore=hasTheory?null:autoScore;
+  var pct=(totalMarks>0&&!hasTheory)?Math.round(autoScore/totalMarks*100):null;
+  var testPassScore = parseFloat(testRow[22])||OT_PASS_PERCENT;
+  var result=pct!==null?(pct>=testPassScore?'Pass':'Fail'):'Pending';
+  var now=new Date();
+  var attemptNo=prevSubmissions.length+1;
+  var responseId='RSP-'+Utilities.formatDate(now,Session.getScriptTimeZone(),'yyyyMMddHHmmss')+'-'+p.studentId+'-A'+attemptNo;
+  shR.appendRow([responseId,p.testId,p.studentId,p.studentName||'',p.batchCode||'',
+    now.toISOString(),p.submitType||'manual',testQuestions.length,
+    autoScore,0,totalScore,totalMarks,pct,result,p.answers,attemptNo]);
   if (hasTheory) {
-    var shMG = ss.getSheetByName(SH_OT_MANUAL_GRADES);
-    testQuestions.filter(function(q){ return q[9]==='Theory'; }).forEach(function(q){
-      var qId = q[1];
-      shMG.appendRow([p.testId, p.studentId, qId, answers[qId]||'', '', q[10]||5, '', '']);
+    var shMG=ss.getSheetByName(SH_OT_MANUAL_GRADES);
+    testQuestions.filter(function(q){return q[9]==='Theory';}).forEach(function(q){
+      shMG.appendRow([p.testId,p.studentId,q[1],answers[q[1]]||'','',q[10]||5,'','']);
     });
   }
-
-  return {
-    status:'ok',
-    responseId:responseId,
-    autoScore:autoScore,
-    hasTheory:hasTheory,
-    result: hasTheory ? 'pending_manual_grades' : result,
-    percentage: pct,
-    message: hasTheory ? 'Submitted. Theory questions pending instructor grading.' : 'Submitted successfully.'
-  };
+  return {status:'ok',responseId:responseId,autoScore:autoScore,hasTheory:hasTheory,
+    result:hasTheory?'pending_manual_grades':result,percentage:pct,attemptNo:attemptNo,
+    message:hasTheory?'Submitted. Theory questions pending instructor grading.':'Submitted successfully.'};
 }
 
 function otLogTestWarning(ss, p) {
-  if (!p.testId || !p.studentId) return {status:'error', reason:'missing_params'};
+  if (!p.testId||!p.studentId) return {status:'error',reason:'missing_params'};
   ensureOnlineTestSheets(ss);
-  var sh = ss.getSheetByName(SH_OT_WARNINGS);
-  var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,5).getValues() : [];
-
-  // Count existing warnings for this student+test
-  var count = rows.filter(function(r){ return r[0]===p.testId && r[1]===p.studentId; }).length + 1;
-
-  sh.appendRow([p.testId, p.studentId, p.studentName||'', p.warningType||'tab-switch', count, new Date().toISOString()]);
-  return {status:'ok', warningCount:count, autoSubmit: count >= 3};
+  var sh=ss.getSheetByName(SH_OT_WARNINGS);
+  var rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,5).getValues():[];
+  var count=rows.filter(function(r){return r[0]===p.testId&&r[1]===p.studentId;}).length+1;
+  sh.appendRow([p.testId,p.studentId,p.studentName||'',p.warningType||'tab-switch',count,new Date().toISOString()]);
+  return {status:'ok',warningCount:count,autoSubmit:count>=3};
 }
 
 function otGetProctorRoom(ss, p) {
-  if (!p.instructor || !p.testId) return {status:'error', reason:'missing_params'};
+  if (!p.instructor||!p.testId) return {status:'error',reason:'missing_params'};
   ensureOnlineTestSheets(ss);
-
-  var shR = ss.getSheetByName(SH_OT_RESPONSES);
-  var rRows = shR.getLastRow()>1 ? shR.getRange(2,1,shR.getLastRow()-1,14).getValues() : [];
-  var submissions = rRows.filter(function(r){ return r[1]===p.testId; }).map(function(r){
-    return {studentId:r[2], studentName:r[3], submittedAt:r[5], submitType:r[6],
-            autoScore:r[8], totalScore:r[10], totalMarks:r[11], percentage:r[12], result:r[13]};
+  var shR=ss.getSheetByName(SH_OT_RESPONSES);
+  var rRows=shR.getLastRow()>1?shR.getRange(2,1,shR.getLastRow()-1,16).getValues():[];
+  var submissions=rRows.filter(function(r){return r[1]===p.testId;}).map(function(r){
+    return{studentId:r[2],studentName:r[3],submittedAt:r[5],submitType:r[6],
+      autoScore:r[8],totalScore:r[10],totalMarks:r[11],percentage:r[12],result:r[13],attemptNo:r[15]};
   });
-
-  var shW = ss.getSheetByName(SH_OT_WARNINGS);
-  var wRows = shW.getLastRow()>1 ? shW.getRange(2,1,shW.getLastRow()-1,6).getValues() : [];
-  var warnings = {};
-  wRows.filter(function(r){ return r[0]===p.testId; }).forEach(function(r){
-    var sid = r[1];
-    warnings[sid] = {studentName:r[2], count:Math.max(warnings[sid]?.count||0, r[4]||0)};
+  var shW=ss.getSheetByName(SH_OT_WARNINGS);
+  var wRows=shW.getLastRow()>1?shW.getRange(2,1,shW.getLastRow()-1,6).getValues():[];
+  var warnings={};
+  wRows.filter(function(r){return r[0]===p.testId;}).forEach(function(r){
+    if(!warnings[r[1]]||warnings[r[1]].count<(r[4]||0)) warnings[r[1]]={studentName:r[2],count:r[4]||0};
   });
-
-  // Get enrolled students for this batch
-  var shOT = ss.getSheetByName(SH_ONLINE_TESTS);
-  var otRows = shOT.getLastRow()>1 ? shOT.getRange(2,1,shOT.getLastRow()-1,15).getValues() : [];
-  var testRow = otRows.find(function(r){ return r[0]===p.testId; });
-  var batchCode = testRow ? testRow[3] : '';
-
-  var shStu = ss.getSheetByName(SH_STUDENTS);
-  var stuRows = shStu ? (shStu.getLastRow()>1 ? shStu.getRange(2,1,shStu.getLastRow()-1,10).getValues() : []) : [];
-  var enrolled = stuRows.filter(function(r){ return String(r[1])===batchCode && r[0]; }).map(function(r){ return {studentId:String(r[0]),studentName:r[2]||r[3]||String(r[0])}; });
-
-  var submittedIds = submissions.map(function(s){ return s.studentId; });
-
-  return {
-    status:'ok',
-    testId:p.testId,
-    submissions:submissions,
-    warnings:warnings,
-    enrolled:enrolled,
-    pending: enrolled.filter(function(s){ return submittedIds.indexOf(s.studentId)===-1; }).length,
-    submitted: submissions.length,
-    total: enrolled.length
-  };
+  var shOT=ss.getSheetByName(SH_ONLINE_TESTS);
+  var otRows=shOT.getLastRow()>1?shOT.getRange(2,1,shOT.getLastRow()-1,22).getValues():[];
+  var testRow=otRows.find(function(r){return r[0]===p.testId;});
+  var batchCodes=testRow?String(testRow[3]).split(',').map(function(s){return s.trim();}):[];
+  var targetStudents=testRow?String(testRow[15]||'ALL'):'ALL';
+  var shStu=ss.getSheetByName(SH_STUDENTS);
+  var stuRows=shStu?(shStu.getLastRow()>1?shStu.getRange(2,1,shStu.getLastRow()-1,10).getValues():[]):[];
+  var enrolled=stuRows
+    .filter(function(r){return batchCodes.indexOf(String(r[1]))!==-1&&r[0];})
+    .filter(function(r){return targetStudents==='ALL'||targetStudents.split(',').indexOf(String(r[0]))!==-1;})
+    .map(function(r){return{studentId:String(r[0]),studentName:r[2]||r[3]||String(r[0])};});
+  var submittedIds=submissions.map(function(s){return s.studentId;});
+  return {status:'ok',testId:p.testId,submissions:submissions,warnings:warnings,enrolled:enrolled,
+    pending:enrolled.filter(function(s){return submittedIds.indexOf(s.studentId)===-1;}).length,
+    submitted:submissions.length,total:enrolled.length,
+    expiryAt:testRow&&testRow[17]?new Date(testRow[17]).toISOString():''};
 }
 
 function otSaveManualGrade(ss, p) {
-  if (!p.instructor || !p.testId || !p.studentId || !p.qId) return {status:'error', reason:'missing_params'};
+  if (!p.instructor||!p.testId||!p.studentId||!p.qId) return {status:'error',reason:'missing_params'};
   ensureOnlineTestSheets(ss);
-  var sh = ss.getSheetByName(SH_OT_MANUAL_GRADES);
-  var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,8).getValues() : [];
-
-  var now = new Date();
-  var score = Math.max(0, parseFloat(p.score)||0);
-  var rowIdx = rows.findIndex(function(r){ return r[0]===p.testId && r[1]===p.studentId && r[2]===p.qId; });
-
-  if (rowIdx !== -1) {
-    sh.getRange(rowIdx+2, 5).setValue(score);
-    sh.getRange(rowIdx+2, 7).setValue(p.instructor);
-    sh.getRange(rowIdx+2, 8).setValue(now.toISOString());
-  } else {
-    sh.appendRow([p.testId, p.studentId, p.qId, '', score, p.maxMarks||5, p.instructor, now.toISOString()]);
-  }
-
-  // Recalculate total score for this student
-  var updatedRows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,8).getValues() : [];
-  var studentMGRows = updatedRows.filter(function(r){ return r[0]===p.testId && r[1]===p.studentId; });
-  var allGraded = studentMGRows.every(function(r){ return r[4]!=='' && r[4]!==null; });
-
-  if (allGraded) {
-    var manualTotal = studentMGRows.reduce(function(sum,r){ return sum+(parseFloat(r[4])||0); }, 0);
-    // Update response row
-    var shR = ss.getSheetByName(SH_OT_RESPONSES);
-    var rRows = shR.getLastRow()>1 ? shR.getRange(2,1,shR.getLastRow()-1,15).getValues() : [];
-    var rIdx = rRows.findIndex(function(r){ return r[1]===p.testId && r[2]===p.studentId; });
-    if (rIdx !== -1) {
-      var autoScore = parseFloat(rRows[rIdx][8])||0;
-      var totalMarks = parseFloat(rRows[rIdx][11])||1;
-      var totalScore = autoScore + manualTotal;
-      var pct = Math.round(totalScore/totalMarks*100);
-      var result = pct >= OT_PASS_PERCENT ? 'Pass' : 'Fail';
-      shR.getRange(rIdx+2, 10).setValue(manualTotal);
-      shR.getRange(rIdx+2, 11).setValue(totalScore);
-      shR.getRange(rIdx+2, 13).setValue(pct);
-      shR.getRange(rIdx+2, 14).setValue(result);
+  var sh=ss.getSheetByName(SH_OT_MANUAL_GRADES);
+  var rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,8).getValues():[];
+  var now=new Date();
+  var score=Math.max(0,parseFloat(p.score)||0);
+  var rowIdx=rows.findIndex(function(r){return r[0]===p.testId&&r[1]===p.studentId&&r[2]===p.qId;});
+  if(rowIdx!==-1){sh.getRange(rowIdx+2,5).setValue(score);sh.getRange(rowIdx+2,7).setValue(p.instructor);sh.getRange(rowIdx+2,8).setValue(now.toISOString());}
+  else{sh.appendRow([p.testId,p.studentId,p.qId,'',score,p.maxMarks||5,p.instructor,now.toISOString()]);}
+  var updatedRows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,8).getValues():[];
+  var studentMGRows=updatedRows.filter(function(r){return r[0]===p.testId&&r[1]===p.studentId;});
+  var allGraded=studentMGRows.every(function(r){return r[4]!==''&&r[4]!==null;});
+  if(allGraded){
+    var manualTotal=studentMGRows.reduce(function(sum,r){return sum+(parseFloat(r[4])||0);},0);
+    var shR=ss.getSheetByName(SH_OT_RESPONSES);
+    var rRows=shR.getLastRow()>1?shR.getRange(2,1,shR.getLastRow()-1,15).getValues():[];
+    var rIdx=rRows.findIndex(function(r){return r[1]===p.testId&&r[2]===p.studentId;});
+    if(rIdx!==-1){
+      var autoScore=parseFloat(rRows[rIdx][8])||0;
+      var totalMarks=parseFloat(rRows[rIdx][11])||1;
+      var totalScore=autoScore+manualTotal;
+      var pct=Math.round(totalScore/totalMarks*100);
+      var result=pct>=(parseFloat(testRow[22])||OT_PASS_PERCENT)?'Pass':'Fail';
+      shR.getRange(rIdx+2,10).setValue(manualTotal);
+      shR.getRange(rIdx+2,11).setValue(totalScore);
+      shR.getRange(rIdx+2,13).setValue(pct);
+      shR.getRange(rIdx+2,14).setValue(result);
     }
   }
-
-  return {status:'ok', allGraded:allGraded, message: allGraded ? 'All theory questions graded — total score updated' : 'Grade saved'};
+  return{status:'ok',allGraded:allGraded};
 }
 
 function otGetPendingManualGrades(ss, p) {
-  if (!p.instructor || !p.testId) return {status:'error', reason:'missing_params'};
+  if (!p.instructor||!p.testId) return {status:'error',reason:'missing_params'};
   ensureOnlineTestSheets(ss);
-  var sh = ss.getSheetByName(SH_OT_MANUAL_GRADES);
-  var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,8).getValues() : [];
-  var pending = rows.filter(function(r){ return r[0]===p.testId && (r[4]===''||r[4]===null); });
-  var graded  = rows.filter(function(r){ return r[0]===p.testId && r[4]!==''&&r[4]!==null; });
-
-  var byStudent = {};
-  rows.filter(function(r){ return r[0]===p.testId; }).forEach(function(r){
-    if (!byStudent[r[1]]) byStudent[r[1]] = {studentId:r[1], questions:[]};
-    byStudent[r[1]].questions.push({qId:r[2], studentAnswer:r[3], score:r[4], maxMarks:r[5], graded:r[4]!==''&&r[4]!==null});
+  var sh=ss.getSheetByName(SH_OT_MANUAL_GRADES);
+  var rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,8).getValues():[];
+  var byStudent={};
+  rows.filter(function(r){return r[0]===p.testId;}).forEach(function(r){
+    if(!byStudent[r[1]]) byStudent[r[1]]={studentId:r[1],questions:[]};
+    byStudent[r[1]].questions.push({qId:r[2],studentAnswer:r[3],score:r[4],maxMarks:r[5],graded:r[4]!==''&&r[4]!==null});
   });
-
-  return {status:'ok', pendingCount:pending.length, gradedCount:graded.length, byStudent:Object.values(byStudent)};
+  var pending=rows.filter(function(r){return r[0]===p.testId&&(r[4]===''||r[4]===null);}).length;
+  var graded=rows.filter(function(r){return r[0]===p.testId&&r[4]!==''&&r[4]!==null;}).length;
+  return{status:'ok',pendingCount:pending,gradedCount:graded,byStudent:Object.values(byStudent)};
 }
 
 function otGetStudentResults(ss, p) {
-  if (!p.studentId || !p.batchCode) return {status:'error', reason:'missing_params'};
+  if (!p.studentId||!p.batchCode) return {status:'error',reason:'missing_params'};
   ensureOnlineTestSheets(ss);
-
-  var shR = ss.getSheetByName(SH_OT_RESPONSES);
-  var rRows = shR.getLastRow()>1 ? shR.getRange(2,1,shR.getLastRow()-1,15).getValues() : [];
-  var myResponses = rRows.filter(function(r){ return r[2]===p.studentId; });
-
-  // Get test info for each response
-  var shOT = ss.getSheetByName(SH_ONLINE_TESTS);
-  var otRows = shOT.getLastRow()>1 ? shOT.getRange(2,1,shOT.getLastRow()-1,15).getValues() : [];
-  var testMap = {};
-  otRows.forEach(function(r){ testMap[r[0]] = r; });
-
-  var results = myResponses.map(function(r){
-    var t = testMap[r[1]] || [];
-    var resultsReleased = t[11]==='Yes';
-    if (!resultsReleased) return null;
-
-    return {
-      testId:r[1], testLabel:t[1]||r[1], testType:t[2]||'',
-      submittedAt:r[5], submitType:r[6],
-      totalScore:r[10], totalMarks:r[11],
-      percentage:r[12], result:r[13],
-      resultsMode:t[12]||'summary'
-    };
+  var shR=ss.getSheetByName(SH_OT_RESPONSES);
+  var rRows=shR.getLastRow()>1?shR.getRange(2,1,shR.getLastRow()-1,16).getValues():[];
+  var myResponses=rRows.filter(function(r){return r[2]===p.studentId;});
+  var shOT=ss.getSheetByName(SH_ONLINE_TESTS);
+  var otRows=shOT.getLastRow()>1?shOT.getRange(2,1,shOT.getLastRow()-1,22).getValues():[];
+  var testMap={};otRows.forEach(function(r){testMap[r[0]]=r;});
+  // For retake tests, keep best score
+  var bestByTest={};
+  myResponses.forEach(function(r){
+    var t=testMap[r[1]]||[];
+    if(t[11]!=='Yes') return;
+    var pct=parseFloat(r[12])||0;
+    var key=r[1];
+    if(!bestByTest[key]||pct>bestByTest[key].pct) bestByTest[key]={row:r,pct:pct};
+  });
+  var results=myResponses.map(function(r){
+    var t=testMap[r[1]]||[];
+    if(t[11]!=='Yes') return null;
+    // For retake, only show best
+    if(t[18]==='Yes'&&bestByTest[r[1]]&&bestByTest[r[1]].row!==r) return null;
+    return{testId:r[1],testLabel:t[1]||r[1],testType:t[2]||'',
+      submittedAt:r[5],submitType:r[6],totalScore:r[10],totalMarks:r[11],
+      percentage:r[12],result:r[13],resultsMode:t[12]||'summary',
+      attemptNo:r[15],allowRetake:t[18]||'No'};
   }).filter(Boolean);
-
-  // Separate weekly and final
-  var weeklyResults = results.filter(function(r){ return r.testType==='Weekly'; });
-  var finalResults  = results.filter(function(r){ return r.testType==='Final'; });
-
-  // Weekly average (up to 3)
-  var weeklyAvg = null;
-  if (weeklyResults.length > 0) {
-    var sum = weeklyResults.reduce(function(s,r){ return s+(parseFloat(r.percentage)||0); }, 0);
-    weeklyAvg = Math.round(sum / weeklyResults.length);
+  var weekly=results.filter(function(r){return r.testType==='Weekly';});
+  var final_=results.filter(function(r){return r.testType==='Final';});
+  var weeklyAvg=null;
+  if(weekly.length>0){
+    var sum=weekly.reduce(function(s,r){return s+(parseFloat(r.percentage)||0);},0);
+    weeklyAvg=Math.round(sum/weekly.length);
   }
-
-  return {
-    status:'ok',
-    weeklyResults:weeklyResults,
-    finalResults:finalResults,
-    weeklyAverage:weeklyAvg,
-    weeklyPass: weeklyAvg !== null ? weeklyAvg >= OT_PASS_PERCENT : null,
-    overallPass: (weeklyAvg!==null&&weeklyAvg>=OT_PASS_PERCENT) &&
-                 (finalResults.length===0 || finalResults.some(function(r){ return r.result==='Pass'; }))
-  };
+  return{status:'ok',weeklyResults:weekly,finalResults:final_,weeklyAverage:weeklyAvg,
+    weeklyPass:weeklyAvg!==null?weeklyAvg>=OT_PASS_PERCENT:null,
+    overallPass:(weeklyAvg!==null&&weeklyAvg>=OT_PASS_PERCENT)&&
+      (final_.length===0||final_.some(function(r){return r.result==='Pass';}))};
 }
 
 function otGetTestResultsSummary(ss, p) {
-  if (!p.instructor || !p.testId) return {status:'error', reason:'missing_params'};
+  if (!p.instructor||!p.testId) return {status:'error',reason:'missing_params'};
   ensureOnlineTestSheets(ss);
-
-  var shR = ss.getSheetByName(SH_OT_RESPONSES);
-  var rRows = shR.getLastRow()>1 ? shR.getRange(2,1,shR.getLastRow()-1,14).getValues() : [];
-  var testResponses = rRows.filter(function(r){ return r[1]===p.testId; }).map(function(r){
-    return {studentId:r[2], studentName:r[3], submittedAt:r[5], submitType:r[6],
-            autoScore:r[8], manualScore:r[9], totalScore:r[10],
-            totalMarks:r[11], percentage:r[12], result:r[13]};
+  var shR=ss.getSheetByName(SH_OT_RESPONSES);
+  var rRows=shR.getLastRow()>1?shR.getRange(2,1,shR.getLastRow()-1,16).getValues():[];
+  var testResponses=rRows.filter(function(r){return r[1]===p.testId;}).map(function(r){
+    return{studentId:r[2],studentName:r[3],submittedAt:r[5],submitType:r[6],
+      autoScore:r[8],manualScore:r[9],totalScore:r[10],totalMarks:r[11],
+      percentage:r[12],result:r[13],attemptNo:r[15]};
   });
-
-  var passed = testResponses.filter(function(r){ return r.result==='Pass'; }).length;
-  var failed = testResponses.filter(function(r){ return r.result==='Fail'; }).length;
-  var avgPct = testResponses.length > 0
-    ? Math.round(testResponses.reduce(function(s,r){ return s+(parseFloat(r.percentage)||0); },0)/testResponses.length)
-    : 0;
-
-  return {status:'ok', responses:testResponses, passed:passed, failed:failed, avgPercentage:avgPct, total:testResponses.length};
+  var passed=testResponses.filter(function(r){return r.result==='Pass';}).length;
+  var failed=testResponses.filter(function(r){return r.result==='Fail';}).length;
+  var avgPct=testResponses.length>0?Math.round(testResponses.reduce(function(s,r){return s+(parseFloat(r.percentage)||0);},0)/testResponses.length):0;
+  return{status:'ok',responses:testResponses,passed:passed,failed:failed,avgPercentage:avgPct,total:testResponses.length};
 }
 
-// ════════════════════════════════════════════════════════════════
-// SECTION D — Question Bank Data (355 questions from Excel)
-// ════════════════════════════════════════════════════════════════
+// ── Question Bank Data (355 questions from Excel) ──────────────
 const QUESTION_BANK_DATA = [
   {id:'QB0001',course:'DG',topic:'DG Rough',q:'Diamond is a crystalline for of a',o1:'Nitrogen & Hydrogen',o2:'Carbon & Oxygen',o3:'Carbon',o4:'Silicon Oxide',ans:3,type:'MCQ'},
   {id:'QB0002',course:'DG',topic:'DG Rough',q:'The lustre of diamond is',o1:'Metallic',o2:'Waxy',o3:'Adamantine',o4:'Vitreous',ans:3,type:'MCQ'},
@@ -5001,3 +5003,136 @@ const QUESTION_BANK_DATA = [
   {id:'QB0354',course:'DG',topic:'SDA',q:'The instrument required to lift the diamonds from sorting pad is called',o1:'Scoop',o2:'Lifter',o3:'Filler',o4:'None of the above',ans:1,type:'MCQ'},
   {id:'QB0355',course:'DG',topic:'SDA',q:'The numbering system used in sizing the small diamonds is called',o1:'Diameter',o2:'Carat & Cents',o3:'mm size',o4:'Sieve Size',ans:4,type:'MCQ'},
 ];
+
+// ════════════════════════════════════════════════════════════════
+// BADGES, RANKS & HONOURS — Version 3 additions
+// ════════════════════════════════════════════════════════════════
+
+function otCalculateBadge(percentage, passingScore) {
+  var ps = passingScore || OT_PASS_PERCENT;
+  if (percentage >= 95) return {name:'Diamond Distinction', icon:'💎', tier:'diamond', color:'#0D1B2E'};
+  if (percentage >= 85) return {name:'Sapphire Excellence', icon:'🔵', tier:'sapphire', color:'#1a4b8c'};
+  if (percentage >= 75) return {name:'Emerald Achievement', icon:'🟢', tier:'emerald', color:'#065f46'};
+  if (percentage >= 65) return {name:'Ruby Scholar',        icon:'🔴', tier:'ruby',    color:'#991b1b'};
+  if (percentage >= ps)  return {name:'Certified Pass',     icon:'✨', tier:'pass',    color:'#92400e'};
+  return                        {name:'Needs Improvement',  icon:'📚', tier:'fail',    color:'#6b7280'};
+}
+
+function otGetCumulativeHonour(weeklyAvg, finalResults, passingScore) {
+  var ps = passingScore || OT_PASS_PERCENT;
+  // Final exam score is definitive
+  if (finalResults && finalResults.length > 0) {
+    var bestFinal = finalResults.reduce(function(m,r){ return Math.max(m, parseFloat(r.percentage)||0); }, 0);
+    if (bestFinal >= 90) return {title:'Graduate Gemologist', icon:'🏆', color:'#C9A84C'};
+    if (bestFinal >= 80) return {title:'Diamond Graduate',    icon:'💎', color:'#0D1B2E'};
+    if (bestFinal >= 70) return {title:'Sapphire Graduate',   icon:'🔵', color:'#1a4b8c'};
+    if (bestFinal >= ps)  return {title:'Certified Graduate', icon:'🟢', color:'#065f46'};
+    return                       {title:'Supplementary Required', icon:'❌', color:'#dc2626'};
+  }
+  // Interim: weekly average
+  if (weeklyAvg !== null && weeklyAvg !== undefined) {
+    if (weeklyAvg >= 90) return {title:'Graduate Gemologist (Interim)', icon:'🏆', color:'#C9A84C'};
+    if (weeklyAvg >= 80) return {title:'Diamond Graduate (Interim)',    icon:'💎', color:'#0D1B2E'};
+    if (weeklyAvg >= 70) return {title:'Sapphire Graduate (Interim)',   icon:'🔵', color:'#1a4b8c'};
+    if (weeklyAvg >= ps)  return {title:'Certified Graduate (Interim)', icon:'🟢', color:'#065f46'};
+    return                       {title:'Supplementary Required',       icon:'❌', color:'#dc2626'};
+  }
+  return null;
+}
+
+function otGetSpecialBadges(weeklyResults, finalResults, allResults) {
+  var specials = [];
+  // Perfect Stone — 100% on any test
+  if (allResults.some(function(r){ return parseFloat(r.percentage)>=100; }))
+    specials.push({name:'Perfect Stone', icon:'🎯', desc:'Scored 100% on a test'});
+  // Hat Trick — passed all 3 weekly tests
+  if (weeklyResults.length>=3 && weeklyResults.every(function(r){ return r.result==='Pass'; }))
+    specials.push({name:'Hat Trick', icon:'🎩', desc:'Passed all 3 weekly tests'});
+  // Rising Star — score improved each week (need at least 2)
+  if (weeklyResults.length>=2) {
+    var rising=true;
+    for (var i=1;i<weeklyResults.length;i++) {
+      if ((parseFloat(weeklyResults[i].percentage)||0)<=(parseFloat(weeklyResults[i-1].percentage)||0)){rising=false;break;}
+    }
+    if (rising) specials.push({name:'Rising Star', icon:'📈', desc:'Score improved every week'});
+  }
+  // Consistency — all 3 weekly scores within 5%
+  if (weeklyResults.length>=3) {
+    var scores=weeklyResults.map(function(r){return parseFloat(r.percentage)||0;});
+    if (Math.max.apply(null,scores)-Math.min.apply(null,scores)<=5)
+      specials.push({name:'Consistency', icon:'⭐', desc:'All weekly scores within 5% of each other'});
+  }
+  return specials;
+}
+
+function otGetClassRank(ss, testId, studentId, percentage) {
+  try {
+    var shR=ss.getSheetByName(SH_OT_RESPONSES);
+    if (!shR||shR.getLastRow()<=1) return null;
+    var rRows=shR.getRange(2,1,shR.getLastRow()-1,13).getValues();
+    // Get all valid scores for this test (latest attempt per student)
+    var byStudent={};
+    rRows.filter(function(r){return r[1]===testId&&r[12]!==null&&r[12]!=='';}).forEach(function(r){
+      var sid=r[2], pct=parseFloat(r[12])||0;
+      if (!byStudent[sid]||pct>byStudent[sid]) byStudent[sid]=pct;
+    });
+    var scores=Object.values(byStudent).sort(function(a,b){return b-a;});
+    var rank=1;
+    for(var i=0;i<scores.length;i++){if(scores[i]>percentage)rank++;else break;}
+    return {rank:rank, total:scores.length};
+  } catch(e) { return null; }
+}
+
+// ── Enhanced otGetStudentResults (replaces original) ─────────────
+function otGetStudentResultsV3(ss, p) {
+  if (!p.studentId||!p.batchCode) return {status:'error',reason:'missing_params'};
+  ensureOnlineTestSheets(ss);
+  var shR=ss.getSheetByName(SH_OT_RESPONSES);
+  var rRows=shR.getLastRow()>1?shR.getRange(2,1,shR.getLastRow()-1,16).getValues():[];
+  var myResponses=rRows.filter(function(r){return r[2]===p.studentId;});
+  var shOT=ss.getSheetByName(SH_ONLINE_TESTS);
+  var otRows=shOT.getLastRow()>1?shOT.getRange(2,1,shOT.getLastRow()-1,23).getValues():[];
+  var testMap={};otRows.forEach(function(r){testMap[r[0]]=r;});
+  // Best score per test for retake
+  var bestByTest={};
+  myResponses.forEach(function(r){
+    var t=testMap[r[1]]||[];
+    if(t[18]==='Yes'){var pct=parseFloat(r[12])||0;if(!bestByTest[r[1]]||pct>bestByTest[r[1]].pct)bestByTest[r[1]]={row:r,pct:pct};}
+  });
+  var results=myResponses.map(function(r){
+    var t=testMap[r[1]]||[];
+    if(t[11]!=='Yes') return null;
+    if(t[18]==='Yes'&&bestByTest[r[1]]&&bestByTest[r[1]].row!==r) return null;
+    var pct=parseFloat(r[12]);
+    var ps=parseFloat(t[22])||OT_PASS_PERCENT;
+    var badge=(!isNaN(pct))?otCalculateBadge(pct,ps):null;
+    var rank=(!isNaN(pct))?otGetClassRank(ss,r[1],p.studentId,pct):null;
+    return{testId:r[1],testLabel:t[1]||r[1],testType:t[2]||'',
+      submittedAt:r[5],submitType:r[6],totalScore:r[10],totalMarks:r[11],
+      percentage:pct,result:r[13],resultsMode:t[12]||'summary',
+      attemptNo:r[15],allowRetake:t[18]||'No',
+      passingScore:ps,badge:badge,classRank:rank};
+  }).filter(Boolean);
+  var weekly=results.filter(function(r){return r.testType==='Weekly';});
+  var final_=results.filter(function(r){return r.testType==='Final';});
+  var weeklyAvg=null;
+  if(weekly.length>0){
+    var sum=weekly.reduce(function(s,r){return s+(r.percentage||0);},0);
+    weeklyAvg=Math.round(sum/weekly.length);
+  }
+  // Sort weekly by submission date for Rising Star check
+  var weeklyOrdered=weekly.slice().sort(function(a,b){return new Date(a.submittedAt)-new Date(b.submittedAt);});
+  var defaultPS = weekly.length>0?(parseFloat(testMap[weekly[0].testId]&&testMap[weekly[0].testId][22])||OT_PASS_PERCENT):OT_PASS_PERCENT;
+  var specials=otGetSpecialBadges(weeklyOrdered,final_,results);
+  var cumulative=otGetCumulativeHonour(weeklyAvg,final_,defaultPS);
+  return{
+    status:'ok',weeklyResults:weekly,finalResults:final_,
+    weeklyAverage:weeklyAvg,
+    weeklyPass:weeklyAvg!==null?weeklyAvg>=defaultPS:null,
+    specialBadges:specials,
+    cumulativeHonour:cumulative,
+    overallPass:(weeklyAvg!==null&&weeklyAvg>=defaultPS)&&
+      (final_.length===0||final_.some(function(r){return r.result==='Pass';}))
+  };
+}
+

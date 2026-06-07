@@ -639,10 +639,10 @@
       @keyframes warnPulse{0%,100%{opacity:1}50%{opacity:.5}}
 
       /* ── Layout ── */
-      .ot-body{display:flex;gap:0;max-width:900px;margin:0 auto;padding:20px 16px 120px;box-sizing:border-box;min-height:calc(100vh - 120px);}
-      .ot-questions-col{flex:1;min-width:0;}
-      .ot-minimap{width:200px;flex-shrink:0;margin-left:20px;display:none;}
-      @media(min-width:900px){.ot-minimap{display:block;}}
+      .ot-body{max-width:800px;margin:0 auto;padding:20px 16px 120px;box-sizing:border-box;}
+      .ot-questions-col{width:100%;}
+      .ot-minimap{position:fixed;top:80px;right:16px;width:180px;display:none;z-index:15;}
+      @media(min-width:1100px){.ot-minimap{display:block;}}
 
       /* ── Question card ── */
       .ot-q-card{background:#fff;border-radius:16px;margin-bottom:16px;overflow:hidden;
@@ -1819,11 +1819,14 @@ function otLoadAndStartTest() {
   gasGet({action:'getTestQuestions', testId:otActiveTestInfo.testId, studentId:sid, batchCode:batch}, function(err, d) {
     if (err || !d || d.status !== 'ok') { alert('Could not load test. Please try again.'); return; }
     otTestData = d;
-    // Use server remaining time; if 0 (time elapsed) fall back to full duration
-    otRemainingSeconds = (d.remainingSec > 0) ? d.remainingSec : Math.max(0, parseInt(d.test.duration||30) * 60);
+    var durSec = Math.max(60, parseInt((d.test&&d.test.duration)||30) * 60);
+    otRemainingSeconds = (d.remainingSec > 0) ? parseInt(d.remainingSec) : durSec;
     otCurrentQ = 0;
     otSubmitted = false;
 
+    // If server says 0 time left but we fell back to full duration, it means
+    // the student is joining a test whose window has elapsed. Still allow them in
+    // (instructor hasn't closed it) with the full allocated time.
     otRenderTestScreen();
     otStartTimer();
     otBindAntiCheat();
@@ -1889,55 +1892,65 @@ function otUpdateProgressBar() {
 
 function otRenderAllQuestions() {
   var el = document.getElementById('ot-questions-body');
-  if (!el || !otTestData) return;
+  if (!el || !otTestData || !otTestData.questions) return;
+  var qs = otTestData.questions;
+  if (!qs.length) {
+    el.innerHTML = '<div style="padding:30px;text-align:center;color:#9ca3af;"><div style="font-size:32px;">📋</div><p>No questions found. Please contact your instructor.</p></div>';
+    return;
+  }
   var letters = ['A','B','C','D'];
-  var typeClasses = {MCQ:'ot-q-type-tag',TrueFalse:'ot-q-type-tag tf',FillBlank:'ot-q-type-tag fb',Theory:'ot-q-type-tag th'};
   var html = '';
-  otTestData.questions.forEach(function(q, i) {
+  qs.forEach(function(q, i) {
     var answered = otAnswers[q.qId] !== undefined;
-    var typeLabel = q.type==='TrueFalse'?'True/False':q.type==='FillBlank'?'Fill Blank':q.type;
-    html += '<div class="ot-q-card'+(answered?' answered':'')+'" id="ot-q-card-'+i+'">';
-    html += '<div class="ot-q-header">'
-          + '<span class="ot-q-meta">Q '+(i+1)+' of '+otTestData.questions.length+'</span>'
-          + '<div style="display:flex;align-items:center;gap:8px;">'
-          + '<span class="'+(typeClasses[q.type]||'ot-q-type-tag')+'">'+escHtmlSt(typeLabel)+'</span>'
-          + '<span class="ot-q-marks">'+q.marks+' mark'+(q.marks>1?'s':'')+'</span>'
+    html += '<div id="ot-q-card-'+i+'" style="background:#fff;border-radius:14px;margin-bottom:14px;border:1.5px solid '+(answered?'#a7f3d0':'#e5e7eb')+';overflow:hidden;">';
+    // Header strip
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#f8fafc;border-bottom:1px solid #f0f0f0;">'
+          + '<span style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;">Q '+(i+1)+' of '+qs.length+'</span>'
+          + '<div style="display:flex;gap:8px;align-items:center;">'
+          + '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:8px;background:#ede9fe;color:#5b21b6;">'+(q.type==='TrueFalse'?'True/False':q.type==='FillBlank'?'Fill Blank':q.type||'MCQ')+'</span>'
+          + '<span style="font-size:11px;font-weight:700;color:#C9A84C;">'+(q.marks||1)+' mark'+(q.marks>1?'s':'')+'</span>'
           + '</div></div>';
-    html += '<div class="ot-q-body"><div class="ot-q-text">'+escHtmlSt(q.question)+'</div>';
-    if (q.type === 'MCQ') {
+    // Question text
+    html += '<div style="padding:16px;">';
+    html += '<p style="font-size:15px;font-weight:600;color:#111827;line-height:1.6;margin:0 0 16px;">'+(q.question||'')+'</p>';
+    // Options
+    if (q.type === 'MCQ' || !q.type) {
       ['opt1','opt2','opt3','opt4'].forEach(function(ok, oi) {
         if (!q[ok]) return;
         var optVal = String(oi+1);
         var sel = otAnswers[q.qId] === optVal;
-        html += '<div class="ot-opt'+(sel?' selected':'')+'" data-qid="'+escHtmlSt(q.qId)+'" data-val="'+optVal+'" onclick="otSelectOptEl(this)">'
-              + '<div class="ot-opt-letter">'+letters[oi]+'</div>'
-              + '<div class="ot-opt-text">'+escHtmlSt(q[ok])+'</div>'
-              + (sel?'<div style="margin-left:auto;color:#059669;font-size:18px;font-weight:700;">✓</div>':'')
+        html += '<div class="ot-opt'+(sel?' selected':'')+'" data-qid="'+q.qId+'" data-val="'+optVal+'" onclick="otSelectOptEl(this)"'
+              + ' style="display:flex;align-items:center;gap:12px;padding:11px 14px;border:2px solid '+(sel?'#0D1B2E':'#e5e7eb')+';border-radius:10px;margin-bottom:8px;cursor:pointer;background:'+(sel?'#eef2ff':'#fff')+';transition:all .15s;">'
+              + '<div style="width:30px;height:30px;border-radius:50%;border:2px solid '+(sel?'#0D1B2E':'#e5e7eb')+';display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:'+(sel?'#C9A84C':'#9ca3af')+';background:'+(sel?'#0D1B2E':'transparent')+';flex-shrink:0;">'+letters[oi]+'</div>'
+              + '<span style="font-size:14px;color:#374151;line-height:1.4;">'+q[ok]+'</span>'
+              + (sel ? '<div style="margin-left:auto;color:#059669;font-size:18px;font-weight:700;">✓</div>' : '')
               + '</div>';
       });
     } else if (q.type === 'TrueFalse') {
-      ['True','False'].forEach(function(v,vi){
+      ['True','False'].forEach(function(v, vi) {
         var sel = otAnswers[q.qId] === v;
-        html += '<div class="ot-opt'+(sel?' selected':'')+'" data-qid="'+escHtmlSt(q.qId)+'" data-val="'+v+'" onclick="otSelectOptEl(this)">'
-              + '<div class="ot-opt-letter">'+(vi===0?'T':'F')+'</div>'
-              + '<div class="ot-opt-text">'+v+'</div>'
-              + (sel?'<div style="margin-left:auto;color:#059669;font-size:18px;font-weight:700;">✓</div>':'')
+        html += '<div class="ot-opt'+(sel?' selected':'')+'" data-qid="'+q.qId+'" data-val="'+v+'" onclick="otSelectOptEl(this)"'
+              + ' style="display:flex;align-items:center;gap:12px;padding:11px 14px;border:2px solid '+(sel?'#0D1B2E':'#e5e7eb')+';border-radius:10px;margin-bottom:8px;cursor:pointer;background:'+(sel?'#eef2ff':'#fff')+';transition:all .15s;">'
+              + '<div style="width:30px;height:30px;border-radius:50%;border:2px solid '+(sel?'#0D1B2E':'#e5e7eb')+';display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:'+(sel?'#C9A84C':'#9ca3af')+';background:'+(sel?'#0D1B2E':'transparent')+';flex-shrink:0;">'+(vi===0?'T':'F')+'</div>'
+              + '<span style="font-size:14px;color:#374151;">'+v+'</span>'
+              + (sel ? '<div style="margin-left:auto;color:#059669;font-size:18px;font-weight:700;">✓</div>' : '')
               + '</div>';
       });
     } else if (q.type === 'FillBlank') {
-      html += '<input type="text" class="ot-fill-input" placeholder="Type your answer here…" value="'+escHtmlSt(otAnswers[q.qId]||'')+'" data-qid="'+escHtmlSt(q.qId)+'" oninput="otSaveFIB(this.dataset.qid,this.value)">';
+      html += '<input type="text" data-qid="'+q.qId+'" oninput="otSaveFIB(this.dataset.qid,this.value)"'
+            + ' value="'+(otAnswers[q.qId]||'')+'"'
+            + ' placeholder="Type your answer here…"'
+            + ' style="width:100%;padding:12px 14px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;box-sizing:border-box;outline:none;">';
     } else if (q.type === 'Theory') {
-      html += '<textarea class="ot-theory-input" placeholder="Write your detailed answer here…" data-qid="'+escHtmlSt(q.qId)+'" oninput="otSaveFIB(this.dataset.qid,this.value)">'+escHtmlSt(otAnswers[q.qId]||'')+'</textarea>';
+      html += '<textarea data-qid="'+q.qId+'" oninput="otSaveFIB(this.dataset.qid,this.value)"'
+            + ' placeholder="Write your detailed answer here…"'
+            + ' style="width:100%;padding:12px 14px;border:2px solid #e5e7eb;border-radius:10px;font-size:13px;min-height:120px;box-sizing:border-box;resize:vertical;outline:none;">'+( otAnswers[q.qId]||'')+'</textarea>';
     }
     html += '</div></div>';
   });
-  if (!html) {
-    html = '<div style="padding:30px;text-align:center;color:#9ca3af;"><div style="font-size:32px;margin-bottom:12px;">📋</div><div style="font-weight:600;">Questions could not be loaded</div><div style="font-size:13px;margin-top:6px;">Please close and try again.</div></div>';
-  }
   el.innerHTML = html;
-  // Ensure questions column is fully visible
-  el.style.minHeight = '200px';
 }
+
 
 function otSelectOptEl(el) {
   var qId = el.dataset.qid; var val = el.dataset.val;

@@ -593,10 +593,31 @@
   <!-- ══════════════════════════════════════════════════════════ -->
   <div id="t-onlinetests" class="tab-content">
     <style>
-      .ot-subnav { display:flex; gap:6px; margin-bottom:18px; flex-wrap:wrap; }
-      .ot-subbtn { padding:7px 16px; border-radius:20px; border:1.5px solid var(--border,#ddd);
-                   background:#fff; cursor:pointer; font-size:13px; font-weight:500; transition:all .2s; }
-      .ot-subbtn.active { background:var(--navy,#0D1B2E); color:#fff; border-color:var(--navy,#0D1B2E); }
+      .ot-subnav { display:flex; gap:10px; margin-bottom:24px; flex-wrap:wrap; }
+      .ot-subbtn {
+        padding: 9px 18px;
+        border-radius: 12px;
+        border: 1px solid rgba(201,168,76,0.18);
+        background: #fff;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        box-shadow: 0 2px 6px rgba(13,27,46,0.03);
+      }
+      .ot-subbtn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(13,27,46,0.08);
+      }
+      .ot-subbtn.qbank.active { background: #EEF2FF; color: #4F46E5; border-color: #818CF8; box-shadow: 0 4px 12px rgba(79,70,229,0.15); }
+      .ot-subbtn.create.active { background: #ECFDF5; color: #059669; border-color: #34D399; box-shadow: 0 4px 12px rgba(5,150,105,0.15); }
+      .ot-subbtn.mytests.active { background: #F5F3FF; color: #7C3AED; border-color: #A78BFA; box-shadow: 0 4px 12px rgba(124,58,237,0.15); }
+      .ot-subbtn.proctor.active { background: #FFF7ED; color: #EA580C; border-color: #FDBA74; box-shadow: 0 4px 12px rgba(234,88,12,0.15); }
+      .ot-subbtn.grading.active { background: #F0FDFA; color: #0D9488; border-color: #2DD4BF; box-shadow: 0 4px 12px rgba(13,148,136,0.15); }
+      .ot-subbtn.results.active { background: #FFF1F2; color: #E11D48; border-color: #FDA4AF; box-shadow: 0 4px 12px rgba(225,29,72,0.15); }
       .ot-panel { display:none; } .ot-panel.active { display:block; }
       .ot-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; margin-top:14px; }
       .ot-card { background:#fff; border:1.5px solid var(--border,#e5e7eb); border-radius:12px;
@@ -636,11 +657,26 @@
       .ot-warning-pill { display:inline-flex; align-items:center; gap:4px;
                          background:#fee2e2; color:#dc2626; border-radius:12px;
                          padding:2px 8px; font-size:11px; font-weight:600; }
-      .ot-stat-row { display:flex; gap:16px; margin-bottom:18px; flex-wrap:wrap; }
-      .ot-stat { text-align:center; padding:14px 20px; background:#f9fafb;
-                 border-radius:10px; border:1px solid #e5e7eb; flex:1; min-width:100px; }
-      .ot-stat .num { font-size:24px; font-weight:700; color:var(--navy,#0D1B2E); }
-      .ot-stat .lbl { font-size:11px; color:#6b7280; font-weight:500; margin-top:2px; }
+      .ot-stat-row { display:flex; gap:16px; margin-bottom:24px; flex-wrap:wrap; }
+      .ot-stat {
+        text-align: center;
+        padding: 16px 24px;
+        border-radius: 12px;
+        border: 1.5px solid transparent;
+        flex: 1;
+        min-width: 130px;
+        box-shadow: 0 4px 12px rgba(13,27,46,0.05);
+        transition: transform 0.2s;
+      }
+      .ot-stat:hover {
+        transform: translateY(-2px);
+      }
+      .ot-stat.total { background: #EEF2FF; border-color: #C7D2FE; color: #1E3A8A; }
+      .ot-stat.passed { background: #ECFDF5; border-color: #A7F3D0; color: #065F46; }
+      .ot-stat.failed { background: #FEF2F2; border-color: #FCA5A5; color: #991B1B; }
+      .ot-stat.avg { background: var(--gold-pale,#F9F3E3); border-color: rgba(201,168,76,0.3); color: #854D0E; }
+      .ot-stat .num { font-size: 32px; font-weight: 800; font-family: "JetBrains Mono", monospace; line-height: 1.2; }
+      .ot-stat .lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.85; margin-top: 4px; }
       .mg-student-block { border:1.5px solid #e5e7eb; border-radius:10px;
                           margin-bottom:14px; overflow:hidden; }
       .mg-student-hdr { padding:10px 14px; background:#f9fafb; font-weight:600;
@@ -666,12 +702,12 @@
 
     <!-- Sub-navigation -->
     <div class="ot-subnav">
-      <button class="ot-subbtn active" onclick="otSubTab('qbank')">📚 Question Bank</button>
-      <button class="ot-subbtn" onclick="otSubTab('create')">➕ Create Test</button>
-      <button class="ot-subbtn" onclick="otSubTab('mytests')">📋 My Tests</button>
-      <button class="ot-subbtn" onclick="otSubTab('proctor')">👁 Proctor Room</button>
-      <button class="ot-subbtn" onclick="otSubTab('grading')">✏️ Grade Theory</button>
-      <button class="ot-subbtn" onclick="otSubTab('results')">📊 Results</button>
+      <button class="ot-subbtn active qbank" onclick="otSubTab('qbank')">📚 Question Bank</button>
+      <button class="ot-subbtn create" onclick="otSubTab('create')">➕ Create Test</button>
+      <button class="ot-subbtn mytests" onclick="otSubTab('mytests')">📋 My Tests</button>
+      <button class="ot-subbtn proctor" onclick="otSubTab('proctor')">👁 Proctor Room</button>
+      <button class="ot-subbtn grading" onclick="otSubTab('grading')">✏️ Grade Theory</button>
+      <button class="ot-subbtn results" onclick="otSubTab('results')">📊 Results</button>
     </div>
 
     <!-- ── Panel 1: Question Bank ─────────────────────────── -->
@@ -2530,6 +2566,7 @@ function otCreateTest() {
     testType:(document.getElementById('ot-c-type')||{}).value||'Weekly',
     course:(document.getElementById('ot-c-course')||{}).value||'DG',
     batchCode:batch,
+    batchCodes:batch,
     duration:(document.getElementById('ot-c-duration')||{}).value||'30',
     negativeMarking:(document.getElementById('ot-c-negmark')||{}).checked ? 'true':'false',
     negMarkValue:(document.getElementById('ot-c-negval')||{}).value||'0.25'
@@ -2660,9 +2697,9 @@ function otLoadProctor() {
 
     // Stats
     document.getElementById('ot-proctor-stats').innerHTML =
-      '<div class="ot-stat"><div class="num">'+d.total+'</div><div class="lbl">Enrolled</div></div>'
-      +'<div class="ot-stat"><div class="num" style="color:#10b981">'+d.submitted+'</div><div class="lbl">Submitted</div></div>'
-      +'<div class="ot-stat"><div class="num" style="color:#f59e0b">'+d.pending+'</div><div class="lbl">Pending</div></div>';
+      '<div class="ot-stat total"><div class="num">'+d.total+'</div><div class="lbl">Enrolled</div></div>'
+      +'<div class="ot-stat passed"><div class="num">'+d.submitted+'</div><div class="lbl">Submitted</div></div>'
+      +'<div class="ot-stat avg"><div class="num">'+d.pending+'</div><div class="lbl">Pending</div></div>';
 
     // Students
     var html = '';
@@ -2782,22 +2819,24 @@ function otLoadResults() {
     if (!d.responses || !d.responses.length) { el.innerHTML='<div style="color:#9ca3af;padding:20px 0;">No submissions yet.</div>'; return; }
 
     var html = '<div class="ot-stat-row">'
-      + '<div class="ot-stat"><div class="num">'+d.total+'</div><div class="lbl">Total</div></div>'
-      + '<div class="ot-stat"><div class="num" style="color:#10b981">'+d.passed+'</div><div class="lbl">Passed</div></div>'
-      + '<div class="ot-stat"><div class="num" style="color:#dc2626">'+d.failed+'</div><div class="lbl">Failed</div></div>'
-      + '<div class="ot-stat"><div class="num">'+d.avgPercentage+'%</div><div class="lbl">Class Avg</div></div>'
+      + '<div class="ot-stat total"><div class="num">'+d.total+'</div><div class="lbl">Total Students</div></div>'
+      + '<div class="ot-stat passed"><div class="num">'+d.passed+'</div><div class="lbl">Passed</div></div>'
+      + '<div class="ot-stat failed"><div class="num">'+d.failed+'</div><div class="lbl">Failed</div></div>'
+      + '<div class="ot-stat avg"><div class="num">'+d.avgPercentage+'%</div><div class="lbl">Class Avg</div></div>'
       + '</div>';
 
     html += '<table class="ot-results-table"><thead><tr>'
-      + '<th>Student</th><th>Score</th><th>Total Marks</th><th>%</th><th>Result</th><th>Submitted</th><th>Type</th>'
+      + '<th>Student</th><th>Attempt</th><th>Score</th><th>Total Marks</th><th>%</th><th>Result</th><th>Submitted</th><th>Type</th>'
       + '</tr></thead><tbody>';
     d.responses.forEach(function(r) {
       var pct = r.percentage !== null && r.percentage !== '' ? r.percentage+'%' : '<span class="pend-pill">Pending</span>';
       var res = r.result==='Pass' ? '<span class="pass-pill">Pass</span>' :
                 r.result==='Fail' ? '<span class="fail-pill">Fail</span>' :
                                     '<span class="pend-pill">Pending</span>';
+      var attNo = r.attemptNo || 1;
       html += '<tr>'
         + '<td><b>'+escHtml(r.studentName||r.studentId)+'</b><br><span style="font-size:11px;color:#9ca3af;">'+escHtml(r.studentId)+'</span></td>'
+        + '<td><span class="badge badge-amber">Attempt '+attNo+'</span></td>'
         + '<td>'+escHtml(String(r.totalScore!==null&&r.totalScore!==''?r.totalScore:'—'))+'</td>'
         + '<td>'+escHtml(String(r.totalMarks||''))+'</td>'
         + '<td><b>'+pct+'</b></td>'

@@ -4035,7 +4035,7 @@ function ensureOnlineTestSheets(ss) {
 // ════════════════════════════════════════════════════════════════
 function otParseTestRow(r) {
   return {
-    testId:r[0], testLabel:r[1], testType:r[2], batchCodes:r[3], course:r[4],
+    testId:r[0], testLabel:r[1], testType:r[2], batchCodes:r[3], batchCode:r[3], course:r[4],
     duration:r[5], status:r[6], negativeMarking:r[7], negMarkValue:r[8],
     activatedAt:r[9]?new Date(r[9]).toISOString():'',
     closedAt:r[10]?new Date(r[10]).toISOString():'',
@@ -4140,7 +4140,7 @@ function otCreateTest(ss, p) {
   var passingScore = Math.min(90, Math.max(40, parseFloat(p.passingScore)||OT_PASS_PERCENT));
   sh.appendRow([
     testId, p.testLabel||'Online Test', p.testType||'Weekly',
-    p.batchCodes||'', p.course||'', parseInt(p.duration)||30, status,
+    p.batchCodes||p.batchCode||'', p.course||'', parseInt(p.duration)||30, status,
     p.negativeMarking==='true'?'Yes':'No', negMarks,
     '','','No','summary', p.instructor, now.toISOString(),
     p.targetStudents||'ALL', expiryMode, expiryAt,

@@ -2269,6 +2269,13 @@ function doGet(e) {
       });
     }
 
+    if (act==='debugGetBatches') {
+      ensureSheets(ss);
+      var sh = ss.getSheetByName(SH_BATCHES);
+      var vals = sh ? sh.getDataRange().getValues() : [];
+      return respond({status: 'ok', batches: vals});
+    }
+
     if (act==='getStudentAlumni') {
       ensureSheets(ss);
       if (String(p.isAdmin) !== 'true' && !COUNSELOR_CREDS[p.counsellorName]) {
@@ -2374,7 +2381,7 @@ function doGet(e) {
         }
       });
       
-      return respond({ status: 'ok', alumni: alumni });
+      return respond({ status: 'ok', alumni: alumni, debugFinishedBatches: finishedBatchesMap, debugBatchCourseMap: batchCourseMap });
     }
 
     if (act==='saveRevenueTargets') {

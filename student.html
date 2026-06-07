@@ -1837,6 +1837,7 @@ window.printFeeStatement = function(course, batchCode, totalPayable, paid, balan
 // ═══════════════════════════════════════════════════════════════
 
 var otActiveTestInfo  = null;  // from getStudentActiveTest
+var otReleasedTestsList = [];  // global list of released tests
 var otTestData        = null;  // from getTestQuestions {test, questions, remainingSec}
 var otAnswers         = {};    // {qId: answer}
 var otCurrentQ        = 0;
@@ -1895,16 +1896,34 @@ function otShowSubmittedCard(info) {
   var banner = document.getElementById('ot-active-banner');
   if (banner) {
     banner.style.display = 'block';
-    banner.innerHTML = '<div style="background:linear-gradient(135deg,#064e3b,#065f46);border-radius:16px;'
-      + 'padding:20px 22px;color:#fff;border:2px solid rgba(16,185,129,.3);margin-bottom:16px;">'
-      + '<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(16,185,129,.2);'
-      + 'border:1px solid rgba(16,185,129,.4);border-radius:20px;padding:3px 10px;'
-      + 'font-size:11px;font-weight:700;color:#6ee7b7;margin-bottom:10px;">✅ SUBMITTED</div>'
-      + '<div style="font-size:19px;font-weight:800;margin-bottom:6px;">' + escHtmlSt(info.testLabel||'Online Test') + '</div>'
-      + '<div style="font-size:13px;opacity:.8;margin-bottom:14px;">You have already submitted this test. Your instructor will release results soon.</div>'
-      + '<div style="background:rgba(255,255,255,.1);border-radius:10px;padding:12px 16px;font-size:12px;color:#a7f3d0;">'
-      + '📋 Check the <b>My Tests</b> tab for your score once results are released.'
-      + '</div></div>';
+
+    var isReleased = otReleasedTestsList.some(function(t) {
+      return String(t.testId) === String(info.testId) || String(t.testLabel) === String(info.testLabel);
+    });
+
+    if (isReleased) {
+      banner.innerHTML = '<div style="background:linear-gradient(135deg,#064e3b,#065f46);border-radius:16px;'
+        + 'padding:20px 22px;color:#fff;border:2px solid rgba(16,185,129,.3);margin-bottom:16px;">'
+        + '<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(16,185,129,.2);'
+        + 'border:1px solid rgba(16,185,129,.4);border-radius:20px;padding:3px 10px;'
+        + 'font-size:11px;font-weight:700;color:#6ee7b7;margin-bottom:10px;">✅ RESULTS RELEASED</div>'
+        + '<div style="font-size:19px;font-weight:800;margin-bottom:6px;">' + escHtmlSt(info.testLabel||'Online Test') + '</div>'
+        + '<div style="font-size:13px;opacity:.8;margin-bottom:14px;">Results and detailed feedback have been released for this test.</div>'
+        + '<div style="background:rgba(255,255,255,.1);border-radius:10px;padding:12px 16px;font-size:12px;color:#a7f3d0;">'
+        + '📊 Scroll down to the <b>My Tests</b> section to view your score, rank, and answers feedback.'
+        + '</div></div>';
+    } else {
+      banner.innerHTML = '<div style="background:linear-gradient(135deg,#064e3b,#065f46);border-radius:16px;'
+        + 'padding:20px 22px;color:#fff;border:2px solid rgba(16,185,129,.3);margin-bottom:16px;">'
+        + '<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(16,185,129,.2);'
+        + 'border:1px solid rgba(16,185,129,.4);border-radius:20px;padding:3px 10px;'
+        + 'font-size:11px;font-weight:700;color:#6ee7b7;margin-bottom:10px;">✅ SUBMITTED</div>'
+        + '<div style="font-size:19px;font-weight:800;margin-bottom:6px;">' + escHtmlSt(info.testLabel||'Online Test') + '</div>'
+        + '<div style="font-size:13px;opacity:.8;margin-bottom:14px;">You have already submitted this test. Your instructor will release results soon.</div>'
+        + '<div style="background:rgba(255,255,255,.1);border-radius:10px;padding:12px 16px;font-size:12px;color:#a7f3d0;">'
+        + '📋 Check the <b>My Tests</b> tab for your score once results are released.'
+        + '</div></div>';
+    }
   }
   // Badge stays (shows there's something in My Tests)
   var badge = document.getElementById('ot-tab-badge');
@@ -2631,6 +2650,8 @@ function otRenderMyResults(weekly, final_, weeklyAvg, specials, cumHonour) {
   }
 
   el.innerHTML = html;
+
+  otReleasedTestsList = weekly.concat(final_);
 
   otLatestTestIds = [];
   weekly.forEach(function(r) { otLatestTestIds.push(r.testId); });

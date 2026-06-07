@@ -5678,12 +5678,21 @@ function filterAlumniTable() {
 }
 </script>
 <script>
-  // Register Service Worker for instant return-visit loads
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', function() {
-      navigator.serviceWorker.register('/sw.js').catch(function() {});
-    });
-  }
+// Register Service Worker for caching and offline support
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/sw.js').then(function(reg) {
+      reg.update();
+    }).catch(function() {});
+  });
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function() {
+    if (!refreshing) {
+      refreshing = true;
+      window.location.reload();
+    }
+  });
+}
 </script>
 </body>
 </html>

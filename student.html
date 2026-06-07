@@ -2573,6 +2573,22 @@ function otStartPolling() {
 // Patch into portal load — call otStartPolling after portalData is set
 var _otPortalLoadOrig = window.onPortalLoad;
 window.addEventListener('portalReady', otStartPolling);
+
+// Register Service Worker for caching and offline support
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/sw.js').then(function(reg) {
+      reg.update();
+    }).catch(function() {});
+  });
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function() {
+    if (!refreshing) {
+      refreshing = true;
+      window.location.reload();
+    }
+  });
+}
 </script>
 </body>
 </html>

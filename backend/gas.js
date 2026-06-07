@@ -2145,7 +2145,7 @@ function doGet(e) {
       var allDbRows=getRevenueMonthlyAchievedRows(ss);
       var dbRows=allDbRows.filter(function(r){return revenueSameCounsellor(r.counsellor,debugName);});
       var dbPeriod='2026-27';
-      var dbMonths=revenueMonthList('2026-01','2027-03');
+      var dbMonths=revenueMonthList('2026-04','2027-03');
       var dbMonthKeys={};dbMonths.forEach(function(m){dbMonthKeys[m.key]=true;});
       var dbP={counsellor:debugName,centres:debugCentres,centre:'',period:dbPeriod,isAdmin:'false',viewerCounsellor:debugName};
       var dbPassed=[],dbFailed=[];
@@ -2701,10 +2701,10 @@ function normalizedFeeTotals(r) {
 }
 
 function revenueMonthList(fromMonth,toMonth) {
-  var from = (fromMonth && String(fromMonth).match(/^\d{4}-\d{2}$/)) ? String(fromMonth) : '2026-01';
+  var from = (fromMonth && String(fromMonth).match(/^\d{4}-\d{2}$/)) ? String(fromMonth) : '2026-04';
   var to = (toMonth && String(toMonth).match(/^\d{4}-\d{2}$/)) ? String(toMonth) : '2027-03';
   var start=new Date(from+'-01'), end=new Date(to+'-01'), out=[];
-  if(isNaN(start.getTime())||isNaN(end.getTime())||start>end){start=new Date('2026-01-01');end=new Date('2027-03-01');}
+  if(isNaN(start.getTime())||isNaN(end.getTime())||start>end){start=new Date('2026-04-01');end=new Date('2027-03-01');}
   var cur=new Date(start);
   while(cur<=end){
     var key=Utilities.formatDate(cur,Session.getScriptTimeZone(),'yyyy-MM');
@@ -2870,7 +2870,7 @@ function buildRevenueDashboard(ss,p) {
 
   return {status:'ok',backendVersion:REVENUE_BACKEND_VERSION,period:period,months:monthRows,centreTargetRows:centreTargetRows,targetRows:targetRows,monthlyRows:achievedRows,monthlyPreviewRows:monthlyPreviewRows,monthlyPreviewTargets:monthlyPreviewTargets,crossRows:crossRows,
     summary:{targetCourse:totalTargetCourse,targetGst:totalTargetGst,achievedCourse:achievedCourse,achievedGst:achievedGst,studentCount:studentCount,designatedCourse:designatedCourse,designatedGst:designatedGst,otherCentreCourse:otherCentreCourse,otherCentreGst:otherCentreGst,corporateCourse:corporateCourse,corporateGst:corporateGst,monthlyTargetCourse:monthlyTargetCourse,monthlyTargetGst:monthlyTargetGst,monthsInPeriod:fullMonths.length,centreTargetCourse:centreTargetCourse,centreTargetGst:centreTargetGst,splitTargetCourse:splitTargetCourse,splitTargetGst:splitTargetGst},
-    counsellors:Object.keys(byCounsellor).sort().map(function(k){return Object.assign({counsellor:k},byCounsellor[k]);}),
+    counsellors:Object.keys(byCounsellor).sort().map(function(k){return Object.assign({counsellor:k},byCounsellor[k]);}).filter(function(c){return c.targetCourse > 0;}),
     centres:Object.keys(byCentre).sort().map(function(k){return Object.assign({centre:k},byCentre[k]);}),
     businessCentres:Object.keys(byBusinessCentre).sort().map(function(k){return Object.assign({centre:k},byBusinessCentre[k]);}),
     centreStandings:getGlobalCentreStandings(ss, period, currentMonthKey, allAnnualTargets, allMonthlyAchieved),
@@ -2981,6 +2981,8 @@ function getGlobalCounsellorStandings(ss, period, currentMonthKey, allAnnualTarg
     var item = globalCounsellorMap[k];
     item.qtdTarget = item.annualTarget / 4;
     return item;
+  }).filter(function(item) {
+    return item.annualTarget > 0;
   });
 }
 

@@ -1312,6 +1312,7 @@
       <button class="tab" onclick="switchAdminTab('t-alumni')">🎓 Student Alumni</button>
       <button class="tab" onclick="switchAdminTab('t-history')">📅 Historical Intelligence</button>
       <button class="tab" onclick="switchAdminTab('t-reports')">📋 Master Export</button>
+      <button class="tab" id="tab-password-reset" onclick="switchAdminTab('t-password-reset')">🔐 Password Reset</button>
     </div>
 
     <!-- TAB 1: REVENUE OVERVIEW -->
@@ -1712,6 +1713,69 @@
       </div>
     </div>
 
+    <!-- TAB: PASSWORD RESET -->
+    <div id="t-password-reset" class="tab-content">
+      <div class="card" style="max-width:720px">
+        <h2>🔐 Reset Staff Password</h2>
+        <p class="sub">Set a temporary password for a counselor or instructor. They will be required to change it after their next login.</p>
+
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:16px">
+          <div class="field">
+            <label>Role *</label>
+            <select id="reset-role">
+              <option value="Counselor">Counselor</option>
+              <option value="Instructor">Instructor</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Exact Name *</label>
+            <input type="text" id="reset-name" list="staff-name-list" placeholder="e.g. Anuradha">
+            <datalist id="staff-name-list">
+              <option value="Anuradha"></option>
+              <option value="Bianca"></option>
+              <option value="Omkar Kadam"></option>
+              <option value="Preethy"></option>
+              <option value="Sunita"></option>
+              <option value="Rohit"></option>
+              <option value="Arpita"></option>
+              <option value="Nadiya"></option>
+              <option value="Rajini"></option>
+              <option value="Kripa"></option>
+              <option value="Amit Sidpura"></option>
+              <option value="Asmita Saroday"></option>
+              <option value="Arjun Mistry"></option>
+              <option value="Bhavin Patel"></option>
+              <option value="Sneha Garodia"></option>
+              <option value="Khorehmand Kasad"></option>
+              <option value="Nishchay Kapoor"></option>
+              <option value="Piyush Ahuja"></option>
+              <option value="Preeti Agarwala"></option>
+              <option value="Sayan Banerjee"></option>
+              <option value="Deepak Nachankar"></option>
+              <option value="Sharoon Joy"></option>
+              <option value="Seema Athavale"></option>
+            </datalist>
+          </div>
+          <div class="field">
+            <label>Temporary Password *</label>
+            <input type="password" id="reset-temp-password" placeholder="At least 6 characters">
+          </div>
+          <div class="field">
+            <label>Confirm Temporary Password *</label>
+            <input type="password" id="reset-confirm-password" placeholder="Repeat temporary password">
+          </div>
+          <div class="field" style="grid-column:1 / -1">
+            <label>Admin Password *</label>
+            <input type="password" id="reset-admin-pass" placeholder="Confirm admin password">
+          </div>
+        </div>
+
+        <div class="err-box" id="reset-err" style="margin-top:12px"></div>
+        <div id="reset-ok" style="display:none;margin-top:12px;background:#E8F5EE;color:#168B57;border:1px solid rgba(22,139,87,.25);border-radius:8px;padding:10px 12px;font-size:13px;font-weight:600"></div>
+        <button class="btn btn-gold" id="reset-btn" style="width:auto;margin-top:14px" onclick="resetStaffPassword()">Reset Password</button>
+      </div>
+    </div>
+
     <!-- Footer signatures -->
     <div class="footer-sig-bar">
       <div>
@@ -2015,8 +2079,72 @@ function showMainScreen() {
   if (targetTabBtn) {
     targetTabBtn.style.display = adminUser.isManager ? 'none' : 'block';
   }
+  const resetTabBtn = document.getElementById('tab-password-reset');
+  if (resetTabBtn) {
+    resetTabBtn.style.display = adminUser.isManager ? 'none' : 'block';
+  }
   
   switchAdminTab('t-revenue');
+}
+
+function resetStaffPassword() {
+  if (!adminUser || adminUser.isManager) return;
+  const role = (document.getElementById('reset-role') || {}).value || '';
+  const name = ((document.getElementById('reset-name') || {}).value || '').trim();
+  const tempPassword = ((document.getElementById('reset-temp-password') || {}).value || '').trim();
+  const confirmPassword = ((document.getElementById('reset-confirm-password') || {}).value || '').trim();
+  const adminPass = ((document.getElementById('reset-admin-pass') || {}).value || '').trim();
+  const err = document.getElementById('reset-err');
+  const ok = document.getElementById('reset-ok');
+  const btn = document.getElementById('reset-btn');
+
+  if (err) err.classList.remove('show');
+  if (ok) ok.style.display = 'none';
+
+  function showResetError(msg) {
+    if (err) {
+      err.textContent = msg;
+      err.classList.add('show');
+    } else {
+      alert(msg);
+    }
+  }
+
+  if (!role || !name || !tempPassword || !confirmPassword || !adminPass) {
+    showResetError('Please fill all reset fields.');
+    return;
+  }
+  if (tempPassword !== confirmPassword) {
+    showResetError('Temporary password and confirmation do not match.');
+    return;
+  }
+
+  if (btn) { btn.textContent = 'Resetting...'; btn.disabled = true; }
+  gasGet({
+    action: 'resetUserPassword',
+    adminPass: adminPass,
+    role: role,
+    name: name,
+    tempPassword: tempPassword
+  }, function(e, d) {
+    if (btn) { btn.textContent = 'Reset Password'; btn.disabled = false; }
+    if (e || !d || d.status !== 'ok') {
+      const msg = d && d.reason === 'auth' ? 'Admin password is incorrect.'
+        : d && d.reason === 'user_not_found' ? 'No matching user was found. Check role and exact name.'
+        : d && d.message ? d.message
+        : 'Could not reset password. Please try again.';
+      showResetError(msg);
+      return;
+    }
+    ['reset-temp-password','reset-confirm-password','reset-admin-pass'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    if (ok) {
+      ok.textContent = role + ' password reset for ' + name + '. Share the temporary password privately; they must change it after login.';
+      ok.style.display = 'block';
+    }
+  });
 }
 
 // ── CEO Presentation Mode ─────────────────────────────────────

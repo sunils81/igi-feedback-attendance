@@ -35,6 +35,8 @@
 .progress-fill{height:6px;background:var(--gold);border-radius:3px;transition:width .5s}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:500px){.grid2{grid-template-columns:1fr}}
+.rev-leader-row{display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;border:1px solid rgba(13,27,46,.08);border-radius:7px;background:var(--white);padding:7px 8px}
+@media(max-width:860px){.rev-leader-row{grid-template-columns:26px 1fr}}
 
 .day-batch-card{background:var(--off);border-radius:10px;padding:16px;margin-bottom:14px;border:1.5px solid var(--border);position:relative}
 .day-batch-card.created{background:var(--white);border-left:4px solid #1D9E75;border-color:var(--border) var(--border) var(--border) #1D9E75}
@@ -573,20 +575,14 @@
       </div>
     </div>
 
-    <!-- Centre target cards -->
-    <div class="card">
-      <div class="section-tag">Centre Performance</div>
-      <h2 style="font-size:15px;font-weight:700;margin-bottom:4px">Target vs Achieved — By Centre</h2>
-      <p class="sub">Read-only. Colour indicates target achievement health.</p>
-      <div id="rev-centre-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:14px"></div>
+    <!-- Centre Performance Standings -->
+    <div class="card" id="rev-centre-standings-card">
+      <div id="rev-centre-standings-box"></div>
     </div>
 
-    <!-- Counsellor rank board -->
-    <div class="card">
-      <div class="section-tag">Team Leaderboard</div>
-      <h2 style="font-size:15px;font-weight:700;margin-bottom:4px">Counsellor Rankings</h2>
-      <p class="sub">Ranked by YTD target achievement percentage.</p>
-      <div id="rev-rank-board" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:14px"></div>
+    <!-- Counsellor Performance Standings -->
+    <div class="card" id="rev-counsellor-standings-card">
+      <div id="rev-counsellor-standings-box"></div>
     </div>
 
   </div><!-- /t-revenue -->
@@ -1766,79 +1762,166 @@ function renderAmitRevenue() {
     });
   }
 
-  // ── Centre cards ────────────────────────────────────────────
-  var centreHtml = rows.map(function(r) {
-    var cs = counsellorsByCentre[r.centre] || [];
-    var ach=0, achGst=0, studs=0;
-    cs.forEach(function(c){ ach+=c.achievedCourse; achGst+=c.achievedGst; studs+=c.studentCount; });
-    var tgt = Number(r.targetCourse)||0;
-    var p   = tgt ? Math.round(ach/tgt*100) : (ach?100:0);
-    var col = p>=75?'#1D9E75':(p>=40?'#C9A84C':'#C94A4A');
-    var bgCol = p>=75?'rgba(29,158,117,0.06)':(p>=40?'rgba(201,168,76,0.06)':'rgba(201,74,74,0.06)');
-    var dot = p>=75?'🟢':(p>=40?'🟡':'🔴');
-    return '<div style="background:'+bgCol+';border:1.5px solid '+col+';border-radius:10px;padding:14px">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
-        '<strong style="font-size:13px">'+dot+' '+escHtml(r.centre)+'</strong>' +
-        '<span style="font-size:18px;font-weight:700;color:'+col+'">'+p+'%</span>' +
-      '</div>' +
-      '<div style="font-size:11px;color:var(--muted)">Target: <strong>'+amtL(tgt)+'</strong></div>' +
-      '<div style="font-size:11px;color:var(--muted)">YTD: <strong>'+amtL(ach)+'</strong> excl. / <strong>'+amtL(achGst)+'</strong> incl.</div>' +
-      '<div style="font-size:11px;color:var(--muted)">'+studs+' student'+(studs!==1?'s':'')+'</div>' +
-      '<div style="background:rgba(0,0,0,0.07);border-radius:4px;height:5px;margin-top:8px">' +
-        '<div style="width:'+Math.min(p,100)+'%;height:5px;border-radius:4px;background:'+col+'"></div>' +
-      '</div>' +
-    '</div>';
-  }).join('');
-  document.getElementById('rev-centre-cards').innerHTML = centreHtml || '<p style="color:var(--muted);font-size:13px">No centre data available.</p>';
+  // Calculate Quarter details dynamically
+  var currentMonth = '';
+  var today = new Date();
+  var periodStart = new Date(2026,3,1);
+  var periodEnd = new Date(2027,2,31);
+  var current = today < periodStart ? periodStart : (today > periodEnd ? periodEnd : today);
+  currentMonth = current.getFullYear() + '-' + String(current.getMonth() + 1).padStart(2, '0');
 
-  // ── Counsellor rank board ────────────────────────────────────
-  var counsellorCentreMap = {};
-  (rev.targetRows || []).forEach(function(tr) {
-    if (tr.counsellor) {
-      counsellorCentreMap[tr.counsellor.trim().toLowerCase()] = tr.centre;
-    }
-  });
+  var monthParts = currentMonth.split('-');
+  var yearNum = parseInt(monthParts[0], 10);
+  var monthNum = parseInt(monthParts[1], 10);
 
-  var allC = [];
-  (rev.counsellors || []).forEach(function(c) {
-    if (c.targetCourse > 0) {
-      var nameKey = c.counsellor.trim().toLowerCase();
-      var centre = counsellorCentreMap[nameKey] || 'Unmapped';
-      var pct = c.targetCourse ? Math.round(c.achievedCourse / c.targetCourse * 100) : (c.achievedCourse ? 100 : 0);
-      allC.push({
-        counsellor: c.counsellor,
-        centre: centre,
-        pct: pct,
-        achievedCourse: c.achievedCourse,
-        targetCourse: c.targetCourse,
-        studentCount: c.studentCount
-      });
-    }
-  });
-  allC.sort(function(a,b){ return b.pct - a.pct; });
+  var quarterBadge = 'Q1';
+  var quarterLabel = '(Apr–Jun)';
 
-  var medals = ['🥇','🥈','🥉'];
-  var rankHtml = allC.map(function(c, i) {
-    var col = c.pct>=75?'#1D9E75':(c.pct>=40?'#C9A84C':'#C94A4A');
-    var badge = i < 3 ? medals[i] : ('<span style="font-size:11px;color:var(--muted);font-weight:700">#'+(i+1)+'</span>');
-    var warn = c.pct < 40 ? '<span style="font-size:9px;background:#FEF2F2;color:#C94A4A;padding:1px 5px;border-radius:3px;margin-left:6px">Needs Support</span>' : '';
-    return '<div style="background:var(--off);border:1.5px solid var(--border);border-radius:10px;padding:12px 14px">' +
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">' +
+  if (monthNum >= 7 && monthNum <= 9) {
+    quarterBadge = 'Q2';
+    quarterLabel = '(Jul–Sep)';
+  } else if (monthNum >= 10 && monthNum <= 12) {
+    quarterBadge = 'Q3';
+    quarterLabel = '(Oct–Dec)';
+  } else if (monthNum >= 1 && monthNum <= 3) {
+    quarterBadge = 'Q4';
+    quarterLabel = '(Jan–Mar)';
+  }
+
+  // Helpers to build standings lists HTML
+  function buildCentreLeaderboardHtml(listItems) {
+    if (!listItems.length) return '<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px">No centres found.</div>';
+    return listItems.map(function(item, idx) {
+      var rank = idx + 1;
+      var rankIcon = rank === 1 ? '🥇' : (rank === 2 ? '🥈' : (rank === 3 ? '🥉' : '#' + rank));
+      var badgeStyle = 'background:var(--off);color:var(--muted);border:1px solid var(--border);';
+      if (item.pct >= 100) {
+        badgeStyle = 'background:#E8F5EE;color:#168B57;border:1px solid rgba(22,139,87,0.2);box-shadow:0 0 6px rgba(22,139,87,0.1)';
+      } else if (item.pct >= 60) {
+        badgeStyle = 'background:var(--gold-pale);color:#B87A10;border:1px solid rgba(184,122,16,0.2)';
+      } else if (item.pct > 0) {
+        badgeStyle = 'background:#FFF5F5;color:var(--red);border:1px solid rgba(201,74,74,0.15)';
+      }
+      return '<div class="rev-leader-row" style="margin-bottom: 0px">' +
+        '<div style="font-size:14px;font-weight:700;text-align:center">' + rankIcon + '</div>' +
         '<div>' +
-          '<div style="font-size:13px;font-weight:600">'+badge+' '+escHtml(c.counsellor)+warn+'</div>' +
-          '<div style="font-size:11px;color:var(--muted)">'+escHtml(c.centre)+'</div>' +
+          '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + escHtml(item.centre) + '</div>' +
+          '<div style="font-size:10px;color:var(--muted);margin-top:2px;">' + amtL(item.achieved) + ' of ' + amtL(item.target) + '</div>' +
         '</div>' +
-        '<span style="font-size:20px;font-weight:700;color:'+col+'">'+c.pct+'%</span>' +
-      '</div>' +
-      '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">' +
-        'YTD: <strong>'+amtL(c.achievedCourse)+'</strong> of <strong>'+amtL(c.targetCourse)+'</strong> · '+c.studentCount+' students' +
-      '</div>' +
-      '<div style="background:rgba(0,0,0,0.07);border-radius:4px;height:5px">' +
-        '<div style="width:'+Math.min(c.pct,100)+'%;height:5px;border-radius:4px;background:'+col+'"></div>' +
-      '</div>' +
-    '</div>';
-  }).join('');
-  document.getElementById('rev-rank-board').innerHTML = rankHtml || '<p style="color:var(--muted);font-size:13px">No counsellor data.</p>';
+        '<div style="padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700;text-align:center;' + badgeStyle + '">' + item.pct + '% Hit</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function buildCounsellorLeaderboardHtml(listItems) {
+    if (!listItems.length) return '<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px">No counsellors found.</div>';
+    return listItems.map(function(item, idx) {
+      var rank = idx + 1;
+      var rankIcon = rank === 1 ? '🥇' : (rank === 2 ? '🥈' : (rank === 3 ? '🥉' : '#' + rank));
+      var badgeStyle = 'background:var(--off);color:var(--muted);border:1px solid var(--border);';
+      if (item.pct >= 100) {
+        badgeStyle = 'background:#E8F5EE;color:#168B57;border:1px solid rgba(22,139,87,0.2);box-shadow:0 0 6px rgba(22,139,87,0.1)';
+      } else if (item.pct >= 60) {
+        badgeStyle = 'background:var(--gold-pale);color:#B87A10;border:1px solid rgba(184,122,16,0.2)';
+      } else if (item.pct > 0) {
+        badgeStyle = 'background:#FFF5F5;color:var(--red);border:1px solid rgba(201,74,74,0.15)';
+      }
+      return '<div class="rev-leader-row" style="margin-bottom: 0px">' +
+        '<div style="font-size:14px;font-weight:700;text-align:center">' + rankIcon + '</div>' +
+        '<div>' +
+          '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + escHtml(item.counsellor) + ' <span style="font-size:10px;font-weight:400;color:var(--muted)">(' + escHtml(item.centre) + ')</span></div>' +
+          '<div style="font-size:10px;color:var(--muted);margin-top:2px;">' + amtL(item.achieved) + ' of ' + amtL(item.target) + '</div>' +
+        '</div>' +
+        '<div style="padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700;text-align:center;' + badgeStyle + '">' + item.pct + '% Hit</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  // ── Centre Standings rendering ──────────────────────────────
+  var centreStandingsList = d.centreStandings || [];
+  if (centreStandingsList.length > 0) {
+    var annualCentreList = centreStandingsList.map(function(item) {
+      var pct = item.annualTarget ? Math.round(item.annualAchieved / item.annualTarget * 100) : 0;
+      return { centre: item.centre, target: item.annualTarget, achieved: item.annualAchieved, pct: pct };
+    }).sort(function(a, b) {
+      return b.pct - a.pct || b.achieved - a.achieved || a.centre.localeCompare(b.centre);
+    });
+
+    var quarterCentreList = centreStandingsList.map(function(item) {
+      var pct = item.qtdTarget ? Math.round(item.qtdAchieved / item.qtdTarget * 100) : 0;
+      return { centre: item.centre, target: item.qtdTarget, achieved: item.qtdAchieved, pct: pct };
+    }).sort(function(a, b) {
+      return b.pct - a.pct || b.achieved - a.achieved || a.centre.localeCompare(b.centre);
+    });
+
+    document.getElementById('rev-centre-standings-box').innerHTML = 
+      '<div class="section-tag" style="background:var(--gold);color:var(--navy)">Centre Performance Standings</div>' +
+      '<h2>🏆 Centre Performance Standings</h2>' +
+      '<p class="sub" style="margin-bottom:16px">YTD and Quarterly branch-level revenue achievement in terms of target hit %. A benchmark to inspire and celebrate individual and team performance.</p>' +
+      '<div class="grid2">' +
+        '<div style="background:var(--off);padding:16px;border-radius:10px;border:1px solid var(--border)">' +
+          '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">' +
+            '<span>Annual YTD Standing</span>' +
+            '<span style="font-size:10px;background:var(--navy);color:var(--white);padding:2px 6px;border-radius:4px">FY 2026-27</span>' +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Ranked by cumulative YTD course fee achievement % vs annual target.</div>' +
+          '<div style="display:grid;gap:8px">' + buildCentreLeaderboardHtml(annualCentreList) + '</div>' +
+        '</div>' +
+        '<div style="background:var(--off);padding:16px;border-radius:10px;border:1px solid var(--border)">' +
+          '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">' +
+            '<span>Quarterly Standing ' + escHtml(quarterLabel) + '</span>' +
+            '<span style="font-size:10px;background:var(--gold);color:var(--navy);padding:2px 6px;border-radius:4px;font-weight:700">' + escHtml(quarterBadge) + '</span>' +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Ranked by current quarter course fee achievement % vs quarterly target.</div>' +
+          '<div style="display:grid;gap:8px">' + buildCentreLeaderboardHtml(quarterCentreList) + '</div>' +
+        '</div>' +
+      '</div>';
+  } else {
+    document.getElementById('rev-centre-standings-box').innerHTML = '<p style="color:var(--muted);font-size:13px">No centre standings available.</p>';
+  }
+
+  // ── Counsellor Standings rendering ──────────────────────────
+  var counsellorStandingsList = d.counsellorStandings || [];
+  if (counsellorStandingsList.length > 0) {
+    var annualCounsellorList = counsellorStandingsList.map(function(item) {
+      var pct = item.annualTarget ? Math.round(item.annualAchieved / item.annualTarget * 100) : 0;
+      return { counsellor: item.counsellor, centre: item.centre, target: item.annualTarget, achieved: item.annualAchieved, pct: pct };
+    }).sort(function(a, b) {
+      return b.pct - a.pct || b.achieved - a.achieved || a.counsellor.localeCompare(b.counsellor);
+    });
+
+    var quarterCounsellorList = counsellorStandingsList.map(function(item) {
+      var pct = item.qtdTarget ? Math.round(item.qtdAchieved / item.qtdTarget * 100) : 0;
+      return { counsellor: item.counsellor, centre: item.centre, target: item.qtdTarget, achieved: item.qtdAchieved, pct: pct };
+    }).sort(function(a, b) {
+      return b.pct - a.pct || b.achieved - a.achieved || a.counsellor.localeCompare(b.counsellor);
+    });
+
+    document.getElementById('rev-counsellor-standings-box').innerHTML = 
+      '<div class="section-tag" style="background:var(--gold);color:var(--navy)">Championship Standings</div>' +
+      '<h2>🏆 Counsellor Performance Standings</h2>' +
+      '<p class="sub" style="margin-bottom:16px">YTD and Quarterly individual revenue achievement in terms of target hit %. A benchmark to inspire and celebrate individual and team performance.</p>' +
+      '<div class="grid2">' +
+        '<div style="background:var(--off);padding:16px;border-radius:10px;border:1px solid var(--border)">' +
+          '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">' +
+            '<span>Annual YTD Standing</span>' +
+            '<span style="font-size:10px;background:var(--navy);color:var(--white);padding:2px 6px;border-radius:4px">FY 2026-27</span>' +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Ranked by cumulative YTD course fee achievement % vs annual target.</div>' +
+          '<div style="display:grid;gap:8px">' + buildCounsellorLeaderboardHtml(annualCounsellorList) + '</div>' +
+        '</div>' +
+        '<div style="background:var(--off);padding:16px;border-radius:10px;border:1px solid var(--border)">' +
+          '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">' +
+            '<span>Quarterly Standing ' + escHtml(quarterLabel) + '</span>' +
+            '<span style="font-size:10px;background:var(--gold);color:var(--navy);padding:2px 6px;border-radius:4px;font-weight:700">' + escHtml(quarterBadge) + '</span>' +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Ranked by current quarter course fee achievement % vs quarterly target.</div>' +
+          '<div style="display:grid;gap:8px">' + buildCounsellorLeaderboardHtml(quarterCounsellorList) + '</div>' +
+        '</div>' +
+      '</div>';
+  } else {
+    document.getElementById('rev-counsellor-standings-box').innerHTML = '<p style="color:var(--muted);font-size:13px">No counsellor standings available.</p>';
+  }
 }
 
 function escHtml(s) {

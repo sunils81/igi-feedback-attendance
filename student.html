@@ -552,6 +552,22 @@
         <span class="tab-icon">💰</span>
         <span class="tab-label">Fees</span>
       </button>
+      <button class="nav-tab" id="nav-tab-tests" onclick="switchTab('tab-results', this); otLoadMyResults();">
+        <span class="tab-icon">🧪</span>
+        <span class="tab-label">My Tests</span>
+      </button>
+    </div>
+
+    <!-- Active Test Banner -->
+    <div id="ot-active-banner" style="display:none; background:linear-gradient(135deg,#0D1B2E,#1e3a5f);
+      color:#fff; border-radius:14px; padding:18px 20px; margin:14px 0;">
+      <div style="font-size:11px;font-weight:600;opacity:.7;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">🔴 LIVE TEST</div>
+      <div style="font-size:16px;font-weight:700;" id="ot-banner-label">Test Available</div>
+      <div style="font-size:12px;opacity:.8;margin-top:4px;" id="ot-banner-detail"></div>
+      <button onclick="otBeginTest()" style="margin-top:12px;background:#C9A84C;color:#0D1B2E;
+        border:none;border-radius:8px;padding:10px 22px;font-size:14px;font-weight:700;cursor:pointer;">
+        Begin Test →
+      </button>
     </div>
 
     <!-- Today Tab Content -->
@@ -578,6 +594,88 @@
     <!-- Fees Tab Content -->
     <div id="tab-fees" class="tab-content">
       <div id="portal-fees"></div>
+    </div>
+
+    <!-- My Tests Results Tab -->
+    <div id="tab-results" class="tab-content">
+      <div id="ot-results-wrap">
+        <div style="color:#9ca3af;font-size:13px;padding:20px 0;">Loading your test results…</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ ONLINE TEST OVERLAY ══ -->
+  <div id="ot-test-screen" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+    background:#f9fafb; z-index:9000; overflow-y:auto; font-family:'Plus Jakarta Sans',sans-serif;">
+
+    <style>
+      #ot-test-screen { --navy:#0D1B2E; --gold:#C9A84C; }
+      .ot-test-header { background:var(--navy); color:#fff; padding:14px 20px;
+        display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:10; }
+      .ot-timer { background:#C9A84C; color:#0D1B2E; border-radius:8px;
+        padding:6px 14px; font-weight:700; font-size:16px; font-family:monospace; }
+      .ot-timer.warn { background:#ef4444; color:#fff; animation:timerPulse .8s infinite; }
+      @keyframes timerPulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+      .ot-warning-bar { background:#fef3c7; border-left:4px solid #d97706;
+        padding:10px 16px; font-size:13px; font-weight:500; color:#92400e; }
+      .ot-q-card { background:#fff; border:1.5px solid #e5e7eb; border-radius:12px;
+        padding:18px 20px; margin-bottom:14px; }
+      .ot-q-num { font-size:11px; font-weight:600; color:#9ca3af; text-transform:uppercase;
+        letter-spacing:.5px; margin-bottom:6px; }
+      .ot-q-text { font-size:15px; font-weight:600; color:#111827; margin-bottom:14px; line-height:1.5; }
+      .ot-option { display:flex; align-items:flex-start; gap:10px; padding:10px 14px;
+        border:1.5px solid #e5e7eb; border-radius:10px; margin-bottom:8px; cursor:pointer; transition:all .15s; }
+      .ot-option:hover { border-color:#0D1B2E; background:#f0f4ff; }
+      .ot-option.selected { border-color:#0D1B2E; background:#eff6ff; }
+      .ot-option input[type=radio], .ot-option input[type=text] { accent-color:#0D1B2E; }
+      .ot-fill-input { width:100%; padding:10px 12px; border:1.5px solid #e5e7eb;
+        border-radius:8px; font-size:14px; box-sizing:border-box; }
+      .ot-fill-input:focus { outline:none; border-color:#0D1B2E; }
+      .ot-theory-input { width:100%; padding:10px 12px; border:1.5px solid #e5e7eb;
+        border-radius:8px; font-size:13px; min-height:100px; box-sizing:border-box; resize:vertical; }
+      .ot-nav-bar { background:#fff; border-top:1px solid #e5e7eb; padding:12px 20px;
+        display:flex; align-items:center; justify-content:space-between;
+        position:sticky; bottom:0; z-index:10; }
+      .ot-progress-row { display:flex; gap:5px; flex-wrap:wrap; margin:14px 20px; }
+      .ot-prog-dot { width:28px; height:28px; border-radius:6px; border:1.5px solid #e5e7eb;
+        font-size:11px; font-weight:600; display:flex; align-items:center; justify-content:center;
+        cursor:pointer; transition:all .15s; }
+      .ot-prog-dot.answered { background:#0D1B2E; color:#fff; border-color:#0D1B2E; }
+      .ot-prog-dot.current  { border-color:#C9A84C; box-shadow:0 0 0 2px #C9A84C44; }
+      .ot-submit-btn { background:#0D1B2E; color:#fff; border:none; border-radius:10px;
+        padding:12px 28px; font-size:15px; font-weight:700; cursor:pointer; width:100%; margin-top:8px; }
+      .ot-submit-btn:hover { background:#1e3a5f; }
+    </style>
+
+    <!-- Test Header -->
+    <div class="ot-test-header">
+      <div>
+        <div style="font-size:11px;opacity:.7;text-transform:uppercase;letter-spacing:.5px;">IGI Online Test</div>
+        <div style="font-size:14px;font-weight:600;" id="ot-th-label">—</div>
+      </div>
+      <div class="ot-timer" id="ot-timer">00:00</div>
+    </div>
+
+    <!-- Warning Bar -->
+    <div id="ot-warn-bar" class="ot-warning-bar" style="display:none;">
+      ⚠️ Warning <span id="ot-warn-num">1</span>/3 — Please stay on this page. On the 3rd warning your test will be auto-submitted.
+    </div>
+
+    <!-- Progress dots -->
+    <div class="ot-progress-row" id="ot-prog-dots"></div>
+
+    <!-- Questions Container -->
+    <div style="padding:0 16px 100px;" id="ot-questions-body"></div>
+
+    <!-- Submit Bar -->
+    <div class="ot-nav-bar">
+      <div style="font-size:12px;color:#6b7280;">
+        <span id="ot-answered-count">0</span> / <span id="ot-total-count">0</span> answered
+      </div>
+      <button class="ot-submit-btn" style="width:auto;padding:10px 24px;" onclick="otConfirmSubmit()">
+        Submit Test ✓
+      </button>
     </div>
   </div>
 
@@ -799,6 +897,8 @@ function fetchPortalData(enrol, mobileLast4, btn, err) {
     localStorage.setItem(SESSION_KEY, JSON.stringify({enrollmentNo:enrol, studentId:enrol, mobileLast4, savedAt:Date.now()}));
     portalData = d;
     renderPortal(d);
+    // Start online test polling
+    setTimeout(otStartPolling, 1500);
   });
 }
 
@@ -1535,6 +1635,420 @@ window.printFeeStatement = function(course, batchCode, totalPayable, paid, balan
     '<script>window.onload = function() { window.print(); };<' + '/script></body></html>');
   printWindow.document.close();
 };
-</script>
+
+// ═══════════════════════════════════════════════════════════════
+// ONLINE TEST SYSTEM — Student JS
+// ═══════════════════════════════════════════════════════════════
+
+var otActiveTestInfo  = null;  // from getStudentActiveTest
+var otTestData        = null;  // from getTestQuestions {test, questions, remainingSec}
+var otAnswers         = {};    // {qId: answer}
+var otCurrentQ        = 0;
+var otTimerInterval   = null;
+var otRemainingSeconds= 0;
+var otWarningCount    = 0;
+var otSubmitted       = false;
+var otAntiCheatBound  = false;
+
+// ── Called after student logs in ────────────────────────────
+function otCheckForActiveTest() {
+  if (!portalData) return;
+  var sid    = portalData.enrollmentNo || portalData.studentId || '';
+  var batches = portalData.batches || [];
+  if (!batches.length) return;
+
+  // Check each batch for an active test
+  var checked = 0;
+  batches.forEach(function(b) {
+    gasGet({action:'getStudentActiveTest', studentId:sid, batchCode:b.batchCode}, function(err, d) {
+      checked++;
+      if (err || !d || !d.activeTest) return;
+      otActiveTestInfo = d.activeTest;
+      otShowBanner(d.activeTest);
+    });
+  });
+}
+
+function otShowBanner(t) {
+  var banner = document.getElementById('ot-active-banner');
+  if (!banner) return;
+  banner.style.display = 'block';
+  var lb = document.getElementById('ot-banner-label');
+  var dt = document.getElementById('ot-banner-detail');
+  if (lb) lb.textContent = t.testLabel || 'Online Test';
+  if (dt) dt.textContent = 'Duration: ' + t.duration + ' min · ' + (t.negativeMarking==='Yes' ? 'Negative marking on' : 'No negative marking');
+}
+
+// ── Begin Test ───────────────────────────────────────────────
+function otBeginTest() {
+  if (!otActiveTestInfo) return;
+  var sid = portalData.enrollmentNo || portalData.studentId || '';
+  var batch = otActiveTestInfo.batchCode;
+
+  // Restore state from localStorage if crashed
+  var savedState = null;
+  try { savedState = JSON.parse(localStorage.getItem('ot_state_'+otActiveTestInfo.testId) || 'null'); } catch(x){}
+  if (savedState && savedState.answers) { otAnswers = savedState.answers; otWarningCount = savedState.warnings||0; }
+
+  gasGet({action:'getTestQuestions', testId:otActiveTestInfo.testId, studentId:sid, batchCode:batch}, function(err, d) {
+    if (err || !d || d.status !== 'ok') { alert('Could not load test. Please try again.'); return; }
+    otTestData = d;
+    otRemainingSeconds = d.remainingSec || (d.test.duration * 60);
+    otCurrentQ = 0;
+    otSubmitted = false;
+
+    otRenderTestScreen();
+    otStartTimer();
+    otBindAntiCheat();
+    otRequestFullscreen();
+  });
+}
+
+function otRenderTestScreen() {
+  var scr = document.getElementById('ot-test-screen');
+  if (!scr) return;
+  scr.style.display = 'block';
+
+  var lbl = document.getElementById('ot-th-label');
+  if (lbl && otTestData.test) lbl.textContent = otTestData.test.testLabel || 'Test';
+
+  var tc = document.getElementById('ot-total-count');
+  if (tc) tc.textContent = otTestData.questions.length;
+
+  otRenderProgressDots();
+  otRenderAllQuestions();
+  otUpdateAnsweredCount();
+}
+
+function otRenderProgressDots() {
+  var el = document.getElementById('ot-prog-dots');
+  if (!el) return;
+  var html = '';
+  otTestData.questions.forEach(function(q, i) {
+    var cls = (otAnswers[q.qId] !== undefined ? ' answered' : '') + (i === otCurrentQ ? ' current' : '');
+    html += '<div class="ot-prog-dot'+cls+'" onclick="otScrollToQ('+i+')" title="Q'+(i+1)+'">'+(i+1)+'</div>';
+  });
+  el.innerHTML = html;
+}
+
+function otRenderAllQuestions() {
+  var el = document.getElementById('ot-questions-body');
+  if (!el || !otTestData) return;
+  var html = '';
+  otTestData.questions.forEach(function(q, i) {
+    html += '<div class="ot-q-card" id="ot-q-card-'+i+'">';
+    html += '<div class="ot-q-num">Question '+(i+1)+' of '+otTestData.questions.length
+          + ' · <span style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:1px 6px;font-size:10px;">'+escHtmlSt(q.type)+'</span>'
+          + ' · <span style="color:#C9A84C;font-weight:700;">'+q.marks+' mark'+(q.marks>1?'s':'')+'</span></div>';
+    html += '<div class="ot-q-text">'+escHtmlSt(q.question)+'</div>';
+
+    if (q.type === 'MCQ') {
+      ['opt1','opt2','opt3','opt4'].forEach(function(ok, oi) {
+        if (!q[ok]) return;
+        var optVal = String(oi+1);
+        var sel = otAnswers[q.qId] === optVal ? ' selected' : '';
+        html += '<div class="ot-option'+sel+'" onclick="otSelectOpt(\''+escHtmlSt(q.qId)+'\',\''+optVal+'\',this)">'
+              + '<input type="radio" name="q-'+escHtmlSt(q.qId)+'" value="'+optVal+'" '+(sel?' checked':'')+' style="margin-top:1px;flex-shrink:0;" onchange="otSelectOpt(\''+escHtmlSt(q.qId)+'\',\''+optVal+'\',this.parentElement)">'
+              + '<span>'+escHtmlSt(q[ok])+'</span>'
+              + '</div>';
+      });
+    } else if (q.type === 'TrueFalse') {
+      ['True','False'].forEach(function(v) {
+        var sel = otAnswers[q.qId] === v ? ' selected' : '';
+        html += '<div class="ot-option'+sel+'" onclick="otSelectOpt(\''+escHtmlSt(q.qId)+'\',\''+v+'\',this)">'
+              + '<input type="radio" name="q-'+escHtmlSt(q.qId)+'" value="'+v+'" '+(sel?' checked':'')+' style="flex-shrink:0;" onchange="otSelectOpt(\''+escHtmlSt(q.qId)+'\',\''+v+'\',this.parentElement)">'
+              + '<span>'+v+'</span></div>';
+      });
+    } else if (q.type === 'FillBlank') {
+      html += '<input type="text" class="ot-fill-input" placeholder="Type your answer…" '
+            + 'value="'+escHtmlSt(otAnswers[q.qId]||'')+'" '
+            + 'oninput="otSaveFIB(\''+escHtmlSt(q.qId)+'\',this.value)">';
+    } else if (q.type === 'Theory') {
+      html += '<textarea class="ot-theory-input" placeholder="Write your answer here…" '
+            + 'oninput="otSaveFIB(\''+escHtmlSt(q.qId)+'\',this.value)">'+escHtmlSt(otAnswers[q.qId]||'')+'</textarea>';
+    }
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+function escHtmlSt(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+function otSelectOpt(qId, val, parentEl) {
+  otAnswers[qId] = val;
+  // Remove selected from siblings
+  var card = parentEl ? parentEl.closest('.ot-q-card') : null;
+  if (card) card.querySelectorAll('.ot-option').forEach(function(o){ o.classList.remove('selected'); });
+  if (parentEl) parentEl.classList.add('selected');
+  otUpdateAnsweredCount();
+  otRenderProgressDots();
+  otSaveLocalState();
+}
+
+function otSaveFIB(qId, val) {
+  if (val.trim()) otAnswers[qId] = val;
+  else delete otAnswers[qId];
+  otUpdateAnsweredCount();
+  otRenderProgressDots();
+  otSaveLocalState();
+}
+
+function otScrollToQ(i) {
+  var card = document.getElementById('ot-q-card-'+i);
+  if (card) card.scrollIntoView({behavior:'smooth', block:'start'});
+  otCurrentQ = i;
+  otRenderProgressDots();
+}
+
+function otUpdateAnsweredCount() {
+  var el = document.getElementById('ot-answered-count');
+  if (el) el.textContent = Object.keys(otAnswers).length;
+}
+
+function otSaveLocalState() {
+  if (!otActiveTestInfo) return;
+  try {
+    localStorage.setItem('ot_state_'+otActiveTestInfo.testId, JSON.stringify({answers:otAnswers, warnings:otWarningCount, ts:Date.now()}));
+  } catch(x){}
+}
+
+// ── Timer ────────────────────────────────────────────────────
+function otStartTimer() {
+  if (otTimerInterval) clearInterval(otTimerInterval);
+  otRenderTimer();
+  otTimerInterval = setInterval(function() {
+    otRemainingSeconds = Math.max(0, otRemainingSeconds - 1);
+    otRenderTimer();
+    if (otRemainingSeconds <= 0) { clearInterval(otTimerInterval); otAutoSubmit('time'); }
+  }, 1000);
+}
+
+function otRenderTimer() {
+  var el = document.getElementById('ot-timer');
+  if (!el) return;
+  var m = Math.floor(otRemainingSeconds / 60);
+  var s = otRemainingSeconds % 60;
+  el.textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  if (otRemainingSeconds <= 120) el.classList.add('warn'); else el.classList.remove('warn');
+}
+
+// ── Anti-Cheat ───────────────────────────────────────────────
+function otBindAntiCheat() {
+  if (otAntiCheatBound) return;
+  otAntiCheatBound = true;
+
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden && !otSubmitted) otTriggerWarning('tab-switch');
+  });
+  window.addEventListener('blur', function() {
+    if (!otSubmitted) otTriggerWarning('window-blur');
+  });
+  document.addEventListener('fullscreenchange', function() {
+    if (!document.fullscreenElement && !otSubmitted) otTriggerWarning('fullscreen-exit');
+  });
+}
+
+function otRequestFullscreen() {
+  var el = document.getElementById('ot-test-screen');
+  if (el && el.requestFullscreen) el.requestFullscreen().catch(function(){});
+}
+
+function otTriggerWarning(type) {
+  if (otSubmitted) return;
+  otWarningCount++;
+  var sid = portalData ? (portalData.enrollmentNo||portalData.studentId||'') : '';
+  var sname = portalData ? (portalData.studentName||'') : '';
+
+  // Log to server
+  gasGet({action:'logTestWarning', testId:otActiveTestInfo.testId,
+          studentId:sid, studentName:sname, warningType:type}, function(){});
+
+  var wb = document.getElementById('ot-warn-bar');
+  var wn = document.getElementById('ot-warn-num');
+  if (wb) wb.style.display = 'block';
+  if (wn) wn.textContent = otWarningCount;
+
+  otSaveLocalState();
+
+  if (otWarningCount >= 3) {
+    setTimeout(function(){ otAutoSubmit('auto-warning'); }, 800);
+  } else {
+    otRequestFullscreen();
+  }
+}
+
+// ── Submit ───────────────────────────────────────────────────
+function otConfirmSubmit() {
+  var answered = Object.keys(otAnswers).length;
+  var total    = otTestData ? otTestData.questions.length : 0;
+  var unanswered = total - answered;
+  var msg = unanswered > 0
+    ? 'You have '+ unanswered +' unanswered questions. Submit anyway?'
+    : 'Submit the test now?';
+  if (!confirm(msg)) return;
+  otDoSubmit('manual');
+}
+
+function otAutoSubmit(reason) {
+  if (otSubmitted) return;
+  otDoSubmit(reason === 'time' ? 'time-expired' : 'auto-warn');
+}
+
+function otDoSubmit(submitType) {
+  if (otSubmitted) return;
+  otSubmitted = true;
+  clearInterval(otTimerInterval);
+
+  var sid   = portalData ? (portalData.enrollmentNo||portalData.studentId||'') : '';
+  var sname = portalData ? (portalData.studentName||'') : '';
+  var batch = otActiveTestInfo ? otActiveTestInfo.batchCode : '';
+
+  var params = {
+    action:'submitTestResponse',
+    testId: otActiveTestInfo.testId,
+    studentId: sid, studentName: sname, batchCode: batch,
+    submitType: submitType,
+    answers: JSON.stringify(otAnswers)
+  };
+
+  gasGet(params, function(err, d) {
+    // Clear local state
+    try { localStorage.removeItem('ot_state_'+otActiveTestInfo.testId); } catch(x){}
+
+    // Exit fullscreen
+    try { if (document.exitFullscreen) document.exitFullscreen(); } catch(x){}
+
+    var scr = document.getElementById('ot-test-screen');
+    if (scr) scr.style.display = 'none';
+    var banner = document.getElementById('ot-active-banner');
+    if (banner) banner.style.display = 'none';
+
+    if (err || !d || d.status !== 'ok') {
+      alert('Test submitted (server confirmation pending). You may close this page.');
+      return;
+    }
+
+    var msg = '✅ Test Submitted!\n\n';
+    if (d.hasTheory) {
+      msg += 'Your answers have been recorded.\nTheory questions will be graded by your instructor.\nCheck "My Tests" tab for results once released.';
+    } else {
+      msg += 'Your score has been recorded.\nResults will be visible in "My Tests" tab once your instructor releases them.';
+    }
+    alert(msg);
+    otActiveTestInfo = null;
+    otLoadMyResults();
+  });
+}
+
+// ── My Results ───────────────────────────────────────────────
+function otLoadMyResults() {
+  var el = document.getElementById('ot-results-wrap');
+  if (!el) return;
+  if (!portalData) { el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">Please log in first.</div>'; return; }
+
+  var sid   = portalData.enrollmentNo || portalData.studentId || '';
+  var batches = portalData.batches || [];
+  if (!batches.length) { el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">No batches enrolled.</div>'; return; }
+
+  el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">Loading…</div>';
+
+  // Check all batches
+  var allWeekly = [], allFinal = [], weeklyAvg = null;
+  var pending = batches.length;
+
+  batches.forEach(function(b) {
+    gasGet({action:'getStudentResults', studentId:sid, batchCode:b.batchCode}, function(err, d) {
+      pending--;
+      if (!err && d && d.status === 'ok') {
+        allWeekly = allWeekly.concat(d.weeklyResults || []);
+        allFinal  = allFinal.concat(d.finalResults   || []);
+        if (d.weeklyAverage !== null && d.weeklyAverage !== undefined) weeklyAvg = d.weeklyAverage;
+      }
+      if (pending === 0) otRenderMyResults(allWeekly, allFinal, weeklyAvg);
+    });
+  });
+}
+
+function otRenderMyResults(weekly, final_, weeklyAvg) {
+  var el = document.getElementById('ot-results-wrap');
+  if (!el) return;
+
+  if (!weekly.length && !final_.length) {
+    el.innerHTML = '<div style="color:#9ca3af;font-size:14px;padding:30px 0;text-align:center;">'
+      + '📋 No test results available yet.<br><span style="font-size:12px;">Results appear here once your instructor releases them.</span></div>';
+    return;
+  }
+
+  var PASS_PCT = 60;
+  var html = '<h3 style="margin:0 0 16px;font-size:15px;font-weight:700;">My Test Results</h3>';
+
+  // Weekly Tests
+  if (weekly.length) {
+    html += '<div style="font-weight:600;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Weekly Tests</div>';
+    weekly.forEach(function(r, i) {
+      var pct = r.percentage !== null && r.percentage !== '' ? r.percentage : '—';
+      var pass = r.result === 'Pass';
+      var pending = r.result === 'Pending';
+      html += '<div style="background:#fff;border:1.5px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
+        +   '<span style="font-weight:600;font-size:14px;">'+escHtmlSt(r.testLabel||'Weekly Test')+'</span>'
+        +   (pending ? '<span class="pend-pill">Pending Grading</span>'
+                     : '<span class="'+(pass?'pass-pill':'fail-pill')+'">'+(pass?'Pass':'Fail')+'</span>')
+        + '</div>'
+        + '<div style="display:flex;gap:20px;font-size:13px;">'
+        +   '<div><span style="color:#6b7280;">Score </span><b>'+escHtmlSt(String(r.totalScore!==null&&r.totalScore!==''?r.totalScore:'—'))+'</b><span style="color:#9ca3af;font-size:11px;"> /'+escHtmlSt(String(r.totalMarks||''))+'</span></div>'
+        +   '<div><span style="color:#6b7280;">Percentage </span><b style="font-size:16px;color:'+(pass?'#059669':'#dc2626')+'">'+pct+'%</b></div>'
+        + '</div>'
+        + '<div style="font-size:11px;color:#9ca3af;margin-top:6px;">Passing: 60% · Submitted: '+escHtmlSt(r.submittedAt?new Date(r.submittedAt).toLocaleDateString('en-IN'):'—')+'</div>'
+        + '</div>';
+    });
+
+    // Weekly Average
+    if (weeklyAvg !== null) {
+      var avgPass = weeklyAvg >= PASS_PCT;
+      html += '<div style="background:'+(avgPass?'#d1fae5':'#fee2e2')+';border-radius:10px;padding:12px 16px;margin-bottom:18px;">'
+        + '<div style="font-weight:700;font-size:14px;color:'+(avgPass?'#065f46':'#991b1b')+';">Weekly Average: '+weeklyAvg+'%'
+        + ' <span style="font-size:12px;font-weight:500;">'+(avgPass?'✅ Passed':'❌ Below passing')+'</span></div>'
+        + '<div style="font-size:11px;color:'+(avgPass?'#065f46':'#991b1b')+';">Average of '+weekly.length+' weekly test'+(weekly.length>1?'s':'')+' · Passing: 60%</div>'
+        + '</div>';
+    }
+  }
+
+  // Final Exam
+  if (final_.length) {
+    html += '<div style="font-weight:600;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Final Exam</div>';
+    final_.forEach(function(r) {
+      var pct = r.percentage !== null && r.percentage !== '' ? r.percentage : '—';
+      var pass = r.result === 'Pass';
+      var pending = r.result === 'Pending';
+      html += '<div style="background:#fff;border:2px solid '+(pending?'#e5e7eb':pass?'#10b981':'#ef4444')+';border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
+        +   '<span style="font-weight:600;font-size:14px;">'+escHtmlSt(r.testLabel||'Final Exam')+'</span>'
+        +   (pending ? '<span class="pend-pill">Pending</span>'
+                     : '<span class="'+(pass?'pass-pill':'fail-pill')+'">'+(pass?'PASS':'FAIL')+'</span>')
+        + '</div>'
+        + '<div style="display:flex;gap:20px;font-size:13px;">'
+        +   '<div><span style="color:#6b7280;">Score </span><b>'+escHtmlSt(String(r.totalScore!==null&&r.totalScore!==''?r.totalScore:'—'))+'</b><span style="color:#9ca3af;font-size:11px;"> /'+escHtmlSt(String(r.totalMarks||''))+'</span></div>'
+        +   '<div><span style="color:#6b7280;">Percentage </span><b style="font-size:20px;color:'+(pass?'#059669':'#dc2626')+'">'+pct+'%</b></div>'
+        + '</div>'
+        + '</div>';
+    });
+  }
+
+  el.innerHTML = html;
+}
+
+// Hook: after portal loads, check for active test
+var _origPortalRender = typeof renderPortalBatches === 'function' ? renderPortalBatches : null;
+// Poll for active test every 60 seconds after login
+var otPollInterval = null;
+function otStartPolling() {
+  otCheckForActiveTest();
+  if (otPollInterval) clearInterval(otPollInterval);
+  otPollInterval = setInterval(otCheckForActiveTest, 60000);
+}
+// Patch into portal load — call otStartPolling after portalData is set
+var _otPortalLoadOrig = window.onPortalLoad;
+window.addEventListener('portalReady', otStartPolling);
 </body>
 </html>

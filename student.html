@@ -552,22 +552,60 @@
         <span class="tab-icon">💰</span>
         <span class="tab-label">Fees</span>
       </button>
-      <button class="nav-tab" id="nav-tab-tests" onclick="switchTab('tab-results', this); otLoadMyResults();">
+      <button class="nav-tab" id="nav-tab-tests" onclick="switchTab('tab-results', this); otLoadMyResults();" style="position:relative;">
         <span class="tab-icon">🧪</span>
         <span class="tab-label">My Tests</span>
+        <span id="ot-tab-badge" style="display:none;position:absolute;top:4px;right:4px;width:10px;height:10px;background:#ef4444;border-radius:50%;border:2px solid #fff;animation:badgePulse 1.5s infinite;"></span>
       </button>
     </div>
 
-    <!-- Active Test Banner -->
-    <div id="ot-active-banner" style="display:none; background:linear-gradient(135deg,#0D1B2E,#1e3a5f);
-      color:#fff; border-radius:14px; padding:18px 20px; margin:14px 0;">
-      <div style="font-size:11px;font-weight:600;opacity:.7;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">🔴 LIVE TEST</div>
-      <div style="font-size:16px;font-weight:700;" id="ot-banner-label">Test Available</div>
-      <div style="font-size:12px;opacity:.8;margin-top:4px;" id="ot-banner-detail"></div>
-      <button onclick="otBeginTest()" style="margin-top:12px;background:#C9A84C;color:#0D1B2E;
-        border:none;border-radius:8px;padding:10px 22px;font-size:14px;font-weight:700;cursor:pointer;">
-        Begin Test →
-      </button>
+    <!-- Option D: Sticky test alert bar (all tabs) -->
+    <div id="ot-sticky-bar" style="display:none;background:linear-gradient(90deg,#7f1d1d,#991b1b);
+      color:#fff;padding:10px 16px;display:none;align-items:center;justify-content:space-between;
+      gap:12px;flex-wrap:wrap;margin-bottom:4px;border-radius:10px;animation:stickySlide .3s ease;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:16px;animation:stickyPulse 1s infinite;">🔴</span>
+        <div>
+          <div style="font-size:13px;font-weight:700;" id="ot-sticky-label">Test in progress</div>
+          <div style="font-size:11px;opacity:.85;"><span id="ot-sticky-timer">--:--</span> remaining</div>
+        </div>
+      </div>
+      <button onclick="otBeginTest()" style="background:#C9A84C;color:#0D1B2E;border:none;
+        border-radius:8px;padding:8px 18px;font-size:13px;font-weight:800;cursor:pointer;
+        white-space:nowrap;flex-shrink:0;">Begin Test →</button>
+    </div>
+
+    <!-- Option D: Prominent dashboard card (Today tab) -->
+    <div id="ot-active-banner" style="display:none;">
+      <style>
+        @keyframes badgePulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.4);opacity:.7}}
+        @keyframes stickySlide{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes stickyPulse{0%,100%{opacity:1}50%{opacity:.3}}
+        @keyframes cardGlow{0%,100%{box-shadow:0 4px 20px rgba(239,68,68,.2)}50%{box-shadow:0 4px 32px rgba(239,68,68,.45)}}
+        .ot-test-card{background:linear-gradient(135deg,#0D1B2E 0%,#1a3a5c 100%);border-radius:16px;
+          padding:22px 22px 20px;color:#fff;border:2px solid rgba(201,168,76,.3);
+          animation:cardGlow 2s infinite;margin-bottom:16px;position:relative;overflow:hidden;}
+        .ot-test-card::before{content:'';position:absolute;top:0;right:0;width:120px;height:120px;
+          background:radial-gradient(circle,rgba(201,168,76,.15),transparent);border-radius:50%;}
+        .ot-tc-live{display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,.2);
+          border:1px solid rgba(239,68,68,.4);border-radius:20px;padding:3px 10px;
+          font-size:11px;font-weight:700;color:#fca5a5;margin-bottom:10px;}
+        .ot-tc-dot{width:7px;height:7px;background:#ef4444;border-radius:50%;animation:stickyPulse .8s infinite;}
+        .ot-tc-name{font-size:20px;font-weight:800;margin-bottom:6px;color:#fff;}
+        .ot-tc-meta{font-size:12px;opacity:.75;margin-bottom:16px;}
+        .ot-tc-timer{font-size:28px;font-weight:900;color:#C9A84C;font-family:monospace;margin-bottom:16px;}
+        .ot-tc-btn{background:#C9A84C;color:#0D1B2E;border:none;border-radius:10px;
+          padding:13px 28px;font-size:15px;font-weight:800;cursor:pointer;width:100%;
+          transition:all .2s;letter-spacing:.02em;}
+        .ot-tc-btn:hover{background:#e6c257;transform:translateY(-1px);}
+      </style>
+      <div class="ot-test-card">
+        <div class="ot-tc-live"><div class="ot-tc-dot"></div> LIVE TEST</div>
+        <div class="ot-tc-name" id="ot-banner-label">—</div>
+        <div class="ot-tc-meta" id="ot-banner-detail">—</div>
+        <div class="ot-tc-timer" id="ot-banner-timer">--:--</div>
+        <button class="ot-tc-btn" onclick="otBeginTest()">▶ Begin Test Now</button>
+      </div>
     </div>
 
     <!-- Today Tab Content -->
@@ -1764,14 +1802,52 @@ function otCheckForActiveTest() {
   });
 }
 
+var otStickyTimerInterval = null;
+
 function otShowBanner(t) {
   var banner = document.getElementById('ot-active-banner');
-  if (!banner) return;
-  banner.style.display = 'block';
+  if (banner) banner.style.display = 'block';
+
   var lb = document.getElementById('ot-banner-label');
   var dt = document.getElementById('ot-banner-detail');
   if (lb) lb.textContent = t.testLabel || 'Online Test';
-  if (dt) dt.textContent = 'Duration: ' + t.duration + ' min · ' + (t.negativeMarking==='Yes' ? 'Negative marking on' : 'No negative marking');
+  if (dt) dt.textContent = 'Duration: ' + t.duration + ' min · ' + (t.negativeMarking==='Yes' ? '⚠ Negative marking on' : 'No negative marking');
+
+  // A: Badge on My Tests tab
+  var badge = document.getElementById('ot-tab-badge');
+  if (badge) badge.style.display = 'block';
+
+  // C: Sticky bar (all tabs)
+  var bar = document.getElementById('ot-sticky-bar');
+  var slbl = document.getElementById('ot-sticky-label');
+  if (bar) { bar.style.display = 'flex'; }
+  if (slbl) slbl.textContent = t.testLabel || 'Test in progress';
+
+  // Start countdown in sticky bar and dashboard card
+  if (otStickyTimerInterval) clearInterval(otStickyTimerInterval);
+  function otUpdateStickyTimer() {
+    if (!t.activatedAt || !t.duration) return;
+    var elapsed = (Date.now() - new Date(t.activatedAt).getTime()) / 1000;
+    var remaining = Math.max(0, parseInt(t.duration) * 60 - elapsed);
+    var m = Math.floor(remaining / 60);
+    var s = Math.floor(remaining % 60);
+    var str = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+    var sTimer = document.getElementById('ot-sticky-timer');
+    var bTimer = document.getElementById('ot-banner-timer');
+    if (sTimer) sTimer.textContent = str;
+    if (bTimer) bTimer.textContent = str;
+    // Flash bar red if < 2 min
+    var bar2 = document.getElementById('ot-sticky-bar');
+    if (bar2 && remaining < 120) bar2.style.background = 'linear-gradient(90deg,#450a0a,#7f1d1d)';
+  }
+  otUpdateStickyTimer();
+  otStickyTimerInterval = setInterval(otUpdateStickyTimer, 1000);
+}
+
+function otHideBanner() {
+  var els = ['ot-active-banner','ot-sticky-bar','ot-tab-badge'];
+  els.forEach(function(id){ var el=document.getElementById(id); if(el) el.style.display='none'; });
+  if (otStickyTimerInterval) { clearInterval(otStickyTimerInterval); otStickyTimerInterval=null; }
 }
 
 // ── Begin Test ───────────────────────────────────────────────

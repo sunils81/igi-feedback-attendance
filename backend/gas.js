@@ -2344,39 +2344,38 @@ function doGet(e) {
       
       enrollments.forEach(function(e) {
         var bCode = e.batchCode;
-        if (finishedBatchesMap[bCode]) {
-          var s = studentMap[e.studentId];
-          if (s) {
-            var key = s.id + '|' + bCode;
-            if (!addedKeys[key]) {
-              addedKeys[key] = true;
-              
-              var bInfo = batchCourseMap[bCode] || {};
-              var enrollMonth = '';
-              if (e.enrolledAt) {
-                var enrolDate = parseJsDate(e.enrolledAt);
-                if (enrolDate) {
-                  enrollMonth = enrolDate.toLocaleString('en-IN', { month: 'short', year: 'numeric' });
-                }
+        var s = studentMap[e.studentId];
+        if (s) {
+          var key = s.id + '|' + bCode;
+          if (!addedKeys[key]) {
+            addedKeys[key] = true;
+            
+            var bInfo = batchCourseMap[bCode] || {};
+            var enrollMonth = '';
+            if (e.enrolledAt) {
+              var enrolDate = parseJsDate(e.enrolledAt);
+              if (enrolDate) {
+                enrollMonth = enrolDate.toLocaleString('en-IN', { month: 'short', year: 'numeric' });
               }
-              if (!enrollMonth && bInfo.startDate) {
-                var startDate = parseJsDate(bInfo.startDate);
-                if (startDate) {
-                  enrollMonth = startDate.toLocaleString('en-IN', { month: 'short', year: 'numeric' });
-                }
-              }
-              
-              alumni.push({
-                studentId: s.id,
-                name: s.name,
-                contact: s.mobile || '',
-                email: s.email || '',
-                course: bInfo.course || '',
-                centre: bInfo.centre || '',
-                batchCode: bCode,
-                enrolmentMonth: enrollMonth || 'N/A'
-              });
             }
+            if (!enrollMonth && bInfo.startDate) {
+              var startDate = parseJsDate(bInfo.startDate);
+              if (startDate) {
+                enrollMonth = startDate.toLocaleString('en-IN', { month: 'short', year: 'numeric' });
+              }
+            }
+            
+            alumni.push({
+              studentId: s.id,
+              name: s.name,
+              contact: s.mobile || '',
+              email: s.email || '',
+              course: bInfo.course || '',
+              centre: bInfo.centre || '',
+              batchCode: bCode,
+              enrolmentMonth: enrollMonth || 'N/A',
+              status: finishedBatchesMap[bCode] ? 'Completed' : 'Active'
+            });
           }
         }
       });

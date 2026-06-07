@@ -614,6 +614,11 @@
 
     <!-- Today Tab Content -->
     <div id="tab-today" class="tab-content active">
+      <div id="ot-results-released-alert" style="display:none;background:linear-gradient(135deg,var(--navy) 0%,#1a2f4e 100%);color:#fff;padding:18px 20px;border-radius:12px;margin-bottom:14px;border:1.5px solid rgba(201,168,76,0.3);position:relative;box-shadow:var(--shadow);">
+        <div style="font-size:15px;font-weight:700;color:var(--gold);margin-bottom:4px;display:flex;align-items:center;gap:6px;">📊 Test Results Released</div>
+        <div id="ot-released-alert-names" style="font-size:12px;opacity:0.9;margin-bottom:12px;line-height:1.4;">The results for your recent online test have been released.</div>
+        <button onclick="switchTab('tab-results', document.getElementById('nav-tab-tests'));" style="background:var(--gold);color:var(--navy);border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:800;cursor:pointer;transition:background .2s;">View My Results →</button>
+      </div>
       <div id="portal-batches-today"></div>
       <div id="student-summary" class="dashboard-summary" style="margin-top: 14px;"></div>
     </div>
@@ -2427,6 +2432,73 @@ function otLoadMyResults() {
   });
 }
 
+var otLatestTestIds = [];
+
+function otCheckNewResultsNotification(weekly, final_) {
+  var viewed = [];
+  try { viewed = JSON.parse(localStorage.getItem('ot_viewed_results') || '[]'); } catch(x){}
+
+  var releasedTests = [];
+  weekly.forEach(function(r) { releasedTests.push(r.testId); });
+  final_.forEach(function(r) { releasedTests.push(r.testId); });
+
+  var unviewedCount = 0;
+  var unviewedNames = [];
+  releasedTests.forEach(function(tid) {
+    if (viewed.indexOf(tid) === -1) {
+      unviewedCount++;
+      var tObj = weekly.concat(final_).find(function(item) { return item.testId === tid; });
+      if (tObj && tObj.testLabel) unviewedNames.push(tObj.testLabel);
+    }
+  });
+
+  var badge = document.getElementById('ot-tab-badge');
+  if (unviewedCount > 0) {
+    if (badge) {
+      badge.style.display = 'block';
+      badge.style.background = '#10b981'; // Green badge for new results
+      badge.title = unviewedCount + ' new test result(s) released!';
+    }
+    var alertEl = document.getElementById('ot-results-released-alert');
+    var alertNames = document.getElementById('ot-released-alert-names');
+    if (alertEl && alertNames) {
+      alertEl.style.display = 'block';
+      alertNames.innerHTML = 'The results for <strong>' + escHtmlSt(unviewedNames.join(', ')) + '</strong> have been released. Click below to check your score and performance.';
+    }
+  } else {
+    var alertEl = document.getElementById('ot-results-released-alert');
+    if (alertEl) alertEl.style.display = 'none';
+
+    if (!otActiveTestInfo && badge) {
+      badge.style.display = 'none';
+    }
+  }
+}
+
+function otMarkAllResultsAsViewed() {
+  if (!otLatestTestIds.length) return;
+  var viewed = [];
+  try { viewed = JSON.parse(localStorage.getItem('ot_viewed_results') || '[]'); } catch(x){}
+
+  var updated = false;
+  otLatestTestIds.forEach(function(tid) {
+    if (viewed.indexOf(tid) === -1) {
+      viewed.push(tid);
+      updated = true;
+    }
+  });
+
+  if (updated) {
+    localStorage.setItem('ot_viewed_results', JSON.stringify(viewed));
+    var alertEl = document.getElementById('ot-results-released-alert');
+    if (alertEl) alertEl.style.display = 'none';
+    if (!otActiveTestInfo) {
+      var badge = document.getElementById('ot-tab-badge');
+      if (badge) badge.style.display = 'none';
+    }
+  }
+}
+
 function otRenderMyResults(weekly, final_, weeklyAvg, specials, cumHonour) {
   var el = document.getElementById('ot-results-wrap');
   if (!el) return;
@@ -2559,6 +2631,16 @@ function otRenderMyResults(weekly, final_, weeklyAvg, specials, cumHonour) {
   }
 
   el.innerHTML = html;
+
+  otLatestTestIds = [];
+  weekly.forEach(function(r) { otLatestTestIds.push(r.testId); });
+  final_.forEach(function(r) { otLatestTestIds.push(r.testId); });
+
+  if (document.getElementById('tab-results').classList.contains('active')) {
+    otMarkAllResultsAsViewed();
+  } else {
+    otCheckNewResultsNotification(weekly, final_);
+  }
 }
 
 // Hook: after portal loads, check for active test

@@ -4378,7 +4378,7 @@ function otGetStudentActiveTest(ss, p) {
   // Check already submitted (unless retake allowed)
   var shR=ss.getSheetByName(SH_OT_RESPONSES);
   var rRows=shR.getLastRow()>1?shR.getRange(2,1,shR.getLastRow()-1,6).getValues():[];
-  var submissions=rRows.filter(function(r){return r[1]===activeTest.testId&&r[2]===p.studentId;});
+  var submissions=rRows.filter(function(r){return String(r[1])===String(activeTest.testId)&&String(r[2])===String(p.studentId);});
   if (submissions.length>0 && activeTest.allowRetake!=='Yes') {
     return {status:'ok',activeTest:null,alreadySubmitted:true,
             testLabel:activeTest.testLabel,attemptCount:submissions.length,allowRetake:'No'};
@@ -4446,7 +4446,7 @@ function otSubmitTestResponse(ss, p) {
   ensureOnlineTestSheets(ss);
   var shR=ss.getSheetByName(SH_OT_RESPONSES);
   var rRows=shR.getLastRow()>1?shR.getRange(2,1,shR.getLastRow()-1,3).getValues():[];
-  var prevSubmissions=rRows.filter(function(r){return r[1]===p.testId&&r[2]===p.studentId;});
+  var prevSubmissions=rRows.filter(function(r){return String(r[1])===String(p.testId)&&String(r[2])===String(p.studentId);});
   // Check retake policy
   var shOT=ss.getSheetByName(SH_ONLINE_TESTS);
   var otRows=shOT.getLastRow()>1?shOT.getRange(2,1,shOT.getLastRow()-1,22).getValues():[];
@@ -4504,7 +4504,7 @@ function otLogTestWarning(ss, p) {
   ensureOnlineTestSheets(ss);
   var sh=ss.getSheetByName(SH_OT_WARNINGS);
   var rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,5).getValues():[];
-  var count=rows.filter(function(r){return r[0]===p.testId&&r[1]===p.studentId;}).length+1;
+  var count=rows.filter(function(r){return String(r[0])===String(p.testId)&&String(r[1])===String(p.studentId);}).length+1;
   sh.appendRow([p.testId,p.studentId,p.studentName||'',p.warningType||'tab-switch',count,new Date().toISOString()]);
   return {status:'ok',warningCount:count,autoSubmit:count>=3};
 }
@@ -4514,15 +4514,16 @@ function otGetProctorRoom(ss, p) {
   ensureOnlineTestSheets(ss);
   var shR=ss.getSheetByName(SH_OT_RESPONSES);
   var rRows=shR.getLastRow()>1?shR.getRange(2,1,shR.getLastRow()-1,16).getValues():[];
-  var submissions=rRows.filter(function(r){return r[1]===p.testId;}).map(function(r){
-    return{studentId:r[2],studentName:r[3],submittedAt:r[5],submitType:r[6],
+  var submissions=rRows.filter(function(r){return String(r[1])===String(p.testId);}).map(function(r){
+    return{studentId:String(r[2]),studentName:r[3],submittedAt:r[5],submitType:r[6],
       autoScore:r[8],totalScore:r[10],totalMarks:r[11],percentage:r[12],result:r[13],attemptNo:r[15]};
   });
   var shW=ss.getSheetByName(SH_OT_WARNINGS);
   var wRows=shW.getLastRow()>1?shW.getRange(2,1,shW.getLastRow()-1,6).getValues():[];
   var warnings={};
-  wRows.filter(function(r){return r[0]===p.testId;}).forEach(function(r){
-    if(!warnings[r[1]]||warnings[r[1]].count<(r[4]||0)) warnings[r[1]]={studentName:r[2],count:r[4]||0};
+  wRows.filter(function(r){return String(r[0])===String(p.testId);}).forEach(function(r){
+    var sid=String(r[1]);
+    if(!warnings[sid]||warnings[sid].count<(r[4]||0)) warnings[sid]={studentName:r[2],count:r[4]||0};
   });
   var shOT=ss.getSheetByName(SH_ONLINE_TESTS);
   var otRows=shOT.getLastRow()>1?shOT.getRange(2,1,shOT.getLastRow()-1,22).getValues():[];
@@ -4549,17 +4550,17 @@ function otSaveManualGrade(ss, p) {
   var rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,8).getValues():[];
   var now=new Date();
   var score=Math.max(0,parseFloat(p.score)||0);
-  var rowIdx=rows.findIndex(function(r){return r[0]===p.testId&&r[1]===p.studentId&&r[2]===p.qId;});
+  var rowIdx=rows.findIndex(function(r){return String(r[0])===String(p.testId)&&String(r[1])===String(p.studentId)&&String(r[2])===String(p.qId);});
   if(rowIdx!==-1){sh.getRange(rowIdx+2,5).setValue(score);sh.getRange(rowIdx+2,7).setValue(p.instructor);sh.getRange(rowIdx+2,8).setValue(now.toISOString());}
   else{sh.appendRow([p.testId,p.studentId,p.qId,'',score,p.maxMarks||5,p.instructor,now.toISOString()]);}
   var updatedRows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,8).getValues():[];
-  var studentMGRows=updatedRows.filter(function(r){return r[0]===p.testId&&r[1]===p.studentId;});
+  var studentMGRows=updatedRows.filter(function(r){return String(r[0])===String(p.testId)&&String(r[1])===String(p.studentId);});
   var allGraded=studentMGRows.every(function(r){return r[4]!==''&&r[4]!==null;});
   if(allGraded){
     var manualTotal=studentMGRows.reduce(function(sum,r){return sum+(parseFloat(r[4])||0);},0);
     var shR=ss.getSheetByName(SH_OT_RESPONSES);
     var rRows=shR.getLastRow()>1?shR.getRange(2,1,shR.getLastRow()-1,15).getValues():[];
-    var rIdx=rRows.findIndex(function(r){return r[1]===p.testId&&r[2]===p.studentId;});
+    var rIdx=rRows.findIndex(function(r){return String(r[1])===String(p.testId)&&String(r[2])===String(p.studentId);});
     if(rIdx!==-1){
       var autoScore=parseFloat(rRows[rIdx][8])||0;
       var totalMarks=parseFloat(rRows[rIdx][11])||1;
@@ -4595,7 +4596,7 @@ function otGetStudentResults(ss, p) {
   ensureOnlineTestSheets(ss);
   var shR=ss.getSheetByName(SH_OT_RESPONSES);
   var rRows=shR.getLastRow()>1?shR.getRange(2,1,shR.getLastRow()-1,16).getValues():[];
-  var myResponses=rRows.filter(function(r){return r[2]===p.studentId;});
+  var myResponses=rRows.filter(function(r){return String(r[2])===String(p.studentId);});
   var shOT=ss.getSheetByName(SH_ONLINE_TESTS);
   var otRows=shOT.getLastRow()>1?shOT.getRange(2,1,shOT.getLastRow()-1,22).getValues():[];
   var testMap={};otRows.forEach(function(r){testMap[r[0]]=r;});
@@ -5091,7 +5092,7 @@ function otGetStudentResultsV3(ss, p) {
   ensureOnlineTestSheets(ss);
   var shR=ss.getSheetByName(SH_OT_RESPONSES);
   var rRows=shR.getLastRow()>1?shR.getRange(2,1,shR.getLastRow()-1,16).getValues():[];
-  var myResponses=rRows.filter(function(r){return r[2]===p.studentId;});
+  var myResponses=rRows.filter(function(r){return String(r[2])===String(p.studentId);});
   var shOT=ss.getSheetByName(SH_ONLINE_TESTS);
   var otRows=shOT.getLastRow()>1?shOT.getRange(2,1,shOT.getLastRow()-1,23).getValues():[];
   var testMap={};otRows.forEach(function(r){testMap[r[0]]=r;});

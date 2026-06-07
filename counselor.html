@@ -1,10 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- Hard browser cache prevention -->
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -1508,72 +1504,6 @@ if (typeof amtL === 'undefined') {
 }
 
 // ── Init ──────────────────────────────────────────────────────
-// ── Counselor Session & Auto-Refresh Engine ────────────────────────────
-var CP_SESSION_KEY = 'igi_counselor_session';
-var CP_SESSION_TTL = 10 * 60 * 60 * 1000; // 10 hours
-var cpArTimers = {};
-var cpArLastUpdated = {};
-var cpArPaused = false;
-
-function cpSaveSession(name, role, centres, admin, manager) {
-  try {
-    localStorage.setItem(CP_SESSION_KEY, JSON.stringify({
-      name: name, role: role, centres: centres,
-      isAdmin: admin, isManager: manager, savedAt: Date.now()
-    }));
-  } catch(e) {}
-}
-function cpClearSession() {
-  try { localStorage.removeItem(CP_SESSION_KEY); } catch(e) {}
-  Object.keys(cpArTimers).forEach(function(id){ clearInterval(cpArTimers[id]); });
-  cpArTimers = {};
-}
-function cpCheckSession() {
-  try {
-    var raw = localStorage.getItem(CP_SESSION_KEY);
-    if (!raw) return null;
-    var sess = JSON.parse(raw);
-    if (!sess || !sess.name || !sess.savedAt) return null;
-    if (Date.now() - sess.savedAt > CP_SESSION_TTL) { cpClearSession(); return null; }
-    return sess;
-  } catch(e) { return null; }
-}
-function cpRestoreSession(sess) {
-  counselorName     = sess.name;
-  counselorAuthRole = sess.role || 'Counselor';
-  allowedCentres    = sess.centres || [];
-  isAdmin           = !!sess.isAdmin;
-  isManager         = !!sess.isManager;
-  var badge = document.getElementById('counselor-name-badge');
-  if (badge) { badge.textContent = counselorName; badge.style.display = 'inline-block'; }
-  applyCentreFilter();
-  showScreen('s-main');
-  applyPasswordChangeState();
-  applyAdminVisibility();
-  if (isAdmin) { window.location.href = 'admin.html'; return; }
-  loadMyBatches();
-  cpStartAutoRefresh();
-}
-function cpStartAutoRefresh() {
-  // Dashboard auto-refresh every 60s
-  if (cpArTimers['dashboard']) clearInterval(cpArTimers['dashboard']);
-  cpArLastUpdated['dashboard'] = Date.now();
-  cpArTimers['dashboard'] = setInterval(function() {
-    if (cpArPaused || document.hidden) return;
-    if (counselorName) { loadMyBatches(); }
-    cpArLastUpdated['dashboard'] = Date.now();
-    cpUpdateBadge('dashboard');
-  }, 60000);
-}
-function cpUpdateBadge(id) {
-  var el = document.getElementById('cp-ar-badge-'+id);
-  if (!el) return;
-  var ago = Math.round((Date.now() - (cpArLastUpdated[id]||Date.now())) / 1000);
-  el.textContent = ago < 5 ? 'just now' : ago < 60 ? ago+'s ago' : Math.floor(ago/60)+'m ago';
-}
-setInterval(function(){ Object.keys(cpArLastUpdated).forEach(cpUpdateBadge); }, 15000);
-document.addEventListener('visibilitychange', function() { cpArPaused = document.hidden; });
-
 document.addEventListener('DOMContentLoaded', function() {
   // Clear any stale revenue cache when the page loads fresh
   try {
@@ -1610,12 +1540,6 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   // Enter key on PIN
   document.getElementById('lg-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
-
-  // ── Auto-restore session if still valid ──
-  var cpSaved = cpCheckSession();
-  if (cpSaved) {
-    setTimeout(function() { cpRestoreSession(cpSaved); }, 200);
-  }
 });
 
 // ── Login ─────────────────────────────────────────────────────
@@ -1675,8 +1599,6 @@ function doLogin() {
     document.getElementById('counselor-name-badge').style.display = 'inline-block';
     // Lock centre dropdown to allowed centres
     applyCentreFilter();
-    // Save session for auto-restore on page refresh
-    cpSaveSession(d.counselorName||nameVal, d.authRole||'Counselor', d.centres||[], !!d.isAdmin, !!d.isManager);
     showScreen('s-main');
     applyPasswordChangeState();
     applyAdminVisibility();
@@ -1690,7 +1612,6 @@ function doLogin() {
       try { sessionStorage.setItem(_batchCacheKey(), JSON.stringify(d.batches)); } catch(ex) {}
       _applyBatchData(d.batches);
       loadMyBatches(); // will use allBatches immediately — no GAS call
-    cpStartAutoRefresh();
     } else {
       // Fallback: fetch separately (old GAS deploy or empty batch list)
       loadBatchDropdowns();

@@ -1,11 +1,12 @@
 /**
- * IGI Service Worker — network-first for HTML, cache-first for assets
- * Bumping CACHE_NAME clears old caches on next visit (no manual cache clear needed)
+ * IGI Service Worker — caches the app shell for instant load on return visits
+ * Version bump the CACHE_NAME to force refresh when files change
  */
-const CACHE_NAME = 'igi-v24';
+const CACHE_NAME = 'igi-v21';
 const SHELL_FILES = [
+  '/counselor',
+  '/counselor.html',
   '/assets/shared.js'
-  // HTML files intentionally excluded — always fetched fresh from network
 ];
 
 // Install: cache the app shell
@@ -26,25 +27,16 @@ self.addEventListener('install', function(e) {
   );
 });
 
-// Activate: delete ALL old caches + claim all clients immediately
+// Activate: remove old caches
 self.addEventListener('activate', function(e) {
   e.waitUntil(
     caches.keys().then(function(keys) {
-      return Promise.all(keys.map(function(k) {
-        // Delete every cache including current — force fresh fetches always
-        if (k !== CACHE_NAME) return caches.delete(k);
-      }));
+      return Promise.all(
+        keys.filter(function(k) { return k !== CACHE_NAME; })
+            .map(function(k) { return caches.delete(k); })
+      );
     }).then(function() {
-      return self.clients.claim(); // Take control of all open pages immediately
-    }).then(function() {
-      // Tell all open clients to reload so they get latest HTML
-      return self.clients.matchAll({type:'window'}).then(function(clients) {
-        clients.forEach(function(client) {
-          if (client.url && 'navigate' in client) {
-            client.navigate(client.url); // Reload each open tab
-          }
-        });
-      });
+      return self.clients.claim();
     })
   );
 });
@@ -61,19 +53,20 @@ self.addEventListener('fetch', function(e) {
     return;
   }
 
-  // For HTML pages: NETWORK-FIRST — always fetch fresh, fall back to cache if offline
+  // For HTML pages: cache-first, then update in background (stale-while-revalidate)
   if (e.request.headers.get('accept') &&
       e.request.headers.get('accept').indexOf('text/html') >= 0) {
     e.respondWith(
-      fetch(e.request, { cache: 'no-store' }).then(function(response) {
-        if (response && response.status === 200) {
-          var clone = response.clone();
-          caches.open(CACHE_NAME).then(function(cache) { cache.put(e.request, clone); });
-        }
-        return response;
-      }).catch(function() {
-        // Offline fallback — serve cached version if available
-        return caches.match(e.request);
+      caches.match(e.request).then(function(cached) {
+        var networkFetch = fetch(e.request).then(function(response) {
+          if (response && response.status === 200) {
+            var clone = response.clone();
+            caches.open(CACHE_NAME).then(function(cache) { cache.put(e.request, clone); });
+          }
+          return response;
+        }).catch(function() { return cached; });
+        // Return cached immediately if available, otherwise wait for network
+        return cached || networkFetch;
       })
     );
     return;

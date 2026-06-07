@@ -1794,23 +1794,36 @@ function otCheckForActiveTest() {
   var batches = portalData.batches || [];
   if (!batches.length) return;
 
-  // Check each batch for an active test
   var checked = 0;
+  var activeTestToRender = null;
+  var submittedTestToRender = null;
+
   batches.forEach(function(b) {
     gasGet({action:'getStudentActiveTest', studentId:sid, batchCode:b.batchCode}, function(err, d) {
       checked++;
-      if (err || !d) return;
-      if (!d.activeTest) {
-        // Test is active for batch but student already submitted (no re-attempt)
-        if (d.alreadySubmitted) otShowSubmittedCard(d);
-        return;
+      if (!err && d) {
+        if (d.activeTest) {
+          if (!activeTestToRender || d.activeTest.attemptNo > activeTestToRender.attemptNo) {
+            activeTestToRender = d.activeTest;
+          }
+        } else if (d.alreadySubmitted) {
+          submittedTestToRender = d;
+        }
       }
-      otActiveTestInfo = d.activeTest;
-      // Re-attempt or first attempt
-      if (d.activeTest.attemptNo && d.activeTest.attemptNo > 1) {
-        otShowRetakeCard(d.activeTest);
-      } else {
-        otShowBanner(d.activeTest);
+
+      if (checked === batches.length) {
+        if (activeTestToRender) {
+          otActiveTestInfo = activeTestToRender;
+          if (activeTestToRender.attemptNo && activeTestToRender.attemptNo > 1) {
+            otShowRetakeCard(activeTestToRender);
+          } else {
+            otShowBanner(activeTestToRender);
+          }
+        } else if (submittedTestToRender) {
+          otShowSubmittedCard(submittedTestToRender);
+        } else {
+          otHideBanner();
+        }
       }
     });
   });

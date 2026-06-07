@@ -2367,7 +2367,7 @@ function otRenderQB(qs) {
     var checked=otSelectedIds.has(q.id)?'checked':'';
     var selCls=otSelectedIds.has(q.id)?' selected':'';
     var shortQ=q.question.length>80?q.question.substring(0,80)+'…':q.question;
-    html+='<tr class="'+selCls+'" id="qb-row-'+escHtml(q.id)+'" onclick="otTogglePreview(''+escHtml(q.id)+'',event)">'
+    html+='<tr class="'+selCls+'" id="qb-row-'+escHtml(q.id)+'" data-qid="'+escHtml(q.id)+'" onclick="otTogglePreview(this.dataset.qid,event)">'
       +'<td onclick="event.stopPropagation()"><input type="checkbox" '+checked+' data-qid="'+escHtml(q.id)+'" onchange="otToggleQ(this)"></td>'
       +'<td style="color:#9ca3af;font-size:11px;">'+escHtml(q.id)+'</td>'
       +'<td>'+escHtml(shortQ)+'</td>'
@@ -2399,9 +2399,9 @@ function otTogglePreview(qId, e) {
     +'<div style="font-size:12px;color:#6b7280;margin-bottom:6px;">Current correct answer: <b style="color:#059669;">Option '+(otCorrectOverrides[qId]||'(from bank)')+'</b></div>'
     +'<div style="font-size:12px;">Change correct answer: '
     +[1,2,3,4].filter(function(n){return q['opt'+n];}).map(function(n){
-      return '<label style="margin-right:10px;cursor:pointer;"><input type="radio" name="cora-'+qId+'" value="'+n+'" '+(otCorrectOverrides[qId]===String(n)?'checked':'')+' onchange="otSetCorrectOverride(''+qId+'',''+n+'')" style="accent-color:#0D1B2E;"> Option '+n+'</label>';
+      return '<label style="margin-right:10px;cursor:pointer;"><input type="radio" name="cora-'+qId+'" value="'+n+'" '+(otCorrectOverrides[qId]===String(n)?'checked':'')+' data-qid="'+qId+'" data-n="'+n+'" onchange="otSetCorrectOverride(this.dataset.qid,this.dataset.n)" style="accent-color:#0D1B2E;"> Option '+n+'</label>';
     }).join('')
-    +'&nbsp;<button class="ot-btn ghost" style="padding:3px 8px;font-size:11px;" onclick="otRemoveFromSelection(''+qId+'')">✕ Remove from selection</button>'
+    +'&nbsp;<button class="ot-btn ghost" style="padding:3px 8px;font-size:11px;" data-qid="'+qId+'" onclick="otRemoveFromSelection(this.dataset.qid)">✕ Remove from selection</button>'
     +'</div></td></tr>';
   row.insertAdjacentHTML('afterend', previewHtml);
 }
@@ -2458,7 +2458,7 @@ function otSyncSelectedPreview() {
     html+='<div class="q-review-card">'
       +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">'
       +'<div style="font-size:11px;font-weight:600;color:#9ca3af;">Q'+(idx+1)+' · '+escHtml(q.id)+' · '+escHtml(q.topic)+'</div>'
-      +'<button class="ot-btn ghost" style="padding:2px 8px;font-size:11px;" onclick="otRemoveFromSelection(''+escHtml(qId)+'')">✕ Remove</button>'
+      +'<button class="ot-btn ghost" style="padding:2px 8px;font-size:11px;" data-qid="'+escHtml(qId)+'" onclick="otRemoveFromSelection(this.dataset.qid)">✕ Remove</button>'
       +'</div>'
       +'<div style="font-size:13px;font-weight:600;margin-bottom:8px;">'+escHtml(q.question)+'</div>';
     if(q.type==='MCQ'||!q.type){
@@ -2466,14 +2466,14 @@ function otSyncSelectedPreview() {
       [1,2,3,4].forEach(function(n){
         if(!q['opt'+n]) return;
         var isCorrect=override?override===String(n):false;
-        html+='<div class="q-opt-row"><input type="radio" name="rev-'+escHtml(qId)+'" value="'+n+'" '+(isCorrect?'checked':'')+' onchange="otSetCorrectOverride(''+escHtml(qId)+'',''+n+'')" style="accent-color:#0D1B2E;"><label class="q-opt-label'+(isCorrect?' correct':'')+'" onclick="otSetCorrectOverride(''+escHtml(qId)+'',''+n+'')"> Option '+n+': '+escHtml(q['opt'+n])+'</label></div>';
+        html+='<div class="q-opt-row"><input type="radio" name="rev-'+escHtml(qId)+'" value="'+n+'" '+(isCorrect?'checked':'')+' onchange="otSetCorrectOverride(\''+escHtml(qId)+'\',\''+n+'\')" style="accent-color:#0D1B2E;"><label class="q-opt-label'+(isCorrect?' correct':'')+'" onclick="otSetCorrectOverride(\''+escHtml(qId)+'\',\''+n+'\')"> Option '+n+': '+escHtml(q['opt'+n])+'</label></div>';
       });
       html+='</div>';
       if(override) html+='<div style="font-size:11px;color:#059669;">✏️ Correct answer overridden → Option '+escHtml(override)+'</div>';
     } else if(q.type==='TrueFalse'){
       html+='<div style="font-size:12px;">True / False &nbsp;·&nbsp; Override: '
-        +'<label><input type="radio" name="rev-'+escHtml(qId)+'" value="True" '+(override==='True'?'checked':'')+' onchange="otSetCorrectOverride(''+escHtml(qId)+'','True')"> True</label> &nbsp;'
-        +'<label><input type="radio" name="rev-'+escHtml(qId)+'" value="False" '+(override==='False'?'checked':'')+' onchange="otSetCorrectOverride(''+escHtml(qId)+'','False')"> False</label></div>';
+        +'<label><input type="radio" name="rev-'+escHtml(qId)+'" value="True" '+(override==='True'?'checked':'')+' data-qid="'+escHtml(qId)+'" data-val="True" onchange="otSetCorrectOverride(this.dataset.qid,this.dataset.val)"> True</label> &nbsp;'
+        +'<label><input type="radio" name="rev-'+escHtml(qId)+'" value="False" '+(override==='False'?'checked':'')+' data-qid="'+escHtml(qId)+'" data-val="False" onchange="otSetCorrectOverride(this.dataset.qid,this.dataset.val)"> False</label></div>';
     } else {
       html+='<div style="font-size:12px;color:#6b7280;">Type: '+escHtml(q.type)+'</div>';
     }
@@ -2624,12 +2624,12 @@ function otRenderTests(tests) {
       +(schedAt?'<div style="font-size:11px;color:#92400e;margin-top:3px;">⏰ Scheduled: '+schedAt+'</div>':'')
       +(t.activatedAt?'<div style="font-size:11px;color:#9ca3af;margin-top:3px;">Activated: '+actAt+'</div>':'')
       +'<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
-      +(t.status==='Draft'?'<button class="ot-btn success" onclick="otActivateTest(''+escHtml(t.testId)+'')">▶ Activate</button>':'')
-      +(t.status==='Scheduled'?'<button class="ot-btn warn" onclick="otActivateTest(''+escHtml(t.testId)+'')">▶ Activate Now</button>':'')
-      +(t.status==='Active'?'<button class="ot-btn warn" onclick="otOpenProctorForTest(''+escHtml(t.testId)+'')">👁 Proctor Room</button>':'')
-      +(t.status==='Closed'&&t.resultsReleased!=='Yes'?'<button class="ot-btn primary" onclick="otReleaseResultsFor(''+escHtml(t.testId)+'','summary')">📢 Release</button>':'')
-      +(t.status==='Closed'&&t.resultsReleased!=='Yes'?'<button class="ot-btn ghost" onclick="otReleaseResultsFor(''+escHtml(t.testId)+'','full')">+ Breakdown</button>':'')
-      +'<button class="ot-btn ghost" onclick="otViewResults(''+escHtml(t.testId)+'')">📊</button>'
+      +(t.status==='Draft'?'<button class="ot-btn success" data-tid="'+escHtml(t.testId)+'" onclick="otActivateTest(this.dataset.tid)">▶ Activate</button>':'')
+      +(t.status==='Scheduled'?'<button class="ot-btn warn" data-tid="'+escHtml(t.testId)+'" onclick="otActivateTest(this.dataset.tid)">▶ Activate Now</button>':'')
+      +(t.status==='Active'?'<button class="ot-btn warn" data-tid="'+escHtml(t.testId)+'" onclick="otOpenProctorForTest(this.dataset.tid)">👁 Proctor Room</button>':'')
+      +(t.status==='Closed'&&t.resultsReleased!=='Yes'?'<button class="ot-btn primary" data-tid="'+escHtml(t.testId)+'" data-mode="summary" onclick="otReleaseResultsFor(this.dataset.tid,this.dataset.mode)">📢 Release</button>':'')
+      +(t.status==='Closed'&&t.resultsReleased!=='Yes'?'<button class="ot-btn ghost" data-tid="'+escHtml(t.testId)+'" data-mode="full" onclick="otReleaseResultsFor(this.dataset.tid,this.dataset.mode)">+ Breakdown</button>':'')
+      +'<button class="ot-btn ghost" data-tid="'+escHtml(t.testId)+'" onclick="otViewResults(this.dataset.tid)">📊</button>'
       +'</div></div>';
   });
   html+='</div>';
@@ -2740,7 +2740,7 @@ function otLoadGrading() {
           +(q.graded?'<div style="font-size:12px;color:#059669;">✅ Graded: '+escHtml(q.score)+' / '+escHtml(q.maxMarks)+'</div>'
             :'<div style="display:flex;align-items:center;gap:8px;margin-top:6px;"><label style="font-size:12px;font-weight:600;">Score (max '+escHtml(q.maxMarks)+'): </label>'
             +'<input type="number" min="0" max="'+escHtml(q.maxMarks)+'" step="0.5" value="0" id="mg-score-'+escHtml(s.studentId)+'-'+escHtml(q.qId)+'" style="width:70px;padding:4px 8px;border:1px solid #e5e7eb;border-radius:6px;">'
-            +'<button class="ot-btn success" style="padding:5px 12px;font-size:12px;" onclick="otSaveMG(''+escHtml(testId)+'',''+escHtml(s.studentId)+'',''+escHtml(q.qId)+'','+escHtml(q.maxMarks)+')">Save</button></div>')
+            +'<button class="ot-btn success" style="padding:5px 12px;font-size:12px;" onclick="otSaveMG(\''+escHtml(testId)+'\',\''+escHtml(s.studentId)+'\',\''+escHtml(q.qId)+'\','+escHtml(q.maxMarks)+')">Save</button></div>')
           +'</div>';
       });
       html+='</div>';
@@ -2786,8 +2786,8 @@ function otLoadResults() {
     var testObj=otCurrentTests.find(function(t){return t.testId===testId;});
     if(testObj&&testObj.resultsReleased!=='Yes'){
       html+='<div style="margin-top:16px;display:flex;gap:10px;">'
-        +'<button class="ot-btn primary" onclick="otReleaseResultsFor(''+escHtml(testId)+'','summary')">📢 Release (Summary)</button>'
-        +'<button class="ot-btn ghost" onclick="otReleaseResultsFor(''+escHtml(testId)+'','full')">Release Full Breakdown</button>'
+        +'<button class="ot-btn primary" data-tid="'+escHtml(testId)+'" data-mode="summary" onclick="otReleaseResultsFor(this.dataset.tid,this.dataset.mode)">📢 Release (Summary)</button>'
+        +'<button class="ot-btn ghost" data-tid="'+escHtml(testId)+'" data-mode="full" onclick="otReleaseResultsFor(this.dataset.tid,this.dataset.mode)">Release Full Breakdown</button>'
         +'</div>';
     } else if(testObj&&testObj.resultsReleased==='Yes') {
       html+='<div style="margin-top:14px;background:#d1fae5;color:#065f46;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;">✅ Results released to students</div>';

@@ -742,85 +742,167 @@
 
     <!-- ── Panel 2: Create Test ────────────────────────────── -->
     <div id="ot-create" class="ot-panel">
-      <h3 style="margin:0 0 16px;font-size:15px;">Create New Online Test</h3>
+      <style>
+        .ct-step{background:#fff;border:1.5px solid #e5e7eb;border-radius:14px;padding:18px 20px;margin-bottom:14px;position:relative;}
+        .ct-step-num{position:absolute;top:-11px;left:16px;background:#0D1B2E;color:#C9A84C;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px;letter-spacing:.5px;text-transform:uppercase;}
+        .dur-pill{display:inline-flex;align-items:center;justify-content:center;width:54px;height:36px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;background:#fff;transition:all .15s;}
+        .dur-pill:hover{border-color:#0D1B2E;color:#0D1B2E;}
+        .dur-pill.active{background:#0D1B2E;color:#fff;border-color:#0D1B2E;}
+        .pass-range{display:flex;align-items:center;gap:12px;margin-top:8px;}
+        .pass-range input[type=range]{flex:1;accent-color:#0D1B2E;height:4px;}
+        .pass-val{background:#0D1B2E;color:#C9A84C;font-weight:700;font-size:13px;padding:3px 10px;border-radius:8px;min-width:44px;text-align:center;}
+        .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+        @media(max-width:640px){.two-col{grid-template-columns:1fr;}}
+        .ct-label{font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;display:block;}
+        .ct-input{width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:9px;font-size:13px;box-sizing:border-box;transition:border .15s;}
+        .ct-input:focus{outline:none;border-color:#0D1B2E;}
+        .ct-select{padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:9px;font-size:13px;background:#fff;width:100%;}
+        .toggle-option{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1.5px solid #e5e7eb;border-radius:9px;cursor:pointer;font-size:13px;font-weight:500;transition:all .15s;}
+        .toggle-option:has(input:checked){border-color:#0D1B2E;background:#f0f4ff;}
+        .toggle-option input{accent-color:#0D1B2E;}
+        .ot-checkbox-opt{display:flex;align-items:center;gap:8px;padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:9px;cursor:pointer;font-size:13px;font-weight:500;transition:all .15s;}
+        .ot-checkbox-opt:has(input:checked){border-color:#0D1B2E;background:#f0f4ff;}
+        .ot-checkbox-opt input{accent-color:#0D1B2E;}
+      </style>
 
-      <div class="ot-form-row">
-        <div style="flex:1;min-width:250px;"><label>Test Label / Name *</label><input type="text" id="ot-c-label" placeholder="e.g. Weekly Test 1 – DG Rough" style="width:100%;"></div>
-      </div>
-      <div class="ot-form-row">
-        <div><label>Test Type</label><select id="ot-c-type"><option value="Weekly">Weekly Test</option><option value="Final">Final Exam</option></select></div>
-        <div><label>Course</label><select id="ot-c-course"><option value="DG">Diamond Graduate</option><option value="CSG">Colored Stone Graduate</option><option value="ALL">All</option></select></div>
-        <div><label>Duration (minutes)</label><input type="number" id="ot-c-duration" value="30" min="5" max="180" style="width:80px;"></div>
-      </div>
-
-      <!-- Instructions -->
-      <div class="ot-section-hdr">📋 Test Instructions (shown to students before they begin)</div>
-      <textarea id="ot-c-instructions" rows="2" style="width:100%;padding:8px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;box-sizing:border-box;margin-bottom:12px;" placeholder="e.g. This test covers DG Rough topics. No calculators allowed. Read each question carefully."></textarea>
-
-      <!-- Batch Selection -->
-      <div class="ot-section-hdr">🏫 Batch Selection (select one or more)</div>
-      <div id="ot-batch-chips" class="batch-check-list"><span style="color:#9ca3af;font-size:12px;">Loading your batches…</span></div>
-
-      <!-- Student Targeting -->
-      <div class="ot-section-hdr">👥 Student Targeting</div>
-      <div style="display:flex;gap:16px;margin-bottom:10px;">
-        <label class="ot-toggle"><input type="radio" name="ot-target-mode" value="ALL" checked onchange="otTargetModeChange()"> All enrolled students</label>
-        <label class="ot-toggle"><input type="radio" name="ot-target-mode" value="SELECTED" onchange="otTargetModeChange()"> Selected students only</label>
-      </div>
-      <div id="ot-student-target-wrap" style="display:none;">
-        <div style="display:flex;gap:8px;margin-bottom:8px;">
-          <input type="text" id="ot-student-search" placeholder="Search student name…" style="padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;flex:1;" oninput="otFilterStudentList()">
-          <button class="ot-btn ghost" style="padding:6px 12px;font-size:12px;" onclick="otSelectAllStudents()">Select All</button>
-          <button class="ot-btn ghost" style="padding:6px 12px;font-size:12px;" onclick="otClearStudents()">Clear</button>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+        <div>
+          <h3 style="margin:0;font-size:16px;font-weight:700;color:#0D1B2E;">Create New Online Test</h3>
+          <div style="font-size:12px;color:#9ca3af;margin-top:2px;">Fill in each section, then click Create Test at the bottom</div>
         </div>
-        <div id="ot-student-check-list" class="student-check-list"><span style="color:#9ca3af;font-size:12px;">Select batches first</span></div>
-        <div style="font-size:11px;color:#6b7280;margin-top:4px;"><span id="ot-student-sel-count">0</span> students selected</div>
       </div>
 
-      <!-- Test Expiry -->
-      <div class="ot-section-hdr">⏱ Test Expiry</div>
-      <div class="expiry-opts">
-        <label><input type="radio" name="ot-expiry" value="manual" checked onchange="otExpiryChange()"> Manual — instructor closes from Proctor Room</label>
-        <label><input type="radio" name="ot-expiry" value="endofday" onchange="otExpiryChange()"> Today end of day (11:59 PM)</label>
-        <label><input type="radio" name="ot-expiry" value="custom" onchange="otExpiryChange()"> Custom date &amp; time</label>
-      </div>
-      <div id="ot-expiry-custom-wrap" style="display:none;margin-top:8px;">
-        <input type="datetime-local" id="ot-expiry-custom" style="padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;">
-      </div>
-
-      <!-- Activation -->
-      <div class="ot-section-hdr">🚀 When to Activate</div>
-      <div style="display:flex;gap:16px;margin-bottom:10px;">
-        <label class="ot-toggle"><input type="radio" name="ot-activate-when" value="now" checked onchange="otActivateWhenChange()"> Activate immediately on create</label>
-        <label class="ot-toggle"><input type="radio" name="ot-activate-when" value="manual" onchange="otActivateWhenChange()"> Save as Draft — activate manually later</label>
-        <label class="ot-toggle"><input type="radio" name="ot-activate-when" value="scheduled" onchange="otActivateWhenChange()"> Schedule for a specific time</label>
-      </div>
-      <div id="ot-scheduled-wrap" style="display:none;margin-bottom:12px;">
-        <label style="font-size:12px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;">Activation Date &amp; Time</label>
-        <input type="datetime-local" id="ot-scheduled-at" style="padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;">
-        <div style="font-size:11px;color:#6b7280;margin-top:4px;">GAS will auto-activate within 5 minutes of this time.</div>
-      </div>
-
-      <!-- Options Row -->
-      <div class="ot-section-hdr">⚙️ Test Options</div>
-      <div class="ot-toggle-row">
-        <label class="ot-toggle"><input type="checkbox" id="ot-c-negmark" onchange="otToggleNeg()"> Negative Marking</label>
-        <label class="ot-toggle"><input type="checkbox" id="ot-c-shuffle"> Shuffle Questions per student</label>
-        <label class="ot-toggle"><input type="checkbox" id="ot-c-retake"> Allow Re-attempt</label>
-      </div>
-      <div id="ot-neg-val-wrap" style="display:none;margin-bottom:12px;">
-        <label style="font-size:12px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;">Deduction per wrong answer</label>
-        <input type="number" id="ot-c-negval" value="0.25" step="0.25" min="0.25" max="2" style="width:80px;padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;">
+      <!-- Step 1: Basics -->
+      <div class="ct-step">
+        <div class="ct-step-num">Step 1 · Basics</div>
+        <div style="margin-top:6px;">
+          <label class="ct-label">Test Label / Name *</label>
+          <input type="text" id="ot-c-label" class="ct-input" placeholder="e.g. Weekly Test 1 – DG Rough">
+        </div>
+        <div class="two-col" style="margin-top:12px;">
+          <div>
+            <label class="ct-label">Test Type</label>
+            <select id="ot-c-type" class="ct-select"><option value="Weekly">Weekly Test</option><option value="Final">Final Exam</option></select>
+          </div>
+          <div>
+            <label class="ct-label">Course</label>
+            <select id="ot-c-course" class="ct-select"><option value="DG">Diamond Graduate</option><option value="CSG">Colored Stone Graduate</option><option value="ALL">All</option></select>
+          </div>
+        </div>
+        <div style="margin-top:12px;">
+          <label class="ct-label">Duration</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <div class="dur-pill" data-val="15" onclick="otSetDuration(15,this)">15m</div>
+            <div class="dur-pill active" data-val="30" onclick="otSetDuration(30,this)">30m</div>
+            <div class="dur-pill" data-val="45" onclick="otSetDuration(45,this)">45m</div>
+            <div class="dur-pill" data-val="60" onclick="otSetDuration(60,this)">60m</div>
+            <div class="dur-pill" data-val="90" onclick="otSetDuration(90,this)">90m</div>
+            <div class="dur-pill" data-val="120" onclick="otSetDuration(120,this)">2hr</div>
+          </div>
+          <input type="hidden" id="ot-c-duration" value="30">
+        </div>
       </div>
 
-      <!-- Question Review -->
-      <div class="ot-section-hdr">✅ Review &amp; Edit Selected Questions</div>
-      <div id="ot-q-review-wrap">
-        <div style="color:#9ca3af;font-size:13px;padding:12px 0;">No questions selected yet — go to <b>Question Bank</b> tab to select.</div>
+      <!-- Step 2: Instructions & Passing Score -->
+      <div class="ct-step">
+        <div class="ct-step-num">Step 2 · Rules</div>
+        <div style="margin-top:6px;">
+          <label class="ct-label">Test Instructions <span style="font-weight:400;text-transform:none;letter-spacing:0;">(shown to students before they begin)</span></label>
+          <textarea id="ot-c-instructions" class="ct-input" rows="2" style="resize:vertical;" placeholder="e.g. This test covers DG Rough topics. No calculators allowed. Read each question carefully."></textarea>
+        </div>
+        <div style="margin-top:14px;">
+          <label class="ct-label">Passing Score %</label>
+          <div class="pass-range">
+            <span style="font-size:12px;color:#9ca3af;">40%</span>
+            <input type="range" id="ot-c-passscore" min="40" max="90" value="60" step="5" oninput="document.getElementById('ot-pass-val').textContent=this.value+'%'">
+            <span style="font-size:12px;color:#9ca3af;">90%</span>
+            <div class="pass-val" id="ot-pass-val">60%</div>
+          </div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:4px;">Students need this score to pass. Default 60%.</div>
+        </div>
       </div>
 
-      <div style="margin-top:18px;display:flex;gap:10px;align-items:center;">
-        <button class="ot-btn primary" onclick="otCreateTest()">📝 Create Test</button>
+      <!-- Step 3: Batches & Students -->
+      <div class="ct-step">
+        <div class="ct-step-num">Step 3 · Audience</div>
+        <div style="margin-top:6px;">
+          <label class="ct-label">Batch Selection <span style="font-weight:400;text-transform:none;letter-spacing:0;">(select one or more)</span></label>
+          <div id="ot-batch-chips" class="batch-check-list"><span style="color:#9ca3af;font-size:12px;">Loading your batches…</span></div>
+        </div>
+        <div style="margin-top:14px;">
+          <label class="ct-label">Student Targeting</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <label class="toggle-option"><input type="radio" name="ot-target-mode" value="ALL" checked onchange="otTargetModeChange()"> All enrolled students</label>
+            <label class="toggle-option"><input type="radio" name="ot-target-mode" value="SELECTED" onchange="otTargetModeChange()"> Selected students only</label>
+          </div>
+        </div>
+        <div id="ot-student-target-wrap" style="display:none;margin-top:10px;">
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <input type="text" id="ot-student-search" class="ct-input" placeholder="Search student name…" style="flex:1;" oninput="otFilterStudentList()">
+            <button class="ot-btn ghost" style="padding:6px 12px;font-size:12px;" onclick="otSelectAllStudents()">Select All</button>
+            <button class="ot-btn ghost" style="padding:6px 12px;font-size:12px;" onclick="otClearStudents()">Clear</button>
+          </div>
+          <div id="ot-student-check-list" class="student-check-list">
+            <span style="color:#9ca3af;font-size:12px;">← Select a batch above first to see students</span>
+          </div>
+          <div style="font-size:11px;color:#6b7280;margin-top:4px;"><span id="ot-student-sel-count">0</span> students selected</div>
+        </div>
+      </div>
+
+      <!-- Step 4: Timing -->
+      <div class="ct-step">
+        <div class="ct-step-num">Step 4 · Timing</div>
+        <div style="margin-top:6px;">
+          <label class="ct-label">Test Expiry</label>
+          <div style="display:flex;flex-direction:column;gap:6px;" class="expiry-opts">
+            <label class="toggle-option"><input type="radio" name="ot-expiry" value="manual" checked onchange="otExpiryChange()"> Manual — I close it from Proctor Room</label>
+            <label class="toggle-option"><input type="radio" name="ot-expiry" value="endofday" onchange="otExpiryChange()"> Today end of day (11:59 PM)</label>
+            <label class="toggle-option"><input type="radio" name="ot-expiry" value="custom" onchange="otExpiryChange()"> Custom date &amp; time →
+              <input type="datetime-local" id="ot-expiry-custom" style="display:none;margin-left:8px;padding:4px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">
+            </label>
+          </div>
+        </div>
+        <div style="margin-top:14px;">
+          <label class="ct-label">When to Activate</label>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <label class="toggle-option"><input type="radio" name="ot-activate-when" value="now" checked onchange="otActivateWhenChange()"> Activate immediately on create</label>
+            <label class="toggle-option"><input type="radio" name="ot-activate-when" value="manual" onchange="otActivateWhenChange()"> Save as Draft — activate manually later</label>
+            <label class="toggle-option"><input type="radio" name="ot-activate-when" value="scheduled" onchange="otActivateWhenChange()"> Schedule for a specific time →
+              <input type="datetime-local" id="ot-scheduled-at" style="display:none;margin-left:8px;padding:4px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">
+            </label>
+          </div>
+          <div id="ot-scheduled-wrap" style="display:none;"></div>
+        </div>
+      </div>
+
+      <!-- Step 5: Options -->
+      <div class="ct-step">
+        <div class="ct-step-num">Step 5 · Options</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+          <label class="ot-checkbox-opt"><input type="checkbox" id="ot-c-negmark" onchange="otToggleNeg()"> Negative Marking</label>
+          <label class="ot-checkbox-opt"><input type="checkbox" id="ot-c-shuffle"> Shuffle Questions</label>
+          <label class="ot-checkbox-opt"><input type="checkbox" id="ot-c-retake"> Allow Re-attempt</label>
+        </div>
+        <div id="ot-neg-val-wrap" style="display:none;margin-top:10px;display:flex;align-items:center;gap:10px;">
+          <label class="ct-label" style="margin:0;">Deduction per wrong answer:</label>
+          <select id="ot-c-negval" style="padding:6px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;">
+            <option value="0.25">−0.25 marks</option>
+            <option value="0.5">−0.5 marks</option>
+            <option value="1">−1 mark</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Step 6: Review Questions -->
+      <div class="ct-step">
+        <div class="ct-step-num">Step 6 · Questions</div>
+        <div id="ot-q-review-wrap" style="margin-top:6px;">
+          <div style="color:#9ca3af;font-size:13px;padding:10px 0;">No questions selected yet — go to <b>Question Bank</b> tab to select.</div>
+        </div>
+      </div>
+
+      <div style="margin-top:6px;display:flex;gap:10px;align-items:center;">
+        <button class="ot-btn primary" style="padding:12px 28px;font-size:14px;" onclick="otCreateTest()">📝 Create Test</button>
         <span id="ot-create-status" style="font-size:12px;"></span>
       </div>
     </div>
@@ -2326,10 +2408,11 @@ function otFilterStudentList() {
 }
 function otSelectAllStudents(){otAllStudents.forEach(function(s){otSelectedStudents.add(s.studentId);});otRenderStudentList(otAllStudents);document.getElementById('ot-student-sel-count').textContent=otSelectedStudents.size;}
 function otClearStudents(){otSelectedStudents.clear();otRenderStudentList(otAllStudents);document.getElementById('ot-student-sel-count').textContent=0;}
+function otSetDuration(val,el){document.querySelectorAll('.dur-pill').forEach(function(p){p.classList.remove('active');});el.classList.add('active');var inp=document.getElementById('ot-c-duration');if(inp)inp.value=val;}
 function otTargetModeChange(){var v=document.querySelector('input[name=ot-target-mode]:checked').value;document.getElementById('ot-student-target-wrap').style.display=v==='SELECTED'?'block':'none';}
-function otExpiryChange(){var v=document.querySelector('input[name=ot-expiry]:checked').value;document.getElementById('ot-expiry-custom-wrap').style.display=v==='custom'?'block':'none';}
-function otActivateWhenChange(){var v=document.querySelector('input[name=ot-activate-when]:checked').value;document.getElementById('ot-scheduled-wrap').style.display=v==='scheduled'?'block':'none';}
-function otToggleNeg(){var cb=document.getElementById('ot-c-negmark');document.getElementById('ot-neg-val-wrap').style.display=cb&&cb.checked?'block':'none';}
+function otExpiryChange(){var v=document.querySelector('input[name=ot-expiry]:checked').value;var ci=document.getElementById('ot-expiry-custom');if(ci)ci.style.display=v==='custom'?'inline-block':'none';}
+function otActivateWhenChange(){var v=document.querySelector('input[name=ot-activate-when]:checked').value;var si=document.getElementById('ot-scheduled-at');if(si)si.style.display=v==='scheduled'?'inline-block':'none';}
+function otToggleNeg(){var cb=document.getElementById('ot-c-negmark');var w=document.getElementById('ot-neg-val-wrap');if(w)w.style.display=cb&&cb.checked?'flex':'none';}
 
 // ── Question Bank ────────────────────────────────────────────
 function otLoadQB() {
@@ -2564,7 +2647,8 @@ function otCreateTest() {
     negativeMarking:(document.getElementById('ot-c-negmark')||{}).checked?'true':'false',
     negMarkValue:(document.getElementById('ot-c-negval')||{}).value||'0.25',
     shuffleQuestions:(document.getElementById('ot-c-shuffle')||{}).checked?'true':'false',
-    allowRetake:(document.getElementById('ot-c-retake')||{}).checked?'true':'false'
+    allowRetake:(document.getElementById('ot-c-retake')||{}).checked?'true':'false',
+    passingScore:(document.getElementById('ot-c-passscore')||{}).value||'60'
   };
 
   gasGet(params, function(err,d){

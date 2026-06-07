@@ -1682,6 +1682,37 @@ function otShowBanner(t) {
 // ── Begin Test ───────────────────────────────────────────────
 function otBeginTest() {
   if (!otActiveTestInfo) return;
+  var instructions = otActiveTestInfo.instructions || '';
+  if (instructions && instructions.trim()) {
+    otShowInstructionsScreen(instructions);
+  } else {
+    otLoadAndStartTest();
+  }
+}
+
+function otShowInstructionsScreen(instructions) {
+  var scr = document.getElementById('ot-test-screen');
+  if (!scr) return;
+  scr.style.display = 'block';
+  var dots = document.getElementById('ot-prog-dots');
+  var nav = document.querySelector('.ot-nav-bar');
+  if(dots) dots.style.display='none';
+  if(nav)  nav.style.display='none';
+  var body = document.getElementById('ot-questions-body');
+  if (body) body.innerHTML =
+    '<div style="max-width:600px;margin:40px auto;background:#fff;border-radius:14px;border:1.5px solid #e5e7eb;padding:28px 30px;">' +
+    '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#9ca3af;margin-bottom:8px;">📋 Test Instructions</div>' +
+    '<div style="font-size:16px;font-weight:700;margin-bottom:14px;color:#0D1B2E;">' + escHtmlSt(otActiveTestInfo.testLabel||'Online Test') + '</div>' +
+    '<div style="font-size:13px;line-height:1.7;color:#374151;background:#f9fafb;border-radius:10px;padding:14px 16px;margin-bottom:20px;">' + escHtmlSt(instructions) + '</div>' +
+    '<div style="font-size:12px;color:#6b7280;margin-bottom:6px;">Duration: <b>' + otActiveTestInfo.duration + ' minutes</b></div>' +
+    (otActiveTestInfo.negativeMarking==='Yes' ? '<div style="font-size:12px;color:#dc2626;margin-bottom:6px;">⚠ Negative marking: -' + otActiveTestInfo.negMarkValue + ' per wrong answer</div>' : '') +
+    '<div style="font-size:12px;color:#6b7280;margin-bottom:20px;">3 tab-switch / fullscreen-exit warnings = auto-submit.</div>' +
+    '<button onclick="otLoadAndStartTest()" style="background:#0D1B2E;color:#fff;border:none;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;width:100%;">▶ Begin Test</button>' +
+    '</div>';
+}
+
+function otLoadAndStartTest() {
+  if (!otActiveTestInfo) return;
   var sid = portalData.enrollmentNo || portalData.studentId || '';
   var batch = otActiveTestInfo.batchCode;
 
@@ -1715,6 +1746,11 @@ function otRenderTestScreen() {
   var tc = document.getElementById('ot-total-count');
   if (tc) tc.textContent = otTestData.questions.length;
 
+  // Restore dots and nav (hidden during instructions screen)
+  var dots = document.getElementById('ot-prog-dots');
+  var nav = document.querySelector('.ot-nav-bar');
+  if(dots) dots.style.display='';
+  if(nav)  nav.style.display='';
   otRenderProgressDots();
   otRenderAllQuestions();
   otUpdateAnsweredCount();
@@ -1952,8 +1988,9 @@ function otLoadMyResults() {
 
   el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">Loading…</div>';
 
-  // Check all batches
+  // Check all batches — collect full V3 response
   var allWeekly = [], allFinal = [], weeklyAvg = null;
+  var allSpecials = [], cumHonour = null;
   var pending = batches.length;
 
   batches.forEach(function(b) {
@@ -1963,74 +2000,141 @@ function otLoadMyResults() {
         allWeekly = allWeekly.concat(d.weeklyResults || []);
         allFinal  = allFinal.concat(d.finalResults   || []);
         if (d.weeklyAverage !== null && d.weeklyAverage !== undefined) weeklyAvg = d.weeklyAverage;
+        if (d.specialBadges && d.specialBadges.length) allSpecials = allSpecials.concat(d.specialBadges);
+        if (d.cumulativeHonour) cumHonour = d.cumulativeHonour;
       }
-      if (pending === 0) otRenderMyResults(allWeekly, allFinal, weeklyAvg);
+      if (pending === 0) otRenderMyResults(allWeekly, allFinal, weeklyAvg, allSpecials, cumHonour);
     });
   });
 }
 
-function otRenderMyResults(weekly, final_, weeklyAvg) {
+function otRenderMyResults(weekly, final_, weeklyAvg, specials, cumHonour) {
   var el = document.getElementById('ot-results-wrap');
   if (!el) return;
 
   if (!weekly.length && !final_.length) {
-    el.innerHTML = '<div style="color:#9ca3af;font-size:14px;padding:30px 0;text-align:center;">'
-      + '📋 No test results available yet.<br><span style="font-size:12px;">Results appear here once your instructor releases them.</span></div>';
+    el.innerHTML = '<div style="text-align:center;padding:40px 20px;">'
+      + '<div style="font-size:40px;margin-bottom:12px;">📋</div>'
+      + '<div style="font-weight:600;font-size:15px;color:#374151;margin-bottom:6px;">No results yet</div>'
+      + '<div style="font-size:13px;color:#9ca3af;">Results appear here once your instructor releases them after a test.</div>'
+      + '</div>';
     return;
   }
 
-  var PASS_PCT = 60;
-  var html = '<h3 style="margin:0 0 16px;font-size:15px;font-weight:700;">My Test Results</h3>';
+  function gemBadge(b) {
+    if (!b) return '';
+    var colors = {diamond:'#0D1B2E',sapphire:'#1a4b8c',emerald:'#065f46',ruby:'#991b1b',pass:'#92400e',fail:'#6b7280'};
+    var bgs = {diamond:'#e8edf5',sapphire:'#dbeafe',emerald:'#d1fae5',ruby:'#fee2e2',pass:'#fef3c7',fail:'#f3f4f6'};
+    var t = b.tier||'pass';
+    return '<span style="display:inline-flex;align-items:center;gap:5px;background:'+bgs[t]+';color:'+colors[t]+';border-radius:20px;padding:3px 10px 3px 8px;font-size:12px;font-weight:700;">'
+      +b.icon+' '+escHtmlSt(b.name)+'</span>';
+  }
+
+  var html = '';
+
+  // Cumulative Honour Banner
+  if (cumHonour) {
+    html += '<div style="background:linear-gradient(135deg,#0D1B2E 0%,#1e3a5f 100%);border-radius:14px;padding:20px 22px;margin-bottom:20px;color:#fff;display:flex;align-items:center;gap:16px;">'
+      + '<div style="font-size:44px;line-height:1;">'+escHtmlSt(cumHonour.icon)+'</div>'
+      + '<div>'
+      + '<div style="font-size:11px;font-weight:600;opacity:.7;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Your Honour</div>'
+      + '<div style="font-size:20px;font-weight:800;color:#C9A84C;">'+escHtmlSt(cumHonour.title)+'</div>'
+      + '<div style="font-size:12px;opacity:.7;margin-top:2px;">'+(cumHonour.title.includes('Interim')?'Based on weekly average · Final exam will confirm':'Based on Final Exam')+'</div>'
+      + '</div></div>';
+  }
+
+  // Special Badges Row
+  if (specials && specials.length) {
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;">';
+    specials.forEach(function(s) {
+      html += '<div style="display:flex;align-items:center;gap:6px;background:#fff;border:1.5px solid #e5e7eb;border-radius:10px;padding:6px 12px;">'
+        + '<span style="font-size:18px;">'+escHtmlSt(s.icon)+'</span>'
+        + '<div><div style="font-size:12px;font-weight:700;color:#374151;">'+escHtmlSt(s.name)+'</div>'
+        + '<div style="font-size:10px;color:#9ca3af;">'+escHtmlSt(s.desc)+'</div></div>'
+        + '</div>';
+    });
+    html += '</div>';
+  }
 
   // Weekly Tests
   if (weekly.length) {
-    html += '<div style="font-weight:600;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Weekly Tests</div>';
-    weekly.forEach(function(r, i) {
-      var pct = r.percentage !== null && r.percentage !== '' ? r.percentage : '—';
-      var pass = r.result === 'Pass';
-      var pending = r.result === 'Pending';
-      html += '<div style="background:#fff;border:1.5px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
-        +   '<span style="font-weight:600;font-size:14px;">'+escHtmlSt(r.testLabel||'Weekly Test')+'</span>'
-        +   (pending ? '<span class="pend-pill">Pending Grading</span>'
-                     : '<span class="'+(pass?'pass-pill':'fail-pill')+'">'+(pass?'Pass':'Fail')+'</span>')
+    html += '<div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;">Weekly Tests</div>';
+    weekly.forEach(function(r) {
+      var pct = r.percentage !== null && r.percentage !== '' ? r.percentage : null;
+      var pass = r.result === 'Pass', pend = r.result === 'Pending';
+      var badge = r.badge;
+      var rank = r.classRank;
+      var ps = r.passingScore || 60;
+      html += '<div style="background:#fff;border:1.5px solid '+(pass?'#a7f3d0':pend?'#e5e7eb':'#fecaca')+';border-radius:14px;padding:16px 18px;margin-bottom:10px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">'
+        +   '<div>'
+        +     '<div style="font-weight:700;font-size:14px;color:#111827;">'+escHtmlSt(r.testLabel||'Weekly Test')+'</div>'
+        +     '<div style="font-size:11px;color:#9ca3af;margin-top:2px;">'+escHtmlSt(r.submittedAt?new Date(r.submittedAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'')+'</div>'
+        +   '</div>'
+        +   (badge ? gemBadge(badge) : pend ? '<span style="background:#fef3c7;color:#92400e;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:600;">⏳ Pending</span>' : '')
         + '</div>'
-        + '<div style="display:flex;gap:20px;font-size:13px;">'
-        +   '<div><span style="color:#6b7280;">Score </span><b>'+escHtmlSt(String(r.totalScore!==null&&r.totalScore!==''?r.totalScore:'—'))+'</b><span style="color:#9ca3af;font-size:11px;"> /'+escHtmlSt(String(r.totalMarks||''))+'</span></div>'
-        +   '<div><span style="color:#6b7280;">Percentage </span><b style="font-size:16px;color:'+(pass?'#059669':'#dc2626')+'">'+pct+'%</b></div>'
+        + '<div style="display:flex;gap:24px;align-items:center;">'
+        +   '<div>'
+        +     '<div style="font-size:11px;color:#6b7280;margin-bottom:2px;">Score</div>'
+        +     '<div style="font-size:18px;font-weight:800;color:#111827;">'+(r.totalScore!==null&&r.totalScore!==''?r.totalScore:'—')+'<span style="font-size:12px;font-weight:400;color:#9ca3af;"> /'+escHtmlSt(String(r.totalMarks||''))+'</span></div>'
+        +   '</div>'
+        +   '<div>'
+        +     '<div style="font-size:11px;color:#6b7280;margin-bottom:2px;">Percentage</div>'
+        +     '<div style="font-size:24px;font-weight:800;color:'+(pass?'#059669':pend?'#9ca3af':'#dc2626')+'">'+(pct!==null?pct+'%':'—')+'</div>'
+        +   '</div>'
+        +   (rank ? '<div style="margin-left:auto;text-align:right;">'
+        +     '<div style="font-size:11px;color:#6b7280;margin-bottom:2px;">Class Rank</div>'
+        +     '<div style="font-size:18px;font-weight:800;color:#0D1B2E;">#'+rank.rank+'<span style="font-size:12px;font-weight:400;color:#9ca3af;"> of '+rank.total+'</span></div>'
+        +   '</div>' : '')
         + '</div>'
-        + '<div style="font-size:11px;color:#9ca3af;margin-top:6px;">Passing: 60% · Submitted: '+escHtmlSt(r.submittedAt?new Date(r.submittedAt).toLocaleDateString('en-IN'):'—')+'</div>'
+        + '<div style="margin-top:10px;height:4px;background:#f3f4f6;border-radius:2px;overflow:hidden;">'
+        +   '<div style="height:100%;width:'+(pct!==null?Math.min(pct,100):0)+'%;background:'+(pass?'#10b981':pend?'#d1d5db':'#ef4444')+';border-radius:2px;transition:width .5s;"></div>'
+        + '</div>'
+        + '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Passing: '+ps+'%'+(r.attemptNo>1?' · Attempt '+r.attemptNo:'')+'</div>'
         + '</div>';
     });
 
     // Weekly Average
     if (weeklyAvg !== null) {
-      var avgPass = weeklyAvg >= PASS_PCT;
-      html += '<div style="background:'+(avgPass?'#d1fae5':'#fee2e2')+';border-radius:10px;padding:12px 16px;margin-bottom:18px;">'
-        + '<div style="font-weight:700;font-size:14px;color:'+(avgPass?'#065f46':'#991b1b')+';">Weekly Average: '+weeklyAvg+'%'
-        + ' <span style="font-size:12px;font-weight:500;">'+(avgPass?'✅ Passed':'❌ Below passing')+'</span></div>'
-        + '<div style="font-size:11px;color:'+(avgPass?'#065f46':'#991b1b')+';">Average of '+weekly.length+' weekly test'+(weekly.length>1?'s':'')+' · Passing: 60%</div>'
+      var defaultPS = (weekly[0] && weekly[0].passingScore) || 60;
+      var avgPass = weeklyAvg >= defaultPS;
+      html += '<div style="background:'+(avgPass?'linear-gradient(135deg,#059669,#047857)':'linear-gradient(135deg,#dc2626,#b91c1c)')+';border-radius:12px;padding:14px 18px;margin-bottom:20px;color:#fff;display:flex;justify-content:space-between;align-items:center;">'
+        + '<div>'
+        +   '<div style="font-size:11px;opacity:.8;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Weekly Average</div>'
+        +   '<div style="font-size:24px;font-weight:800;margin-top:2px;">'+weeklyAvg+'%</div>'
+        +   '<div style="font-size:11px;opacity:.8;margin-top:2px;">'+weekly.length+' test'+(weekly.length>1?'s':'')+' · Passing: '+defaultPS+'%</div>'
+        + '</div>'
+        + '<div style="font-size:32px;">'+(avgPass?'✅':'❌')+'</div>'
         + '</div>';
     }
   }
 
   // Final Exam
   if (final_.length) {
-    html += '<div style="font-weight:600;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Final Exam</div>';
+    html += '<div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;">Final Examination</div>';
     final_.forEach(function(r) {
-      var pct = r.percentage !== null && r.percentage !== '' ? r.percentage : '—';
-      var pass = r.result === 'Pass';
-      var pending = r.result === 'Pending';
-      html += '<div style="background:#fff;border:2px solid '+(pending?'#e5e7eb':pass?'#10b981':'#ef4444')+';border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
-        +   '<span style="font-weight:600;font-size:14px;">'+escHtmlSt(r.testLabel||'Final Exam')+'</span>'
-        +   (pending ? '<span class="pend-pill">Pending</span>'
-                     : '<span class="'+(pass?'pass-pill':'fail-pill')+'">'+(pass?'PASS':'FAIL')+'</span>')
+      var pct = r.percentage !== null && r.percentage !== '' ? r.percentage : null;
+      var pass = r.result === 'Pass', pend = r.result === 'Pending';
+      var badge = r.badge;
+      var rank = r.classRank;
+      var ps = r.passingScore || 60;
+      html += '<div style="background:#fff;border:2px solid '+(pass?'#10b981':pend?'#e5e7eb':'#ef4444')+';border-radius:14px;padding:18px 20px;margin-bottom:10px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">'
+        +   '<div>'
+        +     '<div style="font-weight:700;font-size:15px;color:#111827;">'+escHtmlSt(r.testLabel||'Final Exam')+'</div>'
+        +     '<div style="font-size:11px;color:#9ca3af;margin-top:2px;">'+escHtmlSt(r.submittedAt?new Date(r.submittedAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'')+'</div>'
+        +   '</div>'
+        +   (badge ? gemBadge(badge) : pend ? '<span style="background:#fef3c7;color:#92400e;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;">⏳ Pending</span>' : '')
         + '</div>'
-        + '<div style="display:flex;gap:20px;font-size:13px;">'
-        +   '<div><span style="color:#6b7280;">Score </span><b>'+escHtmlSt(String(r.totalScore!==null&&r.totalScore!==''?r.totalScore:'—'))+'</b><span style="color:#9ca3af;font-size:11px;"> /'+escHtmlSt(String(r.totalMarks||''))+'</span></div>'
-        +   '<div><span style="color:#6b7280;">Percentage </span><b style="font-size:20px;color:'+(pass?'#059669':'#dc2626')+'">'+pct+'%</b></div>'
+        + '<div style="display:flex;gap:30px;align-items:center;">'
+        +   '<div><div style="font-size:11px;color:#6b7280;margin-bottom:2px;">Score</div><div style="font-size:22px;font-weight:800;">'+(r.totalScore!==null&&r.totalScore!==''?r.totalScore:'—')+'<span style="font-size:13px;font-weight:400;color:#9ca3af;"> /'+escHtmlSt(String(r.totalMarks||''))+'</span></div></div>'
+        +   '<div><div style="font-size:11px;color:#6b7280;margin-bottom:2px;">Percentage</div><div style="font-size:32px;font-weight:800;color:'+(pass?'#059669':pend?'#9ca3af':'#dc2626')+'">'+(pct!==null?pct+'%':'—')+'</div></div>'
+        +   (rank ? '<div style="margin-left:auto;text-align:right;"><div style="font-size:11px;color:#6b7280;margin-bottom:2px;">Class Rank</div><div style="font-size:22px;font-weight:800;color:#0D1B2E;">#'+rank.rank+'<span style="font-size:12px;font-weight:400;color:#9ca3af;"> of '+rank.total+'</span></div></div>' : '')
         + '</div>'
+        + '<div style="margin-top:12px;height:6px;background:#f3f4f6;border-radius:3px;overflow:hidden;">'
+        +   '<div style="height:100%;width:'+(pct!==null?Math.min(pct,100):0)+'%;background:'+(pass?'#10b981':pend?'#d1d5db':'#ef4444')+';border-radius:3px;"></div>'
+        + '</div>'
+        + '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Passing: '+ps+'%'+(r.attemptNo>1?' · Attempt '+r.attemptNo:'')+'</div>'
         + '</div>';
     });
   }
@@ -2050,5 +2154,6 @@ function otStartPolling() {
 // Patch into portal load — call otStartPolling after portalData is set
 var _otPortalLoadOrig = window.onPortalLoad;
 window.addEventListener('portalReady', otStartPolling);
+</script>
 </body>
 </html>

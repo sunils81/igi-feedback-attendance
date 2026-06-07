@@ -4380,10 +4380,12 @@ function otGetStudentActiveTest(ss, p) {
   var rRows=shR.getLastRow()>1?shR.getRange(2,1,shR.getLastRow()-1,6).getValues():[];
   var submissions=rRows.filter(function(r){return r[1]===activeTest.testId&&r[2]===p.studentId;});
   if (submissions.length>0 && activeTest.allowRetake!=='Yes') {
-    return {status:'ok',activeTest:null,alreadySubmitted:true};
+    return {status:'ok',activeTest:null,alreadySubmitted:true,
+            testLabel:activeTest.testLabel,attemptCount:submissions.length,allowRetake:'No'};
   }
   var attemptNo=submissions.length+1;
   activeTest.attemptNo=attemptNo;
+  activeTest.previousAttempts=submissions.length;
   return {status:'ok',activeTest:activeTest};
 }
 

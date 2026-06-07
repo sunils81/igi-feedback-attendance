@@ -639,7 +639,7 @@
       @keyframes warnPulse{0%,100%{opacity:1}50%{opacity:.5}}
 
       /* ── Layout ── */
-      .ot-body{display:flex;gap:0;max-width:900px;margin:0 auto;padding:20px 16px 100px;box-sizing:border-box;}
+      .ot-body{display:flex;gap:0;max-width:900px;margin:0 auto;padding:20px 16px 120px;box-sizing:border-box;min-height:calc(100vh - 120px);}
       .ot-questions-col{flex:1;min-width:0;}
       .ot-minimap{width:200px;flex-shrink:0;margin-left:20px;display:none;}
       @media(min-width:900px){.ot-minimap{display:block;}}
@@ -1809,7 +1809,8 @@ function otLoadAndStartTest() {
   gasGet({action:'getTestQuestions', testId:otActiveTestInfo.testId, studentId:sid, batchCode:batch}, function(err, d) {
     if (err || !d || d.status !== 'ok') { alert('Could not load test. Please try again.'); return; }
     otTestData = d;
-    otRemainingSeconds = d.remainingSec || (d.test.duration * 60);
+    // Use server remaining time; if 0 (time elapsed) fall back to full duration
+    otRemainingSeconds = (d.remainingSec > 0) ? d.remainingSec : Math.max(0, parseInt(d.test.duration||30) * 60);
     otCurrentQ = 0;
     otSubmitted = false;
 
@@ -1836,6 +1837,9 @@ function otRenderTestScreen() {
   otRenderMinimap();
   otRenderAllQuestions();
   otUpdateAnsweredCount();
+  // Scroll test screen to top so questions are visible
+  var scr2 = document.getElementById('ot-test-screen');
+  if(scr2) scr2.scrollTop = 0;
 }
 function otRenderProgressDots() {
   // Mobile dots (hidden on desktop where minimap shows)
@@ -1917,7 +1921,12 @@ function otRenderAllQuestions() {
     }
     html += '</div></div>';
   });
+  if (!html) {
+    html = '<div style="padding:30px;text-align:center;color:#9ca3af;"><div style="font-size:32px;margin-bottom:12px;">📋</div><div style="font-weight:600;">Questions could not be loaded</div><div style="font-size:13px;margin-top:6px;">Please close and try again.</div></div>';
+  }
   el.innerHTML = html;
+  // Ensure questions column is fully visible
+  el.style.minHeight = '200px';
 }
 
 function otSelectOptEl(el) {

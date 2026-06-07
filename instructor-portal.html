@@ -791,13 +791,21 @@
         </div>
         <div style="margin-top:12px;">
           <label class="ct-label">Duration</label>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
             <div class="dur-pill" data-val="15" onclick="otSetDuration(15,this)">15m</div>
             <div class="dur-pill active" data-val="30" onclick="otSetDuration(30,this)">30m</div>
             <div class="dur-pill" data-val="45" onclick="otSetDuration(45,this)">45m</div>
             <div class="dur-pill" data-val="60" onclick="otSetDuration(60,this)">60m</div>
             <div class="dur-pill" data-val="90" onclick="otSetDuration(90,this)">90m</div>
             <div class="dur-pill" data-val="120" onclick="otSetDuration(120,this)">2hr</div>
+            <div class="dur-pill" data-val="custom" onclick="otSetDuration('custom',this)">Custom</div>
+          </div>
+          <div id="ot-custom-dur-wrap" style="display:none;margin-top:8px;display:none;align-items:center;gap:8px;">
+            <input type="number" id="ot-c-duration-custom" min="5" max="300" value="30"
+              style="width:80px;padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;"
+              oninput="document.getElementById('ot-c-duration').value=this.value"
+              placeholder="mins">
+            <span style="font-size:12px;color:#6b7280;">minutes (5–300)</span>
           </div>
           <input type="hidden" id="ot-c-duration" value="30">
         </div>
@@ -2353,10 +2361,24 @@ function otFetchBatches() {
   });
 }
 
+function otParseIndianDate(str) {
+  if (!str) return null;
+  // Handle Indian locale: D/M/YYYY or DD/MM/YYYY
+  var parts = String(str).split('/');
+  if (parts.length === 3) {
+    var d = parseInt(parts[0]), m = parseInt(parts[1])-1, y = parseInt(parts[2]);
+    if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
+      var dt = new Date(y, m, d); dt.setHours(0,0,0,0); return dt;
+    }
+  }
+  // Fallback: try ISO / other formats
+  var dt = new Date(str); dt.setHours(0,0,0,0);
+  return isNaN(dt.getTime()) ? null : dt;
+}
 function otBatchStatus(b) {
   var now = new Date(); now.setHours(0,0,0,0);
-  var start = b.startDate ? new Date(b.startDate) : null;
-  var end   = b.endDate   ? new Date(b.endDate)   : null;
+  var start = otParseIndianDate(b.startDate);
+  var end   = otParseIndianDate(b.endDate);
   if (start && start > now) return 'upcoming';
   if (end   && end   < now) return 'completed';
   return 'active';
@@ -2393,8 +2415,16 @@ function otRenderBatchChips(batches) {
         otSelectedBatches.add(b.batchCode);
         chip.classList.add('selected');
         if(status==='completed') {
-          var w = document.getElementById('ot-student-check-list');
-          if(w) setTimeout(function(){ var note=document.createElement('div'); note.style='font-size:11px;color:#d97706;margin-top:4px;'; note.textContent='⚠ This batch is completed — tests will still work'; w.parentElement.appendChild(note); },100);
+          setTimeout(function(){
+            var wrap=document.getElementById('ot-student-target-wrap')||document.getElementById('ot-batch-chips').parentElement;
+            if(wrap && !wrap.querySelector('.ot-completed-note')) {
+              var note=document.createElement('div');
+              note.className='ot-completed-note';
+              note.style='font-size:11px;color:#d97706;margin-top:6px;';
+              note.textContent='⚠ One or more selected batches are completed — tests will still work';
+              wrap.appendChild(note);
+            }
+          },100);
         }
       } else {
         otSelectedBatches.delete(b.batchCode);
@@ -2417,7 +2447,10 @@ function otLoadStudentsForSelectedBatches() {
       return;
     }
     if(d.status!=='ok') {
-      if(el) el.innerHTML='<span style="color:#d97706;font-size:12px;">⚠ '+(d.reason==='unknown_action'?'Redeploy Apps Script to enable student list (OnlineTests.gs not deployed yet)':d.reason||'Error loading students')+'</span>';
+      var errMsg = d.reason==='unknown_action'
+        ? '⚠ Action not found in Code.gs. You need to ALSO update Code.gs (paste new gas.js content) and redeploy — not just OnlineTests.gs.'
+        : '⚠ '+(d.reason||'Error loading students');
+      if(el) el.innerHTML='<div style="color:#d97706;font-size:12px;line-height:1.5;">'+escHtml(errMsg)+'</div>';
       return;
     }
     otAllStudents=d.students||[];
@@ -2455,7 +2488,21 @@ function otFilterStudentList() {
 }
 function otSelectAllStudents(){otAllStudents.forEach(function(s){otSelectedStudents.add(s.studentId);});otRenderStudentList(otAllStudents);document.getElementById('ot-student-sel-count').textContent=otSelectedStudents.size;}
 function otClearStudents(){otSelectedStudents.clear();otRenderStudentList(otAllStudents);document.getElementById('ot-student-sel-count').textContent=0;}
-function otSetDuration(val,el){document.querySelectorAll('.dur-pill').forEach(function(p){p.classList.remove('active');});el.classList.add('active');var inp=document.getElementById('ot-c-duration');if(inp)inp.value=val;}
+function otSetDuration(val,el){
+  document.querySelectorAll('.dur-pill').forEach(function(p){p.classList.remove('active');});
+  el.classList.add('active');
+  var customWrap=document.getElementById('ot-custom-dur-wrap');
+  if(val==='custom'){
+    if(customWrap) customWrap.style.display='flex';
+    var cv=document.getElementById('ot-c-duration-custom');
+    var inp=document.getElementById('ot-c-duration');
+    if(cv&&inp) inp.value=cv.value||'30';
+  } else {
+    if(customWrap) customWrap.style.display='none';
+    var inp=document.getElementById('ot-c-duration');
+    if(inp) inp.value=val;
+  }
+}
 function otTargetModeChange(){var v=document.querySelector('input[name=ot-target-mode]:checked').value;document.getElementById('ot-student-target-wrap').style.display=v==='SELECTED'?'block':'none';}
 function otExpiryChange(){var v=document.querySelector('input[name=ot-expiry]:checked').value;var ci=document.getElementById('ot-expiry-custom');if(ci)ci.style.display=v==='custom'?'inline-block':'none';}
 function otActivateWhenChange(){var v=document.querySelector('input[name=ot-activate-when]:checked').value;var si=document.getElementById('ot-scheduled-at');if(si)si.style.display=v==='scheduled'?'inline-block':'none';}

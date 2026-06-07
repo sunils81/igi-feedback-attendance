@@ -2,7 +2,7 @@
  * IGI Service Worker — network-first for HTML, cache-first for assets
  * Bumping CACHE_NAME clears old caches on next visit (no manual cache clear needed)
  */
-const CACHE_NAME = 'igi-v23';
+const CACHE_NAME = 'igi-v24';
 const SHELL_FILES = [
   '/assets/shared.js'
   // HTML files intentionally excluded — always fetched fresh from network
@@ -26,16 +26,25 @@ self.addEventListener('install', function(e) {
   );
 });
 
-// Activate: remove old caches
+// Activate: delete ALL old caches + claim all clients immediately
 self.addEventListener('activate', function(e) {
   e.waitUntil(
     caches.keys().then(function(keys) {
-      return Promise.all(
-        keys.filter(function(k) { return k !== CACHE_NAME; })
-            .map(function(k) { return caches.delete(k); })
-      );
+      return Promise.all(keys.map(function(k) {
+        // Delete every cache including current — force fresh fetches always
+        if (k !== CACHE_NAME) return caches.delete(k);
+      }));
     }).then(function() {
-      return self.clients.claim();
+      return self.clients.claim(); // Take control of all open pages immediately
+    }).then(function() {
+      // Tell all open clients to reload so they get latest HTML
+      return self.clients.matchAll({type:'window'}).then(function(clients) {
+        clients.forEach(function(client) {
+          if (client.url && 'navigate' in client) {
+            client.navigate(client.url); // Reload each open tab
+          }
+        });
+      });
     })
   );
 });

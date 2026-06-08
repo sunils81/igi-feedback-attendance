@@ -2217,6 +2217,7 @@ function loadCounselorReport() {
     counselorReportData = d;
     setupAttendanceExtract(d);
     _renderCounselorReportData(d, wrap, requestId);
+    renderContextSummary('t-reports');
   });
 }
 
@@ -5532,49 +5533,72 @@ function renderCounselorSummaryTiles(stats) {
 function renderContextSummary(tabId) {
   var el = document.getElementById('counselor-summary');
   if (!el) return;
-  el.style.display = 'grid';
 
   function tile(cls, k, v, s) {
     return '<div class="summary-tile' + (cls ? ' ' + cls : '') + '"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div></div>';
   }
 
+  // ── Batches: delegate to existing logic which also fetches student/session counts ──
   if (tabId === 't-batches') {
-    // Handled by updateCounselorSummary — leave as-is
+    el.style.display = 'grid';
+    updateCounselorSummary(allBatches);
     return;
   }
 
+  // ── Students: fetch per-batch if not yet cached, then compute tiles ──
   if (tabId === 't-students') {
-    // Derive from allBatches (counselorStudentsByBatch already keyed by batchCode when loaded)
-    var allLoaded = Object.keys(counselorStudentsByBatch);
-    var totalStudents = 0;
-    var missingContact = 0;
-    var multiBatch = {};
-    allLoaded.forEach(function(bc) {
-      var sts = counselorStudentsByBatch[bc] || [];
-      totalStudents += sts.length;
-      sts.forEach(function(s) {
-        if (!s.mobile || !s.email) missingContact++;
-        multiBatch[s.studentId] = (multiBatch[s.studentId] || 0) + 1;
+    var batches = allBatches || [];
+    var uncached = batches.filter(function(b) { return !counselorStudentsByBatch[b.batchCode]; });
+    el.style.display = 'grid';
+
+    function _computeStudentTiles() {
+      var now = new Date();
+      var monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      var totalStudents = 0, missingContact = 0, newThisMonth = 0;
+      var seenIds = {};
+      batches.forEach(function(b) {
+        var sts = counselorStudentsByBatch[b.batchCode] || [];
+        totalStudents += sts.length;
+        sts.forEach(function(s) {
+          if (!s.mobile || !s.email) missingContact++;
+          if (s.enrolmentDate && String(s.enrolmentDate) >= monthStart) newThisMonth++;
+          seenIds[s.studentId] = (seenIds[s.studentId] || 0) + 1;
+        });
       });
-    });
-    var multiCount = Object.values(multiBatch).filter(function(n) { return n > 1; }).length;
-    var now = new Date();
-    var monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    var newThisMonth = 0;
-    allLoaded.forEach(function(bc) {
-      (counselorStudentsByBatch[bc] || []).forEach(function(s) {
-        if (s.enrolmentDate && String(s.enrolmentDate) >= monthStart) newThisMonth++;
-      });
-    });
+      var multiCount = Object.keys(seenIds).filter(function(id) { return seenIds[id] > 1; }).length;
+      el.innerHTML =
+        tile('', 'Total Students', totalStudents || '0', 'Across active batches') +
+        tile('ok', 'New This Month', newThisMonth || '0', 'Enrolled in ' + now.toLocaleString('en-IN', {month:'short', year:'numeric'})) +
+        tile(missingContact ? 'warn' : 'ok', 'Missing Contact', missingContact || '0', 'No mobile or email') +
+        tile(multiCount ? 'warn' : 'ok', 'Multi-Batch', multiCount || '0', 'Enrolled in 2+ batches');
+    }
+
+    if (!uncached.length) {
+      _computeStudentTiles();
+      return;
+    }
+
+    // Show loading tiles while fetching
     el.innerHTML =
-      tile('', 'Total Students', totalStudents || '—', 'Across active batches') +
-      tile('ok', 'New This Month', newThisMonth || '—', 'Enrolled in ' + now.toLocaleString('en-IN', {month:'short', year:'numeric'})) +
-      tile(missingContact ? 'warn' : 'ok', 'Missing Contact', missingContact || '0', 'No mobile or email') +
-      tile(multiCount ? 'warn' : 'ok', 'Multi-Batch', multiCount || '0', 'Enrolled in 2+ batches');
+      tile('', 'Total Students', '<span class="spinner" style="width:18px;height:18px;margin:0"></span>', 'Loading…') +
+      tile('', 'New This Month', '…', '') +
+      tile('', 'Missing Contact', '…', '') +
+      tile('', 'Multi-Batch', '…', '');
+
+    var pending = uncached.length;
+    uncached.forEach(function(b) {
+      gasGet({action:'getStudents', batchCode: b.batchCode}, function(e, d) {
+        counselorStudentsByBatch[b.batchCode] = (!e && d && d.students) ? d.students : [];
+        pending--;
+        if (pending <= 0) _computeStudentTiles();
+      });
+    });
     return;
   }
 
+  // ── Alumni: derived from already-loaded alumniList ──
   if (tabId === 't-alumni') {
+    el.style.display = 'grid';
     var list = alumniList || [];
     var completedCount = list.filter(function(a) { return a.status === 'Completed'; }).length;
     var activeCount = list.filter(function(a) { return a.status !== 'Completed'; }).length;
@@ -5582,18 +5606,19 @@ function renderContextSummary(tabId) {
     list.forEach(function(a) { if (a.centre) centresSet[a.centre] = 1; });
     var centresCount = Object.keys(centresSet).length;
     el.innerHTML =
-      tile('', 'Total Alumni', list.length, 'In database') +
-      tile('ok', 'Completed Batches', completedCount, 'Course finished') +
-      tile('', 'Active / Ongoing', activeCount, 'Still enrolled') +
+      tile('', 'Total Alumni', list.length || '0', 'In database') +
+      tile('ok', 'Completed', completedCount || '0', 'Course finished') +
+      tile('', 'Active / Ongoing', activeCount || '0', 'Still enrolled') +
       tile('ok', 'Centres Covered', centresCount || '—', 'Across all records');
     return;
   }
 
+  // ── My Batches ──
   if (tabId === 't-mybatches') {
+    el.style.display = 'grid';
     var myB = (allBatches || []).filter(function(b) {
       return b.counselor === counselorName || b.counselorName === counselorName;
     });
-    // If no counselor field match, show all visible batches for non-admin
     if (!myB.length && !isAdmin) myB = allBatches || [];
     var myStudents = 0;
     myB.forEach(function(b) {
@@ -5601,42 +5626,54 @@ function renderContextSummary(tabId) {
     });
     var noInstructor = myB.filter(function(b) { return !b.instructor; }).length;
     el.innerHTML =
-      tile('', 'My Batches', myB.length, 'Assigned to you') +
-      tile('', 'My Students', myStudents || '—', 'Across assigned batches') +
+      tile('', 'My Batches', myB.length || '0', 'Assigned to you') +
+      tile('', 'My Students', myStudents || '0', 'Across assigned batches') +
       tile(noInstructor ? 'warn' : 'ok', 'No Instructor', noInstructor || '0', 'Need assignment') +
-      tile('ok', 'Active Today', (allBatches || []).filter(function(b) {
-        return b.status === 'active' || b.status === 'Active';
-      }).length || '—', 'Running batches');
+      tile('ok', 'Total Active', (allBatches || []).length || '0', 'Visible batches');
     return;
   }
 
+  // ── Reports: derive from counselorReportData (populated by loadCounselorReport) ──
   if (tabId === 't-reports') {
+    el.style.display = 'grid';
     var rpData = counselorReportData;
-    if (rpData && rpData.summary) {
-      var s = rpData.summary;
+    if (rpData && rpData.totalSessions) {
+      var sessionsHeld = (rpData.sessions || []).filter(function(s) {
+        return String(s.sessionType || '').toLowerCase() !== 'cancelled';
+      }).length;
+      var avgAtt = 0;
+      if (rpData.students && rpData.students.length) {
+        avgAtt = Math.round(rpData.students.reduce(function(sum, st) {
+          return sum + (Number(st.streakPct) || 0);
+        }, 0) / rpData.students.length);
+      }
+      var feedbackSessions = (rpData.sessions || []).filter(function(s) {
+        return s.avgScore !== null && s.avgScore !== undefined;
+      }).length;
       el.innerHTML =
-        tile('', 'Sessions Held', s.sessionsHeld || s.totalSessions || '—', 'Completed sessions') +
-        tile('ok', 'Attendance %', (s.attendancePct || s.attendance || '—') + (s.attendancePct || s.attendance ? '%' : ''), 'Average across batch') +
-        tile('', 'Feedback Submitted', s.feedbackSubmitted || s.feedbackCount || '—', 'Student responses') +
-        tile('', 'Assessments', s.assessmentCount || '—', 'Tests conducted');
+        tile('', 'Sessions Held', sessionsHeld, 'Completed sessions') +
+        tile('ok', 'Avg Attendance', avgAtt + '%', 'Across all students') +
+        tile('', 'Feedback Sessions', feedbackSessions, 'Sessions with ratings') +
+        tile('', 'Total Students', rpData.totalStudents || '0', 'Enrolled in batch');
     } else {
-      // No report loaded yet — show placeholder
       el.innerHTML =
-        tile('', 'Sessions Held', '—', 'Select a batch') +
-        tile('', 'Attendance %', '—', 'Select a batch') +
-        tile('', 'Feedback', '—', 'Select a batch') +
-        tile('', 'Assessments', '—', 'Select a batch');
+        tile('', 'Sessions Held', '—', 'Select a batch above') +
+        tile('', 'Avg Attendance', '—', 'Select a batch above') +
+        tile('', 'Feedback Sessions', '—', 'Select a batch above') +
+        tile('', 'Total Students', '—', 'Select a batch above');
     }
     return;
   }
 
+  // ── Fees: has its own fee-summary div — hide KPI ribbon ──
   if (tabId === 't-fees') {
-    // fee-summary div already rendered by loadFeeOverview; just hide our ribbon
     el.style.display = 'none';
     return;
   }
 
+  // ── Revenue ──
   if (tabId === 't-revenue') {
+    el.style.display = 'grid';
     var rd = revenueData;
     var sm = (rd && rd.summary) || {};
     var target = Number(sm.targetGst || sm.annualTargetGst || 0);
@@ -5650,27 +5687,42 @@ function renderContextSummary(tabId) {
     return;
   }
 
+  // ── Holidays: use cache if warm, else fetch then render ──
   if (tabId === 't-holidays') {
-    try {
-      var cached = sessionStorage.getItem('igiHolidays');
-      var holidays = cached ? JSON.parse(cached) : [];
+    el.style.display = 'grid';
+    function _renderHolidayTiles(holidays) {
       var todayStr = new Date().toISOString().split('T')[0];
-      var upcoming = holidays.filter(function(h) { return h.date >= todayStr; }).sort(function(a,b){ return a.date.localeCompare(b.date); });
+      var upcoming = (holidays || []).filter(function(h) { return h.date >= todayStr; })
+        .sort(function(a, b) { return a.date.localeCompare(b.date); });
       var nextHol = upcoming[0];
       var centresAff = {};
       upcoming.slice(0, 10).forEach(function(h) { if (h.centre) centresAff[h.centre] = 1; });
+      var national = (holidays || []).filter(function(h) { return h.type === 'national' && h.date >= todayStr; }).length;
       el.innerHTML =
-        tile('', 'Upcoming Holidays', upcoming.length, 'Scheduled ahead') +
+        tile('', 'Upcoming Holidays', upcoming.length || '0', 'Scheduled ahead') +
         tile('', 'Centres Affected', Object.keys(centresAff).length || '—', 'Next 10 holidays') +
-        tile('ok', 'Next Holiday', nextHol ? nextHol.date.slice(5).replace('-', '/') : '—', nextHol ? nextHol.name : 'None soon') +
-        tile('', 'National Holidays', holidays.filter(function(h){ return h.type === 'national' && h.date >= todayStr; }).length, 'Remaining this year');
-    } catch(ex) {
-      el.style.display = 'none';
+        tile('ok', 'Next Holiday', nextHol ? nextHol.date.slice(5).replace('-', '/') : '—', nextHol ? (nextHol.name || '') : 'None soon') +
+        tile('', 'National Holidays', national || '0', 'Remaining this year');
     }
+    try {
+      var cached = sessionStorage.getItem('igiHolidays');
+      if (cached) { _renderHolidayTiles(JSON.parse(cached)); return; }
+    } catch(ex) {}
+    // Not in cache yet — fetch
+    el.innerHTML = tile('', 'Upcoming Holidays', '<span class="spinner" style="width:18px;height:18px;margin:0"></span>', 'Loading…') +
+      tile('', 'Centres Affected', '…', '') + tile('', 'Next Holiday', '…', '') + tile('', 'National Holidays', '…', '');
+    gasGet({action:'getHolidays'}, function(e, d) {
+      if (!e && d && d.holidays) {
+        try { sessionStorage.setItem('igiHolidays', JSON.stringify(d.holidays)); } catch(ex) {}
+        _renderHolidayTiles(d.holidays);
+      } else {
+        el.style.display = 'none';
+      }
+    });
     return;
   }
 
-  // Fallback: hide
+  // Fallback
   el.style.display = 'none';
 }
 

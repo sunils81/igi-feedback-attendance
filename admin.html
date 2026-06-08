@@ -1313,6 +1313,7 @@
       <button class="tab" onclick="switchAdminTab('t-history')">📅 Historical Intelligence</button>
       <button class="tab" onclick="switchAdminTab('t-reports')">📋 Master Export</button>
       <button class="tab" id="tab-password-reset" onclick="switchAdminTab('t-password-reset')">🔐 Password Reset</button>
+      <button class="tab" id="tab-settings" onclick="switchAdminTab('t-settings')">⚙️ Settings</button>
     </div>
 
     <!-- TAB 1: REVENUE OVERVIEW -->
@@ -1773,6 +1774,85 @@
         <div class="err-box" id="reset-err" style="margin-top:12px"></div>
         <div id="reset-ok" style="display:none;margin-top:12px;background:#E8F5EE;color:#168B57;border:1px solid rgba(22,139,87,.25);border-radius:8px;padding:10px 12px;font-size:13px;font-weight:600"></div>
         <button class="btn btn-gold" id="reset-btn" style="width:auto;margin-top:14px" onclick="resetStaffPassword()">Reset Password</button>
+      </div>
+    </div>
+
+    <!-- TAB: SETTINGS (User Management) -->
+    <div id="t-settings" class="tab-content">
+      <div class="card" style="max-width:900px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+          <div>
+            <h2 style="margin:0">⚙️ User Management</h2>
+            <p class="sub" style="margin:4px 0 0">Add, deactivate, or remove staff accounts. All student and session data is preserved on delete.</p>
+          </div>
+          <button class="btn btn-gold" style="width:auto" onclick="settingsShowAddForm()">+ Add User</button>
+        </div>
+
+        <!-- Admin auth row -->
+        <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px;padding:12px 14px;background:rgba(0,0,0,.04);border-radius:8px">
+          <div class="field" style="flex:1;margin:0">
+            <label style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;opacity:.6;margin-bottom:4px;display:block">Admin Password</label>
+            <input type="password" id="settings-admin-pass" placeholder="Enter admin password to enable actions" style="width:100%;box-sizing:border-box">
+          </div>
+          <button class="btn" style="width:auto;background:#555;color:#fff;white-space:nowrap" onclick="settingsLoadUsers()">🔄 Load / Refresh</button>
+        </div>
+
+        <div class="err-box" id="settings-err" style="margin-bottom:10px"></div>
+        <div id="settings-ok" style="display:none;margin-bottom:10px;background:#E8F5EE;color:#168B57;border:1px solid rgba(22,139,87,.25);border-radius:8px;padding:10px 12px;font-size:13px;font-weight:600"></div>
+
+        <!-- User table -->
+        <div id="settings-table-wrap" style="overflow-x:auto">
+          <p style="opacity:.5;font-size:13px;text-align:center;padding:20px 0">Enter admin password and click Load to see users.</p>
+        </div>
+      </div>
+
+      <!-- Add User Modal -->
+      <div id="settings-add-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:999;align-items:center;justify-content:center">
+        <div style="background:#fff;border-radius:14px;padding:28px 32px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+          <h3 style="margin:0 0 18px">➕ Add New User</h3>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="field">
+              <label>Role *</label>
+              <select id="add-role">
+                <option value="Counselor">Counselor</option>
+                <option value="Instructor">Instructor</option>
+                <option value="Admin">Admin</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Full Name *</label>
+              <input type="text" id="add-name" placeholder="e.g. Priya Sharma">
+            </div>
+            <div class="field" style="grid-column:1 / -1">
+              <label>Centres (comma-separated)</label>
+              <input type="text" id="add-centres" placeholder="e.g. Mumbai,Pune">
+            </div>
+            <div class="field" style="grid-column:1 / -1">
+              <label>Initial Password *</label>
+              <input type="text" id="add-temp-pass" placeholder="Min 6 characters — will be shown after creation" autocomplete="new-password">
+            </div>
+          </div>
+          <div class="err-box" id="add-err" style="margin-top:10px"></div>
+          <div style="display:flex;gap:10px;margin-top:16px">
+            <button class="btn btn-gold" style="width:auto" id="add-submit-btn" onclick="settingsSubmitAdd()">Create User</button>
+            <button class="btn" style="width:auto;background:#888;color:#fff" onclick="settingsHideAddForm()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Delete Confirm Modal -->
+      <div id="settings-del-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:999;align-items:center;justify-content:center">
+        <div style="background:#fff;border-radius:14px;padding:28px 32px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+          <h3 style="margin:0 0 8px;color:#c0392b">🗑️ Delete User</h3>
+          <p style="font-size:13px;opacity:.7;margin:0 0 16px">This removes the login credential only. All session and student records are preserved.</p>
+          <p style="font-size:13px;margin:0 0 10px">Type the name <strong id="del-confirm-name-label">—</strong> to confirm:</p>
+          <input type="text" id="del-confirm-input" placeholder="Type exact name here" style="width:100%;box-sizing:border-box">
+          <div class="err-box" id="del-err" style="margin-top:8px"></div>
+          <div style="display:flex;gap:10px;margin-top:16px">
+            <button class="btn" style="width:auto;background:#c0392b;color:#fff" id="del-confirm-btn" onclick="settingsConfirmDelete()">Delete</button>
+            <button class="btn" style="width:auto;background:#888;color:#fff" onclick="settingsHideDelModal()">Cancel</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -4146,6 +4226,184 @@ function filterAlumniTable() {
   }
   
   renderAlumniTable(filtered);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  SETTINGS TAB — User Management
+// ═══════════════════════════════════════════════════════════════════
+var _settingsDeleteTarget = null; // {role, name}
+
+function settingsGetAdminPass() {
+  return (document.getElementById('settings-admin-pass') || {}).value || '';
+}
+
+function settingsShowErr(msg) {
+  var el = document.getElementById('settings-err');
+  if (el) { el.textContent = msg; el.style.display = msg ? 'block' : 'none'; }
+}
+
+function settingsShowOk(msg) {
+  var el = document.getElementById('settings-ok');
+  if (el) { el.textContent = msg; el.style.display = msg ? 'block' : 'none'; }
+  if (msg) setTimeout(function() { settingsShowOk(''); }, 6000);
+}
+
+function settingsLoadUsers() {
+  settingsShowErr('');
+  settingsShowOk('');
+  var adminPass = settingsGetAdminPass();
+  if (!adminPass) { settingsShowErr('Enter admin password first.'); return; }
+  document.getElementById('settings-table-wrap').innerHTML = '<p style="opacity:.5;font-size:13px;text-align:center;padding:20px 0">Loading…</p>';
+  gasGet({ action: 'listUsers', adminPass: adminPass }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      settingsShowErr(err || (d && d.reason) || 'Failed to load users.');
+      document.getElementById('settings-table-wrap').innerHTML = '';
+      return;
+    }
+    settingsRenderTable(d.users || []);
+  });
+}
+
+function settingsRenderTable(users) {
+  var wrap = document.getElementById('settings-table-wrap');
+  if (!users.length) {
+    wrap.innerHTML = '<p style="opacity:.5;font-size:13px;text-align:center;padding:20px 0">No users found.</p>';
+    return;
+  }
+  var rows = users.map(function(u) {
+    var statusBadge = u.active
+      ? '<span style="background:#E8F5EE;color:#168B57;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">Active</span>'
+      : '<span style="background:#fdecea;color:#c0392b;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">Inactive</span>';
+    var toggleLabel = u.active ? 'Deactivate' : 'Reactivate';
+    var toggleStyle = u.active ? 'background:#f39c12;color:#fff' : 'background:#168B57;color:#fff';
+    return '<tr>' +
+      '<td>' + u.role + '</td>' +
+      '<td>' + u.name + '</td>' +
+      '<td>' + (u.centres || '—') + '</td>' +
+      '<td>' + statusBadge + '</td>' +
+      '<td style="font-size:11px;opacity:.6">' + (u.updatedAt ? u.updatedAt.substring(0,10) : '—') + '</td>' +
+      '<td style="white-space:nowrap">' +
+        '<button class="btn" style="width:auto;padding:4px 10px;font-size:11px;margin-right:4px;' + toggleStyle + '" onclick="settingsToggleActive(' + JSON.stringify(u.role) + ',' + JSON.stringify(u.name) + ',' + JSON.stringify(!u.active) + ')">' + toggleLabel + '</button>' +
+        '<button class="btn" style="width:auto;padding:4px 10px;font-size:11px;margin-right:4px;background:#3498db;color:#fff" onclick="settingsResetPw(' + JSON.stringify(u.role) + ',' + JSON.stringify(u.name) + ')">Reset PW</button>' +
+        '<button class="btn" style="width:auto;padding:4px 10px;font-size:11px;background:#c0392b;color:#fff" onclick="settingsShowDelModal(' + JSON.stringify(u.role) + ',' + JSON.stringify(u.name) + ')">Delete</button>' +
+      '</td>' +
+    '</tr>';
+  }).join('');
+  wrap.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+    '<thead><tr style="border-bottom:2px solid rgba(0,0,0,.1)">' +
+    '<th style="text-align:left;padding:6px 8px">Role</th>' +
+    '<th style="text-align:left;padding:6px 8px">Name</th>' +
+    '<th style="text-align:left;padding:6px 8px">Centres</th>' +
+    '<th style="text-align:left;padding:6px 8px">Status</th>' +
+    '<th style="text-align:left;padding:6px 8px">Updated</th>' +
+    '<th style="text-align:left;padding:6px 8px">Actions</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+function settingsToggleActive(role, name, makeActive) {
+  settingsShowErr('');
+  var adminPass = settingsGetAdminPass();
+  if (!adminPass) { settingsShowErr('Enter admin password first.'); return; }
+  gasGet({ action: 'setUserActive', adminPass: adminPass, role: role, name: name, active: makeActive ? 'Y' : 'N' }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      settingsShowErr(err || (d && d.reason) || 'Failed to update user.');
+      return;
+    }
+    settingsShowOk(name + ' has been ' + (makeActive ? 'reactivated' : 'deactivated') + '.');
+    settingsLoadUsers();
+  });
+}
+
+function settingsResetPw(role, name) {
+  settingsShowErr('');
+  var adminPass = settingsGetAdminPass();
+  if (!adminPass) { settingsShowErr('Enter admin password first.'); return; }
+  var newPass = 'IGI' + Math.floor(10000 + Math.random() * 90000);
+  if (!confirm('Reset password for ' + name + '?\n\nNew password will be: ' + newPass + '\n\nThey will be required to change it on next login.')) return;
+  gasGet({ action: 'resetUserPassword', adminPass: adminPass, role: role, name: name, tempPassword: newPass }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      settingsShowErr(err || (d && d.reason) || 'Failed to reset password.');
+      return;
+    }
+    settingsShowOk('✅ Password for ' + name + ' reset to: ' + newPass + ' — Please note it down now.');
+  });
+}
+
+function settingsShowAddForm() {
+  document.getElementById('add-role').value = 'Counselor';
+  document.getElementById('add-name').value = '';
+  document.getElementById('add-centres').value = '';
+  document.getElementById('add-temp-pass').value = '';
+  document.getElementById('add-err').style.display = 'none';
+  var m = document.getElementById('settings-add-modal');
+  m.style.display = 'flex';
+}
+
+function settingsHideAddForm() {
+  document.getElementById('settings-add-modal').style.display = 'none';
+}
+
+function settingsSubmitAdd() {
+  var adminPass = settingsGetAdminPass();
+  var role = document.getElementById('add-role').value;
+  var name = document.getElementById('add-name').value.trim();
+  var centres = document.getElementById('add-centres').value.trim();
+  var tempPass = document.getElementById('add-temp-pass').value.trim();
+  var errEl = document.getElementById('add-err');
+  errEl.style.display = 'none';
+  if (!adminPass) { errEl.textContent = 'Admin password not entered (go back and enter it).'; errEl.style.display = 'block'; return; }
+  if (!name) { errEl.textContent = 'Name is required.'; errEl.style.display = 'block'; return; }
+  if (!tempPass || tempPass.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
+  document.getElementById('add-submit-btn').disabled = true;
+  gasGet({ action: 'addUser', adminPass: adminPass, role: role, name: name, centres: centres, tempPassword: tempPass }, function(err, d) {
+    document.getElementById('add-submit-btn').disabled = false;
+    if (err || !d || d.status !== 'ok') {
+      var reason = (d && d.reason) || err || 'Failed to add user.';
+      if (reason === 'already_exists') reason = 'A user with this role and name already exists.';
+      errEl.textContent = reason;
+      errEl.style.display = 'block';
+      return;
+    }
+    settingsHideAddForm();
+    settingsShowOk('✅ User ' + name + ' (' + role + ') created. Initial password: ' + tempPass + ' — Please note it down now.');
+    settingsLoadUsers();
+  });
+}
+
+function settingsShowDelModal(role, name) {
+  _settingsDeleteTarget = { role: role, name: name };
+  document.getElementById('del-confirm-name-label').textContent = name;
+  document.getElementById('del-confirm-input').value = '';
+  document.getElementById('del-err').style.display = 'none';
+  document.getElementById('settings-del-modal').style.display = 'flex';
+}
+
+function settingsHideDelModal() {
+  _settingsDeleteTarget = null;
+  document.getElementById('settings-del-modal').style.display = 'none';
+}
+
+function settingsConfirmDelete() {
+  if (!_settingsDeleteTarget) return;
+  var adminPass = settingsGetAdminPass();
+  var typed = (document.getElementById('del-confirm-input').value || '').trim();
+  var errEl = document.getElementById('del-err');
+  errEl.style.display = 'none';
+  if (!adminPass) { errEl.textContent = 'Admin password not entered (go back and enter it).'; errEl.style.display = 'block'; return; }
+  if (typed !== _settingsDeleteTarget.name) { errEl.textContent = 'Name does not match. Type exactly: ' + _settingsDeleteTarget.name; errEl.style.display = 'block'; return; }
+  document.getElementById('del-confirm-btn').disabled = true;
+  gasGet({ action: 'deleteUser', adminPass: adminPass, role: _settingsDeleteTarget.role, name: _settingsDeleteTarget.name }, function(err, d) {
+    document.getElementById('del-confirm-btn').disabled = false;
+    if (err || !d || d.status !== 'ok') {
+      errEl.textContent = (d && d.reason) || err || 'Failed to delete user.';
+      errEl.style.display = 'block';
+      return;
+    }
+    var deleted = _settingsDeleteTarget.name;
+    settingsHideDelModal();
+    settingsShowOk('🗑️ ' + deleted + ' has been deleted from credentials. All historical data is preserved.');
+    settingsLoadUsers();
+  });
 }
 </script>
 </body>

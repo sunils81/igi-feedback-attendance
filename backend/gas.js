@@ -895,6 +895,63 @@ function doGet(e) {
       if(p.adminPass!==ADMIN_PASS)return respond({status:'error',reason:'auth'});
       return respond(resetUserPassword(ss,p.role,p.name,p.tempPassword||''));
     }
+
+    // ── listUsers — return all credential rows (admin only) ────────
+    if (act==='listUsers') {
+      if(p.adminPass!==ADMIN_PASS)return respond({status:'error',reason:'auth'});
+      var sh=ss.getSheetByName(SH_USER_CREDENTIALS);
+      if(!sh||sh.getLastRow()<2)return respond({status:'ok',users:[]});
+      var rows=sh.getRange(2,1,sh.getLastRow()-1,8).getValues();
+      var users=rows.filter(function(r){return String(r[0]||'').trim();}).map(function(r){
+        return {
+          role:String(r[0]||''),name:String(r[1]||''),centres:String(r[2]||''),
+          mustChange:String(r[5]||'N')==='Y',updatedAt:String(r[6]||''),
+          active:String(r[7]||'Y')!=='N'
+        };
+      });
+      return respond({status:'ok',users:users});
+    }
+
+    // ── addUser — create a new user with hashed password ──────────
+    if (act==='addUser') {
+      if(p.adminPass!==ADMIN_PASS)return respond({status:'error',reason:'auth'});
+      var role=String(p.role||'').trim();
+      var name=String(p.name||'').trim();
+      var centres=String(p.centres||'').trim();
+      var tempPass=String(p.tempPassword||'').trim();
+      if(!role||!name||!tempPass)return respond({status:'error',reason:'missing_fields'});
+      if(findUserCredential(ss,role,name))return respond({status:'error',reason:'already_exists'});
+      var validation=validateNewPassword(name,tempPass,null);
+      if(validation)return respond({status:'error',reason:'weak_password',message:validation});
+      var sh=ss.getSheetByName(SH_USER_CREDENTIALS);
+      if(!sh)sh=ss.insertSheet(SH_USER_CREDENTIALS);
+      var salt=Utilities.getUuid();
+      sh.appendRow([role,name,centres,hashPassword(tempPass,salt),salt,'Y',new Date().toISOString(),'Y']);
+      return respond({status:'ok'});
+    }
+
+    // ── setUserActive — deactivate or reactivate a user ───────────
+    if (act==='setUserActive') {
+      if(p.adminPass!==ADMIN_PASS)return respond({status:'error',reason:'auth'});
+      var cred=findUserCredential(ss,p.role,p.name);
+      if(!cred)return respond({status:'error',reason:'user_not_found'});
+      var sh=ss.getSheetByName(SH_USER_CREDENTIALS);
+      var activeVal=String(p.active||'Y')==='Y'?'Y':'N';
+      sh.getRange(cred.rowIndex,8).setValue(activeVal);
+      sh.getRange(cred.rowIndex,7).setValue(new Date().toISOString());
+      return respond({status:'ok',active:activeVal==='Y'});
+    }
+
+    // ── deleteUser — remove credential row only (data preserved) ──
+    if (act==='deleteUser') {
+      if(p.adminPass!==ADMIN_PASS)return respond({status:'error',reason:'auth'});
+      var cred=findUserCredential(ss,p.role,p.name);
+      if(!cred)return respond({status:'error',reason:'user_not_found'});
+      var sh=ss.getSheetByName(SH_USER_CREDENTIALS);
+      sh.deleteRow(cred.rowIndex);
+      return respond({status:'ok'});
+    }
+
     if (act==='masterLogin')    return respond({status: p.pass===MASTER_PASS?'ok':'error'});
 
     // ── clearEnsureCache — force ensureSheets to re-run on next request ──

@@ -1139,6 +1139,10 @@
           style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
           <option value="">All Courses</option>
         </select>
+        <select id="alumni-centre-filter" onchange="filterAlumniTable()"
+          style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+          <option value="">All Centres</option>
+        </select>
         <select id="alumni-status-filter" onchange="filterAlumniTable()"
           style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
           <option value="">All Statuses</option>
@@ -1809,6 +1813,7 @@ function switchTab(id) {
   document.getElementById(id).classList.add('active');
   const idx = ['t-batches','t-students','t-alumni','t-mybatches','t-reports','t-fees','t-revenue','t-holidays'].indexOf(id);
   document.querySelectorAll('.tab')[idx].classList.add('active');
+  renderContextSummary(id);
   if (id === 't-alumni') {
     loadAlumniData();
   }
@@ -5523,6 +5528,152 @@ function renderCounselorSummaryTiles(stats) {
     '<div class="summary-tile ok"><div class="k">Today\'s Sessions</div><div class="v">' + stats.today + '</div><div class="s">Started or scheduled today</div></div>' +
     '<div class="summary-tile ' + (stats.pending ? 'warn' : 'ok') + '"><div class="k">Setup Issues</div><div class="v">' + stats.pending + '</div><div class="s">' + (stats.pending ? 'Need attention' : 'All clear') + '</div></div>';
 }
+// ── Context KPI Ribbon — changes with each tab ─────────────────
+function renderContextSummary(tabId) {
+  var el = document.getElementById('counselor-summary');
+  if (!el) return;
+  el.style.display = 'grid';
+
+  function tile(cls, k, v, s) {
+    return '<div class="summary-tile' + (cls ? ' ' + cls : '') + '"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div></div>';
+  }
+
+  if (tabId === 't-batches') {
+    // Handled by updateCounselorSummary — leave as-is
+    return;
+  }
+
+  if (tabId === 't-students') {
+    // Derive from allBatches (counselorStudentsByBatch already keyed by batchCode when loaded)
+    var allLoaded = Object.keys(counselorStudentsByBatch);
+    var totalStudents = 0;
+    var missingContact = 0;
+    var multiBatch = {};
+    allLoaded.forEach(function(bc) {
+      var sts = counselorStudentsByBatch[bc] || [];
+      totalStudents += sts.length;
+      sts.forEach(function(s) {
+        if (!s.mobile || !s.email) missingContact++;
+        multiBatch[s.studentId] = (multiBatch[s.studentId] || 0) + 1;
+      });
+    });
+    var multiCount = Object.values(multiBatch).filter(function(n) { return n > 1; }).length;
+    var now = new Date();
+    var monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    var newThisMonth = 0;
+    allLoaded.forEach(function(bc) {
+      (counselorStudentsByBatch[bc] || []).forEach(function(s) {
+        if (s.enrolmentDate && String(s.enrolmentDate) >= monthStart) newThisMonth++;
+      });
+    });
+    el.innerHTML =
+      tile('', 'Total Students', totalStudents || '—', 'Across active batches') +
+      tile('ok', 'New This Month', newThisMonth || '—', 'Enrolled in ' + now.toLocaleString('en-IN', {month:'short', year:'numeric'})) +
+      tile(missingContact ? 'warn' : 'ok', 'Missing Contact', missingContact || '0', 'No mobile or email') +
+      tile(multiCount ? 'warn' : 'ok', 'Multi-Batch', multiCount || '0', 'Enrolled in 2+ batches');
+    return;
+  }
+
+  if (tabId === 't-alumni') {
+    var list = alumniList || [];
+    var completedCount = list.filter(function(a) { return a.status === 'Completed'; }).length;
+    var activeCount = list.filter(function(a) { return a.status !== 'Completed'; }).length;
+    var centresSet = {};
+    list.forEach(function(a) { if (a.centre) centresSet[a.centre] = 1; });
+    var centresCount = Object.keys(centresSet).length;
+    el.innerHTML =
+      tile('', 'Total Alumni', list.length, 'In database') +
+      tile('ok', 'Completed Batches', completedCount, 'Course finished') +
+      tile('', 'Active / Ongoing', activeCount, 'Still enrolled') +
+      tile('ok', 'Centres Covered', centresCount || '—', 'Across all records');
+    return;
+  }
+
+  if (tabId === 't-mybatches') {
+    var myB = (allBatches || []).filter(function(b) {
+      return b.counselor === counselorName || b.counselorName === counselorName;
+    });
+    // If no counselor field match, show all visible batches for non-admin
+    if (!myB.length && !isAdmin) myB = allBatches || [];
+    var myStudents = 0;
+    myB.forEach(function(b) {
+      myStudents += (counselorStudentsByBatch[b.batchCode] || []).length;
+    });
+    var noInstructor = myB.filter(function(b) { return !b.instructor; }).length;
+    el.innerHTML =
+      tile('', 'My Batches', myB.length, 'Assigned to you') +
+      tile('', 'My Students', myStudents || '—', 'Across assigned batches') +
+      tile(noInstructor ? 'warn' : 'ok', 'No Instructor', noInstructor || '0', 'Need assignment') +
+      tile('ok', 'Active Today', (allBatches || []).filter(function(b) {
+        return b.status === 'active' || b.status === 'Active';
+      }).length || '—', 'Running batches');
+    return;
+  }
+
+  if (tabId === 't-reports') {
+    var rpData = counselorReportData;
+    if (rpData && rpData.summary) {
+      var s = rpData.summary;
+      el.innerHTML =
+        tile('', 'Sessions Held', s.sessionsHeld || s.totalSessions || '—', 'Completed sessions') +
+        tile('ok', 'Attendance %', (s.attendancePct || s.attendance || '—') + (s.attendancePct || s.attendance ? '%' : ''), 'Average across batch') +
+        tile('', 'Feedback Submitted', s.feedbackSubmitted || s.feedbackCount || '—', 'Student responses') +
+        tile('', 'Assessments', s.assessmentCount || '—', 'Tests conducted');
+    } else {
+      // No report loaded yet — show placeholder
+      el.innerHTML =
+        tile('', 'Sessions Held', '—', 'Select a batch') +
+        tile('', 'Attendance %', '—', 'Select a batch') +
+        tile('', 'Feedback', '—', 'Select a batch') +
+        tile('', 'Assessments', '—', 'Select a batch');
+    }
+    return;
+  }
+
+  if (tabId === 't-fees') {
+    // fee-summary div already rendered by loadFeeOverview; just hide our ribbon
+    el.style.display = 'none';
+    return;
+  }
+
+  if (tabId === 't-revenue') {
+    var rd = revenueData;
+    var sm = (rd && rd.summary) || {};
+    var target = Number(sm.targetGst || sm.annualTargetGst || 0);
+    var achieved = Number(sm.achievedGst || 0);
+    var remaining = target - achieved;
+    el.innerHTML =
+      tile('', 'Target', target ? moneyShort(target) : '—', 'Annual (incl. GST)') +
+      tile('ok', 'Achieved', achieved ? moneyShort(achieved) : '—', 'Collected so far') +
+      tile(remaining > 0 ? 'warn' : 'ok', 'Remaining', remaining > 0 ? moneyShort(remaining) : '✓ Hit', 'Balance to target') +
+      tile('', 'Centres', (rd && rd.centres && rd.centres.length) ? rd.centres.length : '—', 'Contributing');
+    return;
+  }
+
+  if (tabId === 't-holidays') {
+    try {
+      var cached = sessionStorage.getItem('igiHolidays');
+      var holidays = cached ? JSON.parse(cached) : [];
+      var todayStr = new Date().toISOString().split('T')[0];
+      var upcoming = holidays.filter(function(h) { return h.date >= todayStr; }).sort(function(a,b){ return a.date.localeCompare(b.date); });
+      var nextHol = upcoming[0];
+      var centresAff = {};
+      upcoming.slice(0, 10).forEach(function(h) { if (h.centre) centresAff[h.centre] = 1; });
+      el.innerHTML =
+        tile('', 'Upcoming Holidays', upcoming.length, 'Scheduled ahead') +
+        tile('', 'Centres Affected', Object.keys(centresAff).length || '—', 'Next 10 holidays') +
+        tile('ok', 'Next Holiday', nextHol ? nextHol.date.slice(5).replace('-', '/') : '—', nextHol ? nextHol.name : 'None soon') +
+        tile('', 'National Holidays', holidays.filter(function(h){ return h.type === 'national' && h.date >= todayStr; }).length, 'Remaining this year');
+    } catch(ex) {
+      el.style.display = 'none';
+    }
+    return;
+  }
+
+  // Fallback: hide
+  el.style.display = 'none';
+}
+
 // Instructor assignment now handled during batch creation
 
 // Remove old session creation functions (moved to instructor portal)
@@ -5613,10 +5764,23 @@ function loadAlumniData() {
         }
       });
       courses.sort();
-      courseFilter.innerHTML = '<option value="">All Courses</option>' + 
+      courseFilter.innerHTML = '<option value="">All Courses</option>' +
         courses.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
     }
-    
+
+    var centreFilter = document.getElementById('alumni-centre-filter');
+    if (centreFilter) {
+      var centres = [];
+      alumniList.forEach(function(a) {
+        if (a.centre && centres.indexOf(a.centre) === -1) {
+          centres.push(a.centre);
+        }
+      });
+      centres.sort();
+      centreFilter.innerHTML = '<option value="">All Centres</option>' +
+        centres.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
+    }
+
     renderAlumniTable(alumniList);
   });
 }
@@ -5652,18 +5816,23 @@ function renderAlumniTable(list) {
 function filterAlumniTable() {
   var query = document.getElementById('alumni-search-input').value.trim().toLowerCase();
   var course = document.getElementById('alumni-course-filter').value;
+  var centre = (document.getElementById('alumni-centre-filter') || {}).value || '';
   var status = document.getElementById('alumni-status-filter').value;
-  
+
   var filtered = alumniList;
-  
+
   if (course) {
     filtered = filtered.filter(function(a) { return a.course === course; });
   }
-  
+
+  if (centre) {
+    filtered = filtered.filter(function(a) { return a.centre === centre; });
+  }
+
   if (status) {
     filtered = filtered.filter(function(a) { return a.status === status; });
   }
-  
+
   if (query) {
     filtered = filtered.filter(function(a) {
       return String(a.studentId).toLowerCase().indexOf(query) !== -1 ||

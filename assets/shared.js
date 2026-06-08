@@ -38,7 +38,7 @@ function gasGet(params, cb) {
   let done     = false;
   window[cbName] = function(d){ done=true; delete window[cbName]; try{document.body.removeChild(s);}catch(x){} cb(null,d); };
   s.onerror = function(){ if(!done){done=true;delete window[cbName];try{document.body.removeChild(s);}catch(x){}cb(new Error('network'),null);} };
-  s.src = GAS_URL + '?' + qs + '&callback=' + cbName;
+  s.src = GAS_URL + '?' + qs + '&_ts=' + Date.now() + '&callback=' + cbName;
   document.body.appendChild(s);
   setTimeout(function(){ if(!done){done=true;delete window[cbName];try{document.body.removeChild(s);}catch(x){}cb(new Error('timeout'),null);} }, 30000);
 }

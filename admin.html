@@ -1314,6 +1314,7 @@
       <button class="tab" onclick="switchAdminTab('t-reports')">📋 Master Export</button>
       <button class="tab" id="tab-password-reset" onclick="switchAdminTab('t-password-reset')">🔐 Password Reset</button>
       <button class="tab" id="tab-settings" onclick="switchAdminTab('t-settings')">⚙️ Settings</button>
+      <button class="tab" onclick="switchAdminTab('t-snapshot')">📸 Batch Snapshot</button>
     </div>
 
     <!-- TAB 1: REVENUE OVERVIEW -->
@@ -2017,6 +2018,66 @@
         </table>
       </div>
     </div>
+
+    <!-- TAB: BATCH SNAPSHOT -->
+    <div id="t-snapshot" class="tab-content">
+      <style>
+        #snap-card{background:#fff;border-radius:14px;padding:32px 36px;max-width:820px;margin:0 auto;font-family:'Plus Jakarta Sans',sans-serif;}
+        #snap-card h1{font-size:18px;font-weight:800;color:#0D1B2E;margin:0 0 4px;}
+        #snap-card .snap-date{font-size:12px;color:#6b7280;margin-bottom:24px;}
+        .snap-row{display:flex;gap:0;border-left:4px solid #e5e7eb;padding:12px 0 12px 16px;margin-bottom:14px;background:#fafafa;border-radius:0 10px 10px 0;}
+        .snap-row.ongoing {border-left-color:#059669;}
+        .snap-row.starting{border-left-color:#f59e0b;}
+        .snap-row.upcoming{border-left-color:#6366f1;}
+        .snap-row.completed{border-left-color:#9ca3af;}
+        .snap-row.inactive{border-left-color:#dc2626;opacity:.6;}
+        .snap-centre{font-size:14px;font-weight:800;color:#0D1B2E;min-width:130px;padding-top:2px;}
+        .snap-body{flex:1;}
+        .snap-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;}
+        .snap-badge.ongoing {background:#d1fae5;color:#065f46;}
+        .snap-badge.starting{background:#fef3c7;color:#92400e;}
+        .snap-badge.upcoming{background:#e0e7ff;color:#3730a3;}
+        .snap-badge.completed{background:#f3f4f6;color:#6b7280;}
+        .snap-badge.inactive{background:#fee2e2;color:#991b1b;}
+        .snap-batches{font-size:13px;color:#374151;line-height:1.7;}
+        .snap-batches b{color:#0D1B2E;}
+        .snap-note{margin-top:6px;font-size:12px;color:#6b7280;font-style:italic;}
+        .snap-note textarea{width:100%;font-size:12px;color:#374151;border:1px dashed #d1d5db;border-radius:6px;padding:4px 8px;resize:vertical;min-height:34px;font-family:inherit;background:#fff;font-style:normal;}
+        .snap-note textarea:focus{outline:none;border-color:#C9A84C;}
+        #snap-controls{display:flex;gap:10px;margin-bottom:20px;align-items:center;flex-wrap:wrap;}
+        .snap-filter-btn{padding:6px 14px;border-radius:8px;border:1.5px solid #e5e7eb;background:#fff;font-size:12px;font-weight:600;cursor:pointer;color:#374151;}
+        .snap-filter-btn.active{background:#0D1B2E;color:#fff;border-color:#0D1B2E;}
+        @media print{
+          .no-print,.tab-bar,#snap-controls{display:none!important;}
+          #snap-card{box-shadow:none;padding:0;}
+          body{background:#fff;}
+        }
+      </style>
+
+      <div id="snap-controls" class="no-print">
+        <button class="snap-filter-btn active" id="snapf-active" onclick="snapFilter('active')">Active & Starting Soon</button>
+        <button class="snap-filter-btn" id="snapf-all" onclick="snapFilter('all')">All Batches</button>
+        <button class="snap-filter-btn" id="snapf-upcoming" onclick="snapFilter('upcoming')">Upcoming Only</button>
+        <div style="flex:1"></div>
+        <button class="btn" style="width:auto;padding:7px 16px;font-size:12px;background:#0D1B2E;color:#C9A84C;border:none;border-radius:8px;cursor:pointer;font-weight:700;" onclick="loadSnapshot()">🔄 Refresh</button>
+        <button class="btn btn-outline" style="width:auto;padding:7px 16px;font-size:12px;" onclick="snapCopyText()">📋 Copy as Email Text</button>
+        <button class="btn btn-outline" style="width:auto;padding:7px 16px;font-size:12px;" onclick="window.print()">🖨️ Print / Save PDF</button>
+      </div>
+
+      <div id="snap-card">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;">
+          <div>
+            <h1 id="snap-title">Batch Status Update — All Centres</h1>
+            <div class="snap-date" id="snap-subtitle">Generated —</div>
+          </div>
+          <img src="assets/igi-school-of-gemology-white-logo.svg" style="height:32px;background:#0D1B2E;border-radius:8px;padding:6px 10px;opacity:.9;">
+        </div>
+        <div id="snap-body">
+          <div style="color:#9ca3af;text-align:center;padding:40px;font-size:13px;">Click Refresh to generate snapshot…</div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -2495,6 +2556,11 @@ function switchAdminTab(tabId) {
   // Historical tab uses only static data — no GAS fetch needed
   if (tabId === 't-history') {
     renderHistoricalTab();
+    return;
+  }
+  // Snapshot tab loads its own data
+  if (tabId === 't-snapshot') {
+    loadSnapshot();
     return;
   }
   // Fetch dashboard data if we don't have it yet
@@ -4404,6 +4470,138 @@ function settingsConfirmDelete() {
     settingsShowOk('🗑️ ' + deleted + ' has been deleted from credentials. All historical data is preserved.');
     settingsLoadUsers();
   });
+}
+
+// ── BATCH SNAPSHOT ────────────────────────────────────────────────────────────
+var _snapData = null;
+var _snapFilter = 'active';
+
+function snapFilter(f) {
+  _snapFilter = f;
+  document.querySelectorAll('.snap-filter-btn').forEach(function(b){ b.classList.remove('active'); });
+  var el = document.getElementById('snapf-' + f);
+  if (el) el.classList.add('active');
+  if (_snapData) snapshotRender(_snapData);
+}
+
+function loadSnapshot() {
+  var body = document.getElementById('snap-body');
+  if (body) body.innerHTML = '<div style="color:#9ca3af;text-align:center;padding:40px;font-size:13px;">Loading batch data…</div>';
+  gasGet({action:'getBatchSnapshot'}, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      if (body) body.innerHTML = '<div style="color:#dc2626;text-align:center;padding:40px;font-size:13px;">Failed to load snapshot. Check GAS deployment.</div>';
+      return;
+    }
+    _snapData = d;
+    var dt = new Date(d.generatedAt || Date.now());
+    var opts = {day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'};
+    document.getElementById('snap-subtitle').textContent = 'Generated ' + dt.toLocaleString('en-IN', opts);
+    snapshotRender(d);
+  });
+}
+
+function snapshotRender(d) {
+  var body = document.getElementById('snap-body');
+  if (!body) return;
+  var centres = d.centres || [];
+
+  // Apply filter
+  var visible = centres.filter(function(c) {
+    if (_snapFilter === 'active') {
+      return ['ongoing','starting_soon'].indexOf(c.status) !== -1;
+    }
+    if (_snapFilter === 'upcoming') {
+      return c.status === 'upcoming';
+    }
+    return true; // 'all'
+  });
+
+  if (!visible.length) {
+    body.innerHTML = '<div style="color:#9ca3af;text-align:center;padding:40px;font-size:13px;">No centres match this filter.</div>';
+    return;
+  }
+
+  var statusLabel = {ongoing:'Ongoing', starting_soon:'Starting Soon', upcoming:'Upcoming', completed:'Completed', inactive:'Inactive'};
+  var statusClass = {ongoing:'ongoing', starting_soon:'starting', upcoming:'upcoming', completed:'completed', inactive:'inactive'};
+
+  var html = '';
+  visible.forEach(function(c) {
+    var sc = statusClass[c.status] || 'ongoing';
+    var sl = statusLabel[c.status] || c.status;
+    var batchLines = (c.batches||[]).map(function(b) {
+      var bsc = statusClass[b.status] || 'ongoing';
+      var bsl = statusLabel[b.status] || b.status;
+      var info = '<b>' + escHtml(b.batchCode) + '</b> — ' + escHtml(b.courseName||'');
+      if (b.status === 'ongoing' && b.weeksRunning) info += ' · Week ' + b.weeksRunning;
+      if (b.status === 'starting_soon' && b.startDateISO) info += ' · Starts ' + fmtDateShort(b.startDateISO);
+      if (b.status === 'upcoming' && b.startDateISO) info += ' · Starts ' + fmtDateShort(b.startDateISO);
+      if (b.enrolledCount != null) info += ' · ' + b.enrolledCount + ' student' + (b.enrolledCount!==1?'s':'');
+      return '<div class="snap-batch-line" style="margin-bottom:4px;">'
+        + '<span class="snap-badge ' + bsc + '" style="margin-right:6px;">' + bsl + '</span>'
+        + '<span style="font-size:13px;color:#374151;">' + info + '</span>'
+        + '</div>';
+    }).join('');
+
+    html += '<div class="snap-row ' + sc + '" data-centre="' + escHtml(c.centre) + '">'
+      + '<div class="snap-centre">' + escHtml(c.centre) + '</div>'
+      + '<div class="snap-body">'
+      + '<span class="snap-badge ' + sc + '">' + sl + '</span>'
+      + '<div class="snap-batches" style="margin-top:4px;">' + batchLines + '</div>'
+      + '<div class="snap-note"><textarea placeholder="Add note for this centre…" id="snap-note-' + escHtml(c.centre).replace(/\s/g,'_') + '" onchange="snapSaveNote(this)" data-centre="' + escHtml(c.centre) + '">' + escHtml(snapGetNote(c.centre)) + '</textarea></div>'
+      + '</div>'
+      + '</div>';
+  });
+  body.innerHTML = html;
+}
+
+// Per-centre notes — survive page session via sessionStorage
+function snapGetNote(centre) {
+  try { return sessionStorage.getItem('snap_note_' + centre) || ''; } catch(e){ return ''; }
+}
+function snapSaveNote(el) {
+  try { sessionStorage.setItem('snap_note_' + el.dataset.centre, el.value); } catch(e){}
+}
+
+function snapCopyText() {
+  if (!_snapData) { alert('Generate the snapshot first.'); return; }
+  var centres = (_snapData.centres||[]).filter(function(c) {
+    if (_snapFilter === 'active') return ['ongoing','starting_soon'].indexOf(c.status) !== -1;
+    if (_snapFilter === 'upcoming') return c.status === 'upcoming';
+    return true;
+  });
+  var statusLabel = {ongoing:'Ongoing', starting_soon:'Starting Soon', upcoming:'Upcoming', completed:'Completed', inactive:'Inactive'};
+  var dt = new Date(_snapData.generatedAt || Date.now());
+  var lines = ['📊 Batch Status Update — All Centres', fmtDateShort(dt.toISOString()) + ' | IGI School of Gemology', ''];
+  centres.forEach(function(c) {
+    lines.push('▪ ' + c.centre + ' [' + (statusLabel[c.status]||c.status) + ']');
+    (c.batches||[]).forEach(function(b) {
+      var sl = statusLabel[b.status] || b.status;
+      var info = '  · ' + b.batchCode + ' — ' + (b.courseName||'') + ' (' + sl + ')';
+      if (b.status === 'ongoing' && b.weeksRunning) info += ', Week ' + b.weeksRunning;
+      if (b.enrolledCount != null) info += ', ' + b.enrolledCount + ' students';
+      lines.push(info);
+    });
+    var note = snapGetNote(c.centre);
+    if (note.trim()) lines.push('  📝 ' + note.trim());
+    lines.push('');
+  });
+  var text = lines.join('\n');
+  navigator.clipboard.writeText(text).then(function() {
+    showToast('Copied to clipboard!');
+  }).catch(function() {
+    prompt('Copy this text:', text);
+  });
+}
+
+function fmtDateShort(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  return d.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>
 </body>

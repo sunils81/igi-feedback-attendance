@@ -2844,21 +2844,30 @@ function otRenderBatchPills() {
   var batches = instructorBatchesCache || [];
   if (!batches.length) { wrap.innerHTML = '<span style="color:#9ca3af;font-size:13px;padding:8px 0;">No batches found for your account.</span>'; return; }
   wrap.innerHTML = '';
+  var today = new Date(); today.setHours(0,0,0,0);
   batches.forEach(function(b) {
-    var isCompleted = b.status === 'Completed' || b.completed;
-    var isInactive = b.status === 'Inactive' || b.active === false || b.active === 'N';
-    var isBlocked = isInactive; // completed batches can still be selected; inactive cannot
+    var isInactive = b.active === false;
+    var isFuture   = b.startDateISO && (new Date(b.startDateISO) > today);
+    var isBlocked  = isInactive || isFuture;
+
+    var tag = '';
+    if (isInactive) tag = ' <span style="font-size:10px;background:rgba(220,38,38,.15);padding:1px 6px;border-radius:8px;color:#dc2626;">INACTIVE</span>';
+    else if (isFuture) tag = ' <span style="font-size:10px;background:rgba(99,102,241,.15);padding:1px 6px;border-radius:8px;color:#4338ca;">UPCOMING</span>';
+
     var pill = document.createElement('button');
     pill.type = 'button';
-    pill.className = 'ct-batch-pill' + (otSelectedBatches.has(b.batchCode) ? ' active' : '') + (isBlocked ? ' disabled' : '') + (isCompleted ? ' completed' : '');
+    pill.className = 'ct-batch-pill' + (otSelectedBatches.has(b.batchCode) ? ' active' : '') + (isBlocked ? ' disabled' : '');
     if (isBlocked) pill.style.cssText = 'opacity:.45;cursor:not-allowed;filter:grayscale(.8);';
     pill.innerHTML = escHtml(b.batchCode)
       + ' <span style="opacity:.7;font-size:11px;">' + escHtml(b.course || b.courseName || '') + '</span>'
-      + (isCompleted ? ' <span style="font-size:10px;background:rgba(201,168,76,.25);padding:1px 6px;border-radius:8px;color:#92400e;">COMPLETED</span>' : '')
-      + (isBlocked ? ' <span style="font-size:10px;background:rgba(220,38,38,.15);padding:1px 6px;border-radius:8px;color:#dc2626;">INACTIVE</span>' : '');
+      + tag;
     pill.onclick = function() {
-      if (isBlocked) {
+      if (isInactive) {
         otShowBatchToast('⚠ ' + b.batchCode + ' is inactive — cannot assign tests to this batch.');
+        return;
+      }
+      if (isFuture) {
+        otShowBatchToast('⚠ ' + b.batchCode + ' hasn\'t started yet (starts ' + escHtml(b.startDate) + ') — cannot assign tests to a future batch.');
         return;
       }
       if (otSelectedBatches.has(b.batchCode)) {
@@ -2867,7 +2876,6 @@ function otRenderBatchPills() {
       } else {
         otSelectedBatches.add(b.batchCode);
         pill.classList.add('active');
-        if (isCompleted) otShowBatchToast('ℹ ' + b.batchCode + ' is completed — students can still take tests but no new students will enrol.');
       }
       document.getElementById('ot-c-batch').value = [...otSelectedBatches].join(',');
       otLoadStudentsForPicker();

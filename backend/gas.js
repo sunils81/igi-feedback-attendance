@@ -779,6 +779,75 @@ function fetchBatches(ss, centres, centre) {
     });
 }
 
+// ── getBatchSnapshot — aggregated per-centre batch status for admin snapshot card ──
+function getBatchSnapshot(ss) {
+  const today = new Date(); today.setHours(12,0,0,0);
+  const in30  = new Date(today); in30.setDate(in30.getDate()+30);
+
+  const shBatch = ss.getSheetByName(SH_BATCHES);
+  if (!shBatch || shBatch.getLastRow()<2) return {status:'ok', centres:[], generatedAt:new Date().toISOString()};
+  const batchData = shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues();
+
+  // Count active enrollments per batch
+  const shEn = ss.getSheetByName(SH_ENROLLMENTS);
+  const enRows = (shEn&&shEn.getLastRow()>1) ? shEn.getRange(2,1,shEn.getLastRow()-1,4).getValues() : [];
+  const countByBatch = {};
+  enRows.forEach(function(r){
+    if(r[0]&&r[1]&&String(r[2]).trim().toLowerCase()==='active'){
+      var bc=String(r[1]).trim(); countByBatch[bc]=(countByBatch[bc]||0)+1;
+    }
+  });
+
+  // Parse each batch row
+  const batches = batchData.filter(r=>r[0]).map(function(r){
+    const hasSlot = detectSlotOrDate(r[4]);
+    const rawStart = hasSlot?r[5]:r[4];
+    const rawEnd   = hasSlot?r[6]:r[5];
+    const sD = rawStart?new Date(rawStart):null; if(sD)sD.setHours(12,0,0,0);
+    const eD = rawEnd  ?new Date(rawEnd)  :null; if(eD)eD.setHours(12,0,0,0);
+    const active = String(r[7]||'Y')!=='N';
+
+    let batchStatus='Upcoming';
+    if(!active)                              batchStatus='Inactive';
+    else if(eD&&eD<today)                    batchStatus='Completed';
+    else if(sD&&sD<=today)                   batchStatus='Ongoing';
+    else if(sD&&sD<=in30)                    batchStatus='Starting Soon';
+
+    // Weeks running (for ongoing batches)
+    const weeksRunning = (batchStatus==='Ongoing'&&sD) ?
+      Math.floor((today.getTime()-sD.getTime())/(7*86400000)) : 0;
+
+    return {
+      batchCode:   r[0], centre:r[1], course:r[2], type:r[3],
+      startDate:   sD?sD.toLocaleDateString('en-IN'):'',
+      endDate:     eD?eD.toLocaleDateString('en-IN'):'',
+      instructor:  hasSlot?(r[9]||''):(r[8]||''),
+      active:      active,
+      status:      batchStatus,
+      weeksRunning:weeksRunning,
+      studentCount:countByBatch[String(r[0]).trim()]||0
+    };
+  });
+
+  // Group by centre, compute centre-level status
+  const centreMap = {};
+  batches.forEach(function(b){
+    if(!centreMap[b.centre]) centreMap[b.centre]=[];
+    centreMap[b.centre].push(b);
+  });
+  const ORDER = ['Ongoing','Starting Soon','Upcoming','Completed','Inactive'];
+  const centres = Object.keys(centreMap).sort().map(function(c){
+    const cb = centreMap[c];
+    // Only show non-completed/non-inactive batches for the snapshot; include completed if recent
+    const statuses = cb.map(function(b){return b.status;});
+    let cStatus = 'Upcoming';
+    for(var i=0;i<ORDER.length;i++){if(statuses.includes(ORDER[i])){cStatus=ORDER[i];break;}}
+    return {centre:c, status:cStatus, batches:cb};
+  });
+
+  return {status:'ok', centres:centres, generatedAt:new Date().toISOString()};
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  GAS CacheService helpers — server-side cache, 5 min TTL
 //  Cuts expensive sheet reads from ~3-5s to ~200ms after warm-up
@@ -1004,6 +1073,9 @@ function doGet(e) {
       try { CacheService.getScriptCache().remove('batches||'); } catch(_e){}
       return respond({status:'ok',batchCode:p.batchCode});
     }
+
+    // ── getBatchSnapshot ──────────────────────────────────────
+    if (act==='getBatchSnapshot') return respond(getBatchSnapshot(ss));
 
     // ── getBatches ─────────────────────────────────────────────
     if (act==='getBatches') {
@@ -1552,13 +1624,21 @@ function doGet(e) {
       const batches=data.filter(r=>{
         const assigned = detectSlotOrDate(r[4]) ? (r[9]||'') : (r[8]||'');
         return r[0] && sameName(assigned, instructor);
-      }).map(r=>({
-        batchCode:r[0],centre:r[1],course:r[2],type:r[3],
-        batchSlot:  detectSlotOrDate(r[4])?(r[4]||'Full Day'):'Full Day',
-        startDate:  detectSlotOrDate(r[4])?(r[5]?new Date(r[5]).toLocaleDateString('en-IN'):''):(r[4]?new Date(r[4]).toLocaleDateString('en-IN'):''),
-        endDate:    detectSlotOrDate(r[4])?(r[6]?new Date(r[6]).toLocaleDateString('en-IN'):''):(r[5]?new Date(r[5]).toLocaleDateString('en-IN'):''),
-        instructor: detectSlotOrDate(r[4])?(r[9]||''):(r[8]||'')
-      }));
+      }).map(r=>{
+        const hasSlot = detectSlotOrDate(r[4]);
+        const rawStart = hasSlot ? r[5] : r[4];
+        const rawEnd   = hasSlot ? r[6] : r[5];
+        const startDateISO = rawStart ? new Date(rawStart).toISOString() : '';
+        return {
+          batchCode:r[0], centre:r[1], course:r[2], type:r[3],
+          batchSlot:  hasSlot?(r[4]||'Full Day'):'Full Day',
+          startDate:  rawStart?new Date(rawStart).toLocaleDateString('en-IN'):'',
+          startDateISO: startDateISO,
+          endDate:    rawEnd?new Date(rawEnd).toLocaleDateString('en-IN'):'',
+          active:     String(r[7]||'Y')!=='N',   // col H — 'N' means inactive
+          instructor: hasSlot?(r[9]||''):(r[8]||'')
+        };
+      });
       return respond({status:'ok',batches});
     }
 

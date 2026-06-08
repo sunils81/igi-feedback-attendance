@@ -976,17 +976,20 @@
           </div>
         </div>
         <div>
-          <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:8px;">CUSTOM TIMER PER STUDENT <span style="font-weight:400;color:#9ca3af;">(optional — override duration for specific students)</span></label>
+          <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:8px;">CUSTOM TIMER <span style="font-weight:400;color:#9ca3af;">(optional — override the default duration for this test)</span></label>
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
             <label class="ct-opt-cb" id="ct-custom-timer-lbl" onclick="otToggleCustomTimer()">
-              <input type="checkbox" id="ot-c-custom-timer-on" style="display:none;"> Enable per-student custom timer
+              <input type="checkbox" id="ot-c-custom-timer-on" style="display:none;"> Enable custom timer
             </label>
           </div>
           <div id="ot-c-custom-timer-wrap" style="display:none;">
-            <p style="font-size:12px;color:#6b7280;margin:0 0 8px;">After selecting students above, set a different time limit for any of them here. Leave blank to use the default duration.</p>
+            <p style="font-size:12px;color:#6b7280;margin:0 0 8px;">Override the duration set in Step 1 for this specific test.</p>
             <div id="ot-c-custom-timer-list">
-              <div style="color:#9ca3af;font-size:12px;padding:8px 0;">Select "Selected students only" and choose students first.</div>
-            </div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <input type="number" id="ot-c-custom-timer-val" min="5" max="360" placeholder="e.g. 45"
+                  style="width:90px;padding:8px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px;font-weight:600;">
+                <span style="font-size:13px;color:#6b7280;">minutes &nbsp;(Step 1 duration will be ignored)</span>
+              </div>
           </div>
         </div>
       </div>
@@ -2771,25 +2774,33 @@ function otLoadStudentsForPicker() {
     return;
   }
   if (listEl) listEl.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:12px;text-align:center;">Loading students…</div>';
-  var pending = batches.length;
-  var allStudents = [];
-  batches.forEach(function(bc) {
-    gasGet({action:'getStudents', batchCode:bc}, function(err, d) {
-      if (!err && d && d.students) {
-        d.students.forEach(function(s) {
-          if (!allStudents.find(function(x){ return x.studentId === s.studentId; })) {
-            s._batchCode = bc;
-            allStudents.push(s);
+  // Use getStudentsForBatches (multi-batch, single call) with fallback to getStudents per batch
+  gasGet({action:'getStudentsForBatches', instructor:instructorName, batchCodes:batches.join(',')}, function(err, d) {
+    if (!err && d && d.students && d.students.length) {
+      otPickerStudents = d.students.map(function(s) {
+        return { studentId: s.studentId||s.id, name: s.name||s.studentName||s.studentId, _batchCode: s.batchCode||batches[0] };
+      });
+      otRenderStudentPicker(otPickerStudents);
+    } else {
+      // Fallback: one call per batch
+      var pending = batches.length, allStudents = [];
+      batches.forEach(function(bc) {
+        gasGet({action:'getStudents', batchCode:bc}, function(e2, d2) {
+          if (!e2 && d2 && d2.students) {
+            d2.students.forEach(function(s) {
+              var sid = s.studentId || s.enrollmentNo || s.id;
+              if (sid && !allStudents.find(function(x){ return x.studentId === sid; })) {
+                allStudents.push({ studentId: sid, name: s.name||s.studentName||sid, _batchCode: bc });
+              }
+            });
+          }
+          if (--pending <= 0) {
+            otPickerStudents = allStudents;
+            otRenderStudentPicker(allStudents);
           }
         });
-      }
-      pending--;
-      if (pending <= 0) {
-        otPickerStudents = allStudents;
-        otRenderStudentPicker(otPickerStudents);
-        otRebuildCustomTimerList();
-      }
-    });
+      });
+    }
   });
 }
 
@@ -2887,7 +2898,7 @@ function otToggleOptCb(key) {
   }
 }
 
-// Custom timer per student
+// Custom timer (single override for the whole test)
 function otToggleCustomTimer() {
   var cb = document.getElementById('ot-c-custom-timer-on');
   var lbl = document.getElementById('ct-custom-timer-lbl');
@@ -2896,36 +2907,12 @@ function otToggleCustomTimer() {
   cb.checked = !cb.checked;
   if (lbl) lbl.classList.toggle('active', cb.checked);
   if (wrap) wrap.style.display = cb.checked ? 'block' : 'none';
-  if (cb.checked) otRebuildCustomTimerList();
+  if (!cb.checked) { var inp = document.getElementById('ot-c-custom-timer-val'); if (inp) inp.value = ''; }
 }
 
-function otRebuildCustomTimerList() {
-  var wrap = document.getElementById('ot-c-custom-timer-wrap');
-  if (!wrap || wrap.style.display === 'none') return;
-  var listEl = document.getElementById('ot-c-custom-timer-list');
-  if (!listEl) return;
-  var targeting = document.querySelector('input[name="ct-targeting"]:checked');
-  var isSelected = targeting && targeting.value === 'selected';
-  if (!isSelected || !otPickerSelected.size) {
-    listEl.innerHTML = '<div style="color:#9ca3af;font-size:12px;padding:8px 0;">Select "Selected students only" and choose students to set custom timers.</div>';
-    return;
-  }
-  var defaultDur = parseInt(document.getElementById('ot-c-duration').value) || 30;
-  var html = '';
-  otPickerStudents.filter(function(s){ return otPickerSelected.has(s.studentId); }).forEach(function(s) {
-    var sid = escHtml(String(s.studentId));
-    var existing = (document.getElementById('cttimer-'+sid)||{}).value || '';
-    html += '<div class="ct-custom-timer-row">'
-      + '<span style="flex:1;font-weight:600;">'+escHtml(s.name||s.studentName||'Student')+'</span>'
-      + '<span style="font-size:12px;color:#9ca3af;margin-right:8px;">Default: '+defaultDur+'m</span>'
-      + '<input type="number" id="cttimer-'+sid+'" placeholder="e.g. 45" min="5" max="180" value="'+escHtml(existing)+'" style="width:70px;padding:5px 8px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:13px;">'
-      + '<span style="font-size:12px;color:#9ca3af;margin-left:4px;">min</span>'
-      + '</div>';
-  });
-  listEl.innerHTML = html || '<div style="color:#9ca3af;font-size:12px;">No students selected yet.</div>';
-}
+function otRebuildCustomTimerList() { /* no-op — custom timer is now a single override field */ }
 
-// Sync selected questions into Step 6 with full card preview
+// Sync selected questions into Step 6 with full card preview + edit
 function otSyncSelectedPreview() {
   var el = document.getElementById('ot-selected-q-preview');
   if (!el) return;
@@ -2934,30 +2921,144 @@ function otSyncSelectedPreview() {
     return;
   }
   var qs = otAllQuestions.filter(function(q){ return otSelectedIds.has(q.id); });
-  var totalMarks = qs.length; // 1 mark each for MCQ/TF/FIB; theory may vary
+  var totalMarks = qs.length;
   var header = '<div style="font-size:13px;font-weight:700;color:#059669;margin-bottom:12px;">✓ '+otSelectedIds.size+' questions selected · Total marks: '+totalMarks+' (MCQ/T-F/FIB = 1 mark each)</div>';
   if (!qs.length) {
-    // IDs selected but QB not loaded — show compact list
     el.innerHTML = header + '<div style="font-size:12px;color:#6b7280;">'
       + [...otSelectedIds].map(function(id,i){ return '<code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;margin:2px;display:inline-block;">Q'+(i+1)+' · '+escHtml(id)+'</code>'; }).join('')
+      + '<div style="margin-top:8px;font-size:12px;color:#d97706;">⚠ Question details not loaded — switch to Question Bank tab first to load full data, then return here.</div>'
       + '</div>';
     return;
   }
   var cards = qs.map(function(q, i) {
+    var optLetters = ['A','B','C','D','E'];
     var opts = '';
     if (q.options && q.options.length) {
-      opts = q.options.map(function(o){ return '<div style="font-size:12px;color:#6b7280;margin:2px 0 2px 16px;">○ '+escHtml(o)+'</div>'; }).join('');
+      opts = q.options.map(function(o, oi) {
+        var isCorrect = String(q.correctAnswer||'').trim() === String(o).trim()
+          || String(q.correctAnswer||'').trim() === optLetters[oi];
+        return '<div style="font-size:12px;margin:3px 0 3px 14px;display:flex;align-items:flex-start;gap:6px;">'
+          + '<span style="font-weight:700;color:'+(isCorrect?'#059669':'#9ca3af')+';">'+(isCorrect?'✓':'○')+'</span>'
+          + '<span style="color:'+(isCorrect?'#065f46':'#374151')+';font-weight:'+(isCorrect?'700':'400')+';">'
+          + escHtml(optLetters[oi]+'. '+o)+'</span>'
+          + '</div>';
+      }).join('');
     } else if (q.type === 'TrueFalse') {
-      opts = '<div style="font-size:12px;color:#6b7280;margin:2px 0 2px 16px;">○ True &nbsp; ○ False</div>';
+      var ca = String(q.correctAnswer||'').trim().toLowerCase();
+      opts = ['True','False'].map(function(v){
+        var isCor = ca === v.toLowerCase();
+        return '<div style="font-size:12px;margin:3px 0 3px 14px;display:inline-flex;align-items:center;gap:6px;margin-right:16px;">'
+          + '<span style="color:'+(isCor?'#059669':'#9ca3af')+';font-weight:700;">'+(isCor?'✓':'○')+'</span>'
+          + '<span style="color:'+(isCor?'#065f46':'#374151')+';font-weight:'+(isCor?'700':'400')+';">'+v+'</span></div>';
+      }).join('');
+    } else if (q.correctAnswer) {
+      opts = '<div style="font-size:12px;color:#059669;margin:3px 0 3px 14px;">Answer: <b>'+escHtml(q.correctAnswer)+'</b></div>';
     }
-    return '<div class="ct-q-card">'
-      + '<button type="button" class="ct-q-remove" onclick="otRemoveSelectedQ(\''+escHtml(q.id)+'\')">× Remove</button>'
-      + '<div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">Q'+(i+1)+' · '+escHtml(q.id)+' · '+escHtml(q.topic||'')+'</div>'
-      + '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">'+escHtml(q.question)+'</div>'
+
+    var qid = escHtml(q.id);
+    return '<div class="ct-q-card" id="ctqcard-'+qid+'">'
+      + '<div style="position:absolute;top:10px;right:10px;display:flex;gap:6px;">'
+      + '<button type="button" style="background:none;border:none;color:#6b7280;cursor:pointer;font-size:12px;font-weight:600;padding:2px 8px;border-radius:6px;border:1px solid #e5e7eb;" onclick="otEditQuestion(\''+qid+'\')">✏ Edit</button>'
+      + '<button type="button" class="ct-q-remove" onclick="otRemoveSelectedQ(\''+qid+'\')">× Remove</button>'
+      + '</div>'
+      + '<div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">Q'+(i+1)+' · '+escHtml(q.id)+' · <span style="background:#f3f4f6;padding:1px 6px;border-radius:4px;">'+escHtml(q.type||'MCQ')+'</span> · '+escHtml(q.topic||'')+'</div>'
+      + '<div style="font-size:13px;font-weight:600;margin-bottom:8px;padding-right:120px;">'+escHtml(q.question)+'</div>'
       + opts
       + '</div>';
   }).join('');
   el.innerHTML = header + cards;
+}
+
+// Edit question inline
+var otEditTarget = null;
+function otEditQuestion(qid) {
+  var q = otAllQuestions.find(function(x){ return x.id === qid; });
+  if (!q) return;
+  otEditTarget = q;
+  var card = document.getElementById('ctqcard-'+qid);
+  if (!card) return;
+  // Build edit form
+  var optFields = '';
+  if (q.type !== 'TrueFalse' && q.options && q.options.length) {
+    var letters = ['A','B','C','D','E'];
+    optFields = '<div style="margin-top:10px;">'
+      + '<label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">OPTIONS</label>'
+      + q.options.map(function(o, oi) {
+          return '<div style="display:flex;gap:6px;margin-bottom:4px;align-items:center;">'
+            + '<span style="width:18px;font-size:12px;color:#6b7280;font-weight:700;">'+letters[oi]+'.</span>'
+            + '<input type="text" id="ctedit-opt-'+oi+'" value="'+escHtml(o)+'" style="flex:1;padding:5px 8px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:12px;">'
+            + '</div>';
+        }).join('')
+      + '</div>';
+    optFields += '<div style="margin-top:8px;">'
+      + '<label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">CORRECT ANSWER</label>'
+      + '<select id="ctedit-correct" style="padding:6px 10px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:12px;">'
+      + q.options.map(function(o, oi){
+          var sel = (String(q.correctAnswer||'').trim()===String(o).trim()||String(q.correctAnswer||'').trim()===letters[oi]) ? ' selected' : '';
+          return '<option value="'+escHtml(letters[oi])+'"'+sel+'>'+letters[oi]+'. '+escHtml(o)+'</option>';
+        }).join('')
+      + '</select></div>';
+  } else if (q.type === 'TrueFalse') {
+    var tfCa = String(q.correctAnswer||'').toLowerCase();
+    optFields = '<div style="margin-top:8px;">'
+      + '<label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">CORRECT ANSWER</label>'
+      + '<select id="ctedit-correct" style="padding:6px 10px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:12px;">'
+      + '<option value="True"'+(tfCa==='true'?' selected':'')+'>True</option>'
+      + '<option value="False"'+(tfCa==='false'?' selected':'')+'>False</option>'
+      + '</select></div>';
+  } else {
+    optFields = '<div style="margin-top:8px;">'
+      + '<label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">CORRECT ANSWER</label>'
+      + '<input type="text" id="ctedit-correct" value="'+escHtml(q.correctAnswer||'')+'" style="width:100%;padding:5px 8px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:12px;">'
+      + '</div>';
+  }
+
+  var form = '<div style="background:#f9fafb;border:1.5px solid #3b82f6;border-radius:10px;padding:14px;margin-top:8px;" id="ctedit-form-'+escHtml(qid)+'">'
+    + '<div style="font-size:11px;font-weight:700;color:#1d4ed8;margin-bottom:8px;">✏ EDITING Q · '+escHtml(qid)+'</div>'
+    + '<label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">QUESTION TEXT</label>'
+    + '<textarea id="ctedit-q" rows="3" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:13px;resize:vertical;">'+escHtml(q.question)+'</textarea>'
+    + optFields
+    + '<div style="display:flex;gap:8px;margin-top:10px;">'
+    + '<button type="button" onclick="otSaveEditedQuestion(\''+escHtml(qid)+'\')" style="background:#1d4ed8;color:#fff;border:none;padding:7px 18px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">💾 Save</button>'
+    + '<button type="button" onclick="otCancelEdit(\''+escHtml(qid)+'\')" style="background:none;border:1px solid #e5e7eb;padding:7px 14px;border-radius:7px;font-size:12px;cursor:pointer;">Cancel</button>'
+    + '</div></div>';
+
+  // Insert form below card content (remove previous form if any)
+  var prev = document.getElementById('ctedit-form-'+qid);
+  if (prev) { prev.remove(); otSyncSelectedPreview(); return; }
+  card.insertAdjacentHTML('beforeend', form);
+}
+
+function otSaveEditedQuestion(qid) {
+  var q = otAllQuestions.find(function(x){ return x.id === qid; });
+  if (!q) return;
+  var qText = (document.getElementById('ctedit-q')||{}).value || '';
+  if (qText.trim()) q.question = qText.trim();
+  // Update options
+  if (q.options && q.options.length) {
+    q.options = q.options.map(function(o, oi){
+      var inp = document.getElementById('ctedit-opt-'+oi);
+      return inp && inp.value.trim() ? inp.value.trim() : o;
+    });
+  }
+  // Update correct answer
+  var ca = document.getElementById('ctedit-correct');
+  if (ca) {
+    var newCa = ca.value;
+    // For MCQ, store the option text for the selected letter
+    if (q.type !== 'TrueFalse' && q.options) {
+      var letters = ['A','B','C','D','E'];
+      var idx = letters.indexOf(newCa);
+      if (idx !== -1 && q.options[idx]) newCa = q.options[idx];
+    }
+    q.correctAnswer = newCa;
+  }
+  otSyncSelectedPreview();
+}
+
+function otCancelEdit(qid) {
+  var form = document.getElementById('ctedit-form-'+qid);
+  if (form) form.remove();
 }
 
 function otRemoveSelectedQ(qid) {
@@ -2987,15 +3088,10 @@ function otCreateTest() {
   var activateAt = '';
   if (activateMode === 'scheduled') { activateAt = (document.getElementById('ot-c-activate-val')||{}).value || ''; }
 
-  // Collect custom timers
-  var customTimers = {};
+  // Collect custom timer override
   var timerOn = (document.getElementById('ot-c-custom-timer-on')||{}).checked;
-  if (timerOn) {
-    otPickerStudents.filter(function(s){ return otPickerSelected.has(s.studentId); }).forEach(function(s) {
-      var inp = document.getElementById('cttimer-'+s.studentId);
-      if (inp && inp.value) customTimers[s.studentId] = parseInt(inp.value);
-    });
-  }
+  var customTimerVal = timerOn ? ((document.getElementById('ot-c-custom-timer-val')||{}).value || '') : '';
+  var customTimers = {};
 
   // Collect selected student IDs (if targeted)
   var targeting = (document.querySelector('input[name="ct-targeting"]:checked')||{}).value || 'all';
@@ -3021,7 +3117,8 @@ function otCreateTest() {
     expiryMode: expiryMode,
     expiryAt: expiryAt,
     targetStudents: targetStudents,
-    customTimers: Object.keys(customTimers).length ? JSON.stringify(customTimers) : ''
+    customTimers: Object.keys(customTimers).length ? JSON.stringify(customTimers) : '',
+    customDuration: customTimerVal
   };
 
   var st = document.getElementById('ot-create-status');

@@ -2595,10 +2595,22 @@ function otSubTab(panel) {
 }
 
 // ── Question Bank ────────────────────────────────────────────
+function otNormalizeQuestion(q) {
+  // GAS returns opt1/opt2/opt3/opt4 as separate fields; convert to options[] array
+  if (!q.options || !q.options.length) {
+    var opts = [q.opt1, q.opt2, q.opt3, q.opt4].filter(function(o){ return o && String(o).trim(); });
+    if (opts.length) q.options = opts;
+  }
+  // GAS returns correctOption (e.g. "A" or "1"), map to correctAnswer
+  if (!q.correctAnswer && q.correctOption) q.correctAnswer = q.correctOption;
+  return q;
+}
+
 function otLoadQB() {
-  gasGet({action:'getQuestionBank', instructor:instructorName||'admin'}, function(err, d) {
+  gasGet({action:'getQuestionBank', instructor:instructorName||'admin', includeCorrect:'true'}, function(err, d) {
     if (err || !d || d.status !== 'ok') return;
-    otAllQuestions = d.questions || [];
+    var allQs = (d.questions || []).concat(d.customQuestions || []);
+    otAllQuestions = allQs.map(otNormalizeQuestion);
     otBuildTopicMap(d.topicMap || {});
     otRenderQB(otAllQuestions);
   });
@@ -2629,9 +2641,10 @@ function otFilterQB() {
   var course = (document.getElementById('ot-qb-course')||{}).value || '';
   var topic  = (document.getElementById('ot-qb-topic')||{}).value  || '';
   // Rebuild topics for selected course
-  gasGet({action:'getQuestionBank', instructor:instructorName||'admin', course:course, topic:topic}, function(err, d) {
+  gasGet({action:'getQuestionBank', instructor:instructorName||'admin', course:course, topic:topic, includeCorrect:'true'}, function(err, d) {
     if (err || !d || d.status !== 'ok') return;
-    otAllQuestions = d.questions || [];
+    var allQs = (d.questions || []).concat(d.customQuestions || []);
+    otAllQuestions = allQs.map(otNormalizeQuestion);
     if (course) otBuildTopicMap({[course]: (d.topicMap||{})[course] || []});
     otRenderQB(otAllQuestions);
   });
@@ -2713,18 +2726,6 @@ function otUpdateSelCount() {
       addBtn.textContent = '→ Use ' + otSelectedIds.size + ' in Test';
     } else addBtn.style.display = 'none';
   }
-}
-
-function otSyncSelectedPreview() {
-  var el = document.getElementById('ot-selected-q-preview');
-  if (!el) return;
-  if (!otSelectedIds.size) {
-    el.innerHTML = '<span style="color:#9ca3af;">No questions selected yet. Go to Question Bank tab to select.</span>';
-    return;
-  }
-  el.innerHTML = '<span style="color:#059669;font-weight:600;">✓ ' + otSelectedIds.size + ' questions selected</span> — '
-    + [...otSelectedIds].slice(0,5).map(function(id){ return '<code>'+escHtml(id)+'</code>'; }).join(', ')
-    + (otSelectedIds.size > 5 ? ' …and ' + (otSelectedIds.size-5) + ' more' : '');
 }
 
 // ── Custom Question ──────────────────────────────────────────

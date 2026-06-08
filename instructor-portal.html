@@ -272,6 +272,7 @@
     <button class="tab" id="t-academic-tab" style="display:none" onclick="iTab('t-academic')">🎓 Academic Overview</button>
     <button class="tab" id="t-revenue-tab" style="display:none" onclick="iTab('t-revenue')">📈 Revenue & Team</button>
     <button class="tab" onclick="iTab('t-onlinetests'); otInit();">🧪 Online Tests</button>
+    <button class="tab" id="t-trayhub-tab" onclick="iTab('t-trayhub'); trayHubInit();">🔮 Tray Hub<span id="tray-notif-badge" style="display:none;background:#dc2626;color:#fff;font-size:9px;padding:1px 5px;border-radius:10px;margin-left:5px;font-weight:700;"></span></button>
   </div>
 
   <div id="instructor-summary" class="dashboard-summary" style="display:none"></div>
@@ -1090,6 +1091,262 @@
 
   </div><!-- /t-onlinetests -->
 
+  <!-- ══════════════════════════════════════════════════════════════ -->
+  <!-- TAB: TRAY HUB                                                  -->
+  <!-- ══════════════════════════════════════════════════════════════ -->
+  <div id="t-trayhub" class="tab-content">
+  <style>
+    /* ── Tray Hub Styles ── */
+    .th-subtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;}
+    .th-subtab{padding:6px 14px;border-radius:20px;font-size:11px;font-weight:700;border:1.5px solid #e5e7eb;background:#fff;color:#6b7280;cursor:pointer;transition:all .15s;}
+    .th-subtab.active{background:#0D1B2E;color:#C9A84C;border-color:#0D1B2E;}
+    .th-subtab .th-badge{background:#dc2626;color:#fff;font-size:9px;padding:1px 5px;border-radius:10px;margin-left:4px;}
+    .th-subview{display:none;} .th-subview.active{display:block;}
+
+    /* Matrix */
+    .tray-matrix{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;border:1.5px solid #e5e7eb;margin-bottom:16px;}
+    .tray-matrix th{padding:9px 12px;text-align:center;font-size:10px;font-weight:800;background:#0D1B2E;color:#C9A84C;}
+    .tray-matrix th.thl{text-align:left;color:#9ca3af;}
+    .tray-matrix td{padding:8px 10px;border-top:1px solid #f3f4f6;vertical-align:middle;}
+    .tray-matrix td.cname{font-weight:800;font-size:12px;white-space:nowrap;}
+    .tray-avail-cell{text-align:center;cursor:pointer;}
+    .tray-avail-cell .tac-num{font-size:16px;font-weight:800;}
+    .tray-avail-cell .tac-bar{width:48px;height:4px;background:#f3f4f6;border-radius:2px;margin:3px auto;overflow:hidden;}
+    .tray-avail-cell .tac-fill{height:100%;border-radius:2px;}
+    .tray-avail-cell .tac-hint{font-size:9px;font-weight:700;color:#C9A84C;margin-top:2px;}
+    .tac-plenty .tac-num{color:#059669;} .tac-plenty .tac-fill{background:#059669;}
+    .tac-low    .tac-num{color:#f59e0b;} .tac-low    .tac-fill{background:#f59e0b;}
+    .tac-none   .tac-num{color:#dc2626;} .tac-none   .tac-fill{background:#dc2626;}
+
+    /* Swimlane */
+    .tray-swimlane{background:#fff;border:1.5px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:10px;}
+    .tray-swimlane.expanded .swim-body{display:flex;}
+    .swim-head{display:flex;align-items:center;gap:10px;padding:9px 14px;background:#f9fafb;border-bottom:1px solid #e5e7eb;cursor:pointer;}
+    .swim-cname{font-weight:800;font-size:13px;flex:1;}
+    .swim-instructor{font-size:11px;color:#6b7280;}
+    .swim-body{display:none;gap:0;}
+    .swim-section{flex:1;padding:10px 14px;border-right:1px solid #f3f4f6;}
+    .swim-section:last-child{border-right:none;}
+    .swim-type-label{font-size:10px;font-weight:700;color:#6b7280;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;}
+    .tray-dots{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:5px;}
+    .tdot{width:22px;height:22px;border-radius:5px;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .1s;}
+    .tdot:hover{transform:scale(1.15);}
+    .tdot.available{background:#d1fae5;color:#059669;border:1.5px solid #6ee7b7;}
+    .tdot.engaged  {background:#fee2e2;color:#dc2626;border:1.5px solid #fca5a5;}
+    .tdot.requested{background:#fef3c7;color:#b45309;border:1.5px solid #fcd34d;}
+    .tdot.returning{background:#dbeafe;color:#1e40af;border:1.5px solid #93c5fd;}
+    .tdot.overdue  {background:#ede9fe;color:#7c3aed;border:1.5px solid #c4b5fd;}
+    .swim-summary{font-size:11px;font-weight:700;}
+    .swim-summary .sf{color:#059669;} .swim-summary .se{color:#dc2626;} .swim-summary .sr{color:#b45309;}
+
+    /* Week Plan */
+    .week-plan-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-bottom:16px;}
+    .week-card{background:#fff;border:1.5px solid #e5e7eb;border-radius:12px;overflow:hidden;}
+    .week-card.current-week{border-color:#C9A84C;}
+    .wc-head{padding:8px 12px;background:#f9fafb;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;}
+    .wc-head.current-week{background:#fffbeb;}
+    .wc-label{font-size:11px;font-weight:800;}
+    .wc-dates{font-size:10px;color:#9ca3af;}
+    .wc-body{padding:10px 12px;}
+    .wc-need-row{display:flex;align-items:center;gap:6px;margin-bottom:8px;}
+    .wc-need-label{font-size:10px;color:#6b7280;width:44px;flex-shrink:0;}
+    .wc-dots{display:flex;gap:3px;}
+    .wc-dot{width:20px;height:20px;border-radius:5px;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+    .wc-dot.have{background:#d1fae5;color:#065f46;border:1.5px solid #6ee7b7;}
+    .wc-dot.booked{background:#dbeafe;color:#1e40af;border:1.5px solid #93c5fd;}
+    .wc-dot.empty{background:#f3f4f6;color:#d1d5db;border:1.5px dashed #d1d5db;}
+    .wc-tray-list{margin:6px 0;}
+    .wc-tray-item{font-size:10px;color:#374151;padding:3px 0;border-bottom:1px solid #f9fafb;display:flex;justify-content:space-between;}
+    .wc-tray-item:last-child{border-bottom:none;}
+    .wc-status{font-size:10px;font-weight:700;margin-top:6px;}
+    .wcs-ok{color:#059669;} .wcs-warn{color:#f59e0b;} .wcs-empty{color:#dc2626;}
+    .wc-book-btn{width:100%;margin-top:8px;padding:5px 0;background:#0D1B2E;color:#C9A84C;border:none;border-radius:7px;font-size:10px;font-weight:700;cursor:pointer;}
+
+    /* Inventory */
+    .inv-row{display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid #e5e7eb;border-radius:10px;padding:10px 14px;margin-bottom:8px;}
+    .inv-id{font-weight:800;font-size:12px;min-width:110px;}
+    .inv-info{flex:1;font-size:11px;color:#6b7280;}
+    .inv-stones{font-size:11px;font-weight:700;min-width:60px;}
+    .inv-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;min-width:70px;text-align:center;}
+    .ib-home{background:#d1fae5;color:#065f46;} .ib-away{background:#fee2e2;color:#991b1b;} .ib-req{background:#fef3c7;color:#92400e;}
+    .inv-action{font-size:11px;color:#C9A84C;font-weight:700;cursor:pointer;white-space:nowrap;}
+
+    /* Incoming requests */
+    .incoming-card{background:#fff;border:1.5px solid #e5e7eb;border-left:4px solid #f59e0b;border-radius:0 12px 12px 0;padding:14px 16px;margin-bottom:10px;}
+    .incoming-card h4{font-size:13px;font-weight:800;margin-bottom:4px;}
+    .incoming-card .ic-meta{font-size:11px;color:#6b7280;margin-bottom:10px;line-height:1.7;}
+    .incoming-btns{display:flex;gap:8px;flex-wrap:wrap;}
+    .ic-accept{background:#0D1B2E;color:#C9A84C;border:none;padding:6px 16px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;}
+    .ic-reject{background:#fee2e2;color:#dc2626;border:none;padding:6px 16px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;}
+
+    /* History */
+    .hist-row{background:#fff;border:1.5px solid #e5e7eb;border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:11px;}
+    .hist-row .hr-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}
+    .hist-row .hr-id{font-weight:800;font-size:12px;}
+    .hist-status{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;}
+    .hs-active{background:#d1fae5;color:#065f46;} .hs-returned{background:#f3f4f6;color:#374151;}
+    .hs-rejected{background:#fee2e2;color:#991b1b;} .hs-overdue{background:#ede9fe;color:#7c3aed;}
+    .hs-pending{background:#fef3c7;color:#92400e;} .hs-returning{background:#dbeafe;color:#1e40af;}
+
+    /* Register tray form */
+    .tray-form{background:#fff;border:1.5px solid #e5e7eb;border-radius:12px;padding:18px;margin-bottom:16px;}
+    .tray-form h4{font-size:14px;font-weight:800;margin-bottom:14px;}
+    .tf-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+    .tf-field{display:flex;flex-direction:column;gap:4px;}
+    .tf-field label{font-size:11px;font-weight:700;color:#374151;}
+    .tf-field input,.tf-field select{padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12px;outline:none;}
+    .tf-field input:focus,.tf-field select:focus{border-color:#C9A84C;}
+    .tf-submit{background:#0D1B2E;color:#C9A84C;border:none;padding:8px 20px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;}
+    .tf-submit:hover{opacity:.85;}
+
+    /* Tray request modal */
+    #tray-request-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9000;align-items:center;justify-content:center;}
+    #tray-request-modal.show{display:flex;}
+    .trm-box{background:#fff;border-radius:16px;padding:24px;width:380px;max-width:95vw;}
+    .trm-box h3{font-size:16px;font-weight:800;margin-bottom:4px;}
+    .trm-box .trm-sub{font-size:12px;color:#6b7280;margin-bottom:16px;}
+    .trm-box .tf-field{margin-bottom:12px;}
+    .trm-btns{display:flex;gap:10px;margin-top:16px;}
+    .trm-confirm{flex:1;background:#0D1B2E;color:#C9A84C;border:none;padding:9px;border-radius:8px;font-weight:700;cursor:pointer;}
+    .trm-cancel{flex:1;background:#f3f4f6;color:#374151;border:none;padding:9px;border-radius:8px;font-weight:700;cursor:pointer;}
+
+    /* Need indicator strip */
+    .need-strip{display:flex;align-items:center;gap:10px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:10px 14px;margin-bottom:16px;flex-wrap:wrap;}
+    .need-strip .ns-label{font-size:12px;font-weight:700;color:#92400e;}
+    .need-strip .ns-input{width:56px;padding:4px 8px;border:1.5px solid #fcd34d;border-radius:7px;font-size:13px;font-weight:800;text-align:center;color:#0D1B2E;background:#fff;}
+    .need-strip .ns-unit{font-size:11px;color:#92400e;}
+    .need-strip .ns-save{background:#0D1B2E;color:#C9A84C;border:none;padding:5px 12px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;}
+  </style>
+
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+    <div>
+      <h2 style="font-size:18px;font-weight:800;margin-bottom:2px;">🔮 Tray Hub</h2>
+      <div style="font-size:12px;color:#6b7280;">Gemstone training tray inventory & rotation management</div>
+    </div>
+    <div id="tray-hub-loading" style="font-size:12px;color:#9ca3af;padding-top:6px;">Loading…</div>
+  </div>
+
+  <!-- Sub-tab bar -->
+  <div class="th-subtabs">
+    <button class="th-subtab active" onclick="traySubTab('th-board')">🗺️ Tray Board</button>
+    <button class="th-subtab" onclick="traySubTab('th-weekplan')">📅 My Week Plan</button>
+    <button class="th-subtab" onclick="traySubTab('th-inventory')">🏠 My Inventory</button>
+    <button class="th-subtab" id="th-incoming-btn" onclick="traySubTab('th-incoming')">📥 Incoming</button>
+    <button class="th-subtab" onclick="traySubTab('th-history')">📋 History</button>
+  </div>
+
+  <!-- ── TRAY BOARD ── -->
+  <div id="th-board" class="th-subview active">
+    <div style="font-size:12px;color:#6b7280;margin-bottom:12px;">Click any <b>Free</b> cell to see individual trays and request one.</div>
+    <div id="tray-board-wrap"></div>
+  </div>
+
+  <!-- ── MY WEEK PLAN ── -->
+  <div id="th-weekplan" class="th-subview">
+    <div class="need-strip">
+      <span class="ns-label">My weekly tray target:</span>
+      <input class="ns-input" id="tray-need-input" type="number" min="1" max="20" value="3">
+      <span class="ns-unit">trays / week</span>
+      <button class="ns-save" onclick="traySetNeed()">Save</button>
+      <span style="font-size:11px;color:#6b7280;flex:1;text-align:right;" id="tray-need-status"></span>
+    </div>
+    <div id="tray-weekplan-wrap" class="week-plan-grid"></div>
+  </div>
+
+  <!-- ── MY INVENTORY ── -->
+  <div id="th-inventory" class="th-subview">
+    <div class="tray-form">
+      <h4>+ Register New Tray</h4>
+      <div class="tf-row">
+        <div class="tf-field">
+          <label>Stone Type</label>
+          <select id="tf-type">
+            <option value="Diamond">💎 Diamond</option>
+            <option value="ColoredStone">🟣 Colored Stone</option>
+          </select>
+        </div>
+        <div class="tf-field">
+          <label>Number of Stones (min 25)</label>
+          <input id="tf-stones" type="number" min="25" value="25" placeholder="e.g. 28">
+        </div>
+      </div>
+      <div class="tf-row">
+        <div class="tf-field">
+          <label>Notes (optional)</label>
+          <input id="tf-notes" type="text" placeholder="e.g. Includes D-IF clarity set">
+        </div>
+      </div>
+      <button class="tf-submit" onclick="trayRegisterNew()">Register Tray →</button>
+      <span id="tf-msg" style="font-size:11px;margin-left:10px;"></span>
+    </div>
+    <div id="tray-inv-wrap"></div>
+  </div>
+
+  <!-- ── INCOMING REQUESTS ── -->
+  <div id="th-incoming" class="th-subview">
+    <div id="tray-incoming-wrap"></div>
+  </div>
+
+  <!-- ── HISTORY ── -->
+  <div id="th-history" class="th-subview">
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+      <select id="hist-filter" onchange="trayLoadHistory()" style="padding:6px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12px;">
+        <option value="mine">My Centre Activity</option>
+        <option value="all">All Centres</option>
+      </select>
+      <button onclick="trayLoadHistory()" style="padding:6px 14px;background:#0D1B2E;color:#C9A84C;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">Refresh</button>
+    </div>
+    <div id="tray-history-wrap"></div>
+  </div>
+
+  <!-- ── Request Modal ── -->
+  <div id="tray-request-modal">
+    <div class="trm-box">
+      <h3>📨 Request Tray</h3>
+      <div class="trm-sub" id="trm-tray-info">—</div>
+      <div class="tf-field">
+        <label>Starting Week</label>
+        <input type="date" id="trm-start-date" style="padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12px;outline:none;width:100%;">
+      </div>
+      <div class="tf-field" style="margin-top:10px;">
+        <label>Number of Weeks Needed</label>
+        <select id="trm-weeks" style="padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12px;width:100%;">
+          <option value="1">1 week</option>
+          <option value="2">2 weeks</option>
+          <option value="3">3 weeks</option>
+          <option value="4">4 weeks</option>
+          <option value="6">6 weeks</option>
+          <option value="8">8 weeks</option>
+        </select>
+      </div>
+      <div id="trm-deadline-preview" style="font-size:11px;color:#059669;font-weight:700;margin-top:6px;min-height:16px;"></div>
+      <div class="trm-btns">
+        <button class="trm-confirm" onclick="traySubmitRequest()">Send Request</button>
+        <button class="trm-cancel" onclick="trayCloseModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Accept modal for incoming ── -->
+  <div id="tray-accept-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9000;align-items:center;justify-content:center;">
+    <div class="trm-box">
+      <h3>✅ Accept Tray Request</h3>
+      <div class="trm-sub" id="tam-info">—</div>
+      <p style="font-size:12px;color:#374151;margin-bottom:14px;">The deadline will be automatically set based on the requester's chosen weeks. You can add a note if needed.</p>
+      <div class="tf-field">
+        <label>Note to requester (optional)</label>
+        <input type="text" id="tam-note" style="padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12px;outline:none;width:100%;" placeholder="e.g. Please return in original case">
+      </div>
+      <div id="tam-booking-id" style="display:none;"></div>
+      <div class="trm-btns" style="margin-top:14px;">
+        <button class="trm-confirm" onclick="trayAcceptConfirm()">Confirm Accept</button>
+        <button class="trm-cancel" onclick="document.getElementById('tray-accept-modal').style.display='none'">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  </div><!-- /t-trayhub -->
+
 </div><!-- /wrap -->
 </div><!-- /s-main -->
 
@@ -1168,6 +1425,7 @@ if (typeof amtL === 'undefined') {
 }
 
 let instructorName = '';
+let instructorCentre = '';
 let instructorAuthRole = 'Instructor';
 let instructorMustChangePassword = false;
 let isDualRole     = false;
@@ -1299,10 +1557,13 @@ function instructorSignOut() {
   if (!confirm('Sign out of the Instructor Portal?')) return;
   // Clear session state
   instructorName = '';
+  instructorCentre = '';
   instructorAuthRole = 'Instructor';
   instructorMustChangePassword = false;
   isDualRole = false;
   isAcademicHead = false;
+  trayHubLoaded = false; trayBoardData = null;
+  if (trayNotifPollTimer) { clearInterval(trayNotifPollTimer); trayNotifPollTimer = null; }
   // Reset login form
   var nameEl = document.getElementById('lg-name');
   var pinEl  = document.getElementById('lg-pin');
@@ -1366,6 +1627,10 @@ function loadInstructorBatches() {
     }
     const batches = d.batches;
     instructorBatchesCache = batches;
+    // Set instructor's home centre from first batch
+    if (batches.length && !instructorCentre) {
+      instructorCentre = batches[0].centre || '';
+    }
     renderInstructorSummary();
     ['at-batch','mk-batch','ex-batch'].forEach(id => {
       const sel = document.getElementById(id);
@@ -3545,6 +3810,489 @@ if ('serviceWorker' in navigator) {
     }
   });
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TRAY HUB — Instructor Portal JS
+// ═══════════════════════════════════════════════════════════════════════════
+var trayHubLoaded      = false;
+var trayBoardData      = null;
+var trayWeekData       = null;
+var trayNotifPollTimer = null;
+var trayPendingRequest = null; // {trayId, homeCentre}
+
+function trayHubInit() {
+  if (trayHubLoaded) return;
+  trayHubLoaded = true;
+  trayLoadBoard();
+  trayLoadWeekPlan();
+  trayLoadInventory();
+  trayLoadIncoming();
+  trayNotifPoll();
+}
+
+function traySubTab(id) {
+  document.querySelectorAll('.th-subview').forEach(function(el){ el.classList.remove('active'); });
+  document.querySelectorAll('.th-subtab').forEach(function(el){ el.classList.remove('active'); });
+  var el = document.getElementById(id);
+  if (el) el.classList.add('active');
+  // Activate matching button
+  document.querySelectorAll('.th-subtab').forEach(function(btn){
+    if (btn.getAttribute('onclick') && btn.getAttribute('onclick').indexOf("'"+id+"'")!==-1) btn.classList.add('active');
+  });
+  if (id === 'th-history') trayLoadHistory();
+}
+
+function traySetLoading(msg) {
+  var el = document.getElementById('tray-hub-loading');
+  if (el) el.textContent = msg || '';
+}
+
+// ── TRAY BOARD ──────────────────────────────────────────────────────────────
+function trayLoadBoard() {
+  traySetLoading('Loading board…');
+  gasGet({action:'trayGetBoard'}, function(err, d) {
+    traySetLoading('');
+    if (err || !d || d.status !== 'ok') {
+      document.getElementById('tray-board-wrap').innerHTML = '<div style="color:#dc2626;font-size:12px;">Failed to load tray board.</div>';
+      return;
+    }
+    trayBoardData = d;
+    trayRenderBoard(d.centres || []);
+  });
+}
+
+function trayRenderBoard(centres) {
+  var wrap = document.getElementById('tray-board-wrap');
+  if (!wrap) return;
+  if (!centres.length) { wrap.innerHTML = '<div style="color:#9ca3af;font-size:12px;">No trays registered yet.</div>'; return; }
+
+  var html = '<table class="tray-matrix">';
+  html += '<thead><tr>'
+    + '<th class="thl" style="width:120px;">Centre</th>'
+    + '<th colspan="3" style="border-left:2px solid #1e3a5f;">💎 Diamond</th>'
+    + '<th colspan="3" style="border-left:2px solid #1e3a5f;">🟣 Colored Stone</th>'
+    + '</tr><tr style="background:#0f2540;">'
+    + '<th class="thl" style="font-size:9px;padding:5px 12px;color:#6b7280;">—</th>'
+    + '<th style="font-size:9px;color:#9ca3af;padding:5px;">Total</th>'
+    + '<th style="font-size:9px;color:#9ca3af;padding:5px;">Engaged</th>'
+    + '<th style="font-size:9px;color:#9ca3af;padding:5px;border-left:1px solid #1e3a5f;">Free</th>'
+    + '<th style="font-size:9px;color:#9ca3af;padding:5px;border-left:2px solid #1e3a5f;">Total</th>'
+    + '<th style="font-size:9px;color:#9ca3af;padding:5px;">Engaged</th>'
+    + '<th style="font-size:9px;color:#9ca3af;padding:5px;border-left:1px solid #1e3a5f;">Free</th>'
+    + '</tr></thead><tbody>';
+
+  centres.forEach(function(c) {
+    html += '<tr>'
+      + '<td class="cname">' + trayEsc(c.centre) + (c.instructor ? '<br><span style="font-size:10px;font-weight:400;color:#9ca3af;">'+trayEsc(c.instructor)+'</span>' : '') + '</td>'
+      + '<td style="text-align:center;font-size:12px;font-weight:700;color:#374151;">' + c.diamond.total + '</td>'
+      + '<td style="text-align:center;font-size:12px;color:#374151;">' + c.diamond.engaged + '</td>'
+      + '<td>' + trayFreeCell(c.diamond, c.centre, 'Diamond') + '</td>'
+      + '<td style="text-align:center;font-size:12px;font-weight:700;color:#374151;border-left:2px solid #f3f4f6;">' + c.coloredStone.total + '</td>'
+      + '<td style="text-align:center;font-size:12px;color:#374151;">' + c.coloredStone.engaged + '</td>'
+      + '<td>' + trayFreeCell(c.coloredStone, c.centre, 'ColoredStone') + '</td>'
+      + '</tr>';
+    // Swimlane row (hidden initially)
+    html += '<tr id="swim-row-'+trayEsc(c.centre)+'-Diamond" style="display:none;"><td colspan="7" style="padding:0;">'
+      + traySwimlaneHTML(c, 'Diamond') + '</td></tr>';
+    html += '<tr id="swim-row-'+trayEsc(c.centre)+'-ColoredStone" style="display:none;"><td colspan="7" style="padding:0;">'
+      + traySwimlaneHTML(c, 'ColoredStone') + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  html += '<div style="font-size:10px;color:#9ca3af;margin-top:6px;">🟢 Plenty free &nbsp; 🟡 Only 1–2 free &nbsp; 🔴 None available &nbsp; · Click Free cell to expand individual trays</div>';
+  wrap.innerHTML = html;
+}
+
+function trayFreeCell(typeData, centre, type) {
+  var free = typeData.free;
+  var total = typeData.total;
+  if (!total) return '<div style="text-align:center;font-size:11px;color:#d1d5db;">—</div>';
+  var cls = free === 0 ? 'tac-none' : (free <= 2 ? 'tac-low' : 'tac-plenty');
+  var pct = total ? Math.round(free/total*100) : 0;
+  var hint = free === 0 ? 'all engaged' : (free + ' free — click');
+  var safeId = centre.replace(/[^a-zA-Z0-9]/g,'_');
+  return '<div class="tray-avail-cell '+cls+'" onclick="trayToggleSwim(\''+centre+'\',\''+type+'\')">'
+    + '<div class="tac-num">'+free+'</div>'
+    + '<div class="tac-bar"><div class="tac-fill" style="width:'+pct+'%"></div></div>'
+    + '<div class="tac-hint">'+hint+'</div>'
+    + '</div>';
+}
+
+function traySwimlaneHTML(c, typeKey) {
+  var trays = typeKey === 'Diamond' ? (c.diamond||{}).trays : (c.coloredStone||{}).trays;
+  trays = trays || [];
+  var typeLabel = typeKey === 'Diamond' ? '💎 Diamond' : '🟣 Colored Stone';
+  var dots = trays.map(function(t) {
+    var cls = t.status || 'available';
+    var letter = cls === 'available' ? 'F' : (cls === 'engaged' ? 'E' : (cls === 'requested' ? 'R' : (cls === 'returning' ? '↩' : '!')));
+    var title  = t.trayId + ' · ' + (t.stoneCount||'?') + ' stones · ' + cls
+      + (t.requestingCentre ? ' → ' + t.requestingCentre : '')
+      + (t.daysLeft !== null && t.daysLeft !== undefined ? ' · ' + (t.daysLeft >= 0 ? t.daysLeft+'d left' : Math.abs(t.daysLeft)+'d overdue') : '');
+    var onclick = cls === 'available' ? 'onclick="trayOpenRequest(\''+t.trayId+'\',\''+c.centre+'\')" ' : '';
+    return '<div class="tdot '+cls+'" title="'+trayEsc(title)+'" '+onclick+'>'+letter+'</div>';
+  }).join('');
+  var free = trays.filter(function(t){return t.status==='available';}).length;
+  var eng  = trays.filter(function(t){return ['engaged','overdue','returning'].indexOf(t.status)!==-1;}).length;
+  return '<div style="padding:12px 16px;background:#f9fafb;">'
+    + '<div style="font-size:11px;font-weight:800;margin-bottom:6px;">'+typeLabel+' — Individual Trays</div>'
+    + '<div class="tray-dots">'+dots+'</div>'
+    + '<div class="swim-summary" style="margin-top:4px;"><span class="sf">'+free+' free</span> · <span class="se">'+eng+' engaged</span></div>'
+    + '<div style="font-size:10px;color:#6b7280;margin-top:4px;">Click a green dot (F) to request that tray</div>'
+    + '</div>';
+}
+
+function trayToggleSwim(centre, type) {
+  var rowId = 'swim-row-' + centre + '-' + type;
+  var row = document.getElementById(rowId);
+  if (!row) return;
+  row.style.display = (row.style.display === 'none' || !row.style.display) ? 'table-row' : 'none';
+}
+
+// ── REQUEST MODAL ───────────────────────────────────────────────────────────
+function trayOpenRequest(trayId, homeCentre) {
+  if (homeCentre === (instructorCentre || instructorName)) {
+    showToast('This tray belongs to your centre.'); return;
+  }
+  trayPendingRequest = {trayId: trayId, homeCentre: homeCentre};
+  document.getElementById('trm-tray-info').textContent = trayId + ' from ' + homeCentre;
+  // Default start date to next Monday
+  var d = new Date(); var day = d.getDay();
+  var diff = (day === 0) ? 1 : (8 - day);
+  d.setDate(d.getDate() + diff);
+  document.getElementById('trm-start-date').value = d.toISOString().split('T')[0];
+  trayUpdateDeadlinePreview();
+  var modal = document.getElementById('tray-request-modal');
+  modal.classList.add('show');
+}
+
+function trayCloseModal() {
+  document.getElementById('tray-request-modal').classList.remove('show');
+  trayPendingRequest = null;
+}
+
+function trayUpdateDeadlinePreview() {
+  var startVal = document.getElementById('trm-start-date').value;
+  var weeks    = parseInt(document.getElementById('trm-weeks').value) || 1;
+  if (!startVal) return;
+  var start = new Date(startVal);
+  var deadline = new Date(start); deadline.setDate(start.getDate() + weeks*7 - 1);
+  document.getElementById('trm-deadline-preview').textContent =
+    'Return by: ' + deadline.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  var sd = document.getElementById('trm-start-date');
+  var sw = document.getElementById('trm-weeks');
+  if (sd) sd.addEventListener('change', trayUpdateDeadlinePreview);
+  if (sw) sw.addEventListener('change', trayUpdateDeadlinePreview);
+});
+
+function traySubmitRequest() {
+  if (!trayPendingRequest) return;
+  var startDate = document.getElementById('trm-start-date').value;
+  var weeks     = parseInt(document.getElementById('trm-weeks').value) || 1;
+  if (!startDate) { showToast('Please select a start date.'); return; }
+  gasGet({
+    action: 'trayBook',
+    trayId: trayPendingRequest.trayId,
+    requestingInstructor: instructorName,
+    requestingCentre: instructorCentre || instructorName,
+    weeksBooked: weeks,
+    startDate: startDate
+  }, function(err, d) {
+    trayCloseModal();
+    if (err || !d || d.status !== 'ok') { showToast('Request failed. ' + (d&&d.message?d.message:'')); return; }
+    showToast('Request sent! Tray owner will be notified.');
+    trayHubLoaded = false; trayBoardData = null;
+    trayLoadBoard(); trayLoadWeekPlan(); trayLoadIncoming();
+  });
+}
+
+// ── WEEK PLAN ───────────────────────────────────────────────────────────────
+function trayLoadWeekPlan() {
+  if (!instructorName) return;
+  gasGet({action:'trayGetWeekPlan', instructor:instructorName, centre:instructorCentre||instructorName}, function(err, d) {
+    if (err || !d || d.status !== 'ok') return;
+    trayWeekData = d;
+    var needEl = document.getElementById('tray-need-input');
+    if (needEl) needEl.value = d.weeklyNeed || 3;
+    trayRenderWeekPlan(d);
+  });
+}
+
+function trayRenderWeekPlan(d) {
+  var wrap = document.getElementById('tray-weekplan-wrap');
+  if (!wrap) return;
+  var weeks = d.weeks || [];
+  var need  = d.weeklyNeed || 3;
+  var html  = '';
+  weeks.forEach(function(w, wi) {
+    var isCurrent = wi === 0;
+    var allTrays  = w.trays.concat(w.homeFree || []);
+    var covered   = w.covered;
+    var statusCls = w.coverStatus === 'ok' ? 'wcs-ok' : (w.coverStatus === 'partial' ? 'wcs-warn' : 'wcs-empty');
+    var statusMsg = w.coverStatus === 'ok' ? '✓ Fully covered' : (w.coverStatus === 'partial' ? '⚠ Need '+(need-covered)+' more' : '✗ Not planned');
+
+    var dotHtml = '';
+    for (var i = 0; i < need; i++) {
+      if (i < w.trays.length) dotHtml += '<div class="wc-dot have" title="'+trayEsc((w.trays[i]||{}).trayId||'')+'">D</div>';
+      else if (i < covered)   dotHtml += '<div class="wc-dot booked" title="Home tray">H</div>';
+      else                    dotHtml += '<div class="wc-dot empty">?</div>';
+    }
+
+    var trayListHtml = allTrays.slice(0,5).map(function(t){
+      return '<div class="wc-tray-item"><span style="font-weight:700;">'
+        + (t.type==='Diamond'?'💎':'🟣') + ' ' + trayEsc(t.trayId)
+        + '</span><span style="color:#9ca3af;font-size:9px;">'
+        + (t.deadline && t.deadline!=='home' ? 'ret '+t.deadline : (t.status==='available'?'home':'—'))
+        + '</span></div>';
+    }).join('');
+
+    var bookBtn = w.coverStatus !== 'ok'
+      ? '<button class="wc-book-btn" onclick="traySubTab(\'th-board\')">+ Book from Tray Board</button>'
+      : '';
+
+    html += '<div class="week-card'+(isCurrent?' current-week':'')+'">'
+      + '<div class="wc-head'+(isCurrent?' current-week':'')+'">'
+      + '<span class="wc-label">'+trayEsc(w.label)+'</span>'
+      + '<span class="wc-dates">'+w.startDate.slice(5).replace('-','/')+'–'+w.endDate.slice(5).replace('-','/')+'</span>'
+      + '</div>'
+      + '<div class="wc-body">'
+      + '<div class="wc-need-row"><span class="wc-need-label">Need '+need+'</span><div class="wc-dots">'+dotHtml+'</div></div>'
+      + '<div class="wc-tray-list">'+trayListHtml+'</div>'
+      + '<div class="wc-status '+statusCls+'">'+statusMsg+'</div>'
+      + bookBtn
+      + '</div></div>';
+  });
+  wrap.innerHTML = html || '<div style="color:#9ca3af;font-size:12px;">No data available.</div>';
+}
+
+function traySetNeed() {
+  var val = parseInt(document.getElementById('tray-need-input').value) || 3;
+  gasGet({action:'traySetWeeklyNeed', instructor:instructorName, centre:instructorCentre||instructorName, traysNeeded:val}, function(err, d) {
+    var statusEl = document.getElementById('tray-need-status');
+    if (err || !d || d.status !== 'ok') { if(statusEl) statusEl.textContent = 'Save failed.'; return; }
+    if(statusEl) statusEl.textContent = 'Saved ✓';
+    setTimeout(function(){ if(statusEl) statusEl.textContent = ''; }, 2000);
+    trayLoadWeekPlan();
+  });
+}
+
+// ── MY INVENTORY ────────────────────────────────────────────────────────────
+function trayLoadInventory() {
+  if (!instructorName) return;
+  var centre = instructorCentre || instructorName;
+  gasGet({action:'trayGetMine', centre:centre}, function(err, d) {
+    if (err || !d || d.status !== 'ok') return;
+    var wrap = document.getElementById('tray-inv-wrap');
+    if (!wrap) return;
+    var centreData = d.myCentreData;
+    if (!centreData) { wrap.innerHTML = '<div style="color:#9ca3af;font-size:12px;">No trays registered for your centre yet.</div>'; return; }
+    var allTrays = (centreData.diamond.trays || []).concat(centreData.coloredStone.trays || []);
+    if (!allTrays.length) { wrap.innerHTML = '<div style="color:#9ca3af;font-size:12px;">No trays registered for your centre yet. Add one above.</div>'; return; }
+    var html = allTrays.map(function(t) {
+      var typeIcon  = t.type === 'Diamond' ? '💎' : '🟣';
+      var statusCls = t.status === 'available' ? 'ib-home' : (t.status === 'requested' ? 'ib-req' : 'ib-away');
+      var statusLbl = t.status === 'available' ? 'At Home' : (t.status === 'requested' ? 'Requested' : ('At '+trayEsc(t.requestingCentre||'?')));
+      return '<div class="inv-row">'
+        + '<div class="inv-id">'+typeIcon+' '+trayEsc(t.trayId)+'</div>'
+        + '<div class="inv-info">'+trayEsc(t.type)+(t.deadline&&t.status!=='available'?' · Due: '+t.deadline:'')+'</div>'
+        + '<div class="inv-stones">'+trayEsc(String(t.stoneCount||'?'))+' stones</div>'
+        + '<div class="inv-badge '+statusCls+'">'+statusLbl+'</div>'
+        + (t.status==='returning' ? '<div class="inv-action" onclick="trayConfirmReturn(\''+trayEsc(t.bookingId||'')+'\')">Confirm Return ✓</div>' : '<div></div>')
+        + '</div>';
+    }).join('');
+    wrap.innerHTML = html;
+  });
+}
+
+function trayRegisterNew() {
+  var type   = document.getElementById('tf-type').value;
+  var stones = parseInt(document.getElementById('tf-stones').value);
+  var notes  = document.getElementById('tf-notes').value;
+  var msgEl  = document.getElementById('tf-msg');
+  if (!stones || stones < 25) { if(msgEl) msgEl.style.color='#dc2626', msgEl.textContent='Min 25 stones required.'; return; }
+  gasGet({
+    action:'trayRegister', type:type,
+    centre: instructorCentre||instructorName,
+    instructor: instructorName,
+    stoneCount: stones, notes: notes
+  }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      if(msgEl) msgEl.style.color='#dc2626', msgEl.textContent='Error: '+(d&&d.message?d.message:'Failed');
+      return;
+    }
+    if(msgEl) msgEl.style.color='#059669', msgEl.textContent='Tray '+d.trayId+' registered ✓';
+    document.getElementById('tf-stones').value = 25;
+    document.getElementById('tf-notes').value  = '';
+    trayLoadInventory();
+    trayHubLoaded = false; trayBoardData = null; trayLoadBoard();
+  });
+}
+
+function trayConfirmReturn(bookingId) {
+  if (!bookingId || !confirm('Confirm you have received this tray back? You\'ll be asked for stone count.')) return;
+  var count = prompt('How many stones are in the tray?');
+  if (!count) return;
+  gasGet({action:'trayConfirmReturn', bookingId:bookingId, stoneCount:parseInt(count)||0}, function(err, d) {
+    if (err || !d || d.status !== 'ok') { showToast('Error confirming return.'); return; }
+    showToast('Return confirmed ✓ Thank you!');
+    trayLoadInventory(); trayLoadBoard(); trayLoadIncoming();
+  });
+}
+
+// ── INCOMING REQUESTS ────────────────────────────────────────────────────────
+function trayLoadIncoming() {
+  if (!instructorName) return;
+  var centre = instructorCentre || instructorName;
+  // Get all pending bookings for my trays via board data
+  gasGet({action:'trayGetBoard'}, function(err, d) {
+    if (err || !d || d.status !== 'ok') return;
+    // Find all pending requests for trays belonging to my centre
+    var pending = [];
+    (d.centres || []).forEach(function(c) {
+      if (c.centre !== centre) return;
+      ['diamond','coloredStone'].forEach(function(tk) {
+        (c[tk].trays || []).forEach(function(t) {
+          if (t.status === 'requested') {
+            pending.push({
+              trayId: t.trayId,
+              type: tk,
+              requestingInstructor: t.requestingInstructor,
+              requestingCentre: t.requestingCentre,
+              bookingId: t.bookingId,
+              deadline: t.deadline
+            });
+          }
+        });
+      });
+    });
+    var wrap = document.getElementById('tray-incoming-wrap');
+    if (!wrap) return;
+    // Update badge
+    var badge = document.getElementById('th-incoming-btn');
+    if (badge) {
+      badge.innerHTML = '📥 Incoming' + (pending.length ? ' <span class="th-badge">'+pending.length+'</span>' : '');
+    }
+    if (!pending.length) { wrap.innerHTML = '<div style="color:#9ca3af;font-size:12px;padding:20px 0;">No pending requests for your trays.</div>'; return; }
+    var html = pending.map(function(req) {
+      var typeLabel = req.type === 'diamond' ? '💎 Diamond' : '🟣 Colored Stone';
+      return '<div class="incoming-card">'
+        + '<h4>'+typeLabel+' · '+trayEsc(req.trayId)+'</h4>'
+        + '<div class="ic-meta">'
+        + '<b>Requested by:</b> '+trayEsc(req.requestingInstructor)+' ('+trayEsc(req.requestingCentre)+')<br>'
+        + (req.deadline ? '<b>Return by:</b> '+trayEsc(req.deadline) : '')
+        + '</div>'
+        + '<div class="incoming-btns">'
+        + '<button class="ic-accept" onclick="trayShowAcceptModal(\''+trayEsc(req.bookingId)+'\',\''+trayEsc(req.trayId)+'\',\''+trayEsc(req.requestingInstructor)+'\')">✓ Accept</button>'
+        + '<button class="ic-reject" onclick="trayRejectRequest(\''+trayEsc(req.bookingId)+'\')">✗ Reject</button>'
+        + '</div></div>';
+    }).join('');
+    wrap.innerHTML = html;
+  });
+}
+
+function trayShowAcceptModal(bookingId, trayId, requester) {
+  document.getElementById('tam-info').textContent = trayId + ' requested by ' + requester;
+  document.getElementById('tam-booking-id').textContent = bookingId;
+  document.getElementById('tam-note').value = '';
+  document.getElementById('tray-accept-modal').style.display = 'flex';
+}
+
+function trayAcceptConfirm() {
+  var bookingId = document.getElementById('tam-booking-id').textContent;
+  var note      = document.getElementById('tam-note').value;
+  gasGet({action:'trayRespond', bookingId:bookingId, decision:'accept', note:note}, function(err, d) {
+    document.getElementById('tray-accept-modal').style.display = 'none';
+    if (err || !d || d.status !== 'ok') { showToast('Error accepting request.'); return; }
+    showToast('Request accepted! Requester has been notified.');
+    trayLoadIncoming(); trayLoadBoard(); trayLoadInventory();
+  });
+}
+
+function trayRejectRequest(bookingId) {
+  var reason = prompt('Reason for rejection (optional):');
+  if (reason === null) return; // cancelled
+  gasGet({action:'trayRespond', bookingId:bookingId, decision:'reject', rejectReason:reason||''}, function(err, d) {
+    if (err || !d || d.status !== 'ok') { showToast('Error rejecting request.'); return; }
+    showToast('Request rejected. Requester notified.');
+    trayLoadIncoming(); trayLoadBoard();
+  });
+}
+
+// ── HISTORY ──────────────────────────────────────────────────────────────────
+function trayLoadHistory() {
+  var filterVal = document.getElementById('hist-filter');
+  var filter    = filterVal ? filterVal.value : 'mine';
+  var params    = {action:'trayGetHistory'};
+  if (filter === 'mine') params.centre = instructorCentre || instructorName;
+  var wrap = document.getElementById('tray-history-wrap');
+  if (wrap) wrap.innerHTML = '<div style="color:#9ca3af;font-size:12px;">Loading…</div>';
+  gasGet(params, function(err, d) {
+    if (err || !d || d.status !== 'ok') { if(wrap) wrap.innerHTML='<div style="color:#dc2626;font-size:12px;">Failed to load history.</div>'; return; }
+    if (!d.history.length) { wrap.innerHTML='<div style="color:#9ca3af;font-size:12px;">No history yet.</div>'; return; }
+    var statusCls = {active:'hs-active',returned:'hs-returned',rejected:'hs-rejected',overdue:'hs-overdue',pending:'hs-pending',returning:'hs-returning'};
+    var html = d.history.map(function(h) {
+      var typeIcon = h.type === 'Diamond' ? '💎' : '🟣';
+      var sc = statusCls[h.status] || 'hs-active';
+      return '<div class="hist-row">'
+        + '<div class="hr-head">'
+        + '<span class="hr-id">'+typeIcon+' '+trayEsc(h.trayId)+'</span>'
+        + '<span class="hist-status '+sc+'">'+trayEsc(h.status)+'</span>'
+        + '</div>'
+        + '<div style="color:#6b7280;">'
+        + trayEsc(h.requestingInstructor)+' ('+trayEsc(h.requestingCentre)+') · '
+        + h.weeksBooked+' week'+(h.weeksBooked>1?'s':'')
+        + (h.startDate?' · '+h.startDate+' → '+h.deadline:'')
+        + (h.stoneCountOnReturn?' · '+h.stoneCountOnReturn+' stones returned':'')
+        + '</div>'
+        + '</div>';
+    }).join('');
+    wrap.innerHTML = html;
+  });
+}
+
+// ── NOTIFICATIONS POLL ────────────────────────────────────────────────────────
+function trayNotifPoll() {
+  if (trayNotifPollTimer) clearInterval(trayNotifPollTimer);
+  trayNotifPollTimer = setInterval(function() {
+    if (!instructorName) return;
+    gasGet({action:'trayGetNotifications', instructor:instructorName}, function(err, d) {
+      if (err || !d || d.status !== 'ok') return;
+      var notifs = d.notifications || [];
+      // Update badge
+      var badge = document.getElementById('tray-notif-badge');
+      if (badge) {
+        if (notifs.length) { badge.style.display='inline'; badge.textContent=notifs.length; }
+        else { badge.style.display='none'; }
+      }
+      // Show toast for new notifications
+      notifs.forEach(function(n) {
+        trayShowNotifToast(n);
+        gasGet({action:'trayMarkNotifRead', notifId:n.notifId}, function(){});
+      });
+    });
+  }, 45000);
+}
+
+function trayShowNotifToast(n) {
+  var isUrgent = n.type === 'overdue_warning' || n.type === 'request';
+  var icon = {request:'📨', accepted:'✅', rejected:'✗', returning:'📦', confirmed:'🎉', deadline_reminder:'⏰', overdue_warning:'🚨'}[n.type] || '🔔';
+  // Reuse instructor portal toast if available, else simple alert
+  if (typeof showToast === 'function') {
+    showToast(icon + ' ' + n.message.substring(0, 80) + (n.message.length>80?'…':''));
+  }
+  // For urgent request notifications, also show a more prominent banner
+  if (n.type === 'request' && typeof showOTNotif === 'function') {
+    showOTNotif({title: '🔮 Tray Request', body: n.message, bookingId: n.bookingId});
+  }
+}
+
+function trayEsc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// instructorCentre is declared at top of script and populated in loadInstructorBatches()
+
 </script>
 </body>
 </html>

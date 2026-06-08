@@ -1077,6 +1077,20 @@ function doGet(e) {
     // ── getBatchSnapshot ──────────────────────────────────────
     if (act==='getBatchSnapshot') return respond(getBatchSnapshot(ss));
 
+    // ── TRAY HUB ──────────────────────────────────────────────
+    if (act==='trayRegister')       return respond(trayRegister(ss,p));
+    if (act==='trayGetBoard')       return respond(trayGetBoard(ss,p));
+    if (act==='trayGetMine')        return respond(trayGetMine(ss,p));
+    if (act==='trayBook')           return respond(trayBook(ss,p));
+    if (act==='trayRespond')        return respond(trayRespond(ss,p));
+    if (act==='trayMarkReturning')  return respond(trayMarkReturning(ss,p));
+    if (act==='trayConfirmReturn')  return respond(trayConfirmReturn(ss,p));
+    if (act==='trayGetWeekPlan')    return respond(trayGetWeekPlan(ss,p));
+    if (act==='traySetWeeklyNeed')  return respond(traySetWeeklyNeed(ss,p));
+    if (act==='trayGetNotifications') return respond(trayGetNotifications(ss,p));
+    if (act==='trayMarkNotifRead')  return respond(trayMarkNotifRead(ss,p));
+    if (act==='trayGetHistory')     return respond(trayGetHistory(ss,p));
+
     // ── getBatches ─────────────────────────────────────────────
     if (act==='getBatches') {
       const centre=(p.centre||'').trim();
@@ -5374,4 +5388,488 @@ function otGetStudentResultsV3(ss, p) {
     overallPass:(weeklyAvg!==null&&weeklyAvg>=defaultPS)&&
       (final_.length===0||final_.some(function(r){return r.result==='Pass';}))
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TRAY HUB — Gemstone Tray Management System
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const SH_TRAY_REGISTRY     = 'Tray_Registry';
+const SH_TRAY_BOOKINGS     = 'Tray_Bookings';
+const SH_TRAY_NOTIFICATIONS= 'Tray_Notifications';
+const SH_TRAY_WEEKLY_NEEDS = 'Tray_WeeklyNeeds';
+
+// ── Sheet setup ─────────────────────────────────────────────────────────────
+function ensureTraySheets(ss) {
+  function ensureSheet(name, headers) {
+    var sh = ss.getSheetByName(name);
+    if (!sh) {
+      sh = ss.insertSheet(name);
+      sh.appendRow(headers);
+      sh.getRange(1,1,1,headers.length).setFontWeight('bold').setBackground('#0D1B2E').setFontColor('#C9A84C');
+    }
+    return sh;
+  }
+  ensureSheet(SH_TRAY_REGISTRY,      ['TrayID','Type','HomeCentre','HomeInstructor','StoneCount','RegisteredAt','Notes']);
+  ensureSheet(SH_TRAY_BOOKINGS,      ['BookingID','TrayID','HomeCentre','RequestingInstructor','RequestingCentre','WeeksBooked','StartDate','DeadlineDate','Status','StoneCountOnReturn','RejectReason','CreatedAt','UpdatedAt']);
+  ensureSheet(SH_TRAY_NOTIFICATIONS, ['NotifID','ToInstructor','Type','BookingID','Message','Read','CreatedAt']);
+  ensureSheet(SH_TRAY_WEEKLY_NEEDS,  ['Instructor','Centre','TraysNeededPerWeek','UpdatedAt']);
+}
+
+function getTraySheet(ss, name) {
+  var sh = ss.getSheetByName(name);
+  if (!sh) { ensureTraySheets(ss); sh = ss.getSheetByName(name); }
+  return sh;
+}
+
+function trayRows(sh) {
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow()-1, sh.getLastColumn()).getValues();
+}
+
+function trayNextId(ss, type, centre) {
+  // Auto-generate ID: DIA-CTR-01 or CS-CTR-01
+  var prefix = (type === 'Diamond') ? 'DIA' : 'CS';
+  var ctrCode = centre.replace(/[^A-Z]/gi,'').toUpperCase().substring(0,3);
+  var sh = getTraySheet(ss, SH_TRAY_REGISTRY);
+  var rows = trayRows(sh);
+  var max = 0;
+  rows.forEach(function(r) {
+    var id = String(r[0] || '');
+    var pat = new RegExp('^' + prefix + '-' + ctrCode + '-(\\d+)$');
+    var m = id.match(pat);
+    if (m) max = Math.max(max, parseInt(m[1]));
+  });
+  return prefix + '-' + ctrCode + '-' + String(max + 1).padStart(2,'0');
+}
+
+function trayAddNotif(ss, toInstructor, type, bookingId, message) {
+  var sh = getTraySheet(ss, SH_TRAY_NOTIFICATIONS);
+  var id = 'TN-' + Date.now() + '-' + Math.floor(Math.random()*1000);
+  sh.appendRow([id, toInstructor, type, bookingId, message, 'N', new Date().toISOString()]);
+  return id;
+}
+
+// ── trayRegister ─────────────────────────────────────────────────────────────
+// p: { type, centre, instructor, stoneCount, notes }
+function trayRegister(ss, p) {
+  if (!p.type || !p.centre || !p.instructor) return {status:'error', message:'Missing required fields'};
+  if (!['Diamond','ColoredStone'].includes(p.type)) return {status:'error', message:'Type must be Diamond or ColoredStone'};
+  var count = parseInt(p.stoneCount) || 0;
+  if (count < 25) return {status:'error', message:'Minimum 25 stones required per tray'};
+  ensureTraySheets(ss);
+  var id = trayNextId(ss, p.type, p.centre);
+  var sh = getTraySheet(ss, SH_TRAY_REGISTRY);
+  sh.appendRow([id, p.type, p.centre, p.instructor, count, new Date().toISOString(), p.notes||'']);
+  return {status:'ok', trayId: id};
+}
+
+// ── trayGetBoard ─────────────────────────────────────────────────────────────
+// Returns aggregated matrix: per centre × type → {total, free, engaged, trays[]}
+function trayGetBoard(ss, p) {
+  ensureTraySheets(ss);
+  var regRows  = trayRows(getTraySheet(ss, SH_TRAY_REGISTRY));
+  var bookRows = trayRows(getTraySheet(ss, SH_TRAY_BOOKINGS));
+  var now = new Date();
+
+  // Build active booking map: trayId → {status, requestingCentre, deadline}
+  var activeBookings = {};
+  bookRows.forEach(function(r) {
+    var status = String(r[8]||'');
+    if (['pending','active','returning'].indexOf(status) !== -1) {
+      activeBookings[String(r[1])] = {
+        status: status,
+        bookingId: String(r[0]),
+        requestingCentre: String(r[4]),
+        requestingInstructor: String(r[3]),
+        deadline: r[7] ? new Date(r[7]) : null,
+        weeksBooked: parseInt(r[5])||1
+      };
+    }
+  });
+
+  // Group trays by centre → type
+  var centreMap = {};
+  regRows.forEach(function(r) {
+    var trayId    = String(r[0]);
+    var type      = String(r[1]);
+    var centre    = String(r[2]);
+    var instructor= String(r[3]);
+    var stones    = parseInt(r[4])||0;
+    if (!centreMap[centre]) centreMap[centre] = {centre:centre, instructor:instructor, Diamond:[], ColoredStone:[]};
+    var booking = activeBookings[trayId] || null;
+    var trayStatus = 'available';
+    var daysLeft = null;
+    if (booking) {
+      trayStatus = booking.status === 'pending' ? 'requested' : (booking.status === 'returning' ? 'returning' : 'engaged');
+      if (booking.deadline) {
+        daysLeft = Math.ceil((booking.deadline.getTime() - now.getTime()) / 86400000);
+        if (daysLeft < 0) trayStatus = 'overdue';
+      }
+    }
+    var key = (type === 'Diamond') ? 'Diamond' : 'ColoredStone';
+    centreMap[centre][key].push({
+      trayId: trayId,
+      stoneCount: stones,
+      status: trayStatus,
+      requestingCentre: booking ? booking.requestingCentre : null,
+      requestingInstructor: booking ? booking.requestingInstructor : null,
+      bookingId: booking ? booking.bookingId : null,
+      deadline: booking && booking.deadline ? booking.deadline.toISOString().split('T')[0] : null,
+      daysLeft: daysLeft
+    });
+  });
+
+  var centres = Object.values(centreMap).map(function(c) {
+    function summary(trays) {
+      return {
+        total: trays.length,
+        free: trays.filter(function(t){ return t.status==='available'; }).length,
+        engaged: trays.filter(function(t){ return ['engaged','overdue','returning'].indexOf(t.status)!==-1; }).length,
+        requested: trays.filter(function(t){ return t.status==='requested'; }).length,
+        trays: trays
+      };
+    }
+    return {
+      centre: c.centre,
+      instructor: c.instructor,
+      diamond: summary(c.Diamond),
+      coloredStone: summary(c.ColoredStone)
+    };
+  });
+  centres.sort(function(a,b){ return a.centre.localeCompare(b.centre); });
+  return {status:'ok', centres:centres};
+}
+
+// ── trayGetMine ──────────────────────────────────────────────────────────────
+// p: { centre }
+function trayGetMine(ss, p) {
+  if (!p.centre) return {status:'error', message:'Centre required'};
+  var board = trayGetBoard(ss, p);
+  if (board.status !== 'ok') return board;
+  var mine = board.centres.filter(function(c){ return c.centre === p.centre; });
+  // Also get incoming requests for my trays
+  var bookRows = trayRows(getTraySheet(ss, SH_TRAY_BOOKINGS));
+  var regRows  = trayRows(getTraySheet(ss, SH_TRAY_REGISTRY));
+  var myTrayIds = regRows.filter(function(r){ return String(r[2])===p.centre; }).map(function(r){ return String(r[0]); });
+  var incoming = bookRows.filter(function(r){
+    return myTrayIds.indexOf(String(r[1]))!==-1 && String(r[8])==='pending';
+  }).map(function(r){
+    return {bookingId:String(r[0]),trayId:String(r[1]),requestingInstructor:String(r[3]),requestingCentre:String(r[4]),weeksBooked:parseInt(r[5])||1,startDate:r[6]?new Date(r[6]).toISOString().split('T')[0]:'',createdAt:String(r[11])};
+  });
+  return {status:'ok', myCentreData: mine[0]||null, incomingCount: incoming.length};
+}
+
+// ── trayBook ─────────────────────────────────────────────────────────────────
+// p: { trayId, requestingInstructor, requestingCentre, weeksBooked, startDate }
+function trayBook(ss, p) {
+  if (!p.trayId || !p.requestingInstructor || !p.requestingCentre || !p.weeksBooked) {
+    return {status:'error', message:'Missing required fields'};
+  }
+  ensureTraySheets(ss);
+  var weeks = parseInt(p.weeksBooked) || 1;
+  var startDate = p.startDate ? new Date(p.startDate) : new Date();
+  // Normalise to Monday of the week
+  var day = startDate.getDay();
+  var diff = (day === 0) ? -6 : 1 - day;
+  startDate.setDate(startDate.getDate() + diff);
+  startDate.setHours(0,0,0,0);
+  var deadline = new Date(startDate.getTime());
+  deadline.setDate(deadline.getDate() + (weeks * 7) - 1);
+
+  // Check tray exists and is available
+  var regRows = trayRows(getTraySheet(ss, SH_TRAY_REGISTRY));
+  var trayRow = regRows.find(function(r){ return String(r[0])===p.trayId; });
+  if (!trayRow) return {status:'error', message:'Tray not found'};
+  if (String(trayRow[2]) === p.requestingCentre) return {status:'error', message:'Cannot request your own tray'};
+
+  // Check no active booking
+  var bookRows = trayRows(getTraySheet(ss, SH_TRAY_BOOKINGS));
+  var conflict = bookRows.find(function(r){
+    return String(r[1])===p.trayId && ['pending','active','returning'].indexOf(String(r[8]))!==-1;
+  });
+  if (conflict) return {status:'error', message:'Tray already has an active booking'};
+
+  var bookingId = 'BK-' + Date.now();
+  var sh = getTraySheet(ss, SH_TRAY_BOOKINGS);
+  sh.appendRow([
+    bookingId, p.trayId, String(trayRow[2]), p.requestingInstructor, p.requestingCentre,
+    weeks, startDate.toISOString().split('T')[0], deadline.toISOString().split('T')[0],
+    'pending', '', '', new Date().toISOString(), new Date().toISOString()
+  ]);
+
+  // Notify home instructor
+  var homeInstructor = String(trayRow[3]);
+  trayAddNotif(ss, homeInstructor, 'request', bookingId,
+    p.requestingInstructor + ' (' + p.requestingCentre + ') has requested tray ' + p.trayId + ' for ' + weeks + ' week' + (weeks>1?'s':'') + ' starting ' + startDate.toISOString().split('T')[0] + '.');
+  return {status:'ok', bookingId:bookingId, deadline: deadline.toISOString().split('T')[0]};
+}
+
+// ── trayRespond ──────────────────────────────────────────────────────────────
+// p: { bookingId, decision:'accept'|'reject', rejectReason }
+function trayRespond(ss, p) {
+  if (!p.bookingId || !p.decision) return {status:'error', message:'Missing bookingId or decision'};
+  ensureTraySheets(ss);
+  var sh = getTraySheet(ss, SH_TRAY_BOOKINGS);
+  var rows = trayRows(sh);
+  var idx  = rows.findIndex(function(r){ return String(r[0])===p.bookingId; });
+  if (idx === -1) return {status:'error', message:'Booking not found'};
+  var row = rows[idx];
+  if (String(row[8]) !== 'pending') return {status:'error', message:'Booking is no longer pending'};
+
+  var newStatus = (p.decision === 'accept') ? 'active' : 'rejected';
+  var dataRow = idx + 2;
+  sh.getRange(dataRow, 9).setValue(newStatus);
+  sh.getRange(dataRow, 11).setValue(p.rejectReason || '');
+  sh.getRange(dataRow, 13).setValue(new Date().toISOString());
+
+  // Notify requester
+  var requester = String(row[3]);
+  var trayId    = String(row[1]);
+  if (newStatus === 'active') {
+    trayAddNotif(ss, requester, 'accepted', p.bookingId,
+      'Your request for tray ' + trayId + ' has been accepted. Return by ' + (row[7]?new Date(row[7]).toISOString().split('T')[0]:'') + '.');
+  } else {
+    trayAddNotif(ss, requester, 'rejected', p.bookingId,
+      'Your request for tray ' + trayId + ' was declined.' + (p.rejectReason ? ' Reason: ' + p.rejectReason : ''));
+  }
+  return {status:'ok', newStatus:newStatus};
+}
+
+// ── trayMarkReturning ────────────────────────────────────────────────────────
+// p: { bookingId, stoneCount }
+function trayMarkReturning(ss, p) {
+  if (!p.bookingId) return {status:'error', message:'bookingId required'};
+  ensureTraySheets(ss);
+  var sh = getTraySheet(ss, SH_TRAY_BOOKINGS);
+  var rows = trayRows(sh);
+  var idx  = rows.findIndex(function(r){ return String(r[0])===p.bookingId; });
+  if (idx === -1) return {status:'error', message:'Booking not found'};
+  var row = rows[idx];
+  var dataRow = idx + 2;
+  sh.getRange(dataRow, 9).setValue('returning');
+  sh.getRange(dataRow, 10).setValue(parseInt(p.stoneCount)||0);
+  sh.getRange(dataRow, 13).setValue(new Date().toISOString());
+  // Notify home instructor
+  var homeCentre = String(row[2]);
+  var regRows = trayRows(getTraySheet(ss, SH_TRAY_REGISTRY));
+  var trayReg = regRows.find(function(r){ return String(r[0])===String(row[1]); });
+  var homeInstructor = trayReg ? String(trayReg[3]) : homeCentre;
+  trayAddNotif(ss, homeInstructor, 'returning', p.bookingId,
+    'Tray ' + String(row[1]) + ' has been dispatched by ' + String(row[3]) + ' (' + String(row[4]) + '). Stone count declared: ' + (p.stoneCount||'—') + '.');
+  return {status:'ok'};
+}
+
+// ── trayConfirmReturn ────────────────────────────────────────────────────────
+// p: { bookingId, stoneCount }
+function trayConfirmReturn(ss, p) {
+  if (!p.bookingId) return {status:'error', message:'bookingId required'};
+  ensureTraySheets(ss);
+  var sh = getTraySheet(ss, SH_TRAY_BOOKINGS);
+  var rows = trayRows(sh);
+  var idx  = rows.findIndex(function(r){ return String(r[0])===p.bookingId; });
+  if (idx === -1) return {status:'error', message:'Booking not found'};
+  var row = rows[idx];
+  var dataRow = idx + 2;
+  sh.getRange(dataRow, 9).setValue('returned');
+  if (p.stoneCount) sh.getRange(dataRow, 10).setValue(parseInt(p.stoneCount));
+  sh.getRange(dataRow, 13).setValue(new Date().toISOString());
+  // Notify requester: confirmed
+  trayAddNotif(ss, String(row[3]), 'confirmed', p.bookingId,
+    'Your return of tray ' + String(row[1]) + ' has been confirmed by ' + String(row[2]) + '. Thank you!');
+  return {status:'ok'};
+}
+
+// ── trayGetWeekPlan ──────────────────────────────────────────────────────────
+// p: { instructor, centre }  — returns 4-week forward view
+function trayGetWeekPlan(ss, p) {
+  if (!p.instructor || !p.centre) return {status:'error', message:'instructor and centre required'};
+  ensureTraySheets(ss);
+
+  // Get weekly need target
+  var needRows = trayRows(getTraySheet(ss, SH_TRAY_WEEKLY_NEEDS));
+  var needRow  = needRows.find(function(r){ return String(r[0])===p.instructor; });
+  var weeklyNeed = needRow ? (parseInt(needRow[2])||3) : 3;
+
+  var bookRows = trayRows(getTraySheet(ss, SH_TRAY_BOOKINGS));
+  var regRows  = trayRows(getTraySheet(ss, SH_TRAY_REGISTRY));
+
+  // Build trays belonging to this centre (home trays)
+  var homeTrayIds = regRows.filter(function(r){ return String(r[2])===p.centre; }).map(function(r){ return String(r[0]); });
+
+  // Active/returning bookings where THIS instructor is the requester
+  var myActive = bookRows.filter(function(r){
+    return String(r[3])===p.instructor && ['active','returning'].indexOf(String(r[8]))!==-1;
+  });
+  // Also home trays currently at home (not in any active booking)
+  var engagedHomeTrayIds = bookRows.filter(function(r){
+    return ['active','returning'].indexOf(String(r[8]))!==-1;
+  }).map(function(r){ return String(r[1]); });
+  var freehomeTrayIds = homeTrayIds.filter(function(id){ return engagedHomeTrayIds.indexOf(id)===-1; });
+
+  // Build 4-week windows starting from this Monday
+  var today = new Date(); today.setHours(0,0,0,0);
+  var dayOfWeek = today.getDay();
+  var monday = new Date(today);
+  monday.setDate(today.getDate() - (dayOfWeek===0?6:dayOfWeek-1));
+
+  var weeks = [];
+  for (var w = 0; w < 4; w++) {
+    var wStart = new Date(monday); wStart.setDate(monday.getDate() + w*7);
+    var wEnd   = new Date(wStart); wEnd.setDate(wStart.getDate() + 6);
+    wStart.setHours(0,0,0,0); wEnd.setHours(23,59,59,999);
+
+    // Trays engaged during this week by this instructor (booked trays overlapping this window)
+    var weekTrays = myActive.filter(function(r) {
+      var sd = r[6] ? new Date(r[6]) : null;
+      var dd = r[7] ? new Date(r[7]) : null;
+      if (!sd || !dd) return false;
+      return sd <= wEnd && dd >= wStart;
+    }).map(function(r) {
+      var trayId = String(r[1]);
+      var regR = regRows.find(function(rr){ return String(rr[0])===trayId; });
+      return {
+        trayId: trayId,
+        type: regR ? String(regR[1]) : '',
+        from: String(r[2]),
+        deadline: r[7] ? new Date(r[7]).toISOString().split('T')[0] : '',
+        status: String(r[8]),
+        bookingId: String(r[0])
+      };
+    });
+
+    // Also include free home trays as "available this week"
+    var homeFreeForWeek = freehomeTrayIds.map(function(id){
+      var regR = regRows.find(function(rr){ return String(rr[0])===id; });
+      return { trayId:id, type:regR?String(regR[1]):'', from:p.centre, deadline:'home', status:'available', bookingId:null };
+    });
+
+    var allThisWeek = weekTrays.concat(homeFreeForWeek).slice(0, Math.max(weekTrays.length + homeFreeForWeek.length, weeklyNeed));
+    var covered = weekTrays.length + homeFreeForWeek.length;
+    var coverStatus = covered >= weeklyNeed ? 'ok' : (covered > 0 ? 'partial' : 'empty');
+
+    weeks.push({
+      weekNum: w + 1,
+      label: w===0 ? 'This Week' : 'Week ' + (w+1),
+      startDate: wStart.toISOString().split('T')[0],
+      endDate:   wEnd.toISOString().split('T')[0],
+      trays: weekTrays,
+      homeFree: homeFreeForWeek,
+      covered: covered,
+      need: weeklyNeed,
+      coverStatus: coverStatus
+    });
+  }
+  return {status:'ok', weeks:weeks, weeklyNeed:weeklyNeed};
+}
+
+// ── traySetWeeklyNeed ────────────────────────────────────────────────────────
+// p: { instructor, centre, traysNeeded }
+function traySetWeeklyNeed(ss, p) {
+  if (!p.instructor || !p.traysNeeded) return {status:'error', message:'instructor and traysNeeded required'};
+  ensureTraySheets(ss);
+  var sh = getTraySheet(ss, SH_TRAY_WEEKLY_NEEDS);
+  var rows = trayRows(sh);
+  var idx  = rows.findIndex(function(r){ return String(r[0])===p.instructor; });
+  if (idx === -1) {
+    sh.appendRow([p.instructor, p.centre||'', parseInt(p.traysNeeded)||3, new Date().toISOString()]);
+  } else {
+    sh.getRange(idx+2, 3).setValue(parseInt(p.traysNeeded)||3);
+    sh.getRange(idx+2, 4).setValue(new Date().toISOString());
+  }
+  return {status:'ok'};
+}
+
+// ── trayGetNotifications ─────────────────────────────────────────────────────
+// p: { instructor }
+function trayGetNotifications(ss, p) {
+  if (!p.instructor) return {status:'ok', notifications:[]};
+  ensureTraySheets(ss);
+  var rows = trayRows(getTraySheet(ss, SH_TRAY_NOTIFICATIONS));
+  var unread = rows.filter(function(r){ return String(r[1])===p.instructor && String(r[5])==='N'; })
+    .map(function(r){ return {notifId:String(r[0]),type:String(r[2]),bookingId:String(r[3]),message:String(r[4]),createdAt:String(r[6])}; });
+  return {status:'ok', notifications:unread};
+}
+
+// ── trayMarkNotifRead ────────────────────────────────────────────────────────
+// p: { notifId } or { instructor } (marks all)
+function trayMarkNotifRead(ss, p) {
+  ensureTraySheets(ss);
+  var sh = getTraySheet(ss, SH_TRAY_NOTIFICATIONS);
+  var rows = trayRows(sh);
+  rows.forEach(function(r, i) {
+    if ((p.notifId && String(r[0])===p.notifId) || (p.instructor && String(r[1])===p.instructor && String(r[5])==='N')) {
+      sh.getRange(i+2, 6).setValue('Y');
+    }
+  });
+  return {status:'ok'};
+}
+
+// ── trayGetHistory ───────────────────────────────────────────────────────────
+// p: { trayId?, centre?, instructor? }
+function trayGetHistory(ss, p) {
+  ensureTraySheets(ss);
+  var bookRows = trayRows(getTraySheet(ss, SH_TRAY_BOOKINGS));
+  var regRows  = trayRows(getTraySheet(ss, SH_TRAY_REGISTRY));
+  var filtered = bookRows.filter(function(r) {
+    if (p.trayId    && String(r[1])!==p.trayId)         return false;
+    if (p.centre    && String(r[2])!==p.centre && String(r[4])!==p.centre) return false;
+    if (p.instructor&& String(r[3])!==p.instructor)     return false;
+    return true;
+  });
+  var history = filtered.map(function(r) {
+    var trayId = String(r[1]);
+    var regR = regRows.find(function(rr){ return String(rr[0])===trayId; });
+    return {
+      bookingId: String(r[0]),
+      trayId: trayId,
+      type: regR ? String(regR[1]) : '',
+      stoneCount: regR ? parseInt(regR[4]) : 0,
+      homeCentre: String(r[2]),
+      requestingInstructor: String(r[3]),
+      requestingCentre: String(r[4]),
+      weeksBooked: parseInt(r[5])||1,
+      startDate: r[6] ? new Date(r[6]).toISOString().split('T')[0] : '',
+      deadline: r[7] ? new Date(r[7]).toISOString().split('T')[0] : '',
+      status: String(r[8]),
+      stoneCountOnReturn: r[9] ? parseInt(r[9]) : null,
+      createdAt: String(r[11])
+    };
+  });
+  // Sort newest first
+  history.sort(function(a,b){ return b.createdAt.localeCompare(a.createdAt); });
+  return {status:'ok', history:history.slice(0,100)};
+}
+
+// ── Deadline reminder check (call from a time-based trigger) ─────────────────
+function trayCheckDeadlineReminders() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var bookRows = trayRows(getTraySheet(ss, SH_TRAY_BOOKINGS));
+  var regRows  = trayRows(getTraySheet(ss, SH_TRAY_REGISTRY));
+  var now = new Date(); now.setHours(0,0,0,0);
+  var twoDays = new Date(now); twoDays.setDate(now.getDate() + 2);
+
+  bookRows.forEach(function(r) {
+    if (String(r[8]) !== 'active') return;
+    var deadline = r[7] ? new Date(r[7]) : null;
+    if (!deadline) return;
+    deadline.setHours(0,0,0,0);
+    var daysLeft = Math.ceil((deadline - now) / 86400000);
+    // Send reminder at 2 days before and on deadline day
+    if (daysLeft === 2 || daysLeft === 0) {
+      var requester = String(r[3]);
+      var trayId    = String(r[1]);
+      var msg = daysLeft === 0
+        ? 'URGENT: Tray ' + trayId + ' is due back TODAY (' + deadline.toISOString().split('T')[0] + '). Please dispatch immediately.'
+        : 'Reminder: Tray ' + trayId + ' is due back in 2 days (' + deadline.toISOString().split('T')[0] + '). Please plan dispatch.';
+      trayAddNotif(ss, requester, daysLeft===0 ? 'overdue_warning' : 'deadline_reminder', String(r[0]), msg);
+    }
+    // Mark overdue
+    if (daysLeft < 0) {
+      var sh = getTraySheet(ss, SH_TRAY_BOOKINGS);
+      var allRows = trayRows(sh);
+      var idx = allRows.findIndex(function(rr){ return String(rr[0])===String(r[0]); });
+      if (idx !== -1) sh.getRange(idx+2, 9).setValue('overdue');
+    }
+  });
 }

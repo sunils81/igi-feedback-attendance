@@ -3984,6 +3984,7 @@ const SH_OT_QUESTIONS       = 'OT_Questions';
 const SH_OT_RESPONSES       = 'OT_Responses';
 const SH_OT_MANUAL_GRADES   = 'OT_ManualGrades';
 const SH_OT_WARNINGS        = 'OT_Warnings';
+const SH_OT_STARTS          = 'OT_Starts';  // per-student start times
 
 const OT_PASS_PERCENT = 60; // default — overridden per test
 
@@ -4047,7 +4048,7 @@ function ensureOTWHeaders(sh) {
 }
 function ensureOnlineTestSheets(ss) {
   [SH_QUESTION_BANK,SH_CUSTOM_QUESTIONS,SH_ONLINE_TESTS,
-   SH_OT_QUESTIONS,SH_OT_RESPONSES,SH_OT_MANUAL_GRADES,SH_OT_WARNINGS].forEach(function(n){
+   SH_OT_QUESTIONS,SH_OT_RESPONSES,SH_OT_MANUAL_GRADES,SH_OT_WARNINGS,SH_OT_STARTS].forEach(function(n){
     if(!ss.getSheetByName(n)) ss.insertSheet(n);
   });
   ensureQBHeaders(ss.getSheetByName(SH_QUESTION_BANK));
@@ -4057,6 +4058,13 @@ function ensureOnlineTestSheets(ss) {
   ensureOTRHeaders(ss.getSheetByName(SH_OT_RESPONSES));
   ensureMGHeaders(ss.getSheetByName(SH_OT_MANUAL_GRADES));
   ensureOTWHeaders(ss.getSheetByName(SH_OT_WARNINGS));
+  ensureOTStartsHeaders(ss.getSheetByName(SH_OT_STARTS));
+}
+function ensureOTStartsHeaders(sh) {
+  if (sh.getLastRow()>0 && sh.getRange(1,1).getValue()!=='') return;
+  var h=['Test ID','Student ID','Started At'];
+  sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
+  sh.setFrozenRows(1);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -4470,20 +4478,37 @@ function otGetTestQuestions(ss, p) {
     var seed=p.studentId.split('').reduce(function(a,c){return a+c.charCodeAt(0);},0);
     questions=otShuffleSeeded(questions, seed);
   }
-  var activatedAt=testRow[9]?new Date(testRow[9]):new Date();
-  var durationMs=(parseInt(testRow[5])||30)*60000;
-  var elapsed=Date.now()-activatedAt.getTime();
-  var remainingSec=Math.max(0,Math.floor((durationMs-elapsed)/1000));
-  // Check expiry
+  var durationSec=(parseInt(testRow[5])||30)*60;
+
+  // ── Per-student start time (timer starts when student clicks Begin, not when instructor activates) ──
+  var shStarts=ss.getSheetByName(SH_OT_STARTS);
+  if (!shStarts) { shStarts=ss.insertSheet(SH_OT_STARTS); ensureOTStartsHeaders(shStarts); }
+  var startRows=shStarts.getLastRow()>1?shStarts.getRange(2,1,shStarts.getLastRow()-1,3).getValues():[];
+  var startRow=startRows.find(function(r){return String(r[0])===String(p.testId)&&String(r[1])===String(p.studentId);});
+  var startedAt, remainingSec;
+  if (startRow && startRow[2]) {
+    // Student has started before (crash/refresh) — count from their recorded start time
+    startedAt=new Date(startRow[2]);
+    var elapsed=Math.floor((Date.now()-startedAt.getTime())/1000);
+    remainingSec=Math.max(0, durationSec - elapsed);
+  } else {
+    // First time this student starts — record now as their start time
+    startedAt=new Date();
+    shStarts.appendRow([p.testId, p.studentId, startedAt.toISOString()]);
+    remainingSec=durationSec;
+  }
+  // Cap by test expiry window if set
   if (testRow[17]) {
     var expiry=new Date(testRow[17]);
     var toExpiry=Math.floor((expiry.getTime()-Date.now())/1000);
     remainingSec=Math.min(remainingSec,Math.max(0,toExpiry));
   }
+  var activatedAt=testRow[9]?new Date(testRow[9]):new Date();
   return {
     status:'ok',
     test:{testId:testRow[0],testLabel:testRow[1],duration:testRow[5],
-          activatedAt:activatedAt.toISOString(),negativeMarking:testRow[7],negMarkValue:testRow[8],
+          activatedAt:activatedAt.toISOString(),startedAt:startedAt.toISOString(),
+          negativeMarking:testRow[7],negMarkValue:testRow[8],
           instructions:testRow[20]||'',shuffled:testRow[19]==='Yes'},
     questions:questions, remainingSec:remainingSec, serverTime:new Date().toISOString()
   };

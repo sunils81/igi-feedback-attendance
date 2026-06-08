@@ -1954,17 +1954,11 @@ function otShowRetakeCard(t) {
   var slbl = document.getElementById('ot-sticky-label');
   if (bar) { bar.style.display='flex'; bar.style.background='linear-gradient(90deg,#451a03,#78350f)'; }
   if (slbl) slbl.textContent = 'Re-attempt: ' + (t.testLabel||'Test');
-  // Start countdown
-  if (otStickyTimerInterval) clearInterval(otStickyTimerInterval);
-  if (t.activatedAt) {
-    otStickyTimerInterval = setInterval(function() {
-      var elapsed = (Date.now() - new Date(t.activatedAt).getTime()) / 1000;
-      var rem = Math.max(0, parseInt(t.duration)*60 - elapsed);
-      var str = String(Math.floor(rem/60)).padStart(2,'0')+':'+String(Math.floor(rem%60)).padStart(2,'0');
-      var st=document.getElementById('ot-sticky-timer'); if(st) st.textContent=str;
-      var bt=document.getElementById('ot-banner-timer'); if(bt) bt.textContent=str;
-    }, 1000);
-  }
+  // Show static duration — timer only starts when student clicks Begin
+  if (otStickyTimerInterval) { clearInterval(otStickyTimerInterval); otStickyTimerInterval = null; }
+  var durMin2 = parseInt(t.duration) || 30;
+  var st2=document.getElementById('ot-sticky-timer'); if(st2) st2.textContent=durMin2+':00';
+  var bt2=document.getElementById('ot-banner-timer'); if(bt2) bt2.textContent=durMin2+':00';
 }
 
 
@@ -1988,25 +1982,14 @@ function otShowBanner(t) {
   if (bar) { bar.style.display = 'flex'; }
   if (slbl) slbl.textContent = t.testLabel || 'Test in progress';
 
-  // Start countdown in sticky bar and dashboard card
-  if (otStickyTimerInterval) clearInterval(otStickyTimerInterval);
-  function otUpdateStickyTimer() {
-    if (!t.activatedAt || !t.duration) return;
-    var elapsed = (Date.now() - new Date(t.activatedAt).getTime()) / 1000;
-    var remaining = Math.max(0, parseInt(t.duration) * 60 - elapsed);
-    var m = Math.floor(remaining / 60);
-    var s = Math.floor(remaining % 60);
-    var str = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
-    var sTimer = document.getElementById('ot-sticky-timer');
-    var bTimer = document.getElementById('ot-banner-timer');
-    if (sTimer) sTimer.textContent = str;
-    if (bTimer) bTimer.textContent = str;
-    // Flash bar red if < 2 min
-    var bar2 = document.getElementById('ot-sticky-bar');
-    if (bar2 && remaining < 120) bar2.style.background = 'linear-gradient(90deg,#450a0a,#7f1d1d)';
-  }
-  otUpdateStickyTimer();
-  otStickyTimerInterval = setInterval(otUpdateStickyTimer, 1000);
+  // Show static duration — timer only starts when student clicks Begin Test
+  if (otStickyTimerInterval) { clearInterval(otStickyTimerInterval); otStickyTimerInterval = null; }
+  var durMin = parseInt(t.duration) || 30;
+  var durStr = durMin + ':00';
+  var sTimer = document.getElementById('ot-sticky-timer');
+  var bTimer = document.getElementById('ot-banner-timer');
+  if (sTimer) sTimer.textContent = durStr;
+  if (bTimer) bTimer.textContent = durStr;
 }
 
 function otHideBanner() {

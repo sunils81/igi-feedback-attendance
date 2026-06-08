@@ -5427,10 +5427,13 @@ function trayRows(sh) {
   return sh.getRange(2, 1, sh.getLastRow()-1, sh.getLastColumn()).getValues();
 }
 
-function trayNextId(ss, type, centre) {
+function trayNextId(ss, type, centre, explicitNum) {
   // Auto-generate ID: DIA-CTR-01 or CS-CTR-01
   var prefix = (type === 'Diamond') ? 'DIA' : 'CS';
   var ctrCode = centre.replace(/[^A-Z]/gi,'').toUpperCase().substring(0,3);
+  if (explicitNum) {
+    return prefix + '-' + ctrCode + '-' + String(parseInt(explicitNum)).padStart(2,'0');
+  }
   var sh = getTraySheet(ss, SH_TRAY_REGISTRY);
   var rows = trayRows(sh);
   var max = 0;
@@ -5451,15 +5454,18 @@ function trayAddNotif(ss, toInstructor, type, bookingId, message) {
 }
 
 // ── trayRegister ─────────────────────────────────────────────────────────────
-// p: { type, centre, instructor, stoneCount, notes }
+// p: { type, centre, instructor, stoneCount, notes, trayNumber? }
 function trayRegister(ss, p) {
   if (!p.type || !p.centre || !p.instructor) return {status:'error', message:'Missing required fields'};
   if (!['Diamond','ColoredStone'].includes(p.type)) return {status:'error', message:'Type must be Diamond or ColoredStone'};
   var count = parseInt(p.stoneCount) || 0;
   if (count < 25) return {status:'error', message:'Minimum 25 stones required per tray'};
   ensureTraySheets(ss);
-  var id = trayNextId(ss, p.type, p.centre);
+  var id = trayNextId(ss, p.type, p.centre, p.trayNumber || null);
+  // Check for duplicate ID
   var sh = getTraySheet(ss, SH_TRAY_REGISTRY);
+  var existing = trayRows(sh).map(function(r){ return String(r[0]||''); });
+  if (existing.indexOf(id) !== -1) return {status:'error', message:'Tray '+id+' is already registered'};
   sh.appendRow([id, p.type, p.centre, p.instructor, count, new Date().toISOString(), p.notes||'']);
   return {status:'ok', trayId: id};
 }

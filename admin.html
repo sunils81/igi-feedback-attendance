@@ -1315,6 +1315,7 @@
       <button class="tab" id="tab-password-reset" onclick="switchAdminTab('t-password-reset')">🔐 Password Reset</button>
       <button class="tab" id="tab-settings" onclick="switchAdminTab('t-settings')">⚙️ Settings</button>
       <button class="tab" onclick="switchAdminTab('t-snapshot')">📸 Batch Snapshot</button>
+      <button class="tab" onclick="switchAdminTab('t-trayhub-admin'); adminTrayHubInit();">🔮 Tray Hub</button>
     </div>
 
     <!-- TAB 1: REVENUE OVERVIEW -->
@@ -2078,6 +2079,63 @@
       </div>
     </div>
 
+    <!-- TAB: TRAY HUB ADMIN -->
+    <div id="t-trayhub-admin" class="tab-content">
+      <style>
+        .adm-tray-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px;}
+        .atk-card{background:#fff;border:1.5px solid #e5e7eb;border-radius:12px;padding:14px 16px;}
+        .atk-card .atk-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:4px;}
+        .atk-card .atk-val{font-size:26px;font-weight:800;color:#0D1B2E;font-family:'JetBrains Mono',monospace;}
+        .atk-card .atk-sub{font-size:10px;color:#9ca3af;margin-top:2px;}
+        .atk-card.ok .atk-val{color:#059669;} .atk-card.warn .atk-val{color:#f59e0b;} .atk-card.alert .atk-val{color:#dc2626;}
+        .adm-tray-matrix{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;border:1.5px solid #e5e7eb;margin-bottom:20px;}
+        .adm-tray-matrix th{padding:9px 12px;text-align:center;font-size:10px;font-weight:800;background:#0D1B2E;color:#C9A84C;}
+        .adm-tray-matrix th.thl{text-align:left;color:#9ca3af;}
+        .adm-tray-matrix td{padding:9px 12px;border-top:1px solid #f3f4f6;font-size:12px;vertical-align:middle;}
+        .adm-tray-matrix td.cname{font-weight:800;}
+        .adm-dot-wrap{display:flex;flex-wrap:wrap;gap:3px;}
+        .adm-dot{width:20px;height:20px;border-radius:5px;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+        .adm-dot.available{background:#d1fae5;color:#059669;border:1.5px solid #6ee7b7;}
+        .adm-dot.engaged  {background:#fee2e2;color:#dc2626;border:1.5px solid #fca5a5;}
+        .adm-dot.requested{background:#fef3c7;color:#b45309;border:1.5px solid #fcd34d;}
+        .adm-dot.returning{background:#dbeafe;color:#1e40af;border:1.5px solid #93c5fd;}
+        .adm-dot.overdue  {background:#ede9fe;color:#7c3aed;border:1.5px solid #c4b5fd;}
+        .adm-tray-legend{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;font-size:11px;}
+        .adm-legend-item{display:flex;align-items:center;gap:4px;font-weight:600;}
+      </style>
+
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+        <div>
+          <h2 style="font-size:18px;font-weight:800;margin-bottom:2px;">🔮 Tray Hub — Admin View</h2>
+          <div style="font-size:12px;color:#6b7280;">Full gemstone tray inventory across all centres</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span id="adm-tray-ts" style="font-size:11px;color:#9ca3af;"></span>
+          <button onclick="adminTrayHubLoad()" style="padding:6px 16px;background:#0D1B2E;color:#C9A84C;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🔄 Refresh</button>
+        </div>
+      </div>
+
+      <div class="adm-tray-kpi">
+        <div class="atk-card"><div class="atk-lbl">Total Trays</div><div class="atk-val" id="atk-total">—</div><div class="atk-sub">Across all centres</div></div>
+        <div class="atk-card ok"><div class="atk-lbl">Available</div><div class="atk-val" id="atk-avail">—</div><div class="atk-sub">Ready to use</div></div>
+        <div class="atk-card warn"><div class="atk-lbl">Engaged</div><div class="atk-val" id="atk-engaged">—</div><div class="atk-sub">On active loan</div></div>
+        <div class="atk-card"><div class="atk-lbl">Pending Requests</div><div class="atk-val" id="atk-requested">—</div><div class="atk-sub">Awaiting response</div></div>
+        <div class="atk-card alert"><div class="atk-lbl">Overdue Returns</div><div class="atk-val" id="atk-overdue">—</div><div class="atk-sub">Past deadline</div></div>
+      </div>
+
+      <div class="adm-tray-legend">
+        <span class="adm-legend-item"><span class="adm-dot available">A</span> Available</span>
+        <span class="adm-legend-item"><span class="adm-dot engaged">E</span> Engaged</span>
+        <span class="adm-legend-item"><span class="adm-dot requested">?</span> Requested</span>
+        <span class="adm-legend-item"><span class="adm-dot returning">R</span> Returning</span>
+        <span class="adm-legend-item"><span class="adm-dot overdue">!</span> Overdue</span>
+      </div>
+
+      <div id="adm-tray-board">
+        <div style="color:#9ca3af;font-size:13px;text-align:center;padding:40px;">Click Refresh to load tray board…</div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -2562,7 +2620,12 @@ function switchAdminTab(tabId) {
   if (tabId === 't-snapshot') {
     const snapTab = document.getElementById('t-snapshot');
     if (snapTab) snapTab.classList.add('active');
-    loadSnapshot();
+    // Only auto-load if we already have data; otherwise show placeholder
+    if (_snapData) { snapshotRender(_snapData); }
+    return;
+  }
+  if (tabId === 't-trayhub-admin') {
+    // adminTrayHubInit called directly from button onclick
     return;
   }
   // Fetch dashboard data if we don't have it yet
@@ -4605,6 +4668,147 @@ function escHtml(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ── ADMIN TRAY HUB ──────────────────────────────────────────────────────────
+var _admTrayData = null;
+
+function adminTrayHubInit() {
+  if (!_admTrayData) adminTrayHubLoad();
+}
+
+function adminTrayHubLoad() {
+  var board = document.getElementById('adm-tray-board');
+  if (board) board.innerHTML = '<div style="color:#9ca3af;font-size:13px;text-align:center;padding:40px;">Loading tray data…</div>';
+  gasGet({action:'trayGetBoard'}, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      if (board) board.innerHTML = '<div style="color:#dc2626;font-size:13px;text-align:center;padding:40px;">Failed to load tray data. Ensure GAS is deployed with tray endpoints.</div>';
+      return;
+    }
+    _admTrayData = d;
+    var ts = document.getElementById('adm-tray-ts');
+    if (ts) ts.textContent = 'Last loaded ' + new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+    adminTrayRender(d.centres || []);
+  });
+}
+
+function adminTrayRender(centres) {
+  // KPI aggregation
+  var total=0, avail=0, engaged=0, requested=0, overdue=0;
+  centres.forEach(function(c) {
+    ['diamond','coloredStone'].forEach(function(k) {
+      var trays = (c[k] && c[k].trays) || [];
+      total     += trays.length;
+      avail     += trays.filter(function(t){ return t.status==='available'; }).length;
+      engaged   += trays.filter(function(t){ return t.status==='active'||t.status==='returning'; }).length;
+      requested += trays.filter(function(t){ return t.status==='requested'; }).length;
+      overdue   += trays.filter(function(t){ return t.status==='overdue'; }).length;
+    });
+  });
+  var set = function(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; };
+  set('atk-total',   total);
+  set('atk-avail',   avail);
+  set('atk-engaged', engaged);
+  set('atk-requested', requested);
+  set('atk-overdue', overdue);
+
+  var board = document.getElementById('adm-tray-board');
+  if (!board) return;
+  if (!centres.length) {
+    board.innerHTML = '<div style="color:#9ca3af;font-size:13px;text-align:center;padding:40px;">No trays registered yet. Instructors register trays from their Tray Hub → My Inventory tab.</div>';
+    return;
+  }
+
+  // Per-centre rows
+  function dotStatus(t) {
+    var s = t.status;
+    if (s==='available') return 'available';
+    if (s==='active')    return 'engaged';
+    if (s==='requested') return 'requested';
+    if (s==='returning') return 'returning';
+    if (s==='overdue')   return 'overdue';
+    return 'engaged';
+  }
+  function dotLabel(t) {
+    var s = t.status;
+    if (s==='available') return 'A';
+    if (s==='active')    return 'E';
+    if (s==='requested') return '?';
+    if (s==='returning') return 'R';
+    if (s==='overdue')   return '!';
+    return 'E';
+  }
+  function renderDots(trays) {
+    if (!trays.length) return '<span style="font-size:11px;color:#d1d5db;">None</span>';
+    return '<div class="adm-dot-wrap">' + trays.map(function(t) {
+      var cls = dotStatus(t);
+      var lbl = dotLabel(t);
+      var tip = t.trayId + (t.status!=='available' ? ' · '+t.status+(t.requestingCentre?' → '+t.requestingCentre:'') : '');
+      return '<span class="adm-dot '+cls+'" title="'+escHtml(tip)+'">'+lbl+'</span>';
+    }).join('') + '</div>';
+  }
+
+  var html = '<table class="adm-tray-matrix"><thead>'
+    + '<tr>'
+    + '<th class="thl" style="width:130px;">Centre</th>'
+    + '<th colspan="2" style="border-left:2px solid #1e3a5f;">💎 Diamond</th>'
+    + '<th colspan="2" style="border-left:2px solid #1e3a5f;">🟣 Colored Stone</th>'
+    + '</tr><tr style="background:#0f2540;">'
+    + '<th class="thl" style="font-size:9px;color:#6b7280;padding:5px 12px;">—</th>'
+    + '<th style="font-size:9px;color:#9ca3af;padding:5px;">Trays</th>'
+    + '<th style="font-size:9px;color:#9ca3af;padding:5px;">Status dots</th>'
+    + '<th style="font-size:9px;color:#9ca3af;padding:5px;">Trays</th>'
+    + '<th style="font-size:9px;color:#9ca3af;padding:5px;">Status dots</th>'
+    + '</tr></thead><tbody>';
+
+  centres.forEach(function(c) {
+    var dTrays = (c.diamond && c.diamond.trays) || [];
+    var csTrays = (c.coloredStone && c.coloredStone.trays) || [];
+    var dFree = dTrays.filter(function(t){ return t.status==='available'; }).length;
+    var csFree = csTrays.filter(function(t){ return t.status==='available'; }).length;
+    html += '<tr>'
+      + '<td class="cname">'+escHtml(c.centre)+'</td>'
+      + '<td style="text-align:center;font-weight:800;font-size:13px;color:'+(dFree>0?'#059669':'#dc2626')+';">'+dFree+'/'+dTrays.length+'</td>'
+      + '<td>'+renderDots(dTrays)+'</td>'
+      + '<td style="text-align:center;font-weight:800;font-size:13px;color:'+(csFree>0?'#059669':'#dc2626')+';">'+csFree+'/'+csTrays.length+'</td>'
+      + '<td>'+renderDots(csTrays)+'</td>'
+      + '</tr>';
+  });
+  html += '</tbody></table>';
+
+  // Overdue alert section
+  var overdueList = [];
+  centres.forEach(function(c) {
+    ['diamond','coloredStone'].forEach(function(k) {
+      ((c[k] && c[k].trays) || []).forEach(function(t) {
+        if (t.status === 'overdue') overdueList.push({centre: c.centre, trayId: t.trayId, deadline: t.deadline, requestingCentre: t.requestingCentre});
+      });
+    });
+  });
+  if (overdueList.length) {
+    html += '<div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:12px;padding:16px;margin-top:8px;">'
+      + '<div style="font-size:13px;font-weight:800;color:#991b1b;margin-bottom:10px;">⚠️ Overdue Returns ('+overdueList.length+')</div>';
+    overdueList.forEach(function(o) {
+      html += '<div style="font-size:12px;color:#374151;padding:6px 0;border-bottom:1px solid #fee2e2;">'
+        + '<b>'+escHtml(o.trayId)+'</b> — from <b>'+escHtml(o.centre)+'</b>'
+        + (o.requestingCentre ? ' → at <b>'+escHtml(o.requestingCentre)+'</b>' : '')
+        + (o.deadline ? ' · Deadline: <b>'+escHtml(o.deadline)+'</b>' : '')
+        + '</div>';
+    });
+    html += '</div>';
+  }
+
+  board.innerHTML = html;
+}
+
+// Hook into switchAdminTab for t-trayhub-admin
+var _origSwitchAdminTab = switchAdminTab;
+switchAdminTab = function(tabId) {
+  _origSwitchAdminTab(tabId);
+  if (tabId === 't-trayhub-admin') {
+    var el = document.getElementById('t-trayhub-admin');
+    if (el) el.classList.add('active');
+  }
+};
 </script>
 </body>
 </html>

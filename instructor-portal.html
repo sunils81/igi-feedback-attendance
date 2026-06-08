@@ -1260,17 +1260,42 @@
       <div class="tf-row">
         <div class="tf-field">
           <label>Stone Type</label>
-          <select id="tf-type">
+          <select id="tf-type" onchange="trayUpdateTrayNumOptions()">
             <option value="Diamond">💎 Diamond</option>
             <option value="ColoredStone">🟣 Colored Stone</option>
           </select>
         </div>
         <div class="tf-field">
-          <label>Number of Stones (min 25)</label>
-          <input id="tf-stones" type="number" min="25" value="25" placeholder="e.g. 28">
+          <label>Tray Number</label>
+          <select id="tf-tray-num">
+            <option value="1">Tray 1</option>
+            <option value="2">Tray 2</option>
+            <option value="3">Tray 3</option>
+            <option value="4">Tray 4</option>
+            <option value="5">Tray 5</option>
+            <option value="6">Tray 6</option>
+            <option value="7">Tray 7</option>
+            <option value="8">Tray 8</option>
+            <option value="9">Tray 9</option>
+            <option value="10">Tray 10</option>
+            <option value="11">Tray 11</option>
+            <option value="12">Tray 12</option>
+            <option value="13">Tray 13</option>
+            <option value="14">Tray 14</option>
+            <option value="15">Tray 15</option>
+            <option value="16">Tray 16</option>
+            <option value="17">Tray 17</option>
+            <option value="18">Tray 18</option>
+            <option value="19">Tray 19</option>
+            <option value="20">Tray 20</option>
+          </select>
         </div>
       </div>
       <div class="tf-row">
+        <div class="tf-field">
+          <label>Number of Stones (min 25)</label>
+          <input id="tf-stones" type="number" min="25" value="25" placeholder="e.g. 28">
+        </div>
         <div class="tf-field">
           <label>Notes (optional)</label>
           <input id="tf-notes" type="text" placeholder="e.g. Includes D-IF clarity set">
@@ -2290,6 +2315,34 @@ function renderInstructorSummary() {
       tile('', 'Draft Tests', draft, 'Not yet published') +
       tile('', 'Closed Tests', closed, 'Awaiting results release') +
       tile('', 'Total Tests', tests.length, 'All your tests');
+  } else if (tab === 't-trayhub') {
+    const bd = trayBoardData;
+    let totalTrays = 0, engagedTrays = 0, availableTrays = 0, incomingCount = 0;
+    if (bd && bd.centres) {
+      bd.centres.forEach(function(c) {
+        ['diamond','coloredStone'].forEach(function(k) {
+          const trays = (c[k] && c[k].trays) || [];
+          totalTrays += trays.length;
+          availableTrays += trays.filter(t => t.status === 'available').length;
+          engagedTrays += trays.filter(t => t.status === 'active' || t.status === 'returning' || t.status === 'overdue').length;
+        });
+      });
+      // Count incoming requests for my centre
+      const centre = instructorCentre || instructorName;
+      bd.centres.forEach(function(c) {
+        if (c.centre === centre) {
+          ['diamond','coloredStone'].forEach(function(k) {
+            incomingCount += ((c[k] && c[k].trays) || []).filter(t => t.status === 'requested').length;
+          });
+        }
+      });
+    }
+    const notifBadge = parseInt((document.getElementById('tray-notif-badge')||{}).textContent || '0') || 0;
+    html =
+      tile(availableTrays?'ok':'warn', 'Available Trays', availableTrays || (bd ? '0' : '—'), 'Across all centres') +
+      tile(engagedTrays?'warn':'ok', 'Engaged Trays', engagedTrays || (bd ? '0' : '—'), 'Currently on loan') +
+      tile(incomingCount?'warn':'ok', 'Incoming Requests', incomingCount || (bd ? '0' : '—'), 'Waiting for your response') +
+      tile(notifBadge?'warn':'', 'Tray Notifications', notifBadge || '—', notifBadge ? notifBadge+' unread' : 'All read');
   } else {
     // Fallback — session summary
     const activeSession = today.find(s => s.sessionCode && !s.cancelled);
@@ -4078,6 +4131,29 @@ function traySetNeed() {
 }
 
 // ── MY INVENTORY ────────────────────────────────────────────────────────────
+// Track registered tray numbers per type so the dropdown can disable them
+var _registeredTrayNums = { Diamond: [], ColoredStone: [] };
+
+function trayUpdateTrayNumOptions() {
+  var type = (document.getElementById('tf-type') || {}).value || 'Diamond';
+  var sel = document.getElementById('tf-tray-num');
+  if (!sel) return;
+  var registered = _registeredTrayNums[type] || [];
+  Array.from(sel.options).forEach(function(opt) {
+    var num = parseInt(opt.value);
+    if (registered.indexOf(num) !== -1) {
+      opt.disabled = true;
+      opt.text = 'Tray ' + num + ' ✓ Registered';
+    } else {
+      opt.disabled = false;
+      opt.text = 'Tray ' + num;
+    }
+  });
+  // Auto-select first available
+  var firstFree = Array.from(sel.options).find(function(o){ return !o.disabled; });
+  if (firstFree) sel.value = firstFree.value;
+}
+
 function trayLoadInventory() {
   if (!instructorName) return;
   var centre = instructorCentre || instructorName;
@@ -4088,6 +4164,16 @@ function trayLoadInventory() {
     var centreData = d.myCentreData;
     if (!centreData) { wrap.innerHTML = '<div style="color:#9ca3af;font-size:12px;">No trays registered for your centre yet.</div>'; return; }
     var allTrays = (centreData.diamond.trays || []).concat(centreData.coloredStone.trays || []);
+
+    // Build registered tray numbers map for dropdown disabling
+    _registeredTrayNums.Diamond = (centreData.diamond.trays || []).map(function(t) {
+      var m = (t.trayId || '').match(/(\d+)$/); return m ? parseInt(m[1]) : 0;
+    }).filter(Boolean);
+    _registeredTrayNums.ColoredStone = (centreData.coloredStone.trays || []).map(function(t) {
+      var m = (t.trayId || '').match(/(\d+)$/); return m ? parseInt(m[1]) : 0;
+    }).filter(Boolean);
+    trayUpdateTrayNumOptions();
+
     if (!allTrays.length) { wrap.innerHTML = '<div style="color:#9ca3af;font-size:12px;">No trays registered for your centre yet. Add one above.</div>'; return; }
     var html = allTrays.map(function(t) {
       var typeIcon  = t.type === 'Diamond' ? '💎' : '🟣';
@@ -4106,13 +4192,19 @@ function trayLoadInventory() {
 }
 
 function trayRegisterNew() {
-  var type   = document.getElementById('tf-type').value;
-  var stones = parseInt(document.getElementById('tf-stones').value);
-  var notes  = document.getElementById('tf-notes').value;
-  var msgEl  = document.getElementById('tf-msg');
+  var type    = document.getElementById('tf-type').value;
+  var trayNum = parseInt((document.getElementById('tf-tray-num')||{}).value || '0');
+  var stones  = parseInt(document.getElementById('tf-stones').value);
+  var notes   = document.getElementById('tf-notes').value;
+  var msgEl   = document.getElementById('tf-msg');
   if (!stones || stones < 25) { if(msgEl) msgEl.style.color='#dc2626', msgEl.textContent='Min 25 stones required.'; return; }
+  if (!trayNum) { if(msgEl) msgEl.style.color='#dc2626', msgEl.textContent='Select a tray number.'; return; }
+  // Check not already registered
+  var regNums = _registeredTrayNums[type] || [];
+  if (regNums.indexOf(trayNum) !== -1) { if(msgEl) msgEl.style.color='#dc2626', msgEl.textContent='Tray '+trayNum+' already registered for '+type+'.'; return; }
   gasGet({
     action:'trayRegister', type:type,
+    trayNumber: trayNum,
     centre: instructorCentre||instructorName,
     instructor: instructorName,
     stoneCount: stones, notes: notes

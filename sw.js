@@ -2,10 +2,8 @@
  * IGI Service Worker — caches the app shell for instant load on return visits
  * Version bump the CACHE_NAME to force refresh when files change
  */
-const CACHE_NAME = 'igi-v35';
+const CACHE_NAME = 'igi-v36';
 const SHELL_FILES = [
-  '/counselor',
-  '/counselor.html',
   '/assets/shared.js'
 ];
 
@@ -53,20 +51,10 @@ self.addEventListener('fetch', function(e) {
     return;
   }
 
-  // For HTML pages: NETWORK-FIRST — always fetch fresh, fall back to cache only when offline
+  // HTML pages: NEVER cache — always fetch from network (prevents stale portal)
   if (e.request.headers.get('accept') &&
       e.request.headers.get('accept').indexOf('text/html') >= 0) {
-    e.respondWith(
-      fetch(e.request).then(function(response) {
-        if (response && response.status === 200) {
-          var clone = response.clone();
-          caches.open(CACHE_NAME).then(function(cache) { cache.put(e.request, clone); });
-        }
-        return response;
-      }).catch(function() {
-        return caches.match(e.request);
-      })
-    );
+    e.respondWith(fetch(e.request));
     return;
   }
 

@@ -877,13 +877,24 @@
         <div>
           <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:8px;">DURATION</label>
           <input type="hidden" id="ot-c-duration" value="30">
-          <div style="display:flex;gap:8px;flex-wrap:wrap;" id="ot-dur-pills">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;" id="ot-dur-pills">
             <button type="button" class="ct-dur-pill" onclick="otSetDuration(this,15)">15m</button>
             <button type="button" class="ct-dur-pill active" onclick="otSetDuration(this,30)">30m</button>
             <button type="button" class="ct-dur-pill" onclick="otSetDuration(this,45)">45m</button>
             <button type="button" class="ct-dur-pill" onclick="otSetDuration(this,60)">60m</button>
             <button type="button" class="ct-dur-pill" onclick="otSetDuration(this,90)">90m</button>
             <button type="button" class="ct-dur-pill" onclick="otSetDuration(this,120)">2hr</button>
+            <span style="color:#d1d5db;font-size:16px;">|</span>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#6b7280;cursor:pointer;" onclick="otToggleCustomDuration()">
+              <input type="checkbox" id="ot-c-custom-dur-on" style="accent-color:#0D1B2E;">
+              Custom:
+            </label>
+            <div id="ot-c-custom-dur-wrap" style="display:none;align-items:center;gap:4px;">
+              <input type="number" id="ot-c-custom-dur-val" min="5" max="360" placeholder="e.g. 75"
+                style="width:75px;padding:6px 10px;border:1.5px solid #0D1B2E;border-radius:8px;font-size:13px;font-weight:600;"
+                oninput="document.getElementById('ot-c-duration').value=this.value||30">
+              <span style="font-size:12px;color:#6b7280;">min</span>
+            </div>
           </div>
         </div>
       </div>
@@ -973,23 +984,6 @@
           </label>
           <div id="ot-c-activate-dt" style="display:none;margin-top:6px;padding-left:10px;">
             <input type="datetime-local" id="ot-c-activate-val" style="padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;">
-          </div>
-        </div>
-        <div>
-          <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:8px;">CUSTOM TIMER <span style="font-weight:400;color:#9ca3af;">(optional — override the default duration for this test)</span></label>
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-            <label class="ct-opt-cb" id="ct-custom-timer-lbl" onclick="otToggleCustomTimer()">
-              <input type="checkbox" id="ot-c-custom-timer-on" style="display:none;"> Enable custom timer
-            </label>
-          </div>
-          <div id="ot-c-custom-timer-wrap" style="display:none;">
-            <p style="font-size:12px;color:#6b7280;margin:0 0 8px;">Override the duration set in Step 1 for this specific test.</p>
-            <div id="ot-c-custom-timer-list">
-              <div style="display:flex;align-items:center;gap:10px;">
-                <input type="number" id="ot-c-custom-timer-val" min="5" max="360" placeholder="e.g. 45"
-                  style="width:90px;padding:8px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px;font-weight:600;">
-                <span style="font-size:13px;color:#6b7280;">minutes &nbsp;(Step 1 duration will be ignored)</span>
-              </div>
           </div>
         </div>
       </div>
@@ -1232,12 +1226,13 @@ function iTab(id) {
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   const el = document.getElementById(id);
   if (el) el.classList.add('active');
-  // Match active tab button by onclick attribute
   document.querySelectorAll('.tab').forEach(function(btn) {
     if (btn.getAttribute('onclick') && btn.getAttribute('onclick').includes("'"+id+"'")) {
       btn.classList.add('active');
     }
   });
+  _summaryActiveTab = id;
+  renderInstructorSummary();
   if (id==='t-attendance') stopAttendanceRefresh();
   if (id==='t-mybatches')  loadMyBatches();
   if (id==='t-academic')   loadAcademicDashboard(false);
@@ -1940,20 +1935,89 @@ function loadMyBatches() {
   });
 }
 
+var _summaryActiveTab = 't-session';
 function renderInstructorSummary() {
   const el = document.getElementById('instructor-summary');
   if (!el) return;
   const today = instructorTodayCache || [];
-  const activeSession = today.find(s => s.sessionCode && !s.cancelled);
-  const started = today.filter(s => s.sessionCode && !s.cancelled).length;
-  const pendingSessions = today.filter(s => !s.sessionCode && s.workingDay && s.activeToday).length;
-  const upcoming = today.filter(s => !s.sessionCode).length;
+  const batches = instructorBatchesCache || [];
+
+  function tile(cls, k, v, s) {
+    return '<div class="summary-tile '+(cls||'')+'"><div class="k">'+k+'</div><div class="v">'+v+'</div><div class="s">'+s+'</div></div>';
+  }
+
+  let html = '';
+  const tab = _summaryActiveTab;
+
+  if (tab === 't-session') {
+    const activeSession = today.find(s => s.sessionCode && !s.cancelled);
+    const started = today.filter(s => s.sessionCode && !s.cancelled).length;
+    const notStarted = today.filter(s => !s.sessionCode && s.workingDay !== false).length;
+    const total = today.length;
+    html =
+      tile(activeSession?'ok':'', "Today's Session", activeSession ? '🟢 Live' : (started||0), activeSession ? escH(activeSession.batchCode) : 'Sessions started today') +
+      tile('', 'Batches Today', total, total===1?'1 batch scheduled':total+' batches scheduled') +
+      tile(notStarted?'warn':'ok', 'Not Yet Started', notStarted, notStarted ? 'Sessions pending start' : 'All sessions started') +
+      tile('', 'Assigned Batches', batches.length, batches.filter(b=>b.status!=='Completed'&&!b.completed).length+' active');
+  } else if (tab === 't-attendance') {
+    const withAttendance = today.filter(s => s.sessionCode && !s.cancelled);
+    const totalPresent = withAttendance.reduce((a,s) => a+(s.presentCount||0), 0);
+    const totalStudents = withAttendance.reduce((a,s) => a+(s.totalStudents||s.studentCount||0), 0);
+    const pct = totalStudents ? Math.round(totalPresent/totalStudents*100) : 0;
+    const atRisk = batches.filter(b => (b.avgAttendance||100) < 75).length;
+    html =
+      tile(withAttendance.length?'ok':'', 'Sessions with Attendance', withAttendance.length, 'Attendance recorded today') +
+      tile('', 'Present Today', totalPresent, 'Across all today\'s sessions') +
+      tile(pct<75&&totalStudents?'warn':'ok', 'Attendance Rate', totalStudents ? pct+'%' : '—', totalStudents ? 'Today across batches' : 'No sessions yet') +
+      tile(atRisk?'warn':'ok', 'At-Risk Students', atRisk ? atRisk+' batch'+(atRisk>1?'es':'') : 'None', 'Batches below 75% avg');
+  } else if (tab === 't-marks') {
+    const pending = today.filter(s => s.sessionCode && !s.marksEntered).length;
+    const done = today.filter(s => s.sessionCode && s.marksEntered).length;
+    html =
+      tile(pending?'warn':'ok', 'Pending Marks', pending, pending ? 'Sessions awaiting marks entry' : 'All marks up to date') +
+      tile('ok', 'Marks Entered', done, 'Sessions marked today') +
+      tile('', 'Total Sessions', today.filter(s=>s.sessionCode).length, 'Sessions held today') +
+      tile('', 'Assigned Batches', batches.length, 'Your current batches');
+  } else if (tab === 't-mybatches') {
+    const active = batches.filter(b => b.status !== 'Completed' && !b.completed).length;
+    const completed = batches.length - active;
+    const totalStudents = batches.reduce((a,b) => a+(b.studentCount||b.totalStudents||0), 0);
+    const centres = [...new Set(batches.map(b=>b.centre).filter(Boolean))].length;
+    html =
+      tile('ok', 'Active Batches', active, 'Currently running') +
+      tile('', 'Completed Batches', completed, 'Finished batches') +
+      tile('', 'Total Students', totalStudents||'—', 'Across all your batches') +
+      tile('', 'Centres', centres||batches.length, 'Centres you teach at');
+  } else if (tab === 't-academic') {
+    const active = batches.filter(b => b.status !== 'Completed' && !b.completed).length;
+    html =
+      tile('', 'Active Batches', active, 'Under academic review') +
+      tile('', 'Total Batches', batches.length, 'All assigned batches') +
+      tile('', 'Sessions Today', today.filter(s=>s.sessionCode).length, 'Conducted today') +
+      tile('', 'Centres', [...new Set(batches.map(b=>b.centre).filter(Boolean))].length||'—', 'Your teaching locations');
+  } else if (tab === 't-onlinetests') {
+    const tests = otCurrentTests || [];
+    const active = tests.filter(t => t.status === 'Active' || t.status === 'Open').length;
+    const draft = tests.filter(t => t.status === 'Draft').length;
+    const closed = tests.filter(t => t.status === 'Closed').length;
+    html =
+      tile(active?'ok':'', 'Active Tests', active, active ? 'Tests students can take now' : 'No tests currently active') +
+      tile('', 'Draft Tests', draft, 'Not yet published') +
+      tile('', 'Closed Tests', closed, 'Awaiting results release') +
+      tile('', 'Total Tests', tests.length, 'All your tests');
+  } else {
+    // Fallback — session summary
+    const activeSession = today.find(s => s.sessionCode && !s.cancelled);
+    const started = today.filter(s => s.sessionCode && !s.cancelled).length;
+    html =
+      tile(activeSession?'ok':'', "Today's Session", activeSession?'🟢 Live':(started||0), activeSession?escH(activeSession.batchCode):'Started today') +
+      tile('', 'Attendance Count', started, 'Sessions accepting attendance') +
+      tile('', 'Upcoming Tests', (otCurrentTests||[]).filter(t=>t.status==='Active').length, batches.length+' assigned batches') +
+      tile('', 'Assigned Batches', batches.length, 'Your current batches');
+  }
+
   el.style.display = 'grid';
-  el.innerHTML =
-    '<div class="summary-tile ok"><div class="k">Today\'s Session</div><div class="v">' + (activeSession ? 'Live' : started || 0) + '</div><div class="s">' + (activeSession ? escH(activeSession.batchCode) : 'Started today') + '</div></div>' +
-    '<div class="summary-tile"><div class="k">Attendance Count</div><div class="v">' + started + '</div><div class="s">Sessions accepting attendance</div></div>' +
-    '<div class="summary-tile ' + (pendingSessions ? 'warn' : 'ok') + '"><div class="k">Pending Marks</div><div class="v">' + pendingSessions + '</div><div class="s">Sessions still to start</div></div>' +
-    '<div class="summary-tile"><div class="k">Upcoming Tests</div><div class="v">' + upcoming + '</div><div class="s">' + instructorBatchesCache.length + ' assigned batches</div></div>';
+  el.innerHTML = html;
 }
 
 function loadAcademicDashboard(force) {
@@ -2704,12 +2768,51 @@ function otSaveCustomQ() {
 
 // ── Create Test helpers ──────────────────────────────────────
 
+// Toast for batch warnings
+var _batchToastTimer = null;
+function otShowBatchToast(msg) {
+  var t = document.getElementById('ot-batch-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'ot-batch-toast';
+    t.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#1f2937;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:420px;text-align:center;pointer-events:none;transition:opacity .2s;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(_batchToastTimer);
+  _batchToastTimer = setTimeout(function(){ t.style.opacity = '0'; }, 3500);
+}
+
 // Duration pill selector
 function otSetDuration(btn, mins) {
   document.querySelectorAll('.ct-dur-pill').forEach(function(p){ p.classList.remove('active'); });
   btn.classList.add('active');
   var inp = document.getElementById('ot-c-duration');
   if (inp) inp.value = mins;
+  // Clear custom duration when a pill is selected
+  var cdinp = document.getElementById('ot-c-custom-dur-val');
+  if (cdinp) cdinp.value = '';
+}
+
+function otToggleCustomDuration() {
+  var cb = document.getElementById('ot-c-custom-dur-on');
+  var wrap = document.getElementById('ot-c-custom-dur-wrap');
+  if (!cb) return;
+  // checkbox is toggled by the label's default behavior — just sync wrap visibility
+  setTimeout(function() {
+    if (wrap) wrap.style.display = cb.checked ? 'flex' : 'none';
+    if (cb.checked) {
+      // deactivate all pills
+      document.querySelectorAll('.ct-dur-pill').forEach(function(p){ p.classList.remove('active'); });
+      var inp = document.getElementById('ot-c-custom-dur-val');
+      if (inp) inp.focus();
+    } else {
+      // reactivate 30m default
+      document.getElementById('ot-c-duration').value = 30;
+      document.querySelectorAll('.ct-dur-pill')[1].classList.add('active');
+    }
+  }, 0);
 }
 
 // Batch pill toggle (multi-select)
@@ -2722,31 +2825,33 @@ function otRenderBatchPills() {
   wrap.innerHTML = '';
   batches.forEach(function(b) {
     var isCompleted = b.status === 'Completed' || b.completed;
+    var isInactive = b.status === 'Inactive' || b.active === false || b.active === 'N';
+    var isBlocked = isInactive; // completed batches can still be selected; inactive cannot
     var pill = document.createElement('button');
     pill.type = 'button';
-    pill.className = 'ct-batch-pill' + (otSelectedBatches.has(b.batchCode) ? ' active' : '');
+    pill.className = 'ct-batch-pill' + (otSelectedBatches.has(b.batchCode) ? ' active' : '') + (isBlocked ? ' disabled' : '') + (isCompleted ? ' completed' : '');
+    if (isBlocked) pill.style.cssText = 'opacity:.45;cursor:not-allowed;filter:grayscale(.8);';
     pill.innerHTML = escHtml(b.batchCode)
       + ' <span style="opacity:.7;font-size:11px;">' + escHtml(b.course || b.courseName || '') + '</span>'
-      + (isCompleted ? ' <span style="font-size:10px;background:rgba(255,255,255,.15);padding:1px 6px;border-radius:8px;opacity:.85;">✓ COMPLETED</span>' : '');
-    if (isCompleted) pill.title = 'This batch is completed — tests will still work';
+      + (isCompleted ? ' <span style="font-size:10px;background:rgba(201,168,76,.25);padding:1px 6px;border-radius:8px;color:#92400e;">COMPLETED</span>' : '')
+      + (isBlocked ? ' <span style="font-size:10px;background:rgba(220,38,38,.15);padding:1px 6px;border-radius:8px;color:#dc2626;">INACTIVE</span>' : '');
     pill.onclick = function() {
+      if (isBlocked) {
+        otShowBatchToast('⚠ ' + b.batchCode + ' is inactive — cannot assign tests to this batch.');
+        return;
+      }
       if (otSelectedBatches.has(b.batchCode)) {
         otSelectedBatches.delete(b.batchCode);
         pill.classList.remove('active');
       } else {
         otSelectedBatches.add(b.batchCode);
         pill.classList.add('active');
+        if (isCompleted) otShowBatchToast('ℹ ' + b.batchCode + ' is completed — students can still take tests but no new students will enrol.');
       }
       document.getElementById('ot-c-batch').value = [...otSelectedBatches].join(',');
       otLoadStudentsForPicker();
     };
     wrap.appendChild(pill);
-    if (isCompleted) {
-      var warn = document.createElement('div');
-      warn.style.cssText = 'font-size:11px;color:#d97706;margin:2px 4px 4px;';
-      warn.textContent = '⚠ This batch is completed — tests will still work';
-      wrap.appendChild(warn);
-    }
   });
 }
 
@@ -2898,19 +3003,7 @@ function otToggleOptCb(key) {
   }
 }
 
-// Custom timer (single override for the whole test)
-function otToggleCustomTimer() {
-  var cb = document.getElementById('ot-c-custom-timer-on');
-  var lbl = document.getElementById('ct-custom-timer-lbl');
-  var wrap = document.getElementById('ot-c-custom-timer-wrap');
-  if (!cb) return;
-  cb.checked = !cb.checked;
-  if (lbl) lbl.classList.toggle('active', cb.checked);
-  if (wrap) wrap.style.display = cb.checked ? 'block' : 'none';
-  if (!cb.checked) { var inp = document.getElementById('ot-c-custom-timer-val'); if (inp) inp.value = ''; }
-}
-
-function otRebuildCustomTimerList() { /* no-op — custom timer is now a single override field */ }
+function otRebuildCustomTimerList() { /* no-op */ }
 
 // Sync selected questions into Step 6 with full card preview + edit
 function otSyncSelectedPreview() {
@@ -3088,9 +3181,6 @@ function otCreateTest() {
   var activateAt = '';
   if (activateMode === 'scheduled') { activateAt = (document.getElementById('ot-c-activate-val')||{}).value || ''; }
 
-  // Collect custom timer override
-  var timerOn = (document.getElementById('ot-c-custom-timer-on')||{}).checked;
-  var customTimerVal = timerOn ? ((document.getElementById('ot-c-custom-timer-val')||{}).value || '') : '';
   var customTimers = {};
 
   // Collect selected student IDs (if targeted)
@@ -3117,8 +3207,7 @@ function otCreateTest() {
     expiryMode: expiryMode,
     expiryAt: expiryAt,
     targetStudents: targetStudents,
-    customTimers: Object.keys(customTimers).length ? JSON.stringify(customTimers) : '',
-    customDuration: customTimerVal
+    customTimers: Object.keys(customTimers).length ? JSON.stringify(customTimers) : ''
   };
 
   var st = document.getElementById('ot-create-status');

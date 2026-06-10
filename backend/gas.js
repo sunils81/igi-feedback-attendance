@@ -6664,8 +6664,28 @@ function getDiplomaReleaseList(ss, p) {
       const attendancePct = totalSessions > 0 ? Math.round((attended / totalSessions) * 100) : 0;
 
       const batchAssessments = assessmentsByBatch[batchCode] || [];
-      
-      const weeklyTests = batchAssessments.filter(a => a.testType === 'Weekly' && assessmentHasGrades[a.assessmentId]);
+
+      // Helper: classify a test as Weekly or Final by type field first,
+      // then fall back to test name keywords (for tests entered before
+      // Weekly/Final were added as explicit type options).
+      function isWeeklyTest(a) {
+        const t = String(a.testType || '').toLowerCase();
+        const n = String(a.testName || '').toLowerCase();
+        if (t === 'weekly') return true;
+        if (t === 'final' || t === 're-test') return false;
+        // name-based fallback
+        return (n.indexOf('weekly') !== -1 || n.indexOf('week') !== -1) && n.indexOf('final') === -1;
+      }
+      function isFinalTest(a) {
+        const t = String(a.testType || '').toLowerCase();
+        const n = String(a.testName || '').toLowerCase();
+        if (t === 'final') return true;
+        if (t === 'weekly' || t === 're-test') return false;
+        // name-based fallback
+        return n.indexOf('final') !== -1;
+      }
+
+      const weeklyTests = batchAssessments.filter(a => isWeeklyTest(a) && assessmentHasGrades[a.assessmentId]);
       let weeklySum = 0;
       let weeklyCount = 0;
       weeklyTests.forEach(a => {
@@ -6679,7 +6699,7 @@ function getDiplomaReleaseList(ss, p) {
       });
       const weeklyAvg = weeklyCount > 0 ? Math.round(weeklySum / weeklyCount) : null;
 
-      const finalExams = batchAssessments.filter(a => a.testType === 'Final' && assessmentHasGrades[a.assessmentId]);
+      const finalExams = batchAssessments.filter(a => isFinalTest(a) && assessmentHasGrades[a.assessmentId]);
       let finalExamScore = null;
       finalExams.forEach(a => {
         const markRow = marksByAssAndStudent[studentId + '|' + a.assessmentId];

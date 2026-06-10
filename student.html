@@ -490,6 +490,8 @@
   }
 }
 </style>
+<!-- QR code generator (used for student ID card) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
 <script>document.getElementById('dyn-css').textContent=CSS_VARS;</script>
@@ -531,7 +533,39 @@
         <div class="wb-name" id="wb-name">—</div>
         <div class="wb-sub" id="wb-date">—</div>
       </div>
-      <button class="wb-logout" onclick="doLogout()">Sign out</button>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button id="id-card-avatar-btn" onclick="openIdCard()"
+          style="width:36px;height:36px;border-radius:50%;border:2px solid rgba(255,255,255,.35);
+                 background:var(--gold);color:var(--navy);font-weight:800;font-size:13px;
+                 cursor:pointer;display:flex;align-items:center;justify-content:center;
+                 overflow:hidden;padding:0;flex-shrink:0;"
+          title="View ID Card">
+          <span id="id-card-avatar-initials">?</span>
+          <img id="id-card-avatar-img" src="" alt=""
+               style="display:none;width:100%;height:100%;object-fit:cover;border-radius:50%;">
+        </button>
+        <button class="wb-logout" onclick="doLogout()">Sign out</button>
+      </div>
+    </div>
+
+    <!-- ══ ID CARD BOTTOM-SHEET ══ -->
+    <div id="id-card-backdrop" onclick="closeIdCard()"
+         style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:8000;
+                backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);"></div>
+    <div id="id-card-sheet"
+         style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:8001;
+                background:#f4f6f9;border-radius:20px 20px 0 0;padding:0 0 32px;
+                max-height:92vh;overflow-y:auto;
+                transition:transform .3s cubic-bezier(.32,1,.5,1);
+                transform:translateY(100%);font-family:'Plus Jakarta Sans',sans-serif;">
+      <!-- drag handle -->
+      <div style="text-align:center;padding:12px 0 4px;">
+        <div style="width:40px;height:4px;background:#d1d5db;border-radius:2px;display:inline-block;"></div>
+      </div>
+      <!-- sheet content -->
+      <div id="id-card-sheet-inner" style="padding:0 16px 8px;">
+        <div style="color:#9ca3af;text-align:center;padding:30px 0;">Loading…</div>
+      </div>
     </div>
 
     <!-- Segmented Tab Navigation -->
@@ -1144,6 +1178,7 @@ function renderPortal(d) {
   else greet = "Good evening";
   const firstName = d.studentName ? d.studentName.split(' ')[0] : 'Student';
   document.getElementById('wb-name').textContent = `${greet}, ${firstName}! 👋`;
+  updateAvatarButton(d);
   
   const dateStr = new Date().toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
   const centreStr = (d.batches && d.batches.length) ? `${d.batches[0].centre} · ` : '';
@@ -2948,6 +2983,301 @@ function loadStudentDiploma() {
     });
 
     wrap.innerHTML = html;
+  });
+}
+
+/* ══════════════════════════════════════════
+   STUDENT ID CARD
+══════════════════════════════════════════ */
+
+function getInitials(name) {
+  if (!name) return '?';
+  var parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length-1].charAt(0)).toUpperCase();
+}
+
+function updateAvatarButton(d) {
+  var initEl = document.getElementById('id-card-avatar-initials');
+  var imgEl  = document.getElementById('id-card-avatar-img');
+  if (!initEl || !imgEl) return;
+  var initials = getInitials(d ? d.studentName : '');
+  initEl.textContent = initials;
+  var photo = d && d.photoUrl ? d.photoUrl.trim() : '';
+  if (photo) {
+    imgEl.src = photo;
+    imgEl.style.display = 'block';
+    initEl.style.display = 'none';
+    imgEl.onerror = function() {
+      imgEl.style.display = 'none';
+      initEl.style.display = 'block';
+    };
+  } else {
+    imgEl.style.display = 'none';
+    initEl.style.display = 'block';
+  }
+}
+
+function openIdCard() {
+  var backdrop = document.getElementById('id-card-backdrop');
+  var sheet    = document.getElementById('id-card-sheet');
+  var inner    = document.getElementById('id-card-sheet-inner');
+  if (!backdrop || !sheet || !inner) return;
+
+  backdrop.style.display = 'block';
+  sheet.style.display    = 'block';
+  setTimeout(function() { sheet.style.transform = 'translateY(0)'; }, 10);
+
+  if (!portalData) {
+    inner.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:30px 0;">Please log in first.</p>';
+    return;
+  }
+  inner.innerHTML = buildIdCardHTML(portalData);
+  renderQR(portalData.enrollmentNo);
+}
+
+function closeIdCard() {
+  var sheet    = document.getElementById('id-card-sheet');
+  var backdrop = document.getElementById('id-card-backdrop');
+  if (!sheet) return;
+  sheet.style.transform = 'translateY(100%)';
+  setTimeout(function() {
+    sheet.style.display    = 'none';
+    backdrop.style.display = 'none';
+  }, 310);
+}
+
+function buildIdCardHTML(d) {
+  var today = new Date();
+  var name  = d.studentName || '—';
+  var enrol = d.enrollmentNo || '—';
+  var photo = d.photoUrl || '';
+
+  // Determine card status from allBatches
+  var allBatches = d.allBatches || d.batches || [];
+  var activeBatches  = allBatches.filter(function(b) { return !b.expired; });
+  var expiredBatches = allBatches.filter(function(b) { return  b.expired; });
+
+  // Pick primary batch for display
+  var primary = activeBatches.length ? activeBatches[0] : (expiredBatches.length ? expiredBatches[0] : null);
+
+  // Validity status
+  var statusLabel, statusColor, statusBg, cardFilter, expired;
+  var daysToExpiry = null;
+  if (!primary) {
+    statusLabel = 'NO BATCH'; statusColor = '#9ca3af'; statusBg = '#f3f4f6'; cardFilter = ''; expired = false;
+  } else if (!primary.expired) {
+    var endD = new Date(primary.endDateISO);
+    daysToExpiry = Math.ceil((endD - today) / (1000*60*60*24));
+    if (daysToExpiry <= 30) {
+      statusLabel = 'EXPIRING SOON'; statusColor = '#b45309'; statusBg = '#fef3c7'; cardFilter = ''; expired = false;
+    } else {
+      statusLabel = 'VALID'; statusColor = '#059669'; statusBg = '#d1fae5'; cardFilter = ''; expired = false;
+    }
+  } else {
+    statusLabel = 'EXPIRED'; statusColor = '#dc2626'; statusBg = '#fee2e2'; cardFilter = 'grayscale(100%)'; expired = true;
+  }
+
+  var centre   = primary ? (primary.centre  || '—') : '—';
+  var course   = primary ? (primary.course  || '—') : '—';
+  var slot     = primary ? (primary.batchSlot||'—') : '—';
+  var startDis = primary ? (primary.startDateDisplay||'—') : '—';
+  var endDis   = primary ? (primary.endDateDisplay  ||'—') : '—';
+
+  // Avatar / photo
+  var avatarHtml;
+  if (photo) {
+    avatarHtml = '<img src="'+photo+'" alt="Photo" '+
+      'style="width:72px;height:72px;border-radius:50%;object-fit:cover;'+
+      'border:3px solid rgba(255,255,255,.4);" '+
+      'onerror="this.style.display=\'none\';document.getElementById(\'id-card-initials-fb\').style.display=\'flex\'">' +
+      '<div id="id-card-initials-fb" style="display:none;width:72px;height:72px;border-radius:50%;'+
+      'background:rgba(255,255,255,.2);color:#fff;font-size:22px;font-weight:800;'+
+      'align-items:center;justify-content:center;border:3px solid rgba(255,255,255,.4);">'+getInitials(name)+'</div>';
+  } else {
+    avatarHtml = '<div style="width:72px;height:72px;border-radius:50%;'+
+      'background:rgba(255,255,255,.2);color:#fff;font-size:22px;font-weight:800;'+
+      'display:flex;align-items:center;justify-content:center;'+
+      'border:3px solid rgba(255,255,255,.4);">'+getInitials(name)+'</div>';
+  }
+
+  // Expiry warning
+  var expiryNote = '';
+  if (daysToExpiry !== null && daysToExpiry <= 30 && daysToExpiry > 0) {
+    expiryNote = '<div style="background:#fef3c7;color:#92400e;border-radius:8px;padding:8px 12px;'+
+      'font-size:12px;font-weight:600;text-align:center;margin-bottom:12px;">'+
+      '⚠ Your batch ends in '+daysToExpiry+' day'+(daysToExpiry===1?'':'s')+' ('+endDis+')</div>';
+  }
+
+  // Expired overlay text
+  var expiredOverlay = expired ?
+    '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;'+
+    'pointer-events:none;z-index:2;">'+
+    '<div style="border:4px solid #dc2626;color:#dc2626;font-size:28px;font-weight:900;'+
+    'padding:6px 18px;border-radius:6px;transform:rotate(-18deg);opacity:.85;'+
+    'letter-spacing:3px;background:rgba(255,255,255,.15);">EXPIRED</div></div>' : '';
+
+  return '' +
+    expiryNote +
+    // ── THE CARD ──
+    '<div id="student-id-card" style="position:relative;border-radius:16px;overflow:hidden;'+
+      'filter:'+cardFilter+';max-width:340px;margin:0 auto 16px;'+
+      'box-shadow:0 8px 32px rgba(13,27,46,.25);">' +
+      expiredOverlay +
+      // Card header — navy/gold gradient
+      '<div style="background:linear-gradient(135deg,#0D1B2E 60%,#1a3456);padding:20px 20px 14px;position:relative;">' +
+        // IGI logo row
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
+          '<div>' +
+            '<div style="color:#C9A84C;font-size:11px;font-weight:900;letter-spacing:2px;">IGI</div>' +
+            '<div style="color:rgba(255,255,255,.55);font-size:9px;letter-spacing:.5px;margin-top:1px;">'+
+              'INSTITUTE OF GEMOLOGY OF INDIA</div>' +
+          '</div>' +
+          '<div style="background:'+statusBg+';color:'+statusColor+';font-size:9px;font-weight:800;'+
+            'padding:3px 8px;border-radius:20px;letter-spacing:.8px;">'+statusLabel+'</div>' +
+        '</div>' +
+        // Photo + name
+        '<div style="display:flex;align-items:center;gap:14px;">' +
+          avatarHtml +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="color:#fff;font-size:16px;font-weight:800;line-height:1.2;'+
+              'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+name+'</div>' +
+            '<div style="color:#C9A84C;font-size:11px;font-weight:600;margin-top:3px;">'+enrol+'</div>' +
+            '<div style="color:rgba(255,255,255,.5);font-size:10px;margin-top:2px;">'+centre+'</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      // Card body — white
+      '<div style="background:#fff;padding:14px 18px;">' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-bottom:14px;">' +
+          idCardField('COURSE', course) +
+          idCardField('BATCH SLOT', slot) +
+          idCardField('ENROLLED', startDis) +
+          idCardField('VALID UNTIL', endDis) +
+        '</div>' +
+        // QR code
+        '<div style="border-top:1px solid #f3f4f6;padding-top:12px;display:flex;'+
+          'align-items:center;justify-content:space-between;gap:12px;">' +
+          '<div id="id-card-qr" style="flex-shrink:0;"></div>' +
+          '<div style="font-size:9px;color:#9ca3af;line-height:1.5;">' +
+            'Scan to verify<br>student identity.<br>' +
+            '<span style="color:#0D1B2E;font-weight:600;">'+enrol+'</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    // ── ACTIONS ──
+    '<div style="max-width:340px;margin:0 auto;">' +
+      '<button onclick="showPhotoUpload()" '+
+        'style="width:100%;padding:12px;background:#fff;border:1.5px solid #e5e7eb;'+
+        'border-radius:10px;font-size:13px;font-weight:600;color:#0D1B2E;cursor:pointer;'+
+        'margin-bottom:8px;font-family:\'Plus Jakarta Sans\',sans-serif;">'+
+        '📷 Change Profile Photo</button>' +
+      '<div id="photo-upload-area" style="display:none;background:#fff;border:1.5px solid #e5e7eb;'+
+        'border-radius:10px;padding:14px;margin-bottom:8px;">' +
+        '<p style="font-size:12px;color:#6b7280;margin:0 0 8px;">'+
+          'Paste a public photo link (Google Drive, Dropbox, iCloud).<br>'+
+          '<span style="color:#9ca3af;font-size:11px;">Tip: in Google Drive, click Share → "Anyone with link" → copy link.</span></p>' +
+        '<input id="photo-url-input" type="url" placeholder="https://drive.google.com/..." '+
+          'style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #d1d5db;'+
+          'border-radius:7px;font-size:13px;font-family:\'Plus Jakarta Sans\',sans-serif;margin-bottom:8px;">' +
+        '<div style="display:flex;gap:8px;">' +
+          '<button onclick="saveStudentPhoto()" '+
+            'style="flex:1;padding:9px;background:#0D1B2E;color:#fff;border:none;border-radius:7px;'+
+            'font-size:13px;font-weight:700;cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;">'+
+            'Save Photo</button>' +
+          '<button onclick="document.getElementById(\'photo-upload-area\').style.display=\'none\'" '+
+            'style="padding:9px 14px;background:#f3f4f6;color:#6b7280;border:none;border-radius:7px;'+
+            'font-size:13px;cursor:pointer;font-family:\'Plus Jakarta Sans\',sans-serif;">Cancel</button>' +
+        '</div>' +
+        '<div id="photo-save-msg" style="font-size:12px;margin-top:6px;"></div>' +
+      '</div>' +
+      '<button onclick="downloadIdCard()" '+
+        'style="width:100%;padding:12px;background:#f9fafb;border:1.5px solid #e5e7eb;'+
+        'border-radius:10px;font-size:13px;font-weight:600;color:#6b7280;cursor:pointer;'+
+        'font-family:\'Plus Jakarta Sans\',sans-serif;">'+
+        '📥 Save Card as Image</button>' +
+    '</div>';
+}
+
+function idCardField(label, value) {
+  return '<div>' +
+    '<div style="font-size:9px;color:#9ca3af;font-weight:700;letter-spacing:.5px;margin-bottom:2px;">'+label+'</div>' +
+    '<div style="font-size:12px;font-weight:600;color:#0D1B2E;line-height:1.3;">'+value+'</div>' +
+  '</div>';
+}
+
+function renderQR(text) {
+  var el = document.getElementById('id-card-qr');
+  if (!el || !text) return;
+  el.innerHTML = '';
+  try {
+    new QRCode(el, {
+      text: text,
+      width: 56, height: 56,
+      colorDark: '#0D1B2E', colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  } catch(e) {
+    el.innerHTML = '<div style="width:56px;height:56px;background:#f3f4f6;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#9ca3af;">QR</div>';
+  }
+}
+
+function showPhotoUpload() {
+  var area = document.getElementById('photo-upload-area');
+  if (!area) return;
+  area.style.display = area.style.display === 'none' ? 'block' : 'none';
+}
+
+function saveStudentPhoto() {
+  var input   = document.getElementById('photo-url-input');
+  var msgEl   = document.getElementById('photo-save-msg');
+  if (!input || !portalData) return;
+  var url = input.value.trim();
+  if (!url) { if (msgEl) msgEl.innerHTML = '<span style="color:#dc2626;">Please enter a URL.</span>'; return; }
+  if (!/^https?:\/\//i.test(url)) { if (msgEl) msgEl.innerHTML = '<span style="color:#dc2626;">URL must start with https://</span>'; return; }
+
+  if (msgEl) msgEl.innerHTML = '<span style="color:#9ca3af;">Saving…</span>';
+  gasGet({action:'updateStudentPhoto', studentId: portalData.enrollmentNo, photoUrl: url}, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      if (msgEl) msgEl.innerHTML = '<span style="color:#dc2626;">Could not save. Please try again.</span>';
+      return;
+    }
+    // Update local portalData and re-render
+    portalData.photoUrl = url;
+    updateAvatarButton(portalData);
+    if (msgEl) msgEl.innerHTML = '<span style="color:#059669;">✅ Photo saved!</span>';
+    // Refresh the card HTML (re-renders with new photo)
+    var inner = document.getElementById('id-card-sheet-inner');
+    if (inner) {
+      inner.innerHTML = buildIdCardHTML(portalData);
+      renderQR(portalData.enrollmentNo);
+    }
+  });
+}
+
+function downloadIdCard() {
+  var card = document.getElementById('student-id-card');
+  if (!card) return;
+  // html2canvas — load on demand
+  if (typeof html2canvas === 'undefined') {
+    var s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload = function() { _doDownloadCard(card); };
+    document.head.appendChild(s);
+  } else {
+    _doDownloadCard(card);
+  }
+}
+
+function _doDownloadCard(card) {
+  html2canvas(card, {scale: 3, useCORS: true, backgroundColor: null}).then(function(canvas) {
+    var link = document.createElement('a');
+    link.download = 'IGI-ID-Card-' + (portalData ? portalData.enrollmentNo : 'student') + '.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  }).catch(function() {
+    alert('Could not save image. Try taking a screenshot instead.');
   });
 }
 </script>

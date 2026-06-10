@@ -1258,6 +1258,31 @@ function doGet(e) {
       return respond({status:'ok', rows});
     }
 
+    // ── updateStudentPhoto ────────────────────────────────────
+    // Student pastes a public photo URL (Google Drive / Dropbox link).
+    // Stored in col 11 (index 10) of Batch_Students sheet.
+    if (act==='updateStudentPhoto') {
+      const studentId = String(p.studentId || p.enrollmentNo || '').trim().toUpperCase();
+      const photoUrl  = String(p.photoUrl  || '').trim();
+      if (!studentId) return respond({status:'error', reason:'missing_student_id'});
+      // Basic sanity: must look like a URL
+      if (photoUrl && !/^https?:\/\//i.test(photoUrl))
+        return respond({status:'error', reason:'invalid_url'});
+      const sh = ss.getSheetByName(SH_STUDENTS);
+      if (!sh || sh.getLastRow() < 2) return respond({status:'error', reason:'no_sheet'});
+      const data = sh.getRange(2, 1, sh.getLastRow()-1, 1).getValues();
+      let found = false;
+      for (let i = 0; i < data.length; i++) {
+        if (String(data[i][0]||'').trim().toUpperCase() === studentId) {
+          sh.getRange(i+2, 11).setValue(photoUrl); // col K = index 10
+          found = true;
+          break;
+        }
+      }
+      if (!found) return respond({status:'error', reason:'student_not_found'});
+      return respond({status:'ok', photoUrl});
+    }
+
     // ── otSubmitPortfolio ─────────────────────────────────────
     if (act==='otSubmitPortfolio') {
       return respond(otSubmitPortfolio(ss, p));
@@ -2125,6 +2150,10 @@ function doGet(e) {
         batchCards.push({
           batchCode, course:batch[2], centre:batch[1], type:batch[3], batchSlot,
           instructor:  batch[9]||'',
+          startDateISO: startDate.toISOString(),
+          endDateISO:   endDate.toISOString(),
+          startDateDisplay: startDate.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}),
+          endDateDisplay:   endDate.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}),
           sessionCode: todaySess ? String(todaySess[0]) : null,
           sessNo:      todaySess ? todaySess[3] : null,
           topic:       todaySess ? (todaySess[6]||'') : null,
@@ -2176,12 +2205,36 @@ function doGet(e) {
         }
       });
 
+      // All enrolled batches (incl. expired) — for ID card validity display
+      const allEnrolledBatches = getEnrollmentRows(ss)
+        .filter(e => e.studentId === enrollNo && e.status === 'Active')
+        .map(e => {
+          const bc = String(e.batchCode).toUpperCase();
+          const b  = bData.find(r => String(r[0]).toUpperCase() === bc);
+          if (!b) return null;
+          const isN = detectSlotOrDate(b[4]);
+          const sD  = new Date(isN ? b[5] : b[4]); sD.setHours(0,0,0,0);
+          const eD  = new Date(isN ? b[6] : b[5]); eD.setHours(23,59,59,0);
+          return {
+            batchCode: bc, course: b[2]||'', centre: b[1]||'', type: b[3]||'',
+            batchSlot: isN ? (b[4]||'Full Day') : 'Full Day',
+            instructor: b[9]||'',
+            startDateISO: sD.toISOString(),
+            endDateISO:   eD.toISOString(),
+            startDateDisplay: sD.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}),
+            endDateDisplay:   eD.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}),
+            expired: today > eD
+          };
+        }).filter(Boolean);
+
       return respond({
         status: 'ok',
         studentName,
         enrollmentNo: enrollNo,
         mobileLast4: storedLast4 || mobileColLast4,
+        photoUrl: student.photoUrl || '',
         batches: batchCards,
+        allBatches: allEnrolledBatches,
         assessments: studentAssessments
       });
     }
@@ -2894,7 +2947,7 @@ function fixOldBatches() {
 function getStudentRows(ss) {
   const sh=ss.getSheetByName(SH_STUDENTS);
   if(!sh||sh.getLastRow()<2)return [];
-  const data=sh.getRange(2,1,sh.getLastRow()-1,10).getValues();
+  const data=sh.getRange(2,1,sh.getLastRow()-1,11).getValues(); // 11 cols — col 11 = photoUrl
   const map={};
   data.forEach((r,i)=>{
     const id=String(r[0]||'').trim().toUpperCase();
@@ -2903,7 +2956,7 @@ function getStudentRows(ss) {
     const last4=mobileDigits.length>=4?mobileDigits.slice(-4):String(r[3]||'').replace(/\D/g,'').slice(-4);
     const row={id,enrollmentNo:id,primaryBatch:String(r[1]||'').toUpperCase(),name:r[2]||'',mobileLast4:last4,
       mobile:r[4]||'',email:r[5]||'',status:r[6]||'Active',createdAt:r[7]||'',
-      welcomeEmailStatus:r[8]||'',welcomeEmailSentAt:r[9]||'',rowIndex:i+2,raw:r};
+      welcomeEmailStatus:r[8]||'',welcomeEmailSentAt:r[9]||'',photoUrl:r[10]||'',rowIndex:i+2,raw:r};
     if(!map[id]||map[id].status!=='Active')map[id]=row;
   });
   return Object.values(map);

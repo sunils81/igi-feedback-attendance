@@ -6608,7 +6608,7 @@ function getInstructorEligibility(ss, p) {
       ? shSess.getRange(2, 1, shSess.getLastRow()-1, 9).getValues() : [];
     const myBatches = new Set();
     sessData.forEach(r => {
-      if (String(r[3]).trim() === instructor) myBatches.add(String(r[1]).toUpperCase());
+      if (sameName(String(r[4]).trim(), instructor)) myBatches.add(String(r[1]).toUpperCase());
     });
 
     // Filter list to instructor's batches only

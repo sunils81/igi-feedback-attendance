@@ -1087,6 +1087,7 @@ function doGet(e) {
     if (act==='trayMarkReturning')      return respond(trayMarkReturning(ss,p));
     if (act==='trayConfirmReturn')      return respond(trayConfirmReturn(ss,p));
     if (act==='trayConfirmLocation')    return respond(trayConfirmLocation(ss,p));
+    if (act==='trayBorrowerConfirm')    return respond(trayBorrowerConfirm(ss,p));
     if (act==='trayUpdateDetails')      return respond(trayUpdateDetails(ss,p));
     if (act==='trayGetWeekPlan')        return respond(trayGetWeekPlan(ss,p));
     if (act==='traySetWeeklyNeed')      return respond(traySetWeeklyNeed(ss,p));
@@ -5413,7 +5414,7 @@ function ensureTraySheets(ss) {
     }
     return sh;
   }
-  ensureSheet(SH_TRAY_REGISTRY,      ['TrayID','Category','TopicCode','TopicName','HomeCentre','HomeInstructor','StoneCount','WeekUsage','LocationStatus','CurrentCentre','ExpectedReturn','RegisteredAt','Notes']);
+  ensureSheet(SH_TRAY_REGISTRY,      ['TrayID','Category','TopicCode','TopicName','HomeCentre','HomeInstructor','StoneCount','WeekUsage','LocationStatus','CurrentCentre','ExpectedReturn','RegisteredAt','Notes','BorrowerConfirmed']);
   ensureSheet(SH_TRAY_BOOKINGS,      ['BookingID','TrayID','HomeCentre','RequestingInstructor','RequestingCentre','WeeksBooked','StartDate','DeadlineDate','Status','StoneCountOnReturn','RejectReason','CreatedAt','UpdatedAt']);
   ensureSheet(SH_TRAY_NOTIFICATIONS, ['NotifID','ToInstructor','Type','BookingID','Message','Read','CreatedAt']);
   ensureSheet(SH_TRAY_WEEKLY_NEEDS,  ['Instructor','Centre','TraysNeededPerWeek','UpdatedAt']);
@@ -5546,17 +5547,43 @@ function trayBulkSeed(ss, p) {
 
 // ── trayConfirmLocation ──────────────────────────────────────────────────────
 // p: { trayId, locationStatus('HOME'|'ON_LOAN'|'UNKNOWN'), currentCentre, expectedReturn, instructor }
+// Col index: 0=TrayID,1=Cat,2=TopicCode,3=TopicName,4=HomeCentre,5=HomeInstructor,
+//            6=StoneCount,7=WeekUsage,8=LocationStatus,9=CurrentCentre,10=ExpectedReturn,
+//            11=RegisteredAt,12=Notes,13=BorrowerConfirmed
 function trayConfirmLocation(ss, p) {
   if (!p.trayId || !p.locationStatus) return {status:'error', message:'Missing trayId or locationStatus'};
   var sh = getTraySheet(ss, SH_TRAY_REGISTRY);
   var rows = sh.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() === String(p.trayId).trim()) {
-      sh.getRange(i+1, 9).setValue(p.locationStatus);                        // LocationStatus
-      sh.getRange(i+1,10).setValue(p.currentCentre || rows[i][4]);           // CurrentCentre
-      sh.getRange(i+1,11).setValue(p.expectedReturn || '');                   // ExpectedReturn
-      if (p.instructor && !rows[i][5]) sh.getRange(i+1,6).setValue(p.instructor); // HomeInstructor (first time)
+      sh.getRange(i+1, 9).setValue(p.locationStatus);                              // LocationStatus
+      sh.getRange(i+1,10).setValue(p.currentCentre || rows[i][4]);                 // CurrentCentre
+      sh.getRange(i+1,11).setValue(p.expectedReturn || '');                         // ExpectedReturn
+      if (p.instructor && !rows[i][5]) sh.getRange(i+1,6).setValue(p.instructor);  // HomeInstructor
+      // Reset borrower confirmation whenever home changes the status
+      sh.getRange(i+1,14).setValue('');                                             // BorrowerConfirmed
       return {status:'ok', trayId:p.trayId};
+    }
+  }
+  return {status:'error', message:'Tray not found: '+p.trayId};
+}
+
+// ── trayBorrowerConfirm ──────────────────────────────────────────────────────
+// Called by the BORROWING centre instructor to confirm they have the tray.
+// p: { trayId, borrowerInstructor, borrowerCentre, expectedReturn? }
+function trayBorrowerConfirm(ss, p) {
+  if (!p.trayId || !p.borrowerCentre) return {status:'error', message:'Missing trayId or borrowerCentre'};
+  var sh = getTraySheet(ss, SH_TRAY_REGISTRY);
+  var rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === String(p.trayId).trim()) {
+      var currentLoc = String(rows[i][8] || 'UNCONFIRMED');
+      // Allow confirmation even if home hasn't set ON_LOAN yet — record it
+      sh.getRange(i+1, 9).setValue('ON_LOAN');                                     // LocationStatus
+      sh.getRange(i+1,10).setValue(p.borrowerCentre);                              // CurrentCentre
+      if (p.expectedReturn) sh.getRange(i+1,11).setValue(p.expectedReturn);        // ExpectedReturn
+      sh.getRange(i+1,14).setValue('yes');                                          // BorrowerConfirmed
+      return {status:'ok', trayId:p.trayId, previousStatus: currentLoc};
     }
   }
   return {status:'error', message:'Tray not found: '+p.trayId};
@@ -5653,8 +5680,10 @@ function trayGetBoard(ss, p) {
     var instructor= String(r[5] || r[3] || '');
     var stones    = parseInt(r[6] !== undefined ? r[6] : r[4]) || 0;
     var weekUsage = String(r[7] || '');
-    var locStatus = String(r[8] || 'UNCONFIRMED');
-    var currentCtr= String(r[9] || centre);
+    var locStatus        = String(r[8] || 'UNCONFIRMED');
+    var currentCtr       = String(r[9] || centre);
+    var expectedReturn   = r[10] ? String(r[10]).split('T')[0] : '';
+    var borrowerConfirmed= String(r[13] || '') === 'yes';
     // Legacy support: if cat is empty, derive from old 'Type' field
     if (!cat) { cat = (String(r[1])==='Diamond') ? 'DM' : 'CS'; }
     if (!centre) return;
@@ -5680,6 +5709,8 @@ function trayGetBoard(ss, p) {
       stoneCount: stones,
       locationStatus: locStatus,
       currentCentre: currentCtr,
+      expectedReturn: expectedReturn,
+      borrowerConfirmed: borrowerConfirmed,
       status: trayStatus,
       requestingCentre: booking ? booking.requestingCentre : null,
       requestingInstructor: booking ? booking.requestingInstructor : null,

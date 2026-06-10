@@ -788,13 +788,12 @@ function getBatchSnapshot(ss) {
   if (!shBatch || shBatch.getLastRow()<2) return {status:'ok', centres:[], generatedAt:new Date().toISOString()};
   const batchData = shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues();
 
-  // Count active enrollments per batch
-  const shEn = ss.getSheetByName(SH_ENROLLMENTS);
-  const enRows = (shEn&&shEn.getLastRow()>1) ? shEn.getRange(2,1,shEn.getLastRow()-1,4).getValues() : [];
+  // Count active enrollments per batch (unified links + legacy)
   const countByBatch = {};
-  enRows.forEach(function(r){
-    if(r[0]&&r[1]&&String(r[2]).trim().toLowerCase()==='active'){
-      var bc=String(r[1]).trim(); countByBatch[bc]=(countByBatch[bc]||0)+1;
+  getEnrollmentRows(ss).forEach(function(r){
+    if(r.studentId && r.batchCode && String(r.status).trim().toLowerCase()==='active'){
+      var bc=String(r.batchCode).trim().toUpperCase();
+      countByBatch[bc]=(countByBatch[bc]||0)+1;
     }
   });
 
@@ -825,7 +824,7 @@ function getBatchSnapshot(ss) {
       active:      active,
       status:      batchStatus,
       weeksRunning:weeksRunning,
-      studentCount:countByBatch[String(r[0]).trim()]||0
+      studentCount:countByBatch[String(r[0]).trim().toUpperCase()]||0
     };
   });
 

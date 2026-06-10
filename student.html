@@ -599,6 +599,10 @@
         <span class="tab-icon">🎓</span>
         <span class="tab-label">Diploma</span>
       </button>
+      <button class="nav-tab" id="nav-tab-alumni" onclick="switchTab('tab-alumni', this); renderAlumniTab();">
+        <span class="tab-icon">✨</span>
+        <span class="tab-label">Alumni</span>
+      </button>
     </div>
 
     <!-- Option D: Sticky test alert bar (all tabs) -->
@@ -692,6 +696,10 @@
       <div id="student-diploma-wrap">
         <div style="color:#9ca3af;font-size:13px;padding:20px 0;">Loading diploma status…</div>
       </div>
+    </div>
+
+    <div id="tab-alumni" class="tab-content">
+      <div id="alumni-tab-wrap"></div>
     </div>
 
   </div>
@@ -2984,6 +2992,135 @@ function loadStudentDiploma() {
 
     wrap.innerHTML = html;
   });
+}
+
+/* ══════════════════════════════════════════
+   IGI ALUMNI CONNECT TAB
+══════════════════════════════════════════ */
+function renderAlumniTab() {
+  var wrap = document.getElementById('alumni-tab-wrap');
+  if (!wrap || wrap._rendered) return;
+  wrap._rendered = true;
+
+  // Eligibility hint — check if any batch is completed
+  var allBatches  = portalData ? (portalData.allBatches || portalData.batches || []) : [];
+  var today       = new Date();
+  var hasCompleted = allBatches.some(function(b) {
+    if (!b.endDateISO) return false;
+    return new Date(b.endDateISO) < today;
+  });
+  var completedBatch = allBatches.filter(function(b) {
+    return b.endDateISO && new Date(b.endDateISO) < today;
+  })[0];
+  var activeBatch = allBatches.filter(function(b) {
+    return b.endDateISO && new Date(b.endDateISO) >= today;
+  })[0];
+
+  // Course display logic (Graduate Gemologist combo)
+  var allCourseNames = allBatches.map(function(b){ return (b.course||'').toLowerCase(); });
+  var hasDiamond = allCourseNames.some(function(c){ return c.indexOf('diamond') !== -1; });
+  var hasCS      = allCourseNames.some(function(c){ return c.indexOf('colored stone') !== -1 || c.indexOf('coloured stone') !== -1; });
+  var completedCourseName = (hasDiamond && hasCS) ? 'Graduate Gemologist'
+    : completedBatch ? (completedBatch.course || 'your course') : '';
+
+  // ── Eligibility callout ─────────────────────────────────────
+  var eligibilityHtml = '';
+  if (hasCompleted && completedCourseName) {
+    eligibilityHtml =
+      '<div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1.5px solid #86efac;'+
+      'border-radius:14px;padding:16px 18px;margin-bottom:16px;display:flex;align-items:flex-start;gap:12px;">' +
+        '<div style="font-size:24px;flex-shrink:0;">🎓</div>' +
+        '<div>' +
+          '<div style="font-size:13px;font-weight:800;color:#059669;margin-bottom:3px;">You\'re eligible to register!</div>' +
+          '<div style="font-size:12px;color:#065f46;line-height:1.5;">You\'ve completed <strong>' + completedCourseName + '</strong>. '+
+          'Join the IGI Alumni Connect network and carry your expertise forward.</div>' +
+        '</div>' +
+      '</div>';
+  } else if (activeBatch) {
+    var endD = new Date(activeBatch.endDateISO);
+    var daysLeft = Math.ceil((endD - today) / (1000*60*60*24));
+    eligibilityHtml =
+      '<div style="background:#f9fafb;border:1.5px solid #e5e7eb;'+
+      'border-radius:14px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:flex-start;gap:12px;">' +
+        '<div style="font-size:20px;flex-shrink:0;">📅</div>' +
+        '<div style="font-size:12px;color:#6b7280;line-height:1.5;">' +
+          'Complete your <strong>' + (activeBatch.course||'current course') + '</strong> to become a registered alumnus. ' +
+          (daysLeft > 0 ? daysLeft + ' day' + (daysLeft === 1 ? '' : 's') + ' remaining.' : '') +
+        '</div>' +
+      '</div>';
+  }
+
+  // ── Benefits tiles ──────────────────────────────────────────
+  var benefits = [
+    { icon: '🌐', title: 'Global Network',       desc: 'Connect with IGI graduates across India and worldwide.' },
+    { icon: '📖', title: 'Gemological Review',   desc: 'Access the bilingual gemological journal — exclusive to alumni.' },
+    { icon: '💼', title: 'Career Opportunities', desc: 'Job board, industry events, and professional referrals.' },
+    { icon: '🏅', title: 'Alumni Recognition',   desc: 'Official alumni certificate and digital badge from IGI.' }
+  ];
+  var tilesHtml = benefits.map(function(b) {
+    return '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;'+
+      'display:flex;align-items:flex-start;gap:10px;">' +
+      '<div style="font-size:20px;flex-shrink:0;margin-top:1px;">'+b.icon+'</div>' +
+      '<div>' +
+        '<div style="font-size:13px;font-weight:700;color:#0D1B2E;margin-bottom:2px;">'+b.title+'</div>' +
+        '<div style="font-size:11px;color:#6b7280;line-height:1.4;">'+b.desc+'</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  wrap.innerHTML =
+    // ── Hero card ───────────────────────────────────────────────
+    '<div style="border-radius:16px;overflow:hidden;margin-bottom:16px;position:relative;'+
+      'min-height:220px;display:flex;flex-direction:column;justify-content:flex-end;">' +
+      // Background: try the alumni site hero image, fallback to teal→navy gradient
+      '<div style="position:absolute;inset:0;'+
+        'background-image:url(\'https://alumniindia.igi.org/wp-content/uploads/alumni-hero.jpg\');'+
+        'background-size:cover;background-position:center top;'+
+        'background-color:#1a6b75;"></div>' +
+      // Dark overlay for text legibility
+      '<div style="position:absolute;inset:0;background:linear-gradient(to bottom,'+
+        'rgba(13,27,46,.35) 0%,rgba(13,27,46,.82) 100%);"></div>' +
+      // Content
+      '<div style="position:relative;z-index:1;padding:20px 20px 22px;">' +
+        // Teal pill
+        '<div style="display:inline-block;background:rgba(42,127,138,.85);color:#fff;'+
+          'font-size:9px;font-weight:800;letter-spacing:1.5px;padding:3px 10px;'+
+          'border-radius:20px;margin-bottom:10px;text-transform:uppercase;">'+
+          'IGI School of Gemology</div>' +
+        '<div style="color:#C9A84C;font-size:11px;font-weight:800;letter-spacing:1.8px;'+
+          'text-transform:uppercase;margin-bottom:4px;">Alumni Connect</div>' +
+        '<div style="color:#fff;font-size:20px;font-weight:900;line-height:1.2;margin-bottom:6px;">'+
+          'Graduate Gemologist<br><em style="color:#C9A84C;font-style:italic;">A Global Achievement</em></div>' +
+        '<div style="color:rgba(255,255,255,.75);font-size:11px;line-height:1.5;margin-bottom:16px;">'+
+          'IGI graduates carry their expertise across borders,<br>'+
+          'representing India\'s finest gemological education worldwide.</div>' +
+        '<div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:rgba(255,255,255,.45);'+
+          'text-transform:uppercase;margin-bottom:14px;">'+
+          'The Official Alumni Network of IGI India</div>' +
+        // CTA
+        '<a href="https://alumniindia.igi.org" target="_blank" rel="noopener" '+
+          'style="display:inline-block;background:#C9A84C;color:#0D1B2E;font-size:13px;'+
+          'font-weight:800;padding:11px 24px;border-radius:8px;text-decoration:none;'+
+          'letter-spacing:.3px;">Register as Alumni →</a>' +
+      '</div>' +
+    '</div>' +
+
+    // ── Eligibility callout ─────────────────────────────────────
+    eligibilityHtml +
+
+    // ── Why Join ───────────────────────────────────────────────
+    '<div style="font-size:11px;font-weight:700;color:#9ca3af;letter-spacing:.8px;'+
+      'text-transform:uppercase;margin-bottom:10px;">Why Join?</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">' +
+      tilesHtml +
+    '</div>' +
+
+    // ── Already a member ───────────────────────────────────────
+    '<div style="text-align:center;padding:10px 0 4px;">' +
+      '<a href="https://alumniindia.igi.org" target="_blank" rel="noopener" '+
+        'style="font-size:12px;color:#2a7f8a;font-weight:600;text-decoration:none;">'+
+        'Already a member? Sign in →</a>' +
+    '</div>';
 }
 
 /* ══════════════════════════════════════════

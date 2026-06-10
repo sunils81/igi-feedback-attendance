@@ -271,7 +271,8 @@
     <button class="tab" id="t-batchmgmt-tab" style="display:none" onclick="iTab('t-batchmgmt')">🏫 Batches</button>
     <button class="tab" id="t-academic-tab" style="display:none" onclick="iTab('t-academic')">🎓 Academic Overview</button>
     <button class="tab" id="t-revenue-tab" style="display:none" onclick="iTab('t-revenue')">📈 Revenue & Team</button>
-    <button class="tab" onclick="iTab('t-onlinetests'); otInit();">🧪 Online Tests</button>
+    <button class="tab" id="t-eligibility-tab" onclick="iTab('t-eligibility'); eligibilityInit();">🎓 Eligibility</button>
+    <button class="tab" id="t-onlinetests-tab" onclick="iTab('t-onlinetests'); otInit();">🧪 Online Tests</button>
     <button class="tab" id="t-trayhub-tab" onclick="iTab('t-trayhub'); trayHubInit();">🔮 Tray Hub<span id="tray-notif-badge" style="display:none;background:#dc2626;color:#fff;font-size:9px;padding:1px 5px;border-radius:10px;margin-left:5px;font-weight:700;"></span></button>
   </div>
 
@@ -596,6 +597,17 @@
   </div><!-- /t-revenue -->
 
   <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- TAB: ELIGIBILITY                                          -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div id="t-eligibility" class="tab-content">
+    <div class="section-tag">Diploma Eligibility</div>
+    <h2>Student Diploma Eligibility</h2>
+    <p class="sub">Shows which students in your batches are on track for their diploma based on attendance, weekly test average (best of 3), and final exam.</p>
+    <div id="elig-loading" style="text-align:center;padding:40px;color:#6b7280;font-size:14px;">Loading eligibility data…</div>
+    <div id="elig-content" style="display:none;"></div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
   <!-- TAB: ONLINE TESTS                                         -->
   <!-- ══════════════════════════════════════════════════════════ -->
   <div id="t-onlinetests" class="tab-content">
@@ -889,9 +901,10 @@
         <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
           <div style="flex:1;min-width:160px;">
             <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:5px;">TEST TYPE</label>
-            <select id="ot-c-type" style="width:100%;padding:9px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;">
+            <select id="ot-c-type" style="width:100%;padding:9px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;" onchange="otHandleTestTypeChange()">
               <option value="Weekly">Weekly Test</option>
               <option value="Final">Final Exam</option>
+              <option value="Portfolio Upload">Portfolio Upload</option>
               <option value="Mock">Mock Test</option>
               <option value="Practice">Practice</option>
             </select>
@@ -899,8 +912,13 @@
           <div style="flex:1;min-width:160px;">
             <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:5px;">COURSE</label>
             <select id="ot-c-course" style="width:100%;padding:9px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;">
-              <option value="DG">Diamond Graduate</option>
-              <option value="CSG">Colored Stone Graduate</option>
+              <option value="DG">Diamond Graduate (DG)</option>
+              <option value="CSG">Colored Stone Graduate (CSG)</option>
+              <option value="PDG">Polished Diamond Grading (PDG)</option>
+              <option value="RDG">Rough Diamond Graduate (RDG)</option>
+              <option value="JP">JewelPad Design (JP)</option>
+              <option value="JD">Jewelry Design (JD)</option>
+              <option value="SDA">Small Diamond Assortment (SDA)</option>
               <option value="ALL">All Courses</option>
             </select>
           </div>
@@ -2216,6 +2234,7 @@ function loadInstructorBatches() {
     if (batches.length && !instructorCentre) {
       instructorCentre = batches[0].centre || '';
     }
+    updateTabVisibilityForCourses();
     renderInstructorSummary();
     ['at-batch','mk-batch','ex-batch'].forEach(id => {
       const sel = document.getElementById(id);
@@ -4766,6 +4785,14 @@ function otLoadResults() {
   var el = document.getElementById('ot-results-body');
   if (!el) return;
   el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">Loading…</div>';
+
+  // Check if this is a Portfolio Upload test
+  var testObj2 = (otCurrentTests||[]).find(function(t){ return t.testId===testId; });
+  if (testObj2 && testObj2.testType === 'Portfolio Upload') {
+    otLoadPortfolioResults(testId, el);
+    return;
+  }
+
   gasGet({action:'getTestResultsSummary', instructor:instructorName, testId:testId}, function(err, d) {
     if (err || !d || d.status !== 'ok') { el.innerHTML='<div style="color:#dc2626;">Failed to load results</div>'; return; }
     if (!d.responses || !d.responses.length) { el.innerHTML='<div style="color:#9ca3af;padding:20px 0;">No submissions yet.</div>'; return; }
@@ -4810,6 +4837,73 @@ function otLoadResults() {
       html += '<div style="margin-top:14px;background:#d1fae5;color:#065f46;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;">✅ Results are released to students</div>';
     }
     el.innerHTML = html;
+  });
+}
+
+// ── Portfolio Results View (instructor) ────────────────────────────────────
+function otLoadPortfolioResults(testId, el) {
+  gasGet({action:'otGetPortfolioSubmissions', testId:testId, instructor:instructorName}, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      el.innerHTML = '<div style="color:#dc2626;font-size:13px;">Failed to load portfolio submissions.</div>';
+      return;
+    }
+    if (!d.submissions || !d.submissions.length) {
+      el.innerHTML = '<div style="color:#9ca3af;padding:20px 0;font-size:13px;">No portfolio submissions yet.</div>';
+      return;
+    }
+
+    var html = '<div style="margin-bottom:14px;font-size:13px;color:#374151;">'
+      + '<b>' + d.submissions.length + '</b> submission' + (d.submissions.length!==1?'s':'') + ' received</div>';
+
+    html += '<table class="ot-results-table"><thead><tr>'
+      + '<th>Student</th><th>Submitted</th><th>Work</th><th>Notes</th><th>Grade</th><th>Status</th>'
+      + '</tr></thead><tbody>';
+
+    d.submissions.forEach(function(s) {
+      var gradeDisplay = (s.score !== null && s.score !== '' && s.score !== 0)
+        ? '<span class="pass-pill">' + s.score + '%</span>'
+        : '<button class="ot-btn ghost" style="font-size:11px;padding:4px 8px;" onclick="otGradePortfolio(\'' + escHtml(testId) + '\',\'' + escHtml(s.studentId) + '\',\'' + escHtml(s.responseId) + '\',this)">Grade →</button>';
+      var status = (s.result === 'Pending')
+        ? '<span class="pend-pill">Pending</span>'
+        : (parseFloat(s.score||0) >= 60 ? '<span class="pass-pill">Pass</span>' : '<span class="fail-pill">Fail</span>');
+
+      html += '<tr>'
+        + '<td><b>' + escHtml(s.studentName||s.studentId) + '</b><br><span style="font-size:11px;color:#9ca3af;">' + escHtml(s.studentId) + '</span></td>'
+        + '<td style="font-size:11px;">' + (s.submittedAt ? new Date(s.submittedAt).toLocaleString('en-IN') : '—') + '</td>'
+        + '<td>' + (s.fileUrl ? '<a href="' + escHtml(s.fileUrl) + '" target="_blank" style="color:#0D1B2E;font-weight:700;text-decoration:none;">📎 View Work ↗</a>' : '—') + '</td>'
+        + '<td style="font-size:12px;color:#6b7280;max-width:160px;">' + escHtml(s.notes||'—') + '</td>'
+        + '<td>' + gradeDisplay + '</td>'
+        + '<td>' + status + '</td>'
+        + '</tr>';
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  });
+}
+
+function otGradePortfolio(testId, studentId, responseId, btn) {
+  var score = prompt('Enter score (0–100) for ' + studentId + ':');
+  if (score === null) return;
+  var num = parseFloat(score);
+  if (isNaN(num) || num < 0 || num > 100) { alert('Enter a number between 0 and 100.'); return; }
+  btn.textContent = '⏳'; btn.disabled = true;
+  // Reuse the existing manual grade endpoint
+  gasGet({
+    action: 'gradeManualQuestion',
+    testId: testId,
+    studentId: studentId,
+    qId: 'PORTFOLIO',
+    instructorScore: num,
+    maxMarks: 100,
+    instructor: instructorName
+  }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      alert('Failed to save grade. Try again.');
+      btn.textContent = 'Grade →'; btn.disabled = false;
+    } else {
+      // Refresh the results panel
+      otLoadResults && otLoadResults();
+    }
   });
 }
 
@@ -6201,6 +6295,163 @@ function trayEsc(s) {
 }
 
 // instructorCentre is declared at top of script and populated in loadInstructorBatches()
+
+// ── ELIGIBILITY TAB ────────────────────────────────────────────────────────
+let eligibilityLoaded = false;
+
+function eligibilityInit() {
+  if (eligibilityLoaded) return;
+  eligibilityLoaded = false; // always reload fresh
+  const loadDiv = document.getElementById('elig-loading');
+  const contentDiv = document.getElementById('elig-content');
+  if (loadDiv) loadDiv.style.display = 'block';
+  if (contentDiv) contentDiv.style.display = 'none';
+
+  gasGet({ action:'getInstructorEligibility', instructor: instructorName })
+    .then(d => {
+      if (loadDiv) loadDiv.style.display = 'none';
+      if (!d || d.status !== 'ok') {
+        if (contentDiv) { contentDiv.style.display = 'block'; contentDiv.innerHTML = '<p style="color:#dc2626;padding:20px">Could not load eligibility data.</p>'; }
+        return;
+      }
+      if (!d.batches || d.batches.length === 0) {
+        if (contentDiv) { contentDiv.style.display = 'block'; contentDiv.innerHTML = '<p style="color:#6b7280;padding:20px;font-size:14px;">No active batches found. Eligibility data will appear here once students are enrolled and assessments are recorded.</p>'; }
+        return;
+      }
+      renderEligibility(d.batches);
+    })
+    .catch(err => {
+      if (loadDiv) loadDiv.style.display = 'none';
+      if (contentDiv) { contentDiv.style.display = 'block'; contentDiv.innerHTML = '<p style="color:#dc2626;padding:20px">Error loading data: ' + escH(String(err)) + '</p>'; }
+    });
+}
+
+function renderEligibility(batches) {
+  const contentDiv = document.getElementById('elig-content');
+  if (!contentDiv) return;
+
+  const passStyle = 'background:#dcfce7;color:#166534;font-weight:700;padding:2px 8px;border-radius:12px;font-size:11px;';
+  const failStyle = 'background:#fee2e2;color:#991b1b;font-weight:700;padding:2px 8px;border-radius:12px;font-size:11px;';
+  const pendStyle = 'background:#f3f4f6;color:#6b7280;font-weight:700;padding:2px 8px;border-radius:12px;font-size:11px;';
+
+  function badge(val, pass, suffix) {
+    if (val === null || val === undefined) return '<span style="' + pendStyle + '">Pending</span>';
+    const label = (typeof val === 'number' ? val + (suffix||'%') : val);
+    return '<span style="' + (pass ? passStyle : failStyle) + '">' + label + '</span>';
+  }
+
+  let html = '';
+  batches.forEach(function(batch) {
+    const pct = batch.totalCount > 0 ? Math.round((batch.eligibleCount / batch.totalCount) * 100) : 0;
+    const cardColor = pct === 100 ? '#dcfce7' : pct >= 50 ? '#fefce8' : '#fff';
+    html += '<div style="background:' + cardColor + ';border:1.5px solid #e5e7eb;border-radius:14px;padding:18px 20px;margin-bottom:20px;">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;">';
+    html += '<div>';
+    html += '<span style="font-weight:700;font-size:15px;color:#0D1B2E;">' + escH(batch.batchCode) + '</span>';
+    html += '<span style="font-size:12px;color:#6b7280;margin-left:10px;">' + escH(batch.course) + ' · ' + escH(batch.centre) + '</span>';
+    html += '</div>';
+    html += '<span style="font-size:13px;font-weight:700;color:' + (batch.eligibleCount === batch.totalCount && batch.totalCount > 0 ? '#166534' : '#b45309') + ';">';
+    html += batch.eligibleCount + ' / ' + batch.totalCount + ' eligible</span>';
+    html += '</div>';
+
+    if (batch.students && batch.students.length > 0) {
+      html += '<div style="overflow-x:auto;">';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+      html += '<thead><tr style="background:#0D1B2E;color:#C9A84C;">';
+      html += '<th style="padding:7px 10px;text-align:left;border-radius:6px 0 0 0;">Student</th>';
+      html += '<th style="padding:7px 10px;text-align:center;">Attendance</th>';
+      html += '<th style="padding:7px 10px;text-align:center;">Weekly Avg<br><span style="font-size:10px;font-weight:400;">(Best of 3)</span></th>';
+      html += '<th style="padding:7px 10px;text-align:center;">Final Exam</th>';
+      html += '<th style="padding:7px 10px;text-align:center;border-radius:0 6px 0 0;">Status</th>';
+      html += '</tr></thead><tbody>';
+
+      batch.students.forEach(function(s, idx) {
+        const rowBg = idx % 2 === 0 ? '#fff' : '#f9fafb';
+        html += '<tr style="background:' + rowBg + ';border-bottom:1px solid #f3f4f6;">';
+        html += '<td style="padding:7px 10px;font-weight:600;color:#0D1B2E;">' + escH(s.studentName) + '</td>';
+
+        // Attendance
+        const attPct = s.attendance ? s.attendance.pct : null;
+        html += '<td style="padding:7px 10px;text-align:center;">';
+        html += badge(attPct !== null ? attPct + '%' : null, s.attendance && s.attendance.pass, '');
+        if (s.attendance) html += '<div style="font-size:10px;color:#9ca3af;margin-top:1px;">' + s.attendance.attended + '/' + s.attendance.total + ' sessions</div>';
+        html += '</td>';
+
+        // Weekly avg
+        const wVal = s.weeklyAvg && s.weeklyAvg.value !== null ? s.weeklyAvg.value + '%' : null;
+        html += '<td style="padding:7px 10px;text-align:center;">' + badge(wVal, s.weeklyAvg && s.weeklyAvg.pass, '') + '</td>';
+
+        // Final exam
+        const fVal = s.finalExam && s.finalExam.value !== null ? s.finalExam.value + '%' : null;
+        html += '<td style="padding:7px 10px;text-align:center;">' + badge(fVal, s.finalExam && s.finalExam.pass, '') + '</td>';
+
+        // Overall
+        if (s.eligible) {
+          html += '<td style="padding:7px 10px;text-align:center;"><span style="background:#0D1B2E;color:#C9A84C;font-weight:700;padding:3px 10px;border-radius:12px;font-size:11px;">✓ Eligible</span></td>';
+        } else if (s.weeklyAvg && s.weeklyAvg.value === null && s.finalExam && s.finalExam.value === null) {
+          html += '<td style="padding:7px 10px;text-align:center;"><span style="' + pendStyle + '">In Progress</span></td>';
+        } else {
+          const missing = [];
+          if (s.attendance && !s.attendance.pass) missing.push('Attendance');
+          if (!s.weeklyAvg || !s.weeklyAvg.pass) missing.push('Weekly');
+          if (!s.finalExam || !s.finalExam.pass) missing.push('Final');
+          html += '<td style="padding:7px 10px;text-align:center;"><span style="' + failStyle + '">✗ ' + missing.join(', ') + '</span></td>';
+        }
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+    html += '</div>';
+  });
+
+  contentDiv.innerHTML = html;
+  contentDiv.style.display = 'block';
+}
+
+// ── HIDE ONLINE TESTS for JD batches / PORTFOLIO TYPE UI ───────────────────
+function otHandleTestTypeChange() {
+  const type = (document.getElementById('ot-c-type') || {}).value || '';
+  const portfolioSection = document.getElementById('ot-portfolio-note');
+  const mcqSection = document.getElementById('ot-questions-section');
+  if (portfolioSection) {
+    portfolioSection.style.display = type === 'Portfolio Upload' ? 'block' : 'none';
+  }
+  if (mcqSection) {
+    // For portfolio-only, MCQ question section is optional — keep visible but note it
+    const noteEl = mcqSection.querySelector('.ot-portfolio-mcq-note');
+    if (type === 'Portfolio Upload') {
+      if (!noteEl) {
+        const note = document.createElement('p');
+        note.className = 'ot-portfolio-mcq-note';
+        note.style.cssText = 'font-size:12px;color:#b45309;background:#fffbeb;padding:8px 12px;border-radius:8px;margin-top:8px;';
+        note.textContent = 'Optional: You can also add MCQ questions alongside the portfolio submission, or leave empty for portfolio-only.';
+        mcqSection.appendChild(note);
+      }
+    } else if (noteEl) {
+      noteEl.remove();
+    }
+  }
+}
+
+// Called after login to show/hide Online Tests tab based on instructor's batches
+function updateTabVisibilityForCourses() {
+  const jdBatchCodes = (instructorBatchesCache || []).filter(b => {
+    const course = String(b.course || '').toLowerCase();
+    return course.includes('jewelry design') && !course.includes('jewelpad');
+  }).map(b => b.batchCode);
+  // If ALL of instructor's batches are JD, hide Online Tests tab
+  const allBatches = instructorBatchesCache || [];
+  const hasNonJD = allBatches.some(b => {
+    const course = String(b.course || '').toLowerCase();
+    return !course.includes('jewelry design') || course.includes('jewelpad');
+  });
+  const otTab = document.getElementById('t-onlinetests-tab');
+  if (otTab && allBatches.length > 0 && !hasNonJD) {
+    otTab.style.display = 'none';
+  } else if (otTab) {
+    otTab.style.display = '';
+  }
+}
 
 </script>
 </body>

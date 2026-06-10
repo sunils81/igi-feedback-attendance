@@ -586,6 +586,24 @@ const SYLLABI = {
     {day:3, week:'Week 1', topic:'Corundum — Ruby, Sapphire, Yellow Sapphire: Properties, Origins, Practical'},
     {day:4, week:'Week 1', topic:'Emerald (Beryl) + Diamond — Properties, 4Cs, Treatments, Practical'},
     {day:5, week:'Week 1', topic:'Pearl — Properties, Varieties, Treatments + Final Theory Exam + Graduation'}
+  ],
+
+  'JewelPad Design': [
+    {day:1,  week:'Week 1', topic:'Introduction to Procreate'},
+    {day:2,  week:'Week 1', topic:'Cabochons Gemstone Rendering'},
+    {day:3,  week:'Week 1', topic:'Detailed Rendering on Different Types of Gemstones'},
+    {day:4,  week:'Week 1', topic:'Construction of Faceted Gemstones'},
+    {day:5,  week:'Week 1', topic:'Diamond Brush Development – Part 1'},
+    {day:6,  week:'Week 2', topic:'Diamond Brush Development – Part 2'},
+    {day:7,  week:'Week 2', topic:'Jewelry Settings and Metal Rendering'},
+    {day:8,  week:'Week 2', topic:'Engagement Ring Creation & Rendering'},
+    {day:9,  week:'Week 2', topic:'Creating Isometric Views & Ring Rendering'},
+    {day:10, week:'Week 2', topic:'Lattice Brush Development'},
+    {day:11, week:'Week 3', topic:'Motif Brush Development and Symmetrical Design'},
+    {day:12, week:'Week 3', topic:'Texture Brush Creation & Chain Dynamics'},
+    {day:13, week:'Week 3', topic:'Uncut Jewelry Techniques'},
+    {day:14, week:'Week 3', topic:'Temple Jewelry & Enamel Rendering Techniques'},
+    {day:15, week:'Week 3', topic:'Final Design Project & Portfolio Completion'}
   ]
 };
 
@@ -1179,6 +1197,21 @@ function doGet(e) {
         return respond({status:'error', reason:'unauthorized'});
       }
       return respond(releaseStudentDiploma(ss, p));
+    }
+
+    // ── getInstructorEligibility ──────────────────────────────
+    if (act==='getInstructorEligibility') {
+      return respond(getInstructorEligibility(ss, p));
+    }
+
+    // ── otSubmitPortfolio ─────────────────────────────────────
+    if (act==='otSubmitPortfolio') {
+      return respond(otSubmitPortfolio(ss, p));
+    }
+
+    // ── otGetPortfolioSubmissions ─────────────────────────────
+    if (act==='otGetPortfolioSubmissions') {
+      return respond(otGetPortfolioSubmissions(ss, p));
     }
 
     // ── getStudents ────────────────────────────────────────────
@@ -4935,8 +4968,9 @@ function otGetStudentResults(ss, p) {
   var final_=results.filter(function(r){return r.testType==='Final';});
   var weeklyAvg=null;
   if(weekly.length>0){
-    var sum=weekly.reduce(function(s,r){return s+(parseFloat(r.percentage)||0);},0);
-    weeklyAvg=Math.round(sum/weekly.length);
+    var wScores2=weekly.map(function(r){return parseFloat(r.percentage)||0;}).sort(function(a,b){return b-a;});
+    var top3w2=wScores2.slice(0,3);
+    weeklyAvg=Math.round(top3w2.reduce(function(s,v){return s+v;},0)/top3w2.length);
   }
   return{status:'ok',weeklyResults:weekly,finalResults:final_,weeklyAverage:weeklyAvg,
     weeklyPass:weeklyAvg!==null?weeklyAvg>=OT_PASS_PERCENT:null,
@@ -5506,8 +5540,10 @@ function otGetStudentResultsV3(ss, p) {
   var final_=results.filter(function(r){return r.testType==='Final';});
   var weeklyAvg=null;
   if(weekly.length>0){
-    var sum=weekly.reduce(function(s,r){return s+(r.percentage||0);},0);
-    weeklyAvg=Math.round(sum/weekly.length);
+    // Best-of-3: sort scores descending, take top 3, average them
+    var wScores=weekly.map(function(r){return r.percentage||0;}).sort(function(a,b){return b-a;});
+    var top3w=wScores.slice(0,3);
+    weeklyAvg=Math.round(top3w.reduce(function(s,v){return s+v;},0)/top3w.length);
   }
   // Sort weekly by submission date for Rising Star check
   var weeklyOrdered=weekly.slice().sort(function(a,b){return new Date(a.submittedAt)-new Date(b.submittedAt);});
@@ -6544,6 +6580,131 @@ function trayMarkInUseDone(ss, p) {
 
 // ── Diploma Release calculations & actions ───────────────────
 
+// ── getInstructorEligibility ─────────────────────────────────────────
+// Returns diploma eligibility data filtered to the instructor's batches.
+// Used by the new Eligibility tab in the instructor portal.
+function getInstructorEligibility(ss, p) {
+  try {
+    const instructor = String(p.instructor || '').trim();
+    if (!instructor) return {status:'error', reason:'missing_instructor'};
+
+    // Get all diploma data (reuse full list)
+    const full = getDiplomaReleaseList(ss, p);
+    if (full.status !== 'ok') return full;
+
+    // Find batches where this instructor has sessions
+    const shSess = ss.getSheetByName(SH_SESSIONS);
+    const sessData = shSess && shSess.getLastRow() > 1
+      ? shSess.getRange(2, 1, shSess.getLastRow()-1, 9).getValues() : [];
+    const myBatches = new Set();
+    sessData.forEach(r => {
+      if (String(r[3]).trim() === instructor) myBatches.add(String(r[1]).toUpperCase());
+    });
+
+    // Filter list to instructor's batches only
+    const filtered = full.list.filter(row => myBatches.has(String(row.batchCode).toUpperCase()));
+
+    // Group by batch for summary
+    const byBatch = {};
+    filtered.forEach(row => {
+      const bc = row.batchCode;
+      if (!byBatch[bc]) byBatch[bc] = { batchCode: bc, centre: row.centre, course: row.course, students: [] };
+      byBatch[bc].students.push(row);
+    });
+
+    const batches = Object.values(byBatch).map(b => {
+      const eligible = b.students.filter(s => s.eligible).length;
+      const total = b.students.length;
+      return { ...b, eligibleCount: eligible, totalCount: total };
+    });
+
+    return { status:'ok', batches };
+  } catch(err) {
+    return { status:'error', message: err.toString() };
+  }
+}
+
+// ── Portfolio Upload — SH_OT_RESPONSES stores link/file URL ──────────
+// New sheet column: if Answers JSON starts with "PORTFOLIO:", treat as portfolio submission.
+function otSubmitPortfolio(ss, p) {
+  try {
+    const testId    = String(p.testId    || '').trim().toUpperCase();
+    const studentId = String(p.studentId || '').trim().toUpperCase();
+    const batchCode = String(p.batchCode || '').trim().toUpperCase();
+    const studentName = String(p.studentName || '').trim();
+    const fileUrl   = String(p.fileUrl   || '').trim();  // Drive/iCloud/Dropbox link
+    const notes     = String(p.notes     || '').trim();  // optional notes from student
+
+    if (!testId || !studentId || !batchCode) return {status:'error', reason:'missing_params'};
+    if (!fileUrl) return {status:'error', reason:'no_file_url'};
+
+    ensureOnlineTestSheets(ss);
+    const shR = ss.getSheetByName(SH_OT_RESPONSES);
+    const shOT = ss.getSheetByName(SH_ONLINE_TESTS);
+
+    // Verify test exists and is active/portfolio type
+    const otRows = shOT.getLastRow() > 1 ? shOT.getRange(2,1,shOT.getLastRow()-1,23).getValues() : [];
+    const testRow = otRows.find(r => String(r[0]).toUpperCase() === testId);
+    if (!testRow) return {status:'error', reason:'test_not_found'};
+    const testStatus = String(testRow[6] || '').toLowerCase();
+    if (testStatus !== 'active') return {status:'error', reason:'test_not_active'};
+
+    // Check for existing submission from this student
+    const existing = shR.getLastRow() > 1 ? shR.getRange(2,1,shR.getLastRow()-1,16).getValues() : [];
+    const alreadySubmitted = existing.some(r =>
+      String(r[1]).toUpperCase() === testId && String(r[2]).toUpperCase() === studentId
+    );
+    if (alreadySubmitted) return {status:'error', reason:'already_submitted'};
+
+    // Write response row — store portfolio payload as JSON in Answers JSON column (col 15)
+    const responseId = 'PF-' + testId + '-' + studentId + '-' + Date.now();
+    const portfolioPayload = JSON.stringify({ type:'portfolio', fileUrl, notes });
+    const now = new Date();
+    shR.appendRow([
+      responseId, testId, studentId, studentName, batchCode,
+      now, 'portfolio', 0, 0, 0, 0, 0, null, 'Pending',
+      portfolioPayload, 1
+    ]);
+
+    return {status:'ok', responseId};
+  } catch(err) {
+    return {status:'error', message: err.toString()};
+  }
+}
+
+// Returns all portfolio submissions for a test (instructor view)
+function otGetPortfolioSubmissions(ss, p) {
+  try {
+    const testId = String(p.testId || '').trim().toUpperCase();
+    if (!testId) return {status:'error', reason:'missing_test_id'};
+
+    ensureOnlineTestSheets(ss);
+    const shR = ss.getSheetByName(SH_OT_RESPONSES);
+    const rows = shR.getLastRow() > 1 ? shR.getRange(2,1,shR.getLastRow()-1,16).getValues() : [];
+    const submissions = rows
+      .filter(r => String(r[1]).toUpperCase() === testId && String(r[6]) === 'portfolio')
+      .map(r => {
+        let payload = {};
+        try { payload = JSON.parse(r[14]); } catch(e) {}
+        return {
+          responseId: r[0],
+          studentId: r[2],
+          studentName: r[3],
+          batchCode: r[4],
+          submittedAt: r[5],
+          fileUrl: payload.fileUrl || '',
+          notes: payload.notes || '',
+          result: r[13],    // 'Pending' until graded
+          score: r[10]      // filled when instructor grades
+        };
+      });
+
+    return {status:'ok', submissions};
+  } catch(err) {
+    return {status:'error', message: err.toString()};
+  }
+}
+
 function getDiplomaReleaseList(ss, p) {
   try {
     const students = getStudentRows(ss);
@@ -6624,10 +6785,10 @@ function getDiplomaReleaseList(ss, p) {
     });
 
     const shMarks = ss.getSheetByName(SH_MARKS);
-    const marksData = shMarks && shMarks.getLastRow() > 1 
+    const marksData = shMarks && shMarks.getLastRow() > 1
       ? shMarks.getRange(2, 1, shMarks.getLastRow() - 1, 9).getValues()
       : [];
-    
+
     const marksByAssAndStudent = {};
     const assessmentHasGrades = {};
     marksData.forEach(r => {
@@ -6640,6 +6801,54 @@ function getDiplomaReleaseList(ss, p) {
         };
         assessmentHasGrades[assId] = true;
       }
+    });
+
+    // ── Load OT (Online Test) results for unified scoring ──────────
+    const shOT = ss.getSheetByName(SH_ONLINE_TESTS);
+    const otTestRows = shOT && shOT.getLastRow() > 1
+      ? shOT.getRange(2, 1, shOT.getLastRow() - 1, 23).getValues() : [];
+    const otTestMap = {};
+    otTestRows.forEach(r => {
+      const tid = String(r[0]).toUpperCase();
+      if (tid) otTestMap[tid] = {
+        testLabel: r[1] || '',
+        testType: String(r[2] || '').trim(),
+        batchCodes: String(r[3] || '').split(',').map(b => b.trim().toUpperCase()).filter(Boolean),
+        resultsReleased: String(r[11]) === 'Yes'
+      };
+    });
+
+    const shOTR = ss.getSheetByName(SH_OT_RESPONSES);
+    const otResponseRows = shOTR && shOTR.getLastRow() > 1
+      ? shOTR.getRange(2, 1, shOTR.getLastRow() - 1, 16).getValues() : [];
+    // Best score per student per test (handles retakes)
+    const otBestByStudentTest = {};
+    otResponseRows.forEach(r => {
+      const testId = String(r[1]).toUpperCase();
+      const studentId = String(r[2]).toUpperCase();
+      const batchCode = String(r[4]).toUpperCase();
+      const pct = parseFloat(r[12]) || 0;
+      const t = otTestMap[testId];
+      if (!t || !t.resultsReleased) return;
+      const key = studentId + '~~' + testId;
+      if (!otBestByStudentTest[key] || pct > otBestByStudentTest[key].pct) {
+        otBestByStudentTest[key] = { pct, batchCode, testType: t.testType, testLabel: t.testLabel, testId };
+      }
+    });
+    // Group by student|batch → array of scored entries
+    const otScoresByStudentBatch = {};
+    Object.values(otBestByStudentTest).forEach(entry => {
+      const sbKey = entry.batchCode ? (entry.batchCode + '~~' + entry.testId.split('~~')[0]) : null;
+      // Re-derive: group by studentId+batchCode
+    });
+    // Simpler: rebuild from otBestByStudentTest
+    const otScoresBySB = {};
+    Object.keys(otBestByStudentTest).forEach(key => {
+      const entry = otBestByStudentTest[key];
+      const studentId = key.split('~~')[0];
+      const sbKey = studentId + '|' + entry.batchCode;
+      if (!otScoresBySB[sbKey]) otScoresBySB[sbKey] = [];
+      otScoresBySB[sbKey].push({ testType: entry.testType, testLabel: entry.testLabel, pct: entry.pct });
     });
 
     const list = [];
@@ -6685,30 +6894,58 @@ function getDiplomaReleaseList(ss, p) {
         return n.indexOf('final') !== -1;
       }
 
-      const weeklyTests = batchAssessments.filter(a => isWeeklyTest(a) && assessmentHasGrades[a.assessmentId]);
-      let weeklySum = 0;
-      let weeklyCount = 0;
-      weeklyTests.forEach(a => {
+      // ── Collect ALL weekly scores from both Manual + OT sources ──
+      const allWeeklyScores = [];
+
+      // Manual assessment weekly scores
+      const weeklyAssessments = batchAssessments.filter(a => isWeeklyTest(a) && assessmentHasGrades[a.assessmentId]);
+      weeklyAssessments.forEach(a => {
         const markRow = marksByAssAndStudent[studentId + '|' + a.assessmentId];
-        let pctVal = 0;
-        if (markRow && markRow.pct !== 'DNA' && markRow.pct !== '') {
-          pctVal = Number(markRow.pct) || 0;
+        if (markRow && markRow.pct !== 'DNA' && markRow.pct !== '' && markRow.pct !== null && markRow.pct !== undefined) {
+          const pctVal = Number(markRow.pct);
+          if (!isNaN(pctVal)) allWeeklyScores.push(pctVal);
         }
-        weeklySum += pctVal;
-        weeklyCount++;
       });
-      const weeklyAvg = weeklyCount > 0 ? Math.round(weeklySum / weeklyCount) : null;
+
+      // OT system weekly scores
+      const otStudentScores = otScoresBySB[studentId + '|' + batchCode] || [];
+      otStudentScores.forEach(entry => {
+        const tl = String(entry.testType || '').toLowerCase();
+        const nl = String(entry.testLabel || '').toLowerCase();
+        const isW = tl === 'weekly' ||
+          (tl !== 'final' && tl !== 're-test' &&
+           (nl.indexOf('weekly') !== -1 || nl.indexOf('week') !== -1) &&
+           nl.indexOf('final') === -1);
+        if (isW) allWeeklyScores.push(entry.pct);
+      });
+
+      // Best-of-3: sort desc, take top 3, average
+      allWeeklyScores.sort((a, b) => b - a);
+      const top3Weekly = allWeeklyScores.slice(0, 3);
+      const weeklyAvg = top3Weekly.length > 0
+        ? Math.round(top3Weekly.reduce((s, v) => s + v, 0) / top3Weekly.length)
+        : null;
+
+      // ── Final exam — best from both sources ───────────────────────
+      let finalExamScore = null;
 
       const finalExams = batchAssessments.filter(a => isFinalTest(a) && assessmentHasGrades[a.assessmentId]);
-      let finalExamScore = null;
       finalExams.forEach(a => {
         const markRow = marksByAssAndStudent[studentId + '|' + a.assessmentId];
-        let pctVal = 0;
         if (markRow && markRow.pct !== 'DNA' && markRow.pct !== '') {
-          pctVal = Number(markRow.pct) || 0;
+          const pctVal = Number(markRow.pct) || 0;
+          if (finalExamScore === null || pctVal > finalExamScore) finalExamScore = pctVal;
         }
-        if (finalExamScore === null || pctVal > finalExamScore) {
-          finalExamScore = pctVal;
+      });
+
+      // OT final scores
+      otStudentScores.forEach(entry => {
+        const tl = String(entry.testType || '').toLowerCase();
+        const nl = String(entry.testLabel || '').toLowerCase();
+        const isF = tl === 'final' ||
+          (tl !== 'weekly' && tl !== 're-test' && nl.indexOf('final') !== -1);
+        if (isF && (finalExamScore === null || entry.pct > finalExamScore)) {
+          finalExamScore = entry.pct;
         }
       });
 

@@ -1028,6 +1028,7 @@
     <button class="tab" onclick="switchTab('t-fees')">💰 Fees</button>
     <button class="tab" onclick="switchTab('t-revenue')">📈 Revenue</button>
     <button class="tab" onclick="switchTab('t-holidays')">🗓 Holidays</button>
+    <button class="tab" id="tab-diplomas" onclick="switchTab('t-diplomas')" style="display:none">🎓 Diploma Release</button>
   </div>
 
   <div id="counselor-summary" class="dashboard-summary" style="display:none"></div>
@@ -1475,6 +1476,57 @@
     </div>
   </div>
 
+  <!-- TAB: DIPLOMA RELEASE -->
+  <div id="t-diplomas" class="tab-content">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
+        <h2 style="margin-bottom:0">🎓 Diploma Release</h2>
+      </div>
+      <p class="sub">Release diplomas for eligible students from all centres. Release criteria: overall attendance &ge; 75%, weekly test average &ge; 60%, and final exam score &ge; 60%.</p>
+      
+      <!-- Search and Filter bar -->
+      <div style="display:flex;gap:12px;align-items:center;margin-top:14px;margin-bottom:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:260px;position:relative">
+          <input type="text" id="diploma-search-input" oninput="filterDiplomaTable()" placeholder="🔍 Search by Name, Student ID or Batch..."
+            style="width:100%;font-size:13px;padding:8px 12px 8px 12px;border-radius:6px;border:1.5px solid var(--border);font-family:inherit;box-sizing:border-box">
+        </div>
+        <select id="diploma-centre-filter" onchange="filterDiplomaTable()"
+          style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+          <option value="">All Centres</option>
+        </select>
+        <select id="diploma-course-filter" onchange="filterDiplomaTable()"
+          style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+          <option value="">All Courses</option>
+        </select>
+        <select id="diploma-status-filter" onchange="filterDiplomaTable()"
+          style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+          <option value="">All Statuses</option>
+          <option value="eligible">Eligible (Not Released)</option>
+          <option value="released">Released</option>
+          <option value="ineligible">Ineligible</option>
+        </select>
+      </div>
+      
+      <div style="overflow-x:auto">
+        <table class="compact-table">
+          <thead>
+            <tr>
+              <th class="text-left">Student</th>
+              <th class="text-left">Batch &amp; Centre</th>
+              <th class="text-center">Attendance (&ge;75%)</th>
+              <th class="text-center">Weekly Test Avg (&ge;60%)</th>
+              <th class="text-center">Final Exam (&ge;60%)</th>
+              <th class="text-center">Status / Actions</th>
+            </tr>
+          </thead>
+          <tbody id="diploma-tbody">
+            <tr><td colspan="6" style="text-align:center;padding:16px;color:var(--muted)">Loading diploma eligibility records...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /wrap -->
 </div><!-- /s-main -->
 
@@ -1721,6 +1773,12 @@ function applyAdminVisibility() {
   if (targetCard) targetCard.style.display = (isAdmin && !isManager) ? '' : 'none';
 
   if (isAdmin) renderAdminDashboardPlaceholders();
+
+  const isDiplomaReleaseAuthorized = (counselorName === 'Bianca' || counselorName === 'Anuradha');
+  const dTab = document.getElementById('tab-diplomas');
+  if (dTab) {
+    dTab.style.display = isDiplomaReleaseAuthorized ? '' : 'none';
+  }
 }
 
 function applyPasswordChangeState() {
@@ -1811,11 +1869,16 @@ function switchTab(id) {
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const idx = ['t-batches','t-students','t-alumni','t-mybatches','t-reports','t-fees','t-revenue','t-holidays'].indexOf(id);
-  document.querySelectorAll('.tab')[idx].classList.add('active');
+  
+  const btn = Array.from(document.querySelectorAll('.tab')).find(t => t.getAttribute('onclick') === `switchTab('${id}')`);
+  if (btn) btn.classList.add('active');
+  
   renderContextSummary(id);
   if (id === 't-alumni') {
     loadAlumniData();
+  }
+  if (id === 't-diplomas') {
+    loadDiplomaData();
   }
   if (id==='t-fees') {
     if (isAdmin && !adminDashboardData) renderAdminDashboardPlaceholders();
@@ -5732,6 +5795,180 @@ function renderContextSummary(tabId) {
 function createSession(){}
 function copyLink(){}
 function whatsappLink(){}
+
+var alumniList = [];
+
+var diplomaList = [];
+
+function loadDiplomaData() {
+  var tbody = document.getElementById('diploma-tbody');
+  if (!tbody) return;
+  
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading diploma eligibility records...</p></div></td></tr>';
+  
+  var params = {
+    action: 'getDiplomaReleaseList',
+    counselorName: counselorName
+  };
+  
+  gasGet(params, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--red);padding:16px">Failed to load diploma eligibility records.</td></tr>';
+      return;
+    }
+    
+    diplomaList = d.list || [];
+    
+    var courseFilter = document.getElementById('diploma-course-filter');
+    if (courseFilter) {
+      var courses = [];
+      diplomaList.forEach(function(a) {
+        if (a.course && courses.indexOf(a.course) === -1) {
+          courses.push(a.course);
+        }
+      });
+      courses.sort();
+      courseFilter.innerHTML = '<option value="">All Courses</option>' +
+        courses.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
+    }
+
+    var centreFilter = document.getElementById('diploma-centre-filter');
+    if (centreFilter) {
+      var centres = [];
+      diplomaList.forEach(function(a) {
+        if (a.centre && centres.indexOf(a.centre) === -1) {
+          centres.push(a.centre);
+        }
+      });
+      centres.sort();
+      centreFilter.innerHTML = '<option value="">All Centres</option>' +
+        centres.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
+    }
+    
+    renderDiplomaTable(diplomaList);
+  });
+}
+
+function renderDiplomaTable(list) {
+  var tbody = document.getElementById('diploma-tbody');
+  if (!tbody) return;
+  
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px">No student records found.</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = list.map(function(a) {
+    var attPct = a.attendance.pct;
+    var attPass = a.attendance.pass;
+    var attStr = a.attendance.attended + ' / ' + a.attendance.total + ' (' + attPct + '%)';
+    var attBadge = attPass
+      ? '<span style="color:#168B57;font-weight:700">✅ ' + attStr + '</span>'
+      : '<span style="color:#C94A4A;font-weight:700">❌ ' + attStr + '</span>';
+
+    var weeklyStr = a.weeklyAvg.value !== null ? a.weeklyAvg.value + '%' : 'N/A';
+    var weeklyBadge = a.weeklyAvg.value !== null
+      ? (a.weeklyAvg.pass ? '<span style="color:#168B57;font-weight:700">✅ ' + weeklyStr + '</span>' : '<span style="color:#C94A4A;font-weight:700">❌ ' + weeklyStr + '</span>')
+      : '<span style="color:var(--muted)">' + weeklyStr + '</span>';
+
+    var finalStr = a.finalExam.value !== null ? a.finalExam.value + '%' : 'N/A';
+    var finalBadge = a.finalExam.value !== null
+      ? (a.finalExam.pass ? '<span style="color:#168B57;font-weight:700">✅ ' + finalStr + '</span>' : '<span style="color:#C94A4A;font-weight:700">❌ ' + finalStr + '</span>')
+      : '<span style="color:var(--muted)">' + finalStr + '</span>';
+
+    var actionCell = '';
+    if (a.diplomaStatus === 'Released') {
+      var relDate = '';
+      if (a.diplomaReleasedAt) {
+        try {
+          relDate = new Date(a.diplomaReleasedAt).toLocaleDateString('en-IN', {day:'2-digit',month:'short',year:'numeric'});
+        } catch(ex) { relDate = a.diplomaReleasedAt.split('T')[0]; }
+      }
+      actionCell = '<div style="color:#168B57;font-size:12px;font-weight:600">' +
+        '✅ Released<br>' +
+        '<span style="font-size:11px;color:var(--muted)">by ' + escC(a.diplomaReleasedBy) + ' on ' + relDate + '</span>' +
+        '</div>';
+    } else if (a.eligible) {
+      actionCell = '<button class="btn btn-gold btn-xs" onclick="releaseDiploma(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', this)" style="padding:5px 10px;font-size:11px;margin:0 auto;display:block">Release Diploma</button>';
+    } else {
+      actionCell = '<span class="badge" style="background:#F4F4F5;color:#71717A;border:1px solid #E4E4E7;padding:3px 8px;font-size:11px">Ineligible</span>';
+    }
+
+    return '<tr>' +
+      '<td class="text-left"><strong>' + escC(a.studentName) + '</strong><br><span style="font-size:11px;color:var(--muted)">ID: ' + escC(a.studentId) + '</span></td>' +
+      '<td class="text-left"><span style="font-family:monospace;font-weight:600">' + escC(a.batchCode) + '</span><br><span style="font-size:11px;color:var(--muted)">' + escC(a.centre) + '</span></td>' +
+      '<td class="text-center">' + attBadge + '</td>' +
+      '<td class="text-center">' + weeklyBadge + '</td>' +
+      '<td class="text-center">' + finalBadge + '</td>' +
+      '<td class="text-center">' + actionCell + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function filterDiplomaTable() {
+  var query = document.getElementById('diploma-search-input').value.trim().toLowerCase();
+  var centre = document.getElementById('diploma-centre-filter').value;
+  var course = document.getElementById('diploma-course-filter').value;
+  var status = document.getElementById('diploma-status-filter').value;
+
+  var filtered = diplomaList;
+
+  if (centre) {
+    filtered = filtered.filter(function(a) { return a.centre === centre; });
+  }
+
+  if (course) {
+    filtered = filtered.filter(function(a) { return a.course === course; });
+  }
+
+  if (status) {
+    filtered = filtered.filter(function(a) {
+      if (status === 'released') return a.diplomaStatus === 'Released';
+      if (status === 'eligible') return a.diplomaStatus !== 'Released' && a.eligible;
+      if (status === 'ineligible') return a.diplomaStatus !== 'Released' && !a.eligible;
+      return true;
+    });
+  }
+
+  if (query) {
+    filtered = filtered.filter(function(a) {
+      return String(a.studentId).toLowerCase().indexOf(query) !== -1 ||
+             String(a.studentName).toLowerCase().indexOf(query) !== -1 ||
+             String(a.batchCode).toLowerCase().indexOf(query) !== -1;
+    });
+  }
+  
+  renderDiplomaTable(filtered);
+}
+
+function releaseDiploma(studentId, batchCode, btn) {
+  if (!confirm('Are you sure you want to release the diploma for student ' + studentId + ' in batch ' + batchCode + '?')) {
+    return;
+  }
+  
+  var oldText = btn.textContent;
+  btn.textContent = 'Releasing...';
+  btn.disabled = true;
+  
+  var params = {
+    action: 'releaseStudentDiploma',
+    studentId: studentId,
+    batchCode: batchCode,
+    counselorName: counselorName
+  };
+  
+  gasGet(params, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      btn.textContent = oldText;
+      btn.disabled = false;
+      alert('Failed to release diploma: ' + (d && d.reason || 'Unknown error'));
+      return;
+    }
+    
+    showToast('Diploma released successfully!');
+    loadDiplomaData();
+  });
+}
 
 function toggleSlotField() {
   const type    = document.getElementById('b-type').value;

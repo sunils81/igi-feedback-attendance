@@ -1163,6 +1163,24 @@ function doGet(e) {
       return respond({status:'ok',enrollmentNo:studentId,added,skipped:existingEnrollments,email:emailResult});
     }
 
+    // ── getDiplomaReleaseList ─────────────────────────────────
+    if (act==='getDiplomaReleaseList') {
+      const counselor = p.counselorName || '';
+      if (counselor !== 'Bianca' && counselor !== 'Anuradha') {
+        return respond({status:'error', reason:'unauthorized'});
+      }
+      return respond(getDiplomaReleaseList(ss, p));
+    }
+
+    // ── releaseStudentDiploma ─────────────────────────────────
+    if (act==='releaseStudentDiploma') {
+      const counselor = p.counselorName || '';
+      if (counselor !== 'Bianca' && counselor !== 'Anuradha') {
+        return respond({status:'error', reason:'unauthorized'});
+      }
+      return respond(releaseStudentDiploma(ss, p));
+    }
+
     // ── getStudents ────────────────────────────────────────────
     if (act==='getStudents') {
       const batch=(p.batchCode||'').toUpperCase();
@@ -2843,12 +2861,22 @@ function getEnrollmentRows(ss) {
   const explicitKeys={};
   const shEn=ss.getSheetByName(SH_ENROLLMENTS);
   if(shEn&&shEn.getLastRow()>1){
-    shEn.getRange(2,1,shEn.getLastRow()-1,4).getValues().forEach((r,i)=>{
+    shEn.getRange(2,1,shEn.getLastRow()-1,7).getValues().forEach((r,i)=>{
       const studentId=String(r[0]||'').trim().toUpperCase();
       const batchCode=String(r[1]||'').trim().toUpperCase();
       if(studentId&&batchCode){
         explicitKeys[studentId+'|'+batchCode]=true;
-        rows.push({studentId,batchCode,status:r[2]||'Active',enrolledAt:r[3]||'',rowIndex:i+2,source:'link'});
+        rows.push({
+          studentId,
+          batchCode,
+          status:r[2]||'Active',
+          enrolledAt:r[3]||'',
+          diplomaStatus:r[4]||'',
+          diplomaReleasedBy:r[5]||'',
+          diplomaReleasedAt:r[6]||'',
+          rowIndex:i+2,
+          source:'link'
+        });
       }
     });
   }
@@ -2858,7 +2886,17 @@ function getEnrollmentRows(ss) {
       const studentId=String(r[0]||'').trim().toUpperCase();
       const batchCode=String(r[1]||'').trim().toUpperCase();
       if(studentId&&batchCode&&!explicitKeys[studentId+'|'+batchCode])
-        rows.push({studentId,batchCode,status:r[6]||'Active',enrolledAt:r[7]||'',rowIndex:i+2,source:'legacy'});
+        rows.push({
+          studentId,
+          batchCode,
+          status:r[6]||'Active',
+          enrolledAt:r[7]||'',
+          diplomaStatus:'',
+          diplomaReleasedBy:'',
+          diplomaReleasedAt:'',
+          rowIndex:i+2,
+          source:'legacy'
+        });
     });
   }
   return rows;
@@ -2890,7 +2928,7 @@ function ensureSheets(ss) {
   const defs = {
     [SH_BATCHES]:  ['Batch Code','Centre','Course','Type','Batch Slot','Start Date','End Date','Created By','Created At','Assigned Instructor'],
     [SH_STUDENTS]: ['Student ID','Primary Batch Code','Name','Mobile Last 4','Mobile','Email','Status','Created At','Welcome Email Status','Welcome Email Sent At'],
-    [SH_ENROLLMENTS]: ['Student ID','Batch Code','Status','Enrolled At'],
+    [SH_ENROLLMENTS]: ['Student ID','Batch Code','Status','Enrolled At','Diploma Status','Diploma Released By','Diploma Released At'],
     [SH_SESSIONS]: ['Session Code','Batch Code','Session Date','Session No','Instructor','Session Type','Topic Covered','Auto Created','Created At'],
     [SH_FEEDBACK]: ['Session Code','Student ID','Student Name','Batch Code','Centre','Course','Instructor','Topic',
                     'Completion Status','Q1 Overall Rating','Q2 Clarity','Q3 Pace','Q4 Doubts Addressed',
@@ -2920,6 +2958,8 @@ function ensureSheets(ss) {
       sh.setFrozenRows(1);
     } else if (name===SH_STUDENTS) {
       ensureStudentHeaders(sh);
+    } else if (name===SH_ENROLLMENTS) {
+      ensureEnrollmentHeaders(sh);
     } else if (name===SH_SESSIONS) {
       ensureSessionHeaders(sh);
     } else if (name===SH_FEES) {
@@ -2962,10 +3002,17 @@ function ensureSessionHeaders(sh) {
   }
 }
 function ensureEnrollmentHeaders(sh) {
-  if (sh.getLastRow()>0&&sh.getRange(1,1).getValue()!=='') return;
-  const h=['Student ID','Batch Code','Status','Enrolled At'];
-  sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
-  sh.setFrozenRows(1);
+  const h=['Student ID','Batch Code','Status','Enrolled At','Diploma Status','Diploma Released By','Diploma Released At'];
+  if (sh.getLastRow()===0||sh.getRange(1,1).getValue()===''){
+    sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
+    sh.setFrozenRows(1);
+    return;
+  }
+  const current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);
+  if (current.length < h.length || current[4]!==h[4] || current[5]!==h[5] || current[6]!==h[6]) {
+    sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
+    sh.setFrozenRows(1);
+  }
 }
 function ensureAssessmentHeaders(sh) {
   if (sh.getLastRow()>0&&sh.getRange(1,1).getValue()!=='') return;
@@ -6457,3 +6504,258 @@ function trayMarkInUseDone(ss, p) {
   }
   return {status:'ok', trayId:p.trayId};
 }
+
+// ── Diploma Release calculations & actions ───────────────────
+
+function getDiplomaReleaseList(ss, p) {
+  try {
+    const students = getStudentRows(ss);
+    const studentMap = {};
+    students.forEach(s => {
+      studentMap[s.id] = s;
+    });
+
+    const enrollments = getEnrollmentRows(ss).filter(e => e.status === 'Active');
+    
+    const shBatches = ss.getSheetByName(SH_BATCHES);
+    const batchData = shBatches && shBatches.getLastRow() > 1 
+      ? shBatches.getRange(2, 1, shBatches.getLastRow() - 1, 10).getValues() 
+      : [];
+    const batchMap = {};
+    batchData.forEach(r => {
+      const code = String(r[0]).toUpperCase();
+      batchMap[code] = {
+        batchCode: code,
+        centre: r[1] || '',
+        course: r[2] || '',
+        type: r[3] || '',
+        start: r[5] || '',
+        end: r[6] || ''
+      };
+    });
+
+    const shSess = ss.getSheetByName(SH_SESSIONS);
+    const sessionData = shSess && shSess.getLastRow() > 1 
+      ? shSess.getRange(2, 1, shSess.getLastRow() - 1, 9).getValues() 
+      : [];
+    
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    const sessionsByBatch = {};
+    sessionData.forEach(r => {
+      const bc = String(r[1]).toUpperCase();
+      const sessDateVal = r[2];
+      const type = String(r[5] || '').toLowerCase();
+      if (bc && sessDateVal && type !== 'cancelled') {
+        const sDate = new Date(sessDateVal);
+        if (sDate <= today) {
+          if (!sessionsByBatch[bc]) sessionsByBatch[bc] = [];
+          sessionsByBatch[bc].push(String(r[0]).toUpperCase());
+        }
+      }
+    });
+
+    const shFb = ss.getSheetByName(SH_FEEDBACK);
+    const feedbackData = shFb && shFb.getLastRow() > 1 
+      ? shFb.getRange(2, 1, shFb.getLastRow() - 1, 2).getValues()
+      : [];
+    
+    const attendanceMap = {};
+    feedbackData.forEach(r => {
+      const sc = String(r[0]).toUpperCase();
+      const sid = String(r[1]).toUpperCase();
+      if (sc && sid) {
+        attendanceMap[sid + '|' + sc] = true;
+      }
+    });
+
+    const shAss = ss.getSheetByName(SH_ASSESSMENTS);
+    const assData = shAss && shAss.getLastRow() > 1 
+      ? shAss.getRange(2, 1, shAss.getLastRow() - 1, 4).getValues()
+      : [];
+    const assessmentsByBatch = {};
+    assData.forEach(r => {
+      const bc = String(r[1]).toUpperCase();
+      if (bc) {
+        if (!assessmentsByBatch[bc]) assessmentsByBatch[bc] = [];
+        assessmentsByBatch[bc].push({
+          assessmentId: String(r[0]).toUpperCase(),
+          testName: r[2] || '',
+          testType: r[3] || ''
+        });
+      }
+    });
+
+    const shMarks = ss.getSheetByName(SH_MARKS);
+    const marksData = shMarks && shMarks.getLastRow() > 1 
+      ? shMarks.getRange(2, 1, shMarks.getLastRow() - 1, 9).getValues()
+      : [];
+    
+    const marksByAssAndStudent = {};
+    const assessmentHasGrades = {};
+    marksData.forEach(r => {
+      const assId = String(r[0]).toUpperCase();
+      const sid = String(r[1]).toUpperCase();
+      if (assId && sid) {
+        marksByAssAndStudent[sid + '|' + assId] = {
+          marks: r[3],
+          pct: r[4]
+        };
+        assessmentHasGrades[assId] = true;
+      }
+    });
+
+    const list = [];
+    enrollments.forEach(e => {
+      const batchCode = String(e.batchCode).toUpperCase();
+      const studentId = String(e.studentId).toUpperCase();
+      const batch = batchMap[batchCode];
+      
+      if (!batch) return;
+
+      const student = studentMap[studentId];
+      const studentName = student ? student.name : studentId;
+
+      const batchSessionCodes = sessionsByBatch[batchCode] || [];
+      const totalSessions = batchSessionCodes.length;
+      let attended = 0;
+      batchSessionCodes.forEach(sc => {
+        if (attendanceMap[studentId + '|' + sc]) {
+          attended++;
+        }
+      });
+      const attendancePct = totalSessions > 0 ? Math.round((attended / totalSessions) * 100) : 0;
+
+      const batchAssessments = assessmentsByBatch[batchCode] || [];
+      
+      const weeklyTests = batchAssessments.filter(a => a.testType === 'Weekly' && assessmentHasGrades[a.assessmentId]);
+      let weeklySum = 0;
+      let weeklyCount = 0;
+      weeklyTests.forEach(a => {
+        const markRow = marksByAssAndStudent[studentId + '|' + a.assessmentId];
+        let pctVal = 0;
+        if (markRow && markRow.pct !== 'DNA' && markRow.pct !== '') {
+          pctVal = Number(markRow.pct) || 0;
+        }
+        weeklySum += pctVal;
+        weeklyCount++;
+      });
+      const weeklyAvg = weeklyCount > 0 ? Math.round(weeklySum / weeklyCount) : null;
+
+      const finalExams = batchAssessments.filter(a => a.testType === 'Final' && assessmentHasGrades[a.assessmentId]);
+      let finalExamScore = null;
+      finalExams.forEach(a => {
+        const markRow = marksByAssAndStudent[studentId + '|' + a.assessmentId];
+        let pctVal = 0;
+        if (markRow && markRow.pct !== 'DNA' && markRow.pct !== '') {
+          pctVal = Number(markRow.pct) || 0;
+        }
+        if (finalExamScore === null || pctVal > finalExamScore) {
+          finalExamScore = pctVal;
+        }
+      });
+
+      const attendancePass = attendancePct >= 75;
+      const weeklyPass = weeklyAvg !== null && weeklyAvg >= 60;
+      const finalPass = finalExamScore !== null && finalExamScore >= 60;
+      const eligible = attendancePass && weeklyPass && finalPass;
+
+      list.push({
+        studentId,
+        studentName,
+        batchCode,
+        centre: batch.centre,
+        course: batch.course,
+        attendance: {
+          attended,
+          total: totalSessions,
+          pct: attendancePct,
+          pass: attendancePass
+        },
+        weeklyAvg: {
+          value: weeklyAvg,
+          pass: weeklyPass
+        },
+        finalExam: {
+          value: finalExamScore,
+          pass: finalPass
+        },
+        eligible,
+        diplomaStatus: e.diplomaStatus || '',
+        diplomaReleasedBy: e.diplomaReleasedBy || '',
+        diplomaReleasedAt: e.diplomaReleasedAt || '',
+        rowIndex: e.rowIndex || null,
+        source: e.source || ''
+      });
+    });
+
+    return {
+      status: 'ok',
+      list
+    };
+  } catch (err) {
+    return {
+      status: 'error',
+      message: err.toString()
+    };
+  }
+}
+
+function releaseStudentDiploma(ss, p) {
+  try {
+    const studentId = String(p.studentId || '').trim().toUpperCase();
+    const batchCode = String(p.batchCode || '').trim().toUpperCase();
+    const counselor = String(p.counselorName || '').trim();
+    
+    if (!studentId || !batchCode) {
+      return {status: 'error', reason: 'missing_params'};
+    }
+    
+    const shEn = ss.getSheetByName(SH_ENROLLMENTS);
+    if (!shEn) {
+      return {status: 'error', reason: 'sheet_not_found'};
+    }
+    
+    ensureEnrollmentHeaders(shEn);
+    
+    const lastRow = shEn.getLastRow();
+    let foundRowIndex = -1;
+    
+    if (lastRow > 1) {
+      const data = shEn.getRange(2, 1, lastRow - 1, 4).getValues();
+      for (let i = 0; i < data.length; i++) {
+        if (String(data[i][0]).toUpperCase() === studentId && String(data[i][1]).toUpperCase() === batchCode && String(data[i][2]) === 'Active') {
+          foundRowIndex = i + 2;
+          break;
+        }
+      }
+    }
+    
+    if (foundRowIndex === -1) {
+      const shStud = ss.getSheetByName(SH_STUDENTS);
+      let legacyExists = false;
+      if (shStud && shStud.getLastRow() > 1) {
+        const studData = shStud.getRange(2, 1, shStud.getLastRow() - 1, 7).getValues();
+        for (let i = 0; i < studData.length; i++) {
+          if (String(studData[i][0]).toUpperCase() === studentId && String(studData[i][1]).toUpperCase() === batchCode && String(studData[i][6]) === 'Active') {
+            legacyExists = true;
+            break;
+          }
+        }
+      }
+      
+      if (legacyExists) {
+        shEn.appendRow([studentId, batchCode, 'Active', new Date().toISOString(), 'Released', counselor, new Date().toISOString()]);
+        return {status: 'ok', rowIndex: shEn.getLastRow()};
+      } else {
+        return {status: 'error', reason: 'enrollment_not_found'};
+      }
+    }
+    
+    shEn.getRange(foundRowIndex, 5, 1, 3).setValues([['Released', counselor, new Date().toISOString()]]);
+    return {status: 'ok', rowIndex: foundRowIndex};
+  } catch (err) {
+    return {status: 'error', message: err.toString()};
+  }
+}
+

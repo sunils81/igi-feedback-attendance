@@ -4565,19 +4565,40 @@ function loadSnapshot() {
   });
 }
 
+// Normalise gas.js Title Case status → lowercase_underscore used in admin UI
+function _snapNorm(s) {
+  var map = {
+    'ongoing':'ongoing','Ongoing':'ongoing',
+    'starting soon':'starting_soon','Starting Soon':'starting_soon',
+    'upcoming':'upcoming','Upcoming':'upcoming',
+    'completed':'completed','Completed':'completed',
+    'inactive':'inactive','Inactive':'inactive'
+  };
+  return map[s] || (s||'').toLowerCase().replace(/\s+/g,'_');
+}
+
 function snapshotRender(d) {
   var body = document.getElementById('snap-body');
   if (!body) return;
-  var centres = d.centres || [];
+  // Normalise statuses from gas.js before rendering
+  var centres = (d.centres || []).map(function(c) {
+    return Object.assign({}, c, {
+      status: _snapNorm(c.status),
+      batches: (c.batches||[]).map(function(b) {
+        return Object.assign({}, b, {
+          status:      _snapNorm(b.status),
+          courseName:  b.courseName || b.course || '',          // gas returns 'course'
+          enrolledCount: b.enrolledCount != null ? b.enrolledCount : (b.studentCount||0), // gas returns 'studentCount'
+          startDateISO:  b.startDateISO || b.startDate || ''   // gas returns 'startDate' (formatted)
+        });
+      })
+    });
+  });
 
   // Apply filter
   var visible = centres.filter(function(c) {
-    if (_snapFilter === 'active') {
-      return ['ongoing','starting_soon'].indexOf(c.status) !== -1;
-    }
-    if (_snapFilter === 'upcoming') {
-      return c.status === 'upcoming';
-    }
+    if (_snapFilter === 'active')    return ['ongoing','starting_soon'].indexOf(c.status) !== -1;
+    if (_snapFilter === 'upcoming')  return c.status === 'upcoming';
     return true; // 'all'
   });
 
@@ -4596,11 +4617,11 @@ function snapshotRender(d) {
     var batchLines = (c.batches||[]).map(function(b) {
       var bsc = statusClass[b.status] || 'ongoing';
       var bsl = statusLabel[b.status] || b.status;
-      var info = '<b>' + escHtml(b.batchCode) + '</b> — ' + escHtml(b.courseName||'');
+      var info = '<b>' + escHtml(b.batchCode) + '</b> — ' + escHtml(b.courseName||b.course||'');
       if (b.status === 'ongoing' && b.weeksRunning) info += ' · Week ' + b.weeksRunning;
-      if (b.status === 'starting_soon' && b.startDateISO) info += ' · Starts ' + fmtDateShort(b.startDateISO);
-      if (b.status === 'upcoming' && b.startDateISO) info += ' · Starts ' + fmtDateShort(b.startDateISO);
-      if (b.enrolledCount != null) info += ' · ' + b.enrolledCount + ' student' + (b.enrolledCount!==1?'s':'');
+      if ((b.status === 'starting_soon' || b.status === 'upcoming') && b.startDateISO) info += ' · Starts ' + escHtml(b.startDateISO);
+      var cnt = b.enrolledCount != null ? b.enrolledCount : (b.studentCount||null);
+      if (cnt != null) info += ' · ' + cnt + ' student' + (cnt !== 1 ? 's' : '');
       return '<div class="snap-batch-line" style="margin-bottom:4px;">'
         + '<span class="snap-badge ' + bsc + '" style="margin-right:6px;">' + bsl + '</span>'
         + '<span style="font-size:13px;color:#374151;">' + info + '</span>'
@@ -4629,21 +4650,23 @@ function snapSaveNote(el) {
 
 function snapCopyText() {
   if (!_snapData) { alert('Generate the snapshot first.'); return; }
-  var centres = (_snapData.centres||[]).filter(function(c) {
+  var statusLabel = {ongoing:'Ongoing', starting_soon:'Starting Soon', upcoming:'Upcoming', completed:'Completed', inactive:'Inactive'};
+  var centres = (_snapData.centres||[]).map(function(c) {
+    return Object.assign({}, c, {status:_snapNorm(c.status), batches:(c.batches||[]).map(function(b){return Object.assign({},b,{status:_snapNorm(b.status),courseName:b.courseName||b.course||'',enrolledCount:b.enrolledCount!=null?b.enrolledCount:(b.studentCount||0)});})});
+  }).filter(function(c) {
     if (_snapFilter === 'active') return ['ongoing','starting_soon'].indexOf(c.status) !== -1;
     if (_snapFilter === 'upcoming') return c.status === 'upcoming';
     return true;
   });
-  var statusLabel = {ongoing:'Ongoing', starting_soon:'Starting Soon', upcoming:'Upcoming', completed:'Completed', inactive:'Inactive'};
   var dt = new Date(_snapData.generatedAt || Date.now());
   var lines = ['📊 Batch Status Update — All Centres', fmtDateShort(dt.toISOString()) + ' | IGI School of Gemology', ''];
   centres.forEach(function(c) {
     lines.push('▪ ' + c.centre + ' [' + (statusLabel[c.status]||c.status) + ']');
     (c.batches||[]).forEach(function(b) {
       var sl = statusLabel[b.status] || b.status;
-      var info = '  · ' + b.batchCode + ' — ' + (b.courseName||'') + ' (' + sl + ')';
+      var cnt = b.enrolledCount != null ? b.enrolledCount : (b.studentCount||0);
+      var info = '  · ' + b.batchCode + ' — ' + (b.courseName||b.course||'') + ' (' + sl + ')' + (cnt?' · '+cnt+' students':'');
       if (b.status === 'ongoing' && b.weeksRunning) info += ', Week ' + b.weeksRunning;
-      if (b.enrolledCount != null) info += ', ' + b.enrolledCount + ' students';
       lines.push(info);
     });
     var note = snapGetNote(c.centre);

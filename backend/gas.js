@@ -1094,6 +1094,13 @@ function doGet(e) {
     if (act==='trayGetNotifications')   return respond(trayGetNotifications(ss,p));
     if (act==='trayMarkNotifRead')      return respond(trayMarkNotifRead(ss,p));
     if (act==='trayGetHistory')         return respond(trayGetHistory(ss,p));
+    if (act==='trayGetJourney')         return respond(trayGetJourney(ss,p));
+    if (act==='trayPlanJourney')        return respond(trayPlanJourney(ss,p));
+    if (act==='trayDispatch')           return respond(trayDispatch(ss,p));
+    if (act==='trayConfirmReceived')    return respond(trayConfirmReceived(ss,p));
+    if (act==='trayConfirmDispatched')  return respond(trayConfirmDispatched(ss,p));
+    if (act==='trayMarkInUse')          return respond(trayMarkInUse(ss,p));
+    if (act==='trayMarkInUseDone')      return respond(trayMarkInUseDone(ss,p));
 
     // ── getBatches ─────────────────────────────────────────────
     if (act==='getBatches') {
@@ -1647,12 +1654,14 @@ function doGet(e) {
         const rawStart = hasSlot ? r[5] : r[4];
         const rawEnd   = hasSlot ? r[6] : r[5];
         const startDateISO = rawStart ? new Date(rawStart).toISOString() : '';
+        const endDateISO = rawEnd ? new Date(rawEnd).toISOString() : '';
         return {
           batchCode:r[0], centre:r[1], course:r[2], type:r[3],
           batchSlot:  hasSlot?(r[4]||'Full Day'):'Full Day',
           startDate:  rawStart?new Date(rawStart).toLocaleDateString('en-IN'):'',
           startDateISO: startDateISO,
           endDate:    rawEnd?new Date(rawEnd).toLocaleDateString('en-IN'):'',
+          endDateISO: endDateISO,
           active:     String(r[7]||'Y')!=='N',   // col H — 'N' means inactive
           instructor: hasSlot?(r[9]||''):(r[8]||'')
         };
@@ -4182,14 +4191,16 @@ function ensureOTStartsHeaders(sh) {
     if (act==='closeTest')               return respond(otCloseTest(ss,p));
     if (act==='releaseResults')          return respond(otReleaseResults(ss,p));
     if (act==='getStudentActiveTest')    return respond(otGetStudentActiveTest(ss,p));
-    if (act==='getTestQuestions')        return respond(otGetTestQuestions(ss,p));
-    if (act==='submitTestResponse')      return respond(otSubmitTestResponse(ss,p));
-    if (act==='logTestWarning')          return respond(otLogTestWarning(ss,p));
-    if (act==='getProctorRoom')          return respond(otGetProctorRoom(ss,p));
-    if (act==='saveManualGrade')         return respond(otSaveManualGrade(ss,p));
-    if (act==='getPendingManualGrades')  return respond(otGetPendingManualGrades(ss,p));
-    if (act==='getStudentResults')       return respond(otGetStudentResults(ss,p));
-    if (act==='getTestResultsSummary')   return respond(otGetTestResultsSummary(ss,p));
+    if (act==='getTestQuestions')           return respond(otGetTestQuestions(ss,p));
+    if (act==='getTestQuestionsInstructor') return respond(otGetTestQuestionsInstructor(ss,p));
+    if (act==='removeTestQuestion')         return respond(otRemoveTestQuestion(ss,p));
+    if (act==='submitTestResponse')         return respond(otSubmitTestResponse(ss,p));
+    if (act==='logTestWarning')             return respond(otLogTestWarning(ss,p));
+    if (act==='getProctorRoom')             return respond(otGetProctorRoom(ss,p));
+    if (act==='saveManualGrade')            return respond(otSaveManualGrade(ss,p));
+    if (act==='getPendingManualGrades')     return respond(otGetPendingManualGrades(ss,p));
+    if (act==='getStudentResults')          return respond(otGetStudentResults(ss,p));
+    if (act==='getTestResultsSummary')      return respond(otGetTestResultsSummary(ss,p));
     if (act==='setupScheduledTrigger')   return respond(otSetupScheduledTrigger(ss,p));
 */
 
@@ -4610,6 +4621,41 @@ function otGetTestQuestions(ss, p) {
           instructions:testRow[20]||'',shuffled:testRow[19]==='Yes'},
     questions:questions, remainingSec:remainingSec, serverTime:new Date().toISOString()
   };
+}
+
+// Instructor view — returns all questions with correct answers (no studentId required)
+function otGetTestQuestionsInstructor(ss, p) {
+  if (!p.testId || !p.instructor) return {status:'error',reason:'missing_params'};
+  ensureOnlineTestSheets(ss);
+  var shOTQ = ss.getSheetByName(SH_OT_QUESTIONS);
+  var otqRows = shOTQ.getLastRow()>1 ? shOTQ.getRange(2,1,shOTQ.getLastRow()-1,13).getValues() : [];
+  var questions = otqRows
+    .filter(function(r){ return r[0]===p.testId; })
+    .sort(function(a,b){ return (a[12]||0)-(b[12]||0); })
+    .map(function(r){
+      return {
+        rowIndex: otqRows.indexOf(r)+2, // 1-based sheet row for later delete
+        qId: r[1], question: r[3], type: r[9]||'MCQ',
+        marks: r[10]||1, correctAnswer: r[8],
+        opt1:r[4], opt2:r[5], opt3:r[6], opt4:r[7]
+      };
+    });
+  return {status:'ok', questions:questions};
+}
+
+// Remove a single question from a test (by qId)
+function otRemoveTestQuestion(ss, p) {
+  if (!p.testId || !p.qId || !p.instructor) return {status:'error',reason:'missing_params'};
+  ensureOnlineTestSheets(ss);
+  var shOTQ = ss.getSheetByName(SH_OT_QUESTIONS);
+  var rows = shOTQ.getLastRow()>1 ? shOTQ.getRange(2,1,shOTQ.getLastRow()-1,2).getValues() : [];
+  for (var i=rows.length-1; i>=0; i--) {
+    if (rows[i][0]===p.testId && rows[i][1]===p.qId) {
+      shOTQ.deleteRow(i+2); // +2: header row offset
+      return {status:'ok'};
+    }
+  }
+  return {status:'error', reason:'question_not_found'};
 }
 
 function otShuffleSeeded(arr, seed) {
@@ -5402,6 +5448,15 @@ const SH_TRAY_REGISTRY     = 'Tray_Registry';
 const SH_TRAY_BOOKINGS     = 'Tray_Bookings';
 const SH_TRAY_NOTIFICATIONS= 'Tray_Notifications';
 const SH_TRAY_WEEKLY_NEEDS = 'Tray_WeeklyNeeds';
+const SH_TRAY_HISTORY      = 'Tray_History';
+
+// Diamond instructors per centre (for accountability + notifications)
+var CENTRE_HOME_INSTRUCTORS = {
+  'Mumbai':  ['Amit Sidpura', 'Bhavin Patel'],
+  'Delhi':   ['Nishchay Kapoor'],
+  'Surat':   ['Khorehmand Kasad'],
+  'Chennai': ['Sharoon Joy']
+};
 
 // ── Sheet setup ─────────────────────────────────────────────────────────────
 function ensureTraySheets(ss) {
@@ -5414,10 +5469,11 @@ function ensureTraySheets(ss) {
     }
     return sh;
   }
-  ensureSheet(SH_TRAY_REGISTRY,      ['TrayID','Category','TopicCode','TopicName','HomeCentre','HomeInstructor','StoneCount','WeekUsage','LocationStatus','CurrentCentre','ExpectedReturn','RegisteredAt','Notes','BorrowerConfirmed']);
-  ensureSheet(SH_TRAY_BOOKINGS,      ['BookingID','TrayID','HomeCentre','RequestingInstructor','RequestingCentre','WeeksBooked','StartDate','DeadlineDate','Status','StoneCountOnReturn','RejectReason','CreatedAt','UpdatedAt']);
+  ensureSheet(SH_TRAY_REGISTRY,      ['TrayID','Category','TopicCode','TopicName','HomeCentre','HomeInstructor','StoneCount','WeekUsage','LocationStatus','CurrentCentre','ExpectedReturn','RegisteredAt','Notes','BorrowerConfirmed','BorrowerInstructor']);
+  ensureSheet(SH_TRAY_BOOKINGS,      ['BookingID','TrayID','HomeCentre','RequestingInstructor','RequestingCentre','WeeksBooked','StartDate','DeadlineDate','Status','StoneCountOnReturn','RejectReason','CreatedAt','UpdatedAt','BatchCode']);
   ensureSheet(SH_TRAY_NOTIFICATIONS, ['NotifID','ToInstructor','Type','BookingID','Message','Read','CreatedAt']);
   ensureSheet(SH_TRAY_WEEKLY_NEEDS,  ['Instructor','Centre','TraysNeededPerWeek','UpdatedAt']);
+  ensureSheet(SH_TRAY_HISTORY,       ['HistoryID','TrayID','LegNumber','FromCentre','ToCentre','FromInstructor','ToInstructor','PlannedStart','PlannedEnd','ActualSent','ActualReceived','Status']);
 }
 
 function getTraySheet(ss, name) {
@@ -5556,12 +5612,41 @@ function trayConfirmLocation(ss, p) {
   var rows = sh.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() === String(p.trayId).trim()) {
-      sh.getRange(i+1, 9).setValue(p.locationStatus);                              // LocationStatus
-      sh.getRange(i+1,10).setValue(p.currentCentre || rows[i][4]);                 // CurrentCentre
-      sh.getRange(i+1,11).setValue(p.expectedReturn || '');                         // ExpectedReturn
-      if (p.instructor && !rows[i][5]) sh.getRange(i+1,6).setValue(p.instructor);  // HomeInstructor
-      // Reset borrower confirmation whenever home changes the status
-      sh.getRange(i+1,14).setValue('');                                             // BorrowerConfirmed
+      var homeCentre = String(rows[i][4]);
+      var fromInstructor = p.instructor || String(rows[i][5]);
+      sh.getRange(i+1, 9).setValue(p.locationStatus);
+      sh.getRange(i+1,10).setValue(p.currentCentre || homeCentre);
+      sh.getRange(i+1,11).setValue(p.expectedReturn || '');
+      if (p.instructor && !rows[i][5]) sh.getRange(i+1,6).setValue(p.instructor);
+      sh.getRange(i+1,14).setValue('');                                              // BorrowerConfirmed reset
+      sh.getRange(i+1,15).setValue(p.borrowerInstructor || '');                     // BorrowerInstructor
+      // Write to Tray_History
+      if (p.locationStatus === 'ON_LOAN') {
+        var histId = trayHistId();
+        var hsh = getTraySheet(ss, SH_TRAY_HISTORY);
+        var today = new Date().toISOString().split('T')[0];
+        hsh.appendRow([histId, p.trayId, 1, homeCentre, p.currentCentre||'',
+          fromInstructor, p.borrowerInstructor||'',
+          today, p.expectedReturn||'', today, '', 'SENT']);
+        // Notify borrower instructor
+        if (p.borrowerInstructor) {
+          trayAddNotif(ss, p.borrowerInstructor, 'incoming_tray', histId+':'+p.trayId,
+            '📦 Tray '+p.trayId+' is on its way from '+homeCentre+' ('+fromInstructor+').'+(p.expectedReturn?' Expected by '+p.expectedReturn:''));
+        }
+        // Notify other home diamonds
+        _notifyHomeDiamonds(ss, homeCentre, fromInstructor, 'tray_dispatched', histId+':'+p.trayId,
+          '📤 '+p.trayId+' sent to '+(p.currentCentre||'unknown')+(p.borrowerInstructor?' ('+p.borrowerInstructor+')':''));
+      } else if (p.locationStatus === 'IN_USE') {
+        var histId = trayHistId();
+        var hsh = getTraySheet(ss, SH_TRAY_HISTORY);
+        var today = new Date().toISOString().split('T')[0];
+        hsh.appendRow([histId, p.trayId, 0, homeCentre, homeCentre,
+          fromInstructor, fromInstructor,
+          p.startDate||today, p.expectedReturn||'', today, '', 'IN_USE']);
+      } else if (p.locationStatus === 'HOME') {
+        // Close any open IN_USE or SENT row if returning home via simple confirm
+        _closeOpenHistoryLeg(ss, p.trayId);
+      }
       return {status:'ok', trayId:p.trayId};
     }
   }
@@ -5783,7 +5868,7 @@ function trayBook(ss, p) {
   var regRows = trayRows(getTraySheet(ss, SH_TRAY_REGISTRY));
   var trayRow = regRows.find(function(r){ return String(r[0])===p.trayId; });
   if (!trayRow) return {status:'error', message:'Tray not found'};
-  if (String(trayRow[2]) === p.requestingCentre) return {status:'error', message:'Cannot request your own tray'};
+  if (String(trayRow[4] || trayRow[2]) === p.requestingCentre) return {status:'error', message:'Cannot request your own tray'};
 
   // Check no active booking
   var bookRows = trayRows(getTraySheet(ss, SH_TRAY_BOOKINGS));
@@ -5795,15 +5880,17 @@ function trayBook(ss, p) {
   var bookingId = 'BK-' + Date.now();
   var sh = getTraySheet(ss, SH_TRAY_BOOKINGS);
   sh.appendRow([
-    bookingId, p.trayId, String(trayRow[2]), p.requestingInstructor, p.requestingCentre,
+    bookingId, p.trayId, String(trayRow[4] || trayRow[2]), p.requestingInstructor, p.requestingCentre,
     weeks, startDate.toISOString().split('T')[0], deadline.toISOString().split('T')[0],
-    'pending', '', '', new Date().toISOString(), new Date().toISOString()
+    'pending', '', '', new Date().toISOString(), new Date().toISOString(), p.batchCode || ''
   ]);
 
   // Notify home instructor
-  var homeInstructor = String(trayRow[3]);
-  trayAddNotif(ss, homeInstructor, 'request', bookingId,
-    p.requestingInstructor + ' (' + p.requestingCentre + ') has requested tray ' + p.trayId + ' for ' + weeks + ' week' + (weeks>1?'s':'') + ' starting ' + startDate.toISOString().split('T')[0] + '.');
+  var homeInstructor = String(trayRow[5] || trayRow[3]);
+  var msg = p.requestingInstructor + ' (' + p.requestingCentre + ') has requested tray ' + p.trayId + 
+            (p.batchCode ? ' for batch ' + p.batchCode : '') +
+            ' for ' + weeks + ' week' + (weeks>1?'s':'') + ' starting ' + startDate.toISOString().split('T')[0] + '.';
+  trayAddNotif(ss, homeInstructor, 'request', bookingId, msg);
   return {status:'ok', bookingId:bookingId, deadline: deadline.toISOString().split('T')[0]};
 }
 
@@ -6009,38 +6096,34 @@ function trayMarkNotifRead(ss, p) {
 
 // ── trayGetHistory ───────────────────────────────────────────────────────────
 // p: { trayId?, centre?, instructor? }
+// Now reads from Tray_History for movement log, plus Tray_Bookings for request history
 function trayGetHistory(ss, p) {
   ensureTraySheets(ss);
-  var bookRows = trayRows(getTraySheet(ss, SH_TRAY_BOOKINGS));
-  var regRows  = trayRows(getTraySheet(ss, SH_TRAY_REGISTRY));
-  var filtered = bookRows.filter(function(r) {
-    if (p.trayId    && String(r[1])!==p.trayId)         return false;
-    if (p.centre    && String(r[2])!==p.centre && String(r[4])!==p.centre) return false;
-    if (p.instructor&& String(r[3])!==p.instructor)     return false;
+  var hrows = trayRows(getTraySheet(ss, SH_TRAY_HISTORY));
+  var filtered = hrows.filter(function(r) {
+    if (p.trayId     && String(r[1])!==p.trayId) return false;
+    if (p.centre     && String(r[3])!==p.centre && String(r[4])!==p.centre) return false;
+    if (p.instructor && String(r[5])!==p.instructor && String(r[6])!==p.instructor) return false;
     return true;
   });
   var history = filtered.map(function(r) {
-    var trayId = String(r[1]);
-    var regR = regRows.find(function(rr){ return String(rr[0])===trayId; });
     return {
-      bookingId: String(r[0]),
-      trayId: trayId,
-      type: regR ? String(regR[1]) : '',
-      stoneCount: regR ? parseInt(regR[4]) : 0,
-      homeCentre: String(r[2]),
-      requestingInstructor: String(r[3]),
-      requestingCentre: String(r[4]),
-      weeksBooked: parseInt(r[5])||1,
-      startDate: r[6] ? new Date(r[6]).toISOString().split('T')[0] : '',
-      deadline: r[7] ? new Date(r[7]).toISOString().split('T')[0] : '',
-      status: String(r[8]),
-      stoneCountOnReturn: r[9] ? parseInt(r[9]) : null,
-      createdAt: String(r[11])
+      historyId: String(r[0]),
+      trayId: String(r[1]),
+      legNumber: parseInt(r[2])||0,
+      fromCentre: String(r[3]),
+      toCentre: String(r[4]),
+      fromInstructor: String(r[5]),
+      toInstructor: String(r[6]),
+      plannedStart: r[7] ? String(r[7]).split('T')[0] : '',
+      plannedEnd: r[8] ? String(r[8]).split('T')[0] : '',
+      actualSent: r[9] ? String(r[9]).split('T')[0] : '',
+      actualReceived: r[10] ? String(r[10]).split('T')[0] : '',
+      status: String(r[11])
     };
   });
-  // Sort newest first
-  history.sort(function(a,b){ return b.createdAt.localeCompare(a.createdAt); });
-  return {status:'ok', history:history.slice(0,100)};
+  history.sort(function(a,b){ return b.actualSent.localeCompare(a.actualSent) || b.historyId.localeCompare(a.historyId); });
+  return {status:'ok', history: history.slice(0,200)};
 }
 
 // ── Deadline reminder check (call from a time-based trigger) ─────────────────
@@ -6074,4 +6157,302 @@ function trayCheckDeadlineReminders() {
       if (idx !== -1) sh.getRange(idx+2, 9).setValue('overdue');
     }
   });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TRAY HISTORY — Journey tracking helpers + new actions
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function trayHistId() { return 'TH-' + Date.now() + '-' + Math.floor(Math.random()*1000); }
+
+function _getTrayHomeCentre(ss, trayId) {
+  var rows = trayRows(getTraySheet(ss, SH_TRAY_REGISTRY));
+  for (var i=0; i<rows.length; i++) { if (String(rows[i][0])===trayId) return String(rows[i][4]); }
+  return '';
+}
+
+function _notifyHomeDiamonds(ss, homeCentre, excludeInstructor, type, refId, message) {
+  var diamonds = CENTRE_HOME_INSTRUCTORS[homeCentre] || [];
+  diamonds.forEach(function(name) {
+    if (name === excludeInstructor) return;
+    trayAddNotif(ss, name, type, refId, message);
+  });
+}
+
+// Close any open SENT/RECEIVED/IN_USE leg when a tray returns HOME
+function _closeOpenHistoryLeg(ss, trayId) {
+  var hsh = getTraySheet(ss, SH_TRAY_HISTORY);
+  var hrows = trayRows(hsh);
+  var today = new Date().toISOString().split('T')[0];
+  for (var i=0; i<hrows.length; i++) {
+    if (String(hrows[i][1])!==trayId) continue;
+    var st = String(hrows[i][11]);
+    if (st==='SENT'||st==='RECEIVED'||st==='IN_USE') {
+      hsh.getRange(i+2, 11).setValue(today);      // ActualReceived
+      hsh.getRange(i+2, 12).setValue('RETURNED'); // Status
+    }
+  }
+}
+
+// ── trayGetJourney ────────────────────────────────────────────────────────────
+// Returns all history legs for a tray in order (for journey trail display)
+// p: { trayId }
+function trayGetJourney(ss, p) {
+  if (!p.trayId) return {status:'error', message:'Missing trayId'};
+  ensureTraySheets(ss);
+  var hrows = trayRows(getTraySheet(ss, SH_TRAY_HISTORY)).filter(function(r){ return String(r[1])===p.trayId; });
+  hrows.sort(function(a,b){ return (parseInt(a[2])||0)-(parseInt(b[2])||0); });
+  var legs = hrows.map(function(r){
+    return {
+      historyId:      String(r[0]),
+      legNumber:      parseInt(r[2])||0,
+      fromCentre:     String(r[3]),
+      toCentre:       String(r[4]),
+      fromInstructor: String(r[5]),
+      toInstructor:   String(r[6]),
+      plannedStart:   r[7]?String(r[7]).split('T')[0]:'',
+      plannedEnd:     r[8]?String(r[8]).split('T')[0]:'',
+      actualSent:     r[9]?String(r[9]).split('T')[0]:'',
+      actualReceived: r[10]?String(r[10]).split('T')[0]:'',
+      status:         String(r[11])
+    };
+  });
+  return {status:'ok', legs:legs};
+}
+
+// ── trayPlanJourney ───────────────────────────────────────────────────────────
+// Home instructor pre-books multi-leg journey for a tray.
+// p: { trayId, legs:[{toCentre, toInstructor, startDate, endDate}], instructor }
+function trayPlanJourney(ss, p) {
+  if (!p.trayId || !p.legs || !p.legs.length) return {status:'error', message:'Missing trayId or legs'};
+  ensureTraySheets(ss);
+  var rrows = trayRows(getTraySheet(ss, SH_TRAY_REGISTRY));
+  var trayRow = null;
+  for (var i=0; i<rrows.length; i++) { if (String(rrows[i][0])===p.trayId){trayRow=rrows[i];break;} }
+  if (!trayRow) return {status:'error', message:'Tray not found'};
+  var homeCentre = String(trayRow[4]);
+  var hsh = getTraySheet(ss, SH_TRAY_HISTORY);
+  var existingLegs = trayRows(hsh).filter(function(r){ return String(r[1])===p.trayId; });
+  var maxLeg = existingLegs.reduce(function(m,r){ return Math.max(m, parseInt(r[2])||0); }, 0);
+  // fromCentre for first new leg = last existing leg's toCentre (or homeCentre)
+  var fromCentre = maxLeg>0 ? String(existingLegs[existingLegs.length-1][4]) : homeCentre;
+  var fromInstructor = p.instructor || String(trayRow[5]);
+  p.legs.forEach(function(leg, idx) {
+    hsh.appendRow([trayHistId(), p.trayId, maxLeg+idx+1,
+      fromCentre, leg.toCentre||'',
+      fromInstructor, leg.toInstructor||'',
+      leg.startDate||'', leg.endDate||'',
+      '', '', 'PLANNED']);
+    fromCentre = leg.toCentre || fromCentre;
+    fromInstructor = leg.toInstructor || '';
+  });
+  return {status:'ok', trayId:p.trayId, legsCreated:p.legs.length};
+}
+
+// ── trayDispatch ──────────────────────────────────────────────────────────────
+// Home instructor physically dispatches a tray: marks PLANNED leg as SENT,
+// updates Tray_Registry, notifies recipient + home diamonds.
+// p: { trayId, histId?, instructor }
+function trayDispatch(ss, p) {
+  if (!p.trayId) return {status:'error', message:'Missing trayId'};
+  ensureTraySheets(ss);
+  var hsh = getTraySheet(ss, SH_TRAY_HISTORY);
+  var hrows = trayRows(hsh);
+  var legIdx = -1;
+  for (var i=0; i<hrows.length; i++) {
+    if (String(hrows[i][1])!==p.trayId) continue;
+    if (p.histId && String(hrows[i][0])!==p.histId) continue;
+    if (String(hrows[i][11])==='PLANNED') { legIdx=i; break; }
+  }
+  if (legIdx===-1) return {status:'error', message:'No PLANNED leg found. Use trayConfirmLocation for ad-hoc dispatch.'};
+  var leg = hrows[legIdx];
+  var today = new Date().toISOString().split('T')[0];
+  hsh.getRange(legIdx+2, 10).setValue(today);
+  hsh.getRange(legIdx+2, 12).setValue('SENT');
+  var toCentre = String(leg[4]);
+  var toInstructor = String(leg[6]);
+  var fromCentre = String(leg[3]);
+  var endDate = String(leg[8]);
+  // Update registry
+  var rsh = getTraySheet(ss, SH_TRAY_REGISTRY);
+  var rrows = rsh.getDataRange().getValues();
+  for (var j=1; j<rrows.length; j++) {
+    if (String(rrows[j][0]).trim()===p.trayId) {
+      rsh.getRange(j+1,9).setValue('ON_LOAN');
+      rsh.getRange(j+1,10).setValue(toCentre);
+      rsh.getRange(j+1,11).setValue(endDate);
+      rsh.getRange(j+1,14).setValue('');
+      rsh.getRange(j+1,15).setValue(toInstructor);
+      break;
+    }
+  }
+  if (toInstructor) {
+    trayAddNotif(ss, toInstructor, 'incoming_tray', String(leg[0])+':'+p.trayId,
+      '📦 Tray '+p.trayId+' is on its way from '+fromCentre+' ('+(p.instructor||'Home')+').'+(endDate?' Expected by '+endDate:''));
+  }
+  _notifyHomeDiamonds(ss, _getTrayHomeCentre(ss,p.trayId), p.instructor||'', 'tray_dispatched', String(leg[0])+':'+p.trayId,
+    '📤 '+p.trayId+' dispatched to '+toCentre+(toInstructor?' ('+toInstructor+')':'')+(endDate?', due '+endDate:''));
+  return {status:'ok', trayId:p.trayId, toCentre:toCentre, toInstructor:toInstructor};
+}
+
+// ── trayConfirmReceived ───────────────────────────────────────────────────────
+// Borrowing instructor confirms they have the tray; updates history + notifies home.
+// p: { trayId, histId?, instructor }
+function trayConfirmReceived(ss, p) {
+  if (!p.trayId) return {status:'error', message:'Missing trayId'};
+  ensureTraySheets(ss);
+  var hsh = getTraySheet(ss, SH_TRAY_HISTORY);
+  var hrows = trayRows(hsh);
+  var legIdx = -1;
+  for (var i=0; i<hrows.length; i++) {
+    if (String(hrows[i][1])!==p.trayId) continue;
+    if (p.histId && String(hrows[i][0])!==p.histId) continue;
+    if (String(hrows[i][11])==='SENT') { legIdx=i; break; }
+  }
+  if (legIdx===-1) return {status:'error', message:'No SENT leg found for tray'};
+  var leg = hrows[legIdx];
+  var today = new Date().toISOString().split('T')[0];
+  hsh.getRange(legIdx+2, 11).setValue(today);
+  hsh.getRange(legIdx+2, 12).setValue('RECEIVED');
+  // Mark BorrowerConfirmed in registry
+  var rsh = getTraySheet(ss, SH_TRAY_REGISTRY);
+  var rrows = rsh.getDataRange().getValues();
+  for (var j=1; j<rrows.length; j++) {
+    if (String(rrows[j][0]).trim()===p.trayId) {
+      rsh.getRange(j+1,14).setValue('yes');
+      break;
+    }
+  }
+  var toCentre = String(leg[4]);
+  var toInstructor = p.instructor || String(leg[6]);
+  _notifyHomeDiamonds(ss, _getTrayHomeCentre(ss,p.trayId), '', 'tray_received', String(leg[0])+':'+p.trayId,
+    '✅ '+p.trayId+' confirmed received at '+toCentre+(toInstructor?' by '+toInstructor:''));
+  return {status:'ok', trayId:p.trayId, legId:String(leg[0])};
+}
+
+// ── trayConfirmDispatched ─────────────────────────────────────────────────────
+// Borrowing centre forwards the tray to the next pre-planned leg (or back home).
+// p: { trayId, histId?, instructor }
+function trayConfirmDispatched(ss, p) {
+  if (!p.trayId) return {status:'error', message:'Missing trayId'};
+  ensureTraySheets(ss);
+  var hsh = getTraySheet(ss, SH_TRAY_HISTORY);
+  var hrows = trayRows(hsh);
+  var curIdx = -1;
+  for (var i=0; i<hrows.length; i++) {
+    if (String(hrows[i][1])!==p.trayId) continue;
+    if (p.histId && String(hrows[i][0])!==p.histId) continue;
+    var st = String(hrows[i][11]);
+    if (st==='RECEIVED'||st==='SENT') { curIdx=i; break; }
+  }
+  if (curIdx===-1) return {status:'error', message:'No active leg found for tray'};
+  var curLeg = hrows[curIdx];
+  var curLegNum = parseInt(curLeg[2])||1;
+  hsh.getRange(curIdx+2, 12).setValue('DISPATCHED');
+  // Find next PLANNED leg
+  var nextIdx = -1;
+  for (var k=0; k<hrows.length; k++) {
+    if (String(hrows[k][1])!==p.trayId) continue;
+    if ((parseInt(hrows[k][2])||0)===(curLegNum+1) && String(hrows[k][11])==='PLANNED') { nextIdx=k; break; }
+  }
+  var today = new Date().toISOString().split('T')[0];
+  var toCentre, toInstructor, endDate;
+  if (nextIdx!==-1) {
+    var nextLeg = hrows[nextIdx];
+    hsh.getRange(nextIdx+2, 10).setValue(today);
+    hsh.getRange(nextIdx+2, 12).setValue('SENT');
+    toCentre = String(nextLeg[4]);
+    toInstructor = String(nextLeg[6]);
+    endDate = String(nextLeg[8]);
+    if (toInstructor) {
+      trayAddNotif(ss, toInstructor, 'incoming_tray', String(nextLeg[0])+':'+p.trayId,
+        '📦 Tray '+p.trayId+' is on its way from '+String(curLeg[4])+(p.instructor?' ('+p.instructor+')':'')+'.'+(endDate?' Expected by '+endDate:''));
+    }
+  } else {
+    // No next leg — returning home
+    toCentre = _getTrayHomeCentre(ss, p.trayId);
+    toInstructor = (CENTRE_HOME_INSTRUCTORS[toCentre]||[])[0] || '';
+    endDate = '';
+    var histId = trayHistId();
+    hsh.appendRow([histId, p.trayId, curLegNum+1,
+      String(curLeg[4]), toCentre, p.instructor||String(curLeg[6]), toInstructor,
+      today, '', today, '', 'SENT']);
+    if (toInstructor) {
+      trayAddNotif(ss, toInstructor, 'incoming_tray', histId+':'+p.trayId,
+        '📦 Tray '+p.trayId+' is returning home from '+String(curLeg[4])+(p.instructor?' ('+p.instructor+')':''));
+    }
+  }
+  // Update registry
+  var rsh = getTraySheet(ss, SH_TRAY_REGISTRY);
+  var rrows = rsh.getDataRange().getValues();
+  for (var j=1; j<rrows.length; j++) {
+    if (String(rrows[j][0]).trim()===p.trayId) {
+      rsh.getRange(j+1,9).setValue('ON_LOAN');
+      rsh.getRange(j+1,10).setValue(toCentre);
+      rsh.getRange(j+1,11).setValue(endDate);
+      rsh.getRange(j+1,14).setValue('');
+      rsh.getRange(j+1,15).setValue(toInstructor);
+      break;
+    }
+  }
+  _notifyHomeDiamonds(ss, _getTrayHomeCentre(ss,p.trayId), '', 'tray_forwarded', String(curLeg[0])+':'+p.trayId,
+    '🔁 '+p.trayId+' forwarded: '+String(curLeg[4])+' → '+toCentre+(toInstructor?' ('+toInstructor+')':''));
+  return {status:'ok', trayId:p.trayId, nextCentre:toCentre, nextInstructor:toInstructor};
+}
+
+// ── trayMarkInUse ─────────────────────────────────────────────────────────────
+// Home instructor marks a home tray as in-use for a batch (occupies it without moving).
+// p: { trayId, startDate?, endDate, instructor }
+function trayMarkInUse(ss, p) {
+  if (!p.trayId) return {status:'error', message:'Missing trayId'};
+  ensureTraySheets(ss);
+  var rsh = getTraySheet(ss, SH_TRAY_REGISTRY);
+  var rrows = rsh.getDataRange().getValues();
+  var homeCentre = '';
+  for (var i=1; i<rrows.length; i++) {
+    if (String(rrows[i][0]).trim()===p.trayId) {
+      homeCentre = String(rrows[i][4]);
+      rsh.getRange(i+1,9).setValue('IN_USE');
+      rsh.getRange(i+1,11).setValue(p.endDate||'');
+      break;
+    }
+  }
+  var today = p.startDate || new Date().toISOString().split('T')[0];
+  var histId = trayHistId();
+  var hsh = getTraySheet(ss, SH_TRAY_HISTORY);
+  hsh.appendRow([histId, p.trayId, 0,
+    homeCentre, homeCentre,
+    p.instructor||'', p.instructor||'',
+    today, p.endDate||'', today, '', 'IN_USE']);
+  return {status:'ok', trayId:p.trayId, histId:histId};
+}
+
+// ── trayMarkInUseDone ─────────────────────────────────────────────────────────
+// Closes an IN_USE session and returns tray to HOME status.
+// p: { trayId, histId? }
+function trayMarkInUseDone(ss, p) {
+  if (!p.trayId) return {status:'error', message:'Missing trayId'};
+  ensureTraySheets(ss);
+  var hsh = getTraySheet(ss, SH_TRAY_HISTORY);
+  var hrows = trayRows(hsh);
+  var today = new Date().toISOString().split('T')[0];
+  for (var i=0; i<hrows.length; i++) {
+    if (String(hrows[i][1])!==p.trayId) continue;
+    if (p.histId && String(hrows[i][0])!==p.histId) continue;
+    if (String(hrows[i][11])==='IN_USE') {
+      hsh.getRange(i+2, 11).setValue(today);
+      hsh.getRange(i+2, 12).setValue('RETURNED');
+      break;
+    }
+  }
+  var rsh = getTraySheet(ss, SH_TRAY_REGISTRY);
+  var rrows = rsh.getDataRange().getValues();
+  for (var j=1; j<rrows.length; j++) {
+    if (String(rrows[j][0]).trim()===p.trayId) {
+      rsh.getRange(j+1,9).setValue('HOME');
+      rsh.getRange(j+1,11).setValue('');
+      break;
+    }
+  }
+  return {status:'ok', trayId:p.trayId};
 }

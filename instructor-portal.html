@@ -650,6 +650,20 @@
       .ot-btn.warn    { background:#d97706; color:#fff; }
       .ot-btn.ghost   { background:#f3f4f6; color:#374151; border:1px solid #e5e7eb; }
       .ot-btn:disabled { opacity:.5; cursor:not-allowed; }
+      #ot-q-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9600;align-items:flex-start;justify-content:center;overflow-y:auto;padding:32px 16px;}
+      #ot-q-modal.open{display:flex;}
+      .otqm-box{background:#fff;border-radius:16px;width:100%;max-width:700px;box-shadow:0 8px 40px rgba(0,0,0,.18);padding:0;}
+      .otqm-head{padding:18px 22px;border-bottom:1px solid #f3f4f6;display:flex;justify-content:space-between;align-items:center;}
+      .otqm-head h3{font-size:15px;font-weight:700;color:#1f2937;margin:0;}
+      .otqm-body{padding:16px 22px;max-height:65vh;overflow-y:auto;}
+      .otqm-qcard{border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#fafafa;}
+      .otqm-qcard .otqm-qtext{font-size:13px;font-weight:600;color:#1f2937;margin-bottom:6px;}
+      .otqm-opt{font-size:12px;color:#6b7280;margin:2px 0 2px 12px;}
+      .otqm-opt.correct{color:#059669;font-weight:700;}
+      .otqm-qmeta{font-size:11px;color:#9ca3af;margin-top:6px;}
+      .otqm-qactions{margin-top:8px;display:flex;gap:6px;}
+      .otqm-del{font-size:11px;padding:4px 10px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;cursor:pointer;font-weight:600;}
+      .otqm-del:hover{background:#fca5a5;}
       .proctor-row { display:flex; align-items:center; gap:10px; padding:10px 14px;
                      border-radius:10px; border:1px solid #e5e7eb; margin-bottom:8px; background:#fff; }
       .proctor-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
@@ -850,6 +864,11 @@
       <h3 style="margin:0 0 4px;font-size:16px;font-weight:700;">Create New Online Test</h3>
       <p style="font-size:12px;color:#6b7280;margin:0 0 20px;">Fill in each section, then click Create Test at the bottom</p>
 
+      <!-- Warning banner if no batch selected -->
+      <div id="ot-c-no-batch-warning" style="background:#fffbeb;border:1.5px solid #fef3c7;border-left:4px solid #f59e0b;padding:12px 16px;border-radius:10px;margin-bottom:16px;font-size:13px;color:#b45309;font-weight:600;display:block;transition:all 0.3s ease;">
+        ⚠️ No batch selected! Please select a target batch in <b>Step 3 · Audience</b> before submitting.
+      </div>
+
       <!-- STEP 1: BASICS -->
       <div class="ct-step">
         <div class="ct-step-tag">Step 1 · Basics</div>
@@ -924,9 +943,12 @@
       <div class="ct-step">
         <div class="ct-step-tag">Step 3 · Audience</div>
         <div style="margin-bottom:14px;">
-          <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:8px;">BATCH SELECTION <span style="font-weight:400;color:#9ca3af;">(select one or more)</span></label>
-          <div id="ot-c-batch-pills" style="display:flex;flex-wrap:wrap;gap:4px;min-height:38px;">
-            <span style="color:#9ca3af;font-size:13px;padding:8px 0;">Loading batches…</span>
+          <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:8px;">BATCH SELECTION</label>
+          <select id="ot-c-batch-select" style="padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;width:100%;outline:none;background:#fff;margin-bottom:8px;box-sizing:border-box;">
+            <option value="">-- select batch --</option>
+          </select>
+          <div id="ot-selected-batches-list">
+            <div style="font-size:12px;color:#9ca3af;">No batches selected yet.</div>
           </div>
           <!-- hidden input holds comma-separated selected batch codes -->
           <input type="hidden" id="ot-c-batch">
@@ -1248,6 +1270,61 @@
     .ctr-loan-field label{font-size:10px;font-weight:700;color:#92400e;}
     .ctr-loan-field select,.ctr-loan-field input[type=date],.ctr-loan-field input[type=text]{padding:6px 8px;border:1.5px solid #fed7aa;border-radius:7px;font-size:12px;background:#fff;outline:none;width:100%;box-sizing:border-box;}
     .ctr-loan-save{background:#dc2626;color:#fff;font-size:11px;font-weight:700;padding:7px 14px;border:none;border-radius:8px;cursor:pointer;}
+    /* Journey trail + plan modal */
+    .ctr-journey-trail{font-size:10px;font-weight:700;color:#374151;padding:4px 6px 2px;margin-top:4px;display:flex;flex-wrap:wrap;align-items:center;gap:2px;}
+    .ctr-trail-centre{background:#e0f2fe;color:#0369a1;border-radius:5px;padding:2px 6px;}
+    .ctr-trail-arrow{color:#9ca3af;font-size:11px;margin:0 1px;}
+    .ctr-btn-plan{font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;border:1.5px solid #7c3aed;background:#faf5ff;color:#7c3aed;cursor:pointer;margin-left:4px;}
+    .ctr-btn-inuse{font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;border:1.5px solid #059669;background:#f0fdf4;color:#059669;cursor:pointer;margin-left:2px;}
+    .ctr-btn-inuse-done{font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;border:1.5px solid #dc2626;background:#fef2f2;color:#dc2626;cursor:pointer;margin-left:2px;}
+    .ctr-btn.ctr-active-inuse{background:#7c3aed!important;color:#fff!important;box-shadow:0 0 0 2px #7c3aed;}
+    .ctr-inuse-expand{display:none;width:100%;margin-top:8px;padding:12px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;}
+    .ctr-inuse-expand.open{display:block;}
+    .ctr-inuse-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;}
+    .ctr-inuse-field{display:flex;flex-direction:column;gap:4px;flex:1;min-width:120px;}
+    .ctr-inuse-field label{font-size:10px;font-weight:700;color:#065f46;}
+    .ctr-inuse-field input{padding:6px 8px;border:1.5px solid #86efac;border-radius:7px;font-size:12px;background:#fff;outline:none;width:100%;box-sizing:border-box;}
+    .ctr-inuse-save{background:#059669;color:#fff;font-size:11px;font-weight:700;padding:7px 14px;border:none;border-radius:8px;cursor:pointer;}
+    /* Plan Journey modal */
+    #tray-plan-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9500;align-items:center;justify-content:center;}
+    #tray-plan-modal.open{display:flex;}
+    .tpm-box{background:#fff;border-radius:14px;padding:24px;max-width:520px;width:94%;max-height:85vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.18);}
+    .tpm-box h3{margin:0 0 4px;font-size:15px;color:#0D1B2E;}
+    .tpm-sub{font-size:11px;color:#6b7280;margin-bottom:16px;}
+    .tpm-legs{margin-bottom:16px;}
+    .tpm-leg{display:flex;align-items:center;gap:8px;padding:8px;background:#f8fafc;border-radius:8px;margin-bottom:6px;font-size:11px;}
+    .tpm-leg-status{font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;text-transform:uppercase;}
+    .tpm-leg-status.PLANNED{background:#fef3c7;color:#92400e;}
+    .tpm-leg-status.SENT{background:#fee2e2;color:#991b1b;}
+    .tpm-leg-status.RECEIVED{background:#d1fae5;color:#065f46;}
+    .tpm-leg-status.DISPATCHED{background:#e0e7ff;color:#3730a3;}
+    .tpm-leg-status.RETURNED{background:#f3f4f6;color:#6b7280;}
+    .tpm-dispatch-btn{font-size:10px;font-weight:700;padding:3px 8px;border:none;border-radius:6px;background:#0D1B2E;color:#C9A84C;cursor:pointer;margin-left:auto;}
+    .tpm-add{background:#f9fafb;border:1.5px dashed #d1d5db;border-radius:10px;padding:12px;margin-bottom:12px;}
+    .tpm-add h4{font-size:11px;font-weight:700;color:#374151;margin:0 0 10px;}
+    .tpm-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px;}
+    .tpm-field{display:flex;flex-direction:column;gap:3px;flex:1;min-width:100px;}
+    .tpm-field label{font-size:10px;font-weight:700;color:#6b7280;}
+    .tpm-field select,.tpm-field input{padding:5px 8px;border:1.5px solid #e5e7eb;border-radius:7px;font-size:11px;outline:none;width:100%;box-sizing:border-box;}
+    .tpm-add-btn{background:#7c3aed;color:#fff;font-size:11px;font-weight:700;padding:7px 14px;border:none;border-radius:8px;cursor:pointer;}
+    .tpm-btns{display:flex;gap:8px;justify-content:flex-end;}
+    .tpm-close{background:#f3f4f6;color:#374151;font-size:11px;font-weight:700;padding:7px 14px;border:none;border-radius:8px;cursor:pointer;}
+    /* Incoming notif cards */
+    .tray-incoming-card{background:#fff;border:1.5px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+    .tray-incoming-card.type-incoming{border-left:4px solid #7c3aed;}
+    .tray-incoming-card.type-dispatch{border-left:4px solid #f59e0b;}
+    .tray-incoming-card.type-info{border-left:4px solid #059669;}
+    .tic-head{display:flex;align-items:center;gap:8px;margin-bottom:4px;}
+    .tic-tray{font-size:12px;font-weight:700;color:#0D1B2E;}
+    .tic-type{font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;}
+    .tic-type.incoming{background:#ede9fe;color:#7c3aed;}
+    .tic-type.dispatch{background:#fef3c7;color:#92400e;}
+    .tic-type.info{background:#d1fae5;color:#065f46;}
+    .tic-msg{font-size:11px;color:#4b5563;margin-bottom:8px;}
+    .tic-btn{font-size:11px;font-weight:700;padding:6px 14px;border:none;border-radius:8px;cursor:pointer;margin-right:6px;}
+    .tic-btn.confirm{background:#059669;color:#fff;}
+    .tic-btn.dispatch{background:#f59e0b;color:#fff;}
+    .tic-btn.dismiss{background:#f3f4f6;color:#6b7280;}
     .ctr-loan-cancel{background:#f3f4f6;color:#6b7280;font-size:11px;font-weight:700;padding:7px 12px;border:none;border-radius:8px;cursor:pointer;}
     /* Borrowed-here section */
     .borrow-section{background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:18px;margin-bottom:16px;}
@@ -1423,6 +1500,12 @@
       <div class="tf-field">
         <label>Starting Week</label>
         <input type="date" id="trm-start-date" style="padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12px;outline:none;width:100%;">
+      </div>
+      <div class="tf-field" style="margin-top:10px;">
+        <label>For Batch</label>
+        <select id="trm-batch" style="padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12px;width:100%;">
+          <option value="">-- Select batch --</option>
+        </select>
       </div>
       <div class="tf-field" style="margin-top:10px;">
         <label>Number of Weeks Needed</label>
@@ -2447,7 +2530,7 @@ function renderInstructorSummary() {
         });
       });
       // Count incoming requests for my centre
-      const centre = instructorCentre || instructorName;
+      const centre = getInstructorCentre(instructorName) || instructorName;
       bd.centres.forEach(function(c) {
         if (c.centre === centre) {
           ['diamond','coloredStone'].forEach(function(k) {
@@ -3276,49 +3359,114 @@ function otToggleCustomDuration() {
 // Batch pill toggle (multi-select)
 var otSelectedBatches = new Set();
 function otRenderBatchPills() {
-  var wrap = document.getElementById('ot-c-batch-pills');
-  if (!wrap) return;
+  var selectEl = document.getElementById('ot-c-batch-select');
+  if (!selectEl) return;
   var batches = instructorBatchesCache || [];
-  if (!batches.length) { wrap.innerHTML = '<span style="color:#9ca3af;font-size:13px;padding:8px 0;">No batches found for your account.</span>'; return; }
-  wrap.innerHTML = '';
+  
+  var html = '<option value="">-- select batch --</option>';
   var today = new Date(); today.setHours(0,0,0,0);
+  
   batches.forEach(function(b) {
     var isInactive = b.active === false;
     var isFuture   = b.startDateISO && (new Date(b.startDateISO) > today);
-    var isBlocked  = isInactive || isFuture;
-
-    var tag = '';
-    if (isInactive) tag = ' <span style="font-size:10px;background:rgba(220,38,38,.15);padding:1px 6px;border-radius:8px;color:#dc2626;">INACTIVE</span>';
-    else if (isFuture) tag = ' <span style="font-size:10px;background:rgba(99,102,241,.15);padding:1px 6px;border-radius:8px;color:#4338ca;">UPCOMING</span>';
-
-    var pill = document.createElement('button');
-    pill.type = 'button';
-    pill.className = 'ct-batch-pill' + (otSelectedBatches.has(b.batchCode) ? ' active' : '') + (isBlocked ? ' disabled' : '');
-    if (isBlocked) pill.style.cssText = 'opacity:.45;cursor:not-allowed;filter:grayscale(.8);';
-    pill.innerHTML = escHtml(b.batchCode)
-      + ' <span style="opacity:.7;font-size:11px;">' + escHtml(b.course || b.courseName || '') + '</span>'
-      + tag;
-    pill.onclick = function() {
-      if (isInactive) {
+    var isPast     = b.endDateISO && (new Date(b.endDateISO) < today);
+    
+    var statusText = isInactive ? 'INACTIVE' : (isPast ? 'COMPLETED' : (isFuture ? 'UPCOMING' : 'ACTIVE'));
+    
+    // Disable completed or inactive batches in dropdown
+    var disabledAttr = (isInactive || isPast) ? ' disabled' : '';
+    
+    html += '<option value="' + escHtml(b.batchCode) + '"' + disabledAttr + '>'
+         + escHtml(b.batchCode) + ' [' + statusText + '] – ' + escHtml(b.course || b.courseName || '')
+         + '</option>';
+  });
+  selectEl.innerHTML = html;
+  
+  if (!selectEl.onchange) {
+    selectEl.onchange = function() {
+      var val = this.value;
+      if (!val) return;
+      
+      var b = batches.find(function(x){ return x.batchCode === val; });
+      if (!b) return;
+      
+      if (b.active === false) {
         otShowBatchToast('⚠ ' + b.batchCode + ' is inactive — cannot assign tests to this batch.');
+        this.value = '';
         return;
       }
+      
+      var isPast = b.endDateISO && (new Date(b.endDateISO) < today);
+      if (isPast) {
+        otShowBatchToast('⚠ ' + b.batchCode + ' is completed — cannot assign tests to this batch.');
+        this.value = '';
+        return;
+      }
+      
+      var isFuture = b.startDateISO && (new Date(b.startDateISO) > today);
       if (isFuture) {
-        otShowBatchToast('⚠ ' + b.batchCode + ' hasn\'t started yet (starts ' + escHtml(b.startDate) + ') — cannot assign tests to a future batch.');
-        return;
+        otShowBatchToast('⚠ ' + b.batchCode + ' hasn\'t started yet — you can pre-create the test, but students won\'t see it until their batch starts.');
       }
-      if (otSelectedBatches.has(b.batchCode)) {
-        otSelectedBatches.delete(b.batchCode);
-        pill.classList.remove('active');
-      } else {
-        otSelectedBatches.add(b.batchCode);
-        pill.classList.add('active');
+      
+      if (!otSelectedBatches.has(val)) {
+        otSelectedBatches.add(val);
       }
+      
+      this.value = ''; // reset select
+      otRenderSelectedBatchesList();
       document.getElementById('ot-c-batch').value = [...otSelectedBatches].join(',');
       otLoadStudentsForPicker();
     };
-    wrap.appendChild(pill);
+  }
+  
+  otRenderSelectedBatchesList();
+}
+
+function otRenderSelectedBatchesList() {
+  var wrap = document.getElementById('ot-selected-batches-list');
+  if (!wrap) return;
+  
+  // Show/hide warning banner
+  var warnEl = document.getElementById('ot-c-no-batch-warning');
+  if (warnEl) {
+    warnEl.style.display = otSelectedBatches.size ? 'none' : 'block';
+  }
+  
+  if (!otSelectedBatches.size) {
+    wrap.innerHTML = '<div style="font-size:12px;color:#9ca3af;margin-top:6px;">No batches selected yet.</div>';
+    return;
+  }
+  
+  var today = new Date(); today.setHours(0,0,0,0);
+  var html = '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">';
+  
+  [...otSelectedBatches].forEach(function(code) {
+    var batches = instructorBatchesCache || [];
+    var b = batches.find(function(x){ return x.batchCode === code; });
+    
+    var isInactive = b && b.active === false;
+    var isPast = b && b.endDateISO && (new Date(b.endDateISO) < today);
+    var isFuture = b && b.startDateISO && (new Date(b.startDateISO) > today);
+    
+    var tagText = isInactive ? 'Inactive' : (isPast ? 'Completed' : (isFuture ? 'Upcoming' : 'Active'));
+    var bg = isInactive ? 'rgba(220,38,38,.15)' : (isPast ? 'rgba(107,114,128,.15)' : (isFuture ? 'rgba(99,102,241,.15)' : 'rgba(5,150,105,.12)'));
+    var color = isInactive ? '#dc2626' : (isPast ? '#4b5563' : (isFuture ? '#4338ca' : '#059669'));
+    
+    html += '<div style="display:inline-flex;align-items:center;background:'+bg+';color:'+color+';padding:4px 10px;border-radius:12px;font-size:12px;font-weight:600;border:1px solid transparent;">'
+         + escHtml(code) + ' (' + tagText + ')'
+         + '<span style="margin-left:8px;cursor:pointer;font-weight:bold;color:#6b7280;" onclick="otRemoveSelectedBatch(\''+escHtml(code)+'\')">✕</span>'
+         + '</div>';
   });
+  
+  html += '</div>';
+  wrap.innerHTML = html;
+}
+
+function otRemoveSelectedBatch(code) {
+  otSelectedBatches.delete(code);
+  otRenderSelectedBatchesList();
+  document.getElementById('ot-c-batch').value = [...otSelectedBatches].join(',');
+  otLoadStudentsForPicker();
 }
 
 // Student targeting toggle
@@ -3480,7 +3628,7 @@ function otSyncSelectedPreview() {
     return;
   }
   var qs = otAllQuestions.filter(function(q){ return otSelectedIds.has(q.id); });
-  var totalMarks = qs.length;
+  var totalMarks = otSelectedIds.size; // 1 mark each regardless of how many are loaded in otAllQuestions
   var header = '<div style="font-size:13px;font-weight:700;color:#059669;margin-bottom:12px;">✓ '+otSelectedIds.size+' questions selected · Total marks: '+totalMarks+' (MCQ/T-F/FIB = 1 mark each)</div>';
   if (!qs.length) {
     el.innerHTML = header + '<div style="font-size:12px;color:#6b7280;">'
@@ -3632,7 +3780,23 @@ function otCreateTest() {
   var label = ((document.getElementById('ot-c-label')||{}).value||'').trim();
   var batches = [...otSelectedBatches];
   if (!label) return alert('Please enter a test label/name.');
-  if (!batches.length) return alert('Please select at least one batch.');
+  if (!batches.length) {
+    var warnEl = document.getElementById('ot-c-no-batch-warning');
+    if (warnEl) {
+      warnEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      warnEl.style.background = '#fef2f2';
+      warnEl.style.borderColor = '#fee2e2';
+      warnEl.style.borderLeftColor = '#ef4444';
+      warnEl.style.color = '#b91c1c';
+      setTimeout(function() {
+        warnEl.style.background = '#fffbeb';
+        warnEl.style.borderColor = '#fef3c7';
+        warnEl.style.borderLeftColor = '#f59e0b';
+        warnEl.style.color = '#b45309';
+      }, 1500);
+    }
+    return alert('Please select at least one batch in Step 3 · Audience.');
+  }
   var qIds = [...otSelectedIds];
   if (!qIds.length) return alert('No questions selected. Go to Question Bank and select questions first.');
 
@@ -3734,6 +3898,7 @@ function otRenderTests(tests) {
       + (t.status === 'Closed' && t.resultsReleased !== 'Yes' ? '<button class="ot-btn primary" onclick="otReleaseResultsFor(\''+escHtml(t.testId)+'\',\'summary\')">📢 Release Results</button>' : '')
       + (t.status === 'Closed' && t.resultsReleased !== 'Yes' ? '<button class="ot-btn ghost" onclick="otReleaseResultsFor(\''+escHtml(t.testId)+'\',\'full\')">&amp; Show Breakdown</button>' : '')
       + '<button class="ot-btn ghost" onclick="otViewResults(\''+escHtml(t.testId)+'\')">📊 Results</button>'
+      + '<button class="ot-btn ghost" onclick="otOpenQuestionsModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">📝 View Questions</button>'
       + '</div>'
       + '</div>';
   });
@@ -3770,6 +3935,73 @@ function otActivateTest(testId) {
     if (err || !d || d.status !== 'ok') return alert('Error: '+(d&&d.reason||'Failed'));
     alert('✅ Test is now LIVE! Students can see it.');
     otLoadTests();
+  });
+}
+
+// ── VIEW / EDIT QUESTIONS MODAL ───────────────────────────────────────────────
+function otOpenQuestionsModal(testId, label) {
+  // Inject modal into DOM once
+  if (!document.getElementById('ot-q-modal')) {
+    var m = document.createElement('div');
+    m.id = 'ot-q-modal';
+    m.innerHTML = '<div class="otqm-box"><div class="otqm-head"><h3 id="otqm-title"></h3><button style="background:none;border:none;font-size:20px;cursor:pointer;color:#6b7280;" onclick="otCloseQModal()">✕</button></div><div class="otqm-body" id="otqm-body"><div style="text-align:center;padding:30px;color:#9ca3af;">Loading…</div></div></div>';
+    document.body.appendChild(m);
+  }
+  document.getElementById('otqm-title').textContent = '📝 Questions — ' + label;
+  document.getElementById('otqm-body').innerHTML = '<div style="text-align:center;padding:30px;color:#9ca3af;">Loading…</div>';
+  document.getElementById('ot-q-modal').classList.add('open');
+  gasGet({action:'getTestQuestionsInstructor', testId:testId, instructor:instructorName}, function(err,d) {
+    if (err || !d || d.status !== 'ok') {
+      document.getElementById('otqm-body').innerHTML = '<div style="color:#dc2626;padding:16px;">Failed to load questions.</div>';
+      return;
+    }
+    otRenderQModal(testId, d.questions);
+  });
+}
+
+function otCloseQModal() {
+  var m = document.getElementById('ot-q-modal');
+  if (m) m.classList.remove('open');
+}
+
+function otRenderQModal(testId, questions) {
+  var optLetters = ['A','B','C','D'];
+  var html = '<div style="font-size:12px;color:#6b7280;margin-bottom:12px;">'+questions.length+' question'+(questions.length!==1?'s':'')+' · '+questions.length+' marks total</div>';
+  if (!questions.length) { html += '<div style="color:#9ca3af;text-align:center;padding:20px;">No questions in this test.</div>'; }
+  questions.forEach(function(q, i) {
+    html += '<div class="otqm-qcard" id="otqm-card-'+escHtml(q.qId)+'">';
+    html += '<div class="otqm-qtext">Q'+(i+1)+'. '+escHtml(q.question)+'</div>';
+    if (q.type === 'MCQ') {
+      [q.opt1,q.opt2,q.opt3,q.opt4].forEach(function(o, oi) {
+        if (!o) return;
+        var isCorrect = String(q.correctAnswer||'').trim() === String(o).trim()
+          || String(q.correctAnswer||'').trim() === optLetters[oi];
+        html += '<div class="otqm-opt'+(isCorrect?' correct':'')+'">'+optLetters[oi]+'. '+escHtml(o)+(isCorrect?' ✓':'')+'</div>';
+      });
+    } else if (q.type === 'TrueFalse') {
+      ['True','False'].forEach(function(o) {
+        var isCorrect = String(q.correctAnswer||'').trim().toLowerCase() === o.toLowerCase();
+        html += '<div class="otqm-opt'+(isCorrect?' correct':'')+'">'+o+(isCorrect?' ✓':'')+'</div>';
+      });
+    } else {
+      html += '<div class="otqm-qmeta">Answer: <b>'+escHtml(q.correctAnswer||'—')+'</b></div>';
+    }
+    html += '<div class="otqm-qmeta">Type: '+escHtml(q.type)+' · Marks: '+escHtml(String(q.marks||1))+'</div>';
+    html += '<div class="otqm-qactions"><button class="otqm-del" onclick="otRemoveQ(\''+escHtml(testId)+'\',\''+escHtml(q.qId)+'\',this)">🗑 Remove</button></div>';
+    html += '</div>';
+  });
+  document.getElementById('otqm-body').innerHTML = html;
+}
+
+function otRemoveQ(testId, qId, btn) {
+  if (!confirm('Remove this question from the test?')) return;
+  btn.disabled = true; btn.textContent = 'Removing…';
+  gasGet({action:'removeTestQuestion', testId:testId, qId:qId, instructor:instructorName}, function(err,d) {
+    if (err || !d || d.status !== 'ok') { btn.disabled=false; btn.textContent='🗑 Remove'; showToast('Failed to remove question.'); return; }
+    var card = document.getElementById('otqm-card-'+qId);
+    if (card) { card.style.opacity='0.3'; card.style.pointerEvents='none'; }
+    showToast('Question removed.');
+    otLoadTests(); // refresh test list so question count updates
   });
 }
 
@@ -4148,11 +4380,22 @@ function trayToggleSwim(centre, type) {
 
 // ── REQUEST MODAL ───────────────────────────────────────────────────────────
 function trayOpenRequest(trayId, homeCentre) {
-  if (homeCentre === (instructorCentre || instructorName)) {
+  if (homeCentre === (getInstructorCentre(instructorName) || instructorName)) {
     showToast('This tray belongs to your centre.'); return;
   }
   trayPendingRequest = {trayId: trayId, homeCentre: homeCentre};
   document.getElementById('trm-tray-info').textContent = trayId + ' from ' + homeCentre;
+  
+  // Populate request batch dropdown
+  var batchSel = document.getElementById('trm-batch');
+  if (batchSel) {
+    var opts = '<option value="">-- Select batch --</option>';
+    (instructorBatchesCache || []).forEach(function(b) {
+      opts += '<option value="' + escHtml(b.batchCode) + '">' + escHtml(b.batchCode) + (b.courseName ? ' – ' + escHtml(b.courseName) : '') + '</option>';
+    });
+    batchSel.innerHTML = opts;
+  }
+
   // Default start date to next Monday
   var d = new Date(); var day = d.getDay();
   var diff = (day === 0) ? 1 : (8 - day);
@@ -4191,14 +4434,17 @@ function traySubmitRequest() {
   if (!trayPendingRequest) return;
   var startDate = document.getElementById('trm-start-date').value;
   var weeks     = parseInt(document.getElementById('trm-weeks').value) || 1;
+  var batchCode = (document.getElementById('trm-batch') || {}).value || '';
   if (!startDate) { showToast('Please select a start date.'); return; }
+  if (!batchCode) { showToast('Please select a batch.'); return; }
   gasGet({
     action: 'trayBook',
     trayId: trayPendingRequest.trayId,
     requestingInstructor: instructorName,
-    requestingCentre: instructorCentre || instructorName,
+    requestingCentre: getInstructorCentre(instructorName) || instructorName,
     weeksBooked: weeks,
-    startDate: startDate
+    startDate: startDate,
+    batchCode: batchCode
   }, function(err, d) {
     trayCloseModal();
     if (err || !d || d.status !== 'ok') { showToast('Request failed. ' + (d&&d.message?d.message:'')); return; }
@@ -4211,7 +4457,7 @@ function traySubmitRequest() {
 // ── WEEK PLAN ───────────────────────────────────────────────────────────────
 function trayLoadWeekPlan() {
   if (!instructorName) return;
-  gasGet({action:'trayGetWeekPlan', instructor:instructorName, centre:instructorCentre||instructorName}, function(err, d) {
+  gasGet({action:'trayGetWeekPlan', instructor:instructorName, centre:getInstructorCentre(instructorName)||instructorName}, function(err, d) {
     if (err || !d || d.status !== 'ok') return;
     trayWeekData = d;
     var needEl = document.getElementById('tray-need-input');
@@ -4269,7 +4515,7 @@ function trayRenderWeekPlan(d) {
 
 function traySetNeed() {
   var val = parseInt(document.getElementById('tray-need-input').value) || 3;
-  gasGet({action:'traySetWeeklyNeed', instructor:instructorName, centre:instructorCentre||instructorName, traysNeeded:val}, function(err, d) {
+  gasGet({action:'traySetWeeklyNeed', instructor:instructorName, centre:getInstructorCentre(instructorName)||instructorName, traysNeeded:val}, function(err, d) {
     var statusEl = document.getElementById('tray-need-status');
     if (err || !d || d.status !== 'ok') { if(statusEl) statusEl.textContent = 'Save failed.'; return; }
     if(statusEl) statusEl.textContent = 'Saved ✓';
@@ -4335,7 +4581,7 @@ function trayUpdateIdPreview() {
   var cat   = (document.getElementById('tf-cat')||{}).value || 'DM';
   var code  = (document.getElementById('tf-topic')||{}).value || '';
   var ctrAbbr = {'Mumbai':'MUM','Delhi':'DEL','Surat':'SUR','Chennai':'CHN'};
-  var centre  = instructorCentre || instructorName || '';
+  var centre  = getInstructorCentre(instructorName) || instructorName || '';
   var ctr = ctrAbbr[centre] || centre.substring(0,3).toUpperCase();
   var preview = document.getElementById('tf-preview');
   if (!preview) return;
@@ -4349,7 +4595,7 @@ function trayUpdateIdPreview() {
 
 function trayLoadInventory() {
   if (!instructorName) return;
-  var centre = instructorCentre || instructorName;
+  var centre = getInstructorCentre(instructorName) || instructorName;
   // Populate topic dropdown on load
   trayUpdateTopicOptions();
   gasGet({action:'trayGetMine', centre:centre}, function(err, d) {
@@ -4397,7 +4643,7 @@ function trayRegisterNew() {
     action:'trayRegister',
     category: cat,
     topicCode: code,
-    centre: instructorCentre||instructorName,
+    centre: getInstructorCentre(instructorName)||instructorName,
     instructor: instructorName,
     stoneCount: stones, notes: notes
   }, function(err, d) {
@@ -4416,6 +4662,25 @@ function trayRegisterNew() {
 
 // ── CONFIRM LOCATIONS ────────────────────────────────────────────────────────
 var IGI_CENTRES = ['Mumbai','Delhi','Surat','Chennai','Kolkata','Hyderabad','Bangalore','Pune','Ahmedabad','Jaipur','Thrissur','Lucknow'];
+var CENTRE_INSTRUCTORS = {
+  'Mumbai':  ['Amit Sidpura', 'Bhavin Patel'],
+  'Delhi':   ['Nishchay Kapoor'],
+  'Surat':   ['Khorehmand Kasad'],
+  'Chennai': ['Sharoon Joy']
+};
+function getInstructorCentre(name) {
+  if (instructorCentre) return instructorCentre;
+  for (var c in CENTRE_INSTRUCTORS) {
+    if (CENTRE_INSTRUCTORS[c].indexOf(name) !== -1) {
+      return c;
+    }
+  }
+  return '';
+}
+function isHomeInstructor(tray) {
+  var myCentre = getInstructorCentre(instructorName) || instructorName;
+  return (tray.homeCentre || myCentre) === myCentre;
+}
 
 // active filter state
 var _ctrCatFilter = 'ALL';
@@ -4432,7 +4697,7 @@ function trayLoadConfirm(allTrays) {
 }
 
 function trayRenderConfirm(wrap, trays) {
-  var myCentre = instructorCentre || instructorName;
+  var myCentre = getInstructorCentre(instructorName) || instructorName;
   // Progress count
   var confirmed = trays.filter(function(t){ return (t.locationStatus||'UNCONFIRMED') !== 'UNCONFIRMED'; }).length;
   // Toolbar
@@ -4490,7 +4755,8 @@ function trayRenderConfirm(wrap, trays) {
       + '</div>'
       + '<div id="loan-igi-'+safeId+'" style="display:'+(isExt?'none':'block')+'">'
       + '<div class="ctr-loan-row">'
-      + '<div class="ctr-loan-field"><label>Sent to IGI Centre</label><select id="loan-ctr-'+safeId+'">'+centreOpts+'</select></div>'
+      + '<div class="ctr-loan-field"><label>Sent to IGI Centre</label><select id="loan-ctr-'+safeId+'" onchange="trayUpdateLoanInstructor(\''+safeId+'\')">'+centreOpts+'</select></div>'
+      + '<div class="ctr-loan-field"><label>Receiving Instructor</label><input type="text" id="loan-instr-'+safeId+'" list="loan-instr-list-'+safeId+'" placeholder="Instructor name"><datalist id="loan-instr-list-'+safeId+'"></datalist></div>'
       + '<div class="ctr-loan-field"><label>Expected Return Date</label><input type="date" id="loan-ret-'+safeId+'" value="'+((!isExt&&t.expectedReturn)||defaultReturn)+'"></div>'
       + '</div></div>'
       + '<div id="loan-ext-'+safeId+'" style="display:'+(isExt?'block':'none')+'">'
@@ -4504,6 +4770,30 @@ function trayRenderConfirm(wrap, trays) {
       + '<button class="ctr-loan-save" onclick="trayConfirmLoanSubmit(\''+safeId+'\')">Save →</button>'
       + '<button class="ctr-loan-cancel" onclick="trayCollapseLoan(\''+safeId+'\')">Cancel</button>'
       + '</div></div>';
+    var isHome = isHomeInstructor(t);
+    var inUseActive = (loc === 'IN_USE') ? ' ctr-active-inuse' : '';
+    var inUseBtnHtml = isHome && (loc === 'HOME' || loc === 'IN_USE')
+      ? (loc === 'IN_USE'
+          ? '<button class="ctr-btn-inuse-done" onclick="trayInUseDoneUI(\''+safeId+'\')">✅ Done Using</button>'
+          : '<button class="ctr-btn-inuse" onclick="trayToggleInUse(\''+safeId+'\')">📋 In Use</button>')
+      : '';
+    var planBtnHtml = isHome && loc !== 'IN_USE'
+      ? '<button class="ctr-btn-plan" onclick="trayOpenPlanModal(\''+safeId+'\')">🗓 Plan Journey</button>'
+      : '';
+    var inUseExpand = '<div class="ctr-inuse-expand" id="inuse-expand-'+safeId+'">'
+      + '<div class="ctr-inuse-row">'
+      + (function(){
+          var opts = '<option value="">-- Select batch --</option>';
+          (instructorBatchesCache||[]).forEach(function(b){
+            opts += '<option value="'+b.batchCode+'">'+b.batchCode+(b.courseName?' – '+b.courseName:'')+'</option>';
+          });
+          return '<div class="ctr-inuse-field"><label>For Batch</label><select id="inuse-purpose-'+safeId+'" style="padding:6px 8px;border:1.5px solid #86efac;border-radius:7px;font-size:12px;background:#fff;width:100%;box-sizing:border-box;">'+opts+'</select></div>';
+        })()
+      + '<div class="ctr-inuse-field"><label>Return Date</label><input type="date" id="inuse-ret-'+safeId+'" value="'+defaultReturn+'"></div>'
+      + '</div>'
+      + '<div style="margin-top:8px;"><button class="ctr-inuse-save" onclick="trayInUseSubmit(\''+safeId+'\')">Mark In Use →</button>'
+      + '<button class="ctr-loan-cancel" style="margin-left:8px;" onclick="trayToggleInUse(\''+safeId+'\')">Cancel</button></div>'
+      + '</div>';
     return '<div class="'+rowCls+'" id="ctr-row-'+safeId+'" data-cat="'+cat+'" data-id="'+safeId+'" data-topic="'+(t.topicName||'').toLowerCase()+'">'
       + '<span class="ctr-id">'+safeId+'</span>'
       + '<span style="font-size:11px;color:#6b7280;flex:1;">'+(t.topicName||'')+'</span>'
@@ -4511,13 +4801,22 @@ function trayRenderConfirm(wrap, trays) {
       + '<button class="ctr-btn ctr-home '+activeHome+'" onclick="trayConfirmHome(\''+safeId+'\',this)">🏠 Home</button>'
       + '<button class="ctr-btn ctr-loan '+activeLoan+'" id="loan-btn-'+safeId+'" onclick="trayToggleLoan(\''+safeId+'\',this)">📤 On Loan</button>'
       + '<button class="ctr-btn ctr-unknown '+activeUnknown+'" onclick="trayConfirmUnknown(\''+safeId+'\',this)">❓ Unknown</button>'
+      + inUseBtnHtml + planBtnHtml
       + '</div>'
       + detailLine
+      + '<div class="ctr-journey-trail" id="ctr-journey-'+safeId+'"></div>'
       + loanExpand
+      + inUseExpand
       + '</div>';
   }).join('');
   wrap.innerHTML = toolbar + header + rows;
   trayApplyConfirmFilter();
+  // Load journey trails for each ON_LOAN tray that belongs to home
+  trays.forEach(function(t) {
+    if ((t.locationStatus === 'ON_LOAN') && isHomeInstructor(t)) {
+      trayLoadJourneyTrail(t.trayId);
+    }
+  });
 }
 
 // ── Category tabs + search filter ────────────────────────────────────────────
@@ -4551,7 +4850,7 @@ function trayMarkAllHome() {
   if (!confirm('Mark all visible trays as Home? This will update '+rows.length+' tray(s).')) return;
   var ids = [];
   rows.forEach(function(r){ ids.push(r.getAttribute('data-id')); });
-  var centre = instructorCentre || instructorName;
+  var centre = getInstructorCentre(instructorName) || instructorName;
   var done = 0;
   ids.forEach(function(tid) {
     gasGet({action:'trayConfirmLocation', trayId:tid, locationStatus:'HOME', currentCentre:centre, expectedReturn:'', instructor:instructorName}, function(err,d){
@@ -4611,23 +4910,25 @@ function trayConfirmLoanSubmit(trayId) {
     expectedReturn = (document.getElementById('loan-ret-'+trayId)||{}).value||'';
     if (!currentCentre) { showToast('Please select a centre.'); return; }
   }
+  var borrowerInstructor = (document.getElementById('loan-instr-'+trayId)||{}).value||'';
   trayCollapseLoan(trayId);
-  _saveTrayLocation(trayId, 'ON_LOAN', currentCentre, expectedReturn);
+  _saveTrayLocation(trayId, 'ON_LOAN', currentCentre, expectedReturn, null, borrowerInstructor);
 }
 function trayConfirmHome(trayId, btnEl) {
   if(btnEl){btnEl.disabled=true;}
-  _saveTrayLocation(trayId, 'HOME', instructorCentre||instructorName, '', function(){ if(btnEl)btnEl.disabled=false; });
+  _saveTrayLocation(trayId, 'HOME', getInstructorCentre(instructorName)||instructorName, '', function(){ if(btnEl)btnEl.disabled=false; });
 }
 function trayConfirmUnknown(trayId, btnEl) {
   if(btnEl){btnEl.disabled=true;}
   _saveTrayLocation(trayId, 'UNKNOWN', '', '', function(){ if(btnEl)btnEl.disabled=false; });
 }
-function _saveTrayLocation(trayId, locationStatus, currentCentre, expectedReturn, cb) {
+function _saveTrayLocation(trayId, locationStatus, currentCentre, expectedReturn, cb, borrowerInstructor) {
   gasGet({
     action: 'trayConfirmLocation',
     trayId: trayId, locationStatus: locationStatus,
     currentCentre: currentCentre, expectedReturn: expectedReturn,
-    instructor: instructorName
+    instructor: instructorName,
+    borrowerInstructor: borrowerInstructor||''
   }, function(err, d) {
     if (err || !d || d.status !== 'ok') { showToast('Save failed: '+(d&&d.message?d.message:'')); if(cb)cb(); return; }
     // Refresh active button states
@@ -4642,7 +4943,7 @@ function _saveTrayLocation(trayId, locationStatus, currentCentre, expectedReturn
       });
       // Update loan detail + row highlight
       row.classList.toggle('ctr-unconfirmed-row', locationStatus === 'UNCONFIRMED');
-      var myCentre = instructorCentre || instructorName;
+      var myCentre = getInstructorCentre(instructorName) || instructorName;
       var badge = document.getElementById('ctr-badge-'+trayId);
       if (locationStatus === 'ON_LOAN' && currentCentre && currentCentre !== myCentre) {
         var isExtLoc = currentCentre.indexOf('EXT:') === 0;
@@ -4670,7 +4971,7 @@ function _saveTrayLocation(trayId, locationStatus, currentCentre, expectedReturn
 
 // ── TRAYS BORROWED HERE (from other branches) ────────────────────────────────
 function trayRenderBorrowedHere() {
-  var myCentre = instructorCentre || instructorName;
+  var myCentre = getInstructorCentre(instructorName) || instructorName;
   var panel = document.getElementById('tray-borrowed-panel');
   var wrap  = document.getElementById('tray-borrowed-wrap');
   if (!panel || !wrap) return;
@@ -4718,7 +5019,7 @@ function trayBorrowerConfirmUI(trayId, btnEl) {
   gasGet({
     action: 'trayBorrowerConfirm',
     trayId: trayId,
-    borrowerCentre: instructorCentre || instructorName,
+    borrowerCentre: getInstructorCentre(instructorName) || instructorName,
     borrowerInstructor: instructorName,
     expectedReturn: expectedReturn
   }, function(err, d) {
@@ -4805,7 +5106,7 @@ function trayConfirmReturn(bookingId) {
 // ── INCOMING REQUESTS ────────────────────────────────────────────────────────
 function trayLoadIncoming() {
   if (!instructorName) return;
-  var centre = instructorCentre || instructorName;
+  var centre = getInstructorCentre(instructorName) || instructorName;
   // Get all pending bookings for my trays via board data
   gasGet({action:'trayGetBoard'}, function(err, d) {
     if (err || !d || d.status !== 'ok') return;
@@ -4886,26 +5187,33 @@ function trayLoadHistory() {
   var filterVal = document.getElementById('hist-filter');
   var filter    = filterVal ? filterVal.value : 'mine';
   var params    = {action:'trayGetHistory'};
-  if (filter === 'mine') params.centre = instructorCentre || instructorName;
+  if (filter === 'mine') params.centre = getInstructorCentre(instructorName) || instructorName;
   var wrap = document.getElementById('tray-history-wrap');
   if (wrap) wrap.innerHTML = '<div style="color:#9ca3af;font-size:12px;">Loading…</div>';
   gasGet(params, function(err, d) {
     if (err || !d || d.status !== 'ok') { if(wrap) wrap.innerHTML='<div style="color:#dc2626;font-size:12px;">Failed to load history.</div>'; return; }
     if (!d.history.length) { wrap.innerHTML='<div style="color:#9ca3af;font-size:12px;">No history yet.</div>'; return; }
-    var statusCls = {active:'hs-active',returned:'hs-returned',rejected:'hs-rejected',overdue:'hs-overdue',pending:'hs-pending',returning:'hs-returning'};
+    var statusCls = {PLANNED:'hs-pending',SENT:'hs-active',RECEIVED:'hs-returning',DISPATCHED:'hs-active',RETURNED:'hs-returned',IN_USE:'hs-active',CANCELLED:'hs-rejected'};
+    var statusIcon = {PLANNED:'🗓',SENT:'📤',RECEIVED:'📥',DISPATCHED:'➡️',RETURNED:'🏠',IN_USE:'🔵',CANCELLED:'✗'};
     var html = d.history.map(function(h) {
-      var typeIcon = h.type === 'Diamond' ? '💎' : '🟣';
       var sc = statusCls[h.status] || 'hs-active';
+      var si = statusIcon[h.status] || '·';
+      var route = h.status === 'IN_USE'
+        ? ('🔵 In Use at '+trayEsc(h.fromCentre))
+        : (trayEsc(h.fromCentre||'?')+' → '+trayEsc(h.toCentre||'?'));
+      var legBadge = h.legNumber > 0 ? '<span style="font-size:9px;background:#e0e7ff;color:#3730a3;border-radius:10px;padding:1px 6px;margin-left:6px;">Leg '+h.legNumber+'</span>' : '';
       return '<div class="hist-row">'
         + '<div class="hr-head">'
-        + '<span class="hr-id">'+typeIcon+' '+trayEsc(h.trayId)+'</span>'
-        + '<span class="hist-status '+sc+'">'+trayEsc(h.status)+'</span>'
+        + '<span class="hr-id">'+trayEsc(h.trayId)+legBadge+'</span>'
+        + '<span class="hist-status '+sc+'">'+si+' '+trayEsc(h.status)+'</span>'
         + '</div>'
-        + '<div style="color:#6b7280;">'
-        + trayEsc(h.requestingInstructor)+' ('+trayEsc(h.requestingCentre)+') · '
-        + h.weeksBooked+' week'+(h.weeksBooked>1?'s':'')
-        + (h.startDate?' · '+h.startDate+' → '+h.deadline:'')
-        + (h.stoneCountOnReturn?' · '+h.stoneCountOnReturn+' stones returned':'')
+        + '<div style="color:#6b7280;font-size:11px;margin-top:2px;">'
+        + route
+        + (h.fromInstructor?' · '+trayEsc(h.fromInstructor):'')
+        + (h.toInstructor?' → '+trayEsc(h.toInstructor):'')
+        + (h.actualSent?' · Sent: '+trayEsc(h.actualSent):'')
+        + (h.actualReceived?' · Received: '+trayEsc(h.actualReceived):'')
+        + (h.plannedEnd?' · Due: '+trayEsc(h.plannedEnd):'')
         + '</div>'
         + '</div>';
     }).join('');
@@ -4937,16 +5245,290 @@ function trayNotifPoll() {
 }
 
 function trayShowNotifToast(n) {
-  var isUrgent = n.type === 'overdue_warning' || n.type === 'request';
-  var icon = {request:'📨', accepted:'✅', rejected:'✗', returning:'📦', confirmed:'🎉', deadline_reminder:'⏰', overdue_warning:'🚨'}[n.type] || '🔔';
-  // Reuse instructor portal toast if available, else simple alert
+  var icon = {
+    request:'📨', accepted:'✅', rejected:'✗', returning:'📦', confirmed:'🎉',
+    deadline_reminder:'⏰', overdue_warning:'🚨',
+    incoming_tray:'📦', tray_dispatched:'📤', tray_received:'📥',
+    tray_forwarded:'➡️', dispatch_due:'⏰'
+  }[n.type] || '🔔';
   if (typeof showToast === 'function') {
     showToast(icon + ' ' + n.message.substring(0, 80) + (n.message.length>80?'…':''));
   }
-  // For urgent request notifications, also show a more prominent banner
   if (n.type === 'request' && typeof showOTNotif === 'function') {
     showOTNotif({title: '🔮 Tray Request', body: n.message, bookingId: n.bookingId});
   }
+  // Queue action-required notifications into the incoming tab
+  if (n.type === 'incoming_tray' || n.type === 'dispatch_due') {
+    _addTrayIncomingCard(n);
+  }
+}
+
+function _addTrayIncomingCard(n) {
+  var wrap = document.getElementById('tray-incoming-wrap');
+  if (!wrap) return;
+  // Parse trayId from bookingId field (encoded as histId:trayId)
+  var parts = (n.bookingId||'').split(':');
+  var histId = parts[0]||'';
+  var trayId = parts[1]||parts[0]||'';
+  var existing = document.getElementById('tic-'+histId);
+  if (existing) return; // already shown
+  var cardCls = n.type === 'incoming_tray' ? 'type-incoming' : 'type-dispatch';
+  var typeLbl = n.type === 'incoming_tray' ? 'incoming' : 'dispatch';
+  var actionBtn = n.type === 'incoming_tray'
+    ? '<button class="tic-btn confirm" onclick="trayDoConfirmReceived(\''+trayEsc(trayId)+'\',\''+trayEsc(histId)+'\',this)">✅ Confirm Receipt</button>'
+    : '<button class="tic-btn dispatch" onclick="trayDoConfirmDispatched(\''+trayEsc(trayId)+'\',\''+trayEsc(histId)+'\',this)">📤 Confirm Dispatched</button>';
+  var card = '<div class="tray-incoming-card '+cardCls+'" id="tic-'+trayEsc(histId)+'">'
+    + '<div class="tic-head"><span class="tic-tray">'+trayEsc(trayId)+'</span>'
+    + '<span class="tic-type '+typeLbl+'">'+trayEsc(n.type.replace('_',' '))+'</span></div>'
+    + '<div class="tic-msg">'+trayEsc(n.message)+'</div>'
+    + actionBtn
+    + '<button class="tic-btn dismiss" onclick="this.parentElement.remove()" style="margin-left:4px;">Dismiss</button>'
+    + '</div>';
+  // Insert at top, below any existing header
+  var firstCard = wrap.querySelector('.tray-incoming-card');
+  if (firstCard) wrap.insertBefore(_htmlToEl(card), firstCard);
+  else wrap.insertAdjacentHTML('afterbegin', card);
+  // Update badge
+  var badge = document.getElementById('th-incoming-btn');
+  if (badge) {
+    var count = wrap.querySelectorAll('.tray-incoming-card').length;
+    badge.innerHTML = '📥 Incoming <span class="th-badge">'+count+'</span>';
+  }
+}
+function _htmlToEl(html) {
+  var d = document.createElement('div'); d.innerHTML = html; return d.firstChild;
+}
+
+// ── LOAN INSTRUCTOR DATALIST ─────────────────────────────────────────────────
+function trayUpdateLoanInstructor(trayId) {
+  var ctrEl = document.getElementById('loan-ctr-'+trayId);
+  var dlEl  = document.getElementById('loan-instr-list-'+trayId);
+  if (!ctrEl || !dlEl) return;
+  var centre = ctrEl.value;
+  var names  = CENTRE_INSTRUCTORS[centre] || [];
+  dlEl.innerHTML = names.map(function(n){ return '<option value="'+trayEsc(n)+'">'; }).join('');
+}
+
+// ── JOURNEY TRAIL ─────────────────────────────────────────────────────────────
+function trayLoadJourneyTrail(trayId) {
+  gasGet({action:'trayGetJourney', trayId:trayId}, function(err, d) {
+    if (err || !d || d.status !== 'ok') return;
+    var el = document.getElementById('ctr-journey-'+trayEsc(trayId));
+    if (!el) return;
+    trayRenderJourneyTrail(el, d.legs || []);
+  });
+}
+function trayRenderJourneyTrail(el, legs) {
+  if (!legs.length) { el.innerHTML = ''; return; }
+  var statusColour = {PLANNED:'#e0e7ff',SENT:'#fee2e2',RECEIVED:'#d1fae5',DISPATCHED:'#fef3c7',RETURNED:'#f3f4f6',IN_USE:'#ede9fe'};
+  var parts = legs.map(function(leg, i) {
+    var bg = statusColour[leg.status] || '#f3f4f6';
+    var label = i === 0
+      ? '<span class="ctr-trail-centre" style="background:'+bg+'">'+trayEsc(leg.fromCentre)+'</span><span class="ctr-trail-arrow">→</span>'
+      : '';
+    label += '<span class="ctr-trail-centre" style="background:'+bg+'">'+trayEsc(leg.toCentre||'?')+'</span>';
+    if (i < legs.length-1) label += '<span class="ctr-trail-arrow">→</span>';
+    return label;
+  });
+  el.innerHTML = parts.join('');
+}
+
+// ── PLAN JOURNEY MODAL ───────────────────────────────────────────────────────
+var _planTrayId = null;
+var _planLegs   = [];
+
+function trayOpenPlanModal(trayId) {
+  _planTrayId = trayId;
+  _planLegs   = [];
+  // Ensure modal exists
+  if (!document.getElementById('tray-plan-modal')) {
+    document.body.insertAdjacentHTML('beforeend',
+      '<div id="tray-plan-modal">'
+      +'<div class="tpm-box">'
+      +'<h3>🗓 Plan Journey — <span id="tpm-tray-title"></span></h3>'
+      +'<div class="tpm-sub">Pre-book the full route. Each leg is saved as PLANNED. Dispatch activates them in order.</div>'
+      +'<div class="tpm-legs" id="tpm-legs-list"></div>'
+      +'<div class="tpm-add" id="tpm-add-form">'
+      +'<h4>Add next leg</h4>'
+      +'<div class="tpm-row">'
+      +'<div class="tpm-field"><label>To Centre</label><select id="tpm-to-centre"><option value="">— select —</option></select></div>'
+      +'<div class="tpm-field"><label>Receiving Instructor</label><input type="text" id="tpm-to-instr" list="tpm-instr-list" placeholder="Instructor name"><datalist id="tpm-instr-list"></datalist></div>'
+      +'</div>'
+      +'<div class="tpm-row">'
+      +'<div class="tpm-field"><label>Planned Start</label><input type="date" id="tpm-start"></div>'
+      +'<div class="tpm-field"><label>Planned End</label><input type="date" id="tpm-end"></div>'
+      +'</div>'
+      +'<button class="tpm-add-btn" onclick="trayAddLegRow()">+ Add Leg</button>'
+      +'</div>'
+      +'<div class="tpm-btns" style="margin-top:16px;">'
+      +'<button class="tpm-close" onclick="trayClosePlanModal()">Cancel</button>'
+      +'<button class="tpm-add-btn" id="tpm-submit-btn" onclick="traySubmitJourneyPlan()">Save Journey →</button>'
+      +'</div>'
+      +'</div></div>');
+    // Populate centre options
+    var sel = document.getElementById('tpm-to-centre');
+    var myCentre = getInstructorCentre(instructorName) || instructorName;
+    IGI_CENTRES.filter(function(c){return c!==myCentre;}).forEach(function(c){
+      sel.insertAdjacentHTML('beforeend','<option value="'+trayEsc(c)+'">'+trayEsc(c)+'</option>');
+    });
+    document.getElementById('tpm-to-centre').addEventListener('change', function(){
+      var names = CENTRE_INSTRUCTORS[this.value]||[];
+      document.getElementById('tpm-instr-list').innerHTML = names.map(function(n){return '<option value="'+trayEsc(n)+'">';}).join('');
+    });
+  }
+  document.getElementById('tpm-tray-title').textContent = trayId;
+  document.getElementById('tpm-legs-list').innerHTML = '';
+  // Load existing planned legs
+  gasGet({action:'trayGetJourney', trayId:trayId}, function(err, d) {
+    if (!err && d && d.status==='ok' && d.legs.length) {
+      _planLegs = d.legs;
+      _renderPlanLegs();
+    }
+  });
+  document.getElementById('tray-plan-modal').classList.add('open');
+}
+
+function trayClosePlanModal() {
+  var m = document.getElementById('tray-plan-modal');
+  if (m) m.classList.remove('open');
+}
+
+function trayAddLegRow() {
+  var centre = (document.getElementById('tpm-to-centre')||{}).value||'';
+  var instr  = (document.getElementById('tpm-to-instr')||{}).value||'';
+  var start  = (document.getElementById('tpm-start')||{}).value||'';
+  var end    = (document.getElementById('tpm-end')||{}).value||'';
+  if (!centre) { showToast('Please select a destination centre.'); return; }
+  if (!end)    { showToast('Please set a planned end date.'); return; }
+  _planLegs.push({toCentre:centre, toInstructor:instr, startDate:start, endDate:end, status:'NEW'});
+  _renderPlanLegs();
+  document.getElementById('tpm-to-centre').value = '';
+  document.getElementById('tpm-to-instr').value  = '';
+  document.getElementById('tpm-start').value      = end; // chain: next leg starts where this ends
+  document.getElementById('tpm-end').value        = '';
+}
+
+function _renderPlanLegs() {
+  var el = document.getElementById('tpm-legs-list');
+  if (!el) return;
+  if (!_planLegs.length) { el.innerHTML = ''; return; }
+  el.innerHTML = _planLegs.map(function(leg, i) {
+    var isPersisted = leg.status !== 'NEW';
+    var sc = leg.status || 'PLANNED';
+    var dispatchBtn = (sc === 'PLANNED' && !isPersisted) ? '' :
+      (sc === 'PLANNED' ? '<button class="tpm-dispatch-btn" onclick="trayDispatchLeg(\''+trayEsc(leg.historyId||'')+'\')">📤 Dispatch</button>' : '');
+    return '<div class="tpm-leg">'
+      + '<span style="font-weight:700;font-size:10px;color:#6b7280;min-width:40px;">Leg '+(i+1)+'</span>'
+      + '<span style="flex:1;">'+trayEsc(leg.toCentre)+(leg.toInstructor?' → '+trayEsc(leg.toInstructor):'')+'</span>'
+      + '<span style="color:#9ca3af;font-size:10px;">'+(leg.startDate||'?')+' – '+(leg.endDate||'?')+'</span>'
+      + '<span class="tpm-leg-status '+sc+'">'+sc+'</span>'
+      + dispatchBtn
+      + '</div>';
+  }).join('');
+}
+
+function traySubmitJourneyPlan() {
+  if (!_planTrayId) return;
+  var newLegs = _planLegs.filter(function(l){ return l.status === 'NEW'; });
+  if (!newLegs.length) { showToast('No new legs to save.'); return; }
+  gasGet({
+    action: 'trayPlanJourney',
+    trayId: _planTrayId,
+    instructor: instructorName,
+    legs: newLegs
+  }, function(err, d) {
+    if (err || !d || d.status !== 'ok') { showToast('Save failed: '+(d&&d.message||'')); return; }
+    showToast('Journey planned ✓ '+newLegs.length+' leg(s) saved.');
+    trayClosePlanModal();
+    trayLoadJourneyTrail(_planTrayId);
+  });
+}
+
+function trayDispatchLeg(histId) {
+  if (!_planTrayId) return;
+  if (!confirm('Dispatch this leg now?')) return;
+  gasGet({action:'trayDispatch', trayId:_planTrayId, histId:histId, instructor:instructorName}, function(err, d) {
+    if (err || !d || d.status !== 'ok') { showToast('Dispatch failed: '+(d&&d.message||'')); return; }
+    showToast('Dispatched ✓ Borrowing instructor notified.');
+    trayClosePlanModal();
+    trayLoadJourneyTrail(_planTrayId);
+    trayLoadInventory();
+  });
+}
+
+// ── IN USE AT HOME ────────────────────────────────────────────────────────────
+function trayToggleInUse(trayId) {
+  var el = document.getElementById('inuse-expand-'+trayId);
+  if (!el) return;
+  el.classList.toggle('open');
+}
+
+function trayInUseSubmit(trayId) {
+  var endEl = document.getElementById('inuse-ret-'+trayId);
+  var endDate = endEl ? endEl.value : '';
+  if (!endDate) { showToast('Please set an expected end date.'); return; }
+  var batchSel = document.getElementById('inuse-purpose-'+trayId);
+  var batchCode = batchSel ? batchSel.value : '';
+  if (!batchCode) { showToast('Please select a batch.'); return; }
+  gasGet({
+    action: 'trayMarkInUse',
+    trayId: trayId,
+    endDate: endDate,
+    notes: batchCode,
+    batchCode: batchCode,
+    instructor: instructorName
+  }, function(err, d) {
+    if (err || !d || d.status !== 'ok') { showToast('Failed: '+(d&&d.message||'')); return; }
+    showToast('Marked as In Use ✓');
+    trayToggleInUse(trayId);
+    trayLoadInventory();
+    trayHubLoaded = false; trayBoardData = null; trayLoadBoard();
+  });
+}
+
+function trayInUseDoneUI(trayId) {
+  if (!confirm('Mark this tray as done / back at Home?')) return;
+  gasGet({action:'trayMarkInUseDone', trayId:trayId, instructor:instructorName}, function(err, d) {
+    if (err || !d || d.status !== 'ok') { showToast('Failed: '+(d&&d.message||'')); return; }
+    showToast('Tray back at Home ✓');
+    trayLoadInventory();
+    trayHubLoaded = false; trayBoardData = null; trayLoadBoard();
+  });
+}
+
+// ── BORROWER: CONFIRM RECEIVED / DISPATCHED ───────────────────────────────────
+function trayDoConfirmReceived(trayId, histId, btnEl) {
+  if (btnEl) { btnEl.disabled=true; btnEl.textContent='⏳ Saving…'; }
+  gasGet({action:'trayConfirmReceived', trayId:trayId, histId:histId, instructor:instructorName}, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      showToast('Failed: '+(d&&d.message||''));
+      if (btnEl) { btnEl.disabled=false; btnEl.textContent='✅ Confirm Receipt'; }
+      return;
+    }
+    showToast('Receipt confirmed ✓ Home centre notified.');
+    // Swap button to "Confirm Dispatched"
+    if (btnEl) {
+      btnEl.className = 'tic-btn dispatch';
+      btnEl.textContent = '📤 Confirm Dispatched';
+      btnEl.onclick = function(){ trayDoConfirmDispatched(trayId, histId, btnEl); };
+      btnEl.disabled = false;
+    }
+    trayLoadInventory();
+  });
+}
+
+function trayDoConfirmDispatched(trayId, histId, btnEl) {
+  if (btnEl) { btnEl.disabled=true; btnEl.textContent='⏳ Saving…'; }
+  gasGet({action:'trayConfirmDispatched', trayId:trayId, histId:histId, instructor:instructorName}, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      showToast('Failed: '+(d&&d.message||''));
+      if (btnEl) { btnEl.disabled=false; btnEl.textContent='📤 Confirm Dispatched'; }
+      return;
+    }
+    showToast('Dispatched to next leg ✓');
+    if (btnEl) { btnEl.parentElement.remove(); }
+    trayLoadInventory();
+  });
 }
 
 function trayEsc(s) {

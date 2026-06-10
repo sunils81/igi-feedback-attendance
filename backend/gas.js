@@ -7078,7 +7078,9 @@ function getDiplomaReleaseList(ss, p) {
       const attendancePass = attendancePct >= 75;
       const weeklyPass = weeklyAvg !== null && weeklyAvg >= 60;
       const finalPass = finalExamScore !== null && finalExamScore >= 60;
-      const eligible = attendancePass && weeklyPass && finalPass;
+      // Attendance is shown as a warning but does NOT gate diploma eligibility.
+      // Only marks (weekly avg ≥60% AND final ≥60%) determine eligible status.
+      const eligible = weeklyPass && finalPass;
 
       list.push({
         studentId,

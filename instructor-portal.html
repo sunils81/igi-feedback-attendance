@@ -6454,7 +6454,7 @@ function renderEligibility(batches) {
       html += '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
       html += '<thead><tr style="background:#0D1B2E;color:#C9A84C;">';
       html += '<th style="padding:7px 10px;text-align:left;border-radius:6px 0 0 0;">Student</th>';
-      html += '<th style="padding:7px 10px;text-align:center;">Attendance</th>';
+      html += '<th style="padding:7px 10px;text-align:center;">Attendance<br><span style="font-size:9px;font-weight:400;opacity:0.8;">advisory ≥75%</span></th>';
       html += '<th style="padding:7px 10px;text-align:center;">Weekly Avg<br><span style="font-size:10px;font-weight:400;">Manual + Online</span></th>';
       html += '<th style="padding:7px 10px;text-align:center;">Final Exam</th>';
       html += '<th style="padding:7px 10px;text-align:center;border-radius:0 6px 0 0;">Status</th>';
@@ -6465,11 +6465,19 @@ function renderEligibility(batches) {
         html += '<tr style="background:' + rowBg + ';border-bottom:1px solid #f3f4f6;">';
         html += '<td style="padding:7px 10px;font-weight:600;color:#0D1B2E;">' + escH(s.studentName) + '</td>';
 
-        // Attendance
+        // Attendance — advisory only, amber warning if below 75%
         const attPct = s.attendance ? s.attendance.pct : null;
         html += '<td style="padding:7px 10px;text-align:center;">';
-        html += badge(attPct !== null ? attPct + '%' : null, s.attendance && s.attendance.pass, '');
-        if (s.attendance) html += '<div style="font-size:10px;color:#9ca3af;margin-top:1px;">' + s.attendance.attended + '/' + s.attendance.total + ' sessions</div>';
+        if (attPct !== null) {
+          const attOk = s.attendance && s.attendance.pass;
+          const attColor = attOk ? '#166534' : '#b45309';
+          const attBg    = attOk ? '#dcfce7' : '#fef3c7';
+          const attIcon  = attOk ? '✅' : '⚠';
+          html += '<span style="background:' + attBg + ';color:' + attColor + ';font-weight:700;padding:2px 8px;border-radius:12px;font-size:11px;">' + attIcon + ' ' + attPct + '%</span>';
+          html += '<div style="font-size:10px;color:#9ca3af;margin-top:1px;">' + s.attendance.attended + '/' + s.attendance.total + ' sessions</div>';
+        } else {
+          html += '<span style="background:#f3f4f6;color:#6b7280;font-weight:700;padding:2px 8px;border-radius:12px;font-size:11px;">Pending</span>';
+        }
         html += '</td>';
 
         // Weekly avg
@@ -6487,7 +6495,7 @@ function renderEligibility(batches) {
           html += '<td style="padding:7px 10px;text-align:center;"><span style="' + pendStyle + '">In Progress</span></td>';
         } else {
           const missing = [];
-          if (s.attendance && !s.attendance.pass) missing.push('Attendance');
+          // Attendance is advisory — only marks criteria shown as blocking
           if (!s.weeklyAvg || !s.weeklyAvg.pass) missing.push('Weekly');
           if (!s.finalExam || !s.finalExam.pass) missing.push('Final');
           html += '<td style="padding:7px 10px;text-align:center;"><span style="' + failStyle + '">✗ ' + missing.join(', ') + '</span></td>';

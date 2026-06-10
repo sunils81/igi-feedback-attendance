@@ -2443,6 +2443,8 @@ function renderTodaySessions(sessions) {
       }
     }
     
+    // Determine if the saved topic differs from the scheduled topic (a previous override was confirmed)
+    var topicIsOverridden = !!(s.topic && s.scheduledTopic && normalizeTopic(s.topic) !== normalizeTopic(s.scheduledTopic));
     var selectHtml = '<select class="topic-select" id="tov-select-' + escH(s.sessionCode) + '" onchange="handleTopicSelectChange(\'' + escH(s.sessionCode) + '\', true)" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid var(--border);font-family:inherit;font-size:14px;background:#fff;margin-bottom:6px;">';
     selectHtml += '<option value="">-- Select Topic --</option>';
     syllabus.forEach(function(item) {
@@ -2453,13 +2455,19 @@ function renderTodaySessions(sessions) {
     var customSelected = (currentTopic && !isPredefined) ? ' selected' : '';
     selectHtml += '<option value="__custom__"' + customSelected + '>Other / Custom Topic</option>';
     selectHtml += '</select>';
-    
+
     html += '<div style="font-size:11px;color:var(--muted);margin-bottom:5px">Override topic if different today:</div>';
     html += selectHtml;
     var showInputStyle = (currentTopic && !isPredefined) ? 'display:block; margin-top: 6px;' : 'display:none; margin-top: 6px;';
-    html += '<input type="text" class="topic-override" id="tov-' + escH(s.sessionCode) + '" placeholder="Type custom topic here" style="' + showInputStyle + '" value="' + escH(currentTopic) + '">';
-    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">';
-    html += '<button class="btn btn-outline" style="flex:1;font-size:12px;padding:9px 12px;border-color:#1D9E75;color:#1D9E75" data-sess="' + escH(s.sessionCode) + '" onclick="updateTopic(this.dataset.sess)">Confirm Topic</button>';
+    html += '<input type="text" class="topic-override" id="tov-' + escH(s.sessionCode) + '" placeholder="Type custom topic here" style="' + showInputStyle + '" value="' + escH(currentTopic) + '" oninput="handleTopicCustomInput(\'' + escH(s.sessionCode) + '\')">';
+    // Confirm button: hidden until a change is made; if already overridden before, show as confirmed+disabled
+    if (topicIsOverridden) {
+      html += '<div id="confirm-wrap-' + escH(s.sessionCode) + '" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">';
+      html += '<button class="btn btn-outline" style="flex:1;font-size:12px;padding:9px 12px;border-color:#1D9E75;color:#1D9E75;opacity:.6;cursor:default" disabled>✓ Topic Confirmed – Live</button>';
+    } else {
+      html += '<div id="confirm-wrap-' + escH(s.sessionCode) + '" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">';
+      html += '<button class="btn btn-outline" id="confirm-btn-' + escH(s.sessionCode) + '" style="flex:1;font-size:12px;padding:9px 12px;border-color:#1D9E75;color:#1D9E75;display:none" data-sess="' + escH(s.sessionCode) + '" data-scheduled="' + escH(s.scheduledTopic) + '" onclick="updateTopic(this.dataset.sess)">Confirm Topic</button>';
+    }
     html += '<button class="btn btn-gold" style="flex:1.5;font-size:12px;padding:9px 12px;display:inline-flex;align-items:center;justify-content:center;gap:4px" data-batch="' + escH(s.batchCode) + '" data-sess="' + escH(s.sessionCode) + '" onclick="openAttendanceFor(this.dataset.batch, this.dataset.sess)">Open Attendance 👥</button>';
     html += '<button style="flex:1;padding:9px 12px;border:1.5px solid #C94A4A;color:#C94A4A;border-radius:8px;background:transparent;font-size:12px;cursor:pointer" data-sess="' + escH(s.sessionCode) + '" data-batch="' + escH(s.batchCode) + '" onclick="showCancelDialog(this.dataset.sess,this.dataset.batch)">Cancel Session</button>';
     html += '</div></div>';
@@ -2484,7 +2492,7 @@ function handleTopicSelectChange(id, isOverride) {
   var selectEl = document.getElementById(prefix + 'select-' + id);
   var inputEl = document.getElementById(prefix + id);
   if (!selectEl || !inputEl) return;
-  
+
   if (selectEl.value === '__custom__') {
     inputEl.style.display = 'block';
     if (inputEl.value === selectEl.dataset.prevPredefined) {
@@ -2494,6 +2502,17 @@ function handleTopicSelectChange(id, isOverride) {
     inputEl.style.display = 'none';
     inputEl.value = selectEl.value;
     selectEl.dataset.prevPredefined = selectEl.value;
+  }
+
+  // For live sessions: show/hide the Confirm Topic button based on whether the
+  // selected topic differs from the scheduled (syllabus) topic.
+  if (isOverride) {
+    var confirmBtn = document.getElementById('confirm-btn-' + id);
+    if (confirmBtn) {
+      var scheduled = normalizeTopic(confirmBtn.dataset.scheduled || '');
+      var chosen = normalizeTopic(selectEl.value === '__custom__' ? inputEl.value : selectEl.value);
+      confirmBtn.style.display = (chosen && chosen !== scheduled) ? '' : 'none';
+    }
   }
 }
 
@@ -2514,17 +2533,36 @@ function handleExtraTopicSelectChange() {
   }
 }
 
+function handleTopicCustomInput(sessionCode) {
+  var inputEl = document.getElementById('tov-' + sessionCode);
+  var confirmBtn = document.getElementById('confirm-btn-' + sessionCode);
+  if (!inputEl || !confirmBtn) return;
+  var scheduled = normalizeTopic(confirmBtn.dataset.scheduled || '');
+  var typed = normalizeTopic(inputEl.value);
+  confirmBtn.style.display = (typed && typed !== scheduled) ? '' : 'none';
+}
+
 function updateTopic(sessionCode) {
   const topic = (document.getElementById('tov-'+sessionCode)||{value:''}).value.trim();
   const btn   = event.target;
   btn.textContent='Saving…'; btn.disabled=true;
   gasGet({action:'updateSessionTopic', sessionCode, topic, instructor:instructorName}, function(e,d) {
-    btn.textContent='✓ Confirm Topic'; btn.disabled=false;
-    if (e||!d||d.status!=='ok') { showToast('Could not update topic.', 'error'); return; }
-    showToast('Topic confirmed.');
-    btn.style.background='#1D9E75';
-    setTimeout(()=>{ btn.style.background=''; }, 2000);
-    loadTodaySessions();
+    if (e||!d||d.status!=='ok') {
+      showToast('Could not update topic.', 'error');
+      btn.textContent='Confirm Topic'; btn.disabled=false;
+      return;
+    }
+    showToast('Topic confirmed & live for students.');
+    // Disable the button in-place — no re-render needed
+    btn.textContent='✓ Topic Confirmed – Live';
+    btn.disabled=true;
+    btn.style.opacity='0.6';
+    btn.style.cursor='default';
+    // Lock the dropdown too so it can't be changed again without page refresh
+    var sel = document.getElementById('tov-select-' + sessionCode);
+    if (sel) sel.disabled = true;
+    var inp = document.getElementById('tov-' + sessionCode);
+    if (inp) inp.disabled = true;
   });
 }
 
@@ -2732,16 +2770,32 @@ function loadAssessments() {
     if (e||!d||!d.assessments||!d.assessments.length) {
       list.innerHTML=emptyState('📝', 'No tests recorded yet', 'Create the first test below. Pending marks will be easy to spot here.'); return;
     }
-    list.innerHTML = d.assessments.map(a=>`
+    list.innerHTML = d.assessments.map(a=>{
+      const entered = a.marksEntered || 0;
+      const expected = a.expectedStudents || 0;
+      const allDone = expected > 0 && entered >= expected;
+      const noneEntered = entered === 0;
+      let statusBadge = '';
+      if (allDone) {
+        statusBadge = `<span style="font-size:10px;background:#d1fae5;color:#065f46;padding:2px 7px;border-radius:99px;font-weight:600;white-space:nowrap">✓ All marks entered</span>`;
+      } else if (noneEntered) {
+        statusBadge = `<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:99px;font-weight:600;white-space:nowrap">⚠ No marks entered yet</span>`;
+      } else {
+        const pending = expected > 0 ? (expected - entered) : '?';
+        statusBadge = `<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:99px;font-weight:600;white-space:nowrap">⚠ ${pending} marks pending</span>`;
+      }
+      return `
       <div class="test-card" onclick="openTestMarks('${a.assessmentId}','${escJ(a.testName)}','${a.testDate}',${a.totalMarks},'${a.testType}')">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start">
-          <div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="min-width:0">
             <div class="tc-name">${a.testName}</div>
             <div class="tc-meta">${a.testDate} · ${a.testType||''} · Max: ${a.totalMarks} marks</div>
+            <div style="margin-top:5px">${statusBadge}</div>
           </div>
-          <div style="font-size:11px;color:var(--gold);font-weight:600;white-space:nowrap;margin-left:8px">Edit marks →</div>
+          <div style="font-size:11px;color:var(--gold);font-weight:600;white-space:nowrap;flex-shrink:0">Edit marks →</div>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   });
 }
 

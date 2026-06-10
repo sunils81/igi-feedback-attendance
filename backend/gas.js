@@ -1836,10 +1836,21 @@ function doGet(e) {
       const sh=ss.getSheetByName(SH_ASSESSMENTS);
       if (!sh||sh.getLastRow()<2) return respond({status:'ok',assessments:[]});
       const data=sh.getRange(2,1,sh.getLastRow()-1,8).getValues();
+      // Also load marks sheet to count how many students have marks entered per test
+      const shM=ss.getSheetByName(SH_MARKS);
+      const marksData=shM&&shM.getLastRow()>1?shM.getRange(2,1,shM.getLastRow()-1,2).getValues():[];
+      const markCountByAssId={};
+      marksData.forEach(r=>{ const id=String(r[0]).toUpperCase(); markCountByAssId[id]=(markCountByAssId[id]||0)+1; });
+      // Active student count for this batch
+      const expectedStudents=getStudentsForBatch(ss,batchCode).length;
       return respond({status:'ok',assessments:data.filter(r=>r[0]&&String(r[1]).toUpperCase()===batchCode)
-        .map(r=>({assessmentId:r[0],batchCode:r[1],testName:r[2],testType:r[3],
-          testDate:r[4]?new Date(r[4]).toLocaleDateString('en-IN'):'',
-          totalMarks:r[5],instructor:r[6]}))
+        .map(r=>{
+          const aId=String(r[0]).toUpperCase();
+          const marksEntered=markCountByAssId[aId]||0;
+          return {assessmentId:aId,batchCode:r[1],testName:r[2],testType:r[3],
+            testDate:r[4]?new Date(r[4]).toLocaleDateString('en-IN'):'',
+            totalMarks:r[5],instructor:r[6],marksEntered,expectedStudents};
+        })
         .sort((a,b)=>a.assessmentId.localeCompare(b.assessmentId))});
     }
 

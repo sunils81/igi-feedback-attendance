@@ -595,6 +595,11 @@
   <!-- ══════════════════════════════════════════════════════════ -->
   <div id="t-onlinetests" class="tab-content">
     <style>
+      @keyframes pulse {
+        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+        70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+      }
       .ot-subnav { display:flex; gap:10px; margin-bottom:24px; flex-wrap:wrap; }
       .ot-subbtn {
         padding: 9px 18px;
@@ -1048,6 +1053,7 @@
 
       <div style="display:flex;align-items:center;gap:12px;margin-top:4px;padding-bottom:20px;">
         <button type="button" class="ot-btn primary" style="padding:12px 28px;font-size:14px;" onclick="otCreateTest()">📝 Create Test</button>
+        <button type="button" class="ot-btn ghost" style="padding:12px 20px;font-size:14px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;cursor:pointer;" onclick="otTerminateTestCreation()">✕ Cancel & Reset</button>
         <span id="ot-create-status" style="font-size:12px;"></span>
       </div>
     </div>
@@ -1109,6 +1115,20 @@
         </div>
       </div>
       <div id="ot-results-body"></div>
+    </div>
+
+    <!-- Persistent Test Creation Status Bar -->
+    <div id="ot-floating-status-bar" style="display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:rgba(13,27,46,0.95); backdrop-filter:blur(8px); border:1.5px solid rgba(201,168,76,0.4); border-radius:16px; padding:12px 24px; box-shadow:0 10px 30px rgba(0,0,0,0.25); z-index:9500; align-items:center; gap:20px; color:#fff; transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1); width:calc(100% - 40px); max-width:800px;">
+      <div style="display:flex; align-items:center; gap:8px; font-weight:600; font-size:13px; flex-shrink:0;">
+        <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#10b981; box-shadow:0 0 8px #10b981; animation:pulse 2s infinite;"></span>
+        <span>Test Creation Active: <b id="ot-float-qcount" style="color:#f59e0b;">0</b> questions selected</span>
+      </div>
+      <div style="flex-grow:1;"></div>
+      <div style="display:flex; gap:10px; align-items:center; flex-shrink:0; flex-wrap:wrap;">
+        <button type="button" class="ot-btn success" id="ot-float-proceed-btn" style="padding:6px 14px; font-size:12px;" onclick="otSubTab('create')">→ Go to Create Test</button>
+        <button type="button" class="ot-btn ghost" style="padding:6px 14px; font-size:12px; color:#ef4444; border-color:#fca5a5; background:rgba(254,242,242,0.15); cursor:pointer;" onclick="otClearAllQuestions()">🗑 Clear Questions</button>
+        <button type="button" class="ot-btn danger" style="padding:6px 14px; font-size:12px; cursor:pointer;" onclick="otTerminateTestCreation()">✕ Cancel & Reset</button>
+      </div>
     </div>
 
   </div><!-- /t-onlinetests -->
@@ -3133,6 +3153,7 @@ function otSubTab(panel) {
   });
   if (panel === 'create') { otRenderBatchPills(); otSyncSelectedPreview(); }
   if (panel === 'mytests') otLoadTests();
+  otUpdateSelCount();
 }
 
 // ── Question Bank ────────────────────────────────────────────
@@ -3270,6 +3291,27 @@ function otUpdateSelCount() {
       addBtn.style.display = 'inline-block';
       addBtn.textContent = '→ Use ' + otSelectedIds.size + ' in Test';
     } else addBtn.style.display = 'none';
+  }
+
+  // Update floating status bar
+  var floatBar = document.getElementById('ot-floating-status-bar');
+  var floatQCount = document.getElementById('ot-float-qcount');
+  var floatProceedBtn = document.getElementById('ot-float-proceed-btn');
+  if (floatBar && floatQCount) {
+    var qbankPanel = document.getElementById('ot-qbank');
+    var createPanel = document.getElementById('ot-create');
+    var isQbankActive = qbankPanel && qbankPanel.classList.contains('active');
+    var isCreateActive = createPanel && createPanel.classList.contains('active');
+    
+    if (otSelectedIds.size > 0 && (isQbankActive || isCreateActive)) {
+      floatBar.style.display = 'flex';
+      floatQCount.textContent = otSelectedIds.size;
+      if (floatProceedBtn) {
+        floatProceedBtn.style.display = isQbankActive ? 'inline-block' : 'none';
+      }
+    } else {
+      floatBar.style.display = 'none';
+    }
   }
 }
 
@@ -3639,7 +3681,10 @@ function otSyncSelectedPreview() {
     }
   });
   var totalMarks = otSelectedIds.size; // 1 mark each regardless of how many are loaded in otAllQuestions
-  var header = '<div style="font-size:13px;font-weight:700;color:#059669;margin-bottom:12px;">✓ '+otSelectedIds.size+' questions selected · Total marks: '+totalMarks+' (MCQ/T-F/FIB = 1 mark each)</div>';
+  var header = '<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:700;color:#059669;margin-bottom:12px;">'
+    + '<div>✓ '+otSelectedIds.size+' questions selected · Total marks: '+totalMarks+' (MCQ/T-F/FIB = 1 mark each)</div>'
+    + '<button type="button" class="ot-btn ghost" style="padding:4px 10px;font-size:11px;color:#dc2626;border-color:#fca5a5;background:#fee2e2;cursor:pointer;" onclick="otClearAllQuestions()">🗑 Clear All</button>'
+    + '</div>';
   if (!qs.length) {
     el.innerHTML = header + '<div style="font-size:12px;color:#6b7280;">'
       + [...otSelectedIds].map(function(id,i){ return '<code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;margin:2px;display:inline-block;">Q'+(i+1)+' · '+escHtml(id)+'</code>'; }).join('')
@@ -3684,6 +3729,63 @@ function otSyncSelectedPreview() {
       + '</div>';
   }).join('');
   el.innerHTML = header + cards;
+}
+
+function otClearAllQuestions() {
+  if (!confirm('Are you sure you want to clear all selected questions?')) return;
+  otClearSelection();
+  otSyncSelectedPreview();
+}
+
+function otTerminateTestCreation() {
+  if (!confirm('Are you sure you want to cancel test creation and clear all inputs?')) return;
+  
+  // 1. Clear text inputs
+  var labelEl = document.getElementById('ot-c-label'); if (labelEl) labelEl.value = '';
+  var instEl = document.getElementById('ot-c-instructions'); if (instEl) instEl.value = '';
+  var durEl = document.getElementById('ot-c-duration'); if (durEl) durEl.value = '30';
+  var passEl = document.getElementById('ot-c-passscore'); if (passEl) passEl.value = '60';
+  var passLbl = document.getElementById('ot-c-passscore-lbl'); if (passLbl) passLbl.textContent = '60%';
+  var passInp = document.getElementById('ot-c-passscore-val'); if (passInp) passInp.value = '60';
+  
+  // Reset duration pills (set 30m active)
+  document.querySelectorAll('.ct-dur-pill').forEach(function(p, idx){
+    p.classList.toggle('active', idx === 1); // index 1 is 30m
+  });
+  var customDurOn = document.getElementById('ot-c-custom-dur-on'); if (customDurOn) customDurOn.checked = false;
+  var customDurWrap = document.getElementById('ot-c-custom-dur-wrap'); if (customDurWrap) customDurWrap.style.display = 'none';
+  var customDurVal = document.getElementById('ot-c-custom-dur-val'); if (customDurVal) customDurVal.value = '';
+  
+  // 2. Clear options checkboxes
+  ['ot-c-negmark', 'ot-c-shuffle', 'ot-c-reattempt'].forEach(function(id) {
+    var cb = document.getElementById(id); if (cb) cb.checked = false;
+  });
+  ['ct-opt-neg-lbl', 'ct-opt-shuffle-lbl', 'ct-opt-reattempt-lbl'].forEach(function(id) {
+    var lbl = document.getElementById(id); if (lbl) lbl.classList.remove('active');
+  });
+  var negWrap = document.getElementById('ot-neg-val-wrap'); if (negWrap) negWrap.style.display = 'none';
+  
+  // 3. Clear selected batches
+  otSelectedBatches.clear();
+  var batchSelect = document.getElementById('ot-c-batch-select'); if (batchSelect) batchSelect.value = '';
+  document.getElementById('ot-c-batch').value = '';
+  otRenderSelectedBatchesList();
+  
+  // 4. Clear selected questions
+  otClearSelection();
+  otSyncSelectedPreview();
+  
+  // 5. Clear student targeting
+  var targetingRadio = document.querySelector('input[name="ct-targeting"][value="all"]');
+  if (targetingRadio) targetingRadio.checked = true;
+  otTargetingSelect('all');
+  otPickerSelected.clear();
+  otUpdateStudentCount();
+  
+  // Scroll back to top
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  showToast('Test creation form reset.');
+  otSubTab('qbank');
 }
 
 // Edit question inline
@@ -3865,9 +3967,15 @@ function otCreateTest() {
         return;
       }
       if (st) { st.textContent = '✅ Test created! ' + d2.saved + ' questions · Total marks: ' + d2.totalMarks; st.style.color = '#059669'; }
+      
+      // Clear form inputs
+      var labelEl = document.getElementById('ot-c-label'); if (labelEl) labelEl.value = '';
+      var instEl = document.getElementById('ot-c-instructions'); if (instEl) instEl.value = '';
+      
       otClearSelection();
       otPickerSelected.clear();
       otSelectedBatches.clear();
+      otRenderSelectedBatchesList();
       otLoadTests();
       setTimeout(function(){ otSubTab('mytests'); }, 1500);
     });

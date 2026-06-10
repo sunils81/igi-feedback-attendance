@@ -2080,9 +2080,50 @@ function initPortal() {
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initPortal);
+  document.addEventListener('DOMContentLoaded', function(){ initPortal(); tryRestoreSession(); });
 } else {
-  initPortal();
+  initPortal(); tryRestoreSession();
+}
+
+// ── Session persistence across page refreshes ─────────────────
+function saveSession() {
+  try {
+    sessionStorage.setItem('igi_instr_session', JSON.stringify({
+      instructorName, instructorAuthRole, instructorMustChangePassword,
+      isDualRole, dualCentres, isAcademicHead, isRevenueManager, managerCentres
+    }));
+  } catch(e) {}
+}
+function clearSession() {
+  try { sessionStorage.removeItem('igi_instr_session'); } catch(e) {}
+}
+function tryRestoreSession() {
+  try {
+    var saved = sessionStorage.getItem('igi_instr_session');
+    if (!saved) return;
+    var s = JSON.parse(saved);
+    if (!s || !s.instructorName) return;
+    instructorName           = s.instructorName;
+    instructorAuthRole       = s.instructorAuthRole || 'Instructor';
+    instructorMustChangePassword = !!s.instructorMustChangePassword;
+    isDualRole               = !!s.isDualRole;
+    dualCentres              = s.dualCentres || [];
+    isAcademicHead           = !!s.isAcademicHead;
+    isRevenueManager         = !!s.isRevenueManager;
+    managerCentres           = s.managerCentres || [];
+    document.getElementById('portal-name').textContent = instructorName;
+    if (isDualRole)      { var t1 = document.getElementById('t-batchmgmt-tab'); if(t1) t1.style.display='flex'; }
+    if (isAcademicHead)  { var t2 = document.getElementById('t-academic-tab');  if(t2) t2.style.display='flex'; }
+    if (isRevenueManager){ var t3 = document.getElementById('t-revenue-tab');   if(t3) t3.style.display='flex'; }
+    var JD_INSTRUCTORS = ['Sneha Garodia'];
+    if (JD_INSTRUCTORS.some(function(n){ return n.trim().toLowerCase() === instructorName.trim().toLowerCase(); })) {
+      var trayTab = document.getElementById('t-trayhub-tab'); if (trayTab) trayTab.style.display='none';
+    }
+    showScreen('s-main');
+    applyPasswordChangeState();
+    loadInstructorBatches();
+    loadTodaySessions();
+  } catch(e) {}
 }
 
 function showScreen(id) {
@@ -2151,6 +2192,7 @@ function doLogin() {
     applyPasswordChangeState();
     loadInstructorBatches();
     loadTodaySessions();
+    saveSession();
   });
 }
 
@@ -2170,6 +2212,7 @@ function applyPasswordChangeState() {
 
 function instructorSignOut() {
   if (!confirm('Sign out of the Instructor Portal?')) return;
+  clearSession();
   // Clear session state
   instructorName = '';
   instructorCentre = '';
@@ -2830,7 +2873,10 @@ function loadAssessments() {
             <div class="tc-meta">${a.testDate} · ${a.testType||''} · Max: ${a.totalMarks} marks</div>
             <div style="margin-top:5px">${statusBadge}</div>
           </div>
-          <div style="font-size:11px;color:var(--gold);font-weight:600;white-space:nowrap;flex-shrink:0">Edit marks →</div>
+          <div style="display:flex;gap:10px;align-items:center;flex-shrink:0">
+            <div style="font-size:11px;color:var(--gold);font-weight:600;white-space:nowrap">Edit marks →</div>
+            <button onclick="event.stopPropagation();deleteAssessmentCard('${a.assessmentId}','${escJ(a.testName)}')" style="background:none;border:none;cursor:pointer;font-size:13px;color:#dc2626;padding:2px 4px;border-radius:4px;line-height:1" title="Delete test">🗑</button>
+          </div>
         </div>
       </div>`;
     }).join('');
@@ -2838,6 +2884,19 @@ function loadAssessments() {
 }
 
 function escJ(s) { return (s||'').replace(/'/g,"\\'").replace(/"/g,'\\"'); }
+
+function deleteAssessmentCard(assessmentId, testName) {
+  if (!confirm('Delete "' + testName + '"?\n\nThis will also remove all marks entered for this test. This cannot be undone.')) return;
+  gasGet({action:'deleteAssessment', assessmentId:assessmentId, instructor:instructorName}, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      var reason = d && d.reason === 'not_owner' ? 'You can only delete tests you created.' : 'Could not delete test. Please try again.';
+      showToast(reason, 'error');
+      return;
+    }
+    showToast('Test deleted.', 'ok');
+    loadAssessments();
+  });
+}
 
 function openTestMarks(aId, name, date, total, type) {
   currentAssessmentId = aId;
@@ -3008,6 +3067,12 @@ function renderInstructorSummary() {
 
   function tile(cls, k, v, s) {
     return '<div class="summary-tile '+(cls||'')+'"><div class="k">'+k+'</div><div class="v">'+v+'</div><div class="s">'+s+'</div></div>';
+  }
+
+  // Hide summary tiles on tabs where they're not relevant
+  if (_summaryActiveTab === 't-eligibility' || _summaryActiveTab === 't-batchmgmt') {
+    el.style.display = 'none';
+    return;
   }
 
   let html = '';

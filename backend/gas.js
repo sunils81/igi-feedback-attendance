@@ -1906,6 +1906,37 @@ function doGet(e) {
       return respond({status:'ok',saved:marksArr.length});
     }
 
+    // ── deleteAssessment ──────────────────────────────────────
+    if (act==='deleteAssessment') {
+      const assessmentId = (p.assessmentId||'').toUpperCase();
+      const instructor   = String(p.instructor||'').trim();
+      if (!assessmentId) return respond({status:'error',reason:'missing_id'});
+      const shA = ss.getSheetByName(SH_ASSESSMENTS);
+      const shM = ss.getSheetByName(SH_MARKS);
+      if (!shA) return respond({status:'error',reason:'no_sheet'});
+      // Verify ownership — must match instructor or be empty
+      const aData = shA.getLastRow()>1 ? shA.getRange(2,1,shA.getLastRow()-1,7).getValues() : [];
+      let found = false;
+      for (let i = aData.length-1; i >= 0; i--) {
+        if (String(aData[i][0]).toUpperCase() === assessmentId) {
+          const owner = String(aData[i][6]||'').trim();
+          if (owner && !sameName(owner, instructor)) return respond({status:'error',reason:'not_owner'});
+          shA.deleteRow(i+2);
+          found = true;
+          break;
+        }
+      }
+      if (!found) return respond({status:'error',reason:'not_found'});
+      // Also delete all marks for this assessment
+      if (shM && shM.getLastRow()>1) {
+        const mData = shM.getRange(2,1,shM.getLastRow()-1,1).getValues();
+        for (let i = mData.length-1; i >= 0; i--) {
+          if (String(mData[i][0]).toUpperCase() === assessmentId) shM.deleteRow(i+2);
+        }
+      }
+      return respond({status:'ok'});
+    }
+
     // ── getAssessments ─────────────────────────────────────────
     if (act==='getAssessments') {
       const batchCode=(p.batchCode||'').toUpperCase();

@@ -6334,23 +6334,18 @@ function eligibilityInit() {
   if (loadDiv) loadDiv.style.display = 'block';
   if (contentDiv) contentDiv.style.display = 'none';
 
-  gasGet({ action:'getInstructorEligibility', instructor: instructorName })
-    .then(d => {
-      if (loadDiv) loadDiv.style.display = 'none';
-      if (!d || d.status !== 'ok') {
-        if (contentDiv) { contentDiv.style.display = 'block'; contentDiv.innerHTML = '<p style="color:#dc2626;padding:20px">Could not load eligibility data.</p>'; }
-        return;
-      }
-      if (!d.batches || d.batches.length === 0) {
-        if (contentDiv) { contentDiv.style.display = 'block'; contentDiv.innerHTML = '<p style="color:#6b7280;padding:20px;font-size:14px;">No active batches found. Eligibility data will appear here once students are enrolled and assessments are recorded.</p>'; }
-        return;
-      }
-      renderEligibility(d.batches);
-    })
-    .catch(err => {
-      if (loadDiv) loadDiv.style.display = 'none';
-      if (contentDiv) { contentDiv.style.display = 'block'; contentDiv.innerHTML = '<p style="color:#dc2626;padding:20px">Error loading data: ' + escH(String(err)) + '</p>'; }
-    });
+  gasGet({ action:'getInstructorEligibility', instructor: instructorName }, function(err, d) {
+    if (loadDiv) loadDiv.style.display = 'none';
+    if (err || !d || d.status !== 'ok') {
+      if (contentDiv) { contentDiv.style.display = 'block'; contentDiv.innerHTML = '<p style="color:#dc2626;padding:20px">Could not load eligibility data.</p>'; }
+      return;
+    }
+    if (!d.batches || d.batches.length === 0) {
+      if (contentDiv) { contentDiv.style.display = 'block'; contentDiv.innerHTML = '<p style="color:#6b7280;padding:20px;font-size:14px;">No active batches found. Eligibility data will appear here once students are enrolled and assessments are recorded.</p>'; }
+      return;
+    }
+    renderEligibility(d.batches);
+  });
 }
 
 function renderEligibility(batches) {

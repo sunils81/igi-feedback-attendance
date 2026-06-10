@@ -4476,23 +4476,40 @@ function otCreateTest() {
       return;
     }
     var testId = d.testId;
-    gasGet({action:'saveTestQuestions', instructor:instructorName, testId:testId, questionIds:JSON.stringify(qIds)}, function(e2, d2) {
-      if (e2 || !d2 || d2.status !== 'ok') {
-        if (st) { st.textContent = 'Test created but questions failed: ' + (d2 && d2.reason || ''); st.style.color = '#d97706'; }
-        return;
-      }
-      if (st) { st.textContent = '✅ Test created! ' + d2.saved + ' questions · Total marks: ' + d2.totalMarks; st.style.color = '#059669'; }
-      
-      // Clear form inputs
+    var testTypeSel = (document.getElementById('ot-c-type')||{}).value || '';
+    var isPortfolio = testTypeSel === 'Portfolio Upload';
+
+    function finishCreate(msg) {
+      if (st) { st.textContent = msg; st.style.color = '#059669'; }
       var labelEl = document.getElementById('ot-c-label'); if (labelEl) labelEl.value = '';
       var instEl = document.getElementById('ot-c-instructions'); if (instEl) instEl.value = '';
-      
       otClearSelection();
       otPickerSelected.clear();
       otSelectedBatches.clear();
       otRenderSelectedBatchesList();
       otLoadTests();
       setTimeout(function(){ otSubTab('mytests'); }, 1500);
+    }
+
+    if (isPortfolio) {
+      // Portfolio tests have no questions — skip saveTestQuestions, go straight to activate if needed
+      if (activateMode === 'now') {
+        gasGet({action:'activateTest', instructor:instructorName, testId:testId}, function(ea, da) {
+          var live = da && da.status === 'ok';
+          finishCreate(live ? '✅ Portfolio test created & activated! Students can submit links.' : '✅ Portfolio test created (Draft — activate manually).');
+        });
+      } else {
+        finishCreate('✅ Portfolio test saved as Draft. Activate it when ready.');
+      }
+      return;
+    }
+
+    gasGet({action:'saveTestQuestions', instructor:instructorName, testId:testId, questionIds:JSON.stringify(qIds)}, function(e2, d2) {
+      if (e2 || !d2 || d2.status !== 'ok') {
+        if (st) { st.textContent = 'Test created but questions failed: ' + (d2 && d2.reason || ''); st.style.color = '#d97706'; }
+        return;
+      }
+      finishCreate('✅ Test created! ' + d2.saved + ' questions · Total marks: ' + d2.totalMarks);
     });
   });
 }
@@ -4522,16 +4539,18 @@ function otRenderTests(tests) {
       + '</div>'
       + '<div style="font-weight:600;font-size:14px;margin-bottom:6px;">'+escHtml(t.testLabel)+'</div>'
       + '<div style="font-size:12px;color:#6b7280;">Batch: <b>'+escHtml(t.batchCode || t.batchCodes || '')+'</b></div>'
-      + '<div style="font-size:12px;color:#6b7280;">Questions: <b>'+(t.questionCount||0)+'</b> · Duration: <b>'+t.duration+' min</b></div>'
-      + '<div style="font-size:12px;color:#6b7280;">Neg Marking: <b>'+escHtml(t.negativeMarking)+'</b></div>'
+      + (t.testType === 'Portfolio Upload'
+          ? '<div style="font-size:12px;color:#6b7280;">📎 Link submission · Duration: <b>'+t.duration+' min</b></div>'
+          : '<div style="font-size:12px;color:#6b7280;">Questions: <b>'+(t.questionCount||0)+'</b> · Duration: <b>'+t.duration+' min</b></div>')
+      + (t.testType !== 'Portfolio Upload' ? '<div style="font-size:12px;color:#6b7280;">Neg Marking: <b>'+escHtml(t.negativeMarking)+'</b></div>' : '')
       + (t.activatedAt ? '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Activated: '+actAt+'</div>' : '')
       + '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
       + (t.status === 'Draft' ? '<button class="ot-btn success" onclick="otActivateTest(\''+escHtml(t.testId)+'\')">▶ Activate</button>' : '')
-      + (t.status === 'Active' ? '<button class="ot-btn warn" onclick="otOpenProctorForTest(\''+escHtml(t.testId)+'\')">👁 Proctor Room</button>' : '')
+      + (t.status === 'Active' && t.testType !== 'Portfolio Upload' ? '<button class="ot-btn warn" onclick="otOpenProctorForTest(\''+escHtml(t.testId)+'\')">👁 Proctor Room</button>' : '')
       + (t.status === 'Closed' && t.resultsReleased !== 'Yes' ? '<button class="ot-btn primary" onclick="otReleaseResultsFor(\''+escHtml(t.testId)+'\',\'summary\')">📢 Release Results</button>' : '')
-      + (t.status === 'Closed' && t.resultsReleased !== 'Yes' ? '<button class="ot-btn ghost" onclick="otReleaseResultsFor(\''+escHtml(t.testId)+'\',\'full\')">&amp; Show Breakdown</button>' : '')
+      + (t.status === 'Closed' && t.resultsReleased !== 'Yes' && t.testType !== 'Portfolio Upload' ? '<button class="ot-btn ghost" onclick="otReleaseResultsFor(\''+escHtml(t.testId)+'\',\'full\')">&amp; Show Breakdown</button>' : '')
       + '<button class="ot-btn ghost" onclick="otViewResults(\''+escHtml(t.testId)+'\')">📊 Results</button>'
-      + '<button class="ot-btn ghost" onclick="otOpenQuestionsModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">📝 View Questions</button>'
+      + (t.testType !== 'Portfolio Upload' ? '<button class="ot-btn ghost" onclick="otOpenQuestionsModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">📝 View Questions</button>' : '')
       + '</div>'
       + '</div>';
   });

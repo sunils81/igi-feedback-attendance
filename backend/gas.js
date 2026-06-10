@@ -4454,7 +4454,13 @@ function otGetInstructorTests(ss, p) {
   otCheckScheduledActivations_(ss, rows, sh);
   // Re-read after potential updates
   rows = sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,22).getValues():[];
-  var tests = rows.filter(function(r){return r[0];}).map(otParseTestRow);
+  // Only show tests created by this instructor
+  var instrName = String(p.instructor||'').trim().toLowerCase();
+  var tests = rows.filter(function(r){
+    if (!r[0]) return false;
+    var creator = String(r[13]||'').trim().toLowerCase();
+    return creator === instrName;
+  }).map(otParseTestRow);
   var shOTQ = ss.getSheetByName(SH_OT_QUESTIONS);
   var otqRows = shOTQ.getLastRow()>1?shOTQ.getRange(2,1,shOTQ.getLastRow()-1,1).getValues():[];
   var qCounts = {};
@@ -4541,9 +4547,13 @@ function otActivateTest(ss, p) {
   var idx=rows.findIndex(function(r){return r[0]===p.testId;});
   if (idx===-1) return {status:'error',reason:'test_not_found'};
   if (rows[idx][6]!=='Draft'&&rows[idx][6]!=='Scheduled') return {status:'error',reason:'already_active_or_closed'};
-  var shOTQ=ss.getSheetByName(SH_OT_QUESTIONS);
-  var otqRows=shOTQ.getLastRow()>1?shOTQ.getRange(2,1,shOTQ.getLastRow()-1,1).getValues():[];
-  if (!otqRows.some(function(r){return r[0]===p.testId;})) return {status:'error',reason:'no_questions_in_test'};
+  var testType=String(rows[idx][2]||'').trim();
+  // Portfolio Upload tests have no MCQ questions — skip the question check
+  if (testType!=='Portfolio Upload') {
+    var shOTQ=ss.getSheetByName(SH_OT_QUESTIONS);
+    var otqRows=shOTQ.getLastRow()>1?shOTQ.getRange(2,1,shOTQ.getLastRow()-1,1).getValues():[];
+    if (!otqRows.some(function(r){return r[0]===p.testId;})) return {status:'error',reason:'no_questions_in_test'};
+  }
   var now=new Date();
   sh.getRange(idx+2,7).setValue('Active');
   sh.getRange(idx+2,10).setValue(now.toISOString());
@@ -6882,8 +6892,9 @@ function getDiplomaReleaseList(ss, p) {
         const n = String(a.testName || '').toLowerCase();
         if (t === 'weekly') return true;
         if (t === 'final' || t === 're-test') return false;
-        // name-based fallback
-        return (n.indexOf('weekly') !== -1 || n.indexOf('week') !== -1) && n.indexOf('final') === -1;
+        // name-based fallback — if name contains 'final' it's a final, otherwise treat as weekly
+        // (covers 'Test 1', 'Test 2', 'Weekly Test', etc.)
+        return n.indexOf('final') === -1;
       }
       function isFinalTest(a) {
         const t = String(a.testType || '').toLowerCase();

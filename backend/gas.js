@@ -1247,6 +1247,17 @@ function doGet(e) {
       return respond(getInstructorEligibility(ss, p));
     }
 
+    // ── getStudentDiplomaStatus ───────────────────────────────
+    // No auth needed — returns only the requesting student's own data.
+    if (act==='getStudentDiplomaStatus') {
+      const studentId = String(p.studentId || p.enrollmentNo || '').trim().toUpperCase();
+      if (!studentId) return respond({status:'error', reason:'missing_student_id'});
+      const full = getDiplomaReleaseList(ss, {});
+      if (full.status !== 'ok') return respond(full);
+      const rows = full.list.filter(r => String(r.studentId||'').toUpperCase() === studentId);
+      return respond({status:'ok', rows});
+    }
+
     // ── otSubmitPortfolio ─────────────────────────────────────
     if (act==='otSubmitPortfolio') {
       return respond(otSubmitPortfolio(ss, p));

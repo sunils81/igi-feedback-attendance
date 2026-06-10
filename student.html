@@ -561,6 +561,10 @@
         <span class="tab-label">My Tests</span>
         <span id="ot-tab-badge" style="display:none;position:absolute;top:4px;right:4px;width:10px;height:10px;background:#ef4444;border-radius:50%;border:2px solid #fff;animation:badgePulse 1.5s infinite;"></span>
       </button>
+      <button class="nav-tab" id="nav-tab-diploma" onclick="switchTab('tab-diploma', this); loadStudentDiploma();">
+        <span class="tab-icon">🎓</span>
+        <span class="tab-label">Diploma</span>
+      </button>
     </div>
 
     <!-- Option D: Sticky test alert bar (all tabs) -->
@@ -647,6 +651,12 @@
     <div id="tab-results" class="tab-content">
       <div id="ot-results-wrap">
         <div style="color:#9ca3af;font-size:13px;padding:20px 0;">Loading your test results…</div>
+      </div>
+    </div>
+
+    <div id="tab-diploma" class="tab-content">
+      <div id="student-diploma-wrap">
+        <div style="color:#9ca3af;font-size:13px;padding:20px 0;">Loading diploma status…</div>
       </div>
     </div>
 
@@ -2830,6 +2840,114 @@ if ('serviceWorker' in navigator) {
       refreshing = true;
       window.location.reload();
     }
+  });
+}
+
+/* ══════════════════════════════════════════
+   DIPLOMA ELIGIBILITY TAB (student view)
+   Shows only THIS student's own status.
+══════════════════════════════════════════ */
+function loadStudentDiploma() {
+  var wrap = document.getElementById('student-diploma-wrap');
+  if (!wrap) return;
+  if (!portalData) {
+    wrap.innerHTML = '<p style="color:#9ca3af;font-size:13px;padding:20px 0;">Please log in first.</p>';
+    return;
+  }
+  var sid = portalData.enrollmentNo || portalData.studentId || '';
+  if (!sid) {
+    wrap.innerHTML = '<p style="color:#9ca3af;font-size:13px;padding:20px 0;">Could not determine your student ID.</p>';
+    return;
+  }
+
+  wrap.innerHTML = '<p style="color:#9ca3af;font-size:13px;padding:20px 0;">Loading diploma status…</p>';
+
+  // Single call — backend filters to only this student's rows
+  gasGet({action:'getStudentDiplomaStatus', studentId: sid}, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      wrap.innerHTML = '<p style="color:#dc2626;font-size:13px;padding:20px 0;">Could not load diploma status. Please try again.</p>';
+      return;
+    }
+    var rows = d.rows || [];
+    if (!rows.length) {
+      wrap.innerHTML = '<p style="color:#9ca3af;font-size:13px;padding:20px 0;">No diploma batch data found. If you are enrolled in a diploma programme, please contact your instructor.</p>';
+      return;
+    }
+
+    var html = '<div style="padding:4px 0 12px;">' +
+      '<h3 style="font-size:15px;font-weight:800;color:#0D1B2E;margin:0 0 4px;">🎓 Diploma Eligibility</h3>' +
+      '<p style="font-size:11px;color:#6b7280;margin:0 0 14px;">Criteria: weekly test average ≥ 60% and final exam ≥ 60%. Attendance (≥75%) is advisory.</p>' +
+    '</div>';
+
+    rows.forEach(function(row) {
+      // Backend returns nested objects: row.attendance.pct, row.weeklyAvg.value, row.finalExam.value
+      var attPct     = row.attendance    ? row.attendance.pct           : null;
+      var weeklyVal  = row.weeklyAvg     ? row.weeklyAvg.value          : null;
+      var finalVal   = row.finalExam     ? row.finalExam.value          : null;
+      var eligible   = row.eligible;
+      var released   = row.diplomaStatus === 'Released';
+
+      var attStr    = attPct    != null ? Math.round(attPct)   + '%' : '—';
+      var weeklyStr = weeklyVal != null ? Math.round(weeklyVal)+ '%' : '—';
+      var finalStr  = finalVal  != null ? Math.round(finalVal) + '%' : '—';
+
+      var attPass    = attPct    != null && attPct    >= 75;
+      var weeklyPass = weeklyVal != null && weeklyVal >= 60;
+      var finalPass  = finalVal  != null && finalVal  >= 60;
+
+      var G = '#059669', R = '#dc2626', A = '#b45309';
+      var passStyle = 'color:'+G+';font-weight:700;';
+      var failStyle = 'color:'+R+';font-weight:700;';
+      var warnStyle = 'color:'+A+';font-weight:700;';
+
+      var attBadge    = attPass    ? '<span style="'+passStyle+'">✅ '+attStr   +'</span>' : '<span style="'+warnStyle+'">⚠ '+attStr+'</span>';
+      var weeklyBadge = weeklyVal != null
+        ? (weeklyPass ? '<span style="'+passStyle+'">✅ '+weeklyStr+'</span>' : '<span style="'+failStyle+'">✗ '+weeklyStr+'</span>')
+        : '<span style="color:#9ca3af;">—</span>';
+      var finalBadge  = finalVal != null
+        ? (finalPass  ? '<span style="'+passStyle+'">✅ '+finalStr +'</span>' : '<span style="'+failStyle+'">✗ '+finalStr +'</span>')
+        : '<span style="color:#9ca3af;">—</span>';
+
+      var statusHtml, statusBg;
+      if (released) {
+        statusHtml = '<span style="color:#059669;font-weight:800;font-size:13px;">🎓 Diploma Released</span>';
+        statusBg   = '#f0fdf4';
+      } else if (eligible) {
+        statusHtml = '<span style="color:#059669;font-weight:800;font-size:13px;">✅ Eligible — awaiting release</span>';
+        statusBg   = '#f0fdf4';
+      } else {
+        var missing = [];
+        if (!weeklyPass) missing.push('Weekly avg ' + weeklyStr + ' (need ≥60%)');
+        if (!finalPass)  missing.push('Final exam ' + finalStr  + ' (need ≥60%)');
+        if (!missing.length) missing.push('Assessment in progress');
+        statusHtml = '<span style="color:#dc2626;font-weight:800;font-size:13px;">⏳ Not yet eligible</span>' +
+          '<div style="font-size:11px;color:#6b7280;margin-top:4px;">' + missing.join(' &nbsp;·&nbsp; ') + '</div>';
+        statusBg = '#fff';
+      }
+
+      html += '<div style="background:'+statusBg+';border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:14px;">' +
+        '<div style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">' +
+          (row.course || '') + (row.batchCode ? ' &nbsp;·&nbsp; ' + row.batchCode : '') +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">' +
+          '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
+            '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">ATTENDANCE<br><span style="font-size:9px;font-weight:400;opacity:.8">advisory ≥75%</span></div>' +
+            '<div style="font-size:15px;">' + attBadge + '</div>' +
+          '</div>' +
+          '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
+            '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">WEEKLY AVG<br><span style="font-size:9px;font-weight:400;opacity:.8">must be ≥60%</span></div>' +
+            '<div style="font-size:15px;">' + weeklyBadge + '</div>' +
+          '</div>' +
+          '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
+            '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">FINAL EXAM<br><span style="font-size:9px;font-weight:400;opacity:.8">must be ≥60%</span></div>' +
+            '<div style="font-size:15px;">' + finalBadge + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="border-top:1px solid #e5e7eb;padding-top:10px;">' + statusHtml + '</div>' +
+      '</div>';
+    });
+
+    wrap.innerHTML = html;
   });
 }
 </script>

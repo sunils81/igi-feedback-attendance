@@ -5006,7 +5006,10 @@ function trayToggleLoan(trayId, btnEl) {
   if (!expand) return;
   var isOpen = expand.classList.contains('open');
   if (isOpen) { trayCollapseLoan(trayId); }
-  else { expand.classList.add('open'); }
+  else {
+    expand.classList.add('open');
+    trayUpdateLoanInstructor(trayId);
+  }
 }
 function trayCollapseLoan(trayId) {
   var expand = document.getElementById('loan-expand-'+trayId);
@@ -5421,10 +5424,14 @@ function _htmlToEl(html) {
 function trayUpdateLoanInstructor(trayId) {
   var ctrEl = document.getElementById('loan-ctr-'+trayId);
   var dlEl  = document.getElementById('loan-instr-list-'+trayId);
+  var inputEl = document.getElementById('loan-instr-'+trayId);
   if (!ctrEl || !dlEl) return;
   var centre = ctrEl.value;
   var names  = CENTRE_INSTRUCTORS[centre] || [];
   dlEl.innerHTML = names.map(function(n){ return '<option value="'+trayEsc(n)+'">'; }).join('');
+  if (inputEl && names.length > 0) {
+    inputEl.value = names[0];
+  }
 }
 
 // ── JOURNEY TRAIL ─────────────────────────────────────────────────────────────
@@ -5492,6 +5499,10 @@ function trayOpenPlanModal(trayId) {
     document.getElementById('tpm-to-centre').addEventListener('change', function(){
       var names = CENTRE_INSTRUCTORS[this.value]||[];
       document.getElementById('tpm-instr-list').innerHTML = names.map(function(n){return '<option value="'+trayEsc(n)+'">';}).join('');
+      var instrEl = document.getElementById('tpm-to-instr');
+      if (instrEl) {
+        instrEl.value = names.length > 0 ? names[0] : '';
+      }
     });
   }
   document.getElementById('tpm-tray-title').textContent = trayId;

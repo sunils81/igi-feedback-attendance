@@ -3079,8 +3079,15 @@ function buildIdCardHTML(d) {
   }
 
   var centre   = primary ? (primary.centre  || '—') : '—';
-  var course   = primary ? (primary.course  || '—') : '—';
   var slot     = primary ? (primary.batchSlot||'—') : '—';
+
+  // If student holds both Diamond Graduate + Colored Stone Graduate → Graduate Gemologist
+  var allCourseNames = allBatches.map(function(b) { return (b.course||'').toLowerCase(); });
+  var hasDiamond      = allCourseNames.some(function(c){ return c.indexOf('diamond') !== -1; });
+  var hasColoredStone = allCourseNames.some(function(c){ return c.indexOf('colored stone') !== -1 || c.indexOf('coloured stone') !== -1; });
+  var course = (hasDiamond && hasColoredStone)
+    ? 'Graduate Gemologist'
+    : (primary ? (primary.course || '—') : '—');
   var startDis = primary ? (primary.startDateDisplay||'—') : '—';
   var endDis   = primary ? (primary.endDateDisplay  ||'—') : '—';
 

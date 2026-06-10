@@ -4874,7 +4874,7 @@ function trayRenderConfirm(wrap, trays) {
       + '<div id="loan-igi-'+safeId+'" style="display:'+(isExt?'none':'block')+'">'
       + '<div class="ctr-loan-row">'
       + '<div class="ctr-loan-field"><label>Sent to IGI Centre</label><select id="loan-ctr-'+safeId+'" onchange="trayUpdateLoanInstructor(\''+safeId+'\')">'+centreOpts+'</select></div>'
-      + '<div class="ctr-loan-field"><label>Receiving Instructor</label><input type="text" id="loan-instr-'+safeId+'" list="loan-instr-list-'+safeId+'" placeholder="Instructor name"><datalist id="loan-instr-list-'+safeId+'"></datalist></div>'
+      + '<div class="ctr-loan-field"><label>Receiving Instructor</label><select id="loan-instr-'+safeId+'"></select></div>'
       + '<div class="ctr-loan-field"><label>Expected Return Date</label><input type="date" id="loan-ret-'+safeId+'" value="'+((!isExt&&t.expectedReturn)||defaultReturn)+'"></div>'
       + '</div></div>'
       + '<div id="loan-ext-'+safeId+'" style="display:'+(isExt?'block':'none')+'">'
@@ -5423,14 +5423,32 @@ function _htmlToEl(html) {
 // ── LOAN INSTRUCTOR DATALIST ─────────────────────────────────────────────────
 function trayUpdateLoanInstructor(trayId) {
   var ctrEl = document.getElementById('loan-ctr-'+trayId);
-  var dlEl  = document.getElementById('loan-instr-list-'+trayId);
-  var inputEl = document.getElementById('loan-instr-'+trayId);
-  if (!ctrEl || !dlEl) return;
+  var selectEl = document.getElementById('loan-instr-'+trayId);
+  if (!ctrEl || !selectEl) return;
   var centre = ctrEl.value;
-  var names  = CENTRE_INSTRUCTORS[centre] || [];
-  dlEl.innerHTML = names.map(function(n){ return '<option value="'+trayEsc(n)+'">'; }).join('');
-  if (inputEl && names.length > 0) {
-    inputEl.value = names[0];
+  var centreInstructors = CENTRE_INSTRUCTORS[centre] || [];
+  var defaultInstr = centreInstructors.length > 0 ? centreInstructors[0] : '';
+  
+  var html = '';
+  if (defaultInstr) {
+    centreInstructors.forEach(function(name) {
+      html += '<option value="'+trayEsc(name)+'">'+trayEsc(name)+'</option>';
+    });
+    html += '<option disabled>──────────</option>';
+  }
+  
+  var allInstructors = typeof INSTRUCTORS !== 'undefined' ? INSTRUCTORS : [];
+  allInstructors.forEach(function(name) {
+    if (centreInstructors.indexOf(name) === -1) {
+      html += '<option value="'+trayEsc(name)+'">'+trayEsc(name)+'</option>';
+    }
+  });
+  
+  selectEl.innerHTML = html;
+  if (defaultInstr) {
+    selectEl.value = defaultInstr;
+  } else {
+    selectEl.insertAdjacentHTML('afterbegin', '<option value="" selected disabled>-- Select Instructor --</option>');
   }
 }
 
@@ -5477,7 +5495,7 @@ function trayOpenPlanModal(trayId) {
       +'<h4>Add next leg</h4>'
       +'<div class="tpm-row">'
       +'<div class="tpm-field"><label>To Centre</label><select id="tpm-to-centre"><option value="">— select —</option></select></div>'
-      +'<div class="tpm-field"><label>Receiving Instructor</label><input type="text" id="tpm-to-instr" list="tpm-instr-list" placeholder="Instructor name"><datalist id="tpm-instr-list"></datalist></div>'
+      +'<div class="tpm-field"><label>Receiving Instructor</label><select id="tpm-to-instr"><option value="">— select centre first —</option></select></div>'
       +'</div>'
       +'<div class="tpm-row">'
       +'<div class="tpm-field"><label>Planned Start</label><input type="date" id="tpm-start"></div>'
@@ -5497,11 +5515,33 @@ function trayOpenPlanModal(trayId) {
       sel.insertAdjacentHTML('beforeend','<option value="'+trayEsc(c)+'">'+trayEsc(c)+'</option>');
     });
     document.getElementById('tpm-to-centre').addEventListener('change', function(){
-      var names = CENTRE_INSTRUCTORS[this.value]||[];
-      document.getElementById('tpm-instr-list').innerHTML = names.map(function(n){return '<option value="'+trayEsc(n)+'">';}).join('');
+      var centre = this.value;
+      var centreInstructors = CENTRE_INSTRUCTORS[centre] || [];
+      var defaultInstr = centreInstructors.length > 0 ? centreInstructors[0] : '';
+      
+      var html = '';
+      if (defaultInstr) {
+        centreInstructors.forEach(function(name) {
+          html += '<option value="'+trayEsc(name)+'">'+trayEsc(name)+'</option>';
+        });
+        html += '<option disabled>──────────</option>';
+      }
+      
+      var allInstructors = typeof INSTRUCTORS !== 'undefined' ? INSTRUCTORS : [];
+      allInstructors.forEach(function(name) {
+        if (centreInstructors.indexOf(name) === -1) {
+          html += '<option value="'+trayEsc(name)+'">'+trayEsc(name)+'</option>';
+        }
+      });
+      
       var instrEl = document.getElementById('tpm-to-instr');
       if (instrEl) {
-        instrEl.value = names.length > 0 ? names[0] : '';
+        instrEl.innerHTML = html;
+        if (defaultInstr) {
+          instrEl.value = defaultInstr;
+        } else {
+          instrEl.insertAdjacentHTML('afterbegin', '<option value="" selected disabled>-- Select Instructor --</option>');
+        }
       }
     });
   }

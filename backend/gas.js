@@ -7008,10 +7008,10 @@ function getDiplomaReleaseList(ss, p) {
       otStudentScores.forEach(entry => {
         const tl = String(entry.testType || '').toLowerCase();
         const nl = String(entry.testLabel || '').toLowerCase();
+        // Match isWeeklyTest logic: weekly if testType is 'weekly', or if testType is
+        // not 'final'/'re-test' and the label doesn't contain 'final'.
         const isW = tl === 'weekly' ||
-          (tl !== 'final' && tl !== 're-test' &&
-           (nl.indexOf('weekly') !== -1 || nl.indexOf('week') !== -1) &&
-           nl.indexOf('final') === -1);
+          (tl !== 'final' && tl !== 're-test' && nl.indexOf('final') === -1);
         if (isW) onlineWeeklyScores.push(entry.pct);
       });
 

@@ -1078,18 +1078,21 @@ function doGet(e) {
     if (act==='getBatchSnapshot') return respond(getBatchSnapshot(ss));
 
     // ── TRAY HUB ──────────────────────────────────────────────
-    if (act==='trayRegister')       return respond(trayRegister(ss,p));
-    if (act==='trayGetBoard')       return respond(trayGetBoard(ss,p));
-    if (act==='trayGetMine')        return respond(trayGetMine(ss,p));
-    if (act==='trayBook')           return respond(trayBook(ss,p));
-    if (act==='trayRespond')        return respond(trayRespond(ss,p));
-    if (act==='trayMarkReturning')  return respond(trayMarkReturning(ss,p));
-    if (act==='trayConfirmReturn')  return respond(trayConfirmReturn(ss,p));
-    if (act==='trayGetWeekPlan')    return respond(trayGetWeekPlan(ss,p));
-    if (act==='traySetWeeklyNeed')  return respond(traySetWeeklyNeed(ss,p));
-    if (act==='trayGetNotifications') return respond(trayGetNotifications(ss,p));
-    if (act==='trayMarkNotifRead')  return respond(trayMarkNotifRead(ss,p));
-    if (act==='trayGetHistory')     return respond(trayGetHistory(ss,p));
+    if (act==='trayRegister')           return respond(trayRegister(ss,p));
+    if (act==='trayBulkSeed')           return respond(trayBulkSeed(ss,p));
+    if (act==='trayGetBoard')           return respond(trayGetBoard(ss,p));
+    if (act==='trayGetMine')            return respond(trayGetMine(ss,p));
+    if (act==='trayBook')               return respond(trayBook(ss,p));
+    if (act==='trayRespond')            return respond(trayRespond(ss,p));
+    if (act==='trayMarkReturning')      return respond(trayMarkReturning(ss,p));
+    if (act==='trayConfirmReturn')      return respond(trayConfirmReturn(ss,p));
+    if (act==='trayConfirmLocation')    return respond(trayConfirmLocation(ss,p));
+    if (act==='trayUpdateDetails')      return respond(trayUpdateDetails(ss,p));
+    if (act==='trayGetWeekPlan')        return respond(trayGetWeekPlan(ss,p));
+    if (act==='traySetWeeklyNeed')      return respond(traySetWeeklyNeed(ss,p));
+    if (act==='trayGetNotifications')   return respond(trayGetNotifications(ss,p));
+    if (act==='trayMarkNotifRead')      return respond(trayMarkNotifRead(ss,p));
+    if (act==='trayGetHistory')         return respond(trayGetHistory(ss,p));
 
     // ── getBatches ─────────────────────────────────────────────
     if (act==='getBatches') {
@@ -5410,7 +5413,7 @@ function ensureTraySheets(ss) {
     }
     return sh;
   }
-  ensureSheet(SH_TRAY_REGISTRY,      ['TrayID','Type','HomeCentre','HomeInstructor','StoneCount','RegisteredAt','Notes']);
+  ensureSheet(SH_TRAY_REGISTRY,      ['TrayID','Category','TopicCode','TopicName','HomeCentre','HomeInstructor','StoneCount','WeekUsage','LocationStatus','CurrentCentre','ExpectedReturn','RegisteredAt','Notes']);
   ensureSheet(SH_TRAY_BOOKINGS,      ['BookingID','TrayID','HomeCentre','RequestingInstructor','RequestingCentre','WeeksBooked','StartDate','DeadlineDate','Status','StoneCountOnReturn','RejectReason','CreatedAt','UpdatedAt']);
   ensureSheet(SH_TRAY_NOTIFICATIONS, ['NotifID','ToInstructor','Type','BookingID','Message','Read','CreatedAt']);
   ensureSheet(SH_TRAY_WEEKLY_NEEDS,  ['Instructor','Centre','TraysNeededPerWeek','UpdatedAt']);
@@ -5427,23 +5430,153 @@ function trayRows(sh) {
   return sh.getRange(2, 1, sh.getLastRow()-1, sh.getLastColumn()).getValues();
 }
 
-function trayNextId(ss, type, centre, explicitNum) {
-  // Auto-generate ID: DIA-CTR-01 or CS-CTR-01
-  var prefix = (type === 'Diamond') ? 'DIA' : 'CS';
-  var ctrCode = centre.replace(/[^A-Z]/gi,'').toUpperCase().substring(0,3);
-  if (explicitNum) {
-    return prefix + '-' + ctrCode + '-' + String(parseInt(explicitNum)).padStart(2,'0');
+// ── TRAY CATALOGUE ──────────────────────────────────────────────────────────
+// All known trays, keyed by centre. Used for bulk-seeding and guided registration.
+var TRAY_CATALOGUE = {
+  // Diamond trays (topic code → {name, weekUsage})
+  DM: {
+    'MS' : {name:'Master Set',           weekUsage:'Week 2–6'},
+    'RI1': {name:'Regular Inventory 1',  weekUsage:'Week 2–6'},
+    'RI2': {name:'Regular Inventory 2',  weekUsage:'Week 2–6'},
+    'FS' : {name:'Fancy Shapes',         weekUsage:'Week 4'},
+    'IM' : {name:'Imitation',            weekUsage:'Week 4'},
+    'WT' : {name:'Weekly Test',          weekUsage:'Week 3–4–5'},
+    'FT' : {name:'Final Test',           weekUsage:'Week 6'},
+    'LG1': {name:'Lab Grown 1',          weekUsage:'Week 4–5–6'},
+    'LG2': {name:'Lab Grown 2',          weekUsage:'Week 4–5–6'},
+    'DS' : {name:'Diamond Sorting',      weekUsage:'Week 5'},
+    'MJ' : {name:'Mounted Jewelry',      weekUsage:'Week 5'},
+    'RD1': {name:'Rough Diamonds 1',     weekUsage:'Week 1'},
+    'RD2': {name:'Rough Diamonds 2',     weekUsage:'Week 1'},
+    'RD3': {name:'Rough Diamonds 3',     weekUsage:'Week 1'}
+  },
+  // Colored Stone trays
+  CS: {
+    'OPI' : {name:'Optical Properties & Instruments', weekUsage:''},
+    'OPI2': {name:'Optical Properties & Instruments 2', weekUsage:''},
+    'INI' : {name:'Instruments & Inclusions',          weekUsage:''},
+    'INI2': {name:'Instruments & Inclusions 2',        weekUsage:''},
+    'RES' : {name:'Natural RES (Ruby·Emerald·Sapphire)',weekUsage:''},
+    'TRT' : {name:'Treatments',                        weekUsage:''},
+    'SYN' : {name:'Synthetics',                        weekUsage:''},
+    'GR1' : {name:'Group 1 (Garnet·Opal·Lapis)',       weekUsage:''},
+    'GR2' : {name:'Group 2 (Tourmaline·Topaz·Peridot)',weekUsage:''},
+    'GR3' : {name:'Group 3 (Feldspar·Jade·Tanzanite)', weekUsage:''},
+    'QTZ' : {name:'Quartz',                            weekUsage:''},
+    'QTZ1': {name:'Quartz 1 (Amethyst·Smoky·Citrine)', weekUsage:''},
+    'QTZ2': {name:'Quartz 2 (Agate·Chalcedony·Onyx)',  weekUsage:''},
+    'PRC' : {name:'Practice',                          weekUsage:''},
+    'PRC2': {name:'Practice 2',                        weekUsage:''}
+  },
+  // Organics
+  OR: {
+    'OR1': {name:'Organics 1 (Amber·Coral·Pearl)',    weekUsage:''},
+    'OR2': {name:'Organics 2',                         weekUsage:''}
   }
+};
+
+// Per-centre tray set. Format: [[category, topicCode, stoneCount], ...]
+var CENTRE_TRAY_SETS = {
+  'Mumbai': [
+    ['DM','MS',57],['DM','RI1',57],['DM','RI2',57],['DM','FS',25],
+    ['DM','IM',25],['DM','WT',25],['DM','FT',25],['DM','LG1',25],
+    ['DM','LG2',25],['DM','DS',25],['DM','MJ',25],
+    ['DM','RD1',25],['DM','RD2',25],['DM','RD3',25],
+    ['CS','OPI',25],['CS','INI',25],['CS','RES',25],['CS','TRT',25],
+    ['CS','SYN',25],['CS','GR1',25],['CS','GR2',25],['CS','QTZ',25],
+    ['CS','GR3',25],['CS','PRC',25],['CS','PRC2',25],
+    ['CS','OPI2',25],['CS','INI2',25],['CS','RES',25],['CS','TRT',25],
+    ['CS','SYN',25],['CS','GR1',25],['CS','GR2',25],['CS','QTZ',25],
+    ['CS','GR3',25],['CS','PRC',25],['CS','PRC2',25],
+    ['OR','OR1',25],['OR','OR2',25]
+  ],
+  'Delhi': [
+    ['DM','MS',57],['DM','RI1',57],['DM','RI2',57],['DM','FS',25],
+    ['DM','IM',25],['DM','WT',25],['DM','FT',25],['DM','DS',25],['DM','RD1',25],
+    ['CS','OPI',17],['CS','SYN',20],['CS','RES',25],['CS','GR1',20],
+    ['CS','GR2',25],['CS','QTZ1',25],['CS','QTZ2',25],['CS','PRC',25]
+  ],
+  'Surat': [
+    ['DM','MS',57],['DM','RI1',57],['DM','RI2',57],['DM','FS',25],
+    ['DM','IM',25],['DM','WT',25],['DM','FT',25]
+  ],
+  'Chennai': [
+    ['DM','MS',57],['DM','RI1',57]
+  ]
+};
+
+var CENTRE_ABBR = {'Mumbai':'MUM','Delhi':'DEL','Surat':'SUR','Chennai':'CHN'};
+
+function trayMakeId(centre, category, topicCode) {
+  var ctr = CENTRE_ABBR[centre] || centre.substring(0,3).toUpperCase();
+  return ctr + '-' + category + '-' + topicCode;
+}
+
+function trayNextId(ss, type, centre, explicitTopicCode) {
+  // New format: CTR-CAT-CODE  e.g. MUM-DM-MS, DEL-CS-OPI
+  var cat = (type === 'Diamond') ? 'DM' : (type === 'Organics' ? 'OR' : 'CS');
+  var code = explicitTopicCode || 'MISC';
+  return trayMakeId(centre, cat, code);
+}
+
+// ── trayBulkSeed ─────────────────────────────────────────────────────────────
+// Seeds all known trays for all centres. Safe to run multiple times (skips existing IDs).
+function trayBulkSeed(ss, p) {
+  ensureTraySheets(ss);
   var sh = getTraySheet(ss, SH_TRAY_REGISTRY);
-  var rows = trayRows(sh);
-  var max = 0;
-  rows.forEach(function(r) {
-    var id = String(r[0] || '');
-    var pat = new RegExp('^' + prefix + '-' + ctrCode + '-(\\d+)$');
-    var m = id.match(pat);
-    if (m) max = Math.max(max, parseInt(m[1]));
+  var existing = trayRows(sh).map(function(r){ return String(r[0]||'').trim(); });
+  var seeded = 0, skipped = 0;
+  var now = new Date().toISOString();
+  Object.keys(CENTRE_TRAY_SETS).forEach(function(centre) {
+    var abbr = CENTRE_ABBR[centre] || centre.substring(0,3).toUpperCase();
+    CENTRE_TRAY_SETS[centre].forEach(function(entry) {
+      var cat = entry[0], code = entry[1], stones = entry[2];
+      var id = abbr + '-' + cat + '-' + code;
+      if (existing.indexOf(id) !== -1) { skipped++; return; }
+      var catObj = TRAY_CATALOGUE[cat] || {};
+      var info = catObj[code] || {name: code, weekUsage: ''};
+      // cols: TrayID,Category,TopicCode,TopicName,HomeCentre,HomeInstructor,StoneCount,WeekUsage,LocationStatus,CurrentCentre,ExpectedReturn,RegisteredAt,Notes
+      sh.appendRow([id, cat, code, info.name, centre, '', stones, info.weekUsage, 'UNCONFIRMED', centre, '', now, 'Bulk seeded']);
+      existing.push(id);
+      seeded++;
+    });
   });
-  return prefix + '-' + ctrCode + '-' + String(max + 1).padStart(2,'0');
+  return {status:'ok', seeded:seeded, skipped:skipped};
+}
+
+// ── trayConfirmLocation ──────────────────────────────────────────────────────
+// p: { trayId, locationStatus('HOME'|'ON_LOAN'|'UNKNOWN'), currentCentre, expectedReturn, instructor }
+function trayConfirmLocation(ss, p) {
+  if (!p.trayId || !p.locationStatus) return {status:'error', message:'Missing trayId or locationStatus'};
+  var sh = getTraySheet(ss, SH_TRAY_REGISTRY);
+  var rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === String(p.trayId).trim()) {
+      sh.getRange(i+1, 9).setValue(p.locationStatus);                        // LocationStatus
+      sh.getRange(i+1,10).setValue(p.currentCentre || rows[i][4]);           // CurrentCentre
+      sh.getRange(i+1,11).setValue(p.expectedReturn || '');                   // ExpectedReturn
+      if (p.instructor && !rows[i][5]) sh.getRange(i+1,6).setValue(p.instructor); // HomeInstructor (first time)
+      return {status:'ok', trayId:p.trayId};
+    }
+  }
+  return {status:'error', message:'Tray not found: '+p.trayId};
+}
+
+// ── trayUpdateDetails ────────────────────────────────────────────────────────
+// p: { trayId, stoneCount?, notes?, weekUsage? }
+function trayUpdateDetails(ss, p) {
+  if (!p.trayId) return {status:'error', message:'Missing trayId'};
+  var sh = getTraySheet(ss, SH_TRAY_REGISTRY);
+  var rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === String(p.trayId).trim()) {
+      if (p.stoneCount !== undefined) sh.getRange(i+1, 7).setValue(parseInt(p.stoneCount)||0);
+      if (p.weekUsage  !== undefined) sh.getRange(i+1, 8).setValue(p.weekUsage);
+      if (p.notes      !== undefined) sh.getRange(i+1,13).setValue(p.notes);
+      return {status:'ok', trayId:p.trayId};
+    }
+  }
+  return {status:'error', message:'Tray not found: '+p.trayId};
 }
 
 function trayAddNotif(ss, toInstructor, type, bookingId, message) {
@@ -5454,19 +5587,33 @@ function trayAddNotif(ss, toInstructor, type, bookingId, message) {
 }
 
 // ── trayRegister ─────────────────────────────────────────────────────────────
-// p: { type, centre, instructor, stoneCount, notes, trayNumber? }
+// p: { category('DM'|'CS'|'OR'), topicCode, centre, instructor, stoneCount, notes? }
+// Also accepts legacy: { type('Diamond'|'ColoredStone'), trayNumber, ... }
 function trayRegister(ss, p) {
-  if (!p.type || !p.centre || !p.instructor) return {status:'error', message:'Missing required fields'};
-  if (!['Diamond','ColoredStone'].includes(p.type)) return {status:'error', message:'Type must be Diamond or ColoredStone'};
-  var count = parseInt(p.stoneCount) || 0;
-  if (count < 25) return {status:'error', message:'Minimum 25 stones required per tray'};
   ensureTraySheets(ss);
-  var id = trayNextId(ss, p.type, p.centre, p.trayNumber || null);
-  // Check for duplicate ID
+  // Normalise category/topicCode
+  var cat, code;
+  if (p.category && p.topicCode) {
+    cat = p.category; code = p.topicCode;
+  } else if (p.type) {
+    // Legacy path
+    cat = (p.type === 'Diamond') ? 'DM' : (p.type === 'Organics' ? 'OR' : 'CS');
+    code = p.topicCode || (p.trayNumber ? 'T'+p.trayNumber : 'MISC');
+  } else {
+    return {status:'error', message:'Missing category/topicCode'};
+  }
+  if (!p.centre || !p.instructor) return {status:'error', message:'Missing centre or instructor'};
+  var count = parseInt(p.stoneCount) || 0;
+  if (count < 1) return {status:'error', message:'Stone count must be > 0'};
+  var abbr = CENTRE_ABBR[p.centre] || p.centre.substring(0,3).toUpperCase();
+  var id = abbr + '-' + cat + '-' + code;
   var sh = getTraySheet(ss, SH_TRAY_REGISTRY);
-  var existing = trayRows(sh).map(function(r){ return String(r[0]||''); });
+  var existing = trayRows(sh).map(function(r){ return String(r[0]||'').trim(); });
   if (existing.indexOf(id) !== -1) return {status:'error', message:'Tray '+id+' is already registered'};
-  sh.appendRow([id, p.type, p.centre, p.instructor, count, new Date().toISOString(), p.notes||'']);
+  var catObj = TRAY_CATALOGUE[cat] || {};
+  var info = catObj[code] || {name: code, weekUsage: ''};
+  // TrayID,Category,TopicCode,TopicName,HomeCentre,HomeInstructor,StoneCount,WeekUsage,LocationStatus,CurrentCentre,ExpectedReturn,RegisteredAt,Notes
+  sh.appendRow([id, cat, code, info.name, p.centre, p.instructor, count, info.weekUsage, 'HOME', p.centre, '', new Date().toISOString(), p.notes||'']);
   return {status:'ok', trayId: id};
 }
 
@@ -5495,17 +5642,27 @@ function trayGetBoard(ss, p) {
   });
 
   // Group trays by centre → type
+  // New cols: TrayID(0),Category(1),TopicCode(2),TopicName(3),HomeCentre(4),HomeInstructor(5),StoneCount(6),WeekUsage(7),LocationStatus(8),CurrentCentre(9),ExpectedReturn(10),RegisteredAt(11),Notes(12)
   var centreMap = {};
   regRows.forEach(function(r) {
     var trayId    = String(r[0]);
-    var type      = String(r[1]);
-    var centre    = String(r[2]);
-    var instructor= String(r[3]);
-    var stones    = parseInt(r[4])||0;
-    if (!centreMap[centre]) centreMap[centre] = {centre:centre, instructor:instructor, Diamond:[], ColoredStone:[]};
+    var cat       = String(r[1] || '');
+    var topicCode = String(r[2] || '');
+    var topicName = String(r[3] || '');
+    var centre    = String(r[4] || r[2] || ''); // HomeCentre (new col 4, fallback old col 2)
+    var instructor= String(r[5] || r[3] || '');
+    var stones    = parseInt(r[6] !== undefined ? r[6] : r[4]) || 0;
+    var weekUsage = String(r[7] || '');
+    var locStatus = String(r[8] || 'UNCONFIRMED');
+    var currentCtr= String(r[9] || centre);
+    // Legacy support: if cat is empty, derive from old 'Type' field
+    if (!cat) { cat = (String(r[1])==='Diamond') ? 'DM' : 'CS'; }
+    if (!centre) return;
+    if (!centreMap[centre]) centreMap[centre] = {centre:centre, instructor:instructor, DM:[], CS:[], OR:[]};
     var booking = activeBookings[trayId] || null;
     var trayStatus = 'available';
     var daysLeft = null;
+    if (locStatus === 'UNCONFIRMED') trayStatus = 'unconfirmed';
     if (booking) {
       trayStatus = booking.status === 'pending' ? 'requested' : (booking.status === 'returning' ? 'returning' : 'engaged');
       if (booking.deadline) {
@@ -5513,10 +5670,16 @@ function trayGetBoard(ss, p) {
         if (daysLeft < 0) trayStatus = 'overdue';
       }
     }
-    var key = (type === 'Diamond') ? 'Diamond' : 'ColoredStone';
+    var key = (cat === 'DM') ? 'DM' : (cat === 'OR' ? 'OR' : 'CS');
     centreMap[centre][key].push({
       trayId: trayId,
+      category: cat,
+      topicCode: topicCode,
+      topicName: topicName,
+      weekUsage: weekUsage,
       stoneCount: stones,
+      locationStatus: locStatus,
+      currentCentre: currentCtr,
       status: trayStatus,
       requestingCentre: booking ? booking.requestingCentre : null,
       requestingInstructor: booking ? booking.requestingInstructor : null,
@@ -5533,14 +5696,16 @@ function trayGetBoard(ss, p) {
         free: trays.filter(function(t){ return t.status==='available'; }).length,
         engaged: trays.filter(function(t){ return ['engaged','overdue','returning'].indexOf(t.status)!==-1; }).length,
         requested: trays.filter(function(t){ return t.status==='requested'; }).length,
+        unconfirmed: trays.filter(function(t){ return t.status==='unconfirmed'; }).length,
         trays: trays
       };
     }
     return {
       centre: c.centre,
       instructor: c.instructor,
-      diamond: summary(c.Diamond),
-      coloredStone: summary(c.ColoredStone)
+      diamond: summary(c.DM),
+      coloredStone: summary(c.CS),
+      organics: summary(c.OR)
     };
   });
   centres.sort(function(a,b){ return a.centre.localeCompare(b.centre); });
@@ -5557,7 +5722,7 @@ function trayGetMine(ss, p) {
   // Also get incoming requests for my trays
   var bookRows = trayRows(getTraySheet(ss, SH_TRAY_BOOKINGS));
   var regRows  = trayRows(getTraySheet(ss, SH_TRAY_REGISTRY));
-  var myTrayIds = regRows.filter(function(r){ return String(r[2])===p.centre; }).map(function(r){ return String(r[0]); });
+  var myTrayIds = regRows.filter(function(r){ return String(r[4]||r[2])===p.centre; }).map(function(r){ return String(r[0]); });
   var incoming = bookRows.filter(function(r){
     return myTrayIds.indexOf(String(r[1]))!==-1 && String(r[8])==='pending';
   }).map(function(r){

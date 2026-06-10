@@ -1680,7 +1680,8 @@ function doGet(e) {
           endDate:    rawEnd?new Date(rawEnd).toLocaleDateString('en-IN'):'',
           endDateISO: endDateISO,
           active:     String(r[7]||'Y')!=='N',   // col H — 'N' means inactive
-          instructor: hasSlot?(r[9]||''):(r[8]||'')
+          instructor: hasSlot?(r[9]||''):(r[8]||''),
+          syllabus:   SYLLABI[r[2]] || []
         };
       });
       return respond({status:'ok',batches});
@@ -1718,6 +1719,27 @@ function doGet(e) {
           String(s[1]).toUpperCase()===batchCode &&
           s[2] && dateKey(s[2])===todayISO
         );
+        const syllabus = SYLLABI[r[2]] || [];
+        let dayNo = '';
+        let scheduledTopic = '';
+        let week = '';
+        if (todaySess) {
+          dayNo = todaySess[3];
+          if (syllabus && dayNo > 0 && dayNo <= syllabus.length) {
+            scheduledTopic = syllabus[dayNo - 1].topic;
+            week = syllabus[dayNo - 1].week || '';
+          }
+        } else if (activeToday && isWorkDay && startDate && syllabus.length) {
+          const startStr = startRaw instanceof Date ? dateKey(startRaw) : String(startRaw).split('T')[0];
+          const schedule = getWorkingSchedule(startStr, syllabus.length, holidays);
+          schedule.forEach((d, i) => {
+            if (dateKey(d) === todayISO) {
+              dayNo = i + 1;
+              scheduledTopic = syllabus[i].topic;
+              week = syllabus[i].week || '';
+            }
+          });
+        }
         return {
           batchCode, centre:r[1], course:r[2], type:r[3],
           batchSlot:isNew?(r[4]||'Full Day'):'Full Day',
@@ -1727,7 +1749,11 @@ function doGet(e) {
           sessionCode:todaySess?String(todaySess[0]):'',
           sessNo:todaySess?todaySess[3]:'',
           sessionType:todaySess?(todaySess[5]||'Scheduled'):'',
-          topic:todaySess?(todaySess[6]||''):''
+          topic:todaySess?(todaySess[6]||''):'',
+          syllabus,
+          scheduledTopic,
+          dayNo,
+          week
         };
       }).sort((a,b)=>{
         const slotOrder={'First Half':0,'Second Half':1,'Full Day':2};

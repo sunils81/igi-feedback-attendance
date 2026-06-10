@@ -300,8 +300,11 @@
       <div class="field"><label>Session Date *</label>
         <input type="date" id="ex-date">
       </div>
-      <div class="field"><label>Topic *</label>
-        <input type="text" id="ex-topic" placeholder="Describe what will be covered…">
+      <div class="field" id="ex-topic-field"><label>Topic *</label>
+        <select id="ex-topic-select" style="margin-bottom:8px" onchange="handleExtraTopicSelectChange()">
+          <option value="">— select batch first —</option>
+        </select>
+        <input type="text" id="ex-topic" placeholder="Describe what will be covered…" style="display:none">
       </div>
       <button class="btn btn-gold" id="ex-btn" onclick="createExtraSession()">Create Extra Session →</button>
       <div class="err-box" id="ex-err"></div>
@@ -1715,6 +1718,37 @@ function initPortal() {
   if (exDate) exDate.value = new Date().toISOString().split('T')[0];
   const lgPin = document.getElementById('lg-pin');
   if (lgPin) lgPin.addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+
+  const exBatch = document.getElementById('ex-batch');
+  if (exBatch) {
+    exBatch.addEventListener('change', function() {
+      const batchCode = this.value;
+      const selectEl = document.getElementById('ex-topic-select');
+      const inputEl = document.getElementById('ex-topic');
+      if (!selectEl || !inputEl) return;
+      
+      if (!batchCode) {
+        selectEl.innerHTML = '<option value="">— select batch first —</option>';
+        inputEl.style.display = 'none';
+        inputEl.value = '';
+        return;
+      }
+      
+      const batch = (typeof instructorBatchesCache !== 'undefined' ? instructorBatchesCache : []).find(b => b.batchCode === batchCode);
+      const syllabus = batch ? (batch.syllabus || []) : [];
+      
+      var html = '<option value="">-- Select Topic --</option>';
+      syllabus.forEach(function(item) {
+        html += '<option value="' + escHtml(item.topic) + '">Day ' + item.day + ': ' + item.topic + '</option>';
+      });
+      html += '<option value="__custom__">Other / Custom Topic</option>';
+      
+      selectEl.innerHTML = html;
+      selectEl.value = '';
+      inputEl.style.display = 'none';
+      inputEl.value = '';
+    });
+  }
 }
 
 if (document.readyState === 'loading') {
@@ -2032,7 +2066,35 @@ function renderTodaySessions(sessions) {
       } else {
         html += '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Session has not been started yet.</div>';
       }
-      html += '<input type="text" class="topic-override" id="topic-' + escH(s.batchCode) + '" placeholder="Topic covered today">';
+      var syllabus = s.syllabus || [];
+      var scheduledTopic = s.scheduledTopic || '';
+      var isPredefined = false;
+      var matchedTopicValue = '';
+      if (scheduledTopic) {
+        var normalizedScheduled = normalizeTopic(scheduledTopic);
+        for (var j = 0; j < syllabus.length; j++) {
+          if (normalizeTopic(syllabus[j].topic) === normalizedScheduled) {
+            isPredefined = true;
+            matchedTopicValue = syllabus[j].topic;
+            break;
+          }
+        }
+      }
+      
+      var selectHtml = '<select class="topic-select" id="topic-select-' + escH(s.batchCode) + '" onchange="handleTopicSelectChange(\'' + escH(s.batchCode) + '\', false)" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid var(--border);font-family:inherit;font-size:14px;background:#fff;margin-bottom:6px;">';
+      selectHtml += '<option value="">-- Select Topic --</option>';
+      syllabus.forEach(function(item) {
+        var optLabel = 'Day ' + item.day + ': ' + item.topic;
+        var selected = (isPredefined && item.topic === matchedTopicValue) ? ' selected' : '';
+        selectHtml += '<option value="' + escH(item.topic) + '"' + selected + '>' + escH(optLabel) + '</option>';
+      });
+      var customSelected = (scheduledTopic && !isPredefined) ? ' selected' : '';
+      selectHtml += '<option value="__custom__"' + customSelected + '>Other / Custom Topic</option>';
+      selectHtml += '</select>';
+      
+      html += selectHtml;
+      var showInputStyle = (scheduledTopic && !isPredefined) ? 'display:block; margin-top: 6px;' : 'display:none; margin-top: 6px;';
+      html += '<input type="text" class="topic-override" id="topic-' + escH(s.batchCode) + '" placeholder="Type custom topic here" style="' + showInputStyle + '" value="' + escH(scheduledTopic) + '">';
       html += '<button class="btn btn-gold" id="btn-' + escH(s.batchCode) + '" data-batch="' + escH(s.batchCode) + '" onclick="createTodaySession(this.dataset.batch)" ' + ((!s.workingDay||!s.activeToday)?'disabled':'') + '>Create Today\'s Session →</button>';
       html += '</div>';
       continue;
@@ -2058,8 +2120,36 @@ function renderTodaySessions(sessions) {
       html += '<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Day ' + s.dayNo + (s.week ? ' &middot; ' + escH(s.week) : '') + '</div>';
       html += '<div style="font-size:12px;background:var(--gold-pale);border-left:3px solid var(--gold);padding:8px 10px;border-radius:0 6px 6px 0;color:#6b4c10;margin-bottom:10px;line-height:1.4">' + escH(s.scheduledTopic) + '</div>';
     }
+    var syllabus = s.syllabus || [];
+    var currentTopic = displayTopic || s.scheduledTopic || '';
+    var isPredefined = false;
+    var matchedTopicValue = '';
+    if (currentTopic) {
+      var normalizedCurrent = normalizeTopic(currentTopic);
+      for (var j = 0; j < syllabus.length; j++) {
+        if (normalizeTopic(syllabus[j].topic) === normalizedCurrent) {
+          isPredefined = true;
+          matchedTopicValue = syllabus[j].topic;
+          break;
+        }
+      }
+    }
+    
+    var selectHtml = '<select class="topic-select" id="tov-select-' + escH(s.sessionCode) + '" onchange="handleTopicSelectChange(\'' + escH(s.sessionCode) + '\', true)" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid var(--border);font-family:inherit;font-size:14px;background:#fff;margin-bottom:6px;">';
+    selectHtml += '<option value="">-- Select Topic --</option>';
+    syllabus.forEach(function(item) {
+      var optLabel = 'Day ' + item.day + ': ' + item.topic;
+      var selected = (isPredefined && item.topic === matchedTopicValue) ? ' selected' : '';
+      selectHtml += '<option value="' + escH(item.topic) + '"' + selected + '>' + escH(optLabel) + '</option>';
+    });
+    var customSelected = (currentTopic && !isPredefined) ? ' selected' : '';
+    selectHtml += '<option value="__custom__"' + customSelected + '>Other / Custom Topic</option>';
+    selectHtml += '</select>';
+    
     html += '<div style="font-size:11px;color:var(--muted);margin-bottom:5px">Override topic if different today:</div>';
-    html += '<input type="text" class="topic-override" id="tov-' + escH(s.sessionCode) + '" placeholder="' + escH(displayTopic || s.scheduledTopic || 'Leave blank to keep scheduled topic') + '" value="' + escH(displayTopic) + '">';
+    html += selectHtml;
+    var showInputStyle = (currentTopic && !isPredefined) ? 'display:block; margin-top: 6px;' : 'display:none; margin-top: 6px;';
+    html += '<input type="text" class="topic-override" id="tov-' + escH(s.sessionCode) + '" placeholder="Type custom topic here" style="' + showInputStyle + '" value="' + escH(currentTopic) + '">';
     html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">';
     html += '<button class="btn btn-outline" style="flex:1;font-size:12px;padding:9px 12px;border-color:#1D9E75;color:#1D9E75" data-sess="' + escH(s.sessionCode) + '" onclick="updateTopic(this.dataset.sess)">Confirm Topic</button>';
     html += '<button class="btn btn-gold" style="flex:1.5;font-size:12px;padding:9px 12px;display:inline-flex;align-items:center;justify-content:center;gap:4px" data-batch="' + escH(s.batchCode) + '" data-sess="' + escH(s.sessionCode) + '" onclick="openAttendanceFor(this.dataset.batch, this.dataset.sess)">Open Attendance 👥</button>';
@@ -2073,6 +2163,48 @@ function escH(v) {
   return String(v || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function normalizeTopic(str) {
+  return String(str || '')
+    .toLowerCase()
+    .replace(/[\s\-\u2013\u2014]+/g, ' ')
+    .trim();
+}
+
+
+function handleTopicSelectChange(id, isOverride) {
+  var prefix = isOverride ? 'tov-' : 'topic-';
+  var selectEl = document.getElementById(prefix + 'select-' + id);
+  var inputEl = document.getElementById(prefix + id);
+  if (!selectEl || !inputEl) return;
+  
+  if (selectEl.value === '__custom__') {
+    inputEl.style.display = 'block';
+    if (inputEl.value === selectEl.dataset.prevPredefined) {
+      inputEl.value = '';
+    }
+  } else {
+    inputEl.style.display = 'none';
+    inputEl.value = selectEl.value;
+    selectEl.dataset.prevPredefined = selectEl.value;
+  }
+}
+
+function handleExtraTopicSelectChange() {
+  const selectEl = document.getElementById('ex-topic-select');
+  const inputEl = document.getElementById('ex-topic');
+  if (!selectEl || !inputEl) return;
+  
+  if (selectEl.value === '__custom__') {
+    inputEl.style.display = 'block';
+    if (inputEl.value === selectEl.dataset.prevPredefined) {
+      inputEl.value = '';
+    }
+  } else {
+    inputEl.style.display = 'none';
+    inputEl.value = selectEl.value;
+    selectEl.dataset.prevPredefined = selectEl.value;
+  }
+}
 
 function updateTopic(sessionCode) {
   const topic = (document.getElementById('tov-'+sessionCode)||{value:''}).value.trim();

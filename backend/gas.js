@@ -5678,7 +5678,7 @@ function trayGetBoard(ss, p) {
     var topicName = String(r[3] || '');
     var centre    = String(r[4] || r[2] || ''); // HomeCentre (new col 4, fallback old col 2)
     var instructor= String(r[5] || r[3] || '');
-    var stones    = parseInt(r[6] !== undefined ? r[6] : r[4]) || 0;
+    var stones    = parseInt(r[6]) || 0;
     var weekUsage = String(r[7] || '');
     var locStatus        = String(r[8] || 'UNCONFIRMED');
     var currentCtr       = String(r[9] || centre);

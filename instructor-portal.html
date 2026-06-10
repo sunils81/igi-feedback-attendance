@@ -602,7 +602,7 @@
   <div id="t-eligibility" class="tab-content">
     <div class="section-tag">Diploma Eligibility</div>
     <h2>Student Diploma Eligibility</h2>
-    <p class="sub">Shows which students in your batches are on track for their diploma based on attendance, weekly test average (best of 3), and final exam.</p>
+    <p class="sub">Shows which students in your batches are on track for their diploma based on attendance, weekly test average, and final exam.</p>
     <div id="elig-loading" style="text-align:center;padding:40px;color:#6b7280;font-size:14px;">Loading eligibility data…</div>
     <div id="elig-content" style="display:none;"></div>
   </div>
@@ -751,8 +751,8 @@
     <!-- ── Panel 1: Question Bank ─────────────────────────── -->
     <div id="ot-qbank" class="ot-panel active">
       <div class="ot-setup-banner">
-        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">📚 Question Bank — 355 Questions</div>
-        <div style="font-size:12px;opacity:.85">DG · CSG · PDG · RDG · SDA — First time? Click "Import Questions" to load the bank from the Excel into Google Sheets.</div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">📚 Question Bank — 385 Questions</div>
+        <div style="font-size:12px;opacity:.85">DG · CSG · JP · PDG · RDG · SDA — First time? Click "Import Questions" to load the bank from the seed data into Google Sheets.</div>
         <button class="ot-btn" style="margin-top:10px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3)" onclick="otImportBank()">⬆ Import / Refresh Question Bank</button>
       </div>
 
@@ -764,6 +764,7 @@
             <option value="CSG">Colored Stone Graduate (CSG)</option>
             <option value="JP">JewelPad Design (JP)</option>
             <option value="JD">Jewelry Design (JD)</option>
+            <option value="JDM">Jewelry Design Manual (JDM)</option>
             <option value="OTHER">Other (PDG/RDG/SDA)</option>
           </select>
         </div>
@@ -805,6 +806,7 @@
               <option value="CSG">CSG</option>
               <option value="JP">JP (JewelPad)</option>
               <option value="JD">JD (Jewelry Design)</option>
+              <option value="JDM">JDM (Jewelry Design Manual)</option>
               <option value="OTHER">Other (PDG/RDG/SDA)</option>
             </select>
           </div>
@@ -926,6 +928,7 @@
               <option value="RDG">Rough Diamond Graduate (RDG)</option>
               <option value="JP">JewelPad Design (JP)</option>
               <option value="JD">Jewelry Design (JD)</option>
+              <option value="JDM">Jewelry Design Manual (JDM)</option>
               <option value="SDA">Small Diamond Assortment (SDA)</option>
               <option value="ALL">All Courses</option>
             </select>
@@ -4433,7 +4436,9 @@ function otCreateTest() {
     return alert('Please select at least one batch in Step 3 · Audience.');
   }
   var qIds = [...otSelectedIds];
-  if (!qIds.length) return alert('No questions selected. Go to Question Bank and select questions first.');
+  var testTypeSel = (document.getElementById('ot-c-type')||{}).value || '';
+  var isPortfolio = testTypeSel === 'Portfolio Upload';
+  if (!isPortfolio && !qIds.length) return alert('No questions selected. Go to Question Bank and select questions first.');
 
   // Collect expiry
   var expiryMode = (document.querySelector('input[name="ct-expiry"]:checked')||{}).value || 'manual';
@@ -4456,7 +4461,7 @@ function otCreateTest() {
     action: 'createOnlineTest',
     instructor: instructorName,
     testLabel: label,
-    testType: (document.getElementById('ot-c-type')||{}).value || 'Weekly',
+    testType: testTypeSel || 'Weekly',
     course: (document.getElementById('ot-c-course')||{}).value || 'DG',
     batchCode: batches[0],
     batchCodes: batches.join(','),
@@ -4484,9 +4489,6 @@ function otCreateTest() {
       return;
     }
     var testId = d.testId;
-    var testTypeSel = (document.getElementById('ot-c-type')||{}).value || '';
-    var isPortfolio = testTypeSel === 'Portfolio Upload';
-
     function finishCreate(msg) {
       if (st) { st.textContent = msg; st.style.color = '#059669'; }
       var labelEl = document.getElementById('ot-c-label'); if (labelEl) labelEl.value = '';
@@ -6382,7 +6384,7 @@ function renderEligibility(batches) {
       html += '<thead><tr style="background:#0D1B2E;color:#C9A84C;">';
       html += '<th style="padding:7px 10px;text-align:left;border-radius:6px 0 0 0;">Student</th>';
       html += '<th style="padding:7px 10px;text-align:center;">Attendance</th>';
-      html += '<th style="padding:7px 10px;text-align:center;">Weekly Avg<br><span style="font-size:10px;font-weight:400;">(Best of 3)</span></th>';
+      html += '<th style="padding:7px 10px;text-align:center;">Weekly Avg<br><span style="font-size:10px;font-weight:400;">Manual + Online</span></th>';
       html += '<th style="padding:7px 10px;text-align:center;">Final Exam</th>';
       html += '<th style="padding:7px 10px;text-align:center;border-radius:0 6px 0 0;">Status</th>';
       html += '</tr></thead><tbody>';
@@ -6430,7 +6432,7 @@ function renderEligibility(batches) {
   contentDiv.style.display = 'block';
 }
 
-// ── HIDE ONLINE TESTS for JD batches / PORTFOLIO TYPE UI ───────────────────
+// ── PORTFOLIO TYPE UI ──────────────────────────────────────────────────────
 function otHandleTestTypeChange() {
   const type = (document.getElementById('ot-c-type') || {}).value || '';
   const portfolioSection = document.getElementById('ot-portfolio-note');
@@ -6457,22 +6459,8 @@ function otHandleTestTypeChange() {
 
 // Called after login to show/hide Online Tests tab based on instructor's batches
 function updateTabVisibilityForCourses() {
-  const jdBatchCodes = (instructorBatchesCache || []).filter(b => {
-    const course = String(b.course || '').toLowerCase();
-    return course.includes('jewelry design') && !course.includes('jewelpad');
-  }).map(b => b.batchCode);
-  // If ALL of instructor's batches are JD, hide Online Tests tab
-  const allBatches = instructorBatchesCache || [];
-  const hasNonJD = allBatches.some(b => {
-    const course = String(b.course || '').toLowerCase();
-    return !course.includes('jewelry design') || course.includes('jewelpad');
-  });
   const otTab = document.getElementById('t-onlinetests-tab');
-  if (otTab && allBatches.length > 0 && !hasNonJD) {
-    otTab.style.display = 'none';
-  } else if (otTab) {
-    otTab.style.display = '';
-  }
+  if (otTab) otTab.style.display = '';
 }
 
 </script>

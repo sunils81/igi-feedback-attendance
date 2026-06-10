@@ -17,7 +17,7 @@ const COUNSELOR_PASS_LOCAL = 'IGI2026'; // used for holiday management calls
 
 const CENTRES  = ['Mumbai','Delhi','Kolkata','Surat','Chennai','Hyderabad','Pune','Bangalore','Lucknow','Ahmedabad','Jaipur'];
 const COURSES  = [
-  'Diamond Graduate','Colored Stone Graduate','Jewelry Design','CAD Design',
+  'Diamond Graduate','Colored Stone Graduate','Jewelry Design','Jewelry Design Manual','CAD Design',
   'JewelPad Design','Diploma in Pearls','Polished Diamond Grading',
   'Rough Diamond Graduate','Identification of RES','Small Diamond Assortment',
   'Diamond Graduate Integrated','Coloured Stone Integrated',

@@ -115,7 +115,7 @@ const CENTRE_CODES = {
 };
 const COURSE_CODES = {
   'Diamond Graduate':'DG','Colored Stone Graduate':'CSG',
-  'Jewelry Design':'JD','CAD Design':'CAD','JewelPad Design':'JP',
+  'Jewelry Design':'JD','Jewelry Design Manual':'JDM','CAD Design':'CAD','JewelPad Design':'JP',
   'Diploma in Pearls':'DP','Polished Diamond Grading':'PDG',
   'Rough Diamond Graduate':'RDG','Identification of RES':'IRES',
   'Small Diamond Assortment':'SDA','Diamond Graduate Integrated':'DGI',
@@ -411,6 +411,49 @@ const SYLLABI = {
     {day:38, week:'Week 8', topic:'Final Test'},
     {day:39, week:'Week 8', topic:'Re-Test'},
     {day:40, week:'Week 8', topic:'Graduation'}
+  ],
+
+  'Jewelry Design Manual': [
+    {day:1,  week:'Week 1', topic:'Introduction to Jewelry Design, Drawing Tools & Basic Diamond Shapes'},
+    {day:2,  week:'Week 1', topic:'Drawing Fancy Shape Diamonds and Understanding Facets'},
+    {day:3,  week:'Week 1', topic:'Introduction to Diamonds and Gemstones'},
+    {day:4,  week:'Week 1', topic:'Pencil Shading of Faceted Gemstones (Colorless)'},
+    {day:5,  week:'Week 1', topic:'Fancy Diamond Rendering & Week 1 Assessment'},
+    {day:6,  week:'Week 2', topic:'Design Creation on Colorless Diamonds'},
+    {day:7,  week:'Week 2', topic:'Colored Rendering on Gemstones'},
+    {day:8,  week:'Week 2', topic:'Non-Faceted Gemstone Rendering'},
+    {day:9,  week:'Week 2', topic:'Design Creation using Colored Gemstones'},
+    {day:10, week:'Week 2', topic:'Gemstone Collection Rendering + Assignment'},
+    {day:11, week:'Week 3', topic:'Introduction to Stars, Melee & Solitaire Diamonds'},
+    {day:12, week:'Week 3', topic:'Colored Rendering of Stars, Melee & Solitaire'},
+    {day:13, week:'Week 3', topic:'Introduction to Setting: Prong & Bezel Setting Illustration'},
+    {day:14, week:'Week 3', topic:'Channel, Pave & Flush Setting Illustration'},
+    {day:15, week:'Week 3', topic:'Metal & Texture Rendering on Different Forms'},
+    {day:16, week:'Week 4', topic:'Inspiration Sources in Jewelry Design'},
+    {day:17, week:'Week 4', topic:'Principles & Elements of Design'},
+    {day:18, week:'Week 4', topic:'Motif Development & Rendering'},
+    {day:19, week:'Week 4', topic:'Types of Jewelry Categories'},
+    {day:20, week:'Week 4', topic:'Kids & Gen Z Collection Design'},
+    {day:21, week:'Week 5', topic:'Minimalist Collection Design Creation'},
+    {day:22, week:'Week 5', topic:'Minimalist Collection Rendering'},
+    {day:23, week:'Week 5', topic:'Art Deco Concept Design Creation'},
+    {day:24, week:'Week 5', topic:'Art Deco Rendering'},
+    {day:25, week:'Week 5', topic:'Art Deco Collection Completion'},
+    {day:26, week:'Week 6', topic:'Coral Reef & Ocean Theme Design Creation'},
+    {day:27, week:'Week 6', topic:'Coral Reef Theme Rendering'},
+    {day:28, week:'Week 6', topic:'Art Nouveau Concept Design Creation'},
+    {day:29, week:'Week 6', topic:'Art Nouveau Rendering'},
+    {day:30, week:'Week 6', topic:'Art Nouveau Rendering'},
+    {day:31, week:'Week 7', topic:'Gold Purity & Karat Calculations'},
+    {day:32, week:'Week 7', topic:'Budgeting & Jewelry Costing'},
+    {day:33, week:'Week 7', topic:'Jewelry Estimation Test'},
+    {day:34, week:'Week 7', topic:"Men's Jewelry Design Creation"},
+    {day:35, week:'Week 7', topic:"Men's Jewelry Rendering"},
+    {day:36, week:'Week 8', topic:'Bridal Heritage Research & Inspiration'},
+    {day:37, week:'Week 8', topic:'Bridal Heritage Necklace Design'},
+    {day:38, week:'Week 8', topic:'Bridal Heritage Earrings & Accessories'},
+    {day:39, week:'Week 8', topic:'Bridal Heritage Collection Rendering'},
+    {day:40, week:'Week 8', topic:'Perspective View & Presentation Sheet'}
   ],
 
   'Gem-A Foundation': [
@@ -5361,6 +5404,36 @@ const QUESTION_BANK_DATA = [
   {id:'QB0353',course:'DG',topic:'SDA',q:'-2 sieve includes sizes from',o1:'0.03ct – 0.07ct',o2:'0.01ct - 0.02ct',o3:'Less than 0.01ct',o4:'0.08ct – 0.12ct',ans:3,type:'MCQ'},
   {id:'QB0354',course:'DG',topic:'SDA',q:'The instrument required to lift the diamonds from sorting pad is called',o1:'Scoop',o2:'Lifter',o3:'Filler',o4:'None of the above',ans:1,type:'MCQ'},
   {id:'QB0355',course:'DG',topic:'SDA',q:'The numbering system used in sizing the small diamonds is called',o1:'Diameter',o2:'Carat & Cents',o3:'mm size',o4:'Sieve Size',ans:4,type:'MCQ'},
+  {id:'QB0356',course:'JP',topic:'Week 1 MCQ',q:'Which app is used for gemstone rendering in this course?',o1:'Photoshop',o2:'Procreate',o3:'Illustrator',o4:'CorelDRAW',ans:2,type:'MCQ'},
+  {id:'QB0357',course:'JP',topic:'Week 1 MCQ',q:'Which tool is mainly used to resize and rotate objects in Procreate?',o1:'Brush Tool',o2:'Arrow Tool',o3:'Smudge Tool',o4:'Eraser Tool',ans:2,type:'MCQ'},
+  {id:'QB0358',course:'JP',topic:'Week 1 MCQ',q:'Which visual effect is essential when rendering a Star Sapphire?',o1:'Texture dots',o2:'Matte finish',o3:'Star-shaped light reflection',o4:'Flat shading',ans:3,type:'MCQ'},
+  {id:'QB0359',course:'JP',topic:'Week 1 MCQ',q:'Which brush setting is most important for controlling diamond spacing?',o1:'Stroke path',o2:'Opacity',o3:'Eraser',o4:'Gaussian Blur',ans:1,type:'MCQ'},
+  {id:'QB0360',course:'JP',topic:'Week 1 MCQ',q:'How do you fill a color inside a closed shape in Procreate using the Colour Picker?',o1:'Tap the brush repeatedly inside the shape',o2:'Use the Smudge tool',o3:'Drag and drop the selected color into the shape',o4:'Adjust the opacity of the layer',ans:3,type:'MCQ'},
+  {id:'QB0361',course:'JP',topic:'Week 1 MCQ',q:'What are facets in a diamond?',o1:'The color of the diamond',o2:'The weight of the diamond',o3:'The surfaces cut on the diamond',o4:'The price of the diamond',ans:3,type:'MCQ'},
+  {id:'QB0362',course:'JP',topic:'Week 1 MCQ',q:'What is Procreate primarily used for?',o1:'Video Editing',o2:'Digital Illustration and Design',o3:'3D Modeling',o4:'Animation Only',ans:2,type:'MCQ'},
+  {id:'QB0363',course:'JP',topic:'Week 1 MCQ',q:'Which tool in Procreate allows you to organize artwork into editable sections?',o1:'Layers',o2:'Color Wheel',o3:'Gallery',o4:'Actions',ans:1,type:'MCQ'},
+  {id:'QB0364',course:'JP',topic:'Week 1 MCQ',q:'A cabochon gemstone is characterized by:',o1:'Multiple facets',o2:'Smooth, rounded surface',o3:'Flat top and faceted bottom',o4:'Square shape only',ans:2,type:'MCQ'},
+  {id:'QB0365',course:'JP',topic:'Week 1 MCQ',q:'What is the purpose of the Brush Library?',o1:'To store images',o2:'To select and customize drawing brushes',o3:'To create layers',o4:'To export files',ans:2,type:'MCQ'},
+  {id:'QB0366',course:'JP',topic:'Week 2 MCQ',q:'Which brush type is used to create perforated or patterned jewelry bases?',o1:'Diamond brush',o2:'Lattice brush',o3:'Smudge brush',o4:'Calligraphy brush',ans:2,type:'MCQ'},
+  {id:'QB0367',course:'JP',topic:'Week 2 MCQ',q:'What is the main idea of a pave setting?',o1:'One big stone',o2:'Many small stones set close together',o3:'Flat metal only',o4:'Rough surface',ans:2,type:'MCQ'},
+  {id:'QB0368',course:'JP',topic:'Week 2 MCQ',q:'Flat band rings cannot be rendered using isometric views.',o1:'True',o2:'False',o3:'Not applicable',o4:'Not applicable',ans:1,type:'MCQ'},
+  {id:'QB0369',course:'JP',topic:'Week 2 MCQ',q:'Tapered flat band rings are:',o1:'The same width all around',o2:'Broken',o3:'Twisted',o4:'Narrower at one end and wider at another',ans:4,type:'MCQ'},
+  {id:'QB0370',course:'JP',topic:'Week 2 MCQ',q:'Lattice brushes in jewelry design are used to:',o1:'Create perforated or patterned surfaces',o2:'Color gemstones',o3:'Shade metal only',o4:'Erase mistakes',ans:1,type:'MCQ'},
+  {id:'QB0371',course:'JP',topic:'Week 2 MCQ',q:'Which jewelry setting holds a gemstone using small metal claws?',o1:'Bezel setting',o2:'Prong setting',o3:'Channel setting',o4:'Flush setting',ans:2,type:'MCQ'},
+  {id:'QB0372',course:'JP',topic:'Week 2 MCQ',q:'Masking in Procreate helps designers to:',o1:'Delete layers permanently',o2:'Change canvas size',o3:'Control where lattice patterns appear',o4:'Rotate designs',ans:3,type:'MCQ'},
+  {id:'QB0373',course:'JP',topic:'Week 2 MCQ',q:'Motif brushes are mainly used to:',o1:'Create repeating decorative elements',o2:'Draw straight lines',o3:'Color gemstones',o4:'Add shading only',ans:1,type:'MCQ'},
+  {id:'QB0374',course:'JP',topic:'Week 2 MCQ',q:'In engagement ring illustration, why is proper proportion important?',o1:'It reduces file size',o2:'It ensures the ring looks realistic and balanced',o3:'It helps export images faster',o4:'It removes the need for shading',ans:2,type:'MCQ'},
+  {id:'QB0375',course:'JP',topic:'Week 2 MCQ',q:'In the engagement ring design workflow in Procreate, which step should be completed before starting the final rendering stage?',o1:'Exporting the final design file',o2:'Applying final presentation layout',o3:'Creating the base ring structure',o4:'Merging all layers and flattening the artwork',ans:3,type:'MCQ'},
+  {id:'QB0376',course:'JP',topic:'Week 3 MCQ',q:'Chain brushes in Procreate are used to design:',o1:'Gemstones',o2:'Background patterns',o3:'Necklaces, bracelets, and charms',o4:'Rings',ans:3,type:'MCQ'},
+  {id:'QB0377',course:'JP',topic:'Week 3 MCQ',q:'What is important to keep in mind when designing textured brushes?',o1:'Symmetry and repeat accuracy',o2:'Random spacing',o3:'Only brush size',o4:'Erasing layers',ans:1,type:'MCQ'},
+  {id:'QB0378',course:'JP',topic:'Week 3 MCQ',q:'What kind of settings are used for uncut stones?',o1:'Open prong settings only',o2:'Pave settings',o3:'Closed bezel settings',o4:'Micro prong setting',ans:3,type:'MCQ'},
+  {id:'QB0379',course:'JP',topic:'Week 3 MCQ',q:'What does a clipping mask do in Procreate?',o1:'Paints everywhere on the canvas',o2:'Erases all layers',o3:'Shows paint only inside the shape on the layer below',o4:'Changes the brush size',ans:3,type:'MCQ'},
+  {id:'QB0380',course:'JP',topic:'Week 3 MCQ',q:'Opacity in Procreate controls the transparency of a layer.',o1:'True',o2:'False',o3:'Not applicable',o4:'Not applicable',ans:1,type:'MCQ'},
+  {id:'QB0381',course:'JP',topic:'Week 3 MCQ',q:'Textured brushes are commonly used in jewelry illustration to create:',o1:'Background colors only',o2:'Jewelry surface detailing',o3:'Gemstone cuts',o4:'Animation effects',ans:2,type:'MCQ'},
+  {id:'QB0382',course:'JP',topic:'Week 3 MCQ',q:'Chain brushes are commonly applied when illustrating:',o1:'Necklaces, charms, and back chains',o2:'Earrings only',o3:'Jewelry packaging',o4:'Gemstone reflections',ans:1,type:'MCQ'},
+  {id:'QB0383',course:'JP',topic:'Week 3 MCQ',q:'Polki and Kundan jewelry are known for using:',o1:'Perfectly cut diamonds',o2:'Uncut natural diamonds and gemstones',o3:'Synthetic gemstones only',o4:'Colored glass stones',ans:2,type:'MCQ'},
+  {id:'QB0384',course:'JP',topic:'Week 3 MCQ',q:'Which setting style is traditionally used in Polki jewelry?',o1:'Prong setting',o2:'Invisible setting',o3:'Closed bezel setting',o4:'Tension setting',ans:3,type:'MCQ'},
+  {id:'QB0385',course:'JP',topic:'Week 3 MCQ',q:'Temple jewelry designs are often inspired by:',o1:'Modern architecture',o2:'Indian heritage of god/goddess idols and cultural motifs',o3:'Minimalist geometric patterns',o4:'Abstract digital art',ans:2,type:'MCQ'},
 ];
 
 // ════════════════════════════════════════════════════════════════
@@ -6602,11 +6675,22 @@ function getInstructorEligibility(ss, p) {
     const full = getDiplomaReleaseList(ss, p);
     if (full.status !== 'ok') return full;
 
-    // Find batches where this instructor has sessions
+    // Find batches assigned to this instructor. Use sessions as a fallback for
+    // older batches whose assignment column was not populated yet.
+    const myBatches = new Set();
+    const shBatches = ss.getSheetByName(SH_BATCHES);
+    const batchData = shBatches && shBatches.getLastRow() > 1
+      ? shBatches.getRange(2, 1, shBatches.getLastRow()-1, 10).getValues() : [];
+    batchData.forEach(r => {
+      const batchCode = String(r[0] || '').toUpperCase();
+      const hasSlot = detectSlotOrDate(r[4]);
+      const assigned = hasSlot ? (r[9] || '') : (r[8] || r[9] || '');
+      if (batchCode && sameName(assigned, instructor)) myBatches.add(batchCode);
+    });
+
     const shSess = ss.getSheetByName(SH_SESSIONS);
     const sessData = shSess && shSess.getLastRow() > 1
       ? shSess.getRange(2, 1, shSess.getLastRow()-1, 9).getValues() : [];
-    const myBatches = new Set();
     sessData.forEach(r => {
       if (sameName(String(r[4]).trim(), instructor)) myBatches.add(String(r[1]).toUpperCase());
     });
@@ -6905,8 +6989,9 @@ function getDiplomaReleaseList(ss, p) {
         return n.indexOf('final') !== -1;
       }
 
-      // ── Collect ALL weekly scores from both Manual + OT sources ──
-      const allWeeklyScores = [];
+      // ── Collect weekly scores from both Manual + OT sources ──
+      const manualWeeklyScores = [];
+      const onlineWeeklyScores = [];
 
       // Manual assessment weekly scores
       const weeklyAssessments = batchAssessments.filter(a => isWeeklyTest(a) && assessmentHasGrades[a.assessmentId]);
@@ -6914,7 +6999,7 @@ function getDiplomaReleaseList(ss, p) {
         const markRow = marksByAssAndStudent[studentId + '|' + a.assessmentId];
         if (markRow && markRow.pct !== 'DNA' && markRow.pct !== '' && markRow.pct !== null && markRow.pct !== undefined) {
           const pctVal = Number(markRow.pct);
-          if (!isNaN(pctVal)) allWeeklyScores.push(pctVal);
+          if (!isNaN(pctVal)) manualWeeklyScores.push(pctVal);
         }
       });
 
@@ -6927,14 +7012,13 @@ function getDiplomaReleaseList(ss, p) {
           (tl !== 'final' && tl !== 're-test' &&
            (nl.indexOf('weekly') !== -1 || nl.indexOf('week') !== -1) &&
            nl.indexOf('final') === -1);
-        if (isW) allWeeklyScores.push(entry.pct);
+        if (isW) onlineWeeklyScores.push(entry.pct);
       });
 
-      // Best-of-3: sort desc, take top 3, average
-      allWeeklyScores.sort((a, b) => b - a);
-      const top3Weekly = allWeeklyScores.slice(0, 3);
-      const weeklyAvg = top3Weekly.length > 0
-        ? Math.round(top3Weekly.reduce((s, v) => s + v, 0) / top3Weekly.length)
+      // Average all entered manual weekly marks and all conducted online weekly tests.
+      const allWeeklyScores = manualWeeklyScores.concat(onlineWeeklyScores);
+      const weeklyAvg = allWeeklyScores.length > 0
+        ? Math.round(allWeeklyScores.reduce((s, v) => s + v, 0) / allWeeklyScores.length)
         : null;
 
       // ── Final exam — best from both sources ───────────────────────
@@ -6979,7 +7063,9 @@ function getDiplomaReleaseList(ss, p) {
         },
         weeklyAvg: {
           value: weeklyAvg,
-          pass: weeklyPass
+          pass: weeklyPass,
+          manualCount: manualWeeklyScores.length,
+          onlineCount: onlineWeeklyScores.length
         },
         finalExam: {
           value: finalExamScore,
@@ -7063,4 +7149,3 @@ function releaseStudentDiploma(ss, p) {
     return {status: 'error', message: err.toString()};
   }
 }
-

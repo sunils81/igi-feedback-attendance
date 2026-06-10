@@ -3108,6 +3108,7 @@ function escHtml(s) {
 // ═══════════════════════════════════════════════════════════════
 
 var otAllQuestions = [];      // full QB loaded from server
+var otQuestionsCache = {};    // ID -> normalized question mapping to prevent filtering truncation
 var otFilteredQs  = [];       // after course/topic filter
 var otSelectedIds = new Set();// selected question IDs
 var otCurrentTests = [];      // list of tests
@@ -3151,6 +3152,8 @@ function otLoadQB() {
     if (err || !d || d.status !== 'ok') return;
     var allQs = (d.questions || []).concat(d.customQuestions || []);
     otAllQuestions = allQs.map(otNormalizeQuestion);
+    // Cache loaded questions
+    otAllQuestions.forEach(function(q) { otQuestionsCache[q.id] = q; });
     otBuildTopicMap(d.topicMap || {});
     otRenderQB(otAllQuestions);
   });
@@ -3185,6 +3188,8 @@ function otFilterQB() {
     if (err || !d || d.status !== 'ok') return;
     var allQs = (d.questions || []).concat(d.customQuestions || []);
     otAllQuestions = allQs.map(otNormalizeQuestion);
+    // Cache loaded questions
+    otAllQuestions.forEach(function(q) { otQuestionsCache[q.id] = q; });
     if (course) otBuildTopicMap({[course]: (d.topicMap||{})[course] || []});
     otRenderQB(otAllQuestions);
   });
@@ -3627,7 +3632,12 @@ function otSyncSelectedPreview() {
     el.innerHTML = '<div style="color:#9ca3af;font-size:13px;text-align:center;padding:16px 0;">No questions selected yet. Go to <b>Question Bank</b> tab, select questions, then come back here.</div>';
     return;
   }
-  var qs = otAllQuestions.filter(function(q){ return otSelectedIds.has(q.id); });
+  var qs = [];
+  otSelectedIds.forEach(function(id) {
+    if (otQuestionsCache[id]) {
+      qs.push(otQuestionsCache[id]);
+    }
+  });
   var totalMarks = otSelectedIds.size; // 1 mark each regardless of how many are loaded in otAllQuestions
   var header = '<div style="font-size:13px;font-weight:700;color:#059669;margin-bottom:12px;">✓ '+otSelectedIds.size+' questions selected · Total marks: '+totalMarks+' (MCQ/T-F/FIB = 1 mark each)</div>';
   if (!qs.length) {
@@ -3679,7 +3689,7 @@ function otSyncSelectedPreview() {
 // Edit question inline
 var otEditTarget = null;
 function otEditQuestion(qid) {
-  var q = otAllQuestions.find(function(x){ return x.id === qid; });
+  var q = otQuestionsCache[qid] || otAllQuestions.find(function(x){ return x.id === qid; });
   if (!q) return;
   otEditTarget = q;
   var card = document.getElementById('ctqcard-'+qid);
@@ -3737,7 +3747,7 @@ function otEditQuestion(qid) {
 }
 
 function otSaveEditedQuestion(qid) {
-  var q = otAllQuestions.find(function(x){ return x.id === qid; });
+  var q = otQuestionsCache[qid] || otAllQuestions.find(function(x){ return x.id === qid; });
   if (!q) return;
   var qText = (document.getElementById('ctedit-q')||{}).value || '';
   if (qText.trim()) q.question = qText.trim();

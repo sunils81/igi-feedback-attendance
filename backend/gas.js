@@ -2597,6 +2597,8 @@ function doGet(e) {
     if (act==='releaseResults')          return respond(otReleaseResults(ss,p));
     if (act==='getStudentActiveTest')    return respond(otGetStudentActiveTest(ss,p));
     if (act==='getTestQuestions')        return respond(otGetTestQuestions(ss,p));
+    if (act==='getTestQuestionsInstructor') return respond(otGetTestQuestionsInstructor(ss,p));
+    if (act==='removeTestQuestion')         return respond(otRemoveTestQuestion(ss,p));
     if (act==='submitTestResponse')      return respond(otSubmitTestResponse(ss,p));
     if (act==='logTestWarning')          return respond(otLogTestWarning(ss,p));
     if (act==='getProctorRoom')          return respond(otGetProctorRoom(ss,p));

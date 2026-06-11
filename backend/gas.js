@@ -6045,17 +6045,17 @@ var CENTRE_TRAY_SETS = {
     ['OR', '01', 'OR1', 25], ['OR', '02', 'OR2', 25]
   ],
   'Delhi': [
-    ['DM','MS1',57],['DM','MS2',57],['DM','RI1',57],['DM','RI2',57],['DM','FS',25],
+    ['DM','MS',57],['DM','RI1',57],['DM','RI2',57],['DM','FS',25],
     ['DM','IM',25],['DM','WT',25],['DM','FT',25],['DM','DS',25],['DM','RD1',25],
     ['CS','OPI',17],['CS','SYN',20],['CS','RES',25],['CS','GR1',20],
     ['CS','GR2',25],['CS','QTZ1',25],['CS','QTZ2',25],['CS','PRC',25]
   ],
   'Surat': [
-    ['DM','MS1',57],['DM','MS2',57],['DM','RI1',57],['DM','RI2',57],['DM','FS',25],
+    ['DM','MS',57],['DM','RI1',57],['DM','RI2',57],['DM','FS',25],
     ['DM','IM',25],['DM','WT',25],['DM','FT',25]
   ],
   'Chennai': [
-    ['DM','MS1',57],['DM','MS2',57],['DM','RI1',57]
+    ['DM','MS',57],['DM','RI1',57]
   ]
 };
 
@@ -6075,27 +6075,45 @@ function trayNextId(ss, type, centre, explicitTopicCode) {
 
 // ── trayBulkSeed ─────────────────────────────────────────────────────────────
 // Seeds all known trays for all centres. Safe to run multiple times (skips existing IDs).
+// Supports optional p.filterCentre ('Mumbai'|'Delhi'|'Surat'|'Chennai') and p.filterCategory ('DM'|'CS'|'OR')
 function trayBulkSeed(ss, p) {
   ensureTraySheets(ss);
   var sh = getTraySheet(ss, SH_TRAY_REGISTRY);
   
-  // Clean up/remove old Mumbai entries and legacy MS entries from the registry to avoid stale legacy nomenclature
+  var filterCentre = (p && p.filterCentre) || '';
+  var filterCategory = (p && p.filterCategory) || '';
+
+  // Clean up/remove entries matching the seeding criteria from the registry to avoid duplicates
   var data = sh.getDataRange().getValues();
   if (data.length > 1) {
     var header = data[0];
     var rowsToKeep = [header];
-    var removedMumbai = 0;
+    var removedCount = 0;
     for (var i = 1; i < data.length; i++) {
       var row = data[i];
       var trayId = String(row[0] || '');
+      var cat = String(row[1] || '');
       var homeCentre = String(row[4] || '');
-      if (homeCentre === 'Mumbai' || trayId.endsWith('-DM-MS')) {
-        removedMumbai++;
+      
+      var shouldClear = false;
+      if (filterCentre) {
+        if (homeCentre === filterCentre && (!filterCategory || cat === filterCategory)) {
+          shouldClear = true;
+        }
+      } else {
+        // Default "Seed All"
+        if (((homeCentre === 'Mumbai' || trayId.endsWith('-DM-MS')) && (!filterCategory || cat === filterCategory))) {
+          shouldClear = true;
+        }
+      }
+      
+      if (shouldClear) {
+        removedCount++;
       } else {
         rowsToKeep.push(row);
       }
     }
-    if (removedMumbai > 0) {
+    if (removedCount > 0) {
       sh.clearContents();
       sh.getRange(1, 1, rowsToKeep.length, header.length).setValues(rowsToKeep);
     }
@@ -6105,6 +6123,8 @@ function trayBulkSeed(ss, p) {
   var seeded = 0, skipped = 0;
   var now = new Date().toISOString();
   Object.keys(CENTRE_TRAY_SETS).forEach(function(centre) {
+    if (filterCentre && filterCentre !== centre) return;
+    
     var abbr = CENTRE_ABBR[centre] || centre.substring(0,3).toUpperCase();
     CENTRE_TRAY_SETS[centre].forEach(function(entry) {
       var cat, code, stones, id;
@@ -6128,6 +6148,8 @@ function trayBulkSeed(ss, p) {
         stones = entry[2];
         id = abbr + '-' + cat + '-' + code;
       }
+      
+      if (filterCategory && filterCategory !== cat) return; // skip if category doesn't match filter
       
       // Determine Home Instructor for Mumbai
       if (centre === 'Mumbai') {

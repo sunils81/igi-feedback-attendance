@@ -1979,10 +1979,33 @@
         <div class="section-tag" style="background:#0D1B2E; color:#C9A84C;">System Initialization</div>
         <h3 style="font-size:14px; font-weight:800; margin:0 0 6px; color:#0D1B2E;">⚙️ Seed Gemstone Trays</h3>
         <p style="font-size:12px; color:#6b7280; margin:0 0 14px; line-height:1.4;">
-          Initialize or reset the national tray registry database. Running this will automatically clear existing Mumbai entries to write the new unique nomenclature format, seed default teaching/test series trays, and assign default instructor custody roles. Existing trays in other branches are preserved.
+          Initialize or reset the national tray registry database. Select a centre and category filter for targeted seeding, or leave them empty to run a full system seed. The dual Master Sets (MS1 and MS2) are only seeded for Mumbai, while other centres receive the standard Master Set (MS).
         </p>
+        
+        <div style="display:flex; gap:12px; align-items:center; margin-bottom:14px; flex-wrap:wrap;">
+          <div>
+            <label style="font-size:11px; font-weight:700; color:#374151; display:block; margin-bottom:4px;">Filter Centre</label>
+            <select id="adm-seed-centre" style="padding:6px 10px; border:1.5px solid #d1d5db; border-radius:6px; font-size:12px; outline:none; background:#fff; min-width:140px;">
+              <option value="">— All Centres —</option>
+              <option value="Mumbai">Mumbai</option>
+              <option value="Delhi">Delhi</option>
+              <option value="Surat">Surat</option>
+              <option value="Chennai">Chennai</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px; font-weight:700; color:#374151; display:block; margin-bottom:4px;">Filter Category</label>
+            <select id="adm-seed-category" style="padding:6px 10px; border:1.5px solid #d1d5db; border-radius:6px; font-size:12px; outline:none; background:#fff; min-width:160px;">
+              <option value="">— All Categories —</option>
+              <option value="DM">Diamonds (DM)</option>
+              <option value="CS">Colored Stones (CS)</option>
+              <option value="OR">Organics (OR)</option>
+            </select>
+          </div>
+        </div>
+
         <div id="adm-seed-result" style="font-size:12px; margin-bottom:12px; font-weight:700;"></div>
-        <button onclick="adminTraySeedAll(this)" style="padding:8px 20px; background:#0D1B2E; color:#C9A84C; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">🚀 Seed All Trays Now</button>
+        <button onclick="adminTraySeedAll(this)" style="padding:8px 20px; background:#0D1B2E; color:#C9A84C; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">🚀 Seed Trays Now</button>
       </div>
     </div>
 
@@ -4822,9 +4845,18 @@ var _admTrayData = null;
 
 function adminTraySeedAll(btn) {
   var resultEl = document.getElementById('adm-seed-result');
-  if (resultEl) resultEl.innerHTML = '<span style="color:#6b7280;">⏳ Seeding all trays, please wait…</span>';
+  var centreVal = document.getElementById('adm-seed-centre').value;
+  var categoryVal = document.getElementById('adm-seed-category').value;
+  
+  if (resultEl) resultEl.innerHTML = '<span style="color:#6b7280;">⏳ Seeding trays, please wait…</span>';
   if (btn) btn.disabled = true;
-  gasGet({action:'trayBulkSeed', seededBy: 'admin_portal'}, function(err, d) {
+  
+  gasGet({
+    action: 'trayBulkSeed',
+    seededBy: 'admin_portal',
+    filterCentre: centreVal,
+    filterCategory: categoryVal
+  }, function(err, d) {
     if (btn) btn.disabled = false;
     if (err || !d) { if(resultEl) resultEl.innerHTML = '<span style="color:#dc2626;">Error contacting server.</span>'; return; }
     if (d.status !== 'ok') { if(resultEl) resultEl.innerHTML = '<span style="color:#dc2626;">'+(d.message||'Failed')+'</span>'; return; }

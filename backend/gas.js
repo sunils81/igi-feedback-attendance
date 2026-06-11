@@ -3254,7 +3254,6 @@ function ensureSheets(ss) {
   // Mark as done — skip for next 6 hours
   try { CacheService.getScriptCache().put('ensureSheets_ok', '1', 21600); } catch(_es) {}
 }
-}
 function ensureStudentHeaders(sh) {
   const h=['Student ID','Primary Batch Code','Name','Mobile Last 4','Mobile','Email','Status','Created At','Welcome Email Status','Welcome Email Sent At'];
   const current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);

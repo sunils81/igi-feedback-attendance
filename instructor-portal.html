@@ -817,6 +817,7 @@
           <button class="cq-type-btn" onclick="cqType('TrueFalse')">True / False</button>
           <button class="cq-type-btn" onclick="cqType('FillBlank')">Fill in Blank</button>
           <button class="cq-type-btn" onclick="cqType('Theory')">Theory</button>
+          <button class="cq-type-btn" onclick="cqType('FileUpload')">File / Link Upload</button>
         </div>
         <div class="ot-form-row">
           <div><label>Course</label>
@@ -878,6 +879,14 @@
             <div><label>Max Marks</label><input type="number" id="cq-max-marks" value="5" min="1" max="20" style="width:90px;"></div>
           </div>
           <p style="font-size:12px;color:#6b7280;margin:0;">Students type a long-form answer. You grade this manually in the "Grade Theory" tab after the test.</p>
+        </div>
+
+        <!-- FileUpload Panel -->
+        <div id="cq-FileUpload" class="cq-type-panel">
+          <div class="ot-form-row">
+            <div><label>Max Marks</label><input type="number" id="cq-upload-marks" value="5" min="1" max="20" style="width:90px;"></div>
+          </div>
+          <p style="font-size:12px;color:#6b7280;margin:0;">Students will be prompted to paste a link to their file (PDF, JPEG, Google Drive, etc.). You grade this manually in the "Grade Theory" tab after the test.</p>
         </div>
 
         <button class="ot-btn primary" onclick="otSaveCustomQ()">💾 Save Custom Question</button>
@@ -4001,7 +4010,8 @@ function otSaveCustomQ() {
     correctAnswer: type==='MCQ'    ? (document.getElementById('cq-correct-mcq')||{}).value||'1' :
                    type==='TrueFalse' ? (document.getElementById('cq-correct-tf')||{}).value||'True' :
                    type==='FillBlank' ? (document.getElementById('cq-blank-answer')||{}).value||'' : '',
-    maxMarks: type==='Theory' ? (document.getElementById('cq-max-marks')||{}).value||'5' : '1'
+    maxMarks: type==='Theory' ? (document.getElementById('cq-max-marks')||{}).value||'5' :
+              type==='FileUpload' ? (document.getElementById('cq-upload-marks')||{}).value||'5' : '1'
   };
   gasGet(params, function(err, d) {
     var st = document.getElementById('cq-status');
@@ -4902,9 +4912,18 @@ function otLoadGrading() {
     d.byStudent.forEach(function(s) {
       html += '<div class="mg-student-block"><div class="mg-student-hdr">👤 Student: '+escHtml(s.studentId)+'</div>';
       s.questions.forEach(function(q) {
+        var ansHtml = '<em style="color:#9ca3af;">No answer given</em>';
+        if (q.studentAnswer) {
+          var trimmed = String(q.studentAnswer).trim();
+          if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+            ansHtml = '<a href="' + escHtml(trimmed) + '" target="_blank" style="color:#2563eb;font-weight:700;text-decoration:underline;">📎 Open Student Attachment / Link ↗</a>';
+          } else {
+            ansHtml = escHtml(q.studentAnswer);
+          }
+        }
         html += '<div class="mg-q-row">'
           + '<div style="font-size:12px;font-weight:600;margin-bottom:4px;">Q: '+escHtml(q.qId)+'</div>'
-          + '<div class="mg-ans">' + (q.studentAnswer ? escHtml(q.studentAnswer) : '<em style="color:#9ca3af;">No answer given</em>') + '</div>'
+          + '<div class="mg-ans">' + ansHtml + '</div>'
           + (q.graded
               ? '<div style="font-size:12px;color:#059669;">✅ Graded: '+escHtml(q.score)+' / '+escHtml(q.maxMarks)+'</div>'
               : '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;">'

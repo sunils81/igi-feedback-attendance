@@ -4726,7 +4726,7 @@ function otSaveTestQuestions(ss, p) {
       newRows.push([p.testId,qId,'bank',r[3],r[4],r[5],r[6],r[7],correct,r[9]||'MCQ',marks,marks,finalOrder]);
       totalMarks+=marks;
     } else if (cqMap[qId]) {
-      var r=cqMap[qId], marks=r[9]==='Theory'?(parseFloat(r[10])||5):1;
+      var r=cqMap[qId], marks=(r[9]==='Theory'||r[9]==='FileUpload')?(parseFloat(r[10])||5):1;
       var correct = correctOverrides[qId]!==undefined ? correctOverrides[qId] : r[8];
       newRows.push([p.testId,qId,'custom',r[3],r[4],r[5],r[6],r[7],correct,r[9],marks,marks,finalOrder]);
       totalMarks+=marks;
@@ -4744,7 +4744,7 @@ function otAddCustomQuestion(ss, p) {
   var now=new Date();
   var cqId='CQ-'+Utilities.formatDate(now,Session.getScriptTimeZone(),'yyyyMMddHHmmss')+'-'+Math.floor(Math.random()*1000);
   var type=p.type||'MCQ';
-  var maxMarks=type==='Theory'?(parseFloat(p.maxMarks)||5):1;
+  var maxMarks=(type==='Theory'||type==='FileUpload')?(parseFloat(p.maxMarks)||5):1;
   var correct=p.correctAnswer||(type==='MCQ'?'1':type==='TrueFalse'?'True':p.blankAnswer)||'';
   sh.appendRow([cqId,p.course||'',p.topic||'',p.question||'',p.opt1||'',p.opt2||'',p.opt3||'',p.opt4||'',correct,type,maxMarks,p.instructor,now.toISOString()]);
   return {status:'ok', cqId:cqId};
@@ -5031,7 +5031,7 @@ function otSubmitTestResponse(ss, p) {
   testQuestions.forEach(function(q){
     var qId=q[1],type=q[9]||'MCQ',correct=q[8],marks=parseFloat(q[10])||1;
     totalMarks+=marks;
-    if(type==='Theory'){theoryCount++;return;}
+    if(type==='Theory'||type==='FileUpload'){theoryCount++;return;}
     var studentAns=answers[qId]!==undefined?String(answers[qId]):'';
     if(!studentAns) return;
     if(type==='MCQ'||type==='TrueFalse'){
@@ -5056,7 +5056,7 @@ function otSubmitTestResponse(ss, p) {
     autoScore,0,totalScore,totalMarks,pct,result,p.answers,attemptNo]);
   if (hasTheory) {
     var shMG=ss.getSheetByName(SH_OT_MANUAL_GRADES);
-    testQuestions.filter(function(q){return q[9]==='Theory';}).forEach(function(q){
+    testQuestions.filter(function(q){return q[9]==='Theory'||q[9]==='FileUpload';}).forEach(function(q){
       shMG.appendRow([p.testId,p.studentId,q[1],answers[q[1]]||'','',q[10]||5,'','']);
     });
   }
@@ -5746,7 +5746,7 @@ function otGetStudentResultsV3(ss, p) {
       var item={qNo:i+1,qId:qId,type:type,question:q[3]||'',marks:marks,
         studentAnswer:optionText(q, raw),rawStudentAnswer:raw,correctAnswer:optionText(q, correct),
         isCorrect:null,score:'',maxMarks:marks};
-      if (type==='Theory') {
+      if (type==='Theory'||type==='FileUpload') {
         var mg=manualMap[qId]||{};
         item.studentAnswer=mg.studentAnswer||raw;
         item.correctAnswer='';

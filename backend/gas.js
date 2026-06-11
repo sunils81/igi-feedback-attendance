@@ -6658,6 +6658,15 @@ function trayGetJourney(ss, p) {
 // Home instructor pre-books multi-leg journey for a tray.
 // p: { trayId, legs:[{toCentre, toInstructor, startDate, endDate}], instructor }
 function trayPlanJourney(ss, p) {
+  var legs = p.legs;
+  if (typeof legs === 'string') {
+    try {
+      legs = JSON.parse(legs);
+    } catch(e) {
+      return {status:'error', message:'Invalid legs format'};
+    }
+  }
+  p.legs = legs;
   if (!p.trayId || !p.legs || !p.legs.length) return {status:'error', message:'Missing trayId or legs'};
   ensureTraySheets(ss);
   var rrows = trayRows(getTraySheet(ss, SH_TRAY_REGISTRY));

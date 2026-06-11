@@ -1973,6 +1973,17 @@
       <div id="adm-tray-board">
         <div style="color:#9ca3af;font-size:13px;text-align:center;padding:40px;">Click Refresh to load tray board…</div>
       </div>
+
+      <!-- Admin Seeder Panel -->
+      <div class="card" style="margin-top:20px; border:1px solid #e5e7eb; background:#f9fafb; text-align:left;">
+        <div class="section-tag" style="background:#0D1B2E; color:#C9A84C;">System Initialization</div>
+        <h3 style="font-size:14px; font-weight:800; margin:0 0 6px; color:#0D1B2E;">⚙️ Seed Gemstone Trays</h3>
+        <p style="font-size:12px; color:#6b7280; margin:0 0 14px; line-height:1.4;">
+          Initialize or reset the national tray registry database. Running this will automatically clear existing Mumbai entries to write the new unique nomenclature format, seed default teaching/test series trays, and assign default instructor custody roles. Existing trays in other branches are preserved.
+        </p>
+        <div id="adm-seed-result" style="font-size:12px; margin-bottom:12px; font-weight:700;"></div>
+        <button onclick="adminTraySeedAll(this)" style="padding:8px 20px; background:#0D1B2E; color:#C9A84C; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">🚀 Seed All Trays Now</button>
+      </div>
     </div>
 
     <!-- Footer signatures -->
@@ -2139,117 +2150,7 @@
   </div>
 </div>
 
-    <!-- TAB: BATCH SNAPSHOT -->
-    <div id="t-snapshot" class="tab-content">
-      <style>
-        #snap-card{background:#fff;border-radius:14px;padding:32px 36px;max-width:820px;margin:0 auto;font-family:'Plus Jakarta Sans',sans-serif;}
-        #snap-card h1{font-size:18px;font-weight:800;color:#0D1B2E;margin:0 0 4px;}
-        #snap-card .snap-date{font-size:12px;color:#6b7280;margin-bottom:24px;}
-        .snap-row{display:flex;gap:0;border-left:4px solid #e5e7eb;padding:12px 0 12px 16px;margin-bottom:14px;background:#fafafa;border-radius:0 10px 10px 0;}
-        .snap-row.ongoing {border-left-color:#059669;}
-        .snap-row.starting{border-left-color:#f59e0b;}
-        .snap-row.upcoming{border-left-color:#6366f1;}
-        .snap-row.completed{border-left-color:#9ca3af;}
-        .snap-row.inactive{border-left-color:#dc2626;opacity:.6;}
-        .snap-centre{font-size:14px;font-weight:800;color:#0D1B2E;min-width:130px;padding-top:2px;}
-        .snap-body{flex:1;}
-        .snap-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;}
-        .snap-badge.ongoing {background:#d1fae5;color:#065f46;}
-        .snap-badge.starting{background:#fef3c7;color:#92400e;}
-        .snap-badge.upcoming{background:#e0e7ff;color:#3730a3;}
-        .snap-badge.completed{background:#f3f4f6;color:#6b7280;}
-        .snap-badge.inactive{background:#fee2e2;color:#991b1b;}
-        .snap-batches{font-size:13px;color:#374151;line-height:1.7;}
-        .snap-batches b{color:#0D1B2E;}
-        .snap-note{margin-top:6px;font-size:12px;color:#6b7280;font-style:italic;}
-        .snap-note textarea{width:100%;font-size:12px;color:#374151;border:1px dashed #d1d5db;border-radius:6px;padding:4px 8px;resize:vertical;min-height:34px;font-family:inherit;background:#fff;font-style:normal;}
-        .snap-note textarea:focus{outline:none;border-color:#C9A84C;}
-        #snap-controls{display:flex;gap:10px;margin-bottom:20px;align-items:center;flex-wrap:wrap;}
-        .snap-filter-btn{padding:6px 14px;border-radius:8px;border:1.5px solid #e5e7eb;background:#fff;font-size:12px;font-weight:600;cursor:pointer;color:#374151;}
-        .snap-filter-btn.active{background:#0D1B2E;color:#fff;border-color:#0D1B2E;}
-        @media print{
-          .no-print,.tab-bar,#snap-controls{display:none!important;}
-          #snap-card{box-shadow:none;padding:0;}
-          body{background:#fff;}
-        }
-      </style>
 
-      <div id="snap-controls" class="no-print">
-        <button class="snap-filter-btn active" id="snapf-active" onclick="snapFilter('active')">Active & Starting Soon</button>
-        <button class="snap-filter-btn" id="snapf-all" onclick="snapFilter('all')">All Batches</button>
-        <button class="snap-filter-btn" id="snapf-upcoming" onclick="snapFilter('upcoming')">Upcoming Only</button>
-        <div style="flex:1"></div>
-        <button class="btn" style="width:auto;padding:7px 16px;font-size:12px;background:#0D1B2E;color:#C9A84C;border:none;border-radius:8px;cursor:pointer;font-weight:700;" onclick="loadSnapshot()">🔄 Refresh</button>
-        <button class="btn btn-outline" style="width:auto;padding:7px 16px;font-size:12px;" onclick="snapCopyText()">📋 Copy as Email Text</button>
-        <button class="btn btn-outline" style="width:auto;padding:7px 16px;font-size:12px;" onclick="window.print()">🖨️ Print / Save PDF</button>
-      </div>
-
-      <div id="snap-card">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;">
-          <div>
-            <h1 id="snap-title">Batch Status Update — All Centres</h1>
-            <div class="snap-date" id="snap-subtitle">Generated —</div>
-          </div>
-          <img src="assets/igi-school-of-gemology-white-logo.svg" style="height:32px;background:#0D1B2E;border-radius:8px;padding:6px 10px;opacity:.9;">
-        </div>
-        <div id="snap-body">
-          <div style="color:#9ca3af;text-align:center;padding:40px;font-size:13px;">Click Refresh to generate snapshot…</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TAB: TRAY HUB ADMIN -->
-    <div id="t-trayhub-admin" class="tab-content">
-      <style>
-        .adm-tray-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px;}
-        .atk-card{background:#fff;border:1.5px solid #e5e7eb;border-radius:12px;padding:14px 16px;}
-        .atk-card .atk-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:4px;}
-        .atk-card .atk-val{font-size:26px;font-weight:800;color:#0D1B2E;font-family:'JetBrains Mono',monospace;}
-        .atk-card .atk-sub{font-size:10px;color:#9ca3af;margin-top:2px;}
-        .atk-card.ok .atk-val{color:#059669;} .atk-card.warn .atk-val{color:#f59e0b;} .atk-card.alert .atk-val{color:#dc2626;}
-        .adm-tray-matrix{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;border:1.5px solid #e5e7eb;margin-bottom:20px;}
-        .adm-tray-matrix th{padding:9px 12px;text-align:center;font-size:10px;font-weight:800;background:#0D1B2E;color:#C9A84C;}
-        .adm-tray-matrix th.thl{text-align:left;color:#9ca3af;}
-        .adm-tray-matrix td{padding:9px 12px;border-top:1px solid #f3f4f6;font-size:12px;vertical-align:middle;}
-        .adm-tray-matrix td.cname{font-weight:800;}
-        .adm-dot-wrap{display:flex;flex-wrap:wrap;gap:3px;}
-        .adm-dot{width:20px;height:20px;border-radius:5px;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;}
-        .adm-dot.available{background:#d1fae5;color:#059669;border:1.5px solid #6ee7b7;}
-        .adm-dot.engaged  {background:#fee2e2;color:#dc2626;border:1.5px solid #fca5a5;}
-        .adm-dot.requested{background:#fef3c7;color:#b45309;border:1.5px solid #fcd34d;}
-        .adm-dot.returning{background:#dbeafe;color:#1e40af;border:1.5px solid #93c5fd;}
-        .adm-dot.overdue  {background:#ede9fe;color:#7c3aed;border:1.5px solid #c4b5fd;}
-        .adm-tray-legend{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;font-size:11px;}
-        .adm-legend-item{display:flex;align-items:center;gap:4px;font-weight:600;}
-      </style>
-
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
-        <div>
-          <h2 style="font-size:18px;font-weight:800;margin-bottom:2px;">🔮 Tray Hub — Admin View</h2>
-          <div style="font-size:12px;color:#6b7280;">Full gemstone tray inventory across all centres</div>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <span id="adm-tray-ts" style="font-size:11px;color:#9ca3af;"></span>
-          <button onclick="adminTrayHubLoad()" style="padding:6px 16px;background:#0D1B2E;color:#C9A84C;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">🔄 Refresh</button>
-        </div>
-      </div>
-
-      <div class="adm-tray-kpi">
-        <div class="atk-card"><div class="atk-lbl">Total Trays</div><div class="atk-val" id="atk-total">—</div><div class="atk-sub">Across all centres</div></div>
-        <div class="atk-card ok"><div class="atk-lbl">Available</div><div class="atk-val" id="atk-avail">—</div><div class="atk-sub">Ready to use</div></div>
-        <div class="atk-card warn"><div class="atk-lbl">Engaged</div><div class="atk-val" id="atk-engaged">—</div><div class="atk-sub">On active loan</div></div>
-        <div class="atk-card"><div class="atk-lbl">Pending Requests</div><div class="atk-val" id="atk-requested">—</div><div class="atk-sub">Awaiting response</div></div>
-        <div class="atk-card alert"><div class="atk-lbl">Overdue Returns</div><div class="atk-val" id="atk-overdue">—</div><div class="atk-sub">Past deadline</div></div>
-      </div>
-
-      <div class="adm-tray-legend">
-        <span class="adm-legend-item"><span class="adm-dot available">A</span> Available</span>
-        <span class="adm-legend-item"><span class="adm-dot engaged">E</span> Engaged</span>
-        <span class="adm-legend-item"><span class="adm-dot requested">?</span> Requested</span>
-        <span class="adm-legend-item"><span class="adm-dot returning">R</span> Returning</span>
-        <span class="adm-legend-item"><span class="adm-dot overdue">!</span> Overdue</span>
-      </div>
-    </div>
 
     <!-- TAB: HOD APPROVALS -->
     <div id="t-hod-approvals" class="tab-content">
@@ -4918,6 +4819,19 @@ function escHtml(s) {
 
 // ── ADMIN TRAY HUB ──────────────────────────────────────────────────────────
 var _admTrayData = null;
+
+function adminTraySeedAll(btn) {
+  var resultEl = document.getElementById('adm-seed-result');
+  if (resultEl) resultEl.innerHTML = '<span style="color:#6b7280;">⏳ Seeding all trays, please wait…</span>';
+  if (btn) btn.disabled = true;
+  gasGet({action:'trayBulkSeed', seededBy: 'admin_portal'}, function(err, d) {
+    if (btn) btn.disabled = false;
+    if (err || !d) { if(resultEl) resultEl.innerHTML = '<span style="color:#dc2626;">Error contacting server.</span>'; return; }
+    if (d.status !== 'ok') { if(resultEl) resultEl.innerHTML = '<span style="color:#dc2626;">'+(d.message||'Failed')+'</span>'; return; }
+    if (resultEl) resultEl.innerHTML = '<span style="color:#059669;">✓ Done! Added <b>'+d.seeded+'</b> trays, skipped <b>'+d.skipped+'</b> duplicates.</span>';
+    adminTrayHubLoad();
+  });
+}
 
 function adminTrayHubInit() {
   if (!_admTrayData) adminTrayHubLoad();

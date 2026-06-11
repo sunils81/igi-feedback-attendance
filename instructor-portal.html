@@ -1457,7 +1457,6 @@
     <button class="th-subtab" onclick="traySubTab('th-inventory')">🏠 My Inventory</button>
     <button class="th-subtab" id="th-incoming-btn" onclick="traySubTab('th-incoming')">📥 Incoming</button>
     <button class="th-subtab" onclick="traySubTab('th-history')">📋 History</button>
-    <button class="th-subtab" id="th-seed-btn" onclick="traySubTab('th-seed')" style="margin-left:auto;background:#f9fafb;color:#9ca3af;border-color:#e5e7eb;">⚙️ Seed Trays</button>
   </div>
 
   <!-- ── TRAY BOARD ── -->
@@ -1532,20 +1531,6 @@
 
     <!-- ── Registered home trays list ── -->
     <div id="tray-inv-wrap"></div>
-  </div>
-
-  <!-- ── SEED TRAYS (admin) ── -->
-  <div id="th-seed" class="th-subview">
-    <div class="tray-form">
-      <h4>⚙️ Seed All Trays (Admin / First-Time Setup)</h4>
-      <p style="font-size:12px;color:#6b7280;margin-bottom:14px;">
-        This loads all known trays for Mumbai, Delhi, Surat and Chennai into the registry using the new naming system
-        (<b>MUM-DM-MS</b>, <b>DEL-CS-OPI</b>, etc.). It is safe to run multiple times — existing trays are skipped.
-        After seeding, each centre's instructor should go to <b>My Inventory → Confirm Tray Locations</b> to mark which trays are actually at their branch.
-      </p>
-      <div id="seed-result" style="font-size:12px;margin-bottom:12px;"></div>
-      <button class="tf-submit" onclick="traySeedAll()">🚀 Seed All Trays Now</button>
-    </div>
   </div>
 
   <!-- ── INCOMING REQUESTS ── -->
@@ -5498,7 +5483,7 @@ function trayLoadInventory() {
       wrap.innerHTML = '';
     } else {
       if (!allTrays.length) {
-        wrap.innerHTML = '<div style="color:#9ca3af;font-size:12px;">No trays registered for your centre yet. Add one above or run Seed Trays.</div>';
+        wrap.innerHTML = '<div style="color:#9ca3af;font-size:12px;">No trays registered for your centre yet. Please contact the administrator to initialize your centre trays.</div>';
       } else {
         var catIcon = {Diamond:'💎', ColoredStone:'🟣', Organics:'🌿'};
         var locBadge = {HOME:'ib-home', ON_LOAN:'ib-away', UNKNOWN:'ib-req', UNCONFIRMED:'ib-req'};
@@ -5588,7 +5573,7 @@ function trayLoadConfirm(allTrays) {
   var wrap = document.getElementById('tray-confirm-wrap');
   if (!wrap) return;
   if (!allTrays || !allTrays.length) {
-    wrap.innerHTML = '<div style="font-size:12px;color:#9ca3af;">No trays found. Run Seed Trays first, or add trays manually.</div>'; return;
+    wrap.innerHTML = '<div style="font-size:12px;color:#9ca3af;">No trays found. Please contact the administrator to seed your centre trays, or add custom trays manually.</div>'; return;
   }
   trayRenderConfirm(wrap, allTrays);
   trayRenderBorrowedHere();
@@ -5989,18 +5974,7 @@ function traySubmitEdit() {
   });
 }
 
-// ── SEED TRAYS ───────────────────────────────────────────────────────────────
-function traySeedAll() {
-  var resultEl = document.getElementById('seed-result');
-  if (resultEl) resultEl.innerHTML = '<span style="color:#6b7280;">⏳ Seeding all trays, please wait…</span>';
-  gasGet({action:'trayBulkSeed', seededBy: instructorName||'admin'}, function(err, d) {
-    if (err || !d) { if(resultEl) resultEl.innerHTML = '<span style="color:#dc2626;">Error contacting server.</span>'; return; }
-    if (d.status !== 'ok') { if(resultEl) resultEl.innerHTML = '<span style="color:#dc2626;">'+trayEsc(d.message||'Failed')+'</span>'; return; }
-    if (resultEl) resultEl.innerHTML = '<span style="color:#059669;">✓ Done! Added <b>'+d.seeded+'</b> trays, skipped <b>'+d.skipped+'</b> duplicates.</span>';
-    showToast('Seeded '+d.seeded+' trays ✓');
-    trayHubLoaded = false; trayBoardData = null; trayLoadBoard(); trayLoadInventory();
-  });
-}
+
 
 function trayConfirmReturn(bookingId) {
   if (!bookingId || !confirm('Confirm you have received this tray back? You\'ll be asked for stone count.')) return;

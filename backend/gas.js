@@ -5963,6 +5963,28 @@ function trayNextId(ss, type, centre, explicitTopicCode) {
 function trayBulkSeed(ss, p) {
   ensureTraySheets(ss);
   var sh = getTraySheet(ss, SH_TRAY_REGISTRY);
+  
+  // Clean up/remove old Mumbai entries from the registry to avoid stale legacy nomenclature
+  var data = sh.getDataRange().getValues();
+  if (data.length > 1) {
+    var header = data[0];
+    var rowsToKeep = [header];
+    var removedMumbai = 0;
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+      var homeCentre = String(row[4] || '');
+      if (homeCentre === 'Mumbai') {
+        removedMumbai++;
+      } else {
+        rowsToKeep.push(row);
+      }
+    }
+    if (removedMumbai > 0) {
+      sh.clearContents();
+      sh.getRange(1, 1, rowsToKeep.length, header.length).setValues(rowsToKeep);
+    }
+  }
+  
   var existing = trayRows(sh).map(function(r){ return String(r[0]||'').trim(); });
   var seeded = 0, skipped = 0;
   var now = new Date().toISOString();

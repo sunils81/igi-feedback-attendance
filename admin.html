@@ -1316,6 +1316,7 @@
       <button class="tab" id="tab-settings" onclick="switchAdminTab('t-settings')">⚙️ Settings</button>
       <button class="tab" onclick="switchAdminTab('t-snapshot')">📸 Batch Snapshot</button>
       <button class="tab" onclick="switchAdminTab('t-trayhub-admin'); adminTrayHubInit();">🔮 Tray Hub</button>
+      <button class="tab" id="tab-hod-approvals" onclick="switchAdminTab('t-hod-approvals');">👑 HOD Approvals</button>
     </div>
 
     <!-- TAB 1: REVENUE OVERVIEW -->
@@ -2248,6 +2249,42 @@
         <span class="adm-legend-item"><span class="adm-dot returning">R</span> Returning</span>
         <span class="adm-legend-item"><span class="adm-dot overdue">!</span> Overdue</span>
       </div>
+    </div>
+
+    <!-- TAB: HOD APPROVALS -->
+    <div id="t-hod-approvals" class="tab-content">
+      <div class="card">
+        <div class="section-tag">HOD Executive Approvals</div>
+        <h2>👑 Pending HOD Approvals</h2>
+        <p class="sub">Review and approve/reject borderline student eligibility requests submitted by branch counselors.</p>
+        
+        <div id="hod-approvals-loading" style="text-align:center;padding:40px;color:var(--muted);font-size:14px;">
+          Loading pending approvals...
+        </div>
+        
+        <div id="hod-approvals-content" style="display:none;">
+          <table class="compact-table" style="width:100%">
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Batch</th>
+                <th>Weekly Avg</th>
+                <th>Final Exam</th>
+                <th>Requested By</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="hod-approvals-tbody">
+              <!-- Pending rows will go here -->
+            </tbody>
+          </table>
+        </div>
+        
+        <div id="hod-approvals-empty" style="display:none;text-align:center;padding:40px;color:var(--muted)">
+          🎉 No pending approvals found. All student records are up to date!
+        </div>
+      </div>
+    </div>
 
 <script>
 
@@ -2391,6 +2428,10 @@ function showMainScreen() {
   const resetTabBtn = document.getElementById('tab-password-reset');
   if (resetTabBtn) {
     resetTabBtn.style.display = adminUser.isManager ? 'none' : 'block';
+  }
+  const approvalsTabBtn = document.getElementById('tab-hod-approvals');
+  if (approvalsTabBtn) {
+    approvalsTabBtn.style.display = adminUser.isManager ? 'none' : 'block';
   }
   
   switchAdminTab('t-revenue');
@@ -2741,12 +2782,82 @@ function switchAdminTab(tabId) {
     // adminTrayHubInit called directly from button onclick
     return;
   }
+  if (tabId === 't-hod-approvals') {
+    loadPendingHODApprovals();
+    return;
+  }
   // Fetch dashboard data if we don't have it yet
   if (!dashboardData) {
     loadDashboardData();
   } else {
     renderTabContent(tabId);
   }
+}
+
+function loadPendingHODApprovals() {
+  const loading = document.getElementById('hod-approvals-loading');
+  const content = document.getElementById('hod-approvals-content');
+  const empty = document.getElementById('hod-approvals-empty');
+  const tbody = document.getElementById('hod-approvals-tbody');
+  
+  if (loading) loading.style.display = 'block';
+  if (content) content.style.display = 'none';
+  if (empty) empty.style.display = 'none';
+  
+  gasGet({ action: 'getPendingHODApprovals' }, function(err, d) {
+    if (loading) loading.style.display = 'none';
+    if (err || !d || d.status !== 'ok') {
+      showToast('Failed to load pending HOD approvals.', 'error');
+      return;
+    }
+    
+    const pendingList = (d.list || []).filter(item => item.status === 'Pending');
+    
+    if (pendingList.length === 0) {
+      if (empty) empty.style.display = 'block';
+      return;
+    }
+    
+    if (tbody) {
+      tbody.innerHTML = pendingList.map(a => {
+        return '<tr>' +
+          '<td class="text-left"><strong>' + escShared(a.studentName) + '</strong><br><span style="font-size:11px;color:var(--muted)">ID: ' + escShared(a.studentId) + '</span></td>' +
+          '<td class="text-left"><strong>' + escShared(a.batchCode) + '</strong></td>' +
+          '<td class="text-center">' + (a.weeklyAvg ? a.weeklyAvg + '%' : 'N/A') + '</td>' +
+          '<td class="text-center">' + (a.finalExam ? a.finalExam + '%' : 'N/A') + '</td>' +
+          '<td class="text-left">' + escShared(a.requestedBy) + '<br><span style="font-size:10px;color:var(--muted)">' + new Date(a.requestedAt).toLocaleString('en-IN') + '</span></td>' +
+          '<td>' +
+            '<div style="display:flex;gap:8px;">' +
+              '<button class="btn btn-gold" style="padding:4px 8px;font-size:11px;width:auto;margin:0;" onclick="submitHODDecision(\'' + a.approvalId + '\', \'Approved\')">Approve</button>' +
+              '<button class="btn btn-outline" style="padding:4px 8px;font-size:11px;width:auto;color:var(--red);border-color:var(--red);margin:0;" onclick="submitHODDecision(\'' + a.approvalId + '\', \'Rejected\')">Reject</button>' +
+            '</div>' +
+          '</td>' +
+        '</tr>';
+      }).join('');
+    }
+    
+    if (content) content.style.display = 'block';
+  });
+}
+
+function submitHODDecision(appId, status) {
+  const note = prompt('Enter a brief note or reason for ' + status.toLowerCase() + ' (optional):');
+  if (note === null) return;
+  
+  gasGet({
+    action: 'reviewHODApproval',
+    approvalId: appId,
+    status: status,
+    adminName: adminUser.name,
+    note: note
+  }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      showToast('Failed to save HOD decision.', 'error');
+      return;
+    }
+    showToast('Student request ' + status.toLowerCase() + ' successfully.');
+    loadPendingHODApprovals();
+  });
 }
 
 // ── Fetch Dashboard Data ──────────────────────────────────────

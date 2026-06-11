@@ -945,6 +945,95 @@
 .text-right { text-align: right !important; }
 .text-left { text-align: left !important; }
 .text-center { text-align: center !important; }
+
+/* ── Premium Inventory Styles ── */
+.inventory-subtabs .inv-tab {
+  background: transparent;
+  border: none;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+.inventory-subtabs .inv-tab:hover {
+  color: var(--navy);
+}
+.inventory-subtabs .inv-tab.active {
+  background: var(--white);
+  color: var(--navy);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+.stock-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.stock-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+}
+.stock-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--navy);
+}
+.stock-card.low-stock::before {
+  background: #DC2626;
+}
+.stock-card .item-category {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.stock-card .item-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--navy);
+  margin-bottom: 12px;
+}
+.stock-card .stock-value-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+}
+.stock-card .stock-qty {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--navy);
+}
+.stock-card .stock-unit {
+  font-size: 11px;
+  color: var(--muted);
+}
+.stock-badge-low {
+  background: #FEF2F2;
+  color: #DC2626;
+  border: 1px solid #FCA5A5;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+}
 </style>
 </head>
 <body>
@@ -1029,6 +1118,7 @@
     <button class="tab" onclick="switchTab('t-revenue')">📈 Revenue</button>
     <button class="tab" onclick="switchTab('t-holidays')">🗓 Holidays</button>
     <button class="tab" id="tab-diplomas" onclick="switchTab('t-diplomas')" style="display:none">🎓 Diploma Release</button>
+    <button class="tab" id="tab-inventory" onclick="switchTab('t-inventory')">📦 Inventory</button>
   </div>
 
   <div id="counselor-summary" class="dashboard-summary" style="display:none"></div>
@@ -1527,6 +1617,183 @@
     </div>
   </div>
 
+  <!-- TAB: INVENTORY -->
+  <div id="t-inventory" class="tab-content">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:12px">
+        <h2 style="margin-bottom:0">📦 Inventory Management</h2>
+        <!-- Sub-tabs bar for inventory -->
+        <div class="inventory-subtabs" style="display:flex;gap:8px;background:var(--off);padding:4px;border-radius:8px">
+          <button class="inv-tab active" onclick="switchInventorySubTab('inv-stock')">Stock Levels</button>
+          <button class="inv-tab" onclick="switchInventorySubTab('inv-request')">Request Stock</button>
+          <button class="inv-tab" onclick="switchInventorySubTab('inv-history')">Request History</button>
+          <button class="inv-tab admin-only-inv" id="inv-tab-dispatch" onclick="switchInventorySubTab('inv-dispatch')" style="display:none">Dispatch Queue</button>
+          <button class="inv-tab admin-only-inv" id="inv-tab-vendors" onclick="switchInventorySubTab('inv-vendors')" style="display:none">Vendors</button>
+        </div>
+      </div>
+      <p class="sub">Manage school supplies, request items, and track branch stock dispatches.</p>
+
+      <!-- Subtab: Stock Levels -->
+      <div id="inv-stock" class="inv-subtab-content active">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <h3>Current Stock</h3>
+          <!-- Filter by Centre (only editable for Bianca/Anuradha, locked/hidden for others) -->
+          <div id="inv-stock-filter-wrap" style="display:flex;align-items:center;gap:8px">
+            <label for="inv-stock-centre-filter" style="font-size:12px;font-weight:700">Filter by Centre:</label>
+            <select id="inv-stock-centre-filter" onchange="loadInventoryStock()" style="padding:6px 12px;border-radius:6px;border:1.5px solid var(--border);font-size:12px">
+              <!-- Dynamically populated -->
+            </select>
+          </div>
+        </div>
+        <div class="grid3" id="inv-stock-grid">
+          <!-- Dynamically loaded stock cards -->
+          <div class="spinner-wrap"><div class="spinner"></div><p>Loading stock levels...</p></div>
+        </div>
+      </div>
+
+      <!-- Subtab: Request Stock -->
+      <div id="inv-request" class="inv-subtab-content" style="display:none">
+        <div style="max-width:550px">
+          <h3>Submit New Stock Request</h3>
+          <form id="inv-request-form" onsubmit="submitInventoryRequestForm(event)">
+            <div class="field">
+              <label for="inv-req-item">Item *</label>
+              <select id="inv-req-item" required>
+                <option value="">Select Item</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="inv-req-qty">Quantity *</label>
+              <input type="number" id="inv-req-qty" min="1" placeholder="Enter quantity needed" required>
+            </div>
+            <div class="field">
+              <label for="inv-req-urgency">Urgency</label>
+              <select id="inv-req-urgency">
+                <option value="Low">Low</option>
+                <option value="Medium" selected>Medium</option>
+                <option value="High">High</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="inv-req-note">Counsellor Note / Remarks</label>
+              <textarea id="inv-req-note" rows="3" placeholder="Specify size, color, or reason for request..." style="width:100%;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);font-family:inherit;box-sizing:border-box"></textarea>
+            </div>
+            <button type="submit" class="btn" style="margin-top:8px">Submit Request</button>
+            <div class="err-box" id="inv-req-err" style="margin-top:10px"></div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Subtab: Request History -->
+      <div id="inv-history" class="inv-subtab-content" style="display:none">
+        <div style="overflow-x:auto;margin-top:10px">
+          <table class="compact-table">
+            <thead>
+              <tr>
+                <th>Req ID</th>
+                <th>Centre</th>
+                <th>Item Name</th>
+                <th class="text-center">Qty</th>
+                <th class="text-center">Urgency</th>
+                <th>Requested By / Date</th>
+                <th>Status</th>
+                <th>Dispatch Info</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="inv-history-tbody">
+              <tr><td colspan="9" style="text-align:center;padding:16px;color:var(--muted)">Loading requests history...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Subtab: Dispatch Queue -->
+      <div id="inv-dispatch" class="inv-subtab-content" style="display:none">
+        <h3>Pending Dispatches</h3>
+        <div style="overflow-x:auto;margin-top:10px">
+          <table class="compact-table">
+            <thead>
+              <tr>
+                <th>Req ID</th>
+                <th>Centre</th>
+                <th>Item Name</th>
+                <th class="text-center">Qty Requested</th>
+                <th class="text-center">Urgency</th>
+                <th>Requested By</th>
+                <th>Requested At</th>
+                <th>Note</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="inv-dispatch-tbody">
+              <tr><td colspan="9" style="text-align:center;padding:16px;color:var(--muted)">Loading pending requests...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Subtab: Vendors -->
+      <div id="inv-vendors" class="inv-subtab-content" style="display:none">
+        <div style="display:grid;grid-template-columns:1fr 320px;gap:20px;margin-top:10px">
+          <!-- Vendor List -->
+          <div>
+            <h3>Registered Vendors</h3>
+            <div style="overflow-x:auto">
+              <table class="compact-table">
+                <thead>
+                  <tr>
+                    <th>Vendor Name</th>
+                    <th>Contact Person</th>
+                    <th>Phone / Email</th>
+                    <th>Address</th>
+                    <th>Supplied Items</th>
+                  </tr>
+                </thead>
+                <tbody id="inv-vendors-tbody">
+                  <tr><td colspan="5" style="text-align:center;padding:16px;color:var(--muted)">Loading vendors list...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <!-- Register Vendor Form -->
+          <div class="card" style="background:var(--off);border:1px solid var(--border);padding:16px">
+            <h3 style="margin-top:0">Register Vendor</h3>
+            <form id="inv-vendor-form" onsubmit="submitVendorRegistrationForm(event)">
+              <div class="field">
+                <label for="inv-ven-name">Vendor Name *</label>
+                <input type="text" id="inv-ven-name" required>
+              </div>
+              <div class="field">
+                <label for="inv-ven-contact">Contact Person</label>
+                <input type="text" id="inv-ven-contact">
+              </div>
+              <div class="field">
+                <label for="inv-ven-phone">Phone</label>
+                <input type="text" id="inv-ven-phone">
+              </div>
+              <div class="field">
+                <label for="inv-ven-email">Email</label>
+                <input type="email" id="inv-ven-email">
+              </div>
+              <div class="field">
+                <label for="inv-ven-address">Address</label>
+                <input type="text" id="inv-ven-address">
+              </div>
+              <div class="field">
+                <label for="inv-ven-items">Supplied Items</label>
+                <input type="text" id="inv-ven-items" placeholder="e.g. Gemstone Kits, Loupes">
+              </div>
+              <button type="submit" class="btn" style="width:100%">Register Vendor</button>
+              <div class="err-box" id="inv-ven-err" style="margin-top:10px"></div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
 </div><!-- /wrap -->
 </div><!-- /s-main -->
 
@@ -1534,7 +1801,7 @@
 
 // ── Fallback Utilities (in case shared.js is cached/outdated or fails to load) ──
 if (typeof CENTRES === 'undefined') {
-  window.CENTRES = ['Mumbai','Delhi','Kolkata','Surat','Chennai','Hyderabad','Pune','Bangalore','Lucknow','Ahmedabad','Jaipur'];
+  window.CENTRES = ['Mumbai','Delhi','Surat','Kolkata','Lucknow','Jaipur','Hyderabad','Chennai','Bangalore','Thrissur','Ahmedabad','Pune'];
 }
 if (typeof COURSES === 'undefined') {
   window.COURSES = [
@@ -1779,6 +2046,14 @@ function applyAdminVisibility() {
   if (dTab) {
     dTab.style.display = isDiplomaReleaseAuthorized ? '' : 'none';
   }
+
+  const isMumbaiAdmin = (counselorName === 'Bianca' || counselorName === 'Anuradha');
+  const dispatchTab = document.getElementById('inv-tab-dispatch');
+  const vendorsTab = document.getElementById('inv-tab-vendors');
+  if (dispatchTab) dispatchTab.style.display = isMumbaiAdmin ? '' : 'none';
+  if (vendorsTab) vendorsTab.style.display = isMumbaiAdmin ? '' : 'none';
+  const filterWrap = document.getElementById('inv-stock-filter-wrap');
+  if (filterWrap) filterWrap.style.display = isMumbaiAdmin ? '' : 'none';
 }
 
 function applyPasswordChangeState() {
@@ -1879,6 +2154,9 @@ function switchTab(id) {
   }
   if (id === 't-diplomas') {
     loadDiplomaData();
+  }
+  if (id === 't-inventory') {
+    initInventoryTab();
   }
   if (id==='t-fees') {
     if (isAdmin && !adminDashboardData) renderAdminDashboardPlaceholders();
@@ -5889,10 +6167,20 @@ function renderDiplomaTable(list) {
         '✅ Released<br>' +
         '<span style="font-size:11px;color:var(--muted)">by ' + escC(a.diplomaReleasedBy) + ' on ' + relDate + '</span>' +
         '</div>';
+    } else if (a.hodStatus === 'Pending') {
+      actionCell = '<span class="badge" style="background:#FFFBEB;color:#D97706;border:1px solid #FCD34D;padding:3px 8px;font-size:11px">⏳ Pending HOD</span>';
+    } else if (a.hodStatus === 'Rejected') {
+      actionCell = '<span class="badge" style="background:#FEF2F2;color:#DC2626;border:1px solid #FCA5A5;padding:3px 8px;font-size:11px">❌ HOD Rejected</span>';
     } else if (a.eligible) {
-      actionCell = '<button class="btn btn-gold btn-xs" onclick="releaseDiploma(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', this)" style="padding:5px 10px;font-size:11px;margin:0 auto;display:block">Release Diploma</button>';
+      var approvedBadge = a.hodStatus === 'Approved' ? '<div style="color:#168B57;font-size:10px;font-weight:700;margin-top:4px">👑 HOD Approved</div>' : '';
+      actionCell = '<button class="btn btn-gold btn-xs" onclick="releaseDiploma(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', this)" style="padding:5px 10px;font-size:11px;margin:0 auto;display:block">Release Diploma</button>' + approvedBadge;
     } else {
-      actionCell = '<span class="badge" style="background:#F4F4F5;color:#71717A;border:1px solid #E4E4E7;padding:3px 8px;font-size:11px">Ineligible</span>';
+      var requestBtn = '';
+      var isBorderline = (a.weeklyAvg.value !== null && a.weeklyAvg.value >= 50 && a.weeklyAvg.value < 60) || (a.finalExam.value !== null && a.finalExam.value >= 50 && a.finalExam.value < 60);
+      if (isBorderline && (counselorName === 'Bianca' || counselorName === 'Anuradha')) {
+        requestBtn = '<button class="btn btn-outline btn-xs" onclick="requestHODApproval(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', \'' + escC(a.studentName.replace(/'/g, "\\'")) + '\', ' + a.weeklyAvg.value + ', ' + a.finalExam.value + ', this)" style="padding:4px 8px;font-size:10px;margin:5px auto 0;display:block;width:100%">Request HOD</button>';
+      }
+      actionCell = '<span class="badge" style="background:#F4F4F5;color:#71717A;border:1px solid #E4E4E7;padding:3px 8px;font-size:11px">Ineligible</span>' + requestBtn;
     }
 
     return '<tr>' +
@@ -5967,6 +6255,33 @@ function releaseDiploma(studentId, batchCode, btn) {
     }
     
     showToast('Diploma released successfully!');
+    loadDiplomaData();
+  });
+}
+
+function requestHODApproval(studentId, batchCode, studentName, weeklyAvg, finalExam, btn) {
+  if (!confirm('Request HOD approval for ' + studentName + ' (' + studentId + ')?')) return;
+  btn.disabled = true;
+  btn.textContent = 'Requesting...';
+  
+  var params = {
+    action: 'submitHODApprovalRequest',
+    studentId: studentId,
+    batchCode: batchCode,
+    studentName: studentName,
+    weeklyAvg: weeklyAvg,
+    finalExam: finalExam,
+    counselorName: counselorName
+  };
+  
+  gasGet(params, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      btn.disabled = false;
+      btn.textContent = 'Request HOD';
+      showToast(d && d.reason === 'request_already_exists' ? 'Request already exists.' : 'Failed to request approval.', 'error');
+      return;
+    }
+    showToast('HOD approval request submitted successfully.');
     loadDiplomaData();
   });
 }
@@ -6133,6 +6448,410 @@ function filterAlumniTable() {
     });
   }
   
+  renderAlumniTable(filtered);
+}
+
+/* ── Premium Inventory Tab Handlers ── */
+function initInventoryTab() {
+  const isMumbaiAdmin = (counselorName === 'Bianca' || counselorName === 'Anuradha');
+  
+  // Populate Stock Centre Filter
+  const centreFilter = document.getElementById('inv-stock-centre-filter');
+  if (centreFilter && centreFilter.options.length <= 1) {
+    centreFilter.innerHTML = isMumbaiAdmin ? '<option value="">All Centres</option>' : '';
+    CENTRES.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      centreFilter.appendChild(opt);
+    });
+    // Set default value: if not Mumbai Admin, set to counselor's centre
+    if (!isMumbaiAdmin) {
+      const myCentre = (allowedCentres && allowedCentres.length) ? allowedCentres[0] : '';
+      centreFilter.value = myCentre;
+    } else {
+      centreFilter.value = '';
+    }
+  }
+
+  // Set default subtab
+  switchInventorySubTab('inv-stock');
+}
+
+function switchInventorySubTab(subTabId) {
+  // Hide all subtab content
+  document.querySelectorAll('.inv-subtab-content').forEach(el => el.style.display = 'none');
+  // Deactivate all subtab buttons
+  document.querySelectorAll('.inv-tab').forEach(el => el.classList.remove('active'));
+
+  // Show selected subtab content
+  const activeContent = document.getElementById(subTabId);
+  if (activeContent) activeContent.style.display = 'block';
+
+  // Activate button
+  const btn = Array.from(document.querySelectorAll('.inv-tab')).find(b => b.getAttribute('onclick').includes(subTabId));
+  if (btn) btn.classList.add('active');
+
+  // Load appropriate data
+  if (subTabId === 'inv-stock') {
+    loadInventoryStock();
+  } else if (subTabId === 'inv-request') {
+    loadInventoryRequestItems();
+  } else if (subTabId === 'inv-history') {
+    loadInventoryRequests();
+  } else if (subTabId === 'inv-dispatch') {
+    loadInventoryDispatchQueue();
+  } else if (subTabId === 'inv-vendors') {
+    loadInventoryVendors();
+  }
+}
+
+function loadInventoryStock() {
+  const centreFilter = document.getElementById('inv-stock-centre-filter');
+  const selectedCentre = centreFilter ? centreFilter.value : '';
+  const grid = document.getElementById('inv-stock-grid');
+  if (!grid) return;
+
+  grid.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading stock levels...</p></div>';
+
+  gasGet({ action: 'getInventoryStock', centre: selectedCentre }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      grid.innerHTML = '<div style="color:var(--red);padding:16px;text-align:center">Failed to load stock levels.</div>';
+      return;
+    }
+
+    const list = d.list || [];
+    if (list.length === 0) {
+      grid.innerHTML = '<div style="color:var(--muted);padding:16px;text-align:center">No inventory items found.</div>';
+      return;
+    }
+
+    grid.innerHTML = list.map(item => {
+      const isLow = item.quantity <= 5;
+      const badge = isLow ? '<span class="stock-badge-low">⚠️ Low Stock</span>' : '';
+      return `
+        <div class="stock-card ${isLow ? 'low-stock' : ''}">
+          <div>
+            <div class="item-category">${escC(item.category)}</div>
+            <div class="item-title" style="margin-top:4px">${escC(item.itemName)}</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:8px">ID: <code>${escC(item.itemId)}</code></div>
+          </div>
+          <div class="stock-value-row">
+            <div>
+              <span class="stock-qty">${item.quantity}</span>
+              <span class="stock-unit" style="margin-left:4px">${escC(item.unit)}</span>
+            </div>
+            ${badge}
+          </div>
+        </div>
+      `;
+    }).join('');
+  });
+}
+
+function loadInventoryRequestItems() {
+  const itemSelect = document.getElementById('inv-req-item');
+  if (!itemSelect) return;
+  if (itemSelect.options.length > 1) return; // already loaded
+
+  gasGet({ action: 'getInventoryStock' }, function(e, d) {
+    if (e || !d || d.status !== 'ok') return;
+    const list = d.list || [];
+    itemSelect.innerHTML = '<option value="">Select Item</option>' +
+      list.map(item => `<option value="${escC(item.itemId)}">${escC(item.itemName)} (${escC(item.unit)})</option>`).join('');
+  });
+}
+
+function submitInventoryRequestForm(event) {
+  event.preventDefault();
+  const itemId = document.getElementById('inv-req-item').value;
+  const quantity = Number(document.getElementById('inv-req-qty').value) || 0;
+  const urgency = document.getElementById('inv-req-urgency').value;
+  const note = document.getElementById('inv-req-note').value;
+  const errBox = document.getElementById('inv-req-err');
+
+  errBox.classList.remove('show');
+  if (!itemId || quantity <= 0) {
+    errBox.textContent = 'Please select an item and enter a valid quantity.';
+    errBox.classList.add('show');
+    return;
+  }
+
+  const myCentre = (allowedCentres && allowedCentres.length) ? allowedCentres[0] : '';
+  if (!myCentre) {
+    errBox.textContent = 'Error: No associated centre found for your profile.';
+    errBox.classList.add('show');
+    return;
+  }
+
+  const btn = event.target.querySelector('button[type="submit"]');
+  const oldText = btn.textContent;
+  btn.textContent = 'Submitting...';
+  btn.disabled = true;
+
+  const params = {
+    action: 'submitInventoryRequest',
+    centre: myCentre,
+    itemId: itemId,
+    quantity: quantity,
+    urgency: urgency,
+    note: note,
+    counselorName: counselorName
+  };
+
+  gasGet(params, function(e, d) {
+    btn.textContent = oldText;
+    btn.disabled = false;
+    if (e || !d || d.status !== 'ok') {
+      errBox.textContent = (d && d.message) || 'Failed to submit inventory request.';
+      errBox.classList.add('show');
+      return;
+    }
+
+    showToast('Inventory request submitted successfully!');
+    document.getElementById('inv-request-form').reset();
+    switchInventorySubTab('inv-history');
+  });
+}
+
+function loadInventoryRequests() {
+  const isMumbaiAdmin = (counselorName === 'Bianca' || counselorName === 'Anuradha');
+  const myCentre = isMumbaiAdmin ? '' : ((allowedCentres && allowedCentres.length) ? allowedCentres[0] : '');
+  const tbody = document.getElementById('inv-history-tbody');
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading request history...</p></div></td></tr>';
+
+  gasGet({ action: 'getInventoryRequests', centre: myCentre }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--red);padding:16px">Failed to load requests.</td></tr>';
+      return;
+    }
+
+    const list = d.list || [];
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:16px">No requests found.</td></tr>';
+      return;
+    }
+
+    // Sort by requestedAt descending
+    list.sort((a,b) => new Date(b.requestedAt) - new Date(a.requestedAt));
+
+    tbody.innerHTML = list.map(req => {
+      let statusColor = '#D97706'; // Pending
+      if (req.status === 'Dispatched') statusColor = '#3B82F6';
+      if (req.status === 'Received') statusColor = '#10B981';
+
+      let actionBtn = '—';
+      if (req.status === 'Dispatched') {
+        actionBtn = `<button class="btn btn-outline btn-xs" onclick="confirmInventoryReceipt('${escC(req.requestId)}', this)">Confirm Received</button>`;
+      }
+
+      let dispatchInfo = '—';
+      if (req.dispatch) {
+        dispatchInfo = `
+          <div style="font-size:11px">
+            <div>Qty: <b>${req.dispatch.qtyDispatched}</b></div>
+            <div>Date: ${new Date(req.dispatch.dispatchDate).toLocaleDateString()}</div>
+            <div>Tracking: <code style="word-break:break-all">${escC(req.dispatch.courierInfo || 'N/A')}</code></div>
+          </div>
+        `;
+      }
+
+      return `
+        <tr>
+          <td><code style="font-size:10px">${escC(req.requestId)}</code></td>
+          <td><b>${escC(req.centre)}</b></td>
+          <td>${escC(req.itemName)}</td>
+          <td class="text-center"><b>${req.quantityRequested}</b></td>
+          <td class="text-center"><span class="badge" style="background:${req.urgency==='High'?'#FEF2F2':'#FFFBEB'};color:${req.urgency==='High'?'#DC2626':'#D97706'}">${escC(req.urgency)}</span></td>
+          <td>
+            <div style="font-size:11px">
+              <b>${escC(req.requestedBy)}</b>
+              <div style="color:var(--muted)">${new Date(req.requestedAt).toLocaleString()}</div>
+              ${req.note ? `<div style="font-style:italic;margin-top:4px;color:var(--navy)">"${escC(req.note)}"</div>` : ''}
+            </div>
+          </td>
+          <td><span class="badge" style="background:${statusColor}15;color:${statusColor};font-weight:700">${escC(req.status)}</span></td>
+          <td>${dispatchInfo}</td>
+          <td>${actionBtn}</td>
+        </tr>
+      `;
+    }).join('');
+  });
+}
+
+function confirmInventoryReceipt(requestId, btn) {
+  if (!confirm('Have you physically received this shipment and verified the quantities? This will update your branch inventory.')) return;
+
+  const oldText = btn.textContent;
+  btn.textContent = 'Confirming...';
+  btn.disabled = true;
+
+  gasGet({ action: 'confirmInventoryReceived', requestId: requestId, counselorName: counselorName }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      alert('Error confirming receipt: ' + ((d && d.message) || 'unknown error'));
+      btn.textContent = oldText;
+      btn.disabled = false;
+      return;
+    }
+    showToast('Inventory received and updated!');
+    loadInventoryRequests();
+  });
+}
+
+function loadInventoryDispatchQueue() {
+  const tbody = document.getElementById('inv-dispatch-tbody');
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading dispatch queue...</p></div></td></tr>';
+
+  gasGet({ action: 'getInventoryRequests' }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--red);padding:16px">Failed to load dispatch queue.</td></tr>';
+      return;
+    }
+
+    const list = (d.list || []).filter(req => req.status === 'Pending');
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:16px">No pending dispatches. All caught up!</td></tr>';
+      return;
+    }
+
+    // Sort by urgency and then date
+    list.sort((a,b) => {
+      if (a.urgency === 'High' && b.urgency !== 'High') return -1;
+      if (a.urgency !== 'High' && b.urgency === 'High') return 1;
+      return new Date(a.requestedAt) - new Date(b.requestedAt);
+    });
+
+    tbody.innerHTML = list.map(req => {
+      return `
+        <tr>
+          <td><code style="font-size:10px">${escC(req.requestId)}</code></td>
+          <td><b>${escC(req.centre)}</b></td>
+          <td>${escC(req.itemName)}</td>
+          <td class="text-center"><b>${req.quantityRequested}</b></td>
+          <td class="text-center"><span class="badge" style="background:${req.urgency==='High'?'#FEF2F2':'#FFFBEB'};color:${req.urgency==='High'?'#DC2626':'#D97706'}">${escC(req.urgency)}</span></td>
+          <td><b>${escC(req.requestedBy)}</b></td>
+          <td>${new Date(req.requestedAt).toLocaleString()}</td>
+          <td><div style="max-width:200px;font-size:11px;color:var(--muted)">${escC(req.note || '—')}</div></td>
+          <td>
+            <button class="btn btn-xs" onclick="dispatchInventoryItem('${escC(req.requestId)}', ${req.quantityRequested}, '${escC(req.itemName.replace(/'/g, "\\'"))}', this)">Dispatch</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  });
+}
+
+function dispatchInventoryItem(requestId, qtyRequested, itemName, btn) {
+  const courierInfo = prompt('Enter Courier / Tracking Info for sending ' + qtyRequested + ' x ' + itemName + ':');
+  if (courierInfo === null) return; // Cancelled
+
+  const oldText = btn.textContent;
+  btn.textContent = 'Processing...';
+  btn.disabled = true;
+
+  const params = {
+    action: 'processInventoryDispatch',
+    requestId: requestId,
+    qtyDispatched: qtyRequested,
+    courierInfo: courierInfo.trim() || 'Hand Delivery',
+    adminName: counselorName
+  };
+
+  gasGet(params, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      alert('Error processing dispatch: ' + ((d && d.message) || 'unknown error'));
+      btn.textContent = oldText;
+      btn.disabled = false;
+      return;
+    }
+    showToast('Item dispatched successfully!');
+    loadInventoryDispatchQueue();
+  });
+}
+
+function loadInventoryVendors() {
+  const tbody = document.getElementById('inv-vendors-tbody');
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading vendors...</p></div></td></tr>';
+
+  gasGet({ action: 'getVendors' }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--red);padding:16px">Failed to load vendors.</td></tr>';
+      return;
+    }
+
+    const list = d.list || [];
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px">No vendors registered.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = list.map(v => {
+      return `
+        <tr>
+          <td><b>${escC(v.vendorName)}</b></td>
+          <td>${escC(v.contactPerson || '—')}</td>
+          <td>
+            <div>${escC(v.phone || '—')}</div>
+            <div style="font-size:11px;color:var(--muted)">${escC(v.email || '—')}</div>
+          </td>
+          <td><div style="font-size:11px">${escC(v.address || '—')}</div></td>
+          <td><span style="font-size:11px">${escC(v.suppliedItems || '—')}</span></td>
+        </tr>
+      `;
+    }).join('');
+  });
+}
+
+function submitVendorRegistrationForm(event) {
+  event.preventDefault();
+  const name = document.getElementById('inv-ven-name').value;
+  const contact = document.getElementById('inv-ven-contact').value;
+  const phone = document.getElementById('inv-ven-phone').value;
+  const email = document.getElementById('inv-ven-email').value;
+  const address = document.getElementById('inv-ven-address').value;
+  const items = document.getElementById('inv-ven-items').value;
+  const errBox = document.getElementById('inv-ven-err');
+
+  errBox.classList.remove('show');
+
+  const btn = event.target.querySelector('button[type="submit"]');
+  const oldText = btn.textContent;
+  btn.textContent = 'Registering...';
+  btn.disabled = true;
+
+  const params = {
+    action: 'registerVendor',
+    vendorName: name,
+    contactPerson: contact,
+    phone: phone,
+    email: email,
+    address: address,
+    suppliedItems: items,
+    adminName: counselorName
+  };
+
+  gasGet(params, function(e, d) {
+    btn.textContent = oldText;
+    btn.disabled = false;
+
+    if (e || !d || d.status !== 'ok') {
+      errBox.textContent = (d && d.message) || 'Failed to register vendor.';
+      errBox.classList.add('show');
+      return;
+    }
+
+    showToast('Vendor registered successfully!');
+    document.getElementById('inv-vendor-form').reset();
+    loadInventoryVendors();
+  });
+}
+
   renderAlumniTable(filtered);
 }
 </script>

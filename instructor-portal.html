@@ -246,6 +246,23 @@
   </div>
 
   <div class="account-actions" style="display:flex;gap:8px;align-items:center;">
+    <!-- Bell notification button with badge -->
+    <div style="position:relative;display:inline-block">
+      <button class="btn btn-outline" id="notif-bell-btn" onclick="toggleNotifDropdown()" style="width:auto;padding:8px;font-size:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;min-width:36px;height:36px;border-color:var(--border);">
+        🔔
+        <span id="notif-badge" style="display:none;position:absolute;top:-4px;right:-4px;background:#DC2626;color:white;font-size:9px;font-weight:700;border-radius:50%;width:16px;height:16px;align-items:center;justify-content:center">0</span>
+      </button>
+      <!-- Notifications dropdown card -->
+      <div id="notif-dropdown" style="display:none;position:absolute;top:42px;right:0;width:320px;background:var(--white);border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.15);z-index:999;padding:12px;max-height:400px;overflow-y:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:6px">
+          <strong style="font-size:13px;color:var(--navy)">Upcoming Batches</strong>
+          <span style="font-size:11px;color:var(--muted)" id="notif-count-text">0 starting soon</span>
+        </div>
+        <div id="notif-items-list" style="display:flex;flex-direction:column;gap:8px">
+          <div style="text-align:center;padding:12px;color:var(--muted);font-size:12px">No upcoming batches starting in the next 30 days.</div>
+        </div>
+      </div>
+    </div>
     <button class="btn btn-outline" style="width:auto;padding:8px 12px;font-size:12px" id="change-pass-toggle" onclick="togglePasswordCard()">Change Password</button>
     <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px;border-color:#dc2626;color:#dc2626;" onclick="instructorSignOut()">Sign Out</button>
   </div>
@@ -262,6 +279,8 @@
     <button class="btn btn-gold" id="cp-btn" onclick="changePassword()">Save Password</button>
     <div class="err-box" id="cp-err"></div>
   </div>
+
+  <div id="upcoming-batches-banner-container" style="margin-top:16px;margin-bottom:16px"></div>
 
   <div class="tab-bar">
     <button class="tab active" onclick="iTab('t-session')">📅 Session</button>
@@ -2123,6 +2142,7 @@ function tryRestoreSession() {
     applyPasswordChangeState();
     loadInstructorBatches();
     loadTodaySessions();
+    loadUpcomingBatchNotifications();
   } catch(e) {}
 }
 
@@ -2192,6 +2212,7 @@ function doLogin() {
     applyPasswordChangeState();
     loadInstructorBatches();
     loadTodaySessions();
+    loadUpcomingBatchNotifications();
     saveSession();
   });
 }
@@ -2222,6 +2243,17 @@ function instructorSignOut() {
   isAcademicHead = false;
   trayHubLoaded = false; trayBoardData = null;
   if (trayNotifPollTimer) { clearInterval(trayNotifPollTimer); trayNotifPollTimer = null; }
+  
+  // Clear notification UI on sign out
+  const badge = document.getElementById('notif-badge');
+  if (badge) badge.style.display = 'none';
+  const listContainer = document.getElementById('notif-items-list');
+  if (listContainer) listContainer.innerHTML = '<div style="text-align:center;padding:12px;color:var(--muted);font-size:12px">No upcoming batches starting in the next 30 days.</div>';
+  const bannerContainer = document.getElementById('upcoming-batches-banner-container');
+  if (bannerContainer) bannerContainer.innerHTML = '';
+  const dropdown = document.getElementById('notif-dropdown');
+  if (dropdown) dropdown.style.display = 'none';
+
   // Reset login form
   var nameEl = document.getElementById('lg-name');
   var pinEl  = document.getElementById('lg-pin');
@@ -6537,10 +6569,116 @@ function otHandleTestTypeChange() {
 }
 
 // Called after login to show/hide Online Tests tab based on instructor's batches
-function updateTabVisibilityForCourses() {
-  const otTab = document.getElementById('t-onlinetests-tab');
-  if (otTab) otTab.style.display = '';
-}
+  function updateTabVisibilityForCourses() {
+    const otTab = document.getElementById('t-onlinetests-tab');
+    if (otTab) otTab.style.display = '';
+  }
+
+  /* ── Premium Upcoming Batches Notifications ── */
+  function loadUpcomingBatchNotifications() {
+    if (!instructorName) return;
+    
+    gasGet({ action: 'getUpcomingBatches', instructor: instructorName }, function(e, d) {
+      const listContainer = document.getElementById('notif-items-list');
+      const badge = document.getElementById('notif-badge');
+      const countText = document.getElementById('notif-count-text');
+      const bannerContainer = document.getElementById('upcoming-batches-banner-container');
+      
+      if (e || !d || d.status !== 'ok') {
+        if (listContainer) listContainer.innerHTML = '<div style="text-align:center;padding:12px;color:var(--red);font-size:12px">Failed to load upcoming batches.</div>';
+        return;
+      }
+      
+      const batches = d.batches || [];
+      
+      // Update badge count
+      if (badge) {
+        if (batches.length > 0) {
+          badge.textContent = batches.length;
+          badge.style.display = 'flex';
+        } else {
+          badge.style.display = 'none';
+        }
+      }
+      
+      // Update header count text
+      if (countText) {
+        countText.textContent = batches.length + ' starting soon';
+      }
+      
+      // Populate dropdown list
+      if (listContainer) {
+        if (batches.length === 0) {
+          listContainer.innerHTML = '<div style="text-align:center;padding:12px;color:var(--muted);font-size:12px">No upcoming batches starting in the next 30 days.</div>';
+        } else {
+          listContainer.innerHTML = batches.map(b => {
+            let urgencyStyle = '';
+            if (b.startingSoon) {
+              urgencyStyle = 'border-left:3px solid #DC2626;background:#FEF2F2';
+            } else {
+              urgencyStyle = 'border-left:3px solid #FCD34D';
+            }
+            return `
+              <div style="padding:8px 10px;border-radius:6px;font-size:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05);text-align:left;margin-bottom:6px;${urgencyStyle}">
+                <div style="font-weight:700;color:var(--navy);display:flex;justify-content:space-between">
+                  <span>${escC(b.batchCode)}</span>
+                  <span style="font-size:10px;color:var(--muted)">In ${b.daysToStart} days</span>
+                </div>
+                <div style="margin-top:2px;color:var(--navy);font-weight:600">${escC(b.course)}</div>
+                <div style="margin-top:2px;font-size:11px;color:var(--muted)">
+                  Centre: <b>${escC(b.centre)}</b> | Starts: <b>${b.startDate}</b>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+      
+      // Populate startup banners (for batches starting in <= 7 days)
+      if (bannerContainer) {
+        const urgentBatches = batches.filter(b => b.startingSoon);
+        if (urgentBatches.length === 0) {
+          bannerContainer.innerHTML = '';
+        } else {
+          bannerContainer.innerHTML = urgentBatches.map(b => {
+            return `
+              <div class="card" style="background:linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);border:1px solid #FCD34D;color:#92400E;display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:12px;box-shadow:0 4px 12px rgba(217,119,6,0.08);margin-bottom:16px">
+                <span style="font-size:24px">⏰</span>
+                <div style="flex:1;text-align:left">
+                  <h4 style="margin:0 0 4px;font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:0.03em">Upcoming Batch Alert (Starts in ${b.daysToStart} days)</h4>
+                  <p style="margin:0;font-size:12px;line-height:1.4">
+                    Batch <b>${escC(b.batchCode)} (${escC(b.course)})</b> starts on <b>${b.startDate}</b> at centre <b>${escC(b.centre)}</b>. Please make sure to prepare course materials and session plans.
+                  </p>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+    });
+  }
+
+  function toggleNotifDropdown() {
+    const dropdown = document.getElementById('notif-dropdown');
+    if (!dropdown) return;
+    if (dropdown.style.display === 'none') {
+      dropdown.style.display = 'block';
+      setTimeout(() => {
+        document.addEventListener('click', closeNotifDropdownOnOutsideClick);
+      }, 10);
+    } else {
+      dropdown.style.display = 'none';
+    }
+  }
+
+  function closeNotifDropdownOnOutsideClick(event) {
+    const dropdown = document.getElementById('notif-dropdown');
+    const bellBtn = document.getElementById('notif-bell-btn');
+    if (dropdown && !dropdown.contains(event.target) && !bellBtn.contains(event.target)) {
+      dropdown.style.display = 'none';
+      document.removeEventListener('click', closeNotifDropdownOnOutsideClick);
+    }
+  }
 
 </script>
 </body>

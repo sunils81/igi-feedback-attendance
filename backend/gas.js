@@ -106,12 +106,18 @@ const SH_FEEDBACK = 'Attendance_Feedback';
 const SH_HOLIDAYS     = 'Holidays';
 const SH_ASSESSMENTS  = 'Assessments';
 const SH_MARKS        = 'Assessment_Marks';
+const SH_HOD_APPROVALS = 'HOD_Approvals';
+const SH_INV_ITEMS     = 'INV_Items';
+const SH_INV_STOCK     = 'INV_Stock';
+const SH_INV_REQUESTS  = 'INV_Requests';
+const SH_INV_DISPATCH  = 'INV_Dispatch';
+const SH_INV_VENDORS   = 'INV_Vendors';
 
 // ── Centre / Course codes ──────────────────────────────────────
 const CENTRE_CODES = {
   'Mumbai':'MUM','Delhi':'DEL','Kolkata':'KOL','Surat':'SUR',
   'Chennai':'CHE','Hyderabad':'HYD','Pune':'PUN','Bangalore':'BLR',
-  'Lucknow':'LKO','Ahmedabad':'AMD','Jaipur':'JAI'
+  'Lucknow':'LKO','Ahmedabad':'AMD','Jaipur':'JAI','Thrissur':'THR'
 };
 const COURSE_CODES = {
   'Diamond Graduate':'DG','Colored Stone Graduate':'CSG',
@@ -1245,6 +1251,45 @@ function doGet(e) {
     // ── getInstructorEligibility ──────────────────────────────
     if (act==='getInstructorEligibility') {
       return respond(getInstructorEligibility(ss, p));
+    }
+
+    // ── getUpcomingBatches ────────────────────────────────────
+    if (act==='getUpcomingBatches') {
+      return respond(getUpcomingBatches(ss, p));
+    }
+
+    // ── HOD Approvals actions ──────────────────────────────────
+    if (act==='submitHODApprovalRequest') {
+      return respond(submitHODApprovalRequest(ss, p));
+    }
+    if (act==='getPendingHODApprovals') {
+      return respond(getPendingHODApprovals(ss, p));
+    }
+    if (act==='reviewHODApproval') {
+      return respond(reviewHODApproval(ss, p));
+    }
+
+    // ── Inventory actions ──────────────────────────────────────
+    if (act==='getInventoryStock') {
+      return respond(getInventoryStock(ss, p));
+    }
+    if (act==='submitInventoryRequest') {
+      return respond(submitInventoryRequest(ss, p));
+    }
+    if (act==='getInventoryRequests') {
+      return respond(getInventoryRequests(ss, p));
+    }
+    if (act==='processInventoryDispatch') {
+      return respond(processInventoryDispatch(ss, p));
+    }
+    if (act==='confirmInventoryReceived') {
+      return respond(confirmInventoryReceived(ss, p));
+    }
+    if (act==='registerVendor') {
+      return respond(registerVendor(ss, p));
+    }
+    if (act==='getVendors') {
+      return respond(getVendors(ss, p));
     }
 
     // ── getStudentDiplomaStatus ───────────────────────────────
@@ -3156,7 +3201,13 @@ function ensureSheets(ss) {
     [SH_USER_CREDENTIALS]: ['Role','Name','Centres','Password Hash','Salt','Must Change Password','Updated At','Active'],
     [SH_HOLIDAYS]:     ['Date','Holiday Name','Centre','Added At'],
     [SH_ASSESSMENTS]:  ['Assessment ID','Batch Code','Test Name','Test Type','Test Date','Total Marks','Instructor','Created At'],
-    [SH_MARKS]:        ['Assessment ID','Student ID','Student Name','Marks Obtained','Percentage','Result','Remarks','Total Marks','Updated At']
+    [SH_MARKS]:        ['Assessment ID','Student ID','Student Name','Marks Obtained','Percentage','Result','Remarks','Total Marks','Updated At'],
+    [SH_HOD_APPROVALS]: ['Approval ID','Student ID','Batch Code','Student Name','Weekly Avg','Final Exam','Requested By','Requested At','Status','Reviewed By','Reviewed At','Note'],
+    [SH_INV_ITEMS]:    ['Item ID','Item Name','Category','Unit','Created At'],
+    [SH_INV_STOCK]:    ['Stock ID','Centre','Item ID','Quantity','Updated At','Updated By'],
+    [SH_INV_REQUESTS]: ['Request ID','Centre','Item ID','Quantity Requested','Urgency','Counsellor Note','Requested By','Requested At','Status','Approved By','Approved At'],
+    [SH_INV_DISPATCH]: ['Dispatch ID','Request ID','Quantity Dispatched','Dispatch Date','Courier / Tracking Info','Dispatched By','Dispatched At'],
+    [SH_INV_VENDORS]:  ['Vendor ID','Vendor Name','Contact Person','Phone','Email','Address','Supplied Items','Registered By','Registered At']
   };
   Object.entries(defs).forEach(([name,headers])=>{
     let sh=ss.getSheetByName(name);if(!sh)sh=ss.insertSheet(name);
@@ -3187,8 +3238,22 @@ function ensureSheets(ss) {
     }
   });
   ensureUserCredentials(ss);
+  
+  // Seed initial items if INV_Items is empty
+  const shItems = ss.getSheetByName(SH_INV_ITEMS);
+  if (shItems && shItems.getLastRow() <= 1) {
+    const defaultItems = [
+      ['ITEM-001', 'DG Brochure', 'Brochure', 'Pcs', new Date().toISOString()],
+      ['ITEM-002', 'CSG Brochure', 'Brochure', 'Pcs', new Date().toISOString()],
+      ['ITEM-003', 'DG Course Materials', 'Course Material', 'Sets', new Date().toISOString()],
+      ['ITEM-004', 'CSG Course Materials', 'Course Material', 'Sets', new Date().toISOString()]
+    ];
+    defaultItems.forEach(row => shItems.appendRow(row));
+  }
+  
   // Mark as done — skip for next 6 hours
   try { CacheService.getScriptCache().put('ensureSheets_ok', '1', 21600); } catch(_es) {}
+}
 }
 function ensureStudentHeaders(sh) {
   const h=['Student ID','Primary Batch Code','Name','Mobile Last 4','Mobile','Email','Status','Created At','Welcome Email Status','Welcome Email Sent At'];
@@ -6904,6 +6969,20 @@ function getDiplomaReleaseList(ss, p) {
 
     const enrollments = getEnrollmentRows(ss).filter(e => e.status === 'Active');
     
+    // ── Load HOD Approvals override mapping ──────────────────────────
+    const shHod = ss.getSheetByName(SH_HOD_APPROVALS);
+    const hodRows = shHod && shHod.getLastRow() > 1
+      ? shHod.getRange(2, 1, shHod.getLastRow() - 1, 9).getValues() : [];
+    const hodMap = {};
+    hodRows.forEach(r => {
+      const sid = String(r[1]).toUpperCase();
+      const bc = String(r[2]).toUpperCase();
+      const status = String(r[8]).trim();
+      if (sid && bc) {
+        hodMap[sid + '|' + bc] = status;
+      }
+    });
+    
     const shBatches = ss.getSheetByName(SH_BATCHES);
     const batchData = shBatches && shBatches.getLastRow() > 1 
       ? shBatches.getRange(2, 1, shBatches.getLastRow() - 1, 10).getValues() 
@@ -7142,9 +7221,10 @@ function getDiplomaReleaseList(ss, p) {
       const attendancePass = attendancePct >= 75;
       const weeklyPass = weeklyAvg !== null && weeklyAvg >= 60;
       const finalPass = finalExamScore !== null && finalExamScore >= 60;
+      const hodStatus = hodMap[studentId + '|' + batchCode] || '';
       // Attendance is shown as a warning but does NOT gate diploma eligibility.
-      // Only marks (weekly avg ≥60% AND final ≥60%) determine eligible status.
-      const eligible = weeklyPass && finalPass;
+      // Only marks (weekly avg ≥60% AND final ≥60%) or HOD approval determine eligible status.
+      const eligible = (weeklyPass && finalPass) || (hodStatus === 'Approved');
 
       list.push({
         studentId,
@@ -7169,6 +7249,7 @@ function getDiplomaReleaseList(ss, p) {
           pass: finalPass
         },
         eligible,
+        hodStatus,
         diplomaStatus: e.diplomaStatus || '',
         diplomaReleasedBy: e.diplomaReleasedBy || '',
         diplomaReleasedAt: e.diplomaReleasedAt || '',
@@ -7244,5 +7325,381 @@ function releaseStudentDiploma(ss, p) {
     return {status: 'ok', rowIndex: foundRowIndex};
   } catch (err) {
     return {status: 'error', message: err.toString()};
+  }
+}
+
+// ── NEW HELPER FUNCTIONS ──
+
+function getUpcomingBatches(ss, p) {
+  try {
+    const instructor = String(p.instructor || '').trim();
+    if (!instructor) return {status:'error', reason:'missing_instructor'};
+    const sh = ss.getSheetByName(SH_BATCHES);
+    if (!sh || sh.getLastRow() < 2) return {status:'ok', batches:[]};
+    const data = sh.getRange(2, 1, sh.getLastRow()-1, 10).getValues();
+    const today = new Date(); today.setHours(0,0,0,0);
+    const in30 = new Date(today); in30.setDate(in30.getDate() + 30);
+    const batches = data.filter(r => {
+      if (!r[0]) return false;
+      const hasSlot = detectSlotOrDate(r[4]);
+      const assigned = hasSlot ? (r[9] || '') : (r[8] || r[9] || '');
+      if (!sameName(assigned, instructor)) return false;
+      const startRaw = hasSlot ? r[5] : r[4];
+      if (!startRaw) return false;
+      const sD = new Date(startRaw);
+      return !isNaN(sD) && sD >= today && sD <= in30;
+    }).map(r => {
+      const hasSlot = detectSlotOrDate(r[4]);
+      const startRaw = hasSlot ? r[5] : r[4];
+      const endRaw = hasSlot ? r[6] : r[5];
+      const sD = new Date(startRaw);
+      const daysToStart = Math.ceil((sD.getTime() - today.getTime()) / (86400000));
+      return {
+        batchCode: r[0],
+        centre: r[1],
+        course: r[2],
+        type: r[3],
+        startDate: sD.toLocaleDateString('en-IN'),
+        endDate: endRaw ? new Date(endRaw).toLocaleDateString('en-IN') : '',
+        daysToStart,
+        startingSoon: daysToStart <= 7
+      };
+    });
+    return {status:'ok', batches};
+  } catch(err) {
+    return {status:'error', message: err.toString()};
+  }
+}
+
+function submitHODApprovalRequest(ss, p) {
+  try {
+    const studentId = String(p.studentId || '').trim().toUpperCase();
+    const batchCode = String(p.batchCode || '').trim().toUpperCase();
+    const studentName = String(p.studentName || '').trim();
+    const weeklyAvg = String(p.weeklyAvg || '').trim();
+    const finalExam = String(p.finalExam || '').trim();
+    const requestedBy = String(p.counselorName || '').trim();
+    if (!studentId || !batchCode) return {status:'error', reason:'missing_params'};
+    
+    const sh = ss.getSheetByName(SH_HOD_APPROVALS);
+    if (!sh) return {status:'error', reason:'no_sheet'};
+    
+    if (sh.getLastRow() > 1) {
+      const data = sh.getRange(2, 1, sh.getLastRow()-1, 9).getValues();
+      const exists = data.some(r => String(r[1]).toUpperCase() === studentId && String(r[2]).toUpperCase() === batchCode);
+      if (exists) return {status:'error', reason:'request_already_exists'};
+    }
+    
+    const appId = 'APP-' + Date.now();
+    sh.appendRow([
+      appId, studentId, batchCode, studentName, weeklyAvg, finalExam,
+      requestedBy, new Date().toISOString(), 'Pending', '', '', ''
+    ]);
+    return {status:'ok', approvalId: appId};
+  } catch(err) {
+    return {status:'error', message: err.toString()};
+  }
+}
+
+function getPendingHODApprovals(ss, p) {
+  try {
+    const sh = ss.getSheetByName(SH_HOD_APPROVALS);
+    if (!sh || sh.getLastRow() < 2) return {status:'ok', list:[]};
+    const data = sh.getRange(2, 1, sh.getLastRow()-1, 12).getValues();
+    const list = data.filter(r => r[0]).map((r, i) => ({
+      approvalId: r[0],
+      studentId: r[1],
+      batchCode: r[2],
+      studentName: r[3],
+      weeklyAvg: r[4],
+      finalExam: r[5],
+      requestedBy: r[6],
+      requestedAt: r[7],
+      status: r[8],
+      reviewedBy: r[9],
+      reviewedAt: r[10],
+      note: r[11],
+      rowIndex: i + 2
+    }));
+    return {status:'ok', list};
+  } catch(err) {
+    return {status:'error', message: err.toString()};
+  }
+}
+
+function reviewHODApproval(ss, p) {
+  try {
+    const appId = String(p.approvalId || '').trim();
+    const status = String(p.status || '').trim();
+    const adminName = String(p.adminName || 'Sunil Sharma').trim();
+    const note = String(p.note || '').trim();
+    if (!appId || !status) return {status:'error', reason:'missing_params'};
+    
+    const sh = ss.getSheetByName(SH_HOD_APPROVALS);
+    if (!sh || sh.getLastRow() < 2) return {status:'error', reason:'no_sheet'};
+    const data = sh.getRange(2, 1, sh.getLastRow()-1, 1).getValues();
+    let rowIndex = -1;
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][0]) === appId) {
+        rowIndex = i + 2;
+        break;
+      }
+    }
+    if (rowIndex === -1) return {status:'error', reason:'request_not_found'};
+    
+    sh.getRange(rowIndex, 9, 1, 4).setValues([[
+      status, adminName, new Date().toISOString(), note
+    ]]);
+    return {status:'ok'};
+  } catch(err) {
+    return {status:'error', message: err.toString()};
+  }
+}
+
+function getInventoryStock(ss, p) {
+  try {
+    const centre = String(p.centre || '').trim();
+    
+    const shItems = ss.getSheetByName(SH_INV_ITEMS);
+    const itemsData = shItems && shItems.getLastRow() > 1 ? shItems.getRange(2, 1, shItems.getLastRow()-1, 4).getValues() : [];
+    const items = itemsData.filter(r => r[0]).map(r => ({
+      itemId: r[0],
+      itemName: r[1],
+      category: r[2],
+      unit: r[3]
+    }));
+    
+    const shStock = ss.getSheetByName(SH_INV_STOCK);
+    const stockData = shStock && shStock.getLastRow() > 1 ? shStock.getRange(2, 1, shStock.getLastRow()-1, 4).getValues() : [];
+    
+    const stockMap = {};
+    stockData.forEach(r => {
+      const sc = String(r[1]).trim();
+      const sItemId = String(r[2]).trim();
+      const qty = Number(r[3]) || 0;
+      if (!centre || sc === centre) {
+        stockMap[sItemId] = (stockMap[sItemId] || 0) + qty;
+      }
+    });
+    
+    const list = items.map(item => ({
+      ...item,
+      quantity: stockMap[item.itemId] || 0
+    }));
+    
+    return {status:'ok', list};
+  } catch(err) {
+    return {status:'error', message: err.toString()};
+  }
+}
+
+function submitInventoryRequest(ss, p) {
+  try {
+    const centre = String(p.centre || '').trim();
+    const itemId = String(p.itemId || '').trim();
+    const qty = Number(p.quantity) || 0;
+    const urgency = String(p.urgency || 'Medium').trim();
+    const note = String(p.note || '').trim();
+    const requestedBy = String(p.counselorName || '').trim();
+    
+    if (!centre || !itemId || qty <= 0) return {status:'error', reason:'missing_params'};
+    
+    const shReq = ss.getSheetByName(SH_INV_REQUESTS);
+    if (!shReq) return {status:'error', reason:'no_sheet'};
+    
+    const reqId = 'REQ-' + Date.now();
+    shReq.appendRow([
+      reqId, centre, itemId, qty, urgency, note,
+      requestedBy, new Date().toISOString(), 'Pending', '', ''
+    ]);
+    return {status:'ok', requestId: reqId};
+  } catch(err) {
+    return {status:'error', message: err.toString()};
+  }
+}
+
+function getInventoryRequests(ss, p) {
+  try {
+    const centre = String(p.centre || '').trim();
+    const shReq = ss.getSheetByName(SH_INV_REQUESTS);
+    if (!shReq || shReq.getLastRow() < 2) return {status:'ok', list:[]};
+    
+    const reqData = shReq.getRange(2, 1, shReq.getLastRow()-1, 11).getValues();
+    
+    const shItems = ss.getSheetByName(SH_INV_ITEMS);
+    const itemsData = shItems && shItems.getLastRow() > 1 ? shItems.getRange(2, 1, shItems.getLastRow()-1, 2).getValues() : [];
+    const itemMap = {};
+    itemsData.forEach(r => { if(r[0]) itemMap[r[0]] = r[1]; });
+    
+    const shDisp = ss.getSheetByName(SH_INV_DISPATCH);
+    const dispData = shDisp && shDisp.getLastRow() > 1 ? shDisp.getRange(2, 1, shDisp.getLastRow()-1, 7).getValues() : [];
+    const dispMap = {};
+    dispData.forEach(r => {
+      const rId = String(r[1]).trim();
+      if(rId) {
+        dispMap[rId] = {
+          dispatchId: r[0],
+          qtyDispatched: r[2],
+          dispatchDate: r[3],
+          courierInfo: r[4]
+        };
+      }
+    });
+    
+    const list = reqData.filter(r => r[0]).map((r, i) => {
+      const rId = String(r[0]).trim();
+      return {
+        requestId: rId,
+        centre: r[1],
+        itemId: r[2],
+        itemName: itemMap[r[2]] || r[2],
+        quantityRequested: r[3],
+        urgency: r[4],
+        note: r[5],
+        requestedBy: r[6],
+        requestedAt: r[7],
+        status: r[8],
+        approvedBy: r[9],
+        approvedAt: r[10],
+        dispatch: dispMap[rId] || null,
+        rowIndex: i + 2
+      };
+    }).filter(r => !centre || r.centre === centre);
+    
+    return {status:'ok', list};
+  } catch(err) {
+    return {status:'error', message: err.toString()};
+  }
+}
+
+function processInventoryDispatch(ss, p) {
+  try {
+    const reqId = String(p.requestId || '').trim();
+    const qty = Number(p.qtyDispatched) || 0;
+    const courierInfo = String(p.courierInfo || '').trim();
+    const adminName = String(p.adminName || 'Admin').trim();
+    
+    if (!reqId || qty <= 0) return {status:'error', reason:'missing_params'};
+    
+    const shReq = ss.getSheetByName(SH_INV_REQUESTS);
+    const reqData = shReq.getLastRow() > 1 ? shReq.getRange(2, 1, shReq.getLastRow()-1, 1).getValues() : [];
+    let rowIndex = -1;
+    for (let i = 0; i < reqData.length; i++) {
+      if (String(reqData[i][0]) === reqId) {
+        rowIndex = i + 2;
+        break;
+      }
+    }
+    if (rowIndex === -1) return {status:'error', reason:'request_not_found'};
+    
+    shReq.getRange(rowIndex, 9, 1, 3).setValues([[
+      'Dispatched', adminName, new Date().toISOString()
+    ]]);
+    
+    const shDisp = ss.getSheetByName(SH_INV_DISPATCH);
+    const dispId = 'DSP-' + Date.now();
+    shDisp.appendRow([
+      dispId, reqId, qty, new Date().toISOString(), courierInfo, adminName, new Date().toISOString()
+    ]);
+    
+    return {status:'ok'};
+  } catch(err) {
+    return {status:'error', message: err.toString()};
+  }
+}
+
+function confirmInventoryReceived(ss, p) {
+  try {
+    const reqId = String(p.requestId || '').trim();
+    const counselor = String(p.counselorName || '').trim();
+    
+    if (!reqId) return {status:'error', reason:'missing_params'};
+    
+    const shReq = ss.getSheetByName(SH_INV_REQUESTS);
+    const reqRows = shReq.getLastRow() > 1 ? shReq.getRange(2, 1, shReq.getLastRow()-1, 9).getValues() : [];
+    let rowIndex = -1;
+    let centre = '', itemId = '', qtyRequested = 0;
+    for (let i = 0; i < reqRows.length; i++) {
+      if (String(reqRows[i][0]) === reqId) {
+        rowIndex = i + 2;
+        centre = reqRows[i][1];
+        itemId = reqRows[i][2];
+        qtyRequested = Number(reqRows[i][3]) || 0;
+        break;
+      }
+    }
+    if (rowIndex === -1) return {status:'error', reason:'request_not_found'};
+    
+    shReq.getRange(rowIndex, 9).setValue('Received');
+    
+    const shStock = ss.getSheetByName(SH_INV_STOCK);
+    const stockRows = shStock.getLastRow() > 1 ? shStock.getRange(2, 1, shStock.getLastRow()-1, 4).getValues() : [];
+    let stockRowIndex = -1;
+    for (let i = 0; i < stockRows.length; i++) {
+      if (String(stockRows[i][1]).trim() === centre && String(stockRows[i][2]).trim() === itemId) {
+        stockRowIndex = i + 2;
+        break;
+      }
+    }
+    
+    if (stockRowIndex !== -1) {
+      const existingQty = Number(shStock.getRange(stockRowIndex, 4).getValue()) || 0;
+      shStock.getRange(stockRowIndex, 4).setValue(existingQty + qtyRequested);
+      shStock.getRange(stockRowIndex, 5, 1, 2).setValues([[new Date().toISOString(), counselor]]);
+    } else {
+      const stockId = 'STK-' + Date.now();
+      shStock.appendRow([stockId, centre, itemId, qtyRequested, new Date().toISOString(), counselor]);
+    }
+    
+    return {status:'ok'};
+  } catch(err) {
+    return {status:'error', message: err.toString()};
+  }
+}
+
+function registerVendor(ss, p) {
+  try {
+    const name = String(p.vendorName || '').trim();
+    const contact = String(p.contactPerson || '').trim();
+    const phone = String(p.phone || '').trim();
+    const email = String(p.email || '').trim();
+    const address = String(p.address || '').trim();
+    const items = String(p.suppliedItems || '').trim();
+    const registeredBy = String(p.adminName || 'Admin').trim();
+    
+    if (!name) return {status:'error', reason:'missing_params'};
+    
+    const shVen = ss.getSheetByName(SH_INV_VENDORS);
+    if (!shVen) return {status:'error', reason:'no_sheet'};
+    
+    const vendorId = 'VEN-' + Date.now();
+    shVen.appendRow([
+      vendorId, name, contact, phone, email, address, items, registeredBy, new Date().toISOString()
+    ]);
+    return {status:'ok', vendorId};
+  } catch(err) {
+    return {status:'error', message: err.toString()};
+  }
+}
+
+function getVendors(ss, p) {
+  try {
+    const shVen = ss.getSheetByName(SH_INV_VENDORS);
+    if (!shVen || shVen.getLastRow() < 2) return {status:'ok', list:[]};
+    const data = shVen.getRange(2, 1, shVen.getLastRow()-1, 9).getValues();
+    const list = data.filter(r => r[0]).map(r => ({
+      vendorId: r[0],
+      vendorName: r[1],
+      contactPerson: r[2],
+      phone: r[3],
+      email: r[4],
+      address: r[5],
+      suppliedItems: r[6],
+      registeredBy: r[7],
+      registeredAt: r[8]
+    }));
+    return {status:'ok', list};
+  } catch(err) {
+    return {status:'error', message: err.toString()};
   }
 }

@@ -5441,38 +5441,91 @@ function trayUpdateIdPreview() {
 function trayLoadInventory() {
   if (!instructorName) return;
   var centre = getInstructorCentre(instructorName) || instructorName;
+  
+  // Set tab label dynamically based on whether it is an inventory-owning centre
+  var tabBtn = document.getElementById('th-inv-btn');
+  var isInv = ['Mumbai', 'Delhi', 'Chennai', 'Surat'].indexOf(centre) !== -1;
+  if (tabBtn) {
+    tabBtn.innerHTML = isInv ? '📂 My Inventory' : '📂 Rotational Inventory';
+  }
+  
+  // Toggle sections visibility based on inventory ownership
+  var addForm = document.querySelector('.tray-form'); // Add New Tray form
+  var confirmSection = document.querySelector('.confirm-section'); // Confirm Tray Locations
+  var borrowedPanel = document.getElementById('tray-borrowed-panel'); // visiting trays
+  
+  if (!isInv) {
+    if (addForm) addForm.style.display = 'none';
+    if (confirmSection) confirmSection.style.display = 'none';
+    if (borrowedPanel) {
+      borrowedPanel.style.display = 'block';
+      var h4 = borrowedPanel.querySelector('h4');
+      if (h4) h4.innerHTML = '📥 Trays in Custody at ' + centre;
+      var sub = borrowedPanel.querySelector('.bs-sub');
+      if (sub) sub.innerHTML = 'These trays are currently assigned to this location on rotation. Please confirm receipt when they arrive, or confirm dispatch when sending them away.';
+    }
+  } else {
+    if (addForm) addForm.style.display = 'block';
+    if (confirmSection) confirmSection.style.display = 'block';
+    if (borrowedPanel) {
+      var h4 = borrowedPanel.querySelector('h4');
+      if (h4) h4.innerHTML = '📥 Trays at My Centre from Other Branches';
+      var sub = borrowedPanel.querySelector('.bs-sub');
+      if (sub) sub.innerHTML = 'These trays are marked as being at your centre. Confirm you have them and set your return date.';
+    }
+  }
+
   // Populate topic dropdown on load
   trayUpdateTopicOptions();
   gasGet({action:'trayGetMine', centre:centre}, function(err, d) {
-    if (err || !d || d.status !== 'ok') return;
     var wrap = document.getElementById('tray-inv-wrap');
     if (!wrap) return;
+    
+    if (err || !d || d.status !== 'ok') {
+      wrap.innerHTML = '<div style="color:#dc2626;font-size:12px;">Failed to load inventory.</div>';
+      trayLoadConfirm([]);
+      return;
+    }
+    
     var centreData = d.myCentreData;
-    if (!centreData) { wrap.innerHTML = '<div style="color:#9ca3af;font-size:12px;">No trays registered for your centre yet.</div>'; return; }
-    var allTrays = (centreData.diamond.trays || []).concat(centreData.coloredStone.trays || []).concat((centreData.organics||{}).trays || []);
-    if (!allTrays.length) { wrap.innerHTML = '<div style="color:#9ca3af;font-size:12px;">No trays registered for your centre yet. Add one above or run Seed Trays.</div>'; return; }
-    var catIcon = {Diamond:'💎', ColoredStone:'🟣', Organics:'🌿'};
-    var locBadge = {HOME:'ib-home', ON_LOAN:'ib-away', UNKNOWN:'ib-req', UNCONFIRMED:'ib-req'};
-    var locLabel = {HOME:'At Home', ON_LOAN:'On Loan', UNKNOWN:'Unknown', UNCONFIRMED:'⚠ Unconfirmed'};
-    var html = allTrays.map(function(t) {
-      var cat = t.category || (t.type==='Diamond'?'DM':(t.type==='ColoredStone'?'CS':'OR'));
-      var icon = catIcon[t.type] || (cat==='DM'?'💎':(cat==='CS'?'🟣':'🌿'));
-      var loc = t.locationStatus || 'UNCONFIRMED';
-      var statusCls = locBadge[loc] || 'ib-req';
-      var statusLbl = locLabel[loc] || loc;
-      var tId = trayEsc(t.trayId||'');
-      return '<div class="inv-row">'
-        + '<div class="inv-id">'+icon+' '+tId+'</div>'
-        + '<div class="inv-info">'+(t.topicName||t.type||'')+(t.deadline&&loc==='ON_LOAN'?' · Due: '+t.deadline:'')+'</div>'
-        + '<div class="inv-stones">'+trayEsc(String(t.stoneCount||'?'))+' stones</div>'
-        + '<div class="inv-badge '+statusCls+'">'+statusLbl+'</div>'
-        + '<div class="inv-actions">'
-        + '<button class="inv-btn inv-btn-edit" onclick="trayOpenEditModal(\''+tId+'\','+( parseInt(t.stoneCount)||0 )+',\''+trayEsc(t.notes||'')+'\',\''+trayEsc(String(t.weekUsage||''))+'\')">✏️ Edit</button>'
-        + '</div></div>';
-    }).join('');
-    wrap.innerHTML = html;
-    // Also refresh confirm panel
+    var allTrays = [];
+    if (centreData) {
+      allTrays = (centreData.diamond.trays || []).concat(centreData.coloredStone.trays || []).concat((centreData.organics||{}).trays || []);
+    }
+    
+    if (!isInv) {
+      // Rotational centres do not have home trays
+      wrap.innerHTML = '';
+    } else {
+      if (!allTrays.length) {
+        wrap.innerHTML = '<div style="color:#9ca3af;font-size:12px;">No trays registered for your centre yet. Add one above or run Seed Trays.</div>';
+      } else {
+        var catIcon = {Diamond:'💎', ColoredStone:'🟣', Organics:'🌿'};
+        var locBadge = {HOME:'ib-home', ON_LOAN:'ib-away', UNKNOWN:'ib-req', UNCONFIRMED:'ib-req'};
+        var locLabel = {HOME:'At Home', ON_LOAN:'On Loan', UNKNOWN:'Unknown', UNCONFIRMED:'⚠ Unconfirmed'};
+        var html = allTrays.map(function(t) {
+          var cat = t.category || (t.type==='Diamond'?'DM':(t.type==='ColoredStone'?'CS':'OR'));
+          var icon = catIcon[t.type] || (cat==='DM'?'💎':(cat==='CS'?'🟣':'🌿'));
+          var loc = t.locationStatus || 'UNCONFIRMED';
+          var statusCls = locBadge[loc] || 'ib-req';
+          var statusLbl = locLabel[loc] || loc;
+          var tId = trayEsc(t.trayId||'');
+          return '<div class="inv-row">'
+            + '<div class="inv-id">'+icon+' '+tId+'</div>'
+            + '<div class="inv-info">'+(t.topicName||t.type||'')+(t.deadline&&loc==='ON_LOAN'?' · Due: '+t.deadline:'')+'</div>'
+            + '<div class="inv-stones">'+trayEsc(String(t.stoneCount||'?'))+' stones</div>'
+            + '<div class="inv-badge '+statusCls+'">'+statusLbl+'</div>'
+            + '<div class="inv-actions">'
+            + '<button class="inv-btn inv-btn-edit" onclick="trayOpenEditModal(\''+tId+'\','+( parseInt(t.stoneCount)||0 )+',\''+trayEsc(t.notes||'')+'\',\''+trayEsc(String(t.weekUsage||''))+'\')">✏️ Edit</button>'
+            + '</div></div>';
+        }).join('');
+        wrap.innerHTML = html;
+      }
+    }
+    
+    // Always refresh confirm/borrowed panel regardless of home inventory status
     trayLoadConfirm(allTrays);
+    loadUpcomingBatchNotifications();
   });
 }
 
@@ -5836,7 +5889,16 @@ function trayRenderBorrowedHere() {
       });
     });
   });
-  if (!visiting.length) { panel.style.display='none'; return; }
+  var isInv = ['Mumbai', 'Delhi', 'Chennai', 'Surat'].indexOf(myCentre) !== -1;
+  if (!visiting.length) {
+    if (isInv) {
+      panel.style.display = 'none';
+    } else {
+      panel.style.display = 'block';
+      wrap.innerHTML = '<div style="font-size:12px;color:#9ca3af;padding:16px;text-align:center;background:#f9fafb;border:1.5px dashed #e5e7eb;border-radius:8px;margin-top:10px;">No rotational trays currently in custody at this centre.</div>';
+    }
+    return;
+  }
   panel.style.display = '';
   var defaultReturn = new Date(Date.now()+14*86400000).toISOString().split('T')[0];
   wrap.innerHTML = visiting.map(function(v) {
@@ -6579,7 +6641,7 @@ function otHandleTestTypeChange() {
     if (otTab) otTab.style.display = '';
   }
 
-  /* ── Premium Upcoming Batches Notifications ── */
+  /* ── Premium Upcoming Batches & Tray Notifications ── */
   function loadUpcomingBatchNotifications() {
     if (!instructorName) return;
     
@@ -6587,14 +6649,8 @@ function otHandleTestTypeChange() {
       const listContainer = document.getElementById('notif-items-list');
       const badge = document.getElementById('notif-badge');
       const countText = document.getElementById('notif-count-text');
-      const bannerContainer = document.getElementById('upcoming-batches-banner-container');
       
-      if (e || !d || d.status !== 'ok') {
-        if (listContainer) listContainer.innerHTML = '<div style="text-align:center;padding:12px;color:var(--red);font-size:12px">Failed to load upcoming batches.</div>';
-        return;
-      }
-      
-      const batches = d.batches || [];
+      const batches = (d && d.status === 'ok') ? (d.batches || []) : [];
       
       // Update badge count
       if (badge) {
@@ -6626,12 +6682,12 @@ function otHandleTestTypeChange() {
             return `
               <div style="padding:8px 10px;border-radius:6px;font-size:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05);text-align:left;margin-bottom:6px;${urgencyStyle}">
                 <div style="font-weight:700;color:var(--navy);display:flex;justify-content:space-between">
-                  <span>${escC(b.batchCode)}</span>
+                  <span>${escH(b.batchCode)}</span>
                   <span style="font-size:10px;color:var(--muted)">In ${b.daysToStart} days</span>
                 </div>
-                <div style="margin-top:2px;color:var(--navy);font-weight:600">${escC(b.course)}</div>
+                <div style="margin-top:2px;color:var(--navy);font-weight:600">${escH(b.course)}</div>
                 <div style="margin-top:2px;font-size:11px;color:var(--muted)">
-                  Centre: <b>${escC(b.centre)}</b> | Starts: <b>${b.startDate}</b>
+                  Centre: <b>${escH(b.centre)}</b> | Starts: <b>${b.startDate}</b>
                 </div>
               </div>
             `;
@@ -6639,28 +6695,93 @@ function otHandleTestTypeChange() {
         }
       }
       
-      // Populate startup banners (for batches starting in <= 7 days)
-      if (bannerContainer) {
-        const urgentBatches = batches.filter(b => b.startingSoon);
-        if (urgentBatches.length === 0) {
-          bannerContainer.innerHTML = '';
-        } else {
-          bannerContainer.innerHTML = urgentBatches.map(b => {
-            return `
-              <div class="card" style="background:linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);border:1px solid #FCD34D;color:#92400E;display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:12px;box-shadow:0 4px 12px rgba(217,119,6,0.08);margin-bottom:16px">
-                <span style="font-size:24px">⏰</span>
-                <div style="flex:1;text-align:left">
-                  <h4 style="margin:0 0 4px;font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:0.03em">Upcoming Batch Alert (Starts in ${b.daysToStart} days)</h4>
-                  <p style="margin:0;font-size:12px;line-height:1.4">
-                    Batch <b>${escC(b.batchCode)} (${escC(b.course)})</b> starts on <b>${b.startDate}</b> at centre <b>${escC(b.centre)}</b>. Please make sure to prepare course materials and session plans.
-                  </p>
-                </div>
-              </div>
-            `;
-          }).join('');
+      // Async fetch Tray Board to render both Batch Banners and Tray Banners
+      var myCentre = getInstructorCentre(instructorName) || instructorName;
+      gasGet({ action: 'trayGetBoard' }, function(err, tb) {
+        var trays = [];
+        if (!err && tb && tb.status === 'ok') {
+          (tb.centres || []).forEach(function(c) {
+            ['diamond','coloredStone','organics'].forEach(function(tk) {
+              ((c[tk]||{}).trays || []).forEach(function(t) {
+                trays.push({ tray: t, centre: c.centre, typeKey: tk });
+              });
+            });
+          });
         }
-      }
+        
+        renderDashboardBanners(batches, trays, myCentre);
+      });
     });
+  }
+
+  function renderDashboardBanners(batches, trays, myCentre) {
+    const bannerContainer = document.getElementById('upcoming-batches-banner-container');
+    if (!bannerContainer) return;
+    
+    var bannerHtmls = [];
+    
+    // 1. Render urgent batch alerts (starting in <= 7 days)
+    var urgentBatches = batches.filter(b => b.startingSoon);
+    urgentBatches.forEach(b => {
+      bannerHtmls.push(`
+        <div class="card" style="background:linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);border:1px solid #FCD34D;color:#92400E;display:flex;align-items:center;gap:15px;padding:14px 18px;border-radius:12px;box-shadow:0 4px 12px rgba(217,119,6,0.08);margin-bottom:16px;position:relative;overflow:hidden;">
+          <div style="position:absolute;left:0;top:0;bottom:0;width:5px;background:#D97706;"></div>
+          <span style="font-size:24px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.1));">⏰</span>
+          <div style="flex:1;text-align:left;margin-left:5px;">
+            <h4 style="margin:0 0 4px;font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:0.03em;color:#92400E">Upcoming Batch Alert (Starts in ${b.daysToStart} days)</h4>
+            <p style="margin:0;font-size:12px;line-height:1.4">
+              Batch <b>${escH(b.batchCode)} (${escH(b.course)})</b> starts on <b>${b.startDate}</b> at centre <b>${escH(b.centre)}</b>. Please make sure to prepare course materials and session plans.
+            </p>
+          </div>
+        </div>
+      `);
+    });
+    
+    // 2. Render Incoming Tray Alerts (CurrentCentre = myCentre, locationStatus = ON_LOAN, borrowerConfirmed = false)
+    var incomingTrays = trays.filter(item => {
+      var t = item.tray;
+      return String(t.currentCentre) === myCentre && t.locationStatus === 'ON_LOAN' && !t.borrowerConfirmed;
+    });
+    incomingTrays.forEach(item => {
+      var t = item.tray;
+      bannerHtmls.push(`
+        <div class="card" style="background:linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%);border:1px solid #93C5FD;color:#1E3A8A;display:flex;align-items:center;gap:15px;padding:14px 18px;border-radius:12px;box-shadow:0 4px 12px rgba(30,58,138,0.08);margin-bottom:16px;position:relative;overflow:hidden;">
+          <div style="position:absolute;left:0;top:0;bottom:0;width:5px;background:#3B82F6;"></div>
+          <span style="font-size:24px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.1));">📦</span>
+          <div style="flex:1;text-align:left;margin-left:5px;">
+            <h4 style="margin:0 0 4px;font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:0.03em;color:#1E3A8A">Incoming Tray Alert</h4>
+            <p style="margin:0;font-size:12px;line-height:1.4">
+              Tray <b>${escH(t.trayId)}</b> (${escH(t.topicName || '')}) is dispatched from <b>${escH(item.centre)}</b> and is on its way to your centre.
+            </p>
+          </div>
+          <button class="btn btn-gold" style="padding:6px 12px;font-size:11px;font-weight:700;margin-left:auto;white-space:nowrap;box-shadow:0 2px 4px rgba(0,0,0,0.05);" onclick="iTab('t-trayhub'); traySubTab('th-inventory');">Confirm Receipt</button>
+        </div>
+      `);
+    });
+    
+    // 3. Render Pending Requests Alerts (if my centre is home centre of a requested tray)
+    var pendingRequests = trays.filter(item => {
+      var t = item.tray;
+      return item.centre === myCentre && t.status === 'requested';
+    });
+    pendingRequests.forEach(item => {
+      var t = item.tray;
+      bannerHtmls.push(`
+        <div class="card" style="background:linear-gradient(135deg, #FDF2F8 0%, #FCE7F3 100%);border:1px solid #F9A8D4;color:#9D174D;display:flex;align-items:center;gap:15px;padding:14px 18px;border-radius:12px;box-shadow:0 4px 12px rgba(157,23,77,0.08);margin-bottom:16px;position:relative;overflow:hidden;">
+          <div style="position:absolute;left:0;top:0;bottom:0;width:5px;background:#EC4899;"></div>
+          <span style="font-size:24px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.1));">📨</span>
+          <div style="flex:1;text-align:left;margin-left:5px;">
+            <h4 style="margin:0 0 4px;font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:0.03em;color:#9D174D">Pending Tray Request</h4>
+            <p style="margin:0;font-size:12px;line-height:1.4">
+              <b>${escH(t.requestingCentre || '')}</b> has requested tray <b>${escH(t.trayId)}</b> (${escH(t.topicName || '')}). Please review and dispatch.
+            </p>
+          </div>
+          <button class="btn btn-gold" style="padding:6px 12px;font-size:11px;font-weight:700;margin-left:auto;white-space:nowrap;box-shadow:0 2px 4px rgba(0,0,0,0.05);" onclick="iTab('t-trayhub'); traySubTab('th-incoming');">Review Request</button>
+        </div>
+      `);
+    });
+    
+    bannerContainer.innerHTML = bannerHtmls.join('');
   }
 
   function toggleNotifDropdown() {

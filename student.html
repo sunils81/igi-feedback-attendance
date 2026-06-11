@@ -1240,6 +1240,16 @@ function renderPortal(d) {
   const todayTabContent = document.getElementById('tab-today');
   if (todayTabContent) todayTabContent.classList.add('active');
 
+  // Restrict Portfolio tab to Jewelry Design and JewelPad students
+  const portTab = document.getElementById('nav-tab-portfolio');
+  if (portTab) {
+    const isJDStudent = d.batches && d.batches.some(function(b) {
+      const cn = (b.course || '').toLowerCase();
+      return cn.includes('jd') || cn.includes('jewelry') || cn.includes('jewelpad') || cn.includes('jp');
+    });
+    portTab.style.display = isJDStudent ? '' : 'none';
+  }
+
   renderStudentSummary(d);
   loadStudentFees();
   loadStudentAttendanceCalendar(studentCalendarMonth);
@@ -3585,7 +3595,7 @@ function renderStudentAssignments(activeTests, resultsMap) {
         `;
       }
 
-      html += '<div class="card" style="margin-bottom:16px; border:1px solid #e5e7eb; border-radius:12px; padding:16px;">'
+      html += '<div class="batch-card" style="margin-bottom:16px; padding:16px;">'
         + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
         + '  <span style="font-weight:800;font-size:14px;color:#0D1B2E;">' + escHtmlSt(a.testLabel) + '</span>'
         + '  ' + dueHtml
@@ -3617,7 +3627,7 @@ function renderStudentAssignments(activeTests, resultsMap) {
       var feedbackHtml = r.feedback ? '<div style="margin-top:8px;font-size:11px;color:#5b21b6;background:#f5f3ff;padding:6px 10px;border-radius:6px;border-left:3px solid #8b5cf6;">'
         + '<b>Instructor Remarks:</b> "' + escHtmlSt(r.feedback) + '"</div>' : '';
 
-      html += '<div class="card" style="margin-bottom:10px; padding:12px 14px; border:1.5px solid #f0f0f0;">'
+      html += '<div class="batch-card" style="margin-bottom:10px; padding:12px 14px;">'
         + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">'
         + '  <b style="font-size:13px;color:#374151;">' + escHtmlSt(r.testLabel) + '</b>'
         + '  ' + scoreDisplay
@@ -3796,7 +3806,7 @@ function renderStudentPortfolio(activeTests, resultsMap) {
         `;
       }
 
-      html += '<div class="card" style="margin-bottom:16px; border:1px solid #e5e7eb; border-radius:12px; padding:16px;">'
+      html += '<div class="batch-card" style="margin-bottom:16px; padding:16px;">'
         + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
         + '  <span style="font-weight:800;font-size:14px;color:#0D1B2E;">' + escHtmlSt(p.testLabel) + '</span>'
         + '  ' + dueHtml
@@ -3828,7 +3838,7 @@ function renderStudentPortfolio(activeTests, resultsMap) {
       var feedbackHtml = r.feedback ? '<div style="margin-top:8px;font-size:11px;color:#5b21b6;background:#f5f3ff;padding:6px 10px;border-radius:6px;border-left:3px solid #8b5cf6;">'
         + '<b>Instructor Remarks:</b> "' + escHtmlSt(r.feedback) + '"</div>' : '';
 
-      html += '<div class="card" style="margin-bottom:10px; padding:12px 14px; border:1.5px solid #f0f0f0;">'
+      html += '<div class="batch-card" style="margin-bottom:10px; padding:12px 14px;">'
         + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">'
         + '  <b style="font-size:13px;color:#374151;">' + escHtmlSt(r.testLabel) + '</b>'
         + '  ' + scoreDisplay
@@ -3896,14 +3906,23 @@ function escHtmlSt(str) {
     .replace(/'/g, '&#039;');
 }
 
+function isJDStudent() {
+  if (!portalData || !portalData.batches) return false;
+  return portalData.batches.some(function(b) {
+    const cn = (b.course || '').toLowerCase();
+    return cn.includes('jd') || cn.includes('jewelry') || cn.includes('jewelpad') || cn.includes('jp');
+  });
+}
+
 function checkStudentTabBadges(activeTests, completedTests) {
   var pendingAssCount = 0;
   var pendingPortCount = 0;
+  var jd = isJDStudent();
   
   activeTests.forEach(function(t) {
     if (t.alreadySubmitted) return;
     if (t.testType === 'Assignment') pendingAssCount++;
-    if (t.testType === 'Portfolio Upload') pendingPortCount++;
+    if (t.testType === 'Portfolio Upload' && jd) pendingPortCount++;
   });
   
   var assBadge = document.getElementById('assignments-tab-badge');
@@ -3968,8 +3987,9 @@ function processStudentAlertsAndBadges(activeTests, completedTests) {
   otActiveTests = uniqueActive;
   checkStudentTabBadges(uniqueActive, uniqueCompleted);
 
+  var jd = isJDStudent();
   var pendingAssOrPort = uniqueActive.find(function(t) {
-    return !t.alreadySubmitted && (t.testType === 'Assignment' || t.testType === 'Portfolio Upload');
+    return !t.alreadySubmitted && (t.testType === 'Assignment' || (t.testType === 'Portfolio Upload' && jd));
   });
 
   var pendingAlertDiv = document.getElementById('ot-assignments-pending-alert');
@@ -4009,7 +4029,7 @@ function processStudentAlertsAndBadges(activeTests, completedTests) {
   
   var newGraded = uniqueCompleted.find(function(res) {
     return res.result !== 'Pending' && 
-           (res.testType === 'Assignment' || res.testType === 'Portfolio Upload') && 
+           (res.testType === 'Assignment' || (res.testType === 'Portfolio Upload' && jd)) && 
            viewedGrades.indexOf(res.testId + '|' + res.submittedAt) === -1;
   });
 

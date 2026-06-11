@@ -5968,6 +5968,8 @@ function trayRows(sh) {
 var TRAY_CATALOGUE = {
   // Diamond trays (topic code → {name, weekUsage})
   DM: {
+    'MS1': {name:'Master Set 1',          weekUsage:'Week 2–6'},
+    'MS2': {name:'Master Set 2',          weekUsage:'Week 2–6'},
     'MS' : {name:'Master Set',           weekUsage:'Week 2–6'},
     'RI1': {name:'Regular Inventory 1',  weekUsage:'Week 2–6'},
     'RI2': {name:'Regular Inventory 2',  weekUsage:'Week 2–6'},
@@ -6016,12 +6018,12 @@ var TRAY_CATALOGUE = {
 // Per-centre tray set. Format: [[category, trayNo/topicCode, topicCode, stoneCount] for Mumbai, or [category, topicCode, stoneCount] for others]
 var CENTRE_TRAY_SETS = {
   'Mumbai': [
-    // Diamonds: MUM-DM-T01 to MUM-DM-T14
-    ['DM', '01', 'MS', 57], ['DM', '02', 'RI1', 57], ['DM', '03', 'RI2', 57], 
+    // Diamonds: MUM-DM-T01 to MUM-DM-T15
+    ['DM', '01', 'MS1', 57], ['DM', '02', 'RI1', 57], ['DM', '03', 'RI2', 57], 
     ['DM', '04', 'FS', 25], ['DM', '05', 'IM', 25], ['DM', '06', 'WT', 25], 
     ['DM', '07', 'FT', 25], ['DM', '08', 'LG1', 25], ['DM', '09', 'LG2', 25], 
     ['DM', '10', 'DS', 25], ['DM', '11', 'MJ', 25], ['DM', '12', 'RD1', 25], 
-    ['DM', '13', 'RD2', 25], ['DM', '14', 'RD3', 25],
+    ['DM', '13', 'RD2', 25], ['DM', '14', 'RD3', 25], ['DM', '15', 'MS2', 57],
     // Colored Stones Teaching: MUM-CS-T01 to MUM-CS-T23
     ['CS', '01', 'OPI', 25], ['CS', '12', 'OPI', 25],
     ['CS', '02', 'INI', 25], ['CS', '13', 'INI', 25],
@@ -6043,17 +6045,17 @@ var CENTRE_TRAY_SETS = {
     ['OR', '01', 'OR1', 25], ['OR', '02', 'OR2', 25]
   ],
   'Delhi': [
-    ['DM','MS',57],['DM','RI1',57],['DM','RI2',57],['DM','FS',25],
+    ['DM','MS1',57],['DM','MS2',57],['DM','RI1',57],['DM','RI2',57],['DM','FS',25],
     ['DM','IM',25],['DM','WT',25],['DM','FT',25],['DM','DS',25],['DM','RD1',25],
     ['CS','OPI',17],['CS','SYN',20],['CS','RES',25],['CS','GR1',20],
     ['CS','GR2',25],['CS','QTZ1',25],['CS','QTZ2',25],['CS','PRC',25]
   ],
   'Surat': [
-    ['DM','MS',57],['DM','RI1',57],['DM','RI2',57],['DM','FS',25],
+    ['DM','MS1',57],['DM','MS2',57],['DM','RI1',57],['DM','RI2',57],['DM','FS',25],
     ['DM','IM',25],['DM','WT',25],['DM','FT',25]
   ],
   'Chennai': [
-    ['DM','MS',57],['DM','RI1',57]
+    ['DM','MS1',57],['DM','MS2',57],['DM','RI1',57]
   ]
 };
 
@@ -6077,7 +6079,7 @@ function trayBulkSeed(ss, p) {
   ensureTraySheets(ss);
   var sh = getTraySheet(ss, SH_TRAY_REGISTRY);
   
-  // Clean up/remove old Mumbai entries from the registry to avoid stale legacy nomenclature
+  // Clean up/remove old Mumbai entries and legacy MS entries from the registry to avoid stale legacy nomenclature
   var data = sh.getDataRange().getValues();
   if (data.length > 1) {
     var header = data[0];
@@ -6085,8 +6087,9 @@ function trayBulkSeed(ss, p) {
     var removedMumbai = 0;
     for (var i = 1; i < data.length; i++) {
       var row = data[i];
+      var trayId = String(row[0] || '');
       var homeCentre = String(row[4] || '');
-      if (homeCentre === 'Mumbai') {
+      if (homeCentre === 'Mumbai' || trayId.endsWith('-DM-MS')) {
         removedMumbai++;
       } else {
         rowsToKeep.push(row);

@@ -291,7 +291,9 @@
     <button class="tab" id="t-academic-tab" style="display:none" onclick="iTab('t-academic')">🎓 Academic Overview</button>
     <button class="tab" id="t-revenue-tab" style="display:none" onclick="iTab('t-revenue')">📈 Revenue & Team</button>
     <button class="tab" id="t-eligibility-tab" onclick="iTab('t-eligibility'); eligibilityInit();">🎓 Eligibility</button>
-    <button class="tab" id="t-onlinetests-tab" onclick="iTab('t-onlinetests'); otInit();">🧪 Online Tests</button>
+    <button class="tab" id="t-onlinetests-tab" style="display:none" onclick="iTab('t-onlinetests')">🧪 Online Tests</button>
+    <button class="tab" id="t-assignments-tab" style="display:none" onclick="iTab('t-assignments')">📁 Assignments<span id="assignments-notif-badge" style="display:none;background:#dc2626;color:#fff;font-size:9px;padding:1px 5px;border-radius:10px;margin-left:5px;font-weight:700;"></span></button>
+    <button class="tab" id="t-portfolios-tab" style="display:none" onclick="iTab('t-portfolios')">🎨 Portfolios<span id="portfolios-notif-badge" style="display:none;background:#dc2626;color:#fff;font-size:9px;padding:1px 5px;border-radius:10px;margin-left:5px;font-weight:700;"></span></button>
     <button class="tab" id="t-trayhub-tab" onclick="iTab('t-trayhub'); trayHubInit();">🔮 Tray Hub<span id="tray-notif-badge" style="display:none;background:#dc2626;color:#fff;font-size:9px;padding:1px 5px;border-radius:10px;margin-left:5px;font-weight:700;"></span></button>
   </div>
 
@@ -1197,6 +1199,146 @@
     </div>
 
   </div><!-- /t-onlinetests -->
+
+  <!-- ── TAB: ASSIGNMENTS ────────────────────────────────────────── -->
+  <div id="t-assignments" class="tab-content">
+    <div class="ot-subnav" style="margin-top:16px;">
+      <button class="ot-subbtn active assignments-list-btn" onclick="assignmentsSubTab('list')">📋 My Assignments</button>
+      <button class="ot-subbtn assignments-create-btn" onclick="assignmentsSubTab('create')">➕ Create Assignment</button>
+    </div>
+
+    <!-- Panel 1: List & Grading -->
+    <div id="ass-panel-list" class="ot-panel active">
+      <div id="assignments-list-wrap">
+        <div class="spinner-wrap"><div class="spinner"></div><p>Loading assignments...</p></div>
+      </div>
+      
+      <!-- Grading UI -->
+      <div id="assignments-grading-container" style="display:none; margin-top:24px;" class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e5e7eb; padding-bottom:10px; margin-bottom:15px;">
+          <h3 id="assignments-grading-title" style="margin:0; font-size:16px; font-weight:700; color:var(--navy)">Grade Assignment</h3>
+          <button class="ot-btn ghost" onclick="closeAssignmentsGrading()" style="padding:4px 8px; font-size:12px;">✕ Close</button>
+        </div>
+        <div id="assignments-submissions-list">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 2: Create Assignment -->
+    <div id="ass-panel-create" class="ot-panel">
+      <div class="card">
+        <h3>Create New Assignment</h3>
+        <p class="sub">Specify details, select target batch, set a day-based duration, and input the question/prompt.</p>
+        <div class="ot-form-row">
+          <div>
+            <label>Assignment Title *</label>
+            <input type="text" id="ass-c-title" placeholder="e.g. Sketching Earrings & Pendants" style="width:280px;">
+          </div>
+          <div>
+            <label>Select Batch *</label>
+            <select id="ass-c-batch" style="width:200px;"><option value="">— select batch —</option></select>
+          </div>
+          <div>
+            <label>Course Name</label>
+            <input type="text" id="ass-c-course" placeholder="e.g. JD" style="width:100px;">
+          </div>
+        </div>
+        <div class="ot-form-row">
+          <div>
+            <label>Duration (Days) *</label>
+            <select id="ass-c-duration" style="width:150px;">
+              <option value="1">1 Day</option>
+              <option value="2" selected>2 Days</option>
+              <option value="3">3 Days</option>
+              <option value="5">5 Days</option>
+              <option value="7">7 Days</option>
+              <option value="10">10 Days</option>
+              <option value="14">14 Days</option>
+            </select>
+          </div>
+          <div>
+            <label>Allow Retake?</label>
+            <select id="ass-c-retake" style="width:120px;">
+              <option value="No">No</option>
+              <option value="Yes">Yes</option>
+            </select>
+          </div>
+          <div>
+            <label>Instructions (Optional)</label>
+            <input type="text" id="ass-c-instructions" placeholder="e.g. Submit JPG or PDF files." style="width:250px;">
+          </div>
+        </div>
+        
+        <div style="margin-top:15px; margin-bottom:15px;">
+          <label style="font-size:12px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;">Assignment Topic Prompt / Question *</label>
+          <textarea id="ass-c-prompt" rows="3" style="width:100%; padding:8px; border:1.5px solid #e5e7eb; border-radius:8px; font-size:13px; box-sizing:border-box;" placeholder="Enter details of what students need to do and submit..."></textarea>
+        </div>
+
+        <button class="ot-btn primary" onclick="submitCreateAssignment()">🚀 Create & Activate Assignment</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TAB: PORTFOLIOS ────────────────────────────────────────── -->
+  <div id="t-portfolios" class="tab-content">
+    <div class="ot-subnav" style="margin-top:16px;">
+      <button class="ot-subbtn active portfolios-list-btn" onclick="portfoliosSubTab('list')">📋 Portfolio Requests</button>
+      <button class="ot-subbtn portfolios-create-btn" onclick="portfoliosSubTab('create')">➕ Request Portfolios</button>
+    </div>
+
+    <!-- Panel 1: List & Grading -->
+    <div id="port-panel-list" class="ot-panel active">
+      <div id="portfolios-list-wrap">
+        <div class="spinner-wrap"><div class="spinner"></div><p>Loading portfolio requests...</p></div>
+      </div>
+      
+      <!-- Grading UI -->
+      <div id="portfolios-grading-container" style="display:none; margin-top:24px;" class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e5e7eb; padding-bottom:10px; margin-bottom:15px;">
+          <h3 id="portfolios-grading-title" style="margin:0; font-size:16px; font-weight:700; color:var(--navy)">Grade Portfolios</h3>
+          <button class="ot-btn ghost" onclick="closePortfoliosGrading()" style="padding:4px 8px; font-size:12px;">✕ Close</button>
+        </div>
+        <div id="portfolios-submissions-list">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 2: Request Portfolios -->
+    <div id="port-panel-create" class="ot-panel">
+      <div class="card">
+        <h3>Request Design Portfolios</h3>
+        <p class="sub">Create a request for students in a batch to submit their design portfolio links.</p>
+        <div class="ot-form-row">
+          <div>
+            <label>Portfolio Label / Name *</label>
+            <input type="text" id="port-c-title" placeholder="e.g. Final Jewelry Design Portfolio" style="width:280px;">
+          </div>
+          <div>
+            <label>Select Batch *</label>
+            <select id="port-c-batch" style="width:200px;"><option value="">— select batch —</option></select>
+          </div>
+          <div>
+            <label>Course Name</label>
+            <input type="text" id="port-c-course" placeholder="e.g. JD" style="width:100px;">
+          </div>
+        </div>
+        <div class="ot-form-row">
+          <div>
+            <label>Expiry Date (Optional)</label>
+            <input type="datetime-local" id="port-c-expiry" style="width:200px;">
+          </div>
+          <div>
+            <label>Instructions</label>
+            <input type="text" id="port-c-instructions" placeholder="e.g. Submit Behance share link." style="width:300px;">
+          </div>
+        </div>
+
+        <button class="ot-btn primary" onclick="submitCreatePortfolio()">🚀 Create Portfolio Request</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ══════════════════════════════════════════════════════════════ -->
   <!-- TAB: TRAY HUB                                                  -->
@@ -2206,6 +2348,9 @@ function iTab(id) {
   if (id==='t-mybatches')  loadMyBatches();
   if (id==='t-academic')   loadAcademicDashboard(false);
   if (id==='t-revenue')    loadAmitRevenueDashboard();
+  if (id==='t-onlinetests') otInit();
+  if (id==='t-assignments') assignmentsInit();
+  if (id==='t-portfolios') portfoliosInit();
 }
 
 // ── Login ─────────────────────────────────────────────────────
@@ -3804,6 +3949,8 @@ var otCurrentTests = [];      // list of tests
 var otActiveTestId = null;    // test open in proctor room
 var otProctorTimer = null;
 var otCurrentCQType = 'MCQ';
+var otPendingSubmissions = [];
+var otActiveGradingTestId = null;
 
 function otInit() {
   otLoadTests();
@@ -4673,6 +4820,11 @@ function otLoadTests() {
   gasGet({action:'getInstructorTests', instructor:instructorName}, function(err, d) {
     if (err || !d || d.status !== 'ok') return;
     otCurrentTests = d.tests || [];
+    if (d.pendingSubmissions) {
+      otPendingSubmissions = d.pendingSubmissions;
+      renderPendingSubmissionsBanners();
+    }
+    updateInstructorBadges(otCurrentTests);
     otRenderTests(otCurrentTests);
     otPopulateTestDropdowns(otCurrentTests);
   });
@@ -4681,9 +4833,12 @@ function otLoadTests() {
 function otRenderTests(tests) {
   var el = document.getElementById('ot-tests-list');
   if (!el) return;
-  if (!tests.length) { el.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:20px 0;">No tests created yet. Go to Create Test tab.</div>'; return; }
+  var regularTests = tests.filter(function(t) {
+    return t.testType !== 'Assignment' && t.testType !== 'Portfolio Upload';
+  });
+  if (!regularTests.length) { el.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:20px 0;">No tests created yet. Go to Create Test tab.</div>'; return; }
   var html = '<div class="ot-grid">';
-  tests.forEach(function(t) {
+  regularTests.forEach(function(t) {
     var badgeStatus = t.status === 'Draft' ? 'draft' : t.status === 'Active' ? 'active' : t.resultsReleased === 'Yes' ? 'released' : 'closed';
     var actAt = t.activatedAt ? new Date(t.activatedAt).toLocaleString('en-IN') : '—';
     html += '<div class="ot-card">'
@@ -6678,6 +6833,11 @@ function otHandleTestTypeChange() {
   function updateTabVisibilityForCourses() {
     const otTab = document.getElementById('t-onlinetests-tab');
     if (otTab) otTab.style.display = '';
+    const assTab = document.getElementById('t-assignments-tab');
+    if (assTab) assTab.style.display = '';
+    const portTab = document.getElementById('t-portfolios-tab');
+    if (portTab) portTab.style.display = '';
+    otLoadTests();
   }
 
   /* ── Premium Upcoming Batches & Tray Notifications ── */
@@ -6821,6 +6981,551 @@ function otHandleTestTypeChange() {
     });
     
     bannerContainer.innerHTML = bannerHtmls.join('');
+  }
+
+  /* ── Assignments & Portfolios Portal UI & Logic ── */
+  function assignmentsInit() {
+    assignmentsSubTab('list');
+    var batchSel = document.getElementById('ass-c-batch');
+    if (batchSel && instructorBatches && instructorBatches.length) {
+      batchSel.innerHTML = '<option value="">— select batch —</option>';
+      instructorBatches.forEach(function(b) {
+        batchSel.innerHTML += '<option value="'+escHtml(b.batchCode)+'">'+escHtml(b.batchCode)+' – '+escHtml(b.courseName||'')+'</option>';
+      });
+    }
+  }
+
+  function portfoliosInit() {
+    portfoliosSubTab('list');
+    var batchSel = document.getElementById('port-c-batch');
+    if (batchSel && instructorBatches && instructorBatches.length) {
+      batchSel.innerHTML = '<option value="">— select batch —</option>';
+      instructorBatches.forEach(function(b) {
+        batchSel.innerHTML += '<option value="'+escHtml(b.batchCode)+'">'+escHtml(b.batchCode)+' – '+escHtml(b.courseName||'')+'</option>';
+      });
+    }
+  }
+
+  function assignmentsSubTab(panel) {
+    document.querySelectorAll('#t-assignments .ot-panel').forEach(function(p){ p.classList.remove('active'); });
+    document.querySelectorAll('#t-assignments .ot-subbtn').forEach(function(b){ b.classList.remove('active'); });
+    var el = document.getElementById('ass-panel-'+panel);
+    if (el) el.classList.add('active');
+    var btn = document.querySelector('#t-assignments .assignments-' + panel + '-btn');
+    if (btn) btn.classList.add('active');
+    if (panel === 'list') {
+      loadAssignmentsList();
+    }
+  }
+
+  function portfoliosSubTab(panel) {
+    document.querySelectorAll('#t-portfolios .ot-panel').forEach(function(p){ p.classList.remove('active'); });
+    document.querySelectorAll('#t-portfolios .ot-subbtn').forEach(function(b){ b.classList.remove('active'); });
+    var el = document.getElementById('port-panel-'+panel);
+    if (el) el.classList.add('active');
+    var btn = document.querySelector('#t-portfolios .portfolios-' + panel + '-btn');
+    if (btn) btn.classList.add('active');
+    if (panel === 'list') {
+      loadPortfoliosList();
+    }
+  }
+
+  function loadAssignmentsList() {
+    var el = document.getElementById('assignments-list-wrap');
+    if (!el) return;
+    gasGet({action:'getInstructorTests', instructor:instructorName}, function(err, d) {
+      if (err || !d || d.status !== 'ok') { el.innerHTML = '<div style="color:#dc2626;">Failed to load assignments.</div>'; return; }
+      otCurrentTests = d.tests || [];
+      if (d.pendingSubmissions) {
+        otPendingSubmissions = d.pendingSubmissions;
+        renderPendingSubmissionsBanners();
+      }
+      updateInstructorBadges(otCurrentTests);
+      var assignments = otCurrentTests.filter(function(t) { return t.testType === 'Assignment'; });
+      if (!assignments.length) {
+        el.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:20px 0;text-align:center;">No assignments created yet. Go to Create Assignment tab.</div>';
+        return;
+      }
+      var html = '<div class="ot-grid">';
+      assignments.forEach(function(t) {
+        var badgeStatus = t.status === 'Draft' ? 'draft' : t.status === 'Active' ? 'active' : 'closed';
+        var dueHtml = '—';
+        if (t.status === 'Active' && t.expiryAt) {
+          var diff = new Date(t.expiryAt) - new Date();
+          if (diff > 0) {
+            var days = Math.floor(diff / (24*60*60*1000));
+            var hrs = Math.floor((diff % (24*60*60*1000)) / (60*60*1000));
+            dueHtml = '<span style="color:#059669;font-weight:700;">Active (Due in ' + (days > 0 ? days + 'd ' : '') + hrs + 'h)</span>';
+          } else {
+            dueHtml = '<span style="color:#dc2626;font-weight:700;">Expired / Closed</span>';
+          }
+        } else if (t.status === 'Closed') {
+          dueHtml = '<span style="color:#9ca3af;">Closed</span>';
+        } else {
+          dueHtml = '<span style="color:#9ca3af;">Draft (not activated)</span>';
+        }
+        html += '<div class="ot-card">'
+          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">'
+          +   '<span class="ot-badge weekly">Assignment</span>'
+          +   '<span class="ot-badge '+badgeStatus+'">'+escHtml(t.status)+'</span>'
+          + '</div>'
+          + '<div style="font-weight:600;font-size:14px;margin-bottom:6px;">'+escHtml(t.testLabel)+'</div>'
+          + '<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Batch: <b>'+escHtml(t.batchCode)+'</b></div>'
+          + '<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Duration: <b>'+t.duration+' days</b></div>'
+          + '<div style="font-size:12px;color:#6b7280;margin-bottom:8px;">Submissions: <b>'+(t.submissionCount||0)+'</b> (' + (t.pendingGradingCount || 0) + ' pending grade)</div>'
+          + '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Due Status: ' + dueHtml + '</div>'
+          + '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
+          + (t.status === 'Draft' ? '<button class="ot-btn success" onclick="otActivateAssignment(\''+escHtml(t.testId)+'\')">▶ Activate</button>' : '')
+          + '<button class="ot-btn primary" onclick="viewAssignmentSubmissions(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">✏️ Grade / View Submissions</button>'
+          + '</div>'
+          + '</div>';
+      });
+      html += '</div>';
+      el.innerHTML = html;
+    });
+  }
+
+  function loadPortfoliosList() {
+    var el = document.getElementById('portfolios-list-wrap');
+    if (!el) return;
+    gasGet({action:'getInstructorTests', instructor:instructorName}, function(err, d) {
+      if (err || !d || d.status !== 'ok') { el.innerHTML = '<div style="color:#dc2626;">Failed to load portfolios.</div>'; return; }
+      otCurrentTests = d.tests || [];
+      if (d.pendingSubmissions) {
+        otPendingSubmissions = d.pendingSubmissions;
+        renderPendingSubmissionsBanners();
+      }
+      updateInstructorBadges(otCurrentTests);
+      var portfolios = otCurrentTests.filter(function(t) { return t.testType === 'Portfolio Upload'; });
+      if (!portfolios.length) {
+        el.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:20px 0;text-align:center;">No portfolio requests created yet. Go to Request Portfolios tab.</div>';
+        return;
+      }
+      var html = '<div class="ot-grid">';
+      portfolios.forEach(function(t) {
+        var badgeStatus = t.status === 'Draft' ? 'draft' : t.status === 'Active' ? 'active' : 'closed';
+        var dueHtml = '—';
+        if (t.status === 'Active' && t.expiryAt) {
+          var diff = new Date(t.expiryAt) - new Date();
+          if (diff > 0) {
+            var days = Math.floor(diff / (24*60*60*1000));
+            var hrs = Math.floor((diff % (24*60*60*1000)) / (60*60*1000));
+            dueHtml = '<span style="color:#059669;font-weight:700;">Active (Due in ' + (days > 0 ? days + 'd ' : '') + hrs + 'h)</span>';
+          } else {
+            dueHtml = '<span style="color:#dc2626;font-weight:700;">Expired / Closed</span>';
+          }
+        } else if (t.status === 'Closed') {
+          dueHtml = '<span style="color:#9ca3af;">Closed</span>';
+        } else {
+          dueHtml = '<span style="color:#9ca3af;">Draft (not activated)</span>';
+        }
+        html += '<div class="ot-card">'
+          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">'
+          +   '<span class="ot-badge final">Portfolio</span>'
+          +   '<span class="ot-badge '+badgeStatus+'">'+escHtml(t.status)+'</span>'
+          + '</div>'
+          + '<div style="font-weight:600;font-size:14px;margin-bottom:6px;">'+escHtml(t.testLabel)+'</div>'
+          + '<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Batch: <b>'+escHtml(t.batchCode)+'</b></div>'
+          + '<div style="font-size:12px;color:#6b7280;margin-bottom:8px;">Submissions: <b>'+(t.submissionCount||0)+'</b> (' + (t.pendingGradingCount || 0) + ' pending grade)</div>'
+          + '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Due Status: ' + dueHtml + '</div>'
+          + '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
+          + (t.status === 'Draft' ? '<button class="ot-btn success" onclick="otActivatePortfolio(\''+escHtml(t.testId)+'\')">▶ Activate</button>' : '')
+          + '<button class="ot-btn primary" onclick="viewPortfolioSubmissions(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">✏️ Grade / View Submissions</button>'
+          + '</div>'
+          + '</div>';
+      });
+      html += '</div>';
+      el.innerHTML = html;
+    });
+  }
+
+  function otActivateAssignment(testId) {
+    if (!confirm('Activate this assignment? Students in the batch will see it immediately.')) return;
+    gasGet({action:'activateTest', instructor:instructorName, testId:testId}, function(err, d) {
+      if (err || !d || d.status !== 'ok') return alert('Error: '+(d&&d.reason||'Failed'));
+      alert('✅ Assignment is now LIVE!');
+      loadAssignmentsList();
+    });
+  }
+
+  function otActivatePortfolio(testId) {
+    if (!confirm('Activate this portfolio request? Students will see it immediately.')) return;
+    gasGet({action:'activateTest', instructor:instructorName, testId:testId}, function(err, d) {
+      if (err || !d || d.status !== 'ok') return alert('Error: '+(d&&d.reason||'Failed'));
+      alert('✅ Portfolio request is now LIVE!');
+      loadPortfoliosList();
+    });
+  }
+
+  function submitCreateAssignment() {
+    var title = document.getElementById('ass-c-title').value.trim();
+    var batch = document.getElementById('ass-c-batch').value;
+    var course = document.getElementById('ass-c-course').value.trim();
+    var duration = document.getElementById('ass-c-duration').value;
+    var instructions = document.getElementById('ass-c-instructions').value.trim();
+    var retake = document.getElementById('ass-c-retake').value;
+    var promptText = document.getElementById('ass-c-prompt').value.trim();
+    if (!title || !batch || !promptText) {
+      alert('Please fill out all required fields (Title, Batch, and Assignment Prompt).');
+      return;
+    }
+    gasGet({
+      action: 'createTest',
+      instructor: instructorName,
+      testLabel: title,
+      testType: 'Assignment',
+      batchCode: batch,
+      course: course,
+      duration: duration,
+      negativeMarking: 'false',
+      negMarkValue: 0,
+      instructions: instructions,
+      allowRetake: retake,
+      expiryMode: 'manual',
+      passingScore: 60
+    }, function(err, d) {
+      if (err || !d || d.status !== 'ok') {
+        alert('Failed to create assignment: ' + (d && d.reason || 'Network error'));
+        return;
+      }
+      var testId = d.testId;
+      gasGet({
+        action: 'addCustomQuestion',
+        instructor: instructorName,
+        testId: testId,
+        course: course || 'JD',
+        topic: 'Assignment Prompt',
+        question: promptText,
+        type: 'FileUpload',
+        marks: 100,
+        opt1: '', opt2: '', opt3: '', opt4: '', correct: ''
+      }, function(err2, d2) {
+        if (err2 || !d2 || d2.status !== 'ok') {
+          alert('Assignment created but failed to save prompt.');
+          return;
+        }
+        gasGet({
+          action: 'activateTest',
+          instructor: instructorName,
+          testId: testId
+        }, function(err3, d3) {
+          if (err3 || !d3 || d3.status !== 'ok') {
+            alert('Assignment created but activation failed.');
+          } else {
+            alert('✅ Assignment created and activated successfully!');
+          }
+          document.getElementById('ass-c-title').value = '';
+          document.getElementById('ass-c-prompt').value = '';
+          document.getElementById('ass-c-instructions').value = '';
+          assignmentsSubTab('list');
+        });
+      });
+    });
+  }
+
+  function submitCreatePortfolio() {
+    var title = document.getElementById('port-c-title').value.trim();
+    var batch = document.getElementById('port-c-batch').value;
+    var course = document.getElementById('port-c-course').value.trim();
+    var expiry = document.getElementById('port-c-expiry').value;
+    var instructions = document.getElementById('port-c-instructions').value.trim();
+    if (!title || !batch) {
+      alert('Please fill out all required fields (Portfolio Label and Batch).');
+      return;
+    }
+    var expiryMode = expiry ? 'custom' : 'manual';
+    var expiryAt = expiry ? new Date(expiry).toISOString() : '';
+    gasGet({
+      action: 'createTest',
+      instructor: instructorName,
+      testLabel: title,
+      testType: 'Portfolio Upload',
+      batchCode: batch,
+      course: course,
+      duration: 30,
+      negativeMarking: 'false',
+      negMarkValue: 0,
+      instructions: instructions,
+      allowRetake: 'Yes',
+      expiryMode: expiryMode,
+      expiryAt: expiryAt,
+      passingScore: 60
+    }, function(err, d) {
+      if (err || !d || d.status !== 'ok') {
+        alert('Failed to create portfolio request: ' + (d && d.reason || 'Network error'));
+        return;
+      }
+      var testId = d.testId;
+      gasGet({
+        action: 'activateTest',
+        instructor: instructorName,
+        testId: testId
+      }, function(err2, d2) {
+        if (err2 || !d2 || d2.status !== 'ok') {
+          alert('Portfolio request created but activation failed.');
+        } else {
+          alert('✅ Portfolio request created and activated successfully!');
+        }
+        document.getElementById('port-c-title').value = '';
+        document.getElementById('port-c-expiry').value = '';
+        document.getElementById('port-c-instructions').value = '';
+        portfoliosSubTab('list');
+      });
+    });
+  }
+
+  function viewAssignmentSubmissions(testId, label) {
+    var container = document.getElementById('assignments-grading-container');
+    if (!container) return;
+    container.style.display = 'block';
+    var title = document.getElementById('assignments-grading-title');
+    if (title) title.textContent = 'Grade Submissions for: ' + label;
+    loadAssignmentsSubmissions(testId);
+  }
+
+  function closeAssignmentsGrading() {
+    var container = document.getElementById('assignments-grading-container');
+    if (container) container.style.display = 'none';
+  }
+
+  function loadAssignmentsSubmissions(testId) {
+    otActiveGradingTestId = testId;
+    var el = document.getElementById('assignments-submissions-list');
+    if (!el) return;
+    el.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:20px 0;">Loading submissions...</div>';
+    gasGet({action:'getPendingManualGrades', instructor:instructorName, testId:testId}, function(err, d) {
+      if (err || !d || d.status !== 'ok') { el.innerHTML = '<div style="color:#dc2626;">Failed to load submissions.</div>'; return; }
+      if (!d.byStudent || !d.byStudent.length) {
+        el.innerHTML = '<div style="color:#059669;padding:20px 0;text-align:center;font-weight:600;">✅ No submissions received or pending grading for this assignment.</div>';
+        return;
+      }
+      var html = '<div style="font-size:13px;margin-bottom:14px;color:#374151;">Pending: <b>'+d.pendingCount+'</b> · Graded: <b>'+d.gradedCount+'</b></div>';
+      d.byStudent.forEach(function(s) {
+        html += '<div class="mg-student-block"><div class="mg-student-hdr">👤 Student: '+escHtml(s.studentId)+'</div>';
+        s.questions.forEach(function(q) {
+          var ansHtml = '<em style="color:#9ca3af;">No answer given</em>';
+          if (q.studentAnswer) {
+            var trimmed = String(q.studentAnswer).trim();
+            if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+              ansHtml = '<a href="' + escHtml(trimmed) + '" target="_blank" style="color:#059669;font-weight:700;text-decoration:underline;">📎 Open Student Attachment / Link ↗</a>';
+            } else {
+              ansHtml = escHtml(q.studentAnswer);
+            }
+          }
+          var isGraded = q.graded;
+          var scoreVal = isGraded ? q.score : '';
+          var feedbackVal = q.feedback || '';
+          html += '<div class="mg-q-row">'
+            + '<div class="mg-ans">' + ansHtml + '</div>'
+            + '<div style="margin-top:10px;">'
+            + '  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+            + '    <label style="font-size:12px;font-weight:600;">Score (max ' + escHtml(q.maxMarks) + '): </label>'
+            + '    <input type="number" min="0" max="' + escHtml(q.maxMarks) + '" step="1" value="' + scoreVal + '" '
+            + '      id="ass-grade-score-' + escHtml(s.studentId) + '-' + escHtml(q.qId) + '" style="width:70px;padding:4px 8px;border:1px solid #e5e7eb;border-radius:6px;" ' + (isGraded ? 'disabled' : '') + '>'
+            + '  </div>'
+            + '  <div style="margin-bottom:8px;">'
+            + '    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Feedback / Remarks:</label>'
+            + '    <textarea id="ass-grade-feedback-' + escHtml(s.studentId) + '-' + escHtml(q.qId) + '" rows="2" style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;box-sizing:border-box;" placeholder="Enter feedback remarks..." ' + (isGraded ? 'disabled' : '') + '>' + escHtml(feedbackVal) + '</textarea>'
+            + '  </div>'
+            + '  <div style="display:flex;gap:10px;">'
+            + (!isGraded 
+                ? '<button class="ot-btn success" style="padding:5px 12px;font-size:12px;" onclick="saveAssignmentGrade(\'' + escHtml(testId) + '\',\'' + escHtml(s.studentId) + '\',\'' + escHtml(q.qId) + '\',' + escHtml(q.maxMarks) + ')">Save Grade</button>'
+                : '<button class="ot-btn ghost" style="padding:5px 12px;font-size:12px;color:#dc2626;" onclick="enableReGradeAssignment(\'' + escHtml(s.studentId) + '\',\'' + escHtml(q.qId) + '\')">✏️ Edit Grade</button>')
+            + '  </div>'
+            + '</div>'
+            + '</div>';
+        });
+        html += '</div>';
+      });
+      el.innerHTML = html;
+    });
+  }
+
+  function saveAssignmentGrade(testId, studentId, qId, maxMarks) {
+    var scoreEl = document.getElementById('ass-grade-score-' + studentId + '-' + qId);
+    var feedbackEl = document.getElementById('ass-grade-feedback-' + studentId + '-' + qId);
+    var score = parseFloat((scoreEl||{}).value||'0');
+    var feedback = (feedbackEl||{}).value||'';
+    if (score < 0 || score > maxMarks) return alert('Score must be between 0 and ' + maxMarks);
+    gasGet({
+      action: 'saveManualGrade',
+      instructor: instructorName,
+      testId: testId,
+      studentId: studentId,
+      qId: qId,
+      score: score,
+      maxMarks: maxMarks,
+      feedback: feedback
+    }, function(err, d) {
+      if (err || !d || d.status !== 'ok') return alert('Error saving grade');
+      alert('✅ Grade and feedback saved successfully!');
+      loadAssignmentsSubmissions(testId);
+    });
+  }
+
+  function enableReGradeAssignment(studentId, qId) {
+    var scoreEl = document.getElementById('ass-grade-score-' + studentId + '-' + qId);
+    var feedbackEl = document.getElementById('ass-grade-feedback-' + studentId + '-' + qId);
+    if (scoreEl) scoreEl.disabled = false;
+    if (feedbackEl) feedbackEl.disabled = false;
+    var card = scoreEl.closest('.mg-q-row');
+    var btnArea = card.querySelector('div[style*="display:flex;gap:10px;"]');
+    if (btnArea) {
+      btnArea.innerHTML = '<button class="ot-btn success" style="padding:5px 12px;font-size:12px;" onclick="saveAssignmentGrade(\'' + escHtml(otActiveGradingTestId) + '\',\'' + escHtml(studentId) + '\',\'' + escHtml(qId) + '\',100)">Save Grade</button>';
+    }
+  }
+
+  function viewPortfolioSubmissions(testId, label) {
+    var container = document.getElementById('portfolios-grading-container');
+    if (!container) return;
+    container.style.display = 'block';
+    var title = document.getElementById('portfolios-grading-title');
+    if (title) title.textContent = 'Grade Portfolios for: ' + label;
+    loadPortfoliosSubmissions(testId);
+  }
+
+  function closePortfoliosGrading() {
+    var container = document.getElementById('portfolios-grading-container');
+    if (container) container.style.display = 'none';
+  }
+
+  function loadPortfoliosSubmissions(testId) {
+    otActiveGradingTestId = testId;
+    var el = document.getElementById('portfolios-submissions-list');
+    if (!el) return;
+    el.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:20px 0;">Loading portfolios...</div>';
+    gasGet({action:'otGetPortfolioSubmissions', testId:testId, instructor:instructorName}, function(err, d) {
+      if (err || !d || d.status !== 'ok') { el.innerHTML = '<div style="color:#dc2626;">Failed to load portfolios.</div>'; return; }
+      if (!d.submissions || !d.submissions.length) {
+        el.innerHTML = '<div style="color:#9ca3af;padding:20px 0;text-align:center;">No portfolios submitted yet.</div>';
+        return;
+      }
+      gasGet({action:'getPendingManualGrades', instructor:instructorName, testId:testId}, function(err2, d2) {
+        var manualMap = {};
+        if (!err2 && d2 && d2.status === 'ok' && d2.byStudent) {
+          d2.byStudent.forEach(function(s) {
+            var portQ = s.questions.find(function(q){ return q.qId === 'PORTFOLIO'; });
+            if (portQ) {
+              manualMap[s.studentId] = portQ;
+            }
+          });
+        }
+        var html = '<table class="ot-results-table"><thead><tr>'
+          + '<th>Student</th><th>Submitted</th><th>Work Link</th><th>Notes</th><th>Score (max 100)</th><th>Feedback Remarks</th><th>Actions</th>'
+          + '</tr></thead><tbody>';
+        d.submissions.forEach(function(s) {
+          var portQ = manualMap[s.studentId] || {};
+          var isGraded = (s.score !== null && s.score !== '' && s.score !== 0) || portQ.graded;
+          var scoreVal = isGraded ? (s.score || portQ.score || '') : '';
+          var feedbackVal = portQ.feedback || '';
+          var scoreInput = '<input type="number" min="0" max="100" value="' + scoreVal + '" id="port-grade-score-' + escHtml(s.studentId) + '" style="width:70px;padding:4px;border:1px solid #e5e7eb;border-radius:6px;" ' + (isGraded ? 'disabled' : '') + '>';
+          var feedbackInput = '<textarea id="port-grade-feedback-' + escHtml(s.studentId) + '" rows="1" style="width:150px;padding:4px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;box-sizing:border-box;" placeholder="Feedback remarks..." ' + (isGraded ? 'disabled' : '') + '>' + escHtml(feedbackVal) + '</textarea>';
+          var actionBtn = !isGraded
+            ? '<button class="ot-btn success" style="padding:4px 8px;font-size:11px;" onclick="savePortfolioGrade(\'' + escHtml(testId) + '\',\'' + escHtml(s.studentId) + '\')">Save</button>'
+            : '<button class="ot-btn ghost" style="padding:4px 8px;font-size:11px;color:#dc2626;" onclick="enableReGradePortfolio(\'' + escHtml(s.studentId) + '\')">✏️ Edit</button>';
+          html += '<tr id="port-tr-' + escHtml(s.studentId) + '">'
+            + '<td><b>' + escHtml(s.studentName||s.studentId) + '</b><br><span style="font-size:11px;color:#9ca3af;">' + escHtml(s.studentId) + '</span></td>'
+            + '<td style="font-size:11px;">' + (s.submittedAt ? new Date(s.submittedAt).toLocaleString('en-IN') : '—') + '</td>'
+            + '<td>' + (s.fileUrl ? '<a href="' + escHtml(s.fileUrl) + '" target="_blank" style="color:#059669;font-weight:700;text-decoration:none;">📎 View Work ↗</a>' : '—') + '</td>'
+            + '<td style="font-size:12px;color:#6b7280;max-width:140px;">' + escHtml(s.notes||'—') + '</td>'
+            + '<td>' + scoreInput + '</td>'
+            + '<td>' + feedbackInput + '</td>'
+            + '<td class="actions-td">' + actionBtn + '</td>'
+            + '</tr>';
+        });
+        html += '</tbody></table>';
+        el.innerHTML = html;
+      });
+    });
+  }
+
+  function savePortfolioGrade(testId, studentId) {
+    var scoreEl = document.getElementById('port-grade-score-' + studentId);
+    var feedbackEl = document.getElementById('port-grade-feedback-' + studentId);
+    var score = parseFloat((scoreEl||{}).value||'0');
+    var feedback = (feedbackEl||{}).value||'';
+    if (isNaN(score) || score < 0 || score > 100) return alert('Score must be between 0 and 100.');
+    gasGet({
+      action: 'saveManualGrade',
+      instructor: instructorName,
+      testId: testId,
+      studentId: studentId,
+      qId: 'PORTFOLIO',
+      score: score,
+      maxMarks: 100,
+      feedback: feedback
+    }, function(err, d) {
+      if (err || !d || d.status !== 'ok') return alert('Failed to save portfolio grade.');
+      alert('✅ Portfolio graded and feedback saved!');
+      loadPortfoliosSubmissions(testId);
+    });
+  }
+
+  function enableReGradePortfolio(studentId) {
+    var scoreEl = document.getElementById('port-grade-score-' + studentId);
+    var feedbackEl = document.getElementById('port-grade-feedback-' + studentId);
+    if (scoreEl) scoreEl.disabled = false;
+    if (feedbackEl) feedbackEl.disabled = false;
+    var tr = document.getElementById('port-tr-' + studentId);
+    var actionsTd = tr.querySelector('.actions-td');
+    if (actionsTd) {
+      actionsTd.innerHTML = '<button class="ot-btn success" style="padding:4px 8px;font-size:11px;" onclick="savePortfolioGrade(\'' + escHtml(otActiveGradingTestId) + '\',\'' + escHtml(studentId) + '\')">Save</button>';
+    }
+  }
+
+  function updateInstructorBadges(tests) {
+    var totalPendingAssignments = 0;
+    var totalPendingPortfolios = 0;
+    tests.forEach(function(t) {
+      if (t.testType === 'Assignment') {
+        totalPendingAssignments += t.pendingGradingCount || 0;
+      } else if (t.testType === 'Portfolio Upload') {
+        totalPendingPortfolios += t.pendingGradingCount || 0;
+      }
+    });
+    var assBadge = document.getElementById('assignments-notif-badge');
+    if (assBadge) {
+      if (totalPendingAssignments > 0) {
+        assBadge.textContent = totalPendingAssignments;
+        assBadge.style.display = 'inline-block';
+      } else {
+        assBadge.style.display = 'none';
+      }
+    }
+    var portBadge = document.getElementById('portfolios-notif-badge');
+    if (portBadge) {
+      if (totalPendingPortfolios > 0) {
+        portBadge.textContent = totalPendingPortfolios;
+        portBadge.style.display = 'inline-block';
+      } else {
+        portBadge.style.display = 'none';
+      }
+    }
+  }
+
+  function renderPendingSubmissionsBanners() {
+    var bannerContainer = document.getElementById('upcoming-batches-banner-container');
+    if (!bannerContainer || !otPendingSubmissions || !otPendingSubmissions.length) return;
+    otPendingSubmissions.forEach(function(s) {
+      if (document.getElementById('banner-sub-' + s.responseId)) return;
+      var icon = s.testType === 'Portfolio Upload' ? '🎨' : '📁';
+      var tabName = s.testType === 'Portfolio Upload' ? 't-portfolios' : 't-assignments';
+      var initFunc = s.testType === 'Portfolio Upload' ? 'portfoliosInit()' : 'assignmentsInit()';
+      var cardHtml = `
+        <div id="banner-sub-${s.responseId}" class="card" style="background:linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%);border:1px solid #6EE7B7;color:#065F46;display:flex;align-items:center;gap:15px;padding:14px 18px;border-radius:12px;box-shadow:0 4px 12px rgba(6,95,70,0.08);margin-bottom:16px;position:relative;overflow:hidden;">
+          <div style="position:absolute;left:0;top:0;bottom:0;width:5px;background:#059669;"></div>
+          <span style="font-size:24px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.1));">${icon}</span>
+          <div style="flex:1;text-align:left;margin-left:5px;">
+            <h4 style="margin:0 0 4px;font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:0.03em;color:#065F46">Pending Grading</h4>
+            <p style="margin:0;font-size:12px;line-height:1.4">
+              Student <b>${escHtml(s.studentName || s.studentId)}</b> submitted <b>${escHtml(s.testLabel)}</b> for batch <b>${escHtml(s.batchCode)}</b>.
+            </p>
+          </div>
+          <button class="btn btn-gold" style="padding:6px 12px;font-size:11px;font-weight:700;margin-left:auto;white-space:nowrap;box-shadow:0 2px 4px rgba(0,0,0,0.05);" onclick="iTab('${tabName}'); ${initFunc};">Grade Now →</button>
+        </div>
+      `;
+      bannerContainer.insertAdjacentHTML('beforeend', cardHtml);
+    });
   }
 
   function toggleNotifDropdown() {

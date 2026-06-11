@@ -595,6 +595,16 @@
         <span class="tab-label">My Tests</span>
         <span id="ot-tab-badge" style="display:none;position:absolute;top:4px;right:4px;width:10px;height:10px;background:#ef4444;border-radius:50%;border:2px solid #fff;animation:badgePulse 1.5s infinite;"></span>
       </button>
+      <button class="nav-tab" id="nav-tab-assignments" onclick="switchTab('tab-assignments', this); loadMyAssignments();" style="position:relative;">
+        <span class="tab-icon">📁</span>
+        <span class="tab-label">Assignments</span>
+        <span id="assignments-tab-badge" style="display:none;position:absolute;top:4px;right:4px;width:10px;height:10px;background:#ef4444;border-radius:50%;border:2px solid #fff;animation:badgePulse 1.5s infinite;"></span>
+      </button>
+      <button class="nav-tab" id="nav-tab-portfolio" onclick="switchTab('tab-portfolio', this); loadMyPortfolio();" style="position:relative;">
+        <span class="tab-icon">🎨</span>
+        <span class="tab-label">Portfolio</span>
+        <span id="portfolio-tab-badge" style="display:none;position:absolute;top:4px;right:4px;width:10px;height:10px;background:#ef4444;border-radius:50%;border:2px solid #fff;animation:badgePulse 1.5s infinite;"></span>
+      </button>
       <button class="nav-tab" id="nav-tab-diploma" onclick="switchTab('tab-diploma', this); loadStudentDiploma();">
         <span class="tab-icon">🎓</span>
         <span class="tab-label">Diploma</span>
@@ -656,6 +666,20 @@
 
     <!-- Today Tab Content -->
     <div id="tab-today" class="tab-content active">
+      <!-- Assignments / Portfolio Alert Banner -->
+      <div id="ot-assignments-pending-alert" style="display:none;background:linear-gradient(135deg,#7f1d1d 0%,#991b1b 100%);color:#fff;padding:18px 20px;border-radius:12px;margin-bottom:14px;border:1.5px solid #fca5a5;position:relative;box-shadow:var(--shadow);">
+        <div style="font-size:15px;font-weight:700;color:#fca5a5;margin-bottom:4px;display:flex;align-items:center;gap:6px;">📝 Pending Assignment / Portfolio</div>
+        <div id="ot-assignments-alert-text" style="font-size:12px;opacity:0.9;margin-bottom:12px;line-height:1.4;">You have pending work due.</div>
+        <button id="ot-assignments-alert-btn" onclick="switchTab('tab-assignments', document.getElementById('nav-tab-assignments'));" style="background:#fff;color:#7f1d1d;border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:800;cursor:pointer;transition:all .2s;">Go to Assignments →</button>
+      </div>
+
+      <!-- New Grade Alert Banner -->
+      <div id="ot-new-grade-alert" style="display:none;background:linear-gradient(135deg,#065f46 0%,#047857 100%);color:#fff;padding:18px 20px;border-radius:12px;margin-bottom:14px;border:1.5px solid #6ee7b7;position:relative;box-shadow:var(--shadow);">
+        <div style="font-size:15px;font-weight:700;color:#a7f3d0;margin-bottom:4px;display:flex;align-items:center;gap:6px;">🎉 Assignment Graded</div>
+        <div id="ot-new-grade-text" style="font-size:12px;opacity:0.9;margin-bottom:12px;line-height:1.4;">Your assignment has been graded.</div>
+        <button id="ot-new-grade-btn" onclick="switchTab('tab-assignments', document.getElementById('nav-tab-assignments'));" style="background:#fff;color:#065f46;border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:800;cursor:pointer;transition:all .2s;">View Results →</button>
+      </div>
+
       <div id="ot-results-released-alert" style="display:none;background:linear-gradient(135deg,var(--navy) 0%,#1a2f4e 100%);color:#fff;padding:18px 20px;border-radius:12px;margin-bottom:14px;border:1.5px solid rgba(201,168,76,0.3);position:relative;box-shadow:var(--shadow);">
         <div style="font-size:15px;font-weight:700;color:var(--gold);margin-bottom:4px;display:flex;align-items:center;gap:6px;">📊 Test Results Released</div>
         <div id="ot-released-alert-names" style="font-size:12px;opacity:0.9;margin-bottom:12px;line-height:1.4;">The results for your recent online test have been released.</div>
@@ -685,10 +709,23 @@
       <div id="portal-fees"></div>
     </div>
 
-    <!-- My Tests Results Tab -->
     <div id="tab-results" class="tab-content">
       <div id="ot-results-wrap">
         <div style="color:#9ca3af;font-size:13px;padding:20px 0;">Loading your test results…</div>
+      </div>
+    </div>
+
+    <!-- Assignments Tab -->
+    <div id="tab-assignments" class="tab-content">
+      <div id="ot-assignments-wrap" style="padding:16px;">
+        <div style="color:#9ca3af;font-size:13px;padding:20px 0;">Loading assignments…</div>
+      </div>
+    </div>
+
+    <!-- Portfolio Tab -->
+    <div id="tab-portfolio" class="tab-content">
+      <div id="ot-portfolio-wrap" style="padding:16px;">
+        <div style="color:#9ca3af;font-size:13px;padding:20px 0;">Loading portfolio requests…</div>
       </div>
     </div>
 
@@ -1906,6 +1943,9 @@ function otCheckForActiveTest() {
   var sid    = portalData.enrollmentNo || portalData.studentId || '';
   var batches = portalData.batches || [];
   if (!batches.length) return;
+
+  // Check assignments, portfolios, badges and alerts
+  checkStudentDashboardAlerts(sid, batches);
 
   var checked = 0;
   var activeTestToRender = null;
@@ -3429,6 +3469,577 @@ function _doDownloadCard(card) {
   }).catch(function() {
     alert('Could not save image. Try taking a screenshot instead.');
   });
+}
+
+/* ── Student Assignments & Portfolio Logic ── */
+var otActiveTests = [];
+var otStudentResults = [];
+
+function loadMyAssignments() {
+  var el = document.getElementById('ot-assignments-wrap');
+  if (!el || !portalData) return;
+  var sid = portalData.enrollmentNo || portalData.studentId || '';
+  var batches = portalData.batches || [];
+  if (!batches.length) { el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">No batches enrolled.</div>'; return; }
+
+  el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">Loading assignments…</div>';
+  
+  var allWeekly = [], allFinal = [];
+  var pendingResults = batches.length;
+  var resultsFeedbackMap = {};
+  
+  batches.forEach(function(b) {
+    gasGet({action:'getStudentResults', studentId:sid, batchCode:b.batchCode}, function(err, d) {
+      pendingResults--;
+      if (!err && d && d.status === 'ok') {
+        (d.weeklyResults || []).concat(d.finalResults || []).forEach(function(res) {
+          resultsFeedbackMap[res.testId] = res;
+        });
+      }
+      
+      if (pendingResults === 0) {
+        var pendingActive = batches.length;
+        var activeTests = [];
+        
+        batches.forEach(function(b2) {
+          gasGet({action:'getStudentActiveTest', studentId:sid, batchCode:b2.batchCode}, function(err2, d2) {
+            pendingActive--;
+            if (!err2 && d2 && d2.status === 'ok' && d2.activeTests) {
+              activeTests = activeTests.concat(d2.activeTests);
+            }
+            
+            if (pendingActive === 0) {
+              renderStudentAssignments(activeTests, resultsFeedbackMap);
+            }
+          });
+        });
+      }
+    });
+  });
+}
+
+function renderStudentAssignments(activeTests, resultsMap) {
+  var el = document.getElementById('ot-assignments-wrap');
+  if (!el) return;
+  
+  var activeAss = activeTests.filter(function(t) { return t.testType === 'Assignment'; });
+  
+  var completedAss = [];
+  for (var tid in resultsMap) {
+    if (resultsMap[tid].testType === 'Assignment') {
+      completedAss.push(resultsMap[tid]);
+    }
+  }
+  
+  var uniqueActiveAss = [];
+  var seenActive = {};
+  activeAss.forEach(function(a) {
+    if (!seenActive[a.testId]) {
+      seenActive[a.testId] = true;
+      uniqueActiveAss.push(a);
+    }
+  });
+
+  var html = '<h2 style="font-size:16px;font-weight:800;color:#0D1B2E;margin:0 0 16px;">📁 Assignments Portal</h2>';
+  
+  html += '<div style="font-size:12px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;">Active Assignments</div>';
+  
+  if (uniqueActiveAss.length === 0) {
+    html += '<div style="background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:12px;padding:24px;text-align:center;color:#9ca3af;font-size:13px;margin-bottom:24px;">'
+      + '🎉 No active assignments pending for your batches.</div>';
+  } else {
+    uniqueActiveAss.forEach(function(a) {
+      var isSubmitted = a.alreadySubmitted;
+      var dueHtml = '';
+      if (a.expiryAt) {
+        var diff = new Date(a.expiryAt) - new Date();
+        if (diff > 0) {
+          var days = Math.floor(diff / (24*60*60*1000));
+          var hrs = Math.floor((diff % (24*60*60*1000)) / (60*60*1000));
+          dueHtml = '<span style="color:#059669;font-weight:700;">⌛ Due in ' + (days > 0 ? days + 'd ' : '') + hrs + 'h</span>';
+        } else {
+          dueHtml = '<span style="color:#dc2626;font-weight:700;">Expired / Closed</span>';
+        }
+      }
+      
+      var instructions = a.instructions ? '<div style="font-size:12px;color:#6b7280;background:#f3f4f6;padding:8px 10px;border-radius:6px;margin:8px 0;">💡 ' + escHtmlSt(a.instructions) + '</div>' : '';
+      
+      var submissionFormHtml = '';
+      if (isSubmitted) {
+        submissionFormHtml = '<div style="background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;padding:12px;border-radius:8px;font-size:12px;font-weight:600;margin-top:10px;">'
+          + '✅ Submitted! Pending instructor grading and feedback.</div>';
+      } else {
+        submissionFormHtml = `
+          <div style="margin-top:14px; border-top:1px dashed #e5e7eb; padding-top:12px;">
+            <div style="margin-bottom:10px;">
+              <label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">📎 Share Link to your work (Google Drive, Dropbox etc.) *</label>
+              <input type="url" id="ass-inp-url-${a.testId}" placeholder="https://drive.google.com/..." style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:12px;outline:none;">
+            </div>
+            <div style="margin-bottom:10px;">
+              <label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">📝 Notes / Comments for your teacher (Optional)</label>
+              <textarea id="ass-inp-notes-${a.testId}" rows="2" placeholder="Write any notes here..." style="width:100%;box-sizing:border-box;padding:8px;border:1.5px solid #d1d5db;border-radius:8px;font-size:12px;resize:vertical;outline:none;"></textarea>
+            </div>
+            <div id="ass-err-${a.testId}" style="display:none;color:#dc2626;font-size:11px;margin-bottom:8px;"></div>
+            <button class="nav-tab-active-btn" onclick="submitStudentAssignment('${a.testId}')" style="width:100%;padding:10px;background:#0D1B2E;color:#fff;font-weight:700;border:none;border-radius:8px;cursor:pointer;font-size:12px;">Submit Assignment →</button>
+          </div>
+        `;
+      }
+
+      html += '<div class="card" style="margin-bottom:16px; border:1px solid #e5e7eb; border-radius:12px; padding:16px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
+        + '  <span style="font-weight:800;font-size:14px;color:#0D1B2E;">' + escHtmlSt(a.testLabel) + '</span>'
+        + '  ' + dueHtml
+        + '</div>'
+        + '<div style="font-size:12px;color:#6b7280;margin-bottom:6px;">Batch: <b>' + escHtmlSt(a.batchCode) + '</b></div>'
+        + instructions
+        + submissionFormHtml
+        + '</div>';
+    });
+  }
+  
+  html += '<div style="font-size:12px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.8px;margin-top:24px;margin-bottom:12px;">Graded & Completed</div>';
+  
+  if (completedAss.length === 0) {
+    html += '<div style="background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:12px;padding:20px;text-align:center;color:#9ca3af;font-size:12px;">'
+      + 'No completed assignments yet.</div>';
+  } else {
+    completedAss.forEach(function(r) {
+      var scoreDisplay = '';
+      var scoreStyle = '';
+      if (r.result === 'Pending') {
+        scoreDisplay = '<span class="pend-pill">Pending Grading</span>';
+      } else {
+        var isPass = r.result === 'Pass';
+        scoreStyle = isPass ? 'background:#d1fae5;color:#065f46;' : 'background:#fee2e2;color:#991b1b;';
+        scoreDisplay = '<span class="pass-pill" style="' + scoreStyle + '">' + escHtmlSt(r.result) + ' (' + r.totalScore + ' / ' + r.totalMarks + ')</span>';
+      }
+      
+      var feedbackHtml = r.feedback ? '<div style="margin-top:8px;font-size:11px;color:#5b21b6;background:#f5f3ff;padding:6px 10px;border-radius:6px;border-left:3px solid #8b5cf6;">'
+        + '<b>Instructor Remarks:</b> "' + escHtmlSt(r.feedback) + '"</div>' : '';
+
+      html += '<div class="card" style="margin-bottom:10px; padding:12px 14px; border:1.5px solid #f0f0f0;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">'
+        + '  <b style="font-size:13px;color:#374151;">' + escHtmlSt(r.testLabel) + '</b>'
+        + '  ' + scoreDisplay
+        + '</div>'
+        + '<div style="font-size:11px;color:#9ca3af;">Submitted on: ' + (r.submittedAt ? new Date(r.submittedAt).toLocaleString('en-IN') : '—') + '</div>'
+        + feedbackHtml
+        + '</div>';
+    });
+  }
+  
+  el.innerHTML = html;
+}
+
+function submitStudentAssignment(testId) {
+  var urlEl = document.getElementById('ass-inp-url-' + testId);
+  var notesEl = document.getElementById('ass-inp-notes-' + testId);
+  var errEl = document.getElementById('ass-err-' + testId);
+  
+  if (!urlEl) return;
+  var url = urlEl.value.trim();
+  var notes = notesEl ? notesEl.value.trim() : '';
+  
+  if (!url || !url.startsWith('http')) {
+    if (errEl) {
+      errEl.textContent = 'Please enter a valid sharing URL.';
+      errEl.style.display = 'block';
+    }
+    return;
+  }
+  if (errEl) errEl.style.display = 'none';
+  
+  var sid = portalData.enrollmentNo || portalData.studentId || '';
+  var sname = portalData.name || '';
+  
+  var testObj = otActiveTests.find(function(t){ return t.testId === testId; });
+  var batchCode = testObj ? testObj.batchCode : (portalData.batches[0] ? portalData.batches[0].batchCode : '');
+  
+  if (errEl) { errEl.textContent = 'Submitting…'; errEl.style.color = '#9ca3af'; errEl.style.display = 'block'; }
+  
+  gasGet({action:'getTestQuestions', testId:testId, studentId:sid}, function(err, qData) {
+    if (err || !qData || qData.status !== 'ok' || !qData.questions || !qData.questions.length) {
+      if (errEl) { errEl.textContent = 'Error: Could not retrieve assignment question.'; errEl.style.color = '#dc2626'; }
+      return;
+    }
+    
+    var qId = qData.questions[0].qId;
+    var answersMap = {};
+    answersMap[qId] = url + (notes ? '\nNotes: ' + notes : '');
+    
+    gasGet({
+      action: 'submitTestResponse',
+      testId: testId,
+      studentId: sid,
+      studentName: sname,
+      batchCode: batchCode,
+      answers: JSON.stringify(answersMap),
+      submitType: 'manual'
+    }, function(err2, d2) {
+      if (err2 || !d2 || d2.status !== 'ok') {
+        if (errEl) { errEl.textContent = 'Submission failed. Please try again.'; errEl.style.color = '#dc2626'; }
+      } else {
+        alert('✅ Assignment submitted successfully!');
+        loadMyAssignments();
+      }
+    });
+  });
+}
+
+function loadMyPortfolio() {
+  var el = document.getElementById('ot-portfolio-wrap');
+  if (!el || !portalData) return;
+  var sid = portalData.enrollmentNo || portalData.studentId || '';
+  var batches = portalData.batches || [];
+  if (!batches.length) { el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">No batches enrolled.</div>'; return; }
+
+  el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">Loading portfolios…</div>';
+  
+  var allWeekly = [], allFinal = [];
+  var pendingResults = batches.length;
+  var resultsFeedbackMap = {};
+  
+  batches.forEach(function(b) {
+    gasGet({action:'getStudentResults', studentId:sid, batchCode:b.batchCode}, function(err, d) {
+      pendingResults--;
+      if (!err && d && d.status === 'ok') {
+        (d.weeklyResults || []).concat(d.finalResults || []).forEach(function(res) {
+          resultsFeedbackMap[res.testId] = res;
+        });
+      }
+      
+      if (pendingResults === 0) {
+        var pendingActive = batches.length;
+        var activeTests = [];
+        
+        batches.forEach(function(b2) {
+          gasGet({action:'getStudentActiveTest', studentId:sid, batchCode:b2.batchCode}, function(err2, d2) {
+            pendingActive--;
+            if (!err2 && d2 && d2.status === 'ok' && d2.activeTests) {
+              activeTests = activeTests.concat(d2.activeTests);
+            }
+            
+            if (pendingActive === 0) {
+              renderStudentPortfolio(activeTests, resultsFeedbackMap);
+            }
+          });
+        });
+      }
+    });
+  });
+}
+
+function renderStudentPortfolio(activeTests, resultsMap) {
+  var el = document.getElementById('ot-portfolio-wrap');
+  if (!el) return;
+  
+  var activePort = activeTests.filter(function(t) { return t.testType === 'Portfolio Upload'; });
+  
+  var completedPort = [];
+  for (var tid in resultsMap) {
+    if (resultsMap[tid].testType === 'Portfolio Upload') {
+      completedPort.push(resultsMap[tid]);
+    }
+  }
+  
+  var uniqueActivePort = [];
+  var seenActive = {};
+  activePort.forEach(function(p) {
+    if (!seenActive[p.testId]) {
+      seenActive[p.testId] = true;
+      uniqueActivePort.push(p);
+    }
+  });
+
+  var html = '<h2 style="font-size:16px;font-weight:800;color:#0D1B2E;margin:0 0 16px;">🎨 Portfolios Portal</h2>';
+  
+  html += '<div style="font-size:12px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;">Active Portfolio Requests</div>';
+  
+  if (uniqueActivePort.length === 0) {
+    html += '<div style="background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:12px;padding:24px;text-align:center;color:#9ca3af;font-size:13px;margin-bottom:24px;">'
+      + '🎉 No active portfolio requests.</div>';
+  } else {
+    uniqueActivePort.forEach(function(p) {
+      var isSubmitted = p.alreadySubmitted;
+      var dueHtml = '';
+      if (p.expiryAt) {
+        var diff = new Date(p.expiryAt) - new Date();
+        if (diff > 0) {
+          var days = Math.floor(diff / (24*60*60*1000));
+          var hrs = Math.floor((diff % (24*60*60*1000)) / (60*60*1000));
+          dueHtml = '<span style="color:#059669;font-weight:700;">⌛ Due in ' + (days > 0 ? days + 'd ' : '') + hrs + 'h</span>';
+        } else {
+          dueHtml = '<span style="color:#dc2626;font-weight:700;">Expired / Closed</span>';
+        }
+      }
+      
+      var instructions = p.instructions ? '<div style="font-size:12px;color:#6b7280;background:#f3f4f6;padding:8px 10px;border-radius:6px;margin:8px 0;">💡 ' + escHtmlSt(p.instructions) + '</div>' : '';
+      
+      var submissionFormHtml = '';
+      if (isSubmitted) {
+        submissionFormHtml = '<div style="background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;padding:12px;border-radius:8px;font-size:12px;font-weight:600;margin-top:10px;">'
+          + '✅ Portfolio Link Submitted! Pending instructor grading and feedback.</div>';
+      } else {
+        submissionFormHtml = `
+          <div style="margin-top:14px; border-top:1px dashed #e5e7eb; padding-top:12px;">
+            <div style="margin-bottom:10px;">
+              <label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">📎 Share your Design Portfolio Link (Behance, GDrive etc.) *</label>
+              <input type="url" id="port-inp-url-${p.testId}" placeholder="https://www.behance.net/..." style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:12px;outline:none;">
+            </div>
+            <div style="margin-bottom:10px;">
+              <label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">📝 Notes / Comments for your teacher (Optional)</label>
+              <textarea id="port-inp-notes-${p.testId}" rows="2" placeholder="Write any notes here..." style="width:100%;box-sizing:border-box;padding:8px;border:1.5px solid #d1d5db;border-radius:8px;font-size:12px;resize:vertical;outline:none;"></textarea>
+            </div>
+            <div id="port-err-${p.testId}" style="display:none;color:#dc2626;font-size:11px;margin-bottom:8px;"></div>
+            <button class="nav-tab-active-btn" onclick="submitStudentPortfolio('${p.testId}')" style="width:100%;padding:10px;background:#0D1B2E;color:#fff;font-weight:700;border:none;border-radius:8px;cursor:pointer;font-size:12px;">Submit Portfolio →</button>
+          </div>
+        `;
+      }
+
+      html += '<div class="card" style="margin-bottom:16px; border:1px solid #e5e7eb; border-radius:12px; padding:16px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
+        + '  <span style="font-weight:800;font-size:14px;color:#0D1B2E;">' + escHtmlSt(p.testLabel) + '</span>'
+        + '  ' + dueHtml
+        + '</div>'
+        + '<div style="font-size:12px;color:#6b7280;margin-bottom:6px;">Batch: <b>' + escHtmlSt(p.batchCode) + '</b></div>'
+        + instructions
+        + submissionFormHtml
+        + '</div>';
+    });
+  }
+  
+  html += '<div style="font-size:12px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.8px;margin-top:24px;margin-bottom:12px;">Graded & Completed</div>';
+  
+  if (completedPort.length === 0) {
+    html += '<div style="background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:12px;padding:20px;text-align:center;color:#9ca3af;font-size:12px;">'
+      + 'No completed portfolios yet.</div>';
+  } else {
+    completedPort.forEach(function(r) {
+      var scoreDisplay = '';
+      var scoreStyle = '';
+      if (r.result === 'Pending') {
+        scoreDisplay = '<span class="pend-pill">Pending Grading</span>';
+      } else {
+        var isPass = r.result === 'Pass';
+        scoreStyle = isPass ? 'background:#d1fae5;color:#065f46;' : 'background:#fee2e2;color:#991b1b;';
+        scoreDisplay = '<span class="pass-pill" style="' + scoreStyle + '">' + escHtmlSt(r.result) + ' (' + r.totalScore + '% )</span>';
+      }
+      
+      var feedbackHtml = r.feedback ? '<div style="margin-top:8px;font-size:11px;color:#5b21b6;background:#f5f3ff;padding:6px 10px;border-radius:6px;border-left:3px solid #8b5cf6;">'
+        + '<b>Instructor Remarks:</b> "' + escHtmlSt(r.feedback) + '"</div>' : '';
+
+      html += '<div class="card" style="margin-bottom:10px; padding:12px 14px; border:1.5px solid #f0f0f0;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">'
+        + '  <b style="font-size:13px;color:#374151;">' + escHtmlSt(r.testLabel) + '</b>'
+        + '  ' + scoreDisplay
+        + '</div>'
+        + '<div style="font-size:11px;color:#9ca3af;">Submitted on: ' + (r.submittedAt ? new Date(r.submittedAt).toLocaleString('en-IN') : '—') + '</div>'
+        + feedbackHtml
+        + '</div>';
+    });
+  }
+  
+  el.innerHTML = html;
+}
+
+function submitStudentPortfolio(testId) {
+  var urlEl = document.getElementById('port-inp-url-' + testId);
+  var notesEl = document.getElementById('port-inp-notes-' + testId);
+  var errEl = document.getElementById('port-err-' + testId);
+  
+  if (!urlEl) return;
+  var url = urlEl.value.trim();
+  var notes = notesEl ? notesEl.value.trim() : '';
+  
+  if (!url || !url.startsWith('http')) {
+    if (errEl) {
+      errEl.textContent = 'Please enter a valid sharing URL.';
+      errEl.style.display = 'block';
+    }
+    return;
+  }
+  if (errEl) errEl.style.display = 'none';
+  
+  var sid = portalData.enrollmentNo || portalData.studentId || '';
+  var sname = portalData.name || '';
+  
+  var testObj = otActiveTests.find(function(t){ return t.testId === testId; });
+  var batchCode = testObj ? testObj.batchCode : (portalData.batches[0] ? portalData.batches[0].batchCode : '');
+  
+  if (errEl) { errEl.textContent = 'Submitting…'; errEl.style.color = '#9ca3af'; errEl.style.display = 'block'; }
+  
+  gasGet({
+    action: 'otSubmitPortfolio',
+    testId: testId,
+    studentId: sid,
+    studentName: sname,
+    batchCode: batchCode,
+    fileUrl: url,
+    notes: notes
+  }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      if (errEl) { errEl.textContent = 'Submission failed. Please try again.'; errEl.style.color = '#dc2626'; }
+    } else {
+      alert('✅ Portfolio link submitted successfully!');
+      loadMyPortfolio();
+    }
+  });
+}
+
+function escHtmlSt(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function checkStudentTabBadges(activeTests, completedTests) {
+  var pendingAssCount = 0;
+  var pendingPortCount = 0;
+  
+  activeTests.forEach(function(t) {
+    if (t.alreadySubmitted) return;
+    if (t.testType === 'Assignment') pendingAssCount++;
+    if (t.testType === 'Portfolio Upload') pendingPortCount++;
+  });
+  
+  var assBadge = document.getElementById('assignments-tab-badge');
+  if (assBadge) {
+    assBadge.style.display = pendingAssCount > 0 ? 'block' : 'none';
+  }
+  var portBadge = document.getElementById('portfolio-tab-badge');
+  if (portBadge) {
+    portBadge.style.display = pendingPortCount > 0 ? 'block' : 'none';
+  }
+}
+
+function checkStudentDashboardAlerts(sid, batches) {
+  var allActiveTests = [];
+  var allCompletedTests = [];
+  var pendingActive = batches.length;
+  var pendingResults = batches.length;
+  
+  batches.forEach(function(b) {
+    gasGet({action:'getStudentActiveTest', studentId:sid, batchCode:b.batchCode}, function(err, d) {
+      pendingActive--;
+      if (!err && d && d.activeTests) {
+        allActiveTests = allActiveTests.concat(d.activeTests);
+      }
+      if (pendingActive === 0 && pendingResults === 0) {
+        processStudentAlertsAndBadges(allActiveTests, allCompletedTests);
+      }
+    });
+  });
+
+  batches.forEach(function(b) {
+    gasGet({action:'getStudentResults', studentId:sid, batchCode:b.batchCode}, function(err, d) {
+      pendingResults--;
+      if (!err && d) {
+        allCompletedTests = allCompletedTests.concat(d.weeklyResults || []).concat(d.finalResults || []);
+      }
+      if (pendingActive === 0 && pendingResults === 0) {
+        processStudentAlertsAndBadges(allActiveTests, allCompletedTests);
+      }
+    });
+  });
+}
+
+function processStudentAlertsAndBadges(activeTests, completedTests) {
+  var seenActive = {}, seenCompleted = {};
+  var uniqueActive = [], uniqueCompleted = [];
+  
+  activeTests.forEach(function(t) {
+    if (!seenActive[t.testId]) {
+      seenActive[t.testId] = true;
+      uniqueActive.push(t);
+    }
+  });
+  
+  completedTests.forEach(function(t) {
+    if (!seenCompleted[t.testId + '|' + t.submittedAt]) {
+      seenCompleted[t.testId + '|' + t.submittedAt] = true;
+      uniqueCompleted.push(t);
+    }
+  });
+
+  otActiveTests = uniqueActive;
+  checkStudentTabBadges(uniqueActive, uniqueCompleted);
+
+  var pendingAssOrPort = uniqueActive.find(function(t) {
+    return !t.alreadySubmitted && (t.testType === 'Assignment' || t.testType === 'Portfolio Upload');
+  });
+
+  var pendingAlertDiv = document.getElementById('ot-assignments-pending-alert');
+  var pendingAlertText = document.getElementById('ot-assignments-alert-text');
+  var pendingAlertBtn = document.getElementById('ot-assignments-alert-btn');
+
+  if (pendingAssOrPort && pendingAlertDiv && pendingAlertText) {
+    var diff = new Date(pendingAssOrPort.expiryAt) - new Date();
+    var dueStr = 'due soon';
+    if (diff > 0) {
+      var days = Math.floor(diff / (24*60*60*1000));
+      var hrs = Math.floor((diff % (24*60*60*1000)) / (60*60*1000));
+      dueStr = 'Due in ' + (days > 0 ? days + 'd ' : '') + hrs + 'h';
+    }
+    
+    var taskType = pendingAssOrPort.testType === 'Portfolio Upload' ? 'portfolio submission' : 'assignment';
+    pendingAlertText.innerHTML = 'You have a pending ' + taskType + ': <b>' + escHtmlSt(pendingAssOrPort.testLabel) + '</b> (' + dueStr + '). Click here to submit your work.';
+    
+    if (pendingAlertBtn) {
+      pendingAlertBtn.onclick = function() {
+        if (pendingAssOrPort.testType === 'Portfolio Upload') {
+          switchTab('tab-portfolio', document.getElementById('nav-tab-portfolio'));
+          loadMyPortfolio();
+        } else {
+          switchTab('tab-assignments', document.getElementById('nav-tab-assignments'));
+          loadMyAssignments();
+        }
+      };
+    }
+    pendingAlertDiv.style.display = 'block';
+  } else if (pendingAlertDiv) {
+    pendingAlertDiv.style.display = 'none';
+  }
+
+  var viewedGrades = [];
+  try { viewedGrades = JSON.parse(localStorage.getItem('student_viewed_grades') || '[]'); } catch(x){}
+  
+  var newGraded = uniqueCompleted.find(function(res) {
+    return res.result !== 'Pending' && 
+           (res.testType === 'Assignment' || res.testType === 'Portfolio Upload') && 
+           viewedGrades.indexOf(res.testId + '|' + res.submittedAt) === -1;
+  });
+
+  var gradeAlertDiv = document.getElementById('ot-new-grade-alert');
+  var gradeAlertText = document.getElementById('ot-new-grade-text');
+  var gradeAlertBtn = document.getElementById('ot-new-grade-btn');
+
+  if (newGraded && gradeAlertDiv && gradeAlertText) {
+    var scoreStr = newGraded.testType === 'Portfolio Upload' ? newGraded.totalScore + '%' : newGraded.totalScore + ' / ' + newGraded.totalMarks;
+    gradeAlertText.innerHTML = '🎉 Your ' + newGraded.testType.toLowerCase() + ' <b>' + escHtmlSt(newGraded.testLabel) + '</b> was graded!<br>'
+      + 'Score: <b>' + scoreStr + '</b> | Remarks: <i>"' + (newGraded.feedback || 'No remarks') + '"</i>';
+    
+    if (gradeAlertBtn) {
+      gradeAlertBtn.onclick = function() {
+        viewedGrades.push(newGraded.testId + '|' + newGraded.submittedAt);
+        localStorage.setItem('student_viewed_grades', JSON.stringify(viewedGrades));
+        gradeAlertDiv.style.display = 'none';
+        if (newGraded.testType === 'Portfolio Upload') {
+          switchTab('tab-portfolio', document.getElementById('nav-tab-portfolio'));
+          loadMyPortfolio();
+        } else {
+          switchTab('tab-assignments', document.getElementById('nav-tab-assignments'));
+          loadMyAssignments();
+        }
+      };
+    }
+    gradeAlertDiv.style.display = 'block';
+  } else if (gradeAlertDiv) {
+    gradeAlertDiv.style.display = 'none';
+  }
 }
 </script>
 </body>

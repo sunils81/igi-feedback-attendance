@@ -1230,8 +1230,16 @@
     <div id="ass-panel-create" class="ot-panel">
       <div class="card">
         <h3>Create New Assignment</h3>
-        <p class="sub">Specify details, select target batch, set a day-based duration, and input the question/prompt.</p>
+        <p class="sub">Specify details, select target batch, set a day-based duration, and select assignment format.</p>
+        
         <div class="ot-form-row">
+          <div>
+            <label>Assignment Format *</label>
+            <select id="ass-c-format" style="width:280px;" onchange="assHandleTypeChange(this.value)">
+              <option value="FileUpload" selected>📎 File / Link Upload (Google Drive, Dropbox etc.)</option>
+              <option value="MCQ">✍️ MCQ (Select from Question Bank)</option>
+            </select>
+          </div>
           <div>
             <label>Assignment Title *</label>
             <input type="text" id="ass-c-title" placeholder="e.g. Sketching Earrings & Pendants" style="width:280px;">
@@ -1271,9 +1279,20 @@
           </div>
         </div>
         
-        <div style="margin-top:15px; margin-bottom:15px;">
+        <!-- Prompt wrap (For FileUpload type) -->
+        <div id="ass-prompt-wrap" style="margin-top:15px; margin-bottom:15px;">
           <label style="font-size:12px;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;">Assignment Topic Prompt / Question *</label>
           <textarea id="ass-c-prompt" rows="3" style="width:100%; padding:8px; border:1.5px solid #e5e7eb; border-radius:8px; font-size:13px; box-sizing:border-box;" placeholder="Enter details of what students need to do and submit..."></textarea>
+        </div>
+
+        <!-- MCQ wrap (For MCQ type) -->
+        <div id="ass-mcq-wrap" style="display:none; margin-top:15px; margin-bottom:15px; border:1.5px solid #e5e7eb; border-radius:12px; padding:16px; background:#fafafa;">
+          <label style="font-size:12px;font-weight:700;color:var(--navy);display:block;margin-bottom:8px;">Selected MCQ Questions</label>
+          <div id="ass-selected-q-preview">
+            <div style="color:#9ca3af;font-size:13px;text-align:center;padding:16px 0;">
+              No questions selected yet. Go to <b>🧪 Online Tests</b> -> <b>Question Bank</b> tab, select questions, then come back here.
+            </div>
+          </div>
         </div>
 
         <button class="ot-btn primary" onclick="submitCreateAssignment()">🚀 Create & Activate Assignment</button>
@@ -4117,6 +4136,10 @@ function otUpdateSelCount() {
     } else addBtn.style.display = 'none';
   }
 
+  if (document.getElementById('ass-selected-q-preview')) {
+    assSyncSelectedPreview();
+  }
+
   // Update floating status bar
   var floatBar = document.getElementById('ot-floating-status-bar');
   var floatQCount = document.getElementById('ot-float-qcount');
@@ -4124,10 +4147,12 @@ function otUpdateSelCount() {
   if (floatBar && floatQCount) {
     var qbankPanel = document.getElementById('ot-qbank');
     var createPanel = document.getElementById('ot-create');
+    var assCreatePanel = document.getElementById('ass-panel-create');
     var isQbankActive = qbankPanel && qbankPanel.classList.contains('active');
     var isCreateActive = createPanel && createPanel.classList.contains('active');
+    var isAssCreateActive = assCreatePanel && assCreatePanel.classList.contains('active');
     
-    if (otSelectedIds.size > 0 && (isQbankActive || isCreateActive)) {
+    if (otSelectedIds.size > 0 && (isQbankActive || isCreateActive || isAssCreateActive)) {
       floatBar.style.display = 'flex';
       floatQCount.textContent = otSelectedIds.size;
       if (floatProceedBtn) {
@@ -7081,6 +7106,8 @@ function otHandleTestTypeChange() {
     if (btn) btn.classList.add('active');
     if (panel === 'list') {
       loadAssignmentsList();
+    } else if (panel === 'create') {
+      assSyncSelectedPreview();
     }
   }
 
@@ -7243,70 +7270,198 @@ function otHandleTestTypeChange() {
     });
   }
 
+  function assHandleTypeChange(val) {
+    var pWrap = document.getElementById('ass-prompt-wrap');
+    var mWrap = document.getElementById('ass-mcq-wrap');
+    if (val === 'MCQ') {
+      if (pWrap) pWrap.style.display = 'none';
+      if (mWrap) mWrap.style.display = 'block';
+      assSyncSelectedPreview();
+    } else {
+      if (pWrap) pWrap.style.display = 'block';
+      if (mWrap) mWrap.style.display = 'none';
+    }
+  }
+
+  function assSyncSelectedPreview() {
+    var el = document.getElementById('ass-selected-q-preview');
+    if (!el) return;
+    if (!otSelectedIds.size) {
+      el.innerHTML = '<div style="color:#9ca3af;font-size:13px;text-align:center;padding:16px 0;">No questions selected yet. Go to <b>🧪 Online Tests</b> -> <b>Question Bank</b> tab, select questions, then come back here.</div>';
+      return;
+    }
+    var qs = [];
+    otSelectedIds.forEach(function(id) {
+      if (otQuestionsCache[id]) {
+        qs.push(otQuestionsCache[id]);
+      }
+    });
+    var totalMarks = otSelectedIds.size;
+    var header = '<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:700;color:#059669;margin-bottom:12px;">'
+      + '<div>✓ '+otSelectedIds.size+' questions selected · Total marks: '+totalMarks+' (1 mark each)</div>'
+      + '<button type="button" class="ot-btn ghost" style="padding:4px 10px;font-size:11px;color:#dc2626;border-color:#fca5a5;background:#fee2e2;cursor:pointer;" onclick="otClearAllQuestions(); assSyncSelectedPreview();">🗑 Clear All</button>'
+      + '</div>';
+    if (!qs.length) {
+      el.innerHTML = header + '<div style="font-size:12px;color:#6b7280;">'
+        + [...otSelectedIds].map(function(id,i){ return '<code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;margin:2px;display:inline-block;">Q'+(i+1)+' · '+escHtml(id)+'</code>'; }).join('')
+        + '<div style="margin-top:8px;font-size:12px;color:#d97706;">⚠ Question details not loaded — switch to Question Bank tab under Online Tests first to load full data, then return here.</div>'
+        + '</div>';
+      return;
+    }
+    var cards = qs.map(function(q, i) {
+      var optLetters = ['A','B','C','D','E'];
+      var opts = '';
+      if (q.options && q.options.length) {
+        opts = q.options.map(function(o, oi) {
+          var isCorrect = String(q.correctAnswer||'').trim() === String(o).trim()
+            || String(q.correctAnswer||'').trim() === optLetters[oi];
+          return '<div style="font-size:12px;margin:3px 0 3px 14px;display:flex;align-items:flex-start;gap:6px;">'
+            + '<span style="font-weight:700;color:'+(isCorrect?'#059669':'#9ca3af')+';">'+(isCorrect?'✓':'○')+'</span>'
+            + '<span style="color:'+(isCorrect?'#065f46':'#374151')+';font-weight:'+(isCorrect?'700':'400')+';">'
+            + escHtml(optLetters[oi]+'. '+o)+'</span>'
+            + '</div>';
+        }).join('');
+      }
+      return '<div class="otqm-qcard" style="border:1px solid #e5e7eb;background:#fff;border-radius:8px;padding:10px;margin-bottom:8px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;font-size:12px;margin-bottom:6px;">'
+        + '<span><b>Q' + (i+1) + '</b> <span style="color:#9ca3af;">(' + escHtml(q.type || 'MCQ') + ')</span></span>'
+        + '<button type="button" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:11px;" onclick="otSelectedIds.delete(\''+q.id+'\'); assSyncSelectedPreview(); otSyncSelectedPreview();">✕ Remove</button>'
+        + '</div>'
+        + '<div style="font-size:13px;font-weight:600;color:#0f172a;margin-bottom:6px;">' + escHtml(q.question) + '</div>'
+        + opts
+        + '</div>';
+    }).join('');
+    el.innerHTML = header + '<div style="max-height:300px;overflow-y:auto;padding-right:4px;">' + cards + '</div>';
+  }
+
   function submitCreateAssignment() {
+    var format = document.getElementById('ass-c-format').value;
     var title = document.getElementById('ass-c-title').value.trim();
     var batch = document.getElementById('ass-c-batch').value;
     var course = document.getElementById('ass-c-course').value.trim();
     var duration = document.getElementById('ass-c-duration').value;
     var instructions = document.getElementById('ass-c-instructions').value.trim();
     var retake = document.getElementById('ass-c-retake').value;
-    var promptText = document.getElementById('ass-c-prompt').value.trim();
-    if (!title || !batch || !promptText) {
-      alert('Please fill out all required fields (Title, Batch, and Assignment Prompt).');
+    
+    if (!title || !batch) {
+      alert('Please fill out all required fields (Title and Batch).');
       return;
     }
-    gasGet({
-      action: 'createOnlineTest',
-      instructor: instructorName,
-      testLabel: title,
-      testType: 'Assignment',
-      batchCode: batch,
-      course: course,
-      duration: duration,
-      negativeMarking: 'false',
-      negMarkValue: 0,
-      instructions: instructions,
-      allowRetake: retake,
-      expiryMode: 'manual',
-      passingScore: 60
-    }, function(err, d) {
-      if (err || !d || d.status !== 'ok') {
-        alert('Failed to create assignment: ' + (d && d.reason || 'Network error'));
+    
+    if (format === 'FileUpload') {
+      var promptText = document.getElementById('ass-c-prompt').value.trim();
+      if (!promptText) {
+        alert('Please fill out the Assignment Prompt.');
         return;
       }
-      var testId = d.testId;
       gasGet({
-        action: 'addCustomQuestion',
+        action: 'createOnlineTest',
         instructor: instructorName,
-        testId: testId,
-        course: course || 'JD',
-        topic: 'Assignment Prompt',
-        question: promptText,
-        type: 'FileUpload',
-        marks: 100,
-        opt1: '', opt2: '', opt3: '', opt4: '', correct: ''
-      }, function(err2, d2) {
-        if (err2 || !d2 || d2.status !== 'ok') {
-          alert('Assignment created but failed to save prompt.');
+        testLabel: title,
+        testType: 'Assignment',
+        batchCode: batch,
+        course: course,
+        duration: duration,
+        negativeMarking: 'false',
+        negMarkValue: 0,
+        instructions: instructions,
+        allowRetake: retake,
+        expiryMode: 'manual',
+        passingScore: 60
+      }, function(err, d) {
+        if (err || !d || d.status !== 'ok') {
+          alert('Failed to create assignment: ' + (d && d.reason || 'Network error'));
           return;
         }
+        var testId = d.testId;
         gasGet({
-          action: 'activateTest',
+          action: 'addCustomQuestion',
           instructor: instructorName,
-          testId: testId
-        }, function(err3, d3) {
-          if (err3 || !d3 || d3.status !== 'ok') {
-            alert('Assignment created but activation failed.');
-          } else {
-            alert('✅ Assignment created and activated successfully!');
+          testId: testId,
+          course: course || 'JD',
+          topic: 'Assignment Prompt',
+          question: promptText,
+          type: 'FileUpload',
+          marks: 100,
+          opt1: '', opt2: '', opt3: '', opt4: '', correct: ''
+        }, function(err2, d2) {
+          if (err2 || !d2 || d2.status !== 'ok') {
+            alert('Assignment created but failed to save prompt.');
+            return;
           }
-          document.getElementById('ass-c-title').value = '';
-          document.getElementById('ass-c-prompt').value = '';
-          document.getElementById('ass-c-instructions').value = '';
-          assignmentsSubTab('list');
+          gasGet({
+            action: 'activateTest',
+            instructor: instructorName,
+            testId: testId
+          }, function(err3, d3) {
+            if (err3 || !d3 || d3.status !== 'ok') {
+              alert('Assignment created but activation failed.');
+            } else {
+              alert('✅ Assignment created and activated successfully!');
+            }
+            document.getElementById('ass-c-title').value = '';
+            document.getElementById('ass-c-prompt').value = '';
+            document.getElementById('ass-c-instructions').value = '';
+            assignmentsSubTab('list');
+          });
         });
       });
-    });
+    } else {
+      // MCQ format
+      var qIds = [...otSelectedIds];
+      if (!qIds.length) {
+        alert('No questions selected. Please go to the 🧪 Online Tests -> Question Bank tab, select questions, and try again.');
+        return;
+      }
+      gasGet({
+        action: 'createOnlineTest',
+        instructor: instructorName,
+        testLabel: title,
+        testType: 'Assignment',
+        batchCode: batch,
+        course: course,
+        duration: duration,
+        negativeMarking: 'false',
+        negMarkValue: 0,
+        instructions: instructions,
+        allowRetake: retake,
+        expiryMode: 'manual',
+        passingScore: 60
+      }, function(err, d) {
+        if (err || !d || d.status !== 'ok') {
+          alert('Failed to create assignment: ' + (d && d.reason || 'Network error'));
+          return;
+        }
+        var testId = d.testId;
+        gasGet({
+          action: 'saveTestQuestions',
+          instructor: instructorName,
+          testId: testId,
+          questionIds: JSON.stringify(qIds)
+        }, function(err2, d2) {
+          if (err2 || !d2 || d2.status !== 'ok') {
+            alert('Assignment created but failed to save selected questions.');
+            return;
+          }
+          gasGet({
+            action: 'activateTest',
+            instructor: instructorName,
+            testId: testId
+          }, function(err3, d3) {
+            if (err3 || !d3 || d3.status !== 'ok') {
+              alert('Assignment created but activation failed.');
+            } else {
+              alert('✅ MCQ Assignment created with ' + d2.saved + ' questions and activated successfully!');
+            }
+            document.getElementById('ass-c-title').value = '';
+            document.getElementById('ass-c-instructions').value = '';
+            otClearSelection();
+            if (typeof assSyncSelectedPreview === 'function') assSyncSelectedPreview();
+            assignmentsSubTab('list');
+          });
+        });
+      });
+    }
   }
 
   function submitCreatePortfolio() {

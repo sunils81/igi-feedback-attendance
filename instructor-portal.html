@@ -945,6 +945,7 @@
               <option value="Weekly">Weekly Test</option>
               <option value="Final">Final Exam</option>
               <option value="Portfolio Upload">Portfolio Upload</option>
+              <option value="Assignment">Assignment</option>
               <option value="Mock">Mock Test</option>
               <option value="Practice">Practice</option>
             </select>
@@ -968,7 +969,7 @@
           📎 <b>Portfolio Upload Mode Enabled:</b> Students will see a file upload screen to submit a link to their work (Google Drive, Procreate link, etc.). You do not need to select or create questions for this test type.
         </div>
         <div>
-          <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:8px;">DURATION</label>
+          <label id="ot-dur-label" style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:8px;">DURATION</label>
           <input type="hidden" id="ot-c-duration" value="30">
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;" id="ot-dur-pills">
             <button type="button" class="ct-dur-pill" onclick="otSetDuration(this,15)">15m</button>
@@ -6834,6 +6835,58 @@ function otHandleTestTypeChange() {
       noteEl.remove();
     }
   }
+
+  // Adjust duration options based on test type (assignments use days, others use minutes)
+  var durPillsContainer = document.getElementById('ot-dur-pills');
+  var durLabel = document.getElementById('ot-dur-label');
+  
+  if (durPillsContainer) {
+    if (type === 'Assignment') {
+      if (durLabel) durLabel.textContent = 'DURATION (DAYS)';
+      durPillsContainer.innerHTML = `
+        <button type="button" class="ct-dur-pill" onclick="otSetDuration(this,1)">1 Day</button>
+        <button type="button" class="ct-dur-pill active" onclick="otSetDuration(this,2)">2 Days</button>
+        <button type="button" class="ct-dur-pill" onclick="otSetDuration(this,3)">3 Days</button>
+        <button type="button" class="ct-dur-pill" onclick="otSetDuration(this,5)">5 Days</button>
+        <button type="button" class="ct-dur-pill" onclick="otSetDuration(this,7)">7 Days</button>
+        <button type="button" class="ct-dur-pill" onclick="otSetDuration(this,14)">14 Days</button>
+        <span style="color:#d1d5db;font-size:16px;">|</span>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#6b7280;cursor:pointer;" onclick="otToggleCustomDuration()">
+          <input type="checkbox" id="ot-c-custom-dur-on" style="accent-color:#0D1B2E;">
+          Custom:
+        </label>
+        <div id="ot-c-custom-dur-wrap" style="display:none;align-items:center;gap:4px;">
+          <input type="number" id="ot-c-custom-dur-val" min="1" max="90" placeholder="e.g. 10"
+            style="width:75px;padding:6px 10px;border:1.5px solid #0D1B2E;border-radius:8px;font-size:13px;font-weight:600;"
+            oninput="document.getElementById('ot-c-duration').value=this.value||2">
+          <span style="font-size:12px;color:#6b7280;">days</span>
+        </div>
+      `;
+      document.getElementById('ot-c-duration').value = "2";
+    } else {
+      if (durLabel) durLabel.textContent = 'DURATION';
+      durPillsContainer.innerHTML = `
+        <button type="button" class="ct-dur-pill" onclick="otSetDuration(this,15)">15m</button>
+        <button type="button" class="ct-dur-pill active" onclick="otSetDuration(this,30)">30m</button>
+        <button type="button" class="ct-dur-pill" onclick="otSetDuration(this,45)">45m</button>
+        <button type="button" class="ct-dur-pill" onclick="otSetDuration(this,60)">60m</button>
+        <button type="button" class="ct-dur-pill" onclick="otSetDuration(this,90)">90m</button>
+        <button type="button" class="ct-dur-pill" onclick="otSetDuration(this,120)">2hr</button>
+        <span style="color:#d1d5db;font-size:16px;">|</span>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#6b7280;cursor:pointer;" onclick="otToggleCustomDuration()">
+          <input type="checkbox" id="ot-c-custom-dur-on" style="accent-color:#0D1B2E;">
+          Custom:
+        </label>
+        <div id="ot-c-custom-dur-wrap" style="display:none;align-items:center;gap:4px;">
+          <input type="number" id="ot-c-custom-dur-val" min="5" max="360" placeholder="e.g. 75"
+            style="width:75px;padding:6px 10px;border:1.5px solid #0D1B2E;border-radius:8px;font-size:13px;font-weight:600;"
+            oninput="document.getElementById('ot-c-duration').value=this.value||30">
+          <span style="font-size:12px;color:#6b7280;">min</span>
+        </div>
+      `;
+      document.getElementById('ot-c-duration').value = "30";
+    }
+  }
 }
 
 // Called after login to show/hide Online Tests tab based on instructor's batches
@@ -7183,7 +7236,7 @@ function otHandleTestTypeChange() {
       return;
     }
     gasGet({
-      action: 'createTest',
+      action: 'createOnlineTest',
       instructor: instructorName,
       testLabel: title,
       testType: 'Assignment',
@@ -7249,7 +7302,7 @@ function otHandleTestTypeChange() {
     var expiryMode = expiry ? 'custom' : 'manual';
     var expiryAt = expiry ? new Date(expiry).toISOString() : '';
     gasGet({
-      action: 'createTest',
+      action: 'createOnlineTest',
       instructor: instructorName,
       testLabel: title,
       testType: 'Portfolio Upload',

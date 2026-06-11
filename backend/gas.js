@@ -4990,7 +4990,13 @@ function otGetTestQuestions(ss, p) {
     var seed=p.studentId.split('').reduce(function(a,c){return a+c.charCodeAt(0);},0);
     questions=otShuffleSeeded(questions, seed);
   }
-  var durationSec=(parseInt(testRow[5])||30)*60;
+  var durationSec;
+  if (testRow[2] === 'Assignment') {
+    // MCQ assignments are not timed by minutes, but rather let's give a default session time of 60 minutes
+    durationSec = 60 * 60;
+  } else {
+    durationSec = (parseInt(testRow[5])||30)*60;
+  }
 
   // ── Per-student start time (timer starts when student clicks Begin, not when instructor activates) ──
   var shStarts=ss.getSheetByName(SH_OT_STARTS);

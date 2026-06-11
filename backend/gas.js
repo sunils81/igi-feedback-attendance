@@ -4555,11 +4555,20 @@ function otSetupQuestionBank(ss, p) {
   ensureOnlineTestSheets(ss);
   var sh = ss.getSheetByName(SH_QUESTION_BANK);
   ensureQBHeaders(sh);
-  if (sh.getLastRow()>1) sh.deleteRows(2, sh.getLastRow()-1);
+  if (sh.getLastRow() > 1) {
+    sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).clearContent();
+  }
   var rows = QUESTION_BANK_DATA.map(function(q){
     return [q.id,q.course,q.topic,q.q,q.o1,q.o2,q.o3,q.o4,q.ans,q.type,'Excel Import',new Date().toISOString()];
   });
-  if (rows.length>0) sh.getRange(2,1,rows.length,12).setValues(rows);
+  if (rows.length > 0) {
+    var maxRows = sh.getMaxRows();
+    var neededRows = (rows.length + 10) - maxRows; // safe margin
+    if (neededRows > 0) {
+      sh.insertRowsAfter(maxRows, neededRows);
+    }
+    sh.getRange(2, 1, rows.length, 12).setValues(rows);
+  }
   return {status:'ok', imported:rows.length};
 }
 

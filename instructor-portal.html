@@ -7142,6 +7142,7 @@ function otHandleTestTypeChange() {
           + '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Due Status: ' + dueHtml + '</div>'
           + '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
           + (t.status === 'Draft' ? '<button class="ot-btn success" onclick="otActivateAssignment(\''+escHtml(t.testId)+'\')">▶ Activate</button>' : '')
+          + (t.status === 'Active' ? '<button class="ot-btn danger" onclick="otCloseAssignment(\''+escHtml(t.testId)+'\')">❌ Close / Cancel</button>' : '')
           + '<button class="ot-btn primary" onclick="viewAssignmentSubmissions(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">✏️ Grade / View Submissions</button>'
           + '</div>'
           + '</div>';
@@ -7196,6 +7197,7 @@ function otHandleTestTypeChange() {
           + '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Due Status: ' + dueHtml + '</div>'
           + '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
           + (t.status === 'Draft' ? '<button class="ot-btn success" onclick="otActivatePortfolio(\''+escHtml(t.testId)+'\')">▶ Activate</button>' : '')
+          + (t.status === 'Active' ? '<button class="ot-btn danger" onclick="otClosePortfolio(\''+escHtml(t.testId)+'\')">❌ Close / Cancel</button>' : '')
           + '<button class="ot-btn primary" onclick="viewPortfolioSubmissions(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">✏️ Grade / View Submissions</button>'
           + '</div>'
           + '</div>';
@@ -7219,6 +7221,24 @@ function otHandleTestTypeChange() {
     gasGet({action:'activateTest', instructor:instructorName, testId:testId}, function(err, d) {
       if (err || !d || d.status !== 'ok') return alert('Error: '+(d&&d.reason||'Failed'));
       alert('✅ Portfolio request is now LIVE!');
+      loadPortfoliosList();
+    });
+  }
+
+  function otCloseAssignment(testId) {
+    if (!confirm('Are you sure you want to close/cancel this assignment? Students will no longer be able to submit.')) return;
+    gasGet({action:'closeTest', instructor:instructorName, testId:testId}, function(err, d) {
+      if (err || !d || d.status !== 'ok') return alert('Error: '+(d&&d.reason||'Failed'));
+      alert('✅ Assignment has been closed.');
+      loadAssignmentsList();
+    });
+  }
+
+  function otClosePortfolio(testId) {
+    if (!confirm('Are you sure you want to close/cancel this portfolio request? Students will no longer be able to submit.')) return;
+    gasGet({action:'closeTest', instructor:instructorName, testId:testId}, function(err, d) {
+      if (err || !d || d.status !== 'ok') return alert('Error: '+(d&&d.reason||'Failed'));
+      alert('✅ Portfolio request has been closed.');
       loadPortfoliosList();
     });
   }

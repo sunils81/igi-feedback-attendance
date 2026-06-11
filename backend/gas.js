@@ -4384,14 +4384,14 @@ function ensureHolidayHeaders(sh){
 }
 // Detect if col4 contains a Batch Slot string (new schema) or a date (old schema)
 function detectSlotOrDate(val) {
-  if (!val) return false; // empty = old schema without slot
-  const s = String(val).trim().toLowerCase();
-  // If it looks like a date (contains digits and dashes/slashes) → old schema
-  if (/\d{4}-\d{2}|\d+\/\d+/.test(s)) return false;
-  // If it's a Date object → old schema
+  if (val == null) return true;
   if (val instanceof Date) return false;
-  // If it matches a slot keyword → new schema
-  return s==='first half'||s==='second half'||s==='full day';
+  const s = String(val).trim();
+  if (s === '') return true;
+  if (/^\d+[-/.]\d+[-/.]\d+/.test(s) || /^\d{4}-\d{2}/.test(s)) {
+    return false;
+  }
+  return true;
 }
 
 function getOrCreateSheet(ss,name){let s=ss.getSheetByName(name);if(!s)s=ss.insertSheet(name);return s;}
@@ -5886,7 +5886,12 @@ var TRAY_CATALOGUE = {
     'QTZ1': {name:'Quartz 1 (Amethyst·Smoky·Citrine)', weekUsage:''},
     'QTZ2': {name:'Quartz 2 (Agate·Chalcedony·Onyx)',  weekUsage:''},
     'PRC' : {name:'Practice',                          weekUsage:''},
-    'PRC2': {name:'Practice 2',                        weekUsage:''}
+    'PRC2': {name:'Practice 2',                        weekUsage:''},
+    'EXA' : {name:'Test Series A (A1-A11)',            weekUsage:''},
+    'EXB' : {name:'Test Series B (B1-B11)',            weekUsage:''},
+    'EXC' : {name:'Test Series C (C1-C11)',            weekUsage:''},
+    'EXD' : {name:'Test Series D (D1-D11)',            weekUsage:''},
+    'EXE' : {name:'Test Series E (E1-E11)',            weekUsage:''}
   },
   // Organics
   OR: {
@@ -5895,20 +5900,34 @@ var TRAY_CATALOGUE = {
   }
 };
 
-// Per-centre tray set. Format: [[category, topicCode, stoneCount], ...]
+// Per-centre tray set. Format: [[category, trayNo/topicCode, topicCode, stoneCount] for Mumbai, or [category, topicCode, stoneCount] for others]
 var CENTRE_TRAY_SETS = {
   'Mumbai': [
-    ['DM','MS',57],['DM','RI1',57],['DM','RI2',57],['DM','FS',25],
-    ['DM','IM',25],['DM','WT',25],['DM','FT',25],['DM','LG1',25],
-    ['DM','LG2',25],['DM','DS',25],['DM','MJ',25],
-    ['DM','RD1',25],['DM','RD2',25],['DM','RD3',25],
-    ['CS','OPI',25],['CS','INI',25],['CS','RES',25],['CS','TRT',25],
-    ['CS','SYN',25],['CS','GR1',25],['CS','GR2',25],['CS','QTZ',25],
-    ['CS','GR3',25],['CS','PRC',25],['CS','PRC2',25],
-    ['CS','OPI2',25],['CS','INI2',25],['CS','RES',25],['CS','TRT',25],
-    ['CS','SYN',25],['CS','GR1',25],['CS','GR2',25],['CS','QTZ',25],
-    ['CS','GR3',25],['CS','PRC',25],['CS','PRC2',25],
-    ['OR','OR1',25],['OR','OR2',25]
+    // Diamonds: MUM-DM-T01 to MUM-DM-T14
+    ['DM', '01', 'MS', 57], ['DM', '02', 'RI1', 57], ['DM', '03', 'RI2', 57], 
+    ['DM', '04', 'FS', 25], ['DM', '05', 'IM', 25], ['DM', '06', 'WT', 25], 
+    ['DM', '07', 'FT', 25], ['DM', '08', 'LG1', 25], ['DM', '09', 'LG2', 25], 
+    ['DM', '10', 'DS', 25], ['DM', '11', 'MJ', 25], ['DM', '12', 'RD1', 25], 
+    ['DM', '13', 'RD2', 25], ['DM', '14', 'RD3', 25],
+    // Colored Stones Teaching: MUM-CS-T01 to MUM-CS-T23
+    ['CS', '01', 'OPI', 25], ['CS', '12', 'OPI', 25],
+    ['CS', '02', 'INI', 25], ['CS', '13', 'INI', 25],
+    ['CS', '03', 'RES', 25], ['CS', '14', 'RES', 25],
+    ['CS', '04', 'TRT', 25], ['CS', '15', 'TRT', 25],
+    ['CS', '05', 'SYN', 25], ['CS', '16', 'SYN', 25],
+    ['CS', '06', 'GR1', 25], ['CS', '17', 'GR1', 25],
+    ['CS', '07', 'GR2', 25], ['CS', '18', 'GR2', 25],
+    ['CS', '08', 'QTZ', 25], ['CS', '19', 'QTZ', 25],
+    ['CS', '09', 'GR3', 25], ['CS', '20', 'GR3', 25],
+    ['CS', '10', 'PRC', 25], ['CS', '21', 'PRC', 25], 
+    ['CS', '11', 'PRC', 25], ['CS', '22', 'PRC', 25],
+    ['CS', '23', 'PRC', 25],
+    // Colored Stone Exam/Test Series Trays: MUM-CS-T-EX1 to MUM-CS-T-EX5
+    ['CS', 'EX1', 'EXA', 11], ['CS', 'EX2', 'EXB', 11],
+    ['CS', 'EX3', 'EXC', 11], ['CS', 'EX4', 'EXD', 11],
+    ['CS', 'EX5', 'EXE', 11],
+    // Organics: MUM-OR-T01 to MUM-OR-T02
+    ['OR', '01', 'OR1', 25], ['OR', '02', 'OR2', 25]
   ],
   'Delhi': [
     ['DM','MS',57],['DM','RI1',57],['DM','RI2',57],['DM','FS',25],
@@ -5950,13 +5969,43 @@ function trayBulkSeed(ss, p) {
   Object.keys(CENTRE_TRAY_SETS).forEach(function(centre) {
     var abbr = CENTRE_ABBR[centre] || centre.substring(0,3).toUpperCase();
     CENTRE_TRAY_SETS[centre].forEach(function(entry) {
-      var cat = entry[0], code = entry[1], stones = entry[2];
-      var id = abbr + '-' + cat + '-' + code;
+      var cat, code, stones, id;
+      var homeInstructor = '';
+      
+      if (entry.length === 4) {
+        cat = entry[0];
+        var trayNo = entry[1];
+        code = entry[2];
+        stones = entry[3];
+        
+        var trayStr = String(trayNo);
+        if (trayStr.startsWith('EX')) {
+          id = abbr + '-' + cat + '-T-' + trayStr;
+        } else {
+          id = abbr + '-' + cat + '-T' + trayStr;
+        }
+      } else {
+        cat = entry[0];
+        code = entry[1];
+        stones = entry[2];
+        id = abbr + '-' + cat + '-' + code;
+      }
+      
+      // Determine Home Instructor for Mumbai
+      if (centre === 'Mumbai') {
+        if (cat === 'CS' || cat === 'OR') {
+          homeInstructor = 'Asmita';
+        } else if (cat === 'DM') {
+          homeInstructor = 'Amit / Bhavin';
+        }
+      }
+      
       if (existing.indexOf(id) !== -1) { skipped++; return; }
+      
       var catObj = TRAY_CATALOGUE[cat] || {};
       var info = catObj[code] || {name: code, weekUsage: ''};
       // cols: TrayID,Category,TopicCode,TopicName,HomeCentre,HomeInstructor,StoneCount,WeekUsage,LocationStatus,CurrentCentre,ExpectedReturn,RegisteredAt,Notes
-      sh.appendRow([id, cat, code, info.name, centre, '', stones, info.weekUsage, 'UNCONFIRMED', centre, '', now, 'Bulk seeded']);
+      sh.appendRow([id, cat, code, info.name, centre, homeInstructor, stones, info.weekUsage, 'UNCONFIRMED', centre, '', now, 'Bulk seeded']);
       existing.push(id);
       seeded++;
     });

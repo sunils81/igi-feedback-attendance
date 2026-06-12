@@ -36,11 +36,30 @@ function gasGet(params, cb) {
   const qs     = Object.entries(params).map(([k,v])=>k+'='+encodeURIComponent(v||'')).join('&');
   const s      = document.createElement('script');
   let done     = false;
-  window[cbName] = function(d){ done=true; delete window[cbName]; try{document.body.removeChild(s);}catch(x){} cb(null,d); };
-  s.onerror = function(){ if(!done){done=true;delete window[cbName];try{document.body.removeChild(s);}catch(x){}cb(new Error('network'),null);} };
+  
+  function invokeCallback(err, data) {
+    if (done) return;
+    done = true;
+    delete window[cbName];
+    try { document.body.removeChild(s); } catch(x) {}
+    if (cb) {
+      if (cb.length === 1) {
+        if (err) {
+          cb({ status: 'error', message: err.message || String(err) });
+        } else {
+          cb(data);
+        }
+      } else {
+        cb(err, data);
+      }
+    }
+  }
+
+  window[cbName] = function(d){ invokeCallback(null, d); };
+  s.onerror = function(){ invokeCallback(new Error('network'), null); };
   s.src = GAS_URL + '?' + qs + '&_ts=' + Date.now() + '&callback=' + cbName;
   document.body.appendChild(s);
-  setTimeout(function(){ if(!done){done=true;delete window[cbName];try{document.body.removeChild(s);}catch(x){}cb(new Error('timeout'),null);} }, 30000);
+  setTimeout(function(){ invokeCallback(new Error('timeout'), null); }, 30000);
 }
 
 function ensureToastHost() {

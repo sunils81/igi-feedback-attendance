@@ -8338,8 +8338,9 @@ function seedInventoryItems(ss, p) {
     var forceReseed = p && (p.force===true || p.force==='true');
     var sh = ss.getSheetByName(SH_INV_ITEMS);
     if (!sh) sh = ss.insertSheet(SH_INV_ITEMS);
-    if (sh.getLastRow()>1 && !forceReseed) return {status:'ok', message:'Already seeded', count:sh.getLastRow()-1};
-    if (forceReseed && sh.getLastRow()>1) sh.deleteRows(2, sh.getLastRow()-1);
+    var currentCount = sh.getLastRow() - 1;
+    if (currentCount > 5 && !forceReseed) return {status:'ok', message:'Already seeded', count:currentCount};
+    if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1);
     sh.getRange(1,1,1,8).setValues([['Item ID','Item Name','Category','Unit','Reorder Level','Unit Cost (Rs)','Notes','Created At']]);
     var ts = new Date().toISOString();
     var ITEMS = [
@@ -8434,7 +8435,7 @@ function seedInventoryItems(ss, p) {
       ['ITEM-089','Corporate Certificate Folio','Corporate Batch','Pcs',10,450,'Premium folio for corporate certs',ts],
       ['ITEM-090','Diamond Grading Handbook (Corporate)','Corporate Batch','Pcs',5,900,'DG handbook for corporate events',ts]
     ];
-    ITEMS.forEach(function(row){ sh.appendRow(row); });
+    sh.getRange(2, 1, ITEMS.length, 8).setValues(ITEMS);
     return {status:'ok', message:'Seeded '+ITEMS.length+' items', count:ITEMS.length};
   } catch(err) { return {status:'error', message: err.toString()}; }
 }

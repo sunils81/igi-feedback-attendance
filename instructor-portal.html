@@ -5971,13 +5971,13 @@ var _ctrCatFilter = 'ALL';
 var _ctrSearch    = '';
 
 function trayLoadConfirm(allTrays) {
+  trayRenderBorrowedHere();
   var wrap = document.getElementById('tray-confirm-wrap');
   if (!wrap) return;
   if (!allTrays || !allTrays.length) {
     wrap.innerHTML = '<div style="font-size:12px;color:#9ca3af;">No trays found. Please contact the administrator to seed your centre trays, or add custom trays manually.</div>'; return;
   }
   trayRenderConfirm(wrap, allTrays);
-  trayRenderBorrowedHere();
 }
 
 function trayRenderConfirm(wrap, trays) {
@@ -6512,7 +6512,7 @@ function trayLoadHistory() {
 // ── NOTIFICATIONS POLL ────────────────────────────────────────────────────────
 function trayNotifPoll() {
   if (trayNotifPollTimer) clearInterval(trayNotifPollTimer);
-  trayNotifPollTimer = setInterval(function() {
+  function fetchNotifs() {
     if (!instructorName) return;
     gasGet({action:'trayGetNotifications', instructor:instructorName}, function(err, d) {
       if (err || !d || d.status !== 'ok') return;
@@ -6529,7 +6529,9 @@ function trayNotifPoll() {
         gasGet({action:'trayMarkNotifRead', notifId:n.notifId}, function(){});
       });
     });
-  }, 45000);
+  }
+  fetchNotifs();
+  trayNotifPollTimer = setInterval(fetchNotifs, 45000);
 }
 
 function trayShowNotifToast(n) {

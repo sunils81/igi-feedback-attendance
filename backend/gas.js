@@ -8216,7 +8216,7 @@ function updateBranchStock(ss, p) {
   try {
     var centre = String(p.centre||'').trim();
     var itemId = String(p.itemId||'').trim();
-    var quantity = Number(p.quantity);
+    var quantity = Number(p.quantity !== undefined ? p.quantity : p.qty);
     var updatedBy = String(p.updatedBy||'Admin').trim();
     if (!centre||!itemId||isNaN(quantity)) return {status:'error', reason:'missing_params'};
     var sh = ss.getSheetByName(SH_INV_STOCK);

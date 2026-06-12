@@ -1629,6 +1629,8 @@
           <button class="inv-tab" onclick="switchInventorySubTab('inv-history')">Request History</button>
           <button class="inv-tab admin-only-inv" id="inv-tab-dispatch" onclick="switchInventorySubTab('inv-dispatch')" style="display:none">Dispatch Queue</button>
           <button class="inv-tab admin-only-inv" id="inv-tab-vendors" onclick="switchInventorySubTab('inv-vendors')" style="display:none">Vendors</button>
+          <button class="inv-tab admin-only-inv" id="inv-tab-updatestock" onclick="switchInventorySubTab('inv-updatestock')" style="display:none">Update Stock</button>
+          <button class="inv-tab superadmin-only-inv" id="inv-tab-master" onclick="switchInventorySubTab('inv-master')" style="display:none">Item Master</button>
         </div>
       </div>
       <p class="sub">Manage school supplies, request items, and track branch stock dispatches.</p>
@@ -1653,34 +1655,85 @@
 
       <!-- Subtab: Request Stock -->
       <div id="inv-request" class="inv-subtab-content" style="display:none">
-        <div style="max-width:550px">
-          <h3>Submit New Stock Request</h3>
-          <form id="inv-request-form" onsubmit="submitInventoryRequestForm(event)">
+        <div style="max-width:580px">
+          <!-- Request type toggle -->
+          <div style="display:flex;gap:8px;margin-bottom:18px;background:var(--off);padding:4px;border-radius:8px;width:fit-content">
+            <button id="inv-req-type-single" class="inv-tab active" onclick="switchRequestType('single')" style="font-size:12px">📦 Single Item</button>
+            <button id="inv-req-type-bundle" class="inv-tab" onclick="switchRequestType('bundle')" style="font-size:12px">🎓 Course Bundle</button>
+          </div>
+
+          <!-- Single Item Form -->
+          <div id="inv-req-single-form-wrap">
+            <h3>Request a Single Item</h3>
+            <form id="inv-request-form" onsubmit="submitInventoryRequestForm(event)">
+              <div class="field">
+                <label for="inv-req-item">Item *</label>
+                <select id="inv-req-item" required>
+                  <option value="">Select Item</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="inv-req-qty">Quantity *</label>
+                <input type="number" id="inv-req-qty" min="1" placeholder="Enter quantity needed" required>
+              </div>
+              <div class="field">
+                <label for="inv-req-urgency">Urgency</label>
+                <select id="inv-req-urgency">
+                  <option value="Low">Low</option>
+                  <option value="Medium" selected>Medium</option>
+                  <option value="High">High</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="inv-req-note">Counsellor Note / Remarks</label>
+                <textarea id="inv-req-note" rows="2" placeholder="Specify size, color, or reason..." style="width:100%;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);font-family:inherit;box-sizing:border-box"></textarea>
+              </div>
+              <button type="submit" class="btn" style="margin-top:8px">Submit Request</button>
+              <div class="err-box" id="inv-req-err" style="margin-top:10px"></div>
+            </form>
+          </div>
+
+          <!-- Course Bundle Form -->
+          <div id="inv-req-bundle-form-wrap" style="display:none">
+            <h3>Request Course Bundle</h3>
+            <p class="sub">Select a course and number of students — all required items will be auto-calculated and requested together.</p>
             <div class="field">
-              <label for="inv-req-item">Item *</label>
-              <select id="inv-req-item" required>
-                <option value="">Select Item</option>
+              <label for="inv-bundle-course">Course *</label>
+              <select id="inv-bundle-course" onchange="previewCourseBundle()" required>
+                <option value="">Select Course</option>
+                <option>Diamond Graduate (DG)</option>
+                <option>Colored Stone Graduate (CSG)</option>
+                <option>Jewelry Design Graduate (JDG)</option>
+                <option>Pearls & Gem Graduate (PGG)</option>
               </select>
             </div>
             <div class="field">
-              <label for="inv-req-qty">Quantity *</label>
-              <input type="number" id="inv-req-qty" min="1" placeholder="Enter quantity needed" required>
+              <label for="inv-bundle-students">Number of Students *</label>
+              <input type="number" id="inv-bundle-students" min="1" max="200" placeholder="e.g. 15" oninput="previewCourseBundle()">
             </div>
             <div class="field">
-              <label for="inv-req-urgency">Urgency</label>
-              <select id="inv-req-urgency">
+              <label for="inv-bundle-urgency">Urgency</label>
+              <select id="inv-bundle-urgency">
                 <option value="Low">Low</option>
                 <option value="Medium" selected>Medium</option>
                 <option value="High">High</option>
               </select>
             </div>
             <div class="field">
-              <label for="inv-req-note">Counsellor Note / Remarks</label>
-              <textarea id="inv-req-note" rows="3" placeholder="Specify size, color, or reason for request..." style="width:100%;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);font-family:inherit;box-sizing:border-box"></textarea>
+              <label for="inv-bundle-note">Note</label>
+              <textarea id="inv-bundle-note" rows="2" placeholder="Any additional remarks..." style="width:100%;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);font-family:inherit;box-sizing:border-box"></textarea>
             </div>
-            <button type="submit" class="btn" style="margin-top:8px">Submit Request</button>
-            <div class="err-box" id="inv-req-err" style="margin-top:10px"></div>
-          </form>
+            <!-- Preview table -->
+            <div id="inv-bundle-preview" style="display:none;margin-bottom:14px">
+              <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--muted)">Items that will be requested:</div>
+              <table class="compact-table" style="font-size:12px">
+                <thead><tr><th>Item</th><th>Per Student</th><th>Total Qty</th></tr></thead>
+                <tbody id="inv-bundle-preview-tbody"></tbody>
+              </table>
+            </div>
+            <button type="button" class="btn" onclick="submitCourseBundleRequestForm()" id="inv-bundle-submit-btn">Submit Bundle Request</button>
+            <div class="err-box" id="inv-bundle-err" style="margin-top:10px"></div>
+          </div>
         </div>
       </div>
 
@@ -1787,6 +1840,92 @@
               <button type="submit" class="btn" style="width:100%">Register Vendor</button>
               <div class="err-box" id="inv-ven-err" style="margin-top:10px"></div>
             </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Subtab: Update Stock (Mumbai Admin: Bianca / Anuradha) -->
+      <div id="inv-updatestock" class="inv-subtab-content" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+          <h3 style="margin:0">Update Stock Levels</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <label style="font-size:12px;font-weight:700">Centre:</label>
+            <select id="inv-upd-centre" onchange="loadStockUpdateItems()" style="padding:6px 12px;border-radius:6px;border:1.5px solid var(--border);font-size:12px">
+              <!-- populated by JS -->
+            </select>
+          </div>
+        </div>
+        <p class="sub" style="margin-bottom:14px">Set the current on-hand quantity for each item at the selected centre. Changes are saved immediately.</p>
+        <div id="inv-upd-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px">
+          <div class="spinner-wrap"><div class="spinner"></div><p>Loading items...</p></div>
+        </div>
+      </div>
+
+      <!-- Subtab: Item Master (Super Admin / Sunil only) -->
+      <div id="inv-master" class="inv-subtab-content" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+          <h3 style="margin:0">Item Master Catalogue</h3>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-outline btn-sm" onclick="seedInventoryItemsFromPortal()" id="inv-seed-btn">🌱 Seed 90 Items</button>
+            <button class="btn btn-sm" onclick="showAddItemModal()">+ Add Item</button>
+          </div>
+        </div>
+        <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="text" id="inv-master-search" placeholder="Search items..." oninput="filterItemMaster()" style="padding:7px 12px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;width:220px">
+          <select id="inv-master-cat-filter" onchange="filterItemMaster()" style="padding:7px 12px;border-radius:6px;border:1.5px solid var(--border);font-size:13px">
+            <option value="">All Categories</option>
+          </select>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="compact-table" id="inv-master-table">
+            <thead>
+              <tr>
+                <th>Item ID</th>
+                <th>Item Name</th>
+                <th>Category</th>
+                <th>Unit</th>
+                <th class="text-center">Reorder Level</th>
+                <th class="text-center">Unit Cost (₹)</th>
+                <th>Notes</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="inv-master-tbody">
+              <tr><td colspan="8" style="text-align:center;padding:16px;color:var(--muted)">Loading item master...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <!-- Add/Edit Item Modal -->
+        <div id="inv-item-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:none;align-items:center;justify-content:center">
+          <div style="background:var(--white);border-radius:12px;padding:24px;width:100%;max-width:480px;box-shadow:0 8px 40px rgba(0,0,0,.2)">
+            <h3 id="inv-modal-title" style="margin-top:0">Add Item</h3>
+            <input type="hidden" id="inv-modal-item-id">
+            <div class="field"><label>Item Name *</label><input type="text" id="inv-modal-name" placeholder="e.g. DG Course Workbook" required></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div class="field"><label>Category *</label>
+                <select id="inv-modal-category">
+                  <option>Course Material</option><option>Consumable</option><option>Equipment</option>
+                  <option>Marketing</option><option>Stationery</option><option>Reference</option><option>Corporate Batch</option>
+                </select>
+              </div>
+              <div class="field"><label>Unit *</label>
+                <select id="inv-modal-unit">
+                  <option>Pcs</option><option>Sets</option><option>Pads</option><option>Books</option>
+                  <option>Boxes</option><option>Rolls</option><option>Reams</option><option>Cartridges</option>
+                  <option>Bottles</option><option>Kits</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div class="field"><label>Reorder Level</label><input type="number" id="inv-modal-reorder" min="0" placeholder="0"></div>
+              <div class="field"><label>Unit Cost (₹)</label><input type="number" id="inv-modal-cost" min="0" step="0.01" placeholder="0"></div>
+            </div>
+            <div class="field"><label>Notes</label><input type="text" id="inv-modal-notes" placeholder="Optional notes..."></div>
+            <div style="display:flex;gap:8px;margin-top:16px">
+              <button class="btn" onclick="saveInventoryItem()" id="inv-modal-save-btn">Save Item</button>
+              <button class="btn btn-outline" onclick="closeAddItemModal()">Cancel</button>
+            </div>
+            <div class="err-box" id="inv-modal-err" style="margin-top:10px"></div>
           </div>
         </div>
       </div>
@@ -2050,8 +2189,12 @@ function applyAdminVisibility() {
   const isMumbaiAdmin = (counselorName === 'Bianca' || counselorName === 'Anuradha');
   const dispatchTab = document.getElementById('inv-tab-dispatch');
   const vendorsTab = document.getElementById('inv-tab-vendors');
+  const updateStockTab = document.getElementById('inv-tab-updatestock');
+  const masterTab = document.getElementById('inv-tab-master');
   if (dispatchTab) dispatchTab.style.display = isMumbaiAdmin ? '' : 'none';
   if (vendorsTab) vendorsTab.style.display = isMumbaiAdmin ? '' : 'none';
+  if (updateStockTab) updateStockTab.style.display = isMumbaiAdmin ? '' : 'none';
+  if (masterTab) masterTab.style.display = isAdmin ? '' : 'none';
   const filterWrap = document.getElementById('inv-stock-filter-wrap');
   if (filterWrap) filterWrap.style.display = isMumbaiAdmin ? '' : 'none';
 }
@@ -6503,6 +6646,10 @@ function switchInventorySubTab(subTabId) {
     loadInventoryDispatchQueue();
   } else if (subTabId === 'inv-vendors') {
     loadInventoryVendors();
+  } else if (subTabId === 'inv-updatestock') {
+    initStockUpdateTab();
+  } else if (subTabId === 'inv-master') {
+    loadInventoryItemMaster();
   }
 }
 
@@ -6851,6 +6998,362 @@ function submitVendorRegistrationForm(event) {
     loadInventoryVendors();
   });
 }
+
+/* ── Request Type Toggle ── */
+function switchRequestType(type) {
+  const single = document.getElementById('inv-req-single-form-wrap');
+  const bundle = document.getElementById('inv-req-bundle-form-wrap');
+  const btnSingle = document.getElementById('inv-req-type-single');
+  const btnBundle = document.getElementById('inv-req-type-bundle');
+  if (type === 'single') {
+    if (single) single.style.display = '';
+    if (bundle) bundle.style.display = 'none';
+    if (btnSingle) btnSingle.classList.add('active');
+    if (btnBundle) btnBundle.classList.remove('active');
+    loadInventoryRequestItems();
+  } else {
+    if (single) single.style.display = 'none';
+    if (bundle) bundle.style.display = '';
+    if (btnSingle) btnSingle.classList.remove('active');
+    if (btnBundle) btnBundle.classList.add('active');
+  }
+}
+
+/* ── Course Bundle Preview & Submit ── */
+let _bundleCache = null;
+
+function previewCourseBundle() {
+  const course = document.getElementById('inv-bundle-course').value;
+  const numStr = document.getElementById('inv-bundle-students').value;
+  const num = parseInt(numStr);
+  const previewDiv = document.getElementById('inv-bundle-preview');
+  const tbody = document.getElementById('inv-bundle-preview-tbody');
+  if (!course || !num || num < 1) { previewDiv.style.display = 'none'; return; }
+
+  if (_bundleCache) {
+    _renderBundlePreview(_bundleCache, course, num);
+    return;
+  }
+  gasGet({ action: 'getCourseBundles' }, function(e, d) {
+    if (e || !d || d.status !== 'ok') return;
+    _bundleCache = d.bundles;
+    _renderBundlePreview(d.bundles, course, num);
+  });
+}
+
+function _renderBundlePreview(bundles, course, num) {
+  const previewDiv = document.getElementById('inv-bundle-preview');
+  const tbody = document.getElementById('inv-bundle-preview-tbody');
+  if (!previewDiv || !tbody) return;
+  const bundle = bundles.find(b => b.course === course);
+  if (!bundle) { previewDiv.style.display = 'none'; return; }
+  tbody.innerHTML = bundle.items.map(item => `
+    <tr>
+      <td>${escC(item.name)}</td>
+      <td class="text-center">${item.qtyPerStudent}</td>
+      <td class="text-center"><strong>${item.qtyPerStudent * num}</strong></td>
+    </tr>
+  `).join('');
+  previewDiv.style.display = '';
+}
+
+function submitCourseBundleRequestForm() {
+  const course = document.getElementById('inv-bundle-course').value;
+  const num = parseInt(document.getElementById('inv-bundle-students').value) || 0;
+  const urgency = document.getElementById('inv-bundle-urgency').value;
+  const note = document.getElementById('inv-bundle-note').value;
+  const errBox = document.getElementById('inv-bundle-err');
+  errBox.classList.remove('show');
+
+  if (!course || num < 1) {
+    errBox.textContent = 'Please select a course and enter a valid number of students.';
+    errBox.classList.add('show');
+    return;
+  }
+
+  const myCentre = (allowedCentres && allowedCentres.length) ? allowedCentres[0] : '';
+  if (!myCentre) {
+    errBox.textContent = 'Error: No associated centre found.';
+    errBox.classList.add('show');
+    return;
+  }
+
+  const btn = document.getElementById('inv-bundle-submit-btn');
+  btn.textContent = 'Submitting...';
+  btn.disabled = true;
+
+  gasGet({
+    action: 'submitCourseBundleRequest',
+    centre: myCentre,
+    courseName: course,
+    numStudents: num,
+    urgency: urgency,
+    note: note,
+    counselorName: counselorName
+  }, function(e, d) {
+    btn.textContent = 'Submit Bundle Request';
+    btn.disabled = false;
+    if (e || !d || d.status !== 'ok') {
+      errBox.textContent = (d && d.message) || 'Failed to submit bundle request.';
+      errBox.classList.add('show');
+      return;
+    }
+    showToast(`Bundle submitted! ${d.itemsCreated} item requests created for ${course} × ${num} students.`);
+    document.getElementById('inv-bundle-course').value = '';
+    document.getElementById('inv-bundle-students').value = '';
+    document.getElementById('inv-bundle-note').value = '';
+    document.getElementById('inv-bundle-preview').style.display = 'none';
+    switchInventorySubTab('inv-history');
+  });
+}
+
+/* ── Update Stock (Mumbai Admin) ── */
+let _stockUpdateItems = null;
+
+function initStockUpdateTab() {
+  const sel = document.getElementById('inv-upd-centre');
+  if (!sel) return;
+  if (sel.options.length <= 1) {
+    sel.innerHTML = '';
+    (window.CENTRES || []).forEach(c => {
+      const o = document.createElement('option'); o.value = c; o.textContent = c;
+      sel.appendChild(o);
+    });
+  }
+  loadStockUpdateItems();
+}
+
+function loadStockUpdateItems() {
+  const centre = (document.getElementById('inv-upd-centre') || {}).value || '';
+  const grid = document.getElementById('inv-upd-grid');
+  if (!grid) return;
+  if (!centre) { grid.innerHTML = '<p style="color:var(--muted)">Please select a centre.</p>'; return; }
+
+  grid.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading items...</p></div>';
+
+  gasGet({ action: 'getInventoryStock', centre: centre }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      grid.innerHTML = '<p style="color:var(--red)">Failed to load stock.</p>';
+      return;
+    }
+    const list = d.list || [];
+    if (list.length === 0) {
+      grid.innerHTML = '<p style="color:var(--muted)">No items found. Please seed the item master first.</p>';
+      return;
+    }
+
+    // Group by category
+    const groups = {};
+    list.forEach(item => {
+      if (!groups[item.category]) groups[item.category] = [];
+      groups[item.category].push(item);
+    });
+
+    grid.innerHTML = Object.keys(groups).map(cat => `
+      <div style="margin-bottom:18px">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px">${escC(cat)}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px">
+          ${groups[cat].map(item => `
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--off);border-radius:8px;border:1px solid var(--border)">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escC(item.itemName)}</div>
+                <div style="font-size:10px;color:var(--muted)">${escC(item.itemId)} · ${escC(item.unit)}</div>
+              </div>
+              <input type="number" min="0" value="${item.quantity}" data-item-id="${escC(item.itemId)}" data-centre="${escC(centre)}"
+                style="width:72px;padding:5px 8px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;text-align:center"
+                onchange="saveStockQty(this)">
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+  });
+}
+
+function saveStockQty(input) {
+  const itemId = input.getAttribute('data-item-id');
+  const centre = input.getAttribute('data-centre');
+  const qty = parseInt(input.value);
+  if (!itemId || !centre || isNaN(qty) || qty < 0) return;
+
+  input.style.borderColor = '#D97706';
+  gasGet({
+    action: 'updateBranchStock',
+    centre: centre,
+    itemId: itemId,
+    quantity: qty,
+    updatedBy: counselorName
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      input.style.borderColor = 'var(--red)';
+    } else {
+      input.style.borderColor = '#10B981';
+      setTimeout(() => { input.style.borderColor = 'var(--border)'; }, 1500);
+    }
+  });
+}
+
+/* ── Item Master (Super Admin / Sunil) ── */
+let _itemMasterCache = [];
+
+function loadInventoryItemMaster() {
+  const tbody = document.getElementById('inv-master-tbody');
+  const catFilter = document.getElementById('inv-master-cat-filter');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div></div></td></tr>';
+
+  gasGet({ action: 'getInventoryItemMaster' }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      tbody.innerHTML = '<tr><td colspan="8" style="color:var(--red);text-align:center;padding:16px">Failed to load item master.</td></tr>';
+      return;
+    }
+    _itemMasterCache = d.list || [];
+    // Populate category filter
+    if (catFilter) {
+      const cats = [...new Set(_itemMasterCache.map(i => i.category))].sort();
+      catFilter.innerHTML = '<option value="">All Categories</option>' +
+        cats.map(c => `<option value="${escC(c)}">${escC(c)}</option>`).join('');
+    }
+    renderItemMasterTable(_itemMasterCache);
+  });
+}
+
+function filterItemMaster() {
+  const search = (document.getElementById('inv-master-search').value || '').toLowerCase();
+  const cat = document.getElementById('inv-master-cat-filter').value;
+  const filtered = _itemMasterCache.filter(item => {
+    const matchCat = !cat || item.category === cat;
+    const matchSearch = !search || item.itemName.toLowerCase().includes(search) || item.itemId.toLowerCase().includes(search);
+    return matchCat && matchSearch;
+  });
+  renderItemMasterTable(filtered);
+}
+
+function renderItemMasterTable(list) {
+  const tbody = document.getElementById('inv-master-tbody');
+  if (!tbody) return;
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:16px">No items found. Use "Seed 90 Items" to populate.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(item => `
+    <tr>
+      <td><code style="font-size:11px">${escC(item.itemId)}</code></td>
+      <td style="font-weight:500">${escC(item.itemName)}</td>
+      <td><span style="font-size:11px;padding:2px 7px;border-radius:99px;background:var(--off);border:1px solid var(--border)">${escC(item.category)}</span></td>
+      <td>${escC(item.unit)}</td>
+      <td class="text-center">${item.reorderLevel}</td>
+      <td class="text-center">₹${Number(item.unitCost).toLocaleString('en-IN')}</td>
+      <td style="font-size:11px;color:var(--muted)">${escC(item.notes)}</td>
+      <td>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-outline btn-xs" onclick="editInventoryItem('${escC(item.itemId)}')">Edit</button>
+          <button class="btn btn-xs" style="background:#EF4444;color:#fff;border-color:#EF4444" onclick="deleteInventoryItemUI('${escC(item.itemId)}','${escC(item.itemName)}')">Del</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function showAddItemModal() {
+  document.getElementById('inv-modal-title').textContent = 'Add New Item';
+  document.getElementById('inv-modal-item-id').value = '';
+  document.getElementById('inv-modal-name').value = '';
+  document.getElementById('inv-modal-category').value = 'Course Material';
+  document.getElementById('inv-modal-unit').value = 'Pcs';
+  document.getElementById('inv-modal-reorder').value = '';
+  document.getElementById('inv-modal-cost').value = '';
+  document.getElementById('inv-modal-notes').value = '';
+  document.getElementById('inv-modal-err').classList.remove('show');
+  const modal = document.getElementById('inv-item-modal');
+  modal.style.display = 'flex';
+}
+
+function editInventoryItem(itemId) {
+  const item = _itemMasterCache.find(i => i.itemId === itemId);
+  if (!item) return;
+  document.getElementById('inv-modal-title').textContent = 'Edit Item';
+  document.getElementById('inv-modal-item-id').value = item.itemId;
+  document.getElementById('inv-modal-name').value = item.itemName;
+  document.getElementById('inv-modal-category').value = item.category;
+  document.getElementById('inv-modal-unit').value = item.unit;
+  document.getElementById('inv-modal-reorder').value = item.reorderLevel;
+  document.getElementById('inv-modal-cost').value = item.unitCost;
+  document.getElementById('inv-modal-notes').value = item.notes;
+  document.getElementById('inv-modal-err').classList.remove('show');
+  const modal = document.getElementById('inv-item-modal');
+  modal.style.display = 'flex';
+}
+
+function closeAddItemModal() {
+  document.getElementById('inv-item-modal').style.display = 'none';
+}
+
+function saveInventoryItem() {
+  const itemId = document.getElementById('inv-modal-item-id').value;
+  const itemName = document.getElementById('inv-modal-name').value.trim();
+  const category = document.getElementById('inv-modal-category').value;
+  const unit = document.getElementById('inv-modal-unit').value;
+  const reorderLevel = parseInt(document.getElementById('inv-modal-reorder').value) || 0;
+  const unitCost = parseFloat(document.getElementById('inv-modal-cost').value) || 0;
+  const notes = document.getElementById('inv-modal-notes').value.trim();
+  const errBox = document.getElementById('inv-modal-err');
+  errBox.classList.remove('show');
+
+  if (!itemName || !category) {
+    errBox.textContent = 'Item name and category are required.';
+    errBox.classList.add('show');
+    return;
+  }
+
+  const btn = document.getElementById('inv-modal-save-btn');
+  btn.textContent = 'Saving...';
+  btn.disabled = true;
+
+  const action = itemId ? 'updateInventoryItem' : 'addInventoryItem';
+  gasGet({ action, itemId, itemName, category, unit, reorderLevel, unitCost, notes }, function(e, d) {
+    btn.textContent = 'Save Item';
+    btn.disabled = false;
+    if (e || !d || d.status !== 'ok') {
+      errBox.textContent = (d && d.message) || 'Failed to save item.';
+      errBox.classList.add('show');
+      return;
+    }
+    closeAddItemModal();
+    showToast(itemId ? 'Item updated.' : 'Item added!');
+    loadInventoryItemMaster();
+  });
+}
+
+function deleteInventoryItemUI(itemId, itemName) {
+  if (!confirm(`Delete "${itemName}" (${itemId}) from the item master? This cannot be undone.`)) return;
+  gasGet({ action: 'deleteInventoryItem', itemId }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      showToast('Failed to delete item.', 'error');
+      return;
+    }
+    showToast('Item deleted.');
+    loadInventoryItemMaster();
+  });
+}
+
+function seedInventoryItemsFromPortal() {
+  if (!confirm('This will populate the Item Master with all 90 IGI items. Continue?')) return;
+  const btn = document.getElementById('inv-seed-btn');
+  btn.textContent = 'Seeding...';
+  btn.disabled = true;
+  gasGet({ action: 'seedInventoryItems' }, function(e, d) {
+    btn.textContent = '🌱 Seed 90 Items';
+    btn.disabled = false;
+    if (e || !d || d.status !== 'ok') {
+      showToast('Seed failed: ' + ((d && d.message) || 'unknown error'), 'error');
+      return;
+    }
+    showToast(d.message || `Seeded ${d.count} items!`);
+    loadInventoryItemMaster();
+  });
+}
+
 </script>
 <script>
 // Register Service Worker for caching and offline support

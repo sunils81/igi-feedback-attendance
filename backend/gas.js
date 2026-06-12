@@ -1292,6 +1292,31 @@ function doGet(e) {
       return respond(getVendors(ss, p));
     }
 
+    if (act==='getInventoryItemMaster') {
+      return respond(getInventoryItemMaster(ss, p));
+    }
+    if (act==='addInventoryItem') {
+      return respond(addInventoryItem(ss, p));
+    }
+    if (act==='updateInventoryItem') {
+      return respond(updateInventoryItem(ss, p));
+    }
+    if (act==='deleteInventoryItem') {
+      return respond(deleteInventoryItem(ss, p));
+    }
+    if (act==='updateBranchStock') {
+      return respond(updateBranchStock(ss, p));
+    }
+    if (act==='getCourseBundles') {
+      return respond(getCourseBundles(ss, p));
+    }
+    if (act==='submitCourseBundleRequest') {
+      return respond(submitCourseBundleRequest(ss, p));
+    }
+    if (act==='seedInventoryItems') {
+      return respond(seedInventoryItems(ss, p));
+    }
+
     // ── getStudentDiplomaStatus ───────────────────────────────
     // No auth needed — returns only the requesting student's own data.
     if (act==='getStudentDiplomaStatus') {
@@ -8117,4 +8142,296 @@ function getVendors(ss, p) {
   } catch(err) {
     return {status:'error', message: err.toString()};
   }
+}
+
+// ── Inventory Item Master ────────────────────────────────────────────────────
+
+function getInventoryItemMaster(ss, p) {
+  try {
+    var sh = ss.getSheetByName(SH_INV_ITEMS);
+    if (!sh || sh.getLastRow() < 2) return {status:'ok', list:[]};
+    var data = sh.getRange(2, 1, sh.getLastRow()-1, 8).getValues();
+    var list = data.filter(function(r){return r[0];}).map(function(r,i){return {
+      itemId: r[0], itemName: r[1], category: r[2], unit: r[3],
+      reorderLevel: Number(r[4])||0, unitCost: Number(r[5])||0, notes: r[6]||'', rowIndex: i+2
+    };});
+    return {status:'ok', list:list};
+  } catch(err) { return {status:'error', message: err.toString()}; }
+}
+
+function addInventoryItem(ss, p) {
+  try {
+    var itemName = String(p.itemName||'').trim();
+    var category = String(p.category||'').trim();
+    var unit = String(p.unit||'Pcs').trim();
+    var reorderLevel = Number(p.reorderLevel)||0;
+    var unitCost = Number(p.unitCost)||0;
+    var notes = String(p.notes||'').trim();
+    if (!itemName||!category) return {status:'error', reason:'missing_params'};
+    var sh = ss.getSheetByName(SH_INV_ITEMS);
+    if (!sh) return {status:'error', reason:'no_sheet'};
+    var itemId = 'ITEM-' + String(sh.getLastRow()).padStart(3,'0');
+    sh.appendRow([itemId, itemName, category, unit, reorderLevel, unitCost, notes, new Date().toISOString()]);
+    return {status:'ok', itemId:itemId};
+  } catch(err) { return {status:'error', message: err.toString()}; }
+}
+
+function updateInventoryItem(ss, p) {
+  try {
+    var itemId = String(p.itemId||'').trim();
+    var itemName = String(p.itemName||'').trim();
+    if (!itemId||!itemName) return {status:'error', reason:'missing_params'};
+    var sh = ss.getSheetByName(SH_INV_ITEMS);
+    var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,1).getValues() : [];
+    var rowIndex = -1;
+    for (var i=0;i<rows.length;i++) { if(String(rows[i][0])===itemId){rowIndex=i+2;break;} }
+    if (rowIndex===-1) return {status:'error', reason:'not_found'};
+    sh.getRange(rowIndex,2,1,6).setValues([[
+      itemName, String(p.category||''), String(p.unit||'Pcs'),
+      Number(p.reorderLevel)||0, Number(p.unitCost)||0, String(p.notes||'')
+    ]]);
+    return {status:'ok'};
+  } catch(err) { return {status:'error', message: err.toString()}; }
+}
+
+function deleteInventoryItem(ss, p) {
+  try {
+    var itemId = String(p.itemId||'').trim();
+    if (!itemId) return {status:'error', reason:'missing_params'};
+    var sh = ss.getSheetByName(SH_INV_ITEMS);
+    var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,1).getValues() : [];
+    for (var i=0;i<rows.length;i++) {
+      if (String(rows[i][0])===itemId) { sh.deleteRow(i+2); return {status:'ok'}; }
+    }
+    return {status:'error', reason:'not_found'};
+  } catch(err) { return {status:'error', message: err.toString()}; }
+}
+
+// ── Update Branch Stock ──────────────────────────────────────────────────────
+
+function updateBranchStock(ss, p) {
+  try {
+    var centre = String(p.centre||'').trim();
+    var itemId = String(p.itemId||'').trim();
+    var quantity = Number(p.quantity);
+    var updatedBy = String(p.updatedBy||'Admin').trim();
+    if (!centre||!itemId||isNaN(quantity)) return {status:'error', reason:'missing_params'};
+    var sh = ss.getSheetByName(SH_INV_STOCK);
+    if (!sh) return {status:'error', reason:'no_sheet'};
+    var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,3).getValues() : [];
+    var rowIndex = -1;
+    for (var i=0;i<rows.length;i++) {
+      if (String(rows[i][1]).trim()===centre && String(rows[i][2]).trim()===itemId) { rowIndex=i+2; break; }
+    }
+    var now = new Date().toISOString();
+    if (rowIndex!==-1) {
+      sh.getRange(rowIndex,4,1,3).setValues([[quantity, now, updatedBy]]);
+    } else {
+      sh.appendRow(['STK-'+Date.now(), centre, itemId, quantity, now, updatedBy]);
+    }
+    return {status:'ok'};
+  } catch(err) { return {status:'error', message: err.toString()}; }
+}
+
+// ── Course Bundles ───────────────────────────────────────────────────────────
+
+var INV_COURSE_BUNDLES = {
+  'Diamond Graduate (DG)': [
+    {itemId:'ITEM-001',name:'DG Course Workbook',qty:1},
+    {itemId:'ITEM-002',name:'DG Study Cards',qty:1},
+    {itemId:'ITEM-003',name:'Diamond Grading Report (Practice)',qty:1},
+    {itemId:'ITEM-004',name:'Stone Paper Parcel (Small)',qty:5},
+    {itemId:'ITEM-005',name:'Envelope (Medium)',qty:2},
+    {itemId:'ITEM-006',name:'Loupe 10x (Student)',qty:1},
+    {itemId:'ITEM-012',name:'DG Welcome Kit Folder',qty:1},
+    {itemId:'ITEM-049',name:'IGI Pen (Branded)',qty:1}
+  ],
+  'Colored Stone Graduate (CSG)': [
+    {itemId:'ITEM-016',name:'CSG Course Workbook',qty:1},
+    {itemId:'ITEM-017',name:'CSG Study Cards',qty:1},
+    {itemId:'ITEM-018',name:'Color Stone Report (Practice)',qty:1},
+    {itemId:'ITEM-022',name:'Stone Paper Parcel (Small) CSG',qty:5},
+    {itemId:'ITEM-027',name:'Envelope (Large)',qty:2},
+    {itemId:'ITEM-006',name:'Loupe 10x (Student)',qty:1},
+    {itemId:'ITEM-024',name:'CSG Welcome Kit Folder',qty:1},
+    {itemId:'ITEM-049',name:'IGI Pen (Branded)',qty:1}
+  ],
+  'Jewelry Design Graduate (JDG)': [
+    {itemId:'ITEM-028',name:'JDG Course Workbook',qty:1},
+    {itemId:'ITEM-029',name:'Sketching Pencils Set (12)',qty:1},
+    {itemId:'ITEM-030',name:'Drawing Paper Pad A3',qty:1},
+    {itemId:'ITEM-031',name:'Eraser (Art)',qty:1},
+    {itemId:'ITEM-032',name:'Pencil Sharpener',qty:1},
+    {itemId:'ITEM-033',name:'Color Pencils Set (24)',qty:1},
+    {itemId:'ITEM-036',name:'A4 Gateway Sheet',qty:2},
+    {itemId:'ITEM-038',name:'JDG Welcome Kit Folder',qty:1},
+    {itemId:'ITEM-049',name:'IGI Pen (Branded)',qty:1}
+  ],
+  'Pearls & Gem Graduate (PGG)': [
+    {itemId:'ITEM-040',name:'PGG Course Workbook',qty:1},
+    {itemId:'ITEM-041',name:'Pearl Strand (Practice)',qty:1},
+    {itemId:'ITEM-044',name:'Stone Paper Parcel (Small) PGG',qty:3},
+    {itemId:'ITEM-045',name:'Envelope (Medium) PGG',qty:2},
+    {itemId:'ITEM-047',name:'PGG Welcome Kit Folder',qty:1},
+    {itemId:'ITEM-049',name:'IGI Pen (Branded)',qty:1}
+  ]
+};
+
+function getCourseBundles(ss, p) {
+  try {
+    var sh = ss.getSheetByName(SH_INV_ITEMS);
+    var itemsData = sh && sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,4).getValues() : [];
+    var itemMap = {};
+    itemsData.forEach(function(r){ if(r[0]) itemMap[String(r[0])] = {name:r[1],unit:r[3]}; });
+    var bundles = Object.keys(INV_COURSE_BUNDLES).map(function(courseName){
+      return {
+        course: courseName,
+        items: INV_COURSE_BUNDLES[courseName].map(function(bi){
+          return {
+            itemId: bi.itemId,
+            name: itemMap[bi.itemId] ? itemMap[bi.itemId].name : bi.name,
+            unit: itemMap[bi.itemId] ? itemMap[bi.itemId].unit : 'Pcs',
+            qtyPerStudent: bi.qty
+          };
+        })
+      };
+    });
+    return {status:'ok', bundles:bundles};
+  } catch(err) { return {status:'error', message: err.toString()}; }
+}
+
+function submitCourseBundleRequest(ss, p) {
+  try {
+    var centre = String(p.centre||'').trim();
+    var courseName = String(p.courseName||'').trim();
+    var numStudents = Number(p.numStudents)||0;
+    var urgency = String(p.urgency||'Medium').trim();
+    var note = String(p.note||'').trim();
+    var requestedBy = String(p.counselorName||'').trim();
+    if (!centre||!courseName||numStudents<=0) return {status:'error', reason:'missing_params'};
+    var bundle = INV_COURSE_BUNDLES[courseName];
+    if (!bundle) return {status:'error', reason:'bundle_not_found'};
+    var shReq = ss.getSheetByName(SH_INV_REQUESTS);
+    var now = new Date().toISOString();
+    var ts = Date.now();
+    var requestIds = [];
+    bundle.forEach(function(bi, idx){
+      var reqId = 'REQ-'+ts+'-'+idx;
+      shReq.appendRow([
+        reqId, centre, bi.itemId, bi.qty*numStudents, urgency,
+        '[Bundle: '+courseName+' x '+numStudents+' students] '+note,
+        requestedBy, now, 'Pending', '', ''
+      ]);
+      requestIds.push(reqId);
+    });
+    return {status:'ok', requestIds:requestIds, itemsCreated:requestIds.length};
+  } catch(err) { return {status:'error', message: err.toString()}; }
+}
+
+// ── Seed 90 Items ────────────────────────────────────────────────────────────
+
+function seedInventoryItems(ss, p) {
+  try {
+    var forceReseed = p && p.force===true;
+    var sh = ss.getSheetByName(SH_INV_ITEMS);
+    if (!sh) return {status:'error', reason:'no_sheet'};
+    if (sh.getLastRow()>1 && !forceReseed) return {status:'ok', message:'Already seeded', count:sh.getLastRow()-1};
+    if (forceReseed && sh.getLastRow()>1) sh.deleteRows(2, sh.getLastRow()-1);
+    sh.getRange(1,1,1,8).setValues([['Item ID','Item Name','Category','Unit','Reorder Level','Unit Cost (Rs)','Notes','Created At']]);
+    var ts = new Date().toISOString();
+    var ITEMS = [
+      ['ITEM-001','DG Course Workbook','Course Material','Sets',5,1200,'Diamond Graduate course book',ts],
+      ['ITEM-002','DG Study Cards','Course Material','Sets',5,300,'Flash cards for DG',ts],
+      ['ITEM-003','Diamond Grading Report (Practice)','Course Material','Sets',10,150,'Practice grading reports DG',ts],
+      ['ITEM-004','Stone Paper Parcel (Small)','Consumable','Pcs',50,5,'For stone wrapping',ts],
+      ['ITEM-005','Envelope (Medium)','Consumable','Pcs',100,3,'Standard size',ts],
+      ['ITEM-006','Loupe 10x (Student)','Equipment','Pcs',10,450,'10x triplet loupe per student',ts],
+      ['ITEM-007','Diamond Tester','Equipment','Pcs',2,3500,'Thermal tester',ts],
+      ['ITEM-008','Tweezers (Gem)','Equipment','Pcs',10,120,'Gem grade tweezers',ts],
+      ['ITEM-009','White Grading Tray','Equipment','Pcs',5,180,'White plastic grading tray',ts],
+      ['ITEM-010','Light Box (Student)','Equipment','Pcs',2,2200,'Portable light box',ts],
+      ['ITEM-011','DG Brochure','Marketing','Pcs',30,20,'Admissions brochure DG',ts],
+      ['ITEM-012','DG Welcome Kit Folder','Course Material','Pcs',10,80,'Welcome folder for new DG students',ts],
+      ['ITEM-013','DG Certificate Frame','Consumable','Pcs',5,350,'Graduation certificate frame',ts],
+      ['ITEM-014','Diamond Grading Handbook','Reference','Pcs',3,900,'DG reference handbook',ts],
+      ['ITEM-015','Stone Paper Parcel (Large)','Consumable','Pcs',30,8,'Large parcel for stones',ts],
+      ['ITEM-016','CSG Course Workbook','Course Material','Sets',5,1100,'Colored Stone Graduate course book',ts],
+      ['ITEM-017','CSG Study Cards','Course Material','Sets',5,280,'Flash cards for CSG',ts],
+      ['ITEM-018','Color Stone Report (Practice)','Course Material','Sets',10,120,'Practice reports CSG',ts],
+      ['ITEM-019','Spectroscope','Equipment','Pcs',1,1800,'Chelsea filter + spectroscope',ts],
+      ['ITEM-020','Chelsea Filter','Equipment','Pcs',2,650,'Chelsea filter for colored stones',ts],
+      ['ITEM-021','UV Lamp','Equipment','Pcs',1,1200,'Longwave + shortwave UV',ts],
+      ['ITEM-022','Stone Paper Parcel (Small) CSG','Consumable','Pcs',50,5,'CSG stone wrapping',ts],
+      ['ITEM-023','CSG Brochure','Marketing','Pcs',30,20,'Admissions brochure CSG',ts],
+      ['ITEM-024','CSG Welcome Kit Folder','Course Material','Pcs',10,80,'Welcome folder for new CSG students',ts],
+      ['ITEM-025','CSG Certificate Frame','Consumable','Pcs',5,350,'Graduation frame CSG',ts],
+      ['ITEM-026','Colored Stone Reference Guide','Reference','Pcs',3,800,'CSG reference handbook',ts],
+      ['ITEM-027','Envelope (Large)','Consumable','Pcs',50,5,'Large envelope for reports',ts],
+      ['ITEM-028','JDG Course Workbook','Course Material','Sets',5,950,'Jewelry Design course book',ts],
+      ['ITEM-029','Sketching Pencils Set (12)','Consumable','Sets',10,280,'Drawing pencils for JDG',ts],
+      ['ITEM-030','Drawing Paper Pad A3','Consumable','Pcs',10,120,'A3 drawing pads',ts],
+      ['ITEM-031','Eraser (Art)','Consumable','Pcs',20,25,'Art grade eraser',ts],
+      ['ITEM-032','Pencil Sharpener','Consumable','Pcs',10,40,'Metal sharpener',ts],
+      ['ITEM-033','Color Pencils Set (24)','Consumable','Sets',10,380,'Colored pencils JDG',ts],
+      ['ITEM-034','Ruler 30cm','Consumable','Pcs',10,35,'Transparent ruler',ts],
+      ['ITEM-035','Compass Set','Consumable','Sets',5,150,'Geometry compass set',ts],
+      ['ITEM-036','A4 Gateway Sheet','Course Material','Pcs',30,10,'Gateway worksheet A4',ts],
+      ['ITEM-037','JDG Brochure','Marketing','Pcs',30,20,'Admissions brochure JDG',ts],
+      ['ITEM-038','JDG Welcome Kit Folder','Course Material','Pcs',10,75,'Welcome folder JDG',ts],
+      ['ITEM-039','JDG Certificate Frame','Consumable','Pcs',5,350,'Graduation frame JDG',ts],
+      ['ITEM-040','PGG Course Workbook','Course Material','Sets',5,900,'Pearls & Gems course book',ts],
+      ['ITEM-041','Pearl Strand (Practice)','Course Material','Sets',3,600,'Practice pearl strand',ts],
+      ['ITEM-042','Gemstone Identification Set','Course Material','Sets',2,2500,'ID stones for PGG',ts],
+      ['ITEM-043','Refractometer','Equipment','Pcs',1,3200,'RI measurement tool',ts],
+      ['ITEM-044','Stone Paper Parcel (Small) PGG','Consumable','Pcs',30,5,'PGG stone wrapping',ts],
+      ['ITEM-045','Envelope (Medium) PGG','Consumable','Pcs',50,3,'PGG envelopes',ts],
+      ['ITEM-046','PGG Brochure','Marketing','Pcs',30,20,'Admissions brochure PGG',ts],
+      ['ITEM-047','PGG Welcome Kit Folder','Course Material','Pcs',10,75,'Welcome folder PGG',ts],
+      ['ITEM-048','PGG Certificate Frame','Consumable','Pcs',5,350,'Graduation frame PGG',ts],
+      ['ITEM-049','IGI Pen (Branded)','Marketing','Pcs',100,45,'Branded pen for kits',ts],
+      ['ITEM-050','IGI Notepad (Branded)','Marketing','Pcs',50,65,'Branded notepad',ts],
+      ['ITEM-051','IGI Bag (Canvas)','Marketing','Pcs',20,220,'Canvas tote bag',ts],
+      ['ITEM-052','IGI Banner (Roll-up)','Marketing','Pcs',2,2200,'Rollup banner for events',ts],
+      ['ITEM-053','Brochure Stand','Marketing','Pcs',1,850,'Display stand',ts],
+      ['ITEM-054','Admission Form Pad','Stationery','Pads',5,150,'Printed admission forms',ts],
+      ['ITEM-055','Receipt Book','Stationery','Books',3,120,'Fee receipt books',ts],
+      ['ITEM-056','Stapler','Equipment','Pcs',2,180,'Office stapler',ts],
+      ['ITEM-057','Staple Pins Box','Consumable','Boxes',5,45,'Standard staple pins',ts],
+      ['ITEM-058','Whiteboard Markers (Set)','Consumable','Sets',10,180,'Dry-erase markers 4-color',ts],
+      ['ITEM-059','Whiteboard Duster','Equipment','Pcs',2,80,'Felt duster',ts],
+      ['ITEM-060','Permanent Markers (Set)','Consumable','Sets',5,120,'Permanent markers',ts],
+      ['ITEM-061','Sticky Notes (Pack)','Consumable','Packs',10,60,'Post-it style notes',ts],
+      ['ITEM-062','Scotch Tape Roll','Consumable','Rolls',10,30,'Clear tape',ts],
+      ['ITEM-063','Double-sided Tape','Consumable','Rolls',5,55,'Double sided tape roll',ts],
+      ['ITEM-064','Scissors (Office)','Equipment','Pcs',3,65,'Office scissors',ts],
+      ['ITEM-065','Paper Clips (Box)','Consumable','Boxes',5,35,'Standard paper clips',ts],
+      ['ITEM-066','Rubber Bands (Pack)','Consumable','Packs',5,30,'Assorted rubber bands',ts],
+      ['ITEM-067','File Folders (Pack 10)','Stationery','Packs',5,120,'Manila folders',ts],
+      ['ITEM-068','Box Files','Stationery','Pcs',3,180,'Archive box files',ts],
+      ['ITEM-069','Printer Paper A4 (Ream)','Consumable','Reams',10,380,'80gsm A4 paper',ts],
+      ['ITEM-070','Printer Ink (Black)','Consumable','Cartridges',3,650,'Ink cartridge black',ts],
+      ['ITEM-071','Printer Ink (Color)','Consumable','Cartridges',2,950,'Color ink cartridge',ts],
+      ['ITEM-072','Classroom Loupe 10x','Equipment','Pcs',20,450,'Classroom loupe per seat',ts],
+      ['ITEM-073','Classroom Tweezers','Equipment','Pcs',20,120,'Tweezers per seat',ts],
+      ['ITEM-074','Classroom Grading Tray','Equipment','Pcs',20,180,'Grading tray per seat',ts],
+      ['ITEM-075','Classroom Light Box','Equipment','Pcs',5,2200,'Light box shared per row',ts],
+      ['ITEM-076','HDMI Cable','Equipment','Pcs',2,350,'For projector',ts],
+      ['ITEM-077','Extension Cord (5m)','Equipment','Pcs',2,280,'Power extension',ts],
+      ['ITEM-078','Projector Screen (Portable)','Equipment','Pcs',1,4500,'Portable screen',ts],
+      ['ITEM-079','Whiteboard (Portable)','Equipment','Pcs',1,3200,'Portable whiteboard',ts],
+      ['ITEM-080','First Aid Kit','Equipment','Kits',1,850,'Basic first aid',ts],
+      ['ITEM-081','Hand Sanitizer (500ml)','Consumable','Bottles',5,180,'For classroom',ts],
+      ['ITEM-082','Tissue Box','Consumable','Boxes',5,65,'Facial tissue',ts],
+      ['ITEM-083','Dust Blower (Air)','Equipment','Pcs',2,350,'For equipment cleaning',ts],
+      ['ITEM-084','Loupe 10x (Corporate Gift)','Corporate Batch','Pcs',10,650,'Premium loupe for corporate events',ts],
+      ['ITEM-085','Medium Tweezers (Corporate)','Corporate Batch','Pcs',10,180,'Tweezer for corporate kits',ts],
+      ['ITEM-086','Paper Bag (Corporate Branded)','Corporate Batch','Pcs',20,120,'Branded gift bag',ts],
+      ['ITEM-087','Small Grading Lamp','Corporate Batch','Pcs',5,1800,'Compact grading lamp for corporate',ts],
+      ['ITEM-088','Corporate Batch Welcome Kit','Corporate Batch','Sets',5,1500,'Full corporate welcome pack',ts],
+      ['ITEM-089','Corporate Certificate Folio','Corporate Batch','Pcs',10,450,'Premium folio for corporate certs',ts],
+      ['ITEM-090','Diamond Grading Handbook (Corporate)','Corporate Batch','Pcs',5,900,'DG handbook for corporate events',ts]
+    ];
+    ITEMS.forEach(function(row){ sh.appendRow(row); });
+    return {status:'ok', message:'Seeded '+ITEMS.length+' items', count:ITEMS.length};
+  } catch(err) { return {status:'error', message: err.toString()}; }
 }

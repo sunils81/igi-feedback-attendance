@@ -1316,6 +1316,9 @@ function doGet(e) {
     if (act==='seedInventoryItems') {
       return respond(seedInventoryItems(ss, p));
     }
+    if (act==='setupInventorySheets') {
+      return respond(setupInventorySheets(ss, p));
+    }
 
     // ── getStudentDiplomaStatus ───────────────────────────────
     // No auth needed — returns only the requesting student's own data.
@@ -8332,9 +8335,9 @@ function submitCourseBundleRequest(ss, p) {
 
 function seedInventoryItems(ss, p) {
   try {
-    var forceReseed = p && p.force===true;
+    var forceReseed = p && (p.force===true || p.force==='true');
     var sh = ss.getSheetByName(SH_INV_ITEMS);
-    if (!sh) return {status:'error', reason:'no_sheet'};
+    if (!sh) sh = ss.insertSheet(SH_INV_ITEMS);
     if (sh.getLastRow()>1 && !forceReseed) return {status:'ok', message:'Already seeded', count:sh.getLastRow()-1};
     if (forceReseed && sh.getLastRow()>1) sh.deleteRows(2, sh.getLastRow()-1);
     sh.getRange(1,1,1,8).setValues([['Item ID','Item Name','Category','Unit','Reorder Level','Unit Cost (Rs)','Notes','Created At']]);
@@ -8433,5 +8436,27 @@ function seedInventoryItems(ss, p) {
     ];
     ITEMS.forEach(function(row){ sh.appendRow(row); });
     return {status:'ok', message:'Seeded '+ITEMS.length+' items', count:ITEMS.length};
+  } catch(err) { return {status:'error', message: err.toString()}; }
+}
+
+function setupInventorySheets(ss, p) {
+  try {
+    var sheets = [
+      { name: SH_INV_ITEMS,    headers: ['Item ID','Item Name','Category','Unit','Reorder Level','Unit Cost (Rs)','Notes','Created At'] },
+      { name: SH_INV_STOCK,    headers: ['Stock ID','Centre','Item ID','Quantity','Updated At','Updated By'] },
+      { name: SH_INV_REQUESTS, headers: ['Request ID','Centre','Item ID','Quantity Requested','Urgency','Counsellor Note','Requested By','Requested At','Status','Approved By','Approved At'] },
+      { name: SH_INV_DISPATCH, headers: ['Dispatch ID','Request ID','Quantity Dispatched','Dispatch Date','Courier / Tracking Info','Dispatched By','Dispatched At'] },
+      { name: SH_INV_VENDORS,  headers: ['Vendor ID','Vendor Name','Contact Person','Phone','Email','Address','Supplied Items','Registered By','Registered At'] }
+    ];
+    var created = [];
+    sheets.forEach(function(def) {
+      var sh = ss.getSheetByName(def.name);
+      if (!sh) {
+        sh = ss.insertSheet(def.name);
+        sh.getRange(1, 1, 1, def.headers.length).setValues([def.headers]);
+        created.push(def.name);
+      }
+    });
+    return { status:'ok', created: created, message: created.length ? 'Created: '+created.join(', ') : 'All sheets already exist' };
   } catch(err) { return {status:'error', message: err.toString()}; }
 }

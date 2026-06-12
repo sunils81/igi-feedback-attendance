@@ -5417,10 +5417,22 @@ function adminDeleteItemUI(itemId) {
 }
 
 function adminSeedInventory() {
-  if (!confirm('Seed 90 inventory items into INV_Items sheet? Existing items must be empty (or use force).')) return;
-  gasGet({ action:'seedInventoryItems', force: false }, function(res) {
-    if (res && res.status === 'ok') { alert(res.message || ('Seeded ' + res.count + ' items!')); adminLoadItemMaster(); }
-    else alert('Error: ' + (res && res.message || 'Unknown'));
+  if (!confirm('This will create the inventory sheets (if missing) and seed 90 items into INV_Items. Continue?')) return;
+  // Step 1: ensure all 5 inventory sheets exist
+  gasGet({ action:'setupInventorySheets' }, function(setupRes) {
+    if (!setupRes || setupRes.status === 'error') {
+      alert('Could not create sheets: ' + (setupRes && setupRes.message || 'Unknown error'));
+      return;
+    }
+    // Step 2: seed items
+    gasGet({ action:'seedInventoryItems', force: false }, function(res) {
+      if (res && res.status === 'ok') {
+        alert(res.message || ('Seeded ' + res.count + ' items!'));
+        adminLoadItemMaster();
+      } else {
+        alert('Seed error: ' + (res && res.message || 'Unknown'));
+      }
+    });
   });
 }
 

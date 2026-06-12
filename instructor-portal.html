@@ -5469,6 +5469,7 @@ function traySubTab(id) {
   });
   if (id === 'th-history')   trayLoadHistory();
   if (id === 'th-inventory') trayLoadInventory();
+  if (id === 'th-incoming')  trayLoadIncoming();
 }
 
 function traySetLoading(msg) {
@@ -6398,12 +6399,13 @@ function trayLoadIncoming() {
   // Get all pending bookings for my trays via board data
   gasGet({action:'trayGetBoard'}, function(err, d) {
     if (err || !d || d.status !== 'ok') return;
-    // Find all pending requests for trays belonging to my centre
+    
+    // 1. Find all pending requests for trays belonging to my centre
     var pending = [];
     (d.centres || []).forEach(function(c) {
       if (c.centre !== centre) return;
-      ['diamond','coloredStone'].forEach(function(tk) {
-        (c[tk].trays || []).forEach(function(t) {
+      ['diamond','coloredStone','organics'].forEach(function(tk) {
+        ((c[tk]||{}).trays || []).forEach(function(t) {
           if (t.status === 'requested') {
             pending.push({
               trayId: t.trayId,
@@ -6417,27 +6419,71 @@ function trayLoadIncoming() {
         });
       });
     });
+
+    // 2. Find visiting trays from other centres that are awaiting confirmation
+    var visitingUnconfirmed = [];
+    (d.centres || []).forEach(function(c) {
+      if (c.centre === centre) return; // skip own centre
+      ['diamond','coloredStone','organics'].forEach(function(tk) {
+        ((c[tk]||{}).trays || []).forEach(function(t) {
+          if (String(t.currentCentre) === centre && !t.borrowerConfirmed) {
+            visitingUnconfirmed.push({
+              trayId: t.trayId,
+              homeCentre: c.centre,
+              expectedReturn: t.expectedReturn
+            });
+          }
+        });
+      });
+    });
+
     var wrap = document.getElementById('tray-incoming-wrap');
     if (!wrap) return;
+
+    var totalCount = pending.length + visitingUnconfirmed.length;
+
     // Update badge
     var badge = document.getElementById('th-incoming-btn');
     if (badge) {
-      badge.innerHTML = '📥 Incoming' + (pending.length ? ' <span class="th-badge">'+pending.length+'</span>' : '');
+      badge.innerHTML = '📥 Incoming' + (totalCount ? ' <span class="th-badge">'+totalCount+'</span>' : '');
     }
-    if (!pending.length) { wrap.innerHTML = '<div style="color:#9ca3af;font-size:12px;padding:20px 0;">No pending requests for your trays.</div>'; return; }
-    var html = pending.map(function(req) {
-      var typeLabel = req.type === 'diamond' ? '💎 Diamond' : '🟣 Colored Stone';
-      return '<div class="incoming-card">'
-        + '<h4>'+typeLabel+' · '+trayEsc(req.trayId)+'</h4>'
-        + '<div class="ic-meta">'
-        + '<b>Requested by:</b> '+trayEsc(req.requestingInstructor)+' ('+trayEsc(req.requestingCentre)+')<br>'
-        + (req.deadline ? '<b>Return by:</b> '+trayEsc(req.deadline) : '')
-        + '</div>'
-        + '<div class="incoming-btns">'
-        + '<button class="ic-accept" onclick="trayShowAcceptModal(\''+trayEsc(req.bookingId)+'\',\''+trayEsc(req.trayId)+'\',\''+trayEsc(req.requestingInstructor)+'\')">✓ Accept</button>'
-        + '<button class="ic-reject" onclick="trayRejectRequest(\''+trayEsc(req.bookingId)+'\')">✗ Reject</button>'
-        + '</div></div>';
-    }).join('');
+
+    if (totalCount === 0) {
+      wrap.innerHTML = '<div style="color:#9ca3af;font-size:12px;padding:20px 0;text-align:center;">No pending requests or incoming trays.</div>';
+      return;
+    }
+
+    var html = '';
+
+    // Render pending requests
+    if (pending.length) {
+      html += pending.map(function(req) {
+        var typeLabel = req.type === 'diamond' ? '💎 Diamond' : (req.type === 'organics' ? '🌿 Organics' : '🟣 Colored Stone');
+        return '<div class="incoming-card">'
+          + '<h4>'+typeLabel+' · '+trayEsc(req.trayId)+'</h4>'
+          + '<div class="ic-meta">'
+          + '<b>Requested by:</b> '+trayEsc(req.requestingInstructor)+' ('+trayEsc(req.requestingCentre)+')<br>'
+          + (req.deadline ? '<b>Return by:</b> '+trayEsc(req.deadline) : '')
+          + '</div>'
+          + '<div class="incoming-btns">'
+          + '<button class="ic-accept" onclick="trayShowAcceptModal(\''+trayEsc(req.bookingId)+'\',\''+trayEsc(req.trayId)+'\',\''+trayEsc(req.requestingInstructor)+'\')">✓ Accept</button>'
+          + '<button class="ic-reject" onclick="trayRejectRequest(\''+trayEsc(req.bookingId)+'\')">✗ Reject</button>'
+          + '</div></div>';
+      }).join('');
+    }
+
+    // Render visiting unconfirmed trays
+    if (visitingUnconfirmed.length) {
+      html += visitingUnconfirmed.map(function(t) {
+        return '<div class="tray-incoming-card type-incoming" id="tic-dynamic-'+trayEsc(t.trayId)+'">'
+          + '<div class="tic-head"><span class="tic-tray">'+trayEsc(t.trayId)+'</span>'
+          + '<span class="tic-type incoming">incoming</span></div>'
+          + '<div class="tic-msg">Tray is on its way from '+trayEsc(t.homeCentre)+'. Expected return: '+(t.expectedReturn || 'not set')+'</div>'
+          + '<button class="tic-btn confirm" onclick="trayDoConfirmReceived(\''+trayEsc(t.trayId)+'\',\'\',this)">✅ Confirm Receipt</button>'
+          + '</div>';
+      }).join('');
+    }
+
     wrap.innerHTML = html;
   });
 }

@@ -2869,6 +2869,7 @@ function doGet(e) {
     if (act==='getTestQuestions')        return respond(otGetTestQuestions(ss,p));
     if (act==='getTestQuestionsInstructor') return respond(otGetTestQuestionsInstructor(ss,p));
     if (act==='removeTestQuestion')         return respond(otRemoveTestQuestion(ss,p));
+    if (act==='updateTestQuestion')         return respond(otUpdateQuestion(ss,p));
     if (act==='submitTestResponse')      return respond(otSubmitTestResponse(ss,p));
     if (act==='logTestWarning')          return respond(otLogTestWarning(ss,p));
     if (act==='getProctorRoom')          return respond(otGetProctorRoom(ss,p));
@@ -5065,6 +5066,79 @@ function otRemoveTestQuestion(ss, p) {
     }
   }
   return {status:'error', reason:'question_not_found'};
+}
+
+// Update a single question permanently in question bank/custom sheets and active tests
+function otUpdateQuestion(ss, p) {
+  if (!p.qId || !p.instructor) return {status:'error',reason:'missing_params'};
+  ensureOnlineTestSheets(ss);
+  
+  var qId = String(p.qId).trim();
+  var newQText = p.question ? String(p.question).trim() : '';
+  var opt1 = p.opt1 !== undefined ? String(p.opt1).trim() : '';
+  var opt2 = p.opt2 !== undefined ? String(p.opt2).trim() : '';
+  var opt3 = p.opt3 !== undefined ? String(p.opt3).trim() : '';
+  var opt4 = p.opt4 !== undefined ? String(p.opt4).trim() : '';
+  var newCorrect = p.correctAnswer !== undefined ? String(p.correctAnswer).trim() : '';
+  
+  var updatedSource = false;
+  
+  // 1. Update in Source Sheets (QuestionBank or CustomQuestions)
+  if (qId.indexOf('QB') === 0) {
+    var shQB = ss.getSheetByName(SH_QUESTION_BANK);
+    if (shQB) {
+      var lastRow = shQB.getLastRow();
+      var rows = lastRow > 1 ? shQB.getRange(2, 1, lastRow - 1, 10).getValues() : [];
+      var rowIdx = rows.findIndex(function(r) { return String(r[0]).trim() === qId; });
+      if (rowIdx !== -1) {
+        var sheetRow = rowIdx + 2;
+        if (newQText) shQB.getRange(sheetRow, 4).setValue(newQText);
+        shQB.getRange(sheetRow, 5).setValue(opt1);
+        shQB.getRange(sheetRow, 6).setValue(opt2);
+        shQB.getRange(sheetRow, 7).setValue(opt3);
+        shQB.getRange(sheetRow, 8).setValue(opt4);
+        if (newCorrect !== '') shQB.getRange(sheetRow, 9).setValue(newCorrect);
+        updatedSource = true;
+      }
+    }
+  } else if (qId.indexOf('CQ') === 0) {
+    var shCQ = ss.getSheetByName(SH_CUSTOM_QUESTIONS);
+    if (shCQ) {
+      var lastRow = shCQ.getLastRow();
+      var rows = lastRow > 1 ? shCQ.getRange(2, 1, lastRow - 1, 10).getValues() : [];
+      var rowIdx = rows.findIndex(function(r) { return String(r[0]).trim() === qId; });
+      if (rowIdx !== -1) {
+        var sheetRow = rowIdx + 2;
+        if (newQText) shCQ.getRange(sheetRow, 4).setValue(newQText);
+        shCQ.getRange(sheetRow, 5).setValue(opt1);
+        shCQ.getRange(sheetRow, 6).setValue(opt2);
+        shCQ.getRange(sheetRow, 7).setValue(opt3);
+        shCQ.getRange(sheetRow, 8).setValue(opt4);
+        if (newCorrect !== '') shCQ.getRange(sheetRow, 9).setValue(newCorrect);
+        updatedSource = true;
+      }
+    }
+  }
+  
+  // 2. Update in OT_Questions Sheet (wherever it is used in any test)
+  var shOTQ = ss.getSheetByName(SH_OT_QUESTIONS);
+  if (shOTQ) {
+    var lastRow = shOTQ.getLastRow();
+    var rows = lastRow > 1 ? shOTQ.getRange(2, 1, lastRow - 1, 10).getValues() : [];
+    rows.forEach(function(r, idx) {
+      if (String(r[1]).trim() === qId) {
+        var sheetRow = idx + 2;
+        if (newQText) shOTQ.getRange(sheetRow, 4).setValue(newQText);
+        shOTQ.getRange(sheetRow, 5).setValue(opt1);
+        shOTQ.getRange(sheetRow, 6).setValue(opt2);
+        shOTQ.getRange(sheetRow, 7).setValue(opt3);
+        shOTQ.getRange(sheetRow, 8).setValue(opt4);
+        if (newCorrect !== '') shOTQ.getRange(sheetRow, 9).setValue(newCorrect);
+      }
+    });
+  }
+  
+  return {status: 'ok', updatedSource: updatedSource};
 }
 
 function otShuffleSeeded(arr, seed) {

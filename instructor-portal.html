@@ -4548,7 +4548,8 @@ function otSyncSelectedPreview() {
     if (q.options && q.options.length) {
       opts = q.options.map(function(o, oi) {
         var isCorrect = String(q.correctAnswer||'').trim() === String(o).trim()
-          || String(q.correctAnswer||'').trim() === optLetters[oi];
+          || String(q.correctAnswer||'').trim() === optLetters[oi]
+          || String(q.correctAnswer||'').trim() === String(oi+1);
         return '<div style="font-size:12px;margin:3px 0 3px 14px;display:flex;align-items:flex-start;gap:6px;">'
           + '<span style="font-weight:700;color:'+(isCorrect?'#059669':'#9ca3af')+';">'+(isCorrect?'✓':'○')+'</span>'
           + '<span style="color:'+(isCorrect?'#065f46':'#374151')+';font-weight:'+(isCorrect?'700':'400')+';">'
@@ -4702,26 +4703,54 @@ function otSaveEditedQuestion(qid) {
   var q = otQuestionsCache[qid] || otAllQuestions.find(function(x){ return x.id === qid; });
   if (!q) return;
   var qText = (document.getElementById('ctedit-q')||{}).value || '';
-  if (qText.trim()) q.question = qText.trim();
-  // Update options
-  if (q.options && q.options.length) {
-    q.options = q.options.map(function(o, oi){
-      var inp = document.getElementById('ctedit-opt-'+oi);
-      return inp && inp.value.trim() ? inp.value.trim() : o;
-    });
-  }
-  // Update correct answer
+  if (!qText.trim()) return alert('Question text cannot be empty.');
+  
+  var opt1 = (document.getElementById('ctedit-opt-0')||{}).value || '';
+  var opt2 = (document.getElementById('ctedit-opt-1')||{}).value || '';
+  var opt3 = (document.getElementById('ctedit-opt-2')||{}).value || '';
+  var opt4 = (document.getElementById('ctedit-opt-3')||{}).value || '';
+  
   var ca = document.getElementById('ctedit-correct');
-  if (ca) {
-    var newCa = ca.value;
-    // For MCQ, store the option text for the selected letter
-    if (q.type !== 'TrueFalse' && q.options) {
-      var letters = ['A','B','C','D','E'];
-      var idx = letters.indexOf(newCa);
-      if (idx !== -1 && q.options[idx]) newCa = q.options[idx];
-    }
-    q.correctAnswer = newCa;
+  var newCa = ca ? ca.value : '';
+  
+  // Update local cache
+  q.question = qText.trim();
+  if (q.options && q.options.length) {
+    q.options[0] = opt1.trim();
+    q.options[1] = opt2.trim();
+    q.options[2] = opt3.trim();
+    q.options[3] = opt4.trim();
   }
+  
+  // For MCQ, convert letter option back to index (e.g. "A" -> "1")
+  if (q.type !== 'TrueFalse') {
+    var letters = ['A','B','C','D','E'];
+    var idx = letters.indexOf(newCa);
+    if (idx !== -1) {
+      newCa = String(idx + 1); // Store numeric index
+    }
+  }
+  q.correctAnswer = newCa;
+  
+  // Call backend to update permanently in bank/custom sheets
+  gasGet({
+    action: 'updateTestQuestion',
+    instructor: instructorName,
+    qId: qid,
+    question: qText.trim(),
+    opt1: opt1.trim(),
+    opt2: opt2.trim(),
+    opt3: opt3.trim(),
+    opt4: opt4.trim(),
+    correctAnswer: newCa
+  }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      showToast('Failed to sync edit with spreadsheet, but updated locally.', 'error');
+    } else {
+      showToast('Question updated permanently.');
+    }
+  });
+
   otSyncSelectedPreview();
 }
 
@@ -4892,7 +4921,7 @@ function otRenderTests(tests) {
       + (t.status === 'Closed' && t.resultsReleased !== 'Yes' ? '<button class="ot-btn primary" onclick="otReleaseResultsFor(\''+escHtml(t.testId)+'\',\'summary\')">📢 Release Results</button>' : '')
       + (t.status === 'Closed' && t.resultsReleased !== 'Yes' && t.testType !== 'Portfolio Upload' ? '<button class="ot-btn ghost" onclick="otReleaseResultsFor(\''+escHtml(t.testId)+'\',\'full\')">&amp; Show Breakdown</button>' : '')
       + '<button class="ot-btn ghost" onclick="otViewResults(\''+escHtml(t.testId)+'\')">📊 Results</button>'
-      + (t.testType !== 'Portfolio Upload' ? '<button class="ot-btn ghost" onclick="otOpenQuestionsModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">📝 View Questions</button>' : '')
+      + (t.testType !== 'Portfolio Upload' ? '<button class="ot-btn ghost" onclick="otOpenQuestionsModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',\''+escHtml(t.status)+'\')">📝 View Questions</button>' : '')
       + '</div>'
       + '</div>';
   });
@@ -4933,7 +4962,8 @@ function otActivateTest(testId) {
 }
 
 // ── VIEW / EDIT QUESTIONS MODAL ───────────────────────────────────────────────
-function otOpenQuestionsModal(testId, label) {
+var otModalQuestionsCache = [];
+function otOpenQuestionsModal(testId, label, testStatus) {
   // Inject modal into DOM once
   if (!document.getElementById('ot-q-modal')) {
     var m = document.createElement('div');
@@ -4949,7 +4979,8 @@ function otOpenQuestionsModal(testId, label) {
       document.getElementById('otqm-body').innerHTML = '<div style="color:#dc2626;padding:16px;">Failed to load questions.</div>';
       return;
     }
-    otRenderQModal(testId, d.questions);
+    otModalQuestionsCache = d.questions;
+    otRenderQModal(testId, d.questions, testStatus || 'Draft');
   });
 }
 
@@ -4958,7 +4989,7 @@ function otCloseQModal() {
   if (m) m.classList.remove('open');
 }
 
-function otRenderQModal(testId, questions) {
+function otRenderQModal(testId, questions, testStatus) {
   var optLetters = ['A','B','C','D'];
   var html = '<div style="font-size:12px;color:#6b7280;margin-bottom:12px;">'+questions.length+' question'+(questions.length!==1?'s':'')+' · '+questions.length+' marks total</div>';
   if (!questions.length) { html += '<div style="color:#9ca3af;text-align:center;padding:20px;">No questions in this test.</div>'; }
@@ -4969,7 +5000,8 @@ function otRenderQModal(testId, questions) {
       [q.opt1,q.opt2,q.opt3,q.opt4].forEach(function(o, oi) {
         if (!o) return;
         var isCorrect = String(q.correctAnswer||'').trim() === String(o).trim()
-          || String(q.correctAnswer||'').trim() === optLetters[oi];
+          || String(q.correctAnswer||'').trim() === optLetters[oi]
+          || String(q.correctAnswer||'').trim() === String(oi+1);
         html += '<div class="otqm-opt'+(isCorrect?' correct':'')+'">'+optLetters[oi]+'. '+escHtml(o)+(isCorrect?' ✓':'')+'</div>';
       });
     } else if (q.type === 'TrueFalse') {
@@ -4981,10 +5013,124 @@ function otRenderQModal(testId, questions) {
       html += '<div class="otqm-qmeta">Answer: <b>'+escHtml(q.correctAnswer||'—')+'</b></div>';
     }
     html += '<div class="otqm-qmeta">Type: '+escHtml(q.type)+' · Marks: '+escHtml(String(q.marks||1))+'</div>';
-    html += '<div class="otqm-qactions"><button class="otqm-del" onclick="otRemoveQ(\''+escHtml(testId)+'\',\''+escHtml(q.qId)+'\',this)">🗑 Remove</button></div>';
+    html += '<div class="otqm-qactions">';
+    if (testStatus === 'Draft' || testStatus === 'Scheduled') {
+      html += '<button type="button" class="btn btn-outline" style="padding:4px 10px;font-size:11px;width:auto;margin:0;height:auto;margin-right:6px;" onclick="otEditDraftQuestion(\''+escHtml(testId)+'\',\''+escHtml(q.qId)+'\',\''+escHtml(testStatus)+'\')">✏ Edit</button>';
+    }
+    html += '<button class="otqm-del" onclick="otRemoveQ(\''+escHtml(testId)+'\',\''+escHtml(q.qId)+'\',this)">🗑 Remove</button>';
+    html += '</div>';
     html += '</div>';
   });
   document.getElementById('otqm-body').innerHTML = html;
+}
+
+function otEditDraftQuestion(testId, qId, testStatus) {
+  var q = otModalQuestionsCache.find(function(x){ return x.qId === qId; });
+  if (!q) return;
+  var card = document.getElementById('otqm-card-'+qId);
+  if (!card) return;
+  
+  var optFields = '';
+  if (q.type !== 'TrueFalse' && (q.opt1 || q.opt2 || q.opt3 || q.opt4)) {
+    var letters = ['A','B','C','D'];
+    var opts = [q.opt1, q.opt2, q.opt3, q.opt4];
+    optFields = '<div style="margin-top:10px;">'
+      + '<label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">OPTIONS</label>'
+      + opts.map(function(o, oi) {
+          return '<div style="display:flex;gap:6px;margin-bottom:4px;align-items:center;">'
+            + '<span style="width:18px;font-size:12px;color:#6b7280;font-weight:700;">'+letters[oi]+'.</span>'
+            + '<input type="text" id="draftedit-opt-'+oi+'" value="'+escHtml(o||'')+'" style="flex:1;padding:5px 8px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:12px;">'
+            + '</div>';
+        }).join('')
+      + '</div>';
+    optFields += '<div style="margin-top:8px;">'
+      + '<label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">CORRECT ANSWER</label>'
+      + '<select id="draftedit-correct" style="padding:6px 10px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:12px;">'
+      + opts.map(function(o, oi){
+          var isSel = (String(q.correctAnswer||'').trim()===String(o||'').trim()
+            || String(q.correctAnswer||'').trim()===letters[oi]
+            || String(q.correctAnswer||'').trim()===String(oi+1)) ? ' selected' : '';
+          return '<option value="'+(oi+1)+'"'+isSel+'>'+letters[oi]+'. '+escHtml(o||'')+'</option>';
+        }).join('')
+      + '</select></div>';
+  } else if (q.type === 'TrueFalse') {
+    var tfCa = String(q.correctAnswer||'').toLowerCase();
+    optFields = '<div style="margin-top:8px;">'
+      + '<label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">CORRECT ANSWER</label>'
+      + '<select id="draftedit-correct" style="padding:6px 10px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:12px;">'
+      + '<option value="True"'+(tfCa==='true'?' selected':'')+'>True</option>'
+      + '<option value="False"'+(tfCa==='false'?' selected':'')+'>False</option>'
+      + '</select></div>';
+  } else {
+    optFields = '<div style="margin-top:8px;">'
+      + '<label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">CORRECT ANSWER</label>'
+      + '<input type="text" id="draftedit-correct" value="'+escHtml(q.correctAnswer||'')+'" style="width:100%;padding:5px 8px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:12px;">'
+      + '</div>';
+  }
+
+  var form = '<div style="background:#f9fafb;border:1.5px solid #3b82f6;border-radius:10px;padding:14px;margin-top:8px;" id="draftedit-form-'+escHtml(qId)+'">'
+    + '<div style="font-size:11px;font-weight:700;color:#1d4ed8;margin-bottom:8px;">✏ EDITING Q · '+escHtml(qId)+'</div>'
+    + '<label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">QUESTION TEXT</label>'
+    + '<textarea id="draftedit-q" rows="3" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:13px;resize:vertical;">'+escHtml(q.question)+'</textarea>'
+    + optFields
+    + '<div style="display:flex;gap:8px;margin-top:10px;">'
+    + '<button type="button" id="draftedit-save-btn" onclick="otSaveDraftQuestion(\''+escHtml(testId)+'\',\''+escHtml(qId)+'\',\''+escHtml(testStatus)+'\')" style="background:#1d4ed8;color:#fff;border:none;padding:7px 18px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">💾 Save</button>'
+    + '<button type="button" onclick="document.getElementById(\'draftedit-form-'+qId+'\').remove()" style="background:none;border:1px solid #e5e7eb;padding:7px 14px;border-radius:7px;font-size:12px;cursor:pointer;">Cancel</button>'
+    + '</div></div>';
+
+  var prev = document.getElementById('draftedit-form-'+qId);
+  if (prev) { prev.remove(); return; }
+  card.insertAdjacentHTML('beforeend', form);
+}
+
+function otSaveDraftQuestion(testId, qId, testStatus) {
+  var q = otModalQuestionsCache.find(function(x){ return x.qId === qId; });
+  if (!q) return;
+  var qText = (document.getElementById('draftedit-q')||{}).value || '';
+  if (!qText.trim()) return alert('Question text cannot be empty.');
+  
+  var opt1 = (document.getElementById('draftedit-opt-0')||{}).value || '';
+  var opt2 = (document.getElementById('draftedit-opt-1')||{}).value || '';
+  var opt3 = (document.getElementById('draftedit-opt-2')||{}).value || '';
+  var opt4 = (document.getElementById('draftedit-opt-3')||{}).value || '';
+  
+  var ca = document.getElementById('draftedit-correct');
+  var newCa = ca ? ca.value : '';
+  
+  var btn = document.getElementById('draftedit-save-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  
+  gasGet({
+    action: 'updateTestQuestion',
+    instructor: instructorName,
+    testId: testId,
+    qId: qId,
+    question: qText.trim(),
+    opt1: opt1.trim(),
+    opt2: opt2.trim(),
+    opt3: opt3.trim(),
+    opt4: opt4.trim(),
+    correctAnswer: newCa
+  }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      btn.disabled = false; btn.textContent = '💾 Save';
+      alert('Error: ' + (d && d.reason || 'Failed to save question.'));
+      return;
+    }
+    // Update local cache
+    q.question = qText.trim();
+    if (q.type !== 'TrueFalse') {
+      q.opt1 = opt1.trim();
+      q.opt2 = opt2.trim();
+      q.opt3 = opt3.trim();
+      q.opt4 = opt4.trim();
+    }
+    q.correctAnswer = newCa;
+    
+    showToast('Question saved successfully.');
+    otRenderQModal(testId, otModalQuestionsCache, testStatus);
+    otLoadTests(); // refresh main test list
+  });
 }
 
 function otRemoveQ(testId, qId, btn) {
@@ -7314,7 +7460,8 @@ function otHandleTestTypeChange() {
       if (q.options && q.options.length) {
         opts = q.options.map(function(o, oi) {
           var isCorrect = String(q.correctAnswer||'').trim() === String(o).trim()
-            || String(q.correctAnswer||'').trim() === optLetters[oi];
+            || String(q.correctAnswer||'').trim() === optLetters[oi]
+            || String(q.correctAnswer||'').trim() === String(oi+1);
           return '<div style="font-size:12px;margin:3px 0 3px 14px;display:flex;align-items:flex-start;gap:6px;">'
             + '<span style="font-weight:700;color:'+(isCorrect?'#059669':'#9ca3af')+';">'+(isCorrect?'✓':'○')+'</span>'
             + '<span style="color:'+(isCorrect?'#065f46':'#374151')+';font-weight:'+(isCorrect?'700':'400')+';">'

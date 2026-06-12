@@ -2225,6 +2225,7 @@
             <button class="inv-sub-tab" id="adm-inv-tab-updatestock" onclick="adminInvSwitchTab('adm-inv-updatestock')" style="font-size:12px;padding:6px 14px;border:none;border-radius:6px;cursor:pointer;background:transparent">Update Stock</button>
             <button class="inv-sub-tab" id="adm-inv-tab-master" onclick="adminInvSwitchTab('adm-inv-master')" style="font-size:12px;padding:6px 14px;border:none;border-radius:6px;cursor:pointer;background:transparent">Item Master</button>
             <button class="inv-sub-tab" id="adm-inv-tab-vendors" onclick="adminInvSwitchTab('adm-inv-vendors')" style="font-size:12px;padding:6px 14px;border:none;border-radius:6px;cursor:pointer;background:transparent">Vendors</button>
+            <button class="inv-sub-tab" id="adm-inv-tab-analytics" onclick="adminInvSwitchTab('adm-inv-analytics')" style="font-size:12px;padding:6px 14px;border:none;border-radius:6px;cursor:pointer;background:transparent">Analytics & Financials</button>
           </div>
         </div>
 
@@ -2361,6 +2362,91 @@
               <div style="margin-bottom:8px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px">Supplied Items</label><input type="text" id="adm-ven-items" placeholder="e.g. Gemstone Kits" style="width:100%;padding:7px 10px;border-radius:6px;border:1.5px solid #e5e7eb;box-sizing:border-box"></div>
               <button onclick="adminRegisterVendor()" style="width:100%;padding:8px;background:#1e3a5f;color:#fff;border:none;border-radius:6px;cursor:pointer;margin-top:4px">Register Vendor</button>
               <div id="adm-ven-err" style="color:#ef4444;font-size:12px;margin-top:6px"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Analytics & Financials -->
+        <div id="adm-inv-analytics" class="adm-inv-content" style="display:none">
+          <!-- KPI Summary Cards Grid -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:20px">
+            <!-- Card 1: Total Stock Value -->
+            <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+              <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:4px">TOTAL STOCK VALUE</div>
+              <div id="an-total-stock-val" style="font-size:24px;font-weight:800;color:#1e293b">₹0</div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:4px">Asset value across all centres</div>
+            </div>
+            <!-- Card 2: Total Dispatched Expenditure -->
+            <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+              <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:4px">TOTAL DISPATCHED EXPENDITURE</div>
+              <div id="an-total-dispatched-val" style="font-size:24px;font-weight:800;color:#1e293b">₹0</div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:4px">Value of items dispatched to date</div>
+            </div>
+            <!-- Card 3: Pending Requests Value -->
+            <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+              <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:4px">PENDING REQUESTS VALUE</div>
+              <div id="an-total-pending-val" style="font-size:24px;font-weight:800;color:#1e293b">₹0</div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:4px">Estimated cost of pending dispatches</div>
+            </div>
+            <!-- Card 4: Projected Replenishment Cost -->
+            <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+              <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:4px">PROJECTED RESTOCK COST</div>
+              <div id="an-total-projected-restock" style="font-size:24px;font-weight:800;color:#0f766e">₹0</div>
+              <div style="font-size:11px;color:#0d9488;margin-top:4px">Cost to replenish items below reorder level</div>
+            </div>
+          </div>
+
+          <!-- Charts Layout Grid -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+            <!-- Chart A: Centre-wise Expenditure -->
+            <div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px">
+              <div style="font-weight:700;font-size:14px;color:#1e293b;margin-bottom:4px">🏢 Branch Inventory Consumption</div>
+              <div style="font-size:11px;color:#64748b;margin-bottom:14px">Total value of items dispatched by centre</div>
+              <div style="position:relative;height:220px">
+                <canvas id="invCentreExpChart"></canvas>
+              </div>
+            </div>
+            <!-- Chart C: Category Allocation -->
+            <div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px">
+              <div style="font-weight:700;font-size:14px;color:#1e293b;margin-bottom:4px">📊 Asset Value Distribution by Category</div>
+              <div style="font-size:11px;color:#64748b;margin-bottom:14px">Current stock value breakdown by item category</div>
+              <div style="position:relative;height:220px">
+                <canvas id="invCategoryShareChart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chart B: Historical & Projected Quarterly Spending -->
+          <div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:20px">
+            <div style="font-weight:700;font-size:14px;color:#1e293b;margin-bottom:4px">📈 Historical & Projected Quarterly Expenditure</div>
+            <div style="font-size:11px;color:#64748b;margin-bottom:14px">Dispatched value per quarter with projected spending for the next two quarters (moving average forecast)</div>
+            <div style="position:relative;height:250px">
+              <canvas id="invQuarterlyTrendChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Replenishment & Shortages Details -->
+          <div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px">
+            <div style="font-weight:700;font-size:14px;color:#1e293b;margin-bottom:4px">🚨 Safety Stock Shortages & Restocking Details</div>
+            <div style="font-size:11px;color:#64748b;margin-bottom:14px">Items currently below their reorder levels across all centres and the estimated replenishment cost</div>
+            <div style="overflow-x:auto">
+              <table class="compact-table">
+                <thead>
+                  <tr>
+                    <th>Item ID</th>
+                    <th>Item Name</th>
+                    <th>Category</th>
+                    <th class="text-center">Current Stock</th>
+                    <th class="text-center">Reorder Level</th>
+                    <th class="text-center">Deficit</th>
+                    <th class="text-center">Unit Cost</th>
+                    <th class="text-center">Estimated Restock Cost</th>
+                  </tr>
+                </thead>
+                <tbody id="an-shortages-tbody">
+                  <tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:16px">No safety stock shortages found!</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -5181,6 +5267,305 @@ function adminInvSwitchTab(tabId) {
   if (tabId === 'adm-inv-updatestock') adminLoadStockUpdate();
   if (tabId === 'adm-inv-master')      adminLoadItemMaster();
   if (tabId === 'adm-inv-vendors')     adminLoadVendors();
+  if (tabId === 'adm-inv-analytics')   adminLoadAnalytics();
+}
+
+// ---- Analytics & Financials ----
+function adminLoadAnalytics() {
+  document.getElementById('an-total-stock-val').textContent = 'Loading…';
+  document.getElementById('an-total-dispatched-val').textContent = 'Loading…';
+  document.getElementById('an-total-pending-val').textContent = 'Loading…';
+  document.getElementById('an-total-projected-restock').textContent = 'Loading…';
+  document.getElementById('an-shortages-tbody').innerHTML = '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:16px">Loading data…</td></tr>';
+
+  gasGet({ action: 'getInventoryItemMaster' }, function(err, itemsRes) {
+    if (err || !itemsRes || itemsRes.status !== 'ok') {
+      alert('Error loading inventory item master: ' + (err || {}).message);
+      return;
+    }
+    const items = itemsRes.list || [];
+    const itemMap = {};
+    items.forEach(it => { itemMap[it.itemId] = it; });
+
+    gasGet({ action: 'getInventoryStock', centre: '' }, function(err2, stockRes) {
+      if (err2 || !stockRes || stockRes.status !== 'ok') {
+        alert('Error loading inventory stock: ' + (err2 || {}).message);
+        return;
+      }
+      const stock = stockRes.list || [];
+
+      gasGet({ action: 'getInventoryRequests' }, function(err3, reqsRes) {
+        if (err3 || !reqsRes || reqsRes.status !== 'ok') {
+          alert('Error loading inventory requests: ' + (err3 || {}).message);
+          return;
+        }
+        const requests = reqsRes.list || [];
+        adminComputeAnalytics(items, itemMap, stock, requests);
+      });
+    });
+  });
+}
+
+function getNextQuarterKey(qKey) {
+  if (!qKey) {
+    const d = new Date();
+    return d.getFullYear() + '-Q' + (Math.floor(d.getMonth() / 3) + 1);
+  }
+  const parts = qKey.split('-Q');
+  let year = parseInt(parts[0], 10);
+  let q = parseInt(parts[1], 10);
+  q++;
+  if (q > 4) {
+    q = 1;
+    year++;
+  }
+  return year + '-Q' + q;
+}
+
+function adminComputeAnalytics(items, itemMap, stock, requests) {
+  let totalStockVal = 0;
+  const categoryStockVal = {};
+  const itemTotalStock = {};
+  
+  stock.forEach(st => {
+    const item = itemMap[st.itemId];
+    if (item) {
+      const val = (st.quantity || 0) * (item.unitCost || 0);
+      totalStockVal += val;
+      categoryStockVal[item.category] = (categoryStockVal[item.category] || 0) + val;
+      itemTotalStock[st.itemId] = (itemTotalStock[st.itemId] || 0) + (st.quantity || 0);
+    }
+  });
+
+  let totalDispatchedVal = 0;
+  let totalPendingVal = 0;
+  const centreExpenditure = {};
+  const quarterlyExpenditure = {};
+
+  requests.forEach(req => {
+    const item = itemMap[req.itemId];
+    if (!item) return;
+    const cost = item.unitCost || 0;
+
+    if (req.status === 'Dispatched') {
+      const qty = (req.dispatch && req.dispatch.qtyDispatched) || req.quantityRequested || 0;
+      const val = qty * cost;
+      totalDispatchedVal += val;
+      
+      const centre = req.centre || 'Unknown';
+      centreExpenditure[centre] = (centreExpenditure[centre] || 0) + val;
+
+      const dateStr = (req.dispatch && req.dispatch.dispatchDate) || req.requestedAt || '';
+      if (dateStr) {
+        const d = new Date(dateStr);
+        if (!isNaN(d.getTime())) {
+          const year = d.getFullYear();
+          const month = d.getMonth();
+          const quarter = Math.floor(month / 3) + 1;
+          const qKey = year + '-Q' + quarter;
+          quarterlyExpenditure[qKey] = (quarterlyExpenditure[qKey] || 0) + val;
+        }
+      }
+    } else if (req.status === 'Pending' || !req.status) {
+      const qty = req.quantityRequested || 0;
+      const val = qty * cost;
+      totalPendingVal += val;
+    }
+  });
+
+  let totalProjectedRestock = 0;
+  const shortages = [];
+
+  items.forEach(it => {
+    const curQty = itemTotalStock[it.itemId] || 0;
+    const reorder = it.reorderLevel || 0;
+    if (reorder > 0 && curQty < reorder) {
+      const deficit = reorder - curQty;
+      const restockCost = deficit * (it.unitCost || 0);
+      totalProjectedRestock += restockCost;
+      
+      shortages.push({
+        itemId: it.itemId,
+        itemName: it.itemName,
+        category: it.category,
+        quantity: curQty,
+        reorderLevel: reorder,
+        deficit: deficit,
+        unitCost: it.unitCost || 0,
+        restockCost: restockCost
+      });
+    }
+  });
+
+  document.getElementById('an-total-stock-val').textContent = '₹' + Math.round(totalStockVal).toLocaleString('en-IN');
+  document.getElementById('an-total-dispatched-val').textContent = '₹' + Math.round(totalDispatchedVal).toLocaleString('en-IN');
+  document.getElementById('an-total-pending-val').textContent = '₹' + Math.round(totalPendingVal).toLocaleString('en-IN');
+  document.getElementById('an-total-projected-restock').textContent = '₹' + Math.round(totalProjectedRestock).toLocaleString('en-IN');
+
+  const shortagesTbody = document.getElementById('an-shortages-tbody');
+  if (shortages.length === 0) {
+    shortagesTbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#10b981;font-weight:600;padding:16px">🎉 Safety stock levels are fully satisfied! No shortage.</td></tr>';
+  } else {
+    shortages.sort((a, b) => b.restockCost - a.restockCost);
+    let html = '';
+    shortages.forEach(sh => {
+      html += '<tr>' +
+        '<td style="padding:8px;font-size:12px">' + sh.itemId + '</td>' +
+        '<td style="padding:8px;font-size:12px;font-weight:600">' + sh.itemName + '</td>' +
+        '<td style="padding:8px;font-size:12px">' + sh.category + '</td>' +
+        '<td style="padding:8px;font-size:12px;text-align:center;color:#ef4444;font-weight:600">' + sh.quantity + '</td>' +
+        '<td style="padding:8px;font-size:12px;text-align:center">' + sh.reorderLevel + '</td>' +
+        '<td style="padding:8px;font-size:12px;text-align:center;font-weight:700">' + sh.deficit + '</td>' +
+        '<td style="padding:8px;font-size:12px;text-align:right">₹' + sh.unitCost.toLocaleString('en-IN') + '</td>' +
+        '<td style="padding:8px;font-size:12px;text-align:right;font-weight:700;color:#0f766e">₹' + Math.round(sh.restockCost).toLocaleString('en-IN') + '</td>' +
+        '</tr>';
+    });
+    shortagesTbody.innerHTML = html;
+  }
+
+  adminRenderAnalyticsCharts(centreExpenditure, categoryStockVal, quarterlyExpenditure);
+}
+
+function adminRenderAnalyticsCharts(centreExpenditure, categoryStockVal, quarterlyExpenditure) {
+  if (window._invCharts) {
+    Object.values(window._invCharts).forEach(c => { if(c) c.destroy(); });
+  }
+  window._invCharts = {};
+
+  const sortedCentres = Object.keys(centreExpenditure).sort((a,b) => centreExpenditure[b] - centreExpenditure[a]);
+  const centreLabels = sortedCentres.length ? sortedCentres : ['No Data'];
+  const centreData = sortedCentres.length ? sortedCentres.map(c => Math.round(centreExpenditure[c])) : [0];
+
+  const ctx1 = document.getElementById('invCentreExpChart').getContext('2d');
+  window._invCharts.centreExp = new Chart(ctx1, {
+    type: 'bar',
+    data: {
+      labels: centreLabels,
+      datasets: [{
+        label: 'Expenditure (₹)',
+        data: centreData,
+        backgroundColor: '#6366f1',
+        borderRadius: 6,
+        barThickness: 16
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+        y: { grid: { display: false }, ticks: { font: { size: 10 } } }
+      }
+    }
+  });
+
+  const catLabels = Object.keys(categoryStockVal);
+  const catData = catLabels.map(cat => Math.round(categoryStockVal[cat]));
+  const catColors = ['#1e3b5f', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#3b82f6'];
+
+  const ctx3 = document.getElementById('invCategoryShareChart').getContext('2d');
+  window._invCharts.categoryShare = new Chart(ctx3, {
+    type: 'doughnut',
+    data: {
+      labels: catLabels.length ? catLabels : ['Empty'],
+      datasets: [{
+        data: catData.length ? catData : [0],
+        backgroundColor: catLabels.length ? catColors.slice(0, catLabels.length) : ['#e5e7eb'],
+        borderWidth: 1.5
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { boxWidth: 12, font: { size: 10 } } }
+      },
+      cutout: '65%'
+    }
+  });
+
+  let sortedQuarters = Object.keys(quarterlyExpenditure).sort();
+  if (sortedQuarters.length === 0) {
+    const curQ = getNextQuarterKey();
+    sortedQuarters = [curQ];
+    quarterlyExpenditure[curQ] = 0;
+  }
+
+  const histCount = sortedQuarters.length;
+  const labels = [...sortedQuarters];
+  const histData = sortedQuarters.map(q => Math.round(quarterlyExpenditure[q]));
+  const projData = new Array(histCount).fill(null);
+
+  let last3Sum = 0;
+  let cnt = 0;
+  for (let i = histCount - 1; i >= 0 && cnt < 3; i--) {
+    last3Sum += histData[i];
+    cnt++;
+  }
+  const movingAvg = cnt > 0 ? Math.round(last3Sum / cnt) : 50000;
+
+  const nextQ1 = getNextQuarterKey(sortedQuarters[histCount - 1]);
+  labels.push(nextQ1);
+  histData.push(null);
+  projData.push(movingAvg);
+
+  const nextQ2 = getNextQuarterKey(nextQ1);
+  labels.push(nextQ2);
+  histData.push(null);
+  projData.push(movingAvg);
+
+  projData[histCount - 1] = histData[histCount - 1];
+
+  const ctx2 = document.getElementById('invQuarterlyTrendChart').getContext('2d');
+  window._invCharts.quarterlyTrend = new Chart(ctx2, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          type: 'bar',
+          label: 'Historical Expenditure (₹)',
+          data: histData,
+          backgroundColor: '#3b82f6',
+          borderRadius: 4
+        },
+        {
+          type: 'bar',
+          label: 'Projected Expenditure (₹)',
+          data: projData,
+          backgroundColor: '#0d9488',
+          borderDash: [5, 5],
+          borderRadius: 4
+        },
+        {
+          type: 'line',
+          label: 'Trend Forecast (₹)',
+          data: projData,
+          borderColor: '#0f766e',
+          borderWidth: 2,
+          borderDash: [4, 4],
+          fill: false,
+          pointRadius: 4,
+          pointBackgroundColor: '#0f766e'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+        y: { ticks: { font: { size: 10 } } }
+      },
+      plugins: {
+        legend: { position: 'top', labels: { boxWidth: 12, font: { size: 10 } } }
+      }
+    }
+  });
 }
 
 // ---- Stock Levels ----

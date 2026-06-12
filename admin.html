@@ -5190,21 +5190,23 @@ function adminLoadStock() {
   if (!grid) return;
   grid.innerHTML = '<div style="color:#888;padding:20px">Loading…</div>';
   gasGet({ action:'getInventoryStock', centre: centre }, function(res) {
-    if (!res || res.error) { grid.innerHTML = '<div style="color:#e55;padding:20px">' + (res && res.error || 'Error') + '</div>'; return; }
-    var items = res.items || [];
-    if (!items.length) { grid.innerHTML = '<div style="color:#888;padding:20px">No stock data found.</div>'; return; }
+    if (!res || res.status === 'error') { grid.innerHTML = '<div style="color:#e55;padding:20px">' + (res && res.message || 'Error loading stock') + '</div>'; return; }
+    var items = res.list || [];
+    if (!items.length) { grid.innerHTML = '<div style="color:#888;padding:20px">No stock data found. Seed items first, then update stock levels.</div>'; return; }
     var html = '';
     items.forEach(function(it) {
-      var pct = it.reorderLevel ? Math.min(100, Math.round(it.qty / it.reorderLevel * 100)) : 100;
+      var qty = it.quantity || 0;
+      var reorder = it.reorderLevel || 0;
+      var pct = reorder ? Math.min(100, Math.round(qty / reorder * 100)) : 100;
       var color = pct < 25 ? '#ef4444' : pct < 60 ? '#f59e0b' : '#10b981';
       html += '<div style="background:#fff;border-radius:10px;border:1.5px solid #e5e7eb;padding:14px">' +
         '<div style="font-weight:600;font-size:13px;margin-bottom:4px">' + it.itemName + '</div>' +
-        '<div style="font-size:11px;color:#888;margin-bottom:6px">' + it.centre + ' · ' + it.category + '</div>' +
+        '<div style="font-size:11px;color:#888;margin-bottom:6px">' + it.category + ' · ' + it.unit + '</div>' +
         '<div style="display:flex;align-items:center;gap:8px">' +
           '<div style="flex:1;background:#f3f4f6;border-radius:99px;height:8px"><div style="width:' + pct + '%;background:' + color + ';height:8px;border-radius:99px"></div></div>' +
-          '<span style="font-size:13px;font-weight:700;color:' + color + '">' + it.qty + ' ' + it.unit + '</span>' +
+          '<span style="font-size:13px;font-weight:700;color:' + color + '">' + qty + ' ' + it.unit + '</span>' +
         '</div>' +
-        (pct < 25 ? '<div style="font-size:10px;color:#ef4444;margin-top:4px">⚠ Below reorder level</div>' : '') +
+        (reorder && pct < 25 ? '<div style="font-size:10px;color:#ef4444;margin-top:4px">⚠ Below reorder level (' + reorder + ')</div>' : '') +
       '</div>';
     });
     grid.innerHTML = html;
@@ -5217,22 +5219,23 @@ function adminLoadDispatchQueue() {
   if (!tbody) return;
   tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;padding:16px">Loading…</td></tr>';
   gasGet({ action:'getInventoryRequests', status:'Pending' }, function(res) {
-    if (!res || res.error) { tbody.innerHTML = '<tr><td colspan="8" style="color:#e55;padding:12px">' + (res && res.error || 'Error') + '</td></tr>'; return; }
-    var reqs = res.requests || [];
+    if (!res || res.status === 'error') { tbody.innerHTML = '<tr><td colspan="8" style="color:#e55;padding:12px">' + (res && res.message || 'Error') + '</td></tr>'; return; }
+    var reqs = (res.list || []).filter(function(r){ return r.status === 'Pending' || !r.status; });
     if (!reqs.length) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;padding:16px">No pending requests.</td></tr>'; return; }
     var html = '';
     reqs.forEach(function(r) {
+      var qty = r.quantityRequested || r.qty || 0;
       var urgColor = r.urgency === 'High' ? '#ef4444' : r.urgency === 'Medium' ? '#f59e0b' : '#6b7280';
       html += '<tr>' +
         '<td style="padding:8px;font-size:12px">' + r.requestId + '</td>' +
         '<td style="padding:8px;font-size:12px">' + r.centre + '</td>' +
         '<td style="padding:8px;font-size:12px">' + r.itemName + '</td>' +
-        '<td style="padding:8px;font-size:12px;text-align:center">' + r.qty + '</td>' +
-        '<td style="padding:8px;font-size:12px"><span style="color:' + urgColor + ';font-weight:600">' + r.urgency + '</span></td>' +
-        '<td style="padding:8px;font-size:12px">' + r.requestedBy + '</td>' +
-        '<td style="padding:8px;font-size:12px">' + (r.requestedAt || '').slice(0,10) + '</td>' +
+        '<td style="padding:8px;font-size:12px;text-align:center">' + qty + '</td>' +
+        '<td style="padding:8px;font-size:12px"><span style="color:' + urgColor + ';font-weight:600">' + (r.urgency||'—') + '</span></td>' +
+        '<td style="padding:8px;font-size:12px">' + (r.requestedBy||'') + '</td>' +
+        '<td style="padding:8px;font-size:12px">' + (String(r.requestedAt || '')).slice(0,10) + '</td>' +
         '<td style="padding:8px">' +
-          '<button onclick="adminDispatchItem(\'' + r.requestId + '\',' + r.qty + ')" style="background:#6366f1;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer">Dispatch</button>' +
+          '<button onclick="adminDispatchItem(\'' + r.requestId + '\',' + qty + ')" style="background:#6366f1;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer">Dispatch</button>' +
         '</td>' +
       '</tr>';
     });
@@ -5243,9 +5246,9 @@ function adminLoadDispatchQueue() {
 function adminDispatchItem(requestId, qty) {
   var courierInfo = prompt('Courier / tracking info (optional):') || '';
   if (!confirm('Dispatch ' + qty + ' units for request ' + requestId + '?')) return;
-  gasGet({ action:'dispatchInventoryRequest', requestId: requestId, qtyDispatched: qty, courierInfo: courierInfo }, function(res) {
-    if (res && res.ok) { alert('Dispatched!'); adminLoadDispatchQueue(); }
-    else alert('Error: ' + (res && res.error || 'Unknown'));
+  gasGet({ action:'processInventoryDispatch', requestId: requestId, qtyDispatched: qty, courierInfo: courierInfo }, function(res) {
+    if (res && res.status === 'ok') { alert('Dispatched!'); adminLoadDispatchQueue(); }
+    else alert('Error: ' + (res && res.message || 'Unknown'));
   });
 }
 
@@ -5266,12 +5269,12 @@ function adminLoadStockUpdate() {
   grid.innerHTML = '<div style="color:#888;padding:20px">Loading items…</div>';
 
   gasGet({ action:'getInventoryItemMaster' }, function(res) {
-    var items = (res && res.items) || [];
-    if (!items.length) { grid.innerHTML = '<div style="color:#888;padding:20px">No items in master.</div>'; return; }
+    var items = (res && res.list) || [];
+    if (!items.length) { grid.innerHTML = '<div style="color:#888;padding:20px">No items in master. Use Item Master tab to seed 90 items first.</div>'; return; }
     // Also load current stock for this centre
     gasGet({ action:'getInventoryStock', centre: centre }, function(stockRes) {
       var stockMap = {};
-      ((stockRes && stockRes.items) || []).forEach(function(s){ stockMap[s.itemId] = s.qty; });
+      ((stockRes && stockRes.list) || []).forEach(function(s){ stockMap[s.itemId] = s.quantity || 0; });
       var html = '';
       items.forEach(function(it) {
         var curQty = stockMap[it.itemId] !== undefined ? stockMap[it.itemId] : '';
@@ -5294,10 +5297,10 @@ function adminSaveStockQty(itemId, centre) {
   var qty = parseInt(input ? input.value : '', 10);
   if (isNaN(qty) || qty < 0) { alert('Enter a valid quantity'); return; }
   gasGet({ action:'updateBranchStock', centre: centre, itemId: itemId, qty: qty }, function(res) {
-    if (res && res.ok) {
+    if (res && res.status === 'ok') {
       input.style.background = '#d1fae5';
       setTimeout(function(){ input.style.background = ''; }, 1500);
-    } else alert('Error: ' + (res && res.error || 'Unknown'));
+    } else alert('Error: ' + (res && res.message || 'Unknown'));
   });
 }
 
@@ -5309,7 +5312,7 @@ function adminLoadItemMaster() {
   if (!tbody) return;
   tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#888;padding:20px">Loading…</td></tr>';
   gasGet({ action:'getInventoryItemMaster' }, function(res) {
-    _admMasterItems = (res && res.items) || [];
+    _admMasterItems = (res && res.list) || [];
     adminRenderMasterTable();
   });
 }
@@ -5398,26 +5401,26 @@ function adminSaveItem() {
     payload.action = 'addInventoryItem';
   }
   gasGet(payload, function(res) {
-    if (res && res.ok) {
+    if (res && res.status === 'ok') {
       adminCloseItemModal();
       adminLoadItemMaster();
-    } else alert('Error: ' + (res && res.error || 'Unknown'));
+    } else alert('Error: ' + (res && res.message || 'Unknown'));
   });
 }
 
 function adminDeleteItemUI(itemId) {
   if (!confirm('Delete item ' + itemId + '? This cannot be undone.')) return;
   gasGet({ action:'deleteInventoryItem', itemId: itemId }, function(res) {
-    if (res && res.ok) adminLoadItemMaster();
-    else alert('Error: ' + (res && res.error || 'Unknown'));
+    if (res && res.status === 'ok') adminLoadItemMaster();
+    else alert('Error: ' + (res && res.message || 'Unknown'));
   });
 }
 
 function adminSeedInventory() {
   if (!confirm('Seed 90 inventory items into INV_Items sheet? Existing items must be empty (or use force).')) return;
   gasGet({ action:'seedInventoryItems', force: false }, function(res) {
-    if (res && res.ok) { alert('Seeded ' + res.count + ' items!'); adminLoadItemMaster(); }
-    else alert('Error: ' + (res && res.error || 'Unknown'));
+    if (res && res.status === 'ok') { alert(res.message || ('Seeded ' + res.count + ' items!')); adminLoadItemMaster(); }
+    else alert('Error: ' + (res && res.message || 'Unknown'));
   });
 }
 
@@ -5427,7 +5430,7 @@ function adminLoadVendors() {
   if (!tbody) return;
   tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#888;padding:16px">Loading…</td></tr>';
   gasGet({ action:'getVendors' }, function(res) {
-    var vendors = (res && res.vendors) || [];
+    var vendors = (res && res.list) || [];
     if (!vendors.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#888;padding:16px">No vendors registered.</td></tr>'; return; }
     var html = '';
     vendors.forEach(function(v) {
@@ -5452,14 +5455,14 @@ function adminRegisterVendor() {
   var items   = (document.getElementById('adm-ven-items') || {}).value || '';
   var errEl   = document.getElementById('adm-ven-err');
   if (errEl) errEl.textContent = '';
-  gasGet({ action:'addVendor', vendorName:name.trim(), contactPerson:contact, phone:phone, email:email, address:'', suppliedItems:items }, function(res) {
-    if (res && res.ok) {
+  gasGet({ action:'registerVendor', vendorName:name.trim(), contactPerson:contact, phone:phone, email:email, address:'', suppliedItems:items }, function(res) {
+    if (res && res.status === 'ok') {
       ['adm-ven-name','adm-ven-contact','adm-ven-phone','adm-ven-email','adm-ven-items'].forEach(function(id){
         var el = document.getElementById(id); if (el) el.value = '';
       });
       adminLoadVendors();
     } else {
-      if (errEl) errEl.textContent = 'Error: ' + (res && res.error || 'Unknown');
+      if (errEl) errEl.textContent = 'Error: ' + (res && res.message || 'Unknown');
     }
   });
 }

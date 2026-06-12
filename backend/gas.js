@@ -4976,10 +4976,20 @@ function otGetStudentActiveTest(ss, p) {
       if (now>expiry) return; // expired
     }
     // Check target students
-    var target=String(r[15]||'ALL');
-    if (target!=='ALL') {
-      var allowed=target.split(',').map(function(s){return s.trim();});
-      if (allowed.indexOf(p.studentId)===-1) return;
+    var target=String(r[15]||'ALL').trim();
+    if (target!=='ALL' && target!=='') {
+      var allowed = [];
+      if (target.indexOf('[') === 0) {
+        try {
+          allowed = JSON.parse(target);
+        } catch(e) {
+          allowed = target.replace(/[\[\]\"']/g, '').split(',').map(function(s){return s.trim();});
+        }
+      } else {
+        allowed = target.split(',').map(function(s){return s.trim();});
+      }
+      allowed = allowed.map(function(s){return String(s).trim();});
+      if (allowed.indexOf(String(p.studentId).trim())===-1) return;
     }
     var tObj = otParseTestRow(r);
     

@@ -6318,11 +6318,15 @@ function trayConfirmLocation(ss, p) {
         hsh.appendRow([histId, p.trayId, 1, homeCentre, p.currentCentre||'',
           fromInstructor, p.borrowerInstructor||'',
           today, p.expectedReturn||'', today, '', 'SENT']);
-        // Notify borrower instructor
-        if (p.borrowerInstructor) {
-          trayAddNotif(ss, p.borrowerInstructor, 'incoming_tray', histId+':'+p.trayId,
-            '📦 Tray '+p.trayId+' is on its way from '+homeCentre+' ('+fromInstructor+').'+(p.expectedReturn?' Expected by '+p.expectedReturn:''));
+        // Notify borrower instructors
+        var targets = _getInstructorsForCentre(ss, p.currentCentre);
+        if (p.borrowerInstructor && p.borrowerInstructor.trim() !== '' && targets.indexOf(p.borrowerInstructor) === -1) {
+          targets.push(p.borrowerInstructor);
         }
+        targets.forEach(function(name) {
+          trayAddNotif(ss, name, 'incoming_tray', histId+':'+p.trayId,
+            '📦 Tray '+p.trayId+' is on its way from '+homeCentre+' ('+fromInstructor+').'+(p.expectedReturn?' Expected by '+p.expectedReturn:''));
+        });
         // Notify other home diamonds
         _notifyHomeDiamonds(ss, homeCentre, fromInstructor, 'tray_dispatched', histId+':'+p.trayId,
           '📤 '+p.trayId+' sent to '+(p.currentCentre||'unknown')+(p.borrowerInstructor?' ('+p.borrowerInstructor+')':''));
@@ -6869,6 +6873,53 @@ function _notifyHomeDiamonds(ss, homeCentre, excludeInstructor, type, refId, mes
   });
 }
 
+function _getInstructorsForCentre(ss, centre) {
+  if (!centre) return [];
+  ensureUserCredentials(ss);
+  var shCreds = ss.getSheetByName(SH_USER_CREDENTIALS);
+  var list = [];
+  
+  if (shCreds && shCreds.getLastRow() >= 2) {
+    var rows = shCreds.getRange(2, 1, shCreds.getLastRow() - 1, 8).getValues();
+    rows.forEach(function(r) {
+      var role = String(r[0]);
+      var name = String(r[1]).trim();
+      var centresStr = String(r[2] || '');
+      var active = String(r[7] || 'Y') !== 'N';
+      if (role === 'Instructor' && active && name) {
+        var centres = centresStr.split(',').map(function(c) { return c.trim().toUpperCase(); });
+        if (centres.indexOf(centre.toUpperCase().trim()) !== -1) {
+          if (list.indexOf(name) === -1) {
+            list.push(name);
+          }
+        }
+      }
+    });
+  }
+  
+  var shBatches = ss.getSheetByName(SH_BATCHES);
+  if (shBatches && shBatches.getLastRow() >= 2) {
+    var data = shBatches.getRange(2, 1, shBatches.getLastRow() - 1, 10).getValues();
+    data.forEach(function(r) {
+      var active = String(r[7] || 'Y') !== 'N';
+      var c = String(r[1] || '').trim();
+      if (active && c.toUpperCase() === centre.toUpperCase().trim()) {
+        var assigned = detectSlotOrDate(r[4]) ? (r[9] || '') : (r[8] || '');
+        var name = String(assigned).trim();
+        if (name && list.indexOf(name) === -1) {
+          list.push(name);
+        }
+      }
+    });
+  }
+  
+  if (list.length === 0 && CENTRE_HOME_INSTRUCTORS[centre]) {
+    list = CENTRE_HOME_INSTRUCTORS[centre];
+  }
+  return list;
+}
+
+
 // Close any open SENT/RECEIVED/IN_USE leg when a tray returns HOME
 function _closeOpenHistoryLeg(ss, trayId) {
   var hsh = getTraySheet(ss, SH_TRAY_HISTORY);
@@ -6985,10 +7036,14 @@ function trayDispatch(ss, p) {
       break;
     }
   }
-  if (toInstructor) {
-    trayAddNotif(ss, toInstructor, 'incoming_tray', String(leg[0])+':'+p.trayId,
-      '📦 Tray '+p.trayId+' is on its way from '+fromCentre+' ('+(p.instructor||'Home')+').'+(endDate?' Expected by '+endDate:''));
+  var targets = _getInstructorsForCentre(ss, toCentre);
+  if (toInstructor && toInstructor.trim() !== '' && targets.indexOf(toInstructor) === -1) {
+    targets.push(toInstructor);
   }
+  targets.forEach(function(name) {
+    trayAddNotif(ss, name, 'incoming_tray', String(leg[0])+':'+p.trayId,
+      '📦 Tray '+p.trayId+' is on its way from '+fromCentre+' ('+(p.instructor||'Home')+').'+(endDate?' Expected by '+endDate:''));
+  });
   _notifyHomeDiamonds(ss, _getTrayHomeCentre(ss,p.trayId), p.instructor||'', 'tray_dispatched', String(leg[0])+':'+p.trayId,
     '📤 '+p.trayId+' dispatched to '+toCentre+(toInstructor?' ('+toInstructor+')':'')+(endDate?', due '+endDate:''));
   return {status:'ok', trayId:p.trayId, toCentre:toCentre, toInstructor:toInstructor};
@@ -7063,10 +7118,14 @@ function trayConfirmDispatched(ss, p) {
     toCentre = String(nextLeg[4]);
     toInstructor = String(nextLeg[6]);
     endDate = String(nextLeg[8]);
-    if (toInstructor) {
-      trayAddNotif(ss, toInstructor, 'incoming_tray', String(nextLeg[0])+':'+p.trayId,
-        '📦 Tray '+p.trayId+' is on its way from '+String(curLeg[4])+(p.instructor?' ('+p.instructor+')':'')+'.'+(endDate?' Expected by '+endDate:''));
+    var targets = _getInstructorsForCentre(ss, toCentre);
+    if (toInstructor && toInstructor.trim() !== '' && targets.indexOf(toInstructor) === -1) {
+      targets.push(toInstructor);
     }
+    targets.forEach(function(name) {
+      trayAddNotif(ss, name, 'incoming_tray', String(nextLeg[0])+':'+p.trayId,
+        '📦 Tray '+p.trayId+' is on its way from '+String(curLeg[4])+(p.instructor?' ('+p.instructor+')':'')+'.'+(endDate?' Expected by '+endDate:''));
+    });
   } else {
     // No next leg — returning home
     toCentre = _getTrayHomeCentre(ss, p.trayId);
@@ -7076,10 +7135,14 @@ function trayConfirmDispatched(ss, p) {
     hsh.appendRow([histId, p.trayId, curLegNum+1,
       String(curLeg[4]), toCentre, p.instructor||String(curLeg[6]), toInstructor,
       today, '', today, '', 'SENT']);
-    if (toInstructor) {
-      trayAddNotif(ss, toInstructor, 'incoming_tray', histId+':'+p.trayId,
-        '📦 Tray '+p.trayId+' is returning home from '+String(curLeg[4])+(p.instructor?' ('+p.instructor+')':''));
+    var targets = _getInstructorsForCentre(ss, toCentre);
+    if (toInstructor && toInstructor.trim() !== '' && targets.indexOf(toInstructor) === -1) {
+      targets.push(toInstructor);
     }
+    targets.forEach(function(name) {
+      trayAddNotif(ss, name, 'incoming_tray', histId+':'+p.trayId,
+        '📦 Tray '+p.trayId+' is returning home from '+String(curLeg[4])+(p.instructor?' ('+p.instructor+')':''));
+    });
   }
   // Update registry
   var rsh = getTraySheet(ss, SH_TRAY_REGISTRY);

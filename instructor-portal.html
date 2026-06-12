@@ -6792,15 +6792,46 @@ function trayAddLegRow() {
   document.getElementById('tpm-end').value        = '';
 }
 
+function _getTrayCurrentLocationInfo(trayId) {
+  var info = {locationStatus: 'HOME', currentCentre: '', homeCentre: ''};
+  if (!trayBoardData) return info;
+  (trayBoardData.centres || []).forEach(function(c) {
+    ['diamond','coloredStone','organics'].forEach(function(tk) {
+      ((c[tk]||{}).trays || []).forEach(function(t) {
+        if (t.trayId === trayId) {
+          info.locationStatus = t.locationStatus || 'UNCONFIRMED';
+          info.currentCentre = t.currentCentre || c.centre;
+          info.homeCentre = c.centre;
+        }
+      });
+    });
+  });
+  return info;
+}
+
 function _renderPlanLegs() {
   var el = document.getElementById('tpm-legs-list');
   if (!el) return;
   if (!_planLegs.length) { el.innerHTML = ''; return; }
+  
+  var trayInfo = _getTrayCurrentLocationInfo(_planTrayId);
+  var isTrayAtHome = (trayInfo.locationStatus === 'HOME' || (trayInfo.locationStatus === 'UNCONFIRMED' && trayInfo.currentCentre === trayInfo.homeCentre));
+  
+  var firstPlannedIdx = -1;
+  for (var k = 0; k < _planLegs.length; k++) {
+    if (_planLegs[k].status === 'PLANNED') {
+      firstPlannedIdx = k;
+      break;
+    }
+  }
+
   el.innerHTML = _planLegs.map(function(leg, i) {
     var isPersisted = leg.status !== 'NEW';
     var sc = leg.status || 'PLANNED';
-    var dispatchBtn = (sc === 'PLANNED' && !isPersisted) ? '' :
-      (sc === 'PLANNED' ? '<button class="tpm-dispatch-btn" onclick="trayDispatchLeg(\''+trayEsc(leg.historyId||'')+'\')">📤 Dispatch</button>' : '');
+    var dispatchBtn = '';
+    if (sc === 'PLANNED' && isPersisted && isTrayAtHome && i === firstPlannedIdx) {
+      dispatchBtn = '<button class="tpm-dispatch-btn" onclick="trayDispatchLeg(\''+trayEsc(leg.historyId||'')+'\')">📤 Dispatch</button>';
+    }
     return '<div class="tpm-leg">'
       + '<span style="font-weight:700;font-size:10px;color:#6b7280;min-width:40px;">Leg '+(i+1)+'</span>'
       + '<span style="flex:1;">'+trayEsc(leg.toCentre)+(leg.toInstructor?' → '+trayEsc(leg.toInstructor):'')+'</span>'

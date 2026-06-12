@@ -7015,6 +7015,23 @@ function trayDispatch(ss, p) {
     if (String(hrows[i][11])==='PLANNED') { legIdx=i; break; }
   }
   if (legIdx===-1) return {status:'error', message:'No PLANNED leg found. Use trayConfirmLocation for ad-hoc dispatch.'};
+  
+  // Verify that the tray is currently at the HOME centre before dispatching
+  var rsh = getTraySheet(ss, SH_TRAY_REGISTRY);
+  var rrows = rsh.getDataRange().getValues();
+  var trayRowIdx = -1;
+  for (var j=1; j<rrows.length; j++) {
+    if (String(rrows[j][0]).trim()===p.trayId) { trayRowIdx=j; break; }
+  }
+  if (trayRowIdx===-1) return {status:'error', message:'Tray not found in registry'};
+  var currentLoc = String(rrows[trayRowIdx][8] || 'UNCONFIRMED');
+  var currentCentre = String(rrows[trayRowIdx][9] || '');
+  var homeCentre = String(rrows[trayRowIdx][4] || '');
+  var isAtHome = (currentLoc === 'HOME' || (currentLoc === 'UNCONFIRMED' && currentCentre === homeCentre));
+  if (!isAtHome) {
+    return {status:'error', message:'Tray is not currently at Home centre. Only the custodian centre can dispatch it.'};
+  }
+
   var leg = hrows[legIdx];
   var today = new Date().toISOString().split('T')[0];
   hsh.getRange(legIdx+2, 10).setValue(today);

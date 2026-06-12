@@ -2286,7 +2286,8 @@
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
             <h3 style="margin:0">Item Master Catalogue</h3>
             <div style="display:flex;gap:8px">
-              <button onclick="adminSeedInventory()" id="adm-seed-btn" style="padding:6px 14px;background:#f3f4f6;border:1.5px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:12px">🌱 Seed 90 Items</button>
+              <button onclick="adminSeedInventory()" id="adm-seed-btn" style="padding:6px 14px;background:#f3f4f6;border:1.5px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:12px">🌱 Seed Items</button>
+              <button onclick="adminSeedStock()" id="adm-seed-stock-btn" style="padding:6px 14px;background:#f3f4f6;border:1.5px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:12px">📊 Seed Stock Data</button>
               <button onclick="adminShowAddItem()" style="padding:6px 14px;background:#1e3a5f;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">+ Add Item</button>
             </div>
           </div>
@@ -5808,13 +5809,28 @@ function adminDeleteItemUI(itemId) {
 }
 
 function adminSeedInventory() {
-  if (!confirm('Seed 90 inventory items into INV_Items? The sheet will be created automatically if missing.')) return;
+  if (!confirm('Seed 60 IGI inventory items into INV_Items? Existing items will be replaced.')) return;
   gasGet({ action:'seedInventoryItems', force: true }, function(res) {
     if (res && res.status === 'ok') {
       alert(res.message || ('Seeded ' + res.count + ' items!'));
       adminLoadItemMaster();
     } else {
       alert('Seed error: ' + (res && res.message || 'GAS not yet deployed with inventory functions — please redeploy in Apps Script.'));
+    }
+  });
+}
+
+function adminSeedStock() {
+  if (!confirm('Seed actual centre stock data from the Pan India Inventory spreadsheet?\n\nThis will populate INV_Stock with real quantities for Mumbai, Delhi, Hyderabad, Kolkata, Bangalore, Chennai, Lucknow, Jaipur.\n\nMake sure you have seeded Items first!')) return;
+  var btn = document.getElementById('adm-seed-stock-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Seeding…'; }
+  gasGet({ action:'seedInventoryStock', force: true }, function(res) {
+    if (btn) { btn.disabled = false; btn.textContent = '📊 Seed Stock Data'; }
+    if (res && res.status === 'ok') {
+      alert(res.message || 'Stock seeded!');
+      adminLoadStockLevels();
+    } else {
+      alert('Stock seed error: ' + (res && res.message || 'Unknown error'));
     }
   });
 }

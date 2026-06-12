@@ -1319,6 +1319,9 @@ function doGet(e) {
     if (act==='setupInventorySheets') {
       return respond(setupInventorySheets(ss, p));
     }
+    if (act==='seedInventoryStock') {
+      return respond(seedInventoryStock(ss, p));
+    }
 
     // ── getStudentDiplomaStatus ───────────────────────────────
     // No auth needed — returns only the requesting student's own data.
@@ -8331,7 +8334,7 @@ function submitCourseBundleRequest(ss, p) {
   } catch(err) { return {status:'error', message: err.toString()}; }
 }
 
-// ── Seed 90 Items ────────────────────────────────────────────────────────────
+// ── Seed Real IGI Items ───────────────────────────────────────────────────────
 
 function seedInventoryItems(ss, p) {
   try {
@@ -8344,96 +8347,66 @@ function seedInventoryItems(ss, p) {
     sh.getRange(1,1,1,8).setValues([['Item ID','Item Name','Category','Unit','Reorder Level','Unit Cost (Rs)','Notes','Created At']]);
     var ts = new Date().toISOString();
     var ITEMS = [
-      ['ITEM-001','DG Course Workbook','Course Material','Sets',5,1200,'Diamond Graduate course book',ts],
-      ['ITEM-002','DG Study Cards','Course Material','Sets',5,300,'Flash cards for DG',ts],
-      ['ITEM-003','Diamond Grading Report (Practice)','Course Material','Sets',10,150,'Practice grading reports DG',ts],
-      ['ITEM-004','Stone Paper Parcel (Small)','Consumable','Pcs',50,5,'For stone wrapping',ts],
-      ['ITEM-005','Envelope (Medium)','Consumable','Pcs',100,3,'Standard size',ts],
-      ['ITEM-006','Loupe 10x (Student)','Equipment','Pcs',10,450,'10x triplet loupe per student',ts],
-      ['ITEM-007','Diamond Tester','Equipment','Pcs',2,3500,'Thermal tester',ts],
-      ['ITEM-008','Tweezers (Gem)','Equipment','Pcs',10,120,'Gem grade tweezers',ts],
-      ['ITEM-009','White Grading Tray','Equipment','Pcs',5,180,'White plastic grading tray',ts],
-      ['ITEM-010','Light Box (Student)','Equipment','Pcs',2,2200,'Portable light box',ts],
-      ['ITEM-011','DG Brochure','Marketing','Pcs',30,20,'Admissions brochure DG',ts],
-      ['ITEM-012','DG Welcome Kit Folder','Course Material','Pcs',10,80,'Welcome folder for new DG students',ts],
-      ['ITEM-013','DG Certificate Frame','Consumable','Pcs',5,350,'Graduation certificate frame',ts],
-      ['ITEM-014','Diamond Grading Handbook','Reference','Pcs',3,900,'DG reference handbook',ts],
-      ['ITEM-015','Stone Paper Parcel (Large)','Consumable','Pcs',30,8,'Large parcel for stones',ts],
-      ['ITEM-016','CSG Course Workbook','Course Material','Sets',5,1100,'Colored Stone Graduate course book',ts],
-      ['ITEM-017','CSG Study Cards','Course Material','Sets',5,280,'Flash cards for CSG',ts],
-      ['ITEM-018','Color Stone Report (Practice)','Course Material','Sets',10,120,'Practice reports CSG',ts],
-      ['ITEM-019','Spectroscope','Equipment','Pcs',1,1800,'Chelsea filter + spectroscope',ts],
-      ['ITEM-020','Chelsea Filter','Equipment','Pcs',2,650,'Chelsea filter for colored stones',ts],
-      ['ITEM-021','UV Lamp','Equipment','Pcs',1,1200,'Longwave + shortwave UV',ts],
-      ['ITEM-022','Stone Paper Parcel (Small) CSG','Consumable','Pcs',50,5,'CSG stone wrapping',ts],
-      ['ITEM-023','CSG Brochure','Marketing','Pcs',30,20,'Admissions brochure CSG',ts],
-      ['ITEM-024','CSG Welcome Kit Folder','Course Material','Pcs',10,80,'Welcome folder for new CSG students',ts],
-      ['ITEM-025','CSG Certificate Frame','Consumable','Pcs',5,350,'Graduation frame CSG',ts],
-      ['ITEM-026','Colored Stone Reference Guide','Reference','Pcs',3,800,'CSG reference handbook',ts],
-      ['ITEM-027','Envelope (Large)','Consumable','Pcs',50,5,'Large envelope for reports',ts],
-      ['ITEM-028','JDG Course Workbook','Course Material','Sets',5,950,'Jewelry Design course book',ts],
-      ['ITEM-029','Sketching Pencils Set (12)','Consumable','Sets',10,280,'Drawing pencils for JDG',ts],
-      ['ITEM-030','Drawing Paper Pad A3','Consumable','Pcs',10,120,'A3 drawing pads',ts],
-      ['ITEM-031','Eraser (Art)','Consumable','Pcs',20,25,'Art grade eraser',ts],
-      ['ITEM-032','Pencil Sharpener','Consumable','Pcs',10,40,'Metal sharpener',ts],
-      ['ITEM-033','Color Pencils Set (24)','Consumable','Sets',10,380,'Colored pencils JDG',ts],
-      ['ITEM-034','Ruler 30cm','Consumable','Pcs',10,35,'Transparent ruler',ts],
-      ['ITEM-035','Compass Set','Consumable','Sets',5,150,'Geometry compass set',ts],
-      ['ITEM-036','A4 Gateway Sheet','Course Material','Pcs',30,10,'Gateway worksheet A4',ts],
-      ['ITEM-037','JDG Brochure','Marketing','Pcs',30,20,'Admissions brochure JDG',ts],
-      ['ITEM-038','JDG Welcome Kit Folder','Course Material','Pcs',10,75,'Welcome folder JDG',ts],
-      ['ITEM-039','JDG Certificate Frame','Consumable','Pcs',5,350,'Graduation frame JDG',ts],
-      ['ITEM-040','PGG Course Workbook','Course Material','Sets',5,900,'Pearls & Gems course book',ts],
-      ['ITEM-041','Pearl Strand (Practice)','Course Material','Sets',3,600,'Practice pearl strand',ts],
-      ['ITEM-042','Gemstone Identification Set','Course Material','Sets',2,2500,'ID stones for PGG',ts],
-      ['ITEM-043','Refractometer','Equipment','Pcs',1,3200,'RI measurement tool',ts],
-      ['ITEM-044','Stone Paper Parcel (Small) PGG','Consumable','Pcs',30,5,'PGG stone wrapping',ts],
-      ['ITEM-045','Envelope (Medium) PGG','Consumable','Pcs',50,3,'PGG envelopes',ts],
-      ['ITEM-046','PGG Brochure','Marketing','Pcs',30,20,'Admissions brochure PGG',ts],
-      ['ITEM-047','PGG Welcome Kit Folder','Course Material','Pcs',10,75,'Welcome folder PGG',ts],
-      ['ITEM-048','PGG Certificate Frame','Consumable','Pcs',5,350,'Graduation frame PGG',ts],
-      ['ITEM-049','IGI Pen (Branded)','Marketing','Pcs',100,45,'Branded pen for kits',ts],
-      ['ITEM-050','IGI Notepad (Branded)','Marketing','Pcs',50,65,'Branded notepad',ts],
-      ['ITEM-051','IGI Bag (Canvas)','Marketing','Pcs',20,220,'Canvas tote bag',ts],
-      ['ITEM-052','IGI Banner (Roll-up)','Marketing','Pcs',2,2200,'Rollup banner for events',ts],
-      ['ITEM-053','Brochure Stand','Marketing','Pcs',1,850,'Display stand',ts],
-      ['ITEM-054','Admission Form Pad','Stationery','Pads',5,150,'Printed admission forms',ts],
-      ['ITEM-055','Receipt Book','Stationery','Books',3,120,'Fee receipt books',ts],
-      ['ITEM-056','Stapler','Equipment','Pcs',2,180,'Office stapler',ts],
-      ['ITEM-057','Staple Pins Box','Consumable','Boxes',5,45,'Standard staple pins',ts],
-      ['ITEM-058','Whiteboard Markers (Set)','Consumable','Sets',10,180,'Dry-erase markers 4-color',ts],
-      ['ITEM-059','Whiteboard Duster','Equipment','Pcs',2,80,'Felt duster',ts],
-      ['ITEM-060','Permanent Markers (Set)','Consumable','Sets',5,120,'Permanent markers',ts],
-      ['ITEM-061','Sticky Notes (Pack)','Consumable','Packs',10,60,'Post-it style notes',ts],
-      ['ITEM-062','Scotch Tape Roll','Consumable','Rolls',10,30,'Clear tape',ts],
-      ['ITEM-063','Double-sided Tape','Consumable','Rolls',5,55,'Double sided tape roll',ts],
-      ['ITEM-064','Scissors (Office)','Equipment','Pcs',3,65,'Office scissors',ts],
-      ['ITEM-065','Paper Clips (Box)','Consumable','Boxes',5,35,'Standard paper clips',ts],
-      ['ITEM-066','Rubber Bands (Pack)','Consumable','Packs',5,30,'Assorted rubber bands',ts],
-      ['ITEM-067','File Folders (Pack 10)','Stationery','Packs',5,120,'Manila folders',ts],
-      ['ITEM-068','Box Files','Stationery','Pcs',3,180,'Archive box files',ts],
-      ['ITEM-069','Printer Paper A4 (Ream)','Consumable','Reams',10,380,'80gsm A4 paper',ts],
-      ['ITEM-070','Printer Ink (Black)','Consumable','Cartridges',3,650,'Ink cartridge black',ts],
-      ['ITEM-071','Printer Ink (Color)','Consumable','Cartridges',2,950,'Color ink cartridge',ts],
-      ['ITEM-072','Classroom Loupe 10x','Equipment','Pcs',20,450,'Classroom loupe per seat',ts],
-      ['ITEM-073','Classroom Tweezers','Equipment','Pcs',20,120,'Tweezers per seat',ts],
-      ['ITEM-074','Classroom Grading Tray','Equipment','Pcs',20,180,'Grading tray per seat',ts],
-      ['ITEM-075','Classroom Light Box','Equipment','Pcs',5,2200,'Light box shared per row',ts],
-      ['ITEM-076','HDMI Cable','Equipment','Pcs',2,350,'For projector',ts],
-      ['ITEM-077','Extension Cord (5m)','Equipment','Pcs',2,280,'Power extension',ts],
-      ['ITEM-078','Projector Screen (Portable)','Equipment','Pcs',1,4500,'Portable screen',ts],
-      ['ITEM-079','Whiteboard (Portable)','Equipment','Pcs',1,3200,'Portable whiteboard',ts],
-      ['ITEM-080','First Aid Kit','Equipment','Kits',1,850,'Basic first aid',ts],
-      ['ITEM-081','Hand Sanitizer (500ml)','Consumable','Bottles',5,180,'For classroom',ts],
-      ['ITEM-082','Tissue Box','Consumable','Boxes',5,65,'Facial tissue',ts],
-      ['ITEM-083','Dust Blower (Air)','Equipment','Pcs',2,350,'For equipment cleaning',ts],
-      ['ITEM-084','Loupe 10x (Corporate Gift)','Corporate Batch','Pcs',10,650,'Premium loupe for corporate events',ts],
-      ['ITEM-085','Medium Tweezers (Corporate)','Corporate Batch','Pcs',10,180,'Tweezer for corporate kits',ts],
-      ['ITEM-086','Paper Bag (Corporate Branded)','Corporate Batch','Pcs',20,120,'Branded gift bag',ts],
-      ['ITEM-087','Small Grading Lamp','Corporate Batch','Pcs',5,1800,'Compact grading lamp for corporate',ts],
-      ['ITEM-088','Corporate Batch Welcome Kit','Corporate Batch','Sets',5,1500,'Full corporate welcome pack',ts],
-      ['ITEM-089','Corporate Certificate Folio','Corporate Batch','Pcs',10,450,'Premium folio for corporate certs',ts],
-      ['ITEM-090','Diamond Grading Handbook (Corporate)','Corporate Batch','Pcs',5,900,'DG handbook for corporate events',ts]
+      ['ITEM-001','Education Brochure','Promotion Collateral','Pcs',30,79,'General admissions brochure',ts],
+      ['ITEM-002','Spiral Note Book','Promotion Collateral','Pcs',20,142,'Student notebook',ts],
+      ['ITEM-003','Pens','Promotion Collateral','Pcs',50,0,'Student pens',ts],
+      ['ITEM-004','Diamond Grading Manual','Course Collateral','Pcs',5,0,'DG course manual',ts],
+      ['ITEM-005','Diamond Grading Handbook','Course Collateral','Pcs',3,0,'DG reference handbook',ts],
+      ['ITEM-006','RBC Work Sheet','Course Collateral','Pcs',10,0,'Round Brilliant Cut worksheets',ts],
+      ['ITEM-007','Fancy Shape Work Sheet','Course Collateral','Pcs',10,0,'Fancy shape worksheets',ts],
+      ['ITEM-008','Fine Tip Tweezer','Course Collateral','Pcs',5,0,'Fine tip tweezers for DG',ts],
+      ['ITEM-009','Color Card','Course Collateral','Pcs',5,0,'Diamond color reference card',ts],
+      ['ITEM-010','Diamond Grading Kit','Course Collateral','Sets',3,0,'Complete DG student kit',ts],
+      ['ITEM-011','Assortment Pads','Classroom Equipment','Pcs',10,0,'Diamond assortment pads',ts],
+      ['ITEM-012','Grading Lamps','Classroom Equipment','Pcs',5,0,'Grading lamps for classroom',ts],
+      ['ITEM-013','UV Lamp','Classroom Equipment','Pcs',1,0,'UV lamp longwave/shortwave',ts],
+      ['ITEM-014','Microscope','Classroom Equipment','Pcs',1,0,'Binocular microscope',ts],
+      ['ITEM-015','Dial Gauge','Classroom Equipment','Pcs',2,0,'Millimeter dial gauge',ts],
+      ['ITEM-016','Jewelry Gauge','Classroom Equipment','Pcs',2,0,'Jewelry millimeter gauge',ts],
+      ['ITEM-017','Colored Stone Manual','Course Collateral','Pcs',3,0,'CSG course manual',ts],
+      ['ITEM-018','CS Work Sheet','Course Collateral','Pcs',10,0,'Colored stone worksheets',ts],
+      ['ITEM-019','Color Chart','Course Collateral','Pcs',3,0,'Munsell color chart for CSG',ts],
+      ['ITEM-020','RI Liquid','Course Collateral','Bottles',2,0,'Refractive index liquid',ts],
+      ['ITEM-021','Colored Stone Grading Kit','Course Collateral','Sets',2,0,'CSG student kit',ts],
+      ['ITEM-022','SG Kit / Weighing Scale','Classroom Equipment','Pcs',1,0,'Specific gravity kit',ts],
+      ['ITEM-023','Refractometer','Classroom Equipment','Pcs',1,0,'Gemological refractometer',ts],
+      ['ITEM-024','Dichroscope','Classroom Equipment','Pcs',1,0,'Calcite dichroscope',ts],
+      ['ITEM-025','Polariscope','Classroom Equipment','Pcs',1,0,'Polariscope for stone ID',ts],
+      ['ITEM-026','Jewelry Design Manual','Course Collateral','Pcs',3,0,'JD course manual',ts],
+      ['ITEM-027','JD Journal / Sketch Book','Course Collateral','Pcs',5,0,'JD sketch journal',ts],
+      ['ITEM-028','Jewelry Design Kit','Course Collateral','Sets',3,0,'JD student kit',ts],
+      ['ITEM-029','Portfolio Bag','Course Collateral','Pcs',3,0,'JD portfolio bag',ts],
+      ['ITEM-030','Vellum Sheets','Course Collateral','Pcs',20,0,'Vellum tracing sheets JD',ts],
+      ['ITEM-031','A3 Black/Grey Sheets','Course Collateral','Pcs',20,0,'A3 black and grey sheets JD',ts],
+      ['ITEM-032','A4 Gateway Sheet','Course Collateral','Pcs',20,0,'Gateway worksheet A4',ts],
+      ['ITEM-033','Sheet Protectors','Course Collateral','Pcs',20,0,'Sheet protectors JD',ts],
+      ['ITEM-034','Polished Diamond Grading Manual','Course Collateral','Pcs',3,0,'PDG course manual',ts],
+      ['ITEM-035','Rough Diamond Grading Manual','Course Collateral','Pcs',3,0,'RDG course manual',ts],
+      ['ITEM-036','Small Diamond Assortment Manual','Course Collateral','Pcs',3,0,'SDA course manual',ts],
+      ['ITEM-037','Gem Cloth','Course Collateral','Pcs',5,0,'Gem cleaning cloth',ts],
+      ['ITEM-038','Ghodi (Stand)','Classroom Equipment','Pcs',2,0,'Diamond stand for assortment',ts],
+      ['ITEM-039','Diamond Sorting Sieve','Classroom Equipment','Pcs',1,0,'Diamond sorting sieve set',ts],
+      ['ITEM-040','IRES Manual','Course Collateral','Pcs',2,0,'IRES course manual',ts],
+      ['ITEM-041','Jewelry Design CAD Manual','Course Collateral','Pcs',2,0,'JD CAD course manual',ts],
+      ['ITEM-042','PC with Rhino Software','Classroom Equipment','Pcs',1,0,'PC with Rhino 3D software',ts],
+      ['ITEM-043','JewelPad Design Manual','Course Collateral','Pcs',2,0,'JewelPad course manual',ts],
+      ['ITEM-044','Diploma in Pearl Manual','Course Collateral','Pcs',2,0,'Pearl course manual',ts],
+      ['ITEM-045','Pearl Work Sheet','Course Collateral','Pcs',5,0,'Pearl grading worksheets',ts],
+      ['ITEM-046','Pearl Grading Kit','Course Collateral','Sets',2,0,'Pearl student kit',ts],
+      ['ITEM-047','Pearl Assortment Tray','Classroom Equipment','Pcs',2,0,'Pearl assortment tray',ts],
+      ['ITEM-048','Black Laptop Bags','Misc / Diploma','Pcs',10,0,'Black laptop bags for students',ts],
+      ['ITEM-049','Black Jute Bags','Misc / Diploma','Pcs',10,0,'Black jute carry bags',ts],
+      ['ITEM-050','Student Diploma','Misc / Diploma','Pcs',20,0,'Student diploma certificate',ts],
+      ['ITEM-051','Participant Certificate','Misc / Diploma','Pcs',20,0,'Participant certificate',ts],
+      ['ITEM-052','Diploma Frame','Misc / Diploma','Pcs',5,0,'Diploma display frame',ts],
+      ['ITEM-053','White Folder','Misc / Diploma','Pcs',5,0,'White folder for MBMG diploma',ts],
+      ['ITEM-054','Black Folder','Misc / Diploma','Pcs',5,0,'Black folder general',ts],
+      ['ITEM-055','Grading Lamp Tubes','Classroom Equipment','Pcs',5,0,'Replacement tubes for grading lamps',ts],
+      ['ITEM-056','Medium Tip Tweezer','Corporate Batch','Pcs',5,0,'Medium tip tweezer for corporate',ts],
+      ['ITEM-057','10X Loupe','Corporate Batch','Pcs',5,0,'10x loupe for corporate batch',ts],
+      ['ITEM-058','Paper Bag','Corporate Batch','Pcs',20,0,'Paper bag for corporate kit',ts],
+      ['ITEM-059','Grading Lamp (Small)','Corporate Batch','Pcs',2,0,'Small grading lamp for corporate',ts],
+      ['ITEM-060','Assortment Pad (Small)','Corporate Batch','Pcs',5,0,'Small assortment pad for corporate',ts]
     ];
     sh.getRange(2, 1, ITEMS.length, 8).setValues(ITEMS);
     return {status:'ok', message:'Seeded '+ITEMS.length+' items', count:ITEMS.length};
@@ -8459,5 +8432,56 @@ function setupInventorySheets(ss, p) {
       }
     });
     return { status:'ok', created: created, message: created.length ? 'Created: '+created.join(', ') : 'All sheets already exist' };
+  } catch(err) { return {status:'error', message: err.toString()}; }
+}
+
+// ── Seed Stock from Excel data ────────────────────────────────────────────────
+
+function seedInventoryStock(ss, p) {
+  try {
+    var forceReseed = p && (p.force===true || p.force==='true');
+    // Ensure INV_Items exists; build name→ID map
+    var itemSh = ss.getSheetByName(SH_INV_ITEMS);
+    if (!itemSh || itemSh.getLastRow() < 2) return {status:'error', message:'Seed items first (INV_Items is empty)'};
+    var itemData = itemSh.getRange(2, 1, itemSh.getLastRow()-1, 2).getValues();
+    var nameToId = {};
+    itemData.forEach(function(r){ if(r[1]) nameToId[r[1].toString().trim()] = r[0]; });
+
+    // Ensure INV_Stock exists
+    var sh = ss.getSheetByName(SH_INV_STOCK);
+    if (!sh) { sh = ss.insertSheet(SH_INV_STOCK); sh.getRange(1,1,1,6).setValues([['Stock ID','Centre','Item ID','Quantity','Updated At','Updated By']]); }
+
+    if (sh.getLastRow() > 1 && !forceReseed) return {status:'ok', message:'Stock already seeded', count:sh.getLastRow()-1};
+    if (forceReseed && sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow()-1);
+
+    var ts = new Date().toISOString();
+    // Stock data extracted from IGI_Pan_India_Inventory_v2.xlsx
+    var STOCK_DATA = {
+      'Mumbai':    {'Education Brochure':0,'Spiral Note Book':0,'Pens':0,'Diamond Grading Manual':0,'Diamond Grading Handbook':0,'RBC Work Sheet':0,'Fancy Shape Work Sheet':0,'Fine Tip Tweezer':0,'Color Card':0,'Diamond Grading Kit':0,'Assortment Pads':0,'Grading Lamps':0,'UV Lamp':0,'Microscope':0,'Dial Gauge':0,'Jewelry Gauge':0,'Colored Stone Manual':0,'CS Work Sheet':0,'Color Chart':0,'RI Liquid':0,'Colored Stone Grading Kit':0,'SG Kit / Weighing Scale':0,'Refractometer':0,'Dichroscope':0,'Polariscope':0,'Polished Diamond Grading Manual':0,'Rough Diamond Grading Manual':0,'Small Diamond Assortment Manual':0,'Gem Cloth':0,'IRES Manual':0,'Black Laptop Bags':0,'Black Jute Bags':0,'Student Diploma':500,'Participant Certificate':250,'Diploma Frame':50,'Grading Lamp Tubes':5,'Medium Tip Tweezer':0,'10X Loupe':0,'Paper Bag':250,'Grading Lamp (Small)':0,'Assortment Pad (Small)':0},
+      'Hyderabad': {'Education Brochure':20,'Spiral Note Book':9,'Pens':9,'Diamond Grading Manual':4,'Diamond Grading Handbook':0,'RBC Work Sheet':16,'Fancy Shape Work Sheet':8,'Fine Tip Tweezer':8,'Color Card':8,'Diamond Grading Kit':8,'Assortment Pads':0,'Grading Lamps':192,'UV Lamp':0,'Microscope':0,'Dial Gauge':8,'Jewelry Gauge':8,'Colored Stone Manual':5,'CS Work Sheet':10,'Color Chart':0,'RI Liquid':0,'Colored Stone Grading Kit':5,'SG Kit / Weighing Scale':0,'Refractometer':10,'Dichroscope':5,'Polariscope':0,'Polished Diamond Grading Manual':0,'Rough Diamond Grading Manual':4,'Small Diamond Assortment Manual':4,'Gem Cloth':0,'Black Laptop Bags':0,'Black Jute Bags':0,'Student Diploma':0,'Participant Certificate':0,'Diploma Frame':0,'Grading Lamp Tubes':0},
+      'Delhi':     {'Education Brochure':150,'Spiral Note Book':0,'Pens':0,'Diamond Grading Manual':0,'Assortment Pads':60,'Grading Lamps':120,'UV Lamp':5,'Microscope':12,'Dial Gauge':0,'Jewelry Gauge':0,'SG Kit / Weighing Scale':2,'Refractometer':0,'Dichroscope':0,'Polariscope':1,'Polished Diamond Grading Manual':0,'Black Laptop Bags':0,'Black Jute Bags':0,'Student Diploma':0,'Participant Certificate':0,'Diploma Frame':0,'Grading Lamp Tubes':0},
+      'Lucknow':   {'Education Brochure':5,'Spiral Note Book':0,'Pens':20,'Diamond Grading Manual':2,'RBC Work Sheet':4,'Fancy Shape Work Sheet':4,'Fine Tip Tweezer':2,'Assortment Pads':18,'Grading Lamps':112,'UV Lamp':5,'Microscope':4,'Dial Gauge':4,'Jewelry Gauge':2,'Polished Diamond Grading Manual':2,'Small Diamond Assortment Manual':2,'Gem Cloth':2,'Black Jute Bags':5,'Student Diploma':0,'Participant Certificate':0,'Diploma Frame':0,'Grading Lamp Tubes':0},
+      'Bangalore': {'Education Brochure':0,'Spiral Note Book':5,'Pens':3,'Diamond Grading Manual':4,'RBC Work Sheet':16,'Fancy Shape Work Sheet':8,'Fine Tip Tweezer':4,'Color Card':10,'Diamond Grading Kit':8,'Assortment Pads':48,'Grading Lamps':56,'UV Lamp':5,'Microscope':4,'Dial Gauge':10,'Jewelry Gauge':4,'Polished Diamond Grading Manual':1,'Black Laptop Bags':0,'Black Jute Bags':0,'Student Diploma':0,'Participant Certificate':0,'Diploma Frame':0,'Grading Lamp Tubes':0},
+      'Kolkata':   {'Education Brochure':140,'Spiral Note Book':25,'Pens':5,'Assortment Pads':24,'Grading Lamps':64,'UV Lamp':5,'Microscope':4,'Dial Gauge':10,'Jewelry Gauge':10,'Colored Stone Manual':5,'CS Work Sheet':5,'Color Chart':4,'Colored Stone Grading Kit':5,'SG Kit / Weighing Scale':2,'Refractometer':16,'Dichroscope':5,'Polariscope':1,'Polished Diamond Grading Manual':1,'Black Laptop Bags':0,'Black Jute Bags':0,'Student Diploma':0,'Participant Certificate':0,'Diploma Frame':0,'Grading Lamp Tubes':0},
+      'Jaipur':    {'Education Brochure':30,'Spiral Note Book':1,'Pens':500,'Diamond Grading Manual':3,'Fancy Shape Work Sheet':4,'Fine Tip Tweezer':12,'Diamond Grading Kit':18,'Grading Lamps':64,'Dial Gauge':10,'Colored Stone Manual':4,'CS Work Sheet':5,'Color Chart':6,'Refractometer':14,'Dichroscope':1,'Black Laptop Bags':25,'Black Jute Bags':0,'Student Diploma':0,'Participant Certificate':0,'Diploma Frame':0,'Grading Lamp Tubes':0},
+      'Chennai':   {'Education Brochure':0,'Spiral Note Book':3,'Pens':3,'Diamond Grading Manual':2,'RBC Work Sheet':8,'Fancy Shape Work Sheet':4,'Fine Tip Tweezer':4,'Color Card':4,'Diamond Grading Kit':4,'Assortment Pads':36,'Grading Lamps':48,'UV Lamp':5,'Microscope':4,'Dial Gauge':4,'Jewelry Gauge':4,'SG Kit / Weighing Scale':2,'Polished Diamond Grading Manual':1,'Black Laptop Bags':2,'Black Jute Bags':0,'Student Diploma':0,'Participant Certificate':0,'Diploma Frame':0,'Grading Lamp Tubes':0}
+    };
+
+    var rows = [];
+    var idx = 1;
+    Object.keys(STOCK_DATA).forEach(function(centre) {
+      var items = STOCK_DATA[centre];
+      Object.keys(items).forEach(function(itemName) {
+        var qty = items[itemName];
+        if (qty === 0) return; // skip zero-stock rows to keep sheet clean
+        var itemId = nameToId[itemName];
+        if (!itemId) return; // item not in master — skip
+        rows.push(['STK-'+String(idx).padStart(4,'0'), centre, itemId, qty, ts, 'seed']);
+        idx++;
+      });
+    });
+
+    if (rows.length > 0) sh.getRange(2, 1, rows.length, 6).setValues(rows);
+    return {status:'ok', message:'Seeded stock for '+Object.keys(STOCK_DATA).length+' centres ('+rows.length+' rows)', count:rows.length};
   } catch(err) { return {status:'error', message: err.toString()}; }
 }

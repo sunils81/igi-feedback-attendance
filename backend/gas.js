@@ -2864,6 +2864,7 @@ function doGet(e) {
     if (act==='activateTest')            return respond(otActivateTest(ss,p));
     if (act==='scheduleTestActivation')  return respond(otScheduleTestActivation(ss,p));
     if (act==='closeTest')               return respond(otCloseTest(ss,p));
+    if (act==='deleteOnlineTest')        return respond(otDeleteTest(ss,p));
     if (act==='releaseResults')          return respond(otReleaseResults(ss,p));
     if (act==='getStudentActiveTest')    return respond(otGetStudentActiveTest(ss,p));
     if (act==='getTestQuestions')        return respond(otGetTestQuestions(ss,p));
@@ -4904,6 +4905,39 @@ function otCloseTest(ss, p) {
   sh.getRange(idx+2,7).setValue('Closed');
   sh.getRange(idx+2,11).setValue(now.toISOString());
   return {status:'ok', closedAt:now.toISOString()};
+}
+
+function otDeleteTest(ss, p) {
+  if (!p.instructor||!p.testId) return {status:'error',reason:'missing_params'};
+  ensureOnlineTestSheets(ss);
+  var sh=ss.getSheetByName(SH_ONLINE_TESTS);
+  var rows=sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,22).getValues():[];
+  var idx=rows.findIndex(function(r){return r[0]===p.testId;});
+  if (idx===-1) return {status:'error',reason:'test_not_found'};
+  // Auth check
+  if (String(rows[idx][13]).trim().toLowerCase() !== String(p.instructor).trim().toLowerCase()) {
+    return {status:'error',reason:'unauthorized'};
+  }
+  sh.deleteRow(idx+2);
+  
+  // Also delete from questions
+  var shQ = ss.getSheetByName(SH_OT_QUESTIONS);
+  if (shQ) {
+    var qRows = shQ.getLastRow()>1?shQ.getRange(2,1,shQ.getLastRow()-1,1).getValues():[];
+    for (var i=qRows.length-1;i>=0;i--) {
+      if (String(qRows[i][0])===String(p.testId)) shQ.deleteRow(i+2);
+    }
+  }
+  
+  // Also delete from responses
+  var shR = ss.getSheetByName(SH_OT_RESPONSES);
+  if (shR) {
+    var rRows = shR.getLastRow()>1?shR.getRange(2,1,shR.getLastRow()-1,2).getValues():[];
+    for (var i=rRows.length-1;i>=0;i--) {
+      if (String(rRows[i][1])===String(p.testId)) shR.deleteRow(i+2);
+    }
+  }
+  return {status:'ok'};
 }
 
 function otReleaseResults(ss, p) {

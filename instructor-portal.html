@@ -1295,7 +1295,7 @@
           </div>
         </div>
 
-        <button class="ot-btn primary" onclick="submitCreateAssignment()">🚀 Create & Activate Assignment</button>
+        <button class="ot-btn primary" id="btn-create-assignment" onclick="submitCreateAssignment()">🚀 Create & Activate Assignment</button>
       </div>
     </div>
   </div>
@@ -1355,7 +1355,7 @@
           </div>
         </div>
 
-        <button class="ot-btn primary" onclick="submitCreatePortfolio()">🚀 Create Portfolio Request</button>
+        <button class="ot-btn primary" id="btn-create-portfolio" onclick="submitCreatePortfolio()">🚀 Create Portfolio Request</button>
       </div>
     </div>
   </div>
@@ -7316,6 +7316,7 @@ function otHandleTestTypeChange() {
           + '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
           + (t.status === 'Draft' ? '<button class="ot-btn success" onclick="otActivateAssignment(\''+escHtml(t.testId)+'\')">▶ Activate</button>' : '')
           + (t.status === 'Active' ? '<button class="ot-btn danger" onclick="otCloseAssignment(\''+escHtml(t.testId)+'\')">❌ Close / Cancel</button>' : '')
+          + '<button class="ot-btn danger" onclick="otDeleteAssignment(\''+escHtml(t.testId)+'\')">🗑️ Delete</button>'
           + '<button class="ot-btn primary" onclick="viewAssignmentSubmissions(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">✏️ Grade / View Submissions</button>'
           + '</div>'
           + '</div>';
@@ -7371,6 +7372,7 @@ function otHandleTestTypeChange() {
           + '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
           + (t.status === 'Draft' ? '<button class="ot-btn success" onclick="otActivatePortfolio(\''+escHtml(t.testId)+'\')">▶ Activate</button>' : '')
           + (t.status === 'Active' ? '<button class="ot-btn danger" onclick="otClosePortfolio(\''+escHtml(t.testId)+'\')">❌ Close / Cancel</button>' : '')
+          + '<button class="ot-btn danger" onclick="otDeletePortfolio(\''+escHtml(t.testId)+'\')">🗑️ Delete</button>'
           + '<button class="ot-btn primary" onclick="viewPortfolioSubmissions(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">✏️ Grade / View Submissions</button>'
           + '</div>'
           + '</div>';
@@ -7407,11 +7409,29 @@ function otHandleTestTypeChange() {
     });
   }
 
+  function otDeleteAssignment(testId) {
+    if (!confirm('⚠️ WARNING: Are you sure you want to permanently DELETE this assignment and all associated student submissions? This cannot be undone.')) return;
+    gasGet({action:'deleteOnlineTest', instructor:instructorName, testId:testId}, function(err, d) {
+      if (err || !d || d.status !== 'ok') return alert('Error: '+(d&&d.reason||'Failed'));
+      alert('✅ Assignment has been deleted.');
+      loadAssignmentsList();
+    });
+  }
+
   function otClosePortfolio(testId) {
     if (!confirm('Are you sure you want to close/cancel this portfolio request? Students will no longer be able to submit.')) return;
     gasGet({action:'closeTest', instructor:instructorName, testId:testId}, function(err, d) {
       if (err || !d || d.status !== 'ok') return alert('Error: '+(d&&d.reason||'Failed'));
       alert('✅ Portfolio request has been closed.');
+      loadPortfoliosList();
+    });
+  }
+
+  function otDeletePortfolio(testId) {
+    if (!confirm('⚠️ WARNING: Are you sure you want to permanently DELETE this portfolio request and all associated student submissions? This cannot be undone.')) return;
+    gasGet({action:'deleteOnlineTest', instructor:instructorName, testId:testId}, function(err, d) {
+      if (err || !d || d.status !== 'ok') return alert('Error: '+(d&&d.reason||'Failed'));
+      alert('✅ Portfolio request has been deleted.');
       loadPortfoliosList();
     });
   }
@@ -7495,10 +7515,20 @@ function otHandleTestTypeChange() {
       return;
     }
     
+    var btn = document.getElementById('btn-create-assignment');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+    }
+    
     if (format === 'FileUpload') {
       var promptText = document.getElementById('ass-c-prompt').value.trim();
       if (!promptText) {
         alert('Please fill out the Assignment Prompt.');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '🚀 Create & Activate Assignment';
+        }
         return;
       }
       gasGet({
@@ -7518,6 +7548,10 @@ function otHandleTestTypeChange() {
       }, function(err, d) {
         if (err || !d || d.status !== 'ok') {
           alert('Failed to create assignment: ' + (d && d.reason || 'Network error'));
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = '🚀 Create & Activate Assignment';
+          }
           return;
         }
         var testId = d.testId;
@@ -7534,6 +7568,10 @@ function otHandleTestTypeChange() {
         }, function(err2, d2) {
           if (err2 || !d2 || d2.status !== 'ok') {
             alert('Assignment created but failed to save prompt.');
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = '🚀 Create & Activate Assignment';
+            }
             return;
           }
           gasGet({
@@ -7541,6 +7579,10 @@ function otHandleTestTypeChange() {
             instructor: instructorName,
             testId: testId
           }, function(err3, d3) {
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = '🚀 Create & Activate Assignment';
+            }
             if (err3 || !d3 || d3.status !== 'ok') {
               alert('Assignment created but activation failed.');
             } else {
@@ -7558,6 +7600,10 @@ function otHandleTestTypeChange() {
       var qIds = [...otSelectedIds];
       if (!qIds.length) {
         alert('No questions selected. Please go to the 🧪 Online Tests -> Question Bank tab, select questions, and try again.');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '🚀 Create & Activate Assignment';
+        }
         return;
       }
       gasGet({
@@ -7577,6 +7623,10 @@ function otHandleTestTypeChange() {
       }, function(err, d) {
         if (err || !d || d.status !== 'ok') {
           alert('Failed to create assignment: ' + (d && d.reason || 'Network error'));
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = '🚀 Create & Activate Assignment';
+          }
           return;
         }
         var testId = d.testId;
@@ -7588,6 +7638,10 @@ function otHandleTestTypeChange() {
         }, function(err2, d2) {
           if (err2 || !d2 || d2.status !== 'ok') {
             alert('Assignment created but failed to save selected questions.');
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = '🚀 Create & Activate Assignment';
+            }
             return;
           }
           gasGet({
@@ -7595,6 +7649,10 @@ function otHandleTestTypeChange() {
             instructor: instructorName,
             testId: testId
           }, function(err3, d3) {
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = '🚀 Create & Activate Assignment';
+            }
             if (err3 || !d3 || d3.status !== 'ok') {
               alert('Assignment created but activation failed.');
             } else {
@@ -7623,6 +7681,13 @@ function otHandleTestTypeChange() {
     }
     var expiryMode = expiry ? 'custom' : 'manual';
     var expiryAt = expiry ? new Date(expiry).toISOString() : '';
+    
+    var btn = document.getElementById('btn-create-portfolio');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+    }
+    
     gasGet({
       action: 'createOnlineTest',
       instructor: instructorName,
@@ -7641,6 +7706,10 @@ function otHandleTestTypeChange() {
     }, function(err, d) {
       if (err || !d || d.status !== 'ok') {
         alert('Failed to create portfolio request: ' + (d && d.reason || 'Network error'));
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '🚀 Create Portfolio Request';
+        }
         return;
       }
       var testId = d.testId;
@@ -7649,6 +7718,10 @@ function otHandleTestTypeChange() {
         instructor: instructorName,
         testId: testId
       }, function(err2, d2) {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '🚀 Create Portfolio Request';
+        }
         if (err2 || !d2 || d2.status !== 'ok') {
           alert('Portfolio request created but activation failed.');
         } else {

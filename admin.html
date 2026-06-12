@@ -2231,17 +2231,35 @@
 
         <!-- Stock Levels -->
         <div id="adm-inv-stock" class="adm-inv-content">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-            <h3 style="margin:0">Current Stock — All Centres</h3>
-            <div style="display:flex;gap:8px;align-items:center">
-              <label style="font-size:12px;font-weight:700">Centre:</label>
-              <select id="adm-inv-centre-filter" onchange="adminLoadStock()" style="padding:6px 12px;border-radius:6px;border:1.5px solid #e5e7eb;font-size:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <h3 style="margin:0;font-size:15px">Current Stock</h3>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <select id="adm-inv-centre-filter" onchange="adminLoadStock()" style="padding:5px 10px;border-radius:6px;border:1.5px solid #e5e7eb;font-size:12px">
                 <option value="">All Centres</option>
               </select>
+              <select id="adm-inv-cat-filter" onchange="adminFilterStock()" style="padding:5px 10px;border-radius:6px;border:1.5px solid #e5e7eb;font-size:12px">
+                <option value="">All Categories</option>
+              </select>
+              <input type="text" id="adm-inv-search" placeholder="Search…" oninput="adminFilterStock()" style="padding:5px 10px;border-radius:6px;border:1.5px solid #e5e7eb;font-size:12px;width:130px">
+              <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap">
+                <input type="checkbox" id="adm-inv-hide-zero" checked onchange="adminFilterStock()"> Hide zeros
+              </label>
             </div>
           </div>
-          <div id="adm-inv-stock-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">
-            <div style="color:#9ca3af;padding:24px;text-align:center">Click the Inventory tab to load stock.</div>
+          <div style="overflow-x:auto">
+            <table class="compact-table" id="adm-inv-stock-table" style="width:100%">
+              <thead><tr>
+                <th style="width:36px">#</th>
+                <th>Item Name</th>
+                <th>Category</th>
+                <th style="width:60px">Unit</th>
+                <th style="width:90px;text-align:right">Qty on Hand</th>
+                <th style="width:130px">Status</th>
+              </tr></thead>
+              <tbody id="adm-inv-stock-tbody">
+                <tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:24px">Click the Inventory tab to load stock.</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -2266,17 +2284,19 @@
 
         <!-- Update Stock -->
         <div id="adm-inv-updatestock" class="adm-inv-content" style="display:none">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-            <h3 style="margin:0">Update Stock Levels</h3>
-            <div style="display:flex;gap:8px;align-items:center">
-              <label style="font-size:12px;font-weight:700">Centre:</label>
-              <select id="adm-inv-upd-centre" onchange="adminLoadStockUpdate()" style="padding:6px 12px;border-radius:6px;border:1.5px solid #e5e7eb;font-size:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <h3 style="margin:0;font-size:15px">Update Stock Levels</h3>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <select id="adm-inv-upd-centre" onchange="adminLoadStockUpdate()" style="padding:5px 10px;border-radius:6px;border:1.5px solid #e5e7eb;font-size:12px">
                 <!-- populated by JS -->
+              </select>
+              <select id="adm-inv-upd-cat" onchange="adminFilterStockUpdate()" style="padding:5px 10px;border-radius:6px;border:1.5px solid #e5e7eb;font-size:12px">
+                <option value="">All Categories</option>
               </select>
             </div>
           </div>
-          <p style="font-size:12px;color:#6b7280;margin-bottom:14px">Set the current on-hand quantity per item. Changes save immediately.</p>
-          <div id="adm-inv-upd-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:8px">
+          <p style="font-size:12px;color:#6b7280;margin-bottom:10px">Set the current on-hand quantity per item. Changes save immediately.</p>
+          <div id="adm-inv-upd-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px">
             <div style="color:#9ca3af;padding:24px;text-align:center">Select a centre above to edit stock.</div>
           </div>
         </div>
@@ -5571,39 +5591,73 @@ function adminRenderAnalyticsCharts(centreExpenditure, categoryStockVal, quarter
 
 // ---- Stock Levels ----
 var _IGI_CENTRES = ['Mumbai','Delhi','Kolkata','Surat','Chennai','Hyderabad','Bangalore','Lucknow','Ahmedabad','Jaipur'];
+var _adm_stock_data = [];
 
 function adminLoadStock() {
-  // Populate centre filter if empty
   var filterEl = document.getElementById('adm-inv-centre-filter');
   if (filterEl && filterEl.options.length <= 1) {
     _IGI_CENTRES.forEach(function(c){ var o = document.createElement('option'); o.value = c; o.textContent = c; filterEl.appendChild(o); });
   }
   var centre = (filterEl || {}).value || '';
-  var grid = document.getElementById('adm-inv-stock-grid');
-  if (!grid) return;
-  grid.innerHTML = '<div style="color:#888;padding:20px">Loading…</div>';
+  var tbody = document.getElementById('adm-inv-stock-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;padding:20px">Loading…</td></tr>';
   gasGet({ action:'getInventoryStock', centre: centre }, function(res) {
-    if (!res || res.status === 'error') { grid.innerHTML = '<div style="color:#e55;padding:20px">' + (res && res.message || 'Error loading stock') + '</div>'; return; }
-    var items = res.list || [];
-    if (!items.length) { grid.innerHTML = '<div style="color:#888;padding:20px">No stock data found. Seed items first, then update stock levels.</div>'; return; }
-    var html = '';
-    items.forEach(function(it) {
-      var qty = it.quantity || 0;
-      var reorder = it.reorderLevel || 0;
-      var pct = reorder ? Math.min(100, Math.round(qty / reorder * 100)) : 100;
-      var color = pct < 25 ? '#ef4444' : pct < 60 ? '#f59e0b' : '#10b981';
-      html += '<div style="background:#fff;border-radius:10px;border:1.5px solid #e5e7eb;padding:14px">' +
-        '<div style="font-weight:600;font-size:13px;margin-bottom:4px">' + it.itemName + '</div>' +
-        '<div style="font-size:11px;color:#888;margin-bottom:6px">' + it.category + ' · ' + it.unit + '</div>' +
-        '<div style="display:flex;align-items:center;gap:8px">' +
-          '<div style="flex:1;background:#f3f4f6;border-radius:99px;height:8px"><div style="width:' + pct + '%;background:' + color + ';height:8px;border-radius:99px"></div></div>' +
-          '<span style="font-size:13px;font-weight:700;color:' + color + '">' + qty + ' ' + it.unit + '</span>' +
-        '</div>' +
-        (reorder && pct < 25 ? '<div style="font-size:10px;color:#ef4444;margin-top:4px">⚠ Below reorder level (' + reorder + ')</div>' : '') +
-      '</div>';
-    });
-    grid.innerHTML = html;
+    if (!res || res.status === 'error') {
+      tbody.innerHTML = '<tr><td colspan="6" style="color:#ef4444;padding:12px">' + (res && res.message || 'Error loading stock') + '</td></tr>';
+      return;
+    }
+    _adm_stock_data = res.list || [];
+    if (!_adm_stock_data.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;padding:24px">No items found. Seed items first from the Item Master tab.</td></tr>';
+      return;
+    }
+    // Populate category filter
+    var catEl = document.getElementById('adm-inv-cat-filter');
+    if (catEl && catEl.options.length <= 1) {
+      var cats = [];
+      _adm_stock_data.forEach(function(it){ if (it.category && cats.indexOf(it.category) < 0) cats.push(it.category); });
+      cats.sort().forEach(function(c){ var o = document.createElement('option'); o.value = c; o.textContent = c; catEl.appendChild(o); });
+    }
+    adminFilterStock();
   });
+}
+
+function adminFilterStock() {
+  var tbody = document.getElementById('adm-inv-stock-tbody');
+  if (!tbody) return;
+  var cat = (document.getElementById('adm-inv-cat-filter') || {}).value || '';
+  var search = ((document.getElementById('adm-inv-search') || {}).value || '').toLowerCase();
+  var hideZero = document.getElementById('adm-inv-hide-zero') ? document.getElementById('adm-inv-hide-zero').checked : true;
+  var filtered = _adm_stock_data.filter(function(it) {
+    if (cat && it.category !== cat) return false;
+    if (search && it.itemName.toLowerCase().indexOf(search) < 0 && it.category.toLowerCase().indexOf(search) < 0) return false;
+    if (hideZero && !(it.quantity > 0)) return false;
+    return true;
+  });
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:20px">' +
+      (hideZero ? 'No items with stock > 0. <a href="#" onclick="document.getElementById(\'adm-inv-hide-zero\').checked=false;adminFilterStock();return false" style="color:#6366f1">Show all items</a>' : 'No items match.') +
+      '</td></tr>';
+    return;
+  }
+  var html = '';
+  filtered.forEach(function(it, i) {
+    var qty = it.quantity || 0;
+    var dotColor = qty === 0 ? '#d1d5db' : qty < 5 ? '#ef4444' : qty < 15 ? '#f59e0b' : '#10b981';
+    var statusLabel = qty === 0 ? '<span style="color:#9ca3af;font-size:11px">Out of stock</span>'
+      : qty < 5 ? '<span style="color:#ef4444;font-size:11px;font-weight:600">⚠ Low (' + qty + ')</span>'
+      : '<span style="color:#10b981;font-size:11px">✓ In stock</span>';
+    html += '<tr>' +
+      '<td style="color:#9ca3af;font-size:11px">' + (i+1) + '</td>' +
+      '<td style="font-weight:500;font-size:13px">' + it.itemName + '</td>' +
+      '<td><span style="background:#f3f4f6;border-radius:4px;padding:2px 7px;font-size:11px;color:#6b7280">' + it.category + '</span></td>' +
+      '<td style="font-size:12px;color:#6b7280">' + it.unit + '</td>' +
+      '<td style="text-align:right;font-weight:700;font-size:13px;color:' + dotColor + '">' + qty + '</td>' +
+      '<td>' + statusLabel + '</td>' +
+    '</tr>';
+  });
+  tbody.innerHTML = html;
 }
 
 // ---- Dispatch Queue ----
@@ -5646,42 +5700,62 @@ function adminDispatchItem(requestId, qty) {
 }
 
 // ---- Update Stock ----
+var _adm_upd_items = [];
+var _adm_upd_stockMap = {};
+var _adm_upd_centre = '';
+
 function adminLoadStockUpdate() {
   var centreEl = document.getElementById('adm-inv-upd-centre');
   var grid = document.getElementById('adm-inv-upd-grid');
   if (!centreEl || !grid) return;
 
-  // Populate centre dropdown if empty
   if (centreEl.options.length <= 1) {
     _IGI_CENTRES.forEach(function(c){ var o = document.createElement('option'); o.value = c; o.textContent = c; centreEl.appendChild(o); });
   }
 
-  var centre = centreEl.value;
-  if (!centre) { grid.innerHTML = '<div style="color:#888;padding:20px">Select a centre to update stock.</div>'; return; }
-  grid.innerHTML = '<div style="color:#888;padding:20px">Loading items…</div>';
+  _adm_upd_centre = centreEl.value;
+  if (!_adm_upd_centre) { grid.innerHTML = '<div style="color:#888;padding:20px">Select a centre to update stock.</div>'; return; }
+  grid.innerHTML = '<div style="color:#888;padding:20px">Loading…</div>';
 
   gasGet({ action:'getInventoryItemMaster' }, function(res) {
-    var items = (res && res.list) || [];
-    if (!items.length) { grid.innerHTML = '<div style="color:#888;padding:20px">No items in master. Use Item Master tab to seed 90 items first.</div>'; return; }
-    // Also load current stock for this centre
-    gasGet({ action:'getInventoryStock', centre: centre }, function(stockRes) {
-      var stockMap = {};
-      ((stockRes && stockRes.list) || []).forEach(function(s){ stockMap[s.itemId] = s.quantity || 0; });
-      var html = '';
-      items.forEach(function(it) {
-        var curQty = stockMap[it.itemId] !== undefined ? stockMap[it.itemId] : '';
-        html += '<div style="background:#fff;border-radius:8px;border:1.5px solid #e5e7eb;padding:12px;display:flex;flex-direction:column;gap:6px">' +
-          '<div style="font-weight:600;font-size:12px">' + it.itemName + '</div>' +
-          '<div style="font-size:10px;color:#888">' + it.category + ' · ' + it.unit + '</div>' +
-          '<div style="display:flex;align-items:center;gap:8px">' +
-            '<input type="number" id="adm-upd-qty-' + it.itemId + '" value="' + curQty + '" min="0" placeholder="Qty" style="width:80px;padding:4px 8px;border-radius:6px;border:1.5px solid #d1d5db;font-size:13px">' +
-            '<button onclick="adminSaveStockQty(\'' + it.itemId + '\',\'' + centre + '\')" style="background:#10b981;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer">Save</button>' +
-          '</div>' +
-        '</div>';
-      });
-      grid.innerHTML = html;
+    _adm_upd_items = (res && res.list) || [];
+    if (!_adm_upd_items.length) { grid.innerHTML = '<div style="color:#888;padding:20px">No items in master. Seed items first from Item Master tab.</div>'; return; }
+
+    // Populate category filter
+    var catEl = document.getElementById('adm-inv-upd-cat');
+    if (catEl && catEl.options.length <= 1) {
+      var cats = [];
+      _adm_upd_items.forEach(function(it){ if (it.category && cats.indexOf(it.category) < 0) cats.push(it.category); });
+      cats.sort().forEach(function(c){ var o = document.createElement('option'); o.value = c; o.textContent = c; catEl.appendChild(o); });
+    }
+
+    gasGet({ action:'getInventoryStock', centre: _adm_upd_centre }, function(stockRes) {
+      _adm_upd_stockMap = {};
+      ((stockRes && stockRes.list) || []).forEach(function(s){ _adm_upd_stockMap[s.itemId] = s.quantity || 0; });
+      adminFilterStockUpdate();
     });
   });
+}
+
+function adminFilterStockUpdate() {
+  var grid = document.getElementById('adm-inv-upd-grid');
+  if (!grid || !_adm_upd_items.length) return;
+  var cat = (document.getElementById('adm-inv-upd-cat') || {}).value || '';
+  var filtered = cat ? _adm_upd_items.filter(function(it){ return it.category === cat; }) : _adm_upd_items;
+  var html = '';
+  filtered.forEach(function(it) {
+    var curQty = _adm_upd_stockMap[it.itemId] !== undefined ? _adm_upd_stockMap[it.itemId] : '';
+    var hasStock = curQty > 0;
+    html += '<div style="background:#fff;border-radius:8px;border:1.5px solid ' + (hasStock ? '#d1fae5' : '#e5e7eb') + ';padding:12px;display:flex;flex-direction:column;gap:6px">' +
+      '<div style="font-weight:600;font-size:12px">' + it.itemName + '</div>' +
+      '<div style="font-size:10px;color:#888">' + it.category + ' · ' + it.unit + '</div>' +
+      '<div style="display:flex;align-items:center;gap:8px">' +
+        '<input type="number" id="adm-upd-qty-' + it.itemId + '" value="' + curQty + '" min="0" placeholder="0" style="width:80px;padding:4px 8px;border-radius:6px;border:1.5px solid #d1d5db;font-size:13px">' +
+        '<button onclick="adminSaveStockQty(\'' + it.itemId + '\',\'' + _adm_upd_centre + '\')" style="background:#10b981;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer">Save</button>' +
+      '</div>' +
+    '</div>';
+  });
+  grid.innerHTML = html;
 }
 
 function adminSaveStockQty(itemId, centre) {

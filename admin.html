@@ -5184,8 +5184,15 @@ function adminInvSwitchTab(tabId) {
 }
 
 // ---- Stock Levels ----
+var _IGI_CENTRES = ['Mumbai','Delhi','Kolkata','Surat','Chennai','Hyderabad','Bangalore','Lucknow','Ahmedabad','Jaipur'];
+
 function adminLoadStock() {
-  var centre = (document.getElementById('adm-inv-centre-filter') || {}).value || '';
+  // Populate centre filter if empty
+  var filterEl = document.getElementById('adm-inv-centre-filter');
+  if (filterEl && filterEl.options.length <= 1) {
+    _IGI_CENTRES.forEach(function(c){ var o = document.createElement('option'); o.value = c; o.textContent = c; filterEl.appendChild(o); });
+  }
+  var centre = (filterEl || {}).value || '';
   var grid = document.getElementById('adm-inv-stock-grid');
   if (!grid) return;
   grid.innerHTML = '<div style="color:#888;padding:20px">Loading…</div>';
@@ -5260,8 +5267,7 @@ function adminLoadStockUpdate() {
 
   // Populate centre dropdown if empty
   if (centreEl.options.length <= 1) {
-    var centres = ['Mumbai - Andheri','Mumbai - Thane','Mumbai - Dadar','Delhi','Bangalore','Hyderabad','Chennai','Kolkata','Pune','Ahmedabad'];
-    centres.forEach(function(c){ var o = document.createElement('option'); o.value = c; o.textContent = c; centreEl.appendChild(o); });
+    _IGI_CENTRES.forEach(function(c){ var o = document.createElement('option'); o.value = c; o.textContent = c; centreEl.appendChild(o); });
   }
 
   var centre = centreEl.value;
@@ -5417,22 +5423,14 @@ function adminDeleteItemUI(itemId) {
 }
 
 function adminSeedInventory() {
-  if (!confirm('This will create the inventory sheets (if missing) and seed 90 items into INV_Items. Continue?')) return;
-  // Step 1: ensure all 5 inventory sheets exist
-  gasGet({ action:'setupInventorySheets' }, function(setupRes) {
-    if (!setupRes || setupRes.status === 'error') {
-      alert('Could not create sheets: ' + (setupRes && setupRes.message || 'Unknown error'));
-      return;
+  if (!confirm('Seed 90 inventory items into INV_Items? The sheet will be created automatically if missing.')) return;
+  gasGet({ action:'seedInventoryItems', force: false }, function(res) {
+    if (res && res.status === 'ok') {
+      alert(res.message || ('Seeded ' + res.count + ' items!'));
+      adminLoadItemMaster();
+    } else {
+      alert('Seed error: ' + (res && res.message || 'GAS not yet deployed with inventory functions — please redeploy in Apps Script.'));
     }
-    // Step 2: seed items
-    gasGet({ action:'seedInventoryItems', force: false }, function(res) {
-      if (res && res.status === 'ok') {
-        alert(res.message || ('Seeded ' + res.count + ' items!'));
-        adminLoadItemMaster();
-      } else {
-        alert('Seed error: ' + (res && res.message || 'Unknown'));
-      }
-    });
   });
 }
 

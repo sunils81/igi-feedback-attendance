@@ -1132,6 +1132,25 @@
         <h3 style="margin:0;font-size:15px;">My Tests</h3>
         <button class="ot-btn ghost" onclick="otLoadTests()">🔄 Refresh</button>
       </div>
+      <!-- Filter Bar -->
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;background:#f9fafb;padding:10px;border-radius:8px;border:1px solid #e5e7eb;">
+        <div style="flex:2;min-width:160px;">
+          <input type="text" id="ot-tests-search" oninput="otApplyTestsFilters()" placeholder="🔍 Search test name..." style="width:100%;padding:8px 10px;font-size:13px;border:1.5px solid #e5e7eb;border-radius:8px;outline:none;box-sizing:border-box;">
+        </div>
+        <div style="flex:1;min-width:120px;">
+          <select id="ot-tests-batch" onchange="otApplyTestsFilters()" style="width:100%;padding:8px 10px;font-size:13px;border:1.5px solid #e5e7eb;border-radius:8px;outline:none;background:#fff;box-sizing:border-box;">
+            <option value="">All Batches</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:120px;">
+          <select id="ot-tests-status" onchange="otApplyTestsFilters()" style="width:100%;padding:8px 10px;font-size:13px;border:1.5px solid #e5e7eb;border-radius:8px;outline:none;background:#fff;box-sizing:border-box;">
+            <option value="">All Statuses</option>
+            <option value="Active">Active</option>
+            <option value="Draft">Draft</option>
+            <option value="Closed">Closed</option>
+          </select>
+        </div>
+      </div>
       <div id="ot-tests-list"><div style="color:#9ca3af;font-size:13px;">Loading…</div></div>
     </div>
 
@@ -1210,6 +1229,25 @@
 
     <!-- Panel 1: List & Grading -->
     <div id="ass-panel-list" class="ot-panel active">
+      <!-- Filter Bar -->
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;background:#f9fafb;padding:10px;border-radius:8px;border:1px solid #e5e7eb;">
+        <div style="flex:2;min-width:160px;">
+          <input type="text" id="ot-assignments-search" oninput="otApplyAssignmentsFilters()" placeholder="🔍 Search assignment name..." style="width:100%;padding:8px 10px;font-size:13px;border:1.5px solid #e5e7eb;border-radius:8px;outline:none;box-sizing:border-box;">
+        </div>
+        <div style="flex:1;min-width:120px;">
+          <select id="ot-assignments-batch" onchange="otApplyAssignmentsFilters()" style="width:100%;padding:8px 10px;font-size:13px;border:1.5px solid #e5e7eb;border-radius:8px;outline:none;background:#fff;box-sizing:border-box;">
+            <option value="">All Batches</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:120px;">
+          <select id="ot-assignments-status" onchange="otApplyAssignmentsFilters()" style="width:100%;padding:8px 10px;font-size:13px;border:1.5px solid #e5e7eb;border-radius:8px;outline:none;background:#fff;box-sizing:border-box;">
+            <option value="">All Statuses</option>
+            <option value="Active">Active</option>
+            <option value="Draft">Draft</option>
+            <option value="Closed">Closed</option>
+          </select>
+        </div>
+      </div>
       <div id="assignments-list-wrap">
         <div class="spinner-wrap"><div class="spinner"></div><p>Loading assignments...</p></div>
       </div>
@@ -1309,6 +1347,25 @@
 
     <!-- Panel 1: List & Grading -->
     <div id="port-panel-list" class="ot-panel active">
+      <!-- Filter Bar -->
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;background:#f9fafb;padding:10px;border-radius:8px;border:1px solid #e5e7eb;">
+        <div style="flex:2;min-width:160px;">
+          <input type="text" id="ot-portfolios-search" oninput="otApplyPortfoliosFilters()" placeholder="🔍 Search portfolio request..." style="width:100%;padding:8px 10px;font-size:13px;border:1.5px solid #e5e7eb;border-radius:8px;outline:none;box-sizing:border-box;">
+        </div>
+        <div style="flex:1;min-width:120px;">
+          <select id="ot-portfolios-batch" onchange="otApplyPortfoliosFilters()" style="width:100%;padding:8px 10px;font-size:13px;border:1.5px solid #e5e7eb;border-radius:8px;outline:none;background:#fff;box-sizing:border-box;">
+            <option value="">All Batches</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:120px;">
+          <select id="ot-portfolios-status" onchange="otApplyPortfoliosFilters()" style="width:100%;padding:8px 10px;font-size:13px;border:1.5px solid #e5e7eb;border-radius:8px;outline:none;background:#fff;box-sizing:border-box;">
+            <option value="">All Statuses</option>
+            <option value="Active">Active</option>
+            <option value="Draft">Draft</option>
+            <option value="Closed">Closed</option>
+          </select>
+        </div>
+      </div>
       <div id="portfolios-list-wrap">
         <div class="spinner-wrap"><div class="spinner"></div><p>Loading portfolio requests...</p></div>
       </div>
@@ -4903,7 +4960,8 @@ function otLoadTests() {
       renderPendingSubmissionsBanners();
     }
     updateInstructorBadges(otCurrentTests);
-    otRenderTests(otCurrentTests);
+    otPopulateFilterDropdowns(otCurrentTests);
+    otApplyTestsFilters();
     otPopulateTestDropdowns(otCurrentTests);
   });
 }
@@ -4939,6 +4997,7 @@ function otRenderTests(tests) {
       + (t.status === 'Closed' && t.resultsReleased !== 'Yes' && t.testType !== 'Portfolio Upload' ? '<button class="ot-btn ghost" onclick="otReleaseResultsFor(\''+escHtml(t.testId)+'\',\'full\')">&amp; Show Breakdown</button>' : '')
       + '<button class="ot-btn ghost" onclick="otViewResults(\''+escHtml(t.testId)+'\')">📊 Results</button>'
       + (t.testType !== 'Portfolio Upload' ? '<button class="ot-btn ghost" onclick="otOpenQuestionsModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',\''+escHtml(t.status)+'\')">📝 View Questions</button>' : '')
+      + '<button class="ot-btn ghost" onclick="otPromptDuplicate(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">👯 Duplicate</button>'
       + '<button class="ot-btn danger" onclick="otDeleteTest(\''+escHtml(t.testId)+'\')">🗑️ Delete</button>'
       + '</div>'
       + '</div>';
@@ -7391,51 +7450,59 @@ function otHandleTestTypeChange() {
         renderPendingSubmissionsBanners();
       }
       updateInstructorBadges(otCurrentTests);
-      var assignments = otCurrentTests.filter(function(t) { return t.testType === 'Assignment'; });
-      if (!assignments.length) {
-        el.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:20px 0;text-align:center;">No assignments created yet. Go to Create Assignment tab.</div>';
-        return;
-      }
-      var html = '<div class="ot-grid">';
-      assignments.forEach(function(t) {
-        var badgeStatus = t.status === 'Draft' ? 'draft' : t.status === 'Active' ? 'active' : 'closed';
-        var dueHtml = '—';
-        if (t.status === 'Active' && t.expiryAt) {
-          var diff = new Date(t.expiryAt) - new Date();
-          if (diff > 0) {
-            var days = Math.floor(diff / (24*60*60*1000));
-            var hrs = Math.floor((diff % (24*60*60*1000)) / (60*60*1000));
-            dueHtml = '<span style="color:#059669;font-weight:700;">Active (Due in ' + (days > 0 ? days + 'd ' : '') + hrs + 'h)</span>';
-          } else {
-            dueHtml = '<span style="color:#dc2626;font-weight:700;">Expired / Closed</span>';
-          }
-        } else if (t.status === 'Closed') {
-          dueHtml = '<span style="color:#9ca3af;">Closed</span>';
-        } else {
-          dueHtml = '<span style="color:#9ca3af;">Draft (not activated)</span>';
-        }
-        html += '<div class="ot-card">'
-          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">'
-          +   '<span class="ot-badge weekly">Assignment</span>'
-          +   '<span class="ot-badge '+badgeStatus+'">'+escHtml(t.status)+'</span>'
-          + '</div>'
-          + '<div style="font-weight:600;font-size:14px;margin-bottom:6px;">'+escHtml(t.testLabel)+'</div>'
-          + '<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Batch: <b>'+escHtml(t.batchCode)+'</b></div>'
-          + '<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Assigned to: <b>'+escHtml(t.targetStudentNames || 'Entire Batch')+'</b></div>'
-          + '<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Duration: <b>'+t.duration+' days</b></div>'
-          + '<div style="font-size:12px;color:#6b7280;margin-bottom:8px;">Submissions: <b>'+(t.submissionCount||0)+'</b> (' + (t.pendingGradingCount || 0) + ' pending grade)</div>'
-          + '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Due Status: ' + dueHtml + '</div>'
-          + '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
-          + (t.status === 'Draft' ? '<button class="ot-btn success" onclick="otActivateAssignment(\''+escHtml(t.testId)+'\')">▶ Activate</button>' : '')
-          + (t.status === 'Active' ? '<button class="ot-btn danger" onclick="otCloseAssignment(\''+escHtml(t.testId)+'\')">❌ Close / Cancel</button>' : '')
-          + '<button class="ot-btn danger" onclick="otDeleteAssignment(\''+escHtml(t.testId)+'\')">🗑️ Delete</button>'
-          + '<button class="ot-btn primary" onclick="viewAssignmentSubmissions(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">✏️ Grade / View Submissions</button>'
-          + '</div>'
-          + '</div>';
-      });
-      html += '</div>';
-      el.innerHTML = html;
+      otPopulateFilterDropdowns(otCurrentTests);
+      
+      otApplyAssignmentsFilters();
     });
+  }
+
+  function renderAssignmentsList(assignments) {
+    var el = document.getElementById('assignments-list-wrap');
+    if (!el) return;
+    if (!assignments.length) {
+      el.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:20px 0;text-align:center;">No assignments created yet. Go to Create Assignment tab.</div>';
+      return;
+    }
+    var html = '<div class="ot-grid">';
+    assignments.forEach(function(t) {
+      var badgeStatus = t.status === 'Draft' ? 'draft' : t.status === 'Active' ? 'active' : 'closed';
+      var dueHtml = '—';
+      if (t.status === 'Active' && t.expiryAt) {
+        var diff = new Date(t.expiryAt) - new Date();
+        if (diff > 0) {
+          var days = Math.floor(diff / (24*60*60*1000));
+          var hrs = Math.floor((diff % (24*60*60*1000)) / (60*60*1000));
+          dueHtml = '<span style="color:#059669;font-weight:700;">Active (Due in ' + (days > 0 ? days + 'd ' : '') + hrs + 'h)</span>';
+        } else {
+          dueHtml = '<span style="color:#dc2626;font-weight:700;">Expired / Closed</span>';
+        }
+      } else if (t.status === 'Closed') {
+        dueHtml = '<span style="color:#9ca3af;">Closed</span>';
+      } else {
+        dueHtml = '<span style="color:#9ca3af;">Draft (not activated)</span>';
+      }
+      html += '<div class="ot-card">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">'
+        +   '<span class="ot-badge weekly">Assignment</span>'
+        +   '<span class="ot-badge '+badgeStatus+'">'+escHtml(t.status)+'</span>'
+        + '</div>'
+        + '<div style="font-weight:600;font-size:14px;margin-bottom:6px;">'+escHtml(t.testLabel)+'</div>'
+        + '<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Batch: <b>'+escHtml(t.batchCode)+'</b></div>'
+        + '<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Assigned to: <b>'+escHtml(t.targetStudentNames || 'Entire Batch')+'</b></div>'
+        + '<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Duration: <b>'+t.duration+' days</b></div>'
+        + '<div style="font-size:12px;color:#6b7280;margin-bottom:8px;">Submissions: <b>'+(t.submissionCount||0)+'</b> (' + (t.pendingGradingCount || 0) + ' pending grade)</div>'
+        + '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Due Status: ' + dueHtml + '</div>'
+        + '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
+        + (t.status === 'Draft' ? '<button class="ot-btn success" onclick="otActivateAssignment(\''+escHtml(t.testId)+'\')">▶ Activate</button>' : '')
+        + (t.status === 'Active' ? '<button class="ot-btn danger" onclick="otCloseAssignment(\''+escHtml(t.testId)+'\')">❌ Close / Cancel</button>' : '')
+        + '<button class="ot-btn ghost" onclick="otPromptDuplicate(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">👯 Duplicate</button>'
+        + '<button class="ot-btn danger" onclick="otDeleteAssignment(\''+escHtml(t.testId)+'\')">🗑️ Delete</button>'
+        + '<button class="ot-btn primary" onclick="viewAssignmentSubmissions(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">✏️ Grade / View Submissions</button>'
+        + '</div>'
+        + '</div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
   }
 
   function loadPortfoliosList() {
@@ -7449,50 +7516,58 @@ function otHandleTestTypeChange() {
         renderPendingSubmissionsBanners();
       }
       updateInstructorBadges(otCurrentTests);
-      var portfolios = otCurrentTests.filter(function(t) { return t.testType === 'Portfolio Upload'; });
-      if (!portfolios.length) {
-        el.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:20px 0;text-align:center;">No portfolio requests created yet. Go to Request Portfolios tab.</div>';
-        return;
-      }
-      var html = '<div class="ot-grid">';
-      portfolios.forEach(function(t) {
-        var badgeStatus = t.status === 'Draft' ? 'draft' : t.status === 'Active' ? 'active' : 'closed';
-        var dueHtml = '—';
-        if (t.status === 'Active' && t.expiryAt) {
-          var diff = new Date(t.expiryAt) - new Date();
-          if (diff > 0) {
-            var days = Math.floor(diff / (24*60*60*1000));
-            var hrs = Math.floor((diff % (24*60*60*1000)) / (60*60*1000));
-            dueHtml = '<span style="color:#059669;font-weight:700;">Active (Due in ' + (days > 0 ? days + 'd ' : '') + hrs + 'h)</span>';
-          } else {
-            dueHtml = '<span style="color:#dc2626;font-weight:700;">Expired / Closed</span>';
-          }
-        } else if (t.status === 'Closed') {
-          dueHtml = '<span style="color:#9ca3af;">Closed</span>';
-        } else {
-          dueHtml = '<span style="color:#9ca3af;">Draft (not activated)</span>';
-        }
-        html += '<div class="ot-card">'
-          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">'
-          +   '<span class="ot-badge final">Portfolio</span>'
-          +   '<span class="ot-badge '+badgeStatus+'">'+escHtml(t.status)+'</span>'
-          + '</div>'
-          + '<div style="font-weight:600;font-size:14px;margin-bottom:6px;">'+escHtml(t.testLabel)+'</div>'
-          + '<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Batch: <b>'+escHtml(t.batchCode)+'</b></div>'
-          + '<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Assigned to: <b>'+escHtml(t.targetStudentNames || 'Entire Batch')+'</b></div>'
-          + '<div style="font-size:12px;color:#6b7280;margin-bottom:8px;">Submissions: <b>'+(t.submissionCount||0)+'</b> (' + (t.pendingGradingCount || 0) + ' pending grade)</div>'
-          + '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Due Status: ' + dueHtml + '</div>'
-          + '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
-          + (t.status === 'Draft' ? '<button class="ot-btn success" onclick="otActivatePortfolio(\''+escHtml(t.testId)+'\')">▶ Activate</button>' : '')
-          + (t.status === 'Active' ? '<button class="ot-btn danger" onclick="otClosePortfolio(\''+escHtml(t.testId)+'\')">❌ Close / Cancel</button>' : '')
-          + '<button class="ot-btn danger" onclick="otDeletePortfolio(\''+escHtml(t.testId)+'\')">🗑️ Delete</button>'
-          + '<button class="ot-btn primary" onclick="viewPortfolioSubmissions(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">✏️ Grade / View Submissions</button>'
-          + '</div>'
-          + '</div>';
-      });
-      html += '</div>';
-      el.innerHTML = html;
+      otPopulateFilterDropdowns(otCurrentTests);
+      
+      otApplyPortfoliosFilters();
     });
+  }
+
+  function renderPortfoliosList(portfolios) {
+    var el = document.getElementById('portfolios-list-wrap');
+    if (!el) return;
+    if (!portfolios.length) {
+      el.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:20px 0;text-align:center;">No portfolio requests created yet. Go to Request Portfolios tab.</div>';
+      return;
+    }
+    var html = '<div class="ot-grid">';
+    portfolios.forEach(function(t) {
+      var badgeStatus = t.status === 'Draft' ? 'draft' : t.status === 'Active' ? 'active' : 'closed';
+      var dueHtml = '—';
+      if (t.status === 'Active' && t.expiryAt) {
+        var diff = new Date(t.expiryAt) - new Date();
+        if (diff > 0) {
+          var days = Math.floor(diff / (24*60*60*1000));
+          var hrs = Math.floor((diff % (24*60*60*1000)) / (60*60*1000));
+          dueHtml = '<span style="color:#059669;font-weight:700;">Active (Due in ' + (days > 0 ? days + 'd ' : '') + hrs + 'h)</span>';
+        } else {
+          dueHtml = '<span style="color:#dc2626;font-weight:700;">Expired / Closed</span>';
+        }
+      } else if (t.status === 'Closed') {
+        dueHtml = '<span style="color:#9ca3af;">Closed</span>';
+      } else {
+        dueHtml = '<span style="color:#9ca3af;">Draft (not activated)</span>';
+      }
+      html += '<div class="ot-card">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">'
+        +   '<span class="ot-badge final">Portfolio</span>'
+        +   '<span class="ot-badge '+badgeStatus+'">'+escHtml(t.status)+'</span>'
+        + '</div>'
+        + '<div style="font-weight:600;font-size:14px;margin-bottom:6px;">'+escHtml(t.testLabel)+'</div>'
+        + '<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Batch: <b>'+escHtml(t.batchCode)+'</b></div>'
+        + '<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">Assigned to: <b>'+escHtml(t.targetStudentNames || 'Entire Batch')+'</b></div>'
+        + '<div style="font-size:12px;color:#6b7280;margin-bottom:8px;">Submissions: <b>'+(t.submissionCount||0)+'</b> (' + (t.pendingGradingCount || 0) + ' pending grade)</div>'
+        + '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Due Status: ' + dueHtml + '</div>'
+        + '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
+        + (t.status === 'Draft' ? '<button class="ot-btn success" onclick="otActivatePortfolio(\''+escHtml(t.testId)+'\')">▶ Activate</button>' : '')
+        + (t.status === 'Active' ? '<button class="ot-btn danger" onclick="otClosePortfolio(\''+escHtml(t.testId)+'\')">❌ Close / Cancel</button>' : '')
+        + '<button class="ot-btn ghost" onclick="otPromptDuplicate(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">👯 Duplicate</button>'
+        + '<button class="ot-btn danger" onclick="otDeletePortfolio(\''+escHtml(t.testId)+'\')">🗑️ Delete</button>'
+        + '<button class="ot-btn primary" onclick="viewPortfolioSubmissions(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">✏️ Grade / View Submissions</button>'
+        + '</div>'
+        + '</div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
   }
 
   function otActivateAssignment(testId) {
@@ -8125,6 +8200,301 @@ function otHandleTestTypeChange() {
       dropdown.style.display = 'none';
       document.removeEventListener('click', closeNotifDropdownOnOutsideClick);
     }
+  }
+
+  // ── FILTERING SYSTEM ────────────────────────────────────────────────────────
+  function otPopulateFilterDropdowns(tests) {
+    var testBatches = new Set();
+    tests.forEach(function(t) {
+      var b = t.batchCode || t.batchCodes || '';
+      if (b) {
+        testBatches.add(b.trim());
+      }
+    });
+
+    var batchDropdowns = ['ot-tests-batch', 'ot-assignments-batch', 'ot-portfolios-batch'];
+    batchDropdowns.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var currentVal = el.value;
+      var html = '<option value="">All Batches</option>';
+      Array.from(testBatches).sort().forEach(function(b) {
+        html += '<option value="' + escHtml(b) + '">' + escHtml(b) + '</option>';
+      });
+      el.innerHTML = html;
+      el.value = currentVal;
+    });
+  }
+
+  function otApplyTestsFilters() {
+    var searchEl = document.getElementById('ot-tests-search');
+    var batchEl = document.getElementById('ot-tests-batch');
+    var statusEl = document.getElementById('ot-tests-status');
+    
+    var searchVal = searchEl ? searchEl.value.trim().toLowerCase() : '';
+    var batchVal = batchEl ? batchEl.value : '';
+    var statusVal = statusEl ? statusEl.value : '';
+
+    var filtered = otCurrentTests.filter(function(t) {
+      if (t.testType === 'Assignment' || t.testType === 'Portfolio Upload') return false;
+      if (searchVal && (t.testLabel || '').toLowerCase().indexOf(searchVal) === -1) return false;
+      if (batchVal && (t.batchCode || t.batchCodes || '') !== batchVal) return false;
+      if (statusVal && t.status !== statusVal) return false;
+      return true;
+    });
+
+    otRenderTests(filtered);
+  }
+
+  function otApplyAssignmentsFilters() {
+    var searchEl = document.getElementById('ot-assignments-search');
+    var batchEl = document.getElementById('ot-assignments-batch');
+    var statusEl = document.getElementById('ot-assignments-status');
+    
+    var searchVal = searchEl ? searchEl.value.trim().toLowerCase() : '';
+    var batchVal = batchEl ? batchEl.value : '';
+    var statusVal = statusEl ? statusEl.value : '';
+
+    var filtered = otCurrentTests.filter(function(t) {
+      if (t.testType !== 'Assignment') return false;
+      if (searchVal && (t.testLabel || '').toLowerCase().indexOf(searchVal) === -1) return false;
+      if (batchVal && (t.batchCode || t.batchCodes || '') !== batchVal) return false;
+      if (statusVal && t.status !== statusVal) return false;
+      return true;
+    });
+
+    renderAssignmentsList(filtered);
+  }
+
+  function otApplyPortfoliosFilters() {
+    var searchEl = document.getElementById('ot-portfolios-search');
+    var batchEl = document.getElementById('ot-portfolios-batch');
+    var statusEl = document.getElementById('ot-portfolios-status');
+    
+    var searchVal = searchEl ? searchEl.value.trim().toLowerCase() : '';
+    var batchVal = batchEl ? batchEl.value : '';
+    var statusVal = statusEl ? statusEl.value : '';
+
+    var filtered = otCurrentTests.filter(function(t) {
+      if (t.testType !== 'Portfolio Upload') return false;
+      if (searchVal && (t.testLabel || '').toLowerCase().indexOf(searchVal) === -1) return false;
+      if (batchVal && (t.batchCode || t.batchCodes || '') !== batchVal) return false;
+      if (statusVal && t.status !== statusVal) return false;
+      return true;
+    });
+
+    renderPortfoliosList(filtered);
+  }
+
+  // ── TEST DUPLICATION ────────────────────────────────────────────────────────
+  function otPromptDuplicate(testId, originalLabel) {
+    if (!document.getElementById('ot-dup-modal')) {
+      var m = document.createElement('div');
+      m.id = 'ot-dup-modal';
+      m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9600;align-items:flex-start;justify-content:center;overflow-y:auto;padding:32px 16px;';
+      m.innerHTML = '<div class="otqm-box" style="max-width:550px; margin-top:40px;">'
+        + '<div class="otqm-head">'
+        +   '<h3>👯 Duplicate Test / Assignment</h3>'
+        +   '<button style="background:none;border:none;font-size:20px;cursor:pointer;color:#6b7280;" onclick="otCloseDuplicateModal()">✕</button>'
+        + '</div>'
+        + '<div class="otqm-body" style="max-height: 80vh;">'
+        +   '<form id="ot-dup-form" onsubmit="event.preventDefault(); otSubmitDuplicate();">'
+        +     '<input type="hidden" id="ot-dup-src-id">'
+        +     '<div style="margin-bottom: 12px;">'
+        +       '<label style="font-size:12px; font-weight:600; color:#374151; display:block; margin-bottom:4px;">New Title / Name</label>'
+        +       '<input type="text" id="ot-dup-name" required style="width:100%; padding:8px 10px; font-size:13px; border:1.5px solid #e5e7eb; border-radius:8px; box-sizing:border-box; outline:none;">'
+        +     '</div>'
+        +     '<div style="margin-bottom: 12px;">'
+        +       '<label style="font-size:12px; font-weight:600; color:#374151; display:block; margin-bottom:4px;">Target Batch</label>'
+        +       '<select id="ot-dup-batch" required onchange="otLoadDupStudents()" style="width:100%; padding:8px 10px; font-size:13px; border:1.5px solid #e5e7eb; border-radius:8px; box-sizing:border-box; outline:none; background:#fff;">'
+        +         '<option value="">— select batch —</option>'
+        +       '</select>'
+        +     '</div>'
+        +     '<div style="margin-bottom: 12px;">'
+        +       '<label style="font-size:12px; font-weight:600; color:#374151; display:block; margin-bottom:4px;">Assign To</label>'
+        +       '<div style="display:flex; gap:16px; margin-top:4px;">'
+        +         '<label style="display:inline-flex; align-items:center; font-size:13px; font-weight:400; cursor:pointer;">'
+        +           '<input type="radio" name="ot-dup-target-type" value="ALL" checked onchange="otToggleDupTargeting()" style="margin-right:6px;"> Entire Batch'
+        +         '</label>'
+        +         '<label style="display:inline-flex; align-items:center; font-size:13px; font-weight:400; cursor:pointer;">'
+        +           '<input type="radio" name="ot-dup-target-type" value="SPECIFIC" onchange="otToggleDupTargeting()" style="margin-right:6px;"> Specific Students'
+        +         '</label>'
+        +       '</div>'
+        +     '</div>'
+        +     '<div id="ot-dup-students-container" style="display:none; border:1px solid #e5e7eb; border-radius:8px; padding:10px; max-height:180px; overflow-y:auto; margin-bottom:16px; background:#f9fafb;">'
+        +       '<div style="font-size:11px; font-weight:600; color:#6b7280; margin-bottom:6px; border-bottom:1px solid #e5e7eb; padding-bottom:4px; display:flex; justify-content:space-between; align-items:center;">'
+        +         '<span>Select Students</span>'
+        +         '<div>'
+        +           '<button type="button" onclick="otDupSelectAllStudents(true)" style="background:none; border:none; color:#2563eb; font-size:10px; cursor:pointer; padding:0 4px;">All</button>'
+        +           '<span style="color:#d1d5db;">|</span>'
+        +           '<button type="button" onclick="otDupSelectAllStudents(false)" style="background:none; border:none; color:#2563eb; font-size:10px; cursor:pointer; padding:0 4px;">None</button>'
+        +         '</div>'
+        +       '</div>'
+        +       '<div id="ot-dup-students-list" style="display:flex; flex-direction:column; gap:6px;">'
+        +         '<div style="color:#9ca3af; font-size:12px; text-align:center; padding:10px 0;">Select a batch to load students...</div>'
+        +       '</div>'
+        +     '</div>'
+        +     '<div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px; border-top:1px solid #f3f4f6; padding-top:12px;">'
+        +       '<button type="button" class="ot-btn ghost" onclick="otCloseDuplicateModal()">Cancel</button>'
+        +       '<button type="submit" class="ot-btn primary" id="ot-dup-submit-btn">👯 Duplicate &amp; Save</button>'
+        +     '</div>'
+        +   '</form>'
+        + '</div>'
+        + '</div>';
+      document.body.appendChild(m);
+    }
+
+    document.getElementById('ot-dup-src-id').value = testId;
+    document.getElementById('ot-dup-name').value = originalLabel + ' (Copy)';
+    
+    var radios = document.getElementsByName('ot-dup-target-type');
+    for (var i = 0; i < radios.length; i++) {
+      radios[i].checked = (radios[i].value === 'ALL');
+    }
+    
+    document.getElementById('ot-dup-students-container').style.display = 'none';
+    document.getElementById('ot-dup-students-list').innerHTML = '<div style="color:#9ca3af; font-size:12px; text-align:center; padding:10px 0;">Select a batch to load students...</div>';
+    
+    var batchSel = document.getElementById('ot-dup-batch');
+    batchSel.innerHTML = '<option value="">— select batch —</option>';
+    if (instructorBatchesCache && instructorBatchesCache.length) {
+      instructorBatchesCache.forEach(function(b) {
+        batchSel.innerHTML += '<option value="' + escHtml(b.batchCode) + '">' + escHtml(b.batchCode) + ' – ' + escHtml(b.course || b.courseName || '') + '</option>';
+      });
+    }
+
+    document.getElementById('ot-dup-modal').style.display = 'flex';
+  }
+
+  function otCloseDuplicateModal() {
+    var modal = document.getElementById('ot-dup-modal');
+    if (modal) {
+      modal.style.display = 'none';
+    }
+  }
+
+  function otToggleDupTargeting() {
+    var isSpecific = false;
+    var radios = document.getElementsByName('ot-dup-target-type');
+    for (var i = 0; i < radios.length; i++) {
+      if (radios[i].checked && radios[i].value === 'SPECIFIC') {
+        isSpecific = true;
+      }
+    }
+    document.getElementById('ot-dup-students-container').style.display = isSpecific ? 'block' : 'none';
+    if (isSpecific) {
+      otLoadDupStudents();
+    }
+  }
+
+  function otLoadDupStudents() {
+    var batchCode = document.getElementById('ot-dup-batch').value;
+    var listEl = document.getElementById('ot-dup-students-list');
+    if (!listEl) return;
+    
+    if (!batchCode) {
+      listEl.innerHTML = '<div style="color:#9ca3af; font-size:12px; text-align:center; padding:10px 0;">Select a batch to load students...</div>';
+      return;
+    }
+    
+    listEl.innerHTML = '<div style="color:#9ca3af; font-size:12px; text-align:center; padding:10px 0;">Loading students...</div>';
+    
+    gasGet({action: 'getStudents', batchCode: batchCode}, function(err, d) {
+      if (err || !d || d.status !== 'ok') {
+        listEl.innerHTML = '<div style="color:#dc2626; font-size:12px; text-align:center; padding:10px 0;">Failed to load students.</div>';
+        return;
+      }
+      
+      var students = d.students || [];
+      if (!students.length) {
+        listEl.innerHTML = '<div style="color:#9ca3af; font-size:12px; text-align:center; padding:10px 0;">No students in this batch.</div>';
+        return;
+      }
+      
+      var html = '';
+      students.forEach(function(s) {
+        html += '<label style="display:flex; align-items:center; gap:8px; font-size:12px; font-weight:400; cursor:pointer; padding:2px 0;">'
+          + '<input type="checkbox" name="ot-dup-student" value="' + escHtml(s.studentId) + '" data-name="' + escHtml(s.studentName) + '">'
+          + '<span>' + escHtml(s.studentName) + ' (' + escHtml(s.studentId) + ')</span>'
+          + '</label>';
+      });
+      listEl.innerHTML = html;
+    });
+  }
+
+  function otDupSelectAllStudents(checked) {
+    var checkBoxes = document.getElementsByName('ot-dup-student');
+    for (var i = 0; i < checkBoxes.length; i++) {
+      checkBoxes[i].checked = checked;
+    }
+  }
+
+  function otSubmitDuplicate() {
+    var srcId = document.getElementById('ot-dup-src-id').value;
+    var name = document.getElementById('ot-dup-name').value.trim();
+    var batch = document.getElementById('ot-dup-batch').value;
+    
+    if (!name || !batch) {
+      alert('Please fill out all required fields.');
+      return;
+    }
+    
+    var targetType = 'ALL';
+    var radios = document.getElementsByName('ot-dup-target-type');
+    for (var i = 0; i < radios.length; i++) {
+      if (radios[i].checked) {
+        targetType = radios[i].value;
+      }
+    }
+    
+    var targetStudents = 'ALL';
+    if (targetType === 'SPECIFIC') {
+      var checkBoxes = document.getElementsByName('ot-dup-student');
+      var selectedIds = [];
+      for (var i = 0; i < checkBoxes.length; i++) {
+        if (checkBoxes[i].checked) {
+          selectedIds.push(checkBoxes[i].value);
+        }
+      }
+      if (!selectedIds.length) {
+        alert('Please select at least one student or choose "Entire Batch".');
+        return;
+      }
+      targetStudents = selectedIds.join(',');
+    }
+    
+    var submitBtn = document.getElementById('ot-dup-submit-btn');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Duplicating...';
+    }
+    
+    var payload = {
+      action: 'duplicateOnlineTest',
+      instructor: instructorName,
+      sourceTestId: srcId,
+      newTestLabel: name,
+      newBatchCode: batch,
+      newTargetStudents: targetStudents
+    };
+    
+    gasGet(payload, function(err, d) {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '👯 Duplicate & Save';
+      }
+      if (err || !d || d.status !== 'ok') {
+        alert('Error duplicating: ' + (d && d.reason || 'Failed'));
+        return;
+      }
+      
+      alert('✅ Successfully duplicated! Cloned as Draft.');
+      otCloseDuplicateModal();
+      
+      otLoadTests();
+      loadAssignmentsList();
+      loadPortfoliosList();
+    });
   }
 
 </script>

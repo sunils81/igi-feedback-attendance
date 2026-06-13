@@ -2978,6 +2978,7 @@ function doGet(e) {
     if (act==='getQuestionBank')         return respond(otGetQuestionBank(ss,p));
     if (act==='getStudentsForBatches')   return respond(otGetStudentsForBatches(ss,p));
     if (act==='createOnlineTest')        return respond(otCreateTest(ss,p));
+    if (act==='duplicateOnlineTest')     return respond(otDuplicateTest(ss,p));
     if (act==='getInstructorTests')      return respond(otGetInstructorTests(ss,p));
     if (act==='getTestDetails')          return respond(otGetTestDetails(ss,p));
     if (act==='saveTestQuestions')       return respond(otSaveTestQuestions(ss,p));
@@ -4788,6 +4789,83 @@ function otCreateTest(ss, p) {
   // If scheduled, set up trigger check
   if (schedAt) otEnsureScheduledTrigger();
   return {status:'ok', testId:testId, testStatus:status};
+}
+
+function otDuplicateTest(ss, p) {
+  if (!p.instructor || !p.sourceTestId || !p.newTestLabel || !p.newBatchCode) {
+    return {status:'error', reason:'missing_params'};
+  }
+  ensureOnlineTestSheets(ss);
+  
+  // 1. Get source test row from SH_ONLINE_TESTS
+  var shOT = ss.getSheetByName(SH_ONLINE_TESTS);
+  var otRows = shOT.getLastRow()>1 ? shOT.getRange(2,1,shOT.getLastRow()-1,23).getValues() : [];
+  var srcRow = otRows.find(function(r) { return r[0] === p.sourceTestId; });
+  if (!srcRow) return {status:'error', reason:'source_test_not_found'};
+  
+  // 2. Generate new testId
+  var now = new Date();
+  var newTestId = 'OT-'+now.getFullYear()+'-'+Utilities.formatDate(now,Session.getScriptTimeZone(),'MMddHHmmss');
+  
+  // 3. Insert new test record as Draft
+  shOT.appendRow([
+    newTestId,
+    p.newTestLabel,
+    srcRow[2], // testType
+    p.newBatchCode, // batchCodes
+    srcRow[4], // course
+    srcRow[5], // duration
+    'Draft', // status
+    srcRow[7], // negativeMarking
+    srcRow[8], // negMarkValue
+    '', // activatedAt
+    '', // closedAt
+    'No', // resultsReleased
+    srcRow[12], // resultsMode
+    p.instructor, // createdBy
+    now.toISOString(), // createdAt
+    p.newTargetStudents || 'ALL', // targetStudents
+    srcRow[16], // expiryMode
+    '', // expiryAt (Draft doesn't have expiry active)
+    srcRow[18], // allowRetake
+    srcRow[19], // shuffleQuestions
+    srcRow[20], // instructions
+    '', // scheduledActivateAt
+    srcRow[22] // passingScore
+  ]);
+  
+  // 4. Duplicate questions from SH_OT_QUESTIONS
+  var shQ = ss.getSheetByName(SH_OT_QUESTIONS);
+  if (shQ && shQ.getLastRow() > 1) {
+    var qRows = shQ.getRange(2, 1, shQ.getLastRow() - 1, 13).getValues();
+    var newQRows = [];
+    qRows.forEach(function(r) {
+      if (String(r[0]) === String(p.sourceTestId)) {
+        newQRows.push([
+          newTestId, // new test ID
+          r[1], // course
+          r[2], // qNo
+          r[3], // type
+          r[4], // question
+          r[5], // opt1
+          r[6], // opt2
+          r[7], // opt3
+          r[8], // opt4
+          r[9], // correctAnswer
+          r[10], // addedBy
+          now.toISOString(), // addedAt
+          r[12] // qIndex
+        ]);
+      }
+    });
+    
+    if (newQRows.length > 0) {
+      // Append the duplicate questions
+      shQ.getRange(shQ.getLastRow() + 1, 1, newQRows.length, 13).setValues(newQRows);
+    }
+  }
+  
+  return {status:'ok', newTestId:newTestId};
 }
 
 function otGetInstructorTests(ss, p) {

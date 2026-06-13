@@ -6723,23 +6723,31 @@ function renderDiplomaTable(list) {
   }
   
   tbody.innerHTML = list.map(function(a) {
-    var attPct = a.attendance.pct;
-    var attPass = a.attendance.pass;
-    var attStr = a.attendance.attended + ' / ' + a.attendance.total + ' (' + attPct + '%)';
-    // Attendance is advisory — green if ≥75%, amber warning if below (not a hard block)
-    var attBadge = attPass
-      ? '<span style="color:#168B57;font-weight:700">✅ ' + attStr + '</span>'
-      : '<span style="color:#b45309;font-weight:700">⚠ ' + attStr + '</span>';
+    // Support both old GAS shape (a.attendance.pct) and new Supabase flat shape (a.attPct)
+    var attPct  = (a.attendance && a.attendance.pct  != null) ? a.attendance.pct  : a.attPct;
+    var attPass = (a.attendance && a.attendance.pass != null) ? a.attendance.pass : (attPct != null && attPct >= 75);
+    var attStr  = (a.attendance && a.attendance.total)
+      ? (a.attendance.attended + ' / ' + a.attendance.total + ' (' + attPct + '%)')
+      : (attPct != null ? attPct + '%' : 'N/A');
+    var attBadge = attPct == null
+      ? '<span style="color:var(--muted)">N/A</span>'
+      : (attPass
+          ? '<span style="color:#168B57;font-weight:700">✅ ' + attStr + '</span>'
+          : '<span style="color:#b45309;font-weight:700">⚠ ' + attStr + '</span>');
 
-    var weeklyStr = a.weeklyAvg.value !== null ? a.weeklyAvg.value + '%' : 'N/A';
-    var weeklyBadge = a.weeklyAvg.value !== null
-      ? (a.weeklyAvg.pass ? '<span style="color:#168B57;font-weight:700">✅ ' + weeklyStr + '</span>' : '<span style="color:#C94A4A;font-weight:700">❌ ' + weeklyStr + '</span>')
-      : '<span style="color:var(--muted)">' + weeklyStr + '</span>';
+    var weeklyVal  = (a.weeklyAvg && a.weeklyAvg.value != null) ? a.weeklyAvg.value : (a.weeklyAvg != null && typeof a.weeklyAvg === 'number' ? a.weeklyAvg : null);
+    var weeklyPass = weeklyVal != null && weeklyVal >= 60;
+    var weeklyStr  = weeklyVal != null ? weeklyVal + '%' : 'N/A';
+    var weeklyBadge = weeklyVal != null
+      ? (weeklyPass ? '<span style="color:#168B57;font-weight:700">✅ ' + weeklyStr + '</span>' : '<span style="color:#C94A4A;font-weight:700">❌ ' + weeklyStr + '</span>')
+      : '<span style="color:var(--muted)">N/A</span>';
 
-    var finalStr = a.finalExam.value !== null ? a.finalExam.value + '%' : 'N/A';
-    var finalBadge = a.finalExam.value !== null
-      ? (a.finalExam.pass ? '<span style="color:#168B57;font-weight:700">✅ ' + finalStr + '</span>' : '<span style="color:#C94A4A;font-weight:700">❌ ' + finalStr + '</span>')
-      : '<span style="color:var(--muted)">' + finalStr + '</span>';
+    var finalVal  = (a.finalExam && a.finalExam.value != null) ? a.finalExam.value : (a.finalPct != null ? a.finalPct : null);
+    var finalPass = finalVal != null && finalVal >= 60;
+    var finalStr  = finalVal != null ? finalVal + '%' : 'N/A';
+    var finalBadge = finalVal != null
+      ? (finalPass ? '<span style="color:#168B57;font-weight:700">✅ ' + finalStr + '</span>' : '<span style="color:#C94A4A;font-weight:700">❌ ' + finalStr + '</span>')
+      : '<span style="color:var(--muted)">N/A</span>';
 
     var actionCell = '';
     var canRelease = false;
@@ -6764,9 +6772,9 @@ function renderDiplomaTable(list) {
       actionCell = '<button class="btn btn-gold btn-xs" onclick="releaseDiploma(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', this)" style="padding:5px 10px;font-size:11px;margin:0 auto;display:block">Release Diploma</button>' + approvedBadge;
     } else {
       var requestBtn = '';
-      var isBorderline = (a.weeklyAvg.value !== null && a.weeklyAvg.value >= 50 && a.weeklyAvg.value < 60) || (a.finalExam.value !== null && a.finalExam.value >= 50 && a.finalExam.value < 60);
+      var isBorderline = (weeklyVal != null && weeklyVal >= 50 && weeklyVal < 60) || (finalVal != null && finalVal >= 50 && finalVal < 60);
       if (isBorderline && (counselorName === 'Bianca' || counselorName === 'Anuradha')) {
-        requestBtn = '<button class="btn btn-outline btn-xs" onclick="requestHODApproval(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', \'' + escC(a.studentName.replace(/'/g, "\\'")) + '\', ' + a.weeklyAvg.value + ', ' + a.finalExam.value + ', this)" style="padding:4px 8px;font-size:10px;margin:5px auto 0;display:block;width:100%">Request HOD</button>';
+        requestBtn = '<button class="btn btn-outline btn-xs" onclick="requestHODApproval(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', \'' + escC(a.studentName.replace(/'/g, "\\'")) + '\', ' + weeklyVal + ', ' + finalVal + ', this)" style="padding:4px 8px;font-size:10px;margin:5px auto 0;display:block;width:100%">Request HOD</button>';
       }
       actionCell = '<span class="badge" style="background:#F4F4F5;color:#71717A;border:1px solid #E4E4E7;padding:3px 8px;font-size:11px">Ineligible</span>' + requestBtn;
     }

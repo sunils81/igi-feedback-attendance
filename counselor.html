@@ -7033,42 +7033,40 @@ async function _generateDiplomaPDF(studentName, studentId, course, completionDat
   cover(coords.name.cover);
   if (studentName) drawCentred(studentName, fontName, coords.name.size, coords.name.y);
 
-  // 2. Completion date — match pre-printed font style
-  cover(coords.date.cover);
-  if (completionDate) page.drawText(completionDate, {x:coords.date.x, y:coords.date.y, size:coords.date.size, font:fontBold, color:black});
+  // 2, 3, 4 — date, student ID, instructor name all handled in section 5 below
+  //            (drawn after white covers erase any pre-printed template text)
 
-  // 3. Student ID — match date font
-  cover(coords.id.cover);
-  if (studentId) page.drawText('Student ID - ' + studentId, {x:coords.id.x, y:coords.id.y, size:coords.id.size, font:fontBold, color:black});
-
-  // 4. Instructor name — centred above "COURSE INSTRUCTOR" label
-  if (instructorName) {
-    var iw = fontNormal.widthOfTextAtSize(instructorName, coords.instructor.size);
-    var ix = coords.instructor.x - iw / 2;
-    page.drawText(instructorName, {x:ix, y:coords.instructor.y, size:coords.instructor.size, font:fontNormal, color:black});
-  }
-
-  // 5. Bottom section labels (drawn by code since template is clean)
+  // 5. Bottom section — erase any pre-printed text with white, then draw ours cleanly
   var labelSize = 8;
   var smallSize = 9;
+  var ciX = coords.instructor.x;
+  var chX = coords.chairman ? coords.chairman.x : 870;
+
+  // White covers to erase old pre-printed bottom text (works whether template is blank or not)
+  page.drawRectangle({x:35,  y:60, width:200, height:80, color:white}); // ANTWERP + WDC area
+  page.drawRectangle({x:175, y:60, width:200, height:80, color:white}); // date + student ID area
+  page.drawRectangle({x:ciX-120, y:60, width:240, height:80, color:white}); // COURSE INSTRUCTOR area
+  page.drawRectangle({x:chX-120, y:60, width:240, height:80, color:white}); // CHAIRMAN area
 
   // Bottom-left: ANTWERP / World Diamond Center
-  page.drawText('ANTWERP', {x:50, y:115, size:smallSize, font:fontBold, color:black});
-  page.drawText('World Diamond Center', {x:50, y:103, size:labelSize, font:fontNormal, color:black});
+  page.drawText('ANTWERP', {x:50, y:118, size:smallSize, font:fontBold, color:black});
+  page.drawText('World Diamond Center', {x:50, y:106, size:labelSize, font:fontNormal, color:black});
 
-  // Bottom-centre: COURSE INSTRUCTOR label (under instructor signature)
-  var ciLabel1 = 'COURSE';
-  var ciLabel2 = 'INSTRUCTOR';
-  var ciX = coords.instructor.x;
-  page.drawText(ciLabel1, {x: ciX - fontBold.widthOfTextAtSize(ciLabel1, labelSize)/2, y:88, size:labelSize, font:fontBold, color:black});
-  page.drawText(ciLabel2, {x: ciX - fontBold.widthOfTextAtSize(ciLabel2, labelSize)/2, y:77, size:labelSize, font:fontBold, color:black});
+  // Bottom-centre-left: Date + Student ID
+  if (completionDate) page.drawText(completionDate, {x:190, y:118, size:smallSize, font:fontNormal, color:black});
+  if (studentId) page.drawText('Student ID - ' + studentId, {x:190, y:106, size:smallSize, font:fontNormal, color:black});
 
-  // Bottom-right: CHAIRMAN / OF THE BOARD (under chairman signature)
-  var chX = coords.chairman ? coords.chairman.x : 870;
-  var chLabel1 = 'CHAIRMAN';
-  var chLabel2 = 'OF THE BOARD';
-  page.drawText(chLabel1, {x: chX - fontBold.widthOfTextAtSize(chLabel1, labelSize)/2, y:88, size:labelSize, font:fontBold, color:black});
-  page.drawText(chLabel2, {x: chX - fontBold.widthOfTextAtSize(chLabel2, labelSize)/2, y:77, size:labelSize, font:fontBold, color:black});
+  // Bottom-centre: instructor name + COURSE INSTRUCTOR label
+  if (instructorName) {
+    var iw2 = fontNormal.widthOfTextAtSize(instructorName, coords.instructor.size);
+    page.drawText(instructorName, {x: ciX - iw2/2, y:coords.instructor.y, size:coords.instructor.size, font:fontNormal, color:black});
+  }
+  page.drawText('COURSE',     {x: ciX - fontBold.widthOfTextAtSize('COURSE',     labelSize)/2, y:91, size:labelSize, font:fontBold, color:black});
+  page.drawText('INSTRUCTOR', {x: ciX - fontBold.widthOfTextAtSize('INSTRUCTOR', labelSize)/2, y:80, size:labelSize, font:fontBold, color:black});
+
+  // Bottom-right: CHAIRMAN / OF THE BOARD
+  page.drawText('CHAIRMAN',     {x: chX - fontBold.widthOfTextAtSize('CHAIRMAN',     labelSize)/2, y:91, size:labelSize, font:fontBold, color:black});
+  page.drawText('OF THE BOARD', {x: chX - fontBold.widthOfTextAtSize('OF THE BOARD', labelSize)/2, y:80, size:labelSize, font:fontBold, color:black});
 
   var pdfBytes = await pdfDoc.save();
   return _uint8ToBase64(pdfBytes);

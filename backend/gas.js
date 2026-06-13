@@ -1156,6 +1156,10 @@ function doGet(e) {
       return respond({status:'ok',batchCode:p.batchCode});
     }
 
+    if (act==='deleteBatch') {
+      return respond(deleteBatch(ss, p));
+    }
+
     // ── getBatchSnapshot ──────────────────────────────────────
     if (act==='getBatchSnapshot') return respond(getBatchSnapshot(ss));
 
@@ -1224,6 +1228,8 @@ function doGet(e) {
       const studentId=String(p.enrollmentNo).trim().toUpperCase();
       const batchCodes=String(p.batchCodes||p.batchCode||'').split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
       if(!studentId||!p.name||mobileLast4.length!==4||!batchCodes.length)return respond({status:'error',reason:'missing_params'});
+      const clashError = checkStudentClashes(ss, studentId, batchCodes);
+      if (clashError) return respond(clashError);
       const existing=getStudentById(ss,studentId);
       if(existing){
         const row=existing.rowIndex;
@@ -8558,4 +8564,210 @@ function seedInventoryStock(ss, p) {
     if (rows.length > 0) sh.getRange(2, 1, rows.length, 6).setValues(rows);
     return {status:'ok', message:'Seeded stock for '+Object.keys(STOCK_DATA).length+' centres ('+rows.length+' rows)', count:rows.length};
   } catch(err) { return {status:'error', message: err.toString()}; }
+}
+
+function checkStudentClashes(ss, studentId, batchCodes) {
+  const shBatches = ss.getSheetByName(SH_BATCHES);
+  if (!shBatches || shBatches.getLastRow() < 2) return null;
+  
+  // 1. Build batches map
+  const batchesMap = {};
+  const batchData = shBatches.getRange(2, 1, shBatches.getLastRow() - 1, 10).getValues();
+  batchData.forEach(r => {
+    const code = String(r[0]).trim().toUpperCase();
+    const isNew = detectSlotOrDate(r[4]);
+    batchesMap[code] = {
+      batchCode: code,
+      centre: r[1],
+      course: r[2],
+      type: r[3],
+      batchSlot: isNew ? String(r[4]).trim() : 'Full Day',
+      startDate: isNew ? r[5] : r[4],
+      endDate: isNew ? r[6] : r[5]
+    };
+  });
+  
+  // 2. Fetch active student enrollments
+  const studentEnrollments = getEnrollmentRows(ss).filter(e => e.studentId === studentId && String(e.status).trim().toLowerCase() === 'active');
+  if (!studentEnrollments.length) return null;
+  
+  const parseDateSafe = function(val) {
+    if (!val) return null;
+    if (val instanceof Date) return new Date(val);
+    const s = String(val).trim();
+    const parts = s.split('/');
+    if (parts.length === 3) {
+      return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  };
+  
+  const fmtDateString = function(v) {
+    if (!v) return '';
+    if (v instanceof Date) return v.toLocaleDateString('en-IN');
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? String(v) : d.toLocaleDateString('en-IN');
+  };
+  
+  for (let i = 0; i < batchCodes.length; i++) {
+    const newBatchCode = batchCodes[i];
+    const newBatch = batchesMap[newBatchCode];
+    if (!newBatch) continue;
+    
+    for (let j = 0; j < studentEnrollments.length; j++) {
+      const e = studentEnrollments[j];
+      const existingBatch = batchesMap[e.batchCode];
+      if (!existingBatch) continue;
+      
+      // Course duplicate check
+      if (existingBatch.course === newBatch.course) {
+        return {
+          status: 'error',
+          reason: 'course_exists',
+          message: 'Student ' + studentId + ' is already enrolled in course "' + newBatch.course + '" (Batch: ' + e.batchCode + ').'
+        };
+      }
+      
+      // Schedule/Time clash check
+      const startA = parseDateSafe(existingBatch.startDate);
+      const endA = parseDateSafe(existingBatch.endDate);
+      const startB = parseDateSafe(newBatch.startDate);
+      const endB = parseDateSafe(newBatch.endDate);
+      
+      if (startA && endA && startB && endB) {
+        startA.setHours(0,0,0,0);
+        endA.setHours(23,59,59,999);
+        startB.setHours(0,0,0,0);
+        endB.setHours(23,59,59,999);
+        
+        const dateOverlap = (startA <= endB && startB <= endA);
+        if (dateOverlap) {
+          const slotA = existingBatch.batchSlot || 'Full Day';
+          const slotB = newBatch.batchSlot || 'Full Day';
+          const slotOverlap = (slotA === 'Full Day' || slotB === 'Full Day' || slotA === slotB);
+          if (slotOverlap) {
+            return {
+              status: 'error',
+              reason: 'schedule_clash',
+              message: 'Schedule Clash: Student ' + studentId + ' is already enrolled in batch ' + e.batchCode + ' (' + slotA + ') during this duration (' + fmtDateString(existingBatch.startDate) + ' to ' + fmtDateString(existingBatch.endDate) + ').'
+            };
+          }
+        }
+      }
+    }
+  }
+  
+  return null;
+}
+
+function deleteBatch(ss, p) {
+  try {
+    const batchCode = String(p.batchCode || '').trim().toUpperCase();
+    const keepStudents = (p.keepStudents === 'true');
+    
+    if (!batchCode) {
+      return {status: 'error', reason: 'missing_batch_code', message: 'Missing batch code parameter.'};
+    }
+    
+    // 1. Delete from SH_BATCHES
+    const shBatches = ss.getSheetByName(SH_BATCHES);
+    if (shBatches && shBatches.getLastRow() > 1) {
+      const data = shBatches.getRange(2, 1, shBatches.getLastRow() - 1, 1).getValues();
+      for (let i = data.length - 1; i >= 0; i--) {
+        if (String(data[i][0]).trim().toUpperCase() === batchCode) {
+          shBatches.deleteRow(i + 2);
+        }
+      }
+    }
+    
+    // 2. Delete from SH_ENROLLMENTS
+    const shEnrollments = ss.getSheetByName(SH_ENROLLMENTS);
+    if (shEnrollments && shEnrollments.getLastRow() > 1) {
+      const data = shEnrollments.getRange(2, 2, shEnrollments.getLastRow() - 1, 1).getValues();
+      for (let i = data.length - 1; i >= 0; i--) {
+        if (String(data[i][0]).trim().toUpperCase() === batchCode) {
+          shEnrollments.deleteRow(i + 2);
+        }
+      }
+    }
+    
+    // 3. Delete from SH_STUDENTS (if keepStudents is false)
+    if (!keepStudents) {
+      const shStudents = ss.getSheetByName(SH_STUDENTS);
+      if (shStudents && shStudents.getLastRow() > 1) {
+        const data = shStudents.getRange(2, 2, shStudents.getLastRow() - 1, 1).getValues();
+        for (let i = data.length - 1; i >= 0; i--) {
+          if (String(data[i][0]).trim().toUpperCase() === batchCode) {
+            shStudents.deleteRow(i + 2);
+          }
+        }
+      }
+    }
+    
+    // 4. Delete from SH_SESSIONS
+    const shSessions = ss.getSheetByName(SH_SESSIONS);
+    if (shSessions && shSessions.getLastRow() > 1) {
+      const data = shSessions.getRange(2, 2, shSessions.getLastRow() - 1, 1).getValues();
+      for (let i = data.length - 1; i >= 0; i--) {
+        if (String(data[i][0]).trim().toUpperCase() === batchCode) {
+          shSessions.deleteRow(i + 2);
+        }
+      }
+    }
+    
+    // 5. Delete from SH_FEEDBACK
+    const shFeedback = ss.getSheetByName(SH_FEEDBACK);
+    if (shFeedback && shFeedback.getLastRow() > 1) {
+      const data = shFeedback.getRange(2, 4, shFeedback.getLastRow() - 1, 1).getValues();
+      for (let i = data.length - 1; i >= 0; i--) {
+        if (String(data[i][0]).trim().toUpperCase() === batchCode) {
+          shFeedback.deleteRow(i + 2);
+        }
+      }
+    }
+    
+    // 6. Delete from SH_FEES
+    const shFees = ss.getSheetByName(SH_FEES);
+    if (shFees && shFees.getLastRow() > 1) {
+      const data = shFees.getRange(2, 3, shFees.getLastRow() - 1, 1).getValues();
+      for (let i = data.length - 1; i >= 0; i--) {
+        if (String(data[i][0]).trim().toUpperCase() === batchCode) {
+          shFees.deleteRow(i + 2);
+        }
+      }
+    }
+    
+    // 7. Find assessment IDs for this batch and delete marks, then delete assessments
+    const shAssessments = ss.getSheetByName(SH_ASSESSMENTS);
+    const assessmentIds = [];
+    if (shAssessments && shAssessments.getLastRow() > 1) {
+      const data = shAssessments.getRange(2, 1, shAssessments.getLastRow() - 1, 2).getValues();
+      for (let i = data.length - 1; i >= 0; i--) {
+        if (String(data[i][1]).trim().toUpperCase() === batchCode) {
+          assessmentIds.push(String(data[i][0]));
+          shAssessments.deleteRow(i + 2);
+        }
+      }
+    }
+    
+    if (assessmentIds.length > 0) {
+      const shMarks = ss.getSheetByName(SH_MARKS);
+      if (shMarks && shMarks.getLastRow() > 1) {
+        const data = shMarks.getRange(2, 1, shMarks.getLastRow() - 1, 1).getValues();
+        for (let i = data.length - 1; i >= 0; i--) {
+          if (assessmentIds.includes(String(data[i][0]))) {
+            shMarks.deleteRow(i + 2);
+          }
+        }
+      }
+    }
+    
+    // Invalidate script cache
+    try { CacheService.getScriptCache().remove('batches||'); } catch(_e){}
+    
+    return {status: 'ok'};
+  } catch (err) {
+    return {status: 'error', message: err.toString()};
+  }
 }

@@ -3205,8 +3205,8 @@ function addStudent() {
   gasGet({action:'addStudent',enrollmentNo:enrol,batchCode:batch,batchCodes:batchCodes.join(','),name,mobileLast4,mobile,email},function(e,d){
     btn.textContent='Add Student →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') {
-      errEl.textContent='Could not add student. Try again.';
-      errEl.style.color='';
+      errEl.textContent = (d && d.message) || 'Could not add student. Try again.';
+      errEl.style.color='var(--red)';
       errEl.classList.add('show'); return;
     }
     showStudentEmailResult(d.email,'Student added.');
@@ -6039,6 +6039,45 @@ function loadMyBatches() {
       return 'Active';
     }
 
+    function parseDMY(str) {
+      if (!str) return null;
+      var parts = String(str).split('/');
+      if (parts.length !== 3) return null;
+      var day = parseInt(parts[0], 10);
+      var month = parseInt(parts[1], 10) - 1;
+      var year = parseInt(parts[2], 10);
+      var d = new Date(year, month, day);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    function getClashingBatches(b, list) {
+      var startA = parseDMY(b.startDate);
+      var endA = parseDMY(b.endDate);
+      if (!startA || !endA) return [];
+      
+      var slotA = b.batchSlot || 'Full Day';
+      var clashes = [];
+      
+      list.forEach(function(other) {
+        if (other.batchCode === b.batchCode) return;
+        if (other.centre !== b.centre) return;
+        
+        var startB = parseDMY(other.startDate);
+        var endB = parseDMY(other.endDate);
+        if (!startB || !endB) return;
+        
+        var dateOverlap = (startA <= endB && startB <= endA);
+        if (!dateOverlap) return;
+        
+        var slotB = other.batchSlot || 'Full Day';
+        var slotOverlap = (slotA === 'Full Day' || slotB === 'Full Day' || slotA === slotB);
+        if (slotOverlap) {
+          clashes.push(other.batchCode);
+        }
+      });
+      return clashes;
+    }
+
     renderBatchHealth(batches);
     el.innerHTML = batches.map(b=>{
       const status = getBatchStatus(b);
@@ -6051,6 +6090,11 @@ function loadMyBatches() {
         statusBadge = `<span class="badge" style="margin-left:6px;font-size:10px;padding:3px 6px;background:rgba(201,168,76,0.1);color:#B87A10;border:1px solid rgba(201,168,76,0.25)">Active</span>`;
       }
 
+      var clashes = getClashingBatches(b, batches);
+      var clashBadge = clashes.length > 0
+        ? `<span class="badge" style="margin-left:6px;font-size:10px;padding:3px 6px;background:#FEF2F2;color:#DC2626;border:1px solid rgba(220,38,38,0.25)">⚠ Clash: ${clashes.join(', ')}</span>`
+        : '';
+
       return `
       <div class="batch-row">
         <div class="bc">${b.batchCode}</div>
@@ -6059,8 +6103,13 @@ function loadMyBatches() {
           <span class="badge badge-blue">${b.counselor}</span>
           ${b.instructor?`<span class="badge badge-green" style="margin-left:6px">${b.instructor}</span>`:'<span class="badge badge-amber" style="margin-left:6px">No instructor</span>'}
           ${statusBadge}
+          ${clashBadge}
         </div>
         ${b.instructor?'':renderInlineInstructorAssign(b.batchCode)}
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
+          <button class="btn btn-outline" style="padding:4px 8px; font-size:11px; width:auto; border-color:rgba(201,74,74,0.3); color:var(--red)" onclick="promptDeleteBatch('${escC(b.batchCode)}', true)">Delete Batch (Keep Students)</button>
+          <button class="btn" style="padding:4px 8px; font-size:11px; width:auto; background:#DC2626; color:#fff; border:none" onclick="promptDeleteBatch('${escC(b.batchCode)}', false)">Delete Batch &amp; Students</button>
+        </div>
       </div>`;
     }).join('');
   }
@@ -6076,6 +6125,40 @@ function loadMyBatches() {
     if (e||!d||!d.batches) { renderMyBatchList([]); return; }
     allBatches = d.batches;
     renderMyBatchList(d.batches);
+  });
+}
+
+function promptDeleteBatch(batchCode, keepStudents) {
+  var msg = keepStudents 
+    ? 'Are you sure you want to delete the batch ' + batchCode + '? This will delete all batch details, sessions, feedback, and marks but will KEEP the student profiles.'
+    : 'WARNING: Are you sure you want to delete the batch ' + batchCode + ' AND ALL OF ITS STUDENTS? This will permanently delete everything associated with this batch, including student profiles.';
+    
+  if (!confirm(msg)) return;
+  
+  if (!keepStudents) {
+    if (prompt('Please type the batch code "' + batchCode + '" to confirm deleting the batch and all of its students:') !== batchCode) {
+      alert('Verification code did not match. Deletion cancelled.');
+      return;
+    }
+  } else {
+    if (!confirm('Are you absolutely sure? This cannot be undone.')) return;
+  }
+  
+  var params = {
+    action: 'deleteBatch',
+    batchCode: batchCode,
+    keepStudents: keepStudents ? 'true' : 'false'
+  };
+  
+  showToast('Deleting batch...', 'info');
+  gasGet(params, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      alert('Failed to delete batch: ' + (d && d.message || 'Unknown error'));
+      return;
+    }
+    showToast('Batch deleted successfully.');
+    allBatches = null; // force reload
+    loadMyBatches();
   });
 }
 

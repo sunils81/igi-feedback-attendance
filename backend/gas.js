@@ -991,7 +991,7 @@ function doPost(e) {
     var body = {};
     try { body = JSON.parse(e.postData.contents); } catch(x) {}
     var act = body.action || '';
-    var ss  = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var ss  = SpreadsheetApp.openById(SHEET_ID);
     var result;
     if (act === 'getDiplomaTemplate') {
       // Template fetch via POST avoids JSONP size limits for large PDFs

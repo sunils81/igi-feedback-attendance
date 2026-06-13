@@ -1095,6 +1095,7 @@
   <div class="account-actions">
     <button class="del-btn no-print" style="background:var(--navy);color:var(--white);margin-right:8px" onclick="window.print()">🖨️ Print / Save PDF</button>
     <button class="del-btn no-print" id="change-pass-toggle" onclick="togglePasswordCard()">Change Password</button>
+    <button class="del-btn no-print" id="logout-btn" onclick="doLogout()" style="background:#dc2626;color:#fff;margin-left:8px;display:none">Sign Out</button>
   </div>
 
   <div class="card password-card" id="password-card">
@@ -2250,6 +2251,38 @@ function initCounselorPortal() {
   // Enter key on PIN
   const lgPass = document.getElementById('lg-pass');
   if (lgPass) lgPass.addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+
+  // ── Auto-restore session from localStorage on refresh ──────────
+  try {
+    var saved = localStorage.getItem('igi_counselor_session');
+    if (saved) {
+      var sess = JSON.parse(saved);
+      if (sess && sess.counselorName) {
+        counselorName            = sess.counselorName;
+        counselorAuthRole        = sess.counselorAuthRole || 'Counselor';
+        counselorMustChangePassword = !!sess.mustChangePassword;
+        allowedCentres           = sess.allowedCentres || [];
+        isAdmin                  = !!sess.isAdmin;
+        isManager                = !!sess.isManager;
+        document.getElementById('counselor-name-badge').textContent    = counselorName;
+        document.getElementById('counselor-name-badge').style.display  = 'inline-block';
+        document.getElementById('logout-btn').style.display = 'inline-block';
+        applyCentreFilter();
+        showScreen('s-main');
+        applyPasswordChangeState();
+        applyAdminVisibility();
+        if (sess.batches && sess.batches.length) {
+          _applyBatchData(sess.batches);
+          loadMyBatches();
+        } else {
+          loadBatchDropdowns();
+          loadMyBatches();
+        }
+        prefetchRevenue();
+        setTimeout(loadPendingAttBanner, 1500);
+      }
+    }
+  } catch(ex) {}
 }
 
 if (document.readyState === 'loading') {
@@ -2310,9 +2343,22 @@ function doLogin() {
     allowedCentres  = d.centres || [];
     isAdmin         = !!d.isAdmin;
     isManager       = !!d.isManager;
+    // Persist session so page refresh doesn't log out
+    try {
+      localStorage.setItem('igi_counselor_session', JSON.stringify({
+        counselorName: counselorName,
+        counselorAuthRole: counselorAuthRole,
+        mustChangePassword: counselorMustChangePassword,
+        allowedCentres: allowedCentres,
+        isAdmin: isAdmin,
+        isManager: isManager,
+        batches: d.batches || []
+      }));
+    } catch(ex) {}
     // Update header
     document.getElementById('counselor-name-badge').textContent = counselorName;
     document.getElementById('counselor-name-badge').style.display = 'inline-block';
+    document.getElementById('logout-btn').style.display = 'inline-block';
     // Lock centre dropdown to allowed centres
     applyCentreFilter();
     showScreen('s-main');
@@ -2390,6 +2436,23 @@ function applyPasswordChangeState() {
     ? 'Please replace the default PIN before continuing.'
     : 'Use a password that is not based on your name, centre, or the old default PIN.';
   document.querySelector('.tab-bar').style.display = counselorMustChangePassword ? 'none' : 'flex';
+}
+
+function doLogout() {
+  if (!confirm('Sign out of the Counsellor Portal?')) return;
+  // Clear persisted session
+  try { localStorage.removeItem('igi_counselor_session'); } catch(e) {}
+  try { sessionStorage.clear(); } catch(e) {}
+  // Reset globals
+  counselorName = ''; counselorAuthRole = ''; counselorMustChangePassword = false;
+  allowedCentres = []; isAdmin = false; isManager = false;
+  allBatches = []; myBatches = [];
+  // Hide badge & logout btn
+  document.getElementById('counselor-name-badge').style.display = 'none';
+  document.getElementById('logout-btn').style.display = 'none';
+  // Clear login fields
+  try { document.getElementById('lg-name').value = ''; document.getElementById('lg-pass').value = ''; } catch(e) {}
+  showScreen('s-login');
 }
 
 function togglePasswordCard() {
@@ -6795,9 +6858,24 @@ function _templateForCourse(course) {
 }
 
 function _base64ToUint8(b64) {
-  // GAS Utilities.base64Encode adds MIME newlines every 76 chars — strip them
-  var clean = b64.replace(/[\r\n\s]/g, '');
-  var bin = atob(clean), len = bin.length, bytes = new Uint8Array(len);
+  if (!b64) throw new Error('No base64 data received from server');
+  // Strip MIME newlines, spaces; convert URL-safe chars to standard base64
+  var clean = b64.replace(/[\r\n\s]/g, '')
+                 .replace(/-/g, '+')
+                 .replace(/_/g, '/');
+  // Re-add any missing padding (some encoders omit trailing =)
+  var pad = clean.length % 4;
+  if (pad === 2) clean += '==';
+  else if (pad === 3) clean += '=';
+  else if (pad === 1) throw new Error('Corrupt base64: length mod 4 = 1 (len=' + clean.length + ')');
+  try {
+    var bin = atob(clean);
+  } catch(e) {
+    // Diagnostic: show first/last 20 chars to identify bad content
+    var sample = clean.slice(0, 20) + '...' + clean.slice(-20);
+    throw new Error('base64 decode failed (' + e.message + '). Length=' + clean.length + ' sample="' + sample + '"');
+  }
+  var len = bin.length, bytes = new Uint8Array(len);
   for (var i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
   return bytes;
 }
@@ -6943,19 +7021,33 @@ async function _doGenerateAndRelease(studentId, batchCode, instructorName, btn, 
 
   // Fetch template base64 via POST (avoids JSONP size limits for large PDFs)
   var tplData = await _gasPost({action:'getDiplomaTemplate', course: course});
+  console.log('[Diploma] GAS response status:', tplData && tplData.status,
+    '| base64 length:', tplData && tplData.base64 ? tplData.base64.length : 'N/A',
+    '| filename:', tplData && tplData.filename,
+    '| reason:', tplData && tplData.reason,
+    '| message:', tplData && tplData.message);
   if (!tplData || tplData.status !== 'ok') {
     var detail = (tplData && (tplData.reason || tplData.message)) || 'no response';
     throw new Error('Template error: ' + detail + ' | course: ' + course);
+  }
+  if (!tplData.base64) {
+    throw new Error('Template returned but no PDF data. GAS response keys: ' + Object.keys(tplData).join(','));
   }
 
   var completionDate = _formatDiplomaDate(new Date());
 
   if (statusEl) statusEl.textContent = '⏳ Generating PDF...';
 
-  var pdfB64 = await _generateDiplomaPDF(
-    student.studentName, studentId, course, completionDate, instructorName,
-    tplData.base64, tplData.filename
-  );
+  var pdfB64;
+  try {
+    pdfB64 = await _generateDiplomaPDF(
+      student.studentName, studentId, course, completionDate, instructorName,
+      tplData.base64, tplData.filename
+    );
+  } catch(pdfErr) {
+    console.error('[Diploma] PDF generation failed:', pdfErr);
+    throw new Error('PDF generation failed: ' + pdfErr.message);
+  }
 
   if (statusEl) statusEl.textContent = '⏳ Saving to Drive...';
 

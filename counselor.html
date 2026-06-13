@@ -6012,17 +6012,53 @@ function loadMyBatches() {
       el.innerHTML = emptyState('🏫', 'No batches created yet', 'Create a batch from Batch Setup and it will appear here.');
       return;
     }
+
+    function getBatchStatus(b) {
+      const today = new Date(); today.setHours(0,0,0,0);
+      if (!b.startDate) return 'Completed';
+      
+      const startParts = String(b.startDate).split('/');
+      if (startParts.length !== 3) return 'Active';
+      const start = new Date(Number(startParts[2]), Number(startParts[1])-1, Number(startParts[0]));
+      start.setHours(0,0,0,0);
+
+      if (today < start) return 'Upcoming';
+
+      if (b.endDate) {
+        const endParts = String(b.endDate).split('/');
+        if (endParts.length === 3) {
+          const end = new Date(Number(endParts[2]), Number(endParts[1])-1, Number(endParts[0]));
+          end.setHours(23,59,59,999);
+          if (today > end) return 'Completed';
+        }
+      }
+      return 'Active';
+    }
+
     renderBatchHealth(batches);
-    el.innerHTML = batches.map(b=>`
+    el.innerHTML = batches.map(b=>{
+      const status = getBatchStatus(b);
+      let statusBadge = '';
+      if (status === 'Completed') {
+        statusBadge = `<span class="badge" style="margin-left:6px;font-size:10px;padding:3px 6px;background:#E8F5EE;color:#168B57;border:1px solid rgba(22,139,87,0.2)">Completed</span>`;
+      } else if (status === 'Upcoming') {
+        statusBadge = `<span class="badge" style="margin-left:6px;font-size:10px;padding:3px 6px;background:#EFF6FF;color:#1D4ED8;border:1px solid rgba(29,78,216,0.15)">Upcoming</span>`;
+      } else {
+        statusBadge = `<span class="badge" style="margin-left:6px;font-size:10px;padding:3px 6px;background:rgba(201,168,76,0.1);color:#B87A10;border:1px solid rgba(201,168,76,0.25)">Active</span>`;
+      }
+
+      return `
       <div class="batch-row">
         <div class="bc">${b.batchCode}</div>
-        <div class="bm">${b.course} &nbsp;·&nbsp; ${b.centre} &nbsp;·&nbsp; ${b.type} &nbsp;·&nbsp; ${b.startDate}${b.endDate?' → '+b.endDate:''}</div>
+        <div class="bm">${b.course} &nbsp;·&nbsp; ${b.centre} &nbsp;·&nbsp; ${b.type} &nbsp;·&nbsp; ${b.startDate}${b.endDate?' → '+b.endDate:''} &nbsp;·&nbsp; 👥 ${b.studentCount || 0} Student${b.studentCount !== 1 ? 's' : ''}</div>
         <div style="margin-top:4px">
           <span class="badge badge-blue">${b.counselor}</span>
           ${b.instructor?`<span class="badge badge-green" style="margin-left:6px">${b.instructor}</span>`:'<span class="badge badge-amber" style="margin-left:6px">No instructor</span>'}
+          ${statusBadge}
         </div>
         ${b.instructor?'':renderInlineInstructorAssign(b.batchCode)}
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
   // Reuse allBatches if already loaded — avoids a duplicate GAS call at login
   if (allBatches && allBatches.length) {

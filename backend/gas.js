@@ -828,10 +828,23 @@ function fetchBatches(ss, centres, centre) {
     const d = new Date(v);
     return isNaN(d) ? '' : d.toLocaleDateString('en-IN');
   };
+
+  // Count active enrollments per batch
+  const countByBatch = {};
+  try {
+    getEnrollmentRows(ss).forEach(function(r){
+      if(r.studentId && r.batchCode && String(r.status).trim().toLowerCase()==='active'){
+        var bc=String(r.batchCode).trim().toUpperCase();
+        countByBatch[bc]=(countByBatch[bc]||0)+1;
+      }
+    });
+  } catch(err) {}
+
   return data
     .filter(r => r[0] && (!centre || r[1]===centre) && (!centres || !centres.length || centres.includes(r[1])))
     .map(r => {
       const isNew = detectSlotOrDate(r[4]);
+      const bc = String(r[0]).trim().toUpperCase();
       return {
         batchCode:  r[0],
         centre:     r[1],
@@ -841,7 +854,8 @@ function fetchBatches(ss, centres, centre) {
         startDate:  fmtDate(isNew ? r[5] : r[4]),
         endDate:    fmtDate(isNew ? r[6] : r[5]),
         counselor:  isNew ? (r[7]||'') : (r[6]||''),
-        instructor: isNew ? (r[9]||'') : (r[8]||'')
+        instructor: isNew ? (r[9]||'') : (r[8]||''),
+        studentCount: countByBatch[bc] || 0
       };
     });
 }

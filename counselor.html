@@ -7000,6 +7000,26 @@ function _uint8ToBase64(bytes) {
   return btoa(bin);
 }
 
+// Normalise any image to JPEG via canvas (fixes unusual PNG formats, transparency, ICC profiles)
+async function _normaliseToJpeg(buf) {
+  return new Promise(function(resolve, reject) {
+    var blob = new Blob([buf]);
+    var url  = URL.createObjectURL(blob);
+    var img  = new Image();
+    img.onload = function() {
+      var c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      var ctx = c.getContext('2d');
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,c.width,c.height);
+      ctx.drawImage(img,0,0);
+      URL.revokeObjectURL(url);
+      c.toBlob(function(b){ b.arrayBuffer().then(resolve).catch(reject); },'image/jpeg',0.95);
+    };
+    img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error('load failed')); };
+    img.src = url;
+  });
+}
+
 // Fetch a signature image from Supabase Storage — tries many name/ext combos
 async function _fetchSigImage(instructorFullName) {
   var firstName = (instructorFullName || '').split(' ')[0];
@@ -7051,13 +7071,21 @@ async function _generateDiplomaPDF(studentName, studentId, course, completionDat
 
   async function embedSig(result, label) {
     if (!result) { console.warn('Diploma sig: no file found for', label); return null; }
-    console.log('Diploma sig: fetched', label, 'ext=', result.ext, 'bytes=', result.buf.byteLength);
+    // Try direct embed first
     try {
       var isJpg = result.ext.startsWith('jp');
-      var img = isJpg ? await pdfDoc.embedJpg(result.buf) : await pdfDoc.embedPng(result.buf);
-      console.log('Diploma sig: embedded', label, 'OK');
-      return img;
-    } catch(e) { console.error('Diploma sig: embed FAILED for', label, e.message); return null; }
+      return isJpg ? await pdfDoc.embedJpg(result.buf) : await pdfDoc.embedPng(result.buf);
+    } catch(e) {
+      console.warn('Diploma sig: direct embed failed for', label, '— trying canvas normalise:', e.message);
+    }
+    // Fallback: normalise via canvas to plain JPEG (handles all PNG variants)
+    try {
+      var jpegBuf = await _normaliseToJpeg(result.buf);
+      return await pdfDoc.embedJpg(jpegBuf);
+    } catch(e2) {
+      console.error('Diploma sig: canvas fallback failed for', label, e2.message);
+      return null;
+    }
   }
   var instrSigImg = await embedSig(instrSigResult, 'instructor:' + instructorName);
   var chairSigImg = await embedSig(chairSigResult, 'chairman');
@@ -7107,7 +7135,7 @@ async function _generateDiplomaPDF(studentName, studentId, course, completionDat
   if (studentId)      page.drawText('Student ID - ' + studentId, {x:190, y:93,  size:sz, font:fontBold, color:black});
 
   // ── Column 3: Instructor sig (above cover zone) + name + COURSE / INSTRUCTOR ──
-  drawSigImage(instrSigImg, ciX, 118, 130, 55); // bottom of sig at y:118, inside cover zone top
+  drawSigImage(instrSigImg, ciX, 116, 100, 38);
   if (instructorName) {
     var iw = fontBold.widthOfTextAtSize(instructorName, sz);
     page.drawText(instructorName, {x: ciX - iw/2, y:105, size:sz, font:fontBold, color:black});
@@ -7116,7 +7144,7 @@ async function _generateDiplomaPDF(studentName, studentId, course, completionDat
   page.drawText('INSTRUCTOR', {x: ciX - fontBold.widthOfTextAtSize('INSTRUCTOR', sz)/2, y:81, size:sz, font:fontBold, color:black});
 
   // ── Column 4: Chairman sig + CHAIRMAN / OF THE BOARD ──
-  drawSigImage(chairSigImg, chX, 118, 130, 55);
+  drawSigImage(chairSigImg, chX, 116, 100, 38);
   page.drawText('CHAIRMAN',     {x: chX - fontBold.widthOfTextAtSize('CHAIRMAN',     sz)/2, y:93, size:sz, font:fontBold, color:black});
   page.drawText('OF THE BOARD', {x: chX - fontBold.widthOfTextAtSize('OF THE BOARD', sz)/2, y:81, size:sz, font:fontBold, color:black});
 

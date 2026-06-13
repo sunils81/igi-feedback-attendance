@@ -7049,15 +7049,18 @@ async function _generateDiplomaPDF(studentName, studentId, course, completionDat
     _fetchSigImage('Chairman')
   ]);
 
-  async function embedSig(result) {
-    if (!result) return null;
+  async function embedSig(result, label) {
+    if (!result) { console.warn('Diploma sig: no file found for', label); return null; }
+    console.log('Diploma sig: fetched', label, 'ext=', result.ext, 'bytes=', result.buf.byteLength);
     try {
       var isJpg = result.ext.startsWith('jp');
-      return isJpg ? await pdfDoc.embedJpg(result.buf) : await pdfDoc.embedPng(result.buf);
-    } catch(e) { return null; }
+      var img = isJpg ? await pdfDoc.embedJpg(result.buf) : await pdfDoc.embedPng(result.buf);
+      console.log('Diploma sig: embedded', label, 'OK');
+      return img;
+    } catch(e) { console.error('Diploma sig: embed FAILED for', label, e.message); return null; }
   }
-  var instrSigImg = await embedSig(instrSigResult);
-  var chairSigImg = await embedSig(chairSigResult);
+  var instrSigImg = await embedSig(instrSigResult, 'instructor:' + instructorName);
+  var chairSigImg = await embedSig(chairSigResult, 'chairman');
 
   // Helper: draw text centred horizontally across page
   function drawCentred(text, font, size, y) {

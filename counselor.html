@@ -7024,12 +7024,18 @@ async function _normaliseToJpeg(buf) {
 async function _fetchSigImage(instructorFullName) {
   var firstName = (instructorFullName || '').split(' ')[0];
   // Try all likely filenames: with/without "sig-" prefix, full/first name, multiple extensions
+  var lower = (instructorFullName || '').toLowerCase();
+  var lowerFirst = lower.split(' ')[0];
   var names = [
     'sig-' + instructorFullName,
+    'sig-' + lower,
     'sig-' + firstName,
+    'sig-' + lowerFirst,
     instructorFullName,
-    firstName
-  ].filter(Boolean);
+    lower,
+    firstName,
+    lowerFirst
+  ].filter(Boolean).filter(function(v,i,a){ return a.indexOf(v)===i; }); // dedupe
   var exts = ['png','PNG','jpg','JPG','jpeg'];
   for (var name of names) {
     for (var ext of exts) {

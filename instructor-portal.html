@@ -1120,7 +1120,7 @@
       </div>
 
       <div style="display:flex;align-items:center;gap:12px;margin-top:4px;padding-bottom:20px;">
-        <button type="button" class="ot-btn primary" style="padding:12px 28px;font-size:14px;" onclick="otCreateTest()">📝 Create Test</button>
+        <button id="ot-btn-create-test" type="button" class="ot-btn primary" style="padding:12px 28px;font-size:14px;" onclick="otCreateTest()">📝 Create Test</button>
         <button type="button" class="ot-btn ghost" style="padding:12px 20px;font-size:14px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;cursor:pointer;" onclick="otTerminateTestCreation()">✕ Cancel & Reset</button>
         <span id="ot-create-status" style="font-size:12px;"></span>
       </div>
@@ -3978,6 +3978,7 @@ var otProctorTimer = null;
 var otCurrentCQType = 'MCQ';
 var otPendingSubmissions = [];
 var otActiveGradingTestId = null;
+var otIsCreating = false;     // prevent double submission
 
 function otInit() {
   otLoadTests();
@@ -4591,6 +4592,10 @@ function otClearAllQuestions() {
 function otTerminateTestCreation() {
   if (!confirm('Are you sure you want to cancel test creation and clear all inputs?')) return;
   
+  otIsCreating = false;
+  var btn = document.getElementById('ot-btn-create-test');
+  if (btn) { btn.disabled = false; btn.textContent = '📝 Create Test'; }
+
   // 1. Clear text inputs
   var labelEl = document.getElementById('ot-c-label'); if (labelEl) labelEl.value = '';
   var instEl = document.getElementById('ot-c-instructions'); if (instEl) instEl.value = '';
@@ -4768,6 +4773,7 @@ function otRemoveSelectedQ(qid) {
 }
 
 function otCreateTest() {
+  if (otIsCreating) return;
   var label = ((document.getElementById('ot-c-label')||{}).value||'').trim();
   var batches = [...otSelectedBatches];
   if (!label) return alert('Please enter a test label/name.');
@@ -4792,6 +4798,10 @@ function otCreateTest() {
   var testTypeSel = (document.getElementById('ot-c-type')||{}).value || '';
   var isPortfolio = testTypeSel === 'Portfolio Upload';
   if (!isPortfolio && !qIds.length) return alert('No questions selected. Go to Question Bank and select questions first.');
+
+  otIsCreating = true;
+  var btn = document.getElementById('ot-btn-create-test');
+  if (btn) { btn.disabled = true; btn.textContent = '⌛ Creating...'; }
 
   // Collect expiry
   var expiryMode = (document.querySelector('input[name="ct-expiry"]:checked')||{}).value || 'manual';
@@ -4839,6 +4849,8 @@ function otCreateTest() {
   gasGet(params, function(err, d) {
     if (err || !d || d.status !== 'ok') {
       if (st) { st.textContent = '❌ ' + (d && d.reason || 'Failed'); st.style.color = '#dc2626'; }
+      otIsCreating = false;
+      if (btn) { btn.disabled = false; btn.textContent = '📝 Create Test'; }
       return;
     }
     var testId = d.testId;
@@ -4851,6 +4863,8 @@ function otCreateTest() {
       otSelectedBatches.clear();
       otRenderSelectedBatchesList();
       otLoadTests();
+      otIsCreating = false;
+      if (btn) { btn.disabled = false; btn.textContent = '📝 Create Test'; }
       setTimeout(function(){ otSubTab('mytests'); }, 1500);
     }
 
@@ -4870,6 +4884,8 @@ function otCreateTest() {
     gasGet({action:'saveTestQuestions', instructor:instructorName, testId:testId, questionIds:JSON.stringify(qIds)}, function(e2, d2) {
       if (e2 || !d2 || d2.status !== 'ok') {
         if (st) { st.textContent = 'Test created but questions failed: ' + (d2 && d2.reason || ''); st.style.color = '#d97706'; }
+        otIsCreating = false;
+        if (btn) { btn.disabled = false; btn.textContent = '📝 Create Test'; }
         return;
       }
       finishCreate('✅ Test created! ' + d2.saved + ' questions · Total marks: ' + d2.totalMarks);
@@ -4922,6 +4938,7 @@ function otRenderTests(tests) {
       + (t.status === 'Closed' && t.resultsReleased !== 'Yes' && t.testType !== 'Portfolio Upload' ? '<button class="ot-btn ghost" onclick="otReleaseResultsFor(\''+escHtml(t.testId)+'\',\'full\')">&amp; Show Breakdown</button>' : '')
       + '<button class="ot-btn ghost" onclick="otViewResults(\''+escHtml(t.testId)+'\')">📊 Results</button>'
       + (t.testType !== 'Portfolio Upload' ? '<button class="ot-btn ghost" onclick="otOpenQuestionsModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',\''+escHtml(t.status)+'\')">📝 View Questions</button>' : '')
+      + '<button class="ot-btn danger" onclick="otDeleteTest(\''+escHtml(t.testId)+'\')">🗑️ Delete</button>'
       + '</div>'
       + '</div>';
   });
@@ -4957,6 +4974,15 @@ function otActivateTest(testId) {
   gasGet({action:'activateTest', instructor:instructorName, testId:testId}, function(err, d) {
     if (err || !d || d.status !== 'ok') return alert('Error: '+(d&&d.reason||'Failed'));
     alert('✅ Test is now LIVE! Students can see it.');
+    otLoadTests();
+  });
+}
+
+function otDeleteTest(testId) {
+  if (!confirm('⚠️ WARNING: Are you sure you want to permanently DELETE this test and all associated student submissions/results? This cannot be undone.')) return;
+  gasGet({action:'deleteOnlineTest', instructor:instructorName, testId:testId}, function(err, d) {
+    if (err || !d || d.status !== 'ok') return alert('Error: '+(d&&d.reason||'Failed'));
+    alert('✅ Test has been deleted.');
     otLoadTests();
   });
 }

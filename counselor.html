@@ -1885,28 +1885,39 @@
                 <th>Item Name</th>
                 <th>Category</th>
                 <th>Unit</th>
-                <th class="text-center">Reorder Level</th>
+                <th class="text-center">Reorder</th>
                 <th class="text-center">Unit Cost (₹)</th>
+                <th>Vendor</th>
                 <th>Notes</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody id="inv-master-tbody">
-              <tr><td colspan="8" style="text-align:center;padding:16px;color:var(--muted)">Loading item master...</td></tr>
+              <tr><td colspan="9" style="text-align:center;padding:16px;color:var(--muted)">Loading item master...</td></tr>
             </tbody>
           </table>
         </div>
         <!-- Add/Edit Item Modal -->
-        <div id="inv-item-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:none;align-items:center;justify-content:center">
-          <div style="background:var(--white);border-radius:12px;padding:24px;width:100%;max-width:480px;box-shadow:0 8px 40px rgba(0,0,0,.2)">
+        <!-- Missing cost banner -->
+        <div id="inv-missing-cost-banner" style="display:none;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:none;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:14px">⚠️</span>
+          <span id="inv-missing-cost-text" style="font-size:13px;color:#92400e;flex:1"></span>
+          <button onclick="filterMissingCostItems()" style="padding:5px 12px;border-radius:5px;border:1.5px solid #d97706;background:#fff;color:#92400e;font-size:12px;font-weight:600;cursor:pointer">Filter &amp; Fill →</button>
+          <button onclick="document.getElementById('inv-missing-cost-banner').style.display='none'" style="background:none;border:none;color:#92400e;cursor:pointer;font-size:16px;line-height:1">×</button>
+        </div>
+
+        <!-- Add/Edit Item Modal -->
+        <div id="inv-item-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+          <div style="background:var(--white);border-radius:12px;padding:24px;width:100%;max-width:500px;box-shadow:0 8px 40px rgba(0,0,0,.2);max-height:90vh;overflow-y:auto">
             <h3 id="inv-modal-title" style="margin-top:0">Add Item</h3>
             <input type="hidden" id="inv-modal-item-id">
+            <input type="hidden" id="inv-modal-cost-locked" value="false">
             <div class="field"><label>Item Name *</label><input type="text" id="inv-modal-name" placeholder="e.g. DG Course Workbook" required></div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
               <div class="field"><label>Category *</label>
                 <select id="inv-modal-category">
-                  <option>Course Material</option><option>Consumable</option><option>Equipment</option>
-                  <option>Marketing</option><option>Stationery</option><option>Reference</option><option>Corporate Batch</option>
+                  <option>Course Collateral</option><option>Classroom Equipment</option><option>Promotion Collateral</option>
+                  <option>Corporate Batch</option><option>Misc / Diploma</option><option>Consumable</option><option>Other</option>
                 </select>
               </div>
               <div class="field"><label>Unit *</label>
@@ -1919,9 +1930,26 @@
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
               <div class="field"><label>Reorder Level</label><input type="number" id="inv-modal-reorder" min="0" placeholder="0"></div>
-              <div class="field"><label>Unit Cost (₹)</label><input type="number" id="inv-modal-cost" min="0" step="0.01" placeholder="0"></div>
+              <div class="field">
+                <label style="display:flex;align-items:center;gap:6px">
+                  Unit Cost (₹)
+                  <span id="inv-modal-lock-icon" style="display:none;cursor:pointer;font-size:14px" title="Click to unlock cost for editing" onclick="invModalUnlockCost()">🔒</span>
+                </label>
+                <input type="number" id="inv-modal-cost" min="0" step="0.01" placeholder="0">
+                <div id="inv-modal-lock-note" style="display:none;font-size:10px;color:#d97706;margin-top:3px">Cost locked — click 🔒 to edit (change will be logged)</div>
+              </div>
+            </div>
+            <div class="field">
+              <label>Vendor</label>
+              <select id="inv-modal-vendor">
+                <option value="">— Unassigned —</option>
+              </select>
             </div>
             <div class="field"><label>Notes</label><input type="text" id="inv-modal-notes" placeholder="Optional notes..."></div>
+            <div id="inv-modal-lock-cost-row" style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+              <input type="checkbox" id="inv-modal-lock-checkbox" style="width:14px;height:14px">
+              <label for="inv-modal-lock-checkbox" style="font-size:12px;color:var(--muted);cursor:pointer;margin:0">Lock this cost (prevent accidental edits)</label>
+            </div>
             <div style="display:flex;gap:8px;margin-top:16px">
               <button class="btn" onclick="saveInventoryItem()" id="inv-modal-save-btn">Save Item</button>
               <button class="btn btn-outline" onclick="closeAddItemModal()">Cancel</button>
@@ -7703,23 +7731,41 @@ function saveStockQty(input) {
 let _itemMasterCache = [];
 
 function loadInventoryItemMaster() {
-  const tbody = document.getElementById('inv-master-tbody');
-  const catFilter = document.getElementById('inv-master-cat-filter');
+  var tbody = document.getElementById('inv-master-tbody');
+  var catFilter = document.getElementById('inv-master-cat-filter');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div></div></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div></div></td></tr>';
+  _vendorCache = null; // refresh vendor cache on each load
 
   gasGet({ action: 'getInventoryItemMaster' }, function(e, d) {
     if (e || !d || d.status !== 'ok') {
-      tbody.innerHTML = '<tr><td colspan="8" style="color:var(--red);text-align:center;padding:16px">Failed to load item master.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" style="color:var(--red);text-align:center;padding:16px">Failed to load item master.</td></tr>';
       return;
     }
     _itemMasterCache = d.list || [];
+
     // Populate category filter
     if (catFilter) {
-      const cats = [...new Set(_itemMasterCache.map(i => i.category))].sort();
+      var cats = [];
+      _itemMasterCache.forEach(function(i) { if (cats.indexOf(i.category) === -1) cats.push(i.category); });
+      cats.sort();
       catFilter.innerHTML = '<option value="">All Categories</option>' +
-        cats.map(c => `<option value="${escC(c)}">${escC(c)}</option>`).join('');
+        cats.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
     }
+
+    // Missing cost banner
+    var missingCount = _itemMasterCache.filter(function(i) { return !i.unitCost || i.unitCost === 0; }).length;
+    var banner = document.getElementById('inv-missing-cost-banner');
+    var bannerText = document.getElementById('inv-missing-cost-text');
+    if (banner) {
+      if (missingCount > 0) {
+        if (bannerText) bannerText.textContent = missingCount + ' item' + (missingCount > 1 ? 's have' : ' has') + ' no unit cost set — costs are needed for analytics and purchase orders.';
+        banner.style.display = 'flex';
+      } else {
+        banner.style.display = 'none';
+      }
+    }
+
     renderItemMasterTable(_itemMasterCache);
   });
 }
@@ -7735,48 +7781,156 @@ function filterItemMaster() {
   renderItemMasterTable(filtered);
 }
 
+function filterMissingCostItems() {
+  document.getElementById('inv-master-search').value = '';
+  var cat = document.getElementById('inv-master-cat-filter');
+  if (cat) cat.value = '';
+  var filtered = _itemMasterCache.filter(function(item) { return !item.unitCost || item.unitCost === 0; });
+  renderItemMasterTable(filtered);
+}
+
 function renderItemMasterTable(list) {
-  const tbody = document.getElementById('inv-master-tbody');
+  var tbody = document.getElementById('inv-master-tbody');
   if (!tbody) return;
   if (list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:16px">No items found. Contact your system administrator.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:16px">No items found. Contact your system administrator.</td></tr>';
     return;
   }
-  tbody.innerHTML = list.map(item => `
-    <tr>
-      <td><code style="font-size:11px">${escC(item.itemId)}</code></td>
-      <td style="font-weight:500">${escC(item.itemName)}</td>
-      <td><span style="font-size:11px;padding:2px 7px;border-radius:99px;background:var(--off);border:1px solid var(--border)">${escC(item.category)}</span></td>
-      <td>${escC(item.unit)}</td>
-      <td class="text-center">${item.reorderLevel}</td>
-      <td class="text-center">₹${Number(item.unitCost).toLocaleString('en-IN')}</td>
-      <td style="font-size:11px;color:var(--muted)">${escC(item.notes)}</td>
-      <td>
-        <div style="display:flex;gap:4px">
-          <button class="btn btn-outline btn-xs" onclick="editInventoryItem('${escC(item.itemId)}')">Edit</button>
-          <button class="btn btn-xs" style="background:#EF4444;color:#fff;border-color:#EF4444" onclick="deleteInventoryItemUI('${escC(item.itemId)}','${escC(item.itemName)}')">Del</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = list.map(function(item) {
+    var costDisplay, costStyle = '';
+    if (!item.unitCost || item.unitCost === 0) {
+      costDisplay = '<span style="color:#dc2626;font-weight:700;font-size:11px">⚠️ Missing</span>';
+    } else {
+      var lockBadge = item.costLocked ? ' <span title="Cost locked" style="font-size:10px">🔒</span>' : '';
+      costDisplay = '₹' + Number(item.unitCost).toLocaleString('en-IN') + lockBadge;
+    }
+
+    var vendorCell;
+    if (item.vendorName) {
+      vendorCell = '<span class="inv-vendor-chip" ' +
+        'onclick="showVendorPopover(event,\'' + escC(item.vendorId) + '\',\'' + escC(item.vendorName).replace(/'/g,"\\'") + '\',\'' + escC(item.vendorContact).replace(/'/g,"\\'") + '\',\'' + escC(item.vendorPhone).replace(/'/g,"\\'") + '\',\'' + escC(item.vendorEmail).replace(/'/g,"\\'") + '\')" ' +
+        'style="cursor:pointer;font-size:11px;padding:2px 8px;border-radius:99px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;white-space:nowrap">' +
+        escC(item.vendorName) + ' ℹ️</span>';
+    } else {
+      vendorCell = '<span onclick="editInventoryItem(\'' + escC(item.itemId) + '\')" ' +
+        'style="cursor:pointer;font-size:11px;padding:2px 8px;border-radius:99px;background:#fef3c7;border:1px solid #fde68a;color:#92400e">Unassigned ↗</span>';
+    }
+
+    return '<tr>' +
+      '<td><code style="font-size:11px">' + escC(item.itemId) + '</code></td>' +
+      '<td style="font-weight:500">' + escC(item.itemName) + '</td>' +
+      '<td><span style="font-size:11px;padding:2px 7px;border-radius:99px;background:var(--off);border:1px solid var(--border)">' + escC(item.category) + '</span></td>' +
+      '<td>' + escC(item.unit) + '</td>' +
+      '<td class="text-center">' + item.reorderLevel + '</td>' +
+      '<td class="text-center" style="' + costStyle + '">' + costDisplay + '</td>' +
+      '<td>' + vendorCell + '</td>' +
+      '<td style="font-size:11px;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escC(item.notes) + '">' + escC(item.notes) + '</td>' +
+      '<td><div style="display:flex;gap:4px">' +
+        '<button class="btn btn-outline btn-xs" onclick="editInventoryItem(\'' + escC(item.itemId) + '\')">Edit</button>' +
+        '<button class="btn btn-xs" style="background:#EF4444;color:#fff;border-color:#EF4444" onclick="deleteInventoryItemUI(\'' + escC(item.itemId) + '\',\'' + escC(item.itemName).replace(/'/g,"\\'") + '\')">Del</button>' +
+      '</div></td>' +
+      '</tr>';
+  }).join('');
+}
+
+function showVendorPopover(evt, vendorId, name, contact, phone, email) {
+  var existing = document.getElementById('inv-vendor-popover');
+  if (existing) existing.remove();
+  var pop = document.createElement('div');
+  pop.id = 'inv-vendor-popover';
+  pop.style.cssText = 'position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;box-shadow:0 8px 30px rgba(0,0,0,0.15);z-index:9998;min-width:220px;font-size:12px';
+  pop.innerHTML =
+    '<div style="font-weight:700;color:#1e3a5f;margin-bottom:8px;font-size:13px">🏭 ' + escC(name) + '</div>' +
+    (contact ? '<div style="color:var(--muted);margin-bottom:3px">👤 ' + escC(contact) + '</div>' : '') +
+    (phone   ? '<div style="margin-bottom:3px">📞 <a href="tel:' + escC(phone) + '" style="color:#1d4ed8">' + escC(phone) + '</a></div>' : '') +
+    (email   ? '<div>✉️ <a href="mailto:' + escC(email) + '" style="color:#1d4ed8">' + escC(email) + '</a></div>' : '') +
+    '<div style="margin-top:10px;text-align:right"><button onclick="document.getElementById(\'inv-vendor-popover\').remove()" style="font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer">Close</button></div>';
+
+  // Position near click
+  var x = Math.min(evt.clientX, window.innerWidth - 250);
+  var y = evt.clientY + 10;
+  pop.style.left = x + 'px';
+  pop.style.top  = y + 'px';
+  document.body.appendChild(pop);
+  // Close on outside click
+  setTimeout(function() {
+    document.addEventListener('click', function _close(e) {
+      if (!pop.contains(e.target)) { pop.remove(); document.removeEventListener('click', _close); }
+    });
+  }, 50);
+}
+
+var _vendorCache = null;
+
+function _loadVendorsIntoModal(selectedVendorId) {
+  var sel = document.getElementById('inv-modal-vendor');
+  if (!sel) return;
+  var populate = function(vendors) {
+    sel.innerHTML = '<option value="">— Unassigned —</option>' +
+      vendors.map(function(v) {
+        return '<option value="' + escC(v.vendorId) + '"' + (v.vendorId === selectedVendorId ? ' selected' : '') + '>' + escC(v.vendorName) + '</option>';
+      }).join('');
+  };
+  if (_vendorCache) { populate(_vendorCache); return; }
+  gasGet({ action: 'getVendors' }, function(e, d) {
+    _vendorCache = (e || !d || d.status !== 'ok') ? [] : (d.list || []);
+    populate(_vendorCache);
+  });
+}
+
+function _applyModalLockState(isLocked, isNew) {
+  var costEl   = document.getElementById('inv-modal-cost');
+  var lockIcon = document.getElementById('inv-modal-lock-icon');
+  var lockNote = document.getElementById('inv-modal-lock-note');
+  var lockRow  = document.getElementById('inv-modal-lock-cost-row');
+  var lockChk  = document.getElementById('inv-modal-lock-checkbox');
+  document.getElementById('inv-modal-cost-locked').value = isLocked ? 'true' : 'false';
+  if (isNew) {
+    costEl.readOnly = false;
+    if (lockIcon) lockIcon.style.display = 'none';
+    if (lockNote) lockNote.style.display = 'none';
+    if (lockRow)  lockRow.style.display  = 'flex';
+    if (lockChk)  lockChk.checked = false;
+  } else if (isLocked) {
+    costEl.readOnly = true;
+    costEl.style.background = '#f3f4f6';
+    if (lockIcon) lockIcon.style.display = 'inline';
+    if (lockNote) lockNote.style.display = 'block';
+    if (lockRow)  lockRow.style.display  = 'none';
+  } else {
+    costEl.readOnly = false;
+    costEl.style.background = '';
+    if (lockIcon) lockIcon.style.display = 'none';
+    if (lockNote) lockNote.style.display = 'none';
+    if (lockRow)  lockRow.style.display  = 'flex';
+    if (lockChk)  lockChk.checked = false;
+  }
+}
+
+function invModalUnlockCost() {
+  if (!confirm('Unlocking will allow you to edit the cost. The change will be logged in the Notes field. Continue?')) return;
+  document.getElementById('inv-modal-cost-locked').value = 'unlocking';
+  _applyModalLockState(false, false);
 }
 
 function showAddItemModal() {
   document.getElementById('inv-modal-title').textContent = 'Add New Item';
   document.getElementById('inv-modal-item-id').value = '';
   document.getElementById('inv-modal-name').value = '';
-  document.getElementById('inv-modal-category').value = 'Course Material';
+  document.getElementById('inv-modal-category').value = 'Course Collateral';
   document.getElementById('inv-modal-unit').value = 'Pcs';
   document.getElementById('inv-modal-reorder').value = '';
   document.getElementById('inv-modal-cost').value = '';
   document.getElementById('inv-modal-notes').value = '';
   document.getElementById('inv-modal-err').classList.remove('show');
-  const modal = document.getElementById('inv-item-modal');
-  modal.style.display = 'flex';
+  _applyModalLockState(false, true);
+  _loadVendorsIntoModal('');
+  document.getElementById('inv-item-modal').style.display = 'flex';
 }
 
 function editInventoryItem(itemId) {
-  const item = _itemMasterCache.find(i => i.itemId === itemId);
+  var item = null;
+  for (var i = 0; i < _itemMasterCache.length; i++) { if (_itemMasterCache[i].itemId === itemId) { item = _itemMasterCache[i]; break; } }
   if (!item) return;
   document.getElementById('inv-modal-title').textContent = 'Edit Item';
   document.getElementById('inv-modal-item-id').value = item.itemId;
@@ -7787,8 +7941,9 @@ function editInventoryItem(itemId) {
   document.getElementById('inv-modal-cost').value = item.unitCost;
   document.getElementById('inv-modal-notes').value = item.notes;
   document.getElementById('inv-modal-err').classList.remove('show');
-  const modal = document.getElementById('inv-item-modal');
-  modal.style.display = 'flex';
+  _applyModalLockState(item.costLocked === true, false);
+  _loadVendorsIntoModal(item.vendorId || '');
+  document.getElementById('inv-item-modal').style.display = 'flex';
 }
 
 function closeAddItemModal() {
@@ -7796,14 +7951,17 @@ function closeAddItemModal() {
 }
 
 function saveInventoryItem() {
-  const itemId = document.getElementById('inv-modal-item-id').value;
-  const itemName = document.getElementById('inv-modal-name').value.trim();
-  const category = document.getElementById('inv-modal-category').value;
-  const unit = document.getElementById('inv-modal-unit').value;
-  const reorderLevel = parseInt(document.getElementById('inv-modal-reorder').value) || 0;
-  const unitCost = parseFloat(document.getElementById('inv-modal-cost').value) || 0;
-  const notes = document.getElementById('inv-modal-notes').value.trim();
-  const errBox = document.getElementById('inv-modal-err');
+  var itemId      = document.getElementById('inv-modal-item-id').value;
+  var itemName    = document.getElementById('inv-modal-name').value.trim();
+  var category    = document.getElementById('inv-modal-category').value;
+  var unit        = document.getElementById('inv-modal-unit').value;
+  var reorderLevel = parseInt(document.getElementById('inv-modal-reorder').value) || 0;
+  var unitCost    = parseFloat(document.getElementById('inv-modal-cost').value) || 0;
+  var notes       = document.getElementById('inv-modal-notes').value.trim();
+  var vendorId    = document.getElementById('inv-modal-vendor').value;
+  var lockState   = document.getElementById('inv-modal-cost-locked').value; // 'true'|'false'|'unlocking'
+  var lockCheckbox = document.getElementById('inv-modal-lock-checkbox');
+  var errBox = document.getElementById('inv-modal-err');
   errBox.classList.remove('show');
 
   if (!itemName || !category) {
@@ -7812,12 +7970,29 @@ function saveInventoryItem() {
     return;
   }
 
-  const btn = document.getElementById('inv-modal-save-btn');
+  var payload = { itemId: itemId, itemName: itemName, category: category, unit: unit,
+    reorderLevel: reorderLevel, unitCost: unitCost, notes: notes, vendorId: vendorId };
+
+  if (!itemId) {
+    // New item
+    payload.action = 'addInventoryItem';
+    payload.costLocked = (lockCheckbox && lockCheckbox.checked && unitCost > 0);
+  } else {
+    payload.action = 'updateInventoryItem';
+    if (lockState === 'unlocking') {
+      payload.forceUnlock = true;
+    } else if (lockState === 'true') {
+      payload.lockCost = true; // keep locked
+    } else {
+      payload.lockCost = (lockCheckbox && lockCheckbox.checked && unitCost > 0);
+    }
+  }
+
+  var btn = document.getElementById('inv-modal-save-btn');
   btn.textContent = 'Saving...';
   btn.disabled = true;
 
-  const action = itemId ? 'updateInventoryItem' : 'addInventoryItem';
-  gasGet({ action, itemId, itemName, category, unit, reorderLevel, unitCost, notes }, function(e, d) {
+  gasGet(payload, function(e, d) {
     btn.textContent = 'Save Item';
     btn.disabled = false;
     if (e || !d || d.status !== 'ok') {

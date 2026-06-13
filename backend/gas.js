@@ -8159,11 +8159,36 @@ function getInventoryItemMaster(ss, p) {
   try {
     var sh = ss.getSheetByName(SH_INV_ITEMS);
     if (!sh || sh.getLastRow() < 2) return {status:'ok', list:[]};
-    var data = sh.getRange(2, 1, sh.getLastRow()-1, 8).getValues();
-    var list = data.filter(function(r){return r[0];}).map(function(r,i){return {
-      itemId: r[0], itemName: r[1], category: r[2], unit: r[3],
-      reorderLevel: Number(r[4])||0, unitCost: Number(r[5])||0, notes: r[6]||'', rowIndex: i+2
-    };});
+    // Read up to 10 cols (cols 9=vendorId, 10=costLocked may not exist yet)
+    var lastCol = sh.getLastColumn();
+    var colCount = Math.max(lastCol, 8);
+    var data = sh.getRange(2, 1, sh.getLastRow()-1, colCount).getValues();
+
+    // Build vendor lookup map
+    var vendorMap = {};
+    var shVen = ss.getSheetByName(SH_INV_VENDORS);
+    if (shVen && shVen.getLastRow() > 1) {
+      var vData = shVen.getRange(2, 1, shVen.getLastRow()-1, 5).getValues();
+      vData.forEach(function(v) {
+        if (v[0]) vendorMap[String(v[0])] = { vendorId: v[0], vendorName: v[1], contactPerson: v[2], phone: v[3], email: v[4] };
+      });
+    }
+
+    var list = data.filter(function(r){return r[0];}).map(function(r,i){
+      var vendorId = colCount >= 9 ? String(r[8]||'') : '';
+      var costLocked = colCount >= 10 ? (r[9] === true || r[9] === 'TRUE' || r[9] === 'true') : false;
+      var vendor = vendorId && vendorMap[vendorId] ? vendorMap[vendorId] : null;
+      return {
+        itemId: r[0], itemName: r[1], category: r[2], unit: r[3],
+        reorderLevel: Number(r[4])||0, unitCost: Number(r[5])||0,
+        notes: r[6]||'', rowIndex: i+2,
+        vendorId: vendorId, costLocked: costLocked,
+        vendorName: vendor ? vendor.vendorName : '',
+        vendorContact: vendor ? vendor.contactPerson : '',
+        vendorPhone: vendor ? vendor.phone : '',
+        vendorEmail: vendor ? vendor.email : ''
+      };
+    });
     return {status:'ok', list:list};
   } catch(err) { return {status:'error', message: err.toString()}; }
 }
@@ -8176,11 +8201,13 @@ function addInventoryItem(ss, p) {
     var reorderLevel = Number(p.reorderLevel)||0;
     var unitCost = Number(p.unitCost)||0;
     var notes = String(p.notes||'').trim();
+    var vendorId = String(p.vendorId||'').trim();
+    var costLocked = (unitCost > 0 && p.costLocked === true) ? true : false;
     if (!itemName||!category) return {status:'error', reason:'missing_params'};
     var sh = ss.getSheetByName(SH_INV_ITEMS);
     if (!sh) return {status:'error', reason:'no_sheet'};
     var itemId = 'ITEM-' + String(sh.getLastRow()).padStart(3,'0');
-    sh.appendRow([itemId, itemName, category, unit, reorderLevel, unitCost, notes, new Date().toISOString()]);
+    sh.appendRow([itemId, itemName, category, unit, reorderLevel, unitCost, notes, new Date().toISOString(), vendorId, costLocked]);
     return {status:'ok', itemId:itemId};
   } catch(err) { return {status:'error', message: err.toString()}; }
 }
@@ -8191,15 +8218,43 @@ function updateInventoryItem(ss, p) {
     var itemName = String(p.itemName||'').trim();
     if (!itemId||!itemName) return {status:'error', reason:'missing_params'};
     var sh = ss.getSheetByName(SH_INV_ITEMS);
-    var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,1).getValues() : [];
-    var rowIndex = -1;
-    for (var i=0;i<rows.length;i++) { if(String(rows[i][0])===itemId){rowIndex=i+2;break;} }
+    var lastCol = sh.getLastColumn();
+    var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,Math.max(lastCol,10)).getValues() : [];
+    var rowIndex = -1; var existingRow = null;
+    for (var i=0;i<rows.length;i++) { if(String(rows[i][0])===itemId){rowIndex=i+2; existingRow=rows[i]; break;} }
     if (rowIndex===-1) return {status:'error', reason:'not_found'};
+
+    // Cost lock logic
+    var existingCost = Number(existingRow[5])||0;
+    var newCost = Number(p.unitCost)||0;
+    var existingLocked = (existingRow[9] === true || existingRow[9] === 'TRUE' || existingRow[9] === 'true');
+    var costChanged = newCost !== existingCost;
+
+    // Determine new lock state
+    var newLocked = existingLocked;
+    if (p.forceUnlock === true) newLocked = false;   // explicit unlock
+    if (p.lockCost === true) newLocked = true;         // explicit lock
+    // Auto-lock when cost is set for first time (was 0, now >0)
+    if (existingCost === 0 && newCost > 0 && p.lockCost !== false) newLocked = true;
+
+    // Annotate notes with audit trail if locked cost was changed
+    var notes = String(p.notes||existingRow[6]||'').trim();
+    if (existingLocked && costChanged && p.forceUnlock === true) {
+      var auditNote = '[Cost changed from ₹' + existingCost + ' to ₹' + newCost + ' on ' + new Date().toLocaleDateString('en-IN') + ']';
+      notes = notes ? notes + ' ' + auditNote : auditNote;
+    }
+
+    var vendorId = String(p.vendorId !== undefined ? p.vendorId : (existingRow[8]||'')).trim();
+
+    // Write cols 2-7 (name, category, unit, reorderLevel, unitCost, notes)
     sh.getRange(rowIndex,2,1,6).setValues([[
-      itemName, String(p.category||''), String(p.unit||'Pcs'),
-      Number(p.reorderLevel)||0, Number(p.unitCost)||0, String(p.notes||'')
+      itemName, String(p.category||existingRow[2]||''), String(p.unit||existingRow[3]||'Pcs'),
+      Number(p.reorderLevel !== undefined ? p.reorderLevel : existingRow[4])||0,
+      newCost, notes
     ]]);
-    return {status:'ok'};
+    // Write cols 9-10 (vendorId, costLocked) — expand sheet if needed
+    sh.getRange(rowIndex,9,1,2).setValues([[vendorId, newLocked]]);
+    return {status:'ok', costLocked: newLocked};
   } catch(err) { return {status:'error', message: err.toString()}; }
 }
 
@@ -8347,7 +8402,7 @@ function seedInventoryItems(ss, p) {
     var currentCount = sh.getLastRow() - 1;
     if (currentCount > 5 && !forceReseed) return {status:'ok', message:'Already seeded', count:currentCount};
     if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1);
-    sh.getRange(1,1,1,8).setValues([['Item ID','Item Name','Category','Unit','Reorder Level','Unit Cost (Rs)','Notes','Created At']]);
+    sh.getRange(1,1,1,10).setValues([['Item ID','Item Name','Category','Unit','Reorder Level','Unit Cost (Rs)','Notes','Created At','Vendor ID','Cost Locked']]);
     var ts = new Date().toISOString();
     var ITEMS = [
       ['ITEM-001','Education Brochure','Promotion Collateral','Pcs',50,79,'For walk-ins & events',ts],
@@ -8419,7 +8474,7 @@ function seedInventoryItems(ss, p) {
 function setupInventorySheets(ss, p) {
   try {
     var sheets = [
-      { name: SH_INV_ITEMS,    headers: ['Item ID','Item Name','Category','Unit','Reorder Level','Unit Cost (Rs)','Notes','Created At'] },
+      { name: SH_INV_ITEMS,    headers: ['Item ID','Item Name','Category','Unit','Reorder Level','Unit Cost (Rs)','Notes','Created At','Vendor ID','Cost Locked'] },
       { name: SH_INV_STOCK,    headers: ['Stock ID','Centre','Item ID','Quantity','Updated At','Updated By'] },
       { name: SH_INV_REQUESTS, headers: ['Request ID','Centre','Item ID','Quantity Requested','Urgency','Counsellor Note','Requested By','Requested At','Status','Approved By','Approved At'] },
       { name: SH_INV_DISPATCH, headers: ['Dispatch ID','Request ID','Quantity Dispatched','Dispatch Date','Courier / Tracking Info','Dispatched By','Dispatched At'] },

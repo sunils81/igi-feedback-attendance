@@ -6923,7 +6923,10 @@ async function _doGenerateAndRelease(studentId, batchCode, instructorName, btn, 
 
   // Fetch template base64 from GAS
   var tplData = await _gasGetPromise({action:'getDiplomaTemplate', course: course});
-  if (!tplData || tplData.status !== 'ok') throw new Error('Template error: ' + (tplData && tplData.reason || 'unknown'));
+  if (!tplData || tplData.status !== 'ok') {
+    var detail = (tplData && (tplData.reason || tplData.message)) || 'no response';
+    throw new Error('Template error: ' + detail + ' | course: ' + course);
+  }
 
   var completionDate = _formatDiplomaDate(new Date());
 

@@ -647,6 +647,14 @@
       </div>
     </div>
 
+    <!-- ══ DIPLOMA BANNER ══ -->
+    <div id="diploma-congrats-banner" style="display:none;margin:10px 16px 0;background:linear-gradient(135deg,#0d1b2e 0%,#1a3a5c 100%);border:1.5px solid #C8A951;border-radius:12px;padding:14px 16px;color:#fff;position:relative;overflow:hidden">
+      <div style="position:absolute;top:-20px;right:-10px;font-size:80px;opacity:.08">🎓</div>
+      <div style="font-size:13px;font-weight:700;color:#C8A951;margin-bottom:4px">🎓 Congratulations!</div>
+      <div id="diploma-banner-text" style="font-size:12px;line-height:1.5;color:rgba(255,255,255,.85)">Your diploma is ready.</div>
+      <div id="diploma-banner-links" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px"></div>
+    </div>
+
     <!-- ══ ID CARD BOTTOM-SHEET ══ -->
     <div id="id-card-backdrop" onclick="closeIdCard()"
          style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:8000;
@@ -1283,6 +1291,8 @@ function fetchPortalData(enrol, mobileLast4, btn, err) {
     portalData = d;
     renderPortal(d);
     captureLocationAndShow(); // record student's location in header
+    // Diploma banner check
+    setTimeout(function() { _checkAndShowDiplomaBanner(d); }, 2000);
     // Start online test polling
     setTimeout(otStartPolling, 1500);
   });
@@ -1317,6 +1327,29 @@ function renderSyllabusProgress(b) {
 }
 
 /* ── Location capture (runs once after login) ── */
+function _checkAndShowDiplomaBanner(portalInfo) {
+  var saved = JSON.parse(localStorage.getItem(window.SESSION_KEY || 'igi_session') || 'null');
+  if (!saved || !saved.enrollmentNo) return;
+  var sid = saved.enrollmentNo;
+  gasGet({action:'getStudentDiplomas', studentId: sid}, function(err, d) {
+    if (err || !d || d.status !== 'ok' || !d.diplomas || d.diplomas.length === 0) return;
+    var banner  = document.getElementById('diploma-congrats-banner');
+    var textEl  = document.getElementById('diploma-banner-text');
+    var linksEl = document.getElementById('diploma-banner-links');
+    if (!banner) return;
+    var names = d.diplomas.map(function(dp) { return dp.course; }).join(', ');
+    textEl.textContent = 'You have successfully completed ' + names + '. Your diploma is ready to download.';
+    var linksHtml = '';
+    d.diplomas.forEach(function(dp) {
+      if (dp.driveLink) {
+        linksHtml += '<a href="' + dp.driveLink + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;background:#C8A951;color:#0d1b2e;font-weight:700;font-size:11px;padding:6px 12px;border-radius:20px;text-decoration:none">⬇ Download ' + dp.course + '</a>';
+      }
+    });
+    linksEl.innerHTML = linksHtml;
+    banner.style.display = 'block';
+  });
+}
+
 function captureLocationAndShow() {
   var locEl = document.getElementById('wb-loc');
   if (!locEl) return;
@@ -2131,7 +2164,7 @@ var otAntiCheatBound  = false;
 function otCheckForActiveTest() {
   if (!portalData) return;
   var sid    = portalData.enrollmentNo || portalData.studentId || '';
-  var batches = portalData.batches || [];
+  var batches = portalData.allBatches || portalData.batches || [];
   if (!batches.length) return;
 
   // Check assignments, portfolios, badges and alerts
@@ -2836,7 +2869,7 @@ function otLoadMyResults() {
   if (!portalData) { el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">Please log in first.</div>'; return; }
 
   var sid   = portalData.enrollmentNo || portalData.studentId || '';
-  var batches = portalData.batches || [];
+  var batches = portalData.allBatches || portalData.batches || [];
   if (!batches.length) { el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">No batches enrolled.</div>'; return; }
 
   el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">Loading…</div>';
@@ -3730,7 +3763,7 @@ function loadMyAssignments() {
   var el = document.getElementById('ot-assignments-wrap');
   if (!el || !portalData) return;
   var sid = portalData.enrollmentNo || portalData.studentId || '';
-  var batches = portalData.batches || [];
+  var batches = portalData.allBatches || portalData.batches || [];
   if (!batches.length) { el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">No batches enrolled.</div>'; return; }
 
   el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">Loading assignments…</div>';
@@ -3960,7 +3993,7 @@ function loadMyPortfolio() {
   var el = document.getElementById('ot-portfolio-wrap');
   if (!el || !portalData) return;
   var sid = portalData.enrollmentNo || portalData.studentId || '';
-  var batches = portalData.batches || [];
+  var batches = portalData.allBatches || portalData.batches || [];
   if (!batches.length) { el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">No batches enrolled.</div>'; return; }
 
   el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">Loading portfolios…</div>';
@@ -4167,8 +4200,9 @@ function escHtmlSt(str) {
 }
 
 function isJDStudent() {
-  if (!portalData || !portalData.batches) return false;
-  return portalData.batches.some(function(b) {
+  if (!portalData) return false;
+  var batches = portalData.allBatches || portalData.batches || [];
+  return batches.some(function(b) {
     const cn = (b.course || '').toLowerCase();
     return cn.includes('jd') || cn.includes('jewelry') || cn.includes('jewelpad') || cn.includes('jp');
   });

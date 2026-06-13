@@ -984,6 +984,34 @@ function revenueDashboardCacheKeysForSave(p,effectiveCounsellor) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  doPost  (used for large payloads e.g. PDF upload)
+// ═══════════════════════════════════════════════════════════════
+function doPost(e) {
+  try {
+    var body = {};
+    try { body = JSON.parse(e.postData.contents); } catch(x) {}
+    var act = body.action || '';
+    var ss  = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var result;
+    if (act === 'saveDiplomaFile') {
+      var counselor = body.releasedBy || '';
+      if (counselor !== 'Bianca' && counselor !== 'Anuradha') {
+        result = {status:'error', reason:'unauthorized'};
+      } else {
+        result = saveDiplomaFile(ss, body);
+      }
+    } else {
+      result = {status:'error', reason:'unknown_action'};
+    }
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({status:'error', message:err.toString()}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  doGet
 // ═══════════════════════════════════════════════════════════════
 function doGet(e) {
@@ -1270,6 +1298,21 @@ function doGet(e) {
       }
       return respond(releaseStudentDiploma(ss, p));
     }
+
+    // ── getDiplomaTemplate ───────────────────────────────────
+    if (act==='getDiplomaTemplate') return respond(getDiplomaTemplate(ss,p));
+
+    // ── saveDiplomaFile ──────────────────────────────────────
+    if (act==='saveDiplomaFile') {
+      const counselor = p.releasedBy || '';
+      if (counselor !== 'Bianca' && counselor !== 'Anuradha') {
+        return respond({status:'error', reason:'unauthorized'});
+      }
+      return respond(saveDiplomaFile(ss,p));
+    }
+
+    // ── getStudentDiplomas ───────────────────────────────────
+    if (act==='getStudentDiplomas') return respond(getStudentDiplomas(ss,p));
 
     // ── getInstructorEligibility ──────────────────────────────
     if (act==='getInstructorEligibility') {
@@ -4781,10 +4824,40 @@ function otGetInstructorTests(ss, p) {
     }
   });
 
+  var studentRows = getStudentRows(ss);
+  var studentMap = {};
+  studentRows.forEach(function(s){
+    studentMap[String(s.id).trim().toUpperCase()] = s.name;
+  });
+
   tests.forEach(function(t){
     t.questionCount = qCounts[t.testId]||0;
     t.pendingGradingCount = pendingCounts[t.testId]||0;
     t.submissionCount = totalSubmissions[t.testId]||0;
+
+    // Resolve student names if targeted
+    var target = String(t.targetStudents || 'ALL').trim();
+    var targetNames = [];
+    if (target !== 'ALL' && target !== '') {
+      var allowed = [];
+      if (target.indexOf('[') === 0) {
+        try {
+          allowed = JSON.parse(target);
+        } catch(e) {
+          allowed = target.replace(/[\[\]\"']/g, '').split(',').map(function(s){return s.trim();});
+        }
+      } else {
+        allowed = target.split(',').map(function(s){return s.trim();});
+      }
+      allowed.forEach(function(sid) {
+        var cleanId = String(sid).trim().toUpperCase();
+        var sname = studentMap[cleanId] || cleanId;
+        targetNames.push(sname);
+      });
+      t.targetStudentNames = targetNames.join(', ');
+    } else {
+      t.targetStudentNames = 'Entire Batch';
+    }
   });
 
   var pendingSubmissions = [];
@@ -5047,15 +5120,15 @@ function otGetStudentActiveTest(ss, p) {
 
   rows.forEach(function(r){
     if (r[6]!=='Active') return;
-    // Check batch
-    var batches=String(r[3]).split(',').map(function(s){return s.trim();});
-    if (batches.indexOf(p.batchCode)===-1) return;
+    // Check batch (case-insensitive)
+    var batches=String(r[3]).split(',').map(function(s){return s.trim().toUpperCase();});
+    if (batches.indexOf(String(p.batchCode).trim().toUpperCase())===-1) return;
     // Check expiry
     if (r[17]) {
       var expiry=new Date(r[17]);
       if (now>expiry) return; // expired
     }
-    // Check target students
+    // Check target students (case-insensitive)
     var target=String(r[15]||'ALL').trim();
     if (target!=='ALL' && target!=='') {
       var allowed = [];
@@ -5068,8 +5141,8 @@ function otGetStudentActiveTest(ss, p) {
       } else {
         allowed = target.split(',').map(function(s){return s.trim();});
       }
-      allowed = allowed.map(function(s){return String(s).trim();});
-      if (allowed.indexOf(String(p.studentId).trim())===-1) return;
+      allowed = allowed.map(function(s){return String(s).trim().toUpperCase();});
+      if (allowed.indexOf(String(p.studentId).trim().toUpperCase())===-1) return;
     }
     var tObj = otParseTestRow(r);
     
@@ -5974,11 +6047,11 @@ function otGetStudentResultsV3(ss, p) {
   var otRows=shOT.getLastRow()>1?shOT.getRange(2,1,shOT.getLastRow()-1,23).getValues():[];
   var testMap={};otRows.forEach(function(r){testMap[r[0]]=r;});
   var myResponses=rRows.filter(function(r){
-    if (String(r[2])!==String(p.studentId)) return false;
-    if (String(r[4])===String(p.batchCode)) return true;
+    if (String(r[2]).trim().toUpperCase()!==String(p.studentId).trim().toUpperCase()) return false;
+    if (String(r[4]).trim().toUpperCase()===String(p.batchCode).trim().toUpperCase()) return true;
     var t=testMap[r[1]]||[];
-    var batches=String(t[3]||'').split(',').map(function(s){return s.trim();});
-    return batches.indexOf(String(p.batchCode))!==-1;
+    var batches=String(t[3]||'').split(',').map(function(s){return s.trim().toUpperCase();});
+    return batches.indexOf(String(p.batchCode).trim().toUpperCase())!==-1;
   });
   var questionRowsByTest={};
   var manualRowsByKey={};
@@ -9236,7 +9309,7 @@ function _updateSessionAttCount(ss, shSess, sessRows, sessionCode, batchCode) {
 // DIPLOMA PDF GENERATION
 // ════════════════════════════════════════════════════════════════
 
-const DIPLOMA_TEMPLATES_FOLDER_ID = '1DUR58XGeJZCwT59IwN47H6UralKGsVcV';
+const DIPLOMA_TEMPLATES_FOLDER_ID = '1tOSAMN3tLZJsXJZaFOSL9qFXB8v7z8mk';
 const DIPLOMA_OUTPUT_FOLDER_NAME  = 'IGI-Diplomas-Generated';
 const SH_DIPLOMAS = 'Diplomas';
 
@@ -9267,23 +9340,29 @@ const DIPLOMA_TEMPLATE_MAP = {
   'Coloured Stone Integrated':     'Colored Stone Graduate Diploma .pdf',
 };
 
-// Per-template text coordinates (PDF points, y from BOTTOM-LEFT of page)
-// name: {y, size} — always horizontally centred; date/id: {x, y, size}
+// Per-template text coordinates (pdf-lib: y from BOTTOM of page)
+// cover: white rectangle {x,y,w,h} to erase existing sample text before writing new text
+// name: centred horizontally; date/id/instructor: left-anchored x
 const DIPLOMA_COORD_MAP = {
-  'Diamond Graduate Diploma.pdf':               {pageW:989, pageH:794, name:{y:477,size:26}, date:{x:246,y:108,size:11}, id:{x:309,y:92,size:10}},
-  'Colored Stone Graduate Diploma .pdf':        {pageW:989, pageH:794, name:{y:476,size:26}, date:{x:246,y:106,size:11}, id:{x:316,y:92,size:10}},
-  'Graduate Gemologist Diploma .pdf':           {pageW:989, pageH:794, name:{y:463,size:26}, date:{x:246,y:106,size:11}, id:{x:319,y:92,size:10}},
-  'Smart Learning DG Diploma .pdf':             {pageW:842, pageH:595, name:{y:377,size:22}, date:{x:200,y:62, size:10}, id:{x:277,y:48, size:9}},
-  'Smart Learning GG Diploma .pdf':             {pageW:989, pageH:794, name:{y:457,size:26}, date:{x:246,y:106,size:11}, id:{x:324,y:92,size:10}},
-  'Smart Learning CSG Diploma.pdf':             {pageW:842, pageH:595, name:{y:375,size:22}, date:{x:200,y:62, size:10}, id:{x:277,y:48, size:9}},
-  'JD Manual Diploma .pdf':                     {pageW:989, pageH:794, name:{y:442,size:26}, date:{x:246,y:105,size:11}, id:{x:312,y:92,size:10}},
-  'Jewelpad Oncampus Diploma .pdf':             {pageW:989, pageH:794, name:{y:456,size:26}, date:{x:246,y:105,size:11}, id:{x:320,y:92,size:10}},
-  'Jewelpad online Diploma .pdf':               {pageW:989, pageH:794, name:{y:463,size:26}, date:{x:246,y:108,size:11}, id:{x:328,y:92,size:10}},
-  'PDC Diploma .pdf':                           {pageW:989, pageH:794, name:{y:471,size:26}, date:{x:246,y:105,size:11}, id:{x:312,y:92,size:10}},
-  'Rough Diamond Diploma .pdf':                 {pageW:989, pageH:794, name:{y:480,size:26}, date:{x:246,y:104,size:11}, id:{x:323,y:92,size:10}},
-  'Small Diamond Assortment Diploma .pdf':      {pageW:989, pageH:794, name:{y:463,size:26}, date:{x:246,y:106,size:11}, id:{x:326,y:92,size:10}},
-  'IRES Diploma.pdf':                           {pageW:989, pageH:794, name:{y:463,size:26}, date:{x:246,y:104,size:11}, id:{x:316,y:92,size:10}},
-  'Diamnd Essential 5cs Diploma.pdf':           {pageW:989, pageH:794, name:{y:457,size:26}, date:{x:246,y:104,size:11}, id:{x:322,y:92,size:10}},
+  // ── Standard 989×794 — name field BLANK in template ──────────────────
+  'Diamond Graduate Diploma.pdf':           {pageW:989,pageH:794, name:{y:415,size:27,cover:null},            date:{x:190,y:99, size:11,cover:{x:185,y:86,w:200,h:22}},  id:{x:190,y:82, size:10,cover:{x:185,y:69,w:200,h:20}},  instructor:{x:612,y:100,size:9}},
+  'Graduate Gemologist Diploma .pdf':       {pageW:989,pageH:794, name:{y:415,size:27,cover:null},            date:{x:190,y:99, size:11,cover:{x:185,y:86,w:200,h:22}},  id:{x:190,y:82, size:10,cover:{x:185,y:69,w:200,h:20}},  instructor:{x:612,y:100,size:9}},
+  'Colored Stone Graduate Diploma .pdf':    {pageW:989,pageH:794, name:{y:415,size:27,cover:null},            date:{x:190,y:99, size:11,cover:null},                      id:{x:190,y:82, size:10,cover:null},                      instructor:{x:612,y:100,size:9}},
+  'IRES Diploma.pdf':                       {pageW:989,pageH:794, name:{y:415,size:27,cover:null},            date:{x:190,y:99, size:11,cover:null},                      id:{x:190,y:82, size:10,cover:null},                      instructor:{x:612,y:100,size:9}},
+  'Diamnd Essential 5cs Diploma.pdf':       {pageW:989,pageH:794, name:{y:415,size:27,cover:null},            date:{x:190,y:99, size:11,cover:null},                      id:{x:190,y:82, size:10,cover:null},                      instructor:{x:612,y:100,size:9}},
+  // ── Standard 989×794 — name BLANK, date+ID have sample values ────────
+  'JD Manual Diploma .pdf':                 {pageW:989,pageH:794, name:{y:415,size:27,cover:null},            date:{x:190,y:99, size:11,cover:{x:185,y:86,w:200,h:22}},  id:{x:190,y:82, size:10,cover:{x:185,y:69,w:200,h:20}},  instructor:{x:612,y:100,size:9}},
+  // ── Standard 989×794 — name+date+ID all have sample values ──────────
+  'Jewelpad Oncampus Diploma .pdf':         {pageW:989,pageH:794, name:{y:415,size:27,cover:{x:100,y:428,w:790,h:65}}, date:{x:190,y:99,size:11,cover:{x:185,y:86,w:200,h:22}},  id:{x:190,y:82,size:10,cover:{x:185,y:69,w:200,h:20}},   instructor:{x:612,y:100,size:9}},
+  'Jewelpad online Diploma .pdf':           {pageW:989,pageH:794, name:{y:415,size:27,cover:{x:100,y:428,w:790,h:65}}, date:{x:190,y:99,size:11,cover:{x:185,y:86,w:200,h:22}},  id:{x:190,y:82,size:10,cover:{x:185,y:69,w:200,h:20}},   instructor:{x:612,y:100,size:9}},
+  'PDC Diploma .pdf':                       {pageW:989,pageH:794, name:{y:415,size:27,cover:{x:100,y:428,w:790,h:65}}, date:{x:190,y:99,size:11,cover:{x:185,y:86,w:200,h:22}},  id:{x:190,y:82,size:10,cover:{x:185,y:69,w:200,h:20}},   instructor:{x:612,y:100,size:9}},
+  'Rough Diamond Diploma .pdf':             {pageW:989,pageH:794, name:{y:415,size:27,cover:{x:100,y:428,w:790,h:65}}, date:{x:190,y:99,size:11,cover:{x:185,y:86,w:200,h:22}},  id:{x:190,y:82,size:10,cover:{x:185,y:69,w:200,h:20}},   instructor:{x:612,y:100,size:9}},
+  'Small Diamond Assortment Diploma .pdf':  {pageW:989,pageH:794, name:{y:415,size:27,cover:{x:100,y:428,w:790,h:65}}, date:{x:190,y:99,size:11,cover:{x:185,y:86,w:200,h:22}},  id:{x:190,y:82,size:10,cover:{x:185,y:69,w:200,h:20}},   instructor:{x:612,y:100,size:9}},
+  // ── Smart Learning GG  (989×794 landscape, name has sample value) ────
+  'Smart Learning GG Diploma .pdf':         {pageW:989,pageH:794, name:{y:415,size:27,cover:{x:100,y:428,w:790,h:65}}, date:{x:190,y:99,size:11,cover:{x:185,y:86,w:200,h:22}},  id:{x:190,y:82,size:10,cover:{x:185,y:69,w:200,h:20}},   instructor:{x:612,y:100,size:9}},
+  // ── A4 Landscape 842×595 Smart Learning ──────────────────────────────
+  'Smart Learning DG Diploma .pdf':         {pageW:842,pageH:595, name:{y:340,size:22,cover:{x:100,y:322,w:640,h:45}}, date:{x:173,y:56, size:10,cover:{x:168,y:44,w:160,h:20}}, id:{x:173,y:38,size:9, cover:{x:168,y:27,w:160,h:18}},   instructor:{x:490,y:57, size:8}},
+  'Smart Learning CSG Diploma.pdf':         {pageW:842,pageH:595, name:{y:340,size:22,cover:{x:100,y:322,w:640,h:45}}, date:{x:173,y:56, size:10,cover:{x:168,y:44,w:160,h:20}}, id:{x:173,y:38,size:9, cover:{x:168,y:27,w:160,h:18}},   instructor:{x:490,y:57, size:8}},
 };
 
 /**

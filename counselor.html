@@ -1036,6 +1036,7 @@
   font-weight: 700;
 }
 </style>
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 </head>
 <body>
 <script>document.getElementById('dyn-css').textContent=CSS_VARS;</script>
@@ -6684,33 +6685,298 @@ function filterDiplomaTable() {
   renderDiplomaTable(filtered);
 }
 
-function releaseDiploma(studentId, batchCode, btn) {
-  if (!confirm('Are you sure you want to release the diploma for student ' + studentId + ' in batch ' + batchCode + '?')) {
-    return;
-  }
-  
-  var oldText = btn.textContent;
-  btn.textContent = 'Releasing...';
-  btn.disabled = true;
-  
-  var params = {
-    action: 'releaseStudentDiploma',
-    studentId: studentId,
-    batchCode: batchCode,
-    counselorName: counselorName
-  };
-  
-  gasGet(params, function(e, d) {
-    if (e || !d || d.status !== 'ok') {
-      btn.textContent = oldText;
-      btn.disabled = false;
-      alert('Failed to release diploma: ' + (d && d.reason || 'Unknown error'));
-      return;
-    }
-    
-    showToast('Diploma released successfully!');
-    loadDiplomaData();
+// ═══════════════════════════════════════════════════════════════
+//  DIPLOMA PDF GENERATION
+// ═══════════════════════════════════════════════════════════════
+
+// Course → template filename (must match Drive folder exactly)
+var DIPLOMA_TEMPLATE_MAP = {
+  'Diamond Graduate':             'Diamond Graduate Diploma.pdf',
+  'Diamond Graduate DG':          'Diamond Graduate Diploma.pdf',
+  'Colored Stone Graduate':       'Colored Stone Graduate Diploma .pdf',
+  'CSG':                          'Colored Stone Graduate Diploma .pdf',
+  'Graduate Gemologist':          'Graduate Gemologist Diploma .pdf',
+  'GG':                           'Graduate Gemologist Diploma .pdf',
+  'Smart Learning DG':            'Smart Learning DG Diploma .pdf',
+  'Smart Learning GG':            'Smart Learning GG Diploma .pdf',
+  'Smart Learning CSG':           'Smart Learning CSG Diploma.pdf',
+  'JewelPad Design':              'Jewelpad Oncampus Diploma .pdf',
+  'JewelPad On-campus':           'Jewelpad Oncampus Diploma .pdf',
+  'JewelPad Online':              'Jewelpad online Diploma .pdf',
+  'Jewelry Design Manual':        'JD Manual Diploma .pdf',
+  'JD Manual':                    'JD Manual Diploma .pdf',
+  'Polished Diamond Grading':     'PDC Diploma .pdf',
+  'PDC':                          'PDC Diploma .pdf',
+  'Rough Diamond Graduate':       'Rough Diamond Diploma .pdf',
+  'Small Diamond Assortment':     'Small Diamond Assortment Diploma .pdf',
+  'Identification of RES':        'IRES Diploma.pdf',
+  'IRES':                         'IRES Diploma.pdf',
+  'Diamond Essentials':           'Diamnd Essential 5cs Diploma.pdf',
+};
+
+// Per-template overlay coordinates (pdf-lib: y from BOTTOM of page)
+// cover: white rect {x,y,w,h} to erase existing sample text
+var DIPLOMA_COORDS = {
+  'Diamond Graduate Diploma.pdf':
+    {pageW:989,pageH:794, name:{y:415,size:27,cover:null},            date:{x:190,y:99, size:11,cover:{x:185,y:86,w:200,h:22}},  id:{x:190,y:82,size:10,cover:{x:185,y:69,w:200,h:20}},  instructor:{x:612,y:100,size:9}},
+  'Graduate Gemologist Diploma .pdf':
+    {pageW:989,pageH:794, name:{y:415,size:27,cover:null},            date:{x:190,y:99, size:11,cover:{x:185,y:86,w:200,h:22}},  id:{x:190,y:82,size:10,cover:{x:185,y:69,w:200,h:20}},  instructor:{x:612,y:100,size:9}},
+  'Colored Stone Graduate Diploma .pdf':
+    {pageW:989,pageH:794, name:{y:415,size:27,cover:null},            date:{x:190,y:99, size:11,cover:null},                     id:{x:190,y:82,size:10,cover:null},                      instructor:{x:612,y:100,size:9}},
+  'IRES Diploma.pdf':
+    {pageW:989,pageH:794, name:{y:415,size:27,cover:null},            date:{x:190,y:99, size:11,cover:null},                     id:{x:190,y:82,size:10,cover:null},                      instructor:{x:612,y:100,size:9}},
+  'Diamnd Essential 5cs Diploma.pdf':
+    {pageW:989,pageH:794, name:{y:415,size:27,cover:null},            date:{x:190,y:99, size:11,cover:null},                     id:{x:190,y:82,size:10,cover:null},                      instructor:{x:612,y:100,size:9}},
+  'JD Manual Diploma .pdf':
+    {pageW:989,pageH:794, name:{y:415,size:27,cover:null},            date:{x:190,y:99, size:11,cover:{x:185,y:86,w:200,h:22}},  id:{x:190,y:82,size:10,cover:{x:185,y:69,w:200,h:20}},  instructor:{x:612,y:100,size:9}},
+  'Jewelpad Oncampus Diploma .pdf':
+    {pageW:989,pageH:794, name:{y:415,size:27,cover:{x:100,y:428,w:790,h:65}}, date:{x:190,y:99,size:11,cover:{x:185,y:86,w:200,h:22}}, id:{x:190,y:82,size:10,cover:{x:185,y:69,w:200,h:20}}, instructor:{x:612,y:100,size:9}},
+  'Jewelpad online Diploma .pdf':
+    {pageW:989,pageH:794, name:{y:415,size:27,cover:{x:100,y:428,w:790,h:65}}, date:{x:190,y:99,size:11,cover:{x:185,y:86,w:200,h:22}}, id:{x:190,y:82,size:10,cover:{x:185,y:69,w:200,h:20}}, instructor:{x:612,y:100,size:9}},
+  'PDC Diploma .pdf':
+    {pageW:989,pageH:794, name:{y:415,size:27,cover:{x:100,y:428,w:790,h:65}}, date:{x:190,y:99,size:11,cover:{x:185,y:86,w:200,h:22}}, id:{x:190,y:82,size:10,cover:{x:185,y:69,w:200,h:20}}, instructor:{x:612,y:100,size:9}},
+  'Rough Diamond Diploma .pdf':
+    {pageW:989,pageH:794, name:{y:415,size:27,cover:{x:100,y:428,w:790,h:65}}, date:{x:190,y:99,size:11,cover:{x:185,y:86,w:200,h:22}}, id:{x:190,y:82,size:10,cover:{x:185,y:69,w:200,h:20}}, instructor:{x:612,y:100,size:9}},
+  'Small Diamond Assortment Diploma .pdf':
+    {pageW:989,pageH:794, name:{y:415,size:27,cover:{x:100,y:428,w:790,h:65}}, date:{x:190,y:99,size:11,cover:{x:185,y:86,w:200,h:22}}, id:{x:190,y:82,size:10,cover:{x:185,y:69,w:200,h:20}}, instructor:{x:612,y:100,size:9}},
+  'Smart Learning GG Diploma .pdf':
+    {pageW:989,pageH:794, name:{y:415,size:27,cover:{x:100,y:428,w:790,h:65}}, date:{x:190,y:99,size:11,cover:{x:185,y:86,w:200,h:22}}, id:{x:190,y:82,size:10,cover:{x:185,y:69,w:200,h:20}}, instructor:{x:612,y:100,size:9}},
+  'Smart Learning DG Diploma .pdf':
+    {pageW:842,pageH:595, name:{y:340,size:22,cover:{x:100,y:322,w:640,h:45}}, date:{x:173,y:56,size:10,cover:{x:168,y:44,w:160,h:20}}, id:{x:173,y:38,size:9,cover:{x:168,y:27,w:160,h:18}}, instructor:{x:490,y:57,size:8}},
+  'Smart Learning CSG Diploma.pdf':
+    {pageW:842,pageH:595, name:{y:340,size:22,cover:{x:100,y:322,w:640,h:45}}, date:{x:173,y:56,size:10,cover:{x:168,y:44,w:160,h:20}}, id:{x:173,y:38,size:9,cover:{x:168,y:27,w:160,h:18}}, instructor:{x:490,y:57,size:8}},
+};
+
+function _gasGetPromise(params) {
+  return new Promise(function(resolve, reject) {
+    gasGet(params, function(err, data) {
+      if (err) reject(err); else resolve(data);
+    });
   });
+}
+
+function _gasPost(params) {
+  return fetch(window.GAS_URL, {
+    redirect: 'follow',
+    method: 'POST',
+    headers: {'Content-Type': 'text/plain;charset=utf-8'},
+    body: JSON.stringify(params)
+  }).then(function(r){ return r.json(); });
+}
+
+function _ordinalSuffix(n) {
+  var s = ['th','st','nd','rd'], v = n % 100;
+  return n + (s[(v-20)%10] || s[v] || s[0]);
+}
+
+function _formatDiplomaDate(d) {
+  var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  return _ordinalSuffix(d.getDate()) + ' ' + months[d.getMonth()] + ', ' + d.getFullYear();
+}
+
+function _templateForCourse(course) {
+  if (!course) return null;
+  if (DIPLOMA_TEMPLATE_MAP[course]) return DIPLOMA_TEMPLATE_MAP[course];
+  // fuzzy match
+  var lc = course.toLowerCase();
+  var keys = Object.keys(DIPLOMA_TEMPLATE_MAP);
+  for (var i = 0; i < keys.length; i++) {
+    if (keys[i].toLowerCase().indexOf(lc) !== -1 || lc.indexOf(keys[i].toLowerCase()) !== -1) {
+      return DIPLOMA_TEMPLATE_MAP[keys[i]];
+    }
+  }
+  return null;
+}
+
+function _base64ToUint8(b64) {
+  var bin = atob(b64), len = bin.length, bytes = new Uint8Array(len);
+  for (var i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+function _uint8ToBase64(bytes) {
+  var bin = '', len = bytes.length;
+  for (var i = 0; i < len; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+async function _generateDiplomaPDF(studentName, studentId, course, completionDate, instructorName, templateB64, templateFilename) {
+  var PL = window.PDFLib;
+  if (!PL) throw new Error('pdf-lib not loaded');
+  var { PDFDocument, rgb, StandardFonts } = PL;
+
+  var pdfDoc = await PDFDocument.load(_base64ToUint8(templateB64));
+  var page = pdfDoc.getPages()[0];
+
+  var coords = DIPLOMA_COORDS[templateFilename];
+  if (!coords) throw new Error('No coordinate map for template: ' + templateFilename);
+
+  var fontBold   = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  var fontNormal = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  var black      = rgb(0, 0, 0);
+  var white      = rgb(1, 1, 1);
+
+  // Helper: draw cover white rect
+  function cover(c) {
+    if (!c) return;
+    page.drawRectangle({x:c.x, y:c.y, width:c.w, height:c.h, color:white});
+  }
+
+  // Helper: draw text centred horizontally
+  function drawCentred(text, font, size, y) {
+    var w = font.widthOfTextAtSize(text, size);
+    page.drawText(text, {x: (coords.pageW - w) / 2, y:y, size:size, font:font, color:black});
+  }
+
+  // 1. Student name (centred)
+  cover(coords.name.cover);
+  if (studentName) drawCentred(studentName, fontBold, coords.name.size, coords.name.y);
+
+  // 2. Completion date
+  cover(coords.date.cover);
+  if (completionDate) page.drawText(completionDate, {x:coords.date.x, y:coords.date.y, size:coords.date.size, font:fontNormal, color:black});
+
+  // 3. Student ID
+  cover(coords.id.cover);
+  if (studentId) page.drawText('Student ID - ' + studentId, {x:coords.id.x, y:coords.id.y, size:coords.id.size, font:fontNormal, color:black});
+
+  // 4. Instructor name (above COURSE label)
+  if (instructorName) page.drawText(instructorName, {x:coords.instructor.x, y:coords.instructor.y, size:coords.instructor.size, font:fontNormal, color:black});
+
+  var pdfBytes = await pdfDoc.save();
+  return _uint8ToBase64(pdfBytes);
+}
+
+// ── Instructor name modal ──────────────────────────────────────
+function _showInstructorModal(studentId, batchCode, studentName, course, btn) {
+  // Remove any existing modal
+  var old = document.getElementById('diploma-instructor-modal');
+  if (old) old.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'diploma-instructor-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML =
+    '<div style="background:#fff;border-radius:12px;padding:28px 32px;min-width:340px;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,.3)">' +
+      '<h3 style="margin:0 0 6px;font-size:17px;color:#0d1b2e">🎓 Generate Diploma</h3>' +
+      '<p style="margin:0 0 18px;font-size:13px;color:#666">' + escC(studentName) + ' &mdash; ' + escC(course) + '</p>' +
+      '<label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">Course Instructor Name *</label>' +
+      '<input id="dip-instructor-input" type="text" placeholder="e.g. Priya Mehta" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:9px 12px;font-size:14px;outline:none">' +
+      '<p id="dip-modal-err" style="color:#dc2626;font-size:12px;margin:6px 0 0;display:none">Please enter instructor name.</p>' +
+      '<div style="display:flex;gap:10px;margin-top:20px">' +
+        '<button id="dip-modal-cancel" style="flex:1;padding:9px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;font-size:14px">Cancel</button>' +
+        '<button id="dip-modal-confirm" style="flex:2;padding:9px;border:none;border-radius:8px;background:#C8A951;color:#0d1b2e;font-weight:700;cursor:pointer;font-size:14px">Generate & Release</button>' +
+      '</div>' +
+      '<p id="dip-modal-status" style="text-align:center;font-size:12px;color:#6b7280;margin:12px 0 0;display:none"></p>' +
+    '</div>';
+
+  document.body.appendChild(modal);
+
+  var input   = document.getElementById('dip-instructor-input');
+  var errEl   = document.getElementById('dip-modal-err');
+  var statusEl= document.getElementById('dip-modal-status');
+  var confirmBtn = document.getElementById('dip-modal-confirm');
+  var cancelBtn  = document.getElementById('dip-modal-cancel');
+
+  input.focus();
+
+  cancelBtn.onclick = function() { modal.remove(); btn.disabled = false; };
+
+  confirmBtn.onclick = function() {
+    var instructorName = input.value.trim();
+    if (!instructorName) { errEl.style.display = 'block'; return; }
+    errEl.style.display = 'none';
+    confirmBtn.disabled = true;
+    cancelBtn.disabled  = true;
+    confirmBtn.textContent = 'Generating...';
+    statusEl.style.display = 'block';
+    statusEl.textContent = '⏳ Fetching template...';
+
+    _doGenerateAndRelease(studentId, batchCode, instructorName, btn, statusEl)
+      .then(function() { modal.remove(); })
+      .catch(function(err) {
+        confirmBtn.disabled = false;
+        cancelBtn.disabled  = false;
+        confirmBtn.textContent = 'Generate & Release';
+        statusEl.textContent = '❌ ' + (err.message || 'Failed');
+        btn.disabled = false;
+        btn.textContent = 'Release Diploma';
+      });
+  };
+}
+
+async function _doGenerateAndRelease(studentId, batchCode, instructorName, btn, statusEl) {
+  // Find student in diplomaList
+  var student = null;
+  for (var i = 0; i < diplomaList.length; i++) {
+    if (diplomaList[i].studentId === studentId && diplomaList[i].batchCode === batchCode) {
+      student = diplomaList[i]; break;
+    }
+  }
+  if (!student) throw new Error('Student not found in list');
+
+  var course = student.course || '';
+  var templateFilename = _templateForCourse(course);
+  if (!templateFilename) throw new Error('No diploma template found for course: ' + course);
+
+  if (statusEl) statusEl.textContent = '⏳ Fetching template from Drive...';
+
+  // Fetch template base64 from GAS
+  var tplData = await _gasGetPromise({action:'getDiplomaTemplate', course: course});
+  if (!tplData || tplData.status !== 'ok') throw new Error('Template error: ' + (tplData && tplData.reason || 'unknown'));
+
+  var completionDate = _formatDiplomaDate(new Date());
+
+  if (statusEl) statusEl.textContent = '⏳ Generating PDF...';
+
+  var pdfB64 = await _generateDiplomaPDF(
+    student.studentName, studentId, course, completionDate, instructorName,
+    tplData.base64, tplData.filename
+  );
+
+  if (statusEl) statusEl.textContent = '⏳ Saving to Drive...';
+
+  var saveResult = await _gasPost({
+    action: 'saveDiplomaFile',
+    pdfBase64: pdfB64,
+    studentId: studentId,
+    studentName: student.studentName,
+    batchCode: batchCode,
+    course: course,
+    completionDate: completionDate,
+    releasedBy: counselorName,
+    sendEmail: 'false'
+  });
+
+  if (!saveResult || saveResult.status !== 'ok') throw new Error('Save failed: ' + (saveResult && saveResult.message || 'unknown'));
+
+  if (statusEl) statusEl.textContent = '✅ Done!';
+
+  // Auto-download a copy for the counselor
+  var dlLink = document.createElement('a');
+  dlLink.href = 'data:application/pdf;base64,' + pdfB64;
+  dlLink.download = studentId + '_' + (student.studentName || '').replace(/\s+/g,'_') + '_diploma.pdf';
+  document.body.appendChild(dlLink);
+  dlLink.click();
+  document.body.removeChild(dlLink);
+
+  showToast('🎓 Diploma generated! Drive link: ' + saveResult.driveLink);
+  loadDiplomaData();
+}
+
+function releaseDiploma(studentId, batchCode, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Preparing...';
+  // Find student in diplomaList for name + course
+  var student = null;
+  for (var i = 0; i < diplomaList.length; i++) {
+    if (diplomaList[i].studentId === studentId && diplomaList[i].batchCode === batchCode) {
+      student = diplomaList[i]; break;
+    }
+  }
+  if (!student) { btn.disabled = false; btn.textContent = 'Release Diploma'; alert('Student not found.'); return; }
+  btn.textContent = 'Release Diploma';
+  _showInstructorModal(studentId, batchCode, student.studentName, student.course, btn);
 }
 
 function toggleSelectAllDiplomas(master) {
@@ -6776,57 +7042,38 @@ function bulkReleaseDiplomas() {
   var selectedKeys = Object.keys(selectedDiplomas);
   var total = selectedKeys.length;
   if (total === 0) return;
-  
-  if (!confirm('Are you sure you want to release diplomas for ' + total + ' selected student(s)?')) {
-    return;
-  }
-  
+
+  var instructorName = (prompt('Enter Course Instructor Name for all ' + total + ' selected diplomas:') || '').trim();
+  if (!instructorName) return;
+  if (!confirm('Generate and release diplomas for ' + total + ' student(s)? Instructor: ' + instructorName)) return;
+
   var btn = document.getElementById('btn-bulk-release');
   var oldHtml = btn.innerHTML;
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0 6px 0 0;display:inline-block;vertical-align:middle;border:2px solid rgba(13,27,46,0.2);border-top-color:var(--navy);border-radius:50%;animation:spin .7s linear infinite;"></span> Releasing 0/' + total + '...';
-  
-  // Disable all checkboxes and inputs to prevent changes during bulk operation
-  document.querySelectorAll('.diploma-row-checkbox, #diploma-select-all').forEach(function(cb) {
-    cb.disabled = true;
-  });
-  
-  var index = 0;
-  var successCount = 0;
-  var failCount = 0;
-  
+
+  var index = 0, successCount = 0, failCount = 0;
+
   function processNext() {
     if (index >= total) {
-      showToast('Bulk release completed! Successfully released: ' + successCount + ', Failed: ' + failCount);
+      btn.innerHTML = oldHtml;
+      btn.disabled = false;
+      showToast('Bulk release done! Released: ' + successCount + ', Failed: ' + failCount);
       selectedDiplomas = {};
       loadDiplomaData();
       return;
     }
-    
-    var key = selectedKeys[index];
+    var key  = selectedKeys[index];
     var item = selectedDiplomas[key];
     index++;
-    
-    btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0 6px 0 0;display:inline-block;vertical-align:middle;border:2px solid rgba(13,27,46,0.2);border-top-color:var(--navy);border-radius:50%;animation:spin .7s linear infinite;"></span> Releasing ' + index + '/' + total + '...';
-    
-    var params = {
-      action: 'releaseStudentDiploma',
-      studentId: item.studentId,
-      batchCode: item.batchCode,
-      counselorName: counselorName
-    };
-    
-    gasGet(params, function(e, d) {
-      if (e || !d || d.status !== 'ok') {
-        failCount++;
-        console.error('Failed to release diploma for ' + item.studentId, e, d);
-      } else {
-        successCount++;
-      }
-      processNext();
-    });
+    btn.innerHTML = '⏳ ' + index + '/' + total + '...';
+
+    // find row btn (null – no UI btn to restore during bulk)
+    var fakebtn = {disabled:false, textContent:'Release Diploma'};
+    _doGenerateAndRelease(item.studentId, item.batchCode, instructorName, fakebtn, null)
+      .then(function() { successCount++; processNext(); })
+      .catch(function(err) { failCount++; console.error('Bulk diploma error', item.studentId, err); processNext(); });
   }
-  
+
   processNext();
 }
 

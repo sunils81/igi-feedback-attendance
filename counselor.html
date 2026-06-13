@@ -6585,54 +6585,124 @@ var alumniList = [];
 var diplomaList = [];
 var selectedDiplomas = {};
 
-function loadDiplomaData() {
+async function loadDiplomaData() {
   selectedDiplomas = {};
   var tbody = document.getElementById('diploma-tbody');
   if (!tbody) return;
-  
+
   tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading diploma eligibility records...</p></div></td></tr>';
-  
-  var params = {
-    action: 'getDiplomaReleaseList',
-    counselorName: counselorName
-  };
-  
-  gasGet(params, function(e, d) {
-    if (e || !d || d.status !== 'ok') {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--red);padding:16px">Failed to load diploma eligibility records.</td></tr>';
-      return;
+
+  try {
+    var SUPABASE_URL = 'https://atbexvtrcopaagcdbpqi.supabase.co';
+    var SUPABASE_ANON = 'sb_publishable_TpzxX5a3M7lnFeND8xLfhQ_YJOxOkhb';
+    var headers = { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON };
+
+    // Fetch all required data in parallel
+    var [studentsResp, batchesResp, attResp, assessResp, marksResp, diplomasResp] = await Promise.all([
+      fetch(SUPABASE_URL + '/rest/v1/students?select=student_id,name,batch_code', {headers: headers}),
+      fetch(SUPABASE_URL + '/rest/v1/batches?select=batch_code,centre,course,counselor', {headers: headers}),
+      fetch(SUPABASE_URL + '/rest/v1/attendance_feedback?select=student_id,session_code,present', {headers: headers}),
+      fetch(SUPABASE_URL + '/rest/v1/assessments?select=assessment_id,batch_code,assessment_type,max_marks', {headers: headers}),
+      fetch(SUPABASE_URL + '/rest/v1/assessment_marks?select=assessment_id,student_id,marks_obtained', {headers: headers}),
+      fetch(SUPABASE_URL + '/rest/v1/diplomas?select=student_id,batch_code,status,released_by,released_at', {headers: headers})
+    ]);
+
+    var students = await studentsResp.json();
+    var batches  = await batchesResp.json();
+    var attRows  = await attResp.json();
+    var assessments = await assessResp.json();
+    var marks    = await marksResp.json();
+    var diplomas = await diplomasResp.json();
+
+    // Index lookups
+    var batchMap = {};
+    batches.forEach(function(b) { batchMap[b.batch_code] = b; });
+
+    var diplomaMap = {};
+    if (Array.isArray(diplomas)) {
+      diplomas.forEach(function(d) { diplomaMap[d.student_id + '|' + d.batch_code] = d; });
     }
-    
-    diplomaList = d.list || [];
-    
+
+    // Attendance % per student per batch
+    // session_code format: BATCHCODE-S01 => derive batch from students table
+    var attByStudent = {}; // key: student_id
+    attRows.forEach(function(a) {
+      if (!attByStudent[a.student_id]) attByStudent[a.student_id] = {total:0, present:0};
+      attByStudent[a.student_id].total++;
+      if (a.present) attByStudent[a.student_id].present++;
+    });
+
+    // Assessment scores per student: weekly avg & final exam
+    // assessment_type: 'Weekly Test' or 'Final Exam'
+    var assessMap = {}; // assessment_id -> {batch_code, type, max_marks}
+    assessments.forEach(function(a) { assessMap[a.assessment_id] = a; });
+
+    var studentScores = {}; // student_id -> {weeklyTotal, weeklyMax, weeklyCount, finalObt, finalMax}
+    marks.forEach(function(m) {
+      var a = assessMap[m.assessment_id];
+      if (!a) return;
+      if (!studentScores[m.student_id]) studentScores[m.student_id] = {weeklyTotal:0, weeklyMax:0, weeklyCount:0, finalObt:0, finalMax:0};
+      var s = studentScores[m.student_id];
+      if (a.assessment_type && a.assessment_type.toLowerCase().indexOf('final') !== -1) {
+        s.finalObt += (m.marks_obtained || 0);
+        s.finalMax += (a.max_marks || 0);
+      } else {
+        s.weeklyTotal += (m.marks_obtained || 0);
+        s.weeklyMax += (a.max_marks || 0);
+        s.weeklyCount++;
+      }
+    });
+
+    diplomaList = students.map(function(st) {
+      var batch = batchMap[st.batch_code] || {};
+      var att = attByStudent[st.student_id] || {total:0, present:0};
+      var sc = studentScores[st.student_id] || {weeklyTotal:0, weeklyMax:0, weeklyCount:0, finalObt:0, finalMax:0};
+      var attPct = att.total > 0 ? Math.round(100 * att.present / att.total) : null;
+      var weeklyAvg = sc.weeklyMax > 0 ? Math.round(100 * sc.weeklyTotal / sc.weeklyMax) : null;
+      var finalPct  = sc.finalMax  > 0 ? Math.round(100 * sc.finalObt  / sc.finalMax)  : null;
+      // Eligible if weekly avg >= 60 AND final >= 60 (attendance advisory only)
+      var eligible = (weeklyAvg !== null && weeklyAvg >= 60) && (finalPct !== null && finalPct >= 60);
+      var dipRec = diplomaMap[st.student_id + '|' + st.batch_code];
+      return {
+        studentId: st.student_id,
+        studentName: st.name,
+        batchCode: st.batch_code,
+        centre: batch.centre || '',
+        course: batch.course || '',
+        counselorName: batch.counselor || '',
+        attPct: attPct,
+        weeklyAvg: weeklyAvg,
+        finalPct: finalPct,
+        eligible: eligible,
+        diplomaStatus: dipRec ? dipRec.status : 'Not Released',
+        diplomaReleasedAt: dipRec ? dipRec.released_at : null,
+        diplomaReleasedBy: dipRec ? dipRec.released_by : null
+      };
+    });
+
     var courseFilter = document.getElementById('diploma-course-filter');
     if (courseFilter) {
       var courses = [];
-      diplomaList.forEach(function(a) {
-        if (a.course && courses.indexOf(a.course) === -1) {
-          courses.push(a.course);
-        }
-      });
+      diplomaList.forEach(function(a) { if (a.course && courses.indexOf(a.course) === -1) courses.push(a.course); });
       courses.sort();
       courseFilter.innerHTML = '<option value="">All Courses</option>' +
         courses.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
     }
-
     var centreFilter = document.getElementById('diploma-centre-filter');
     if (centreFilter) {
       var centres = [];
-      diplomaList.forEach(function(a) {
-        if (a.centre && centres.indexOf(a.centre) === -1) {
-          centres.push(a.centre);
-        }
-      });
+      diplomaList.forEach(function(a) { if (a.centre && centres.indexOf(a.centre) === -1) centres.push(a.centre); });
       centres.sort();
       centreFilter.innerHTML = '<option value="">All Centres</option>' +
         centres.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
     }
-    
+
     renderDiplomaTable(diplomaList);
-  });
+  } catch(err) {
+    console.error('[Diploma] loadDiplomaData error:', err);
+    var tbody2 = document.getElementById('diploma-tbody');
+    if (tbody2) tbody2.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--red);padding:16px">Failed to load diploma eligibility records: ' + escC(err.message) + '</td></tr>';
+  }
 }
 
 function renderDiplomaTable(list) {
@@ -6825,7 +6895,8 @@ function _gasGetPromise(params) {
 }
 
 function _gasPost(params) {
-  return fetch(window.GAS_URL, {
+  var url = typeof GAS_URL !== 'undefined' ? GAS_URL : window.GAS_URL;
+  return fetch(url, {
     redirect: 'follow',
     method: 'POST',
     headers: {'Content-Type': 'text/plain;charset=utf-8'},
@@ -7033,22 +7104,23 @@ async function _doGenerateAndRelease(studentId, batchCode, instructorName, btn, 
   var templateFilename = _templateForCourse(course);
   if (!templateFilename) throw new Error('No diploma template found for course: ' + course);
 
-  if (statusEl) statusEl.textContent = '⏳ Fetching template from Drive...';
+  if (statusEl) statusEl.textContent = '⏳ Fetching template...';
 
-  // Fetch template base64 via POST (avoids JSONP size limits for large PDFs)
-  var tplData = await _gasPost({action:'getDiplomaTemplate', course: course});
-  console.log('[Diploma] GAS response status:', tplData && tplData.status,
-    '| base64 length:', tplData && tplData.base64 ? tplData.base64.length : 'N/A',
-    '| filename:', tplData && tplData.filename,
-    '| reason:', tplData && tplData.reason,
-    '| message:', tplData && tplData.message);
-  if (!tplData || tplData.status !== 'ok') {
-    var detail = (tplData && (tplData.reason || tplData.message)) || 'no response';
-    throw new Error('Template error: ' + detail + ' | course: ' + course);
-  }
-  if (!tplData.base64) {
-    throw new Error('Template returned but no PDF data. GAS response keys: ' + Object.keys(tplData).join(','));
-  }
+  // --- Fetch template directly from Supabase Storage (public bucket) ---
+  var SUPABASE_URL = 'https://atbexvtrcopaagcdbpqi.supabase.co';
+  var SUPABASE_ANON = 'sb_publishable_TpzxX5a3M7lnFeND8xLfhQ_YJOxOkhb';
+  var templateUrl = SUPABASE_URL + '/storage/v1/object/public/diploma-templates/' + encodeURIComponent(templateFilename);
+  console.log('[Diploma] Fetching template from Supabase Storage:', templateUrl);
+
+  var tplResp = await fetch(templateUrl);
+  if (!tplResp.ok) throw new Error('Template not found in Supabase Storage: ' + templateFilename + ' (' + tplResp.status + '). Please upload the PDF to the diploma-templates bucket.');
+  var tplArrayBuffer = await tplResp.arrayBuffer();
+  // Convert ArrayBuffer to base64
+  var tplBytes = new Uint8Array(tplArrayBuffer);
+  var tplBin = '';
+  for (var bi = 0; bi < tplBytes.length; bi++) tplBin += String.fromCharCode(tplBytes[bi]);
+  var tplBase64 = btoa(tplBin);
+  console.log('[Diploma] Template fetched, size:', tplBytes.length, 'bytes');
 
   var completionDate = _formatDiplomaDate(new Date());
 
@@ -7058,40 +7130,81 @@ async function _doGenerateAndRelease(studentId, batchCode, instructorName, btn, 
   try {
     pdfB64 = await _generateDiplomaPDF(
       student.studentName, studentId, course, completionDate, instructorName,
-      tplData.base64, tplData.filename
+      tplBase64, templateFilename
     );
   } catch(pdfErr) {
     console.error('[Diploma] PDF generation failed:', pdfErr);
     throw new Error('PDF generation failed: ' + pdfErr.message);
   }
 
-  if (statusEl) statusEl.textContent = '⏳ Saving to Drive...';
+  if (statusEl) statusEl.textContent = '⏳ Saving...';
 
-  var saveResult = await _gasPost({
-    action: 'saveDiplomaFile',
-    pdfBase64: pdfB64,
-    studentId: studentId,
-    studentName: student.studentName,
-    batchCode: batchCode,
-    course: course,
-    completionDate: completionDate,
-    releasedBy: counselorName,
-    sendEmail: 'false'
+  // --- Upload generated diploma PDF to Supabase Storage ---
+  var safeStudentName = (student.studentName || '').replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_-]/g,'');
+  var pdfFilename = studentId + '_' + safeStudentName + '_diploma.pdf';
+  var storagePath = batchCode + '/' + pdfFilename;
+
+  // Convert base64 to blob for upload
+  var pdfBin = atob(pdfB64);
+  var pdfBytes = new Uint8Array(pdfBin.length);
+  for (var j = 0; j < pdfBin.length; j++) pdfBytes[j] = pdfBin.charCodeAt(j);
+  var pdfBlob = new Blob([pdfBytes], {type: 'application/pdf'});
+
+  var uploadResp = await fetch(
+    SUPABASE_URL + '/storage/v1/object/diploma-releases/' + storagePath,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + SUPABASE_ANON,
+        'Content-Type': 'application/pdf',
+        'x-upsert': 'true'
+      },
+      body: pdfBlob
+    }
+  );
+  if (!uploadResp.ok) {
+    var uploadErr = await uploadResp.text();
+    console.warn('[Diploma] Storage upload warning:', uploadErr);
+  }
+  var storageLink = SUPABASE_URL + '/storage/v1/object/public/diploma-releases/' + storagePath;
+
+  // --- Record diploma release in Supabase diplomas table ---
+  var nowIso = new Date().toISOString();
+  var sbInsertResp = await fetch(SUPABASE_URL + '/rest/v1/diplomas', {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_ANON,
+      'Authorization': 'Bearer ' + SUPABASE_ANON,
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=merge-duplicates'
+    },
+    body: JSON.stringify({
+      student_id: studentId,
+      batch_code: batchCode,
+      course: course,
+      completion_date: new Date().toISOString().split('T')[0],
+      released_by: counselorName || instructorName,
+      released_at: nowIso,
+      storage_path: storageLink,
+      status: 'Released'
+    })
   });
-
-  if (!saveResult || saveResult.status !== 'ok') throw new Error('Save failed: ' + (saveResult && saveResult.message || 'unknown'));
+  if (!sbInsertResp.ok) {
+    var dbErr = await sbInsertResp.text();
+    console.warn('[Diploma] DB insert warning:', dbErr);
+  }
 
   if (statusEl) statusEl.textContent = '✅ Done!';
 
-  // Auto-download a copy for the counselor
+  // Auto-download for counselor
   var dlLink = document.createElement('a');
   dlLink.href = 'data:application/pdf;base64,' + pdfB64;
-  dlLink.download = studentId + '_' + (student.studentName || '').replace(/\s+/g,'_') + '_diploma.pdf';
+  dlLink.download = pdfFilename;
   document.body.appendChild(dlLink);
   dlLink.click();
   document.body.removeChild(dlLink);
 
-  showToast('🎓 Diploma generated! Drive link: ' + saveResult.driveLink);
+  showToast('🎓 Diploma generated & saved!');
   loadDiplomaData();
 }
 

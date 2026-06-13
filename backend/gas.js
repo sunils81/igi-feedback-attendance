@@ -112,6 +112,7 @@ const SH_INV_STOCK     = 'INV_Stock';
 const SH_INV_REQUESTS  = 'INV_Requests';
 const SH_INV_DISPATCH  = 'INV_Dispatch';
 const SH_INV_VENDORS   = 'INV_Vendors';
+const SH_ATT_RECORDS   = 'ATT_Records';
 
 // ── Centre / Course codes ──────────────────────────────────────
 const CENTRE_CODES = {
@@ -1989,6 +1990,24 @@ function doGet(e) {
       });
     }
 
+    // ── selfMarkAttendance ────────────────────────────────────
+    if (act==='selfMarkAttendance') return respond(selfMarkAttendance(ss,p));
+
+    // ── getSessionAttendance (instructor live view) ───────────
+    if (act==='getSessionAttendance') return respond(getSessionAttendanceFull(ss,p));
+
+    // ── instructorMarkAttendance ──────────────────────────────
+    if (act==='instructorMarkAttendance') return respond(instructorMarkAttendance(ss,p));
+
+    // ── finaliseAttendance ────────────────────────────────────
+    if (act==='finaliseAttendance') return respond(finaliseAttendance(ss,p));
+
+    // ── getPendingAttendanceSessions ──────────────────────────
+    if (act==='getPendingAttendanceSessions') return respond(getPendingAttendanceSessions(ss,p));
+
+    // ── getStudentTodaySession ────────────────────────────────
+    if (act==='getStudentTodaySession') return respond(getStudentTodaySession(ss,p));
+
     // ── createAssessment ──────────────────────────────────────
     if (act==='createAssessment') {
       const sh=getOrCreateSheet(ss,SH_ASSESSMENTS);
@@ -3265,7 +3284,8 @@ function ensureSheets(ss) {
     [SH_INV_STOCK]:    ['Stock ID','Centre','Item ID','Quantity','Updated At','Updated By'],
     [SH_INV_REQUESTS]: ['Request ID','Centre','Item ID','Quantity Requested','Urgency','Counsellor Note','Requested By','Requested At','Status','Approved By','Approved At'],
     [SH_INV_DISPATCH]: ['Dispatch ID','Request ID','Quantity Dispatched','Dispatch Date','Courier / Tracking Info','Dispatched By','Dispatched At'],
-    [SH_INV_VENDORS]:  ['Vendor ID','Vendor Name','Contact Person','Phone','Email','Address','Supplied Items','Registered By','Registered At']
+    [SH_INV_VENDORS]:  ['Vendor ID','Vendor Name','Contact Person','Phone','Email','Address','Supplied Items','Registered By','Registered At'],
+    [SH_ATT_RECORDS]:  ['Record ID','Session Code','Batch Code','Student ID','Student Name','Centre','Date','Marked At','Marked By','Status','Lat','Lng','Accuracy (m)','Resolved Address','Location Status','IP Address']
   };
   Object.entries(defs).forEach(([name,headers])=>{
     let sh=ss.getSheetByName(name);if(!sh)sh=ss.insertSheet(name);
@@ -3323,10 +3343,11 @@ function ensureStudentHeaders(sh) {
   }
 }
 function ensureSessionHeaders(sh) {
-  const h=['Session Code','Batch Code','Session Date','Session No','Instructor','Session Type','Topic Covered','Auto Created','Created At'];
+  const h=['Session Code','Batch Code','Session Date','Session No','Instructor','Session Type','Topic Covered','Auto Created','Created At',
+           'Att Status','Present Count','Absent Count','Att Confirmed By','Att Confirmed At'];
   const current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);
   const hasOldTopicHeader=current[5]==='Topic'||current[6]==='Module'||current[7]==='Created At';
-  if (hasOldTopicHeader||current[5]!==h[5]||current[6]!==h[6]||current[7]!==h[7]||current[8]!==h[8]) {
+  if (hasOldTopicHeader||current[5]!==h[5]||current[6]!==h[6]||current[7]!==h[7]||current[8]!==h[8]||current[9]!==h[9]) {
     sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
     sh.setFrozenRows(1);
   }
@@ -8770,4 +8791,440 @@ function deleteBatch(ss, p) {
   } catch (err) {
     return {status: 'error', message: err.toString()};
   }
+}
+
+// ════════════════════════════════════════════════════════════════
+// ATTENDANCE FUNCTIONS
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * getStudentTodaySession
+ * Returns today's open session for a student's active batches.
+ * Also returns whether student has already marked attendance.
+ */
+function getStudentTodaySession(ss, p) {
+  try {
+    var studentId = String(p.studentId || '').toUpperCase();
+    if (!studentId) return {status:'error', reason:'missing_params'};
+    var todayStr = dateKey(new Date());
+
+    // Get student's active batches
+    var enrollments = getEnrollmentRows(ss).filter(function(e) {
+      return String(e.studentId).toUpperCase() === studentId && e.status === 'Active';
+    });
+    if (!enrollments.length) return {status:'ok', sessions:[]};
+
+    var batchCodes = enrollments.map(function(e){ return String(e.batchCode).toUpperCase(); });
+
+    // Get today's sessions for those batches
+    var shSess = ss.getSheetByName(SH_SESSIONS);
+    if (!shSess || shSess.getLastRow() < 2) return {status:'ok', sessions:[]};
+    var sessData = shSess.getRange(2,1,shSess.getLastRow()-1, Math.max(shSess.getLastColumn(),14)).getValues();
+    var todaySessions = sessData.filter(function(r) {
+      return r[0] && batchCodes.indexOf(String(r[1]).toUpperCase()) > -1 &&
+             r[2] && dateKey(new Date(r[2])) === todayStr;
+    });
+    if (!todaySessions.length) return {status:'ok', sessions:[]};
+
+    // Check ATT_Records for already-marked
+    var shAtt = ss.getSheetByName(SH_ATT_RECORDS);
+    var markedSet = {};
+    if (shAtt && shAtt.getLastRow() > 1) {
+      shAtt.getRange(2,1,shAtt.getLastRow()-1,5).getValues().forEach(function(r) {
+        if (String(r[3]).toUpperCase() === studentId) {
+          markedSet[String(r[1]).toUpperCase()] = true;
+        }
+      });
+    }
+
+    // Get batch details
+    var shBatch = ss.getSheetByName(SH_BATCHES);
+    var batchMap = {};
+    if (shBatch && shBatch.getLastRow() > 1) {
+      shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues().forEach(function(r) {
+        if (r[0]) batchMap[String(r[0]).toUpperCase()] = {centre:r[1],course:r[2],batchSlot:r[4]||'Full Day'};
+      });
+    }
+
+    var sessions = todaySessions.map(function(r) {
+      var sessionCode = String(r[0]).toUpperCase();
+      var batchCode   = String(r[1]).toUpperCase();
+      var bm = batchMap[batchCode] || {};
+      return {
+        sessionCode: sessionCode,
+        batchCode:   batchCode,
+        sessionNo:   r[3],
+        instructor:  r[4] || '',
+        topic:       r[6] || '',
+        attStatus:   r[9] || 'pending',
+        centre:      bm.centre || '',
+        course:      bm.course || '',
+        batchSlot:   bm.batchSlot || 'Full Day',
+        alreadyMarked: !!markedSet[sessionCode]
+      };
+    });
+    return {status:'ok', sessions:sessions};
+  } catch(err) { return {status:'error', message:err.toString()}; }
+}
+
+/**
+ * selfMarkAttendance
+ * Student marks their own attendance with optional location data.
+ * Never blocks — records what it can.
+ */
+function selfMarkAttendance(ss, p) {
+  try {
+    var studentId   = String(p.studentId || '').toUpperCase();
+    var sessionCode = String(p.sessionCode || '').toUpperCase();
+    if (!studentId || !sessionCode) return {status:'error', reason:'missing_params'};
+
+    // Validate session exists and is today
+    var shSess = ss.getSheetByName(SH_SESSIONS);
+    if (!shSess || shSess.getLastRow() < 2) return {status:'error', reason:'session_not_found'};
+    var sessRows = shSess.getRange(2,1,shSess.getLastRow()-1, Math.max(shSess.getLastColumn(),14)).getValues();
+    var sessRow  = sessRows.filter(function(r){ return String(r[0]).toUpperCase()===sessionCode; })[0];
+    if (!sessRow) return {status:'error', reason:'session_not_found'};
+
+    var todayStr = dateKey(new Date());
+    if (sessRow[2] && dateKey(new Date(sessRow[2])) !== todayStr) return {status:'error', reason:'session_not_today'};
+
+    var batchCode = String(sessRow[1]).toUpperCase();
+
+    // Prevent double-mark
+    var shAtt = ss.getSheetByName(SH_ATT_RECORDS);
+    if (!shAtt) { ensureSheets(ss); shAtt = ss.getSheetByName(SH_ATT_RECORDS); }
+    if (shAtt.getLastRow() > 1) {
+      var existing = shAtt.getRange(2,1,shAtt.getLastRow()-1,4).getValues();
+      var alreadyMarked = existing.some(function(r){
+        return String(r[1]).toUpperCase()===sessionCode && String(r[3]).toUpperCase()===studentId;
+      });
+      if (alreadyMarked) return {status:'error', reason:'already_marked'};
+    }
+
+    // Get student name
+    var stuAll = getStudentsForBatch(ss, batchCode);
+    var stu = stuAll.filter(function(s){ return String(s.enrollmentNo).toUpperCase()===studentId; })[0];
+    var studentName = stu ? stu.name : '';
+
+    // Get centre
+    var shBatch = ss.getSheetByName(SH_BATCHES);
+    var centre = '';
+    if (shBatch && shBatch.getLastRow() > 1) {
+      var bRows = shBatch.getRange(2,1,shBatch.getLastRow()-1,5).getValues();
+      var bRow  = bRows.filter(function(r){ return String(r[0]).toUpperCase()===batchCode; })[0];
+      if (bRow) centre = bRow[1];
+    }
+
+    var recordId = 'ATT-' + sessionCode + '-' + studentId + '-' + Date.now();
+    var lat  = p.lat  || '';
+    var lng  = p.lng  || '';
+    var acc  = p.accuracy || '';
+    var addr = p.resolvedAddress || '';
+    var locStatus = p.locationStatus || (lat ? 'captured' : 'unavailable');
+
+    shAtt.appendRow([
+      recordId, sessionCode, batchCode, studentId, studentName, centre,
+      todayStr, new Date().toISOString(), 'self', 'present',
+      lat, lng, acc, addr, locStatus, p.ip || ''
+    ]);
+
+    // Update present count on session row
+    _updateSessionAttCount(ss, shSess, sessRows, sessionCode, batchCode);
+
+    return {status:'ok', recordId:recordId, resolvedAddress:addr};
+  } catch(err) { return {status:'error', message:err.toString()}; }
+}
+
+/**
+ * getSessionAttendanceFull — instructor live view
+ * Returns full student list with who marked, who didn't, location info.
+ */
+function getSessionAttendanceFull(ss, p) {
+  try {
+    var sessionCode = String(p.sessionCode || '').toUpperCase();
+    var batchCode   = String(p.batchCode   || '').toUpperCase();
+    if (!sessionCode && !batchCode) return {status:'error', reason:'missing_params'};
+
+    // If only batchCode provided, find today's session
+    if (!sessionCode && batchCode) {
+      var todayStr = dateKey(new Date());
+      var shSess2 = ss.getSheetByName(SH_SESSIONS);
+      if (shSess2 && shSess2.getLastRow() > 1) {
+        var sr2 = shSess2.getRange(2,1,shSess2.getLastRow()-1,2).getValues();
+        var found2 = sr2.filter(function(r){
+          return String(r[1]).toUpperCase()===batchCode;
+        });
+        // get last one (today's)
+        if (found2.length) sessionCode = String(found2[found2.length-1][0]).toUpperCase();
+      }
+    }
+
+    var stuAll = getStudentsForBatch(ss, batchCode || '');
+
+    var shAtt = ss.getSheetByName(SH_ATT_RECORDS);
+    var attMap = {};
+    if (shAtt && shAtt.getLastRow() > 1) {
+      shAtt.getRange(2,1,shAtt.getLastRow()-1,16).getValues().forEach(function(r) {
+        if (String(r[1]).toUpperCase() === sessionCode) {
+          attMap[String(r[3]).toUpperCase()] = {
+            markedAt: r[7], markedBy: r[8], status: r[9],
+            resolvedAddress: r[13], locationStatus: r[14]
+          };
+        }
+      });
+    }
+
+    var students = stuAll.map(function(s) {
+      var sid = String(s.enrollmentNo).toUpperCase();
+      var att = attMap[sid];
+      return {
+        enrollmentNo: s.enrollmentNo, name: s.name,
+        marked: !!att,
+        markedAt: att ? att.markedAt : '',
+        markedBy: att ? att.markedBy : '',
+        status:   att ? att.status   : 'pending',
+        resolvedAddress: att ? att.resolvedAddress : '',
+        locationStatus:  att ? att.locationStatus  : ''
+      };
+    });
+
+    // Session meta
+    var sessInfo = {};
+    var shSess3 = ss.getSheetByName(SH_SESSIONS);
+    if (shSess3 && shSess3.getLastRow() > 1) {
+      var sRows = shSess3.getRange(2,1,shSess3.getLastRow()-1,Math.max(shSess3.getLastColumn(),14)).getValues();
+      var sRow  = sRows.filter(function(r){ return String(r[0]).toUpperCase()===sessionCode; })[0];
+      if (sRow) sessInfo = {
+        sessionCode: sessionCode, batchCode: String(sRow[1]).toUpperCase(),
+        sessionDate: sRow[2], sessionNo: sRow[3], instructor: sRow[4],
+        topic: sRow[6], attStatus: sRow[9]||'pending',
+        presentCount: sRow[10]||0, absentCount: sRow[11]||0,
+        confirmedBy: sRow[12]||'', confirmedAt: sRow[13]||''
+      };
+    }
+
+    return {status:'ok', session:sessInfo, students:students,
+      presentCount: Object.keys(attMap).length, totalCount: stuAll.length};
+  } catch(err) { return {status:'error', message:err.toString()}; }
+}
+
+/**
+ * instructorMarkAttendance
+ * Instructor marks one or many students present/absent.
+ * p.marks = [{enrollmentNo, status:'present'|'absent'}]
+ * p.sessionCode, p.batchCode, p.instructorName
+ */
+function instructorMarkAttendance(ss, p) {
+  try {
+    var sessionCode    = String(p.sessionCode || '').toUpperCase();
+    var batchCode      = String(p.batchCode   || '').toUpperCase();
+    var instructorName = p.instructorName || 'Instructor';
+    var marks = p.marks || [];
+    if (!sessionCode || !marks.length) return {status:'error', reason:'missing_params'};
+
+    var shAtt = ss.getSheetByName(SH_ATT_RECORDS);
+    if (!shAtt) { ensureSheets(ss); shAtt = ss.getSheetByName(SH_ATT_RECORDS); }
+
+    // Build existing map
+    var existingMap = {};
+    if (shAtt.getLastRow() > 1) {
+      shAtt.getRange(2,1,shAtt.getLastRow()-1,4).getValues().forEach(function(r) {
+        if (String(r[1]).toUpperCase()===sessionCode) {
+          existingMap[String(r[3]).toUpperCase()] = true;
+        }
+      });
+    }
+
+    // Get student names
+    var stuAll = getStudentsForBatch(ss, batchCode);
+    var stuMap = {};
+    stuAll.forEach(function(s){ stuMap[String(s.enrollmentNo).toUpperCase()] = s.name; });
+
+    // Get centre
+    var centre = '';
+    var shBatch = ss.getSheetByName(SH_BATCHES);
+    if (shBatch && shBatch.getLastRow() > 1) {
+      var bRows = shBatch.getRange(2,1,shBatch.getLastRow()-1,5).getValues();
+      var bRow  = bRows.filter(function(r){ return String(r[0]).toUpperCase()===batchCode; })[0];
+      if (bRow) centre = bRow[1];
+    }
+
+    var todayStr = dateKey(new Date());
+    var written  = 0;
+    var updated  = 0;
+
+    marks.forEach(function(m) {
+      var sid    = String(m.enrollmentNo || '').toUpperCase();
+      var status = m.status === 'absent' ? 'absent' : 'present';
+      if (!sid) return;
+
+      if (existingMap[sid]) {
+        // Update existing row
+        if (shAtt.getLastRow() > 1) {
+          var rows = shAtt.getRange(2,1,shAtt.getLastRow()-1,10).getValues();
+          for (var i=0; i<rows.length; i++) {
+            if (String(rows[i][1]).toUpperCase()===sessionCode && String(rows[i][3]).toUpperCase()===sid) {
+              shAtt.getRange(i+2,9).setValue('instructor');
+              shAtt.getRange(i+2,10).setValue(status);
+              updated++;
+              break;
+            }
+          }
+        }
+      } else {
+        // New row
+        var recordId = 'ATT-' + sessionCode + '-' + sid + '-' + Date.now();
+        shAtt.appendRow([
+          recordId, sessionCode, batchCode, sid, stuMap[sid]||'', centre,
+          todayStr, new Date().toISOString(), 'instructor', status,
+          '', '', '', '', 'n/a', ''
+        ]);
+        written++;
+      }
+    });
+
+    // Update counts on session
+    var shSess = ss.getSheetByName(SH_SESSIONS);
+    var sessRows = shSess && shSess.getLastRow() > 1 ?
+      shSess.getRange(2,1,shSess.getLastRow()-1,Math.max(shSess.getLastColumn(),14)).getValues() : [];
+    _updateSessionAttCount(ss, shSess, sessRows, sessionCode, batchCode);
+
+    return {status:'ok', written:written, updated:updated};
+  } catch(err) { return {status:'error', message:err.toString()}; }
+}
+
+/**
+ * finaliseAttendance
+ * Locks the session attendance. Sets attStatus = 'confirmed'.
+ */
+function finaliseAttendance(ss, p) {
+  try {
+    var sessionCode    = String(p.sessionCode || '').toUpperCase();
+    var instructorName = p.instructorName || 'Instructor';
+    if (!sessionCode) return {status:'error', reason:'missing_params'};
+
+    var shSess = ss.getSheetByName(SH_SESSIONS);
+    if (!shSess || shSess.getLastRow() < 2) return {status:'error', reason:'session_not_found'};
+    var sessRows = shSess.getRange(2,1,shSess.getLastRow()-1,Math.max(shSess.getLastColumn(),14)).getValues();
+    var rowIdx = -1;
+    var batchCode = '';
+    for (var i=0; i<sessRows.length; i++) {
+      if (String(sessRows[i][0]).toUpperCase()===sessionCode) { rowIdx=i; batchCode=String(sessRows[i][1]).toUpperCase(); break; }
+    }
+    if (rowIdx < 0) return {status:'error', reason:'session_not_found'};
+
+    // Count present/absent from ATT_Records
+    var shAtt = ss.getSheetByName(SH_ATT_RECORDS);
+    var presentCount = 0; var absentCount = 0;
+    if (shAtt && shAtt.getLastRow() > 1) {
+      shAtt.getRange(2,1,shAtt.getLastRow()-1,10).getValues().forEach(function(r) {
+        if (String(r[1]).toUpperCase()===sessionCode) {
+          if (r[9]==='present') presentCount++; else absentCount++;
+        }
+      });
+    }
+
+    var shRow = rowIdx + 2;
+    // Ensure columns 10-14 exist
+    var lastCol = Math.max(shSess.getLastColumn(), 14);
+    if (lastCol < 14) shSess.getRange(1,10,1,5).setValues([['Att Status','Present Count','Absent Count','Att Confirmed By','Att Confirmed At']]);
+    shSess.getRange(shRow, 10).setValue('confirmed');
+    shSess.getRange(shRow, 11).setValue(presentCount);
+    shSess.getRange(shRow, 12).setValue(absentCount);
+    shSess.getRange(shRow, 13).setValue(instructorName);
+    shSess.getRange(shRow, 14).setValue(new Date().toISOString());
+    shSess.getRange(shRow, 1, 1, lastCol).setBackground('#E8F5EE');
+
+    return {status:'ok', sessionCode:sessionCode, presentCount:presentCount, absentCount:absentCount};
+  } catch(err) { return {status:'error', message:err.toString()}; }
+}
+
+/**
+ * getPendingAttendanceSessions
+ * Returns sessions that have no attendance confirmation (attStatus != 'confirmed').
+ * Used by counselor portal on login to show the reminder banner.
+ */
+function getPendingAttendanceSessions(ss, p) {
+  try {
+    var instructorName = p.instructorName || '';
+    var centre         = p.centre         || '';
+    var shSess = ss.getSheetByName(SH_SESSIONS);
+    if (!shSess || shSess.getLastRow() < 2) return {status:'ok', pending:[]};
+
+    var today = new Date(); today.setHours(0,0,0,0);
+    var cutoff = new Date(today); cutoff.setDate(cutoff.getDate()-7); // look back 7 days max
+
+    var allRows = shSess.getRange(2,1,shSess.getLastRow()-1,Math.max(shSess.getLastColumn(),14)).getValues();
+
+    // Get batches for this instructor/centre
+    var shBatch = ss.getSheetByName(SH_BATCHES);
+    var allowedBatchCodes = null;
+    if (instructorName && shBatch && shBatch.getLastRow() > 1) {
+      var bRows = shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues();
+      allowedBatchCodes = new Set(bRows.filter(function(r){
+        var instr = r[9]||r[8]||'';
+        var ctr   = r[1]||'';
+        return (!instructorName || String(instr).toLowerCase()===instructorName.toLowerCase()) &&
+               (!centre || String(ctr).toLowerCase()===centre.toLowerCase());
+      }).map(function(r){ return String(r[0]).toUpperCase(); }));
+    } else if (centre && shBatch && shBatch.getLastRow() > 1) {
+      var bRows2 = shBatch.getRange(2,1,shBatch.getLastRow()-1,5).getValues();
+      allowedBatchCodes = new Set(bRows2.filter(function(r){
+        return String(r[1]).toLowerCase()===centre.toLowerCase();
+      }).map(function(r){ return String(r[0]).toUpperCase(); }));
+    }
+
+    var pending = allRows.filter(function(r) {
+      if (!r[0] || !r[2]) return false;
+      var sessDate = new Date(r[2]); sessDate.setHours(0,0,0,0);
+      if (sessDate < cutoff || sessDate > today) return false; // only past & today
+      var attStatus = String(r[9]||'').toLowerCase();
+      if (attStatus==='confirmed' || attStatus==='skipped') return false;
+      if (allowedBatchCodes && !allowedBatchCodes.has(String(r[1]).toUpperCase())) return false;
+      return true;
+    }).map(function(r) {
+      return {
+        sessionCode: String(r[0]).toUpperCase(),
+        batchCode:   String(r[1]).toUpperCase(),
+        sessionDate: r[2] ? new Date(r[2]).toLocaleDateString('en-IN') : '',
+        sessionNo:   r[3],
+        instructor:  r[4]||'',
+        topic:       r[6]||'',
+        attStatus:   r[9]||'pending',
+        presentCount:r[10]||0, absentCount:r[11]||0
+      };
+    });
+
+    return {status:'ok', pending:pending, count:pending.length};
+  } catch(err) { return {status:'error', message:err.toString()}; }
+}
+
+/**
+ * Helper: recount present/absent in ATT_Records and update Sessions row
+ */
+function _updateSessionAttCount(ss, shSess, sessRows, sessionCode, batchCode) {
+  try {
+    var shAtt = ss.getSheetByName(SH_ATT_RECORDS);
+    if (!shAtt) return;
+    var presentCount=0; var absentCount=0;
+    if (shAtt.getLastRow() > 1) {
+      shAtt.getRange(2,1,shAtt.getLastRow()-1,10).getValues().forEach(function(r) {
+        if (String(r[1]).toUpperCase()===sessionCode) {
+          if (String(r[9]).toLowerCase()==='present') presentCount++;
+          else absentCount++;
+        }
+      });
+    }
+    if (!shSess) return;
+    for (var i=0; i<sessRows.length; i++) {
+      if (String(sessRows[i][0]).toUpperCase()===sessionCode) {
+        var shRow = i+2;
+        var lastCol = Math.max(shSess.getLastColumn(), 14);
+        shSess.getRange(shRow,10).setValue(shSess.getRange(shRow,10).getValue()||'pending');
+        shSess.getRange(shRow,11).setValue(presentCount);
+        shSess.getRange(shRow,12).setValue(absentCount);
+        break;
+      }
+    }
+  } catch(_e) {}
 }

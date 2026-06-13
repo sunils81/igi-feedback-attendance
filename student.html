@@ -3368,6 +3368,25 @@ function buildIdCardHTML(d) {
   var activeBatches  = allBatches.filter(function(b) { return !b.expired; });
   var expiredBatches = allBatches.filter(function(b) { return  b.expired; });
 
+  // Pick active concurrent (overlapping) batches
+  var concurrentActive = [];
+  if (activeBatches.length > 0) {
+    concurrentActive.push(activeBatches[0]);
+    for (var i = 1; i < activeBatches.length; i++) {
+      var b = activeBatches[i];
+      var overlaps = concurrentActive.some(function(cb) {
+        var start1 = new Date(cb.startDateISO);
+        var end1 = new Date(cb.endDateISO);
+        var start2 = new Date(b.startDateISO);
+        var end2 = new Date(b.endDateISO);
+        return (start1 <= end2 && start2 <= end1);
+      });
+      if (overlaps) {
+        concurrentActive.push(b);
+      }
+    }
+  }
+
   // Pick primary batch for display
   var primary = activeBatches.length ? activeBatches[0] : (expiredBatches.length ? expiredBatches[0] : null);
 
@@ -3389,17 +3408,51 @@ function buildIdCardHTML(d) {
   }
 
   var centre   = primary ? (primary.centre  || '—') : '—';
-  var slot     = primary ? (primary.batchSlot||'—') : '—';
+  var slot     = '—';
+  var course   = '—';
+  var startDis = '—';
+  var endDis   = '—';
 
-  // If student holds both Diamond Graduate + Colored Stone Graduate → Graduate Gemologist
-  var allCourseNames = allBatches.map(function(b) { return (b.course||'').toLowerCase(); });
-  var hasDiamond      = allCourseNames.some(function(c){ return c.indexOf('diamond') !== -1; });
-  var hasColoredStone = allCourseNames.some(function(c){ return c.indexOf('colored stone') !== -1 || c.indexOf('coloured stone') !== -1; });
-  var course = (hasDiamond && hasColoredStone)
-    ? 'Graduate Gemologist'
-    : (primary ? (primary.course || '—') : '—');
-  var startDis = primary ? (primary.startDateDisplay||'—') : '—';
-  var endDis   = primary ? (primary.endDateDisplay  ||'—') : '—';
+  if (concurrentActive.length > 0) {
+    var hasDiamond = concurrentActive.some(function(b) {
+      var c = (b.course||'').toLowerCase();
+      return c.indexOf('diamond') !== -1 || c === 'dg';
+    });
+    var hasColoredStone = concurrentActive.some(function(b) {
+      var c = (b.course||'').toLowerCase();
+      return c.indexOf('colored stone') !== -1 || c.indexOf('coloured stone') !== -1 || c === 'csg';
+    });
+
+    if (hasDiamond && hasColoredStone) {
+      course = 'Graduate Gemologist';
+      slot = 'Full Day';
+    } else if (concurrentActive.length > 1) {
+      course = concurrentActive.map(function(b) { return b.course; }).join(' & ');
+      slot = concurrentActive.map(function(b) { return b.batchSlot; }).join(' & ');
+    } else {
+      course = concurrentActive[0].course || '—';
+      slot = concurrentActive[0].batchSlot || '—';
+    }
+
+    var minStartBatch = concurrentActive.reduce(function(prev, curr) {
+      return new Date(prev.startDateISO) < new Date(curr.startDateISO) ? prev : curr;
+    });
+    var maxEndBatch = concurrentActive.reduce(function(prev, curr) {
+      return new Date(prev.endDateISO) > new Date(curr.endDateISO) ? prev : curr;
+    });
+    startDis = minStartBatch.startDateDisplay || '—';
+    endDis = maxEndBatch.endDateDisplay || '—';
+  } else if (primary) {
+    var allCourseNames = allBatches.map(function(b) { return (b.course||'').toLowerCase(); });
+    var hasDiamondAll = allCourseNames.some(function(c){ return c.indexOf('diamond') !== -1; });
+    var hasColoredStoneAll = allCourseNames.some(function(c){ return c.indexOf('colored stone') !== -1 || c.indexOf('coloured stone') !== -1; });
+    course = (hasDiamondAll && hasColoredStoneAll)
+      ? 'Graduate Gemologist'
+      : (primary.course || '—');
+    slot = primary.batchSlot || '—';
+    startDis = primary.startDateDisplay || '—';
+    endDis = primary.endDateDisplay || '—';
+  }
 
   // Avatar / photo
   var avatarHtml;

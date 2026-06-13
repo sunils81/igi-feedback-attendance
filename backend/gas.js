@@ -2195,7 +2195,15 @@ function doGet(e) {
         const isNew     = detectSlotOrDate(batch[4]);
         const startDate = new Date(isNew?batch[5]:batch[4]); startDate.setHours(0,0,0,0);
         const endDate   = new Date(isNew?batch[6]:batch[5]);  endDate.setHours(23,59,59,0);
-        if (today<startDate||today>endDate) return; // batch not active today
+        
+        // Find today's session
+        const todaySess = allSess.find(r=>
+          String(r[1]).toUpperCase()===batchCode &&
+          r[2] && dateKey(r[2])===todayStr
+        );
+
+        if ((today<startDate||today>endDate) && !todaySess) return; // batch not active today and no session today
+        
         const batchSlot = isNew?(batch[4]||'Full Day'):'Full Day';
         // Slot activation window
         const win   = SLOT_WINDOWS[batchSlot]||SLOT_WINDOWS['Full Day'];
@@ -2203,11 +2211,6 @@ function doGet(e) {
         const windowOpen   = nowHr >= win.open;
         const windowClosed = nowHr >= win.close;
         const isActive     = windowOpen && !windowClosed;
-        // Find today's session
-        const todaySess = allSess.find(r=>
-          String(r[1]).toUpperCase()===batchCode &&
-          r[2] && dateKey(r[2])===todayStr
-        );
         // Check if already submitted
         const alreadySubmitted = todaySess && allFb.some(r=>
           String(r[0]).toUpperCase()===String(todaySess[0]).toUpperCase() &&

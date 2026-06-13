@@ -7000,6 +7000,16 @@ function _uint8ToBase64(bytes) {
   return btoa(bin);
 }
 
+// Fetch a signature PNG from Supabase Storage and return ArrayBuffer (or null if missing)
+async function _fetchSigImage(filename) {
+  try {
+    var url = SUPABASE_URL + '/storage/v1/object/public/diploma-templates/' + encodeURIComponent(filename);
+    var r = await fetch(url);
+    if (!r.ok) return null;
+    return await r.arrayBuffer();
+  } catch(e) { return null; }
+}
+
 async function _generateDiplomaPDF(studentName, studentId, course, completionDate, instructorName, templateB64, templateFilename) {
   var PL = window.PDFLib;
   if (!PL) throw new Error('pdf-lib not loaded');
@@ -7011,62 +7021,81 @@ async function _generateDiplomaPDF(studentName, studentId, course, completionDat
   var coords = DIPLOMA_COORDS[templateFilename];
   if (!coords) throw new Error('No coordinate map for template: ' + templateFilename);
 
-  var fontName   = await pdfDoc.embedFont(StandardFonts.TimesRomanBoldItalic); // elegant name font
+  var fontName   = await pdfDoc.embedFont(StandardFonts.TimesRomanBoldItalic);
   var fontBold   = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   var fontNormal = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  var black      = rgb(0, 0, 0);
-  var white      = rgb(1, 1, 1);
+  var black = rgb(0, 0, 0);
+  var white = rgb(1, 1, 1);
 
-  // Helper: draw cover white rect
-  function cover(c) {
-    if (!c) return;
-    page.drawRectangle({x:c.x, y:c.y, width:c.w, height:c.h, color:white});
-  }
+  // Fetch signatures in parallel — try full name first, then first name only
+  var firstName = (instructorName || '').split(' ')[0];
+  var [instrSigBuf, instrSigBuf2, chairSigBuf] = await Promise.all([
+    _fetchSigImage('sig-' + instructorName + '.png'),
+    _fetchSigImage('sig-' + firstName + '.png'),
+    _fetchSigImage('sig-Chairman.png')
+  ]);
+  var instrSigData = instrSigBuf || instrSigBuf2; // prefer full name match
 
-  // Helper: draw text centred horizontally
+  // Embed signature images
+  var instrSigImg  = instrSigData  ? await pdfDoc.embedPng(instrSigData).catch(()=>null)  : null;
+  var chairSigImg  = chairSigBuf   ? await pdfDoc.embedPng(chairSigBuf).catch(()=>null)   : null;
+
+  // Helper: draw text centred horizontally across page
   function drawCentred(text, font, size, y) {
     var w = font.widthOfTextAtSize(text, size);
-    page.drawText(text, {x: (coords.pageW - w) / 2, y:y, size:size, font:font, color:black});
+    page.drawText(text, {x:(coords.pageW - w)/2, y:y, size:size, font:font, color:black});
   }
 
-  // 1. Student name (centred) — use elegant TimesRomanBoldItalic
-  cover(coords.name.cover);
+  // Helper: draw image centred around cx, bottom edge at bottomY, maxW wide
+  function drawSigImage(img, cx, bottomY, maxW, maxH) {
+    if (!img) return;
+    var dims = img.scale(1);
+    var scale = Math.min(maxW/dims.width, maxH/dims.height, 1);
+    var w = dims.width * scale;
+    var h = dims.height * scale;
+    page.drawImage(img, {x: cx - w/2, y: bottomY, width:w, height:h});
+  }
+
+  // 1. Student name — centred, TimesRomanBoldItalic
+  if (coords.name.cover) {
+    var c = coords.name.cover;
+    page.drawRectangle({x:c.x, y:c.y, width:c.w, height:c.h, color:white});
+  }
   if (studentName) drawCentred(studentName, fontName, coords.name.size, coords.name.y);
 
-  // 2, 3, 4 — date, student ID, instructor name all handled in section 5 below
-  //            (drawn after white covers erase any pre-printed template text)
-
-  // 5. Bottom section — erase any pre-printed text with white, then draw ours cleanly
+  // 2. Bottom section — erase pre-printed text, then draw everything cleanly
   var labelSize = 8;
   var smallSize = 9;
   var ciX = coords.instructor.x;
-  var chX = coords.chairman ? coords.chairman.x : 870;
+  var chX = coords.chairman ? coords.chairman.x : 880;
 
-  // White covers to erase old pre-printed bottom text (works whether template is blank or not)
-  page.drawRectangle({x:35,  y:60, width:200, height:80, color:white}); // ANTWERP + WDC area
-  page.drawRectangle({x:175, y:60, width:200, height:80, color:white}); // date + student ID area
-  page.drawRectangle({x:ciX-120, y:60, width:240, height:80, color:white}); // COURSE INSTRUCTOR area
-  page.drawRectangle({x:chX-120, y:60, width:240, height:80, color:white}); // CHAIRMAN area
+  // White covers over entire bottom strip (handles both blank and pre-printed templates)
+  page.drawRectangle({x:35,      y:55, width:200,  height:100, color:white}); // ANTWERP + date
+  page.drawRectangle({x:175,     y:55, width:210,  height:100, color:white}); // date + ID
+  page.drawRectangle({x:ciX-130, y:55, width:260,  height:120, color:white}); // instructor area
+  page.drawRectangle({x:chX-130, y:55, width:260,  height:120, color:white}); // chairman area
 
   // Bottom-left: ANTWERP / World Diamond Center
-  page.drawText('ANTWERP', {x:50, y:118, size:smallSize, font:fontBold, color:black});
-  page.drawText('World Diamond Center', {x:50, y:106, size:labelSize, font:fontNormal, color:black});
+  page.drawText('ANTWERP',             {x:50, y:118, size:smallSize, font:fontBold,   color:black});
+  page.drawText('World Diamond Center',{x:50, y:106, size:labelSize, font:fontNormal, color:black});
 
   // Bottom-centre-left: Date + Student ID
-  if (completionDate) page.drawText(completionDate, {x:190, y:118, size:smallSize, font:fontNormal, color:black});
-  if (studentId) page.drawText('Student ID - ' + studentId, {x:190, y:106, size:smallSize, font:fontNormal, color:black});
+  if (completionDate) page.drawText(completionDate,          {x:190, y:118, size:smallSize, font:fontNormal, color:black});
+  if (studentId)      page.drawText('Student ID - '+studentId,{x:190, y:106, size:smallSize, font:fontNormal, color:black});
 
-  // Bottom-centre: instructor name + COURSE INSTRUCTOR label
+  // Bottom-centre: instructor signature image → name → COURSE / INSTRUCTOR
+  drawSigImage(instrSigImg, ciX, 110, 120, 55); // signature image, bottom edge at y:110
   if (instructorName) {
-    var iw2 = fontNormal.widthOfTextAtSize(instructorName, coords.instructor.size);
-    page.drawText(instructorName, {x: ciX - iw2/2, y:coords.instructor.y, size:coords.instructor.size, font:fontNormal, color:black});
+    var iw = fontNormal.widthOfTextAtSize(instructorName, 9);
+    page.drawText(instructorName, {x: ciX - iw/2, y:97, size:9, font:fontNormal, color:black});
   }
-  page.drawText('COURSE',     {x: ciX - fontBold.widthOfTextAtSize('COURSE',     labelSize)/2, y:91, size:labelSize, font:fontBold, color:black});
-  page.drawText('INSTRUCTOR', {x: ciX - fontBold.widthOfTextAtSize('INSTRUCTOR', labelSize)/2, y:80, size:labelSize, font:fontBold, color:black});
+  page.drawText('COURSE',     {x: ciX - fontBold.widthOfTextAtSize('COURSE',     labelSize)/2, y:88, size:labelSize, font:fontBold, color:black});
+  page.drawText('INSTRUCTOR', {x: ciX - fontBold.widthOfTextAtSize('INSTRUCTOR', labelSize)/2, y:78, size:labelSize, font:fontBold, color:black});
 
-  // Bottom-right: CHAIRMAN / OF THE BOARD
-  page.drawText('CHAIRMAN',     {x: chX - fontBold.widthOfTextAtSize('CHAIRMAN',     labelSize)/2, y:91, size:labelSize, font:fontBold, color:black});
-  page.drawText('OF THE BOARD', {x: chX - fontBold.widthOfTextAtSize('OF THE BOARD', labelSize)/2, y:80, size:labelSize, font:fontBold, color:black});
+  // Bottom-right: chairman signature image → CHAIRMAN / OF THE BOARD
+  drawSigImage(chairSigImg, chX, 110, 120, 55); // signature image, bottom edge at y:110
+  page.drawText('CHAIRMAN',     {x: chX - fontBold.widthOfTextAtSize('CHAIRMAN',     labelSize)/2, y:88, size:labelSize, font:fontBold, color:black});
+  page.drawText('OF THE BOARD', {x: chX - fontBold.widthOfTextAtSize('OF THE BOARD', labelSize)/2, y:78, size:labelSize, font:fontBold, color:black});
 
   var pdfBytes = await pdfDoc.save();
   return _uint8ToBase64(pdfBytes);

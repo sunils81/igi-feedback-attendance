@@ -993,7 +993,10 @@ function doPost(e) {
     var act = body.action || '';
     var ss  = SpreadsheetApp.openById(SPREADSHEET_ID);
     var result;
-    if (act === 'saveDiplomaFile') {
+    if (act === 'getDiplomaTemplate') {
+      // Template fetch via POST avoids JSONP size limits for large PDFs
+      result = getDiplomaTemplate(ss, body);
+    } else if (act === 'saveDiplomaFile') {
       var counselor = body.releasedBy || '';
       if (counselor !== 'Bianca' && counselor !== 'Anuradha') {
         result = {status:'error', reason:'unauthorized'};

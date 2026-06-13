@@ -1119,7 +1119,7 @@
     <button class="tab" onclick="switchTab('t-revenue')">📈 Revenue</button>
     <button class="tab" onclick="switchTab('t-holidays')">🗓 Holidays</button>
     <button class="tab" id="tab-diplomas" onclick="switchTab('t-diplomas')" style="display:none">🎓 Diploma Release</button>
-    <button class="tab" id="tab-inventory" onclick="switchTab('t-inventory')">📦 Inventory</button>
+    <button class="tab" id="tab-inventory" onclick="switchTab('t-inventory')">📦 Inventory <span id="inv-pending-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
   </div>
 
   <div id="counselor-summary" class="dashboard-summary" style="display:none"></div>
@@ -2676,6 +2676,7 @@ function createBatch() {
       loadMyBatches();
       loadHolidayList();
       showToast('Batch ' + batchCode + ' created successfully.');
+      checkBatchInventory(centre, course, batchCode);
       ['b-centre','b-course','b-type','b-start','b-end','b-rpass'].forEach(id=>{
         const el=document.getElementById(id);
         if(el.tagName==='SELECT') el.selectedIndex=0; else el.value='';
@@ -7034,6 +7035,8 @@ function loadInventoryStock() {
 
   grid.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading stock levels...</p></div>';
 
+  const isMumbaiAdmin = (counselorName === 'Bianca' || counselorName === 'Anuradha');
+
   gasGet({ action: 'getInventoryStock', centre: selectedCentre }, function(e, d) {
     if (e || !d || d.status !== 'ok') {
       grid.innerHTML = '<div style="color:var(--red);padding:16px;text-align:center">Failed to load stock levels.</div>';
@@ -7042,31 +7045,154 @@ function loadInventoryStock() {
 
     const list = d.list || [];
     if (list.length === 0) {
-      grid.innerHTML = '<div style="color:var(--muted);padding:16px;text-align:center">No inventory items found.</div>';
+      grid.innerHTML = '<div style="color:var(--muted);padding:16px;text-align:center">No inventory items found. Seed data first.</div>';
       return;
     }
 
-    grid.innerHTML = list.map(item => {
-      const isLow = item.quantity <= 5;
-      const badge = isLow ? '<span class="stock-badge-low">⚠️ Low Stock</span>' : '';
-      return `
-        <div class="stock-card ${isLow ? 'low-stock' : ''}">
-          <div>
-            <div class="item-category">${escC(item.category)}</div>
-            <div class="item-title" style="margin-top:4px">${escC(item.itemName)}</div>
-            <div style="font-size:11px;color:var(--muted);margin-bottom:8px">ID: <code>${escC(item.itemId)}</code></div>
-          </div>
-          <div class="stock-value-row">
-            <div>
-              <span class="stock-qty">${item.quantity}</span>
-              <span class="stock-unit" style="margin-left:4px">${escC(item.unit)}</span>
-            </div>
-            ${badge}
-          </div>
-        </div>
-      `;
-    }).join('');
+    var centreCol = isMumbaiAdmin ? '<th style="padding:7px 10px">Centre</th>' : '';
+    var html = '<div style="overflow-x:auto"><table class="compact-table" style="width:100%"><thead><tr>' +
+      '<th style="padding:7px 10px">Item</th>' +
+      '<th style="padding:7px 10px">Category</th>' +
+      centreCol +
+      '<th style="padding:7px 10px;text-align:right">Qty</th>' +
+      '<th style="padding:7px 10px">Unit</th>' +
+      '<th style="padding:7px 10px">Status</th>' +
+      '<th style="padding:7px 10px;width:80px"></th>' +
+      '</tr></thead><tbody>';
+
+    list.forEach(function(item) {
+      var reorder = (item.reorderLevel != null ? item.reorderLevel : 5);
+      var qty = item.quantity || 0;
+      var isOut = qty === 0;
+      var isLow = !isOut && qty <= reorder;
+      var statusDot, statusText, statusStyle;
+      if (isOut)      { statusDot = '🔴'; statusText = 'Out of Stock'; statusStyle = 'color:#dc2626;font-weight:700'; }
+      else if (isLow) { statusDot = '🟠'; statusText = 'Low (reorder: ' + reorder + ')'; statusStyle = 'color:#d97706;font-weight:600'; }
+      else            { statusDot = '🟢'; statusText = 'OK'; statusStyle = 'color:#16a34a'; }
+
+      var reqBtn = (isLow || isOut)
+        ? '<button class="btn btn-outline btn-xs" style="font-size:10px;padding:2px 8px;white-space:nowrap" onclick="quickRaiseRequest(\'' + escC(item.itemId) + '\',\'' + escC(item.itemName).replace(/'/g,'\\\'') + '\')">+ Request</button>'
+        : '';
+      var centreCell = isMumbaiAdmin ? '<td style="padding:7px 10px;font-size:11px">' + escC(item.centre || '') + '</td>' : '';
+
+      html += '<tr>' +
+        '<td style="padding:7px 10px;font-weight:600;font-size:12px">' + escC(item.itemName) + '</td>' +
+        '<td style="padding:7px 10px;font-size:11px;color:var(--muted)">' + escC(item.category) + '</td>' +
+        centreCell +
+        '<td style="padding:7px 10px;text-align:right;font-weight:700;font-size:15px;color:var(--navy)">' + qty + '</td>' +
+        '<td style="padding:7px 10px;font-size:11px;color:var(--muted)">' + escC(item.unit) + '</td>' +
+        '<td style="padding:7px 10px;font-size:11px"><span style="' + statusStyle + '">' + statusDot + ' ' + statusText + '</span></td>' +
+        '<td style="padding:7px 10px">' + reqBtn + '</td>' +
+        '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+    grid.innerHTML = html;
   });
+}
+
+function quickRaiseRequest(itemId, itemName) {
+  switchInventorySubTab('inv-request');
+  switchRequestType('single');
+  var trySelect = function(attempts) {
+    var sel = document.getElementById('inv-req-item');
+    if (!sel) return;
+    if (sel.options.length > 1) {
+      sel.value = itemId;
+      var urgEl = document.getElementById('inv-req-urgency');
+      if (urgEl) urgEl.value = 'High';
+      var noteEl = document.getElementById('inv-req-note');
+      if (noteEl) noteEl.value = 'Low / out of stock — urgent restock needed for ' + itemName;
+      return;
+    }
+    if (attempts > 0) setTimeout(function() { trySelect(attempts - 1); }, 300);
+  };
+  setTimeout(function() { trySelect(12); }, 250);
+}
+
+// ── Batch → Inventory advisory check ─────────────────────────
+function checkBatchInventory(centre, course, batchCode) {
+  // Get bundles (cached) then check stock
+  var doCheck = function(bundles) {
+    var bundle = null;
+    for (var i = 0; i < bundles.length; i++) {
+      if (bundles[i].course && bundles[i].course.toLowerCase().indexOf(course.toLowerCase()) !== -1) {
+        bundle = bundles[i]; break;
+      }
+    }
+    if (!bundle || !bundle.items || bundle.items.length === 0) return; // no bundle defined for course
+
+    gasGet({ action: 'getInventoryStock', centre: centre }, function(e, d) {
+      if (e || !d || d.status !== 'ok') return;
+      var stockMap = {};
+      (d.list || []).forEach(function(s) { stockMap[s.itemId] = s.quantity || 0; });
+
+      var shortages = [];
+      bundle.items.forEach(function(bi) {
+        var avail = stockMap[bi.itemId] || 0;
+        if (avail < bi.qtyPerStudent) {
+          shortages.push({ itemId: bi.itemId, name: bi.name, needed: bi.qtyPerStudent, available: avail });
+        }
+      });
+
+      if (shortages.length > 0) {
+        _showBatchInventoryAdvisory(batchCode, course, centre, shortages);
+      }
+    });
+  };
+
+  if (_bundleCache) {
+    doCheck(_bundleCache);
+  } else {
+    gasGet({ action: 'getCourseBundles' }, function(e, d) {
+      if (e || !d || d.status !== 'ok') return;
+      _bundleCache = d.bundles || [];
+      doCheck(_bundleCache);
+    });
+  }
+}
+
+function _showBatchInventoryAdvisory(batchCode, course, centre, shortages) {
+  var existing = document.getElementById('batch-inv-advisory-modal');
+  if (existing) existing.remove();
+
+  var rows = shortages.map(function(s) {
+    return '<tr>' +
+      '<td style="padding:6px 10px;font-size:12px">' + escC(s.name) + '</td>' +
+      '<td style="padding:6px 10px;text-align:right;color:#dc2626;font-weight:700">' + s.available + '</td>' +
+      '<td style="padding:6px 10px;text-align:right;color:#1e3a5f;font-weight:700">' + s.needed + '</td>' +
+      '</tr>';
+  }).join('');
+
+  var modal = document.createElement('div');
+  modal.id = 'batch-inv-advisory-modal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML =
+    '<div style="background:#fff;border-radius:12px;max-width:520px;width:94%;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,0.25);position:relative">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">' +
+        '<span style="font-size:26px">⚠️</span>' +
+        '<div>' +
+          '<div style="font-size:16px;font-weight:700;color:#1e3a5f">Inventory Advisory</div>' +
+          '<div style="font-size:12px;color:var(--muted)">Batch <strong>' + escC(batchCode) + '</strong> · ' + escC(course) + ' · ' + escC(centre) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<p style="font-size:13px;color:#374151;margin-bottom:14px">The following course materials may be insufficient for this batch. Please raise a requisition to ensure timely supply.</p>' +
+      '<table style="width:100%;border-collapse:collapse;background:#fef3c7;border-radius:8px;overflow:hidden;margin-bottom:18px">' +
+        '<thead><tr style="background:#fde68a">' +
+          '<th style="padding:7px 10px;text-align:left;font-size:11px;font-weight:700">Item</th>' +
+          '<th style="padding:7px 10px;text-align:right;font-size:11px;font-weight:700">In Stock</th>' +
+          '<th style="padding:7px 10px;text-align:right;font-size:11px;font-weight:700">Needed / Student</th>' +
+        '</tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>' +
+      '<div style="display:flex;gap:10px;justify-content:flex-end">' +
+        '<button onclick="document.getElementById(\'batch-inv-advisory-modal\').remove()" ' +
+          'style="padding:8px 18px;border-radius:6px;border:1.5px solid #d1d5db;background:#fff;color:#374151;font-size:13px;cursor:pointer">Dismiss</button>' +
+        '<button onclick="document.getElementById(\'batch-inv-advisory-modal\').remove(); switchTab(\'t-inventory\'); switchInventorySubTab(\'inv-request\');" ' +
+          'style="padding:8px 18px;border-radius:6px;border:none;background:#1e3a5f;color:#fff;font-size:13px;cursor:pointer;font-weight:600">Raise Requisition →</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(modal);
 }
 
 function loadInventoryRequestItems() {
@@ -7156,6 +7282,14 @@ function loadInventoryRequests() {
 
     // Sort by requestedAt descending
     list.sort((a,b) => new Date(b.requestedAt) - new Date(a.requestedAt));
+
+    // Update pending badge on Inventory tab
+    var pendingCount = list.filter(function(r) { return r.status === 'Pending'; }).length;
+    var badge = document.getElementById('inv-pending-badge');
+    if (badge) {
+      if (pendingCount > 0) { badge.textContent = pendingCount; badge.style.display = 'inline'; }
+      else { badge.style.display = 'none'; }
+    }
 
     tbody.innerHTML = list.map(req => {
       let statusColor = '#D97706'; // Pending

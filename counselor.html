@@ -7088,33 +7088,34 @@ async function _generateDiplomaPDF(studentName, studentId, course, completionDat
   var chX = coords.chairman ? coords.chairman.x : 880;
   var sz  = 9; // unified size for ALL bottom text
 
-  // White covers — full bottom strip
-  page.drawRectangle({x:35,      y:50, width:200,  height:150, color:white});
-  page.drawRectangle({x:175,     y:50, width:210,  height:150, color:white});
-  page.drawRectangle({x:ciX-140, y:50, width:280,  height:150, color:white});
-  page.drawRectangle({x:chX-140, y:50, width:280,  height:150, color:white});
+  // White covers — only erase the text rows (NOT the signature image zone above)
+  // Text rows sit between y:80–115, covers from y:50 to y:120 (height:70)
+  page.drawRectangle({x:35,      y:50, width:200,  height:70, color:white}); // ANTWERP + date
+  page.drawRectangle({x:175,     y:50, width:210,  height:70, color:white}); // date + ID
+  page.drawRectangle({x:ciX-140, y:50, width:280,  height:70, color:white}); // instructor labels
+  page.drawRectangle({x:chX-140, y:50, width:280,  height:70, color:white}); // chairman labels
 
-  // ── Column 1: ANTWERP ──
-  page.drawText('ANTWERP',              {x:50, y:108, size:sz, font:fontBold, color:black});
-  page.drawText('World Diamond Center', {x:50, y:96,  size:sz, font:fontBold, color:black});
+  // ── Column 1: ANTWERP (y:105 + y:93, within white cover y:50–120) ──
+  page.drawText('ANTWERP',              {x:50, y:105, size:sz, font:fontBold, color:black});
+  page.drawText('World Diamond Center', {x:50, y:93,  size:sz, font:fontBold, color:black});
 
   // ── Column 2: Date + Student ID ──
-  if (completionDate) page.drawText(completionDate,              {x:190, y:108, size:sz, font:fontBold, color:black});
-  if (studentId)      page.drawText('Student ID - ' + studentId, {x:190, y:96,  size:sz, font:fontBold, color:black});
+  if (completionDate) page.drawText(completionDate,              {x:190, y:105, size:sz, font:fontBold, color:black});
+  if (studentId)      page.drawText('Student ID - ' + studentId, {x:190, y:93,  size:sz, font:fontBold, color:black});
 
-  // ── Column 3: Instructor sig + name + COURSE / INSTRUCTOR ──
-  drawSigImage(instrSigImg, ciX, 125, 130, 60);
+  // ── Column 3: Instructor sig (above cover zone) + name + COURSE / INSTRUCTOR ──
+  drawSigImage(instrSigImg, ciX, 118, 130, 55); // bottom of sig at y:118, inside cover zone top
   if (instructorName) {
     var iw = fontBold.widthOfTextAtSize(instructorName, sz);
-    page.drawText(instructorName, {x: ciX - iw/2, y:108, size:sz, font:fontBold, color:black});
+    page.drawText(instructorName, {x: ciX - iw/2, y:105, size:sz, font:fontBold, color:black});
   }
-  page.drawText('COURSE',     {x: ciX - fontBold.widthOfTextAtSize('COURSE',     sz)/2, y:96, size:sz, font:fontBold, color:black});
-  page.drawText('INSTRUCTOR', {x: ciX - fontBold.widthOfTextAtSize('INSTRUCTOR', sz)/2, y:84, size:sz, font:fontBold, color:black});
+  page.drawText('COURSE',     {x: ciX - fontBold.widthOfTextAtSize('COURSE',     sz)/2, y:93, size:sz, font:fontBold, color:black});
+  page.drawText('INSTRUCTOR', {x: ciX - fontBold.widthOfTextAtSize('INSTRUCTOR', sz)/2, y:81, size:sz, font:fontBold, color:black});
 
   // ── Column 4: Chairman sig + CHAIRMAN / OF THE BOARD ──
-  drawSigImage(chairSigImg, chX, 125, 130, 60);
-  page.drawText('CHAIRMAN',     {x: chX - fontBold.widthOfTextAtSize('CHAIRMAN',     sz)/2, y:96, size:sz, font:fontBold, color:black});
-  page.drawText('OF THE BOARD', {x: chX - fontBold.widthOfTextAtSize('OF THE BOARD', sz)/2, y:84, size:sz, font:fontBold, color:black});
+  drawSigImage(chairSigImg, chX, 118, 130, 55);
+  page.drawText('CHAIRMAN',     {x: chX - fontBold.widthOfTextAtSize('CHAIRMAN',     sz)/2, y:93, size:sz, font:fontBold, color:black});
+  page.drawText('OF THE BOARD', {x: chX - fontBold.widthOfTextAtSize('OF THE BOARD', sz)/2, y:81, size:sz, font:fontBold, color:black});
 
   var pdfBytes = await pdfDoc.save();
   return _uint8ToBase64(pdfBytes);

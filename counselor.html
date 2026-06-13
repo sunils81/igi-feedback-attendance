@@ -6856,10 +6856,21 @@ async function _generateDiplomaPDF(studentName, studentId, course, completionDat
 }
 
 // ── Instructor name modal ──────────────────────────────────────
-function _showInstructorModal(studentId, batchCode, studentName, course, btn) {
+function _showInstructorModal(studentId, batchCode, studentName, course, btn, prefillInstructor) {
   // Remove any existing modal
   var old = document.getElementById('diploma-instructor-modal');
   if (old) old.remove();
+
+  // Auto-populate instructor from batch data if not provided
+  var autoInstructor = prefillInstructor || '';
+  if (!autoInstructor && allBatches) {
+    for (var bi = 0; bi < allBatches.length; bi++) {
+      if (allBatches[bi].batchCode === batchCode && allBatches[bi].instructor) {
+        autoInstructor = allBatches[bi].instructor;
+        break;
+      }
+    }
+  }
 
   var modal = document.createElement('div');
   modal.id = 'diploma-instructor-modal';
@@ -6869,7 +6880,8 @@ function _showInstructorModal(studentId, batchCode, studentName, course, btn) {
       '<h3 style="margin:0 0 6px;font-size:17px;color:#0d1b2e">🎓 Generate Diploma</h3>' +
       '<p style="margin:0 0 18px;font-size:13px;color:#666">' + escC(studentName) + ' &mdash; ' + escC(course) + '</p>' +
       '<label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">Course Instructor Name *</label>' +
-      '<input id="dip-instructor-input" type="text" placeholder="e.g. Priya Mehta" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:9px 12px;font-size:14px;outline:none">' +
+      '<input id="dip-instructor-input" type="text" placeholder="e.g. Priya Mehta" value="' + escC(autoInstructor) + '" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:9px 12px;font-size:14px;outline:none">' +
+      (autoInstructor ? '<p style="font-size:11px;color:#6b7280;margin:4px 0 0">Auto-filled from batch — edit if needed.</p>' : '') +
       '<p id="dip-modal-err" style="color:#dc2626;font-size:12px;margin:6px 0 0;display:none">Please enter instructor name.</p>' +
       '<div style="display:flex;gap:10px;margin-top:20px">' +
         '<button id="dip-modal-cancel" style="flex:1;padding:9px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;font-size:14px">Cancel</button>' +
@@ -6986,8 +6998,17 @@ function releaseDiploma(studentId, batchCode, btn) {
     }
   }
   if (!student) { btn.disabled = false; btn.textContent = 'Release Diploma'; alert('Student not found.'); return; }
+  // Look up instructor from batch data for auto-fill
+  var batchInstructor = '';
+  if (allBatches) {
+    for (var bi = 0; bi < allBatches.length; bi++) {
+      if (allBatches[bi].batchCode === batchCode && allBatches[bi].instructor) {
+        batchInstructor = allBatches[bi].instructor; break;
+      }
+    }
+  }
   btn.textContent = 'Release Diploma';
-  _showInstructorModal(studentId, batchCode, student.studentName, student.course, btn);
+  _showInstructorModal(studentId, batchCode, student.studentName, student.course, btn, batchInstructor);
 }
 
 function toggleSelectAllDiplomas(master) {

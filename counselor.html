@@ -1572,6 +1572,7 @@
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
         <h2 style="margin-bottom:0">🎓 Diploma Release</h2>
+        <button id="btn-bulk-release" class="btn btn-gold" style="display:none;width:auto;padding:8px 16px" onclick="bulkReleaseDiplomas()">Release Selected (0)</button>
       </div>
       <p class="sub">Release diplomas for eligible students from all centres. Eligibility criteria: weekly test average &ge; 60% <strong>and</strong> final exam score &ge; 60%. Attendance (&ge;75%) is shown as an advisory indicator but does not block release.</p>
       
@@ -1602,6 +1603,9 @@
         <table class="compact-table">
           <thead>
             <tr>
+              <th class="text-center" style="width: 40px;">
+                <input type="checkbox" id="diploma-select-all" onclick="toggleSelectAllDiplomas(this)" style="transform: scale(1.1); cursor: pointer;" disabled>
+              </th>
               <th class="text-left">Student</th>
               <th class="text-left">Batch &amp; Centre</th>
               <th class="text-center">Attendance <span style="font-weight:400;font-size:10px;opacity:0.75">(advisory, &ge;75%)</span></th>
@@ -1611,7 +1615,7 @@
             </tr>
           </thead>
           <tbody id="diploma-tbody">
-            <tr><td colspan="6" style="text-align:center;padding:16px;color:var(--muted)">Loading diploma eligibility records...</td></tr>
+            <tr><td colspan="7" style="text-align:center;padding:16px;color:var(--muted)">Loading diploma eligibility records...</td></tr>
           </tbody>
         </table>
       </div>
@@ -6373,12 +6377,14 @@ function whatsappLink(){}
 var alumniList = [];
 
 var diplomaList = [];
+var selectedDiplomas = {};
 
 function loadDiplomaData() {
+  selectedDiplomas = {};
   var tbody = document.getElementById('diploma-tbody');
   if (!tbody) return;
   
-  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading diploma eligibility records...</p></div></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading diploma eligibility records...</p></div></td></tr>';
   
   var params = {
     action: 'getDiplomaReleaseList',
@@ -6387,7 +6393,7 @@ function loadDiplomaData() {
   
   gasGet(params, function(e, d) {
     if (e || !d || d.status !== 'ok') {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--red);padding:16px">Failed to load diploma eligibility records.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--red);padding:16px">Failed to load diploma eligibility records.</td></tr>';
       return;
     }
     
@@ -6428,7 +6434,7 @@ function renderDiplomaTable(list) {
   if (!tbody) return;
   
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px">No student records found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">No student records found.</td></tr>';
     return;
   }
   
@@ -6452,6 +6458,7 @@ function renderDiplomaTable(list) {
       : '<span style="color:var(--muted)">' + finalStr + '</span>';
 
     var actionCell = '';
+    var canRelease = false;
     if (a.diplomaStatus === 'Released') {
       var relDate = '';
       if (a.diplomaReleasedAt) {
@@ -6468,6 +6475,7 @@ function renderDiplomaTable(list) {
     } else if (a.hodStatus === 'Rejected') {
       actionCell = '<span class="badge" style="background:#FEF2F2;color:#DC2626;border:1px solid #FCA5A5;padding:3px 8px;font-size:11px">❌ HOD Rejected</span>';
     } else if (a.eligible) {
+      canRelease = true;
       var approvedBadge = a.hodStatus === 'Approved' ? '<div style="color:#168B57;font-size:10px;font-weight:700;margin-top:4px">👑 HOD Approved</div>' : '';
       actionCell = '<button class="btn btn-gold btn-xs" onclick="releaseDiploma(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', this)" style="padding:5px 10px;font-size:11px;margin:0 auto;display:block">Release Diploma</button>' + approvedBadge;
     } else {
@@ -6479,7 +6487,19 @@ function renderDiplomaTable(list) {
       actionCell = '<span class="badge" style="background:#F4F4F5;color:#71717A;border:1px solid #E4E4E7;padding:3px 8px;font-size:11px">Ineligible</span>' + requestBtn;
     }
 
+    var key = a.studentId + '|' + a.batchCode;
+    var isChecked = !!selectedDiplomas[key];
+    var checkboxCell = '';
+    if (canRelease) {
+      checkboxCell = '<td class="text-center">' +
+        '<input type="checkbox" class="diploma-row-checkbox" data-student-id="' + escC(a.studentId) + '" data-batch-code="' + escC(a.batchCode) + '" ' + (isChecked ? 'checked' : '') + ' onchange="handleRowCheckboxChange(this)" style="transform: scale(1.1); cursor: pointer;">' +
+        '</td>';
+    } else {
+      checkboxCell = '<td class="text-center"><input type="checkbox" disabled style="opacity: 0.4;"></td>';
+    }
+
     return '<tr>' +
+      checkboxCell +
       '<td class="text-left"><strong>' + escC(a.studentName) + '</strong><br><span style="font-size:11px;color:var(--muted)">ID: ' + escC(a.studentId) + '</span></td>' +
       '<td class="text-left"><span style="font-family:monospace;font-weight:600">' + escC(a.batchCode) + '</span><br><span style="font-size:11px;color:var(--muted)">' + escC(a.centre) + '</span></td>' +
       '<td class="text-center">' + attBadge + '</td>' +
@@ -6488,6 +6508,8 @@ function renderDiplomaTable(list) {
       '<td class="text-center">' + actionCell + '</td>' +
     '</tr>';
   }).join('');
+  
+  updateBulkReleaseButton();
 }
 
 function filterDiplomaTable() {
@@ -6553,6 +6575,123 @@ function releaseDiploma(studentId, batchCode, btn) {
     showToast('Diploma released successfully!');
     loadDiplomaData();
   });
+}
+
+function toggleSelectAllDiplomas(master) {
+  var visibleCheckboxes = document.querySelectorAll('.diploma-row-checkbox:not(:disabled)');
+  visibleCheckboxes.forEach(function(cb) {
+    var key = cb.getAttribute('data-student-id') + '|' + cb.getAttribute('data-batch-code');
+    cb.checked = master.checked;
+    if (master.checked) {
+      selectedDiplomas[key] = {
+        studentId: cb.getAttribute('data-student-id'),
+        batchCode: cb.getAttribute('data-batch-code')
+      };
+    } else {
+      delete selectedDiplomas[key];
+    }
+  });
+  updateBulkReleaseButton();
+}
+
+function handleRowCheckboxChange(cb) {
+  var key = cb.getAttribute('data-student-id') + '|' + cb.getAttribute('data-batch-code');
+  if (cb.checked) {
+    selectedDiplomas[key] = {
+      studentId: cb.getAttribute('data-student-id'),
+      batchCode: cb.getAttribute('data-batch-code')
+    };
+  } else {
+    delete selectedDiplomas[key];
+  }
+  updateBulkReleaseButton();
+}
+
+function updateBulkReleaseButton() {
+  var count = Object.keys(selectedDiplomas).length;
+  var btn = document.getElementById('btn-bulk-release');
+  if (!btn) return;
+  
+  if (count > 0) {
+    btn.textContent = 'Release Selected (' + count + ')';
+    btn.style.display = '';
+  } else {
+    btn.style.display = 'none';
+  }
+  
+  var master = document.getElementById('diploma-select-all');
+  if (master) {
+    var visibleCheckboxes = document.querySelectorAll('.diploma-row-checkbox:not(:disabled)');
+    if (visibleCheckboxes.length === 0) {
+      master.checked = false;
+      master.disabled = true;
+    } else {
+      master.disabled = false;
+      var allChecked = true;
+      visibleCheckboxes.forEach(function(cb) {
+        if (!cb.checked) allChecked = false;
+      });
+      master.checked = allChecked;
+    }
+  }
+}
+
+function bulkReleaseDiplomas() {
+  var selectedKeys = Object.keys(selectedDiplomas);
+  var total = selectedKeys.length;
+  if (total === 0) return;
+  
+  if (!confirm('Are you sure you want to release diplomas for ' + total + ' selected student(s)?')) {
+    return;
+  }
+  
+  var btn = document.getElementById('btn-bulk-release');
+  var oldHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0 6px 0 0;display:inline-block;vertical-align:middle;border:2px solid rgba(13,27,46,0.2);border-top-color:var(--navy);border-radius:50%;animation:spin .7s linear infinite;"></span> Releasing 0/' + total + '...';
+  
+  // Disable all checkboxes and inputs to prevent changes during bulk operation
+  document.querySelectorAll('.diploma-row-checkbox, #diploma-select-all').forEach(function(cb) {
+    cb.disabled = true;
+  });
+  
+  var index = 0;
+  var successCount = 0;
+  var failCount = 0;
+  
+  function processNext() {
+    if (index >= total) {
+      showToast('Bulk release completed! Successfully released: ' + successCount + ', Failed: ' + failCount);
+      selectedDiplomas = {};
+      loadDiplomaData();
+      return;
+    }
+    
+    var key = selectedKeys[index];
+    var item = selectedDiplomas[key];
+    index++;
+    
+    btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0 6px 0 0;display:inline-block;vertical-align:middle;border:2px solid rgba(13,27,46,0.2);border-top-color:var(--navy);border-radius:50%;animation:spin .7s linear infinite;"></span> Releasing ' + index + '/' + total + '...';
+    
+    var params = {
+      action: 'releaseStudentDiploma',
+      studentId: item.studentId,
+      batchCode: item.batchCode,
+      counselorName: counselorName
+    };
+    
+    gasGet(params, function(e, d) {
+      if (e || !d || d.status !== 'ok') {
+        failCount++;
+        console.error('Failed to release diploma for ' + item.studentId, e, d);
+      } else {
+        successCount++;
+      }
+      processNext();
+    });
+  }
+  
+  processNext();
 }
 
 function requestHODApproval(studentId, batchCode, studentName, weeklyAvg, finalExam, btn) {

@@ -6607,12 +6607,20 @@ async function loadDiplomaData() {
       fetch(SUPABASE_URL + '/rest/v1/diplomas?select=student_id,batch_code,status,released_by,released_at', {headers: headers})
     ]);
 
-    var students = await studentsResp.json();
-    var batches  = await batchesResp.json();
-    var attRows  = await attResp.json();
+    var students    = await studentsResp.json();
+    var batches     = await batchesResp.json();
+    var attRows     = await attResp.json();
     var assessments = await assessResp.json();
-    var marks    = await marksResp.json();
-    var diplomas = await diplomasResp.json();
+    var marks       = await marksResp.json();
+    var diplomas    = await diplomasResp.json();
+
+    // Guard: all must be arrays (RLS block returns an object with "message")
+    if (!Array.isArray(students))    throw new Error('students fetch failed: ' + JSON.stringify(students));
+    if (!Array.isArray(batches))     throw new Error('batches fetch failed: ' + JSON.stringify(batches));
+    if (!Array.isArray(attRows))     attRows = [];
+    if (!Array.isArray(assessments)) assessments = [];
+    if (!Array.isArray(marks))       marks = [];
+    if (!Array.isArray(diplomas))    diplomas = [];
 
     // Index lookups
     var batchMap = {};

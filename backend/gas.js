@@ -9399,7 +9399,7 @@ function authorizeScopes() {
   SpreadsheetApp.getActive(); // also confirm Sheets scope
 }
 
-const DIPLOMA_TEMPLATES_FOLDER_ID = '1tOSAMN3tLZJsXJZaFOSL9qFXB8v7z8mk';
+const DIPLOMA_TEMPLATES_FOLDER_ID = '1DUR58XGeJZCwT59IwN47H6UralKGsVcV';
 const DIPLOMA_OUTPUT_FOLDER_NAME  = 'IGI-Diplomas-Generated';
 const SH_DIPLOMAS = 'Diplomas';
 

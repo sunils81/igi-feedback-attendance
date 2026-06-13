@@ -1120,6 +1120,15 @@
     <button class="tab" onclick="switchTab('t-holidays')">🗓 Holidays</button>
     <button class="tab" id="tab-diplomas" onclick="switchTab('t-diplomas')" style="display:none">🎓 Diploma Release</button>
     <button class="tab" id="tab-inventory" onclick="switchTab('t-inventory')">📦 Inventory <span id="inv-pending-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
+    <button class="tab" id="tab-attendance" onclick="switchTab('t-attendance')">✅ Attendance <span id="att-pending-badge" style="display:none;background:#d97706;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
+  </div>
+
+  <!-- Persistent attendance reminder banner (non-blocking) -->
+  <div id="att-reminder-banner" style="display:none;background:#fffbeb;border:1.5px solid #f59e0b;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#92400e;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span>⚠️</span>
+    <span id="att-reminder-text" style="flex:1;font-weight:500;"></span>
+    <button onclick="switchTab('t-attendance')" style="background:#f59e0b;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;">Review Now</button>
+    <button onclick="document.getElementById('att-reminder-banner').style.display='none'" style="background:transparent;border:none;color:#92400e;font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
 
   <div id="counselor-summary" class="dashboard-summary" style="display:none"></div>
@@ -2051,6 +2060,48 @@
     </div>
   </div>
 
+  <!-- TAB: ATTENDANCE -->
+  <div id="t-attendance" class="tab-content">
+    <div class="card">
+      <div class="section-tag">Attendance Management</div>
+      <h2>Session Attendance</h2>
+      <p class="sub">Select a session to view live attendance, mark students, and finalise.</p>
+
+      <!-- Session picker -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
+        <div class="field" style="flex:1;min-width:180px">
+          <label>Batch</label>
+          <select id="att-batch-sel" onchange="attOnBatchChange()"><option value="">— Select Batch —</option></select>
+        </div>
+        <div class="field" style="flex:1;min-width:180px">
+          <label>Session</label>
+          <select id="att-session-sel"><option value="">— Select Session —</option></select>
+        </div>
+        <button class="btn btn-outline" onclick="attLoadSession()" style="margin-bottom:0;padding:10px 20px">Load →</button>
+      </div>
+
+      <!-- Pending unfinalised sessions list -->
+      <div id="att-pending-list" style="display:none;margin-bottom:16px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 14px">
+        <div style="font-weight:600;font-size:13px;color:#92400e;margin-bottom:8px">⚠️ Unfinalised sessions — please review</div>
+        <div id="att-pending-rows" style="font-size:12px;color:#78350f;line-height:1.9"></div>
+      </div>
+
+      <!-- Live attendance panel -->
+      <div id="att-panel" style="display:none">
+        <div id="att-session-meta" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px"></div>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+          <span id="att-count-badge" style="background:#10b981;color:#fff;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:700"></span>
+          <button class="btn btn-outline" onclick="attMarkAll('present')" style="padding:6px 14px;font-size:12px">✅ Mark All Present</button>
+          <button class="btn btn-outline" onclick="attMarkAll('absent')" style="padding:6px 14px;font-size:12px;color:#dc2626;border-color:#dc2626">❌ Mark All Absent</button>
+          <button class="btn" onclick="attFinalise()" style="padding:6px 16px;font-size:12px;background:#10b981;margin-left:auto" id="att-finalise-btn">🔒 Finalise Attendance</button>
+        </div>
+
+        <div id="att-student-list" style="display:grid;gap:6px"></div>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /wrap -->
 </div><!-- /s-main -->
 
@@ -2284,6 +2335,8 @@ function doLogin() {
     // Kick off revenue prefetch in background — ready before user clicks the tab
     prefetchRevenue();
     // Holidays loaded lazily when the tab is opened (see switchTab)
+    // Attendance: check for unfinalised sessions and show banner
+    setTimeout(loadPendingAttBanner, 1500);
   });
 }
 
@@ -8290,6 +8343,279 @@ function seedInventoryItemsFromPortal() {
     }
     showToast(d.message || `Seeded ${d.count} items!`);
     loadInventoryItemMaster();
+  });
+}
+
+// ════════════════════════════════════════════════════════
+// ATTENDANCE TAB — counselor portal
+// ════════════════════════════════════════════════════════
+
+var _attCurrentSession = null;   // {sessionCode, batchCode, attStatus, ...}
+var _attStudents       = [];     // [{enrollmentNo, name, marked, status, resolvedAddress, ...}]
+
+/* Called once after login data is loaded */
+function loadPendingAttBanner() {
+  if (!counselorName) return;
+  var centreParam = isAdmin ? '' : (allowedCentres.length ? allowedCentres[0] : '');
+  gasGet({
+    action: 'getPendingAttendanceSessions',
+    instructorName: counselorName,
+    centre: centreParam
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') return;
+    var pending = d.pending || [];
+    if (!pending.length) return;
+
+    // Badge on tab
+    var badge = document.getElementById('att-pending-badge');
+    if (badge) { badge.textContent = pending.length; badge.style.display = 'inline'; }
+
+    // Top banner
+    var banner = document.getElementById('att-reminder-banner');
+    var text   = document.getElementById('att-reminder-text');
+    if (banner && text) {
+      var todayCount = pending.filter(function(s){ return s.sessionDate === new Date().toLocaleDateString('en-IN'); }).length;
+      text.textContent = pending.length + ' session' + (pending.length > 1 ? 's' : '') +
+        ' need attendance finalisation' + (todayCount ? ' (' + todayCount + ' from today)' : '') + '.';
+      banner.style.display = 'flex';
+      if (pending.length >= 3) banner.style.borderColor = '#dc2626';
+    }
+
+    // Populate pending list inside attendance tab
+    var listWrap = document.getElementById('att-pending-list');
+    var listRows = document.getElementById('att-pending-rows');
+    if (listWrap && listRows) {
+      listRows.innerHTML = pending.map(function(s) {
+        return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid #fcd34d;padding:4px 0">' +
+          '<span>' + s.batchCode + ' · Session ' + (s.sessionNo||'?') + ' · ' + s.sessionDate + '</span>' +
+          '<span style="color:#10b981;font-weight:600">' + (s.presentCount||0) + ' present</span>' +
+          '<button onclick="attJumpTo(\'' + escC(s.sessionCode) + '\',\'' + escC(s.batchCode) + '\')" ' +
+          'style="background:#f59e0b;color:#fff;border:none;border-radius:5px;padding:3px 10px;font-size:11px;cursor:pointer">Open</button>' +
+          '</div>';
+      }).join('');
+      listWrap.style.display = '';
+    }
+
+    // Pre-fill batch dropdown with batches from pending sessions
+    _attPopulateBatchDropdown(pending);
+  });
+}
+
+function _attPopulateBatchDropdown(pending) {
+  var sel = document.getElementById('att-batch-sel');
+  if (!sel) return;
+  // Also load all batches for this instructor
+  var centresParam = isAdmin ? '' : allowedCentres.join(',');
+  gasGet({action:'getBatches', centres:centresParam}, function(e, d) {
+    if (e || !d || !d.batches) return;
+    var batches = d.batches.filter(function(b){ return b.status === 'Active'; });
+    // Put pending batches at top
+    var pendingCodes = pending.map(function(s){ return s.batchCode; });
+    batches.sort(function(a,b){
+      var ai = pendingCodes.indexOf(a.batchCode) > -1 ? 0 : 1;
+      var bi = pendingCodes.indexOf(b.batchCode) > -1 ? 0 : 1;
+      return ai - bi;
+    });
+    sel.innerHTML = '<option value="">— Select Batch —</option>' +
+      batches.map(function(b){
+        var hasPending = pendingCodes.indexOf(b.batchCode) > -1;
+        return '<option value="' + escC(b.batchCode) + '"' + (hasPending ? ' style="font-weight:700;color:#d97706"' : '') + '>' +
+          b.batchCode + (hasPending ? ' ⚠️' : '') + '</option>';
+      }).join('');
+  });
+}
+
+function attOnBatchChange() {
+  var batchCode = (document.getElementById('att-batch-sel')||{}).value;
+  if (!batchCode) return;
+  var sessSel = document.getElementById('att-session-sel');
+  if (!sessSel) return;
+  sessSel.innerHTML = '<option value="">Loading…</option>';
+  // Load recent sessions for this batch
+  gasGet({action:'getSessionReport', batchCode:batchCode, reportPass:''}, function(e, d) {
+    if (e || !d || !d.sessions) {
+      sessSel.innerHTML = '<option value="">— No sessions found —</option>';
+      return;
+    }
+    var sessions = d.sessions.slice().reverse(); // newest first
+    sessSel.innerHTML = '<option value="">— Select Session —</option>' +
+      sessions.slice(0, 30).map(function(s) {
+        var label = 'Session ' + (s.sessionNo||'?') + ' · ' + (s.date || '') +
+          ((!s.attStatus || s.attStatus === 'pending') ? ' ⚠️' : ' ✅');
+        return '<option value="' + escC(s.sessionCode) + '"' +
+          ' data-batch="' + escC(batchCode) + '">' + label + '</option>';
+      }).join('');
+  });
+}
+
+function attJumpTo(sessionCode, batchCode) {
+  switchTab('t-attendance');
+  var bSel = document.getElementById('att-batch-sel');
+  if (bSel) {
+    // ensure option exists
+    var exists = Array.from(bSel.options).some(function(o){ return o.value === batchCode; });
+    if (!exists) {
+      var opt = document.createElement('option');
+      opt.value = batchCode; opt.textContent = batchCode;
+      bSel.appendChild(opt);
+    }
+    bSel.value = batchCode;
+    attOnBatchChange();
+  }
+  // Load directly
+  setTimeout(function() {
+    var sSel = document.getElementById('att-session-sel');
+    if (sSel) {
+      var exists2 = Array.from(sSel.options).some(function(o){ return o.value === sessionCode; });
+      if (!exists2) {
+        var opt2 = document.createElement('option');
+        opt2.value = sessionCode; opt2.textContent = sessionCode;
+        sSel.appendChild(opt2);
+      }
+      sSel.value = sessionCode;
+    }
+    _attLoadSessionByCode(sessionCode, batchCode);
+  }, 800);
+}
+
+function attLoadSession() {
+  var sSel  = document.getElementById('att-session-sel');
+  var bSel  = document.getElementById('att-batch-sel');
+  if (!sSel || !bSel) return;
+  var sessionCode = sSel.value;
+  var batchCode   = bSel.value;
+  if (!sessionCode) { showToast('Please select a session.', 'error'); return; }
+  _attLoadSessionByCode(sessionCode, batchCode);
+}
+
+function _attLoadSessionByCode(sessionCode, batchCode) {
+  var panel = document.getElementById('att-panel');
+  if (panel) panel.style.display = 'none';
+  showToast('Loading attendance…');
+  gasGet({action:'getSessionAttendance', sessionCode:sessionCode, batchCode:batchCode}, function(e, d) {
+    if (e || !d || d.status !== 'ok') { showToast('Could not load session.', 'error'); return; }
+    _attCurrentSession = d.session || {};
+    _attStudents       = d.students || [];
+    _attRenderPanel(d);
+  });
+}
+
+function _attRenderPanel(d) {
+  var panel   = document.getElementById('att-panel');
+  var metaDiv = document.getElementById('att-session-meta');
+  var listDiv = document.getElementById('att-student-list');
+  var badge   = document.getElementById('att-count-badge');
+  var finBtn  = document.getElementById('att-finalise-btn');
+  if (!panel) return;
+
+  var sess = d.session || {};
+  var students = d.students || [];
+  var presentCount = d.presentCount || 0;
+  var total = d.totalCount || students.length;
+  var confirmed = (sess.attStatus === 'confirmed');
+
+  if (metaDiv) metaDiv.innerHTML =
+    '<strong>' + (sess.batchCode||'') + '</strong> · Session ' + (sess.sessionNo||'?') +
+    ' · ' + (sess.sessionDate ? new Date(sess.sessionDate).toLocaleDateString('en-IN') : '') +
+    (sess.topic ? ' · <em>' + escC(sess.topic) + '</em>' : '') +
+    '<span style="float:right;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;' +
+    (confirmed ? 'background:#d1fae5;color:#065f46">' : 'background:#fef3c7;color:#92400e">') +
+    (confirmed ? '✅ Confirmed' : '⏳ Pending') + '</span>';
+
+  if (badge) badge.textContent = presentCount + ' / ' + total + ' present';
+  if (finBtn) {
+    finBtn.disabled = confirmed;
+    finBtn.textContent = confirmed ? '✅ Finalised' : '🔒 Finalise Attendance';
+    finBtn.style.background = confirmed ? '#6b7280' : '#10b981';
+  }
+
+  if (listDiv) {
+    listDiv.innerHTML = students.map(function(s, idx) {
+      var marked   = s.marked;
+      var present  = s.status === 'present';
+      var absent   = s.status === 'absent';
+      var locText  = s.resolvedAddress ? '📍 ' + s.resolvedAddress.split(',').slice(0,2).join(',') : (s.markedBy === 'self' ? '📍 Location unavailable' : '');
+      var markedByLabel = s.markedBy === 'self' ? 'self' : s.markedBy === 'instructor' ? 'by you' : '';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:7px;background:' +
+        (present ? '#f0fdf4' : absent ? '#fff1f2' : '#f8fafc') + ';border:1px solid ' +
+        (present ? '#bbf7d0' : absent ? '#fecdd3' : '#e2e8f0') + '">' +
+        '<span style="font-size:12px;color:#94a3b8;width:22px;text-align:right">' + (idx+1) + '</span>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-weight:600;font-size:13px">' + escC(s.name) + '</div>' +
+          '<div style="font-size:10px;color:#94a3b8">' + escC(s.enrollmentNo) +
+            (markedByLabel ? ' · marked ' + markedByLabel : '') +
+            (locText ? ' · ' + escC(locText) : '') + '</div>' +
+        '</div>' +
+        (!confirmed ? (
+          '<button onclick="attMarkStudent(\'' + escC(s.enrollmentNo) + '\',\'present\')" ' +
+          'style="padding:4px 10px;font-size:11px;border-radius:5px;border:1px solid #10b981;' +
+          'background:' + (present ? '#10b981' : '#fff') + ';color:' + (present ? '#fff' : '#10b981') + ';cursor:pointer">✅ P</button>' +
+          '<button onclick="attMarkStudent(\'' + escC(s.enrollmentNo) + '\',\'absent\')" ' +
+          'style="padding:4px 10px;font-size:11px;border-radius:5px;border:1px solid #dc2626;' +
+          'background:' + (absent ? '#dc2626' : '#fff') + ';color:' + (absent ? '#fff' : '#dc2626') + ';cursor:pointer">❌ A</button>'
+        ) : '<span style="font-size:12px;font-weight:700;color:' + (present?'#10b981':'#dc2626') + '">' + (present?'Present':'Absent') + '</span>') +
+      '</div>';
+    }).join('');
+  }
+
+  panel.style.display = '';
+}
+
+function attMarkStudent(enrollmentNo, status) {
+  if (!_attCurrentSession || !_attCurrentSession.sessionCode) return;
+  gasGet({
+    action:         'instructorMarkAttendance',
+    sessionCode:    _attCurrentSession.sessionCode,
+    batchCode:      _attCurrentSession.batchCode || '',
+    instructorName: counselorName,
+    marks:          JSON.stringify([{enrollmentNo:enrollmentNo, status:status}])
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { showToast('Could not mark student.', 'error'); return; }
+    // Update local state
+    var stu = _attStudents.find(function(s){ return s.enrollmentNo === enrollmentNo; });
+    if (stu) { stu.marked = true; stu.status = status; stu.markedBy = 'instructor'; }
+    var presentCount = _attStudents.filter(function(s){ return s.status === 'present'; }).length;
+    _attRenderPanel({session:_attCurrentSession, students:_attStudents, presentCount:presentCount, totalCount:_attStudents.length});
+  });
+}
+
+function attMarkAll(status) {
+  if (!_attCurrentSession || !_attCurrentSession.sessionCode) { showToast('No session loaded.', 'error'); return; }
+  var marks = _attStudents.map(function(s){ return {enrollmentNo:s.enrollmentNo, status:status}; });
+  if (!marks.length) return;
+  showToast('Marking all ' + status + '…');
+  gasGet({
+    action:         'instructorMarkAttendance',
+    sessionCode:    _attCurrentSession.sessionCode,
+    batchCode:      _attCurrentSession.batchCode || '',
+    instructorName: counselorName,
+    marks:          JSON.stringify(marks)
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { showToast('Could not bulk mark.', 'error'); return; }
+    _attStudents.forEach(function(s){ s.marked = true; s.status = status; s.markedBy = 'instructor'; });
+    var presentCount = status === 'present' ? _attStudents.length : 0;
+    _attRenderPanel({session:_attCurrentSession, students:_attStudents, presentCount:presentCount, totalCount:_attStudents.length});
+    showToast('All students marked ' + status + '.');
+  });
+}
+
+function attFinalise() {
+  if (!_attCurrentSession || !_attCurrentSession.sessionCode) return;
+  if (!confirm('Finalise attendance for this session? This marks it as confirmed.')) return;
+  gasGet({
+    action:         'finaliseAttendance',
+    sessionCode:    _attCurrentSession.sessionCode,
+    instructorName: counselorName
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { showToast('Could not finalise.', 'error'); return; }
+    _attCurrentSession.attStatus = 'confirmed';
+    _attCurrentSession.presentCount = d.presentCount;
+    _attCurrentSession.absentCount  = d.absentCount;
+    var presentCount = _attStudents.filter(function(s){ return s.status === 'present'; }).length;
+    _attRenderPanel({session:_attCurrentSession, students:_attStudents, presentCount:presentCount, totalCount:_attStudents.length});
+    showToast('Attendance finalised ✅ — ' + d.presentCount + ' present, ' + d.absentCount + ' absent.');
+    // Remove from banner if 0 pending left
+    loadPendingAttBanner();
   });
 }
 

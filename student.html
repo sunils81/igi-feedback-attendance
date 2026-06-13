@@ -616,6 +616,7 @@
       <div>
         <div class="wb-name" id="wb-name">—</div>
         <div class="wb-sub" id="wb-date">—</div>
+        <div id="wb-loc" style="font-size:10px;color:rgba(255,255,255,0.5);margin-top:2px;letter-spacing:.01em;"></div>
         <div class="wb-id-link" onclick="openIdCard()" style="font-size: 11px; color: var(--gold-light); cursor: pointer; margin-top: 4px; display: inline-flex; align-items: center; gap: 4px; font-weight: 600; text-decoration: underline; text-decoration-style: dashed; text-underline-offset: 2px;">
           🪪 View Digital ID Card
         </div>
@@ -1160,6 +1161,7 @@ const SESSION_KEY = 'igi_student_portal';
 const SESSION_TTL = 12 * 60 * 60 * 1000; // 12 hours
 
 let portalData   = null;  // full response from getStudentPortalData
+let _stuLocation = null;  // {lat, lng, accuracy, resolvedAddress, locationStatus}
 let activeBatch  = null;  // current batch being submitted
 let topicData    = null;  // from getExpectedTopic
 let studentCalendarMonth = new Date();
@@ -1269,6 +1271,7 @@ function fetchPortalData(enrol, mobileLast4, btn, err) {
     localStorage.setItem(SESSION_KEY, JSON.stringify({enrollmentNo:enrol, studentId:enrol, mobileLast4, savedAt:Date.now()}));
     portalData = d;
     renderPortal(d);
+    captureLocationAndShow(); // record student's location in header
     // Start online test polling
     setTimeout(otStartPolling, 1500);
   });
@@ -1300,6 +1303,47 @@ function renderSyllabusProgress(b) {
       </div>
     </div>
   `;
+}
+
+/* ── Location capture (runs once after login) ── */
+function captureLocationAndShow() {
+  var locEl = document.getElementById('wb-loc');
+  if (!locEl) return;
+  if (!navigator.geolocation) {
+    _stuLocation = {lat:'', lng:'', accuracy:'', resolvedAddress:'', locationStatus:'unavailable'};
+    return;
+  }
+  locEl.textContent = '📍 Detecting location…';
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      var lat = pos.coords.latitude;
+      var lng = pos.coords.longitude;
+      var acc = Math.round(pos.coords.accuracy);
+      _stuLocation = {lat:lat, lng:lng, accuracy:acc, resolvedAddress:'', locationStatus:'captured'};
+      // Reverse geocode via Nominatim (free, no key needed)
+      fetch('https://nominatim.openstreetmap.org/reverse?lat='+lat+'&lon='+lng+'&format=json&zoom=16', {headers:{'Accept-Language':'en'}})
+        .then(function(r){return r.json();})
+        .then(function(geo) {
+          var a = geo.address || {};
+          // Build short address: road/suburb, city/town
+          var parts = [
+            a.road || a.suburb || a.neighbourhood || '',
+            a.city  || a.town  || a.village || a.county || a.state_district || ''
+          ].filter(Boolean);
+          var short = parts.join(', ') || (geo.display_name||'').split(',').slice(0,2).join(', ');
+          _stuLocation.resolvedAddress = geo.display_name || short;
+          if (locEl) locEl.textContent = '📍 ' + short;
+        })
+        .catch(function() {
+          if (locEl) locEl.textContent = '📍 Location captured';
+        });
+    },
+    function() {
+      _stuLocation = {lat:'', lng:'', accuracy:'', resolvedAddress:'', locationStatus:'denied'};
+      if (locEl) locEl.textContent = '';
+    },
+    {timeout:10000, maximumAge:60000}
+  );
 }
 
 function renderPortal(d) {
@@ -1766,6 +1810,15 @@ function submitFeedback() {
       if (d&&d.reason==='already_submitted') { showThanks(true); return; }
       err.textContent='Could not submit. Please try again.'; err.classList.add('show'); return;
     }
+    // Also write to ATT_Records (fire-and-forget, non-blocking)
+    var loc = _stuLocation || {};
+    gasGet({
+      action:'selfMarkAttendance',
+      studentId: saved.enrollmentNo,
+      sessionCode: activeBatch.sessionCode,
+      lat: loc.lat||'', lng: loc.lng||'', accuracy: loc.accuracy||'',
+      resolvedAddress: loc.resolvedAddress||'', locationStatus: loc.locationStatus||'unavailable'
+    }, function(){});  // ignore response — feedback already saved above
     showThanks(false);
     showToast('Attendance saved.');
     refreshPortal();

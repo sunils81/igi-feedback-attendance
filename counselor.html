@@ -7042,7 +7042,9 @@ async function _fetchSigImage(instructorFullName) {
     for (var ext of exts) {
       try {
         var url = SUPABASE_URL + '/storage/v1/object/public/diploma-templates/' + encodeURIComponent(name + '.' + ext);
+        console.log('[Sig] trying:', url);
         var r = await fetch(url);
+        console.log('[Sig]', url, '→', r.status);
         if (r.ok) {
           var buf = await r.arrayBuffer();
           if (buf.byteLength > 200) return {buf, ext: ext.toLowerCase()};
@@ -7309,7 +7311,7 @@ async function _doGenerateAndRelease(studentId, batchCode, instructorName, btn, 
 
   // --- Record diploma release in Supabase diplomas table ---
   var nowIso = new Date().toISOString();
-  var sbInsertResp = await fetch(SUPABASE_URL + '/rest/v1/diplomas', {
+  var sbInsertResp = await fetch(SUPABASE_URL + '/rest/v1/diplomas?on_conflict=student_id,batch_code', {
     method: 'POST',
     headers: {
       'apikey': SUPABASE_ANON,

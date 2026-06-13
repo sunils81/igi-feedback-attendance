@@ -2303,25 +2303,28 @@ function doGet(e) {
       const marksData = shMarks&&shMarks.getLastRow()>1?shMarks.getRange(2,1,shMarks.getLastRow()-1,9).getValues():[];
 
       const studentAssessments = [];
-      marksData.forEach(r => {
-        const studentId = String(r[1]).trim().toUpperCase();
-        if (studentId === enrollNo) {
-          const assId = String(r[0]).toUpperCase();
-          const ass = assData.find(a => String(a[0]).toUpperCase() === assId);
-          if (ass) {
-            studentAssessments.push({
-              assessmentId: assId,
-              batchCode: ass[1],
-              testName: ass[2],
-              testType: ass[3],
-              testDate: ass[4] ? dateKey(new Date(ass[4])) : '',
-              totalMarks: ass[5],
-              marksObtained: r[3],
-              percentage: r[4],
-              result: r[5],
-              remarks: r[6]
-            });
-          }
+      const enrolledBatchCodes = studentBatches.map(e => String(e.batchCode).toUpperCase());
+
+      assData.forEach(ass => {
+        const assId = String(ass[0]).toUpperCase();
+        const assBatchCode = String(ass[1]).toUpperCase();
+        
+        if (enrolledBatchCodes.includes(assBatchCode)) {
+          // Find if this student has a mark recorded
+          const markRow = marksData.find(r => String(r[0]).toUpperCase() === assId && String(r[1]).trim().toUpperCase() === enrollNo);
+          
+          studentAssessments.push({
+            assessmentId: assId,
+            batchCode: assBatchCode,
+            testName: ass[2],
+            testType: ass[3],
+            testDate: ass[4] ? dateKey(new Date(ass[4])) : '',
+            totalMarks: ass[5],
+            marksObtained: markRow ? markRow[3] : '',
+            percentage: markRow ? markRow[4] : '',
+            result: markRow ? markRow[5] : '',
+            remarks: markRow ? (markRow[6] || '') : ''
+          });
         }
       });
 
@@ -9227,4 +9230,199 @@ function _updateSessionAttCount(ss, shSess, sessRows, sessionCode, batchCode) {
       }
     }
   } catch(_e) {}
+}
+
+// ════════════════════════════════════════════════════════════════
+// DIPLOMA PDF GENERATION
+// ════════════════════════════════════════════════════════════════
+
+const DIPLOMA_TEMPLATES_FOLDER_ID = '1DUR58XGeJZCwT59IwN47H6UralKGsVcV';
+const DIPLOMA_OUTPUT_FOLDER_NAME  = 'IGI-Diplomas-Generated';
+const SH_DIPLOMAS = 'Diplomas';
+
+// Map course name → template filename in the Drive folder
+const DIPLOMA_TEMPLATE_MAP = {
+  'Diamond Graduate':              'Diamond Graduate Diploma.pdf',
+  'Diamond Graduate DG':           'Diamond Graduate Diploma.pdf',
+  'Colored Stone Graduate':        'Colored Stone Graduate Diploma .pdf',
+  'CSG':                           'Colored Stone Graduate Diploma .pdf',
+  'Graduate Gemologist':           'Graduate Gemologist Diploma .pdf',
+  'GG':                            'Graduate Gemologist Diploma .pdf',
+  'Smart Learning DG':             'Smart Learning DG Diploma .pdf',
+  'Smart Learning GG':             'Smart Learning GG Diploma .pdf',
+  'Smart Learning CSG':            'Smart Learning CSG Diploma.pdf',
+  'JewelPad Design':               'Jewelpad Oncampus Diploma .pdf',
+  'JewelPad On-campus':            'Jewelpad Oncampus Diploma .pdf',
+  'JewelPad Online':               'Jewelpad online Diploma .pdf',
+  'Jewelry Design Manual':         'JD Manual Diploma .pdf',
+  'JD Manual':                     'JD Manual Diploma .pdf',
+  'Polished Diamond Grading':      'PDC Diploma .pdf',
+  'PDC':                           'PDC Diploma .pdf',
+  'Rough Diamond Graduate':        'Rough Diamond Diploma .pdf',
+  'Small Diamond Assortment':      'Small Diamond Assortment Diploma .pdf',
+  'Identification of RES':         'IRES Diploma.pdf',
+  'IRES':                          'IRES Diploma.pdf',
+  'Diamond Essentials':            'Diamnd Essential 5cs Diploma.pdf',
+  'Diamond Graduate Integrated':   'Diamond Graduate Diploma.pdf',
+  'Coloured Stone Integrated':     'Colored Stone Graduate Diploma .pdf',
+};
+
+// Per-template text coordinates (PDF points, y from BOTTOM-LEFT of page)
+// name: {y, size} — always horizontally centred; date/id: {x, y, size}
+const DIPLOMA_COORD_MAP = {
+  'Diamond Graduate Diploma.pdf':               {pageW:989, pageH:794, name:{y:477,size:26}, date:{x:246,y:108,size:11}, id:{x:309,y:92,size:10}},
+  'Colored Stone Graduate Diploma .pdf':        {pageW:989, pageH:794, name:{y:476,size:26}, date:{x:246,y:106,size:11}, id:{x:316,y:92,size:10}},
+  'Graduate Gemologist Diploma .pdf':           {pageW:989, pageH:794, name:{y:463,size:26}, date:{x:246,y:106,size:11}, id:{x:319,y:92,size:10}},
+  'Smart Learning DG Diploma .pdf':             {pageW:842, pageH:595, name:{y:377,size:22}, date:{x:200,y:62, size:10}, id:{x:277,y:48, size:9}},
+  'Smart Learning GG Diploma .pdf':             {pageW:989, pageH:794, name:{y:457,size:26}, date:{x:246,y:106,size:11}, id:{x:324,y:92,size:10}},
+  'Smart Learning CSG Diploma.pdf':             {pageW:842, pageH:595, name:{y:375,size:22}, date:{x:200,y:62, size:10}, id:{x:277,y:48, size:9}},
+  'JD Manual Diploma .pdf':                     {pageW:989, pageH:794, name:{y:442,size:26}, date:{x:246,y:105,size:11}, id:{x:312,y:92,size:10}},
+  'Jewelpad Oncampus Diploma .pdf':             {pageW:989, pageH:794, name:{y:456,size:26}, date:{x:246,y:105,size:11}, id:{x:320,y:92,size:10}},
+  'Jewelpad online Diploma .pdf':               {pageW:989, pageH:794, name:{y:463,size:26}, date:{x:246,y:108,size:11}, id:{x:328,y:92,size:10}},
+  'PDC Diploma .pdf':                           {pageW:989, pageH:794, name:{y:471,size:26}, date:{x:246,y:105,size:11}, id:{x:312,y:92,size:10}},
+  'Rough Diamond Diploma .pdf':                 {pageW:989, pageH:794, name:{y:480,size:26}, date:{x:246,y:104,size:11}, id:{x:323,y:92,size:10}},
+  'Small Diamond Assortment Diploma .pdf':      {pageW:989, pageH:794, name:{y:463,size:26}, date:{x:246,y:106,size:11}, id:{x:326,y:92,size:10}},
+  'IRES Diploma.pdf':                           {pageW:989, pageH:794, name:{y:463,size:26}, date:{x:246,y:104,size:11}, id:{x:316,y:92,size:10}},
+  'Diamnd Essential 5cs Diploma.pdf':           {pageW:989, pageH:794, name:{y:457,size:26}, date:{x:246,y:104,size:11}, id:{x:322,y:92,size:10}},
+};
+
+/**
+ * getDiplomaTemplate
+ * Returns the template PDF as base64 so the browser can generate the diploma client-side.
+ */
+function getDiplomaTemplate(ss, p) {
+  try {
+    var course      = String(p.course || '').trim();
+    var templateFile = DIPLOMA_TEMPLATE_MAP[course];
+    if (!templateFile) {
+      // Fuzzy match — find closest key
+      var lc = course.toLowerCase();
+      Object.keys(DIPLOMA_TEMPLATE_MAP).forEach(function(k) {
+        if (!templateFile && k.toLowerCase().indexOf(lc) > -1) templateFile = DIPLOMA_TEMPLATE_MAP[k];
+      });
+    }
+    if (!templateFile) return {status:'error', reason:'no_template_for_course', course:course};
+
+    // Find file in Drive folder
+    var folder = DriveApp.getFolderById(DIPLOMA_TEMPLATES_FOLDER_ID);
+    var files   = folder.getFilesByName(templateFile);
+    if (!files.hasNext()) return {status:'error', reason:'template_file_not_found', file:templateFile};
+
+    var file   = files.next();
+    var bytes  = file.getBlob().getBytes();
+    var b64    = Utilities.base64Encode(bytes);
+    var coords = DIPLOMA_COORD_MAP[templateFile] || null;
+
+    return {status:'ok', base64:b64, filename:templateFile, coords:coords};
+  } catch(err) { return {status:'error', message:err.toString()}; }
+}
+
+/**
+ * saveDiplomaFile
+ * Saves the browser-generated diploma PDF to Drive and records it in the Diplomas sheet.
+ * p.pdfBase64, p.studentId, p.studentName, p.batchCode, p.course, p.completionDate, p.releasedBy
+ */
+function saveDiplomaFile(ss, p) {
+  try {
+    var studentId      = String(p.studentId   || '').toUpperCase();
+    var studentName    = String(p.studentName || '').trim();
+    var batchCode      = String(p.batchCode   || '').toUpperCase();
+    var course         = String(p.course      || '').trim();
+    var completionDate = String(p.completionDate || '').trim();
+    var releasedBy     = String(p.releasedBy  || 'Admin').trim();
+    var pdfB64         = p.pdfBase64 || '';
+    if (!studentId || !pdfB64) return {status:'error', reason:'missing_params'};
+
+    // Get or create output folder
+    var root  = DriveApp.getFolderById(DIPLOMA_TEMPLATES_FOLDER_ID);
+    var outIt = root.getFoldersByName(DIPLOMA_OUTPUT_FOLDER_NAME);
+    var outFolder = outIt.hasNext() ? outIt.next() : root.createFolder(DIPLOMA_OUTPUT_FOLDER_NAME);
+
+    // Save PDF file
+    var fileName = studentId + '_' + studentName.replace(/\s+/g, '_') + '_' + course.replace(/\s+/g, '_') + '.pdf';
+    var pdfBytes = Utilities.base64Decode(pdfB64);
+    var blob     = Utilities.newBlob(pdfBytes, 'application/pdf', fileName);
+    var pdfFile  = outFolder.createFile(blob);
+    pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    var fileId   = pdfFile.getId();
+    var driveLink = 'https://drive.google.com/file/d/' + fileId + '/view';
+
+    // Ensure Diplomas sheet
+    var shDip = ss.getSheetByName(SH_DIPLOMAS);
+    if (!shDip) {
+      ss.insertSheet(SH_DIPLOMAS);
+      shDip = ss.getSheetByName(SH_DIPLOMAS);
+      shDip.appendRow(['Record ID','Student ID','Student Name','Batch Code','Course','Completion Date','Drive File ID','Drive Link','Generated At','Released By','Email Sent']);
+    }
+
+    var recordId = 'DIP-' + studentId + '-' + Date.now();
+    shDip.appendRow([recordId, studentId, studentName, batchCode, course, completionDate, fileId, driveLink, new Date().toISOString(), releasedBy, 'No']);
+
+    // Also update Enrollments sheet to "Released" + link
+    var shEn = ss.getSheetByName(SH_ENROLLMENTS);
+    if (shEn && shEn.getLastRow() > 1) {
+      var enData = shEn.getRange(2,1,shEn.getLastRow()-1,8).getValues();
+      for (var i=0; i<enData.length; i++) {
+        if (String(enData[i][0]).toUpperCase()===studentId && String(enData[i][1]).toUpperCase()===batchCode) {
+          shEn.getRange(i+2,5).setValue('Released');
+          shEn.getRange(i+2,6).setValue(releasedBy);
+          shEn.getRange(i+2,7).setValue(new Date().toISOString());
+          // Store drive link in col 8 if header exists
+          if (shEn.getLastColumn() >= 8) shEn.getRange(i+2,8).setValue(driveLink);
+          break;
+        }
+      }
+    }
+
+    // Email student (optional)
+    if (p.sendEmail === 'true' && studentName) {
+      var shStud = ss.getSheetByName(SH_STUDENTS);
+      var email  = '';
+      if (shStud && shStud.getLastRow() > 1) {
+        var stuRows = shStud.getRange(2,1,shStud.getLastRow()-1,10).getValues();
+        stuRows.forEach(function(r){ if (String(r[0]).toUpperCase()===studentId && r[5]) email = r[5]; });
+      }
+      if (email) {
+        try {
+          MailApp.sendEmail({
+            to: email,
+            subject: 'Congratulations! Your IGI Diploma is Ready — ' + course,
+            htmlBody: '<p>Dear ' + studentName + ',</p>' +
+              '<p>Congratulations! 🎓 You have successfully completed the <strong>' + course + '</strong> course at IGI School of Gemology.</p>' +
+              '<p>Your diploma is ready to download:<br>' +
+              '<a href="' + driveLink + '" style="background:#C8A951;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block;margin-top:8px">Download Your Diploma</a></p>' +
+              '<p style="color:#666;font-size:12px">This diploma can be viewed and downloaded at any time using the link above.</p>' +
+              '<p>Warm regards,<br>IGI School of Gemology</p>'
+          });
+          shDip.getRange(shDip.getLastRow(), 11).setValue('Yes');
+        } catch(mailErr) {}
+      }
+    }
+
+    return {status:'ok', driveLink:driveLink, fileId:fileId, recordId:recordId};
+  } catch(err) { return {status:'error', message:err.toString()}; }
+}
+
+/**
+ * getStudentDiplomas
+ * Returns all diploma records for a student (for portal display).
+ */
+function getStudentDiplomas(ss, p) {
+  try {
+    var studentId = String(p.studentId || '').toUpperCase();
+    if (!studentId) return {status:'error', reason:'missing_params'};
+
+    var shDip = ss.getSheetByName(SH_DIPLOMAS);
+    if (!shDip || shDip.getLastRow() < 2) return {status:'ok', diplomas:[]};
+
+    var rows = shDip.getRange(2,1,shDip.getLastRow()-1,11).getValues();
+    var diplomas = rows.filter(function(r){ return String(r[1]).toUpperCase()===studentId; }).map(function(r){
+      return {
+        recordId:       r[0], studentId: r[1], studentName: r[2],
+        batchCode:      r[3], course: r[4],    completionDate: r[5],
+        driveLink:      r[7], generatedAt: r[8], releasedBy: r[9]
+      };
+    });
+    return {status:'ok', diplomas:diplomas};
+  } catch(err) { return {status:'error', message:err.toString()}; }
 }

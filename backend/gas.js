@@ -1024,15 +1024,17 @@ function doGet(e) {
       const cred = COUNSELOR_CREDS[name];
       const sheetCred = cred ? (isMasterPin ? {ok:true,credential:{mustChange:false}} : authenticateUser(ss,'Counselor',name,pin)) : {ok:false};
       if (cred && sheetCred.ok) {
-        const batches = fetchBatches(ss, cred.centres, '');
-        return respond({status:'ok', counselorName:name, centres:cred.centres, isAdmin:false, authRole:'Counselor', mustChangePassword:false, batches});
+        const allowedCentres = (name === 'Anuradha' || name === 'Bianca') ? Object.keys(CENTRE_CODES) : cred.centres;
+        const batches = fetchBatches(ss, allowedCentres, '');
+        return respond({status:'ok', counselorName:name, centres:allowedCentres, isAdmin:false, authRole:'Counselor', mustChangePassword:false, batches});
       }
       // Check dual-role instructor credentials (Arjun, Piyush, Anuradha)
       const dual = DUAL_ROLE[name];
       const instrCred = dual ? (isMasterPin ? {ok:true,credential:{mustChange:false}} : authenticateUser(ss,'Instructor',name,pin)) : {ok:false};
       if (dual && instrCred.ok) {
-        const batches = fetchBatches(ss, dual.centres, '');
-        return respond({status:'ok', counselorName:name, centres:dual.centres, isAdmin:false, isDualRole:true, authRole:'Instructor', mustChangePassword:false, batches});
+        const allowedCentres = (name === 'Anuradha' || name === 'Bianca') ? Object.keys(CENTRE_CODES) : dual.centres;
+        const batches = fetchBatches(ss, allowedCentres, '');
+        return respond({status:'ok', counselorName:name, centres:allowedCentres, isAdmin:false, isDualRole:true, authRole:'Instructor', mustChangePassword:false, batches});
       }
       return respond({status:'error', reason:'wrong_credentials'});
     }

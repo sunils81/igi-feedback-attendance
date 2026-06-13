@@ -7006,6 +7006,7 @@ async function _generateDiplomaPDF(studentName, studentId, course, completionDat
   var coords = DIPLOMA_COORDS[templateFilename];
   if (!coords) throw new Error('No coordinate map for template: ' + templateFilename);
 
+  var fontName   = await pdfDoc.embedFont(StandardFonts.TimesRomanBoldItalic); // elegant name font
   var fontBold   = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   var fontNormal = await pdfDoc.embedFont(StandardFonts.Helvetica);
   var black      = rgb(0, 0, 0);
@@ -7023,20 +7024,28 @@ async function _generateDiplomaPDF(studentName, studentId, course, completionDat
     page.drawText(text, {x: (coords.pageW - w) / 2, y:y, size:size, font:font, color:black});
   }
 
-  // 1. Student name (centred)
+  // 1. Student name (centred) — use elegant TimesRomanBoldItalic
   cover(coords.name.cover);
-  if (studentName) drawCentred(studentName, fontBold, coords.name.size, coords.name.y);
+  if (studentName) drawCentred(studentName, fontName, coords.name.size, coords.name.y);
 
-  // 2. Completion date
+  // 2. Completion date — match pre-printed font style
   cover(coords.date.cover);
-  if (completionDate) page.drawText(completionDate, {x:coords.date.x, y:coords.date.y, size:coords.date.size, font:fontNormal, color:black});
+  if (completionDate) page.drawText(completionDate, {x:coords.date.x, y:coords.date.y, size:coords.date.size, font:fontBold, color:black});
 
-  // 3. Student ID
+  // 3. Student ID — match date font
   cover(coords.id.cover);
-  if (studentId) page.drawText('Student ID - ' + studentId, {x:coords.id.x, y:coords.id.y, size:coords.id.size, font:fontNormal, color:black});
+  if (studentId) page.drawText('Student ID - ' + studentId, {x:coords.id.x, y:coords.id.y, size:coords.id.size, font:fontBold, color:black});
 
-  // 4. Instructor name (above COURSE label)
-  if (instructorName) page.drawText(instructorName, {x:coords.instructor.x, y:coords.instructor.y, size:coords.instructor.size, font:fontNormal, color:black});
+  // 4. Instructor name — placed ABOVE the pre-printed "COURSE INSTRUCTOR" label
+  // Cover any existing sample name first, then draw above the label
+  if (coords.instructor.cover) {
+    page.drawRectangle({x:coords.instructor.cover.x, y:coords.instructor.cover.y, width:coords.instructor.cover.w, height:coords.instructor.cover.h, color:white});
+  }
+  if (instructorName) {
+    var iw = fontNormal.widthOfTextAtSize(instructorName, coords.instructor.size);
+    var ix = coords.instructor.x - iw / 2; // centre around the x anchor
+    page.drawText(instructorName, {x:ix, y:coords.instructor.y, size:coords.instructor.size, font:fontNormal, color:black});
+  }
 
   var pdfBytes = await pdfDoc.save();
   return _uint8ToBase64(pdfBytes);
@@ -7198,7 +7207,7 @@ async function _doGenerateAndRelease(studentId, batchCode, instructorName, btn, 
       'apikey': SUPABASE_ANON,
       'Authorization': 'Bearer ' + SUPABASE_ANON,
       'Content-Type': 'application/json',
-      'Prefer': 'resolution=merge-duplicates'
+      'Prefer': 'return=representation,resolution=merge-duplicates'
     },
     body: JSON.stringify({
       student_id: studentId,

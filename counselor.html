@@ -6601,10 +6601,10 @@ async function loadDiplomaData() {
     var [studentsResp, batchesResp, attResp, assessResp, marksResp, diplomasResp] = await Promise.all([
       fetch(SUPABASE_URL + '/rest/v1/students?select=student_id,name,batch_code', {headers: headers}),
       fetch(SUPABASE_URL + '/rest/v1/batches?select=batch_code,centre,course,counselor', {headers: headers}),
-      fetch(SUPABASE_URL + '/rest/v1/attendance_feedback?select=student_id,session_code,present', {headers: headers}),
-      fetch(SUPABASE_URL + '/rest/v1/assessments?select=assessment_id,batch_code,assessment_type,max_marks', {headers: headers}),
-      fetch(SUPABASE_URL + '/rest/v1/assessment_marks?select=assessment_id,student_id,marks_obtained', {headers: headers}),
-      fetch(SUPABASE_URL + '/rest/v1/diplomas?select=student_id,batch_code,status,released_by,released_at', {headers: headers})
+      fetch(SUPABASE_URL + '/rest/v1/attendance_feedback?select=student_id,attendance', {headers: headers}),
+      fetch(SUPABASE_URL + '/rest/v1/assessments?select=assessment_id,batch_code,test_type,max_marks', {headers: headers}),
+      fetch(SUPABASE_URL + '/rest/v1/assessment_marks?select=assessment_id,student_id,marks', {headers: headers}),
+      fetch(SUPABASE_URL + '/rest/v1/diplomas?select=student_id,batch_code,released_by,released_at', {headers: headers})
     ]);
 
     var students    = await studentsResp.json();
@@ -6637,27 +6637,28 @@ async function loadDiplomaData() {
     attRows.forEach(function(a) {
       if (!attByStudent[a.student_id]) attByStudent[a.student_id] = {total:0, present:0};
       attByStudent[a.student_id].total++;
-      if (a.present) attByStudent[a.student_id].present++;
+      // schema uses `attendance` text column: 'Present' | 'Absent' | 'Late'
+      if (a.attendance === 'Present' || a.attendance === 'Late') attByStudent[a.student_id].present++;
     });
 
-    // Assessment scores per student: weekly avg & final exam
-    // assessment_type: 'Weekly Test' or 'Final Exam'
-    var assessMap = {}; // assessment_id -> {batch_code, type, max_marks}
+    // Assessment scores per student
+    // schema: test_type column ('Weekly' | 'Final' | 'Mock'), marks column
+    var assessMap = {};
     assessments.forEach(function(a) { assessMap[a.assessment_id] = a; });
 
-    var studentScores = {}; // student_id -> {weeklyTotal, weeklyMax, weeklyCount, finalObt, finalMax}
+    var studentScores = {};
     marks.forEach(function(m) {
       var a = assessMap[m.assessment_id];
       if (!a) return;
-      if (!studentScores[m.student_id]) studentScores[m.student_id] = {weeklyTotal:0, weeklyMax:0, weeklyCount:0, finalObt:0, finalMax:0};
+      if (!studentScores[m.student_id]) studentScores[m.student_id] = {weeklyTotal:0, weeklyMax:0, finalObt:0, finalMax:0};
       var s = studentScores[m.student_id];
-      if (a.assessment_type && a.assessment_type.toLowerCase().indexOf('final') !== -1) {
-        s.finalObt += (m.marks_obtained || 0);
-        s.finalMax += (a.max_marks || 0);
+      var ttype = (a.test_type || '').toLowerCase();
+      if (ttype.indexOf('final') !== -1) {
+        s.finalObt += parseFloat(m.marks || 0);
+        s.finalMax += parseFloat(a.max_marks || 100);
       } else {
-        s.weeklyTotal += (m.marks_obtained || 0);
-        s.weeklyMax += (a.max_marks || 0);
-        s.weeklyCount++;
+        s.weeklyTotal += parseFloat(m.marks || 0);
+        s.weeklyMax   += parseFloat(a.max_marks || 100);
       }
     });
 
@@ -6682,7 +6683,7 @@ async function loadDiplomaData() {
         weeklyAvg: weeklyAvg,
         finalPct: finalPct,
         eligible: eligible,
-        diplomaStatus: dipRec ? dipRec.status : 'Not Released',
+        diplomaStatus: dipRec ? 'Released' : 'Not Released',
         diplomaReleasedAt: dipRec ? dipRec.released_at : null,
         diplomaReleasedBy: dipRec ? dipRec.released_by : null
       };
@@ -7202,12 +7203,12 @@ async function _doGenerateAndRelease(studentId, batchCode, instructorName, btn, 
     body: JSON.stringify({
       student_id: studentId,
       batch_code: batchCode,
+      student_name: student.studentName || '',
       course: course,
       completion_date: new Date().toISOString().split('T')[0],
       released_by: counselorName || instructorName,
       released_at: nowIso,
-      storage_path: storageLink,
-      status: 'Released'
+      drive_link: storageLink
     })
   });
   if (!sbInsertResp.ok) {

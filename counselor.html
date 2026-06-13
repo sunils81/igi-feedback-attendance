@@ -1125,7 +1125,7 @@
   </div>
 
   <!-- Persistent attendance reminder banner (non-blocking) -->
-  <div id="att-reminder-banner" style="display:none;background:#fffbeb;border:1.5px solid #f59e0b;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#92400e;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+  <div id="att-reminder-banner" style="display:none;background:#fffbeb;border:1.5px solid #f59e0b;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#92400e;align-items:center;gap:10px;flex-wrap:wrap;">
     <span>⚠️</span>
     <span id="att-reminder-text" style="flex:1;font-weight:500;"></span>
     <button onclick="switchTab('t-attendance')" style="background:#f59e0b;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;">Review Now</button>
@@ -6105,24 +6105,30 @@ function loadMyBatches() {
     }
 
     function getClashingBatches(b, list) {
+      // A clash only occurs when the SAME instructor is scheduled in two
+      // overlapping batches at the same centre and same time slot.
+      // Different courses can run simultaneously — that is not a clash.
+      if (!b.instructor) return [];   // no instructor → nothing to clash
       var startA = parseDMY(b.startDate);
       var endA = parseDMY(b.endDate);
       if (!startA || !endA) return [];
-      
+
       var slotA = b.batchSlot || 'Full Day';
       var clashes = [];
-      
+
       list.forEach(function(other) {
         if (other.batchCode === b.batchCode) return;
-        if (other.centre !== b.centre) return;
-        
+        if (other.centre !== b.centre) return;          // different centre → no clash
+        if (!other.instructor) return;
+        if (other.instructor !== b.instructor) return;  // different instructor → no clash
+
         var startB = parseDMY(other.startDate);
         var endB = parseDMY(other.endDate);
         if (!startB || !endB) return;
-        
+
         var dateOverlap = (startA <= endB && startB <= endA);
         if (!dateOverlap) return;
-        
+
         var slotB = other.batchSlot || 'Full Day';
         var slotOverlap = (slotA === 'Full Day' || slotB === 'Full Day' || slotA === slotB);
         if (slotOverlap) {

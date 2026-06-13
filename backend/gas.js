@@ -9387,6 +9387,18 @@ function _updateSessionAttCount(ss, shSess, sessRows, sessionCode, batchCode) {
 // DIPLOMA PDF GENERATION
 // ════════════════════════════════════════════════════════════════
 
+/**
+ * Run this function ONCE from the GAS editor (Run → authorizeScopes)
+ * to grant Drive permissions to this script.  After running it once
+ * the web-app deployment will also carry Drive access.
+ */
+function authorizeScopes() {
+  // Touch DriveApp so GAS requests the drive scope during authorization
+  var folder = DriveApp.getFolderById(DIPLOMA_TEMPLATES_FOLDER_ID);
+  Logger.log('Drive access OK. Folder: ' + folder.getName());
+  SpreadsheetApp.getActive(); // also confirm Sheets scope
+}
+
 const DIPLOMA_TEMPLATES_FOLDER_ID = '1tOSAMN3tLZJsXJZaFOSL9qFXB8v7z8mk';
 const DIPLOMA_OUTPUT_FOLDER_NAME  = 'IGI-Diplomas-Generated';
 const SH_DIPLOMAS = 'Diplomas';

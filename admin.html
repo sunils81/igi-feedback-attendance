@@ -2187,20 +2187,20 @@
         <h2>👑 Pending HOD Approvals</h2>
         <p class="sub">Review and approve/reject borderline student eligibility requests submitted by branch counselors.</p>
         
-        <div id="hod-approvals-loading" style="text-align:center;padding:40px;color:var(--muted);font-size:14px;">
-          Loading pending approvals...
+        <div id="hod-approvals-loading" style="text-align:center;padding:40px;">
+          <!-- Will be set dynamically by JavaScript -->
         </div>
         
-        <div id="hod-approvals-content" style="display:none;">
+        <div id="hod-approvals-content" style="display:none;margin-top:16px;">
           <table class="compact-table" style="width:100%">
             <thead>
               <tr>
-                <th>Student</th>
-                <th>Batch</th>
-                <th>Weekly Avg</th>
-                <th>Final Exam</th>
-                <th>Requested By</th>
-                <th>Actions</th>
+                <th class="text-left" style="padding-left:12px;">Student</th>
+                <th class="text-left">Batch</th>
+                <th class="text-center">Weekly Avg</th>
+                <th class="text-center">Final Exam</th>
+                <th class="text-left">Requested By</th>
+                <th class="text-left" style="width:180px;">Actions</th>
               </tr>
             </thead>
             <tbody id="hod-approvals-tbody">
@@ -2209,8 +2209,10 @@
           </table>
         </div>
         
-        <div id="hod-approvals-empty" style="display:none;text-align:center;padding:40px;color:var(--muted)">
-          🎉 No pending approvals found. All student records are up to date!
+        <div id="hod-approvals-empty" style="display:none;padding:50px 20px;text-align:center;background:var(--white);border-radius:12px;border:1px dashed rgba(201,168,76,0.35);margin:20px 0;">
+          <div style="font-size:48px;margin-bottom:16px;filter:drop-shadow(0 4px 6px rgba(0,0,0,0.05));">✨</div>
+          <h3 style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:6px;">All Caught Up!</h3>
+          <p style="font-size:13px;color:var(--muted);max-width:340px;margin:0 auto;line-height:1.5;">No pending eligibility approvals found. All student records and course completions are up to date.</p>
         </div>
       </div>
     </div>
@@ -3036,7 +3038,10 @@ function loadPendingHODApprovals() {
   const empty = document.getElementById('hod-approvals-empty');
   const tbody = document.getElementById('hod-approvals-tbody');
   
-  if (loading) loading.style.display = 'block';
+  if (loading) {
+    loading.innerHTML = loadingState('Loading pending approvals...');
+    loading.style.display = 'block';
+  }
   if (content) content.style.display = 'none';
   if (empty) empty.style.display = 'none';
   
@@ -3056,16 +3061,33 @@ function loadPendingHODApprovals() {
     
     if (tbody) {
       tbody.innerHTML = pendingList.map(a => {
-        return '<tr>' +
-          '<td class="text-left"><strong>' + escShared(a.studentName) + '</strong><br><span style="font-size:11px;color:var(--muted)">ID: ' + escShared(a.studentId) + '</span></td>' +
-          '<td class="text-left"><strong>' + escShared(a.batchCode) + '</strong></td>' +
-          '<td class="text-center">' + (a.weeklyAvg ? a.weeklyAvg + '%' : 'N/A') + '</td>' +
-          '<td class="text-center">' + (a.finalExam ? a.finalExam + '%' : 'N/A') + '</td>' +
-          '<td class="text-left">' + escShared(a.requestedBy) + '<br><span style="font-size:10px;color:var(--muted)">' + new Date(a.requestedAt).toLocaleString('en-IN') + '</span></td>' +
-          '<td>' +
+        var weeklyVal = a.weeklyAvg ? parseFloat(a.weeklyAvg) : null;
+        var finalVal = a.finalExam ? parseFloat(a.finalExam) : null;
+        
+        var weeklyColor = (weeklyVal !== null && weeklyVal < 60) ? 'color:#C94A4A; font-weight:700;' : 'color:#1D9E75; font-weight:600;';
+        var finalColor = (finalVal !== null && finalVal < 60) ? 'color:#C94A4A; font-weight:700;' : 'color:#1D9E75; font-weight:600;';
+        
+        var weeklyHtml = weeklyVal !== null ? '<span style="' + weeklyColor + '">' + weeklyVal + '%</span>' : '<span style="color:var(--muted)">—</span>';
+        var finalHtml = finalVal !== null ? '<span style="' + finalColor + '">' + finalVal + '%</span>' : '<span style="color:var(--muted)">—</span>';
+
+        return '<tr style="transition: transform 0.2s;">' +
+          '<td class="text-left" style="padding:12px 10px;padding-left:12px;vertical-align:middle;">' +
+            '<div style="font-weight:700;color:var(--navy);font-size:14px;">' + escShared(a.studentName) + '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px;font-family:\'JetBrains Mono\',monospace;">ID: ' + escShared(a.studentId) + '</div>' +
+          '</td>' +
+          '<td class="text-left" style="vertical-align:middle;">' +
+            '<span style="background:rgba(13,27,46,0.06);color:var(--navy);padding:4px 8px;border-radius:6px;font-size:11.5px;font-weight:700;letter-spacing:0.02em;border:1px solid rgba(13,27,46,0.1);">' + escShared(a.batchCode) + '</span>' +
+          '</td>' +
+          '<td class="text-center" style="vertical-align:middle;font-size:14px;">' + weeklyHtml + '</td>' +
+          '<td class="text-center" style="vertical-align:middle;font-size:14px;">' + finalHtml + '</td>' +
+          '<td class="text-left" style="vertical-align:middle;">' +
+            '<div style="font-weight:600;color:var(--navy);">' + escShared(a.requestedBy) + '</div>' +
+            '<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">' + new Date(a.requestedAt).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) + '</div>' +
+          '</td>' +
+          '<td style="vertical-align:middle;">' +
             '<div style="display:flex;gap:8px;">' +
-              '<button class="btn btn-gold" style="padding:4px 8px;font-size:11px;width:auto;margin:0;" onclick="submitHODDecision(\'' + a.approvalId + '\', \'Approved\')">Approve</button>' +
-              '<button class="btn btn-outline" style="padding:4px 8px;font-size:11px;width:auto;color:var(--red);border-color:var(--red);margin:0;" onclick="submitHODDecision(\'' + a.approvalId + '\', \'Rejected\')">Reject</button>' +
+              '<button class="btn" style="padding:6px 12px;font-size:11px;width:auto;margin:0;background:#10B981;color:#fff;border-radius:6px;font-weight:700;box-shadow:0 2px 4px rgba(16,185,129,0.2);" onclick="submitHODDecision(\'' + a.approvalId + '\', \'Approved\')">Approve</button>' +
+              '<button class="btn btn-outline" style="padding:6px 12px;font-size:11px;width:auto;margin:0;color:#EF4444;border-color:#FCA5A5;background:rgba(239,68,68,0.02);border-radius:6px;font-weight:700;" onclick="submitHODDecision(\'' + a.approvalId + '\', \'Rejected\')">Reject</button>' +
             '</div>' +
           '</td>' +
         '</tr>';

@@ -481,6 +481,15 @@
 
   <!-- ── TAB 4: MY BATCHES ── -->
   <div id="t-mybatches" class="tab-content">
+    <div id="co-instructor-notice" style="display:none;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:14px 16px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div>
+          <div style="font-weight:700;font-size:13px;color:#92400e">📋 You've been assigned as a cover instructor</div>
+          <div id="co-instructor-notice-body" style="font-size:12px;color:#78350f;margin-top:5px;line-height:1.6"></div>
+        </div>
+        <button onclick="dismissCoInstructorNotice()" style="flex-shrink:0;background:none;border:none;font-size:18px;cursor:pointer;color:#92400e;line-height:1" title="Dismiss">✕</button>
+      </div>
+    </div>
     <div class="card">
       <div class="section-tag">My Batches</div>
       <h2 id="mb-title">—</h2>
@@ -3361,6 +3370,14 @@ function loadMyBatches() {
     }
     title.textContent=d.batches.length+' batch'+(d.batches.length!==1?'es':'')+' assigned';
     var batches = d.batches;
+
+    // ── Co-instructor notification ────────────────────────────────
+    var myName = (instructorName||'').toLowerCase().trim();
+    var coverBatches = batches.filter(function(b) {
+      return b.coInstructor && b.coInstructor.toLowerCase().trim() === myName;
+    });
+    showCoInstructorNotice(coverBatches);
+
     var codes = batches.map(function(b){ return b.batchCode; }).join(',');
     // Fetch students for all batches, then render with count + names
     gasGet({action:'getStudentsForBatches', batchCodes: codes}, function(e2, sd) {
@@ -3381,16 +3398,52 @@ function loadMyBatches() {
               + students.map(function(n){ return escH(n); }).join(', ')
               + '</div>'
           : '';
-        return '<div style="background:var(--off);border-radius:8px;padding:12px 14px;margin-bottom:10px">'
-          + '<div style="font-weight:700;font-family:\'JetBrains Mono\',monospace;font-size:13px;color:var(--navy)">' + escH(b.batchCode) + '</div>'
+        // Badge: are they cover or primary?
+        var myLow = (instructorName||'').toLowerCase().trim();
+        var isCover = b.coInstructor && b.coInstructor.toLowerCase().trim() === myLow;
+        var roleBadge = isCover
+          ? '<span style="display:inline-block;font-size:10px;background:#fffbeb;color:#92400e;border:1px solid #fcd34d;border-radius:4px;padding:1px 6px;margin-left:6px;font-weight:600">Cover</span>'
+          : '';
+        var untilTxt = isCover && b.coInstructorUntil
+          ? '<div style="font-size:11px;color:#92400e;margin-top:2px">📅 Cover until: ' + escH(b.coInstructorUntil) + '</div>'
+          : '';
+        return '<div style="background:var(--off);border-radius:8px;padding:12px 14px;margin-bottom:10px' + (isCover?';border-left:3px solid #fcd34d':'') + '">'
+          + '<div style="font-weight:700;font-family:\'JetBrains Mono\',monospace;font-size:13px;color:var(--navy)">' + escH(b.batchCode) + roleBadge + '</div>'
           + '<div style="font-size:12px;color:var(--muted);margin-top:3px">' + escH(b.course) + ' · ' + escH(b.centre) + ' · ' + escH(b.type||'') + '</div>'
           + '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + escH(b.startDate||'') + ' → ' + escH(b.endDate||'') + '</div>'
+          + untilTxt
           + '<div style="font-size:12px;color:var(--navy);font-weight:600;margin-top:6px">👥 ' + escH(countTxt) + '</div>'
           + namesTxt
           + '</div>';
       }).join('');
     });
   });
+}
+
+function showCoInstructorNotice(coverBatches) {
+  var notice = document.getElementById('co-instructor-notice');
+  var body   = document.getElementById('co-instructor-notice-body');
+  if (!notice || !body) return;
+  if (!coverBatches || !coverBatches.length) { notice.style.display='none'; return; }
+
+  // Build a dismissed-key from the sorted batch codes so each new assignment re-notifies
+  var key = 'coInstrDismissed_' + coverBatches.map(function(b){return b.batchCode;}).sort().join('_');
+  if (localStorage.getItem(key)) { notice.style.display='none'; return; }
+
+  notice.dataset.dismissKey = key;
+  body.innerHTML = coverBatches.map(function(b) {
+    var until = b.coInstructorUntil ? ' (until <strong>' + escH(b.coInstructorUntil) + '</strong>)' : ' (permanent handover)';
+    return '• <strong>' + escH(b.batchCode) + '</strong> — ' + escH(b.course) + ' · ' + escH(b.centre) + until;
+  }).join('<br>');
+  notice.style.display = 'block';
+}
+
+function dismissCoInstructorNotice() {
+  var notice = document.getElementById('co-instructor-notice');
+  if (!notice) return;
+  var key = notice.dataset.dismissKey;
+  if (key) localStorage.setItem(key, '1');
+  notice.style.display = 'none';
 }
 
 var _summaryActiveTab = 't-session';

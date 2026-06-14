@@ -1117,9 +1117,9 @@
     <button class="tab" onclick="switchTab('t-alumni')">🎓 Alumni</button>
     <button class="tab" onclick="switchTab('t-mybatches')">🗂 My Batches</button>
     <button class="tab" onclick="switchTab('t-reports')">📊 Reports</button>
-    <button class="tab" onclick="switchTab('t-fees')">💰 Fees</button>
-    <button class="tab" onclick="switchTab('t-revenue')">📈 Revenue</button>
-    <button class="tab" onclick="switchTab('t-holidays')">🗓 Holidays</button>
+    <button class="tab" id="tab-fees" onclick="switchTab('t-fees')">💰 Fees <span id="fees-overdue-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
+    <button class="tab" id="tab-revenue" onclick="switchTab('t-revenue')">📈 Revenue</button>
+    <button class="tab" id="tab-holidays" onclick="switchTab('t-holidays')">🗓 Holidays</button>
     <button class="tab" id="tab-diplomas" onclick="switchTab('t-diplomas')" style="display:none">🎓 Diploma Release</button>
     <button class="tab" id="tab-inventory" onclick="switchTab('t-inventory')">📦 Inventory <span id="inv-pending-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-attendance" onclick="switchTab('t-attendance')">✅ Attendance <span id="att-pending-badge" style="display:none;background:#d97706;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
@@ -1131,6 +1131,14 @@
     <span id="att-reminder-text" style="flex:1;font-weight:500;"></span>
     <button onclick="switchTab('t-attendance')" style="background:#f59e0b;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;">Review Now</button>
     <button onclick="document.getElementById('att-reminder-banner').style.display='none'" style="background:transparent;border:none;color:#92400e;font-size:16px;cursor:pointer;line-height:1;">×</button>
+  </div>
+
+  <!-- Persistent fee reminder banner (non-blocking) -->
+  <div id="fees-reminder-banner" style="display:none;background:#fef2f2;border:1.5px solid #dc2626;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#991b1b;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span>⚠️</span>
+    <span id="fees-reminder-text" style="flex:1;font-weight:500;"></span>
+    <button onclick="switchTab('t-fees')" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;">Review Now</button>
+    <button onclick="document.getElementById('fees-reminder-banner').style.display='none'" style="background:transparent;border:none;color:#991b1b;font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
 
   <div id="counselor-summary" class="dashboard-summary" style="display:none"></div>
@@ -1251,6 +1259,7 @@
           <option value="">All Statuses</option>
           <option value="Completed">Completed (Alumni)</option>
           <option value="Active">Active / Ongoing</option>
+          <option value="Inactive">Inactive</option>
         </select>
       </div>
       
@@ -1351,7 +1360,10 @@
       <p class="sub">Centre and batch collection status across paid, partial, pending, and overdue records.</p>
       <div id="admin-fee-wrap">
         <div style="font-size:12px;color:var(--muted);padding:6px 0">Fee collection summary is loaded on demand so the Fees tab opens immediately.</div>
-        <div class="admin-action-row" style="justify-content:flex-start"><button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="loadAdminDashboard(true)">Load Fee Summary</button></div>
+        <div class="admin-action-row" style="justify-content:flex-start; gap: 8px; flex-wrap: wrap;">
+          <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="loadAdminDashboard(true)">Load Fee Summary</button>
+          <button id="btn-trigger-overdue-emails" class="btn" style="width:auto;padding:8px 14px;font-size:12px;background:var(--navy);color:var(--gold)" onclick="triggerOverdueEmailNotifications()">✉️ Email Overdue Alerts</button>
+        </div>
       </div>
     </div>
     <div class="card">
@@ -2131,22 +2143,7 @@ if (typeof INSTRUCTORS === 'undefined') {
     'Preeti Agarwala','Sayan Banerjee','Deepak Nachankar','Sharoon Joy','Seema Athavale'
   ];
 }
-if (typeof GAS_URL === 'undefined') {
-  window.GAS_URL = 'https://script.google.com/macros/s/AKfycbxWiL5q9A3Z1odYYK0ZRR8ngqwPhzPnkX4maKJRlgM6QspoiV1abAzFjRwEJIZEDpC65Q/exec';
-}
-if (typeof gasGet === 'undefined') {
-  window.gasGet = function(params, cb) {
-    const cbName = '_cb_' + Date.now() + '_' + Math.floor(Math.random()*9999);
-    const qs     = Object.entries(params).map(([k,v])=>k+'='+encodeURIComponent(v||'')).join('&');
-    const s      = document.createElement('script');
-    let done     = false;
-    window[cbName] = function(d){ done=true; delete window[cbName]; try{document.body.removeChild(s);}catch(x){} cb(null,d); };
-    s.onerror = function(){ if(!done){done=true;delete window[cbName];try{document.body.removeChild(s);}catch(x){}cb(new Error('network'),null);} };
-    s.src = GAS_URL + '?' + qs + '&callback=' + cbName;
-    document.body.appendChild(s);
-    setTimeout(function(){ if(!done){done=true;delete window[cbName];try{document.body.removeChild(s);}catch(x){}cb(new Error('timeout'),null);} }, 30000);
-  };
-}
+
 if (typeof loadingState === 'undefined') {
   window.loadingState = function(message) {
     return '<div class="spinner-wrap"><div class="spinner"></div><p>' + (message || 'Loading...') + '</p></div>';
@@ -2271,15 +2268,12 @@ function initCounselorPortal() {
         showScreen('s-main');
         applyPasswordChangeState();
         applyAdminVisibility();
-        if (sess.batches && sess.batches.length) {
-          _applyBatchData(sess.batches);
+        loadBatchDropdowns(function() {
           loadMyBatches();
-        } else {
-          loadBatchDropdowns();
-          loadMyBatches();
-        }
+        }, true);
         prefetchRevenue();
         setTimeout(loadPendingAttBanner, 1500);
+        setTimeout(loadOverdueFeesNotification, 2000);
       }
     }
   } catch(ex) {}
@@ -2384,6 +2378,7 @@ function doLogin() {
     // Holidays loaded lazily when the tab is opened (see switchTab)
     // Attendance: check for unfinalised sessions and show banner
     setTimeout(loadPendingAttBanner, 1500);
+    setTimeout(loadOverdueFeesNotification, 2000);
   });
 }
 
@@ -6218,20 +6213,32 @@ function loadMyBatches() {
         ? `<span class="badge" style="margin-left:6px;font-size:10px;padding:3px 6px;background:#FEF2F2;color:#DC2626;border:1px solid rgba(220,38,38,0.25)">⚠ Clash: ${clashes.join(', ')}</span>`
         : '';
 
+      var sCount = b.studentCount || 0;
+      var emptyBadge = sCount === 0
+        ? `<span class="badge" style="margin-left:6px;font-size:10px;padding:3px 6px;background:#FEF2F2;color:#DC2626;border:1px solid rgba(220,38,38,0.25)">No Students</span>`
+        : '';
+
+      var deleteButtonsHtml = sCount === 0
+        ? `<button class="btn" style="padding:4px 8px; font-size:11px; width:auto; background:#DC2626; color:#fff; border:none" onclick="promptDeleteBatch('${escC(b.batchCode)}', false)">Delete Empty Batch</button>`
+        : `
+          <button class="btn btn-outline" style="padding:4px 8px; font-size:11px; width:auto; border-color:rgba(201,74,74,0.3); color:var(--red)" onclick="promptDeleteBatch('${escC(b.batchCode)}', true)">Delete Batch (Keep Students)</button>
+          <button class="btn" style="padding:4px 8px; font-size:11px; width:auto; background:#DC2626; color:#fff; border:none" onclick="promptDeleteBatch('${escC(b.batchCode)}', false)">Delete Batch &amp; Students</button>
+        `;
+
       return `
       <div class="batch-row">
         <div class="bc">${b.batchCode}</div>
-        <div class="bm">${b.course} &nbsp;·&nbsp; ${b.centre} &nbsp;·&nbsp; ${b.type} &nbsp;·&nbsp; ${b.startDate}${b.endDate?' → '+b.endDate:''} &nbsp;·&nbsp; 👥 ${b.studentCount || 0} Student${b.studentCount !== 1 ? 's' : ''}</div>
+        <div class="bm">${b.course} &nbsp;·&nbsp; ${b.centre} &nbsp;·&nbsp; ${b.type} &nbsp;·&nbsp; ${b.startDate}${b.endDate?' → '+b.endDate:''} &nbsp;·&nbsp; 👥 ${sCount} Student${sCount !== 1 ? 's' : ''}</div>
         <div style="margin-top:4px">
           <span class="badge badge-blue">${b.counselor}</span>
           ${b.instructor?`<span class="badge badge-green" style="margin-left:6px">${b.instructor}</span>`:'<span class="badge badge-amber" style="margin-left:6px">No instructor</span>'}
           ${statusBadge}
           ${clashBadge}
+          ${emptyBadge}
         </div>
         ${b.instructor?'':renderInlineInstructorAssign(b.batchCode)}
         <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
-          <button class="btn btn-outline" style="padding:4px 8px; font-size:11px; width:auto; border-color:rgba(201,74,74,0.3); color:var(--red)" onclick="promptDeleteBatch('${escC(b.batchCode)}', true)">Delete Batch (Keep Students)</button>
-          <button class="btn" style="padding:4px 8px; font-size:11px; width:auto; background:#DC2626; color:#fff; border:none" onclick="promptDeleteBatch('${escC(b.batchCode)}', false)">Delete Batch &amp; Students</button>
+          ${deleteButtonsHtml}
         </div>
       </div>`;
     }).join('');
@@ -6914,39 +6921,7 @@ var DIPLOMA_COORDS = {
     {pageW:842,pageH:595, name:{y:340,size:22,cover:{x:100,y:322,w:640,h:45}}, date:{x:173,y:56,size:10,cover:{x:168,y:44,w:160,h:20}}, id:{x:173,y:38,size:9,cover:{x:168,y:27,w:160,h:18}}, instructor:{x:490,y:57,size:8}},
 };
 
-function _gasGetPromise(params) {
-  return new Promise(function(resolve, reject) {
-    gasGet(params, function(err, data) {
-      if (err) reject(err); else resolve(data);
-    });
-  });
-}
 
-function _gasPost(params) {
-  var url = typeof GAS_URL !== 'undefined' ? GAS_URL : window.GAS_URL;
-  return fetch(url, {
-    redirect: 'follow',
-    method: 'POST',
-    headers: {'Content-Type': 'text/plain;charset=utf-8'},
-    body: JSON.stringify(params)
-  }).then(function(r) {
-    if (!r.ok) {
-      throw new Error('HTTP error: ' + r.status + ' ' + r.statusText);
-    }
-    return r.text().then(function(text) {
-      try {
-        return JSON.parse(text);
-      } catch(e) {
-        console.error('GAS response was not valid JSON:', text);
-        var trimmed = text.trim().toLowerCase();
-        if (trimmed.startsWith('<html') || trimmed.startsWith('<!doctype') || trimmed.indexOf('<body') > -1) {
-          throw new Error('Google Apps Script execution failed (returned HTML instead of JSON). This typically means a runtime or authorization error occurred in your doPost function on the Google Apps Script side.');
-        }
-        throw new Error('Failed to parse JSON response: ' + e.message);
-      }
-    });
-  });
-}
 
 function _ordinalSuffix(n) {
   var s = ['th','st','nd','rd'], v = n % 100;
@@ -7614,16 +7589,21 @@ function renderAlumniTable(list) {
   }
   
   tbody.innerHTML = list.map(function(a) {
-    var statusBadge = a.status === 'Completed'
-      ? '<span class="badge" style="margin-left:0;font-size:10px;padding:3px 6px;background:#E8F5EE;color:#168B57;border:1px solid rgba(22,139,87,0.2)">Completed</span>'
-      : '<span class="badge" style="margin-left:0;font-size:10px;padding:3px 6px;background:rgba(201,168,76,0.1);color:#B87A10;border:1px solid rgba(201,168,76,0.25)">Active</span>';
+    var statusBadge = '';
+    if (a.status === 'Completed') {
+      statusBadge = '<span class="badge" style="margin-left:0;font-size:10px;padding:3px 6px;background:#E8F5EE;color:#168B57;border:1px solid rgba(22,139,87,0.2)">Completed</span>';
+    } else if (a.status === 'Inactive') {
+      statusBadge = '<span class="badge" style="margin-left:0;font-size:10px;padding:3px 6px;background:#FEE2E2;color:#DC2626;border:1px solid rgba(220,38,38,0.2)">Inactive</span>';
+    } else {
+      statusBadge = '<span class="badge" style="margin-left:0;font-size:10px;padding:3px 6px;background:rgba(201,168,76,0.1);color:#B87A10;border:1px solid rgba(201,168,76,0.25)">Active</span>';
+    }
 
     return '<tr>' +
       '<td class="text-center"><strong>' + escC(a.studentId) + '</strong></td>' +
       '<td class="text-left">' + escC(a.name) + '</td>' +
       '<td class="text-left">' + escC(a.centre) + '</td>' +
       '<td class="text-center">' + escC(a.contact) + '</td>' +
-      '<td class="text-left"><a href="mailto:' + escC(a.email) + '" style="color:var(--gold);text-decoration:none">' + escC(a.email) + '</a></td>' +
+      '<td class="text-left"><a href="mailto:' + escC(a.email) + '" style="color:#1d4ed8;text-decoration:underline">' + escC(a.email) + '</a></td>' +
       '<td class="text-left">' + escC(a.course) + '</td>' +
       '<td class="text-center"><span style="font-family:monospace;font-weight:600">' + escC(a.batchCode) + '</span></td>' +
       '<td class="text-center">' + escC(a.enrolmentMonth) + '</td>' +
@@ -8986,6 +8966,63 @@ function seedInventoryItemsFromPortal() {
     }
     showToast(d.message || `Seeded ${d.count} items!`);
     loadInventoryItemMaster();
+  });
+}
+
+function loadOverdueFeesNotification() {
+  if (!allowedCentres || !allowedCentres.length) return;
+  gasGet({
+    action: 'getOverdueFeesCount',
+    centres: allowedCentres.join(',')
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') return;
+    var count = d.overdueCount || 0;
+    
+    // 1. Update the Fees tab badge
+    var badge = document.getElementById('fees-overdue-badge');
+    if (badge) {
+      if (count > 0) {
+        badge.textContent = count;
+        badge.style.display = 'inline-block';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+    
+    // 2. Update the persistent fees reminder banner
+    var banner = document.getElementById('fees-reminder-banner');
+    var text = document.getElementById('fees-reminder-text');
+    if (banner && text) {
+      if (count > 0) {
+        text.textContent = count + ' student' + (count > 1 ? 's' : '') + ' have overdue fee installments!';
+        banner.style.display = 'flex';
+      } else {
+        banner.style.display = 'none';
+      }
+    }
+  });
+}
+
+function triggerOverdueEmailNotifications() {
+  if (!confirm('This will scan Student Fees for overdue installments and send summarized email notifications to the respective counselors (with cc to Sunil Sharma). Proceed?')) return;
+  
+  var btn = document.getElementById('btn-trigger-overdue-emails');
+  var originalText = btn ? btn.textContent : '✉️ Email Overdue Alerts';
+  if (btn) {
+    btn.textContent = '⏳ Sending Emails...';
+    btn.disabled = true;
+  }
+  
+  gasGet({ action: 'sendOverdueEmails' }, function(err, d) {
+    if (btn) {
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }
+    if (err || !d || d.status !== 'ok') {
+      showToast('Failed to send overdue email alerts: ' + ((d && d.message) || err || 'unknown error'), 'error');
+      return;
+    }
+    showToast('Success: ' + (d.message || 'Overdue fee alert emails dispatched successfully!'), 'success');
   });
 }
 

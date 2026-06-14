@@ -1022,6 +1022,14 @@ function doGet(e) {
   const act  = p.action || '';
   const cbFn = p.callback || '';
   const ss   = SpreadsheetApp.openById(SHEET_ID);
+  
+  // Ensure daily trigger is set up
+  try {
+    createDailyOverdueEmailTrigger();
+  } catch(err) {
+    Logger.log("Error ensuring daily trigger: " + err.toString());
+  }
+  
   ensureSheets(ss);
 
   function respond(obj) {
@@ -3004,6 +3012,12 @@ function doGet(e) {
     if (act==='getStudentResults')       return respond(otGetStudentResultsV3(ss,p));
     if (act==='getTestResultsSummary')   return respond(otGetTestResultsSummary(ss,p));
     if (act==='setupScheduledTrigger')   return respond(otSetupScheduledTrigger(ss,p));
+
+    // ── sendOverdueEmails ─────────────────────────────────────
+    if (act==='sendOverdueEmails') {
+      var result = sendOverdueFeeEmailNotifications(ss);
+      return respond(result);
+    }
 
     return respond({status:'error',reason:'unknown_action'});
   } catch(err){return respond({status:'error',message:err.toString()});}
@@ -9597,4 +9611,286 @@ function getStudentDiplomas(ss, p) {
     });
     return {status:'ok', diplomas:diplomas};
   } catch(err) { return {status:'error', message:err.toString()}; }
+}
+
+/**
+ * sendOverdueFeeEmailNotifications
+ * Computes overdue fee installments and sends summarized email updates to centre counselors.
+ */
+function sendOverdueFeeEmailNotifications(ss) {
+  var ss = ss || SpreadsheetApp.openById(SHEET_ID);
+  var sh = ss.getSheetByName(SH_FEES);
+  if (!sh || sh.getLastRow() < 2) {
+    Logger.log("sendOverdueFeeEmailNotifications: Student_Fees sheet empty or not found.");
+    return { status: 'ok', overdueCount: 0, emailsSent: 0, message: "No fee records found." };
+  }
+
+  var tz = Session.getScriptTimeZone();
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  var lastRow = sh.getLastRow();
+  var lastCol = sh.getLastColumn();
+  var colsToRead = Math.max(lastCol, 41);
+  var data = sh.getRange(2, 1, lastRow - 1, colsToRead).getValues();
+
+  var COUNSELOR_EMAILS = {
+    'Mumbai': ['anuradha@igi.org', 'indiaeducation@igi.org', 'omkar.kadam@igi.org'],
+    'Lucknow': ['anuradha@igi.org'],
+    'Ahmedabad': ['anuradha@igi.org'],
+    'Delhi': ['delhiedu@igi.org'],
+    'Bangalore': ['bangaloreedu@igi.org'],
+    'Hyderabad': ['hyderabadedu@igi.org'],
+    'Chennai': ['chennaiedu@igi.org'],
+    'Jaipur': ['jaipuredu@igi.org'],
+    'Surat': ['suratedu@igi.org'],
+    'Kolkata': ['kolkataedu@igi.org']
+  };
+  var ADMIN_EMAIL = 'sunil.sharma@igi.org';
+
+  var overdueByCentre = {};
+  var totalOverdueCount = 0;
+
+  for (var idx = 0; idx < data.length; idx++) {
+    var r = data[idx];
+    var studentId = r[0];
+    if (!studentId) continue;
+
+    var studentName = r[1] || 'Unknown';
+    var batchCode = String(r[2] || '').toUpperCase();
+    var centre = String(r[3] || '').trim();
+    var course = r[4] || '';
+
+    var overdueAmount = 0;
+    var maxDaysPastDue = 0;
+    var overdueInstallments = [];
+
+    var installmentsToCheck = [
+      { num: 1, amt: r[18], due: r[19], paid: r[20] },
+      { num: 2, amt: r[24], due: r[25], paid: r[26] },
+      { num: 3, amt: r[30], due: r[31], paid: r[32] }
+    ];
+
+    installmentsToCheck.forEach(function(inst) {
+      if (String(inst.paid).trim().toUpperCase() !== 'Y' && inst.due) {
+        var dueDate = new Date(inst.due);
+        if (!isNaN(dueDate.getTime())) {
+          dueDate.setHours(0, 0, 0, 0);
+          if (dueDate < today) {
+            var amt = Number(inst.amt) || 0;
+            overdueAmount += amt;
+            var diffTime = today.getTime() - dueDate.getTime();
+            var diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            if (diffDays > maxDaysPastDue) {
+              maxDaysPastDue = diffDays;
+            }
+            overdueInstallments.push({
+              num: inst.num,
+              amount: amt,
+              dueDate: dueDate
+            });
+          }
+        }
+      }
+    });
+
+    var ft = normalizedFeeTotals(r);
+    if (overdueAmount > 0 || (ft.feeStatus === 'Overdue' && ft.outstanding > 0)) {
+      var finalOverdueAmount = overdueAmount > 0 ? overdueAmount : ft.outstanding;
+      
+      if (maxDaysPastDue === 0) {
+        installmentsToCheck.forEach(function(inst) {
+          if (String(inst.paid).trim().toUpperCase() !== 'Y' && inst.due) {
+            var dDate = new Date(inst.due);
+            if (!isNaN(dDate.getTime())) {
+              dDate.setHours(0, 0, 0, 0);
+              var diff = today.getTime() - dDate.getTime();
+              var days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+              if (days > maxDaysPastDue) maxDaysPastDue = days;
+            }
+          }
+        });
+      }
+
+      var studentObj = {
+        studentId: studentId,
+        studentName: studentName,
+        batchCode: batchCode,
+        course: course,
+        overdueAmount: finalOverdueAmount,
+        outstanding: ft.outstanding,
+        daysPastDue: maxDaysPastDue,
+        installments: overdueInstallments
+      };
+
+      if (!overdueByCentre[centre]) {
+        overdueByCentre[centre] = [];
+      }
+      overdueByCentre[centre].push(studentObj);
+      totalOverdueCount++;
+    }
+  }
+
+  if (totalOverdueCount === 0) {
+    Logger.log("sendOverdueFeeEmailNotifications: No overdue records found.");
+    return { status: 'ok', overdueCount: 0, emailsSent: 0, message: "No overdue fee records found." };
+  }
+
+  var emailsSentCount = 0;
+  var processedCentres = Object.keys(overdueByCentre);
+
+  for (var cIdx = 0; cIdx < processedCentres.length; cIdx++) {
+    var centreName = processedCentres[cIdx];
+    var students = overdueByCentre[centreName];
+    if (students.length === 0) continue;
+
+    var toEmails = COUNSELOR_EMAILS[centreName] || [];
+    var isFallbackToAdmin = false;
+    
+    if (toEmails.length === 0) {
+      toEmails = [ADMIN_EMAIL];
+      isFallbackToAdmin = true;
+    }
+
+    var toEmailsStr = toEmails.join(',');
+    
+    students.sort(function(a, b) {
+      return b.daysPastDue - a.daysPastDue;
+    });
+
+    var tableRowsHtml = '';
+    students.forEach(function(s) {
+      var formattedAmt = '₹' + s.overdueAmount.toLocaleString('en-IN');
+      var formattedOut = '₹' + s.outstanding.toLocaleString('en-IN');
+      var instDetails = s.installments.map(function(inst) {
+        return 'Inst ' + inst.num + ' (due ' + Utilities.formatDate(inst.dueDate, tz, 'yyyy-MM-dd') + ')';
+      }).join(', ');
+      
+      if (!instDetails) {
+        instDetails = 'General past due';
+      }
+
+      tableRowsHtml += '<tr style="border-bottom: 1px solid #E2E8F0;">' +
+        '<td style="padding: 12px 10px; font-size: 13px; color: #1E293B;">' +
+          '<div style="font-weight: 600; color: #0F172A;">' + escapeHtml(s.studentName) + '</div>' +
+          '<div style="font-size: 11px; color: #64748B;">ID: ' + escapeHtml(s.studentId) + '</div>' +
+        '</td>' +
+        '<td style="padding: 12px 10px; font-size: 13px; color: #334155;">' +
+          '<div style="font-weight: 500;">' + escapeHtml(s.batchCode) + '</div>' +
+          '<div style="font-size: 11px; color: #64748B;">' + escapeHtml(s.course) + '</div>' +
+        '</td>' +
+        '<td style="padding: 12px 10px; font-size: 13px; text-align: right; color: #B91C1C; font-weight: 600;">' + formattedAmt + '</td>' +
+        '<td style="padding: 12px 10px; font-size: 13px; text-align: right; color: #475569;">' + formattedOut + '</td>' +
+        '<td style="padding: 12px 10px; font-size: 13px; text-align: center; color: #1E293B;">' +
+          '<span style="background-color: #FEF2F2; color: #991B1B; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 12px;">' + s.daysPastDue + ' days</span>' +
+        '</td>' +
+        '<td style="padding: 12px 10px; font-size: 11px; color: #64748B;">' + escapeHtml(instDetails) + '</td>' +
+      '</tr>';
+    });
+
+    var subject = '⚠️ Overdue Fee Alert: ' + centreName + ' Centre — ' + students.length + ' Pending';
+    if (isFallbackToAdmin) {
+      subject = '[Admin Alert] Unmapped Centre Overdue Fees: ' + centreName + ' — ' + students.length + ' Pending';
+    }
+
+    var htmlBody = '<html><body style="font-family: Arial, sans-serif; background-color: #F8FAFC; padding: 20px; margin: 0; -webkit-font-smoothing: antialiased;">' +
+      '<div style="max-width: 800px; margin: 0 auto; background-color: #FFFFFF; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); border-top: 6px solid #0D1B2E; overflow: hidden;">' +
+        '<div style="background-color: #0D1B2E; padding: 24px; text-align: center;">' +
+          '<h1 style="color: #C9A84C; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0.5px;">IGI SCHOOL OF GEMOLOGY</h1>' +
+          '<p style="color: #FDFCF9; margin: 6px 0 0 0; font-size: 14px; opacity: 0.9;">Overdue Fee Installment Summary &mdash; ' + escapeHtml(centreName) + ' Centre</p>' +
+        '</div>' +
+        '<div style="padding: 24px;">' +
+          '<p style="font-size: 15px; color: #334155; line-height: 1.6; margin-top: 0;">Dear Team,</p>' +
+          '<p style="font-size: 15px; color: #334155; line-height: 1.6;">Please find below the summary of students in <strong>' + escapeHtml(centreName) + '</strong> who currently have overdue fee installments. Please follow up with them immediately to reconcile these accounts.</p>' +
+          '<div style="margin-top: 24px; overflow-x: auto;">' +
+            '<table style="width: 100%; border-collapse: collapse; border: 1px solid #E2E8F0; min-width: 600px;">' +
+              '<thead>' +
+                '<tr style="background-color: #F1F5F9; border-bottom: 2px solid #CBD5E1;">' +
+                  '<th style="text-align: left; padding: 12px 10px; font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase;">Student</th>' +
+                  '<th style="text-align: left; padding: 12px 10px; font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase;">Batch / Course</th>' +
+                  '<th style="text-align: right; padding: 12px 10px; font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase;">Overdue Amt</th>' +
+                  '<th style="text-align: right; padding: 12px 10px; font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase;">Total Out.</th>' +
+                  '<th style="text-align: center; padding: 12px 10px; font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase;">Overdue Days</th>' +
+                  '<th style="text-align: left; padding: 12px 10px; font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase;">Installment Details</th>' +
+                '</tr>' +
+              '</thead>' +
+              '<tbody>' +
+                tableRowsHtml +
+              '</tbody>' +
+            '</table>' +
+          '</div>' +
+          '<div style="margin-top: 28px; text-align: center;">' +
+            '<a href="https://igi-feedback-attendance.vercel.app/counselor.html" style="background-color: #0D1B2E; color: #C9A84C; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">Go to Counselor Portal</a>' +
+          '</div>' +
+          '<hr style="border: 0; border-top: 1px solid #E2E8F0; margin: 32px 0 16px 0;">' +
+          '<p style="font-size: 12px; color: #94A3B8; text-align: center; margin: 0; line-height: 1.5;">This is an automated system notification. For any fee updates, please check and record transactions inside the Counselor Portal or directly in the Student Fees Google Sheet.</p>' +
+        '</div>' +
+      '</div>' +
+    '</body></html>';
+
+    var textBody = 'Dear Team,\n\n' +
+      'Please find below the summary of students in ' + centreName + ' who currently have overdue fee installments.\n\n' +
+      students.map(function(s) {
+        return '- ' + s.studentName + ' (ID: ' + s.studentId + ')\n' +
+          '  Batch: ' + s.batchCode + ' | Course: ' + s.course + '\n' +
+          '  Overdue Amount: ₹' + s.overdueAmount + '\n' +
+          '  Total Outstanding: ₹' + s.outstanding + '\n' +
+          '  Days Past Due: ' + s.daysPastDue + ' days\n';
+      }).join('\n') +
+      '\nRegards,\nIGI School of Gemology';
+
+    var emailOptions = {
+      to: toEmailsStr,
+      subject: subject,
+      body: textBody,
+      htmlBody: htmlBody,
+      name: 'IGI School of Gemology'
+    };
+
+    if (!isFallbackToAdmin) {
+      emailOptions.cc = ADMIN_EMAIL;
+    }
+
+    try {
+      MailApp.sendEmail(emailOptions);
+      emailsSentCount++;
+      Logger.log("sendOverdueFeeEmailNotifications: Sent overdue fee email for centre " + centreName + " to: " + toEmailsStr);
+    } catch(mailErr) {
+      Logger.log("sendOverdueFeeEmailNotifications: Error sending email to: " + toEmailsStr + ". Details: " + mailErr.toString());
+    }
+  }
+
+  return {
+    status: 'ok',
+    overdueCount: totalOverdueCount,
+    emailsSent: emailsSentCount,
+    message: "Processed " + processedCentres.length + " centres. Dispatched " + emailsSentCount + " emails."
+  };
+}
+
+/**
+ * createDailyOverdueEmailTrigger
+ * Configures the daily time-driven trigger for overdue fee emails.
+ */
+function createDailyOverdueEmailTrigger() {
+  var triggers = ScriptApp.getProjectTriggers();
+  var exists = triggers.some(function(t) {
+    return t.getHandlerFunction() === 'dailyOverdueEmailTrigger';
+  });
+  if (!exists) {
+    ScriptApp.newTrigger('dailyOverdueEmailTrigger')
+      .timeBased()
+      .everyDays(1)
+      .atHour(8)
+      .create();
+  }
+}
+
+/**
+ * dailyOverdueEmailTrigger
+ * Trigger handler function executed daily.
+ */
+function dailyOverdueEmailTrigger() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  sendOverdueFeeEmailNotifications(ss);
 }

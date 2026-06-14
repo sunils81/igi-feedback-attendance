@@ -1498,7 +1498,10 @@
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
           <h2 style="margin-bottom:0">💸 National Fee Summary</h2>
-          <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="window.print()">🖨️ Print / Save PDF</button>
+          <div style="display:flex;gap:8px">
+            <button id="btn-trigger-overdue-emails" class="btn" style="width:auto;padding:6px 12px;font-size:12px;background:var(--navy);color:var(--gold);border-radius:6px;font-weight:600;cursor:pointer" onclick="triggerOverdueEmailNotifications()">✉️ Email Overdue Alerts</button>
+            <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="window.print()">🖨️ Print / Save PDF</button>
+          </div>
         </div>
         <p class="sub">Current collections and outstanding status across all registered student records.</p>
         
@@ -1635,6 +1638,7 @@
             <option value="">All Statuses</option>
             <option value="Completed">Completed (Alumni)</option>
             <option value="Active">Active / Ongoing</option>
+            <option value="Inactive">Inactive</option>
           </select>
         </div>
         
@@ -4200,6 +4204,29 @@ function downloadAdminFeesCsv() {
   triggerCsvDownload(lines, 'National-Fee-Reconciliation-Report.csv');
 }
 
+function triggerOverdueEmailNotifications() {
+  if (!confirm('This will scan Student Fees for overdue installments and send summarized email notifications to the respective counselors (with cc to Sunil Sharma). Proceed?')) return;
+  
+  var btn = document.getElementById('btn-trigger-overdue-emails');
+  var originalText = btn ? btn.textContent : '✉️ Email Overdue Alerts';
+  if (btn) {
+    btn.textContent = '⏳ Sending Emails...';
+    btn.disabled = true;
+  }
+  
+  gasGet({ action: 'sendOverdueEmails' }, function(err, d) {
+    if (btn) {
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }
+    if (err || !d || d.status !== 'ok') {
+      showToast('Failed to send overdue email alerts: ' + ((d && d.message) || err || 'unknown error'), 'error');
+      return;
+    }
+    showToast('Success: ' + (d.message || 'Overdue fee alert emails dispatched successfully!'), 'success');
+  });
+}
+
 function triggerCsvDownload(lines, filename) {
   const csv = lines.map(line => line.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -4769,16 +4796,21 @@ function renderAlumniTable(list) {
   }
   
   tbody.innerHTML = list.map(a => {
-    const statusBadge = a.status === 'Completed'
-      ? `<span class="badge" style="margin-left:0;font-size:10px;padding:3px 6px;background:#E8F5EE;color:#168B57;border:1px solid rgba(22,139,87,0.2)">Completed</span>`
-      : `<span class="badge" style="margin-left:0;font-size:10px;padding:3px 6px;background:rgba(201,168,76,0.1);color:#B87A10;border:1px solid rgba(201,168,76,0.25)">Active</span>`;
+    let statusBadge = '';
+    if (a.status === 'Completed') {
+      statusBadge = `<span class="badge" style="margin-left:0;font-size:10px;padding:3px 6px;background:#E8F5EE;color:#168B57;border:1px solid rgba(22,139,87,0.2)">Completed</span>`;
+    } else if (a.status === 'Inactive') {
+      statusBadge = `<span class="badge" style="margin-left:0;font-size:10px;padding:3px 6px;background:#FEE2E2;color:#DC2626;border:1px solid rgba(220,38,38,0.2)">Inactive</span>`;
+    } else {
+      statusBadge = `<span class="badge" style="margin-left:0;font-size:10px;padding:3px 6px;background:rgba(201,168,76,0.1);color:#B87A10;border:1px solid rgba(201,168,76,0.25)">Active</span>`;
+    }
 
     return '<tr>' +
       '<td class="text-center"><strong>' + escC(a.studentId) + '</strong></td>' +
       '<td class="text-left">' + escC(a.name) + '</td>' +
       '<td class="text-left">' + escC(a.centre) + '</td>' +
       '<td class="text-center">' + escC(a.contact) + '</td>' +
-      '<td class="text-left"><a href="mailto:' + escC(a.email) + '" style="color:var(--gold);text-decoration:none">' + escC(a.email) + '</a></td>' +
+      '<td class="text-left"><a href="mailto:' + escC(a.email) + '" style="color:#1d4ed8;text-decoration:underline">' + escC(a.email) + '</a></td>' +
       '<td class="text-left">' + escC(a.course) + '</td>' +
       '<td class="text-center"><span style="font-family:monospace;font-weight:600">' + escC(a.batchCode) + '</span></td>' +
       '<td class="text-center">' + escC(a.enrolmentMonth) + '</td>' +

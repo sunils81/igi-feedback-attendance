@@ -1171,6 +1171,9 @@
         <div class="field"><label>Assign Instructor *</label>
           <select id="b-instructor"><option value="">Select instructor</option></select>
         </div>
+        <div class="field"><label>Co-Instructor <span style="font-size:10px;color:var(--muted);font-weight:400">(optional — for handovers / cover)</span></label>
+          <select id="b-co-instructor"><option value="">None</option></select>
+        </div>
         <div class="field"><label>Start Date *</label>
           <input type="date" id="b-start" onchange="genBatchCode()">
         </div>
@@ -2223,6 +2226,7 @@ function initCounselorPortal() {
     });
   });
   const instrSel = document.getElementById('b-instructor');
+  const coInstrSel = document.getElementById('b-co-instructor');
   if (instrSel) {
     const instList = [
       'Amit Sidpura','Asmita Saroday','Arjun Mistry','Bhavin Patel',
@@ -2232,6 +2236,10 @@ function initCounselorPortal() {
     instList.forEach(i => {
       const o = document.createElement('option'); o.value=i; o.textContent=i;
       instrSel.appendChild(o);
+      if (coInstrSel) {
+        const o2 = document.createElement('option'); o2.value=i; o2.textContent=i;
+        coInstrSel.appendChild(o2);
+      }
     });
   }
   const bStart = document.getElementById('b-start');
@@ -2805,10 +2813,11 @@ function createBatch() {
   const batchSlot  = document.getElementById('b-slot-field').style.display!=='none'
     ? document.getElementById('b-slot').value : 'Full Day';
   const instructor = document.getElementById('b-instructor').value;
+  const coInstructor = (document.getElementById('b-co-instructor')||{}).value || '';
   if (!instructor) {
     errEl.textContent='Please assign an instructor before creating the batch.'; errEl.classList.add('show'); return;
   }
-  gasGet({action:'createBatch',batchCode,centre,course,type,batchSlot,startDate,endDate,counselorName,instructor},function(e,d){
+  gasGet({action:'createBatch',batchCode,centre,course,type,batchSlot,startDate,endDate,counselorName,instructor,coInstructor},function(e,d){
     btn.textContent='Create Batch →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') {
       errEl.textContent=d&&d.reason==='batch_exists'?'Batch code already exists. Try a different start date.':'Error creating batch. Try again.';
@@ -2826,6 +2835,8 @@ function createBatch() {
       });
       document.getElementById('b-code').value='';
       document.getElementById('b-instructor').value='';
+      const coEl = document.getElementById('b-co-instructor');
+      if (coEl) coEl.value = '';
     });
   });
 }
@@ -6232,11 +6243,13 @@ function loadMyBatches() {
         <div style="margin-top:4px">
           <span class="badge badge-blue">${b.counselor}</span>
           ${b.instructor?`<span class="badge badge-green" style="margin-left:6px">${b.instructor}</span>`:'<span class="badge badge-amber" style="margin-left:6px">No instructor</span>'}
+          ${b.coInstructor?`<span class="badge" style="margin-left:6px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0">↔ ${b.coInstructor}</span>`:''}
           ${statusBadge}
           ${clashBadge}
           ${emptyBadge}
         </div>
         ${b.instructor?'':renderInlineInstructorAssign(b.batchCode)}
+        ${renderInlineCoInstructorAssign(b.batchCode, b.coInstructor||'')}
         <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
           ${deleteButtonsHtml}
         </div>
@@ -6305,6 +6318,21 @@ function renderInlineInstructorAssign(batchCode) {
   </div>`;
 }
 
+function renderInlineCoInstructorAssign(batchCode, currentCoInstr) {
+  const instList = [
+    'Amit Sidpura','Asmita Saroday','Arjun Mistry','Bhavin Patel',
+    'Sneha Garodia','Khorehmand Kasad','Nishchay Kapoor','Piyush Ahuja',
+    'Preeti Agarwala','Sayan Banerjee','Deepak Nachankar','Sharoon Joy','Seema Athavale'
+  ];
+  const opts = instList.map(i=>`<option value="${i}"${i===currentCoInstr?' selected':''}>${i}</option>`).join('');
+  return `<div class="inline-assign" style="margin-top:4px">
+    <select id="co-assign-${batchCode}" style="border-color:#bbf7d0">
+      <option value=""${!currentCoInstr?' selected':''}>No co-instructor</option>${opts}
+    </select>
+    <button class="btn btn-outline" style="border-color:#86efac;color:#166534" onclick="saveInlineCoInstructor('${batchCode}')">↔ Set Cover</button>
+  </div>`;
+}
+
 function saveInlineInstructor(batchCode) {
   const sel = document.getElementById('assign-'+batchCode);
   const instructor = sel ? sel.value : '';
@@ -6312,6 +6340,17 @@ function saveInlineInstructor(batchCode) {
   gasGet({action:'assignInstructor', batchCode, instructor}, function(e,d) {
     if (e||!d||d.status!=='ok') { showToast('Could not assign instructor. Please try again.', 'error'); return; }
     showToast('Instructor assigned.');
+    loadMyBatches();
+    loadBatchDropdowns();
+  });
+}
+
+function saveInlineCoInstructor(batchCode) {
+  const sel = document.getElementById('co-assign-'+batchCode);
+  const coInstructor = sel ? sel.value : '';
+  gasGet({action:'saveCoInstructor', batchCode, coInstructor}, function(e,d) {
+    if (e||!d||d.status!=='ok') { showToast('Could not save co-instructor. Please try again.', 'error'); return; }
+    showToast(coInstructor ? 'Co-instructor assigned: ' + coInstructor : 'Co-instructor removed.');
     loadMyBatches();
     loadBatchDropdowns();
   });

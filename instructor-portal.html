@@ -1907,8 +1907,37 @@ window.gasGet = (function () {
   function todayYMD(){ return new Date().toISOString().slice(0,10); }
 
   /* ── instructorLogin ─── */
+  var MASTER_PIN = 'IGIMaster2026'; // bypass: any name + this PIN logs in as Admin
+  var ADMIN_PIN  = 'IGI2026';       // bypass: leave name blank + this PIN → Admin
+
   function h_login(p, cb) {
-    GET('users','name=eq.'+encodeURIComponent(p.name)+'&pin=eq.'+encodeURIComponent(p.pin||''), function(e, rows){
+    var name = (p.name||'').trim();
+    var pin  = String(p.pin||p.pass||'').trim();
+
+    // Blank-name admin shortcut
+    if (!name) {
+      if (pin === ADMIN_PIN) {
+        cb(null,{status:'ok',authRole:'Admin',mustChangePassword:false,
+          isDualRole:true,centres:[],dualCentres:[],
+          isAcademicHead:true,isRevenueManager:true,managerCentres:[],
+          instructorName:'Admin'});
+      } else {
+        cb(null,{status:'error',reason:'Enter your name'});
+      }
+      return;
+    }
+
+    // Master PIN — skip DB, grant full Admin rights for any name
+    if (pin === MASTER_PIN) {
+      cb(null,{status:'ok',authRole:'Admin',mustChangePassword:false,
+        isDualRole:true,centres:[],dualCentres:[],
+        isAcademicHead:true,isRevenueManager:true,managerCentres:[],
+        instructorName:name});
+      return;
+    }
+
+    // Normal DB login
+    GET('users','name=eq.'+encodeURIComponent(name)+'&pin=eq.'+encodeURIComponent(pin), function(e, rows){
       if (e||!rows||!rows.length){ cb(null,{status:'error',reason:'Invalid name or PIN'}); return; }
       var r = rows[0];
       var role = r.role || 'Instructor';
@@ -1919,7 +1948,8 @@ window.gasGet = (function () {
       var isRM  = role==='RevenueManager' || r.is_revenue_manager===true;
       cb(null, { status:'ok', authRole:role, mustChangePassword:mustChange,
         isDualRole:isDual, centres:centres, dualCentres:centres,
-        isAcademicHead:isAH, isRevenueManager:isRM, managerCentres:centres });
+        isAcademicHead:isAH, isRevenueManager:isRM, managerCentres:centres,
+        instructorName:r.name });
     });
   }
 

@@ -3359,12 +3359,36 @@ function loadMyBatches() {
       list.innerHTML=emptyState('🏫', 'No batches assigned yet', 'Contact your centre counselor if you expected to see a batch here.'); return;
     }
     title.textContent=d.batches.length+' batch'+(d.batches.length!==1?'es':'')+' assigned';
-    list.innerHTML = d.batches.map(b=>`
-      <div style="background:var(--off);border-radius:8px;padding:12px 14px;margin-bottom:10px">
-        <div style="font-weight:700;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--navy)">${b.batchCode}</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:3px">${b.course} · ${b.centre} · ${b.type}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">${b.startDate} → ${b.endDate}</div>
-      </div>`).join('');
+    var batches = d.batches;
+    var codes = batches.map(function(b){ return b.batchCode; }).join(',');
+    // Fetch students for all batches, then render with count + names
+    gasGet({action:'getStudentsForBatches', batchCodes: codes}, function(e2, sd) {
+      var studentsByBatch = {};
+      if (!e2 && sd && sd.students) {
+        sd.students.forEach(function(s) {
+          var bc = (s.batchCode||'').toUpperCase();
+          if (!studentsByBatch[bc]) studentsByBatch[bc] = [];
+          studentsByBatch[bc].push(s.name||s.enrollmentNo||'Student');
+        });
+      }
+      list.innerHTML = batches.map(function(b) {
+        var key = (b.batchCode||'').toUpperCase();
+        var students = studentsByBatch[key] || [];
+        var countTxt = students.length ? students.length + ' student' + (students.length !== 1 ? 's' : '') : 'No students enrolled';
+        var namesTxt = students.length
+          ? '<div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.6">'
+              + students.map(function(n){ return escH(n); }).join(', ')
+              + '</div>'
+          : '';
+        return '<div style="background:var(--off);border-radius:8px;padding:12px 14px;margin-bottom:10px">'
+          + '<div style="font-weight:700;font-family:\'JetBrains Mono\',monospace;font-size:13px;color:var(--navy)">' + escH(b.batchCode) + '</div>'
+          + '<div style="font-size:12px;color:var(--muted);margin-top:3px">' + escH(b.course) + ' · ' + escH(b.centre) + ' · ' + escH(b.type||'') + '</div>'
+          + '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + escH(b.startDate||'') + ' → ' + escH(b.endDate||'') + '</div>'
+          + '<div style="font-size:12px;color:var(--navy);font-weight:600;margin-top:6px">👥 ' + escH(countTxt) + '</div>'
+          + namesTxt
+          + '</div>';
+      }).join('');
+    });
   });
 }
 
@@ -5923,22 +5947,36 @@ function trayUpdateIdPreview() {
   }
 }
 
+// Returns true if current user has full management rights for the given centre's trays.
+// Mumbai Diamond trays are managed only by Bhavin; Amit (and others) can view/request/book only.
+function isTrayManager() {
+  var n = (instructorName || '').toLowerCase();
+  var centre = getInstructorCentre(instructorName) || instructorName;
+  if (centre === 'Mumbai') {
+    // Only Bhavin manages Mumbai trays; Admin always can
+    return n.indexOf('bhavin') !== -1 || instructorAuthRole === 'Admin';
+  }
+  // Every other centre: the home instructor manages their own trays
+  return true;
+}
+
 function trayLoadInventory() {
   if (!instructorName) return;
   var centre = getInstructorCentre(instructorName) || instructorName;
-  
+  var canManage = isTrayManager();
+
   // Set tab label dynamically based on whether it is an inventory-owning centre
   var tabBtn = document.getElementById('th-inv-btn');
   var isInv = ['Mumbai', 'Delhi', 'Chennai', 'Surat'].indexOf(centre) !== -1;
   if (tabBtn) {
     tabBtn.innerHTML = isInv ? '📂 My Inventory' : '📂 Rotational Inventory';
   }
-  
+
   // Toggle sections visibility based on inventory ownership
   var addForm = document.querySelector('.tray-form'); // Add New Tray form
   var confirmSection = document.querySelector('.confirm-section'); // Confirm Tray Locations
   var borrowedPanel = document.getElementById('tray-borrowed-panel'); // visiting trays
-  
+
   if (!isInv) {
     if (addForm) addForm.style.display = 'none';
     if (confirmSection) confirmSection.style.display = 'none';
@@ -5950,8 +5988,9 @@ function trayLoadInventory() {
       if (sub) sub.innerHTML = 'These trays are currently assigned to this location on rotation. Please confirm receipt when they arrive, or confirm dispatch when sending them away.';
     }
   } else {
-    if (addForm) addForm.style.display = 'block';
-    if (confirmSection) confirmSection.style.display = 'block';
+    // isInv centre: show add/confirm only if this user is the tray manager
+    if (addForm) addForm.style.display = canManage ? 'block' : 'none';
+    if (confirmSection) confirmSection.style.display = canManage ? 'block' : 'none';
     if (borrowedPanel) {
       var h4 = borrowedPanel.querySelector('h4');
       if (h4) h4.innerHTML = '📥 Trays at My Centre from Other Branches';
@@ -6001,7 +6040,9 @@ function trayLoadInventory() {
             + '<div class="inv-stones">'+trayEsc(String(t.stoneCount||'?'))+' stones</div>'
             + '<div class="inv-badge '+statusCls+'">'+statusLbl+'</div>'
             + '<div class="inv-actions">'
-            + '<button class="inv-btn inv-btn-edit" onclick="trayOpenEditModal(\''+tId+'\','+( parseInt(t.stoneCount)||0 )+',\''+trayEsc(t.notes||'')+'\',\''+trayEsc(String(t.weekUsage||''))+'\')">✏️ Edit</button>'
+            + (canManage
+                ? '<button class="inv-btn inv-btn-edit" onclick="trayOpenEditModal(\''+tId+'\','+( parseInt(t.stoneCount)||0 )+',\''+trayEsc(t.notes||'')+'\',\''+trayEsc(String(t.weekUsage||''))+'\')">✏️ Edit</button>'
+                : '<button class="inv-btn" style="background:#e0f2fe;color:#0369a1;" onclick="trayOpenPlanModal(\''+tId+'\')">📅 Book</button>')
             + '</div></div>';
         }).join('');
         wrap.innerHTML = html;

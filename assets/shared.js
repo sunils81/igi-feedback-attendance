@@ -422,11 +422,27 @@ window.gasGet = (function () {
     });
   }
 
-  /* deleteBatch */
+  /* deleteBatch — cascade-deletes child records before removing the batch */
   function h_deleteBatch(p, cb) {
-    DEL('batches', 'batch_code=eq.' + encodeURIComponent(p.batchCode), function (e) {
-      cb(null, e ? { status: 'error' } : { status: 'ok' });
-    });
+    var bc = encodeURIComponent(p.batchCode);
+    var tables = ['attendance', 'feedback', 'marks', 'sessions', 'students', 'student_fees'];
+    var idx = 0;
+    function next() {
+      if (idx >= tables.length) {
+        // Finally delete the batch itself
+        DEL('batches', 'batch_code=eq.' + bc, function(e) {
+          if (e) { cb(null, { status: 'error', message: 'Delete batch failed: ' + e.message }); return; }
+          cb(null, { status: 'ok' });
+        });
+        return;
+      }
+      var tbl = tables[idx++];
+      DEL(tbl, 'batch_code=eq.' + bc, function(e) {
+        // Ignore 404/not-found — table may not have rows; continue regardless
+        next();
+      });
+    }
+    next();
   }
 
   /* getStudents */

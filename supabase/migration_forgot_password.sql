@@ -31,6 +31,8 @@ DO $$ BEGIN
 END $$;
 
 -- 5. Populate email addresses for each user (match by name)
+
+-- Instructors
 UPDATE users SET email = 'amit@igi.org'                 WHERE name = 'Amit Sidpura';
 UPDATE users SET email = 'bhavin.patel@igi.org'         WHERE name = 'Bhavin Patel';
 UPDATE users SET email = 'sayan.banerjee@igi.org'       WHERE name = 'Sayan Banerjee';
@@ -45,5 +47,20 @@ UPDATE users SET email = 'deepak.nachankar@igi.org'     WHERE name = 'Deepak Nac
 UPDATE users SET email = 'seema.athavale@igi.org'       WHERE name = 'Seema Athavale';
 UPDATE users SET email = 'sharoon.joy@igi.org'          WHERE name = 'Sharoon Joy';
 
--- Verify
-SELECT name, email, role FROM users ORDER BY name;
+-- Counselors / Centre staff
+UPDATE users SET email = 'IndiaEducation@igi.org'       WHERE name = 'Bianca';
+UPDATE users SET email = 'delhiedu@igi.org'             WHERE name = 'Sunita';
+UPDATE users SET email = 'jaipuredu@igi.org'            WHERE name = 'Kripa';
+UPDATE users SET email = 'kolkataedu@igi.org'           WHERE name = 'Arpita';
+UPDATE users SET email = 'bangaloreedu@igi.org'         WHERE name = 'Nadiya';
+UPDATE users SET email = 'chennaiedu@igi.org'           WHERE name = 'Preethy';
+UPDATE users SET email = 'hyderabadedu@igi.org'         WHERE name = 'Rajini';
+UPDATE users SET email = 'suratedu@igi.org'             WHERE name = 'Rohit';
+UPDATE users SET email = 'anuradha@igi.org'             WHERE name = 'Anuradha';
+UPDATE users SET email = 'omkar.kadam@igi.org'          WHERE name = 'Omkar Kadam';
+
+-- Deactivate resigned staff
+UPDATE users SET is_active = false WHERE name = 'Mrinal';
+
+-- Verify — check this output to confirm all names matched correctly
+SELECT name, email, role, centres, is_active FROM users ORDER BY name;

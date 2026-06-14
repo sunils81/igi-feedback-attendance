@@ -1400,7 +1400,7 @@ window.gasGet = (function () {
     var total = (mDB.length ? 1 : 0) + (tDB.length ? 1 : 0) + (ctDB.length ? 1 : 0) || 1;
     var done = 0;
     function fin() { if (++done < total) return; h_revDash(p, function (e, d) { cb(null, { status: 'ok', savedMonthly: mDB.length, dashboard: d || {} }); }); }
-    if (mDB.length)  POST('revenue_monthly_achieved', 'on_conflict=month,period,counsellor', mDB,  fin);
+    if (mDB.length)  POST('revenue_monthly_achieved', 'on_conflict=month,period,counsellor,business_centre,business_type', mDB,  fin);
     if (tDB.length)  POST('revenue_annual_targets',   'on_conflict=period,counsellor',       tDB,  fin);
     if (ctDB.length) POST('revenue_centre_targets',   'on_conflict=period,centre',           ctDB, fin);
     if (!mDB.length && !tDB.length && !ctDB.length) fin();

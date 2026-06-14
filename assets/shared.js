@@ -317,6 +317,101 @@ window.gasGet = (function () {
     });
   }
 
+  /* ── Forgot Password: Request OTP ──────────────────────────── */
+  function h_requestOTP(p, cb) {
+    var email = (p.email || '').trim().toLowerCase();
+    if (!email) { cb(null, { status: 'error', reason: 'Email is required' }); return; }
+
+    // Find user by email
+    GET('users', 'email=eq.' + encodeURIComponent(email) + '&is_active=eq.true', function(e, rows) {
+      if (e || !rows || !rows.length) {
+        // Don't reveal if email exists — generic message
+        cb(null, { status: 'ok', message: 'If that email is registered, an OTP has been sent.' });
+        return;
+      }
+      var user = rows[0];
+
+      // Rate-limit: check last OTP for this email within 60s
+      var now = new Date();
+      var cutoff60s = new Date(now.getTime() - 60000).toISOString();
+      GET('otp_tokens', 'email=eq.' + encodeURIComponent(email) + '&created_at=gt.' + cutoff60s + '&used=eq.false', function(e2, recent) {
+        if (!e2 && recent && recent.length > 0) {
+          cb(null, { status: 'error', reason: 'Please wait 60 seconds before requesting another OTP.' });
+          return;
+        }
+
+        // Mark any old unused OTPs for this email as used
+        PATCH('otp_tokens', 'email=eq.' + encodeURIComponent(email) + '&used=eq.false', { used: true }, function() {
+          // Generate 6-digit OTP
+          var otp = String(Math.floor(100000 + Math.random() * 900000));
+          var expiresAt = new Date(now.getTime() + 10 * 60000).toISOString();
+
+          POST('otp_tokens', null, {
+            email: email,
+            otp_code: otp,
+            expires_at: expiresAt,
+            used: false
+          }, function(e3) {
+            if (e3) { cb(null, { status: 'error', reason: 'Could not create OTP. Try again.' }); return; }
+            // Return OTP + user name for EmailJS call (done client-side)
+            cb(null, { status: 'ok', otp: otp, userName: user.name, message: 'OTP created' });
+          });
+        });
+      });
+    });
+  }
+
+  /* ── Forgot Password: Verify OTP ───────────────────────────── */
+  function h_verifyOTP(p, cb) {
+    var email = (p.email || '').trim().toLowerCase();
+    var code  = String(p.otp || '').trim();
+    if (!email || !code) { cb(null, { status: 'error', reason: 'Missing email or OTP' }); return; }
+
+    var now = new Date().toISOString();
+    GET('otp_tokens',
+      'email=eq.' + encodeURIComponent(email) +
+      '&otp_code=eq.' + encodeURIComponent(code) +
+      '&used=eq.false' +
+      '&expires_at=gt.' + encodeURIComponent(now),
+      function(e, rows) {
+        if (e || !rows || !rows.length) {
+          cb(null, { status: 'error', reason: 'Invalid or expired OTP' });
+          return;
+        }
+        // Mark as used
+        PATCH('otp_tokens', 'id=eq.' + encodeURIComponent(rows[0].id), { used: true }, function() {
+          cb(null, { status: 'ok', message: 'OTP verified' });
+        });
+      }
+    );
+  }
+
+  /* ── Forgot Password: Reset Password ───────────────────────── */
+  function h_resetPassword(p, cb) {
+    var email   = (p.email || '').trim().toLowerCase();
+    var newPass = String(p.newPassword || '').trim();
+    var token   = p.resetToken || '';
+
+    if (!email || !newPass) { cb(null, { status: 'error', reason: 'Missing required fields' }); return; }
+    // resetToken must be 'VERIFIED:' + email — set client-side after verifyOTP succeeds
+    if (token !== 'VERIFIED:' + email) { cb(null, { status: 'error', reason: 'Not authorized' }); return; }
+
+    GET('users', 'email=eq.' + encodeURIComponent(email) + '&is_active=eq.true', function(e, rows) {
+      if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'User not found' }); return; }
+      var user = rows[0];
+      var newSalt = generateSalt();
+      sha256Hex(newSalt + '|' + newPass, function(newHash) {
+        PATCH('users', 'id=eq.' + encodeURIComponent(user.id), {
+          password_hash: newHash,
+          salt: newSalt,
+          must_change: false
+        }, function(e2) {
+          cb(null, e2 ? { status: 'error', reason: 'Failed to update password' } : { status: 'ok' });
+        });
+      });
+    });
+  }
+
   /* changeUserPassword */
   function h_changePwd(p, cb) {
     var name = p.name;
@@ -2946,6 +3041,9 @@ window.gasGet = (function () {
       case 'counselorLogin':
       case 'instructorLogin':           return h_login(params, cb);
       case 'changeUserPassword':        return h_changePwd(params, cb);
+      case 'requestOTP':               return h_requestOTP(params, cb);
+      case 'verifyOTP':                return h_verifyOTP(params, cb);
+      case 'resetPassword':            return h_resetPassword(params, cb);
       case 'getBatches':                return h_getBatches(params, cb);
       case 'getBatchCode':              return h_getBatchCode(params, cb);
       case 'getEndDate':                return h_getEndDate(params, cb);

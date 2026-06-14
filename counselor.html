@@ -1072,8 +1072,9 @@
         <input type="password" id="lg-pass" placeholder="Enter your PIN">
       </div>
       <button class="btn btn-gold" id="lg-btn" onclick="doLogin()">Sign in →</button>
-      <div style="margin-top:14px;font-size:12px;text-align:center">
-        <a href="admin.html" style="color:var(--gold);text-decoration:none;font-weight:600">Staff & Management Sign In →</a>
+      <div style="margin-top:14px;font-size:12px;text-align:center;display:flex;justify-content:space-between;align-items:center">
+        <a href="admin.html" style="color:var(--gold);text-decoration:none;font-weight:600">Staff &amp; Management Sign In →</a>
+        <a href="#" onclick="openForgotPwd();return false;" style="color:var(--muted);text-decoration:none;font-size:11px">Forgot PIN?</a>
       </div>
       <div class="err-box" id="lg-err">Incorrect name or PIN. Please try again.</div>
     </div>
@@ -9576,6 +9577,192 @@ if ('serviceWorker' in navigator) {
       refreshing = true;
       window.location.reload();
     }
+  });
+}
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════
+     FORGOT PASSWORD MODAL (Counselor Portal)
+════════════════════════════════════════════════════════════════ -->
+<div id="fpwd-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;align-items:center;justify-content:center">
+  <div style="background:var(--white);border-radius:14px;padding:28px 28px 24px;width:100%;max-width:420px;box-shadow:0 12px 48px rgba(0,0,0,.25);position:relative">
+    <!-- Close -->
+    <button onclick="closeForgotPwd()" style="position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">✕</button>
+
+    <!-- Step 1: Enter Email -->
+    <div id="fpwd-step1">
+      <h3 style="margin:0 0 6px">Reset Your PIN</h3>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 18px">Enter the email address registered with your IGI account. We'll send a 6-digit OTP.</p>
+      <div class="field"><label>Email Address *</label>
+        <input type="email" id="fpwd-email" placeholder="your@igi.org" style="width:100%;box-sizing:border-box">
+      </div>
+      <button class="btn btn-gold" id="fpwd-send-btn" onclick="fpwdSendOTP()" style="width:100%">Send OTP →</button>
+      <div id="fpwd-err1" style="display:none;margin-top:10px;color:#c0392b;font-size:13px;background:#fdf0ed;padding:8px 12px;border-radius:6px"></div>
+    </div>
+
+    <!-- Step 2: Enter OTP -->
+    <div id="fpwd-step2" style="display:none">
+      <h3 style="margin:0 0 6px">Enter OTP</h3>
+      <p id="fpwd-otp-hint" style="color:var(--muted);font-size:13px;margin:0 0 18px">A 6-digit OTP has been sent to your email. It expires in <b>10 minutes</b>.</p>
+      <div class="field"><label>OTP Code *</label>
+        <input type="text" id="fpwd-otp" placeholder="123456" maxlength="6" inputmode="numeric"
+               style="letter-spacing:6px;font-size:22px;text-align:center;width:100%;box-sizing:border-box"
+               onkeydown="if(event.key==='Enter')fpwdVerifyOTP()">
+      </div>
+      <button class="btn btn-gold" id="fpwd-verify-btn" onclick="fpwdVerifyOTP()" style="width:100%">Verify OTP →</button>
+      <div style="text-align:center;margin-top:10px">
+        <a href="#" onclick="fpwdResendOTP();return false;" style="font-size:12px;color:var(--muted)">Resend OTP</a>
+      </div>
+      <div id="fpwd-err2" style="display:none;margin-top:10px;color:#c0392b;font-size:13px;background:#fdf0ed;padding:8px 12px;border-radius:6px"></div>
+    </div>
+
+    <!-- Step 3: Set New PIN -->
+    <div id="fpwd-step3" style="display:none">
+      <h3 style="margin:0 0 6px">Set New PIN</h3>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 18px">OTP verified ✓ — choose a new PIN for your account.</p>
+      <div class="field"><label>New PIN *</label>
+        <input type="password" id="fpwd-newpin" placeholder="Enter new PIN" style="width:100%;box-sizing:border-box">
+      </div>
+      <div class="field"><label>Confirm PIN *</label>
+        <input type="password" id="fpwd-newpin2" placeholder="Repeat new PIN" style="width:100%;box-sizing:border-box"
+               onkeydown="if(event.key==='Enter')fpwdResetPIN()">
+      </div>
+      <button class="btn btn-gold" id="fpwd-reset-btn" onclick="fpwdResetPIN()" style="width:100%">Update PIN →</button>
+      <div id="fpwd-err3" style="display:none;margin-top:10px;color:#c0392b;font-size:13px;background:#fdf0ed;padding:8px 12px;border-radius:6px"></div>
+    </div>
+
+    <!-- Step 4: Done -->
+    <div id="fpwd-step4" style="display:none;text-align:center">
+      <div style="font-size:48px;margin-bottom:12px">✅</div>
+      <h3 style="margin:0 0 8px">PIN Updated!</h3>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 20px">You can now sign in with your new PIN.</p>
+      <button class="btn btn-gold" onclick="closeForgotPwd()" style="width:100%">Back to Sign In</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── EmailJS config ───────────────────────────────────────────
+var EMAILJS_SVC  = 'service_jglwfxg';
+var EMAILJS_TPL  = 'template_lbokpec';
+var EMAILJS_KEY  = 'ubOFK0SB5o7vcTANR';
+var _fpwdEmail   = '';
+var _fpwdToken   = '';   // 'VERIFIED:' + email after step 2
+
+function _ensureEmailJS(cb) {
+  if (window.emailjs) { cb(); return; }
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js';
+  s.onload = function() { emailjs.init({ publicKey: EMAILJS_KEY }); cb(); };
+  document.head.appendChild(s);
+}
+
+function openForgotPwd() {
+  _fpwdEmail = _fpwdToken = '';
+  ['fpwd-step1','fpwd-step2','fpwd-step3','fpwd-step4'].forEach(function(id) {
+    document.getElementById(id).style.display = (id === 'fpwd-step1') ? '' : 'none';
+  });
+  ['fpwd-err1','fpwd-err2','fpwd-err3'].forEach(function(id) {
+    var el = document.getElementById(id); el.style.display = 'none'; el.textContent = '';
+  });
+  document.getElementById('fpwd-email').value = '';
+  document.getElementById('fpwd-otp').value   = '';
+  document.getElementById('fpwd-newpin').value  = '';
+  document.getElementById('fpwd-newpin2').value = '';
+  document.getElementById('fpwd-overlay').style.display = 'flex';
+}
+function closeForgotPwd() {
+  document.getElementById('fpwd-overlay').style.display = 'none';
+}
+
+function _fpwdErr(step, msg) {
+  var el = document.getElementById('fpwd-err' + step);
+  el.textContent = msg; el.style.display = '';
+}
+function _fpwdClearErr(step) {
+  var el = document.getElementById('fpwd-err' + step);
+  el.style.display = 'none'; el.textContent = '';
+}
+
+function fpwdSendOTP() {
+  _fpwdClearErr(1);
+  var email = document.getElementById('fpwd-email').value.trim().toLowerCase();
+  if (!email || email.indexOf('@') < 0) { _fpwdErr(1, 'Enter a valid email address.'); return; }
+  _fpwdEmail = email;
+  var btn = document.getElementById('fpwd-send-btn');
+  btn.textContent = 'Sending…'; btn.disabled = true;
+
+  gasGet({ action: 'requestOTP', email: email }, function(e, d) {
+    btn.textContent = 'Send OTP →'; btn.disabled = false;
+    if (e || !d) { _fpwdErr(1, 'Network error. Please try again.'); return; }
+    if (d.status === 'error') { _fpwdErr(1, d.reason); return; }
+
+    // Send email via EmailJS client-side
+    if (d.otp) {
+      _ensureEmailJS(function() {
+        emailjs.send(EMAILJS_SVC, EMAILJS_TPL, {
+          to_email: email,
+          to_name:  d.userName || email,
+          otp_code: d.otp
+        }).then(function() {}, function(err) {
+          console.warn('EmailJS error:', err);
+        });
+      });
+    }
+
+    // Move to step 2 regardless (don't reveal if email exists)
+    document.getElementById('fpwd-step1').style.display = 'none';
+    document.getElementById('fpwd-step2').style.display = '';
+    document.getElementById('fpwd-otp').focus();
+  });
+}
+
+function fpwdResendOTP() {
+  document.getElementById('fpwd-step2').style.display = 'none';
+  document.getElementById('fpwd-step1').style.display = '';
+  _fpwdClearErr(1);
+}
+
+function fpwdVerifyOTP() {
+  _fpwdClearErr(2);
+  var otp = document.getElementById('fpwd-otp').value.trim();
+  if (!otp || otp.length !== 6) { _fpwdErr(2, 'Enter the 6-digit OTP from your email.'); return; }
+  var btn = document.getElementById('fpwd-verify-btn');
+  btn.textContent = 'Verifying…'; btn.disabled = true;
+
+  gasGet({ action: 'verifyOTP', email: _fpwdEmail, otp: otp }, function(e, d) {
+    btn.textContent = 'Verify OTP →'; btn.disabled = false;
+    if (e || !d || d.status !== 'ok') {
+      _fpwdErr(2, (d && d.reason) || 'Invalid or expired OTP. Please try again.');
+      return;
+    }
+    _fpwdToken = 'VERIFIED:' + _fpwdEmail;
+    document.getElementById('fpwd-step2').style.display = 'none';
+    document.getElementById('fpwd-step3').style.display = '';
+    document.getElementById('fpwd-newpin').focus();
+  });
+}
+
+function fpwdResetPIN() {
+  _fpwdClearErr(3);
+  var p1 = document.getElementById('fpwd-newpin').value;
+  var p2 = document.getElementById('fpwd-newpin2').value;
+  if (!p1) { _fpwdErr(3, 'Enter a new PIN.'); return; }
+  if (p1.length < 4) { _fpwdErr(3, 'PIN must be at least 4 characters.'); return; }
+  if (p1 !== p2) { _fpwdErr(3, 'PINs do not match.'); return; }
+
+  var btn = document.getElementById('fpwd-reset-btn');
+  btn.textContent = 'Updating…'; btn.disabled = true;
+
+  gasGet({ action: 'resetPassword', email: _fpwdEmail, newPassword: p1, resetToken: _fpwdToken }, function(e, d) {
+    btn.textContent = 'Update PIN →'; btn.disabled = false;
+    if (e || !d || d.status !== 'ok') {
+      _fpwdErr(3, (d && d.reason) || 'Failed to update PIN. Please try again.');
+      return;
+    }
+    document.getElementById('fpwd-step3').style.display = 'none';
+    document.getElementById('fpwd-step4').style.display = '';
+    _fpwdToken = ''; // clear token
   });
 }
 </script>

@@ -372,7 +372,8 @@ window.gasGet = (function () {
           return { batchCode: r.batch_code, centre: r.centre, course: r.course, type: r.type,
             batchSlot: r.batch_slot, startDate: r.start_date, endDate: r.end_date,
             counselor: r.counselor, counselorName: r.counselor, instructor: r.instructor,
-            coInstructor: r.co_instructor || '', createdAt: r.created_at,
+            coInstructor: r.co_instructor || '', coInstructorUntil: r.co_instructor_until || '',
+            createdAt: r.created_at,
             status: r.is_active !== false ? 'Active' : 'Completed',
             studentCount: sCount };
         }) });
@@ -413,7 +414,8 @@ window.gasGet = (function () {
       batch_code: p.batchCode, centre: p.centre, course: p.course, type: p.type,
       batch_slot: p.batchSlot, start_date: p.startDate || null, end_date: p.endDate || null,
       counselor: p.counselorName || p.counselor, instructor: p.instructor || null,
-      co_instructor: p.coInstructor || null
+      co_instructor: p.coInstructor || null,
+      co_instructor_until: p.coInstructorUntil || null
     }, function (e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
   }
 
@@ -424,10 +426,10 @@ window.gasGet = (function () {
     });
   }
 
-  /* saveCoInstructor — assign or clear the co-instructor for an existing batch */
+  /* saveCoInstructor — assign or clear the co-instructor (with optional cover-until date) */
   function h_saveCoInstructor(p, cb) {
     PATCH('batches', 'batch_code=eq.' + encodeURIComponent(p.batchCode),
-      { co_instructor: p.coInstructor || null },
+      { co_instructor: p.coInstructor || null, co_instructor_until: p.coInstructorUntil || null },
       function (e) { cb(null, e ? { status: 'error' } : { status: 'ok' }); }
     );
   }
@@ -2208,15 +2210,20 @@ window.gasGet = (function () {
     if (!instr) { cb(null, { status: 'ok', batches: [] }); return; }
     GET('batches', 'order=created_at.desc', function (e, rows) {
       if (e) { cb(null, { status: 'ok', batches: [] }); return; }
-      // Match primary instructor OR co_instructor
+      // Match primary instructor OR active co_instructor (respects cover-until date)
+      var today0 = todayYMD();
       var matched = (rows || []).filter(function (r) {
-        return sameName(r.instructor, instr) || (r.co_instructor && sameName(r.co_instructor, instr));
+        if (sameName(r.instructor, instr)) return true;
+        if (!r.co_instructor || !sameName(r.co_instructor, instr)) return false;
+        // co_instructor_until null = permanent; otherwise must be >= today
+        return !r.co_instructor_until || r.co_instructor_until >= today0;
       });
       cb(null, { status: 'ok', batches: matched.map(function (r) {
         return { batchCode: r.batch_code, centre: r.centre, course: r.course, type: r.type,
           batchSlot: r.batch_slot || 'Full Day', startDate: toDMY(r.start_date), startDateISO: r.start_date ? new Date(r.start_date).toISOString() : '',
           endDate: toDMY(r.end_date), endDateISO: r.end_date ? new Date(r.end_date).toISOString() : '',
           active: r.is_active !== false, instructor: r.instructor || '', coInstructor: r.co_instructor || '',
+          coInstructorUntil: r.co_instructor_until || '',
           syllabus: (window.SYLLABI || {})[r.course] || [] };
       }) });
     });
@@ -2227,7 +2234,11 @@ window.gasGet = (function () {
     if (!instr) { cb(null, { status: 'ok', date: toDMY(todayYMD()), batches: [] }); return; }
     GET('batches', 'order=created_at.desc', function (e, bRows) {
       if (e || !bRows || !bRows.length) { cb(null, { status: 'ok', date: toDMY(todayYMD()), batches: [] }); return; }
-      var matched = bRows.filter(function (b) { return sameName(b.instructor, instr) || (b.co_instructor && sameName(b.co_instructor, instr)); });
+      var matched = bRows.filter(function (b) {
+        if (sameName(b.instructor, instr)) return true;
+        if (!b.co_instructor || !sameName(b.co_instructor, instr)) return false;
+        return !b.co_instructor_until || b.co_instructor_until >= today;
+      });
       if (!matched.length) { cb(null, { status: 'ok', date: toDMY(todayYMD()), batches: [] }); return; }
       var today = todayYMD();
       GET('sessions', 'session_date=eq.' + today, function (e2, sRows) {
@@ -2333,7 +2344,11 @@ window.gasGet = (function () {
     var cap = d30.toISOString().slice(0, 10);
     GET('batches', 'start_date=gte.' + today + '&start_date=lte.' + cap + '&order=start_date.asc', function(e, rows) {
       if (e) { cb(null, { status: 'ok', batches: [] }); return; }
-      var matched = (rows || []).filter(function(b) { return sameName(b.instructor, instr) || (b.co_instructor && sameName(b.co_instructor, instr)); });
+      var matched = (rows || []).filter(function(b) {
+        if (sameName(b.instructor, instr)) return true;
+        if (!b.co_instructor || !sameName(b.co_instructor, instr)) return false;
+        return !b.co_instructor_until || b.co_instructor_until >= today;
+      });
       cb(null, { status: 'ok', batches: matched.map(function(b) {
         var tTime = new Date(today).getTime();
         var bTime = new Date(b.start_date).getTime();
@@ -2385,7 +2400,12 @@ window.gasGet = (function () {
       if (!instr) { cb(null, { status: 'ok', batches: [] }); return; }
 
       var allBatchesRaw = await getP('batches', 'order=created_at.desc');
-      var allBatches = (allBatchesRaw || []).filter(function(b) { return sameName(b.instructor, instr) || (b.co_instructor && sameName(b.co_instructor, instr)); });
+      var today0e = todayYMD();
+      var allBatches = (allBatchesRaw || []).filter(function(b) {
+        if (sameName(b.instructor, instr)) return true;
+        if (!b.co_instructor || !sameName(b.co_instructor, instr)) return false;
+        return !b.co_instructor_until || b.co_instructor_until >= today0e;
+      });
       if (!allBatches || !allBatches.length) { cb(null, { status: 'ok', batches: [] }); return; }
 
       var batchCodes = allBatches.map(function(b) { return b.batch_code; });

@@ -280,7 +280,19 @@
     <div class="err-box" id="cp-err"></div>
   </div>
 
-  <div id="upcoming-batches-banner-container" style="margin-top:16px;margin-bottom:16px"></div>
+  <div id="upcoming-batches-banner-container" style="margin-top:16px;margin-bottom:0"></div>
+
+  <!-- ── Co-instructor cover banner — shown on every tab until batch starts or dismissed ── -->
+  <div id="co-cover-banner" style="display:none;margin-top:12px;margin-bottom:4px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:13px 16px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:13px;color:#92400e">📋 You're assigned as a cover instructor</div>
+        <div id="co-cover-banner-body" style="font-size:12px;color:#78350f;margin-top:5px;line-height:1.7"></div>
+      </div>
+      <button onclick="dismissCoCoverBanner()" title="Dismiss until next login"
+        style="flex-shrink:0;background:none;border:none;font-size:18px;cursor:pointer;color:#92400e;line-height:1;padding:0">✕</button>
+    </div>
+  </div>
 
   <div class="tab-bar">
     <button class="tab active" onclick="iTab('t-session')">📅 Session</button>
@@ -482,12 +494,9 @@
   <!-- ── TAB 4: MY BATCHES ── -->
   <div id="t-mybatches" class="tab-content">
     <div id="co-instructor-notice" style="display:none;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:14px 16px;margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
-        <div>
-          <div style="font-weight:700;font-size:13px;color:#92400e">📋 You've been assigned as a cover instructor</div>
-          <div id="co-instructor-notice-body" style="font-size:12px;color:#78350f;margin-top:5px;line-height:1.6"></div>
-        </div>
-        <button onclick="dismissCoInstructorNotice()" style="flex-shrink:0;background:none;border:none;font-size:18px;cursor:pointer;color:#92400e;line-height:1" title="Dismiss">✕</button>
+      <div>
+        <div style="font-weight:700;font-size:13px;color:#92400e">📋 Cover batches assigned to you</div>
+        <div id="co-instructor-notice-body" style="font-size:12px;color:#78350f;margin-top:5px;line-height:1.6"></div>
       </div>
     </div>
     <div class="card">
@@ -3421,29 +3430,84 @@ function loadMyBatches() {
 }
 
 function showCoInstructorNotice(coverBatches) {
+  var today = new Date().toISOString().slice(0, 10);
+
+  // Only show for batches that haven't started yet (pre-cover warning).
+  // Once the batch start date arrives, the instructor is already covering — no need to warn.
+  var pending = (coverBatches || []).filter(function(b) {
+    var start = b.startDateISO ? b.startDateISO.slice(0,10) : '';
+    return !start || start > today; // no start date = show anyway; started = hide
+  });
+
+  // ── My Batches tab notice (secondary) ──
   var notice = document.getElementById('co-instructor-notice');
   var body   = document.getElementById('co-instructor-notice-body');
-  if (!notice || !body) return;
-  if (!coverBatches || !coverBatches.length) { notice.style.display='none'; return; }
+  if (notice && body) {
+    if (!pending.length) { notice.style.display = 'none'; }
+    else {
+      body.innerHTML = pending.map(function(b) {
+        var until = b.coInstructorUntil ? ' until <strong>' + escH(b.coInstructorUntil) + '</strong>' : ' (permanent handover)';
+        return '• <strong>' + escH(b.batchCode) + '</strong> — ' + escH(b.course) + ' · ' + escH(b.centre) + until;
+      }).join('<br>');
+      notice.style.display = 'block';
+    }
+  }
 
-  // Build a dismissed-key from the sorted batch codes so each new assignment re-notifies
-  var key = 'coInstrDismissed_' + coverBatches.map(function(b){return b.batchCode;}).sort().join('_');
-  if (localStorage.getItem(key)) { notice.style.display='none'; return; }
+  // ── Homepage banner (primary — persists across tabs) ──
+  updateCoCoverBanner(pending);
+}
 
-  notice.dataset.dismissKey = key;
-  body.innerHTML = coverBatches.map(function(b) {
-    var until = b.coInstructorUntil ? ' (until <strong>' + escH(b.coInstructorUntil) + '</strong>)' : ' (permanent handover)';
-    return '• <strong>' + escH(b.batchCode) + '</strong> — ' + escH(b.course) + ' · ' + escH(b.centre) + until;
+function updateCoCoverBanner(pending) {
+  var banner = document.getElementById('co-cover-banner');
+  var body   = document.getElementById('co-cover-banner-body');
+  if (!banner || !body) return;
+
+  if (!pending || !pending.length) { banner.style.display = 'none'; updateBellCobadge(false); return; }
+
+  // Session-dismissed key — resets each login (sessionStorage, not localStorage)
+  var key = 'coCoverDismissed_' + pending.map(function(b){return b.batchCode;}).sort().join('_');
+  if (sessionStorage.getItem(key)) { banner.style.display = 'none'; updateBellCobage(false); return; }
+
+  banner.dataset.dismissKey = key;
+  body.innerHTML = pending.map(function(b) {
+    var untilTxt = b.coInstructorUntil
+      ? 'Cover until <strong>' + escH(b.coInstructorUntil) + '</strong>'
+      : 'Permanent handover';
+    var startTxt = b.startDate ? ' · Starts ' + escH(b.startDate) : '';
+    return '• <strong>' + escH(b.batchCode) + '</strong> — ' + escH(b.course) + ' · ' + escH(b.centre) + startTxt + ' · ' + untilTxt;
   }).join('<br>');
-  notice.style.display = 'block';
+  banner.style.display = 'block';
+  updateBellCobage(true, pending.length);
+}
+
+function dismissCoCoverBanner() {
+  var banner = document.getElementById('co-cover-banner');
+  if (!banner) return;
+  var key = banner.dataset.dismissKey;
+  if (key) sessionStorage.setItem(key, '1'); // dismissed for this session only
+  banner.style.display = 'none';
+  updateBellCobage(false);
+}
+
+// Typo-safe alias
+function updateBellCobage(active, count) { updateBellCoBadge(active, count); }
+
+function updateBellCoBadge(active, count) {
+  // Use a separate co-cover dot on the bell
+  var bell = document.getElementById('notif-bell-btn');
+  var dot  = document.getElementById('co-cover-bell-dot');
+  if (!dot && bell) {
+    dot = document.createElement('span');
+    dot.id = 'co-cover-bell-dot';
+    dot.style.cssText = 'position:absolute;top:-3px;left:-3px;background:#f59e0b;border-radius:50%;width:10px;height:10px;border:2px solid #fff;display:none';
+    bell.parentNode.appendChild(dot);
+  }
+  if (dot) dot.style.display = active ? 'block' : 'none';
 }
 
 function dismissCoInstructorNotice() {
   var notice = document.getElementById('co-instructor-notice');
-  if (!notice) return;
-  var key = notice.dataset.dismissKey;
-  if (key) localStorage.setItem(key, '1');
-  notice.style.display = 'none';
+  if (notice) notice.style.display = 'none';
 }
 
 var _summaryActiveTab = 't-session';

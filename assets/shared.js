@@ -284,9 +284,15 @@ window.gasGet = (function () {
       
       function completeLogin() {
         h_getBatches({ centres: isAdm ? '' : centres.join(',') }, function (e2, bd) {
+          var isAH = (r.role === 'AcademicHead' || r.role === 'Admin' || (r.name && r.name.toLowerCase().indexOf('bhavin') >= 0));
+          var isRM = (r.role === 'RevenueManager' || r.role === 'Manager' || r.role === 'Admin' || (r.name && r.name.toLowerCase().indexOf('amit') >= 0)) && !(r.name && r.name.toLowerCase().indexOf('bhavin') >= 0);
+          var isDual = (r.role && r.role.indexOf('Dual') >= 0) || r.role === 'Manager' || r.role === 'Admin' || centres.length > 1 || r.name === 'Anuradha';
+          var mgrCentres = (r.role === 'Manager' || r.role === 'Admin' || (r.name && r.name.toLowerCase().indexOf('amit') >= 0)) ? ['Mumbai','Lucknow','Ahmedabad','Chennai','Delhi','Surat','Kolkata','Bangalore','Hyderabad','Jaipur'] : centres;
+
           cb(null, { status: 'ok', counselorName: r.name, instructorName: r.name, authRole: r.role || 'Counselor',
             isAdmin: isAdm, isManager: isMgr, centres: centres, mustChangePassword: !!r.must_change,
-            batches: (bd && bd.batches) || [] });
+            batches: (bd && bd.batches) || [],
+            isAcademicHead: isAH, isRevenueManager: isRM, isDualRole: isDual, managerCentres: mgrCentres });
         });
       }
       
@@ -2217,6 +2223,443 @@ window.gasGet = (function () {
     });
   }
 
+  /* getUpcomingBatches */
+  function h_getUpcomingBatches(p, cb) {
+    var today = todayYMD();
+    var instr = String(p.instructor || '').trim();
+    if (!instr) { cb(null, { status: 'ok', batches: [] }); return; }
+    GET('batches', 'instructor=eq.' + encodeURIComponent(instr) + '&start_date=gte.' + today + '&order=start_date.asc', function(e, rows) {
+      if (e) { cb(null, { status: 'ok', batches: [] }); return; }
+      cb(null, { status: 'ok', batches: (rows || []).map(function(b) {
+        return { batchCode: b.batch_code, course: b.course, centre: b.centre, startDate: b.start_date };
+      }) });
+    });
+  }
+
+  /* deleteAssessment */
+  function h_deleteAssessment(p, cb) {
+    var aId = p.assessmentId;
+    if (!aId) { cb(null, { status: 'error', reason: 'missing_params' }); return; }
+    DEL('assessment_marks', 'assessment_id=eq.' + encodeURIComponent(aId), function(e1) {
+      DEL('assessments', 'assessment_id=eq.' + encodeURIComponent(aId), function(e2) {
+        cb(null, (e1 || e2) ? { status: 'error' } : { status: 'ok' });
+      });
+    });
+  }
+
+  /* getStudentsForBatches */
+  function h_getStudentsForBatches(p, cb) {
+    var bcs = (p.batchCodes || '').split(',').map(function(b) { return b.trim(); }).filter(Boolean);
+    if (!bcs.length) { cb(null, { status: 'ok', students: [] }); return; }
+    GET('students', 'batch_code=in.(' + bcs.map(encodeURIComponent).join(',') + ')', function(e, rows) {
+      if (e) { cb(null, { status: 'ok', students: [] }); return; }
+      cb(null, { status: 'ok', students: (rows || []).map(function(r) {
+        return { enrollmentNo: r.student_id, name: r.name, batchCode: r.batch_code,
+          mobileLast4: r.mobile_last4, status: r.status };
+      }) });
+    });
+  }
+
+  /* getInstructorEligibility */
+  async function h_getInstructorEligibility(p, cb) {
+    function getP(table, qs) {
+      return new Promise(function(resolve) {
+        GET(table, qs, function(err, data) {
+          if (err) resolve([]);
+          else resolve(data);
+        });
+      });
+    }
+
+    try {
+      var instr = String(p.instructor || '').trim();
+      if (!instr) { cb(null, { status: 'ok', batches: [] }); return; }
+
+      var allBatches = await getP('batches', 'instructor=eq.' + encodeURIComponent(instr));
+      if (!allBatches || !allBatches.length) { cb(null, { status: 'ok', batches: [] }); return; }
+
+      var batchCodes = allBatches.map(function(b) { return b.batch_code; });
+      var batchMap = {};
+      allBatches.forEach(function(b) { batchMap[b.batch_code.toUpperCase()] = b; });
+
+      var assessments = await getP('assessments', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')');
+      var assessIds = assessments.map(function(a) { return a.assessment_id; });
+
+      var pStudents = getP('students', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')');
+      var pSessions = getP('sessions', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')');
+      var pAtt = getP('attendance_feedback', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')');
+      var pMarks = assessIds.length > 0 ? getP('assessment_marks', 'assessment_id=in.(' + assessIds.map(encodeURIComponent).join(',') + ')') : Promise.resolve([]);
+      var pHod = getP('hod_approvals', 'status=eq.Approved');
+      var pDips = getP('diplomas', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')');
+
+      var [students, sessions, attFeedback, marks, hods, diplomas] = await Promise.all([
+        pStudents, pSessions, pAtt, pMarks, pHod, pDips
+      ]);
+
+      var studentMap = {};
+      students.forEach(function(s) { studentMap[s.student_id] = s; });
+
+      var diplomaMap = {};
+      diplomas.forEach(function(d) { diplomaMap[d.student_id + '|' + d.batch_code] = d; });
+
+      var hodMap = {};
+      hods.forEach(function(h) {
+        if (h.ref_code) {
+          var parts = h.ref_code.split('-HOD-');
+          if (parts.length === 2) {
+            hodMap[parts[1] + '|' + parts[0]] = h.status;
+          }
+        }
+      });
+
+      var sessionsByBatch = {};
+      sessions.forEach(function(s) {
+        var bc = s.batch_code.toUpperCase();
+        var type = String(s.session_type || '').toLowerCase();
+        if (type !== 'cancelled') {
+          if (!sessionsByBatch[bc]) sessionsByBatch[bc] = [];
+          sessionsByBatch[bc].push(s.session_code);
+        }
+      });
+
+      var attMap = {};
+      attFeedback.forEach(function(a) {
+        if (a.student_id && a.session_code) {
+          attMap[a.student_id + '|' + a.session_code] = a.attendance || a.status;
+        }
+      });
+
+      var assessMap = {};
+      assessments.forEach(function(a) { assessMap[a.assessment_id] = a; });
+
+      var marksByStudentBatch = {};
+      marks.forEach(function(m) {
+        var a = assessMap[m.assessment_id];
+        if (!a) return;
+        var bc = a.batch_code.toUpperCase();
+        var sid = m.student_id;
+        var key = sid + '|' + bc;
+        if (!marksByStudentBatch[key]) marksByStudentBatch[key] = { weeklyScores: [], finalScores: [] };
+        var isWeekly = (a.test_type || '').toLowerCase() === 'weekly' || (a.test_name || '').toLowerCase().indexOf('final') === -1;
+        var isFinal = (a.test_type || '').toLowerCase() === 'final' || (a.test_name || '').toLowerCase().indexOf('final') !== -1;
+        var val = parseFloat(m.marks || m.percentage);
+        if (!isNaN(val) && m.percentage !== 'DNA' && m.percentage !== '') {
+          if (isWeekly) marksByStudentBatch[key].weeklyScores.push(val);
+          if (isFinal) marksByStudentBatch[key].finalScores.push(val);
+        }
+      });
+
+      var byBatch = {};
+      students.forEach(function(s) {
+        var bc = s.batch_code.toUpperCase();
+        var b = batchMap[bc];
+        if (!b) return;
+
+        if (!byBatch[bc]) {
+          byBatch[bc] = {
+            batchCode: b.batch_code,
+            centre: b.centre,
+            course: b.course,
+            students: [],
+            eligibleCount: 0,
+            totalCount: 0
+          };
+        }
+
+        var totalSess = (sessionsByBatch[bc] || []).length;
+        var attended = 0;
+        (sessionsByBatch[bc] || []).forEach(function(sc) {
+          var status = attMap[s.student_id + '|' + sc];
+          if (status && status !== 'Absent') attended++;
+        });
+        var attPct = totalSess > 0 ? Math.round(100 * attended / totalSess) : 0;
+        var attPass = attPct >= 75;
+
+        var key = s.student_id + '|' + bc;
+        var sMarks = marksByStudentBatch[key] || { weeklyScores: [], finalScores: [] };
+
+        var weeklyAvg = sMarks.weeklyScores.length > 0 ? Math.round(sMarks.weeklyScores.reduce(function(a,b){return a+b;},0) / sMarks.weeklyScores.length) : null;
+        var finalExam = sMarks.finalScores.length > 0 ? Math.max.apply(null, sMarks.finalScores) : null;
+
+        var weeklyPass = weeklyAvg !== null && weeklyAvg >= 60;
+        var finalPass = finalExam !== null && finalExam >= 60;
+
+        var hodStatus = hodMap[key] || '';
+        var eligible = (weeklyPass && finalPass) || (hodStatus === 'Approved');
+        var dipRec = diplomaMap[key];
+
+        byBatch[bc].totalCount++;
+        if (eligible) byBatch[bc].eligibleCount++;
+
+        byBatch[bc].students.push({
+          studentId: s.student_id,
+          studentName: s.name,
+          batchCode: b.batch_code,
+          centre: b.centre,
+          course: b.course,
+          attendance: {
+            attended: attended,
+            total: totalSess,
+            pct: attPct,
+            pass: attPass
+          },
+          weeklyAvg: {
+            value: weeklyAvg,
+            pass: weeklyPass
+          },
+          finalExam: {
+            value: finalExam,
+            pass: finalPass
+          },
+          eligible: eligible,
+          hodStatus: hodStatus,
+          diplomaStatus: dipRec ? 'Released' : 'Not Released'
+        });
+      });
+
+      cb(null, { status: 'ok', batches: Object.values(byBatch) });
+    } catch (err) {
+      cb(err, null);
+    }
+  }
+
+  /* getInstructorTests */
+  function h_getInstructorTests(p, cb) {
+    var instr = String(p.instructor || '').trim();
+    GET('online_tests', 'created_by=eq.' + encodeURIComponent(instr) + '&order=created_at.desc', function(e, rows) {
+      if (e) { cb(null, { status: 'ok', tests: [] }); return; }
+      cb(null, { status: 'ok', tests: (rows || []).map(function(r) {
+        return {
+          testId: r.test_id, batchCode: r.batch_code, title: r.title, durationMins: r.duration_mins,
+          startsAt: r.starts_at, endsAt: r.ends_at, status: r.status, createdBy: r.created_by, createdAt: r.created_at
+        };
+      }) });
+    });
+  }
+
+  /* getQuestionBank */
+  function h_getQuestionBank(p, cb) {
+    var qs = 'order=id.asc';
+    if (p.course) qs += '&course=eq.' + encodeURIComponent(p.course);
+    if (p.topic) qs += '&topic=eq.' + encodeURIComponent(p.topic);
+    GET('question_bank', qs, function(e, rows) {
+      if (e) { cb(null, { status: 'ok', questions: [], topicMap: {} }); return; }
+      var topicMap = {};
+      (rows || []).forEach(function(r) {
+        if (r.course && r.topic) {
+          if (!topicMap[r.course]) topicMap[r.course] = [];
+          if (topicMap[r.course].indexOf(r.topic) === -1) topicMap[r.course].push(r.topic);
+        }
+      });
+      var questions = (rows || []).map(function(r) {
+        var q = { id: r.id, course: r.course, topic: r.topic, question: r.question,
+          opt1: r.option_a, opt2: r.option_b, opt3: r.option_c, opt4: r.option_d, type: r.q_type || 'MCQ' };
+        if (p.includeCorrect === 'true') q.correctOption = r.correct_option;
+        return q;
+      });
+      cb(null, { status: 'ok', questions: questions, topicMap: topicMap, total: questions.length, customQuestions: [] });
+    });
+  }
+
+  /* setupQuestionBank */
+  function h_setupQuestionBank(p, cb) {
+    cb(null, { status: 'ok', questions: [] });
+  }
+
+  /* createOnlineTest */
+  function h_createOnlineTest(p, cb) {
+    var tid = 'OT-' + Date.now();
+    POST('online_tests', 'on_conflict=test_id', {
+      test_id: tid, batch_code: p.batchCode || '', title: p.testName || p.title || '',
+      duration_mins: Number(p.durationMins || p.totalMarks || 30), status: 'Draft',
+      created_by: p.instructor || '', created_at: nowISO()
+    }, function(e) {
+      cb(null, e ? { status: 'error' } : { status: 'ok', testId: tid });
+    });
+  }
+
+  /* activateTest */
+  function h_activateTest(p, cb) {
+    PATCH('online_tests', 'test_id=eq.' + encodeURIComponent(p.testId), {
+      status: 'Live', starts_at: nowISO()
+    }, function(e) {
+      cb(null, e ? { status: 'error' } : { status: 'ok' });
+    });
+  }
+
+  /* closeTest */
+  function h_closeTest(p, cb) {
+    PATCH('online_tests', 'test_id=eq.' + encodeURIComponent(p.testId), {
+      status: 'Closed', ends_at: nowISO()
+    }, function(e) {
+      cb(null, e ? { status: 'error' } : { status: 'ok' });
+    });
+  }
+
+  /* deleteOnlineTest */
+  function h_deleteOnlineTest(p, cb) {
+    var tid = p.testId;
+    DEL('test_questions', 'test_id=eq.' + encodeURIComponent(tid), function() {
+      DEL('test_responses', 'test_id=eq.' + encodeURIComponent(tid), function() {
+        DEL('online_tests', 'test_id=eq.' + encodeURIComponent(tid), function(e) {
+          cb(null, e ? { status: 'error' } : { status: 'ok' });
+        });
+      });
+    });
+  }
+
+  /* duplicateOnlineTest */
+  function h_duplicateOnlineTest(p, cb) {
+    var srcId = p.testId;
+    var newId = 'OT-' + Date.now();
+    GET('online_tests', 'test_id=eq.' + encodeURIComponent(srcId), function(e, tests) {
+      if (e || !tests || !tests.length) { cb(null, { status: 'error', reason: 'test_not_found' }); return; }
+      var t = tests[0];
+      POST('online_tests', 'on_conflict=test_id', {
+        test_id: newId, batch_code: t.batch_code, title: t.title + ' (Copy)',
+        duration_mins: t.duration_mins, status: 'Draft', created_by: p.instructor || t.created_by, created_at: nowISO()
+      }, function(e2) {
+        if (e2) { cb(null, { status: 'error' }); return; }
+        GET('test_questions', 'test_id=eq.' + encodeURIComponent(srcId), function(e3, tqs) {
+          if (e3 || !tqs || !tqs.length) { cb(null, { status: 'ok', testId: newId }); return; }
+          var newTqs = tqs.map(function(tq) {
+            return { test_id: newId, question_id: tq.question_id, order_no: tq.order_no };
+          });
+          POST('test_questions', null, newTqs, function() {
+            cb(null, { status: 'ok', testId: newId });
+          });
+        });
+      });
+    });
+  }
+
+  /* saveTestQuestions */
+  function h_saveTestQuestions(p, cb) {
+    var tid = p.testId;
+    var qIds = [];
+    try { qIds = JSON.parse(p.questionIds || '[]'); } catch(x) {}
+    DEL('test_questions', 'test_id=eq.' + encodeURIComponent(tid), function(e) {
+      if (e) { cb(null, { status: 'error' }); return; }
+      if (!qIds.length) { cb(null, { status: 'ok' }); return; }
+      var rows = qIds.map(function(qid, idx) {
+        return { test_id: tid, question_id: qid, order_no: idx + 1 };
+      });
+      POST('test_questions', null, rows, function(e2) {
+        cb(null, e2 ? { status: 'error' } : { status: 'ok' });
+      });
+    });
+  }
+
+  /* removeTestQuestion */
+  function h_removeTestQuestion(p, cb) {
+    DEL('test_questions', 'test_id=eq.' + encodeURIComponent(p.testId) + '&question_id=eq.' + encodeURIComponent(p.qId), function(e) {
+      cb(null, e ? { status: 'error' } : { status: 'ok' });
+    });
+  }
+
+  /* getTestQuestionsInstructor */
+  function h_getTestQuestionsInstructor(p, cb) {
+    GET('test_questions', 'test_id=eq.' + encodeURIComponent(p.testId), function(e, tqs) {
+      if (e || !tqs || !tqs.length) { cb(null, { status: 'ok', questions: [] }); return; }
+      var qids = tqs.map(function(tq) { return tq.question_id; });
+      GET('question_bank', 'id=in.(' + qids.join(',') + ')', function(e2, qb) {
+        if (e2) { cb(null, { status: 'ok', questions: [] }); return; }
+        var questions = (qb || []).map(function(q) {
+          return { id: q.id, question: q.question, type: q.q_type || 'MCQ',
+            opt1: q.option_a, opt2: q.option_b, opt3: q.option_c, opt4: q.option_d, correctOption: q.correct_option };
+        });
+        cb(null, { status: 'ok', questions: questions });
+      });
+    });
+  }
+
+  /* getProctorRoom */
+  async function h_getProctorRoom(p, cb) {
+    function getP(table, qs) {
+      return new Promise(function(resolve) {
+        GET(table, qs, function(err, data) {
+          if (err) resolve([]);
+          else resolve(data);
+        });
+      });
+    }
+    try {
+      var tid = p.testId;
+      var testRows = await getP('online_tests', 'test_id=eq.' + encodeURIComponent(tid));
+      if (!testRows || !testRows.length) { cb(null, { status: 'error', reason: 'test_not_found' }); return; }
+      var test = testRows[0];
+      var bc = test.batch_code;
+
+      var [students, starts, responses, warnings] = await Promise.all([
+        getP('students', 'batch_code=eq.' + encodeURIComponent(bc)),
+        getP('test_starts', 'test_id=eq.' + encodeURIComponent(tid)),
+        getP('test_responses', 'test_id=eq.' + encodeURIComponent(tid)),
+        getP('test_warnings', 'test_id=eq.' + encodeURIComponent(tid))
+      ]);
+
+      var startsMap = {};
+      starts.forEach(function(s) { startsMap[s.student_id] = s.started_at; });
+
+      var respMap = {};
+      responses.forEach(function(r) { respMap[r.student_id] = r.submitted_at; });
+
+      var warnMap = {};
+      warnings.forEach(function(w) { warnMap[w.student_id] = (warnMap[w.student_id] || 0) + (w.count || 1); });
+
+      var room = students.map(function(s) {
+        var start = startsMap[s.student_id] || null;
+        var submitted = respMap[s.student_id] || null;
+        var status = submitted ? 'Submitted' : (start ? 'In Progress' : 'Not Started');
+        return {
+          studentId: s.student_id, studentName: s.name, status: status,
+          startedAt: start, submittedAt: submitted, warnings: warnMap[s.student_id] || 0
+        };
+      });
+
+      cb(null, { status: 'ok', room: room, activeCount: room.filter(function(r){return r.status==='In Progress';}).length });
+    } catch(err) {
+      cb(err, null);
+    }
+  }
+
+  /* getTestResultsSummary */
+  async function h_getTestResultsSummary(p, cb) {
+    function getP(table, qs) {
+      return new Promise(function(resolve) {
+        GET(table, qs, function(err, data) {
+          if (err) resolve([]);
+          else resolve(data);
+        });
+      });
+    }
+    try {
+      var tid = p.testId;
+      var testRows = await getP('online_tests', 'test_id=eq.' + encodeURIComponent(tid));
+      if (!testRows || !testRows.length) { cb(null, { status: 'error', reason: 'test_not_found' }); return; }
+      var bc = testRows[0].batch_code;
+
+      var [students, responses] = await Promise.all([
+        getP('students', 'batch_code=eq.' + encodeURIComponent(bc)),
+        getP('test_responses', 'test_id=eq.' + encodeURIComponent(tid))
+      ]);
+
+      var respMap = {};
+      responses.forEach(function(r) { respMap[r.student_id] = r; });
+
+      var summary = students.map(function(s) {
+        var r = respMap[s.student_id];
+        return {
+          studentId: s.student_id, studentName: s.name, score: r ? r.score : null,
+          submittedAt: r ? r.submitted_at : null, answers: r ? r.answers : null
+        };
+      });
+
+      cb(null, { status: 'ok', summary: summary, students: summary });
+    } catch(err) {
+      cb(err, null);
+    }
+  }
+
   /* ══════════════════════════════════════════════════════════════
      MAIN DISPATCHER — replaces gasGet() transparently
   ══════════════════════════════════════════════════════════════ */
@@ -2291,6 +2734,23 @@ window.gasGet = (function () {
       case 'createAssessment':          return h_createAssessment(params, cb);
       case 'getAssessmentMarks':        return h_getAssessmentMarks(params, cb);
       case 'saveAssessmentMarks':       return h_saveAssessmentMarks(params, cb);
+      case 'getUpcomingBatches':        return h_getUpcomingBatches(params, cb);
+      case 'deleteAssessment':          return h_deleteAssessment(params, cb);
+      case 'getStudentsForBatches':     return h_getStudentsForBatches(params, cb);
+      case 'getInstructorEligibility':  return h_getInstructorEligibility(params, cb);
+      case 'getInstructorTests':        return h_getInstructorTests(params, cb);
+      case 'getQuestionBank':           return h_getQuestionBank(params, cb);
+      case 'setupQuestionBank':         return h_setupQuestionBank(params, cb);
+      case 'createOnlineTest':          return h_createOnlineTest(params, cb);
+      case 'activateTest':              return h_activateTest(params, cb);
+      case 'closeTest':                 return h_closeTest(params, cb);
+      case 'deleteOnlineTest':          return h_deleteOnlineTest(params, cb);
+      case 'duplicateOnlineTest':       return h_duplicateOnlineTest(params, cb);
+      case 'saveTestQuestions':         return h_saveTestQuestions(params, cb);
+      case 'removeTestQuestion':        return h_removeTestQuestion(params, cb);
+      case 'getTestQuestionsInstructor':return h_getTestQuestionsInstructor(params, cb);
+      case 'getProctorRoom':            return h_getProctorRoom(params, cb);
+      case 'getTestResultsSummary':     return h_getTestResultsSummary(params, cb);
 
       default:
         console.warn('[gasGet→SB] Action not handled by Supabase wrapper, routing to GAS:', a, params);

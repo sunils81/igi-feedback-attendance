@@ -2811,6 +2811,15 @@ function loadHolidayList(forceRefresh) {
 }
 
 // ── Create Batch ──────────────────────────────────────────────
+function toggleCoPanel(batchCode) {
+  var panel = document.getElementById('co-panel-'+batchCode);
+  var arrow = document.getElementById('co-arrow-'+batchCode);
+  if (!panel) return;
+  var open = panel.style.display !== 'none';
+  panel.style.display = open ? 'none' : 'block';
+  if (arrow) arrow.textContent = open ? '▾' : '▴';
+}
+
 function toggleCreateCoUntil(mode) {
   const el = document.getElementById('b-co-instructor-until');
   if (!el) return;
@@ -6298,7 +6307,12 @@ function loadMyBatches() {
           ${emptyBadge}
         </div>
         ${b.instructor?'':renderInlineInstructorAssign(b.batchCode)}
-        ${renderInlineCoInstructorAssign(b.batchCode, b.coInstructor||'', b.coInstructorUntil||'', b.endDate||'')}
+        <div style="margin-top:6px">
+          <button onclick="toggleCoPanel('${escC(b.batchCode)}')" style="font-size:11px;background:none;border:1px solid #bbf7d0;border-radius:6px;padding:3px 10px;cursor:pointer;color:#166534">↔ Cover instructor <span id="co-arrow-${escC(b.batchCode)}">${b.coInstructor?'▴':'▾'}</span></button>
+          <div id="co-panel-${escC(b.batchCode)}" style="display:${b.coInstructor?'block':'none'};margin-top:6px">
+            ${renderInlineCoInstructorAssign(b.batchCode, b.coInstructor||'', b.coInstructorUntil||'', b.endDate||'')}
+          </div>
+        </div>
         <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
           ${deleteButtonsHtml}
         </div>

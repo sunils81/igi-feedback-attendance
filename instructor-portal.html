@@ -3111,32 +3111,123 @@ function fetchAttendance(sess, batch) {
   gasGet({action:'getSessionAttendanceLive', sessionCode:sess, batchCode:batch}, function(e,d) {
     const wrap = document.getElementById('at-wrap');
     if (e||!d) { wrap.innerHTML='<p style="color:var(--red);font-size:13px">Could not load.</p>'; return; }
-    const pct = d.total>0?Math.round((d.count/d.total)*100):0;
+
+    // Split present students into buckets for display
+    var pendingVerify = (d.present||[]).filter(function(s){ return !s.instructorVerified && s.instructorOverride !== 'absent'; });
+    var confirmed     = (d.present||[]).filter(function(s){ return s.instructorVerified; });
+    var overridden    = (d.present||[]).filter(function(s){ return s.instructorOverride === 'absent'; });
+
+    var truePresent = d.count; // already excludes overridden-absent from backend
+    var trueAbsent  = d.total - truePresent;
+    var pct = d.total>0 ? Math.round((truePresent/d.total)*100) : 0;
+
     var html = '';
+
+    // ── Summary tiles ──
     html += '<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">';
     html += '<div style="flex:1;min-width:80px;background:#E8F5EE;border-radius:8px;padding:12px;text-align:center">';
-    html += '<div style="font-size:24px;font-weight:700;color:#1a7a3c">' + d.count + '</div>';
+    html += '<div style="font-size:24px;font-weight:700;color:#1a7a3c">' + truePresent + '</div>';
     html += '<div style="font-size:11px;color:#1a7a3c;font-weight:600">Present</div></div>';
     html += '<div style="flex:1;min-width:80px;background:#FEF2F2;border-radius:8px;padding:12px;text-align:center">';
-    html += '<div style="font-size:24px;font-weight:700;color:var(--red)">' + (d.total-d.count) + '</div>';
+    html += '<div style="font-size:24px;font-weight:700;color:var(--red)">' + trueAbsent + '</div>';
     html += '<div style="font-size:11px;color:var(--red);font-weight:600">Absent</div></div>';
     html += '<div style="flex:1;min-width:80px;background:var(--off);border-radius:8px;padding:12px;text-align:center">';
     html += '<div style="font-size:24px;font-weight:700;color:var(--navy)">' + pct + '%</div>';
-    html += '<div style="font-size:11px;color:var(--muted);font-weight:600">Attendance</div></div></div>';
+    html += '<div style="font-size:11px;color:var(--muted);font-weight:600">Attendance</div></div>';
+    if (pendingVerify.length) {
+      html += '<div style="flex:1;min-width:80px;background:#FFFBEB;border-radius:8px;padding:12px;text-align:center;border:1.5px solid #F59E0B">';
+      html += '<div style="font-size:24px;font-weight:700;color:#92400E">' + pendingVerify.length + '</div>';
+      html += '<div style="font-size:11px;color:#92400E;font-weight:600">Pending ✓</div></div>';
+    }
+    html += '</div>';
+
     html += '<div class="progress-bar" style="margin-bottom:16px"><div class="progress-fill" style="width:' + pct + '%"></div></div>';
-    if (d.present.length) {
-      html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#1a7a3c;margin-bottom:8px">Present (' + d.present.length + ')</div>';
-      html += '<div style="margin-bottom:14px">';
-      d.present.forEach(function(s){ html += '<span class="att-pill att-present" style="margin:2px 4px 2px 0">' + s.name + '</span>'; });
+
+    // ── Pending Verification section ──
+    if (pendingVerify.length) {
+      html += '<div style="background:#FFFBEB;border:1.5px solid #F59E0B;border-radius:10px;padding:12px;margin-bottom:14px">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
+      html += '<div style="font-size:12px;font-weight:700;color:#92400E;text-transform:uppercase;letter-spacing:.05em">🕐 Pending Verification (' + pendingVerify.length + ')</div>';
+      html += '<button onclick="confirmAllAttendance(\'' + escH(sess) + '\',\'' + escH(batch) + '\')" style="font-size:11px;background:#1a7a3c;color:#fff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;font-weight:600">✓ Confirm All</button>';
+      html += '</div>';
+      pendingVerify.forEach(function(s){
+        var sid = escH(s.enrollmentNo);
+        var sc = escH(sess);
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #FDE68A">';
+        html += '<span style="font-size:13px;font-weight:500;color:var(--navy)">' + escH(s.name) + '</span>';
+        html += '<div style="display:flex;gap:6px">';
+        html += '<button onclick="verifyStudent(\'' + sc + '\',\'' + sid + '\',\'confirm\')" style="font-size:11px;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:6px;padding:4px 9px;cursor:pointer;font-weight:600">✓ Present</button>';
+        html += '<button onclick="verifyStudent(\'' + sc + '\',\'' + sid + '\',\'override_absent\')" style="font-size:11px;background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;border-radius:6px;padding:4px 9px;cursor:pointer;font-weight:600">✗ Absent</button>';
+        html += '</div></div>';
+      });
       html += '</div>';
     }
+
+    // ── Confirmed Present ──
+    if (confirmed.length) {
+      html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#1a7a3c;margin-bottom:8px">✓ Confirmed Present (' + confirmed.length + ')</div>';
+      html += '<div style="margin-bottom:14px">';
+      confirmed.forEach(function(s){
+        var sid = escH(s.enrollmentNo); var sc = escH(sess);
+        html += '<span class="att-pill att-present" style="margin:2px 4px 2px 0;cursor:pointer" title="Click to undo" onclick="verifyStudent(\'' + sc + '\',\'' + sid + '\',\'reset\')">' + escH(s.name) + ' ✓</span>';
+      });
+      html += '</div>';
+    }
+
+    // ── Unverified present (if no pending) ──
+    if (!pendingVerify.length && !confirmed.length && (d.present||[]).length && !overridden.length) {
+      html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#1a7a3c;margin-bottom:8px">Present (' + d.present.length + ')</div>';
+      html += '<div style="margin-bottom:14px">';
+      (d.present||[]).forEach(function(s){ html += '<span class="att-pill att-present" style="margin:2px 4px 2px 0">' + escH(s.name) + '</span>'; });
+      html += '</div>';
+    }
+
+    // ── Overridden to Absent ──
+    if (overridden.length) {
+      html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#C94A4A;margin-bottom:8px">✗ Marked Absent by You (' + overridden.length + ')</div>';
+      html += '<div style="margin-bottom:14px">';
+      overridden.forEach(function(s){
+        var sid = escH(s.enrollmentNo); var sc = escH(sess);
+        html += '<span class="att-pill att-absent" style="margin:2px 4px 2px 0;cursor:pointer" title="Click to undo" onclick="verifyStudent(\'' + sc + '\',\'' + sid + '\',\'reset\')">' + escH(s.name) + ' ✗</span>';
+      });
+      html += '</div>';
+    }
+
+    // ── Absent / Not submitted ──
     if (d.absent.length) {
       html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--red);margin-bottom:8px">Yet to submit (' + d.absent.length + ')</div>';
       html += '<div>';
-      d.absent.forEach(function(s){ html += '<span class="att-pill att-absent" style="margin:2px 4px 2px 0">' + s.name + '</span>'; });
+      d.absent.forEach(function(s){ html += '<span class="att-pill att-absent" style="margin:2px 4px 2px 0">' + escH(s.name) + '</span>'; });
       html += '</div>';
     }
+
     wrap.innerHTML = html;
+  });
+}
+
+function verifyStudent(sessionCode, studentId, action) {
+  gasGet({action:'verifyAttendance', sessionCode:sessionCode, studentId:studentId, action:action}, function(e,d) {
+    if (e||!d||d.status!=='ok') { showToast('Could not save. Please try again.','error'); return; }
+    // Re-render without full reload
+    var batch = document.getElementById('at-batch').value;
+    fetchAttendance(sessionCode, batch);
+  });
+}
+
+function confirmAllAttendance(sessionCode, batch) {
+  var wrap = document.getElementById('at-wrap');
+  // Get all pending names from DOM to confirm sequentially
+  gasGet({action:'getSessionAttendanceLive', sessionCode:sessionCode, batchCode:batch}, function(e,d) {
+    if (e||!d) return;
+    var pending = (d.present||[]).filter(function(s){ return !s.instructorVerified && s.instructorOverride !== 'absent'; });
+    if (!pending.length) return;
+    var idx = 0;
+    function next() {
+      if (idx >= pending.length) { fetchAttendance(sessionCode, batch); return; }
+      var s = pending[idx++];
+      gasGet({action:'verifyAttendance', sessionCode:sessionCode, studentId:s.enrollmentNo, action:'confirm'}, function(){ next(); });
+    }
+    next();
   });
 }
 function stopAttendanceRefresh() {
@@ -3432,11 +3523,12 @@ function loadMyBatches() {
 function showCoInstructorNotice(coverBatches) {
   var today = new Date().toISOString().slice(0, 10);
 
-  // Only show for batches that haven't started yet (pre-cover warning).
-  // Once the batch start date arrives, the instructor is already covering — no need to warn.
+  // Show banner while cover is active: today is on or after batch start AND cover hasn't expired.
+  // Hide only when the cover period (coInstructorUntil) has passed.
   var pending = (coverBatches || []).filter(function(b) {
-    var start = b.startDateISO ? b.startDateISO.slice(0,10) : '';
-    return !start || start > today; // no start date = show anyway; started = hide
+    // If cover has an end date and it's already passed, don't show
+    if (b.coInstructorUntil && b.coInstructorUntil < today) return false;
+    return true; // active or permanent cover → always show
   });
 
   // ── My Batches tab notice (secondary) ──

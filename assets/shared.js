@@ -2278,11 +2278,37 @@ window.gasGet = (function () {
     GET('students', 'batch_code=eq.' + encodeURIComponent(bc), function(e, students) {
       if (e) { cb(null, { status: 'error' }); return; }
       GET('attendance_feedback', 'session_code=eq.' + encodeURIComponent(sc), function(e2, atts) {
-        var presentSet = new Set((atts || []).filter(function(a) { return a.attendance !== 'Absent'; }).map(function(a) { return a.student_id; }));
-        var present = (students || []).filter(function(s) { return presentSet.has(s.student_id); }).map(function(s) { return { enrollmentNo: s.student_id, name: s.name }; });
-        var absent = (students || []).filter(function(s) { return !presentSet.has(s.student_id); }).map(function(s) { return { enrollmentNo: s.student_id, name: s.name }; });
-        cb(null, { status: 'ok', present: present, absent: absent, total: students.length, count: present.length });
+        var attMap = {};
+        (atts || []).forEach(function(a) { attMap[a.student_id] = a; });
+        var presentSet = new Set(Object.keys(attMap).filter(function(id) { return attMap[id].attendance !== 'Absent'; }));
+        var present = (students || []).filter(function(s) { return presentSet.has(s.student_id); }).map(function(s) {
+          var a = attMap[s.student_id] || {};
+          return { enrollmentNo: s.student_id, name: s.name,
+            instructorVerified: a.instructor_verified || false,
+            instructorOverride: a.instructor_override || null };
+        });
+        var absent = (students || []).filter(function(s) { return !presentSet.has(s.student_id); }).map(function(s) {
+          return { enrollmentNo: s.student_id, name: s.name };
+        });
+        // Count truly present = not overridden to absent
+        var confirmedCount = present.filter(function(s) { return s.instructorOverride !== 'absent'; }).length;
+        cb(null, { status: 'ok', present: present, absent: absent, total: students.length, count: confirmedCount });
       });
+    });
+  }
+
+  function h_verifyAttendance(p, cb) {
+    var filter = 'session_code=eq.' + encodeURIComponent(p.sessionCode) + '&student_id=eq.' + encodeURIComponent(p.studentId);
+    var patch = {};
+    if (p.action === 'confirm') {
+      patch = { instructor_verified: true, instructor_override: null };
+    } else if (p.action === 'override_absent') {
+      patch = { instructor_verified: false, instructor_override: 'absent' };
+    } else if (p.action === 'reset') {
+      patch = { instructor_verified: false, instructor_override: null };
+    }
+    PATCH('attendance_feedback', filter, patch, function(e) {
+      cb(null, e ? { status: 'error' } : { status: 'ok' });
     });
   }
 
@@ -2861,6 +2887,7 @@ window.gasGet = (function () {
       case 'updateSessionTopic':        return h_updateSessionTopic(params, cb);
       case 'cancelSession':             return h_cancelSession(params, cb);
       case 'getSessionAttendanceLive':  return h_getSessionAttendanceLive(params, cb);
+      case 'verifyAttendance':          return h_verifyAttendance(params, cb);
       case 'getAssessments':            return h_getAssessments(params, cb);
       case 'createAssessment':          return h_createAssessment(params, cb);
       case 'getAssessmentMarks':        return h_getAssessmentMarks(params, cb);

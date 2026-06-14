@@ -1936,20 +1936,26 @@ window.gasGet = (function () {
       return;
     }
 
-    // Normal DB login
-    GET('users','name=eq.'+encodeURIComponent(name)+'&pin=eq.'+encodeURIComponent(pin), function(e, rows){
+    // Normal DB login — fetch by name, then verify password_hash
+    GET('users','name=eq.'+encodeURIComponent(name)+'&is_active=eq.true', function(e, rows){
       if (e||!rows||!rows.length){ cb(null,{status:'error',reason:'Invalid name or PIN'}); return; }
       var r = rows[0];
       var role = r.role || 'Instructor';
       var centres = r.centres ? r.centres.split(',').map(function(c){return c.trim();}).filter(Boolean) : [];
-      var mustChange = (r.pin==='1234');
       var isDual = role.indexOf('Dual')>=0 || role==='Manager' || centres.length>1;
       var isAH  = role==='AcademicHead'  || r.is_academic_head===true;
       var isRM  = role==='RevenueManager' || r.is_revenue_manager===true;
-      cb(null, { status:'ok', authRole:role, mustChangePassword:mustChange,
-        isDualRole:isDual, centres:centres, dualCentres:centres,
-        isAcademicHead:isAH, isRevenueManager:isRM, managerCentres:centres,
-        instructorName:r.name });
+      function grant(){
+        cb(null, { status:'ok', authRole:role, mustChangePassword:!!r.must_change,
+          isDualRole:isDual, centres:centres, dualCentres:centres,
+          isAcademicHead:isAH, isRevenueManager:isRM, managerCentres:centres,
+          instructorName:r.name });
+      }
+      // SHA-256: salt|pin  (same as shared.js; empty salt → '|pin')
+      sha256Hex(String(r.salt||'')+'|'+pin, function(hash){
+        if (hash === r.password_hash) { grant(); }
+        else { cb(null,{status:'error',reason:'Invalid name or PIN'}); }
+      });
     });
   }
 

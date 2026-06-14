@@ -71,20 +71,21 @@ def push(table, rows, conflict=None, batch=200):
     print(f"  → {ok_n}/{len(rows)} uploaded")
 
 # ── Step 1: Upload inv_items ──────────────────────────────────────────────────
-# DB cols: id(uuid auto), item_code, item_name, category, unit,
-#          reorder_level, is_active, created_at
-# CSV:     Item ID → item_code  (no unit_cost / notes columns in DB)
 rows_items = []
 for r in load_csv("INV_Items"):
     code = nz(r.get("Item ID"))
     if not code:
         continue
+    cost_raw = r.get("Unit Cost (Rs)", "").strip()
+    cost = float(cost_raw) if cost_raw else None
     rows_items.append({
         "item_code":     code,
         "item_name":     nz(r.get("Item Name")),
         "category":      nz(r.get("Category")),
         "unit":          nz(r.get("Unit")),
         "reorder_level": nz(r.get("Reorder Level")),
+        "unit_cost":     cost,
+        "notes":         nz(r.get("Notes")),
         "is_active":     True,
         "created_at":    nz(r.get("Created At")),
     })
@@ -117,6 +118,6 @@ for r in load_csv("INV_Stock"):
 
 if skipped:
     print(f"  ⚠️  {skipped} stock rows skipped (item code not found)")
-push("inv_stock", rows_stock)
+push("inv_stock", rows_stock, conflict="item_id,centre")
 
 print("\n✅ Inventory upload complete!")

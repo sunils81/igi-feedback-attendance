@@ -1738,13 +1738,134 @@ window.gasGet = (function () {
 
   /* ── Inventory ── */
   function h_invItems(p, cb) {
-    GET('inv_items', 'order=category.asc,item_name.asc', function (e, rows) {
+    GET('inv_items', 'is_active=neq.false&order=category.asc,item_name.asc', function (e, rows) {
       if (e) { cb(null, { status: 'error' }); return; }
-      cb(null, { status: 'ok', list: (rows || []).map(function (r) {
-        return { itemId: r.item_code, itemName: r.item_name, category: r.category,
-          unit: r.unit, reorderLevel: r.reorder_level, unitCost: r.unit_cost || 0, _uuid: r.id };
+      var items = (rows || []);
+      // Fetch all item-vendor links in one query
+      GET('inv_item_vendors', 'select=item_id,vendor_id,unit_cost,is_preferred', function (e2, vlinks) {
+        GET('inv_vendors', 'order=vendor_name.asc', function (e3, vendors) {
+          var vendorMap = {};
+          (vendors || []).forEach(function(v) { vendorMap[v.id] = v; });
+          // Group vendor links by item_id
+          var itemVendors = {};
+          (vlinks || []).forEach(function(vl) {
+            if (!itemVendors[vl.item_id]) itemVendors[vl.item_id] = [];
+            var vd = vendorMap[vl.vendor_id] || {};
+            itemVendors[vl.item_id].push({
+              vendorId: vl.vendor_id,
+              vendorName: vd.vendor_name || '',
+              contactPerson: vd.contact || '',
+              phone: vd.phone || '',
+              email: vd.email || '',
+              unitCost: vl.unit_cost != null ? vl.unit_cost : null,
+              isPreferred: vl.is_preferred || false
+            });
+          });
+          cb(null, { status: 'ok', list: items.map(function (r) {
+            var vendors = itemVendors[r.id] || [];
+            var preferred = vendors.find(function(v){ return v.isPreferred; }) || vendors[0] || null;
+            return {
+              itemId: r.item_code, itemName: r.item_name, category: r.category,
+              unit: r.unit, reorderLevel: r.reorder_level,
+              unitCost: r.unit_cost != null ? r.unit_cost : null,
+              costLocked: r.cost_locked || false,
+              notes: r.notes || '',
+              _uuid: r.id,
+              // Primary vendor (preferred or first)
+              vendorId: preferred ? preferred.vendorId : '',
+              vendorName: preferred ? preferred.vendorName : '',
+              vendorContact: preferred ? preferred.contactPerson : '',
+              vendorPhone: preferred ? preferred.phone : '',
+              vendorEmail: preferred ? preferred.email : '',
+              // All vendors list
+              vendors: vendors
+            };
+          }) });
+        });
+      });
+    });
+  }
+
+  function h_getVendors(p, cb) {
+    GET('inv_vendors', 'order=vendor_name.asc', function(e, rows) {
+      if (e) { cb(null, { status: 'error' }); return; }
+      cb(null, { status: 'ok', list: (rows || []).map(function(r) {
+        return { vendorId: r.id, vendorName: r.vendor_name, contactPerson: r.contact || '',
+          phone: r.phone || '', email: r.email || '', address: r.address || '', notes: r.notes || '' };
       }) });
     });
+  }
+
+  function h_registerVendor(p, cb) {
+    POST('inv_vendors', null, {
+      vendor_name: p.vendorName, contact: p.contactPerson || '', phone: p.phone || '',
+      email: p.email || '', address: p.address || '', notes: p.notes || ''
+    }, function(e) { cb(null, e ? { status: 'error', message: String(e) } : { status: 'ok' }); });
+  }
+
+  function h_addInvItem(p, cb) {
+    POST('inv_items', null, {
+      item_code: p.itemId || p.itemCode, item_name: p.itemName, category: p.category || '',
+      unit: p.unit || '', reorder_level: Number(p.reorderLevel || 0),
+      unit_cost: p.unitCost != null ? Number(p.unitCost) : null,
+      cost_locked: p.costLocked || false, notes: p.notes || '', is_active: true
+    }, function(e, newRows) {
+      if (e) { cb(null, { status: 'error', message: String(e) }); return; }
+      // Save vendor links if provided
+      var newId = newRows && newRows.length ? newRows[0].id : null;
+      if (newId && p.vendors && p.vendors.length) {
+        _saveItemVendorLinks(newId, p.vendors, function() { cb(null, { status: 'ok' }); });
+      } else { cb(null, { status: 'ok' }); }
+    });
+  }
+
+  function h_updateInvItem(p, cb) {
+    // Resolve item UUID from item_code
+    GET('inv_items', 'select=id&item_code=eq.' + encodeURIComponent(p.itemId), function(e, rows) {
+      if (e || !rows || !rows.length) { cb(null, { status: 'error', message: 'Item not found' }); return; }
+      var uuid = rows[0].id;
+      var patch = { item_name: p.itemName, category: p.category || '',
+        unit: p.unit || '', reorder_level: Number(p.reorderLevel || 0),
+        unit_cost: p.unitCost != null ? Number(p.unitCost) : null,
+        notes: p.notes || '' };
+      if (p.forceUnlock) patch.cost_locked = false;
+      else if (p.lockCost) patch.cost_locked = true;
+      PATCH('inv_items', 'id=eq.' + encodeURIComponent(uuid), patch, function(e2) {
+        if (e2) { cb(null, { status: 'error', message: String(e2) }); return; }
+        if (p.vendors !== undefined) {
+          _saveItemVendorLinks(uuid, p.vendors || [], function() { cb(null, { status: 'ok' }); });
+        } else { cb(null, { status: 'ok' }); }
+      });
+    });
+  }
+
+  function h_deleteInvItem(p, cb) {
+    PATCH('inv_items', 'item_code=eq.' + encodeURIComponent(p.itemId), { is_active: false },
+      function(e) { cb(null, e ? { status: 'error' } : { status: 'ok' }); });
+  }
+
+  // Helper: replace all vendor links for an item
+  function _saveItemVendorLinks(itemUuid, vendors, done) {
+    // Delete existing links then re-insert
+    function _insert() {
+      if (!vendors.length) { done(); return; }
+      var rows = vendors.map(function(v) {
+        return { item_id: itemUuid, vendor_id: v.vendorId,
+          unit_cost: v.unitCost != null ? Number(v.unitCost) : null,
+          is_preferred: v.isPreferred || false };
+      });
+      POST('inv_item_vendors', 'on_conflict=item_id,vendor_id', rows, function() { done(); });
+    }
+    // Delete all existing links for this item first
+    var xhr = new XMLHttpRequest();
+    var url = SUPA_URL + '/rest/v1/inv_item_vendors?item_id=eq.' + encodeURIComponent(itemUuid);
+    xhr.open('DELETE', url);
+    xhr.setRequestHeader('apikey', SUPA_KEY);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + SUPA_KEY);
+    xhr.setRequestHeader('Prefer', 'return=minimal');
+    xhr.onload = _insert;
+    xhr.onerror = _insert;
+    xhr.send();
   }
 
   function h_invStock(p, cb) {
@@ -2866,6 +2987,11 @@ window.gasGet = (function () {
       case 'confirmInventoryReceived':  return h_confirmReceived(params, cb);
       case 'processInventoryDispatch':  return h_dispatch(params, cb);
       case 'getCourseBundles':          return h_courseBundles(params, cb);
+      case 'getVendors':               return h_getVendors(params, cb);
+      case 'registerVendor':           return h_registerVendor(params, cb);
+      case 'addInventoryItem':         return h_addInvItem(params, cb);
+      case 'updateInventoryItem':      return h_updateInvItem(params, cb);
+      case 'deleteInventoryItem':      return h_deleteInvItem(params, cb);
 
       /* Student Portal */
       case 'getStudentPortalData':      return h_getStudentPortalData(params, cb);

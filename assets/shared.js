@@ -73,6 +73,12 @@ window.gasGet = (function () {
   }
   function nowISO() { return new Date().toISOString(); }
   function todayYMD() { return new Date().toISOString().slice(0, 10); }
+  function sameName(n1, n2) {
+    var clean = function(s) {
+      return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    };
+    return clean(n1) === clean(n2);
+  }
 
   function parseFeeRow(r, studentsList, batchesList) {
     var studentId = r.student_id;
@@ -1464,7 +1470,7 @@ window.gasGet = (function () {
     GET('revenue_annual_targets',   'period=eq.' + period,                               function (e, r) { annual      = r || []; done(); });
     GET('revenue_centre_targets',   'period=eq.' + period,                               function (e, r) { ctargets    = r || []; done(); });
     GET('assessments',              'order=created_at.desc',                             function (e, r) { assessments = r || []; done(); });
-    GET('assessment_marks',         'order=created_at.desc',                             function (e, r) { marks       = r || []; done(); });
+    GET('assessment_marks',         '',                                                  function (e, r) { marks       = r || []; done(); });
     GET('sessions',                 'order=created_at.desc',                             function (e, r) { sessions    = r || []; done(); });
     GET('attendance_feedback',      'order=marked_at.desc',                              function (e, r) { feedback    = r || []; done(); });
   }
@@ -1483,7 +1489,7 @@ window.gasGet = (function () {
       var pFb = getP('attendance_feedback', 'order=marked_at.desc');
       var pBatches = getP('batches', 'order=created_at.desc');
       var pAssess = getP('assessments', 'order=created_at.desc');
-      var pMarks = getP('assessment_marks', 'order=created_at.desc');
+      var pMarks = getP('assessment_marks', '');
       var pStudents = getP('students', 'select=student_id,batch_code,name,status');
       var pSessions = getP('sessions', 'order=created_at.desc');
 
@@ -1492,20 +1498,59 @@ window.gasGet = (function () {
       ]);
 
       var batchInstructorMap = {};
+      var batchMap = {};
       (batches || []).forEach(function(b) {
-        batchInstructorMap[String(b.batch_code || '').toUpperCase()] = b.instructor || '';
+        var code = String(b.batch_code || '').toUpperCase();
+        batchInstructorMap[code] = b.instructor || '';
+        batchMap[code] = b;
+      });
+
+      var sessionMap = {};
+      (sessions || []).forEach(function(s) {
+        sessionMap[String(s.session_code || '').toUpperCase()] = s;
       });
 
       var instructorStats = {};
       var comments = [];
 
       (feedback || []).forEach(function(r) {
-        var inst = String(r.instructor || batchInstructorMap[String(r.batch_code || '').toUpperCase()] || '').trim();
+        var instRaw = r.instructor || batchInstructorMap[String(r.batch_code || '').toUpperCase()] || '';
+        var inst = String(instRaw).trim();
+        if (inst.endsWith('\r')) inst = inst.slice(0, -1);
         var rating = Number(r.feedback_score) || 0;
-        var isAnon = r.is_anonymous === true || String(r.is_anonymous).toUpperCase() === 'Y';
         
-        var stRow = (students || []).find(function(s) { return s.student_id === r.student_id; });
-        var studentName = isAnon ? '[Anonymous]' : (stRow ? stRow.name : (r.student_name || 'Student ' + r.student_id));
+        var studentId = r.student_id || '';
+        
+        var text = String(r.feedback_text || '').trim();
+        var q2 = 0, q3 = '', q4 = '', q5 = '', q6 = '';
+        var isAnon = false;
+        var studentName = '';
+
+        if (text.indexOf('{') === 0) {
+          try {
+            var parsed = JSON.parse(text);
+            studentName = parsed.studentName || '';
+            q2 = Number(parsed.q2_clarity || 0);
+            q3 = String(parsed.q3 || '').trim();
+            q4 = String(parsed.q4 || '').trim();
+            q5 = String(parsed.q5 || '').trim();
+            q6 = String(parsed.q6 || '').trim();
+            isAnon = parsed.anonymous === 'Y';
+          } catch (e) {
+            q6 = text;
+          }
+        } else {
+          q6 = text;
+        }
+
+        if (text.indexOf('{') !== 0) {
+          isAnon = r.is_anonymous === true || String(r.is_anonymous).toUpperCase() === 'Y' || String(r.anonymous).toUpperCase() === 'Y';
+        }
+        
+        var stRow = (students || []).find(function(s) { return s.student_id === studentId; });
+        if (!studentName) {
+          studentName = isAnon ? '[Anonymous]' : (stRow ? stRow.name : (r.student_name || 'Student ' + studentId));
+        }
 
         if (inst) {
           if (!instructorStats[inst]) {
@@ -1520,19 +1565,27 @@ window.gasGet = (function () {
           }
         }
 
-        var text = String(r.feedback_text || '').trim();
-        if (text) {
+        var bObj = batchMap[String(r.batch_code || '').toUpperCase()];
+        var sObj = sessionMap[String(r.session_code || '').toUpperCase()];
+        var course = r.course || (bObj ? bObj.course : '');
+        var topic = r.topic || (sObj ? sObj.topic_covered : '');
+
+        // Only include entries that have meaningful free-text (q5 or q6); q3/q4 are button selections
+        if (q5 || q6) {
           comments.push({
             sessionCode: r.session_code,
-            studentId: r.student_id,
+            studentId: studentId,
             studentName: studentName,
             batchCode: r.batch_code,
-            centre: r.centre || (stRow ? stRow.centre : ''),
-            course: r.course || '',
+            centre: r.centre || (stRow ? stRow.centre : '') || (bObj ? bObj.centre : ''),
+            course: course,
             instructor: inst,
-            topic: r.topic || '',
+            topic: topic,
             rating: rating,
-            feedbackText: text,
+            q3: q3,
+            q4: q4,
+            q5: q5,
+            q6: q6,
             isAnonymous: isAnon,
             timestamp: r.marked_at || ''
           });
@@ -1996,9 +2049,23 @@ window.gasGet = (function () {
   }
 
   function h_submitFeedback(p, cb) {
+    var fbText = JSON.stringify({
+      studentName: p.studentName || '',
+      q2_clarity: Number(p.q2 || p.q2_clarity || 0),
+      q3: p.q3 || '',
+      q4: p.q4 || '',
+      q5: p.q5 || '',
+      q6: p.q6 || p.q6_suggestion || '',
+      anonymous: (p.anonymous === 'true' || p.anonymous === 'Y') ? 'Y' : 'N'
+    });
     POST('attendance_feedback', 'on_conflict=session_code,student_id', {
-      session_code: p.sessionCode, student_id: p.enrollmentNo || p.studentId, batch_code: p.batchCode,
-      attendance: p.status || 'Present', feedback_score: Number(p.q1_rating || 5), feedback_text: p.q6_suggestion || '', marked_at: nowISO()
+      session_code: p.sessionCode,
+      student_id: p.enrollmentNo || p.studentId,
+      batch_code: p.batchCode,
+      attendance: p.status || 'Present',
+      feedback_score: Number(p.q1 || p.q1_rating || 5),
+      feedback_text: fbText,
+      marked_at: nowISO()
     }, function(e) {
       cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
     });
@@ -2113,9 +2180,10 @@ window.gasGet = (function () {
   function h_getInstructorBatches(p, cb) {
     var instr = String(p.instructor || '').trim();
     if (!instr) { cb(null, { status: 'ok', batches: [] }); return; }
-    GET('batches', 'instructor=eq.' + encodeURIComponent(instr), function (e, rows) {
+    GET('batches', 'order=created_at.desc', function (e, rows) {
       if (e) { cb(null, { status: 'ok', batches: [] }); return; }
-      cb(null, { status: 'ok', batches: (rows || []).map(function (r) {
+      var matched = (rows || []).filter(function (r) { return sameName(r.instructor, instr); });
+      cb(null, { status: 'ok', batches: matched.map(function (r) {
         return { batchCode: r.batch_code, centre: r.centre, course: r.course, type: r.type,
           batchSlot: r.batch_slot || 'Full Day', startDate: toDMY(r.start_date), startDateISO: r.start_date ? new Date(r.start_date).toISOString() : '',
           endDate: toDMY(r.end_date), endDateISO: r.end_date ? new Date(r.end_date).toISOString() : '',
@@ -2127,11 +2195,13 @@ window.gasGet = (function () {
   function h_getInstructorTodaySessions(p, cb) {
     var instr = String(p.instructor || '').trim();
     if (!instr) { cb(null, { status: 'ok', date: toDMY(todayYMD()), batches: [] }); return; }
-    GET('batches', 'instructor=eq.' + encodeURIComponent(instr), function (e, bRows) {
+    GET('batches', 'order=created_at.desc', function (e, bRows) {
       if (e || !bRows || !bRows.length) { cb(null, { status: 'ok', date: toDMY(todayYMD()), batches: [] }); return; }
+      var matched = bRows.filter(function (b) { return sameName(b.instructor, instr); });
+      if (!matched.length) { cb(null, { status: 'ok', date: toDMY(todayYMD()), batches: [] }); return; }
       var today = todayYMD();
       GET('sessions', 'session_date=eq.' + today, function (e2, sRows) {
-        var batches = (bRows || []).map(function (b) {
+        var batches = matched.map(function (b) {
           var todaySess = (sRows || []).find(function (s) { return s.batch_code === b.batch_code; });
           var startD = b.start_date || '';
           var endD = b.end_date || '';
@@ -2228,10 +2298,19 @@ window.gasGet = (function () {
     var today = todayYMD();
     var instr = String(p.instructor || '').trim();
     if (!instr) { cb(null, { status: 'ok', batches: [] }); return; }
-    GET('batches', 'instructor=eq.' + encodeURIComponent(instr) + '&start_date=gte.' + today + '&order=start_date.asc', function(e, rows) {
+    // Cap to 30 days to match the UI "starting in the next 30 days" message
+    var d30 = new Date(); d30.setDate(d30.getDate() + 30);
+    var cap = d30.toISOString().slice(0, 10);
+    GET('batches', 'start_date=gte.' + today + '&start_date=lte.' + cap + '&order=start_date.asc', function(e, rows) {
       if (e) { cb(null, { status: 'ok', batches: [] }); return; }
-      cb(null, { status: 'ok', batches: (rows || []).map(function(b) {
-        return { batchCode: b.batch_code, course: b.course, centre: b.centre, startDate: b.start_date };
+      var matched = (rows || []).filter(function(b) { return sameName(b.instructor, instr); });
+      cb(null, { status: 'ok', batches: matched.map(function(b) {
+        var tTime = new Date(today).getTime();
+        var bTime = new Date(b.start_date).getTime();
+        var diffDays = Math.ceil((bTime - tTime) / (1000 * 60 * 60 * 24));
+        var daysToStart = isNaN(diffDays) ? 0 : diffDays;
+        var startingSoon = daysToStart <= 7;
+        return { batchCode: b.batch_code, course: b.course, centre: b.centre, startDate: toDMY(b.start_date), daysToStart: daysToStart, startingSoon: startingSoon };
       }) });
     });
   }
@@ -2275,7 +2354,8 @@ window.gasGet = (function () {
       var instr = String(p.instructor || '').trim();
       if (!instr) { cb(null, { status: 'ok', batches: [] }); return; }
 
-      var allBatches = await getP('batches', 'instructor=eq.' + encodeURIComponent(instr));
+      var allBatchesRaw = await getP('batches', 'order=created_at.desc');
+      var allBatches = (allBatchesRaw || []).filter(function(b) { return sameName(b.instructor, instr); });
       if (!allBatches || !allBatches.length) { cb(null, { status: 'ok', batches: [] }); return; }
 
       var batchCodes = allBatches.map(function(b) { return b.batch_code; });

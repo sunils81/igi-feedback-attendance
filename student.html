@@ -1157,7 +1157,7 @@ window.gasGet = (function () {
         var hM  = {}; (allSess||[]).forEach(function(s){ if(!hM[s.batch_code])hM[s.batch_code]=[]; hM[s.batch_code].push(s); });
         var tCodes = (todaySess||[]).map(function(s){ return s.session_code; });
         var attNow = {};
-        (attRows||[]).filter(function(a){ return tCodes.indexOf(a.session_code)>=0 && String(a.enrollment_no)===sid; })
+        (attRows||[]).filter(function(a){ return tCodes.indexOf(a.session_code)>=0 && String(a.student_id)===sid; })
                      .forEach(function(a){ attNow[a.session_code]=a; });
         var result = batchCodes.map(function(bc){
           var b=bm[bc]||{}, s=tSM[bc]||null;
@@ -1165,7 +1165,7 @@ window.gasGet = (function () {
           var wOHr=7, wCHr=21;
           return { batchCode:bc, centre:b.centre, course:b.course, instructor:b.instructor,
             batchSlot:b.batch_slot||'Full Day', sessNo:s?s.session_no:null,
-            sessionCode:s?s.session_code:null, sessionExists:!!s, topic:s?(s.topic_covered||')':''),
+            sessionCode:s?s.session_code:null, sessionExists:!!s, topic:s?(s.topic_covered||'') : '',
             windowActive:!!(s && hr>=wOHr && hr<wCHr), windowOpen:hr>=wOHr,
             windowOpenHr:wOHr, windowCloseHr:wCHr, alreadySubmitted:!!(s&&attNow[s.session_code]),
             history:hist.map(function(h){ return {sessNo:h.session_no, topic:h.topic_covered||'', sessionCode:h.session_code, sessionDate:toDMY(h.session_date)}; }) };
@@ -1173,33 +1173,43 @@ window.gasGet = (function () {
         var mM = {}; (marksRows||[]).forEach(function(m){ mM[m.assessment_id]=m; });
         var assessments = (assessRows||[]).map(function(a){
           var mm=mM[a.assessment_id];
+          var marksObt = mm ? mm.marks : null;
+          var totalM = a.total_marks || a.max_marks || 100;
+          var pct = (mm && totalM) ? Math.round((Number(mm.marks || 0) / totalM) * 100) : null;
+          var res = mm ? (mm.remarks || (pct >= 60 ? 'Pass' : 'Fail')) : null;
           return { assessmentId:a.assessment_id, testName:a.test_name, testType:a.test_type,
-            testDate:toDMY(a.test_date), totalMarks:a.total_marks,
-            marksObtained:mm?mm.marks_obtained:null, percentage:mm?mm.percentage:null, result:mm?mm.result:null };
+            testDate:toDMY(a.test_date), totalMarks:totalM,
+            marksObtained:marksObt, percentage:pct, result:res };
         });
         cb(null, { status:'ok', studentName:studentName, enrollmentNo:sid, batches:result, assessments:assessments });
       }
       GET('batches',             bcQ,                                                                    function(e,r){ batches=r||[];    done(); });
       GET('sessions',            bcQ+'&session_date=eq.'+today,                                         function(e,r){ todaySess=r||[];  done(); });
       GET('sessions',            bcQ+'&order=session_no.asc',                                           function(e,r){ allSess=r||[];    done(); });
-      GET('attendance_feedback', bcQ+'&enrollment_no=eq.'+encodeURIComponent(sid),                      function(e,r){ attRows=r||[];    done(); });
+      GET('attendance_feedback', bcQ+'&student_id=eq.'+encodeURIComponent(sid),                          function(e,r){ attRows=r||[];    done(); });
       GET('assessments',         bcQ+'&order=test_date.desc',                                           function(e,r){ assessRows=r||[]; done(); });
-      GET('assessment_marks',    'enrollment_no=eq.'+encodeURIComponent(sid),                           function(e,r){ marksRows=r||[];  done(); });
+      GET('assessment_marks',    'student_id=eq.'+encodeURIComponent(sid),                              function(e,r){ marksRows=r||[];  done(); });
     });
   }
 
   /* ── submitFeedback ─── */
   function h_submitFeedback(p, cb) {
     var sc=p.sessionCode, en=String(p.enrollmentNo||'');
-    GET('attendance_feedback','session_code=eq.'+encodeURIComponent(sc)+'&enrollment_no=eq.'+encodeURIComponent(en), function(e, rows){
+    GET('attendance_feedback','session_code=eq.'+encodeURIComponent(sc)+'&student_id=eq.'+encodeURIComponent(en), function(e, rows){
       if (rows && rows.length) { cb(null, { status:'error', reason:'already_submitted' }); return; }
-      POST('attendance_feedback', 'on_conflict=session_code,enrollment_no', {
-        session_code: sc, enrollment_no: en, student_name: p.studentName,
-        batch_code: p.batchCode, centre: p.centre, course: p.course, instructor: p.instructor,
-        topic: p.topic, status: (p.completionStatus==='absent'?'Absent':'Completed'),
-        q1_rating: Number(p.q1||0), q2_clarity: Number(p.q2||0),
-        q3_pace: p.q3||'', q4_doubts: p.q4||'', q5_learned: p.q5||'', q6_suggestion: p.q6||'',
-        anonymous: p.anonymous==='true'?'Y':'N', recorded_at: nowISO()
+      var fbText = JSON.stringify({
+        studentName: p.studentName || '',
+        q2_clarity: Number(p.q2 || 0),
+        q3: p.q3 || '',
+        q4: p.q4 || '',
+        q5: p.q5 || '',
+        q6: p.q6 || '',
+        anonymous: p.anonymous === 'true' ? 'Y' : 'N'
+      });
+      POST('attendance_feedback', 'on_conflict=session_code,student_id', {
+        session_code: sc, student_id: en, batch_code: p.batchCode,
+        attendance: (p.completionStatus==='absent'?'Absent':'Present'),
+        feedback_score: Number(p.q1||0), feedback_text: fbText, marked_at: nowISO()
       }, function(e2){ cb(null, e2?{status:'error',reason:String(e2)}:{status:'ok'}); });
     });
   }
@@ -1207,7 +1217,7 @@ window.gasGet = (function () {
   /* ── selfMarkAttendance ─── (fire-and-forget location tag) */
   function h_selfMark(p, cb) {
     PATCH('attendance_feedback',
-      'session_code=eq.'+encodeURIComponent(p.sessionCode)+'&enrollment_no=eq.'+encodeURIComponent(p.studentId),
+      'session_code=eq.'+encodeURIComponent(p.sessionCode)+'&student_id=eq.'+encodeURIComponent(p.studentId),
       { lat: p.lat||null, lng: p.lng||null, location_status: p.locationStatus||'', resolved_address: p.resolvedAddress||'' },
       function(){ cb(null, {status:'ok'}); });
   }
@@ -1229,7 +1239,7 @@ window.gasGet = (function () {
 
   /* ── getStudentResults ─── */
   function h_stuResults(p, cb) {
-    var qs = 'enrollment_no=eq.'+encodeURIComponent(p.studentId);
+    var qs = 'student_id=eq.'+encodeURIComponent(p.studentId);
     GET('assessment_marks', qs, function(e, marks){
       var aIds = (marks||[]).map(function(m){return m.assessment_id;});
       if (!aIds.length) { cb(null, {status:'ok', results:[]}); return; }
@@ -1237,9 +1247,12 @@ window.gasGet = (function () {
         var tm={}; (tests||[]).forEach(function(t){tm[t.assessment_id]=t;});
         cb(null, {status:'ok', results:(marks||[]).map(function(m){
           var t=tm[m.assessment_id]||{};
+          var totalM = t.total_marks || 100;
+          var pct = totalM ? Math.round((Number(m.marks || 0) / totalM) * 100) : null;
+          var res = m.remarks || (pct >= 60 ? 'Pass' : 'Fail');
           return { assessmentId:m.assessment_id, testName:t.test_name, testType:t.test_type,
-            testDate:toDMY(t.test_date), totalMarks:t.total_marks||m.total_marks,
-            marksObtained:m.marks_obtained, percentage:m.percentage, result:m.result, remarks:m.remarks };
+            testDate:toDMY(t.test_date), totalMarks:totalM,
+            marksObtained:m.marks, percentage:pct, result:res, remarks:m.remarks || '' };
         })});
       });
     });
@@ -1255,15 +1268,15 @@ window.gasGet = (function () {
     GET('sessions', qs, function(e, srows){
       if (!srows||!srows.length){ cb(null,{status:'ok',fromDate:p.fromDate,events:[]}); return; }
       var codes=srows.map(function(s){return s.session_code;});
-      var attQ='session_code=in.('+codes.join(',')+')'+(p.studentId?'&enrollment_no=eq.'+encodeURIComponent(p.studentId):'');
+      var attQ='session_code=in.('+codes.join(',')+')'+(p.studentId?'&student_id=eq.'+encodeURIComponent(p.studentId):'');
       GET('attendance_feedback', attQ, function(e2, arows){
         var today=todayYMD();
         var MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         var events=srows.map(function(s){
           var iso=s.session_date?String(s.session_date).slice(0,10):'';
           var af=(arows||[]).filter(function(a){return a.session_code===s.session_code;});
-          var pres=af.filter(function(a){return a.status!=='Absent';}).length;
-          var myAtt=p.studentId?af.find(function(a){return String(a.enrollment_no)===String(p.studentId);}):null;
+          var pres=af.filter(function(a){return a.status!=='Absent' && a.attendance!=='Absent';}).length;
+          var myAtt=p.studentId?af.find(function(a){return String(a.student_id)===String(p.studentId);}):null;
           var stat=String(s.session_type||'').toLowerCase()==='cancelled'?'cancelled'
             :iso<today?(af.length>0?'completed':'pending'):iso===today?'pending':'upcoming';
           var d=new Date(iso+'T00:00:00');

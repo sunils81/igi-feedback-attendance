@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IGI — Supabase Migration Plan</title>
+<style>
+  :root {
+    --navy: #0d1b2e;
+    --gold: #C8A951;
+    --gold-light: #f5e9c4;
+    --white: #fff;
+    --gray: #f4f5f7;
+    --border: #e2e5ea;
+    --green: #059669;
+    --red: #dc2626;
+    --amber: #d97706;
+    --blue: #2563eb;
+    --text: #1f2937;
+    --sub: #6b7280;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: var(--text); }
+
+  header {
+    background: var(--navy);
+    color: white;
+    padding: 28px 48px;
+    display: flex; align-items: center; gap: 18px;
+  }
+  header .logo { font-size: 28px; font-weight: 900; color: var(--gold); letter-spacing: -1px; }
+  header .title { font-size: 20px; font-weight: 600; }
+  header .sub { font-size: 13px; color: #94a3b8; margin-top: 2px; }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 36px 24px; }
+
+  /* Summary bar */
+  .summary-bar {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px;
+  }
+  .metric {
+    background: white; border-radius: 12px; padding: 20px 24px;
+    border-left: 4px solid var(--gold);
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+  }
+  .metric .val { font-size: 32px; font-weight: 800; color: var(--navy); }
+  .metric .lbl { font-size: 12px; color: var(--sub); margin-top: 4px; text-transform: uppercase; letter-spacing: .05em; }
+
+  /* Section cards */
+  .card {
+    background: white; border-radius: 14px; padding: 28px 32px; margin-bottom: 24px;
+    box-shadow: 0 1px 6px rgba(0,0,0,.07);
+  }
+  .card h2 {
+    font-size: 17px; font-weight: 700; color: var(--navy);
+    margin-bottom: 18px; display: flex; align-items: center; gap: 10px;
+  }
+  .card h2 .badge {
+    font-size: 11px; font-weight: 600; padding: 2px 10px;
+    border-radius: 20px; background: var(--gold-light); color: #92640b;
+  }
+  .card h3 { font-size: 14px; font-weight: 700; color: var(--navy); margin: 20px 0 10px; }
+
+  /* Verdict box */
+  .verdict {
+    background: var(--gold-light); border: 1.5px solid var(--gold);
+    border-radius: 10px; padding: 18px 22px; margin-bottom: 28px;
+    font-size: 14px; line-height: 1.7; color: #5a3d00;
+  }
+  .verdict strong { color: var(--navy); }
+
+  /* Comparison table */
+  .compare { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .compare th {
+    background: var(--navy); color: white;
+    padding: 10px 14px; text-align: left; font-size: 12px; font-weight: 600;
+    letter-spacing: .04em;
+  }
+  .compare th:first-child { border-radius: 8px 0 0 0; }
+  .compare th:last-child { border-radius: 0 8px 0 0; }
+  .compare td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .compare tr:last-child td { border-bottom: none; }
+  .compare tr:nth-child(even) td { background: #fafafa; }
+  .tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+  .tag.win { background: #d1fae5; color: #065f46; }
+  .tag.lose { background: #fee2e2; color: #991b1b; }
+  .tag.mid { background: #fef3c7; color: #92400e; }
+
+  /* Schema tables */
+  .schema-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .schema-table { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .schema-table .tbl-header {
+    background: var(--navy); color: white;
+    padding: 10px 14px; font-size: 13px; font-weight: 700;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .schema-table .tbl-header .tbl-badge {
+    font-size: 10px; background: rgba(255,255,255,.15); padding: 2px 8px; border-radius: 10px;
+  }
+  .schema-table table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .schema-table td { padding: 7px 12px; border-bottom: 1px solid var(--border); }
+  .schema-table tr:last-child td { border-bottom: none; }
+  .schema-table td:first-child { font-family: 'SF Mono', monospace; color: var(--navy); font-weight: 600; }
+  .schema-table td:nth-child(2) { color: var(--blue); font-family: monospace; font-size: 11px; }
+  .schema-table td:nth-child(3) { color: var(--sub); font-size: 11px; }
+  .pk { color: var(--gold) !important; }
+  .fk { color: #7c3aed !important; }
+
+  /* Timeline */
+  .timeline { position: relative; padding-left: 32px; }
+  .timeline::before { content:''; position:absolute; left:10px; top:0; bottom:0; width:2px; background:var(--border); }
+  .tl-item { position: relative; margin-bottom: 20px; }
+  .tl-dot {
+    position: absolute; left: -27px; top: 4px;
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid white; box-shadow: 0 0 0 2px var(--navy);
+    background: var(--navy);
+  }
+  .tl-dot.gold { background: var(--gold); box-shadow: 0 0 0 2px var(--gold); }
+  .tl-dot.green { background: var(--green); box-shadow: 0 0 0 2px var(--green); }
+  .tl-week { font-size: 11px; font-weight: 700; color: var(--sub); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+  .tl-title { font-size: 14px; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
+  .tl-tasks { font-size: 13px; color: var(--sub); line-height: 1.7; }
+
+  /* Code block */
+  pre {
+    background: #0f172a; color: #e2e8f0; border-radius: 10px;
+    padding: 20px; font-size: 12px; line-height: 1.6;
+    overflow-x: auto; margin: 12px 0;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .kw { color: #93c5fd; }
+  .fn { color: #6ee7b7; }
+  .str { color: #fca5a5; }
+  .cm { color: #64748b; }
+  .tbl-name { color: #fcd34d; }
+
+  /* Risk table */
+  .risks { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .risks th { background: #f8f9fa; padding: 10px 14px; text-align: left; font-size: 12px; color: var(--sub); border-bottom: 2px solid var(--border); }
+  .risks td { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .risks tr:last-child td { border-bottom: none; }
+  .sev { display: inline-block; font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 10px; }
+  .sev.high { background: #fee2e2; color: #991b1b; }
+  .sev.med { background: #fef3c7; color: #92400e; }
+  .sev.low { background: #d1fae5; color: #065f46; }
+
+  @media (max-width: 700px) {
+    .summary-bar { grid-template-columns: 1fr 1fr; }
+    .schema-grid { grid-template-columns: 1fr; }
+    header { padding: 20px 18px; }
+    .container { padding: 20px 12px; }
+    .card { padding: 20px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">IGI</div>
+  <div>
+    <div class="title">Supabase Migration Plan</div>
+    <div class="sub">GSheets + Apps Script → Supabase + Vercel · Architecture & Roadmap</div>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="verdict">
+    <strong>Bottom line:</strong> Migration to Supabase is worthwhile and practical. Your current system has ~35 sheets covering students, batches, fees, inventory, assessments, diplomas, and online tests — all naturally relational. Supabase PostgreSQL maps cleanly to this. Expected speed improvement: <strong>5–10× faster page loads</strong>. Estimated migration effort: <strong>2–3 weeks</strong> (phased, zero downtime).
+  </div>
+
+  <div class="summary-bar">
+    <div class="metric"><div class="val">35</div><div class="lbl">GSheet tabs to migrate</div></div>
+    <div class="metric"><div class="val">~3 wk</div><div class="lbl">Estimated effort</div></div>
+    <div class="metric"><div class="val">10×</div><div class="lbl">Expected speed gain</div></div>
+    <div class="metric"><div class="val">$0</div><div class="lbl">Supabase free tier cost</div></div>
+  </div>
+
+  <!-- WHY -->
+  <div class="card">
+    <h2>Why GAS + GSheets is slow</h2>
+    <table class="compare">
+      <tr>
+        <th>Bottleneck</th>
+        <th>What's happening</th>
+        <th>Impact</th>
+      </tr>
+      <tr>
+        <td>Cold start</td>
+        <td>Every GAS request spins up a new runtime (~1–3 sec before your code even runs)</td>
+        <td><span class="tag lose">2–3 sec delay</span></td>
+      </tr>
+      <tr>
+        <td>Row scanning</td>
+        <td>getValues() loads the ENTIRE sheet then loops in JS — no indexes</td>
+        <td><span class="tag lose">Slower as data grows</span></td>
+      </tr>
+      <tr>
+        <td>JSONP workaround</td>
+        <td>No real API — forced to inject &lt;script&gt; tags; large payloads break</td>
+        <td><span class="tag lose">Fragile, size-limited</span></td>
+      </tr>
+      <tr>
+        <td>GAS quotas</td>
+        <td>6 min max execution, 20k URL fetches/day, 50MB response limit</td>
+        <td><span class="tag mid">Ceiling risk</span></td>
+      </tr>
+      <tr>
+        <td>Concurrent users</td>
+        <td>GAS has no connection pooling — parallel requests queue up</td>
+        <td><span class="tag lose">Degrades under load</span></td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- OPTIONS -->
+  <div class="card">
+    <h2>Alternatives compared</h2>
+    <table class="compare">
+      <tr>
+        <th>Option</th>
+        <th>Speed</th>
+        <th>Free tier</th>
+        <th>Migration effort</th>
+        <th>Best for</th>
+        <th>Verdict</th>
+      </tr>
+      <tr>
+        <td><strong>Supabase</strong> ⭐</td>
+        <td>PostgreSQL, &lt;50ms queries</td>
+        <td>500MB DB, 2GB bandwidth, unlimited rows</td>
+        <td>Medium — 2–3 weeks</td>
+        <td>Relational data, multi-centre, row-level security</td>
+        <td><span class="tag win">Recommended</span></td>
+      </tr>
+      <tr>
+        <td>Firebase Firestore</td>
+        <td>Fast reads, good realtime</td>
+        <td>Generous (1GB storage, 50k reads/day)</td>
+        <td>High — NoSQL needs redesign</td>
+        <td>Simple apps, no complex joins</td>
+        <td><span class="tag mid">Not ideal (relational data)</span></td>
+      </tr>
+      <tr>
+        <td>PocketBase</td>
+        <td>Very fast, SQLite</td>
+        <td>Self-hosted only</td>
+        <td>Low — simple API</td>
+        <td>Solo devs comfortable hosting</td>
+        <td><span class="tag mid">Good but needs a VPS</span></td>
+      </tr>
+      <tr>
+        <td>Neon (Postgres)</td>
+        <td>Same as Supabase</td>
+        <td>0.5GB, serverless branches</td>
+        <td>Medium — no built-in auth</td>
+        <td>Dev teams who want raw Postgres</td>
+        <td><span class="tag mid">Works, less batteries-included</span></td>
+      </tr>
+      <tr>
+        <td>Keep GAS + cache</td>
+        <td>Marginal improvement</td>
+        <td>Free (already paid)</td>
+        <td>Zero</td>
+        <td>Short-term patch</td>
+        <td><span class="tag lose">Ceiling too low long-term</span></td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- SCHEMA -->
+  <div class="card">
+    <h2>Proposed Supabase Schema <span class="badge">PostgreSQL</span></h2>
+    <p style="font-size:13px;color:var(--sub);margin-bottom:20px">Each GSheet tab maps to one table. Foreign keys replace cross-sheet lookups. Indexes replace row scanning.</p>
+
+    <div class="schema-grid">
+
+      <div class="schema-table">
+        <div class="tbl-header">users <span class="tbl-badge">was: User_Credentials</span></div>
+        <table>
+          <tr><td class="pk">id</td><td>uuid PK</td><td>Supabase auth UID</td></tr>
+          <tr><td>name</td><td>text NOT NULL</td><td></td></tr>
+          <tr><td>role</td><td>text</td><td>Counselor / Instructor / Admin</td></tr>
+          <tr><td>centre</td><td>text[]</td><td>Array of allowed centres</td></tr>
+          <tr><td>is_admin</td><td>boolean</td><td></td></tr>
+          <tr><td>is_manager</td><td>boolean</td><td></td></tr>
+          <tr><td>created_at</td><td>timestamptz</td><td></td></tr>
+        </table>
+      </div>
+
+      <div class="schema-table">
+        <div class="tbl-header">batches <span class="tbl-badge">was: Batches</span></div>
+        <table>
+          <tr><td class="pk">batch_code</td><td>text PK</td><td>e.g. CHE-CSG-001</td></tr>
+          <tr><td>centre</td><td>text NOT NULL</td><td>Indexed</td></tr>
+          <tr><td>course</td><td>text NOT NULL</td><td></td></tr>
+          <tr><td>start_date</td><td>date</td><td></td></tr>
+          <tr><td>end_date</td><td>date</td><td></td></tr>
+          <tr><td>batch_slot</td><td>text</td><td>Morning / Evening / Full Day</td></tr>
+          <tr><td class="fk">instructor_id</td><td>uuid FK → users</td><td></td></tr>
+          <tr><td>status</td><td>text</td><td>Active / Completed / Cancelled</td></tr>
+        </table>
+      </div>
+
+      <div class="schema-table">
+        <div class="tbl-header">students <span class="tbl-badge">was: Batch_Students</span></div>
+        <table>
+          <tr><td class="pk">student_id</td><td>text PK</td><td>e.g. IGI2024001</td></tr>
+          <tr><td>student_name</td><td>text NOT NULL</td><td></td></tr>
+          <tr><td>email</td><td>text</td><td></td></tr>
+          <tr><td>phone</td><td>text</td><td></td></tr>
+          <tr><td class="fk">batch_code</td><td>text FK → batches</td><td>Primary batch</td></tr>
+          <tr><td>course</td><td>text</td><td></td></tr>
+          <tr><td>centre</td><td>text</td><td>Indexed</td></tr>
+          <tr><td>enrolled_at</td><td>timestamptz</td><td></td></tr>
+        </table>
+      </div>
+
+      <div class="schema-table">
+        <div class="tbl-header">sessions <span class="tbl-badge">was: Sessions</span></div>
+        <table>
+          <tr><td class="pk">id</td><td>uuid PK</td><td></td></tr>
+          <tr><td class="fk">batch_code</td><td>text FK → batches</td><td>Indexed</td></tr>
+          <tr><td>session_date</td><td>date NOT NULL</td><td></td></tr>
+          <tr><td>topic</td><td>text</td><td></td></tr>
+          <tr><td>status</td><td>text</td><td>Scheduled / Completed / Cancelled</td></tr>
+          <tr><td>conducted_by</td><td>text</td><td></td></tr>
+          <tr><td>created_at</td><td>timestamptz</td><td></td></tr>
+        </table>
+      </div>
+
+      <div class="schema-table">
+        <div class="tbl-header">attendance <span class="tbl-badge">was: ATT_Records + Attendance_Feedback</span></div>
+        <table>
+          <tr><td class="pk">id</td><td>uuid PK</td><td></td></tr>
+          <tr><td class="fk">session_id</td><td>uuid FK → sessions</td><td>Indexed</td></tr>
+          <tr><td class="fk">student_id</td><td>text FK → students</td><td>Indexed</td></tr>
+          <tr><td>status</td><td>text</td><td>Present / Absent / Late</td></tr>
+          <tr><td>feedback_score</td><td>smallint</td><td>1–5</td></tr>
+          <tr><td>feedback_text</td><td>text</td><td></td></tr>
+          <tr><td>marked_at</td><td>timestamptz</td><td></td></tr>
+        </table>
+      </div>
+
+      <div class="schema-table">
+        <div class="tbl-header">fees <span class="tbl-badge">was: Student_Fees</span></div>
+        <table>
+          <tr><td class="pk">id</td><td>uuid PK</td><td></td></tr>
+          <tr><td class="fk">student_id</td><td>text FK → students</td><td>Indexed</td></tr>
+          <tr><td>amount</td><td>numeric(10,2)</td><td></td></tr>
+          <tr><td>payment_date</td><td>date</td><td></td></tr>
+          <tr><td>payment_mode</td><td>text</td><td>Cash / UPI / Bank</td></tr>
+          <tr><td>receipt_no</td><td>text</td><td></td></tr>
+          <tr><td class="fk">recorded_by</td><td>uuid FK → users</td><td></td></tr>
+        </table>
+      </div>
+
+      <div class="schema-table">
+        <div class="tbl-header">assessments <span class="tbl-badge">was: Assessments + Assessment_Marks</span></div>
+        <table>
+          <tr><td class="pk">id</td><td>uuid PK</td><td></td></tr>
+          <tr><td class="fk">batch_code</td><td>text FK → batches</td><td></td></tr>
+          <tr><td>title</td><td>text</td><td></td></tr>
+          <tr><td>type</td><td>text</td><td>Weekly / Final</td></tr>
+          <tr><td>max_marks</td><td>smallint</td><td></td></tr>
+          <tr><td>held_on</td><td>date</td><td></td></tr>
+        </table>
+      </div>
+
+      <div class="schema-table">
+        <div class="tbl-header">assessment_marks <span class="tbl-badge">was: Assessment_Marks</span></div>
+        <table>
+          <tr><td class="pk">id</td><td>uuid PK</td><td></td></tr>
+          <tr><td class="fk">assessment_id</td><td>uuid FK → assessments</td><td>Indexed</td></tr>
+          <tr><td class="fk">student_id</td><td>text FK → students</td><td>Indexed</td></tr>
+          <tr><td>marks</td><td>numeric(5,2)</td><td></td></tr>
+          <tr><td>remarks</td><td>text</td><td></td></tr>
+        </table>
+      </div>
+
+      <div class="schema-table">
+        <div class="tbl-header">diplomas <span class="tbl-badge">was: Diplomas</span></div>
+        <table>
+          <tr><td class="pk">id</td><td>uuid PK</td><td></td></tr>
+          <tr><td class="fk">student_id</td><td>text FK → students</td><td></td></tr>
+          <tr><td class="fk">batch_code</td><td>text FK → batches</td><td></td></tr>
+          <tr><td>course</td><td>text</td><td></td></tr>
+          <tr><td>completion_date</td><td>date</td><td></td></tr>
+          <tr><td>drive_link</td><td>text</td><td>PDF URL in Drive</td></tr>
+          <tr><td class="fk">released_by</td><td>uuid FK → users</td><td></td></tr>
+          <tr><td>released_at</td><td>timestamptz</td><td></td></tr>
+        </table>
+      </div>
+
+      <div class="schema-table">
+        <div class="tbl-header">inventory_items <span class="tbl-badge">was: INV_Items + INV_Stock</span></div>
+        <table>
+          <tr><td class="pk">id</td><td>uuid PK</td><td></td></tr>
+          <tr><td>name</td><td>text NOT NULL</td><td></td></tr>
+          <tr><td>category</td><td>text</td><td></td></tr>
+          <tr><td>unit</td><td>text</td><td></td></tr>
+          <tr><td>stock_qty</td><td>integer DEFAULT 0</td><td></td></tr>
+          <tr><td>reorder_level</td><td>integer</td><td></td></tr>
+          <tr><td>centre</td><td>text</td><td>Indexed</td></tr>
+        </table>
+      </div>
+
+      <div class="schema-table">
+        <div class="tbl-header">online_tests <span class="tbl-badge">was: OnlineTests + OT_Questions + OT_Responses</span></div>
+        <table>
+          <tr><td class="pk">id</td><td>uuid PK</td><td></td></tr>
+          <tr><td class="fk">batch_code</td><td>text FK → batches</td><td></td></tr>
+          <tr><td>title</td><td>text</td><td></td></tr>
+          <tr><td>duration_mins</td><td>smallint</td><td></td></tr>
+          <tr><td>starts_at</td><td>timestamptz</td><td></td></tr>
+          <tr><td>status</td><td>text</td><td>Draft / Live / Closed</td></tr>
+        </table>
+      </div>
+
+      <div class="schema-table">
+        <div class="tbl-header">revenue_targets <span class="tbl-badge">was: Revenue_* (4 sheets merged)</span></div>
+        <table>
+          <tr><td class="pk">id</td><td>uuid PK</td><td></td></tr>
+          <tr><td>centre</td><td>text</td><td>Indexed</td></tr>
+          <tr><td>year</td><td>smallint</td><td></td></tr>
+          <tr><td>month</td><td>smallint</td><td></td></tr>
+          <tr><td>target_amount</td><td>numeric(12,2)</td><td></td></tr>
+          <tr><td>achieved_amount</td><td>numeric(12,2)</td><td></td></tr>
+          <tr><td>revised_target</td><td>numeric(12,2)</td><td>nullable</td></tr>
+        </table>
+      </div>
+
+    </div>
+
+    <div style="margin-top:20px;padding:14px 18px;background:var(--gray);border-radius:8px;font-size:13px;color:var(--sub)">
+      <strong style="color:var(--navy)">Also needed:</strong>
+      holidays · hod_approvals · inventory_requests · inventory_dispatch · inventory_vendors · question_bank · tray_registry · tray_bookings — same pattern, straightforward mapping.
+    </div>
+  </div>
+
+  <!-- SAMPLE CODE -->
+  <div class="card">
+    <h2>What the code looks like after migration</h2>
+    <h3>Before (GAS + JSONP) — slow, fragile</h3>
+<pre><span class="cm">// Fetch all batches — 2-4 seconds, breaks on large data</span>
+<span class="fn">gasGet</span>({action: <span class="str">'getBatches'</span>, centre: <span class="str">'Chennai'</span>}, <span class="kw">function</span>(err, data) {
+  <span class="cm">// GAS scans every row of the Batches sheet</span>
+  renderBatches(data.batches);
+});</pre>
+
+    <h3>After (Supabase JS client) — fast, typed, clean</h3>
+<pre><span class="cm">// Same data in &lt;50ms — indexed PostgreSQL query</span>
+<span class="kw">const</span> { data, error } = <span class="kw">await</span> supabase
+  .<span class="fn">from</span>(<span class="str">'batches'</span>)
+  .<span class="fn">select</span>(<span class="str">'*, students(count)'</span>)
+  .<span class="fn">eq</span>(<span class="str">'centre'</span>, <span class="str">'Chennai'</span>)
+  .<span class="fn">eq</span>(<span class="str">'status'</span>, <span class="str">'Active'</span>)
+  .<span class="fn">order</span>(<span class="str">'start_date'</span>, { ascending: <span class="kw">false</span> });
+
+renderBatches(data);</pre>
+
+    <h3>Row-level security (replaces GAS counselor auth check)</h3>
+<pre><span class="cm">-- Counselors can only see batches in their allowed centres</span>
+<span class="kw">CREATE POLICY</span> <span class="str">"centre_isolation"</span> <span class="kw">ON</span> <span class="tbl-name">batches</span>
+  <span class="kw">FOR SELECT USING</span> (
+    centre = <span class="kw">ANY</span>((
+      <span class="kw">SELECT</span> centre <span class="kw">FROM</span> <span class="tbl-name">users</span>
+      <span class="kw">WHERE</span> id = auth.uid()
+    ))
+  );</pre>
+  </div>
+
+  <!-- MIGRATION PHASES -->
+  <div class="card">
+    <h2>Migration Roadmap — 3 Phases</h2>
+    <div class="timeline">
+      <div class="tl-item">
+        <div class="tl-dot gold"></div>
+        <div class="tl-week">Week 1 — Foundation</div>
+        <div class="tl-title">Set up Supabase + migrate core tables</div>
+        <div class="tl-tasks">
+          Create Supabase project · Design schema (users, batches, students, sessions, fees) ·
+          Export GSheets → CSV → import to Supabase · Set up Row Level Security policies ·
+          Create Supabase API wrapper (replaces gas.js) · Keep GAS running in parallel
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot gold"></div>
+        <div class="tl-week">Week 2 — Switch counselor + instructor portals</div>
+        <div class="tl-title">Replace GAS calls with Supabase in UI</div>
+        <div class="tl-tasks">
+          Replace gasGet() / _gasPost() with supabase.from() calls in counselor.html ·
+          Replace JSONP with direct fetch · Migrate login to Supabase Auth ·
+          Test batch management, fee recording, student enrolment ·
+          Deploy to Vercel — both old and new live simultaneously
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot green"></div>
+        <div class="tl-week">Week 3 — Migrate remaining modules + cut over</div>
+        <div class="tl-title">Assessments, inventory, diplomas, online tests</div>
+        <div class="tl-tasks">
+          Migrate inventory, assessments, revenue targets, diplomas ·
+          Migrate online test engine (biggest module) ·
+          Final data sync from GSheets → Supabase ·
+          Switch DNS / routing to Supabase-backed version ·
+          Keep GSheets as read-only archive for 30 days
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RISKS -->
+  <div class="card">
+    <h2>Risks & mitigations</h2>
+    <table class="risks">
+      <tr>
+        <th>Risk</th>
+        <th>Severity</th>
+        <th>Mitigation</th>
+      </tr>
+      <tr>
+        <td>Data loss during migration</td>
+        <td><span class="sev high">High</span></td>
+        <td>Keep GSheets as live backup until Supabase is verified; do a dry-run import first</td>
+      </tr>
+      <tr>
+        <td>Diploma PDFs still need Drive</td>
+        <td><span class="sev med">Medium</span></td>
+        <td>Keep Google Drive for file storage; just move the metadata to Supabase. Or switch to Supabase Storage.</td>
+      </tr>
+      <tr>
+        <td>Online test module is complex</td>
+        <td><span class="sev med">Medium</span></td>
+        <td>Migrate last, after simpler modules are proven. Keep GAS for tests until Week 3.</td>
+      </tr>
+      <tr>
+        <td>Supabase free tier limits</td>
+        <td><span class="sev low">Low</span></td>
+        <td>Free tier supports 500MB DB and 2GB bandwidth — more than enough. Pro is $25/month if needed.</td>
+      </tr>
+      <tr>
+        <td>Email sending (welcome emails)</td>
+        <td><span class="sev low">Low</span></td>
+        <td>GAS currently sends emails. Replace with Resend.com (free tier: 3k/month) or Supabase built-in email.</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="card" style="background:var(--navy);color:white">
+    <h2 style="color:var(--gold)">Recommendation</h2>
+    <p style="font-size:14px;line-height:1.8;color:#cbd5e1">
+      Start with <strong style="color:white">Phase 1 only</strong> — create the Supabase project, set up the schema, and import the data. This is zero-risk (GAS keeps running) and lets you validate the data structure before writing any new UI code. Once the data is in Supabase and queries are fast, the motivation to complete Phase 2 becomes obvious. The total rewrite of gas.js logic into Supabase queries is mechanical work — each GAS action maps 1:1 to a Supabase query. The hardest part is the online test engine; everything else is straightforward CRUD.
+    </p>
+    <p style="font-size:13px;color:#94a3b8;margin-top:12px">
+      Ready to start? The next step is: create a free Supabase project at supabase.com, then share the project URL and anon key — I'll write the full schema SQL and the first batch of migrated API calls.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

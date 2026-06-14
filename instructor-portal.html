@@ -2372,7 +2372,7 @@ function tryRestoreSession() {
     isDualRole               = !!s.isDualRole;
     dualCentres              = s.dualCentres || [];
     isAcademicHead           = !!s.isAcademicHead;
-    isRevenueManager         = !!s.isRevenueManager;
+    isRevenueManager         = !!s.isRevenueManager && (instructorName||'').toLowerCase().indexOf('bhavin') === -1;
     managerCentres           = s.managerCentres || [];
     document.getElementById('portal-name').textContent = instructorName;
     if (isDualRole)      { var t1 = document.getElementById('t-batchmgmt-tab'); if(t1) t1.style.display='flex'; }
@@ -2443,19 +2443,21 @@ function doLogin() {
     isDualRole       = !!d.isDualRole;
     dualCentres      = d.centres || [];
     isAcademicHead   = !!d.isAcademicHead;
-    isRevenueManager = !!d.isRevenueManager;
+    // Safety net: Bhavin is AcademicHead, never RevenueManager
+    var _nl = (name || '').toLowerCase();
+    isRevenueManager = !!d.isRevenueManager && _nl.indexOf('bhavin') === -1;
     managerCentres   = d.managerCentres || [];
     document.getElementById('portal-name').textContent = name;
     // Show batch management tab for dual-role
     if (isDualRole) {
       document.getElementById('t-batchmgmt-tab').style.display = 'flex';
     }
-    // Show academic tab for Bhavin
+    // Show academic tab for AcademicHead/Bhavin
     if (isAcademicHead) {
       document.getElementById('t-academic-tab').style.display = 'flex';
       setTimeout(function(){ iTab('t-academic'); }, 100);
     }
-    // Show revenue tab for Amit
+    // Show revenue tab for RevenueManager/Amit only
     if (isRevenueManager) {
       document.getElementById('t-revenue-tab').style.display = 'flex';
     }
@@ -3678,9 +3680,9 @@ function filterAcademicComments() {
     var dateStr = c.timestamp ? new Date(c.timestamp).toLocaleDateString('en-IN', {day:'2-digit',month:'short',year:'numeric'}) : '';
     
     var contentHtml = '';
-    if (c.q3) contentHtml += '<div class="comment-text-section"><div class="comment-label">What went well:</div><div class="comment-val">' + escHtml(c.q3) + '</div></div>';
-    if (c.q4) contentHtml += '<div class="comment-text-section"><div class="comment-label">Areas to improve:</div><div class="comment-val">' + escHtml(c.q4) + '</div></div>';
-    if (c.q5) contentHtml += '<div class="comment-text-section"><div class="comment-label">Suggestions:</div><div class="comment-val">' + escHtml(c.q5) + '</div></div>';
+    if (c.q3) contentHtml += '<div class="comment-text-section"><div class="comment-label">Lecture Pace:</div><div class="comment-val">' + escHtml(c.q3) + '</div></div>';
+    if (c.q4) contentHtml += '<div class="comment-text-section"><div class="comment-label">Doubts Addressed:</div><div class="comment-val">' + escHtml(c.q4) + '</div></div>';
+    if (c.q5) contentHtml += '<div class="comment-text-section"><div class="comment-label">Student Comments:</div><div class="comment-val">' + escHtml(c.q5) + '</div></div>';
     if (c.q6) {
       contentHtml += 
         '<div class="comment-q6-box">' +
@@ -5072,8 +5074,13 @@ function otOpenQuestionsModal(testId, label, testStatus) {
       document.getElementById('otqm-body').innerHTML = '<div style="color:#dc2626;padding:16px;">Failed to load questions.</div>';
       return;
     }
-    otModalQuestionsCache = d.questions;
-    otRenderQModal(testId, d.questions, testStatus || 'Draft');
+    // Normalize fields: backend returns id+correctOption, renderer needs qId+correctAnswer
+    otModalQuestionsCache = (d.questions || []).map(function(q) {
+      if (!q.qId && q.id) q.qId = String(q.id);
+      if (!q.correctAnswer && q.correctOption) q.correctAnswer = q.correctOption;
+      return q;
+    });
+    otRenderQModal(testId, otModalQuestionsCache, testStatus || 'Draft');
   });
 }
 

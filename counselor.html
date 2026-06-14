@@ -1172,14 +1172,23 @@
           <select id="b-instructor"><option value="">Select instructor</option></select>
         </div>
         <div class="field"><label>Co-Instructor <span style="font-size:10px;color:var(--muted);font-weight:400">(optional — for handovers / cover)</span></label>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <select id="b-co-instructor" style="flex:1;min-width:160px"><option value="">None</option></select>
-            <div style="display:flex;align-items:center;gap:6px">
-              <label style="font-size:11px;color:var(--muted);white-space:nowrap;margin:0">Cover until</label>
-              <input type="date" id="b-co-instructor-until" style="font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;color:var(--navy)">
-            </div>
+          <select id="b-co-instructor" style="width:100%;margin-bottom:8px"><option value="">None</option></select>
+          <div style="font-size:11px;font-weight:600;color:var(--navy);margin-bottom:5px">Cover duration:</div>
+          <div style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--navy)">
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+              <input type="radio" name="b-co-mode" value="permanent" checked onchange="toggleCreateCoUntil('permanent')">
+              Permanent handover <span style="color:var(--muted)">(no end date)</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+              <input type="radio" name="b-co-mode" value="tillend" onchange="toggleCreateCoUntil('tillend')">
+              Till batch ends <span style="color:var(--muted);font-size:10px">(uses end date above)</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+              <input type="radio" name="b-co-mode" value="date" onchange="toggleCreateCoUntil('date')">
+              Specific date:
+              <input type="date" id="b-co-instructor-until" disabled style="font-size:11px;padding:4px 7px;border:1px solid var(--border);border-radius:6px;color:var(--navy);opacity:0.4">
+            </label>
           </div>
-          <div style="font-size:10px;color:var(--muted);margin-top:3px">Leave "Cover until" blank for a permanent handover</div>
         </div>
         <div class="field"><label>Start Date *</label>
           <input type="date" id="b-start" onchange="genBatchCode()">
@@ -2802,6 +2811,13 @@ function loadHolidayList(forceRefresh) {
 }
 
 // ── Create Batch ──────────────────────────────────────────────
+function toggleCreateCoUntil(mode) {
+  const el = document.getElementById('b-co-instructor-until');
+  if (!el) return;
+  if (mode === 'date') { el.disabled = false; el.style.opacity = '1'; el.focus(); }
+  else { el.disabled = true; el.style.opacity = '0.4'; if (mode !== 'tillend') el.value = ''; }
+}
+
 function createBatch() {
   const batchCode = document.getElementById('b-code').value.trim();
   const centre    = document.getElementById('b-centre').value;
@@ -2821,7 +2837,21 @@ function createBatch() {
     ? document.getElementById('b-slot').value : 'Full Day';
   const instructor = document.getElementById('b-instructor').value;
   const coInstructor = (document.getElementById('b-co-instructor')||{}).value || '';
-  const coInstructorUntil = (document.getElementById('b-co-instructor-until')||{}).value || '';
+  // Resolve co-instructor cover duration from radio selection
+  const coModeEls = document.querySelectorAll('input[name="b-co-mode"]');
+  let coMode = 'permanent';
+  coModeEls.forEach(function(r){ if(r.checked) coMode=r.value; });
+  let coInstructorUntil = '';
+  if (coMode === 'tillend') { coInstructorUntil = endDate || ''; }
+  else if (coMode === 'date') {
+    coInstructorUntil = (document.getElementById('b-co-instructor-until')||{}).value || '';
+    if (!coInstructorUntil) {
+      errEl.textContent='Please pick a specific cover-until date for the co-instructor.'; errEl.classList.add('show'); return;
+    }
+    if (endDate && coInstructorUntil > endDate) {
+      errEl.textContent='Co-instructor cover date cannot be after the batch end date.'; errEl.classList.add('show'); return;
+    }
+  }
   if (!instructor) {
     errEl.textContent='Please assign an instructor before creating the batch.'; errEl.classList.add('show'); return;
   }
@@ -2846,7 +2876,9 @@ function createBatch() {
       const coEl = document.getElementById('b-co-instructor');
       if (coEl) coEl.value = '';
       const coUntilEl = document.getElementById('b-co-instructor-until');
-      if (coUntilEl) coUntilEl.value = '';
+      if (coUntilEl) { coUntilEl.value = ''; coUntilEl.disabled = true; coUntilEl.style.opacity='0.4'; }
+      // Reset radio to permanent
+      document.querySelectorAll('input[name="b-co-mode"]').forEach(function(r){ r.checked = r.value==='permanent'; });
     });
   });
 }
@@ -6266,7 +6298,7 @@ function loadMyBatches() {
           ${emptyBadge}
         </div>
         ${b.instructor?'':renderInlineInstructorAssign(b.batchCode)}
-        ${renderInlineCoInstructorAssign(b.batchCode, b.coInstructor||'', b.coInstructorUntil||'')}
+        ${renderInlineCoInstructorAssign(b.batchCode, b.coInstructor||'', b.coInstructorUntil||'', b.endDate||'')}
         <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
           ${deleteButtonsHtml}
         </div>
@@ -6335,7 +6367,15 @@ function renderInlineInstructorAssign(batchCode) {
   </div>`;
 }
 
-function renderInlineCoInstructorAssign(batchCode, currentCoInstr, currentUntil) {
+// Convert DD/MM/YYYY → YYYY-MM-DD for date inputs; YYYY-MM-DD passes through unchanged
+function dmyToISO(d) {
+  if (!d) return '';
+  var p = String(d).split('/');
+  if (p.length === 3) return p[2] + '-' + String(p[1]).padStart(2,'0') + '-' + String(p[0]).padStart(2,'0');
+  return d;
+}
+
+function renderInlineCoInstructorAssign(batchCode, currentCoInstr, currentUntil, batchEndDate) {
   const instList = [
     'Amit Sidpura','Asmita Saroday','Arjun Mistry','Bhavin Patel',
     'Sneha Garodia','Khorehmand Kasad','Nishchay Kapoor','Piyush Ahuja',
@@ -6344,14 +6384,55 @@ function renderInlineCoInstructorAssign(batchCode, currentCoInstr, currentUntil)
   const opts = instList.map(i=>`<option value="${i}"${i===currentCoInstr?' selected':''}>${i}</option>`).join('');
   const today = new Date().toISOString().slice(0,10);
   const isExpired = currentCoInstr && currentUntil && currentUntil < today;
-  return `<div class="inline-assign" style="margin-top:4px;flex-wrap:wrap;gap:6px">
-    <select id="co-assign-${batchCode}" style="border-color:#bbf7d0">
+  const batchEndISO = dmyToISO(batchEndDate);
+
+  // Detect current mode
+  const isTillEnd = !!(currentUntil && batchEndISO && currentUntil === batchEndISO);
+  const isSpecific = !!(currentUntil && !isTillEnd);
+  const modeP = (!currentUntil) ? 'checked' : '';
+  const modeT = isTillEnd ? 'checked' : '';
+  const modeD = isSpecific ? 'checked' : '';
+  const dateDisabled = isSpecific ? '' : 'disabled';
+  const dateOpacity = isSpecific ? '1' : '0.4';
+  const dateVal = isSpecific ? currentUntil : '';
+
+  return `<div style="margin-top:6px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px">
+    <div style="font-size:11px;font-weight:600;color:#166534;margin-bottom:8px">↔ Cover / Co-Instructor</div>
+    <select id="co-assign-${batchCode}" style="width:100%;font-size:12px;border-color:#bbf7d0;margin-bottom:10px">
       <option value=""${!currentCoInstr?' selected':''}>No co-instructor</option>${opts}
     </select>
-    <input type="date" id="co-until-${batchCode}" value="${currentUntil||''}" title="Cover until (leave blank for permanent)" style="font-size:11px;padding:5px 8px;border:1px solid #bbf7d0;border-radius:6px;color:var(--navy)">
-    <button class="btn btn-outline" style="border-color:#86efac;color:#166534" onclick="saveInlineCoInstructor('${batchCode}')">↔ Set Cover</button>
-    ${isExpired ? '<span style="font-size:10px;color:#dc2626;font-weight:600">⚠ Cover expired</span>' : ''}
+    <div style="font-size:11px;font-weight:600;color:#166534;margin-bottom:6px">Cover duration:</div>
+    <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--navy)">
+      <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+        <input type="radio" name="co-mode-${batchCode}" value="permanent" ${modeP} onchange="toggleCoUntil('${batchCode}','permanent','${batchEndISO}')">
+        Permanent handover <span style="color:var(--muted)">(no end date)</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+        <input type="radio" name="co-mode-${batchCode}" value="tillend" ${modeT} onchange="toggleCoUntil('${batchCode}','tillend','${batchEndISO}')">
+        Till batch ends ${batchEndDate ? `<strong style="color:#166534">(${batchEndDate})</strong>` : '<span style="color:var(--muted)">(no end date set)</span>'}
+      </label>
+      <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+        <input type="radio" name="co-mode-${batchCode}" value="date" ${modeD} onchange="toggleCoUntil('${batchCode}','date','${batchEndISO}')">
+        Specific date:
+        <input type="date" id="co-until-${batchCode}" value="${dateVal}" max="${batchEndISO||''}" ${dateDisabled}
+          title="Cannot be after batch end date"
+          style="font-size:11px;padding:4px 7px;border:1px solid #bbf7d0;border-radius:6px;color:var(--navy);opacity:${dateOpacity}">
+        ${batchEndDate ? `<span style="font-size:10px;color:var(--muted)">max: ${batchEndDate}</span>` : ''}
+      </label>
+    </div>
+    <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
+      <button class="btn btn-outline" style="border-color:#86efac;color:#166534;font-size:12px" onclick="saveInlineCoInstructor('${batchCode}','${batchEndISO}')">↔ Save Cover</button>
+      ${isExpired ? '<span style="font-size:10px;color:#dc2626;font-weight:600">⚠ Cover expired</span>' : ''}
+    </div>
   </div>`;
+}
+
+function toggleCoUntil(batchCode, mode, batchEndISO) {
+  const el = document.getElementById('co-until-'+batchCode);
+  if (!el) return;
+  if (mode === 'tillend') { el.value = batchEndISO||''; el.disabled = true; el.style.opacity = '0.4'; }
+  else if (mode === 'permanent') { el.value = ''; el.disabled = true; el.style.opacity = '0.4'; }
+  else { el.disabled = false; el.style.opacity = '1'; el.focus(); }
 }
 
 function saveInlineInstructor(batchCode) {
@@ -6366,14 +6447,33 @@ function saveInlineInstructor(batchCode) {
   });
 }
 
-function saveInlineCoInstructor(batchCode) {
+function saveInlineCoInstructor(batchCode, batchEndISO) {
   const sel = document.getElementById('co-assign-'+batchCode);
-  const untilEl = document.getElementById('co-until-'+batchCode);
   const coInstructor = sel ? sel.value : '';
-  const coInstructorUntil = untilEl ? untilEl.value : '';
+
+  // Read selected mode
+  const radios = document.querySelectorAll('input[name="co-mode-'+batchCode+'"]');
+  let mode = 'permanent';
+  radios.forEach(function(r) { if (r.checked) mode = r.value; });
+
+  let coInstructorUntil = '';
+  if (mode === 'tillend') {
+    coInstructorUntil = batchEndISO || '';
+  } else if (mode === 'date') {
+    const untilEl = document.getElementById('co-until-'+batchCode);
+    coInstructorUntil = untilEl ? untilEl.value : '';
+    if (!coInstructorUntil) { showToast('Please pick a specific date.', 'error'); return; }
+    if (batchEndISO && coInstructorUntil > batchEndISO) {
+      showToast('Cover date cannot be after the batch end date (' + batchEndISO + ').', 'error'); return;
+    }
+  }
+
   gasGet({action:'saveCoInstructor', batchCode, coInstructor, coInstructorUntil}, function(e,d) {
     if (e||!d||d.status!=='ok') { showToast('Could not save co-instructor. Please try again.', 'error'); return; }
-    showToast(coInstructor ? 'Co-instructor assigned: ' + coInstructor + (coInstructorUntil ? ' until ' + coInstructorUntil : '') : 'Co-instructor removed.');
+    const label = coInstructor
+      ? 'Cover assigned: ' + coInstructor + (coInstructorUntil ? ' until ' + coInstructorUntil : ' (permanent)')
+      : 'Co-instructor removed.';
+    showToast(label);
     loadMyBatches();
     loadBatchDropdowns();
   });

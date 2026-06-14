@@ -1975,12 +1975,30 @@ window.gasGet = (function () {
 
   /* ── getInstructorBatches ─── */
   function h_batches(p, cb) {
-    GET('batches','instructor=eq.'+encodeURIComponent(p.instructor)+'&order=created_at.desc', function(e, rows){
+    var qs = 'order=start_date.desc';
+    if (p.instructor) qs += '&instructor=eq.'+encodeURIComponent(p.instructor);
+    GET('batches', qs, function(e, rows){
       if (e){ cb(null,{batches:[]}); return; }
-      cb(null, {batches:(rows||[]).map(function(b){
+      var list = (rows||[]).map(function(b){
         return {batchCode:b.batch_code,centre:b.centre,course:b.course,type:b.type,
-          batchSlot:b.batch_slot,startDate:b.start_date,endDate:b.end_date,instructor:b.instructor,syllabus:[]};
-      })});
+          batchSlot:b.batch_slot,startDate:b.start_date,endDate:b.end_date,
+          instructor:b.instructor,syllabus:[]};
+      });
+      // If no batches found for this instructor and centres provided, try centre filter
+      if (!list.length && p.centres) {
+        var cs = String(p.centres).split(',').map(function(c){return c.trim();}).filter(Boolean);
+        if (cs.length) {
+          GET('batches','centre=in.('+cs.join(',')+')'+'&order=start_date.desc', function(e2, rows2){
+            cb(null,{batches:(rows2||[]).map(function(b){
+              return {batchCode:b.batch_code,centre:b.centre,course:b.course,type:b.type,
+                batchSlot:b.batch_slot,startDate:b.start_date,endDate:b.end_date,
+                instructor:b.instructor,syllabus:[]};
+            })});
+          });
+          return;
+        }
+      }
+      cb(null,{batches:list});
     });
   }
 
@@ -2861,9 +2879,9 @@ function iTab(id) {
   });
   _summaryActiveTab = id;
   renderInstructorSummary();
-  if (id==='t-session')    { loadTodaySessions(); loadInstructorBatches(); }
-  if (id==='t-attendance') { stopAttendanceRefresh(); loadInstructorBatches(); }
-  if (id==='t-marks')      { loadInstructorBatches(); }
+  if (id==='t-session')    { loadTodaySessions(); if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
+  if (id==='t-attendance') { stopAttendanceRefresh(); if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
+  if (id==='t-marks')      { if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-mybatches')  loadMyBatches();
   if (id==='t-batchmgmt')  loadBatchMgmtTab();
   if (id==='t-academic')   loadAcademicDashboard(false);

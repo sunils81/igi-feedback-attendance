@@ -1009,10 +1009,14 @@ window.gasGet = (function () {
   function buildRevenueDashboardJSON(monthly, annual, ctargets, period, p) {
     var me = p.counsellor || '';
     var isAdm = p.isAdmin === 'true';
-    if (me && !isAdm) {
-      monthly = (monthly || []).filter(function(r) { return r.counsellor === me; });
-      annual = (annual || []).filter(function(r) { return r.counsellor === me; });
-    }
+
+    // Full data – used for leaderboard standings (all counsellors visible to everyone)
+    var allMonthly = monthly || [];
+    var allAnnual = annual || [];
+
+    // Personal-only data – used for the counsellor's own monthly grid / target rows
+    var myMonthly = (me && !isAdm) ? allMonthly.filter(function(r) { return r.counsellor === me; }) : allMonthly;
+    var myAnnual  = (me && !isAdm) ? allAnnual.filter(function(r)  { return r.counsellor === me; }) : allAnnual;
 
     var today = new Date();
     var currentMonthKey = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
@@ -1039,7 +1043,7 @@ window.gasGet = (function () {
       }
     });
 
-    (monthly || []).forEach(function(r) {
+    allMonthly.forEach(function(r) {
       if (r.period === period) {
         var c = r.business_centre || r.centre || r.assigned_centre;
         if (c) {
@@ -1069,7 +1073,7 @@ window.gasGet = (function () {
       globalCounsellorMap[name] = { counsellor: name, centre: 'Mumbai', annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
     });
 
-    (annual || []).forEach(function(r) {
+    allAnnual.forEach(function(r) {
       if (r.period === period && r.counsellor) {
         var name = r.counsellor.trim();
         if (!globalCounsellorMap[name]) {
@@ -1079,7 +1083,7 @@ window.gasGet = (function () {
       }
     });
 
-    (monthly || []).forEach(function(r) {
+    allMonthly.forEach(function(r) {
       if (r.period === period && r.counsellor) {
         var name = r.counsellor.trim();
         if (!globalCounsellorMap[name]) {
@@ -1131,7 +1135,7 @@ window.gasGet = (function () {
     var byCentre = {};
     var byBusinessCentre = {};
 
-    (annual || []).forEach(function(r) {
+    myAnnual.forEach(function(r) {
       var name = r.counsellor ? r.counsellor.trim() : '';
       if (!name) return;
       var c = revenueAddBucket(byCounsellor, name);
@@ -1147,7 +1151,7 @@ window.gasGet = (function () {
       ce.targetGst += Number(r.annual_course_fee_gst_target || 0);
     });
 
-    (monthly || []).forEach(function(r) {
+    myMonthly.forEach(function(r) {
       var bc = revenueAddBucket(byCounsellor, r.counsellor);
       
       var viewCentre = p.viewMode === 'business' ? r.business_centre : r.assigned_centre;
@@ -1190,7 +1194,7 @@ window.gasGet = (function () {
       return Object.assign({ centre: k }, byBusinessCentre[k]);
     });
 
-    var mappedMonthlyRows = (monthly || []).map(function(r) {
+    var mappedMonthlyRows = myMonthly.map(function(r) {
       return {
         month: r.month,
         period: r.period,
@@ -1207,7 +1211,7 @@ window.gasGet = (function () {
       };
     });
 
-    var mappedTargetRows = (annual || []).map(function(r) {
+    var mappedTargetRows = myAnnual.map(function(r) {
       return {
         period: r.period,
         counsellor: r.counsellor,

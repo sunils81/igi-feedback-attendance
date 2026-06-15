@@ -89,6 +89,8 @@ window.gasGet = (function () {
       var sObj = studentsList.find(function(s) { return String(s.student_id).toUpperCase() === String(studentId).toUpperCase(); });
       if (sObj) studentName = sObj.name;
     }
+    // Fallback: student_fees table stores name directly (covers multi-batch students not in this batch's enrollment)
+    if (!studentName && r.name) studentName = r.name;
     
     var courseName = '';
     if (batchesList && batchesList.length) {

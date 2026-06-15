@@ -3505,15 +3505,24 @@ function loadFeeOverview() {
 function renderFeeOverview(batch, students, records) {
   const list = document.getElementById('fee-list');
   const summary = document.getElementById('fee-summary');
-  if (!students.length) {
+  const recordMap = {};
+  records.forEach(r => recordMap[String(r.studentId).toUpperCase()] = r);
+
+  // Build combined display list: enrolled students + any students who have a fee record
+  // for this batch but are enrolled under a different primary batch (e.g. multi-batch students)
+  const enrolledIds = new Set(students.map(s => String(s.enrollmentNo).toUpperCase()));
+  const orphanStudents = records
+    .filter(r => !enrolledIds.has(String(r.studentId).toUpperCase()))
+    .map(r => ({ enrollmentNo: r.studentId, name: r.studentName || ('Student #' + r.studentId), isOrphan: true }));
+  const displayStudents = students.concat(orphanStudents);
+
+  if (!displayStudents.length) {
     summary.style.display = 'none';
     list.innerHTML = emptyState('👥', 'No students in this batch yet', 'Add students first, then return here to set up fee records.');
     return;
   }
-  const recordMap = {};
-  records.forEach(r => recordMap[String(r.studentId).toUpperCase()] = r);
   let expected = 0, collected = 0, outstanding = 0, overdue = 0;
-  students.forEach(s => {
+  displayStudents.forEach(s => {
     const r = recordMap[String(s.enrollmentNo).toUpperCase()];
     if (r) {
       expected += Number(r.netPayable) || 0;
@@ -3536,15 +3545,16 @@ function renderFeeOverview(batch, students, records) {
     '<div class="summary-tile ' + (overdue ? 'warn' : 'ok') + '"><div class="k">Overdue</div><div class="v">' + overdue + '</div><div class="s">Students past due</div></div>';
 
   let html = '<table class="compact-table"><thead><tr><th>Student</th><th>Expected</th><th>Collected</th><th>Outstanding</th><th>Status</th><th>Action</th></tr></thead><tbody>';
-  html += students.map(s => {
+  html += displayStudents.map(s => {
     const r = recordMap[String(s.enrollmentNo).toUpperCase()];
     const b = selectedFeeBatch();
     const cf = feeDefaultsForCourse(b ? b.course : '');
     const fallback = (Number(cf.fee) || 0) + Math.round((Number(cf.fee) || 0) * (Number(cf.gst) || 0) / 100);
     const status = r ? r.feeStatus : 'Pending';
     const statusCls = String(status || 'Pending').toLowerCase();
+    const nameNote = s.isOrphan ? ' <span style="font-size:10px;color:var(--muted);font-weight:400">(multi-batch)</span>' : '';
     return '<tr>' +
-      '<td><strong>' + escC(s.name) + '</strong><div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--muted)">' + escC(s.enrollmentNo) + '</div></td>' +
+      '<td><strong>' + escC(s.name) + '</strong>' + nameNote + '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--muted)">' + escC(s.enrollmentNo) + '</div></td>' +
       '<td><strong style="font-family:\'JetBrains Mono\',monospace">' + money(r ? r.netPayable : fallback) + '</strong></td>' +
       '<td><strong style="font-family:\'JetBrains Mono\',monospace;color:#1a7a3c">' + money(r ? r.collected : 0) + '</strong></td>' +
       '<td><strong style="font-family:\'JetBrains Mono\',monospace;color:' + ((r && Number(r.outstanding) > 0) || !r ? 'var(--red)' : '#1a7a3c') + '">' + money(r ? r.outstanding : fallback) + '</strong></td>' +
@@ -4200,7 +4210,7 @@ function downloadAdminDashboardCsv() {
 }
 
 // -- Revenue (redesign v2) -----------------------------------------------
-const REVENUE_FRONTEND_VERSION = 'revenue-ledger-v16-2026-06-15';
+const REVENUE_FRONTEND_VERSION = 'revenue-ledger-v17-2026-06-15';
 const MUMBAI_COUNSELLORS = ['Anuradha','Bianca','Omkar Kadam'];
 const BUSINESS_TYPES = ['Centre Revenue','Corporate Programs','Seminars','Other Centre Business'];
 

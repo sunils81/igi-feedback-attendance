@@ -2010,7 +2010,8 @@ window.gasGet = (function () {
       if (e) { cb(null, { status: 'error' }); return; }
       cb(null, { status: 'ok', list: (rows || []).map(function(r) {
         return { vendorId: r.id, vendorName: r.vendor_name, contactPerson: r.contact || '',
-          phone: r.phone || '', email: r.email || '', address: r.address || '', notes: r.notes || '' };
+          phone: r.phone || '', email: r.email || '', address: r.address || '',
+          gstNumber: r.gst_number || '', suppliedItems: r.supplied_items || r.notes || '' };
       }) });
     });
   }
@@ -2018,7 +2019,9 @@ window.gasGet = (function () {
   function h_registerVendor(p, cb) {
     POST('inv_vendors', null, {
       vendor_name: p.vendorName, contact: p.contactPerson || '', phone: p.phone || '',
-      email: p.email || '', address: p.address || '', notes: p.notes || ''
+      email: p.email || '', address: p.address || '',
+      gst_number: p.gstNumber || '',
+      supplied_items: p.suppliedItems || ''
     }, function(e) { cb(null, e ? { status: 'error', message: String(e) } : { status: 'ok' }); });
   }
 
@@ -2089,39 +2092,29 @@ window.gasGet = (function () {
 
   function h_invStock(p, cb) {
     var sqs = p.centre ? 'centre=eq.' + encodeURIComponent(p.centre) : '';
-    // Fetch all active items AND all stock records (filtered by centre if given)
-    // Then show ALL items with their qty (0 if no stock record exists for that centre)
+    // Fetch all active items first, then stock (filtered by centre if given)
     GET('inv_items', 'select=id,item_code,item_name,category,unit,reorder_level&is_active=neq.false&order=category.asc,item_name.asc', function (e2, items) {
       GET('inv_stock', sqs, function (e, stock) {
-        // Build stock lookup: item_id → qty (per centre)
-        var stockMap = {};
+        // Key stock by item UUID (centre already filtered in query, no composite key needed)
+        var stockById = {};
         (stock || []).forEach(function (r) {
-          var key = r.item_id + '|' + (r.centre || '');
-          stockMap[key] = r;
+          if (!stockById[r.item_id]) stockById[r.item_id] = [];
+          stockById[r.item_id].push(r);
         });
-        var list = (items || []).map(function (it) {
-          // If filtering by centre, look up that centre's stock; otherwise aggregate all
-          if (p.centre) {
-            var key = it.id + '|' + p.centre;
-            var sr = stockMap[key] || {};
-            return { itemId: it.item_code || it.id, itemName: it.item_name, category: it.category,
-              centre: p.centre, quantity: sr.qty != null ? sr.qty : 0, unit: it.unit, reorderLevel: it.reorder_level };
+        var flat = [];
+        (items || []).forEach(function (it) {
+          var rows = stockById[it.id];
+          if (!rows || rows.length === 0) {
+            flat.push({ itemId: it.item_code || it.id, itemName: it.item_name, category: it.category,
+              centre: p.centre || '', quantity: 0, unit: it.unit, reorderLevel: it.reorder_level });
           } else {
-            // No centre filter — sum across all centres, one row per (item, centre)
-            var rows = (stock || []).filter(function (r) { return r.item_id === it.id; });
-            if (rows.length === 0) {
-              return [{ itemId: it.item_code || it.id, itemName: it.item_name, category: it.category,
-                centre: '', quantity: 0, unit: it.unit, reorderLevel: it.reorder_level }];
-            }
-            return rows.map(function (r) {
-              return { itemId: it.item_code || it.id, itemName: it.item_name, category: it.category,
-                centre: r.centre, quantity: r.qty != null ? r.qty : 0, unit: it.unit, reorderLevel: it.reorder_level };
+            rows.forEach(function (r) {
+              flat.push({ itemId: it.item_code || it.id, itemName: it.item_name, category: it.category,
+                centre: r.centre || p.centre || '', quantity: r.qty != null ? Number(r.qty) : 0,
+                unit: it.unit, reorderLevel: it.reorder_level });
             });
           }
         });
-        // Flatten (needed for the no-filter multi-centre case)
-        var flat = [];
-        list.forEach(function (x) { if (Array.isArray(x)) { x.forEach(function (i) { flat.push(i); }); } else { flat.push(x); } });
         cb(null, { status: 'ok', list: flat });
       });
     });

@@ -556,14 +556,35 @@ window.gasGet = (function () {
 
   /* getStudents */
   function h_getStudents(p, cb) {
-    GET('students', 'batch_code=eq.' + encodeURIComponent(p.batchCode) + '&order=created_at.asc', function (e, rows) {
-      if (e) { cb(null, { students: [] }); return; }
-      cb(null, { students: (rows || []).map(function (r) {
-        return { enrollmentNo: r.student_id || r.enrollment_no, name: r.name,
-          mobileLast4: r.mobile_last4 || r.dob, mobile: r.mobile, email: r.email,
-          status: r.status, welcomeEmailStatus: r.welcome_email_status,
-          welcomeEmailSentAt: r.welcome_email_sent_at };
-      }) });
+    var bc = encodeURIComponent(p.batchCode);
+    var done = 0, directList = [], enrollList = [];
+    function mapStu(r) {
+      return { enrollmentNo: r.student_id || r.enrollment_no, name: r.name,
+        mobileLast4: r.mobile_last4 || r.dob, mobile: r.mobile, email: r.email,
+        status: r.status, welcomeEmailStatus: r.welcome_email_status,
+        welcomeEmailSentAt: r.welcome_email_sent_at };
+    }
+    function finish() {
+      if (++done < 2) return;
+      // Merge: direct students.batch_code rows + enrollment-based rows (dedup by enrollmentNo)
+      var map = {};
+      directList.forEach(function(s) { map[s.enrollmentNo] = s; });
+      enrollList.forEach(function(s) { if (!map[s.enrollmentNo]) map[s.enrollmentNo] = s; });
+      cb(null, { students: Object.values(map) });
+    }
+    // Path 1 — legacy: students where batch_code matches directly
+    GET('students', 'batch_code=eq.' + bc + '&order=created_at.asc', function(e, rows) {
+      directList = (rows || []).map(mapStu);
+      finish();
+    });
+    // Path 2 — multi-batch: students linked via enrollments table
+    GET('enrollments', 'batch_code=eq.' + bc + '&status=eq.Active&select=student_id', function(e, enrolls) {
+      var ids = (enrolls || []).map(function(en) { return en.student_id; });
+      if (!ids.length) { enrollList = []; finish(); return; }
+      GET('students', 'student_id=in.(' + ids.map(encodeURIComponent).join(',') + ')', function(e2, rows) {
+        enrollList = (rows || []).map(mapStu);
+        finish();
+      });
     });
   }
 
@@ -575,24 +596,44 @@ window.gasGet = (function () {
     });
   }
 
-  /* addStudent */
+  /* addStudent — multi-batch aware */
   function h_addStudent(p, cb) {
-    var base = { student_id: String(p.enrollmentNo || p.enrollment_no), name: p.name,
-      mobile_last4: p.mobileLast4 || p.dob, mobile: p.mobile, email: p.email, status: 'Active' };
+    var studentId = String(p.enrollmentNo || p.enrollment_no || '').trim();
+    if (!studentId) { cb(null, { status: 'error', reason: 'Missing enrollment number' }); return; }
     var codes = p.batchCodes
-      ? p.batchCodes.split(',').map(function (c) { return c.trim(); }).filter(Boolean)
+      ? p.batchCodes.split(',').map(function(c) { return c.trim(); }).filter(Boolean)
       : [p.batchCode];
-    var rows = codes.map(function (bc) { return Object.assign({}, base, { batch_code: bc }); });
-    POST('students', 'on_conflict=student_id,batch_code', rows, function (e) {
-      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', enrollmentNo: p.enrollmentNo });
+    // Step 1: upsert student record (one row per student; batch_code = primary/first batch)
+    var studentRow = { student_id: studentId, name: p.name,
+      mobile_last4: p.mobileLast4 || p.dob, mobile: p.mobile, email: p.email,
+      status: 'Active', batch_code: codes[0] };
+    POST('students', 'on_conflict=student_id', studentRow, function(e) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      // Step 2: insert/upsert enrollment records for all batches
+      var enrollRows = codes.map(function(bc) {
+        return { student_id: studentId, batch_code: bc, status: 'Active' };
+      });
+      POST('enrollments', 'on_conflict=student_id,batch_code', enrollRows, function(e2) {
+        cb(null, e2 ? { status: 'error', reason: String(e2) } : { status: 'ok', enrollmentNo: studentId });
+      });
     });
   }
 
-  /* removeStudent */
+  /* removeStudent — cleans both students (if sole batch) and enrollments */
   function h_removeStudent(p, cb) {
-    DEL('students', 'student_id=eq.' + encodeURIComponent(p.enrollmentNo) +
-      (p.batchCode ? '&batch_code=eq.' + encodeURIComponent(p.batchCode) : ''), function (e) {
-      cb(null, { status: e ? 'error' : 'ok' });
+    var sidFilter = 'student_id=eq.' + encodeURIComponent(p.enrollmentNo);
+    var fullFilter = sidFilter + (p.batchCode ? '&batch_code=eq.' + encodeURIComponent(p.batchCode) : '');
+    // Remove from enrollments
+    DEL('enrollments', fullFilter, function() {
+      // Check remaining enrollments for this student
+      GET('enrollments', sidFilter + '&status=eq.Active', function(e2, remaining) {
+        if (!remaining || !remaining.length) {
+          // No more enrollments — remove student record entirely
+          DEL('students', sidFilter, function(e3) { cb(null, { status: e3 ? 'error' : 'ok' }); });
+        } else {
+          cb(null, { status: 'ok' });
+        }
+      });
     });
   }
 

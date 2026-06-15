@@ -888,10 +888,13 @@ window.gasGet = (function () {
         var af  = (atts || []).filter(function (a) { return a.session_code === s.session_code; });
         var rtg = af.map(function (a) { return Number(a.feedback_score || 0); }).filter(Boolean);
         var avg = rtg.length ? (rtg.reduce(function (t, v) { return t + v; }, 0) / rtg.length).toFixed(1) : 0;
+        var isConfirmed = af.some(function(a) { return a.instructor_verified; });
+        var attStatus = isConfirmed ? 'confirmed' : 'pending';
         return { sessionCode: s.session_code, sessNo: s.sess_no,
-          sessionDate: toDMY(s.session_date), topic: s.topic || '',
+          sessionDate: toDMY(s.session_date), date: toDMY(s.session_date), topic: s.topic || '',
           sessionType: s.session_type || 'Scheduled', instructor: s.instructor || '',
-          avgScore: Number(avg), presentCount: af.filter(function (a) { return a.attendance !== 'Absent'; }).length };
+          avgScore: Number(avg), presentCount: af.filter(function (a) { return a.attendance !== 'Absent'; }).length,
+          attStatus: attStatus };
       });
       var students = (stus || []).map(function (s) {
         var sid = String(s.student_id);
@@ -914,7 +917,194 @@ window.gasGet = (function () {
   }
 
   /* getSessionAttendance */
-  function h_sessionAttendance(p, cb) { h_sessionReport(p, cb); }
+  function h_sessionAttendance(p, cb) {
+    var sc = p.sessionCode;
+    var bc = p.batchCode;
+    if (!sc) { cb(null, { status: 'error', message: 'missing sessionCode' }); return; }
+    GET('sessions', 'session_code=eq.' + encodeURIComponent(sc), function(e, sRows) {
+      if (e) { cb(e, null); return; }
+      var sess = sRows && sRows[0];
+      if (!sess) {
+        cb(null, { status: 'error', message: 'Session not found' });
+        return;
+      }
+      var batch = bc || sess.batch_code;
+      GET('students', 'batch_code=eq.' + encodeURIComponent(batch) + '&order=created_at.asc', function(e2, students) {
+        if (e2) { cb(e2, null); return; }
+        GET('attendance_feedback', 'session_code=eq.' + encodeURIComponent(sc), function(e3, atts) {
+          if (e3) { cb(e3, null); return; }
+          var attMap = {};
+          (atts || []).forEach(function(a) {
+            attMap[String(a.student_id).toUpperCase()] = a;
+          });
+          var mappedStudents = (students || []).map(function(s) {
+            var sid = String(s.student_id).toUpperCase();
+            var att = attMap[sid];
+            var isAbsent = false;
+            var marked = false;
+            var markedBy = '';
+            var resolvedAddress = '';
+            if (att) {
+              marked = true;
+              markedBy = att.marked_by || (att.instructor_verified ? 'instructor' : 'self');
+              resolvedAddress = att.resolved_address || '';
+              if (att.instructor_override === 'absent') {
+                isAbsent = true;
+              } else if (att.instructor_override === 'present') {
+                isAbsent = false;
+              } else {
+                isAbsent = (att.attendance === 'Absent');
+              }
+            }
+            return {
+              enrollmentNo: s.student_id,
+              name: s.name,
+              marked: marked,
+              markedAt: att ? att.marked_at : '',
+              markedBy: markedBy,
+              status: marked ? (isAbsent ? 'absent' : 'present') : 'pending',
+              resolvedAddress: resolvedAddress,
+              locationStatus: att ? att.location_status : ''
+            };
+          });
+          var presentCount = mappedStudents.filter(function(s) { return s.status === 'present'; }).length;
+          var isConfirmed = (atts || []).some(function(a) { return a.instructor_verified; });
+          var sessionObj = {
+            sessionCode: sess.session_code,
+            batchCode: sess.batch_code,
+            sessionDate: sess.session_date,
+            sessionNo: sess.sess_no,
+            instructor: sess.instructor,
+            topic: sess.topic,
+            attStatus: isConfirmed ? 'confirmed' : 'pending',
+            presentCount: presentCount,
+            absentCount: mappedStudents.length - presentCount,
+            confirmedBy: '',
+            confirmedAt: ''
+          };
+          cb(null, {
+            status: 'ok',
+            session: sessionObj,
+            students: mappedStudents,
+            presentCount: presentCount,
+            totalCount: mappedStudents.length
+          });
+        });
+      });
+    });
+  }
+
+  /* getPendingAttendanceSessions */
+  async function h_getPendingAttendanceSessions(p, cb) {
+    function getP(table, qs) {
+      return new Promise(function(resolve) {
+        GET(table, qs, function(err, data) {
+          if (err) resolve([]);
+          else resolve(data);
+        });
+      });
+    }
+    try {
+      var instructorName = p.instructorName || '';
+      var centre = p.centre || '';
+      var bFilter = '';
+      if (centre) {
+        bFilter = 'centre=eq.' + encodeURIComponent(centre);
+      }
+      var batches = await getP('batches', bFilter);
+      if (instructorName) {
+        batches = batches.filter(function(b) {
+          return sameName(b.instructor, instructorName) || sameName(b.co_instructor, instructorName);
+        });
+      }
+      var allowedBatchCodes = new Set(batches.map(function(b) { return String(b.batch_code).toUpperCase(); }));
+      if (!allowedBatchCodes.size) {
+        cb(null, { status: 'ok', pending: [], count: 0 });
+        return;
+      }
+      var today = todayYMD();
+      var cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - 7);
+      var cutoff = cutoffDate.toISOString().slice(0, 10);
+      var sFilter = 'session_date=gte.' + cutoff + '&session_date=lte.' + today;
+      var sessions = await getP('sessions', sFilter);
+      sessions = sessions.filter(function(s) {
+        return allowedBatchCodes.has(String(s.batch_code).toUpperCase());
+      });
+      if (!sessions.length) {
+        cb(null, { status: 'ok', pending: [], count: 0 });
+        return;
+      }
+      var sessionCodes = sessions.map(function(s) { return s.session_code; });
+      var atts = await getP('attendance_feedback', 'session_code=in.(' + sessionCodes.map(encodeURIComponent).join(',') + ')');
+      var attMap = {};
+      (atts || []).forEach(function(a) {
+        if (!attMap[a.session_code]) attMap[a.session_code] = [];
+        attMap[a.session_code].push(a);
+      });
+      var pending = [];
+      sessions.forEach(function(s) {
+        var af = attMap[s.session_code] || [];
+        var isConfirmed = af.some(function(a) { return a.instructor_verified; });
+        if (!isConfirmed) {
+          var presCount = af.filter(function(a) { return a.attendance !== 'Absent'; }).length;
+          pending.push({
+            sessionCode: s.session_code,
+            batchCode: s.batch_code,
+            sessionDate: toDMY(s.session_date),
+            sessionNo: s.sess_no,
+            instructor: s.instructor || '',
+            topic: s.topic || '',
+            attStatus: 'pending',
+            presentCount: presCount,
+            absentCount: af.length - presCount
+          });
+        }
+      });
+      cb(null, { status: 'ok', pending: pending, count: pending.length });
+    } catch(err) {
+      cb(err, null);
+    }
+  }
+
+  /* instructorMarkAttendance */
+  function h_instructorMarkAttendance(p, cb) {
+    var sessionCode = p.sessionCode;
+    var batchCode = p.batchCode;
+    var marks = [];
+    try { marks = JSON.parse(p.marks || '[]'); } catch(x) {}
+    if (!sessionCode || !marks.length) { cb(null, { status: 'error', message: 'missing params' }); return; }
+    var rows = marks.map(function(m) {
+      return {
+        session_code: sessionCode,
+        student_id: String(m.enrollmentNo),
+        batch_code: batchCode,
+        attendance: (m.status === 'absent' || m.status === 'Absent') ? 'Absent' : 'Present',
+        marked_at: nowISO(),
+        marked_by: 'instructor'
+      };
+    });
+    POST('attendance_feedback', 'on_conflict=session_code,student_id', rows, function(e) {
+      if (e) { cb(null, { status: 'error', message: String(e) }); return; }
+      cb(null, { status: 'ok', written: rows.length, updated: 0 });
+    });
+  }
+
+  /* finaliseAttendance */
+  function h_finaliseAttendance(p, cb) {
+    var sc = p.sessionCode;
+    if (!sc) { cb(null, { status: 'error', message: 'missing sessionCode' }); return; }
+    PATCH('attendance_feedback', 'session_code=eq.' + encodeURIComponent(sc), { instructor_verified: true }, function(e) {
+      if (e) { cb(null, { status: 'error', message: String(e) }); return; }
+      GET('attendance_feedback', 'session_code=eq.' + encodeURIComponent(sc), function(e2, rows) {
+        var present = 0; var absent = 0;
+        (rows || []).forEach(function(r) {
+          if (r.attendance === 'Absent') absent++; else present++;
+        });
+        cb(null, { status: 'ok', sessionCode: sc, presentCount: present, absentCount: absent });
+      });
+    });
+  }
 
   /* getAttendanceCalendar */
   function h_attCalendar(p, cb) {
@@ -3306,6 +3496,9 @@ window.gasGet = (function () {
       case 'createSession':             return h_createSession(params, cb);
       case 'getSessionReport':          return h_sessionReport(params, cb);
       case 'getSessionAttendance':      return h_sessionAttendance(params, cb);
+      case 'getPendingAttendanceSessions': return h_getPendingAttendanceSessions(params, cb);
+      case 'instructorMarkAttendance':     return h_instructorMarkAttendance(params, cb);
+      case 'finaliseAttendance':           return h_finaliseAttendance(params, cb);
       case 'getAttendanceCalendar':     return h_attCalendar(params, cb);
       case 'getBatchAssessmentSummary': return h_assessSummary(params, cb);
       case 'submitHODApprovalRequest':  return h_hodApproval(params, cb);

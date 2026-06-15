@@ -1245,11 +1245,23 @@ window.gasGet = (function () {
       };
     });
 
+    // All monthly rows (unfiltered) — for centre card contributors
+    var mappedAllMonthlyRows = allMonthly.map(function(r) {
+      return {
+        month: r.month, period: r.period, counsellor: r.counsellor,
+        assignedCentre: r.assigned_centre, businessCentre: r.business_centre,
+        businessType: r.business_type, studentCount: r.student_count,
+        achievedCourse: r.achieved_course_fee, achievedGst: r.achieved_course_fee_gst,
+        notes: r.notes, locked: r.locked === 'Y' || r.locked === true, updatedBy: r.updated_by
+      };
+    });
+
     return {
       status: 'ok',
       period: period,
       monthlyRows: mappedMonthlyRows,
       monthlyPreviewRows: mappedMonthlyRows,
+      allMonthlyRows: mappedAllMonthlyRows,
       targetRows: mappedTargetRows,
       centreTargetRows: mappedCentreTargetRows,
       counsellors: mappedCounsellors,

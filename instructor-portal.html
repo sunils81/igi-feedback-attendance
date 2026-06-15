@@ -2297,6 +2297,24 @@ const SYLLABI = {
     {day:3, week:'Week 1', topic:'Corundum — Ruby, Sapphire, Yellow Sapphire: Properties, Origins, Practical'},
     {day:4, week:'Week 1', topic:'Emerald (Beryl) + Diamond — Properties, 4Cs, Treatments, Practical'},
     {day:5, week:'Week 1', topic:'Pearl — Properties, Varieties, Treatments + Final Theory Exam + Graduation'}
+  ],
+
+  'JewelPad Design': [
+    {day:1,  week:'Week 1', topic:'Introduction to Procreate'},
+    {day:2,  week:'Week 1', topic:'Cabochons Gemstone Rendering'},
+    {day:3,  week:'Week 1', topic:'Detailed Rendering on Different Types of Gemstones'},
+    {day:4,  week:'Week 1', topic:'Construction of Faceted Gemstones'},
+    {day:5,  week:'Week 1', topic:'Diamond Brush Development – Part 1'},
+    {day:6,  week:'Week 2', topic:'Diamond Brush Development – Part 2'},
+    {day:7,  week:'Week 2', topic:'Jewelry Settings and Metal Rendering'},
+    {day:8,  week:'Week 2', topic:'Engagement Ring Creation & Rendering'},
+    {day:9,  week:'Week 2', topic:'Creating Isometric Views & Ring Rendering'},
+    {day:10, week:'Week 2', topic:'Lattice Brush Development'},
+    {day:11, week:'Week 3', topic:'Motif Brush Development and Symmetrical Design'},
+    {day:12, week:'Week 3', topic:'Texture Brush Creation & Chain Dynamics'},
+    {day:13, week:'Week 3', topic:'Uncut Jewelry Techniques'},
+    {day:14, week:'Week 3', topic:'Temple Jewelry & Enamel Rendering Techniques'},
+    {day:15, week:'Week 3', topic:'Final Design Project & Portfolio Completion'}
   ]
 };
 
@@ -2305,9 +2323,11 @@ function getSyllabusForCourse(courseName) {
   if (SYLLABI[courseName]) return SYLLABI[courseName];
   // Aliases: map course name variants to canonical SYLLABI keys
   const ALIASES = {
-    'JewelPad Design': 'Jewelry Design',
-    'Jewelpad Design': 'Jewelry Design',
-    'jewelpad design': 'Jewelry Design',
+    // JewelPad has its own SYLLABI entry — no alias needed
+    'JewelPad On-campus': 'JewelPad Design',
+    'JewelPad Online':    'JewelPad Design',
+    'Jewelpad Design':    'JewelPad Design',
+    'jewelpad design':    'JewelPad Design',
   };
   const canonical = ALIASES[courseName];
   if (canonical && SYLLABI[canonical]) return SYLLABI[canonical];
@@ -3216,7 +3236,7 @@ function fetchAttendance(sess, batch) {
 }
 
 function verifyStudent(sessionCode, studentId, action) {
-  gasGet({action:'verifyAttendance', sessionCode:sessionCode, studentId:studentId, action:action}, function(e,d) {
+  gasGet({action:'verifyAttendance', sessionCode:sessionCode, studentId:studentId, verifyAction:action}, function(e,d) {
     if (e||!d||d.status!=='ok') { showToast('Could not save. Please try again.','error'); return; }
     // Re-render without full reload
     var batch = document.getElementById('at-batch').value;
@@ -3235,7 +3255,7 @@ function confirmAllAttendance(sessionCode, batch) {
     function next() {
       if (idx >= pending.length) { fetchAttendance(sessionCode, batch); return; }
       var s = pending[idx++];
-      gasGet({action:'verifyAttendance', sessionCode:sessionCode, studentId:s.enrollmentNo, action:'confirm'}, function(){ next(); });
+      gasGet({action:'verifyAttendance', sessionCode:sessionCode, studentId:s.enrollmentNo, verifyAction:'confirm'}, function(){ next(); });
     }
     next();
   });

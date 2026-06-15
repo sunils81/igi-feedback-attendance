@@ -1951,6 +1951,31 @@
             </tbody>
           </table>
         </div>
+        <!-- Student Edit Modal -->
+        <div id="student-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+          <div style="background:var(--white);border-radius:12px;padding:24px;width:100%;max-width:420px;box-shadow:0 8px 40px rgba(0,0,0,.2)">
+            <h3 style="margin:0 0 16px 0;font-size:16px;color:var(--navy)">Edit Student Record</h3>
+            <input type="hidden" id="st-edit-old-id">
+            <input type="hidden" id="st-edit-batch">
+            <div class="field" style="margin-bottom:12px">
+              <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Student ID</label>
+              <input type="text" id="st-edit-id" style="text-transform:uppercase" placeholder="e.g. MUM-DG-001">
+            </div>
+            <div class="field" style="margin-bottom:12px">
+              <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Full Name</label>
+              <input type="text" id="st-edit-name" placeholder="Student name">
+            </div>
+            <div class="field" style="margin-bottom:16px">
+              <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Mobile Last 4 Digits</label>
+              <input type="text" id="st-edit-mobile4" maxlength="4" placeholder="4 digits" style="width:80px">
+            </div>
+            <div id="st-edit-err" class="err-box" style="display:none;margin-bottom:10px"></div>
+            <div style="display:flex;gap:8px">
+              <button class="btn" onclick="saveStudentEdit()">Save Changes</button>
+              <button class="btn btn-outline" onclick="closeStudentEditModal()">Cancel</button>
+            </div>
+          </div>
+        </div>
         <!-- Add/Edit Item Modal -->
         <!-- Missing cost banner -->
         <div id="inv-missing-cost-banner" style="display:none;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:none;align-items:center;gap:10px;flex-wrap:wrap">
@@ -3329,7 +3354,7 @@ function renderStudentTable(batch, query) {
       '<td><strong>' + escC(s.name) + '</strong><div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--muted)">' + escC(s.enrollmentNo) + '</div></td>' +
       '<td><span class="badge badge-amber">Last 4: ' + escC(s.mobileLast4 || s.dob || '') + '</span></td>' +
       '<td><span class="badge ' + (String(emailLabel).indexOf('failed') >= 0 ? 'badge-red' : 'badge-green') + '">' + escC(emailLabel) + '</span></td>' +
-      '<td><div class="student-actions"><button class="del-btn" title="Resend welcome email" onclick="resendWelcomeEmail(\'' + escC(s.enrollmentNo) + '\',\'' + escC(batch) + '\')">Email</button><button class="del-btn danger" onclick="removeStudent(\'' + escC(s.enrollmentNo) + '\',\'' + escC(batch) + '\')">Remove</button></div></td>' +
+      '<td><div class="student-actions"><button class="del-btn" title="Edit student info" onclick="openStudentEditModal(\'' + escC(s.enrollmentNo) + '\',\'' + escC(s.name) + '\',\'' + escC(s.mobileLast4 || s.dob || '') + '\',\'' + escC(batch) + '\')">✏️ Edit</button><button class="del-btn" title="Resend welcome email" onclick="resendWelcomeEmail(\'' + escC(s.enrollmentNo) + '\',\'' + escC(batch) + '\')">Email</button><button class="del-btn danger" onclick="removeStudent(\'' + escC(s.enrollmentNo) + '\',\'' + escC(batch) + '\')">Remove</button></div></td>' +
     '</tr>';
   }).join('');
   html += '</tbody></table>';
@@ -3458,6 +3483,54 @@ function resendWelcomeEmail(enrollmentNo, batch) {
 function removeStudent(enrollmentNo, batch) {
   if (!confirm('Remove ' + enrollmentNo + ' from this batch?')) return;
   gasGet({action:'removeStudent',enrollmentNo}, function() { showToast('Student removed from batch.'); renderStudentList(batch); });
+}
+
+function openStudentEditModal(enrollmentNo, name, mobileLast4, batch) {
+  document.getElementById('st-edit-old-id').value  = enrollmentNo;
+  document.getElementById('st-edit-batch').value   = batch;
+  document.getElementById('st-edit-id').value      = enrollmentNo;
+  document.getElementById('st-edit-name').value    = name;
+  document.getElementById('st-edit-mobile4').value = mobileLast4;
+  var errEl = document.getElementById('st-edit-err');
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+  var modal = document.getElementById('student-edit-modal');
+  if (modal) { modal.style.display = 'flex'; }
+}
+
+function closeStudentEditModal() {
+  var modal = document.getElementById('student-edit-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function saveStudentEdit() {
+  var oldId     = (document.getElementById('st-edit-old-id').value || '').trim();
+  var batch     = (document.getElementById('st-edit-batch').value || '').trim();
+  var newId     = (document.getElementById('st-edit-id').value || '').trim().toUpperCase();
+  var name      = (document.getElementById('st-edit-name').value || '').trim();
+  var mobile4   = (document.getElementById('st-edit-mobile4').value || '').trim();
+  var errEl     = document.getElementById('st-edit-err');
+
+  if (!newId) { errEl.textContent = 'Student ID cannot be empty.'; errEl.style.display = 'block'; return; }
+  if (mobile4 && !/^\d{4}$/.test(mobile4)) { errEl.textContent = 'Mobile last 4 must be exactly 4 digits.'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+
+  gasGet({ action: 'updateStudentInfo', oldEnrollmentNo: oldId, newEnrollmentNo: newId, name: name, mobileLast4: mobile4 }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      errEl.textContent = (d && d.reason) ? d.reason : 'Could not save. Please try again.';
+      errEl.style.display = 'block'; return;
+    }
+    closeStudentEditModal();
+    showToast('Student record updated ✓', 'success');
+    // Refresh the student in local cache and re-render
+    var students = counselorStudentsByBatch[batch] || [];
+    var idx = students.findIndex(function(s) { return s.enrollmentNo === oldId; });
+    if (idx >= 0) {
+      students[idx].enrollmentNo = newId;
+      if (name) students[idx].name = name;
+      if (mobile4) students[idx].mobileLast4 = mobile4;
+    }
+    renderStudentList(batch);
+  });
 }
 
 function formatDateTime(v) {
@@ -8343,22 +8416,74 @@ function loadInventoryStock() {
       var reqBtn = (isLow || isOut)
         ? '<button class="btn btn-outline btn-xs" style="font-size:10px;padding:2px 8px;white-space:nowrap" onclick="quickRaiseRequest(\'' + escC(item.itemId) + '\',\'' + escC(item.itemName).replace(/'/g,'\\\'') + '\')">+ Request</button>'
         : '';
+      var editCentre = item.centre || selectedCentre || '';
+      var editBtn = '<span id="inv-stock-view-' + escC(item.itemId) + '-' + escC(editCentre) + '" style="display:inline-flex;align-items:center;gap:4px">' +
+        reqBtn +
+        '<button class="btn btn-outline btn-xs" style="font-size:10px;padding:2px 8px" ' +
+        'onclick="invStockInlineEdit(\'' + escC(item.itemId) + '\',\'' + escC(editCentre) + '\',' + qty + ')">✏️ Edit</button>' +
+        '</span>' +
+        '<span id="inv-stock-edit-' + escC(item.itemId) + '-' + escC(editCentre) + '" style="display:none;align-items:center;gap:4px">' +
+        '<input type="number" min="0" value="' + qty + '" id="inv-stock-input-' + escC(item.itemId) + '-' + escC(editCentre) + '" ' +
+        'style="width:64px;padding:3px 6px;border-radius:5px;border:1.5px solid var(--border);font-size:12px;text-align:center">' +
+        '<button class="btn btn-xs" style="font-size:10px;padding:2px 8px;background:var(--green);border-color:var(--green);color:#fff" ' +
+        'onclick="invStockInlineSave(\'' + escC(item.itemId) + '\',\'' + escC(editCentre) + '\')">Save</button>' +
+        '<button class="btn btn-outline btn-xs" style="font-size:10px;padding:2px 8px" ' +
+        'onclick="invStockInlineCancel(\'' + escC(item.itemId) + '\',\'' + escC(editCentre) + '\')">✕</button>' +
+        '</span>';
       var centreCell = isMumbaiAdmin ? '<td style="padding:7px 10px;font-size:11px">' + escC(item.centre || '') + '</td>' : '';
 
       html += '<tr>' +
         '<td style="padding:7px 10px;font-weight:600;font-size:12px">' + escC(item.itemName) + '</td>' +
         '<td style="padding:7px 10px;font-size:11px;color:var(--muted)">' + escC(item.category) + '</td>' +
         centreCell +
-        '<td style="padding:7px 10px;text-align:right;font-weight:700;font-size:15px;color:var(--navy)">' + qty + '</td>' +
+        '<td style="padding:7px 10px;text-align:right;font-weight:700;font-size:15px;color:var(--navy)" id="inv-stock-qty-' + escC(item.itemId) + '-' + escC(editCentre) + '">' + qty + '</td>' +
         '<td style="padding:7px 10px;font-size:11px;color:var(--muted)">' + escC(item.unit) + '</td>' +
         '<td style="padding:7px 10px;font-size:11px"><span style="' + statusStyle + '">' + statusDot + ' ' + statusText + '</span></td>' +
-        '<td style="padding:7px 10px">' + reqBtn + '</td>' +
+        '<td style="padding:7px 10px">' + editBtn + '</td>' +
         '</tr>';
     });
 
     html += '</tbody></table></div>';
     grid.innerHTML = html;
   });
+}
+
+function invStockInlineEdit(itemId, centre, currentQty) {
+  var viewEl = document.getElementById('inv-stock-view-' + itemId + '-' + centre);
+  var editEl = document.getElementById('inv-stock-edit-' + itemId + '-' + centre);
+  var inp    = document.getElementById('inv-stock-input-' + itemId + '-' + centre);
+  if (!viewEl || !editEl) return;
+  viewEl.style.display = 'none';
+  editEl.style.display = 'inline-flex';
+  if (inp) { inp.value = currentQty; inp.focus(); inp.select(); }
+}
+
+function invStockInlineCancel(itemId, centre) {
+  var viewEl = document.getElementById('inv-stock-view-' + itemId + '-' + centre);
+  var editEl = document.getElementById('inv-stock-edit-' + itemId + '-' + centre);
+  if (!viewEl || !editEl) return;
+  viewEl.style.display = 'inline-flex';
+  editEl.style.display = 'none';
+}
+
+function invStockInlineSave(itemId, centre) {
+  var inp = document.getElementById('inv-stock-input-' + itemId + '-' + centre);
+  if (!inp) return;
+  var qty = parseInt(inp.value);
+  if (isNaN(qty) || qty < 0) { showToast('Invalid quantity','error'); return; }
+  inp.disabled = true;
+  gasGet({ action: 'updateBranchStock', itemId: itemId, centre: centre, quantity: qty, updatedBy: counselorName },
+    function(e, d) {
+      inp.disabled = false;
+      if (e || !d || d.status !== 'ok') {
+        showToast('Could not save stock. Please try again.', 'error'); return;
+      }
+      // Update displayed qty
+      var qtyEl = document.getElementById('inv-stock-qty-' + itemId + '-' + centre);
+      if (qtyEl) qtyEl.textContent = qty;
+      invStockInlineCancel(itemId, centre);
+      showToast('Stock updated ✓', 'success');
+    });
 }
 
 function quickRaiseRequest(itemId, itemName) {

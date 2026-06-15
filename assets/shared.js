@@ -596,6 +596,22 @@ window.gasGet = (function () {
     });
   }
 
+  /* updateStudentInfo — edit name, student_id (old→new), mobile_last4 */
+  function h_updateStudentInfo(p, cb) {
+    var oldId = String(p.oldEnrollmentNo || p.enrollmentNo || '').trim().toUpperCase();
+    if (!oldId) { cb(null, { status: 'error', reason: 'Missing enrollment number' }); return; }
+    var patch = {};
+    if (p.newEnrollmentNo && p.newEnrollmentNo.trim().toUpperCase() !== oldId) {
+      patch.student_id = p.newEnrollmentNo.trim().toUpperCase();
+    }
+    if (p.name && p.name.trim()) patch.name = p.name.trim();
+    if (p.mobileLast4 && /^\d{4}$/.test(p.mobileLast4.trim())) patch.mobile_last4 = p.mobileLast4.trim();
+    if (p.email && p.email.trim()) patch.email = p.email.trim();
+    if (!Object.keys(patch).length) { cb(null, { status: 'ok', message: 'No changes' }); return; }
+    PATCH('students', 'student_id=eq.' + encodeURIComponent(oldId), patch,
+      function(e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
+  }
+
   /* resendStudentWelcomeEmail */
   function h_resendEmail(p, cb) {
     PATCH('students', 'student_id=eq.' + encodeURIComponent(p.enrollmentNo),
@@ -2165,6 +2181,35 @@ window.gasGet = (function () {
     });
   }
 
+  /* updateBranchStock — upsert qty for a single item+centre */
+  function h_updateBranchStock(p, cb) {
+    var itemCode = String(p.itemId || '').trim();
+    var centre   = String(p.centre || '').trim();
+    var qty      = parseInt(p.quantity);
+    if (!itemCode || !centre || isNaN(qty) || qty < 0) {
+      cb(null, { status: 'error', reason: 'Invalid params' }); return;
+    }
+    // Resolve item_code → UUID
+    GET('inv_items', 'select=id&item_code=eq.' + encodeURIComponent(itemCode), function(e, rows) {
+      if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'Item not found' }); return; }
+      var uuid = rows[0].id;
+      // Try PATCH first (update existing row)
+      PATCH('inv_stock', 'item_id=eq.' + encodeURIComponent(uuid) + '&centre=eq.' + encodeURIComponent(centre),
+        { qty: qty, updated_at: nowISO(), updated_by: p.updatedBy || 'Admin' },
+        function(e2, updated) {
+          if (e2) { cb(null, { status: 'error', reason: String(e2) }); return; }
+          if (updated && updated.length > 0) {
+            cb(null, { status: 'ok' }); return;
+          }
+          // No row existed — insert
+          POST('inv_stock', null,
+            { item_id: uuid, centre: centre, qty: qty,
+              updated_at: nowISO(), updated_by: p.updatedBy || 'Admin' },
+            function(e3) { cb(null, e3 ? { status: 'error', reason: String(e3) } : { status: 'ok' }); });
+        });
+    });
+  }
+
   function h_courseBundles(p, cb) {
     cb(null, { status: 'ok', bundles: [
       { bundleId: 'DG-STD', courseName: 'Diamond Graduate',
@@ -2659,11 +2704,12 @@ window.gasGet = (function () {
   function h_verifyAttendance(p, cb) {
     var filter = 'session_code=eq.' + encodeURIComponent(p.sessionCode) + '&student_id=eq.' + encodeURIComponent(p.studentId);
     var patch = {};
-    if (p.action === 'confirm') {
+    var va = p.verifyAction || p.action; // verifyAction is canonical; p.action is legacy fallback
+    if (va === 'confirm') {
       patch = { instructor_verified: true, instructor_override: null };
-    } else if (p.action === 'override_absent') {
+    } else if (va === 'override_absent') {
       patch = { instructor_verified: false, instructor_override: 'absent' };
-    } else if (p.action === 'reset') {
+    } else if (va === 'reset') {
       patch = { instructor_verified: false, instructor_override: null };
     }
     PATCH('attendance_feedback', filter, patch, function(e) {
@@ -3223,6 +3269,7 @@ window.gasGet = (function () {
       case 'getBatchSnapshot':          return h_getBatchSnapshot(params, cb);
       case 'getInventoryItemMaster':    return h_invItems(params, cb);
       case 'getInventoryStock':         return h_invStock(params, cb);
+      case 'updateBranchStock':         return h_updateBranchStock(params, cb);
       case 'getInventoryRequests':      return h_invRequests(params, cb);
       case 'submitInventoryRequest':    return h_submitInvReq(params, cb);
       case 'confirmInventoryReceived':  return h_confirmReceived(params, cb);
@@ -3262,6 +3309,7 @@ window.gasGet = (function () {
       case 'getUpcomingBatches':        return h_getUpcomingBatches(params, cb);
       case 'deleteAssessment':          return h_deleteAssessment(params, cb);
       case 'getStudentsForBatches':     return h_getStudentsForBatches(params, cb);
+      case 'updateStudentInfo':         return h_updateStudentInfo(params, cb);
       case 'getInstructorEligibility':  return h_getInstructorEligibility(params, cb);
       case 'getInstructorTests':        return h_getInstructorTests(params, cb);
       case 'getQuestionBank':           return h_getQuestionBank(params, cb);

@@ -1275,7 +1275,10 @@
           <h2 style="margin-bottom:2px">🎓 Student Alumni Database</h2>
           <p class="sub" style="margin:0">Database of students whose batches have completed. Visible only to Admins and Counselors.</p>
         </div>
-        <button class="btn" onclick="openAddAlumniModal()" style="white-space:nowrap;font-size:13px;padding:8px 16px">+ Add Past Alumni</button>
+        <div style="display:flex;gap:8px">
+          <button id="btn-alumni-bulk-invite" class="btn btn-outline" onclick="sendAlumniBulkInvite()" style="display:none;white-space:nowrap;font-size:13px;padding:8px 16px;background:var(--navy);color:var(--gold);border-color:var(--gold)">✉️ Send Bulk Invite (0)</button>
+          <button class="btn" onclick="openAddAlumniModal()" style="white-space:nowrap;font-size:13px;padding:8px 16px">+ Add Past Alumni</button>
+        </div>
       </div>
 
       <!-- Total count bar -->
@@ -1308,6 +1311,9 @@
         <table class="compact-table">
           <thead>
             <tr>
+              <th class="text-center" style="width: 40px; padding: 0 10px;">
+                <input type="checkbox" id="alumni-select-all" onclick="toggleSelectAllAlumni(this)" style="transform: scale(1.1); cursor: pointer;">
+              </th>
               <th class="text-center">Student ID</th>
               <th class="text-left">Name</th>
               <th class="text-left">Centre</th>
@@ -1321,7 +1327,7 @@
             </tr>
           </thead>
           <tbody id="alumni-tbody">
-            <tr><td colspan="10" style="text-align:center;padding:16px;color:var(--muted)">Loading alumni records...</td></tr>
+            <tr><td colspan="11" style="text-align:center;padding:16px;color:var(--muted)">Loading alumni records...</td></tr>
           </tbody>
         </table>
       </div>
@@ -8107,7 +8113,7 @@ function loadAlumniData() {
     return;
   }
   
-  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading student alumni database...</p></div></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading student alumni database...</p></div></td></tr>';
   
   var params = {
     action: 'getStudentAlumni',
@@ -8117,7 +8123,7 @@ function loadAlumniData() {
   
   gasGet(params, function(e, d) {
     if (e || !d || d.status !== 'ok') {
-      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--red)">Failed to load student alumni records.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--red)">Failed to load student alumni records.</td></tr>';
       return;
     }
     
@@ -8191,6 +8197,11 @@ function renderAlumniTable(list) {
   var tbody = document.getElementById('alumni-tbody');
   if (!tbody) return;
 
+  var master = document.getElementById('alumni-select-all');
+  if (master) master.checked = false;
+  var btn = document.getElementById('btn-alumni-bulk-invite');
+  if (btn) btn.style.display = 'none';
+
   // Update count bar for filtered view
   var countBar = document.getElementById('alumni-count-bar');
   if (countBar) {
@@ -8205,7 +8216,7 @@ function renderAlumniTable(list) {
   }
 
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted)">No student records found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted)">No student records found.</td></tr>';
     return;
   }
 
@@ -8229,7 +8240,12 @@ function renderAlumniTable(list) {
 
     var actionHtml = '<div style="display:flex;gap:4px;justify-content:center;align-items:center">' + editBtn + inviteBtn + '</div>';
 
+    var checkbox = email
+      ? '<input type="checkbox" class="alumni-select" value="' + escC(a.studentId || a.enrollmentNo) + '" data-email="' + escC(email) + '" onclick="updateAlumniBulkBtn()" style="transform: scale(1.1); cursor: pointer;">'
+      : '<input type="checkbox" disabled style="transform: scale(1.1); opacity: 0.3">';
+
     return '<tr>' +
+      '<td class="text-center">' + checkbox + '</td>' +
       '<td class="text-center"><strong>' + escC(a.studentId || a.enrollmentNo) + '</strong></td>' +
       '<td class="text-left">' + escC(a.name) + '</td>' +
       '<td class="text-left">' + escC(a.centre) + '</td>' +
@@ -8242,6 +8258,48 @@ function renderAlumniTable(list) {
       '<td class="text-center">' + actionHtml + '</td>' +
     '</tr>';
   }).join('');
+}
+
+/* --- Alumni Bulk Invite Helper Functions --- */
+function toggleSelectAllAlumni(master) {
+  var checkboxes = document.querySelectorAll('.alumni-select');
+  checkboxes.forEach(function(cb) {
+    if (!cb.disabled && cb.dataset.email) {
+      cb.checked = master.checked;
+    }
+  });
+  updateAlumniBulkBtn();
+}
+
+function updateAlumniBulkBtn() {
+  var selected = Array.from(document.querySelectorAll('.alumni-select:checked'));
+  var btn = document.getElementById('btn-alumni-bulk-invite');
+  if (!btn) return;
+  if (selected.length > 0) {
+    btn.textContent = '✉️ Send Bulk Invite (' + selected.length + ')';
+    btn.style.display = 'inline-flex';
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+function sendAlumniBulkInvite() {
+  var selected = Array.from(document.querySelectorAll('.alumni-select:checked'));
+  var emails = selected.map(function(cb) { return cb.dataset.email; }).filter(Boolean);
+  if (!emails.length) { showToast('No emails found for selected students.', 'error'); return; }
+
+  var subject = encodeURIComponent('Join the IGI Alumni Network!');
+  var body = encodeURIComponent(
+    'Dear IGI Alumni,\n\n' +
+    'Congratulations on completing your course at IGI!\n\n' +
+    'We warmly invite you to join the IGI Alumni Group — a community of accomplished jewellery professionals like you.\n\n' +
+    '👉 Join here: https://www.alumniindia.igi.org\n\n' +
+    'Stay connected, network with fellow alumni, and stay updated with IGI events and opportunities.\n\n' +
+    'Warm regards,\nIGI Counselor Team'
+  );
+  
+  window.open('mailto:?bcc=' + emails.join(',') + '&subject=' + subject + '&body=' + body);
+  showToast('Email client opened for ' + emails.length + ' alumni', 'success');
 }
 
 function filterAlumniTable() {

@@ -1310,6 +1310,7 @@
       <button class="tab" onclick="switchAdminTab('t-fees')">💸 Fee Reconciliation</button>
       <button class="tab" onclick="switchAdminTab('t-academic')">📊 Academic Insights</button>
       <button class="tab" onclick="switchAdminTab('t-alumni')">🎓 Student Alumni</button>
+      <button class="tab" id="tab-crm-admin" onclick="switchAdminTab('t-crm-admin')">🎯 CRM Analytics</button>
       <button class="tab" onclick="switchAdminTab('t-history')">📅 Historical Intelligence</button>
       <button class="tab" onclick="switchAdminTab('t-reports')">📋 Master Export</button>
       <button class="tab" id="tab-password-reset" onclick="switchAdminTab('t-password-reset')">🔐 Password Reset</button>
@@ -1671,6 +1672,192 @@
               <tr><td colspan="11" style="text-align:center;padding:16px;color:var(--muted)">Loading alumni records...</td></tr>
             </tbody>
           </table>
+    </div>
+
+    <!-- TAB: CRM ANALYTICS & ASSIGNMENT RULES -->
+    <div id="t-crm-admin" class="tab-content">
+      <!-- Info banner -->
+      <div id="crm-admin-amit-warning" style="display:none;background:rgba(201,74,74,0.08);color:var(--red);border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:13px;font-weight:600;border:1px solid rgba(201,74,74,0.2)">
+        ⚠️ Access Restricted: Read-only profile (Amit) is active. Lead assignment configuration updates are disabled.
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
+          <h2 style="margin-bottom:0">🎯 CRM Ingestion & Analytics Hub</h2>
+          <div style="display:flex;gap:8px" class="no-print">
+            <button class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="window.print()">🖨️ Print / Save PDF</button>
+          </div>
+        </div>
+        <p class="sub">Monitor real-time lead acquisition flow, counselor efficiency leaderboards, and adjust round-robin assignment parameters.</p>
+
+        <!-- Filters Bar -->
+        <div style="display:flex;gap:12px;align-items:center;margin-top:16px;margin-bottom:16px;flex-wrap:wrap" class="no-print">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">Centre Location</span>
+            <select id="crm-admin-centre-filter" onchange="refreshCRMAdminDashboard()" style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+              <option value="">All Centres</option>
+              <option value="Mumbai">Mumbai</option>
+              <option value="Delhi">Delhi</option>
+              <option value="Surat">Surat</option>
+              <option value="Hyderabad">Hyderabad</option>
+              <option value="Chennai">Chennai</option>
+              <option value="Kolkata">Kolkata</option>
+              <option value="Ahmedabad">Ahmedabad</option>
+              <option value="Jaipur">Jaipur</option>
+              <option value="Indore">Indore</option>
+              <option value="Thrissur">Thrissur</option>
+            </select>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">Reporting Period</span>
+            <select id="crm-admin-date-filter" onchange="refreshCRMAdminDashboard()" style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+              <option value="MTD" selected>Month-to-Date (MTD)</option>
+              <option value="30D">Last 30 Days</option>
+              <option value="ALL">All Time</option>
+            </select>
+          </div>
+
+          <button class="btn btn-gold" onclick="loadCRMAdminData()" style="align-self:flex-end;height:38px;padding:8px 16px;font-size:12px;font-weight:700;margin-left:auto">🔄 Refresh Data</button>
+        </div>
+
+        <div id="crm-admin-loading" style="text-align:center;padding:40px;color:var(--muted)">
+          Loading CRM database reports...
+        </div>
+
+        <div id="crm-admin-content" style="display:none">
+          <!-- CRM Core KPI Cards -->
+          <div class="centre-health-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;margin-top:10px" id="crm-admin-kpi-grid">
+            <!-- Populated dynamically -->
+          </div>
+
+          <!-- Interactive Conversion Funnel -->
+          <div class="card" style="background:linear-gradient(135deg,var(--gold-pale),var(--white));border:1.5px solid var(--border);margin-bottom:24px;padding:20px">
+            <h3 style="margin-bottom:4px;color:var(--navy)">🏆 Interactive Lead Conversion Funnel</h3>
+            <p class="sub" style="margin-bottom:16px">Track lead progress and identify sales conversion drop-offs from first contact to enrollment.</p>
+            <div id="crm-admin-funnel-container" style="display:flex;align-items:stretch;justify-content:space-between;gap:12px;flex-wrap:wrap">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+
+          <!-- Two Column Performance Breakdown -->
+          <div style="display:flex;gap:20px;margin-bottom:24px;flex-wrap:wrap">
+            <!-- Left Panel: Marketing Source Performance -->
+            <div class="card" style="flex:1;min-width:320px;margin:0;padding:16px">
+              <h3 style="color:var(--navy);margin-bottom:8px">📢 Marketing Channel Performance</h3>
+              <p class="sub" style="margin-bottom:12px">Analysis of lead volume, conversion rate, and revenue generation by source.</p>
+              <div style="overflow-x:auto">
+                <table class="compact-table" style="width:100%">
+                  <thead>
+                    <tr>
+                      <th class="text-left">Source Channel</th>
+                      <th class="text-center">Leads Inflow</th>
+                      <th class="text-center">Conversions</th>
+                      <th class="text-center">Conv. Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody id="crm-admin-source-tbody">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Right Panel: Counselor Leaderboard -->
+            <div class="card" style="flex:1;min-width:320px;margin:0;padding:16px">
+              <h3 style="color:var(--navy);margin-bottom:8px">🏆 Counselor CRM Efficiency Leaderboard</h3>
+              <p class="sub" style="margin-bottom:12px">Response and engagement stats comparing lead volumes and conversion rates.</p>
+              <div style="overflow-x:auto">
+                <table class="compact-table" style="width:100%">
+                  <thead>
+                    <tr>
+                      <th class="text-left">Counselor</th>
+                      <th class="text-center">Assigned</th>
+                      <th class="text-center">Untouched</th>
+                      <th class="text-center">Enrolled</th>
+                      <th class="text-center">Conv %</th>
+                    </tr>
+                  </thead>
+                  <tbody id="crm-admin-counselor-tbody">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Round Robin Load Balancer Config -->
+          <div class="card" style="padding:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:12px">
+              <div>
+                <h3 style="color:var(--navy);margin-bottom:4px">⚖️ Round-Robin Load Balancer Monitor</h3>
+                <p class="sub">Configure active counselors' weights for automatic lead distribution by branch.</p>
+              </div>
+              <button id="crm-admin-add-rule-btn" class="btn btn-gold no-print" onclick="openCRMAddRuleModal()" style="width:auto;padding:8px 14px;font-size:12px;font-weight:700">➕ Add Counselor Rule</button>
+            </div>
+            
+            <div style="overflow-x:auto">
+              <table class="compact-table" style="width:100%">
+                <thead>
+                  <tr>
+                    <th class="text-left">Counselor Name</th>
+                    <th class="text-center">Centre Location</th>
+                    <th class="text-center">RR Weight</th>
+                    <th class="text-center">Status</th>
+                    <th class="text-center no-print">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="crm-admin-rules-tbody">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add/Edit Rule Modal -->
+    <div id="crm-rule-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+      <div style="background:var(--white);border-radius:12px;padding:24px;width:100%;max-width:400px;box-shadow:0 8px 40px rgba(0,0,0,.2)">
+        <h3 id="crm-rule-modal-title" style="margin:0 0 16px 0;font-size:16px;color:var(--navy)">Configure Counselor Routing</h3>
+        
+        <div class="field" style="margin-bottom:12px">
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Counselor Name</label>
+          <input type="text" id="crm-rule-counselor" placeholder="Exact name matching user account" style="width:100%;font-size:13px;padding:8px;border-radius:6px;border:1.5px solid var(--border)">
+        </div>
+        
+        <div class="field" style="margin-bottom:12px">
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Centre Location</label>
+          <select id="crm-rule-centre" style="width:100%;font-size:13px;padding:8px;border-radius:6px;border:1.5px solid var(--border)">
+            <option value="Mumbai">Mumbai</option>
+            <option value="Delhi">Delhi</option>
+            <option value="Surat">Surat</option>
+            <option value="Hyderabad">Hyderabad</option>
+            <option value="Chennai">Chennai</option>
+            <option value="Kolkata">Kolkata</option>
+            <option value="Ahmedabad">Ahmedabad</option>
+            <option value="Jaipur">Jaipur</option>
+            <option value="Indore">Indore</option>
+            <option value="Thrissur">Thrissur</option>
+          </select>
+        </div>
+        
+        <div class="field" style="margin-bottom:12px">
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Round-Robin Weight</label>
+          <input type="number" id="crm-rule-weight" placeholder="100 = 1x, 200 = 2x, 0 = Paused" min="0" step="50" value="100" style="width:100%;font-size:13px;padding:8px;border-radius:6px;border:1.5px solid var(--border);box-sizing:border-box">
+          <span style="font-size:10px;color:var(--muted);display:block;margin-top:4px">Set weight to 0 to temporarily pause assignments to this counselor.</span>
+        </div>
+
+        <div class="field" style="margin-bottom:16px;display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="crm-rule-active" checked style="width:auto;margin:0;transform:scale(1.1);cursor:pointer">
+          <label for="crm-rule-active" style="font-size:13px;font-weight:600;color:var(--navy);cursor:pointer;margin:0">Active in Round-Robin</label>
+        </div>
+        
+        <div id="crm-rule-err" class="err-box" style="display:none;margin-bottom:10px;color:var(--red);font-size:12px"></div>
+        <div style="display:flex;gap:8px">
+          <button id="crm-rule-save-btn" class="btn" onclick="saveCRMRule()">Save Config</button>
+          <button class="btn btn-outline" onclick="closeCRMRuleModal()">Cancel</button>
         </div>
       </div>
     </div>
@@ -3032,6 +3219,10 @@ function switchAdminTab(tabId) {
   }
   if (tabId === 't-hod-approvals') {
     loadPendingHODApprovals();
+    return;
+  }
+  if (tabId === 't-crm-admin') {
+    loadCRMAdminData();
     return;
   }
   // Fetch dashboard data if we don't have it yet
@@ -6581,6 +6772,417 @@ function adminRegisterVendor() {
     } else {
       if (errEl) errEl.textContent = 'Error: ' + (res && res.message || 'Unknown');
     }
+  });
+}
+
+
+// ── CRM SYSTEM CONTROLLER ──────────────────────────────────────
+var crmLeads = [];
+var crmRules = [];
+var editingRuleCounselor = null;
+
+function loadCRMAdminData() {
+  const loading = document.getElementById('crm-admin-loading');
+  const content = document.getElementById('crm-admin-content');
+  if (loading) loading.style.display = 'block';
+  if (content) content.style.display = 'none';
+
+  var pending = 2;
+  var errOccurred = false;
+
+  gasGet({ action: 'getCRMLeads', userRole: 'Admin' }, function(err, resLeads) {
+    if (err || !resLeads || resLeads.status !== 'ok') {
+      errOccurred = true;
+    } else {
+      crmLeads = resLeads.leads || [];
+    }
+    checkDone();
+  });
+
+  gasGet({ action: 'getCRMAssignmentRules' }, function(err, resRules) {
+    if (err || !resRules || resRules.status !== 'ok') {
+      errOccurred = true;
+    } else {
+      crmRules = resRules.rules || [];
+    }
+    checkDone();
+  });
+
+  function checkDone() {
+    pending--;
+    if (pending > 0) return;
+    if (loading) loading.style.display = 'none';
+    
+    if (errOccurred) {
+      showToast('Failed to load CRM data from database.', 'error');
+      return;
+    }
+    
+    if (content) content.style.display = 'block';
+    
+    // Check if user is Amit (read-only restriction)
+    const isAmit = (adminUser && adminUser.name && adminUser.name.toLowerCase().trim() === 'amit');
+    const warning = document.getElementById('crm-admin-amit-warning');
+    if (warning) {
+      warning.style.display = isAmit ? 'block' : 'none';
+    }
+    const addRuleBtn = document.getElementById('crm-admin-add-rule-btn');
+    if (addRuleBtn) {
+      addRuleBtn.style.display = isAmit ? 'none' : 'block';
+    }
+    
+    refreshCRMAdminDashboard();
+  }
+}
+
+function refreshCRMAdminDashboard() {
+  const selectedCentre = document.getElementById('crm-admin-centre-filter').value;
+  const selectedDateRange = document.getElementById('crm-admin-date-filter').value;
+  
+  let filteredLeads = crmLeads;
+  
+  // 1. Filter by Centre
+  if (selectedCentre) {
+    filteredLeads = filteredLeads.filter(l => l.centre === selectedCentre);
+  }
+  
+  // 2. Filter by Date Range
+  if (selectedDateRange === 'MTD') {
+    const curMonth = new Date().toISOString().slice(0, 7);
+    filteredLeads = filteredLeads.filter(l => l.created_at && l.created_at.slice(0, 7) === curMonth);
+  } else if (selectedDateRange === '30D') {
+    const limitTime = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    filteredLeads = filteredLeads.filter(l => l.created_at && new Date(l.created_at).getTime() >= limitTime);
+  }
+  
+  // Render subviews
+  renderCRMAdminKPIs(filteredLeads);
+  renderCRMAdminFunnel(filteredLeads);
+  renderCRMAdminSourceTable(filteredLeads);
+  renderCRMAdminLeaderboard(filteredLeads);
+  renderCRMAdminRulesTable(selectedCentre);
+}
+
+function renderCRMAdminKPIs(leads) {
+  const total = leads.length;
+  const untouched = leads.filter(l => l.lead_stage === 'New' && (!l.notes || !l.notes.trim())).length;
+  const contactedCount = leads.filter(l => l.lead_stage !== 'New' || (l.notes && l.notes.trim())).length;
+  const contactedPct = total ? Math.round(contactedCount / total * 100) : 0;
+  const enrolledCount = leads.filter(l => l.lead_stage === 'Enrolled').length;
+  const enrolledPct = total ? Math.round(enrolledCount / total * 100) : 0;
+  
+  const grid = document.getElementById('crm-admin-kpi-grid');
+  if (!grid) return;
+  
+  grid.innerHTML = `
+    <div class="centre-health-card" style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px;box-shadow:var(--shadow)">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:13px;font-weight:600;color:var(--muted)">Total Leads Ingested</div>
+        <div style="font-size:18px">📋</div>
+      </div>
+      <div style="font-size:28px;font-weight:800;color:var(--navy);margin-top:6px">${total}</div>
+    </div>
+    
+    <div class="centre-health-card" style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px;box-shadow:var(--shadow)">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:13px;font-weight:600;color:var(--muted)">Untouched Leads</div>
+        <div style="font-size:18px">🆕</div>
+      </div>
+      <div style="font-size:28px;font-weight:800;color:${untouched > 0 ? 'var(--red)' : 'var(--teal)'};margin-top:6px">${untouched}</div>
+    </div>
+
+    <div class="centre-health-card" style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px;box-shadow:var(--shadow)">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:13px;font-weight:600;color:var(--muted)">Contact / Response Rate</div>
+        <div style="font-size:18px">📞</div>
+      </div>
+      <div style="font-size:28px;font-weight:800;color:var(--navy);margin-top:6px">${contactedPct}%</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${contactedCount} leads responded</div>
+    </div>
+
+    <div class="centre-health-card" style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px;box-shadow:var(--shadow)">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:13px;font-weight:600;color:var(--muted)">Conversion Rate (Enrolled)</div>
+        <div style="font-size:18px">🎓</div>
+      </div>
+      <div style="font-size:28px;font-weight:800;color:var(--teal);margin-top:6px">${enrolledPct}%</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${enrolledCount} enrolled students</div>
+    </div>
+  `;
+}
+
+function renderCRMAdminFunnel(leads) {
+  const total = leads.length;
+  
+  const step1 = total;
+  const step2 = leads.filter(l => l.lead_stage !== 'New' || (l.notes && l.notes.trim())).length;
+  const step3 = leads.filter(l => ['Contacted', 'Interested', 'Enrolled'].includes(l.lead_stage)).length;
+  const step4 = leads.filter(l => ['Interested', 'Enrolled'].includes(l.lead_stage)).length;
+  const step5 = leads.filter(l => l.lead_stage === 'Enrolled').length;
+  
+  const funnelEl = document.getElementById('crm-admin-funnel-container');
+  if (!funnelEl) return;
+  
+  function getCardHtml(title, count, prevCount, index) {
+    const pctOfTotal = total ? Math.round(count / total * 100) : 0;
+    let subtitle = '';
+    if (index > 0) {
+      const pctOfPrev = prevCount ? Math.round(count / prevCount * 100) : 0;
+      subtitle = `<div style="font-size:11px;color:var(--muted);margin-top:2px">(${pctOfPrev}% of prev)</div>`;
+    } else {
+      subtitle = `<div style="font-size:11px;color:var(--muted);margin-top:2px">All Inflow</div>`;
+    }
+    
+    return `
+      <div style="flex:1;min-width:150px;background:var(--white);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;box-shadow:var(--shadow);position:relative">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">${title}</div>
+        <div style="font-size:22px;font-weight:800;color:var(--navy);margin-bottom:2px">${count}</div>
+        <div style="font-size:12px;font-weight:600;color:var(--teal)">${pctOfTotal}% of total</div>
+        ${subtitle}
+      </div>
+    `;
+  }
+  
+  const arrow = `
+    <div style="display:flex;align-items:center;justify-content:center;color:var(--gold);font-weight:800;font-size:16px" class="no-print">
+      ➡️
+    </div>
+  `;
+  
+  funnelEl.innerHTML = `
+    ${getCardHtml('1. Inflow', step1, 0, 0)}
+    ${arrow}
+    ${getCardHtml('2. Call Attempted', step2, step1, 1)}
+    ${arrow}
+    ${getCardHtml('3. Connected', step3, step2, 2)}
+    ${arrow}
+    ${getCardHtml('4. Interested', step4, step3, 3)}
+    ${arrow}
+    ${getCardHtml('5. Enrolled', step5, step4, 4)}
+  `;
+}
+
+function renderCRMAdminSourceTable(leads) {
+  const tbody = document.getElementById('crm-admin-source-tbody');
+  if (!tbody) return;
+  
+  const sourceStats = {};
+  leads.forEach(l => {
+    const src = l.source || 'Direct';
+    if (!sourceStats[src]) {
+      sourceStats[src] = { count: 0, converted: 0 };
+    }
+    sourceStats[src].count++;
+    if (l.lead_stage === 'Enrolled') {
+      sourceStats[src].converted++;
+    }
+  });
+  
+  const sortedSources = Object.keys(sourceStats).sort((a, b) => sourceStats[b].count - sourceStats[a].count);
+  
+  if (sortedSources.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:12px;color:var(--muted)">No source metrics available.</td></tr>`;
+    return;
+  }
+  
+  tbody.innerHTML = sortedSources.map(src => {
+    const stat = sourceStats[src];
+    const pct = stat.count ? Math.round(stat.converted / stat.count * 100) : 0;
+    return `
+      <tr>
+        <td style="padding:8px;font-weight:600">${src}</td>
+        <td style="padding:8px;text-align:center">${stat.count}</td>
+        <td style="padding:8px;text-align:center;color:var(--teal);font-weight:700">${stat.converted}</td>
+        <td style="padding:8px;text-align:center;font-weight:600">${pct}%</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderCRMAdminLeaderboard(leads) {
+  const tbody = document.getElementById('crm-admin-counselor-tbody');
+  if (!tbody) return;
+  
+  const counselorStats = {};
+  leads.forEach(l => {
+    const owner = l.lead_owner || 'Unassigned';
+    if (!counselorStats[owner]) {
+      counselorStats[owner] = { assigned: 0, untouched: 0, enrolled: 0 };
+    }
+    counselorStats[owner].assigned++;
+    if (l.lead_stage === 'New' && (!l.notes || !l.notes.trim())) {
+      counselorStats[owner].untouched++;
+    }
+    if (l.lead_stage === 'Enrolled') {
+      counselorStats[owner].enrolled++;
+    }
+  });
+  
+  const sortedCounselors = Object.keys(counselorStats).sort((a, b) => counselorStats[b].assigned - counselorStats[a].assigned);
+  
+  if (sortedCounselors.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">No counselor statistics.</td></tr>`;
+    return;
+  }
+  
+  tbody.innerHTML = sortedCounselors.map(name => {
+    const stat = counselorStats[name];
+    const pct = stat.assigned ? Math.round(stat.enrolled / stat.assigned * 100) : 0;
+    const untouchedStyle = stat.untouched > 0 ? 'color:var(--red);font-weight:700' : 'color:var(--muted)';
+    return `
+      <tr>
+        <td style="padding:8px;font-weight:600">${name}</td>
+        <td style="padding:8px;text-align:center">${stat.assigned}</td>
+        <td style="padding:8px;text-align:center;${untouchedStyle}">${stat.untouched}</td>
+        <td style="padding:8px;text-align:center;color:var(--teal);font-weight:700">${stat.enrolled}</td>
+        <td style="padding:8px;text-align:center;font-weight:600">${pct}%</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderCRMAdminRulesTable(selectedCentre) {
+  const tbody = document.getElementById('crm-admin-rules-tbody');
+  if (!tbody) return;
+  
+  let rulesToRender = crmRules;
+  if (selectedCentre) {
+    rulesToRender = rulesToRender.filter(r => r.centre === selectedCentre);
+  }
+  
+  if (rulesToRender.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--muted)">No assignment rules configured.</td></tr>`;
+    return;
+  }
+  
+  const isAmit = (adminUser && adminUser.name && adminUser.name.toLowerCase().trim() === 'amit');
+  
+  tbody.innerHTML = rulesToRender.map(r => {
+    const activeText = r.is_active ? '🟢 Active' : '🔴 Inactive';
+    const actionHtml = isAmit 
+      ? `<span style="font-size:11px;color:var(--muted)">🔒 Locked</span>`
+      : `<button class="btn btn-xs" onclick="editCRMRule('${r.counselor_name.replace(/'/g, "\\'")}', '${r.centre}', ${r.crm_weight}, ${r.is_active})" style="padding:4px 8px;font-size:11px">✏️ Edit</button>`;
+      
+    return `
+      <tr>
+        <td style="padding:8px;font-weight:600">${r.counselor_name}</td>
+        <td style="padding:8px;text-align:center">${r.centre}</td>
+        <td style="padding:8px;text-align:center;font-weight:700">${r.crm_weight}</td>
+        <td style="padding:8px;text-align:center;font-weight:600">${activeText}</td>
+        <td style="padding:8px;text-align:center" class="no-print">${actionHtml}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function openCRMAddRuleModal() {
+  const isAmit = (adminUser && adminUser.name && adminUser.name.toLowerCase().trim() === 'amit');
+  if (isAmit) return;
+  
+  editingRuleCounselor = null;
+  document.getElementById('crm-rule-modal-title').textContent = 'Add Counselor Routing Rule';
+  
+  const nameInput = document.getElementById('crm-rule-counselor');
+  nameInput.value = '';
+  nameInput.disabled = false;
+  
+  document.getElementById('crm-rule-centre').value = 'Mumbai';
+  document.getElementById('crm-rule-weight').value = '100';
+  document.getElementById('crm-rule-active').checked = true;
+  document.getElementById('crm-rule-err').style.display = 'none';
+  
+  document.getElementById('crm-rule-modal').style.display = 'flex';
+}
+
+function editCRMRule(cName, centre, weight, isActive) {
+  const isAmit = (adminUser && adminUser.name && adminUser.name.toLowerCase().trim() === 'amit');
+  if (isAmit) return;
+  
+  editingRuleCounselor = cName;
+  document.getElementById('crm-rule-modal-title').textContent = 'Edit Counselor Routing Rule';
+  
+  const nameInput = document.getElementById('crm-rule-counselor');
+  nameInput.value = cName;
+  nameInput.disabled = true;
+  
+  document.getElementById('crm-rule-centre').value = centre;
+  document.getElementById('crm-rule-weight').value = weight;
+  document.getElementById('crm-rule-active').checked = isActive;
+  document.getElementById('crm-rule-err').style.display = 'none';
+  
+  document.getElementById('crm-rule-modal').style.display = 'flex';
+}
+
+function closeCRMRuleModal() {
+  document.getElementById('crm-rule-modal').style.display = 'none';
+}
+
+function saveCRMRule() {
+  const isAmit = (adminUser && adminUser.name && adminUser.name.toLowerCase().trim() === 'amit');
+  if (isAmit) {
+    showToast('Permission Denied: Read-only access.', 'error');
+    closeCRMRuleModal();
+    return;
+  }
+  
+  const cName = document.getElementById('crm-rule-counselor').value.trim();
+  const centre = document.getElementById('crm-rule-centre').value;
+  const weight = parseInt(document.getElementById('crm-rule-weight').value);
+  const active = document.getElementById('crm-rule-active').checked;
+  const errEl = document.getElementById('crm-rule-err');
+  
+  if (!cName) {
+    errEl.textContent = 'Counselor name cannot be empty.';
+    errEl.style.display = 'block';
+    return;
+  }
+  
+  if (isNaN(weight) || weight < 0) {
+    errEl.textContent = 'Weight must be 0 or a positive number.';
+    errEl.style.display = 'block';
+    return;
+  }
+  
+  errEl.style.display = 'none';
+  
+  const saveBtn = document.getElementById('crm-rule-save-btn');
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Saving...';
+  
+  gasGet({
+    action: 'saveCRMAssignmentRule',
+    counselorName: cName,
+    centre: centre,
+    crmWeight: weight,
+    isActive: active
+  }, function(err, res) {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save Config';
+    
+    if (err || !res || res.status !== 'ok') {
+      errEl.textContent = 'Failed to save configuration. Please try again.';
+      errEl.style.display = 'block';
+      return;
+    }
+    
+    showToast('Assignment rule saved successfully ✓', 'success');
+    closeCRMRuleModal();
+    
+    const existingIdx = crmRules.findIndex(r => r.counselor_name === cName);
+    if (existingIdx >= 0) {
+      crmRules[existingIdx].centre = centre;
+      crmRules[existingIdx].crm_weight = weight;
+      crmRules[existingIdx].is_active = active;
+    } else {
+      crmRules.push({
+        counselor_name: cName,
+        centre: centre,
+        crm_weight: weight,
+        is_active: active
+      });
+      crmRules.sort((a, b) => a.counselor_name.localeCompare(b.counselor_name));
+    }
+    refreshCRMAdminDashboard();
   });
 }
 

@@ -1115,6 +1115,7 @@
     <button class="tab active" onclick="switchTab('t-batches')">📋 Batches</button>
     <button class="tab" onclick="switchTab('t-students')">👥 Students</button>
     <button class="tab" onclick="switchTab('t-alumni')">🎓 Alumni</button>
+    <button class="tab" id="tab-crm" onclick="switchTab('t-crm')">🎯 CRM <span id="crm-reminder-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" onclick="switchTab('t-mybatches')">🗂 My Batches</button>
     <button class="tab" onclick="switchTab('t-reports')">📊 Reports</button>
     <button class="tab" id="tab-fees" onclick="switchTab('t-fees')">💰 Fees <span id="fees-overdue-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
@@ -1332,6 +1333,268 @@
         </table>
       </div>
     </div>
+  </div>
+
+  <!-- TAB: CRM SYSTEM -->
+  <div id="t-crm" class="tab-content">
+    <!-- Summary KPIs Row -->
+    <div class="stats-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:14px">
+      <div class="card" style="margin:0">
+        <div class="sub">Total Assigned Leads</div>
+        <h2 id="crm-stat-total">0</h2>
+      </div>
+      <div class="card" style="margin:0;border-left:4px solid #dc2626">
+        <div class="sub" style="color:#dc2626">🆕 Untouched Leads</div>
+        <h2 id="crm-stat-untouched" style="color:#dc2626">0</h2>
+      </div>
+      <div class="card" style="margin:0;border-left:4px solid #d97706">
+        <div class="sub" style="color:#b45309">📞 Today's Reminders</div>
+        <h2 id="crm-stat-reminders" style="color:#b45309">0</h2>
+      </div>
+      <div class="card" style="margin:0;border-left:4px solid #168b57">
+        <div class="sub" style="color:#168b57">🎯 Converted (MTD)</div>
+        <h2 id="crm-stat-converted" style="color:#168b57">0</h2>
+      </div>
+    </div>
+
+    <!-- Controls & Actions Row -->
+    <div class="card" style="margin-bottom:14px;padding:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+        <div style="display:flex;gap:10px;align-items:center;flex:1;min-width:280px">
+          <input type="text" id="crm-search" placeholder="🔍 Search leads by Name, Email, Mobile..." oninput="filterLeads()" style="flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
+          <select id="crm-stage-filter" onchange="filterLeads()" style="padding:8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;background:var(--white)">
+            <option value="">All Stages</option>
+            <option value="New">New</option>
+            <option value="Contacted">Contacted</option>
+            <option value="Demo">Demo</option>
+            <option value="Interested">Interested</option>
+            <option value="Enrolled">Enrolled</option>
+            <option value="Lost">Lost</option>
+          </select>
+          <select id="crm-source-filter" onchange="filterLeads()" style="padding:8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;background:var(--white)">
+            <option value="">All Sources</option>
+            <option value="Website">Website</option>
+            <option value="Facebook Lead Ads">Facebook Ads</option>
+            <option value="Direct">Direct/Manual</option>
+            <option value="Internal Cross-Sell">Upsell/Cross-Sell</option>
+          </select>
+        </div>
+        <button class="btn btn-gold" onclick="openAddLeadModal()">+ Add Lead Manually</button>
+      </div>
+    </div>
+
+    <!-- Main Workspace Layout -->
+    <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:14px;align-items:start">
+      
+      <!-- Leads Queue/List Card -->
+      <div class="card" style="margin:0;padding:16px">
+        <h3 style="margin-top:0;color:var(--navy);font-size:15px">Admission Leads Queue</h3>
+        <div style="overflow-x:auto">
+          <table class="compact-table" style="width:100%">
+            <thead>
+              <tr>
+                <th class="text-left">Lead Details</th>
+                <th class="text-left">Course / Centre</th>
+                <th class="text-center">Score</th>
+                <th class="text-center">Stage</th>
+                <th class="text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody id="crm-leads-tbody">
+              <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted)">Loading leads...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Lead Details & Daily Activity Panel -->
+      <div class="card" id="crm-detail-card" style="margin:0;padding:16px;background:var(--white);border:1.5px solid var(--border)">
+        <div id="crm-detail-empty" style="text-align:center;padding:48px 16px;color:var(--muted)">
+          <div style="font-size:32px;margin-bottom:8px">🎯</div>
+          <div>Select a lead from the queue to view details, log calls, set reminders, or enroll.</div>
+        </div>
+        
+        <div id="crm-detail-content" style="display:none">
+          <!-- Header details -->
+          <div style="display:flex;justify-content:space-between;align-items:start;border-bottom:1.5px solid var(--border);padding-bottom:12px;margin-bottom:12px">
+            <div>
+              <h3 id="crm-detail-name" style="margin:0;color:var(--navy)">-</h3>
+              <div id="crm-detail-source-badge" style="font-size:11px;color:var(--muted);margin-top:3px"></div>
+            </div>
+            <div style="text-align:right">
+              <span class="badge" id="crm-detail-stage-badge" style="font-size:11px;font-weight:700"></span>
+              <div id="crm-detail-score-wrap" style="font-size:11px;color:var(--muted);margin-top:4px">Lead Score: <strong id="crm-detail-score">0</strong></div>
+            </div>
+          </div>
+
+          <!-- Profile details -->
+          <div style="margin-bottom:12px">
+            <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Enquiry Profile</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#f8fafc;padding:10px;border-radius:6px;font-size:12px">
+              <div><strong>Email:</strong> <span id="crm-detail-email">-</span></div>
+              <div><strong>Mobile:</strong> <span id="crm-detail-mobile">-</span></div>
+              <div><strong>Centre:</strong> <span id="crm-detail-centre">-</span></div>
+              <div><strong>Course:</strong> <span id="crm-detail-course">-</span></div>
+              <div style="grid-column:span 2"><strong>Owner / Co-owner:</strong> <span id="crm-detail-owner">-</span></div>
+            </div>
+          </div>
+
+          <!-- Academic Context Card -->
+          <div id="crm-academic-card" style="display:none;background:rgba(24,95,165,0.06);border:1px solid rgba(24,95,165,0.15);padding:10px;border-radius:6px;margin-bottom:12px;font-size:12px">
+            <div style="font-weight:700;color:var(--navy);margin-bottom:4px">🎓 Student Academic Context</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+              <div>Batch: <strong id="crm-acad-batch">-</strong></div>
+              <div>Status: <span id="crm-acad-status">-</span></div>
+              <div>Attendance Rate: <strong id="crm-acad-attendance">-</strong></div>
+              <div>Exam Score: <strong id="crm-acad-marks">-</strong></div>
+            </div>
+          </div>
+
+          <!-- Call Outcomes -->
+          <div style="margin-bottom:12px">
+            <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Log Call Outcome</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;border-radius:4px" onclick="logCallOutcome('call-connected')">📞 Connected</button>
+              <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;border-radius:4px" onclick="logCallOutcome('call-no-answer')">🔕 No Answer</button>
+              <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;border-radius:4px" onclick="logCallOutcome('call-dnd-off')">❌ Switched Off</button>
+              <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;border-radius:4px;border-color:#dc2626;color:#dc2626" onclick="logCallOutcome('marked-lost')">🗑️ Mark Lost</button>
+            </div>
+          </div>
+
+          <!-- Timeline Notes -->
+          <div style="margin-bottom:12px">
+            <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Activity Log & Notes</div>
+            <textarea id="crm-note-input" placeholder="Type notes here..." style="width:100%;height:50px;font-family:inherit;font-size:12px;padding:6px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box;resize:none"></textarea>
+            <button class="btn btn-outline" style="margin-top:4px;padding:4px 8px;font-size:11px;border-color:var(--gold);color:var(--navy);border-radius:4px" onclick="saveCRMNote()">Save Note</button>
+            <div id="crm-timeline-display" style="max-height:100px;overflow-y:auto;background:#f8fafc;padding:6px;border-radius:6px;font-size:11px;color:var(--muted);margin-top:6px;white-space:pre-wrap"></div>
+          </div>
+
+          <!-- Set Follow-up Reminder -->
+          <div style="margin-bottom:16px;border-top:1px solid var(--border);padding-top:12px">
+            <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Set Follow-up Task</div>
+            <div style="display:flex;gap:6px">
+              <input type="datetime-local" id="crm-remind-date" style="padding:6px;font-size:12px;border:1.5px solid var(--border);border-radius:6px;flex:1">
+              <button class="btn" style="padding:6px 12px;font-size:12px" onclick="saveCRMReminder()">Save Task</button>
+            </div>
+          </div>
+
+          <!-- Bottom Action Funnel -->
+          <div style="display:flex;gap:8px;border-top:1.5px solid var(--border);padding-top:12px">
+            <button class="btn btn-gold" id="btn-crm-enroll" style="flex:1" onclick="openCRMEnrollModal()">🎯 Convert / Enroll Lead</button>
+            <button class="btn btn-outline" id="btn-crm-upsell" style="flex:1" onclick="openCRMUpsellModal()">🔄 Cross-Sell/Upsell</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ADD LEAD MANUALLY -->
+  <div id="crm-add-lead-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+    <div style="width:100%;max-width:420px;padding:24px;background:var(--white);border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.2)">
+      <h3 style="margin-top:0;color:var(--navy)">Add New Enquiry Lead</h3>
+      <div class="field" style="margin-bottom:10px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">First Name</label>
+        <input type="text" id="crm-new-fname" placeholder="Enter first name" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
+      </div>
+      <div class="field" style="margin-bottom:10px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Last Name</label>
+        <input type="text" id="crm-new-lname" placeholder="Enter last name" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
+      </div>
+      <div class="field" style="margin-bottom:10px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Email ID</label>
+        <input type="email" id="crm-new-email" placeholder="name@email.com" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
+      </div>
+      <div class="field" style="margin-bottom:10px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Mobile Number</label>
+        <input type="tel" id="crm-new-mobile" placeholder="10 digit number" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
+      </div>
+      <div class="field" style="margin-bottom:10px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Interested Course</label>
+        <select id="crm-new-course" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box"></select>
+      </div>
+      <div class="field" style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">IGI Centre</label>
+        <select id="crm-new-centre" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box"></select>
+      </div>
+      <div class="err-box" id="crm-new-err" style="display:none;margin-bottom:10px;color:#dc2626;font-size:12px"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-gold" onclick="submitNewLead()">Create Lead</button>
+        <button class="btn btn-outline" onclick="closeAddLeadModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CONVERT / ENROLL CRM LEAD -->
+  <div id="crm-enroll-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+    <div style="width:100%;max-width:440px;padding:24px;background:var(--white);border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.2);max-height:90vh;overflow-y:auto">
+      <h3 style="margin-top:0;color:var(--navy)">Enroll Lead to Batch</h3>
+      <p class="sub" style="margin-bottom:14px;font-size:12px">Convert lead information into active batch roster and log initial fee transaction.</p>
+      
+      <div class="field" style="margin-bottom:10px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Student Name</label>
+        <input type="text" id="crm-enroll-name" readonly style="width:100%;padding:8px;background:#f1f5f9;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
+      </div>
+      <div class="field" style="margin-bottom:10px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Select Target Batch</label>
+        <select id="crm-enroll-batch" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box" onchange="updateCRMEnrollFees()"></select>
+      </div>
+      
+      <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+        <div style="font-weight:600;font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Fee Onboarding Configuration</div>
+        <div class="field" style="margin-bottom:8px">
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Total Course Fee (Incl. GST)</label>
+          <input type="number" id="crm-enroll-course-fee" placeholder="0.00" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
+        </div>
+        <div class="field" style="margin-bottom:8px">
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Onboarding Amount Paid (Receipt)</label>
+          <input type="number" id="crm-enroll-paid-amount" placeholder="0.00" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
+          <div class="field">
+            <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Payment Mode</label>
+            <select id="crm-enroll-pay-mode" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
+              <option value="UPI">UPI</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="Cash">Cash</option>
+              <option value="Cheque">Cheque</option>
+            </select>
+          </div>
+          <div class="field">
+            <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Receipt / Transaction No</label>
+            <input type="text" id="crm-enroll-receipt" placeholder="e.g. TXN10293" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
+          </div>
+        </div>
+      </div>
+      
+      <div class="err-box" id="crm-enroll-err" style="display:none;margin-bottom:10px;color:#dc2626;font-size:12px"></div>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn btn-gold" onclick="submitCRMEnrollment()">Finalize Enrollment</button>
+        <button class="btn btn-outline" onclick="closeCRMEnrollModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CROSS-SELL / UPSELL OPPORTUNITY -->
+  <div id="crm-upsell-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+    <div style="width:100%;max-width:400px;padding:24px;background:var(--white);border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.2)">
+      <h3 style="margin-top:0;color:var(--navy)">Create Upsell / Cross-Sell Lead</h3>
+      <p class="sub" style="margin-bottom:12px;font-size:12px">Originates a secondary pitch opportunity. The originating counselor remains co-owner.</p>
+      
+      <div class="field" style="margin-bottom:10px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Cross-Sell Course</label>
+        <select id="crm-upsell-course" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box"></select>
+      </div>
+      <div class="field" style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Target IGI Centre</label>
+        <select id="crm-upsell-centre" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box"></select>
+      </div>
+      <div class="err-box" id="crm-upsell-err" style="display:none;margin-bottom:10px;color:#dc2626;font-size:12px"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-gold" onclick="submitCRMUpsell()">Initiate Opportunity</button>
+        <button class="btn btn-outline" onclick="closeCRMUpsellModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
   </div>
 
   <!-- Assign tab removed — instructor assigned during batch creation -->
@@ -2597,6 +2860,9 @@ function switchTab(id) {
   renderContextSummary(id);
   if (id === 't-alumni') {
     loadAlumniData();
+  }
+  if (id === 't-crm') {
+    loadCRMData();
   }
   if (id === 't-diplomas') {
     loadDiplomaData();
@@ -10443,6 +10709,533 @@ function fpwdResetPIN() {
     document.getElementById('fpwd-step3').style.display = 'none';
     document.getElementById('fpwd-step4').style.display = '';
     _fpwdToken = ''; // clear token
+  });
+}
+
+// ── CRM SYSTEM FRONTEND ──────────────────────────────────────
+var crmLeadsList = [];
+var activeLead = null;
+
+function loadCRMData() {
+  var tbody = document.getElementById('crm-leads-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px">' + loadingState('Loading leads...') + '</td></tr>';
+  
+  document.getElementById('crm-detail-content').style.display = 'none';
+  document.getElementById('crm-detail-empty').style.display = 'block';
+  activeLead = null;
+  
+  gasGet({
+    action: 'getCRMLeads',
+    userRole: authRole || 'Counselor',
+    userName: counselorName || ''
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:#dc2626">Failed to load CRM leads database.</td></tr>';
+      return;
+    }
+    
+    crmLeadsList = d.leads || [];
+    updateCRMKPIs();
+    renderCRMLeadsTable(crmLeadsList);
+  });
+}
+
+function updateCRMKPIs() {
+  var total = crmLeadsList.length;
+  var untouched = crmLeadsList.filter(function(l) { return l.lead_stage === 'New'; }).length;
+  
+  var todayStr = new Date().toISOString().slice(0, 10);
+  var pendingReminders = 0;
+  crmLeadsList.forEach(function(l) {
+    var followups = l.crm_followups || [];
+    followups.forEach(function(f) {
+      if (f.status === 'Pending' && f.reminder_date.slice(0, 10) <= todayStr) {
+        pendingReminders++;
+      }
+    });
+  });
+  
+  var curMonth = new Date().toISOString().slice(0, 7);
+  var converted = crmLeadsList.filter(function(l) {
+    return l.lead_stage === 'Enrolled' && l.created_at.slice(0, 7) === curMonth;
+  }).length;
+
+  document.getElementById('crm-stat-total').textContent = total;
+  document.getElementById('crm-stat-untouched').textContent = untouched;
+  document.getElementById('crm-stat-reminders').textContent = pendingReminders;
+  document.getElementById('crm-stat-converted').textContent = converted;
+  
+  var badge = document.getElementById('crm-reminder-badge');
+  if (badge) {
+    if (untouched > 0 || pendingReminders > 0) {
+      badge.textContent = untouched + pendingReminders;
+      badge.style.display = 'inline-block';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+}
+
+function renderCRMLeadsTable(list) {
+  var tbody = document.getElementById('crm-leads-tbody');
+  if (!tbody) return;
+  
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted)">No matching leads found.</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = list.map(function(l) {
+    var stageClass = 'badge-blue';
+    if (l.lead_stage === 'New') stageClass = 'badge-red';
+    else if (l.lead_stage === 'Contacted') stageClass = 'badge-amber';
+    else if (l.lead_stage === 'Interested') stageClass = 'badge-orange';
+    else if (l.lead_stage === 'Enrolled') stageClass = 'badge-green';
+    else if (l.lead_stage === 'Lost') stageClass = 'badge-grey';
+    
+    var scoreColor = '#b45309';
+    if (l.lead_score >= 70) scoreColor = '#168b57';
+    else if (l.lead_score < 30) scoreColor = '#dc2626';
+    
+    var name = escC(l.first_name + (l.last_name ? ' ' + l.last_name : ''));
+    var email = escC(l.email || '');
+    var mobile = escC(l.mobile || '');
+    
+    var viewBtn = '<button class="btn btn-outline" style="padding:4px 10px;font-size:11px;border-radius:5px" onclick="selectCRMLead(\'' + l.id + '\')">👁️&nbsp;View</button>';
+    
+    return '<tr style="cursor:pointer" onclick="selectCRMLead(\'' + l.id + '\')">' +
+      '<td class="text-left">' +
+        '<strong>' + name + '</strong>' +
+        '<div style="font-size:11px;color:var(--muted)">' + email + (email && mobile ? ' · ' : '') + mobile + '</div>' +
+      '</td>' +
+      '<td class="text-left">' +
+        '<span>' + escC(l.course) + '</span>' +
+        '<div style="font-size:11px;color:var(--muted)">' + escC(l.centre) + '</div>' +
+      '</td>' +
+      '<td class="text-center"><strong style="color:' + scoreColor + '">' + (l.lead_score || 0) + '</strong></td>' +
+      '<td class="text-center"><span class="badge ' + stageClass + '" style="margin-left:0">' + escC(l.lead_stage) + '</span></td>' +
+      '<td class="text-center" onclick="event.stopPropagation()">' + viewBtn + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function filterLeads() {
+  var query = document.getElementById('crm-search').value.toLowerCase().trim();
+  var stage = document.getElementById('crm-stage-filter').value;
+  var source = document.getElementById('crm-source-filter').value;
+  
+  var filtered = crmLeadsList.filter(function(l) {
+    var matchQuery = !query || 
+      (l.first_name + ' ' + l.last_name).toLowerCase().includes(query) ||
+      (l.email || '').toLowerCase().includes(query) ||
+      (l.mobile || '').toLowerCase().includes(query) ||
+      (l.course || '').toLowerCase().includes(query);
+      
+    var matchStage = !stage || l.lead_stage === stage;
+    var matchSource = !source || l.source === source;
+    
+    return matchQuery && matchStage && matchSource;
+  });
+  
+  renderCRMLeadsTable(filtered);
+}
+
+function selectCRMLead(leadId) {
+  var lead = crmLeadsList.find(function(l) { return l.id === leadId; });
+  if (!lead) return;
+  activeLead = lead;
+  
+  document.getElementById('crm-detail-empty').style.display = 'none';
+  document.getElementById('crm-detail-content').style.display = 'block';
+  
+  document.getElementById('crm-detail-name').textContent = lead.first_name + (lead.last_name ? ' ' + lead.last_name : '');
+  document.getElementById('crm-detail-source-badge').textContent = 'Source: ' + lead.source + ' | Reference: ' + (lead.web_meta?.reference_id || 'Direct');
+  
+  var stageEl = document.getElementById('crm-detail-stage-badge');
+  stageEl.textContent = lead.lead_stage;
+  stageEl.className = 'badge';
+  if (lead.lead_stage === 'New') stageEl.classList.add('badge-red');
+  else if (lead.lead_stage === 'Contacted') stageEl.classList.add('badge-amber');
+  else if (lead.lead_stage === 'Interested') stageEl.classList.add('badge-orange');
+  else if (lead.lead_stage === 'Enrolled') stageEl.classList.add('badge-green');
+  else if (lead.lead_stage === 'Lost') stageEl.classList.add('badge-grey');
+  else stageEl.classList.add('badge-blue');
+  
+  document.getElementById('crm-detail-score').textContent = lead.lead_score || 0;
+  document.getElementById('crm-detail-email').textContent = lead.email || 'N/A';
+  document.getElementById('crm-detail-mobile').textContent = lead.mobile || 'N/A';
+  document.getElementById('crm-detail-centre').textContent = lead.centre;
+  document.getElementById('crm-detail-course').textContent = lead.course;
+  document.getElementById('crm-detail-owner').textContent = lead.lead_owner + (lead.lead_co_owner ? ' (Co: ' + lead.lead_co_owner + ')' : '');
+  
+  var timeline = document.getElementById('crm-timeline-display');
+  timeline.textContent = lead.notes || 'No activity notes logged yet.';
+  
+  document.getElementById('btn-crm-enroll').style.display = (lead.lead_stage === 'Enrolled') ? 'none' : 'block';
+  
+  var acadCard = document.getElementById('crm-academic-card');
+  if (lead.student_id) {
+    acadCard.style.display = 'block';
+    document.getElementById('crm-acad-batch').textContent = 'Loading...';
+    document.getElementById('crm-acad-status').textContent = '';
+    document.getElementById('crm-acad-attendance').textContent = '';
+    document.getElementById('crm-acad-marks').textContent = '';
+    
+    gasGet({ action: 'studentProfile', studentId: lead.student_id }, function(err, res) {
+      if (err || !res || res.status !== 'ok' || !res.student) {
+        acadCard.style.display = 'none';
+        return;
+      }
+      var s = res.student;
+      document.getElementById('crm-acad-batch').textContent = s.batchCode || 'N/A';
+      document.getElementById('crm-acad-status').textContent = s.status || 'Active';
+      
+      gasGet({ action: 'getStudentAttendance', studentId: lead.student_id }, function(err2, res2) {
+        if (!err2 && res2 && res2.records) {
+          var recs = res2.records;
+          var present = recs.filter(function(r) { return r.attendance === 'Present'; }).length;
+          var rate = recs.length ? Math.round(present / recs.length * 100) + '%' : '100%';
+          document.getElementById('crm-acad-attendance').textContent = rate + ' (' + recs.length + ' sessions)';
+        }
+      });
+      
+      if (s.batchCode) {
+        gasGet({ action: 'getBatchAssessmentSummary', batchCode: s.batchCode }, function(err3, res3) {
+          if (!err3 && res3 && res3.students) {
+            var matchingStud = res3.students.find(function(x) { return x.studentId === lead.student_id; });
+            if (matchingStud) {
+              var avgScore = matchingStud.avgMarks != null ? Math.round(matchingStud.avgMarks) + '%' : 'N/A';
+              document.getElementById('crm-acad-marks').textContent = avgScore;
+            }
+          }
+        });
+      }
+    });
+  } else {
+    acadCard.style.display = 'none';
+  }
+}
+
+function logCallOutcome(outcome) {
+  if (!activeLead) return;
+  gasGet({
+    action: 'updateLeadScore',
+    leadId: activeLead.id,
+    actionName: outcome
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      showToast('Failed to log call outcome.', 'error');
+      return;
+    }
+    
+    var idx = crmLeadsList.findIndex(function(l) { return l.id === activeLead.id; });
+    if (idx >= 0) {
+      crmLeadsList[idx].lead_score = d.score;
+      if (outcome === 'call-connected') crmLeadsList[idx].lead_stage = 'Contacted';
+      else if (outcome === 'marked-lost') crmLeadsList[idx].lead_stage = 'Lost';
+      
+      var timeStr = new Date().toLocaleString();
+      var outcomeText = outcome === 'call-connected' ? 'Connected' : (outcome === 'call-no-answer' ? 'No Answer' : (outcome === 'call-dnd-off' ? 'Switched Off' : 'Marked Lost'));
+      crmLeadsList[idx].notes = '[Call outcome: ' + outcomeText + ' logged at ' + timeStr + ']\n' + (crmLeadsList[idx].notes || '');
+    }
+    
+    showToast('Call outcome logged.', 'success');
+    updateCRMKPIs();
+    selectCRMLead(activeLead.id);
+    filterLeads();
+  });
+}
+
+function saveCRMNote() {
+  if (!activeLead) return;
+  var input = document.getElementById('crm-note-input');
+  var val = (input.value || '').trim();
+  if (!val) return;
+  
+  var timeStr = new Date().toLocaleString();
+  var updatedNotes = '[' + timeStr + ' - ' + (counselorName || 'Counselor') + ']\n' + val + '\n\n' + (activeLead.notes || '');
+  
+  gasGet({
+    action: 'saveCRMLead',
+    id: activeLead.id,
+    firstName: activeLead.first_name,
+    lastName: activeLead.last_name,
+    email: activeLead.email,
+    mobile: activeLead.mobile,
+    course: activeLead.course,
+    centre: activeLead.centre,
+    leadStage: activeLead.lead_stage,
+    leadSubStage: activeLead.lead_sub_stage,
+    leadOwner: activeLead.lead_owner,
+    leadCoOwner: activeLead.lead_co_owner,
+    source: activeLead.source,
+    fbLeadId: activeLead.fb_lead_id,
+    notes: updatedNotes,
+    webMeta: activeLead.web_meta,
+    leadScore: activeLead.lead_score
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      showToast('Failed to save note.', 'error');
+      return;
+    }
+    
+    var idx = crmLeadsList.findIndex(function(l) { return l.id === activeLead.id; });
+    if (idx >= 0) {
+      crmLeadsList[idx].notes = updatedNotes;
+    }
+    
+    input.value = '';
+    showToast('Note added to timeline.', 'success');
+    selectCRMLead(activeLead.id);
+  });
+}
+
+function saveCRMReminder() {
+  if (!activeLead) return;
+  var dateEl = document.getElementById('crm-remind-date');
+  var dateVal = dateEl.value;
+  if (!dateVal) { showToast('Please select a reminder date/time.', 'error'); return; }
+  
+  var reminderNote = 'Follow-up call reminder';
+  gasGet({
+    action: 'addCRMFollowup',
+    leadId: activeLead.id,
+    reminderDate: new Date(dateVal).toISOString(),
+    note: reminderNote,
+    status: 'Pending',
+    createdBy: counselorName || ''
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      showToast('Failed to save reminder.', 'error');
+      return;
+    }
+    
+    var timeStr = new Date().toLocaleString();
+    var reminderStr = new Date(dateVal).toLocaleString();
+    var updatedNotes = '[Reminder set for ' + reminderStr + ' logged at ' + timeStr + ']\n\n' + (activeLead.notes || '');
+    
+    var idx = crmLeadsList.findIndex(function(l) { return l.id === activeLead.id; });
+    if (idx >= 0) {
+      crmLeadsList[idx].notes = updatedNotes;
+      if (!crmLeadsList[idx].crm_followups) crmLeadsList[idx].crm_followups = [];
+      crmLeadsList[idx].crm_followups.push({
+        status: 'Pending',
+        reminder_date: new Date(dateVal).toISOString()
+      });
+    }
+    
+    dateEl.value = '';
+    showToast('Follow-up reminder set.', 'success');
+    updateCRMKPIs();
+    selectCRMLead(activeLead.id);
+  });
+}
+
+function openAddLeadModal() {
+  var modal = document.getElementById('crm-add-lead-modal');
+  if (!modal) return;
+  
+  var courseSel = document.getElementById('crm-new-course');
+  var centreSel = document.getElementById('crm-new-centre');
+  
+  courseSel.innerHTML = COURSES.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
+  centreSel.innerHTML = CENTRES.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
+  
+  document.getElementById('crm-new-fname').value = '';
+  document.getElementById('crm-new-lname').value = '';
+  document.getElementById('crm-new-email').value = '';
+  document.getElementById('crm-new-mobile').value = '';
+  document.getElementById('crm-new-err').style.display = 'none';
+  
+  modal.style.display = 'flex';
+}
+
+function closeAddLeadModal() {
+  document.getElementById('crm-add-lead-modal').style.display = 'none';
+}
+
+function submitNewLead() {
+  var fname = document.getElementById('crm-new-fname').value.trim();
+  var lname = document.getElementById('crm-new-lname').value.trim();
+  var email = document.getElementById('crm-new-email').value.trim();
+  var mobile = document.getElementById('crm-new-mobile').value.trim();
+  var course = document.getElementById('crm-new-course').value;
+  var centre = document.getElementById('crm-new-centre').value;
+  var errEl = document.getElementById('crm-new-err');
+  
+  if (!fname) { errEl.textContent = 'First name is required.'; errEl.style.display = 'block'; return; }
+  
+  errEl.style.display = 'none';
+  
+  gasGet({ action: 'assignLeadRoundRobin', centre: centre }, function(err, res) {
+    var owner = (res && res.assignedTo) || counselorName || 'Admin';
+    
+    gasGet({
+      action: 'saveCRMLead',
+      firstName: fname,
+      lastName: lname,
+      email: email,
+      mobile: mobile,
+      course: course,
+      centre: centre,
+      leadStage: 'New',
+      leadSubStage: 'Unassigned',
+      leadOwner: owner,
+      source: 'Direct',
+      leadScore: 10,
+      notes: '[' + new Date().toLocaleString() + '] Lead created manually by ' + (counselorName || 'Admin')
+    }, function(e, d) {
+      if (e || !d || d.status !== 'ok') {
+        errEl.textContent = (d && d.reason) ? d.reason : 'Duplicate email/mobile or failed to save lead.';
+        errEl.style.display = 'block';
+        return;
+      }
+      
+      closeAddLeadModal();
+      showToast('Lead created successfully & assigned to ' + owner, 'success');
+      loadCRMData();
+    });
+  });
+}
+
+function openCRMEnrollModal() {
+  if (!activeLead) return;
+  var modal = document.getElementById('crm-enroll-modal');
+  if (!modal) return;
+  
+  document.getElementById('crm-enroll-name').value = activeLead.first_name + (activeLead.last_name ? ' ' + activeLead.last_name : '');
+  
+  var batchSel = document.getElementById('crm-enroll-batch');
+  batchSel.innerHTML = '<option value="">-- Select Active Batch --</option>';
+  
+  gasGet({ action: 'getBatches', centre: activeLead.centre }, function(e, d) {
+    if (!e && d && d.batches) {
+      var filtered = d.batches.filter(function(b) { return b.isActive; });
+      filtered.forEach(function(b) {
+        var o = document.createElement('option');
+        o.value = b.batchCode;
+        o.textContent = b.batchCode + ' — ' + b.course;
+        batchSel.appendChild(o);
+      });
+    }
+  });
+  
+  document.getElementById('crm-enroll-course-fee').value = '';
+  document.getElementById('crm-enroll-paid-amount').value = '';
+  document.getElementById('crm-enroll-receipt').value = '';
+  document.getElementById('crm-enroll-err').style.display = 'none';
+  
+  modal.style.display = 'flex';
+}
+
+function closeCRMEnrollModal() {
+  document.getElementById('crm-enroll-modal').style.display = 'none';
+}
+
+function updateCRMEnrollFees() {
+  var batchSel = document.getElementById('crm-enroll-batch');
+  var batchCode = batchSel.value;
+  if (!batchCode) return;
+  
+  var course = activeLead.course;
+  var matchedFee = 0;
+  if (typeof COURSES_FEES !== 'undefined' && COURSES_FEES[course]) {
+    var rules = COURSES_FEES[course];
+    var base = Number(rules.fee) || 0;
+    var reg = Number(rules.regFee) || 0;
+    var gst = Number(rules.gst) || 0;
+    matchedFee = Math.round((base + reg) * (1 + gst / 100));
+  }
+  
+  document.getElementById('crm-enroll-course-fee').value = matchedFee || '';
+}
+
+function submitCRMEnrollment() {
+  var batch = document.getElementById('crm-enroll-batch').value;
+  var courseFee = document.getElementById('crm-enroll-course-fee').value;
+  var paid = document.getElementById('crm-enroll-paid-amount').value;
+  var payMode = document.getElementById('crm-enroll-pay-mode').value;
+  var receipt = document.getElementById('crm-enroll-receipt').value.trim();
+  var errEl = document.getElementById('crm-enroll-err');
+  
+  if (!batch) { errEl.textContent = 'Please select a batch.'; errEl.style.display = 'block'; return; }
+  if (paid && parseFloat(paid) > 0 && !receipt) { errEl.textContent = 'Transaction receipt number is required for payments.'; errEl.style.display = 'block'; return; }
+  
+  errEl.style.display = 'none';
+  
+  gasGet({
+    action: 'convertLeadToStudent',
+    leadId: activeLead.id,
+    name: activeLead.first_name + (activeLead.last_name ? ' ' + activeLead.last_name : ''),
+    email: activeLead.email,
+    mobile: activeLead.mobile,
+    course: activeLead.course,
+    centre: activeLead.centre,
+    batchCode: batch,
+    amount: paid || 0,
+    paymentMode: payMode,
+    receiptNo: receipt,
+    courseFee: courseFee || 0,
+    gstAmount: courseFee ? Math.round(parseFloat(courseFee) * 18 / 118) : 0,
+    recordedBy: counselorName || 'Admin'
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      errEl.textContent = (d && d.reason) ? d.reason : 'Failed to finalize enrollment. Verify details.';
+      errEl.style.display = 'block';
+      return;
+    }
+    
+    closeCRMEnrollModal();
+    showToast('Lead enrolled successfully! Student ID generated: ' + d.studentId, 'success');
+    loadCRMData();
+  });
+}
+
+function openCRMUpsellModal() {
+  if (!activeLead) return;
+  var modal = document.getElementById('crm-upsell-modal');
+  if (!modal) return;
+  
+  var courseSel = document.getElementById('crm-upsell-course');
+  var centreSel = document.getElementById('crm-upsell-centre');
+  
+  courseSel.innerHTML = COURSES.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
+  centreSel.innerHTML = CENTRES.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
+  
+  courseSel.value = activeLead.course;
+  centreSel.value = activeLead.centre;
+  document.getElementById('crm-upsell-err').style.display = 'none';
+  
+  modal.style.display = 'flex';
+}
+
+function closeCRMUpsellModal() {
+  document.getElementById('crm-upsell-modal').style.display = 'none';
+}
+
+function submitCRMUpsell() {
+  var course = document.getElementById('crm-upsell-course').value;
+  var centre = document.getElementById('crm-upsell-centre').value;
+  var errEl = document.getElementById('crm-upsell-err');
+  
+  errEl.style.display = 'none';
+  
+  gasGet({
+    action: 'initiateCrossCentreUpsell',
+    leadId: activeLead.id,
+    targetCentre: centre,
+    targetCourse: course
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      errEl.textContent = 'Failed to initiate upsell/cross-sell opportunity.';
+      errEl.style.display = 'block';
+      return;
+    }
+    
+    closeCRMUpsellModal();
+    showToast('Secondary upsell opportunity created successfully.', 'success');
+    loadCRMData();
   });
 }
 </script>

@@ -371,3 +371,250 @@ async function sbSubmitTestResponse(p) {
   await sbUpsert('test_responses', row, 'test_id,student_id');
   return { status: 'ok' };
 }
+
+// ── CRM SYSTEM ────────────────────────────────────────────────
+async function sbGetLeads(filters = {}, userRole = '', userName = '') {
+  const db = getSupabase();
+  let query = db.from('crm_leads').select('*, crm_followups(*)').order('created_at', { ascending: false });
+  
+  const isSuperAdmin = userRole === 'Admin' || userRole === 'Manager';
+  const isAmit = String(userName).toLowerCase().trim() === 'amit';
+  
+  if (!isSuperAdmin && !isAmit && userRole === 'Counselor') {
+    query = query.or('lead_owner.eq.' + userName + ',lead_co_owner.eq.' + userName);
+  }
+  
+  if (filters.centre) {
+    query = query.eq('centre', filters.centre);
+  }
+  if (filters.leadStage) {
+    query = query.eq('lead_stage', filters.leadStage);
+  }
+  
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return { status: 'ok', leads: data };
+}
+
+async function sbSaveLead(p) {
+  const row = {
+    first_name:     p.firstName,
+    last_name:      p.lastName || '',
+    email:          p.email || '',
+    mobile:         p.mobile || '',
+    course:         p.course,
+    centre:         p.centre,
+    lead_stage:     p.leadStage || 'New',
+    lead_sub_stage: p.leadSubStage || 'Unassigned',
+    lead_owner:     p.leadOwner || '',
+    lead_co_owner:  p.leadCoOwner || '',
+    source:         p.source || 'Direct',
+    fb_lead_id:     p.fbLeadId || null,
+    notes:          p.notes || '',
+    web_meta:       p.webMeta || {},
+    lead_score:     p.leadScore !== undefined ? parseInt(p.leadScore) : 0
+  };
+  if (p.id) row.id = p.id;
+  const result = await sbUpsert('crm_leads', row, 'id');
+  return { status: 'ok', id: result.id };
+}
+
+async function sbAddCRMFollowup(p) {
+  const row = {
+    lead_id:       p.leadId,
+    reminder_date: p.reminderDate,
+    note:          p.note || '',
+    status:        p.status || 'Pending',
+    created_by:    p.createdBy || ''
+  };
+  const result = await sbInsert('crm_followups', row);
+  return { status: 'ok', id: result.id };
+}
+
+async function sbAssignLeadRoundRobin(centre) {
+  const db = getSupabase();
+  const { data: rules, error: errRules } = await db
+    .from('crm_assignment_rules')
+    .select('*')
+    .eq('centre', centre)
+    .eq('is_active', true);
+    
+  if (errRules || !rules || !rules.length) return '';
+  
+  const counselorNames = rules.map(r => r.counselor_name);
+  const { data: leadCounts, error: errCounts } = await db
+    .from('crm_leads')
+    .select('lead_owner')
+    .eq('centre', centre)
+    .in('lead_owner', counselorNames);
+    
+  const countsMap = {};
+  counselorNames.forEach(name => countsMap[name] = 0);
+  if (!errCounts && leadCounts) {
+    leadCounts.forEach(l => {
+      if (l.lead_owner && countsMap[l.lead_owner] !== undefined) {
+        countsMap[l.lead_owner]++;
+      }
+    });
+  }
+  
+  const totalLeads = leadCounts ? leadCounts.length : 0;
+  const totalWeight = rules.reduce((sum, r) => sum + (Number(r.crm_weight) || 0), 0);
+  
+  if (totalWeight <= 0) return counselorNames[0];
+  
+  let bestCounselor = counselorNames[0];
+  let maxDeficit = -Infinity;
+  
+  rules.forEach(rule => {
+    const name = rule.counselor_name;
+    const weight = Number(rule.crm_weight) || 0;
+    const actual = countsMap[name] || 0;
+    const target = (weight / totalWeight) * (totalLeads + 1);
+    const deficit = target - actual;
+    
+    if (deficit > maxDeficit) {
+      maxDeficit = deficit;
+      bestCounselor = name;
+    }
+  });
+  
+  return bestCounselor;
+}
+
+async function sbUpdateLeadScore(leadId, action) {
+  const db = getSupabase();
+  const { data: lead, error } = await db
+    .from('crm_leads')
+    .select('lead_score')
+    .eq('id', leadId)
+    .single();
+    
+  if (error || !lead) return;
+  
+  let scoreDelta = 0;
+  if (action === 'web-enquiry') scoreDelta = 10;
+  else if (action === 'fb-lead') scoreDelta = 5;
+  else if (action === 'call-connected') scoreDelta = 15;
+  else if (action === 'demo-scheduled') scoreDelta = 20;
+  else if (action === 'demo-attended') scoreDelta = 30;
+  else if (action === 'call-no-answer') scoreDelta = -5;
+  else if (action === 'call-dnd-off') scoreDelta = -10;
+  else if (action === 'marked-lost') scoreDelta = -25;
+  
+  const newScore = Math.max(0, (lead.lead_score || 0) + scoreDelta);
+  await db.from('crm_leads').update({ lead_score: newScore }).eq('id', leadId);
+}
+
+async function sbConvertLeadToStudent(p) {
+  const db = getSupabase();
+  const year = new Date().getFullYear().toString().slice(-2);
+  const { count } = await db.from('students').select('*', { count: 'exact', head: true });
+  const studentId = 'IGI' + year + String((count || 0) + 1).padStart(4, '0');
+  
+  const studentRow = {
+    student_id:   studentId,
+    batch_code:   p.batchCode || null,
+    name:         p.name,
+    mobile:       p.mobile || '',
+    mobile_last4: (p.mobile || '').slice(-4),
+    email:        p.email || '',
+    status:       'Active'
+  };
+  await sbInsert('students', studentRow);
+  
+  await sbInsert('enrollments', {
+    student_id: studentId,
+    batch_code: p.batchCode,
+    status: 'Active'
+  });
+  
+  if (p.amount && parseFloat(p.amount) > 0) {
+    const feeRow = {
+      student_id:   studentId,
+      batch_code:   p.batchCode,
+      centre:       p.centre || '',
+      amount:       parseFloat(p.amount) || 0,
+      payment_date: p.paymentDate || new Date().toISOString().split('T')[0],
+      payment_mode: p.paymentMode || '',
+      receipt_no:   p.receiptNo || '',
+      course_fee:   parseFloat(p.courseFee) || 0,
+      gst_amount:   parseFloat(p.gstAmount) || 0,
+      recorded_by:  p.recordedBy || ''
+    };
+    await sbInsert('student_fees', feeRow);
+  }
+  
+  let courseCode = 'DG';
+  if (p.course) {
+    if (p.course.includes('Colored Stone')) courseCode = 'CSG';
+    else if (p.course.includes('Gemology')) courseCode = 'GG';
+    else if (p.course.includes('Polished')) courseCode = 'PDC';
+    else if (p.course.includes('Design')) courseCode = 'JD';
+    else if (p.course.includes('CAD')) courseCode = 'CAD';
+    else courseCode = p.course.split(' ').map(w => w[0]).join('').toUpperCase();
+  }
+  
+  await db.from('crm_leads')
+    .update({
+      student_id: studentId,
+      lead_stage: 'Enrolled',
+      lead_sub_stage: 'Enrolled (' + courseCode + ')',
+      lead_score: 100
+    })
+    .eq('id', p.leadId);
+    
+  return { status: 'ok', studentId };
+}
+
+async function sbInitiateCrossCentreUpsell(leadId, targetCentre, targetCourse) {
+  const db = getSupabase();
+  const { data: lead, error } = await db
+    .from('crm_leads')
+    .select('*')
+    .eq('id', leadId)
+    .single();
+    
+  if (error || !lead) throw new Error('Lead not found');
+  
+  const newOwner = await sbAssignLeadRoundRobin(targetCentre);
+  
+  const row = {
+    first_name:     lead.first_name,
+    last_name:      lead.last_name || '',
+    email:          lead.email || '',
+    mobile:         lead.mobile || '',
+    course:         targetCourse,
+    centre:         targetCentre,
+    lead_stage:     'Alumni / Upsell',
+    lead_sub_stage: 'Cross-Sell Initial',
+    lead_owner:     newOwner,
+    lead_co_owner:  lead.lead_owner,
+    source:         'Internal Cross-Sell',
+    student_id:     lead.student_id,
+    notes:          'Cross-sold from ' + lead.centre + ' by ' + lead.lead_owner
+  };
+  
+  const result = await sbInsert('crm_leads', row);
+  return { status: 'ok', id: result.id };
+}
+
+async function sbGetAssignmentRules(centre) {
+  const db = getSupabase();
+  let query = db.from('crm_assignment_rules').select('*').order('counselor_name', { ascending: true });
+  if (centre) query = query.eq('centre', centre);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return { status: 'ok', rules: data };
+}
+
+async function sbSaveAssignmentRule(p) {
+  const row = {
+    counselor_name: p.counselorName,
+    centre:         p.centre,
+    crm_weight:     parseInt(p.crmWeight) || 0,
+    is_active:      p.isActive !== false
+  };
+  await sbUpsert('crm_assignment_rules', row, 'counselor_name');
+  return { status: 'ok' };
+}

@@ -3521,7 +3521,17 @@ window.gasGet = (function () {
       case 'registerVendor':           return h_registerVendor(params, cb);
       case 'addInventoryItem':         return h_addInvItem(params, cb);
       case 'updateInventoryItem':      return h_updateInvItem(params, cb);
-      case 'deleteInventoryItem':      return h_deleteInvItem(params, cb);
+      case 'deleteInventoryItem':      return h_deleteInventoryItem(params, cb);
+
+      /* CRM System */
+      case 'getCRMLeads':               return h_getCRMLeads(params, cb);
+      case 'saveCRMLead':               return h_saveCRMLead(params, cb);
+      case 'addCRMFollowup':            return h_addCRMFollowup(params, cb);
+      case 'getCRMAssignmentRules':     return h_getCRMAssignmentRules(params, cb);
+      case 'saveCRMAssignmentRule':     return h_saveCRMAssignmentRule(params, cb);
+      case 'updateLeadScore':           return h_updateLeadScore(params, cb);
+      case 'convertLeadToStudent':       return h_convertLeadToStudent(params, cb);
+      case 'initiateCrossCentreUpsell': return h_initiateCrossCentreUpsell(params, cb);
 
       /* Student Portal */
       case 'getStudentPortalData':      return h_getStudentPortalData(params, cb);
@@ -3609,6 +3619,258 @@ window.gasGet = (function () {
         return;
     }
   };
+
+  /* ── CRM System Handlers ── */
+  function h_getCRMLeads(p, cb) {
+    var qs = 'select=*,crm_followups(*)&order=created_at.desc';
+    if (p.centre) qs += '&centre=eq.' + encodeURIComponent(p.centre);
+    if (p.stage) qs += '&lead_stage=eq.' + encodeURIComponent(p.stage);
+    
+    var userRole = p.userRole;
+    var userName = p.userName;
+    var isSuperAdmin = (userRole === 'Admin' || userRole === 'Manager');
+    var isAmit = String(userName).toLowerCase().trim() === 'amit';
+    if (!isSuperAdmin && !isAmit && userRole === 'Counselor') {
+      qs += '&or=(lead_owner.eq.' + encodeURIComponent(userName) + ',lead_co_owner.eq.' + encodeURIComponent(userName) + ')';
+    }
+    GET('crm_leads', qs, function(e, data) {
+      if (e) return cb(e, null);
+      cb(null, { status: 'ok', leads: data });
+    });
+  }
+
+  function h_saveCRMLead(p, cb) {
+    var body = {
+      first_name:     p.firstName,
+      last_name:      p.lastName || '',
+      email:          p.email || '',
+      mobile:         p.mobile || '',
+      course:         p.course,
+      centre:         p.centre,
+      lead_stage:     p.leadStage || 'New',
+      lead_sub_stage: p.leadSubStage || 'Unassigned',
+      lead_owner:     p.leadOwner || '',
+      lead_co_owner:  p.leadCoOwner || '',
+      source:         p.source || 'Direct',
+      fb_lead_id:     p.fbLeadId || null,
+      notes:          p.notes || '',
+      web_meta:       p.webMeta || {},
+      lead_score:     p.leadScore !== undefined ? parseInt(p.leadScore) : 0
+    };
+    if (p.id) {
+      PATCH('crm_leads', 'id=eq.' + encodeURIComponent(p.id), body, function(e, data) {
+        if (e) return cb(e, null);
+        cb(null, { status: 'ok', id: p.id });
+      });
+    } else {
+      POST('crm_leads', '', body, function(e, data) {
+        if (e) return cb(e, null);
+        cb(null, { status: 'ok', id: data && data.length ? data[0].id : null });
+      });
+    }
+  }
+
+  function h_addCRMFollowup(p, cb) {
+    var body = {
+      lead_id:       p.leadId,
+      reminder_date: p.reminderDate,
+      note:          p.note || '',
+      status:        p.status || 'Pending',
+      created_by:    p.createdBy || ''
+    };
+    POST('crm_followups', '', body, function(e, data) {
+      if (e) return cb(e, null);
+      cb(null, { status: 'ok', id: data && data.length ? data[0].id : null });
+    });
+  }
+
+  function h_getCRMAssignmentRules(p, cb) {
+    var qs = 'order=counselor_name.asc';
+    if (p.centre) qs += '&centre=eq.' + encodeURIComponent(p.centre);
+    GET('crm_assignment_rules', qs, function(e, data) {
+      if (e) return cb(e, null);
+      cb(null, { status: 'ok', rules: data });
+    });
+  }
+
+  function h_saveCRMAssignmentRule(p, cb) {
+    var body = {
+      counselor_name: p.counselorName,
+      centre:         p.centre,
+      crm_weight:     parseInt(p.crmWeight) || 0,
+      is_active:      p.isActive !== false
+    };
+    POST('crm_assignment_rules', '', body, function(e, data) {
+      if (e) return cb(e, null);
+      cb(null, { status: 'ok' });
+    });
+  }
+
+  function h_updateLeadScore(p, cb) {
+    GET('crm_leads', 'id=eq.' + encodeURIComponent(p.leadId), function(e, rows) {
+      if (e || !rows || !rows.length) return cb(e || new Error('Lead not found'), null);
+      var lead = rows[0];
+      var delta = 0;
+      var act = p.action;
+      if (act === 'web-enquiry') delta = 10;
+      else if (act === 'fb-lead') delta = 5;
+      else if (act === 'call-connected') delta = 15;
+      else if (act === 'demo-scheduled') delta = 20;
+      else if (act === 'demo-attended') delta = 30;
+      else if (act === 'call-no-answer') delta = -5;
+      else if (act === 'call-dnd-off') delta = -10;
+      else if (act === 'marked-lost') delta = -25;
+      
+      var newScore = Math.max(0, (lead.lead_score || 0) + delta);
+      var updates = { lead_score: newScore };
+      if (act === 'call-connected') updates.lead_stage = 'Contacted';
+      else if (act === 'marked-lost') updates.lead_stage = 'Lost';
+      
+      PATCH('crm_leads', 'id=eq.' + encodeURIComponent(p.leadId), updates, function(e2, d) {
+        if (e2) return cb(e2, null);
+        cb(null, { status: 'ok', score: newScore });
+      });
+    });
+  }
+
+  function h_convertLeadToStudent(p, cb) {
+    GET('students', 'select=student_id', function(eCount, studs) {
+      var count = studs ? studs.length : 0;
+      var year = new Date().getFullYear().toString().slice(-2);
+      var studentId = 'IGI' + year + String(count + 1).padStart(4, '0');
+      
+      var studRow = {
+        student_id:   studentId,
+        batch_code:   p.batchCode,
+        name:         p.name,
+        mobile:       p.mobile || '',
+        mobile_last4: (p.mobile || '').slice(-4),
+        email:        p.email || '',
+        status:       'Active'
+      };
+      POST('students', '', studRow, function(eStudent, sRes) {
+        if (eStudent) return cb(eStudent, null);
+        
+        var enrollRow = { student_id: studentId, batch_code: p.batchCode, status: 'Active' };
+        POST('enrollments', '', enrollRow, function(eEnroll, eRes) {
+          
+          function updateCRMLead() {
+            var courseCode = 'DG';
+            if (p.course) {
+              if (p.course.includes('Colored Stone')) courseCode = 'CSG';
+              else if (p.course.includes('Gemology')) courseCode = 'GG';
+              else if (p.course.includes('Polished')) courseCode = 'PDC';
+              else if (p.course.includes('Design')) courseCode = 'JD';
+              else if (p.course.includes('CAD')) courseCode = 'CAD';
+              else courseCode = p.course.split(' ').map(function(w){return w[0];}).join('').toUpperCase();
+            }
+            var updates = {
+              student_id: studentId,
+              lead_stage: 'Enrolled',
+              lead_sub_stage: 'Enrolled (' + courseCode + ')',
+              lead_score: 100
+            };
+            PATCH('crm_leads', 'id=eq.' + encodeURIComponent(p.leadId), updates, function(eLead, lRes) {
+              if (eLead) return cb(eLead, null);
+              cb(null, { status: 'ok', studentId: studentId });
+            });
+          }
+          
+          if (p.amount && parseFloat(p.amount) > 0) {
+            var feeRow = {
+              student_id:   studentId,
+              batch_code:   p.batchCode,
+              centre:       p.centre || '',
+              amount:       parseFloat(p.amount) || 0,
+              payment_date: p.paymentDate || todayYMD(),
+              payment_mode: p.paymentMode || 'UPI',
+              receipt_no:   p.receiptNo || '',
+              course_fee:   parseFloat(p.courseFee) || 0,
+              gst_amount:   parseFloat(p.gstAmount) || 0,
+              recorded_by:  p.recordedBy || ''
+            };
+            POST('student_fees', '', feeRow, function(eFee, fRes) {
+              updateCRMLead();
+            });
+          } else {
+            updateCRMLead();
+          }
+        });
+      });
+    });
+  }
+
+  function h_assignLeadRoundRobin(p, cb) {
+    var centre = p.centre;
+    GET('crm_assignment_rules', 'centre=eq.' + encodeURIComponent(centre) + '&is_active=eq.true', function(eRules, rules) {
+      if (eRules || !rules || !rules.length) return cb(null, { status: 'ok', assignedTo: '' });
+      var counselorNames = rules.map(function(r) { return r.counselor_name; });
+      
+      GET('crm_leads', 'centre=eq.' + encodeURIComponent(centre) + '&select=lead_owner', function(eCounts, leads) {
+        var countsMap = {};
+        counselorNames.forEach(function(n) { countsMap[n] = 0; });
+        if (leads) {
+          leads.forEach(function(l) {
+            if (l.lead_owner && countsMap[l.lead_owner] !== undefined) countsMap[l.lead_owner]++;
+          });
+        }
+        
+        var totalLeads = leads ? leads.length : 0;
+        var totalWeight = rules.reduce(function(sum, r) { return sum + (Number(r.crm_weight) || 0); }, 0);
+        
+        if (totalWeight <= 0) return cb(null, { status: 'ok', assignedTo: counselorNames[0] });
+        
+        var bestCounselor = counselorNames[0];
+        var maxDeficit = -Infinity;
+        
+        rules.forEach(function(rule) {
+          var name = rule.counselor_name;
+          var weight = Number(rule.crm_weight) || 0;
+          var actual = countsMap[name] || 0;
+          var target = (weight / totalWeight) * (totalLeads + 1);
+          var deficit = target - actual;
+          if (deficit > maxDeficit) {
+            maxDeficit = deficit;
+            bestCounselor = name;
+          }
+        });
+        
+        cb(null, { status: 'ok', assignedTo: bestCounselor });
+      });
+    });
+  }
+
+  function h_initiateCrossCentreUpsell(p, cb) {
+    GET('crm_leads', 'id=eq.' + encodeURIComponent(p.leadId), function(eLead, rows) {
+      if (eLead || !rows || !rows.length) return cb(eLead || new Error('Original lead not found'), null);
+      var oldLead = rows[0];
+      
+      h_assignLeadRoundRobin({ centre: p.targetCentre }, function(eAssign, aRes) {
+        var newOwner = (aRes && aRes.assignedTo) || '';
+        
+        var row = {
+          first_name:     oldLead.first_name,
+          last_name:      oldLead.last_name || '',
+          email:          oldLead.email || '',
+          mobile:         oldLead.mobile || '',
+          course:         p.targetCourse,
+          centre:         p.targetCentre,
+          lead_stage:     'Alumni / Upsell',
+          lead_sub_stage: 'Cross-Sell Initial',
+          lead_owner:     newOwner,
+          lead_co_owner:  oldLead.lead_owner,
+          source:         'Internal Cross-Sell',
+          student_id:     oldLead.student_id,
+          notes:          'Cross-sold from ' + oldLead.centre + ' by ' + oldLead.lead_owner
+        };
+        POST('crm_leads', '', row, function(eCreate, cRes) {
+          if (eCreate) return cb(eCreate, null);
+          cb(null, { status: 'ok', id: cRes && cRes.length ? cRes[0].id : null });
+        });
+      });
+    });
+  }
+}
 }());
 
 function ensureToastHost() {

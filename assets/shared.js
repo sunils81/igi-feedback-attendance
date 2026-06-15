@@ -2089,14 +2089,40 @@ window.gasGet = (function () {
 
   function h_invStock(p, cb) {
     var sqs = p.centre ? 'centre=eq.' + encodeURIComponent(p.centre) : '';
-    GET('inv_stock', sqs, function (e, stock) {
-      GET('inv_items', 'select=id,item_code,item_name,category,unit,reorder_level', function (e2, items) {
-        var im = {}; (items || []).forEach(function (it) { im[it.id] = it; });
-        cb(null, { status: 'ok', list: (stock || []).map(function (r) {
-          var it = im[r.item_id] || {};
-          return { itemId: it.item_code || r.item_id, itemName: it.item_name, category: it.category,
-            centre: r.centre, quantity: r.qty, unit: it.unit, reorderLevel: it.reorder_level };
-        }) });
+    // Fetch all active items AND all stock records (filtered by centre if given)
+    // Then show ALL items with their qty (0 if no stock record exists for that centre)
+    GET('inv_items', 'select=id,item_code,item_name,category,unit,reorder_level&is_active=neq.false&order=category.asc,item_name.asc', function (e2, items) {
+      GET('inv_stock', sqs, function (e, stock) {
+        // Build stock lookup: item_id → qty (per centre)
+        var stockMap = {};
+        (stock || []).forEach(function (r) {
+          var key = r.item_id + '|' + (r.centre || '');
+          stockMap[key] = r;
+        });
+        var list = (items || []).map(function (it) {
+          // If filtering by centre, look up that centre's stock; otherwise aggregate all
+          if (p.centre) {
+            var key = it.id + '|' + p.centre;
+            var sr = stockMap[key] || {};
+            return { itemId: it.item_code || it.id, itemName: it.item_name, category: it.category,
+              centre: p.centre, quantity: sr.qty != null ? sr.qty : 0, unit: it.unit, reorderLevel: it.reorder_level };
+          } else {
+            // No centre filter — sum across all centres, one row per (item, centre)
+            var rows = (stock || []).filter(function (r) { return r.item_id === it.id; });
+            if (rows.length === 0) {
+              return [{ itemId: it.item_code || it.id, itemName: it.item_name, category: it.category,
+                centre: '', quantity: 0, unit: it.unit, reorderLevel: it.reorder_level }];
+            }
+            return rows.map(function (r) {
+              return { itemId: it.item_code || it.id, itemName: it.item_name, category: it.category,
+                centre: r.centre, quantity: r.qty != null ? r.qty : 0, unit: it.unit, reorderLevel: it.reorder_level };
+            });
+          }
+        });
+        // Flatten (needed for the no-filter multi-centre case)
+        var flat = [];
+        list.forEach(function (x) { if (Array.isArray(x)) { x.forEach(function (i) { flat.push(i); }); } else { flat.push(x); } });
+        cb(null, { status: 'ok', list: flat });
       });
     });
   }

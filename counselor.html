@@ -4471,20 +4471,31 @@ function applySupabaseTargets(sbTargets) {
 function prefetchRevenue() {
   if (isAdmin) return; // admin revenue is on-demand
   var cached = _revCacheRead();
-  if (cached) { revenueData = cached; return; } // already warm
+  if (cached) {
+    console.log('[Rev] Cache HIT v13 – targetRows:', cached.targetRows && cached.targetRows.length, cached.targetRows);
+    revenueData = cached; return;
+  }
+  console.log('[Rev] Cache MISS – fetching fresh data');
   // Fetch GAS dashboard + Supabase annual targets in parallel
   Promise.all([
     new Promise(function(resolve) {
-      gasGet(revenueRequestParams(), function(e, d) { resolve(e || !d || d.status !== 'ok' ? null : d); });
+      gasGet(revenueRequestParams(), function(e, d) {
+        console.log('[Rev] gasGet result – error:', e, 'status:', d && d.status, 'targetRows:', d && d.targetRows && d.targetRows.length, d && d.targetRows);
+        resolve(e || !d || d.status !== 'ok' ? null : d);
+      });
     }),
-    fetchAnnualTargetsFromSupabase()
+    fetchAnnualTargetsFromSupabase().then(function(r) {
+      console.log('[Rev] Supabase annual targets:', r && r.length, r);
+      return r;
+    })
   ]).then(function(results) {
     var d = results[0], sbTargets = results[1];
-    if (!d) return;
+    if (!d) { console.warn('[Rev] gasGet returned null – aborting prefetch'); return; }
     revenueData = d;
     applySupabaseTargets(sbTargets);
     // Only cache if we got valid targets — avoid caching empty-target state
     var hasTargets = revenueData.targetRows && revenueData.targetRows.length > 0;
+    console.log('[Rev] Done – targetRows after apply:', revenueData.targetRows && revenueData.targetRows.length, 'caching:', hasTargets);
     if (hasTargets) _revCacheWrite(revenueData);
   });
 }

@@ -3473,13 +3473,13 @@ function loadMyBatches() {
   const list  = document.getElementById('mb-list');
   const title = document.getElementById('mb-title');
   list.innerHTML=loadingState('Loading your batches...');
-  gasGet({action:'getInstructorBatches', instructor:instructorName}, function(e,d) {
-    if (e||!d||!d.batches||!d.batches.length) {
+
+  function renderMyBatchesList(batches) {
+    if (!batches || !batches.length) {
       title.textContent='No batches assigned';
       list.innerHTML=emptyState('🏫', 'No batches assigned yet', 'Contact your centre counselor if you expected to see a batch here.'); return;
     }
-    title.textContent=d.batches.length+' batch'+(d.batches.length!==1?'es':'')+' assigned';
-    var batches = d.batches;
+    title.textContent=batches.length+' batch'+(batches.length!==1?'es':'')+' assigned';
 
     // ── Co-instructor notification ────────────────────────────────
     var myName = (instructorName||'').toLowerCase().trim();
@@ -3527,7 +3527,18 @@ function loadMyBatches() {
           + '</div>';
       }).join('');
     });
-  });
+  }  // end renderMyBatchesList
+
+  // Use the login-time cache if already populated; otherwise fetch fresh.
+  if (instructorBatchesCache && instructorBatchesCache.length) {
+    renderMyBatchesList(instructorBatchesCache);
+  } else {
+    gasGet({action:'getInstructorBatches', instructor:instructorName}, function(e,d) {
+      if (e||!d||!d.batches) { renderMyBatchesList([]); return; }
+      if (d.batches.length) instructorBatchesCache = d.batches;
+      renderMyBatchesList(d.batches);
+    });
+  }
 }
 
 function showCoInstructorNotice(coverBatches) {

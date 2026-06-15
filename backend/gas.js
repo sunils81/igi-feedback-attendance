@@ -3962,7 +3962,11 @@ function parseRevenueMonthlyAchievedSheet(sh) {
       period:String(rowCell(r,map,'Period',1)||'2026-27').trim(),
       counsellor:String(rowCell(r,map,'Counsellor',2)||'').trim(),
       assignedCentre:String(rowCell(r,map,'Assigned Centre',3)||'').trim(),
-      businessCentre:String(rowCell(r,map,'Business Centre',4)||rowCell(r,map,'Assigned Centre',3)||'').trim(),
+      // For old-format rows (no 'Business Centre' header, column 4 = course fee), fall back to assignedCentre.
+      // Using the course-fee value as businessCentre creates garbage ledger keys that break deduplication.
+      businessCentre:(oldShape||!map['Business Centre'])
+        ? String(rowCell(r,map,'Assigned Centre',3)||'').trim()
+        : String(rowCell(r,map,'Business Centre',4)||rowCell(r,map,'Assigned Centre',3)||'').trim(),
       businessType:oldShape?'Centre Revenue':String(rawType||'Centre Revenue').trim(),
       achievedCourse:Number(course)||0,
       achievedGst:Number(gst)||0,

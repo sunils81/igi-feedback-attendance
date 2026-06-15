@@ -2224,29 +2224,29 @@ window.gasGet = (function () {
 
   /* updateBranchStock — upsert qty for a single item+centre */
   function h_updateBranchStock(p, cb) {
-    var itemCode = String(p.itemId || '').trim();
+    var itemRef  = String(p.itemId || '').trim();
     var centre   = String(p.centre || '').trim();
     var qty      = parseInt(p.quantity);
-    if (!itemCode || !centre || isNaN(qty) || qty < 0) {
-      cb(null, { status: 'error', reason: 'Invalid params' }); return;
+    if (!itemRef || !centre || isNaN(qty) || qty < 0) {
+      cb(null, { status: 'error', reason: 'Invalid params: itemRef=' + itemRef + ' centre=' + centre + ' qty=' + qty }); return;
     }
-    // Resolve item_code → UUID
-    GET('inv_items', 'select=id&item_code=eq.' + encodeURIComponent(itemCode), function(e, rows) {
-      if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'Item not found' }); return; }
+    // itemRef may be item_code or UUID — try item_code first, then id
+    var qs = /^[0-9a-f-]{36}$/i.test(itemRef)
+      ? 'select=id&id=eq.' + encodeURIComponent(itemRef)
+      : 'select=id&item_code=eq.' + encodeURIComponent(itemRef);
+    GET('inv_items', qs, function(e, rows) {
+      if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'Item not found: ' + itemRef }); return; }
       var uuid = rows[0].id;
-      // Try PATCH first (update existing row)
+      // PATCH existing row (lean payload — only qty)
       PATCH('inv_stock', 'item_id=eq.' + encodeURIComponent(uuid) + '&centre=eq.' + encodeURIComponent(centre),
-        { qty: qty, updated_at: nowISO(), updated_by: p.updatedBy || 'Admin' },
+        { qty: qty },
         function(e2, updated) {
-          if (e2) { cb(null, { status: 'error', reason: String(e2) }); return; }
-          if (updated && updated.length > 0) {
-            cb(null, { status: 'ok' }); return;
-          }
-          // No row existed — insert
-          POST('inv_stock', null,
-            { item_id: uuid, centre: centre, qty: qty,
-              updated_at: nowISO(), updated_by: p.updatedBy || 'Admin' },
-            function(e3) { cb(null, e3 ? { status: 'error', reason: String(e3) } : { status: 'ok' }); });
+          if (e2) { cb(null, { status: 'error', reason: 'PATCH failed: ' + String(e2) }); return; }
+          if (updated && updated.length > 0) { cb(null, { status: 'ok' }); return; }
+          // No existing row — insert
+          POST('inv_stock', 'on_conflict=item_id,centre',
+            { item_id: uuid, centre: centre, qty: qty },
+            function(e3) { cb(null, e3 ? { status: 'error', reason: 'INSERT failed: ' + String(e3) } : { status: 'ok' }); });
         });
     });
   }

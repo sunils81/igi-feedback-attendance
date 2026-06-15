@@ -1,12 +1,17 @@
--- Revenue Annual Targets — align with shared.js column names + re-seed
--- Run in: https://supabase.com/dashboard/project/atbexvtrcopaagcdbpqi/sql
--- NOTE: Column names are annual_course_fee_target / annual_course_fee_gst_target
---       to match what shared.js saves (h_saveRevenue) and reads (buildRevenueDashboardJSON)
+-- ═══════════════════════════════════════════════════════════════
+-- REVENUE TARGETS SETUP — Run this entire file in Supabase SQL
+-- https://supabase.com/dashboard/project/atbexvtrcopaagcdbpqi/sql
+-- Sets up BOTH counsellor-level AND centre-level annual targets
+-- Period: 2026-27 (April 2026 – March 2027)
+-- Column names match shared.js: annual_course_fee_target / annual_course_fee_gst_target
+-- ═══════════════════════════════════════════════════════════════
 
--- Step 1: Drop existing table
+
+-- ─────────────────────────────────────────────────────────────
+-- TABLE 1: COUNSELLOR ANNUAL TARGETS
+-- ─────────────────────────────────────────────────────────────
 DROP TABLE IF EXISTS revenue_annual_targets;
 
--- Step 2: Create with column names matching shared.js
 CREATE TABLE revenue_annual_targets (
   period                        TEXT NOT NULL,
   counsellor                    TEXT NOT NULL,
@@ -19,26 +24,75 @@ CREATE TABLE revenue_annual_targets (
   PRIMARY KEY (period, counsellor)
 );
 
--- Step 3: Insert all counsellor annual targets for 2026-27
 INSERT INTO revenue_annual_targets
   (period, counsellor, centre, annual_course_fee_target, annual_course_fee_gst_target, notes, updated_by, updated_at)
 VALUES
-  ('2026-27','Bianca',      'Mumbai',    6500000.0,  7670000.0,  '', 'Admin', '2026-06-02T03:54:38.506Z'),
-  ('2026-27','Anuradha',    'Mumbai',   17500000.0, 20650000.0,  'Other centres', 'Admin', '2026-06-02T12:46:59.723Z'),
-  ('2026-27','Rohit',       'Surat',     3500000.0,  4130000.0,  'individual revenue', 'Admin', '2026-06-03T06:26:44.221Z'),
-  ('2026-27','Preethy',     'Chennai',   3500000.0,  4130000.0,  'individual revenue', 'Admin', '2026-06-03T06:26:44.593Z'),
-  ('2026-27','Nadiya',      'Bangalore', 3500000.0,  4130000.0,  'individual revenue', 'Admin', '2026-06-03T06:26:44.981Z'),
-  ('2026-27','Rajini',      'Hyderabad', 3500000.0,  4130000.0,  'individual revenue', 'Admin', '2026-06-03T06:26:45.320Z'),
-  ('2026-27','Kripa',       'Jaipur',    3500000.0,  4130000.0,  'individual revenue', 'Admin', '2026-06-03T06:26:45.696Z'),
-  ('2026-27','Omkar Kadam', 'Mumbai',    3500000.0,  4130000.0,  '', 'Admin', '2026-06-02T12:51:42.429Z'),
-  ('2026-27','Sunita',      'Delhi',    12000000.0, 14160000.0,  '', 'Admin', '2026-06-02T12:51:42.755Z'),
-  ('2026-27','Arpita',      'Kolkata',   6000000.0,  7080000.0,  'individual revenue', 'Admin', '2026-06-03T06:26:43.967Z'),
-  ('2026-27','Arjun Mistry','Ahmedabad',  500000.0,   590000.0,  'Rectifying negative value', 'Admin', '2026-06-04T09:34:26.221Z')
+  ('2026-27', 'Bianca',       'Mumbai',    6500000.00,  7670000.00,  '', 'Admin', NOW()),
+  ('2026-27', 'Anuradha',     'Mumbai',   17500000.00, 20650000.00,  'Other centres', 'Admin', NOW()),
+  ('2026-27', 'Omkar Kadam',  'Mumbai',    3500000.00,  4130000.00,  '', 'Admin', NOW()),
+  ('2026-27', 'Sunita',       'Delhi',    12000000.00, 14160000.00,  '', 'Admin', NOW()),
+  ('2026-27', 'Arpita',       'Kolkata',   6000000.00,  7080000.00,  '', 'Admin', NOW()),
+  ('2026-27', 'Rohit',        'Surat',     3500000.00,  4130000.00,  '', 'Admin', NOW()),
+  ('2026-27', 'Preethy',      'Chennai',   3500000.00,  4130000.00,  '', 'Admin', NOW()),
+  ('2026-27', 'Nadiya',       'Bangalore', 3500000.00,  4130000.00,  '', 'Admin', NOW()),
+  ('2026-27', 'Rajini',       'Hyderabad', 3500000.00,  4130000.00,  '', 'Admin', NOW()),
+  ('2026-27', 'Kripa',        'Jaipur',    3500000.00,  4130000.00,  '', 'Admin', NOW()),
+  ('2026-27', 'Arjun Mistry', 'Ahmedabad',  500000.00,   590000.00,  '', 'Admin', NOW())
 ;
 
--- Step 4: Enable RLS (anon key read/write needed by portal)
 ALTER TABLE revenue_annual_targets ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "public read" ON revenue_annual_targets;
+DROP POLICY IF EXISTS "public read"  ON revenue_annual_targets;
 DROP POLICY IF EXISTS "public write" ON revenue_annual_targets;
 CREATE POLICY "public read"  ON revenue_annual_targets FOR SELECT USING (true);
 CREATE POLICY "public write" ON revenue_annual_targets FOR ALL    USING (true);
+
+
+-- ─────────────────────────────────────────────────────────────
+-- TABLE 2: CENTRE ANNUAL TARGETS
+-- (Sum of counsellor targets per centre — can be edited by admin)
+-- ─────────────────────────────────────────────────────────────
+DROP TABLE IF EXISTS revenue_centre_targets;
+
+CREATE TABLE revenue_centre_targets (
+  period                        TEXT NOT NULL,
+  centre                        TEXT NOT NULL,
+  annual_course_fee_target      NUMERIC(14,2) DEFAULT 0,
+  annual_course_fee_gst_target  NUMERIC(14,2) DEFAULT 0,
+  notes                         TEXT DEFAULT '',
+  updated_by                    TEXT DEFAULT '',
+  updated_at                    TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (period, centre)
+);
+
+-- Centre targets = sum of counsellor targets per centre
+-- Mumbai: Bianca 65L + Anuradha 175L + Omkar 35L = 275L
+-- Delhi: Sunita 120L
+-- Kolkata: Arpita 60L
+-- All others: 35L each  |  Ahmedabad: 5L
+INSERT INTO revenue_centre_targets
+  (period, centre, annual_course_fee_target, annual_course_fee_gst_target, notes, updated_by, updated_at)
+VALUES
+  ('2026-27', 'Mumbai',    27500000.00, 32450000.00, 'Bianca + Anuradha + Omkar', 'Admin', NOW()),
+  ('2026-27', 'Delhi',     12000000.00, 14160000.00, 'Sunita', 'Admin', NOW()),
+  ('2026-27', 'Kolkata',    6000000.00,  7080000.00, 'Arpita', 'Admin', NOW()),
+  ('2026-27', 'Surat',      3500000.00,  4130000.00, 'Rohit', 'Admin', NOW()),
+  ('2026-27', 'Chennai',    3500000.00,  4130000.00, 'Preethy', 'Admin', NOW()),
+  ('2026-27', 'Bangalore',  3500000.00,  4130000.00, 'Nadiya', 'Admin', NOW()),
+  ('2026-27', 'Hyderabad',  3500000.00,  4130000.00, 'Rajini', 'Admin', NOW()),
+  ('2026-27', 'Jaipur',     3500000.00,  4130000.00, 'Kripa', 'Admin', NOW()),
+  ('2026-27', 'Ahmedabad',   500000.00,   590000.00, 'Arjun Mistry', 'Admin', NOW())
+;
+
+ALTER TABLE revenue_centre_targets ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public read"  ON revenue_centre_targets;
+DROP POLICY IF EXISTS "public write" ON revenue_centre_targets;
+CREATE POLICY "public read"  ON revenue_centre_targets FOR SELECT USING (true);
+CREATE POLICY "public write" ON revenue_centre_targets FOR ALL    USING (true);
+
+
+-- ─────────────────────────────────────────────────────────────
+-- VERIFY: Should show all 11 counsellors + 9 centres
+-- ─────────────────────────────────────────────────────────────
+SELECT 'counsellors' AS table_name, COUNT(*) AS rows FROM revenue_annual_targets
+UNION ALL
+SELECT 'centres', COUNT(*) FROM revenue_centre_targets;

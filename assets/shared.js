@@ -1151,34 +1151,39 @@ window.gasGet = (function () {
       ce.targetGst += Number(r.annual_course_fee_gst_target || 0);
     });
 
+    // Personal counsellor buckets – filtered to logged-in user only
     myMonthly.forEach(function(r) {
       var bc = revenueAddBucket(byCounsellor, r.counsellor);
-      
-      var viewCentre = p.viewMode === 'business' ? r.business_centre : r.assigned_centre;
-      var bViewCentre = revenueAddBucket(byCentre, viewCentre);
-      var bBusiness = revenueAddBucket(byBusinessCentre, r.business_centre);
-      
       var isCorporate = String(r.business_type || '').toLowerCase().indexOf('corporate') >= 0 || String(r.business_centre || '').toLowerCase().indexOf('corporate') >= 0;
       var isOtherCentre = !isCorporate && r.assigned_centre !== r.business_centre;
-      
       var course = Number(r.achieved_course_fee || 0);
       var gst = Number(r.achieved_course_fee_gst || 0);
       var students = Number(r.student_count || 0);
-      
-      [bc, bViewCentre, bBusiness].forEach(function(b) {
+      bc.achievedCourse += course;
+      bc.achievedGst += gst;
+      bc.studentCount += students;
+      if (isCorporate) { bc.corporateCourse += course; bc.corporateGst += gst; }
+      else if (isOtherCentre) { bc.otherCentreCourse += course; bc.otherCentreGst += gst; }
+      else { bc.designatedCourse += course; bc.designatedGst += gst; }
+    });
+
+    // Centre buckets – always use ALL monthly data so centre totals include everyone
+    allMonthly.forEach(function(r) {
+      var viewCentre = p.viewMode === 'business' ? r.business_centre : r.assigned_centre;
+      var bViewCentre = revenueAddBucket(byCentre, viewCentre);
+      var bBusiness = revenueAddBucket(byBusinessCentre, r.business_centre);
+      var isCorporate = String(r.business_type || '').toLowerCase().indexOf('corporate') >= 0 || String(r.business_centre || '').toLowerCase().indexOf('corporate') >= 0;
+      var isOtherCentre = !isCorporate && r.assigned_centre !== r.business_centre;
+      var course = Number(r.achieved_course_fee || 0);
+      var gst = Number(r.achieved_course_fee_gst || 0);
+      var students = Number(r.student_count || 0);
+      [bViewCentre, bBusiness].forEach(function(b) {
         b.achievedCourse += course;
         b.achievedGst += gst;
         b.studentCount += students;
-        if (isCorporate) {
-          b.corporateCourse += course;
-          b.corporateGst += gst;
-        } else if (isOtherCentre) {
-          b.otherCentreCourse += course;
-          b.otherCentreGst += gst;
-        } else {
-          b.designatedCourse += course;
-          b.designatedGst += gst;
-        }
+        if (isCorporate) { b.corporateCourse += course; b.corporateGst += gst; }
+        else if (isOtherCentre) { b.otherCentreCourse += course; b.otherCentreGst += gst; }
+        else { b.designatedCourse += course; b.designatedGst += gst; }
       });
     });
 

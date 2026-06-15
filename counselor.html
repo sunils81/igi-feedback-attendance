@@ -4200,7 +4200,7 @@ function downloadAdminDashboardCsv() {
 }
 
 // -- Revenue (redesign v2) -----------------------------------------------
-const REVENUE_FRONTEND_VERSION = 'revenue-ledger-v11-2026-06-04';
+const REVENUE_FRONTEND_VERSION = 'revenue-ledger-v12-2026-06-15';
 const MUMBAI_COUNSELLORS = ['Anuradha','Bianca','Omkar Kadam'];
 const BUSINESS_TYPES = ['Centre Revenue','Corporate Programs','Seminars','Other Centre Business'];
 
@@ -4402,19 +4402,25 @@ function _revCacheClear() {
    (same shape as GAS targetRows: {period, counsellor, centre, targetCourse, targetGst, notes}).
    Falls back silently to empty array on error. */
 function fetchAnnualTargetsFromSupabase() {
-  var url = _SB_URL + '/rest/v1/revenue_annual_targets?select=period,counsellor,centre,target_course,target_gst,notes,updated_by,updated_at&order=counsellor.asc';
+  var url = _SB_URL + '/rest/v1/revenue_annual_targets?select=period,counsellor,centre,annual_course_fee_target,annual_course_fee_gst_target,target_course,target_gst,notes,updated_by,updated_at&order=counsellor.asc';
   return fetch(url, {
     headers: { 'apikey': _SB_ANON, 'Authorization': 'Bearer ' + _SB_ANON }
   }).then(function(r) {
     return r.ok ? r.json() : [];
   }).then(function(rows) {
     return (rows || []).map(function(r) {
+      // Support both column naming schemes (old: annual_course_fee_target, new: target_course)
+      var tc = Number(r.annual_course_fee_target || r.target_course) || 0;
+      var tg = Number(r.annual_course_fee_gst_target || r.target_gst) || 0;
       return {
         period:     r.period || '2026-27',
         counsellor: r.counsellor || '',
         centre:     r.centre || '',
-        targetCourse: Number(r.target_course) || 0,
-        targetGst:    Number(r.target_gst) || 0,
+        targetCourse: tc,
+        targetGst:    tg,
+        // Also expose raw column names so buildRevenueDashboardJSON can read them
+        annual_course_fee_target:     tc,
+        annual_course_fee_gst_target: tg,
         notes:      r.notes || '',
         updatedBy:  r.updated_by || '',
         updatedAt:  r.updated_at || ''
@@ -4431,6 +4437,33 @@ function applySupabaseTargets(sbTargets) {
   revenueData.targetRows = sbTargets;
   // Also refresh the preview targets (used in monthly grid header)
   revenueData.monthlyPreviewTargets = sbTargets;
+  // Rebuild counsellor standings annualTarget from Supabase (GAS may have 0 due to column name mismatch)
+  var targetMap = {};
+  sbTargets.forEach(function(t) { if (t.counsellor) targetMap[t.counsellor.trim()] = t; });
+  if (revenueData.counsellors && revenueData.counsellors.length) {
+    revenueData.counsellors.forEach(function(c) {
+      var t = targetMap[c.counsellor];
+      if (t) {
+        c.annualTarget = Number(t.targetCourse) || 0;
+        c.qtdTarget = c.annualTarget / 4;
+      }
+    });
+  }
+  // Rebuild centreTargetRows as well
+  if (revenueData.centres && revenueData.centres.length) {
+    var centreTargetTotals = {};
+    sbTargets.forEach(function(t) {
+      var ctr = t.centre || '';
+      if (!centreTargetTotals[ctr]) centreTargetTotals[ctr] = 0;
+      centreTargetTotals[ctr] += Number(t.targetCourse) || 0;
+    });
+    revenueData.centres.forEach(function(c) {
+      if (centreTargetTotals[c.centre] !== undefined) {
+        c.annualTarget = centreTargetTotals[c.centre];
+        c.qtdTarget = c.annualTarget / 4;
+      }
+    });
+  }
 }
 
 /* Start fetching revenue in the background right after login.

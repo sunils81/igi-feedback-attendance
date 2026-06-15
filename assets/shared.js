@@ -2558,6 +2558,7 @@ window.gasGet = (function () {
         return !b.co_instructor_until || b.co_instructor_until >= today;
       });
       if (!matched.length) { cb(null, { status: 'ok', date: toDMY(today), batches: [] }); return; }
+      GET('sessions', 'session_date=eq.' + today, function (e2, sRows) {
         var batches = matched.map(function (b) {
           var todaySess = (sRows || []).find(function (s) { return s.batch_code === b.batch_code; });
           var startD = b.start_date || '';

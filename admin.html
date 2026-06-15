@@ -1619,16 +1619,24 @@
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
           <h2 style="margin-bottom:0">🎓 Student Alumni Database</h2>
-          <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="window.print()">🖨️ Print / Save PDF</button>
+          <div style="display:flex;gap:8px">
+            <button id="btn-alumni-bulk-invite" class="btn btn-outline" onclick="sendAlumniBulkInvite()" style="display:none;white-space:nowrap;font-size:12px;padding:6px 12px;background:var(--navy);color:var(--gold);border-color:var(--gold);font-weight:600;border-radius:6px;cursor:pointer">✉️ Send Bulk Invite (0)</button>
+            <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="window.print()">🖨️ Print / Save PDF</button>
+          </div>
         </div>
         <p class="sub">Database of students whose batches have completed. Visible only to Admins and Counselors.</p>
+        <div id="alumni-count-bar" style="margin-top:12px;margin-bottom:4px;font-size:13px;color:var(--muted)"></div>
         
         <!-- Search and Filter bar -->
-        <div style="display:flex;gap:12px;align-items:center;margin-top:14px;margin-bottom:14px;flex-wrap:wrap">
+        <div style="display:flex;gap:12px;align-items:center;margin-top:8px;margin-bottom:14px;flex-wrap:wrap">
           <div style="flex:1;min-width:260px;position:relative">
             <input type="text" id="alumni-search-input" oninput="filterAlumniTable()" placeholder="🔍 Search alumni by Name, Student ID, Email or Batch..."
               style="width:100%;font-size:13px;padding:8px 12px 8px 12px;border-radius:6px;border:1.5px solid var(--border);font-family:inherit;box-sizing:border-box">
           </div>
+          <select id="alumni-centre-filter" onchange="filterAlumniTable()"
+            style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+            <option value="">All Centres</option>
+          </select>
           <select id="alumni-course-filter" onchange="filterAlumniTable()"
             style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
             <option value="">All Courses</option>
@@ -1646,6 +1654,7 @@
           <table class="compact-table">
             <thead>
               <tr>
+                <th class="text-center" style="width:40px"><input type="checkbox" id="alumni-select-all" onclick="toggleSelectAllAlumni(this)" style="transform: scale(1.1); cursor: pointer;"></th>
                 <th class="text-center">Student ID</th>
                 <th class="text-left">Name</th>
                 <th class="text-left">Centre</th>
@@ -1655,10 +1664,11 @@
                 <th class="text-center">Batch Code</th>
                 <th class="text-center">Enrolment Month</th>
                 <th class="text-center">Status</th>
+                <th class="text-center">Actions</th>
               </tr>
             </thead>
             <tbody id="alumni-tbody">
-              <tr><td colspan="9" style="text-align:center;padding:16px;color:var(--muted)">Loading alumni records...</td></tr>
+              <tr><td colspan="11" style="text-align:center;padding:16px;color:var(--muted)">Loading alumni records...</td></tr>
             </tbody>
           </table>
         </div>
@@ -1698,8 +1708,8 @@
 
       <!-- City Performance -->
       <div class="card">
-        <h2>🏙️ City Performance — Jan–Jul Reference</h2>
-        <p class="sub">Projection vs actual vs target achievement by centre. Source: Annual plan data.</p>
+        <h2>🏙️ City Performance — FY26-27 Cycle</h2>
+        <p class="sub">Projection vs actual vs target achievement by centre for the April 2026 – March 2027 cycle.</p>
         <div id="hist-city-wrap" style="margin-top:14px">
           <div style="position:relative;height:280px"><canvas id="hist-city-chart"></canvas></div>
           <div id="hist-city-table" style="margin-top:16px"></div>
@@ -4352,7 +4362,7 @@ const HIST_STUDENTS = {
   2025: [98,86,159,35,68,57,54,49,31,9,56,45],
   2026: [102,64,38,78,59,null,null,null,null,null,null,null]
 };
-// City performance data (Sheet1 — Jan-Jul reference)
+// City performance data (Sheet1 — FY26-27 Cycle reference)
 const HIST_CITIES = [
   {city:'Mumbai',   proj:168, actual:227, pct:135},
   {city:'Delhi',    proj:83,  actual:76,  pct:92},
@@ -4369,14 +4379,13 @@ const HIST_CITIES = [
 let histCharts = {};
 
 function renderHistoricalTab() {
-  // Prevent re-render if already done
-  if (histCharts.annual) return;
-
   const textDim   = '#8A8070';
   const gridColor = 'rgba(13,27,46,0.05)';
   Chart.defaults.color      = textDim;
   Chart.defaults.font.family = "'Plus Jakarta Sans', sans-serif";
   Chart.defaults.font.size   = 10;
+
+  if (!histCharts.annual) {
 
   // ── Annual Revenue Bar + YoY % line ────────────────────────
   const annualRevenue = HIST_YEARS.map(y => {
@@ -4513,19 +4522,64 @@ function renderHistoricalTab() {
     tbl += '<p style="font-size:11px;color:var(--muted);margin-top:8px">* 2026 shows Jan–May only. LD = Lockdown.</p>';
     heatWrap.innerHTML = tbl;
   }
+  }
 
   // ── City Performance bar chart ──────────────────────────────
   const cityCtx = document.getElementById('hist-city-chart');
   if (cityCtx) {
+    if (histCharts.city) {
+      histCharts.city.destroy();
+    }
+    const dynamicCities = HIST_CITIES.map(function(hc) {
+      let target = 0;
+      let actual = 0;
+      if (dashboardData && dashboardData.revenue) {
+        const centreRow = (dashboardData.centreRows || []).find(r => String(r.centre).toLowerCase() === String(hc.city).toLowerCase());
+        if (centreRow) {
+          const showIncl = typeof gstViewIncl !== 'undefined' ? gstViewIncl : true;
+          target = showIncl ? (Number(centreRow.targetGst) || 0) : (Number(centreRow.targetCourse) || 0);
+          
+          let achievedSum = 0;
+          const mapping = adminTargetRows();
+          const rowsToCheck = dashboardData.revenue.monthlyPreviewRows || dashboardData.revenue.monthlyRows || [];
+          
+          mapping.forEach(row => {
+            if (String(row.centre).toLowerCase() === String(hc.city).toLowerCase()) {
+              rowsToCheck.forEach(mr => {
+                if (revCanonical(mr.counsellor) === revCanonical(row.counsellor) && mr.businessCentre === row.centre) {
+                  achievedSum += showIncl ? (Number(mr.achievedGst) || 0) : (Number(mr.achievedCourse) || 0);
+                }
+              });
+            }
+          });
+          actual = achievedSum;
+        }
+      }
+      const targetL = Math.round(target / 100000);
+      const actualL = Math.round(actual / 100000);
+      const pct = targetL ? Math.round(actualL / targetL * 100) : (actualL ? 100 : 0);
+      return {
+        city: hc.city,
+        proj: targetL,
+        actual: actualL,
+        pct: pct
+      };
+    });
+
+    const totalProj = dynamicCities.reduce((s, c) => s + c.proj, 0);
+    const totalActual = dynamicCities.reduce((s, c) => s + c.actual, 0);
+    const totalPct = totalProj ? Math.round(totalActual / totalProj * 100) : (totalActual ? 100 : 0);
+    const totalDot = totalPct >= 100 ? '🟢' : (totalPct >= 70 ? '🟡' : '🔴');
+
     histCharts.city = new Chart(cityCtx, {
       type:'bar',
       data:{
-        labels: HIST_CITIES.map(c=>c.city),
+        labels: dynamicCities.map(c=>c.city),
         datasets:[
-          { label:'Projection (₹L)', data:HIST_CITIES.map(c=>c.proj),
+          { label:'Projection (₹L)', data:dynamicCities.map(c=>c.proj),
             backgroundColor:'rgba(13,27,46,0.15)', borderRadius:4 },
-          { label:'Actual (₹L)', data:HIST_CITIES.map(c=>c.actual),
-            backgroundColor: HIST_CITIES.map(c=>
+          { label:'Actual (₹L)', data:dynamicCities.map(c=>c.actual),
+            backgroundColor: dynamicCities.map(c=>
               c.pct>=100?'rgba(29,158,117,0.75)':c.pct>=70?'rgba(201,168,76,0.75)':'rgba(201,74,74,0.65)'),
             borderRadius:4 }
         ]
@@ -4542,20 +4596,20 @@ function renderHistoricalTab() {
         }
       }
     });
-  }
 
-  // City table
-  const cityTable = document.getElementById('hist-city-table');
-  if (cityTable) {
-    let th = '<table class="compact-table"><thead><tr><th>City</th><th class="text-right">Projection (₹L)</th><th class="text-right">Actual (₹L)</th><th class="text-right">Achievement</th><th class="text-center">Status</th></tr></thead><tbody>';
-    th += HIST_CITIES.map(c => {
-      const dot = c.pct>=100?'🟢':c.pct>=70?'🟡':'🔴';
-      return `<tr><td>${c.city}</td><td class="text-right">${c.proj}L</td><td class="text-right">${c.actual}L</td>`+
-        `<td class="text-right"><strong>${c.pct}%</strong></td><td class="text-center">${dot}</td></tr>`;
-    }).join('');
-    th += '<tr style="font-weight:700;border-top:2px solid var(--border)"><td>National</td><td class="text-right">493L</td><td class="text-right">411L</td><td class="text-right">83%</td><td class="text-center">🟡</td></tr>';
-    th += '</tbody></table>';
-    cityTable.innerHTML = th;
+    // City table
+    const cityTable = document.getElementById('hist-city-table');
+    if (cityTable) {
+      let th = '<table class="compact-table"><thead><tr><th>City</th><th class="text-right">Projection (₹L)</th><th class="text-right">Actual (₹L)</th><th class="text-right">Achievement</th><th class="text-center">Status</th></tr></thead><tbody>';
+      th += dynamicCities.map(c => {
+        const dot = c.pct>=100?'🟢':c.pct>=70?'🟡':'🔴';
+        return `<tr><td>${c.city}</td><td class="text-right">${c.proj}L</td><td class="text-right">${c.actual}L</td>`+
+          `<td class="text-right"><strong>${c.pct}%</strong></td><td class="text-center">${dot}</td></tr>`;
+      }).join('');
+      th += `<tr style="font-weight:700;border-top:2px solid var(--border)"><td>National</td><td class="text-right">${totalProj}L</td><td class="text-right">${totalActual}L</td><td class="text-right">${totalPct}%</td><td class="text-center">${totalDot}</td></tr>`;
+      th += '</tbody></table>';
+      cityTable.innerHTML = th;
+    }
   }
 }
 
@@ -4781,7 +4835,7 @@ function loadAlumniData() {
     return;
   }
   
-  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px">' + loadingState('Loading student alumni database...') + '</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:16px">' + loadingState('Loading student alumni database...') + '</td></tr>';
   
   const params = {
     action: 'getStudentAlumni',
@@ -4790,7 +4844,7 @@ function loadAlumniData() {
   
   gasGet(params, function(e, d) {
     if (e || !d || d.status !== 'ok') {
-      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--red)">Failed to load student alumni records.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--red)">Failed to load student alumni records.</td></tr>';
       return;
     }
     
@@ -4803,17 +4857,54 @@ function loadAlumniData() {
       courseFilter.innerHTML = '<option value="">All Courses</option>' + 
         courses.map(c => `<option value="${escC(c)}">${escC(c)}</option>`).join('');
     }
+
+    // Populate centre filter dropdown options
+    const centreFilter = document.getElementById('alumni-centre-filter');
+    if (centreFilter) {
+      const centres = [...new Set(alumniList.map(a => a.centre).filter(Boolean))].sort();
+      centreFilter.innerHTML = '<option value="">All Centres</option>' + 
+        centres.map(c => `<option value="${escC(c)}">${escC(c)}</option>`).join('');
+    }
     
+    updateAlumniKPI();
     renderAlumniTable(alumniList);
   });
+}
+
+function updateAlumniKPI() {
+  var total = alumniList.length;
+  var completed = alumniList.filter(function(a) { return a.status === 'Completed'; }).length;
+  var active = alumniList.filter(function(a) { return a.status === 'Active'; }).length;
+
+  var countBar = document.getElementById('alumni-count-bar');
+  if (countBar) {
+    countBar.textContent = 'Showing ' + total + ' student' + (total !== 1 ? 's' : '') +
+      ' — ' + completed + ' Completed · ' + active + ' Active';
+  }
 }
 
 function renderAlumniTable(list) {
   const tbody = document.getElementById('alumni-tbody');
   if (!tbody) return;
   
+  var master = document.getElementById('alumni-select-all');
+  if (master) master.checked = false;
+  var btn = document.getElementById('btn-alumni-bulk-invite');
+  if (btn) btn.style.display = 'none';
+
+  // Update count bar for filtered view
+  var countBar = document.getElementById('alumni-count-bar');
+  if (countBar) {
+    var total = alumniList.length;
+    if (list.length < total) {
+      countBar.textContent = 'Showing ' + list.length + ' of ' + total + ' student' + (total !== 1 ? 's' : '');
+    } else {
+      updateAlumniKPI();
+    }
+  }
+
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted)">No student records found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted)">No student records found.</td></tr>';
     return;
   }
   
@@ -4826,30 +4917,182 @@ function renderAlumniTable(list) {
     } else {
       statusBadge = `<span class="badge" style="margin-left:0;font-size:10px;padding:3px 6px;background:rgba(201,168,76,0.1);color:#B87A10;border:1px solid rgba(201,168,76,0.25)">Active</span>`;
     }
+    
+    var email = a.email || '';
+    var inviteBtn = email
+      ? '<button onclick="sendAlumniInvite(' + JSON.stringify(escC(a.name)) + ',' + JSON.stringify(escC(email)) + ')" ' +
+          'style="font-size:11px;padding:4px 10px;border-radius:5px;border:1px solid #1d4ed8;background:#eff6ff;color:#1d4ed8;cursor:pointer;white-space:nowrap">✉&nbsp;Invite</button>'
+      : '<span style="font-size:11px;color:var(--muted)">No email</span>';
+
+    var editBtn = '<button onclick="openAlumniStudentEditModal(' + JSON.stringify(escC(a.studentId || a.enrollmentNo)) + ',' + JSON.stringify(escC(a.batchCode || '')) + ')" ' +
+          'style="font-size:11px;padding:4px 10px;border-radius:5px;border:1px solid var(--border);background:var(--white);color:var(--navy);cursor:pointer;white-space:nowrap;margin-right:6px">✏️&nbsp;Edit</button>';
+
+    var actionHtml = '<div style="display:flex;gap:4px;justify-content:center;align-items:center">' + editBtn + inviteBtn + '</div>';
+
+    var checkbox = email
+      ? '<input type="checkbox" class="alumni-select" value="' + escC(a.studentId || a.enrollmentNo) + '" data-email="' + escC(email) + '" onclick="updateAlumniBulkBtn()" style="transform: scale(1.1); cursor: pointer;">'
+      : '<input type="checkbox" disabled style="transform: scale(1.1); opacity: 0.3">';
 
     return '<tr>' +
+      '<td class="text-center">' + checkbox + '</td>' +
       '<td class="text-center"><strong>' + escC(a.studentId) + '</strong></td>' +
       '<td class="text-left">' + escC(a.name) + '</td>' +
       '<td class="text-left">' + escC(a.centre) + '</td>' +
-      '<td class="text-center">' + escC(a.contact) + '</td>' +
-      '<td class="text-left"><a href="mailto:' + escC(a.email) + '" style="color:#1d4ed8;text-decoration:underline">' + escC(a.email) + '</a></td>' +
+      '<td class="text-center">' + escC(a.contact || a.mobile || '') + '</td>' +
+      '<td class="text-left"><a href="mailto:' + escC(email) + '" style="color:#1d4ed8;text-decoration:underline">' + escC(email) + '</a></td>' +
       '<td class="text-left">' + escC(a.course) + '</td>' +
       '<td class="text-center"><span style="font-family:monospace;font-weight:600">' + escC(a.batchCode) + '</span></td>' +
-      '<td class="text-center">' + escC(a.enrolmentMonth) + '</td>' +
+      '<td class="text-center">' + escC(a.enrolmentMonth || (a.batchCode ? a.batchCode.split('-').slice(-1)[0] : '')) + '</td>' +
       '<td class="text-center">' + statusBadge + '</td>' +
+      '<td class="text-center">' + actionHtml + '</td>' +
     '</tr>';
   }).join('');
+}
+
+function toggleSelectAllAlumni(master) {
+  var checkboxes = document.querySelectorAll('.alumni-select');
+  checkboxes.forEach(function(cb) {
+    if (!cb.disabled && cb.dataset.email) {
+      cb.checked = master.checked;
+    }
+  });
+  updateAlumniBulkBtn();
+}
+
+function updateAlumniBulkBtn() {
+  var selected = Array.from(document.querySelectorAll('.alumni-select:checked'));
+  var btn = document.getElementById('btn-alumni-bulk-invite');
+  if (!btn) return;
+  if (selected.length > 0) {
+    btn.textContent = '✉️ Send Bulk Invite (' + selected.length + ')';
+    btn.style.display = 'inline-flex';
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+function sendAlumniBulkInvite() {
+  var selected = Array.from(document.querySelectorAll('.alumni-select:checked'));
+  var emails = selected.map(function(cb) { return cb.dataset.email; }).filter(Boolean);
+  if (!emails.length) { showToast('No emails found for selected students.', 'error'); return; }
+
+  var subject = encodeURIComponent('Join the IGI Alumni Network!');
+  var body = encodeURIComponent(
+    'Dear IGI Alumni,\n\n' +
+    'Congratulations on completing your course at IGI!\n\n' +
+    'We warmly invite you to join the IGI Alumni Group — a community of accomplished jewellery professionals like you.\n\n' +
+    '👉 Join here: https://www.alumniindia.igi.org\n\n' +
+    'Stay connected, network with fellow alumni, and stay updated with IGI events and opportunities.\n\n' +
+    'Warm regards,\nIGI Operations Team'
+  );
+  
+  window.open('mailto:?bcc=' + emails.join(',') + '&subject=' + subject + '&body=' + body);
+  showToast('Email client opened for ' + emails.length + ' alumni', 'success');
+}
+
+function sendAlumniInvite(name, email) {
+  if (!email) { showToast('No email address on file for this student.', 'error'); return; }
+  var subject = encodeURIComponent('Join the IGI Alumni Network!');
+  var body = encodeURIComponent(
+    'Dear ' + name + ',\n\n' +
+    'Congratulations on completing your course at IGI!\n\n' +
+    'We warmly invite you to join the IGI Alumni Group — a community of accomplished jewellery professionals like you.\n\n' +
+    '👉 Join here: https://www.alumniindia.igi.org\n\n' +
+    'Stay connected, network with fellow alumni, and stay updated with IGI events and opportunities.\n\n' +
+    'Warm regards,\nIGI Operations Team'
+  );
+  window.open('mailto:' + email + '?subject=' + subject + '&body=' + body);
+  showToast('Email client opened for ' + name, 'success');
+}
+
+function openAlumniStudentEditModal(enrollmentNo, batch) {
+  var s = alumniList.find(function(x) { return x.studentId === enrollmentNo || x.enrollmentNo === enrollmentNo; });
+  if (!s) return;
+  document.getElementById('st-edit-old-id').value  = enrollmentNo;
+  document.getElementById('st-edit-batch').value   = batch || s.batchCode || '';
+  document.getElementById('st-edit-id').value      = enrollmentNo;
+  document.getElementById('st-edit-name').value    = s.name || '';
+  document.getElementById('st-edit-mobile').value  = s.mobile || s.contact || '';
+  document.getElementById('st-edit-email').value   = s.email || '';
+  document.getElementById('st-edit-mobile4').value = s.mobileLast4 || (s.mobile ? s.mobile.slice(-4) : (s.contact ? s.contact.slice(-4) : ''));
+
+  var errEl = document.getElementById('st-edit-err');
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+  var modal = document.getElementById('student-edit-modal');
+  if (modal) { modal.style.display = 'flex'; }
+}
+
+function closeStudentEditModal() {
+  var modal = document.getElementById('student-edit-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function saveStudentEdit() {
+  var oldId     = (document.getElementById('st-edit-old-id').value || '').trim();
+  var batch     = (document.getElementById('st-edit-batch').value || '').trim();
+  var newId     = (document.getElementById('st-edit-id').value || '').trim().toUpperCase();
+  var name      = (document.getElementById('st-edit-name').value || '').trim();
+  var mobile    = (document.getElementById('st-edit-mobile').value || '').trim().replace(/\D/g,'');
+  var email     = (document.getElementById('st-edit-email').value || '').trim();
+  var mobile4   = (document.getElementById('st-edit-mobile4').value || '').trim();
+  var errEl     = document.getElementById('st-edit-err');
+
+  if (!newId) { errEl.textContent = 'Student ID cannot be empty.'; errEl.style.display = 'block'; return; }
+  if (mobile && mobile.length < 4) { errEl.textContent = 'Mobile must be at least 4 digits.'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+
+  if (mobile && (!mobile4 || mobile4.length !== 4)) {
+    mobile4 = mobile.slice(-4);
+    document.getElementById('st-edit-mobile4').value = mobile4;
+  }
+
+  gasGet({
+    action: 'updateStudentInfo',
+    oldEnrollmentNo: oldId,
+    newEnrollmentNo: newId,
+    name: name,
+    mobile: mobile,
+    mobileLast4: mobile4,
+    email: email
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      errEl.textContent = (d && d.reason) ? d.reason : 'Could not save. Please try again.';
+      errEl.style.display = 'block'; return;
+    }
+    closeStudentEditModal();
+    showToast('Student record updated ✓', 'success');
+    
+    // Update local cache and filter
+    var idx = alumniList.findIndex(function(x) { return x.studentId === oldId || x.enrollmentNo === oldId; });
+    if (idx >= 0) {
+      alumniList[idx].studentId = newId;
+      alumniList[idx].enrollmentNo = newId;
+      if (name) alumniList[idx].name = name;
+      if (mobile) {
+        alumniList[idx].contact = mobile;
+        alumniList[idx].mobile = mobile;
+      }
+      if (mobile4) alumniList[idx].mobileLast4 = mobile4;
+      if (email) alumniList[idx].email = email;
+    }
+    filterAlumniTable();
+  });
 }
 
 function filterAlumniTable() {
   const query = document.getElementById('alumni-search-input').value.trim().toLowerCase();
   const course = document.getElementById('alumni-course-filter').value;
+  const centre = (document.getElementById('alumni-centre-filter') || {}).value || '';
   const status = document.getElementById('alumni-status-filter').value;
   
   let filtered = alumniList;
   
   if (course) {
     filtered = filtered.filter(a => a.course === course);
+  }
+
+  if (centre) {
+    filtered = filtered.filter(a => a.centre === centre);
   }
   
   if (status) {
@@ -6352,5 +6595,38 @@ switchAdminTab = function(tabId) {
   }
 };
 </script>
+<!-- Student Edit Modal — at body level so position:fixed works from any tab -->
+<div id="student-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--white);border-radius:12px;padding:24px;width:100%;max-width:420px;box-shadow:0 8px 40px rgba(0,0,0,.2)">
+    <h3 style="margin:0 0 16px 0;font-size:16px;color:var(--navy)">Edit Student Record</h3>
+    <input type="hidden" id="st-edit-old-id">
+    <input type="hidden" id="st-edit-batch">
+    <div class="field" style="margin-bottom:12px">
+      <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Student ID</label>
+      <input type="text" id="st-edit-id" style="text-transform:uppercase" placeholder="e.g. MUM-DG-001">
+    </div>
+    <div class="field" style="margin-bottom:12px">
+      <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Full Name</label>
+      <input type="text" id="st-edit-name" placeholder="Student name">
+    </div>
+    <div class="field" style="margin-bottom:12px">
+      <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Full Mobile Number</label>
+      <input type="tel" id="st-edit-mobile" placeholder="10 digits">
+    </div>
+    <div class="field" style="margin-bottom:12px">
+      <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Email Address</label>
+      <input type="email" id="st-edit-email" placeholder="student@email.com">
+    </div>
+    <div class="field" style="margin-bottom:16px">
+      <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Mobile Last 4 Digits</label>
+      <input type="text" id="st-edit-mobile4" maxlength="4" placeholder="4 digits" style="width:80px">
+    </div>
+    <div id="st-edit-err" class="err-box" style="display:none;margin-bottom:10px"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" onclick="saveStudentEdit()">Save Changes</button>
+      <button class="btn btn-outline" onclick="closeStudentEditModal()">Cancel</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

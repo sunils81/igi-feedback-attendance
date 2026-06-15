@@ -637,7 +637,7 @@ window.gasGet = (function () {
     });
   }
 
-  /* updateStudentInfo — edit name, student_id (old→new), mobile_last4 */
+  /* updateStudentInfo — edit name, student_id (old→new), mobile, mobile_last4, email */
   function h_updateStudentInfo(p, cb) {
     var oldId = String(p.oldEnrollmentNo || p.enrollmentNo || '').trim().toUpperCase();
     if (!oldId) { cb(null, { status: 'error', reason: 'Missing enrollment number' }); return; }
@@ -646,8 +646,16 @@ window.gasGet = (function () {
       patch.student_id = p.newEnrollmentNo.trim().toUpperCase();
     }
     if (p.name && p.name.trim()) patch.name = p.name.trim();
-    if (p.mobileLast4 && /^\d{4}$/.test(p.mobileLast4.trim())) patch.mobile_last4 = p.mobileLast4.trim();
-    if (p.email && p.email.trim()) patch.email = p.email.trim();
+    if (p.mobile && p.mobile.trim()) {
+      var cleanMob = p.mobile.trim().replace(/\D/g, '');
+      patch.mobile = cleanMob;
+      if (cleanMob.length >= 4) {
+        patch.mobile_last4 = cleanMob.slice(-4);
+      }
+    } else if (p.mobileLast4 && /^\d{4}$/.test(p.mobileLast4.trim())) {
+      patch.mobile_last4 = p.mobileLast4.trim();
+    }
+    if (p.email !== undefined) patch.email = (p.email || '').trim();
     if (!Object.keys(patch).length) { cb(null, { status: 'ok', message: 'No changes' }); return; }
     PATCH('students', 'student_id=eq.' + encodeURIComponent(oldId), patch,
       function(e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });

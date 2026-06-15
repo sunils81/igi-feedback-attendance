@@ -1246,6 +1246,20 @@
         <div class="err-box" id="st-err"></div>
       </div>
     </div>
+    <div class="card" id="st-bulk-card" style="display:none">
+      <div class="section-tag">Bulk Operations</div>
+      <h2>Bulk Add / Export Students</h2>
+      <p class="sub">Import multiple students via CSV, export current student list, or download the template.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-outline" style="flex:1;min-width:140px;margin:0" onclick="downloadImportTemplate()">📄 Download Template</button>
+        <button class="btn btn-outline" style="flex:1;min-width:140px;margin:0;position:relative" onclick="document.getElementById('csv-file-input').click()">
+          📤 Upload CSV
+          <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCSVUpload(event)">
+        </button>
+        <button class="btn btn-outline" style="flex:1;min-width:140px;margin:0" onclick="exportStudentsToCSV()">📥 Export Students</button>
+      </div>
+      <div id="st-bulk-status" style="margin-top:12px;font-size:13px;font-weight:600;display:none"></div>
+    </div>
     <div class="card" id="st-list-card" style="display:none">
       <div class="section-tag">Enrolled Students</div>
       <h2 id="st-list-title">—</h2>
@@ -1303,7 +1317,7 @@
               <th class="text-center">Batch Code</th>
               <th class="text-center">Enrolment Month</th>
               <th class="text-center">Status</th>
-              <th class="text-center">Alumni Invite</th>
+              <th class="text-center">Actions</th>
             </tr>
           </thead>
           <tbody id="alumni-tbody">
@@ -3291,6 +3305,8 @@ function loadStudents() {
   const batch = document.getElementById('st-batch').value;
   document.getElementById('st-enrol-wrap').style.display = batch ? 'block' : 'none';
   document.getElementById('st-list-card').style.display  = batch ? 'block' : 'none';
+  const bulkCard = document.getElementById('st-bulk-card');
+  if (bulkCard) bulkCard.style.display = batch ? 'block' : 'none';
   if (!batch) return;
   renderStudentBatchChoices();
   renderStudentList(batch);
@@ -3481,8 +3497,32 @@ function openStudentEditModal(enrollmentNo, name, mobileLast4, batch) {
   document.getElementById('st-edit-old-id').value  = enrollmentNo;
   document.getElementById('st-edit-batch').value   = batch;
   document.getElementById('st-edit-id').value      = enrollmentNo;
-  document.getElementById('st-edit-name').value    = name;
-  document.getElementById('st-edit-mobile4').value = mobileLast4;
+  document.getElementById('st-edit-name').value    = name || '';
+  
+  // Find in local cache
+  var students = counselorStudentsByBatch[batch] || [];
+  var s = students.find(function(x) { return x.enrollmentNo === enrollmentNo; });
+  document.getElementById('st-edit-mobile').value  = s && s.mobile ? s.mobile : '';
+  document.getElementById('st-edit-email').value   = s && s.email ? s.email : '';
+  document.getElementById('st-edit-mobile4').value = mobileLast4 || '';
+
+  var errEl = document.getElementById('st-edit-err');
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+  var modal = document.getElementById('student-edit-modal');
+  if (modal) { modal.style.display = 'flex'; }
+}
+
+function openAlumniStudentEditModal(enrollmentNo, batch) {
+  var s = alumniList.find(function(x) { return x.studentId === enrollmentNo || x.enrollmentNo === enrollmentNo; });
+  if (!s) return;
+  document.getElementById('st-edit-old-id').value  = enrollmentNo;
+  document.getElementById('st-edit-batch').value   = batch || s.batchCode || '';
+  document.getElementById('st-edit-id').value      = enrollmentNo;
+  document.getElementById('st-edit-name').value    = s.name || '';
+  document.getElementById('st-edit-mobile').value  = s.mobile || s.contact || '';
+  document.getElementById('st-edit-email').value   = s.email || '';
+  document.getElementById('st-edit-mobile4').value = s.mobileLast4 || (s.mobile ? s.mobile.slice(-4) : '');
+
   var errEl = document.getElementById('st-edit-err');
   if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
   var modal = document.getElementById('student-edit-modal');
@@ -3499,30 +3539,201 @@ function saveStudentEdit() {
   var batch     = (document.getElementById('st-edit-batch').value || '').trim();
   var newId     = (document.getElementById('st-edit-id').value || '').trim().toUpperCase();
   var name      = (document.getElementById('st-edit-name').value || '').trim();
+  var mobile    = (document.getElementById('st-edit-mobile').value || '').trim().replace(/\D/g,'');
+  var email     = (document.getElementById('st-edit-email').value || '').trim();
   var mobile4   = (document.getElementById('st-edit-mobile4').value || '').trim();
   var errEl     = document.getElementById('st-edit-err');
 
   if (!newId) { errEl.textContent = 'Student ID cannot be empty.'; errEl.style.display = 'block'; return; }
-  if (mobile4 && !/^\d{4}$/.test(mobile4)) { errEl.textContent = 'Mobile last 4 must be exactly 4 digits.'; errEl.style.display = 'block'; return; }
+  if (mobile && mobile.length < 4) { errEl.textContent = 'Mobile must be at least 4 digits.'; errEl.style.display = 'block'; return; }
   errEl.style.display = 'none';
 
-  gasGet({ action: 'updateStudentInfo', oldEnrollmentNo: oldId, newEnrollmentNo: newId, name: name, mobileLast4: mobile4 }, function(e, d) {
+  if (mobile && (!mobile4 || mobile4.length !== 4)) {
+    mobile4 = mobile.slice(-4);
+    document.getElementById('st-edit-mobile4').value = mobile4;
+  }
+
+  gasGet({
+    action: 'updateStudentInfo',
+    oldEnrollmentNo: oldId,
+    newEnrollmentNo: newId,
+    name: name,
+    mobile: mobile,
+    mobileLast4: mobile4,
+    email: email
+  }, function(e, d) {
     if (e || !d || d.status !== 'ok') {
       errEl.textContent = (d && d.reason) ? d.reason : 'Could not save. Please try again.';
       errEl.style.display = 'block'; return;
     }
     closeStudentEditModal();
     showToast('Student record updated ✓', 'success');
-    // Refresh the student in local cache and re-render
-    var students = counselorStudentsByBatch[batch] || [];
-    var idx = students.findIndex(function(s) { return s.enrollmentNo === oldId; });
-    if (idx >= 0) {
-      students[idx].enrollmentNo = newId;
-      if (name) students[idx].name = name;
-      if (mobile4) students[idx].mobileLast4 = mobile4;
+    
+    // Check if we are on Alumni tab
+    var alumniTab = document.getElementById('t-alumni');
+    if (alumniTab && alumniTab.classList.contains('active')) {
+      var idx = alumniList.findIndex(function(x) { return x.studentId === oldId || x.enrollmentNo === oldId; });
+      if (idx >= 0) {
+        alumniList[idx].studentId = newId;
+        alumniList[idx].enrollmentNo = newId;
+        if (name) alumniList[idx].name = name;
+        if (mobile) {
+          alumniList[idx].contact = mobile;
+          alumniList[idx].mobile = mobile;
+        }
+        if (mobile4) alumniList[idx].mobileLast4 = mobile4;
+        if (email) alumniList[idx].email = email;
+      }
+      filterAlumniTable();
+    } else {
+      renderStudentList(batch);
     }
-    renderStudentList(batch);
   });
+}
+
+/* --- Bulk Import / Export Helper Functions --- */
+function downloadImportTemplate() {
+  const headers = 'Student ID,Name,Mobile,Email\n';
+  const sample = '6008,Nivaan Lodha,9321508046,nivaanlodha50@gmail.com\n';
+  const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent(headers + sample);
+  const link = document.createElement('a');
+  link.setAttribute('href', csvContent);
+  link.setAttribute('download', 'student_import_template.csv');
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function handleCSVUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const batch = document.getElementById('st-batch').value;
+  if (!batch) { showToast('Please select a batch first.', 'error'); return; }
+
+  const statusEl = document.getElementById('st-bulk-status');
+  statusEl.style.display = 'block';
+  statusEl.style.color = 'var(--navy)';
+  statusEl.textContent = 'Reading file...';
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const text = e.target.result;
+    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    if (lines.length < 2) {
+      statusEl.textContent = 'CSV is empty or missing header.';
+      statusEl.style.color = 'var(--red)';
+      return;
+    }
+
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, '').toLowerCase());
+    const idIdx = headers.indexOf('student id');
+    const nameIdx = headers.indexOf('name');
+    const mobileIdx = headers.indexOf('mobile');
+    const emailIdx = headers.indexOf('email');
+
+    if (idIdx === -1 || nameIdx === -1 || mobileIdx === -1) {
+      statusEl.textContent = 'Invalid headers. Required: Student ID, Name, Mobile.';
+      statusEl.style.color = 'var(--red)';
+      return;
+    }
+
+    const studentsToImport = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cleanCols = splitCSVRow(lines[i]);
+      const studentId = cleanCols[idIdx];
+      const name = cleanCols[nameIdx];
+      const mobile = cleanCols[mobileIdx] ? cleanCols[mobileIdx].replace(/\D/g, '') : '';
+      const email = emailIdx !== -1 && cleanCols[emailIdx] ? cleanCols[emailIdx] : '';
+
+      if (studentId && name && mobile) {
+        studentsToImport.push({ studentId, name, mobile, email });
+      }
+    }
+
+    if (studentsToImport.length === 0) {
+      statusEl.textContent = 'No valid student rows found.';
+      statusEl.style.color = 'var(--red)';
+      return;
+    }
+
+    statusEl.textContent = 'Importing 0 of ' + studentsToImport.length + ' students...';
+
+    let index = 0;
+    function next() {
+      if (index >= studentsToImport.length) {
+        statusEl.textContent = '✓ Successfully imported ' + studentsToImport.length + ' students!';
+        statusEl.style.color = 'var(--teal)';
+        showToast('Bulk import completed ✓', 'success');
+        event.target.value = '';
+        renderStudentList(batch);
+        return;
+      }
+
+      const s = studentsToImport[index];
+      statusEl.textContent = 'Importing ' + (index + 1) + ' of ' + studentsToImport.length + ': ' + s.name + '...';
+      const mobileLast4 = s.mobile.length >= 4 ? s.mobile.slice(-4) : '';
+
+      gasGet({
+        action: 'addStudent',
+        enrollmentNo: s.studentId,
+        batchCode: batch,
+        batchCodes: batch,
+        name: s.name,
+        mobileLast4: mobileLast4,
+        mobile: s.mobile,
+        email: s.email
+      }, function(e, d) {
+        if (e || !d || d.status !== 'ok') {
+          console.error('Failed to import:', s.name, e || d);
+        }
+        index++;
+        next();
+      });
+    }
+
+    next();
+  };
+  reader.readAsText(file);
+}
+
+function splitCSVRow(line) {
+  let result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    let char = line[i];
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+function exportStudentsToCSV() {
+  const batch = document.getElementById('st-batch').value;
+  if (!batch) { showToast('Please select a batch first.', 'error'); return; }
+  const students = counselorStudentsByBatch[batch] || [];
+  if (!students.length) { showToast('No students to export.', 'error'); return; }
+
+  let csvContent = 'Student ID,Name,Mobile,Email\n';
+  students.forEach(function(s) {
+    csvContent += `"${s.enrollmentNo}","${s.name}","${s.mobile || ''}","${s.email || ''}"\n`;
+  });
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', 'students_' + batch + '.csv');
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 function formatDateTime(v) {
@@ -8010,8 +8221,13 @@ function renderAlumniTable(list) {
     var email = a.email || '';
     var inviteBtn = email
       ? '<button onclick="sendAlumniInvite(' + JSON.stringify(escC(a.name)) + ',' + JSON.stringify(escC(email)) + ')" ' +
-          'style="font-size:11px;padding:4px 10px;border-radius:5px;border:1px solid #1d4ed8;background:#eff6ff;color:#1d4ed8;cursor:pointer;white-space:nowrap">✉️ Send Invite</button>'
+          'style="font-size:11px;padding:4px 10px;border-radius:5px;border:1px solid #1d4ed8;background:#eff6ff;color:#1d4ed8;cursor:pointer;white-space:nowrap">✉️ Invite</button>'
       : '<span style="font-size:11px;color:var(--muted)">No email</span>';
+
+    var editBtn = '<button onclick="openAlumniStudentEditModal(' + JSON.stringify(escC(a.studentId || a.enrollmentNo)) + ',' + JSON.stringify(escC(a.batchCode || '')) + ')" ' +
+          'style="font-size:11px;padding:4px 10px;border-radius:5px;border:1px solid var(--border);background:var(--white);color:var(--navy);cursor:pointer;white-space:nowrap;margin-right:6px">✏️ Edit</button>';
+
+    var actionHtml = '<div style="display:flex;gap:4px;justify-content:center;align-items:center">' + editBtn + inviteBtn + '</div>';
 
     return '<tr>' +
       '<td class="text-center"><strong>' + escC(a.studentId || a.enrollmentNo) + '</strong></td>' +
@@ -8023,7 +8239,7 @@ function renderAlumniTable(list) {
       '<td class="text-center"><span style="font-family:monospace;font-weight:600">' + escC(a.batchCode) + '</span></td>' +
       '<td class="text-center">' + escC(a.enrolmentMonth || (a.batchCode ? a.batchCode.split('-').slice(-1)[0] : '')) + '</td>' +
       '<td class="text-center">' + statusBadge + '</td>' +
-      '<td class="text-center">' + inviteBtn + '</td>' +
+      '<td class="text-center">' + actionHtml + '</td>' +
     '</tr>';
   }).join('');
 }
@@ -10234,6 +10450,14 @@ function fpwdResetPIN() {
     <div class="field" style="margin-bottom:12px">
       <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Full Name</label>
       <input type="text" id="st-edit-name" placeholder="Student name">
+    </div>
+    <div class="field" style="margin-bottom:12px">
+      <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Full Mobile Number</label>
+      <input type="tel" id="st-edit-mobile" placeholder="10 digits">
+    </div>
+    <div class="field" style="margin-bottom:12px">
+      <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Email Address</label>
+      <input type="email" id="st-edit-email" placeholder="student@email.com">
     </div>
     <div class="field" style="margin-bottom:16px">
       <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Mobile Last 4 Digits</label>

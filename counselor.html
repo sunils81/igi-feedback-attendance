@@ -1257,15 +1257,21 @@
   <div id="t-alumni" class="tab-content">
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
-        <h2 style="margin-bottom:0">🎓 Student Alumni Database</h2>
+        <div>
+          <h2 style="margin-bottom:2px">🎓 Student Alumni Database</h2>
+          <p class="sub" style="margin:0">Database of students whose batches have completed. Visible only to Admins and Counselors.</p>
+        </div>
+        <button class="btn" onclick="openAddAlumniModal()" style="white-space:nowrap;font-size:13px;padding:8px 16px">+ Add Past Alumni</button>
       </div>
-      <p class="sub">Database of students whose batches have completed. Visible only to Admins and Counselors.</p>
-      
+
+      <!-- Total count bar -->
+      <div id="alumni-count-bar" style="margin-top:12px;margin-bottom:4px;font-size:13px;color:var(--muted)"></div>
+
       <!-- Search and Filter bar -->
-      <div style="display:flex;gap:12px;align-items:center;margin-top:14px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="display:flex;gap:12px;align-items:center;margin-top:8px;margin-bottom:14px;flex-wrap:wrap">
         <div style="flex:1;min-width:260px;position:relative">
           <input type="text" id="alumni-search-input" oninput="filterAlumniTable()" placeholder="🔍 Search alumni by Name, Student ID, Email or Batch..."
-            style="width:100%;font-size:13px;padding:8px 12px 8px 12px;border-radius:6px;border:1.5px solid var(--border);font-family:inherit;box-sizing:border-box">
+            style="width:100%;font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);font-family:inherit;box-sizing:border-box">
         </div>
         <select id="alumni-course-filter" onchange="filterAlumniTable()"
           style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
@@ -1283,7 +1289,7 @@
           <option value="Inactive">Inactive</option>
         </select>
       </div>
-      
+
       <div style="overflow-x:auto">
         <table class="compact-table">
           <thead>
@@ -1297,10 +1303,11 @@
               <th class="text-center">Batch Code</th>
               <th class="text-center">Enrolment Month</th>
               <th class="text-center">Status</th>
+              <th class="text-center">Alumni Invite</th>
             </tr>
           </thead>
           <tbody id="alumni-tbody">
-            <tr><td colspan="9" style="text-align:center;padding:16px;color:var(--muted)">Loading alumni records...</td></tr>
+            <tr><td colspan="10" style="text-align:center;padding:16px;color:var(--muted)">Loading alumni records...</td></tr>
           </tbody>
         </table>
       </div>
@@ -7889,7 +7896,7 @@ function loadAlumniData() {
     return;
   }
   
-  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading student alumni database...</p></div></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading student alumni database...</p></div></td></tr>';
   
   var params = {
     action: 'getStudentAlumni',
@@ -7899,7 +7906,7 @@ function loadAlumniData() {
   
   gasGet(params, function(e, d) {
     if (e || !d || d.status !== 'ok') {
-      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--red)">Failed to load student alumni records.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--red)">Failed to load student alumni records.</td></tr>';
       return;
     }
     
@@ -7942,19 +7949,55 @@ function loadAlumniData() {
         centres.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
     }
 
+    // Update KPI now that data is loaded
+    updateAlumniKPI();
     renderAlumniTable(alumniList);
   });
+}
+
+function updateAlumniKPI() {
+  var total = alumniList.length;
+  var completed = alumniList.filter(function(a) { return a.status === 'Completed'; }).length;
+  var active = alumniList.filter(function(a) { return a.status === 'Active'; }).length;
+
+  // Update count bar
+  var countBar = document.getElementById('alumni-count-bar');
+  if (countBar) {
+    countBar.textContent = 'Showing ' + total + ' student' + (total !== 1 ? 's' : '') +
+      ' — ' + completed + ' Completed · ' + active + ' Active';
+  }
+
+  // Update KPI cards
+  var kTotal = document.getElementById('kpi-alumni-total');
+  var kCompleted = document.getElementById('kpi-alumni-completed');
+  var kContacted = document.getElementById('kpi-alumni-contacted');
+  if (kTotal) kTotal.textContent = total;
+  if (kCompleted) kCompleted.textContent = completed;
+  if (kContacted) kContacted.textContent = active;
 }
 
 function renderAlumniTable(list) {
   var tbody = document.getElementById('alumni-tbody');
   if (!tbody) return;
-  
+
+  // Update count bar for filtered view
+  var countBar = document.getElementById('alumni-count-bar');
+  if (countBar) {
+    var total = alumniList.length;
+    if (list.length < total) {
+      countBar.textContent = 'Showing ' + list.length + ' of ' + total + ' student' + (total !== 1 ? 's' : '');
+    } else {
+      countBar.textContent = 'Showing ' + total + ' student' + (total !== 1 ? 's' : '') +
+        ' — ' + alumniList.filter(function(a){return a.status==='Completed';}).length + ' Completed · ' +
+        alumniList.filter(function(a){return a.status==='Active';}).length + ' Active';
+    }
+  }
+
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted)">No student records found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted)">No student records found.</td></tr>';
     return;
   }
-  
+
   tbody.innerHTML = list.map(function(a) {
     var statusBadge = '';
     if (a.status === 'Completed') {
@@ -7964,17 +8007,23 @@ function renderAlumniTable(list) {
     } else {
       statusBadge = '<span class="badge" style="margin-left:0;font-size:10px;padding:3px 6px;background:rgba(201,168,76,0.1);color:#B87A10;border:1px solid rgba(201,168,76,0.25)">Active</span>';
     }
+    var email = a.email || '';
+    var inviteBtn = email
+      ? '<button onclick="sendAlumniInvite(' + JSON.stringify(escC(a.name)) + ',' + JSON.stringify(escC(email)) + ')" ' +
+          'style="font-size:11px;padding:4px 10px;border-radius:5px;border:1px solid #1d4ed8;background:#eff6ff;color:#1d4ed8;cursor:pointer;white-space:nowrap">✉️ Send Invite</button>'
+      : '<span style="font-size:11px;color:var(--muted)">No email</span>';
 
     return '<tr>' +
       '<td class="text-center"><strong>' + escC(a.studentId || a.enrollmentNo) + '</strong></td>' +
       '<td class="text-left">' + escC(a.name) + '</td>' +
       '<td class="text-left">' + escC(a.centre) + '</td>' +
       '<td class="text-center">' + escC(a.contact || a.mobile || '') + '</td>' +
-      '<td class="text-left"><a href="mailto:' + escC(a.email) + '" style="color:#1d4ed8;text-decoration:underline">' + escC(a.email) + '</a></td>' +
+      '<td class="text-left"><a href="mailto:' + escC(email) + '" style="color:#1d4ed8;text-decoration:underline">' + escC(email) + '</a></td>' +
       '<td class="text-left">' + escC(a.course) + '</td>' +
       '<td class="text-center"><span style="font-family:monospace;font-weight:600">' + escC(a.batchCode) + '</span></td>' +
       '<td class="text-center">' + escC(a.enrolmentMonth || (a.batchCode ? a.batchCode.split('-').slice(-1)[0] : '')) + '</td>' +
       '<td class="text-center">' + statusBadge + '</td>' +
+      '<td class="text-center">' + inviteBtn + '</td>' +
     '</tr>';
   }).join('');
 }
@@ -8010,6 +8059,89 @@ function filterAlumniTable() {
   }
   
   renderAlumniTable(filtered);
+}
+
+function sendAlumniInvite(name, email) {
+  if (!email) { showToast('No email address on file for this student.', 'error'); return; }
+  var subject = encodeURIComponent('Join the IGI Alumni Network!');
+  var body = encodeURIComponent(
+    'Dear ' + name + ',\n\n' +
+    'Congratulations on completing your course at IGI!\n\n' +
+    'We warmly invite you to join the IGI Alumni Group — a community of accomplished jewellery professionals like you.\n\n' +
+    '👉 Join here: https://www.alumniindia.igi.org\n\n' +
+    'Stay connected, network with fellow alumni, and stay updated with IGI events and opportunities.\n\n' +
+    'Warm regards,\nIGI Counselor Team'
+  );
+  window.open('mailto:' + email + '?subject=' + subject + '&body=' + body);
+  showToast('Email client opened for ' + name, 'success');
+}
+
+function openAddAlumniModal() {
+  var modal = document.getElementById('add-alumni-modal');
+  if (!modal) return;
+  // Clear fields
+  ['aa-student-id','aa-name','aa-email','aa-mobile','aa-batch','aa-course','aa-centre'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  modal.style.display = 'flex';
+}
+
+function closeAddAlumniModal() {
+  var modal = document.getElementById('add-alumni-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function submitAddAlumni() {
+  var studentId = (document.getElementById('aa-student-id').value || '').trim();
+  var name      = (document.getElementById('aa-name').value || '').trim();
+  var email     = (document.getElementById('aa-email').value || '').trim();
+  var mobile    = (document.getElementById('aa-mobile').value || '').trim();
+  var batchCode = (document.getElementById('aa-batch').value || '').trim();
+  var course    = (document.getElementById('aa-course').value || '').trim();
+  var centre    = (document.getElementById('aa-centre').value || '').trim();
+  var sendInvite = document.getElementById('aa-send-invite').checked;
+
+  if (!studentId || !name) {
+    showToast('Student ID and Name are required.', 'error');
+    return;
+  }
+
+  var btn = document.getElementById('aa-submit-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Adding...'; }
+
+  // Add to students table with Completed status
+  gasGet({
+    action: 'addStudent',
+    enrollmentNo: studentId,
+    name: name,
+    email: email,
+    mobile: mobile,
+    batchCode: batchCode || 'ALUMNI',
+    mobileLast4: mobile ? mobile.slice(-4) : '',
+    status: 'Completed'
+  }, function(e, d) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Add Alumni'; }
+    if (e || !d || d.status === 'error') {
+      showToast('Could not add alumni: ' + ((d && d.reason) || e || 'unknown'), 'error');
+      return;
+    }
+    // Add to local list and refresh
+    alumniList.push({
+      studentId: studentId, enrollmentNo: studentId,
+      name: name, email: email, mobile: mobile, contact: mobile,
+      batchCode: batchCode, course: course, centre: centre,
+      status: 'Completed',
+      enrolmentMonth: batchCode ? batchCode.split('-').slice(-1)[0] : ''
+    });
+    closeAddAlumniModal();
+    renderAlumniTable(alumniList);
+    updateAlumniKPI();
+    showToast('Alumni record added for ' + name, 'success');
+    if (sendInvite && email) {
+      setTimeout(function() { sendAlumniInvite(name, email); }, 500);
+    }
+  });
 }
 
 /* ── Premium Inventory Tab Handlers ── */
@@ -10040,6 +10172,54 @@ function fpwdResetPIN() {
   });
 }
 </script>
+
+<!-- Add Past Alumni Modal -->
+<div id="add-alumni-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--white);border-radius:12px;padding:24px;width:100%;max-width:460px;box-shadow:0 8px 40px rgba(0,0,0,.2);max-height:90vh;overflow-y:auto">
+    <h3 style="margin:0 0 4px 0;font-size:16px;color:var(--navy)">➕ Add Past Alumni</h3>
+    <p style="margin:0 0 16px;font-size:12px;color:var(--muted)">Add a student who completed a course but isn't in the system yet.</p>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Student ID *</label>
+        <input id="aa-student-id" type="text" placeholder="e.g. DG2024001" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Full Name *</label>
+        <input id="aa-name" type="text" placeholder="Student full name" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Email Address</label>
+        <input id="aa-email" type="email" placeholder="student@example.com" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Mobile Number</label>
+        <input id="aa-mobile" type="tel" placeholder="10-digit mobile" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
+      </div>
+      <div style="display:flex;gap:10px">
+        <div style="flex:1">
+          <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Batch Code</label>
+          <input id="aa-batch" type="text" placeholder="e.g. DG-JAN24" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
+        </div>
+        <div style="flex:1">
+          <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Centre</label>
+          <input id="aa-centre" type="text" placeholder="e.g. Mumbai" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Course</label>
+        <input id="aa-course" type="text" placeholder="e.g. Diamond Grading" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#f0f9ff;border-radius:8px;border:1px solid #bae6fd">
+        <input type="checkbox" id="aa-send-invite" checked style="width:auto;margin:0;cursor:pointer">
+        <label for="aa-send-invite" style="font-size:13px;color:#0369a1;cursor:pointer;font-weight:500">✉️ Send alumni invite email after adding</label>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button id="aa-submit-btn" class="btn" onclick="submitAddAlumni()" style="flex:1">Add Alumni</button>
+      <button class="btn btn-outline" onclick="closeAddAlumniModal()" style="flex:1">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <!-- Student Edit Modal — at body level so position:fixed works from any tab -->
 <div id="student-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">

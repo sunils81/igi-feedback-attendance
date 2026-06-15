@@ -3521,7 +3521,7 @@ window.gasGet = (function () {
       case 'registerVendor':           return h_registerVendor(params, cb);
       case 'addInventoryItem':         return h_addInvItem(params, cb);
       case 'updateInventoryItem':      return h_updateInvItem(params, cb);
-      case 'deleteInventoryItem':      return h_deleteInventoryItem(params, cb);
+      case 'deleteInventoryItem':      return h_deleteInvItem(params, cb);
 
       /* CRM System */
       case 'getCRMLeads':               return h_getCRMLeads(params, cb);
@@ -3870,7 +3870,6 @@ window.gasGet = (function () {
       });
     });
   }
-}
 }());
 
 function ensureToastHost() {

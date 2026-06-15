@@ -4397,16 +4397,60 @@ function _revCacheClear() {
   try { sessionStorage.removeItem(_revCacheKey()); } catch(ex){}
 }
 
+/* Fetch annual targets from Supabase revenue_annual_targets table.
+   Returns a Promise that resolves to an array of targetRow objects
+   (same shape as GAS targetRows: {period, counsellor, centre, targetCourse, targetGst, notes}).
+   Falls back silently to empty array on error. */
+function fetchAnnualTargetsFromSupabase() {
+  var url = _SB_URL + '/rest/v1/revenue_annual_targets?select=period,counsellor,centre,target_course,target_gst,notes,updated_by,updated_at&order=counsellor.asc';
+  return fetch(url, {
+    headers: { 'apikey': _SB_ANON, 'Authorization': 'Bearer ' + _SB_ANON }
+  }).then(function(r) {
+    return r.ok ? r.json() : [];
+  }).then(function(rows) {
+    return (rows || []).map(function(r) {
+      return {
+        period:     r.period || '2026-27',
+        counsellor: r.counsellor || '',
+        centre:     r.centre || '',
+        targetCourse: Number(r.target_course) || 0,
+        targetGst:    Number(r.target_gst) || 0,
+        notes:      r.notes || '',
+        updatedBy:  r.updated_by || '',
+        updatedAt:  r.updated_at || ''
+      };
+    });
+  }).catch(function() { return []; });
+}
+
+/* Overlay Supabase annual targets onto revenueData, replacing GAS targets.
+   Called after revenueData is set from the GAS response. */
+function applySupabaseTargets(sbTargets) {
+  if (!sbTargets || !sbTargets.length) return;
+  if (!revenueData) return;
+  revenueData.targetRows = sbTargets;
+  // Also refresh the preview targets (used in monthly grid header)
+  revenueData.monthlyPreviewTargets = sbTargets;
+}
+
 /* Start fetching revenue in the background right after login.
    Result is stored in revenueData and cache so the tab renders instantly. */
 function prefetchRevenue() {
   if (isAdmin) return; // admin revenue is on-demand
   var cached = _revCacheRead();
   if (cached) { revenueData = cached; return; } // already warm
-  gasGet(revenueRequestParams(), function(e,d) {
-    if (e||!d||d.status!=='ok') return;
+  // Fetch GAS dashboard + Supabase annual targets in parallel
+  Promise.all([
+    new Promise(function(resolve) {
+      gasGet(revenueRequestParams(), function(e, d) { resolve(e || !d || d.status !== 'ok' ? null : d); });
+    }),
+    fetchAnnualTargetsFromSupabase()
+  ]).then(function(results) {
+    var d = results[0], sbTargets = results[1];
+    if (!d) return;
     revenueData = d;
-    _revCacheWrite(d);
+    applySupabaseTargets(sbTargets);
+    _revCacheWrite(revenueData);
   });
 }
 
@@ -4419,10 +4463,17 @@ function loadRevenueDashboard() {
       summary:{targetGst:0,achievedGst:0,studentCount:0} };
     renderAdminTargetPanel();
     loadAdminDashboard(false);
-    // Admin always fetches fresh
-    gasGet(revenueRequestParams(), function(e,d) {
-      if (e||!d||d.status!=='ok') { renderAdminTargetPanel(); renderRevenueRollups(); return; }
+    // Admin always fetches fresh; overlay Supabase targets
+    Promise.all([
+      new Promise(function(resolve) {
+        gasGet(revenueRequestParams(), function(e,d) { resolve(e||!d||d.status!=='ok'?null:d); });
+      }),
+      fetchAnnualTargetsFromSupabase()
+    ]).then(function(res) {
+      var d=res[0], sbTargets=res[1];
+      if (!d) { renderAdminTargetPanel(); renderRevenueRollups(); return; }
       revenueData = d;
+      applySupabaseTargets(sbTargets);
       renderRevenueCentreTargetEditor(); renderRevenueRollups();
     });
     return;
@@ -4446,16 +4497,25 @@ function loadRevenueDashboard() {
       renderMyRevenue();
     } else if (waited >= 12000) {
       clearInterval(poll);
-      // Prefetch timed out — fetch directly now
-      gasGet(revenueRequestParams(), function(e,d) {
-        if (e||!d||d.status!=='ok') {
-          revenueData = {status:'ok',months:[],monthlyRows:[],targetRows:[],centreTargetRows:[],centres:[],counsellors:[],summary:{targetGst:0,achievedGst:0,studentCount:0}};
-          var eb2=document.getElementById('rev-err');
+      // Prefetch timed out — fetch directly now; overlay Supabase targets
+      Promise.all([
+        new Promise(function(resolve) {
+          gasGet(revenueRequestParams(), function(e,d) { resolve(e||!d||d.status!=='ok'?null:d); });
+        }),
+        fetchAnnualTargetsFromSupabase()
+      ]).then(function(res) {
+        var d=res[0], sbTargets=res[1];
+        var eb2=document.getElementById('rev-err');
+        if (!d) {
+          revenueData={status:'ok',months:[],monthlyRows:[],targetRows:[],centreTargetRows:[],centres:[],counsellors:[],summary:{targetGst:0,achievedGst:0,studentCount:0}};
+          applySupabaseTargets(sbTargets); // targets may still load even if GAS fails
           if(eb2){eb2.style.display='block';eb2.textContent='⚠ Saved data could not be loaded. You can still enter revenue normally.';}
           renderMyRevenue(); return;
         }
-        revenueData=d; _revCacheWrite(d);
-        var eb2=document.getElementById('rev-err'); if(eb2) eb2.style.display='none';
+        revenueData=d;
+        applySupabaseTargets(sbTargets);
+        _revCacheWrite(revenueData);
+        if(eb2) eb2.style.display='none';
         renderMyRevenue();
       });
     }

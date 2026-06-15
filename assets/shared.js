@@ -1064,9 +1064,7 @@ window.gasGet = (function () {
     });
 
     var globalCounsellorMap = {};
-    var activeNames = [
-      'Bianca','Anuradha','Arjun Mistry','Omkar Kadam','Sunita','Arpita','Rohit','Preethy','Nadiya','Rajini'
-    ];
+    var activeNames = ['Anuradha', 'Bianca', 'Omkar Kadam', 'Preethy', 'Sunita', 'Rohit', 'Arpita', 'Nadiya', 'Rajini', 'Kripa'];
     activeNames.forEach(function(name) {
       globalCounsellorMap[name] = { counsellor: name, centre: 'Mumbai', annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
     });
@@ -1103,6 +1101,95 @@ window.gasGet = (function () {
       return item;
     });
 
+    // Blank bucket replication from GAS.js for counsellors/centres summary arrays
+    function revenueBlankBucket() {
+      return {
+        targetCourse: 0,
+        targetGst: 0,
+        achievedCourse: 0,
+        achievedGst: 0,
+        studentCount: 0,
+        designatedCourse: 0,
+        designatedGst: 0,
+        otherCentreCourse: 0,
+        otherCentreGst: 0,
+        corporateCourse: 0,
+        corporateGst: 0
+      };
+    }
+    
+    function revenueAddBucket(map, key) {
+      if (!map[key]) map[key] = revenueBlankBucket();
+      return map[key];
+    }
+
+    var byCounsellor = {};
+    activeNames.forEach(function(name) {
+      byCounsellor[name] = revenueBlankBucket();
+    });
+
+    var byCentre = {};
+    var byBusinessCentre = {};
+
+    (annual || []).forEach(function(r) {
+      var name = r.counsellor ? r.counsellor.trim() : '';
+      if (!name) return;
+      var c = revenueAddBucket(byCounsellor, name);
+      c.targetCourse += Number(r.annual_course_fee_target || 0);
+      c.targetGst += Number(r.annual_course_fee_gst_target || 0);
+    });
+
+    (ctargets || []).forEach(function(r) {
+      var centre = r.centre ? r.centre.trim() : '';
+      if (!centre) return;
+      var ce = revenueAddBucket(byCentre, centre);
+      ce.targetCourse += Number(r.annual_course_fee_target || 0);
+      ce.targetGst += Number(r.annual_course_fee_gst_target || 0);
+    });
+
+    (monthly || []).forEach(function(r) {
+      var bc = revenueAddBucket(byCounsellor, r.counsellor);
+      
+      var viewCentre = p.viewMode === 'business' ? r.business_centre : r.assigned_centre;
+      var bViewCentre = revenueAddBucket(byCentre, viewCentre);
+      var bBusiness = revenueAddBucket(byBusinessCentre, r.business_centre);
+      
+      var isCorporate = String(r.business_type || '').toLowerCase().indexOf('corporate') >= 0 || String(r.business_centre || '').toLowerCase().indexOf('corporate') >= 0;
+      var isOtherCentre = !isCorporate && r.assigned_centre !== r.business_centre;
+      
+      var course = Number(r.achieved_course_fee || 0);
+      var gst = Number(r.achieved_course_fee_gst || 0);
+      var students = Number(r.student_count || 0);
+      
+      [bc, bViewCentre, bBusiness].forEach(function(b) {
+        b.achievedCourse += course;
+        b.achievedGst += gst;
+        b.studentCount += students;
+        if (isCorporate) {
+          b.corporateCourse += course;
+          b.corporateGst += gst;
+        } else if (isOtherCentre) {
+          b.otherCentreCourse += course;
+          b.otherCentreGst += gst;
+        } else {
+          b.designatedCourse += course;
+          b.designatedGst += gst;
+        }
+      });
+    });
+
+    var mappedCounsellors = Object.keys(byCounsellor).sort().map(function(k) {
+      return Object.assign({ counsellor: k }, byCounsellor[k]);
+    }).filter(function(c) { return c.counsellor !== 'Mrinal'; });
+
+    var mappedCentres = Object.keys(byCentre).sort().map(function(k) {
+      return Object.assign({ centre: k }, byCentre[k]);
+    });
+
+    var mappedBusinessCentres = Object.keys(byBusinessCentre).sort().map(function(k) {
+      return Object.assign({ centre: k }, byBusinessCentre[k]);
+    });
+
     var mappedMonthlyRows = (monthly || []).map(function(r) {
       return {
         month: r.month,
@@ -1115,6 +1202,7 @@ window.gasGet = (function () {
         achievedCourse: r.achieved_course_fee,
         achievedGst: r.achieved_course_fee_gst,
         notes: r.notes,
+        locked: r.locked === 'Y' || r.locked === true,
         updatedBy: r.updated_by
       };
     });
@@ -1124,8 +1212,13 @@ window.gasGet = (function () {
         period: r.period,
         counsellor: r.counsellor,
         centre: r.centre,
-        annualCourseFeeTarget: r.annual_course_fee_target,
-        annualCourseFeeGstTarget: r.annual_course_fee_gst_target
+        targetCourse: Number(r.annual_course_fee_target || 0),
+        targetGst: Number(r.annual_course_fee_gst_target || 0),
+        annualCourseFeeTarget: Number(r.annual_course_fee_target || 0),
+        annualCourseFeeGstTarget: Number(r.annual_course_fee_gst_target || 0),
+        notes: r.notes || '',
+        updatedBy: r.updated_by || '',
+        updatedAt: r.updated_at || ''
       };
     });
 
@@ -1133,8 +1226,13 @@ window.gasGet = (function () {
       return {
         period: r.period,
         centre: r.centre,
-        annualCourseFeeTarget: r.annual_course_fee_target,
-        annualCourseFeeGstTarget: r.annual_course_fee_gst_target
+        targetCourse: Number(r.annual_course_fee_target || 0),
+        targetGst: Number(r.annual_course_fee_gst_target || 0),
+        annualCourseFeeTarget: Number(r.annual_course_fee_target || 0),
+        annualCourseFeeGstTarget: Number(r.annual_course_fee_gst_target || 0),
+        notes: r.notes || '',
+        updatedBy: r.updated_by || '',
+        updatedAt: r.updated_at || ''
       };
     });
 
@@ -1145,6 +1243,9 @@ window.gasGet = (function () {
       monthlyPreviewRows: mappedMonthlyRows,
       targetRows: mappedTargetRows,
       centreTargetRows: mappedCentreTargetRows,
+      counsellors: mappedCounsellors,
+      centres: mappedCentres,
+      businessCentres: mappedBusinessCentres,
       centreStandings: centreStandings,
       counsellorStandings: counsellorStandings
     };
@@ -1388,15 +1489,15 @@ window.gasGet = (function () {
       student_count: Number(r.studentCount || r.student_count || 0),
       achieved_course_fee: Number(r.achievedCourse || r.achieved_course_fee || 0),
       achieved_course_fee_gst: Number(r.achievedGst || r.achieved_course_fee_gst || 0),
-      notes: r.notes || '', locked: r.locked || 'N', updated_at: nowISO() }; });
+      notes: r.notes || '', locked: r.locked || 'N', updated_by: p.updatedBy || 'Counselor', updated_at: nowISO() }; });
     var tDB  = tRows.map(function (r) { return { period: r.period || '2026-27', counsellor: r.counsellor,
-      centre: r.centre, annual_course_fee_target: Number(r.annualCourseFeeTarget || 0),
-      annual_course_fee_gst_target: Number(r.annualCourseFeeGstTarget || 0),
-      updated_by: p.updatedBy || 'Counselor', updated_at: nowISO() }; });
+      centre: r.centre, annual_course_fee_target: Number(r.targetCourse || r.annualCourseFeeTarget || 0),
+      annual_course_fee_gst_target: Number(r.targetGst || r.annualCourseFeeGstTarget || 0),
+      notes: r.notes || '', updated_by: p.updatedBy || 'Counselor', updated_at: nowISO() }; });
     var ctDB = ctRows.map(function (r) { return { period: r.period || '2026-27', centre: r.centre,
-      annual_course_fee_target: Number(r.annualCourseFeeTarget || 0),
-      annual_course_fee_gst_target: Number(r.annualCourseFeeGstTarget || 0),
-      updated_by: p.updatedBy || 'Counselor', updated_at: nowISO() }; });
+      annual_course_fee_target: Number(r.targetCourse || r.annualCourseFeeTarget || 0),
+      annual_course_fee_gst_target: Number(r.targetGst || r.annualCourseFeeGstTarget || 0),
+      notes: r.notes || '', updated_by: p.updatedBy || 'Counselor', updated_at: nowISO() }; });
     var total = (mDB.length ? 1 : 0) + (tDB.length ? 1 : 0) + (ctDB.length ? 1 : 0) || 1;
     var done = 0;
     function fin() { if (++done < total) return; h_revDash(p, function (e, d) { cb(null, { status: 'ok', savedMonthly: mDB.length, dashboard: d || {} }); }); }
@@ -2450,14 +2551,13 @@ window.gasGet = (function () {
     if (!instr) { cb(null, { status: 'ok', date: toDMY(todayYMD()), batches: [] }); return; }
     GET('batches', 'order=created_at.desc', function (e, bRows) {
       if (e || !bRows || !bRows.length) { cb(null, { status: 'ok', date: toDMY(todayYMD()), batches: [] }); return; }
+      var today = todayYMD(); // must be defined before the filter uses it
       var matched = bRows.filter(function (b) {
         if (sameName(b.instructor, instr)) return true;
         if (!b.co_instructor || !sameName(b.co_instructor, instr)) return false;
         return !b.co_instructor_until || b.co_instructor_until >= today;
       });
-      if (!matched.length) { cb(null, { status: 'ok', date: toDMY(todayYMD()), batches: [] }); return; }
-      var today = todayYMD();
-      GET('sessions', 'session_date=eq.' + today, function (e2, sRows) {
+      if (!matched.length) { cb(null, { status: 'ok', date: toDMY(today), batches: [] }); return; }
         var batches = matched.map(function (b) {
           var todaySess = (sRows || []).find(function (s) { return s.batch_code === b.batch_code; });
           var startD = b.start_date || '';

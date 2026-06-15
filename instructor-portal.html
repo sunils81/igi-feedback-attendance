@@ -3488,22 +3488,15 @@ function loadMyBatches() {
     });
     showCoInstructorNotice(coverBatches);
 
-    var codes = batches.map(function(b){ return b.batchCode; }).join(',');
-    // Fetch students for all batches, then render with count + names
-    gasGet({action:'getStudentsForBatches', batchCodes: codes}, function(e2, sd) {
-      var studentsByBatch = {};
-      if (!e2 && sd && sd.students) {
-        sd.students.forEach(function(s) {
-          var bc = (s.batchCode||'').toUpperCase();
-          if (!studentsByBatch[bc]) studentsByBatch[bc] = [];
-          studentsByBatch[bc].push(s.name||s.enrollmentNo||'Student');
-        });
-      }
+    // Render batch cards immediately (no student data yet), then update with student info
+    function renderBatchCards(studentsByBatch) {
+      studentsByBatch = studentsByBatch || {};
       list.innerHTML = batches.map(function(b) {
         var key = (b.batchCode||'').toUpperCase();
-        var students = studentsByBatch[key] || [];
-        var countTxt = students.length ? students.length + ' student' + (students.length !== 1 ? 's' : '') : 'No students enrolled';
-        var namesTxt = students.length
+        var students = studentsByBatch[key];
+        var loading = students === undefined; // undefined = not yet fetched
+        var countTxt = loading ? '...' : (students.length ? students.length + ' student' + (students.length !== 1 ? 's' : '') : 'No students enrolled');
+        var namesTxt = (!loading && students && students.length)
           ? '<div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.6">'
               + students.map(function(n){ return escH(n); }).join(', ')
               + '</div>'
@@ -3526,6 +3519,28 @@ function loadMyBatches() {
           + namesTxt
           + '</div>';
       }).join('');
+    }
+
+    // Render immediately with "..." for student counts
+    renderBatchCards(undefined);
+
+    // Then fetch student data and re-render with real counts/names
+    var codes = batches.map(function(b){ return b.batchCode; }).join(',');
+    gasGet({action:'getStudentsForBatches', batchCodes: codes}, function(e2, sd) {
+      var studentsByBatch = {};
+      if (!e2 && sd && sd.students) {
+        // Ensure all batches have an entry (even empty arrays), so "..." is replaced
+        batches.forEach(function(b) { studentsByBatch[(b.batchCode||'').toUpperCase()] = []; });
+        sd.students.forEach(function(s) {
+          var bc = (s.batchCode||'').toUpperCase();
+          if (!studentsByBatch[bc]) studentsByBatch[bc] = [];
+          studentsByBatch[bc].push(s.name||s.enrollmentNo||'Student');
+        });
+      } else {
+        // Error: mark all as empty so "..." goes away
+        batches.forEach(function(b) { studentsByBatch[(b.batchCode||'').toUpperCase()] = []; });
+      }
+      renderBatchCards(studentsByBatch);
     });
   }  // end renderMyBatchesList
 

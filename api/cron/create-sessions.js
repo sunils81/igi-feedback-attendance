@@ -51,6 +51,12 @@ export default async function handler(req, res) {
   const skipped = [];
   const errors = [];
 
+  // Skip weekends — sessions are Mon–Fri only (instructors create manually if Sat needed)
+  const dayOfWeek = new Date(today + 'T00:00:00+05:30').getDay(); // 0=Sun, 6=Sat
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    return res.status(200).json({ date: today, message: 'Weekend — no auto sessions', created: [], skipped: [], errors: [] });
+  }
+
   try {
     // Fetch all active batches where today is within the batch dates
     const batches = await supaGet(

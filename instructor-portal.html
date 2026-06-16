@@ -3561,9 +3561,13 @@ function loadMyBatches() {
         batches.forEach(function(b) { studentsByBatch[(b.batchCode||'').toUpperCase()] = []; });
       }
       // Write student counts back to cache so stat tiles can sum them correctly
+      var _totalStu = 0;
       batches.forEach(function(b) {
-        b.studentCount = (studentsByBatch[(b.batchCode||'').toUpperCase()]||[]).length;
+        var cnt = (studentsByBatch[(b.batchCode||'').toUpperCase()]||[]).length;
+        b.studentCount = cnt;
+        _totalStu += cnt;
       });
+      window._instructorTotalStudents = _totalStu;
       instructorBatchesCache = batches;
       renderBatchCards(studentsByBatch);
       renderInstructorSummary();
@@ -3715,10 +3719,20 @@ function renderInstructorSummary() {
       tile('', 'Total Sessions', today.filter(s=>s.sessionCode).length, 'Sessions held today') +
       tile('', 'Assigned Batches', batches.length, 'Your current batches');
   } else if (tab === 't-mybatches') {
-    const _now = new Date(); _now.setHours(0,0,0,0);
-    const active = batches.filter(b => !b.endDateISO || new Date(b.endDateISO) >= _now).length;
+    const _nowStr = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+    const active = batches.filter(function(b) {
+      // Use ISO string if available, fall back to endDate DMY (DD/MM/YYYY → YYYY-MM-DD)
+      if (b.endDateISO) return new Date(b.endDateISO) >= new Date(_nowStr);
+      if (b.endDate) {
+        var parts = b.endDate.split('/'); // DD/MM/YYYY
+        if (parts.length === 3) return (parts[2]+'-'+parts[1]+'-'+parts[0]) >= _nowStr;
+      }
+      return true; // no end date = treat as active
+    }).length;
     const completed = batches.length - active;
-    const totalStudents = batches.reduce((a,b) => a+(b.studentCount||b.totalStudents||0), 0);
+    const totalStudents = (window._instructorTotalStudents != null)
+      ? window._instructorTotalStudents
+      : batches.reduce((a,b) => a+(b.studentCount||b.totalStudents||0), 0);
     const centres = [...new Set(batches.map(b=>b.centre).filter(Boolean))].length;
     html =
       tile('ok', 'Active Batches', active, 'Currently running') +

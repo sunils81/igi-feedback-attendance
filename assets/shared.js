@@ -72,7 +72,7 @@ window.gasGet = (function () {
     return String(s);
   }
   function nowISO() { return new Date().toISOString(); }
-  function todayYMD() { return new Date().toISOString().slice(0, 10); }
+  function todayYMD() { var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
   function sameName(n1, n2) {
     var clean = function(s) {
       return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');

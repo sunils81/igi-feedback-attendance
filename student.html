@@ -1165,16 +1165,19 @@ window.gasGet = (function () {
                      .forEach(function(a){ attNow[a.session_code]=a; });
         var result = batchCodes.map(function(bc){
           var b=bm[bc]||{}, s=tSM[bc]||null;
-          var hist=(hM[bc]||[]).sort(function(a,x){return a.session_no-x.session_no;});
+          var hist=(hM[bc]||[]).sort(function(a,x){return (a.sess_no||0)-(x.sess_no||0);});
+          var batchSessionCodes = hist.map(function(h){ return h.session_code; });
+          var attendedCount = (attRows||[]).filter(function(a){ return batchSessionCodes.indexOf(a.session_code)>=0 && String(a.student_id)===sid; }).length;
           var wOHr=7, wCHr=21;
           return { batchCode:bc, centre:b.centre, course:b.course, instructor:b.instructor,
-            batchSlot:b.batch_slot||'Full Day', sessNo:s?s.session_no:null,
+            batchSlot:b.batch_slot||'Full Day', sessNo:s?s.sess_no:null,
             sessionCode:s?s.session_code:null, sessionExists:!!s, topic:s?(s.topic_covered||s.topic||'') : '',
             windowActive:!!(s && hr>=wOHr && hr<wCHr), windowOpen:hr>=wOHr,
             windowOpenHr:wOHr, windowCloseHr:wCHr, alreadySubmitted:!!(s&&attNow[s.session_code]),
             startDateISO: b.start_date||'', endDateISO: b.end_date||'',
             startDateDisplay: toDMY(b.start_date)||'—', endDateDisplay: toDMY(b.end_date)||'—',
-            history:hist.map(function(h){ return {sessNo:h.session_no, topic:h.topic_covered||h.topic||'', sessionCode:h.session_code, sessionDate:toDMY(h.session_date)}; }) };
+            historySummary: { attended: attendedCount, total: hist.length, pct: hist.length ? Math.round(attendedCount/hist.length*100) : 0 },
+            history:hist.map(function(h){ return {sessNo:h.sess_no, topic:h.topic_covered||h.topic||'', sessionCode:h.session_code, sessionDate:toDMY(h.session_date)}; }) };
         });
         var mM = {}; (marksRows||[]).forEach(function(m){ mM[m.assessment_id]=m; });
         var assessments = (assessRows||[]).map(function(a){

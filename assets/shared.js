@@ -1376,15 +1376,17 @@ window.gasGet = (function () {
     var globalCounsellorMap = {};
     var activeNames = ['Anuradha', 'Bianca', 'Omkar Kadam', 'Preethy', 'Sunita', 'Rohit', 'Arpita', 'Nadiya', 'Rajini', 'Kripa'];
     activeNames.forEach(function(name) {
-      globalCounsellorMap[name] = { counsellor: name, centre: 'Mumbai', annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
+      globalCounsellorMap[name] = { counsellor: name, centre: '', annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
     });
 
     allAnnual.forEach(function(r) {
       if (r.period === period && r.counsellor) {
         var name = r.counsellor.trim();
         if (!globalCounsellorMap[name]) {
-          globalCounsellorMap[name] = { counsellor: name, centre: r.centre, annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
+          globalCounsellorMap[name] = { counsellor: name, centre: r.centre || '', annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
         }
+        // Update centre from real data if not yet set
+        if (!globalCounsellorMap[name].centre && r.centre) globalCounsellorMap[name].centre = r.centre;
         globalCounsellorMap[name].annualTarget += Number(r.annual_course_fee_target || 0);
       }
     });
@@ -1395,6 +1397,8 @@ window.gasGet = (function () {
         if (!globalCounsellorMap[name]) {
           globalCounsellorMap[name] = { counsellor: name, centre: r.assigned_centre || r.centre || 'Unmapped', annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
         }
+        // Update centre from real data if not yet set
+        if (!globalCounsellorMap[name].centre && (r.assigned_centre || r.centre)) globalCounsellorMap[name].centre = r.assigned_centre || r.centre;
         if (r.month >= '2026-04' && r.month <= '2027-03') {
           var fee = Number(r.achieved_course_fee || 0);
           globalCounsellorMap[name].annualAchieved += fee;

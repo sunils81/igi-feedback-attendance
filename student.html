@@ -1167,7 +1167,7 @@ window.gasGet = (function () {
           var b=bm[bc]||{}, s=tSM[bc]||null;
           var hist=(hM[bc]||[]).sort(function(a,x){return (a.sess_no||0)-(x.sess_no||0);});
           var batchSessionCodes = hist.map(function(h){ return h.session_code; });
-          var attendedCount = (attRows||[]).filter(function(a){ return batchSessionCodes.indexOf(a.session_code)>=0 && String(a.student_id)===sid; }).length;
+          var attendedCount = (attRows||[]).filter(function(a){ return batchSessionCodes.indexOf(a.session_code)>=0 && String(a.student_id)===sid && a.attendance!=='Absent'; }).length;
           var wOHr=7, wCHr=21;
           return { batchCode:bc, centre:b.centre, course:b.course, instructor:b.instructor,
             batchSlot:b.batch_slot||'Full Day', sessNo:s?s.sess_no:null,
@@ -1385,7 +1385,11 @@ window.gasGet = (function () {
     var sid = String(p.studentId || '');
     GET('students', 'student_id=eq.' + encodeURIComponent(sid), function(e, stuRows) {
       if (e || !stuRows || !stuRows.length) { cb(null, { status:'ok', rows:[] }); return; }
-      var bCodes = stuRows.map(function(r){ return r.batch_code; }).filter(Boolean);
+      var primaryBatch = (stuRows[0] && stuRows[0].batch_code) ? stuRows[0].batch_code : '';
+      // Fetch all active enrollments (multi-batch students like GG)
+      GET('enrollments', 'student_id=eq.'+encodeURIComponent(sid)+'&status=eq.Active', function(eE, enrollRows) {
+        var bCodes = (enrollRows||[]).map(function(r){ return r.batch_code; }).filter(Boolean);
+        if (primaryBatch && bCodes.indexOf(primaryBatch) === -1) bCodes.push(primaryBatch);
       if (!bCodes.length) { cb(null, { status:'ok', rows:[] }); return; }
       var bcQ = 'batch_code=in.(' + bCodes.join(',') + ')';
       var batches, sessions, atts, assessments, marks, diplomas, n = 0;
@@ -1435,6 +1439,7 @@ window.gasGet = (function () {
       GET('assessments',         bcQ,                                       function(e,r){ assessments=r||[];  done(); });
       GET('assessment_marks',    'student_id=eq.'+encodeURIComponent(sid), function(e,r){ marks=r||[];        done(); });
       GET('diplomas',            'student_id=eq.'+encodeURIComponent(sid), function(e,r){ diplomas=r||[];         done(); });
+      }); // end enrollments GET
     });
   }
 
@@ -3545,10 +3550,9 @@ function loadStudentDiploma() {
     '</div>';
 
     rows.forEach(function(row) {
-      // Backend returns nested objects: row.attendance.pct, row.weeklyAvg.value, row.finalExam.value
-      var attPct     = row.attendance    ? row.attendance.pct           : null;
-      var weeklyVal  = row.weeklyAvg     ? row.weeklyAvg.value          : null;
-      var finalVal   = row.finalExam     ? row.finalExam.value          : null;
+      var attPct     = row.attendancePct  != null ? row.attendancePct  : (row.attendance    ? row.attendance.pct    : null);
+      var weeklyVal  = row.weeklyAvg      != null ? row.weeklyAvg      : (row.weeklyAvgObj  ? row.weeklyAvgObj.value : null);
+      var finalVal   = row.finalAvg       != null ? row.finalAvg       : (row.finalExam     ? row.finalExam.value   : null);
       var eligible   = row.eligible;
       var released   = row.diplomaStatus === 'Released';
 

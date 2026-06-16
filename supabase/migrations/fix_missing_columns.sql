@@ -20,7 +20,7 @@ ALTER TABLE attendance_feedback
 ALTER TABLE inv_dispatch
   ADD COLUMN IF NOT EXISTS courier_info TEXT DEFAULT '';
 
--- 5. holidays: add UNIQUE constraint on (holiday_date, centre)
+-- 4. holidays: add UNIQUE constraint on (holiday_date, centre)
 --    so h_addHoliday on_conflict upsert works correctly
 DO $$
 BEGIN
@@ -32,3 +32,11 @@ BEGIN
       UNIQUE (holiday_date, centre);
   END IF;
 END $$;
+
+-- 5. inv_dispatch: add courier_info column
+ALTER TABLE inv_dispatch
+  ADD COLUMN IF NOT EXISTS courier_info TEXT DEFAULT '';
+
+-- 6. students: add photo_url column
+ALTER TABLE students
+  ADD COLUMN IF NOT EXISTS photo_url TEXT DEFAULT '';

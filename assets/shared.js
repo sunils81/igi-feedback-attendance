@@ -81,35 +81,14 @@ window.gasGet = (function () {
   }
 
   function getActiveStudentCountsByBatch(cb) {
-    var done = 0, students = [], enrollments = [];
-    function addCount(counts, seen, batchCode, studentId) {
-      var bc = String(batchCode || '').trim().toUpperCase();
-      var sid = String(studentId || '').trim().toUpperCase();
-      if (!bc || !sid) return;
-      var key = bc + '|' + sid;
-      if (seen[key]) return;
-      seen[key] = true;
-      counts[bc] = (counts[bc] || 0) + 1;
-    }
-    function finish() {
-      if (++done < 2) return;
+    POST('rpc/get_active_student_counts', '', {}, function(e, rows) {
       var counts = {};
-      var seen = {};
-      (students || []).forEach(function(s) {
-        if (s.status === 'Active') addCount(counts, seen, s.batch_code, s.student_id);
-      });
-      (enrollments || []).forEach(function(en) {
-        if (en.status === 'Active') addCount(counts, seen, en.batch_code, en.student_id);
-      });
+      if (!e && rows && rows.length) {
+        rows.forEach(function(r) {
+          if (r.batch_code) counts[r.batch_code.toUpperCase()] = Number(r.student_count || 0);
+        });
+      }
       cb(counts);
-    }
-    GET('students', 'select=student_id,batch_code,status', function(e, rows) {
-      students = rows || [];
-      finish();
-    });
-    GET('enrollments', 'select=student_id,batch_code,status&status=eq.Active', function(e, rows) {
-      enrollments = rows || [];
-      finish();
     });
   }
 
@@ -756,17 +735,14 @@ window.gasGet = (function () {
     }
     GET('batches', qs ? qs + '&select=batch_code,centre,course' : 'select=batch_code,centre,course', function (e, batches) {
       if (e || !batches || !batches.length) { cb(null, { status: 'ok', overdueCount: 0 }); return; }
-      var bCodes = batches.map(function(b) { return b.batch_code; });
-      if (!bCodes.length) { cb(null, { status: 'ok', overdueCount: 0 }); return; }
       
-      var queryCodes = bCodes.map(function(c) { return encodeURIComponent(c); }).join(',');
-      GET('student_fees', 'batch_code=in.(' + queryCodes + ')', function (e2, rows) {
+      GET('student_fees', qs, function (e2, rows) {
         if (e2 || !rows || !rows.length) { cb(null, { status: 'ok', overdueCount: 0 }); return; }
         
         var overdueCount = 0;
         rows.forEach(function (r) {
           var mapped = parseFeeRow(r, null, batches);
-          if (mapped.fee_status === 'Overdue') {
+          if (mapped.feeStatus === 'Overdue' || mapped.fee_status === 'Overdue') {
             overdueCount++;
           }
         });
@@ -2456,16 +2432,33 @@ window.gasGet = (function () {
   }
 
   function h_dispatch(p, cb) {
-    POST('inv_dispatch', null, {
-      request_id: p.requestId, item_id: p.itemId,
-      from_centre: p.fromCentre, to_centre: p.toCentre || p.centre,
-      dispatched_qty: Number(p.qtyDispatched || p.qty || p.quantity || 0),
-      courier_info: p.courierInfo || p.courier_info || '',
-      dispatched_by: p.counselorName || p.adminName || 'Admin', dispatched_at: nowISO()
-    }, function (e) {
-      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
-      PATCH('inv_requests', 'id=eq.' + encodeURIComponent(p.requestId), { status: 'Dispatched' },
-        function () { cb(null, { status: 'ok' }); });
+    var reqId = p.requestId;
+    if (!reqId) { cb(null, { status: 'error', reason: 'Missing requestId' }); return; }
+    
+    // 1. Fetch the request to get item_id and centre
+    GET('inv_requests', 'id=eq.' + encodeURIComponent(reqId), function(eReq, reqRows) {
+      if (eReq || !reqRows || !reqRows.length) { cb(null, { status: 'error', reason: 'Request not found' }); return; }
+      
+      var req = reqRows[0];
+      var qtyToDispatch = Number(p.qtyDispatched || p.qty || p.quantity || req.requested_qty || 0);
+      
+      // 2. Insert into inv_dispatch
+      POST('inv_dispatch', null, {
+        request_id: reqId,
+        item_id: req.item_id,
+        from_centre: p.fromCentre || 'Central', 
+        to_centre: req.centre,
+        dispatched_qty: qtyToDispatch,
+        courier_info: p.courierInfo || p.courier_info || '',
+        dispatched_by: p.counselorName || p.adminName || 'Admin', 
+        dispatched_at: nowISO()
+      }, function (e) {
+        if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+        
+        // 3. Mark request as Dispatched
+        PATCH('inv_requests', 'id=eq.' + encodeURIComponent(reqId), { status: 'Dispatched' },
+          function () { cb(null, { status: 'ok' }); });
+      });
     });
   }
 

@@ -3344,7 +3344,7 @@ window.gasGet = (function () {
       var questions = (rows || []).map(function(r) {
         var q = { id: r.id, course: r.course, topic: r.topic, question: r.question,
           opt1: r.option_a, opt2: r.option_b, opt3: r.option_c, opt4: r.option_d, type: r.q_type || 'MCQ' };
-        if (p.includeCorrect === 'true') q.correctOption = r.correct_option;
+        if (p.includeCorrect === 'true') q.correctOption = r.correct_ans;
         return q;
       });
       cb(null, { status: 'ok', questions: questions, topicMap: topicMap, total: questions.length, customQuestions: [] });
@@ -3456,7 +3456,7 @@ window.gasGet = (function () {
         if (e2) { cb(null, { status: 'ok', questions: [] }); return; }
         var questions = (qb || []).map(function(q) {
           return { id: q.id, question: q.question, type: q.q_type || 'MCQ',
-            opt1: q.option_a, opt2: q.option_b, opt3: q.option_c, opt4: q.option_d, correctOption: q.correct_option };
+            opt1: q.option_a, opt2: q.option_b, opt3: q.option_c, opt4: q.option_d, correctOption: q.correct_ans };
         });
         cb(null, { status: 'ok', questions: questions });
       });

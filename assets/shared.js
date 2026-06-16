@@ -2517,8 +2517,14 @@ window.gasGet = (function () {
       var studentName = student.name;
       GET('enrollments', 'student_id=eq.' + encodeURIComponent(enrollNo) + '&status=eq.Active', function (e2, enrollments) {
         var bCodes = (enrollments || []).map(function (en) { return en.batch_code; });
-        if (!bCodes.length && student.batch_code) {
-          bCodes = [student.batch_code];
+        // Always include the primary batch from students table (not just as fallback)
+        // This fixes multi-batch students who have enrollments for one batch but
+        // their primary batch is stored in students.batch_code
+        if (student.batch_code && bCodes.indexOf(student.batch_code) === -1) {
+          bCodes.push(student.batch_code);
+        }
+        if (!bCodes.length) {
+          bCodes = student.batch_code ? [student.batch_code] : [];
         }
         if (!bCodes.length) {
           cb(null, { status: 'ok', studentName: studentName, enrollmentNo: enrollNo, mobileLast4: mobLast4, photoUrl: student.photo_url || '', batches: [], allBatches: [], assessments: [] });

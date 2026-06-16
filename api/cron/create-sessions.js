@@ -1,5 +1,5 @@
 // Vercel Cron — runs daily at 06:00 IST (00:30 UTC)
-// Backup to pg_cron Option A. Idempotent: uses ON CONFLICT DO NOTHING.
+// Idempotent: checks if a session for today already exists before creating.
 // Requires env vars: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 
 const SUPA_URL = process.env.SUPABASE_URL;
@@ -13,7 +13,7 @@ async function supaGet(table, qs) {
       'Content-Type': 'application/json'
     }
   });
-  if (!res.ok) throw new Error(`GET ${table} failed: ${res.status}`);
+  if (!res.ok) throw new Error(`GET ${table} failed: ${res.status} ${await res.text()}`);
   return res.json();
 }
 
@@ -42,7 +42,6 @@ function todayISO() {
 }
 
 export default async function handler(req, res) {
-  // Vercel calls this; also allow manual GET for testing
   if (!SUPA_URL || !SUPA_KEY) {
     return res.status(500).json({ error: 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY env vars' });
   }
@@ -61,12 +60,22 @@ export default async function handler(req, res) {
 
     for (const b of batches) {
       try {
-        // Get highest sess_no for this batch
-        const existing = await supaGet(
+        // Check if a session already exists for this batch today (idempotency guard)
+        const todaySess = await supaGet(
+          'sessions',
+          `batch_code=eq.${encodeURIComponent(b.batch_code)}&session_date=eq.${today}&select=session_code&limit=1`
+        );
+        if (todaySess.length > 0) {
+          skipped.push({ batch: b.batch_code, existing: todaySess[0].session_code });
+          continue;
+        }
+
+        // Get highest sess_no for this batch to compute next sequence number
+        const lastSess = await supaGet(
           'sessions',
           `batch_code=eq.${encodeURIComponent(b.batch_code)}&select=sess_no&order=sess_no.desc&limit=1`
         );
-        const nextNo = existing.length ? (Number(existing[0].sess_no) + 1) : 1;
+        const nextNo = lastSess.length ? (Number(lastSess[0].sess_no) + 1) : 1;
         const sessCode = `${b.batch_code}-S${String(nextNo).padStart(2, '0')}`;
 
         await supaPost('sessions', {

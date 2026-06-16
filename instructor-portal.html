@@ -3560,7 +3560,13 @@ function loadMyBatches() {
         // Error: mark all as empty so "..." goes away
         batches.forEach(function(b) { studentsByBatch[(b.batchCode||'').toUpperCase()] = []; });
       }
+      // Write student counts back to cache so stat tiles can sum them correctly
+      batches.forEach(function(b) {
+        b.studentCount = (studentsByBatch[(b.batchCode||'').toUpperCase()]||[]).length;
+      });
+      instructorBatchesCache = batches;
       renderBatchCards(studentsByBatch);
+      renderInstructorSummary();
     });
   }  // end renderMyBatchesList
 
@@ -3688,7 +3694,7 @@ function renderInstructorSummary() {
       tile(activeSession?'ok':'', "Today's Session", activeSession ? '🟢 Live' : (started||0), activeSession ? escH(activeSession.batchCode) : 'Sessions started today') +
       tile('', 'Batches Today', total, total===1?'1 batch scheduled':total+' batches scheduled') +
       tile(notStarted?'warn':'ok', 'Not Yet Started', notStarted, notStarted ? 'Sessions pending start' : 'All sessions started') +
-      tile('', 'Assigned Batches', batches.length, batches.filter(b=>b.status!=='Completed'&&!b.completed).length+' active');
+      tile('', 'Assigned Batches', batches.length, batches.filter(b=>!b.endDateISO||new Date(b.endDateISO)>=new Date(new Date().setHours(0,0,0,0))).length+' active');
   } else if (tab === 't-attendance') {
     const withAttendance = today.filter(s => s.sessionCode && !s.cancelled);
     const totalPresent = withAttendance.reduce((a,s) => a+(s.presentCount||0), 0);
@@ -3709,7 +3715,8 @@ function renderInstructorSummary() {
       tile('', 'Total Sessions', today.filter(s=>s.sessionCode).length, 'Sessions held today') +
       tile('', 'Assigned Batches', batches.length, 'Your current batches');
   } else if (tab === 't-mybatches') {
-    const active = batches.filter(b => b.status !== 'Completed' && !b.completed).length;
+    const _now = new Date(); _now.setHours(0,0,0,0);
+    const active = batches.filter(b => !b.endDateISO || new Date(b.endDateISO) >= _now).length;
     const completed = batches.length - active;
     const totalStudents = batches.reduce((a,b) => a+(b.studentCount||b.totalStudents||0), 0);
     const centres = [...new Set(batches.map(b=>b.centre).filter(Boolean))].length;
@@ -3719,7 +3726,8 @@ function renderInstructorSummary() {
       tile('', 'Total Students', totalStudents||'—', 'Across all your batches') +
       tile('', 'Centres', centres||batches.length, 'Centres you teach at');
   } else if (tab === 't-academic') {
-    const active = batches.filter(b => b.status !== 'Completed' && !b.completed).length;
+    const _now2 = new Date(); _now2.setHours(0,0,0,0);
+    const active = batches.filter(b => !b.endDateISO || new Date(b.endDateISO) >= _now2).length;
     html =
       tile('', 'Active Batches', active, 'Under academic review') +
       tile('', 'Total Batches', batches.length, 'All assigned batches') +

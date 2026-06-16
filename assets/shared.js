@@ -2156,7 +2156,8 @@ window.gasGet = (function () {
         var eD = b.end_date ? new Date(b.end_date) : null;
         if (eD) eD.setHours(12, 0, 0, 0);
 
-        var isActive = b.is_active === true || String(b.is_active).toUpperCase() === 'Y' || b.is_active === 1;
+        // Treat missing/null is_active as active (column may not exist on all rows)
+        var isActive = b.is_active == null || b.is_active === true || String(b.is_active).toUpperCase() === 'Y' || b.is_active === 1;
 
         var batchStatus = 'Upcoming';
         if (!isActive) batchStatus = 'Inactive';

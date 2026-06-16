@@ -3703,11 +3703,20 @@ function getGlobalCentreStandings(ss, period, currentMonthKey, allAnnualTargets,
 function getGlobalCounsellorStandings(ss, period, currentMonthKey, allAnnualTargets, allMonthlyAchieved) {
   var globalCounsellorMap = {};
   
+  // Build a centre lookup from allAnnualTargets (authoritative source) for the current period
+  var centreFromTargets = {};
+  allAnnualTargets.forEach(function(r) {
+    if (r.period === period && r.counsellor && r.centre) {
+      centreFromTargets[r.counsellor.trim()] = r.centre;
+    }
+  });
+
   // Initialize map with all active counselors from credentials, excluding former counselor 'Mrinal'
+  // Use allAnnualTargets centre as the authoritative source; fall back to COUNSELOR_CREDS
   var activeNames = Object.keys(COUNSELOR_CREDS).filter(function(n) { return n !== 'Mrinal'; });
   activeNames.forEach(function(name) {
     var cred = COUNSELOR_CREDS[name];
-    var centre = (cred.centres && cred.centres.length) ? cred.centres[0] : 'Mumbai';
+    var centre = centreFromTargets[name] || ((cred.centres && cred.centres.length) ? cred.centres[0] : 'Mumbai');
     globalCounsellorMap[name] = { counsellor: name, centre: centre, annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
   });
   

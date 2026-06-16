@@ -4327,6 +4327,7 @@ function escHtml(s) {
 
 var otAllQuestions = [];      // full QB loaded from server
 var otQuestionsCache = {};    // ID -> normalized question mapping to prevent filtering truncation
+var otQuestionTopicMap = {};   // full course -> topic list map for stable topic dropdowns
 var otFilteredQs  = [];       // after course/topic filter
 var otSelectedIds = new Set();// selected question IDs
 var otCurrentTests = [];      // list of tests
@@ -4376,7 +4377,8 @@ function otLoadQB() {
     otAllQuestions = allQs.map(otNormalizeQuestion);
     // Cache loaded questions
     otAllQuestions.forEach(function(q) { otQuestionsCache[q.id] = q; });
-    otBuildTopicMap(d.topicMap || {});
+    otQuestionTopicMap = otBuildTopicMapFromQuestions(otAllQuestions);
+    otBuildTopicMap(otQuestionTopicMap);
     otRenderQB(otAllQuestions);
   });
 }
@@ -4390,9 +4392,20 @@ function otImportBank() {
   });
 }
 
-function otBuildTopicMap(topicMap) {
+function otBuildTopicMapFromQuestions(questions) {
+  var topicMap = {};
+  (questions || []).forEach(function(q) {
+    if (!q.course || !q.topic) return;
+    if (!topicMap[q.course]) topicMap[q.course] = [];
+    if (topicMap[q.course].indexOf(q.topic) === -1) topicMap[q.course].push(q.topic);
+  });
+  return topicMap;
+}
+
+function otBuildTopicMap(topicMap, selectedTopic) {
   var courseEl = document.getElementById('ot-qb-course');
   var topicEl  = document.getElementById('ot-qb-topic');
+  if (!topicEl) return '';
   var course   = courseEl ? courseEl.value : '';
   topicEl.innerHTML = '<option value="">All Topics</option>';
   var topics = course && topicMap[course] ? topicMap[course] : Object.values(topicMap).flat();
@@ -4400,21 +4413,24 @@ function otBuildTopicMap(topicMap) {
   unique.forEach(function(t) {
     topicEl.innerHTML += '<option value="'+escHtml(t)+'">'+escHtml(t)+'</option>';
   });
+  if (selectedTopic && unique.indexOf(selectedTopic) !== -1) topicEl.value = selectedTopic;
+  return topicEl.value || '';
 }
 
 function otFilterQB() {
-  var course = (document.getElementById('ot-qb-course')||{}).value || '';
-  var topic  = (document.getElementById('ot-qb-topic')||{}).value  || '';
-  // Rebuild topics for selected course
-  gasGet({action:'getQuestionBank', instructor:instructorName||'admin', course:course, topic:topic, includeCorrect:'true'}, function(err, d) {
-    if (err || !d || d.status !== 'ok') return;
-    var allQs = (d.questions || []).concat(d.customQuestions || []);
-    otAllQuestions = allQs.map(otNormalizeQuestion);
-    // Cache loaded questions
-    otAllQuestions.forEach(function(q) { otQuestionsCache[q.id] = q; });
-    if (course) otBuildTopicMap({[course]: (d.topicMap||{})[course] || []});
-    otRenderQB(otAllQuestions);
+  if (!otAllQuestions.length) { otLoadQB(); return; }
+  var courseEl = document.getElementById('ot-qb-course');
+  var topicEl  = document.getElementById('ot-qb-topic');
+  var course = (courseEl || {}).value || '';
+  var selectedTopic = (topicEl || {}).value || '';
+  var topic = otBuildTopicMap(otQuestionTopicMap, selectedTopic);
+
+  var filtered = otAllQuestions.filter(function(q) {
+    if (course && q.course !== course) return false;
+    if (topic && q.topic !== topic) return false;
+    return true;
   });
+  otRenderQB(filtered);
 }
 
 function otRenderQB(qs) {

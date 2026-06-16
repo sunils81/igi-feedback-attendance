@@ -16,7 +16,11 @@ ALTER TABLE assessments
 ALTER TABLE attendance_feedback
   ADD COLUMN IF NOT EXISTS marked_by TEXT DEFAULT '';
 
--- 4. holidays: add UNIQUE constraint on (holiday_date, centre)
+-- 4. inv_dispatch: add courier_info column (used by h_dispatch)
+ALTER TABLE inv_dispatch
+  ADD COLUMN IF NOT EXISTS courier_info TEXT DEFAULT '';
+
+-- 5. holidays: add UNIQUE constraint on (holiday_date, centre)
 --    so h_addHoliday on_conflict upsert works correctly
 DO $$
 BEGIN

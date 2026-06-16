@@ -2459,8 +2459,9 @@ window.gasGet = (function () {
     POST('inv_dispatch', null, {
       request_id: p.requestId, item_id: p.itemId,
       from_centre: p.fromCentre, to_centre: p.toCentre || p.centre,
-      dispatched_qty: Number(p.qty || p.quantity || 0),
-      dispatched_by: p.counselorName || 'Admin', dispatched_at: nowISO()
+      dispatched_qty: Number(p.qtyDispatched || p.qty || p.quantity || 0),
+      courier_info: p.courierInfo || p.courier_info || '',
+      dispatched_by: p.counselorName || p.adminName || 'Admin', dispatched_at: nowISO()
     }, function (e) {
       if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
       PATCH('inv_requests', 'id=eq.' + encodeURIComponent(p.requestId), { status: 'Dispatched' },

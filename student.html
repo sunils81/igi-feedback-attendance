@@ -1228,12 +1228,57 @@ window.gasGet = (function () {
   function h_feeStatus(p, cb) {
     GET('student_fees','student_id=eq.'+encodeURIComponent(p.studentId), function(e, rows){
       if (e||!rows||!rows.length) { cb(null, {found:false}); return; }
+      var todayStr = new Date().toISOString().slice(0,10);
       var summaries = rows.map(function(r){
-        var n=Number(r.n_installments||1), nDue=null, nAmt=0;
-        for (var i=1;i<=n;i++) { if (r['inst'+i+'_paid']!=='Y'&&r['inst'+i+'_due']) { nDue=r['inst'+i+'_due']; nAmt=r['inst'+i+'_amount']||0; break; } }
-        return { course:r.course, batchCode:r.batch_code, netPayable:r.net_payable,
-          collected:r.collected, outstanding:r.outstanding, feeStatus:r.fee_status,
-          nextDueDate:nDue?toDMY(nDue):null, nextDueAmt:nAmt };
+        // Parse JSON metadata stored in receipt_no field (new fee format)
+        var courseFee = Number(r.course_fee || 0);
+        var gstAmount = Number(r.gst_amount || 0);
+        var netPayable = courseFee + gstAmount;
+        var nInst = 1;
+        var insts = [
+          { amt: r.amount || 0, due: r.payment_date || '', paid: Number(r.amount||0)>0?'Y':'N', paidDate: r.payment_date||'', mode: r.payment_mode||'', ref:'' }
+        ];
+        var jsonMeta = null;
+        var receiptStr = r.receipt_no || '';
+        if (receiptStr.trim().indexOf('{') === 0) {
+          try { jsonMeta = JSON.parse(receiptStr); } catch(ex) {}
+        }
+        if (jsonMeta) {
+          netPayable = Number(jsonMeta.net_payable || netPayable);
+          nInst = Number(jsonMeta.n_installments || 1);
+          insts = [];
+          for (var i=1;i<=3;i++) {
+            insts.push({ amt:Number(jsonMeta['inst'+i+'_amount']||0), due:jsonMeta['inst'+i+'_due']||'',
+              paid:jsonMeta['inst'+i+'_paid']||'N', paidDate:jsonMeta['inst'+i+'_paid_date']||'',
+              mode:jsonMeta['inst'+i+'_mode']||'', ref:jsonMeta['inst'+i+'_reference']||'' });
+          }
+        }
+        // Compute collected = sum of paid installments
+        var collected = 0, allPaid=true, hasOverdue=false, nDue=null, nAmt=0;
+        for (var j=0;j<nInst;j++) {
+          if (insts[j].paid==='Y') { collected += Number(insts[j].amt||0); }
+          else {
+            allPaid = false;
+            if (!nDue && insts[j].due) { nDue=insts[j].due; nAmt=insts[j].amt||0; }
+            if (insts[j].due && insts[j].due < todayStr) hasOverdue=true;
+          }
+        }
+        // Fallback: if no JSON, r.amount is total collected
+        if (!jsonMeta) collected = Number(r.amount || 0);
+        var outstanding = Math.max(0, netPayable - collected);
+        var feeStatus = allPaid ? 'Paid' : (hasOverdue ? 'Overdue' : (collected>0 ? 'Partial' : 'Pending'));
+        // Build installments list for timeline
+        var installments = insts.slice(0, nInst).map(function(inst) {
+          return { amount:inst.amt, dueDate:inst.due?toDMY(inst.due):null, paid:inst.paid, paidDate:inst.paidDate?toDMY(inst.paidDate):null, overdue:inst.paid!=='Y'&&inst.due&&inst.due<todayStr };
+        });
+        // Fetch course name from batch (best-effort via portalData)
+        var courseName = (portalData && portalData.courses && portalData.courses.length) ?
+          (function(){ var bc = String(r.batch_code||'').toUpperCase();
+            var c = portalData.courses.find(function(x){ return String(x.batchCode||'').toUpperCase()===bc; });
+            return c ? (c.course||c.courseName||'') : ''; })() : '';
+        return { course: courseName||r.course||'Course fee', batchCode:r.batch_code,
+          netPayable:netPayable, collected:collected, outstanding:outstanding, feeStatus:feeStatus,
+          nextDueDate:nDue?toDMY(nDue):null, nextDueAmt:nAmt, installments:installments };
       });
       cb(null, {found:true, summaries:summaries});
     });

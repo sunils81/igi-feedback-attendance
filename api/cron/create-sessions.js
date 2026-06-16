@@ -61,7 +61,7 @@ export default async function handler(req, res) {
     // Fetch all active batches where today is within the batch dates
     const batches = await supaGet(
       'batches',
-      `status=eq.Active&start_date=lte.${today}&or=(end_date.is.null,end_date.gte.${today})&select=batch_code,instructor`
+      `is_active=eq.true&start_date=lte.${today}&or=(end_date.is.null,end_date.gte.${today})&select=batch_code,instructor`
     );
 
     for (const b of batches) {

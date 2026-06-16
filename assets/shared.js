@@ -80,6 +80,39 @@ window.gasGet = (function () {
     return clean(n1) === clean(n2);
   }
 
+  function getActiveStudentCountsByBatch(cb) {
+    var done = 0, students = [], enrollments = [];
+    function addCount(counts, seen, batchCode, studentId) {
+      var bc = String(batchCode || '').trim().toUpperCase();
+      var sid = String(studentId || '').trim().toUpperCase();
+      if (!bc || !sid) return;
+      var key = bc + '|' + sid;
+      if (seen[key]) return;
+      seen[key] = true;
+      counts[bc] = (counts[bc] || 0) + 1;
+    }
+    function finish() {
+      if (++done < 2) return;
+      var counts = {};
+      var seen = {};
+      (students || []).forEach(function(s) {
+        if (s.status === 'Active') addCount(counts, seen, s.batch_code, s.student_id);
+      });
+      (enrollments || []).forEach(function(en) {
+        if (en.status === 'Active') addCount(counts, seen, en.batch_code, en.student_id);
+      });
+      cb(counts);
+    }
+    GET('students', 'select=student_id,batch_code,status', function(e, rows) {
+      students = rows || [];
+      finish();
+    });
+    GET('enrollments', 'select=student_id,batch_code,status&status=eq.Active', function(e, rows) {
+      enrollments = rows || [];
+      finish();
+    });
+  }
+
   function parseFeeRow(r, studentsList, batchesList) {
     var studentId = r.student_id;
     var batchCode = r.batch_code;
@@ -455,14 +488,7 @@ window.gasGet = (function () {
     }
     GET('batches', qs, function (e, rows) {
       if (e) { cb(null, { batches: [] }); return; }
-      GET('students', 'select=batch_code,status', function (e2, students) {
-        var studentCounts = {};
-        (students || []).forEach(function (s) {
-          if (s.status === 'Active' && s.batch_code) {
-            var bc = s.batch_code.trim().toUpperCase();
-            studentCounts[bc] = (studentCounts[bc] || 0) + 1;
-          }
-        });
+      getActiveStudentCountsByBatch(function(studentCounts) {
         cb(null, { batches: (rows || []).map(function (r) {
           var bc = (r.batch_code || '').trim().toUpperCase();
           var sCount = studentCounts[bc] || 0;
@@ -2156,17 +2182,11 @@ window.gasGet = (function () {
 
     try {
       var pBatches = getP('batches', 'order=created_at.desc');
-      var pStudents = getP('students', 'status=eq.Active');
-
-      var [batches, students] = await Promise.all([pBatches, pStudents]);
-
-      var countByBatch = {};
-      (students || []).forEach(function(s) {
-        if (s.batch_code) {
-          var bc = String(s.batch_code).trim().toUpperCase();
-          countByBatch[bc] = (countByBatch[bc] || 0) + 1;
-        }
+      var pCounts = new Promise(function(resolve) {
+        getActiveStudentCountsByBatch(resolve);
       });
+
+      var [batches, countByBatch] = await Promise.all([pBatches, pCounts]);
 
       var today = new Date();
       today.setHours(12, 0, 0, 0);

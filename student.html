@@ -1145,8 +1145,12 @@ window.gasGet = (function () {
       var valid = stuRows.find(function(r){ return String(r.mobile_last4||'').slice(-4) === ml4.slice(-4); });
       if (!valid) { cb(null, { status:'error', reason:'mobile_mismatch' }); return; }
       var studentName = valid.name || '';
-      var batchCodes  = stuRows.map(function(r){ return r.batch_code; }).filter(Boolean);
-      if (!batchCodes.length) { cb(null, { status:'ok', studentName:studentName, enrollmentNo:sid, batches:[], assessments:[] }); return; }
+      var primaryBatch = valid.batch_code || '';
+      // Also fetch enrollments to get all batches (multi-batch students like GG)
+      GET('enrollments', 'student_id=eq.'+encodeURIComponent(sid)+'&status=eq.Active', function(eE, enrollRows){
+        var batchCodes = (enrollRows||[]).map(function(r){ return r.batch_code; }).filter(Boolean);
+        if (primaryBatch && batchCodes.indexOf(primaryBatch) === -1) batchCodes.push(primaryBatch);
+        if (!batchCodes.length) { cb(null, { status:'ok', studentName:studentName, enrollmentNo:sid, batches:[], assessments:[] }); return; }
       var bcQ  = 'batch_code=in.(' + batchCodes.join(',') + ')';
       var today = todayYMD(), hr = new Date().getHours();
       var batches, todaySess, allSess, attRows, assessRows, marksRows, n = 0;
@@ -1191,6 +1195,7 @@ window.gasGet = (function () {
       GET('attendance_feedback', bcQ+'&student_id=eq.'+encodeURIComponent(sid),                          function(e,r){ attRows=r||[];    done(); });
       GET('assessments',         bcQ+'&order=test_date.desc',                                           function(e,r){ assessRows=r||[]; done(); });
       GET('assessment_marks',    'student_id=eq.'+encodeURIComponent(sid),                              function(e,r){ marksRows=r||[];  done(); });
+      }); // end enrollments GET
     });
   }
 

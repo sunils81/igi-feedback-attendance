@@ -621,17 +621,40 @@ window.gasGet = (function () {
 
   /* removeStudent — cleans both students (if sole batch) and enrollments */
   function h_removeStudent(p, cb) {
-    var sidFilter = 'student_id=eq.' + encodeURIComponent(p.enrollmentNo);
-    var fullFilter = sidFilter + (p.batchCode ? '&batch_code=eq.' + encodeURIComponent(p.batchCode) : '');
-    // Remove from enrollments
+    var sid = String(p.enrollmentNo || '').trim();
+    var removedBatch = String(p.batchCode || '').trim();
+    if (!sid) { cb(null, { status: 'error', reason: 'Missing enrollment number' }); return; }
+
+    var sidFilter = 'student_id=eq.' + encodeURIComponent(sid);
+    var fullFilter = sidFilter + (removedBatch ? '&batch_code=eq.' + encodeURIComponent(removedBatch) : '');
+
     DEL('enrollments', fullFilter, function() {
-      // Check remaining enrollments for this student
       GET('enrollments', sidFilter + '&status=eq.Active', function(e2, remaining) {
+        remaining = remaining || [];
         if (!remaining || !remaining.length) {
-          // No more enrollments — remove student record entirely
-          DEL('students', sidFilter, function(e3) { cb(null, { status: e3 ? 'error' : 'ok' }); });
+          DEL('students', sidFilter, function(e3) {
+            if (!e3) { cb(null, { status: 'ok' }); return; }
+            PATCH('students', sidFilter, { batch_code: null, status: 'Inactive' }, function(e4) {
+              cb(null, { status: e4 ? 'error' : 'ok' });
+            });
+          });
         } else {
-          cb(null, { status: 'ok' });
+          GET('students', sidFilter + '&limit=1', function(e3, rows) {
+            var student = rows && rows[0];
+            var primaryBatch = String(student && student.batch_code || '').trim().toUpperCase();
+            var removedKey = removedBatch.toUpperCase();
+            var nextBatch = remaining.map(function(r) { return r.batch_code; }).filter(function(bc) {
+              return String(bc || '').trim().toUpperCase() !== removedKey;
+            })[0] || remaining[0].batch_code;
+
+            if (removedBatch && primaryBatch === removedKey && nextBatch) {
+              PATCH('students', sidFilter, { batch_code: nextBatch }, function(e4) {
+                cb(null, { status: e4 ? 'error' : 'ok' });
+              });
+            } else {
+              cb(null, { status: 'ok' });
+            }
+          });
         }
       });
     });
@@ -3046,12 +3069,58 @@ window.gasGet = (function () {
   function h_getStudentsForBatches(p, cb) {
     var bcs = (p.batchCodes || '').split(',').map(function(b) { return b.trim(); }).filter(Boolean);
     if (!bcs.length) { cb(null, { status: 'ok', students: [] }); return; }
+
+    function mapStudent(r, batchCode) {
+      return { enrollmentNo: r.student_id, name: r.name, batchCode: batchCode || r.batch_code,
+        mobileLast4: r.mobile_last4, status: r.status };
+    }
+
+    var done = 0, directRows = [], enrollmentPairs = [], enrolledRowsById = {};
+    function finish() {
+      if (++done < 2) return;
+
+      var students = [];
+      var seen = {};
+      function addStudent(stu) {
+        var key = String(stu.batchCode || '').toUpperCase() + '|' + String(stu.enrollmentNo || '').toUpperCase();
+        if (!stu.enrollmentNo || seen[key]) return;
+        seen[key] = true;
+        students.push(stu);
+      }
+
+      directRows.forEach(function(r) {
+        addStudent(mapStudent(r, r.batch_code));
+      });
+      enrollmentPairs.forEach(function(en) {
+        var row = enrolledRowsById[String(en.student_id || '').toUpperCase()];
+        if (row) addStudent(mapStudent(row, en.batch_code));
+      });
+
+      cb(null, { status: 'ok', students: students });
+    }
+
     GET('students', 'batch_code=in.(' + bcs.map(encodeURIComponent).join(',') + ')', function(e, rows) {
-      if (e) { cb(null, { status: 'ok', students: [] }); return; }
-      cb(null, { status: 'ok', students: (rows || []).map(function(r) {
-        return { enrollmentNo: r.student_id, name: r.name, batchCode: r.batch_code,
-          mobileLast4: r.mobile_last4, status: r.status };
-      }) });
+      directRows = rows || [];
+      finish();
+    });
+
+    GET('enrollments', 'batch_code=in.(' + bcs.map(encodeURIComponent).join(',') + ')&status=eq.Active&select=student_id,batch_code', function(e, enrolls) {
+      enrollmentPairs = enrolls || [];
+      var ids = [];
+      var idSeen = {};
+      enrollmentPairs.forEach(function(en) {
+        var id = String(en.student_id || '').trim();
+        var key = id.toUpperCase();
+        if (id && !idSeen[key]) { idSeen[key] = true; ids.push(id); }
+      });
+
+      if (!ids.length) { finish(); return; }
+      GET('students', 'student_id=in.(' + ids.map(encodeURIComponent).join(',') + ')', function(e2, rows) {
+        (rows || []).forEach(function(r) {
+          enrolledRowsById[String(r.student_id || '').toUpperCase()] = r;
+        });
+        finish();
+      });
     });
   }
 

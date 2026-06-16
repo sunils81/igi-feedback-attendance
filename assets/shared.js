@@ -80,6 +80,39 @@ window.gasGet = (function () {
     return clean(n1) === clean(n2);
   }
 
+  function getActiveStudentCountsByBatch(cb) {
+    var done = 0, students = [], enrollments = [];
+    function addCount(counts, seen, batchCode, studentId) {
+      var bc = String(batchCode || '').trim().toUpperCase();
+      var sid = String(studentId || '').trim().toUpperCase();
+      if (!bc || !sid) return;
+      var key = bc + '|' + sid;
+      if (seen[key]) return;
+      seen[key] = true;
+      counts[bc] = (counts[bc] || 0) + 1;
+    }
+    function finish() {
+      if (++done < 2) return;
+      var counts = {};
+      var seen = {};
+      (students || []).forEach(function(s) {
+        if (s.status === 'Active') addCount(counts, seen, s.batch_code, s.student_id);
+      });
+      (enrollments || []).forEach(function(en) {
+        if (en.status === 'Active') addCount(counts, seen, en.batch_code, en.student_id);
+      });
+      cb(counts);
+    }
+    GET('students', 'select=student_id,batch_code,status', function(e, rows) {
+      students = rows || [];
+      finish();
+    });
+    GET('enrollments', 'select=student_id,batch_code,status&status=eq.Active', function(e, rows) {
+      enrollments = rows || [];
+      finish();
+    });
+  }
+
   function parseFeeRow(r, studentsList, batchesList) {
     var studentId = r.student_id;
     var batchCode = r.batch_code;
@@ -455,14 +488,7 @@ window.gasGet = (function () {
     }
     GET('batches', qs, function (e, rows) {
       if (e) { cb(null, { batches: [] }); return; }
-      GET('students', 'select=batch_code,status', function (e2, students) {
-        var studentCounts = {};
-        (students || []).forEach(function (s) {
-          if (s.status === 'Active' && s.batch_code) {
-            var bc = s.batch_code.trim().toUpperCase();
-            studentCounts[bc] = (studentCounts[bc] || 0) + 1;
-          }
-        });
+      getActiveStudentCountsByBatch(function(studentCounts) {
         cb(null, { batches: (rows || []).map(function (r) {
           var bc = (r.batch_code || '').trim().toUpperCase();
           var sCount = studentCounts[bc] || 0;
@@ -621,17 +647,40 @@ window.gasGet = (function () {
 
   /* removeStudent — cleans both students (if sole batch) and enrollments */
   function h_removeStudent(p, cb) {
-    var sidFilter = 'student_id=eq.' + encodeURIComponent(p.enrollmentNo);
-    var fullFilter = sidFilter + (p.batchCode ? '&batch_code=eq.' + encodeURIComponent(p.batchCode) : '');
-    // Remove from enrollments
+    var sid = String(p.enrollmentNo || '').trim();
+    var removedBatch = String(p.batchCode || '').trim();
+    if (!sid) { cb(null, { status: 'error', reason: 'Missing enrollment number' }); return; }
+
+    var sidFilter = 'student_id=eq.' + encodeURIComponent(sid);
+    var fullFilter = sidFilter + (removedBatch ? '&batch_code=eq.' + encodeURIComponent(removedBatch) : '');
+
     DEL('enrollments', fullFilter, function() {
-      // Check remaining enrollments for this student
       GET('enrollments', sidFilter + '&status=eq.Active', function(e2, remaining) {
+        remaining = remaining || [];
         if (!remaining || !remaining.length) {
-          // No more enrollments — remove student record entirely
-          DEL('students', sidFilter, function(e3) { cb(null, { status: e3 ? 'error' : 'ok' }); });
+          DEL('students', sidFilter, function(e3) {
+            if (!e3) { cb(null, { status: 'ok' }); return; }
+            PATCH('students', sidFilter, { batch_code: null, status: 'Inactive' }, function(e4) {
+              cb(null, { status: e4 ? 'error' : 'ok' });
+            });
+          });
         } else {
-          cb(null, { status: 'ok' });
+          GET('students', sidFilter + '&limit=1', function(e3, rows) {
+            var student = rows && rows[0];
+            var primaryBatch = String(student && student.batch_code || '').trim().toUpperCase();
+            var removedKey = removedBatch.toUpperCase();
+            var nextBatch = remaining.map(function(r) { return r.batch_code; }).filter(function(bc) {
+              return String(bc || '').trim().toUpperCase() !== removedKey;
+            })[0] || remaining[0].batch_code;
+
+            if (removedBatch && primaryBatch === removedKey && nextBatch) {
+              PATCH('students', sidFilter, { batch_code: nextBatch }, function(e4) {
+                cb(null, { status: e4 ? 'error' : 'ok' });
+              });
+            } else {
+              cb(null, { status: 'ok' });
+            }
+          });
         }
       });
     });
@@ -2133,17 +2182,11 @@ window.gasGet = (function () {
 
     try {
       var pBatches = getP('batches', 'order=created_at.desc');
-      var pStudents = getP('students', 'status=eq.Active');
-
-      var [batches, students] = await Promise.all([pBatches, pStudents]);
-
-      var countByBatch = {};
-      (students || []).forEach(function(s) {
-        if (s.batch_code) {
-          var bc = String(s.batch_code).trim().toUpperCase();
-          countByBatch[bc] = (countByBatch[bc] || 0) + 1;
-        }
+      var pCounts = new Promise(function(resolve) {
+        getActiveStudentCountsByBatch(resolve);
       });
+
+      var [batches, countByBatch] = await Promise.all([pBatches, pCounts]);
 
       var today = new Date();
       today.setHours(12, 0, 0, 0);
@@ -3046,12 +3089,58 @@ window.gasGet = (function () {
   function h_getStudentsForBatches(p, cb) {
     var bcs = (p.batchCodes || '').split(',').map(function(b) { return b.trim(); }).filter(Boolean);
     if (!bcs.length) { cb(null, { status: 'ok', students: [] }); return; }
+
+    function mapStudent(r, batchCode) {
+      return { enrollmentNo: r.student_id, name: r.name, batchCode: batchCode || r.batch_code,
+        mobileLast4: r.mobile_last4, status: r.status };
+    }
+
+    var done = 0, directRows = [], enrollmentPairs = [], enrolledRowsById = {};
+    function finish() {
+      if (++done < 2) return;
+
+      var students = [];
+      var seen = {};
+      function addStudent(stu) {
+        var key = String(stu.batchCode || '').toUpperCase() + '|' + String(stu.enrollmentNo || '').toUpperCase();
+        if (!stu.enrollmentNo || seen[key]) return;
+        seen[key] = true;
+        students.push(stu);
+      }
+
+      directRows.forEach(function(r) {
+        addStudent(mapStudent(r, r.batch_code));
+      });
+      enrollmentPairs.forEach(function(en) {
+        var row = enrolledRowsById[String(en.student_id || '').toUpperCase()];
+        if (row) addStudent(mapStudent(row, en.batch_code));
+      });
+
+      cb(null, { status: 'ok', students: students });
+    }
+
     GET('students', 'batch_code=in.(' + bcs.map(encodeURIComponent).join(',') + ')', function(e, rows) {
-      if (e) { cb(null, { status: 'ok', students: [] }); return; }
-      cb(null, { status: 'ok', students: (rows || []).map(function(r) {
-        return { enrollmentNo: r.student_id, name: r.name, batchCode: r.batch_code,
-          mobileLast4: r.mobile_last4, status: r.status };
-      }) });
+      directRows = rows || [];
+      finish();
+    });
+
+    GET('enrollments', 'batch_code=in.(' + bcs.map(encodeURIComponent).join(',') + ')&status=eq.Active&select=student_id,batch_code', function(e, enrolls) {
+      enrollmentPairs = enrolls || [];
+      var ids = [];
+      var idSeen = {};
+      enrollmentPairs.forEach(function(en) {
+        var id = String(en.student_id || '').trim();
+        var key = id.toUpperCase();
+        if (id && !idSeen[key]) { idSeen[key] = true; ids.push(id); }
+      });
+
+      if (!ids.length) { finish(); return; }
+      GET('students', 'student_id=in.(' + ids.map(encodeURIComponent).join(',') + ')', function(e2, rows) {
+        (rows || []).forEach(function(r) {
+          enrolledRowsById[String(r.student_id || '').toUpperCase()] = r;
+        });
+        finish();
+      });
     });
   }
 

@@ -2437,6 +2437,7 @@
             <button class="inv-sub-tab" id="adm-inv-tab-master"      onclick="adminInvSwitchTab('adm-inv-master')"      style="font-size:12px;padding:6px 14px;border:none;border-radius:6px;cursor:pointer;background:transparent;white-space:nowrap">Item Master</button>
             <button class="inv-sub-tab" id="adm-inv-tab-vendors"     onclick="adminInvSwitchTab('adm-inv-vendors')"     style="font-size:12px;padding:6px 14px;border:none;border-radius:6px;cursor:pointer;background:transparent;white-space:nowrap">Vendors</button>
             <button class="inv-sub-tab" id="adm-inv-tab-analytics"   onclick="adminInvSwitchTab('adm-inv-analytics')"   style="font-size:12px;padding:6px 14px;border:none;border-radius:6px;cursor:pointer;background:transparent;white-space:nowrap">Analytics &amp; Financials</button>
+            <button class="inv-sub-tab" id="adm-inv-tab-fixedassets" onclick="adminInvSwitchTab('adm-inv-fixedassets')" style="font-size:12px;padding:6px 14px;border:none;border-radius:6px;cursor:pointer;background:transparent;white-space:nowrap">🏭 Fixed Assets</button>
           </div>
         </div>
       </div>
@@ -2717,6 +2718,51 @@
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+
+        <!-- Fixed Assets Register -->
+        <div id="adm-inv-fixedassets" class="adm-inv-content" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+            <div>
+              <h3 style="margin:0;font-size:15px">🏭 Fixed Assets Register</h3>
+              <div style="font-size:12px;color:#6b7280;margin-top:3px">Track condition of lab equipment at each centre. Data saved locally per browser.</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <select id="fx-centre-select" onchange="fxRenderTable()" style="padding:6px 10px;border-radius:6px;border:1.5px solid #e5e7eb;font-size:12px;background:#fff">
+                <option value="Mumbai">Mumbai</option>
+                <option value="Delhi">Delhi</option>
+                <option value="Surat">Surat</option>
+                <option value="Hyderabad">Hyderabad</option>
+                <option value="Chennai">Chennai</option>
+                <option value="Kolkata">Kolkata</option>
+                <option value="Ahmedabad">Ahmedabad</option>
+                <option value="Jaipur">Jaipur</option>
+                <option value="Indore">Indore</option>
+                <option value="Thrissur">Thrissur</option>
+                <option value="Bangalore">Bangalore</option>
+              </select>
+              <button onclick="fxSaveAssets()" style="padding:6px 14px;background:#0D1B2E;color:#C9A84C;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">💾 Save</button>
+              <button onclick="fxExportCsv()" style="padding:6px 14px;background:#fff;color:#374151;border:1.5px solid #e5e7eb;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">📥 CSV</button>
+              <button onclick="window.print()" class="no-print" style="padding:6px 14px;background:#fff;color:#374151;border:1.5px solid #e5e7eb;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">🖨️ Print</button>
+            </div>
+          </div>
+          <div id="fx-save-info" style="font-size:11px;color:#9ca3af;margin-bottom:10px"></div>
+          <div style="overflow-x:auto">
+            <table class="compact-table" style="width:100%">
+              <thead>
+                <tr>
+                  <th style="width:32px;text-align:center">#</th>
+                  <th class="text-left">Asset / Equipment</th>
+                  <th style="width:160px;text-align:center">Condition</th>
+                  <th class="text-left">Notes</th>
+                  <th style="width:110px;text-align:center">Last Updated</th>
+                </tr>
+              </thead>
+              <tbody id="fx-assets-tbody">
+                <tr><td colspan="5" style="text-align:center;padding:24px;color:#9ca3af">Select a centre above to load asset register.</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -5823,6 +5869,7 @@ function adminInvSwitchTab(tabId) {
   if (tabId === 'adm-inv-master')      adminLoadItemMaster();
   if (tabId === 'adm-inv-vendors')     adminLoadVendors();
   if (tabId === 'adm-inv-analytics')   adminLoadAnalytics();
+  if (tabId === 'adm-inv-fixedassets') fxRenderTable();
 }
 
 function adminLoadDashboard() {
@@ -7188,6 +7235,124 @@ function saveCRMRule() {
   });
 }
 
+
+// ── Fixed Assets Register ─────────────────────────────────────────────────────
+var IGI_FX_ASSETS = [
+  'Microscope','UV Lamp','SG Kit / Weighing Scale','Polariscope','Refractometer',
+  'Dichroscope','Jodi Gauge','Tripod (Ghodi)','Big Grading Lamps','Small Grading Lamps',
+  'Big Assortment Pad','Small Assortment Pad','PC / Keyboard / Mouse','CAD PC',
+  'White Board','Projector','Laser Pointer','Projector Screen'
+];
+var FX_CONDITIONS = ['Good','Fair','Needs Service','Missing'];
+var FX_CONDITION_COLORS = {
+  'Good':          {bg:'#d1fae5',color:'#065f46'},
+  'Fair':          {bg:'#fef3c7',color:'#92400e'},
+  'Needs Service': {bg:'#fee2e2',color:'#991b1b'},
+  'Missing':       {bg:'#f3f4f6',color:'#6b7280'}
+};
+
+function fxLoadData() {
+  try { return JSON.parse(localStorage.getItem('igiFxAssets_v1') || '{}'); } catch(e) { return {}; }
+}
+function fxSaveData(data) {
+  localStorage.setItem('igiFxAssets_v1', JSON.stringify(data));
+}
+
+function fxRenderTable() {
+  var centre = (document.getElementById('fx-centre-select') || {}).value || 'Mumbai';
+  var data   = fxLoadData();
+  var centreData = data[centre] || {};
+  var today  = new Date().toISOString().slice(0,10);
+  var tbody  = document.getElementById('fx-assets-tbody');
+  if (!tbody) return;
+
+  tbody.innerHTML = IGI_FX_ASSETS.map(function(asset, idx) {
+    var rec = centreData[asset] || {};
+    var cond = rec.condition || 'Good';
+    var notes = (rec.notes || '').replace(/"/g,'&quot;');
+    var updated = rec.updatedAt || '—';
+    var cc = FX_CONDITION_COLORS[cond] || FX_CONDITION_COLORS['Good'];
+    var selOpts = FX_CONDITIONS.map(function(c) {
+      return '<option value="'+c+'"'+(c===cond?' selected':'')+'>'+c+'</option>';
+    }).join('');
+    return '<tr>' +
+      '<td style="text-align:center;font-size:11px;color:#9ca3af">'+(idx+1)+'</td>' +
+      '<td style="font-weight:600;color:#0D1B2E">'+asset+'</td>' +
+      '<td style="text-align:center">' +
+        '<select data-asset="'+asset+'" class="fx-cond-sel" onchange="fxMarkUpdated(this)" ' +
+          'style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;border:none;' +
+          'background:'+cc.bg+';color:'+cc.color+';cursor:pointer;outline:none">' +
+          selOpts +
+        '</select>' +
+      '</td>' +
+      '<td><input type="text" data-asset="'+asset+'" class="fx-notes-inp" value="'+notes+'" ' +
+        'placeholder="Optional notes…" ' +
+        'style="width:100%;font-size:12px;border:1px solid #e5e7eb;border-radius:4px;padding:3px 6px;box-sizing:border-box"></td>' +
+      '<td style="text-align:center;font-size:11px;color:#6b7280">'+updated+'</td>' +
+    '</tr>';
+  }).join('');
+
+  // Re-colour dropdowns on change
+  document.querySelectorAll('.fx-cond-sel').forEach(function(sel) {
+    sel.addEventListener('change', function() {
+      var c = this.value;
+      var cc = FX_CONDITION_COLORS[c] || FX_CONDITION_COLORS['Good'];
+      this.style.background = cc.bg;
+      this.style.color = cc.color;
+    });
+  });
+
+  var info = document.getElementById('fx-save-info');
+  var saved = (data[centre] || {}).__savedAt;
+  if (info) info.textContent = saved ? ('Last saved: '+saved+' — '+centre) : 'No saved data for '+centre+' yet. Make changes and click Save.';
+}
+
+function fxMarkUpdated(sel) {
+  // colour update handled by event listener above
+}
+
+function fxSaveAssets() {
+  var centre = (document.getElementById('fx-centre-select') || {}).value || 'Mumbai';
+  var data   = fxLoadData();
+  if (!data[centre]) data[centre] = {};
+  var today  = new Date().toISOString().slice(0,10);
+
+  document.querySelectorAll('.fx-cond-sel').forEach(function(sel) {
+    var asset = sel.getAttribute('data-asset');
+    if (!data[centre][asset]) data[centre][asset] = {};
+    data[centre][asset].condition = sel.value;
+    data[centre][asset].updatedAt = today;
+  });
+  document.querySelectorAll('.fx-notes-inp').forEach(function(inp) {
+    var asset = inp.getAttribute('data-asset');
+    if (!data[centre][asset]) data[centre][asset] = {};
+    data[centre][asset].notes = inp.value;
+  });
+  data[centre].__savedAt = new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+
+  fxSaveData(data);
+  showToast('Fixed assets saved for '+centre, 'success');
+  var info = document.getElementById('fx-save-info');
+  if (info) info.textContent = 'Last saved: '+data[centre].__savedAt+' — '+centre;
+}
+
+function fxExportCsv() {
+  var data = fxLoadData();
+  var rows = ['Centre,Asset,Condition,Notes,Last Updated'];
+  Object.keys(data).forEach(function(centre) {
+    var cd = data[centre];
+    IGI_FX_ASSETS.forEach(function(asset) {
+      var rec = cd[asset] || {};
+      rows.push([centre, asset, rec.condition||'Good', (rec.notes||'').replace(/,/g,' '), rec.updatedAt||''].join(','));
+    });
+  });
+  var blob = new Blob([rows.join('\n')], {type:'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'igi-fixed-assets-'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+}
+// ── End Fixed Assets ──────────────────────────────────────────────────────────
 
 // Hook into switchAdminTab for t-trayhub-admin
 var _origSwitchAdminTab = switchAdminTab;

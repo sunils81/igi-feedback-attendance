@@ -3322,12 +3322,32 @@ window.gasGet = (function () {
     var instr = String(p.instructor || '').trim();
     GET('online_tests', 'created_by=eq.' + encodeURIComponent(instr) + '&order=created_at.desc', function(e, rows) {
       if (e) { cb(null, { status: 'ok', tests: [] }); return; }
-      cb(null, { status: 'ok', tests: (rows || []).map(function(r) {
-        return {
-          testId: r.test_id, batchCode: r.batch_code, title: r.title, durationMins: r.duration_mins,
-          startsAt: r.starts_at, endsAt: r.ends_at, status: r.status, createdBy: r.created_by, createdAt: r.created_at
-        };
-      }) });
+      var tests = rows || [];
+      if (!tests.length) { cb(null, { status: 'ok', tests: [] }); return; }
+      // Fetch question counts for all tests in one query
+      var testIds = tests.map(function(r) { return r.test_id; });
+      GET('test_questions', 'test_id=in.(' + testIds.map(encodeURIComponent).join(',') + ')&select=test_id', function(e2, tqs) {
+        var qCount = {};
+        (tqs || []).forEach(function(q) { qCount[q.test_id] = (qCount[q.test_id] || 0) + 1; });
+        cb(null, { status: 'ok', tests: tests.map(function(r) {
+          // DB status is 'Live'; frontend expects 'Active'
+          var frontendStatus = r.status === 'Live' ? 'Active' : r.status;
+          return {
+            testId: r.test_id, batchCode: r.batch_code,
+            title: r.title, testLabel: r.title,
+            durationMins: r.duration_mins, duration: r.duration_mins,
+            startsAt: r.starts_at, endsAt: r.ends_at,
+            activatedAt: r.starts_at,
+            status: frontendStatus,
+            createdBy: r.created_by, createdAt: r.created_at,
+            testType: r.test_type || 'Weekly',
+            questionCount: qCount[r.test_id] || 0,
+            negativeMarking: r.neg_marking || '',
+            resultsReleased: r.results_released || 'No',
+            targetStudentNames: r.target_students || 'Entire Batch'
+          };
+        }) });
+      });
     });
   }
 

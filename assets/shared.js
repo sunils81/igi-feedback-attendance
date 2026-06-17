@@ -866,7 +866,7 @@ window.gasGet = (function () {
   function h_getHolidays(p, cb) {
     GET('holidays', 'order=holiday_date.asc', function (e, rows) {
       cb(null, { holidays: (rows || []).map(function (r) {
-        return { date: r.holiday_date, name: r.name, centre: r.centre };
+        return { date: r.holiday_date, name: r.name, centre: r.centre, type: r.type || 'custom' };
       }) });
     });
   }

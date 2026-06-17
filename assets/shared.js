@@ -2795,7 +2795,7 @@ window.gasGet = (function () {
     });
     POST('attendance_feedback', 'on_conflict=session_code,student_id', {
       session_code: p.sessionCode,
-      student_id: p.enrollmentNo || p.studentId,
+      student_id: String(p.enrollmentNo || p.studentId || '').trim().toUpperCase(),
       batch_code: p.batchCode,
       attendance: p.status || 'Present',
       feedback_score: Number(p.q1 || p.q1_rating || 5),

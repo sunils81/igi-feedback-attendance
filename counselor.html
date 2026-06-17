@@ -9214,11 +9214,16 @@ function loadInventoryStock() {
       return;
     }
 
-    var centreCol = isMumbaiAdmin ? '<th style="padding:7px 10px">Centre</th>' : '';
+    // Matrix view when All Centres selected (Mumbai Admin only)
+    if (isMumbaiAdmin && !selectedCentre) {
+      renderInvStockMatrix(list, grid);
+      return;
+    }
+
+    // Single-centre flat table (existing logic)
     var html = '<div style="overflow-x:auto"><table class="compact-table" style="width:100%"><thead><tr>' +
       '<th style="padding:7px 10px">Item</th>' +
       '<th style="padding:7px 10px">Category</th>' +
-      centreCol +
       '<th style="padding:7px 10px;text-align:right">Qty</th>' +
       '<th style="padding:7px 10px">Unit</th>' +
       '<th style="padding:7px 10px">Status</th>' +
@@ -9252,12 +9257,10 @@ function loadInventoryStock() {
         '<button class="btn btn-outline btn-xs" style="font-size:10px;padding:2px 8px" ' +
         'onclick="invStockInlineCancel(\'' + escC(item.itemId) + '\',\'' + escC(editCentre) + '\')">✕</button>' +
         '</span>';
-      var centreCell = isMumbaiAdmin ? '<td style="padding:7px 10px;font-size:11px">' + escC(item.centre || '') + '</td>' : '';
 
       html += '<tr>' +
         '<td style="padding:7px 10px;font-weight:600;font-size:12px">' + escC(item.itemName) + '</td>' +
         '<td style="padding:7px 10px;font-size:11px;color:var(--muted)">' + escC(item.category) + '</td>' +
-        centreCell +
         '<td style="padding:7px 10px;text-align:right;font-weight:700;font-size:15px;color:var(--navy)" id="inv-stock-qty-' + escC(item.itemId) + '-' + escC(editCentre) + '">' + qty + '</td>' +
         '<td style="padding:7px 10px;font-size:11px;color:var(--muted)">' + escC(item.unit) + '</td>' +
         '<td style="padding:7px 10px;font-size:11px"><span style="' + statusStyle + '">' + statusDot + ' ' + statusText + '</span></td>' +
@@ -9268,6 +9271,209 @@ function loadInventoryStock() {
     html += '</tbody></table></div>';
     grid.innerHTML = html;
   });
+}
+
+function renderInvStockMatrix(list, grid) {
+  // Build item map: itemId -> { itemName, category, unit, reorderLevel, centres: {centre: qty} }
+  var itemMap = {};
+  var centreSet = new Set();
+
+  list.forEach(function(row) {
+    if (!itemMap[row.itemId]) {
+      itemMap[row.itemId] = {
+        itemId: row.itemId,
+        itemName: row.itemName,
+        category: row.category || 'General',
+        unit: row.unit || '',
+        reorderLevel: row.reorderLevel != null ? row.reorderLevel : 5,
+        centres: {}
+      };
+    }
+    if (row.centre) {
+      itemMap[row.itemId].centres[row.centre] = (row.quantity || 0);
+      centreSet.add(row.centre);
+    }
+  });
+
+  // Sort centres: use CENTRES constant order if available, else alphabetically
+  var centresOrdered = (typeof CENTRES !== 'undefined' ? CENTRES : []).filter(function(c) { return centreSet.has(c); });
+  centreSet.forEach(function(c) { if (centresOrdered.indexOf(c) === -1) centresOrdered.push(c); });
+
+  // Group items by category
+  var catMap = {};
+  Object.values(itemMap).forEach(function(item) {
+    if (!catMap[item.category]) catMap[item.category] = [];
+    catMap[item.category].push(item);
+  });
+  var cats = Object.keys(catMap).sort();
+  cats.forEach(function(cat) {
+    catMap[cat].sort(function(a, b) { return a.itemName.localeCompare(b.itemName); });
+  });
+
+  // Legend + summary stats
+  var totalOut = 0, totalLow = 0;
+  Object.values(itemMap).forEach(function(item) {
+    centresOrdered.forEach(function(c) {
+      var q = item.centres[c];
+      if (q === undefined) return;
+      if (q === 0) totalOut++;
+      else if (q <= item.reorderLevel) totalLow++;
+    });
+  });
+
+  var summaryHtml = '';
+  if (totalOut > 0 || totalLow > 0) {
+    summaryHtml = '<div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">';
+    if (totalOut > 0) summaryHtml += '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:6px 14px;font-size:12px;color:#dc2626;font-weight:700">🔴 ' + totalOut + ' cell' + (totalOut !== 1 ? 's' : '') + ' out of stock</div>';
+    if (totalLow > 0) summaryHtml += '<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:6px 14px;font-size:12px;color:#d97706;font-weight:700">🟠 ' + totalLow + ' cell' + (totalLow !== 1 ? 's' : '') + ' low stock</div>';
+    summaryHtml += '<div style="font-size:11px;color:var(--muted);align-self:center;margin-left:4px">Click any qty cell to edit</div>';
+    summaryHtml += '</div>';
+  } else {
+    summaryHtml = '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">All items adequately stocked · Click any qty cell to edit</div>';
+  }
+
+  // Build table
+  var colCount = centresOrdered.length + 3; // Item + Unit + centres + Total
+  var headerCols = '<th style="padding:7px 10px;min-width:160px;text-align:left">Item</th>' +
+    '<th style="padding:7px 6px;color:var(--muted);font-weight:500;font-size:11px">Unit</th>';
+  centresOrdered.forEach(function(c) {
+    headerCols += '<th style="padding:7px 10px;text-align:center;min-width:72px;white-space:nowrap">' + escC(c) + '</th>';
+  });
+  headerCols += '<th style="padding:7px 10px;text-align:right;border-left:2px solid #e5e7eb;color:var(--muted);font-weight:600;font-size:11px">Total</th>';
+
+  var html = '<div style="overflow-x:auto">' +
+    '<table class="compact-table" style="width:100%;border-collapse:collapse"><thead><tr>' +
+    headerCols + '</tr></thead><tbody>';
+
+  cats.forEach(function(cat) {
+    // Category group header
+    html += '<tr><td colspan="' + colCount + '" style="padding:8px 10px;background:var(--light);font-weight:700;font-size:11px;color:var(--navy);letter-spacing:0.05em;text-transform:uppercase;border-top:2px solid var(--border)">' + escC(cat) + '</td></tr>';
+
+    catMap[cat].forEach(function(item) {
+      var rowTotal = 0;
+      var hasOut = false, hasLow = false;
+
+      var cells = '';
+      centresOrdered.forEach(function(c) {
+        var qty = item.centres[c];
+        if (qty === undefined) {
+          // No stock record for this centre
+          cells += '<td style="padding:6px 8px;text-align:center;color:#d1d5db;font-size:12px">—</td>';
+        } else {
+          rowTotal += qty;
+          var isOut = qty === 0;
+          var isLow = !isOut && qty <= item.reorderLevel;
+          if (isOut) hasOut = true;
+          else if (isLow) hasLow = true;
+
+          var cellBg = isOut ? '#fef2f2' : (isLow ? '#fffbeb' : 'transparent');
+          var numColor = isOut ? '#dc2626' : (isLow ? '#d97706' : '#166534');
+          var cellId = 'inv-mx-cell-' + escC(item.itemId) + '-' + escC(c);
+
+          cells += '<td id="' + cellId + '" ' +
+            'style="padding:4px 8px;text-align:center;background:' + cellBg + ';cursor:pointer;transition:opacity 0.15s" ' +
+            'title="Click to edit ' + escC(item.itemName) + ' @ ' + escC(c) + '" ' +
+            'onclick="invMxEdit(\'' + escC(item.itemId) + '\',\'' + escC(c) + '\',' + qty + ',' + item.reorderLevel + ')">' +
+            '<span style="font-weight:700;font-size:14px;color:' + numColor + '">' + qty + '</span>' +
+            (isLow ? '<br><span style="font-size:9px;color:#d97706">low</span>' : '') +
+            (isOut ? '<br><span style="font-size:9px;color:#dc2626">out</span>' : '') +
+            '</td>';
+        }
+      });
+
+      var itemStyle = 'padding:7px 10px;font-size:12px;font-weight:600';
+      if (hasOut) itemStyle += ';color:#dc2626';
+      else if (hasLow) itemStyle += ';color:#d97706';
+
+      html += '<tr>' +
+        '<td style="' + itemStyle + '">' + escC(item.itemName) + '</td>' +
+        '<td style="padding:7px 6px;font-size:11px;color:var(--muted)">' + escC(item.unit) + '</td>' +
+        cells +
+        '<td style="padding:7px 10px;text-align:right;font-weight:800;font-size:14px;color:var(--navy);border-left:2px solid #e5e7eb">' + rowTotal + '</td>' +
+        '</tr>';
+    });
+  });
+
+  html += '</tbody></table></div>';
+  grid.innerHTML = summaryHtml + html;
+}
+
+function invMxEdit(itemId, centre, currentQty, reorderLevel) {
+  var cellId = 'inv-mx-cell-' + itemId + '-' + centre;
+  var cell = document.getElementById(cellId);
+  if (!cell) return;
+  // Prevent double-edit
+  if (cell.querySelector('input')) return;
+
+  cell.setAttribute('data-orig-qty', currentQty);
+  cell.setAttribute('data-reorder', reorderLevel || 5);
+  cell.style.cursor = 'default';
+  cell.onclick = null;
+
+  cell.innerHTML =
+    '<input type="number" min="0" value="' + currentQty + '" id="inv-mx-input-' + itemId + '-' + centre + '" ' +
+    'style="width:56px;padding:3px 5px;border-radius:5px;border:1.5px solid #6366f1;font-size:12px;text-align:center;display:block;margin:0 auto 4px" ' +
+    'onkeydown="if(event.key===\'Enter\')invMxSave(\'' + itemId + '\',\'' + centre + '\');if(event.key===\'Escape\')invMxCancel(\'' + itemId + '\',\'' + centre + '\')">' +
+    '<div style="display:flex;gap:3px;justify-content:center">' +
+    '<button class="btn btn-xs" style="font-size:9px;padding:1px 7px;background:#16a34a;border-color:#16a34a;color:#fff" ' +
+    'onclick="invMxSave(\'' + itemId + '\',\'' + centre + '\')">✓</button>' +
+    '<button class="btn btn-outline btn-xs" style="font-size:9px;padding:1px 6px" ' +
+    'onclick="invMxCancel(\'' + itemId + '\',\'' + centre + '\')">✕</button>' +
+    '</div>';
+
+  var inp = document.getElementById('inv-mx-input-' + itemId + '-' + centre);
+  if (inp) { inp.focus(); inp.select(); }
+}
+
+function invMxSave(itemId, centre) {
+  var inp = document.getElementById('inv-mx-input-' + itemId + '-' + centre);
+  if (!inp) return;
+  var qty = parseInt(inp.value);
+  if (isNaN(qty) || qty < 0) { showToast('Invalid quantity', 'error'); return; }
+  inp.disabled = true;
+  gasGet({ action: 'updateBranchStock', itemId: itemId, centre: centre, quantity: qty, updatedBy: counselorName },
+    function(e, d) {
+      if (e || !d || d.status !== 'ok') {
+        inp.disabled = false;
+        showToast('Could not save: ' + ((d && d.reason) || e || 'unknown'), 'error');
+        return;
+      }
+      // Rebuild the cell with new value
+      var reorder = parseInt(document.getElementById('inv-mx-cell-' + itemId + '-' + centre).getAttribute('data-reorder')) || 5;
+      var isOut = qty === 0;
+      var isLow = !isOut && qty <= reorder;
+      var cellBg = isOut ? '#fef2f2' : (isLow ? '#fffbeb' : 'transparent');
+      var numColor = isOut ? '#dc2626' : (isLow ? '#d97706' : '#166534');
+      var cell = document.getElementById('inv-mx-cell-' + itemId + '-' + centre);
+      if (cell) {
+        cell.style.background = cellBg;
+        cell.style.cursor = 'pointer';
+        cell.innerHTML =
+          '<span style="font-weight:700;font-size:14px;color:' + numColor + '">' + qty + '</span>' +
+          (isLow ? '<br><span style="font-size:9px;color:#d97706">low</span>' : '') +
+          (isOut ? '<br><span style="font-size:9px;color:#dc2626">out</span>' : '');
+        cell.onclick = function() { invMxEdit(itemId, centre, qty, reorder); };
+      }
+      showToast('Stock updated ✓', 'success');
+    });
+}
+
+function invMxCancel(itemId, centre) {
+  var cell = document.getElementById('inv-mx-cell-' + itemId + '-' + centre);
+  if (!cell) return;
+  var qty = parseInt(cell.getAttribute('data-orig-qty')) || 0;
+  var reorder = parseInt(cell.getAttribute('data-reorder')) || 5;
+  var isOut = qty === 0;
+  var isLow = !isOut && qty <= reorder;
+  var cellBg = isOut ? '#fef2f2' : (isLow ? '#fffbeb' : 'transparent');
+  var numColor = isOut ? '#dc2626' : (isLow ? '#d97706' : '#166534');
+  cell.style.background = cellBg;
+  cell.style.cursor = 'pointer';
+  cell.innerHTML =
+    '<span style="font-weight:700;font-size:14px;color:' + numColor + '">' + qty + '</span>' +
+    (isLow ? '<br><span style="font-size:9px;color:#d97706">low</span>' : '') +
+    (isOut ? '<br><span style="font-size:9px;color:#dc2626">out</span>' : '');
+  cell.onclick = function() { invMxEdit(itemId, centre, qty, reorder); };
 }
 
 function invStockInlineEdit(itemId, centre, currentQty) {

@@ -1145,16 +1145,23 @@ window.gasGet = (function () {
     GET('sessions', qs, function (e, srows) {
       if (!srows || !srows.length) { cb(null, { status: 'ok', fromDate: p.fromDate, events: [] }); return; }
       var codes = srows.map(function (s) { return s.session_code; });
-      GET('attendance_feedback', 'session_code=in.(' + codes.join(',') + ')', function (e2, arows) {
+      // When called from the student portal, filter attendance by that student's ID
+      // so their personal status (submitted/not) is shown, not the class aggregate
+      var afQs = 'session_code=in.(' + codes.join(',') + ')';
+      if (p.studentId) afQs += '&student_id=eq.' + encodeURIComponent(p.studentId);
+      GET('attendance_feedback', afQs, function (e2, arows) {
         var today = todayYMD();
         var MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         var events = srows.map(function (s) {
           var iso  = s.session_date ? String(s.session_date).slice(0, 10) : '';
           var af   = (arows || []).filter(function (a) { return a.session_code === s.session_code; });
           var pres = af.filter(function (a) { return a.attendance !== 'Absent'; }).length;
+          // For student view: today counts as completed if they already submitted (af.length > 0)
+          // For instructor view (no studentId): today stays pending until session ends
           var stat = String(s.session_type || '').toLowerCase() === 'cancelled' ? 'cancelled'
-            : iso < today ? (af.length > 0 ? 'completed' : 'pending')
-            : iso === today ? 'pending' : 'upcoming';
+            : (iso <= today)
+              ? (af.length > 0 ? 'completed' : 'pending')
+              : 'upcoming';
           var d = new Date(iso + 'T00:00:00');
           return { dateISO: iso, sessNo: s.sess_no, batchCode: s.batch_code,
             course: p.course || '', instructor: s.instructor, topic: s.topic || '',

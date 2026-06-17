@@ -1035,6 +1035,10 @@
   font-size: 10px;
   font-weight: 700;
 }
+/* Hide native spinners on update-stock qty inputs */
+#inv-upd-grid input[type=number]::-webkit-outer-spin-button,
+#inv-upd-grid input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+#inv-upd-grid input[type=number] { -moz-appearance:textfield; }
 </style>
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 </head>
@@ -9817,11 +9821,22 @@ function loadInventoryRequestItems() {
   if (!itemSelect) return;
   if (itemSelect.options.length > 1) return; // already loaded
 
-  gasGet({ action: 'getInventoryStock' }, function(e, d) {
+  // Use item master (unique items) — NOT stock (which has one row per centre, causing duplicates)
+  gasGet({ action: 'getInventoryItemMaster' }, function(e, d) {
     if (e || !d || d.status !== 'ok') return;
-    const list = d.list || [];
-    itemSelect.innerHTML = '<option value="">Select Item</option>' +
-      list.map(item => `<option value="${escC(item.itemId)}">${escC(item.itemName)} (${escC(item.unit)})</option>`).join('');
+    const list = d.list || [];  // already sorted category+name by backend, already filtered active
+    var currentCat = null;
+    var opts = '<option value="">Select Item</option>';
+    list.forEach(function(item) {
+      if (item.category !== currentCat) {
+        if (currentCat !== null) opts += '</optgroup>';
+        opts += '<optgroup label="' + escC(item.category || 'General') + '">';
+        currentCat = item.category;
+      }
+      opts += '<option value="' + escC(item.itemId) + '">' + escC(item.itemName) + ' (' + escC(item.unit) + ')</option>';
+    });
+    if (currentCat !== null) opts += '</optgroup>';
+    itemSelect.innerHTML = opts;
   });
 }
 
@@ -10314,24 +10329,39 @@ function loadStockUpdateItems() {
       groups[item.category].push(item);
     });
 
-    grid.innerHTML = Object.keys(groups).map(cat => `
-      <div style="margin-bottom:18px">
-        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px">${escC(cat)}</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px">
-          ${groups[cat].map(item => `
-            <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--off);border-radius:8px;border:1px solid var(--border)">
+    grid.innerHTML = Object.keys(groups).sort().map(cat => {
+      return `<div style="margin-bottom:20px">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border)">${escC(cat)}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px">
+          ${groups[cat].map(item => {
+            const qty = item.quantity || 0;
+            const reorder = item.reorderLevel || 5;
+            const isOut = qty === 0;
+            const isLow = !isOut && qty <= reorder;
+            const qtyColor = isOut ? '#dc2626' : (isLow ? '#d97706' : '#166534');
+            const cardBorder = isOut ? '#fca5a5' : (isLow ? '#fcd34d' : 'var(--border)');
+            const cardBg    = isOut ? '#fff5f5' : (isLow ? '#fffdf0' : 'var(--off)');
+            const inputId = 'upd-qty-' + escC(item.itemId);
+            return `<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:${cardBg};border-radius:8px;border:1.5px solid ${cardBorder}">
               <div style="flex:1;min-width:0">
-                <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escC(item.itemName)}</div>
-                <div style="font-size:10px;color:var(--muted)">${escC(item.itemId)} · ${escC(item.unit)}</div>
+                <div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--navy)">${escC(item.itemName)}</div>
+                <div style="font-size:10px;color:var(--muted);margin-top:1px">${escC(item.unit)}</div>
               </div>
-              <input type="number" min="0" value="${item.quantity}" data-item-id="${escC(item.itemId)}" data-centre="${escC(centre)}"
-                style="width:72px;padding:5px 8px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;text-align:center"
-                onchange="saveStockQty(this)">
-            </div>
-          `).join('')}
+              <div style="display:flex;align-items:center;gap:0">
+                <button onclick="updStockAdj('${escC(item.itemId)}','${escC(centre)}',-1)"
+                  style="width:26px;height:28px;border:1.5px solid var(--border);border-right:none;border-radius:6px 0 0 6px;background:#fff;font-size:15px;font-weight:700;color:#374151;cursor:pointer;line-height:1;padding:0">−</button>
+                <input type="number" min="0" id="${inputId}" value="${qty}"
+                  data-item-id="${escC(item.itemId)}" data-centre="${escC(centre)}" data-reorder="${reorder}"
+                  style="width:52px;height:28px;border:1.5px solid var(--border);border-radius:0;font-size:13px;font-weight:700;text-align:center;color:${qtyColor};padding:0;-moz-appearance:textfield"
+                  onchange="saveStockQty(this)">
+                <button onclick="updStockAdj('${escC(item.itemId)}','${escC(centre)}',+1)"
+                  style="width:26px;height:28px;border:1.5px solid var(--border);border-left:none;border-radius:0 6px 6px 0;background:#fff;font-size:15px;font-weight:700;color:#374151;cursor:pointer;line-height:1;padding:0">+</button>
+              </div>
+            </div>`;
+          }).join('')}
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   });
 }
 
@@ -10356,6 +10386,19 @@ function saveStockQty(input) {
       setTimeout(() => { input.style.borderColor = 'var(--border)'; }, 1500);
     }
   });
+}
+
+function updStockAdj(itemId, centre, delta) {
+  var inp = document.getElementById('upd-qty-' + itemId);
+  if (!inp) return;
+  var newQty = Math.max(0, (parseInt(inp.value) || 0) + delta);
+  inp.value = newQty;
+  // Recolour
+  var reorder = parseInt(inp.getAttribute('data-reorder')) || 5;
+  inp.style.color = newQty === 0 ? '#dc2626' : (newQty <= reorder ? '#d97706' : '#166534');
+  // Debounced save
+  clearTimeout(inp._saveTimer);
+  inp._saveTimer = setTimeout(function() { saveStockQty(inp); }, 400);
 }
 
 /* ── Item Master (Super Admin / Sunil) ── */

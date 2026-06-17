@@ -2986,16 +2986,27 @@ window.gasGet = (function () {
     GET('students', 'batch_code=eq.' + encodeURIComponent(bc), function(e, students) {
       if (e) { cb(null, { status: 'error' }); return; }
       GET('attendance_feedback', 'session_code=eq.' + encodeURIComponent(sc), function(e2, atts) {
+        // Normalize student_id from attendance_feedback (trim + uppercase) to match any
+        // formatting inconsistencies in existing records.
         var attMap = {};
-        (atts || []).forEach(function(a) { attMap[a.student_id] = a; });
+        (atts || []).forEach(function(a) {
+          var key = String(a.student_id || '').trim().toUpperCase();
+          if (key) attMap[key] = a;
+        });
         var presentSet = new Set(Object.keys(attMap).filter(function(id) { return attMap[id].attendance !== 'Absent'; }));
-        var present = (students || []).filter(function(s) { return presentSet.has(s.student_id); }).map(function(s) {
-          var a = attMap[s.student_id] || {};
+        // Also normalize student_id from students table for the lookup
+        var present = (students || []).filter(function(s) {
+          return presentSet.has(String(s.student_id || '').trim().toUpperCase());
+        }).map(function(s) {
+          var key = String(s.student_id || '').trim().toUpperCase();
+          var a = attMap[key] || {};
           return { enrollmentNo: s.student_id, name: s.name,
             instructorVerified: a.instructor_verified || false,
             instructorOverride: a.instructor_override || null };
         });
-        var absent = (students || []).filter(function(s) { return !presentSet.has(s.student_id); }).map(function(s) {
+        var absent = (students || []).filter(function(s) {
+          return !presentSet.has(String(s.student_id || '').trim().toUpperCase());
+        }).map(function(s) {
           return { enrollmentNo: s.student_id, name: s.name };
         });
         // Count truly present = not overridden to absent

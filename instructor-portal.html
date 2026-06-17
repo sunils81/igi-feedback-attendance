@@ -7457,7 +7457,7 @@ function renderEligibility(batches) {
       html += '<thead><tr style="background:#0D1B2E;color:#C9A84C;">';
       html += '<th style="padding:7px 10px;text-align:left;border-radius:6px 0 0 0;">Student</th>';
       html += '<th style="padding:7px 10px;text-align:center;">Attendance<br><span style="font-size:9px;font-weight:400;opacity:0.8;">advisory ≥75%</span></th>';
-      html += '<th style="padding:7px 10px;text-align:center;">Weekly Avg<br><span style="font-size:10px;font-weight:400;">Manual + Online</span></th>';
+      html += '<th style="padding:7px 10px;text-align:center;">Weekly Tests<br><span style="font-size:10px;font-weight:400;">each must be ≥60%</span></th>';
       html += '<th style="padding:7px 10px;text-align:center;">Final Exam</th>';
       html += '<th style="padding:7px 10px;text-align:center;border-radius:0 6px 0 0;">Status</th>';
       html += '</tr></thead><tbody>';
@@ -7482,9 +7482,33 @@ function renderEligibility(batches) {
         }
         html += '</td>';
 
-        // Weekly avg
-        const wVal = s.weeklyAvg && s.weeklyAvg.value !== null ? s.weeklyAvg.value + '%' : null;
-        html += '<td style="padding:7px 10px;text-align:center;">' + badge(wVal, s.weeklyAvg && s.weeklyAvg.pass, '') + '</td>';
+        // Weekly tests — per-slot rows
+        html += '<td style="padding:6px 10px;vertical-align:middle;">';
+        const wTests = s.weeklyTests || [];
+        if (!wTests.length) {
+          // Fall back to old aggregate if weeklyTests not present
+          const wVal = s.weeklyAvg && s.weeklyAvg.value !== null ? s.weeklyAvg.value + '%' : null;
+          html += '<div style="text-align:center;">' + badge(wVal, s.weeklyAvg && s.weeklyAvg.pass, '') + '</div>';
+        } else {
+          wTests.forEach(function(t) {
+            var label = 'WT' + t.slot + (t.mandatory ? '' : '<span style="color:#9ca3af;font-size:9px;"> opt</span>');
+            var scoreSpan;
+            if (!t.conducted) {
+              scoreSpan = '<span style="color:#9ca3af;font-size:10px;">—</span>';
+            } else if (t.notTaken) {
+              scoreSpan = '<span style="color:#dc2626;font-weight:700;font-size:10px;">✗</span>';
+            } else {
+              var bg = t.pass ? '#dcfce7' : '#fee2e2';
+              var fc = t.pass ? '#166534' : '#991b1b';
+              scoreSpan = '<span style="background:'+bg+';color:'+fc+';font-weight:700;font-size:10px;padding:1px 5px;border-radius:8px;">'+t.pct+'%</span>';
+            }
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:2px;">'
+              + '<span style="font-size:10px;color:#6b7280;font-weight:600;white-space:nowrap;">'+label+'</span>'
+              + scoreSpan
+              + '</div>';
+          });
+        }
+        html += '</td>';
 
         // Final exam
         const fVal = s.finalExam && s.finalExam.value !== null ? s.finalExam.value + '%' : null;
@@ -7493,12 +7517,15 @@ function renderEligibility(batches) {
         // Overall
         if (s.eligible) {
           html += '<td style="padding:7px 10px;text-align:center;"><span style="background:#0D1B2E;color:#C9A84C;font-weight:700;padding:3px 10px;border-radius:12px;font-size:11px;">✓ Eligible</span></td>';
-        } else if (s.weeklyAvg && s.weeklyAvg.value === null && s.finalExam && s.finalExam.value === null) {
+        } else if ((!s.weeklyAvg || s.weeklyAvg.value === null) && (!s.finalExam || s.finalExam.value === null)) {
           html += '<td style="padding:7px 10px;text-align:center;"><span style="' + pendStyle + '">In Progress</span></td>';
         } else {
           const missing = [];
           // Attendance is advisory — only marks criteria shown as blocking
-          if (!s.weeklyAvg || !s.weeklyAvg.pass) missing.push('Weekly');
+          if (!s.weeklyAvg || !s.weeklyAvg.pass) {
+            const failedSlots = (s.weeklyTests || []).filter(function(t){ return t.mandatory && (!t.pass || t.notTaken); });
+            missing.push(failedSlots.length ? 'WT' + failedSlots.map(function(t){return t.slot;}).join('/') : 'Weekly');
+          }
           if (!s.finalExam || !s.finalExam.pass) missing.push('Final');
           html += '<td style="padding:7px 10px;text-align:center;"><span style="' + failStyle + '">✗ ' + missing.join(', ') + '</span></td>';
         }

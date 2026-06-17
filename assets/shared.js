@@ -2705,40 +2705,95 @@ window.gasGet = (function () {
       var assessMap = {};
       assessments.forEach(function(a) { assessMap[a.assessment_id] = a; });
 
-      var marksByBatch = {};
-      marks.forEach(function(m) {
-        var a = assessMap[m.assessment_id];
-        if (!a) return;
-        var bc = a.batch_code.toUpperCase();
-        if (!marksByBatch[bc]) marksByBatch[bc] = { weeklyTotal: 0, weeklyMax: 0, finalObt: 0, finalMax: 0 };
-        var s = marksByBatch[bc];
-        var ttype = (a.test_type || '').toLowerCase();
-        if (ttype.indexOf('final') !== -1) {
-          s.finalObt += parseFloat(m.marks || 0);
-          s.finalMax += parseFloat(a.max_marks || 100);
-        } else {
-          s.weeklyTotal += parseFloat(m.marks || 0);
-          s.weeklyMax   += parseFloat(a.max_marks || 100);
-        }
-      });
+      // Build a marks lookup: assessment_id → mark row
+      var marksMap = {};
+      marks.forEach(function(m) { marksMap[m.assessment_id] = m; });
 
       var rows = enrollments.map(function(e) {
         var bc = e.batch_code.toUpperCase();
         var b = batchMap[e.batch_code] || {};
         var att = attByBatch[bc] || { total: 0, present: 0 };
-        var sc = marksByBatch[bc] || { weeklyTotal: 0, weeklyMax: 0, finalObt: 0, finalMax: 0 };
-        
-        var attPct    = att.total    > 0 ? Math.round(100 * att.present    / att.total)    : null;
-        var weeklyAvg = sc.weeklyMax > 0 ? Math.round(100 * sc.weeklyTotal / sc.weeklyMax) : null;
-        var finalPct  = sc.finalMax  > 0 ? Math.round(100 * sc.finalObt   / sc.finalMax)  : null;
-        // Guard against NaN (bad data in marks fields)
-        if (attPct    !== null && isNaN(attPct))    attPct    = null;
-        if (weeklyAvg !== null && isNaN(weeklyAvg)) weeklyAvg = null;
-        if (finalPct  !== null && isNaN(finalPct))  finalPct  = null;
-        
+
+        // ── Course-type slot rules ──────────────────────────────────────
+        // JewelPad: WT1 & WT2 mandatory, WT3+ optional
+        // All others: WT1, WT2, WT3 mandatory, WT4+ optional
+        var isJewelPad = (b.course || '').toLowerCase().indexOf('jewelpad') !== -1;
+        var mandatoryCount = isJewelPad ? 2 : 3;
+
+        // ── Separate weekly vs final assessments for this batch ─────────
+        var batchAssessments = assessments.filter(function(a) {
+          return (a.batch_code || '').toUpperCase() === bc;
+        });
+        var weeklyAssessments = batchAssessments
+          .filter(function(a) { return (a.test_type || '').toLowerCase().indexOf('weekly') !== -1; })
+          .sort(function(a, b) { return new Date(a.held_on || 0) - new Date(b.held_on || 0); });
+        var finalAssessments = batchAssessments
+          .filter(function(a) { return (a.test_type || '').toLowerCase().indexOf('final') !== -1; });
+
+        // ── Build per-slot weekly test array ────────────────────────────
+        var weeklyTests = weeklyAssessments.map(function(a, idx) {
+          var slotNo = idx + 1;
+          var mandatory = slotNo <= mandatoryCount;
+          var markRow = marksMap[a.assessment_id];
+          var marksObt = markRow ? parseFloat(markRow.marks || 0) : null;
+          var maxMarks = parseFloat(a.max_marks || 100);
+          var pct = (marksObt !== null && maxMarks > 0) ? Math.round(100 * marksObt / maxMarks) : null;
+          if (pct !== null && isNaN(pct)) pct = null;
+          return {
+            slot:      slotNo,
+            testName:  a.test_name || ('Weekly Test ' + slotNo),
+            conducted: true,
+            mandatory: mandatory,
+            marksObt:  marksObt,
+            maxMarks:  maxMarks,
+            pct:       pct,
+            pass:      pct !== null && pct >= 60,
+            notTaken:  marksObt === null
+          };
+        });
+
+        // Add mandatory slots not yet conducted (so UI shows "Not yet conducted")
+        for (var slot = weeklyTests.length + 1; slot <= mandatoryCount; slot++) {
+          weeklyTests.push({
+            slot:      slot,
+            testName:  'Weekly Test ' + slot,
+            conducted: false,
+            mandatory: true,
+            marksObt:  null,
+            maxMarks:  100,
+            pct:       null,
+            pass:      false,
+            notTaken:  true
+          });
+        }
+
+        // ── Weekly pass: average of scored mandatory tests ≥ 60% ────────
+        var scoredMandatory = weeklyTests.filter(function(t) { return t.mandatory && t.pct !== null; });
+        var weeklyAvgVal = null;
+        if (scoredMandatory.length > 0) {
+          weeklyAvgVal = Math.round(
+            scoredMandatory.reduce(function(sum, t) { return sum + t.pct; }, 0) / scoredMandatory.length
+          );
+        }
+        var weeklyPass = weeklyAvgVal !== null && weeklyAvgVal >= 60;
+
+        // ── Final exam ──────────────────────────────────────────────────
+        var finalObt = 0, finalMax = 0;
+        finalAssessments.forEach(function(a) {
+          var markRow = marksMap[a.assessment_id];
+          if (markRow) {
+            finalObt += parseFloat(markRow.marks || 0);
+            finalMax += parseFloat(a.max_marks || 100);
+          }
+        });
+        var finalPct = finalMax > 0 ? Math.round(100 * finalObt / finalMax) : null;
+        if (finalPct !== null && isNaN(finalPct)) finalPct = null;
+        var finalPass = finalPct !== null && finalPct >= 60;
+
+        // ── Attendance ──────────────────────────────────────────────────
+        var attPct = att.total > 0 ? Math.round(100 * att.present / att.total) : null;
+        if (attPct !== null && isNaN(attPct)) attPct = null;
         var attPass = attPct != null && attPct >= 75;
-        var weeklyPass = weeklyAvg != null && weeklyAvg >= 60;
-        var finalPass = finalPct != null && finalPct >= 60;
 
         var hodStatus = hodMap[bc] || '';
         var eligible = (weeklyPass && finalPass) || (hodStatus === 'Approved');
@@ -2754,8 +2809,9 @@ window.gasGet = (function () {
             pct: attPct,
             pass: attPass
           },
-          weeklyAvg: {
-            value: weeklyAvg,
+          weeklyTests: weeklyTests,          // NEW: per-slot array
+          weeklyAvg: {                        // kept for backward compat (instructor portal)
+            value: weeklyAvgVal,
             pass: weeklyPass
           },
           finalExam: {

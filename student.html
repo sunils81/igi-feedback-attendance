@@ -3192,48 +3192,84 @@ function loadStudentDiploma() {
 
     var html = '<div style="padding:4px 0 12px;">' +
       '<h3 style="font-size:15px;font-weight:800;color:#0D1B2E;margin:0 0 4px;">🎓 Diploma Eligibility</h3>' +
-      '<p style="font-size:11px;color:#6b7280;margin:0 0 14px;">Criteria: weekly test average ≥ 60% and final exam ≥ 60%. Attendance (≥75%) is advisory.</p>' +
+      '<p style="font-size:11px;color:#6b7280;margin:0 0 14px;">Each weekly test and the final exam must be ≥ 60%. Attendance (≥75%) is advisory.</p>' +
     '</div>';
 
     rows.forEach(function(row) {
-      var attPct     = row.attendancePct  != null ? row.attendancePct  : (row.attendance    ? row.attendance.pct    : null);
-      var weeklyVal  = row.weeklyAvg      != null ? row.weeklyAvg      : (row.weeklyAvgObj  ? row.weeklyAvgObj.value : null);
-      var finalVal   = row.finalAvg       != null ? row.finalAvg       : (row.finalExam     ? row.finalExam.value   : null);
-      var eligible   = row.eligible;
-      var released   = row.diplomaStatus === 'Released';
+      var attPct   = row.attendance ? row.attendance.pct : null;
+      var finalVal = row.finalExam  ? row.finalExam.value : null;
+      var weeklyTests = row.weeklyTests || [];
+      var eligible = row.eligible;
+      var released = row.diplomaStatus === 'Released';
 
-      var attStr    = attPct    != null ? Math.round(attPct)   + '%' : '—';
-      var weeklyStr = weeklyVal != null ? Math.round(weeklyVal)+ '%' : '—';
-      var finalStr  = finalVal  != null ? Math.round(finalVal) + '%' : '—';
-
-      var attPass    = attPct    != null && attPct    >= 75;
-      var weeklyPass = weeklyVal != null && weeklyVal >= 60;
-      var finalPass  = finalVal  != null && finalVal  >= 60;
+      var attPass  = attPct   != null && attPct  >= 75;
+      var finalPass = finalVal != null && finalVal >= 60;
 
       var G = '#059669', R = '#dc2626', A = '#b45309';
-      var passStyle = 'color:'+G+';font-weight:700;';
-      var failStyle = 'color:'+R+';font-weight:700;';
-      var warnStyle = 'color:'+A+';font-weight:700;';
 
-      var attBadge    = attPass    ? '<span style="'+passStyle+'">✅ '+attStr   +'</span>' : '<span style="'+warnStyle+'">⚠ '+attStr+'</span>';
-      var weeklyBadge = weeklyVal != null
-        ? (weeklyPass ? '<span style="'+passStyle+'">✅ '+weeklyStr+'</span>' : '<span style="'+failStyle+'">✗ '+weeklyStr+'</span>')
-        : '<span style="color:#9ca3af;">—</span>';
-      var finalBadge  = finalVal != null
-        ? (finalPass  ? '<span style="'+passStyle+'">✅ '+finalStr +'</span>' : '<span style="'+failStyle+'">✗ '+finalStr +'</span>')
+      // Attendance badge
+      var attStr = attPct != null ? Math.round(attPct) + '%' : '—';
+      var attBadge = attPct != null
+        ? (attPass
+            ? '<span style="color:'+G+';font-weight:700;">✅ '+attStr+'</span>'
+            : '<span style="color:'+A+';font-weight:700;">⚠ '+attStr+'</span>')
         : '<span style="color:#9ca3af;">—</span>';
 
+      // Final exam badge
+      var finalStr = finalVal != null ? Math.round(finalVal) + '%' : '—';
+      var finalBadge = finalVal != null
+        ? (finalPass
+            ? '<span style="color:'+G+';font-weight:700;">✅ '+finalStr+'</span>'
+            : '<span style="color:'+R+';font-weight:700;">✗ '+finalStr+'</span>')
+        : '<span style="color:#9ca3af;">—</span>';
+
+      // Weekly tests rows
+      var weeklyRowsHtml = '';
+      weeklyTests.forEach(function(t) {
+        var label = t.testName || ('Weekly Test ' + t.slot);
+        var optTag = (!t.mandatory) ? ' <span style="color:#9ca3af;font-size:9px;font-style:italic;">(optional)</span>' : '';
+        var scoreHtml;
+        if (!t.conducted) {
+          scoreHtml = '<span style="color:#9ca3af;font-size:11px;">Not yet conducted</span>';
+        } else if (t.notTaken) {
+          scoreHtml = '<span style="color:'+R+';font-weight:700;font-size:11px;">✗ Not submitted</span>';
+        } else {
+          var pctStr = t.pct + '%';
+          scoreHtml = t.pass
+            ? '<span style="color:'+G+';font-weight:700;font-size:12px;">✅ '+pctStr+'</span>'
+            : '<span style="color:'+R+';font-weight:700;font-size:12px;">✗ '+pctStr+'</span>';
+          scoreHtml += '<span style="color:#9ca3af;font-size:10px;margin-left:4px;">('+t.marksObt+'/'+t.maxMarks+')</span>';
+        }
+        weeklyRowsHtml +=
+          '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f3f4f6;">' +
+            '<div style="font-size:11px;font-weight:600;color:#374151;">'+label+optTag+'</div>' +
+            '<div>'+scoreHtml+'</div>' +
+          '</div>';
+      });
+      if (!weeklyRowsHtml) {
+        weeklyRowsHtml = '<div style="font-size:11px;color:#9ca3af;padding:6px 0;">No weekly tests recorded yet</div>';
+      }
+
+      // Status section
+      var weeklyAvgVal = row.weeklyAvg ? row.weeklyAvg.value : null;
+      var weeklyPass   = row.weeklyAvg ? row.weeklyAvg.pass  : false;
       var statusHtml, statusBg;
       if (released) {
-        statusHtml = '<span style="color:#059669;font-weight:800;font-size:13px;">🎓 Diploma Released</span>';
+        statusHtml = '<span style="color:'+G+';font-weight:800;font-size:13px;">🎓 Diploma Released</span>';
         statusBg   = '#f0fdf4';
       } else if (eligible) {
-        statusHtml = '<span style="color:#059669;font-weight:800;font-size:13px;">✅ Eligible — awaiting release</span>';
+        statusHtml = '<span style="color:'+G+';font-weight:800;font-size:13px;">✅ Eligible — awaiting release</span>';
         statusBg   = '#f0fdf4';
       } else {
         var missing = [];
-        if (!weeklyPass) missing.push('Weekly avg ' + weeklyStr + ' (need ≥60%)');
-        if (!finalPass)  missing.push('Final exam ' + finalStr  + ' (need ≥60%)');
+        if (!weeklyPass) {
+          var failedTests = weeklyTests.filter(function(t) { return t.mandatory && (!t.pass || t.notTaken); });
+          var failDesc = failedTests.length
+            ? failedTests.map(function(t) { return 'WT'+t.slot+(t.pct!=null?' '+t.pct+'%':''); }).join(', ')
+            : 'weekly tests';
+          missing.push('Need ≥60% in ' + failDesc);
+        }
+        if (!finalPass) missing.push('Final exam ' + finalStr + ' (need ≥60%)');
         if (!missing.length) missing.push('Assessment in progress');
         statusHtml = '<span style="color:#dc2626;font-weight:800;font-size:13px;">⏳ Not yet eligible</span>' +
           '<div style="font-size:11px;color:#6b7280;margin-top:4px;">' + missing.join(' &nbsp;·&nbsp; ') + '</div>';
@@ -3244,19 +3280,24 @@ function loadStudentDiploma() {
         '<div style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">' +
           (row.course || '') + (row.batchCode ? ' &nbsp;·&nbsp; ' + row.batchCode : '') +
         '</div>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">' +
+        // Top row: Attendance + Final Exam
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">' +
           '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
             '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">ATTENDANCE<br><span style="font-size:9px;font-weight:400;opacity:.8">advisory ≥75%</span></div>' +
             '<div style="font-size:15px;">' + attBadge + '</div>' +
-          '</div>' +
-          '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
-            '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">WEEKLY AVG<br><span style="font-size:9px;font-weight:400;opacity:.8">must be ≥60%</span></div>' +
-            '<div style="font-size:15px;">' + weeklyBadge + '</div>' +
+            (row.attendance && row.attendance.total > 0
+              ? '<div style="font-size:10px;color:#9ca3af;margin-top:3px;">'+row.attendance.attended+'/'+row.attendance.total+' sessions</div>'
+              : '') +
           '</div>' +
           '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
             '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">FINAL EXAM<br><span style="font-size:9px;font-weight:400;opacity:.8">must be ≥60%</span></div>' +
             '<div style="font-size:15px;">' + finalBadge + '</div>' +
           '</div>' +
+        '</div>' +
+        // Weekly tests section
+        '<div style="background:#f9fafb;border-radius:8px;padding:10px 12px;margin-bottom:10px;">' +
+          '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px;">WEEKLY TESTS &nbsp;<span style="font-weight:400;text-transform:none;letter-spacing:0;">(each must be ≥60%)</span></div>' +
+          weeklyRowsHtml +
         '</div>' +
         '<div style="border-top:1px solid #e5e7eb;padding-top:10px;">' + statusHtml + '</div>' +
       '</div>';

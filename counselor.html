@@ -2405,33 +2405,20 @@
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
           <div>
             <h3 style="margin:0;font-size:15px">🏭 Fixed Assets Register</h3>
-            <div style="font-size:12px;color:#6b7280;margin-top:3px">Track condition of lab equipment at your centre.</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:3px">Track condition of lab equipment at each centre.</div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <select id="fx-cn-centre-select" onchange="fxCnRenderTable()" style="padding:6px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:12px;background:var(--white)">
-              <!-- Populated from allowedCentres on init -->
+            <select id="fx-cn-centre-select" onchange="fxCnLoadAndRender()" style="padding:6px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:12px;background:var(--white)">
+              <!-- Populated on init -->
             </select>
-            <button onclick="fxCnSaveAssets()" style="padding:6px 14px;background:var(--navy);color:var(--gold);border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">💾 Save</button>
+            <button id="fx-cn-save-btn" onclick="fxCnSaveAll()" style="padding:6px 14px;background:var(--navy);color:var(--gold);border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">💾 Save All</button>
             <button onclick="fxCnExportCsv()" style="padding:6px 14px;background:var(--white);color:var(--navy);border:1.5px solid var(--border);border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">📥 CSV</button>
             <button onclick="window.print()" class="no-print" style="padding:6px 14px;background:var(--white);color:var(--navy);border:1.5px solid var(--border);border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">🖨️ Print</button>
           </div>
         </div>
         <div id="fx-cn-save-info" style="font-size:11px;color:#9ca3af;margin-bottom:10px"></div>
-        <div style="overflow-x:auto">
-          <table style="width:100%;border-collapse:collapse">
-            <thead>
-              <tr style="background:#f8fafc;border-bottom:2px solid #e5e7eb">
-                <th style="padding:8px 10px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;width:32px;text-align:center">#</th>
-                <th style="padding:8px 10px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;text-align:left">Asset / Equipment</th>
-                <th style="padding:8px 10px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;width:160px;text-align:center">Condition</th>
-                <th style="padding:8px 10px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;text-align:left">Notes</th>
-                <th style="padding:8px 10px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;width:110px;text-align:center">Last Updated</th>
-              </tr>
-            </thead>
-            <tbody id="fx-cn-assets-tbody">
-              <tr><td colspan="5" style="text-align:center;padding:24px;color:#9ca3af">Loading…</td></tr>
-            </tbody>
-          </table>
+        <div id="fx-cn-content">
+          <div class="spinner-wrap"><div class="spinner"></div><p>Loading fixed assets…</p></div>
         </div>
       </div>
 
@@ -8782,7 +8769,6 @@ function switchInventorySubTab(subTabId) {
     invLoadAnalytics();
   } else if (subTabId === 'inv-fixedassets') {
     fxCnInitCentreSelect();
-    fxCnRenderTable();
   }
 }
 
@@ -8793,119 +8779,327 @@ var IGI_FX_ASSETS = [
   'Big Assortment Pad','Small Assortment Pad','PC / Keyboard / Mouse','CAD PC',
   'White Board','Projector','Laser Pointer','Projector Screen'
 ];
-var FX_CONDITIONS    = ['Good','Fair','Needs Service','Missing'];
-var FX_COND_COLORS   = {
+var FX_CONDITIONS = ['Good','Fair','Needs Service','Missing'];
+var FX_COND_COLORS = {
   'Good':          {bg:'#d1fae5',color:'#065f46'},
   'Fair':          {bg:'#fef3c7',color:'#92400e'},
   'Needs Service': {bg:'#fee2e2',color:'#991b1b'},
   'Missing':       {bg:'#f3f4f6',color:'#6b7280'}
 };
 
-function fxLoadData() {
-  try { return JSON.parse(localStorage.getItem('igiFxAssets_v1') || '{}'); } catch(e) { return {}; }
-}
-function fxSaveData(data) { localStorage.setItem('igiFxAssets_v1', JSON.stringify(data)); }
+var _fxLastList = []; // cache last-loaded list for CSV export
 
 function fxCnInitCentreSelect() {
   var sel = document.getElementById('fx-cn-centre-select');
-  if (!sel || sel.options.length > 0) return;
-  var centres = (allowedCentres && allowedCentres.length) ? allowedCentres : (typeof CENTRES !== 'undefined' ? CENTRES : ['Mumbai']);
-  centres.forEach(function(c) {
-    var o = document.createElement('option');
-    o.value = c; o.textContent = c;
-    sel.appendChild(o);
+  if (!sel) return;
+  var isMumbaiAdmin = (counselorName === 'Bianca' || counselorName === 'Anuradha');
+  if (sel.options.length === 0) {
+    if (isMumbaiAdmin) {
+      var allOpt = document.createElement('option'); allOpt.value = ''; allOpt.textContent = 'All Centres';
+      sel.appendChild(allOpt);
+    }
+    var centres = (allowedCentres && allowedCentres.length) ? allowedCentres : (typeof CENTRES !== 'undefined' ? CENTRES : []);
+    centres.forEach(function(c) {
+      var o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o);
+    });
+    if (!isMumbaiAdmin) {
+      sel.value = (allowedCentres && allowedCentres[0]) || '';
+    }
+  }
+  fxCnLoadAndRender();
+}
+
+function fxCnLoadAndRender() {
+  var sel = document.getElementById('fx-cn-centre-select');
+  var centre = sel ? sel.value : '';
+  var isMumbaiAdmin = (counselorName === 'Bianca' || counselorName === 'Anuradha');
+  var content = document.getElementById('fx-cn-content');
+  var saveBtn = document.getElementById('fx-cn-save-btn');
+  var info    = document.getElementById('fx-cn-save-info');
+
+  if (content) content.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading fixed assets…</p></div>';
+  if (info) info.textContent = '';
+
+  gasGet({ action: 'getFixedAssets', centre: centre }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      if (content) content.innerHTML = '<p style="color:var(--red);padding:16px">Failed to load fixed assets. Make sure the <code>fixed_assets</code> table exists in Supabase.</p>';
+      return;
+    }
+    _fxLastList = d.list || [];
+    if (isMumbaiAdmin && !centre) {
+      // Matrix view: all centres × all assets
+      if (saveBtn) saveBtn.style.display = 'none';
+      renderFxMatrix(_fxLastList, content);
+    } else {
+      // Single-centre editable table
+      if (saveBtn) saveBtn.style.display = '';
+      renderFxSingleCentre(_fxLastList, centre || (allowedCentres && allowedCentres[0]) || '', content);
+    }
   });
 }
 
-function fxCnRenderTable() {
-  var sel = document.getElementById('fx-cn-centre-select');
-  var centre = sel ? sel.value : ((allowedCentres && allowedCentres[0]) || 'Mumbai');
-  var data = fxLoadData();
-  var cd   = data[centre] || {};
-  var today = new Date().toISOString().slice(0,10);
-  var tbody = document.getElementById('fx-cn-assets-tbody');
-  if (!tbody) return;
+function renderFxSingleCentre(list, centre, container) {
+  if (!container) return;
+  // Build map: assetName → row
+  var map = {};
+  list.forEach(function(r) { map[r.asset_name] = r; });
 
-  tbody.innerHTML = IGI_FX_ASSETS.map(function(asset, idx) {
-    var rec   = cd[asset] || {};
+  var html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">' +
+    '<thead><tr style="background:#f8fafc;border-bottom:2px solid #e5e7eb">' +
+    '<th style="padding:8px 10px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;width:32px;text-align:center">#</th>' +
+    '<th style="padding:8px 10px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;text-align:left">Asset / Equipment</th>' +
+    '<th style="padding:8px 10px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;width:160px;text-align:center">Condition</th>' +
+    '<th style="padding:8px 10px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;text-align:left">Notes</th>' +
+    '<th style="padding:8px 10px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;width:110px;text-align:center">Last Updated</th>' +
+    '</tr></thead><tbody>';
+
+  IGI_FX_ASSETS.forEach(function(asset, idx) {
+    var rec   = map[asset] || {};
     var cond  = rec.condition || 'Good';
     var notes = (rec.notes || '').replace(/"/g,'&quot;');
-    var updated = rec.updatedAt || '—';
-    var cc = FX_COND_COLORS[cond] || FX_COND_COLORS['Good'];
+    var updated = rec.updated_at || '—';
+    var cc    = FX_COND_COLORS[cond] || FX_COND_COLORS['Good'];
     var selOpts = FX_CONDITIONS.map(function(c) {
       return '<option value="'+c+'"'+(c===cond?' selected':'')+'>'+c+'</option>';
     }).join('');
-    return '<tr style="border-bottom:1px solid #f3f4f6">' +
+    html += '<tr style="border-bottom:1px solid #f3f4f6">' +
       '<td style="padding:8px 10px;text-align:center;font-size:11px;color:#9ca3af">'+(idx+1)+'</td>' +
-      '<td style="padding:8px 10px;font-weight:600;color:var(--navy)">'+asset+'</td>' +
+      '<td style="padding:8px 10px;font-weight:600;color:var(--navy)">'+escC(asset)+'</td>' +
       '<td style="padding:8px 10px;text-align:center">' +
-        '<select data-asset="'+asset+'" class="fx-cn-cond-sel" ' +
-          'style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;border:none;' +
-          'background:'+cc.bg+';color:'+cc.color+';cursor:pointer;outline:none">' +
-          selOpts +
-        '</select>' +
-      '</td>' +
+        '<select data-asset="'+escC(asset)+'" class="fx-cn-cond-sel" ' +
+          'style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;border:none;background:'+cc.bg+';color:'+cc.color+';cursor:pointer;outline:none">' +
+          selOpts + '</select></td>' +
       '<td style="padding:8px 10px">' +
-        '<input type="text" data-asset="'+asset+'" class="fx-cn-notes-inp" value="'+notes+'" ' +
-          'placeholder="Optional notes…" ' +
-          'style="width:100%;font-size:12px;border:1px solid var(--border);border-radius:4px;padding:3px 6px;box-sizing:border-box">' +
-      '</td>' +
-      '<td style="padding:8px 10px;text-align:center;font-size:11px;color:#6b7280">'+updated+'</td>' +
+        '<input type="text" data-asset="'+escC(asset)+'" class="fx-cn-notes-inp" value="'+notes+'" ' +
+          'placeholder="Optional notes…" style="width:100%;font-size:12px;border:1px solid var(--border);border-radius:4px;padding:3px 6px;box-sizing:border-box"></td>' +
+      '<td style="padding:8px 10px;text-align:center;font-size:11px;color:#6b7280">'+escC(updated)+'</td>' +
     '</tr>';
-  }).join('');
+  });
 
-  // Re-colour on change
-  document.querySelectorAll('.fx-cn-cond-sel').forEach(function(s) {
+  html += '</tbody></table></div>';
+  container.innerHTML = html;
+
+  // Re-colour dropdowns on change
+  container.querySelectorAll('.fx-cn-cond-sel').forEach(function(s) {
     s.addEventListener('change', function() {
       var cc = FX_COND_COLORS[this.value] || FX_COND_COLORS['Good'];
       this.style.background = cc.bg; this.style.color = cc.color;
     });
   });
 
-  var info = document.getElementById('fx-cn-save-info');
-  var saved = (data[centre] || {}).__savedAt;
-  if (info) info.textContent = saved ? 'Last saved: '+saved+' — '+centre : 'No saved data for '+centre+' yet. Make changes and click Save.';
+  // Store current centre for Save All
+  container.setAttribute('data-fx-centre', centre);
 }
 
-function fxCnSaveAssets() {
-  var sel = document.getElementById('fx-cn-centre-select');
-  var centre = sel ? sel.value : ((allowedCentres && allowedCentres[0]) || 'Mumbai');
-  var data = fxLoadData();
-  if (!data[centre]) data[centre] = {};
-  var today = new Date().toISOString().slice(0,10);
+function renderFxMatrix(list, container) {
+  if (!container) return;
 
-  document.querySelectorAll('.fx-cn-cond-sel').forEach(function(s) {
-    var a = s.getAttribute('data-asset');
-    if (!data[centre][a]) data[centre][a] = {};
-    data[centre][a].condition = s.value;
-    data[centre][a].updatedAt = today;
+  // Build map: assetName → { centreName → row }
+  var assetMap = {};
+  var centreSet = new Set();
+  list.forEach(function(r) {
+    if (!assetMap[r.asset_name]) assetMap[r.asset_name] = {};
+    assetMap[r.asset_name][r.centre] = r;
+    centreSet.add(r.centre);
   });
-  document.querySelectorAll('.fx-cn-notes-inp').forEach(function(inp) {
-    var a = inp.getAttribute('data-asset');
-    if (!data[centre][a]) data[centre][a] = {};
-    data[centre][a].notes = inp.value;
+
+  // Order centres by CENTRES constant
+  var centresOrdered = (typeof CENTRES !== 'undefined' ? CENTRES : []).filter(function(c) { return centreSet.has(c); });
+  centreSet.forEach(function(c) { if (centresOrdered.indexOf(c) === -1) centresOrdered.push(c); });
+
+  // Summary counts
+  var needsService = 0, missing = 0, fair = 0;
+  list.forEach(function(r) {
+    if (r.condition === 'Needs Service') needsService++;
+    else if (r.condition === 'Missing') missing++;
+    else if (r.condition === 'Fair') fair++;
   });
-  data[centre].__savedAt = new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-  fxSaveData(data);
-  showToast('Fixed assets saved for '+centre, 'success');
-  var info = document.getElementById('fx-cn-save-info');
-  if (info) info.textContent = 'Last saved: '+data[centre].__savedAt+' — '+centre;
+
+  var summaryHtml = '';
+  if (needsService || missing || fair) {
+    summaryHtml = '<div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">';
+    if (missing)      summaryHtml += '<div style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:8px;padding:5px 12px;font-size:12px;color:#6b7280;font-weight:700">⚫ '+missing+' Missing</div>';
+    if (needsService) summaryHtml += '<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:5px 12px;font-size:12px;color:#991b1b;font-weight:700">🔴 '+needsService+' Needs Service</div>';
+    if (fair)         summaryHtml += '<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:5px 12px;font-size:12px;color:#92400e;font-weight:700">🟡 '+fair+' Fair</div>';
+    summaryHtml += '<div style="font-size:11px;color:var(--muted);align-self:center;margin-left:4px">Click a cell to edit</div>';
+    summaryHtml += '</div>';
+  } else if (centresOrdered.length) {
+    summaryHtml = '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">All assets in Good condition · Click any cell to edit</div>';
+  }
+
+  var colCount = centresOrdered.length + 1; // Asset + centres
+  var header = '<th style="padding:7px 10px;min-width:160px;text-align:left;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase">Asset</th>';
+  centresOrdered.forEach(function(c) {
+    header += '<th style="padding:7px 10px;text-align:center;min-width:90px;white-space:nowrap;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase">'+escC(c)+'</th>';
+  });
+
+  var rows = '';
+  IGI_FX_ASSETS.forEach(function(asset) {
+    var rowWorst = 'Good';
+    centresOrdered.forEach(function(c) {
+      var rec = (assetMap[asset] || {})[c];
+      var cond = rec ? rec.condition : 'Good';
+      if (cond === 'Missing' || rowWorst === 'Missing') rowWorst = 'Missing';
+      else if (cond === 'Needs Service' || rowWorst === 'Needs Service') rowWorst = 'Needs Service';
+      else if (cond === 'Fair' || rowWorst === 'Fair') rowWorst = 'Fair';
+    });
+    var nameColor = rowWorst === 'Missing' ? '#6b7280' : (rowWorst === 'Needs Service' ? '#991b1b' : (rowWorst === 'Fair' ? '#92400e' : '#0D1B2E'));
+
+    rows += '<tr>';
+    rows += '<td style="padding:7px 10px;font-weight:600;font-size:12px;color:'+nameColor+'">'+escC(asset)+'</td>';
+
+    centresOrdered.forEach(function(c) {
+      var rec  = (assetMap[asset] || {})[c];
+      var cond = rec ? rec.condition : null;
+      var cellId = 'fx-mx-cell-' + escC(asset).replace(/[^a-zA-Z0-9]/g,'-') + '-' + escC(c).replace(/[^a-zA-Z0-9]/g,'-');
+      if (!cond) {
+        // No record yet — show a neutral clickable cell
+        rows += '<td id="'+cellId+'" style="padding:6px 8px;text-align:center;cursor:pointer;color:#d1d5db" ' +
+          'onclick="fxMxEdit(\''+escC(asset)+'\',\''+escC(c)+'\',\'Good\',\'\')" title="Set condition for '+escC(asset)+' @ '+escC(c)+'">—</td>';
+      } else {
+        var cc = FX_COND_COLORS[cond] || FX_COND_COLORS['Good'];
+        var notes = rec.notes || '';
+        rows += '<td id="'+cellId+'" style="padding:5px 8px;text-align:center;background:'+cc.bg+';cursor:pointer" ' +
+          'onclick="fxMxEdit(\''+escC(asset)+'\',\''+escC(c)+'\',\''+cond+'\',\''+notes.replace(/'/g,"\\'")+'\')" ' +
+          'title="'+(notes ? notes+' · ' : '')+'Updated: '+(rec.updated_at||'—')+'">' +
+          '<span style="font-size:11px;font-weight:700;color:'+cc.color+';white-space:nowrap">'+escC(cond)+'</span>' +
+          '</td>';
+      }
+    });
+    rows += '</tr>';
+  });
+
+  var html = summaryHtml +
+    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">' +
+    '<thead><tr style="background:#f8fafc;border-bottom:2px solid #e5e7eb">'+header+'</tr></thead>' +
+    '<tbody>'+rows+'</tbody></table></div>';
+
+  container.innerHTML = html;
+}
+
+function fxMxEdit(assetName, centre, currentCond, currentNotes) {
+  var cellId = 'fx-mx-cell-' + assetName.replace(/[^a-zA-Z0-9]/g,'-') + '-' + centre.replace(/[^a-zA-Z0-9]/g,'-');
+  var cell = document.getElementById(cellId);
+  if (!cell || cell.querySelector('select')) return;
+
+  cell.setAttribute('data-orig-cond', currentCond);
+  cell.setAttribute('data-orig-notes', currentNotes);
+  cell.style.cursor = 'default';
+  cell.onclick = null;
+
+  var selOpts = FX_CONDITIONS.map(function(c) {
+    return '<option value="'+c+'"'+(c===currentCond?' selected':'')+'>'+c+'</option>';
+  }).join('');
+  var safeName  = assetName.replace(/'/g,"\\'");
+  var safeCentre = centre.replace(/'/g,"\\'");
+
+  cell.innerHTML =
+    '<div style="padding:2px">' +
+    '<select id="fx-mx-sel-'+cellId+'" style="width:100%;font-size:10px;border:1.5px solid #6366f1;border-radius:4px;padding:2px 4px;margin-bottom:3px">'+selOpts+'</select>' +
+    '<input type="text" id="fx-mx-notes-'+cellId+'" value="'+currentNotes.replace(/"/g,'&quot;')+'" placeholder="Notes…" ' +
+      'style="width:100%;font-size:9px;border:1px solid #d1d5db;border-radius:3px;padding:1px 4px;box-sizing:border-box;margin-bottom:3px">' +
+    '<div style="display:flex;gap:2px;justify-content:center">' +
+    '<button class="btn btn-xs" style="font-size:9px;padding:1px 7px;background:#16a34a;border-color:#16a34a;color:#fff" ' +
+      'onclick="fxMxSave(\''+safeName+'\',\''+safeCentre+'\',\''+cellId+'\')">✓</button>' +
+    '<button class="btn btn-outline btn-xs" style="font-size:9px;padding:1px 6px" ' +
+      'onclick="fxMxCancel(\''+cellId+'\',\''+safeCentre+'\')">✕</button>' +
+    '</div></div>';
+}
+
+function fxMxSave(assetName, centre, cellId) {
+  var selEl   = document.getElementById('fx-mx-sel-'+cellId);
+  var notesEl = document.getElementById('fx-mx-notes-'+cellId);
+  if (!selEl) return;
+  var cond  = selEl.value;
+  var notes = notesEl ? notesEl.value : '';
+
+  gasGet({ action: 'upsertFixedAsset', centre: centre, assetName: assetName,
+    condition: cond, notes: notes, updatedBy: counselorName },
+    function(e, d) {
+      if (e || !d || d.status !== 'ok') {
+        showToast('Could not save: ' + ((d && d.reason) || e || 'unknown'), 'error'); return;
+      }
+      // Redraw cell
+      var cell = document.getElementById(cellId);
+      if (cell) {
+        var cc = FX_COND_COLORS[cond] || FX_COND_COLORS['Good'];
+        cell.style.background = cc.bg;
+        cell.style.cursor = 'pointer';
+        cell.innerHTML = '<span style="font-size:11px;font-weight:700;color:'+cc.color+';white-space:nowrap">'+escC(cond)+'</span>';
+        cell.onclick = function() { fxMxEdit(assetName, centre, cond, notes); };
+        cell.title = (notes ? notes+' · ' : '') + 'Updated: '+new Date().toISOString().slice(0,10);
+      }
+      showToast('Saved ✓', 'success');
+    });
+}
+
+function fxMxCancel(cellId, centre) {
+  var cell = document.getElementById(cellId);
+  if (!cell) return;
+  var cond  = cell.getAttribute('data-orig-cond') || 'Good';
+  var notes = cell.getAttribute('data-orig-notes') || '';
+  var assetName = cellId.replace('fx-mx-cell-','').replace('-'+centre.replace(/[^a-zA-Z0-9]/g,'-'),'').replace(/-/g,' ');
+  var cc = FX_COND_COLORS[cond] || FX_COND_COLORS['Good'];
+  cell.style.cursor = 'pointer';
+  cell.style.background = cond ? cc.bg : '';
+  cell.innerHTML = cond ? '<span style="font-size:11px;font-weight:700;color:'+cc.color+';white-space:nowrap">'+escC(cond)+'</span>' : '—';
+  // Restore click — reload will fix assetName correctly
+  fxCnLoadAndRender();
+}
+
+function fxCnSaveAll() {
+  var content = document.getElementById('fx-cn-content');
+  var centre  = content ? content.getAttribute('data-fx-centre') : '';
+  if (!centre) { showToast('Please select a centre first', 'error'); return; }
+
+  var rows = [];
+  var sels = document.querySelectorAll('.fx-cn-cond-sel');
+  var inps = document.querySelectorAll('.fx-cn-notes-inp');
+  var noteMap = {};
+  inps.forEach(function(inp) { noteMap[inp.getAttribute('data-asset')] = inp.value; });
+
+  sels.forEach(function(s) {
+    rows.push({ assetName: s.getAttribute('data-asset'), condition: s.value, notes: noteMap[s.getAttribute('data-asset')] || '' });
+  });
+
+  if (!rows.length) { showToast('Nothing to save', 'error'); return; }
+
+  var saveBtn = document.getElementById('fx-cn-save-btn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+
+  var pending = rows.length;
+  var errors = 0;
+  rows.forEach(function(r) {
+    gasGet({ action: 'upsertFixedAsset', centre: centre, assetName: r.assetName,
+      condition: r.condition, notes: r.notes, updatedBy: counselorName },
+      function(e, d) {
+        if (e || !d || d.status !== 'ok') errors++;
+        pending--;
+        if (pending === 0) {
+          if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Save All'; }
+          var info = document.getElementById('fx-cn-save-info');
+          if (errors) {
+            showToast(errors+' item(s) failed to save', 'error');
+          } else {
+            showToast('All assets saved for '+centre+' ✓', 'success');
+            if (info) info.textContent = 'Last saved: '+new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})+' — '+centre;
+          }
+        }
+      });
+  });
 }
 
 function fxCnExportCsv() {
   var sel = document.getElementById('fx-cn-centre-select');
-  var centre = sel ? sel.value : ((allowedCentres && allowedCentres[0]) || 'Mumbai');
-  var data = fxLoadData();
-  var cd   = data[centre] || {};
-  var rows = ['Asset,Condition,Notes,Last Updated'];
-  IGI_FX_ASSETS.forEach(function(asset) {
-    var rec = cd[asset] || {};
-    rows.push([asset, rec.condition||'Good', (rec.notes||'').replace(/,/g,' '), rec.updatedAt||''].join(','));
+  var centre = sel ? sel.value : '';
+  var rows = ['Asset,Centre,Condition,Notes,Last Updated'];
+  _fxLastList.forEach(function(r) {
+    rows.push([r.asset_name, r.centre, r.condition||'Good', (r.notes||'').replace(/,/g,' '), r.updated_at||''].join(','));
   });
   var blob = new Blob([rows.join('\n')], {type:'text/csv'});
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'fixed-assets-'+centre.toLowerCase()+'-'+new Date().toISOString().slice(0,10)+'.csv';
+  a.download = 'fixed-assets-'+(centre||'all')+'-'+new Date().toISOString().slice(0,10)+'.csv';
   a.click();
 }
 // ── End Fixed Assets ──────────────────────────────────────────────────────────

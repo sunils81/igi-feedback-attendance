@@ -2503,6 +2503,41 @@ window.gasGet = (function () {
     });
   }
 
+  /* getFixedAssets — fetch all rows for a centre (or all if centre empty) */
+  function h_getFixedAssets(p, cb) {
+    var qs = p.centre ? 'centre=eq.' + encodeURIComponent(p.centre) + '&order=asset_name.asc'
+                      : 'order=asset_name.asc';
+    GET('fixed_assets', qs, function(e, rows) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      cb(null, { status: 'ok', list: rows || [] });
+    });
+  }
+
+  /* upsertFixedAsset — insert or update a single asset record */
+  function h_upsertFixedAsset(p, cb) {
+    var centre    = String(p.centre    || '').trim();
+    var assetName = String(p.assetName || '').trim();
+    var condition = String(p.condition || 'Good').trim();
+    var notes     = String(p.notes     || '').trim();
+    var updatedBy = String(p.updatedBy || '').trim();
+    if (!centre || !assetName) {
+      cb(null, { status: 'error', reason: 'Missing centre or assetName' }); return;
+    }
+    var today = new Date().toISOString().slice(0, 10);
+    var payload = { condition: condition, notes: notes, updated_at: today, updated_by: updatedBy };
+    PATCH('fixed_assets',
+      'centre=eq.' + encodeURIComponent(centre) + '&asset_name=eq.' + encodeURIComponent(assetName),
+      payload,
+      function(e, updated) {
+        if (e) { cb(null, { status: 'error', reason: 'PATCH failed: ' + String(e) }); return; }
+        if (updated && updated.length > 0) { cb(null, { status: 'ok' }); return; }
+        // No row yet — insert
+        POST('fixed_assets', 'on_conflict=centre,asset_name',
+          Object.assign({ centre: centre, asset_name: assetName }, payload),
+          function(e2) { cb(null, e2 ? { status: 'error', reason: 'INSERT failed: ' + String(e2) } : { status: 'ok' }); });
+      });
+  }
+
   function h_courseBundles(p, cb) {
     cb(null, { status: 'ok', bundles: [
       { bundleId: 'DG-STD', courseName: 'Diamond Graduate',
@@ -3748,6 +3783,8 @@ window.gasGet = (function () {
       case 'getInventoryItemMaster':    return h_invItems(params, cb);
       case 'getInventoryStock':         return h_invStock(params, cb);
       case 'updateBranchStock':         return h_updateBranchStock(params, cb);
+      case 'getFixedAssets':            return h_getFixedAssets(params, cb);
+      case 'upsertFixedAsset':          return h_upsertFixedAsset(params, cb);
       case 'getInventoryRequests':      return h_invRequests(params, cb);
       case 'submitInventoryRequest':    return h_submitInvReq(params, cb);
       case 'confirmInventoryReceived':  return h_confirmReceived(params, cb);

@@ -8820,29 +8820,33 @@ function fxCnLoadAndRender() {
   var content = document.getElementById('fx-cn-content');
   var saveBtn = document.getElementById('fx-cn-save-btn');
   var info    = document.getElementById('fx-cn-save-info');
-
-  if (content) content.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading fixed assets…</p></div>';
   if (info) info.textContent = '';
 
+  // ── Render immediately with empty data so the grid is always visible ──
+  var effectiveCentre = centre || (allowedCentres && allowedCentres[0]) || '';
+  if (isMumbaiAdmin && !centre) {
+    if (saveBtn) saveBtn.style.display = 'none';
+    renderFxMatrix([], content);
+  } else {
+    if (saveBtn) saveBtn.style.display = '';
+    renderFxSingleCentre([], effectiveCentre, content);
+  }
+
+  // ── Then fetch real data and re-render ──
   gasGet({ action: 'getFixedAssets', centre: centre }, function(e, d) {
     if (e || !d || d.status !== 'ok') {
-      var reason = (d && d.reason) ? d.reason : (e ? String(e) : 'Unknown error');
-      if (content) content.innerHTML =
-        '<div style="padding:20px;text-align:center">' +
-        '<p style="color:#dc2626;margin-bottom:8px">⚠️ Could not load fixed assets.<br><span style="font-size:11px;color:#6b7280">' + reason + '</span></p>' +
-        '<button onclick="fxCnLoadAndRender()" style="padding:6px 16px;background:var(--navy);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">↻ Retry</button>' +
-        '</div>';
+      // Table may not exist yet — show banner but keep the grid visible
+      var reason = (d && d.reason) ? d.reason : (e ? String(e) : '');
+      if (info) info.innerHTML = '⚠️ Could not load saved data' +
+        (reason ? ': <span style="color:#6b7280">' + escC(reason) + '</span>' : '') +
+        ' &nbsp;<button onclick="fxCnLoadAndRender()" style="font-size:11px;padding:2px 8px;cursor:pointer">↻ Retry</button>';
       return;
     }
     _fxLastList = d.list || [];
     if (isMumbaiAdmin && !centre) {
-      // Matrix view: all centres × all assets
-      if (saveBtn) saveBtn.style.display = 'none';
       renderFxMatrix(_fxLastList, content);
     } else {
-      // Single-centre editable table
-      if (saveBtn) saveBtn.style.display = '';
-      renderFxSingleCentre(_fxLastList, centre || (allowedCentres && allowedCentres[0]) || '', content);
+      renderFxSingleCentre(_fxLastList, effectiveCentre, content);
     }
   });
 }

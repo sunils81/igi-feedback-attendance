@@ -3498,7 +3498,34 @@ window.gasGet = (function () {
       responses.forEach(function(r) { respMap[r.student_id] = r.submitted_at; });
 
       var warnMap = {};
-      warnings.forEach(function(w) { warnMap[w.student_id] = (warnMap[w.student_id] || 0) + (w.count || 1); });
+      warnings.forEach(function(w) {
+        if (!warnMap[w.student_id]) warnMap[w.student_id] = { count: 0 };
+        warnMap[w.student_id].count += (w.count || 1);
+      });
+
+      var enrolled = students.map(function(s) {
+        return { studentId: s.student_id, studentName: s.name || s.student_id };
+      });
+
+      // Build submissions list matching the shape the frontend expects
+      var submissions = responses.map(function(r) {
+        var student = students.find(function(s){ return s.student_id === r.student_id; }) || {};
+        return {
+          studentId: r.student_id,
+          studentName: student.name || r.student_id,
+          submittedAt: r.submitted_at,
+          submitType: r.submit_type || 'Manual',
+          autoScore: r.auto_score != null ? r.auto_score : null,
+          totalScore: r.total_score != null ? r.total_score : null,
+          totalMarks: r.total_marks != null ? r.total_marks : null,
+          percentage: r.percentage != null ? r.percentage : null,
+          result: r.result || null,
+          attemptNo: r.attempt_no || 1
+        };
+      });
+
+      var submittedIds = submissions.map(function(s){ return s.studentId; });
+      var pendingCount = enrolled.filter(function(s){ return submittedIds.indexOf(s.studentId) === -1; }).length;
 
       var room = students.map(function(s) {
         var start = startsMap[s.student_id] || null;
@@ -3506,11 +3533,22 @@ window.gasGet = (function () {
         var status = submitted ? 'Submitted' : (start ? 'In Progress' : 'Not Started');
         return {
           studentId: s.student_id, studentName: s.name, status: status,
-          startedAt: start, submittedAt: submitted, warnings: warnMap[s.student_id] || 0
+          startedAt: start, submittedAt: submitted, warnings: warnMap[s.student_id] ? warnMap[s.student_id].count : 0
         };
       });
 
-      cb(null, { status: 'ok', room: room, activeCount: room.filter(function(r){return r.status==='In Progress';}).length });
+      cb(null, {
+        status: 'ok',
+        room: room,
+        activeCount: room.filter(function(r){ return r.status === 'In Progress'; }).length,
+        // Fields expected by otLoadProctor in instructor-portal.html
+        total: enrolled.length,
+        submitted: submissions.length,
+        pending: pendingCount,
+        submissions: submissions,
+        warnings: warnMap,
+        enrolled: enrolled
+      });
     } catch(err) {
       cb(err, null);
     }

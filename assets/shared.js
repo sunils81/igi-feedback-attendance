@@ -1134,7 +1134,12 @@ window.gasGet = (function () {
   /* getAttendanceCalendar */
   function h_attCalendar(p, cb) {
     var qs = 'order=session_date.asc,sess_no.asc';
-    if (p.batchCode) qs += '&batch_code=eq.' + encodeURIComponent(p.batchCode);
+    // Support both array (batchCodes) and scalar (batchCode) from callers
+    if (p.batchCodes && p.batchCodes.length) {
+      qs += '&batch_code=in.(' + p.batchCodes.map(encodeURIComponent).join(',') + ')';
+    } else if (p.batchCode) {
+      qs += '&batch_code=eq.' + encodeURIComponent(p.batchCode);
+    }
     if (p.fromDate)  qs += '&session_date=gte.' + p.fromDate;
     if (p.toDate)    qs += '&session_date=lte.' + p.toDate;
     GET('sessions', qs, function (e, srows) {
@@ -2716,9 +2721,13 @@ window.gasGet = (function () {
         var att = attByBatch[bc] || { total: 0, present: 0 };
         var sc = marksByBatch[bc] || { weeklyTotal: 0, weeklyMax: 0, finalObt: 0, finalMax: 0 };
         
-        var attPct = att.total > 0 ? Math.round(100 * att.present / att.total) : null;
+        var attPct    = att.total    > 0 ? Math.round(100 * att.present    / att.total)    : null;
         var weeklyAvg = sc.weeklyMax > 0 ? Math.round(100 * sc.weeklyTotal / sc.weeklyMax) : null;
-        var finalPct  = sc.finalMax  > 0 ? Math.round(100 * sc.finalObt  / sc.finalMax)  : null;
+        var finalPct  = sc.finalMax  > 0 ? Math.round(100 * sc.finalObt   / sc.finalMax)  : null;
+        // Guard against NaN (bad data in marks fields)
+        if (attPct    !== null && isNaN(attPct))    attPct    = null;
+        if (weeklyAvg !== null && isNaN(weeklyAvg)) weeklyAvg = null;
+        if (finalPct  !== null && isNaN(finalPct))  finalPct  = null;
         
         var attPass = attPct != null && attPct >= 75;
         var weeklyPass = weeklyAvg != null && weeklyAvg >= 60;
@@ -2828,7 +2837,8 @@ window.gasGet = (function () {
   function h_getStudentActiveTest(p, cb) {
     var sid = p.studentId;
     var batch = p.batchCode;
-    GET('online_tests', 'batch_code=eq.' + encodeURIComponent(batch) + '&status=eq.Live', function(e, tests) {
+    // Fetch both Live (active) and Scheduled tests so students can see upcoming tests too
+    GET('online_tests', 'batch_code=eq.' + encodeURIComponent(batch) + '&status=in.(Live,Scheduled)', function(e, tests) {
       if (e || !tests || !tests.length) { cb(null, { status: 'ok', activeTest: null, activeTests: [] }); return; }
       GET('test_responses', 'student_id=eq.' + encodeURIComponent(sid), function(e2, responses) {
         var activeTestsList = (tests || []).map(function(t) {

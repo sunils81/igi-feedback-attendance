@@ -3451,8 +3451,11 @@ window.gasGet = (function () {
         cb(null, { status: 'ok', tests: tests.map(function(r) {
           // DB status is 'Live'; frontend expects 'Active'
           var frontendStatus = r.status === 'Live' ? 'Active' : r.status;
+          var batchCodes = r.batch_codes || r.batch_code || '';
           return {
-            testId: r.test_id, batchCode: r.batch_code,
+            testId: r.test_id,
+            batchCode: batchCodes.split(',')[0].trim(),
+            batchCodes: batchCodes,
             title: r.title, testLabel: r.title,
             durationMins: r.duration_mins, duration: r.duration_mins,
             startsAt: r.starts_at, endsAt: r.ends_at,
@@ -3461,9 +3464,15 @@ window.gasGet = (function () {
             createdBy: r.created_by, createdAt: r.created_at,
             testType: r.test_type || 'Weekly',
             questionCount: qCount[r.test_id] || 0,
-            negativeMarking: r.neg_marking || '',
+            negativeMarking: r.neg_marking || 'No',
+            negMarkValue: r.neg_mark_value || 0,
+            passingScore: r.passing_score || 60,
+            instructions: r.instructions || '',
+            shuffleQuestions: r.shuffle_questions || 'No',
+            allowRetake: r.allow_retake || 'No',
             resultsReleased: r.results_released || 'No',
-            targetStudentNames: r.target_students || 'Entire Batch'
+            resultsMode: r.results_mode || 'summary',
+            targetStudentNames: r.target_students === 'ALL' ? 'Entire Batch' : (r.target_students || 'Entire Batch')
           };
         }) });
       });
@@ -3502,12 +3511,51 @@ window.gasGet = (function () {
   /* createOnlineTest */
   function h_createOnlineTest(p, cb) {
     var tid = 'OT-' + Date.now();
+    var batchCodes = p.batchCodes || p.batchCode || '';
+    var batchCode  = batchCodes.split(',')[0].trim();
+    var isNeg = p.negativeMarking === 'true' || p.negativeMarking === 'Yes';
     POST('online_tests', 'on_conflict=test_id', {
-      test_id: tid, batch_code: p.batchCode || '', title: p.testName || p.title || '',
-      duration_mins: Number(p.durationMins || p.totalMarks || 30), status: 'Draft',
-      created_by: p.instructor || '', created_at: nowISO()
+      test_id:           tid,
+      title:             p.testLabel || p.testName || p.title || '',
+      test_type:         p.testType || 'Weekly',
+      batch_code:        batchCode,
+      batch_codes:       batchCodes,
+      duration_mins:     parseInt(p.duration || p.durationMins || 30) || 30,
+      neg_marking:       isNeg ? 'Yes' : 'No',
+      neg_mark_value:    isNeg ? parseFloat(p.negMarkValue || 0.25) : 0,
+      passing_score:     parseInt(p.passingScore || 60) || 60,
+      instructions:      p.instructions || '',
+      shuffle_questions: p.shuffleQuestions === 'true' ? 'Yes' : 'No',
+      allow_retake:      p.allowReattempt === 'true' ? 'Yes' : 'No',
+      expiry_mode:       p.expiryMode || 'manual',
+      expiry_at:         p.expiryAt || null,
+      scheduled_at:      p.activateAt || null,
+      target_students:   p.targetStudents || 'ALL',
+      status:            'Draft',
+      created_by:        p.instructor || '',
+      created_at:        nowISO()
     }, function(e) {
       cb(null, e ? { status: 'error' } : { status: 'ok', testId: tid });
+    });
+  }
+
+  /* updateTestSettings */
+  function h_updateTestSettings(p, cb) {
+    if (!p.testId) { cb(null, { status: 'error', reason: 'missing_params' }); return; }
+    var patch = {};
+    if (p.testLabel)               { patch.title = String(p.testLabel).trim(); }
+    if (p.batchCodes)              { patch.batch_codes = p.batchCodes; patch.batch_code = p.batchCodes.split(',')[0].trim(); }
+    if (p.duration)                { patch.duration_mins = parseInt(p.duration) || 30; }
+    if (p.passingScore !== undefined) { patch.passing_score = parseInt(p.passingScore) || 60; }
+    if (p.negativeMarking !== undefined) {
+      var isNeg = p.negativeMarking === 'Yes';
+      patch.neg_marking = isNeg ? 'Yes' : 'No';
+      patch.neg_mark_value = isNeg ? 0.25 : 0;
+    }
+    if (p.instructions !== undefined) { patch.instructions = p.instructions; }
+    PATCH('online_tests', 'test_id=eq.' + encodeURIComponent(p.testId) + '&status=eq.Draft', patch, function(e) {
+      if (e) { cb(null, { status: 'error', reason: 'patch_failed' }); return; }
+      cb(null, { status: 'ok' });
     });
   }
 
@@ -3840,6 +3888,7 @@ window.gasGet = (function () {
       case 'getQuestionBank':           return h_getQuestionBank(params, cb);
       case 'setupQuestionBank':         return h_setupQuestionBank(params, cb);
       case 'createOnlineTest':          return h_createOnlineTest(params, cb);
+      case 'updateTestSettings':        return h_updateTestSettings(params, cb);
       case 'activateTest':              return h_activateTest(params, cb);
       case 'closeTest':                 return h_closeTest(params, cb);
       case 'deleteOnlineTest':          return h_deleteOnlineTest(params, cb);

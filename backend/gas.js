@@ -5462,8 +5462,9 @@ function otUpdateTestSettings(ss, p) {
   if (idx === -1) return {status:'error', reason:'not_found'};
   if (String(rows[idx][6]).trim() !== 'Draft') return {status:'error', reason:'test_not_draft'};
   var rowNum = idx + 2;
-  // col 2=label, col 6=duration, col 8=neg, col 9=negVal, col 21=instructions, col 23=passingScore
+  // col 2=label, col 4=batchCodes, col 6=duration, col 8=neg, col 9=negVal, col 21=instructions, col 23=passingScore
   if (p.testLabel)       sh.getRange(rowNum, 2).setValue(String(p.testLabel).trim());
+  if (p.batchCodes)      sh.getRange(rowNum, 4).setValue(String(p.batchCodes).trim());
   if (p.duration)        sh.getRange(rowNum, 6).setValue(parseInt(p.duration)||30);
   if (p.passingScore !== undefined) sh.getRange(rowNum, 23).setValue(parseInt(p.passingScore)||60);
   if (p.negativeMarking !== undefined) {

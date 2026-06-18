@@ -5588,12 +5588,30 @@ function otRenderBankPicker() {
   var html = '<div style="margin-bottom:8px;">'
     + '<input type="text" id="otqm-bank-search" placeholder="🔍 Filter questions…" oninput="otFilterBankPicker()" style="width:100%;box-sizing:border-box;padding:6px 10px;border:1.5px solid #e5e7eb;border-radius:7px;font-size:12px;">'
     + '</div>'
-    + '<div id="otqm-bank-items" style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">'
+    + '<div id="otqm-bank-items" style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">'
     + otBankQuestions.map(function(q, i) {
-        return '<label style="display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:12px;">'
-          + '<input type="checkbox" data-bank-idx="'+i+'" style="margin-top:2px;flex-shrink:0;">'
-          + '<span><b style="color:#374151;">'+escHtml(q.question||'')+'</b>'
-          + (q.course ? ' <span style="color:#9ca3af;">['+escHtml(q.course)+']</span>' : '')
+        var letters = ['A','B','C','D'];
+        var opts = [q.opt1, q.opt2, q.opt3, q.opt4].filter(Boolean);
+        var optsHtml = opts.length
+          ? '<div style="margin-top:5px;display:flex;flex-direction:column;gap:2px;">'
+            + opts.map(function(o, oi) {
+                var isCorrect = q.correctOption && (
+                  String(q.correctOption).trim() === String(o).trim() ||
+                  String(q.correctOption).trim() === letters[oi] ||
+                  String(q.correctOption).trim() === String(oi+1)
+                );
+                return '<div style="font-size:11px;color:'+(isCorrect?'#16a34a':'#6b7280')+';font-weight:'+(isCorrect?'700':'400')+';">'
+                  + letters[oi]+'. '+escHtml(o)+(isCorrect?' ✓':'')+'</div>';
+              }).join('')
+            + '</div>'
+          : '';
+        return '<label style="display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;">'
+          + '<input type="checkbox" data-bank-idx="'+i+'" style="margin-top:3px;flex-shrink:0;">'
+          + '<span style="flex:1;">'
+          +   '<div style="font-size:12px;font-weight:600;color:#374151;">'+escHtml(q.question||'')
+          +     (q.course ? ' <span style="font-size:10px;font-weight:400;color:#9ca3af;">['+escHtml(q.course)+']</span>' : '')
+          +   '</div>'
+          +   optsHtml
           + '</span></label>';
       }).join('')
     + '</div>'

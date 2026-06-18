@@ -3618,7 +3618,14 @@ window.gasGet = (function () {
   function h_saveTestQuestions(p, cb) {
     var tid = p.testId;
     var qIds = [];
-    try { qIds = JSON.parse(p.questionIds || '[]'); } catch(x) {}
+    try {
+      var raw = p.questionIds || '[]';
+      if (raw.charAt(0) === '[') {
+        qIds = JSON.parse(raw);
+      } else if (raw.trim()) {
+        qIds = raw.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+      }
+    } catch(x) {}
     DEL('test_questions', 'test_id=eq.' + encodeURIComponent(tid), function(e) {
       if (e) { cb(null, { status: 'error' }); return; }
       if (!qIds.length) { cb(null, { status: 'ok' }); return; }

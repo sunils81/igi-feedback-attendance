@@ -2147,10 +2147,11 @@
                     <th>GST No.</th>
                     <th>Address</th>
                     <th>Supplied Items</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody id="inv-vendors-tbody">
-                  <tr><td colspan="6" style="text-align:center;padding:16px;color:var(--muted)">Loading vendors list...</td></tr>
+                  <tr><td colspan="7" style="text-align:center;padding:16px;color:var(--muted)">Loading vendors list...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -10106,21 +10107,25 @@ function loadInventoryVendors() {
   if (!tbody) return;
   loadVendorItemsChecklist();
 
-  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading vendors...</p></div></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading vendors...</p></div></td></tr>';
 
   gasGet({ action: 'getVendors' }, function(e, d) {
     if (e || !d || d.status !== 'ok') {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--red);padding:16px">Failed to load vendors.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--red);padding:16px">Failed to load vendors.</td></tr>';
       return;
     }
 
     const list = d.list || [];
     if (list.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px">No vendors registered.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">No vendors registered.</td></tr>';
       return;
     }
 
+    // Cache for edit modal
+    window._vendorListCache = list;
+
     tbody.innerHTML = list.map(v => {
+      const vid = v.vendorId;
       return `
         <tr>
           <td><b>${escC(v.vendorName)}</b></td>
@@ -10132,9 +10137,75 @@ function loadInventoryVendors() {
           <td><span style="font-size:11px">${escC(v.gstNumber || '—')}</span></td>
           <td><div style="font-size:11px">${escC(v.address || '—')}</div></td>
           <td><span style="font-size:11px">${escC(v.suppliedItems || '—')}</span></td>
+          <td style="white-space:nowrap">
+            <button onclick="openEditVendorModal(${vid})" style="font-size:11px;padding:3px 10px;border:1px solid var(--navy);background:var(--white);color:var(--navy);border-radius:5px;cursor:pointer;margin-right:4px">✏️ Edit</button>
+            <button onclick="deleteVendor(${vid},'${escC(v.vendorName).replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 10px;border:1px solid #dc2626;background:var(--white);color:#dc2626;border-radius:5px;cursor:pointer">🗑 Delete</button>
+          </td>
         </tr>
       `;
     }).join('');
+  });
+}
+
+function deleteVendor(vendorId, vendorName) {
+  if (!confirm('Delete vendor "' + vendorName + '"? This cannot be undone.')) return;
+  gasGet({ action: 'deleteVendor', vendorId: vendorId }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { showToast('Failed to delete vendor', 'error'); return; }
+    showToast('Vendor deleted');
+    loadInventoryVendors();
+  });
+}
+
+function openEditVendorModal(vendorId) {
+  var v = (window._vendorListCache || []).find(function(x){ return x.vendorId == vendorId; });
+  if (!v) return;
+  var existing = document.getElementById('inv-edit-vendor-modal');
+  if (existing) existing.remove();
+  var m = document.createElement('div');
+  m.id = 'inv-edit-vendor-modal';
+  m.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+  m.innerHTML = `
+    <div style="background:#fff;border-radius:12px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto">
+      <h3 style="margin:0 0 16px;font-size:15px">✏️ Edit Vendor</h3>
+      <label style="font-size:11px;font-weight:700;display:block;margin-bottom:4px">VENDOR NAME *</label>
+      <input id="ev-name" value="${escC(v.vendorName)}" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;box-sizing:border-box;margin-bottom:10px">
+      <label style="font-size:11px;font-weight:700;display:block;margin-bottom:4px">CONTACT PERSON</label>
+      <input id="ev-contact" value="${escC(v.contactPerson||'')}" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;box-sizing:border-box;margin-bottom:10px">
+      <label style="font-size:11px;font-weight:700;display:block;margin-bottom:4px">PHONE</label>
+      <input id="ev-phone" value="${escC(v.phone||'')}" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;box-sizing:border-box;margin-bottom:10px">
+      <label style="font-size:11px;font-weight:700;display:block;margin-bottom:4px">EMAIL</label>
+      <input id="ev-email" value="${escC(v.email||'')}" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;box-sizing:border-box;margin-bottom:10px">
+      <label style="font-size:11px;font-weight:700;display:block;margin-bottom:4px">ADDRESS</label>
+      <input id="ev-address" value="${escC(v.address||'')}" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;box-sizing:border-box;margin-bottom:10px">
+      <label style="font-size:11px;font-weight:700;display:block;margin-bottom:4px">GST NUMBER</label>
+      <input id="ev-gst" value="${escC(v.gstNumber||'')}" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;box-sizing:border-box;margin-bottom:10px">
+      <label style="font-size:11px;font-weight:700;display:block;margin-bottom:4px">SUPPLIED ITEMS</label>
+      <input id="ev-items" value="${escC(v.suppliedItems||'')}" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;box-sizing:border-box;margin-bottom:16px">
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="document.getElementById('inv-edit-vendor-modal').remove()" style="padding:7px 18px;border:1px solid var(--border);background:var(--white);border-radius:6px;cursor:pointer;font-size:13px">Cancel</button>
+        <button onclick="saveEditVendor(${vendorId})" style="padding:7px 18px;background:var(--navy);color:var(--gold);border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700">💾 Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+}
+
+function saveEditVendor(vendorId) {
+  var name = (document.getElementById('ev-name').value || '').trim();
+  if (!name) { showToast('Vendor name is required', 'error'); return; }
+  gasGet({
+    action: 'updateVendor', vendorId: vendorId,
+    vendorName: name,
+    contactPerson: document.getElementById('ev-contact').value,
+    phone: document.getElementById('ev-phone').value,
+    email: document.getElementById('ev-email').value,
+    address: document.getElementById('ev-address').value,
+    gstNumber: document.getElementById('ev-gst').value,
+    suppliedItems: document.getElementById('ev-items').value
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { showToast('Failed to save vendor', 'error'); return; }
+    document.getElementById('inv-edit-vendor-modal').remove();
+    showToast('Vendor updated ✅');
+    loadInventoryVendors();
   });
 }
 

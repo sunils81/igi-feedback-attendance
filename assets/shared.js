@@ -2316,6 +2316,22 @@ window.gasGet = (function () {
     }, function(e) { cb(null, e ? { status: 'error', message: String(e) } : { status: 'ok' }); });
   }
 
+  function h_deleteVendor(p, cb) {
+    if (!p.vendorId) { cb(null, { status: 'error', reason: 'missing_id' }); return; }
+    DEL('inv_vendors', 'id=eq.' + encodeURIComponent(p.vendorId), function(e) {
+      cb(null, e ? { status: 'error' } : { status: 'ok' });
+    });
+  }
+
+  function h_updateVendor(p, cb) {
+    if (!p.vendorId) { cb(null, { status: 'error', reason: 'missing_id' }); return; }
+    PATCH('inv_vendors', 'id=eq.' + encodeURIComponent(p.vendorId), {
+      vendor_name: p.vendorName, contact: p.contactPerson || '',
+      phone: p.phone || '', email: p.email || '', address: p.address || '',
+      gst_number: p.gstNumber || '', supplied_items: p.suppliedItems || ''
+    }, function(e) { cb(null, e ? { status: 'error' } : { status: 'ok' }); });
+  }
+
   function h_addInvItem(p, cb) {
     POST('inv_items', null, {
       item_code: p.itemId || p.itemCode, item_name: p.itemName, category: p.category || '',
@@ -3847,6 +3863,8 @@ window.gasGet = (function () {
       case 'getCourseBundles':          return h_courseBundles(params, cb);
       case 'getVendors':               return h_getVendors(params, cb);
       case 'registerVendor':           return h_registerVendor(params, cb);
+      case 'deleteVendor':             return h_deleteVendor(params, cb);
+      case 'updateVendor':             return h_updateVendor(params, cb);
       case 'addInventoryItem':         return h_addInvItem(params, cb);
       case 'updateInventoryItem':      return h_updateInvItem(params, cb);
       case 'deleteInventoryItem':      return h_deleteInvItem(params, cb);

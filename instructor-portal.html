@@ -1007,7 +1007,7 @@
             <div id="ot-c-custom-dur-wrap" style="display:none;align-items:center;gap:4px;">
               <input type="number" id="ot-c-custom-dur-val" min="5" max="360" placeholder="e.g. 75"
                 style="width:75px;padding:6px 10px;border:1.5px solid #0D1B2E;border-radius:8px;font-size:13px;font-weight:600;"
-                oninput="document.getElementById('ot-c-duration').value=this.value||30">
+                oninput="if(this.value) document.getElementById('ot-c-duration').value=parseInt(this.value)||30">
               <span style="font-size:12px;color:#6b7280;">min</span>
             </div>
           </div>
@@ -5330,11 +5330,12 @@ function otRenderTests(tests) {
       + (t.activatedAt ? '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Activated: '+actAt+'</div>' : '')
       + '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
       + (t.status === 'Draft' ? '<button class="ot-btn success" onclick="otActivateTest(\''+escHtml(t.testId)+'\')">▶ Activate</button>' : '')
+      + (t.status === 'Draft' ? '<button class="ot-btn ghost" onclick="otOpenEditSettingsModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',\''+escHtml(String(t.duration))+'\',\''+escHtml(t.batchCodes||t.batchCode||'')+'\',\''+escHtml(t.negativeMarking||'No')+'\',\''+escHtml(String(t.passingScore||60))+'\',\''+escHtml(t.instructions||'')+'\')">✏ Edit Settings</button>' : '')
       + (t.status === 'Active' && t.testType !== 'Portfolio Upload' ? '<button class="ot-btn warn" onclick="otOpenProctorForTest(\''+escHtml(t.testId)+'\')">👁 Proctor Room</button>' : '')
       + (t.status === 'Closed' && t.resultsReleased !== 'Yes' ? '<button class="ot-btn primary" onclick="otReleaseResultsFor(\''+escHtml(t.testId)+'\',\'summary\')">📢 Release Results</button>' : '')
       + (t.status === 'Closed' && t.resultsReleased !== 'Yes' && t.testType !== 'Portfolio Upload' ? '<button class="ot-btn ghost" onclick="otReleaseResultsFor(\''+escHtml(t.testId)+'\',\'full\')">&amp; Show Breakdown</button>' : '')
       + '<button class="ot-btn ghost" onclick="otViewResults(\''+escHtml(t.testId)+'\')">📊 Results</button>'
-      + (t.testType !== 'Portfolio Upload' ? '<button class="ot-btn ghost" onclick="otOpenQuestionsModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',\''+escHtml(t.status)+'\')">📝 View Questions</button>' : '')
+      + (t.testType !== 'Portfolio Upload' ? '<button class="ot-btn ghost" onclick="otOpenQuestionsModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',\''+escHtml(t.status)+'\')">📝 '+(t.status==='Draft'?'Manage':'View')+' Questions</button>' : '')
       + '<button class="ot-btn ghost" onclick="otPromptDuplicate(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">👯 Duplicate</button>'
       + '<button class="ot-btn danger" onclick="otDeleteTest(\''+escHtml(t.testId)+'\')">🗑️ Delete</button>'
       + '</div>'
@@ -5418,6 +5419,70 @@ function otCloseQModal() {
   if (m) m.classList.remove('open');
 }
 
+// ── EDIT TEST SETTINGS MODAL ──────────────────────────────────────────────────
+function otOpenEditSettingsModal(testId, label, duration, batchCodes, negMarking, passingScore, instructions) {
+  var existing = document.getElementById('ot-edit-settings-modal');
+  if (existing) existing.remove();
+  var modal = document.createElement('div');
+  modal.id = 'ot-edit-settings-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px;';
+  modal.innerHTML = '<div style="background:#fff;border-radius:14px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.2);">'
+    + '<div style="padding:20px 24px 16px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;">'
+    +   '<h3 style="margin:0;font-size:16px;font-weight:700;">✏ Edit Test Settings</h3>'
+    +   '<button onclick="document.getElementById(\'ot-edit-settings-modal\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#6b7280;">✕</button>'
+    + '</div>'
+    + '<div style="padding:20px 24px;display:flex;flex-direction:column;gap:14px;">'
+    +   '<div><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">TEST NAME</label>'
+    +   '<input id="edit-ts-label" type="text" value="'+escHtml(label)+'" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;"></div>'
+    +   '<div><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">DURATION (minutes)</label>'
+    +   '<input id="edit-ts-duration" type="number" min="5" max="240" value="'+escHtml(duration)+'" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;"></div>'
+    +   '<div><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">PASSING SCORE %</label>'
+    +   '<input id="edit-ts-pass" type="number" min="0" max="100" value="'+escHtml(passingScore)+'" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;"></div>'
+    +   '<div><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">NEGATIVE MARKING</label>'
+    +   '<select id="edit-ts-neg" style="width:100%;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;">'
+    +   '<option value="No"'+(negMarking==='No'?' selected':'')+'>No</option>'
+    +   '<option value="Yes"'+(negMarking==='Yes'?' selected':'')+'>Yes (0.25 marks deducted)</option>'
+    +   '</select></div>'
+    +   '<div><label style="font-size:11px;font-weight:700;color:#374151;display:block;margin-bottom:4px;">INSTRUCTIONS (optional)</label>'
+    +   '<textarea id="edit-ts-instr" rows="3" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;resize:vertical;">'+escHtml(instructions)+'</textarea></div>'
+    + '</div>'
+    + '<div style="padding:16px 24px;border-top:1px solid #e5e7eb;display:flex;gap:10px;justify-content:flex-end;">'
+    +   '<button onclick="document.getElementById(\'ot-edit-settings-modal\').remove()" style="background:none;border:1.5px solid #e5e7eb;padding:9px 20px;border-radius:8px;font-size:13px;cursor:pointer;font-weight:600;">Cancel</button>'
+    +   '<button id="edit-ts-save-btn" onclick="otSaveTestSettings(\''+escHtml(testId)+'\')" style="background:#1d4ed8;color:#fff;border:none;padding:9px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">💾 Save Changes</button>'
+    + '</div>'
+    + '</div>';
+  document.body.appendChild(modal);
+}
+
+function otSaveTestSettings(testId) {
+  var label = (document.getElementById('edit-ts-label')||{}).value||'';
+  var duration = (document.getElementById('edit-ts-duration')||{}).value||'30';
+  var pass = (document.getElementById('edit-ts-pass')||{}).value||'60';
+  var neg = (document.getElementById('edit-ts-neg')||{}).value||'No';
+  var instr = (document.getElementById('edit-ts-instr')||{}).value||'';
+  if (!label.trim()) return alert('Test name cannot be empty.');
+  var btn = document.getElementById('edit-ts-save-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  gasGet({
+    action: 'updateTestSettings',
+    instructor: instructorName,
+    testId: testId,
+    testLabel: label.trim(),
+    duration: String(parseInt(duration)||30),
+    passingScore: String(parseInt(pass)||60),
+    negativeMarking: neg,
+    instructions: instr
+  }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      btn.disabled = false; btn.textContent = '💾 Save Changes';
+      return alert('Error: '+(d&&d.reason||'Failed to save settings.'));
+    }
+    document.getElementById('ot-edit-settings-modal').remove();
+    showToast('✅ Test settings updated!');
+    otLoadTests();
+  });
+}
+
 function otRenderQModal(testId, questions, testStatus) {
   var optLetters = ['A','B','C','D'];
   var html = '<div style="font-size:12px;color:#6b7280;margin-bottom:12px;">'+questions.length+' question'+(questions.length!==1?'s':'')+' · '+questions.length+' marks total</div>';
@@ -5450,7 +5515,123 @@ function otRenderQModal(testId, questions, testStatus) {
     html += '</div>';
     html += '</div>';
   });
+  // For Draft tests, append "Add from Question Bank" section
+  if (testStatus === 'Draft' || testStatus === 'Scheduled') {
+    html += '<div id="otqm-bank-section" style="margin-top:20px;border-top:2px dashed #3b82f6;padding-top:16px;">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+      +   '<span style="font-size:13px;font-weight:700;color:#1d4ed8;">➕ Add Questions from Bank</span>'
+      +   '<button type="button" onclick="otToggleAddFromBank(\''+escHtml(testId)+'\')" id="otqm-bank-toggle-btn" style="background:#eff6ff;border:1.5px solid #3b82f6;color:#1d4ed8;padding:5px 14px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">Load Bank</button>'
+      + '</div>'
+      + '<div id="otqm-bank-list" style="display:none;"></div>'
+      + '</div>';
+  }
   document.getElementById('otqm-body').innerHTML = html;
+}
+
+// ── ADD FROM QUESTION BANK ────────────────────────────────────────────────────
+var otBankLoaded = false;
+var otBankQuestions = [];
+var otBankCurrentTestId = '';
+function otToggleAddFromBank(testId) {
+  var listEl = document.getElementById('otqm-bank-list');
+  var btn = document.getElementById('otqm-bank-toggle-btn');
+  if (!listEl) return;
+  otBankCurrentTestId = testId;
+  if (listEl.style.display !== 'none') {
+    listEl.style.display = 'none';
+    btn.textContent = 'Load Bank';
+    return;
+  }
+  listEl.style.display = 'block';
+  btn.textContent = 'Hide Bank';
+  if (otBankLoaded) { otRenderBankPicker(); return; }
+  listEl.innerHTML = '<div style="color:#9ca3af;font-size:12px;padding:10px 0;">Loading question bank…</div>';
+  gasGet({action:'getQuestionBank', instructor:instructorName, includeCorrect:'true'}, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      listEl.innerHTML = '<div style="color:#dc2626;font-size:12px;">Failed to load question bank.</div>';
+      return;
+    }
+    // Filter out questions already in the test
+    var existingIds = new Set(otModalQuestionsCache.map(function(q){ return String(q.qId); }));
+    otBankQuestions = (d.questions||[]).filter(function(q){ return !existingIds.has(String(q.id)); });
+    otBankLoaded = true;
+    otRenderBankPicker();
+  });
+}
+
+function otRenderBankPicker() {
+  var listEl = document.getElementById('otqm-bank-list');
+  if (!listEl) return;
+  if (!otBankQuestions.length) {
+    listEl.innerHTML = '<div style="color:#9ca3af;font-size:12px;padding:10px 0;">All bank questions are already in this test, or bank is empty.</div>';
+    return;
+  }
+  var html = '<div style="margin-bottom:8px;">'
+    + '<input type="text" id="otqm-bank-search" placeholder="🔍 Filter questions…" oninput="otFilterBankPicker()" style="width:100%;box-sizing:border-box;padding:6px 10px;border:1.5px solid #e5e7eb;border-radius:7px;font-size:12px;">'
+    + '</div>'
+    + '<div id="otqm-bank-items" style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">'
+    + otBankQuestions.map(function(q, i) {
+        return '<label style="display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;font-size:12px;">'
+          + '<input type="checkbox" data-bank-idx="'+i+'" style="margin-top:2px;flex-shrink:0;">'
+          + '<span><b style="color:#374151;">'+escHtml(q.question||'')+'</b>'
+          + (q.course ? ' <span style="color:#9ca3af;">['+escHtml(q.course)+']</span>' : '')
+          + '</span></label>';
+      }).join('')
+    + '</div>'
+    + '<div style="margin-top:10px;display:flex;gap:8px;">'
+    + '<button type="button" onclick="otAddBankQuestionsToTest(\''+escHtml(otBankCurrentTestId)+'\')" style="background:#1d4ed8;color:#fff;border:none;padding:7px 18px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">➕ Add Selected</button>'
+    + '<button type="button" onclick="otSelectAllBankQ(true)" style="background:#f3f4f6;border:1px solid #e5e7eb;padding:7px 12px;border-radius:7px;font-size:11px;cursor:pointer;">Select All</button>'
+    + '<button type="button" onclick="otSelectAllBankQ(false)" style="background:#f3f4f6;border:1px solid #e5e7eb;padding:7px 12px;border-radius:7px;font-size:11px;cursor:pointer;">Clear</button>'
+    + '</div>';
+  listEl.innerHTML = html;
+}
+
+function otFilterBankPicker() {
+  var q = (document.getElementById('otqm-bank-search')||{}).value||'';
+  var lower = q.toLowerCase();
+  var items = document.querySelectorAll('#otqm-bank-items label');
+  items.forEach(function(el) {
+    var txt = el.textContent.toLowerCase();
+    el.style.display = (!lower || txt.includes(lower)) ? '' : 'none';
+  });
+}
+
+function otSelectAllBankQ(checked) {
+  document.querySelectorAll('#otqm-bank-items input[type=checkbox]').forEach(function(cb) {
+    if (cb.closest('label').style.display !== 'none') cb.checked = checked;
+  });
+}
+
+function otAddBankQuestionsToTest(testId) {
+  var checked = Array.from(document.querySelectorAll('#otqm-bank-items input[type=checkbox]:checked'));
+  if (!checked.length) return alert('Select at least one question.');
+  var toAdd = checked.map(function(cb) { return otBankQuestions[parseInt(cb.dataset.bankIdx)]; });
+  var btn = document.querySelector('#otqm-bank-list button');
+  if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
+
+  // Merge existing + new, pass all question IDs to saveTestQuestions
+  var existing = otModalQuestionsCache.map(function(q){ return q.qId; });
+  var newIds = toAdd.map(function(q){ return String(q.id); });
+  var allIds = existing.concat(newIds).join(',');
+  var customQs = toAdd.filter(function(q){ return q._isCustom; }).map(function(q){ return q.id; });
+
+  gasGet({
+    action: 'saveTestQuestions',
+    instructor: instructorName,
+    testId: testId,
+    questionIds: allIds,
+    customQuestionIds: customQs.join(',')
+  }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      if (btn) { btn.disabled = false; btn.textContent = '➕ Add Selected'; }
+      alert('Error: '+(d&&d.reason||'Failed to add questions.'));
+      return;
+    }
+    otBankLoaded = false; // force reload next time
+    showToast('✅ '+toAdd.length+' question'+(toAdd.length!==1?'s':'')+' added!');
+    otOpenQuestionsModal(testId, document.getElementById('otqm-title').textContent.replace('📝 Questions — ',''), 'Draft');
+    otLoadTests();
+  });
 }
 
 function otEditDraftQuestion(testId, qId, testStatus) {

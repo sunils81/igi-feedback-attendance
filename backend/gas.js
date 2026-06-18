@@ -3004,6 +3004,7 @@ function doGet(e) {
     if (act==='getTestQuestionsInstructor') return respond(otGetTestQuestionsInstructor(ss,p));
     if (act==='removeTestQuestion')         return respond(otRemoveTestQuestion(ss,p));
     if (act==='updateTestQuestion')         return respond(otUpdateQuestion(ss,p));
+    if (act==='updateTestSettings')         return respond(otUpdateTestSettings(ss,p));
     if (act==='submitTestResponse')      return respond(otSubmitTestResponse(ss,p));
     if (act==='logTestWarning')          return respond(otLogTestWarning(ss,p));
     if (act==='getProctorRoom')          return respond(otGetProctorRoom(ss,p));
@@ -5444,6 +5445,34 @@ function otUpdateQuestion(ss, p) {
   }
   
   return {status: 'ok', updatedSource: updatedSource};
+}
+
+// ── UPDATE TEST SETTINGS (Draft only) ────────────────────────────────────────
+function otUpdateTestSettings(ss, p) {
+  if (!p.instructor || !p.testId) return {status:'error', reason:'missing_params'};
+  ensureOnlineTestSheets(ss);
+  var sh = ss.getSheetByName(SH_ONLINE_TESTS);
+  var lastRow = sh.getLastRow();
+  if (lastRow < 2) return {status:'error', reason:'not_found'};
+  var rows = sh.getRange(2, 1, lastRow - 1, 23).getValues();
+  var idx = -1;
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === String(p.testId).trim()) { idx = i; break; }
+  }
+  if (idx === -1) return {status:'error', reason:'not_found'};
+  if (String(rows[idx][6]).trim() !== 'Draft') return {status:'error', reason:'test_not_draft'};
+  var rowNum = idx + 2;
+  // col 2=label, col 6=duration, col 8=neg, col 9=negVal, col 21=instructions, col 23=passingScore
+  if (p.testLabel)       sh.getRange(rowNum, 2).setValue(String(p.testLabel).trim());
+  if (p.duration)        sh.getRange(rowNum, 6).setValue(parseInt(p.duration)||30);
+  if (p.passingScore !== undefined) sh.getRange(rowNum, 23).setValue(parseInt(p.passingScore)||60);
+  if (p.negativeMarking !== undefined) {
+    var isNeg = p.negativeMarking === 'Yes';
+    sh.getRange(rowNum, 8).setValue(isNeg ? 'Yes' : 'No');
+    sh.getRange(rowNum, 9).setValue(isNeg ? 0.25 : 0);
+  }
+  if (p.instructions !== undefined) sh.getRange(rowNum, 21).setValue(p.instructions);
+  return {status:'ok'};
 }
 
 function otShuffleSeeded(arr, seed) {

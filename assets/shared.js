@@ -3766,6 +3766,120 @@ window.gasGet = (function () {
     });
   }
 
+  /* ── TEST TEMPLATES ─────────────────────────────────────────────────── */
+
+  /* getTestTemplates — returns all saved templates with question count */
+  function h_getTestTemplates(p, cb) {
+    GET('online_tests', 'is_template=eq.true&order=created_at.desc', function(e, templates) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      templates = templates || [];
+      if (!templates.length) { cb(null, { status: 'ok', templates: [] }); return; }
+      var tids = templates.map(function(t) { return t.test_id; });
+      GET('test_questions', 'test_id=in.(' + tids.map(encodeURIComponent).join(',') + ')', function(e2, tqs) {
+        var countMap = {};
+        (tqs || []).forEach(function(tq) { countMap[tq.test_id] = (countMap[tq.test_id] || 0) + 1; });
+        var out = templates.map(function(t) {
+          return {
+            testId:        t.test_id,
+            templateName:  t.template_name || t.title,
+            title:         t.title,
+            testType:      t.test_type || 'Weekly',
+            durationMins:  t.duration_mins || 60,
+            passingScore:  t.passing_score || 60,
+            questionCount: countMap[t.test_id] || 0,
+            createdBy:     t.created_by,
+            createdAt:     t.created_at
+          };
+        });
+        cb(null, { status: 'ok', templates: out });
+      });
+    });
+  }
+
+  /* saveTestTemplate — create or update a template (no batch assigned) */
+  function h_saveTestTemplate(p, cb) {
+    var tid = p.testId || ('TMPL-' + Date.now());
+    var payload = {
+      test_id:       tid,
+      title:         p.title || p.templateName || 'Untitled Template',
+      template_name: p.templateName || p.title || 'Untitled Template',
+      test_type:     p.testType || 'Weekly',
+      duration_mins: parseInt(p.durationMins || 60, 10),
+      passing_score: parseInt(p.passingScore || 60, 10),
+      status:        'Draft',
+      is_template:   true,
+      batch_code:    '',
+      batch_codes:   '',
+      created_by:    p.instructor || '',
+      created_at:    p.testId ? undefined : nowISO()  // only set on create
+    };
+    // Remove undefined fields
+    Object.keys(payload).forEach(function(k) { if (payload[k] === undefined) delete payload[k]; });
+    POST('online_tests', 'on_conflict=test_id', payload, function(e) {
+      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', testId: tid });
+    });
+  }
+
+  /* deployTemplate — clone a template to one or more batches */
+  function h_deployTemplate(p, cb) {
+    var srcId = p.testId;
+    // batchCodes can be comma-separated string or array
+    var batchCodes = Array.isArray(p.batchCodes)
+      ? p.batchCodes
+      : String(p.batchCodes || p.batchCode || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    if (!srcId || !batchCodes.length) {
+      cb(null, { status: 'error', reason: 'missing_testId_or_batchCodes' }); return;
+    }
+
+    GET('online_tests', 'test_id=eq.' + encodeURIComponent(srcId), function(e, tests) {
+      if (e || !tests || !tests.length) { cb(null, { status: 'error', reason: 'template_not_found' }); return; }
+      var t = tests[0];
+      var newId = 'OT-' + Date.now();
+      var newTest = {
+        test_id:          newId,
+        title:            t.title,
+        template_name:    t.template_name,
+        test_type:        t.test_type || 'Weekly',
+        duration_mins:    p.durationMins ? parseInt(p.durationMins, 10) : (t.duration_mins || 60),
+        passing_score:    p.passingScore ? parseInt(p.passingScore, 10) : (t.passing_score || 60),
+        status:           'Draft',
+        is_template:      false,           // deployed copy is a real test
+        batch_code:       batchCodes[0],
+        batch_codes:      batchCodes.join(','),
+        results_released: 'No',
+        created_by:       p.instructor || t.created_by,
+        created_at:       nowISO(),
+        held_on:          p.heldOn || null
+      };
+      POST('online_tests', 'on_conflict=test_id', newTest, function(e2) {
+        if (e2) { cb(null, { status: 'error', reason: String(e2) }); return; }
+        // Copy test_questions from template
+        GET('test_questions', 'test_id=eq.' + encodeURIComponent(srcId), function(e3, tqs) {
+          if (e3 || !tqs || !tqs.length) { cb(null, { status: 'ok', testId: newId }); return; }
+          var newRows = tqs.map(function(tq) {
+            return { test_id: newId, question_id: tq.question_id, order_no: tq.order_no || 1 };
+          });
+          POST('test_questions', null, newRows, function() {
+            cb(null, { status: 'ok', testId: newId, batchCodes: batchCodes });
+          });
+        });
+      });
+    });
+  }
+
+  /* deleteTestTemplate — remove template and its questions */
+  function h_deleteTestTemplate(p, cb) {
+    var tid = p.testId;
+    if (!tid) { cb(null, { status: 'error', reason: 'missing_testId' }); return; }
+    DEL('test_questions', 'test_id=eq.' + encodeURIComponent(tid), function() {
+      DEL('online_tests', 'test_id=eq.' + encodeURIComponent(tid) + '&is_template=eq.true', function(e) {
+        cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+      });
+    });
+  }
+
+  /* ── END TEST TEMPLATES ──────────────────────────────────────────────── */
+
   /* saveTestQuestions */
   function h_saveTestQuestions(p, cb) {
     var tid = p.testId;
@@ -4140,6 +4254,10 @@ window.gasGet = (function () {
       case 'releaseResults':            return h_releaseResults(params, cb);
       case 'deleteOnlineTest':          return h_deleteOnlineTest(params, cb);
       case 'duplicateOnlineTest':       return h_duplicateOnlineTest(params, cb);
+      case 'getTestTemplates':          return h_getTestTemplates(params, cb);
+      case 'saveTestTemplate':          return h_saveTestTemplate(params, cb);
+      case 'deployTemplate':            return h_deployTemplate(params, cb);
+      case 'deleteTestTemplate':        return h_deleteTestTemplate(params, cb);
       case 'saveTestQuestions':         return h_saveTestQuestions(params, cb);
       case 'removeTestQuestion':        return h_removeTestQuestion(params, cb);
       case 'getTestQuestionsInstructor':return h_getTestQuestionsInstructor(params, cb);

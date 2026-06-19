@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=24"></script>
+<script src="/assets/shared.js?v=25"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -7497,22 +7497,26 @@ async function loadDiplomaData() {
     var SUPABASE_ANON = 'sb_publishable_TpzxX5a3M7lnFeND8xLfhQ_YJOxOkhb';
     var headers = { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON };
 
-    // Fetch all required data in parallel
-    var [studentsResp, batchesResp, attResp, assessResp, marksResp, diplomasResp] = await Promise.all([
+    // Fetch all required data in parallel (including online tests for diploma eligibility)
+    var [studentsResp, batchesResp, attResp, assessResp, marksResp, diplomasResp, onlineTestsResp, testResponsesResp] = await Promise.all([
       fetch(SUPABASE_URL + '/rest/v1/students?select=student_id,name,batch_code', {headers: headers}),
       fetch(SUPABASE_URL + '/rest/v1/batches?select=batch_code,centre,course,counselor', {headers: headers}),
       fetch(SUPABASE_URL + '/rest/v1/attendance_feedback?select=student_id,attendance', {headers: headers}),
       fetch(SUPABASE_URL + '/rest/v1/assessments?select=assessment_id,batch_code,test_type,max_marks', {headers: headers}),
       fetch(SUPABASE_URL + '/rest/v1/assessment_marks?select=assessment_id,student_id,marks', {headers: headers}),
-      fetch(SUPABASE_URL + '/rest/v1/diplomas?select=student_id,batch_code,released_by,released_at', {headers: headers})
+      fetch(SUPABASE_URL + '/rest/v1/diplomas?select=student_id,batch_code,released_by,released_at', {headers: headers}),
+      fetch(SUPABASE_URL + '/rest/v1/online_tests?select=test_id,test_type,results_released,passing_score', {headers: headers}),
+      fetch(SUPABASE_URL + '/rest/v1/test_responses?select=test_id,student_id,percentage,total_score,total_marks,result', {headers: headers})
     ]);
 
-    var students    = await studentsResp.json();
-    var batches     = await batchesResp.json();
-    var attRows     = await attResp.json();
-    var assessments = await assessResp.json();
-    var marks       = await marksResp.json();
-    var diplomas    = await diplomasResp.json();
+    var students      = await studentsResp.json();
+    var batches       = await batchesResp.json();
+    var attRows       = await attResp.json();
+    var assessments   = await assessResp.json();
+    var marks         = await marksResp.json();
+    var diplomas      = await diplomasResp.json();
+    var onlineTests   = await onlineTestsResp.json();
+    var testResponses = await testResponsesResp.json();
 
     // Guard: all must be arrays (RLS block returns an object with "message")
     if (!Array.isArray(students))    throw new Error('students fetch failed: ' + JSON.stringify(students));
@@ -7521,6 +7525,8 @@ async function loadDiplomaData() {
     if (!Array.isArray(assessments)) assessments = [];
     if (!Array.isArray(marks))       marks = [];
     if (!Array.isArray(diplomas))    diplomas = [];
+    if (!Array.isArray(onlineTests)) onlineTests = [];
+    if (!Array.isArray(testResponses)) testResponses = [];
 
     // Index lookups
     var batchMap = {};
@@ -7541,7 +7547,7 @@ async function loadDiplomaData() {
       if (a.attendance === 'Present' || a.attendance === 'Late') attByStudent[a.student_id].present++;
     });
 
-    // Assessment scores per student
+    // Assessment scores per student from traditional assessments table
     // schema: test_type column ('Weekly' | 'Final' | 'Mock'), marks column
     var assessMap = {};
     assessments.forEach(function(a) { assessMap[a.assessment_id] = a; });
@@ -7559,6 +7565,35 @@ async function loadDiplomaData() {
       } else {
         s.weeklyTotal += parseFloat(m.marks || 0);
         s.weeklyMax   += parseFloat(a.max_marks || 100);
+      }
+    });
+
+    // Merge online test results into weekly scores (only released tests)
+    // Online tests with results_released='Yes' count as weekly tests for diploma eligibility
+    var releasedOnlineTestIds = {};
+    onlineTests.forEach(function(ot) {
+      if (ot.results_released === 'Yes') {
+        var ttype = (ot.test_type || '').toLowerCase();
+        releasedOnlineTestIds[ot.test_id] = ttype.indexOf('final') !== -1 ? 'final' : 'weekly';
+      }
+    });
+
+    testResponses.forEach(function(tr) {
+      var category = releasedOnlineTestIds[tr.test_id];
+      if (!category) return; // skip unreleased tests
+      if (!studentScores[tr.student_id]) studentScores[tr.student_id] = {weeklyTotal:0, weeklyMax:0, finalObt:0, finalMax:0};
+      var s = studentScores[tr.student_id];
+      // Use stored percentage if available, else compute from total_score/total_marks
+      var pct = tr.percentage != null ? parseFloat(tr.percentage) : null;
+      if (pct == null && tr.total_marks > 0) pct = Math.round(100 * parseFloat(tr.total_score || 0) / parseFloat(tr.total_marks));
+      if (pct == null) return; // no usable score
+      // Treat each online test as 100-mark assessment; pct/100 * 100 = pct marks obtained
+      if (category === 'final') {
+        s.finalObt += pct;
+        s.finalMax += 100;
+      } else {
+        s.weeklyTotal += pct;
+        s.weeklyMax   += 100;
       }
     });
 

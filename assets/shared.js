@@ -3600,6 +3600,17 @@ window.gasGet = (function () {
     });
   }
 
+  /* releaseResults */
+  function h_releaseResults(p, cb) {
+    if (!p.testId) { cb(null, { status: 'error', reason: 'missing_testId' }); return; }
+    PATCH('online_tests', 'test_id=eq.' + encodeURIComponent(p.testId), {
+      results_released: 'Yes',
+      results_mode: p.resultsMode || 'summary'
+    }, function(e) {
+      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+    });
+  }
+
   /* deleteOnlineTest */
   function h_deleteOnlineTest(p, cb) {
     var tid = p.testId;
@@ -3923,6 +3934,7 @@ window.gasGet = (function () {
       case 'updateTestSettings':        return h_updateTestSettings(params, cb);
       case 'activateTest':              return h_activateTest(params, cb);
       case 'closeTest':                 return h_closeTest(params, cb);
+      case 'releaseResults':            return h_releaseResults(params, cb);
       case 'deleteOnlineTest':          return h_deleteOnlineTest(params, cb);
       case 'duplicateOnlineTest':       return h_duplicateOnlineTest(params, cb);
       case 'saveTestQuestions':         return h_saveTestQuestions(params, cb);

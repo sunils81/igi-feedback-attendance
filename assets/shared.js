@@ -2950,12 +2950,19 @@ window.gasGet = (function () {
 
   function h_getStudentActiveTest(p, cb) {
     var sid = p.studentId;
-    var batch = p.batchCode;
-    // Fetch both Live (active) and Scheduled tests so students can see upcoming tests too
-    GET('online_tests', 'batch_code=eq.' + encodeURIComponent(batch) + '&status=in.(Live,Scheduled)', function(e, tests) {
-      if (e || !tests || !tests.length) { cb(null, { status: 'ok', activeTest: null, activeTests: [] }); return; }
+    var batch = (p.batchCode || '').trim().toUpperCase();
+    // Fetch ALL Live/Scheduled tests, then filter by whether student's batch appears in batch_codes
+    // (batch_codes is a comma-separated text field that may contain multiple batches)
+    GET('online_tests', 'status=in.(Live,Scheduled)', function(e, allTests) {
+      if (e) { cb(null, { status: 'ok', activeTest: null, activeTests: [] }); return; }
+      // Filter: test must list this student's batch in batch_codes OR batch_code
+      var tests = (allTests || []).filter(function(t) {
+        var codes = (t.batch_codes || t.batch_code || '').toUpperCase().split(',').map(function(s){ return s.trim(); });
+        return codes.indexOf(batch) !== -1;
+      });
+      if (!tests.length) { cb(null, { status: 'ok', activeTest: null, activeTests: [] }); return; }
       GET('test_responses', 'student_id=eq.' + encodeURIComponent(sid), function(e2, responses) {
-        var activeTestsList = (tests || []).map(function(t) {
+        var activeTestsList = tests.map(function(t) {
           var sub = (responses || []).find(function(r) { return r.test_id === t.test_id; });
           return { testId: t.test_id, batchCode: t.batch_code, title: t.title, durationMins: t.duration_mins,
             status: t.status, startsAt: t.starts_at, endsAt: t.ends_at, alreadySubmitted: !!sub, score: sub ? sub.score : null };

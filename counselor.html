@@ -7497,26 +7497,24 @@ async function loadDiplomaData() {
     var SUPABASE_ANON = 'sb_publishable_TpzxX5a3M7lnFeND8xLfhQ_YJOxOkhb';
     var headers = { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON };
 
-    // Fetch all required data in parallel (including online tests for diploma eligibility)
-    var [studentsResp, batchesResp, attResp, assessResp, marksResp, diplomasResp, onlineTestsResp, testResponsesResp] = await Promise.all([
+    // Fetch core data in parallel
+    var [studentsResp, batchesResp, attResp, assessResp, marksResp, diplomasResp, onlineTestsResp] = await Promise.all([
       fetch(SUPABASE_URL + '/rest/v1/students?select=student_id,name,batch_code', {headers: headers}),
       fetch(SUPABASE_URL + '/rest/v1/batches?select=batch_code,centre,course,counselor', {headers: headers}),
       fetch(SUPABASE_URL + '/rest/v1/attendance_feedback?select=student_id,attendance', {headers: headers}),
       fetch(SUPABASE_URL + '/rest/v1/assessments?select=assessment_id,batch_code,test_type,max_marks', {headers: headers}),
       fetch(SUPABASE_URL + '/rest/v1/assessment_marks?select=assessment_id,student_id,marks', {headers: headers}),
       fetch(SUPABASE_URL + '/rest/v1/diplomas?select=student_id,batch_code,released_by,released_at', {headers: headers}),
-      fetch(SUPABASE_URL + '/rest/v1/online_tests?select=test_id,test_type,results_released,passing_score', {headers: headers}),
-      fetch(SUPABASE_URL + '/rest/v1/test_responses?select=test_id,student_id,percentage,total_score,total_marks,result', {headers: headers})
+      fetch(SUPABASE_URL + '/rest/v1/online_tests?select=test_id,test_type,results_released,passing_score', {headers: headers})
     ]);
 
-    var students      = await studentsResp.json();
-    var batches       = await batchesResp.json();
-    var attRows       = await attResp.json();
-    var assessments   = await assessResp.json();
-    var marks         = await marksResp.json();
-    var diplomas      = await diplomasResp.json();
-    var onlineTests   = await onlineTestsResp.json();
-    var testResponses = await testResponsesResp.json();
+    var students    = await studentsResp.json();
+    var batches     = await batchesResp.json();
+    var attRows     = await attResp.json();
+    var assessments = await assessResp.json();
+    var marks       = await marksResp.json();
+    var diplomas    = await diplomasResp.json();
+    var onlineTests = await onlineTestsResp.json();
 
     // Guard: all must be arrays (RLS block returns an object with "message")
     if (!Array.isArray(students))    throw new Error('students fetch failed: ' + JSON.stringify(students));
@@ -7526,33 +7524,117 @@ async function loadDiplomaData() {
     if (!Array.isArray(marks))       marks = [];
     if (!Array.isArray(diplomas))    diplomas = [];
     if (!Array.isArray(onlineTests)) onlineTests = [];
-    if (!Array.isArray(testResponses)) testResponses = [];
+
+    // Find released online tests and categorise them
+    var releasedTests = {};  // test_id → { category: 'weekly'|'final', passingScore }
+    onlineTests.forEach(function(ot) {
+      if (ot.results_released === 'Yes') {
+        var ttype = (ot.test_type || '').toLowerCase();
+        releasedTests[ot.test_id] = {
+          category: ttype.indexOf('final') !== -1 ? 'final' : 'weekly',
+          passingScore: ot.passing_score || 60
+        };
+      }
+    });
+
+    // For released tests, fetch responses + questions + question bank to compute scores
+    var studentScores = {};  // student_id → { weeklyTotal, weeklyMax, finalObt, finalMax }
+
+    var releasedTestIds = Object.keys(releasedTests);
+    if (releasedTestIds.length > 0) {
+      var tidsParam = releasedTestIds.map(encodeURIComponent).join(',');
+      var [tResponsesResp, tQuestionsResp] = await Promise.all([
+        fetch(SUPABASE_URL + '/rest/v1/test_responses?select=test_id,student_id,score,answers&test_id=in.(' + tidsParam + ')', {headers: headers}),
+        fetch(SUPABASE_URL + '/rest/v1/test_questions?select=test_id,question_id&test_id=in.(' + tidsParam + ')', {headers: headers})
+      ]);
+      var testResponses = await tResponsesResp.json();
+      var testQuestions = await tQuestionsResp.json();
+      if (!Array.isArray(testResponses)) testResponses = [];
+      if (!Array.isArray(testQuestions)) testQuestions = [];
+
+      // Get all unique question IDs across released tests
+      var allQids = testQuestions.map(function(tq) { return tq.question_id; });
+      var uniqueQids = allQids.filter(function(v, i, a) { return a.indexOf(v) === i; });
+
+      var qMap = {};  // question_id → question row
+      if (uniqueQids.length > 0) {
+        var qbResp = await fetch(
+          SUPABASE_URL + '/rest/v1/question_bank?select=id,correct_ans,max_marks,q_type&id=in.(' + uniqueQids.map(encodeURIComponent).join(',') + ')',
+          {headers: headers}
+        );
+        var qbRows = await qbResp.json();
+        if (Array.isArray(qbRows)) qbRows.forEach(function(q) { qMap[String(q.id)] = q; });
+      }
+
+      // Build per-test question list for scoring
+      var testQMap = {};  // test_id → [question_id, ...]
+      testQuestions.forEach(function(tq) {
+        if (!testQMap[tq.test_id]) testQMap[tq.test_id] = [];
+        testQMap[tq.test_id].push(tq.question_id);
+      });
+
+      var optLetters = ['A','B','C','D'];
+
+      // Score each student response
+      testResponses.forEach(function(tr) {
+        var testMeta = releasedTests[tr.test_id];
+        if (!testMeta) return;
+        var qids = testQMap[tr.test_id] || [];
+        var answers = tr.answers || {};
+        var totalMarks = 0, obtainedMarks = 0;
+
+        qids.forEach(function(qid) {
+          var q = qMap[String(qid)];
+          if (!q) return;
+          var maxMark = parseFloat(q.max_marks || 1);
+          totalMarks += maxMark;
+          if (q.q_type && q.q_type !== 'MCQ') return;
+          var ca = String(q.correct_ans || '').trim();
+          var studentAns = String((answers[String(qid)] || '')).trim();
+          if (!studentAns || !ca) return;
+          var optIdx = parseInt(studentAns, 10) - 1;
+          var isCorrect = ca === studentAns
+            || (optIdx >= 0 && optLetters[optIdx] && ca.toUpperCase() === optLetters[optIdx])
+            || (optIdx >= 0 && String(optIdx + 1) === ca);
+          if (isCorrect) obtainedMarks += maxMark;
+        });
+
+        // Fall back to stored score if we couldn't compute (e.g. no questions in bank)
+        if (totalMarks === 0 && tr.score != null) {
+          obtainedMarks = parseFloat(tr.score || 0);
+          totalMarks = 100; // assume out of 100 if we have no question info
+        }
+        if (totalMarks === 0) return;
+
+        var pct = Math.round((obtainedMarks / totalMarks) * 100);
+        if (!studentScores[tr.student_id]) studentScores[tr.student_id] = {weeklyTotal:0, weeklyMax:0, finalObt:0, finalMax:0};
+        var s = studentScores[tr.student_id];
+        if (testMeta.category === 'final') {
+          s.finalObt += pct; s.finalMax += 100;
+        } else {
+          s.weeklyTotal += pct; s.weeklyMax += 100;
+        }
+      });
+    }
 
     // Index lookups
     var batchMap = {};
     batches.forEach(function(b) { batchMap[b.batch_code] = b; });
 
     var diplomaMap = {};
-    if (Array.isArray(diplomas)) {
-      diplomas.forEach(function(d) { diplomaMap[d.student_id + '|' + d.batch_code] = d; });
-    }
+    diplomas.forEach(function(d) { diplomaMap[d.student_id + '|' + d.batch_code] = d; });
 
-    // Attendance % per student per batch
-    // session_code format: BATCHCODE-S01 => derive batch from students table
-    var attByStudent = {}; // key: student_id
+    // Attendance % per student
+    var attByStudent = {};
     attRows.forEach(function(a) {
       if (!attByStudent[a.student_id]) attByStudent[a.student_id] = {total:0, present:0};
       attByStudent[a.student_id].total++;
-      // schema uses `attendance` text column: 'Present' | 'Absent' | 'Late'
       if (a.attendance === 'Present' || a.attendance === 'Late') attByStudent[a.student_id].present++;
     });
 
-    // Assessment scores per student from traditional assessments table
-    // schema: test_type column ('Weekly' | 'Final' | 'Mock'), marks column
+    // Merge traditional assessment marks into studentScores
     var assessMap = {};
     assessments.forEach(function(a) { assessMap[a.assessment_id] = a; });
-
-    var studentScores = {};
     marks.forEach(function(m) {
       var a = assessMap[m.assessment_id];
       if (!a) return;
@@ -7565,35 +7647,6 @@ async function loadDiplomaData() {
       } else {
         s.weeklyTotal += parseFloat(m.marks || 0);
         s.weeklyMax   += parseFloat(a.max_marks || 100);
-      }
-    });
-
-    // Merge online test results into weekly scores (only released tests)
-    // Online tests with results_released='Yes' count as weekly tests for diploma eligibility
-    var releasedOnlineTestIds = {};
-    onlineTests.forEach(function(ot) {
-      if (ot.results_released === 'Yes') {
-        var ttype = (ot.test_type || '').toLowerCase();
-        releasedOnlineTestIds[ot.test_id] = ttype.indexOf('final') !== -1 ? 'final' : 'weekly';
-      }
-    });
-
-    testResponses.forEach(function(tr) {
-      var category = releasedOnlineTestIds[tr.test_id];
-      if (!category) return; // skip unreleased tests
-      if (!studentScores[tr.student_id]) studentScores[tr.student_id] = {weeklyTotal:0, weeklyMax:0, finalObt:0, finalMax:0};
-      var s = studentScores[tr.student_id];
-      // Use stored percentage if available, else compute from total_score/total_marks
-      var pct = tr.percentage != null ? parseFloat(tr.percentage) : null;
-      if (pct == null && tr.total_marks > 0) pct = Math.round(100 * parseFloat(tr.total_score || 0) / parseFloat(tr.total_marks));
-      if (pct == null) return; // no usable score
-      // Treat each online test as 100-mark assessment; pct/100 * 100 = pct marks obtained
-      if (category === 'final') {
-        s.finalObt += pct;
-        s.finalMax += 100;
-      } else {
-        s.weeklyTotal += pct;
-        s.weeklyMax   += 100;
       }
     });
 

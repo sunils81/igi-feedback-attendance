@@ -3011,12 +3011,63 @@ window.gasGet = (function () {
   }
 
   function h_submitTestResponse(p, cb) {
-    POST('test_responses', 'on_conflict=test_id,student_id', {
-      test_id: p.testId, student_id: p.studentId, batch_code: p.batchCode || '',
-      answers: typeof p.answers === 'string' ? JSON.parse(p.answers) : (p.answers || {}),
-      score: Number(p.score || 0), submitted_at: nowISO()
-    }, function(e) {
-      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+    var answers = typeof p.answers === 'string' ? JSON.parse(p.answers || '{}') : (p.answers || {});
+    var tid = p.testId;
+
+    // Auto-score by fetching test questions + correct answers from question_bank
+    GET('test_questions', 'test_id=eq.' + encodeURIComponent(tid), function(e1, tqs) {
+      if (e1 || !tqs || !tqs.length) {
+        // No questions found — save with score 0
+        POST('test_responses', 'on_conflict=test_id,student_id', {
+          test_id: tid, student_id: p.studentId, batch_code: p.batchCode || '',
+          answers: answers, score: 0, submit_type: p.submitType || 'manual', submitted_at: nowISO()
+        }, function(e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
+        return;
+      }
+      var qids = tqs.map(function(tq) { return tq.question_id; });
+      GET('question_bank', 'id=in.(' + qids.map(encodeURIComponent).join(',') + ')', function(e2, qrows) {
+        var qMap = {};
+        (qrows || []).forEach(function(q) { qMap[String(q.id)] = q; });
+
+        var autoScore = 0;
+        var totalMarks = 0;
+        var optLetters = ['A','B','C','D'];
+        tqs.forEach(function(tq) {
+          var q = qMap[String(tq.question_id)];
+          if (!q) return;
+          var maxMark = parseFloat(q.max_marks || 1);
+          totalMarks += maxMark;
+          if (q.q_type && q.q_type !== 'MCQ') return; // skip non-MCQ auto-scoring
+          var ca = String(q.correct_ans || '').trim();
+          var studentAns = String(answers[String(tq.question_id)] || '').trim();
+          if (!studentAns || !ca) return;
+          // correct_ans may be "A"/"B"/"C"/"D", "1"/"2"/"3"/"4", or option text
+          var optIdx = parseInt(studentAns, 10) - 1; // student sends "1","2","3","4"
+          var isCorrect = ca === studentAns
+            || (optIdx >= 0 && optLetters[optIdx] && ca.toUpperCase() === optLetters[optIdx])
+            || (optIdx >= 0 && String(optIdx + 1) === ca);
+          if (isCorrect) autoScore += maxMark;
+        });
+
+        var percentage = totalMarks > 0 ? Math.round((autoScore / totalMarks) * 100) : 0;
+
+        // Also fetch test to get passing_score
+        GET('online_tests', 'test_id=eq.' + encodeURIComponent(tid), function(e3, tests) {
+          var passingScore = (tests && tests[0] && tests[0].passing_score) || 60;
+          var result = percentage >= passingScore ? 'Pass' : 'Fail';
+
+          POST('test_responses', 'on_conflict=test_id,student_id', {
+            test_id: tid, student_id: p.studentId, batch_code: p.batchCode || '',
+            answers: answers,
+            score: autoScore,
+            total_marks: totalMarks,
+            percentage: percentage,
+            result: result,
+            submit_type: p.submitType || 'manual',
+            submitted_at: nowISO()
+          }, function(e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', score: autoScore, totalMarks: totalMarks, percentage: percentage, result: result }); });
+        });
+      });
     });
   }
 
@@ -3823,16 +3874,57 @@ window.gasGet = (function () {
       var studentMap = {};
       students.forEach(function(s) { studentMap[s.student_id] = s; });
 
+      // Fetch question bank for on-the-fly scoring of legacy submissions (no total_marks stored)
+      var tqs = await getP('test_questions', 'test_id=eq.' + encodeURIComponent(tid));
+      var qids = (tqs || []).map(function(tq) { return tq.question_id; });
+      var qbRows = qids.length ? await getP('question_bank', 'id=in.(' + qids.map(encodeURIComponent).join(',') + ')') : [];
+      var qMap = {};
+      (qbRows || []).forEach(function(q) { qMap[String(q.id)] = q; });
+
+      // Compute total_marks from question bank
+      var optLetters = ['A','B','C','D'];
+      var computedTotalMarks = 0;
+      (tqs || []).forEach(function(tq) {
+        var q = qMap[String(tq.question_id)];
+        computedTotalMarks += q ? parseFloat(q.max_marks || 1) : 1;
+      });
+
+      function deriveScore(answers) {
+        // Re-compute MCQ score from stored answers + correct_ans
+        var s = 0;
+        (tqs || []).forEach(function(tq) {
+          var q = qMap[String(tq.question_id)];
+          if (!q || (q.q_type && q.q_type !== 'MCQ')) return;
+          var ca = String(q.correct_ans || '').trim();
+          var studentAns = String((answers || {})[String(tq.question_id)] || '').trim();
+          if (!studentAns || !ca) return;
+          var optIdx = parseInt(studentAns, 10) - 1;
+          var isCorrect = ca === studentAns
+            || (optIdx >= 0 && optLetters[optIdx] && ca.toUpperCase() === optLetters[optIdx])
+            || (optIdx >= 0 && String(optIdx + 1) === ca);
+          if (isCorrect) s += parseFloat(q.max_marks || 1);
+        });
+        return s;
+      }
+
       // Build responses array with all fields the frontend expects
       var responses = rawResponses.map(function(r) {
         var student = studentMap[r.student_id] || {};
-        var pct = r.percentage != null ? r.percentage : (r.total_marks ? Math.round(((r.total_score || r.score || 0) / r.total_marks) * 100) : null);
+        var storedTotalMarks = r.total_marks != null ? r.total_marks : null;
+        var totalMarks = storedTotalMarks != null ? storedTotalMarks : computedTotalMarks;
+
+        // Score: prefer stored total_score/score, fall back to re-deriving from answers
+        var storedScore = r.total_score != null ? r.total_score : (r.auto_score != null ? r.auto_score : r.score);
+        var effectiveScore = (storedScore != null && storedScore > 0) ? storedScore : deriveScore(r.answers);
+
+        var pct = r.percentage != null ? r.percentage
+                : (totalMarks > 0 ? Math.round((effectiveScore / totalMarks) * 100) : null);
         var result = r.result || (pct != null ? (pct >= (test.passing_score || 60) ? 'Pass' : 'Fail') : null);
         return {
           studentId:   r.student_id,
           studentName: student.name || r.student_id,
-          totalScore:  r.total_score != null ? r.total_score : (r.auto_score != null ? r.auto_score : r.score),
-          totalMarks:  r.total_marks != null ? r.total_marks : test.total_marks,
+          totalScore:  effectiveScore,
+          totalMarks:  totalMarks || null,
           percentage:  pct,
           result:      result,
           submittedAt: r.submitted_at,

@@ -3651,14 +3651,81 @@ window.gasGet = (function () {
     });
   }
 
-  /* releaseResults */
+  /* releaseResults — also backfills scores for any response missing percentage */
   function h_releaseResults(p, cb) {
     if (!p.testId) { cb(null, { status: 'error', reason: 'missing_testId' }); return; }
-    PATCH('online_tests', 'test_id=eq.' + encodeURIComponent(p.testId), {
-      results_released: 'Yes',
-      results_mode: p.resultsMode || 'summary'
-    }, function(e) {
-      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+    var tid = p.testId;
+    var optLetters = ['A','B','C','D'];
+
+    // Step 1: fetch questions + question bank + existing responses + test meta in parallel
+    GET('test_questions', 'test_id=eq.' + encodeURIComponent(tid), function(e1, tqs) {
+      tqs = tqs || [];
+      var qids = tqs.map(function(tq) { return tq.question_id; });
+      var qbQuery = qids.length
+        ? 'id=in.(' + qids.map(encodeURIComponent).join(',') + ')'
+        : 'id=eq.-1'; // no questions edge case
+      GET('question_bank', qbQuery, function(e2, qrows) {
+        var qMap = {};
+        (qrows || []).forEach(function(q) { qMap[String(q.id)] = q; });
+        var computedTotalMarks = tqs.reduce(function(sum, tq) {
+          var q = qMap[String(tq.question_id)];
+          return sum + (q ? parseFloat(q.max_marks || 1) : 1);
+        }, 0);
+
+        GET('online_tests', 'test_id=eq.' + encodeURIComponent(tid), function(e3, tests) {
+          var passingScore = (tests && tests[0] && tests[0].passing_score) || 60;
+
+          GET('test_responses', 'test_id=eq.' + encodeURIComponent(tid), function(e4, responses) {
+            responses = (responses || []).filter(function(r) {
+              // Only backfill rows where percentage is missing or score looks uncomputed
+              return r.percentage == null || (r.percentage === 0 && r.score === 0);
+            });
+
+            if (!responses.length) {
+              // Nothing to backfill — just flip the flag
+              PATCH('online_tests', 'test_id=eq.' + encodeURIComponent(tid), {
+                results_released: 'Yes', results_mode: p.resultsMode || 'summary'
+              }, function(e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
+              return;
+            }
+
+            // Backfill each response
+            var pending = responses.length;
+            responses.forEach(function(r) {
+              var answers = r.answers || {};
+              var autoScore = 0;
+              tqs.forEach(function(tq) {
+                var q = qMap[String(tq.question_id)];
+                if (!q || (q.q_type && q.q_type !== 'MCQ')) return;
+                var ca = String(q.correct_ans || '').trim();
+                var studentAns = String((answers[String(tq.question_id)] || '')).trim();
+                if (!studentAns || !ca) return;
+                var optIdx = parseInt(studentAns, 10) - 1;
+                var isCorrect = ca === studentAns
+                  || (optIdx >= 0 && optLetters[optIdx] && ca.toUpperCase() === optLetters[optIdx])
+                  || (optIdx >= 0 && String(optIdx + 1) === ca);
+                if (isCorrect) autoScore += parseFloat(q.max_marks || 1);
+              });
+              var totalMarks = computedTotalMarks || 1;
+              var pct = Math.round((autoScore / totalMarks) * 100);
+              var result = pct >= passingScore ? 'Pass' : 'Fail';
+
+              PATCH('test_responses',
+                'test_id=eq.' + encodeURIComponent(tid) + '&student_id=eq.' + encodeURIComponent(r.student_id),
+                { score: autoScore, total_marks: totalMarks, percentage: pct, result: result },
+                function() {
+                  pending--;
+                  if (pending === 0) {
+                    PATCH('online_tests', 'test_id=eq.' + encodeURIComponent(tid), {
+                      results_released: 'Yes', results_mode: p.resultsMode || 'summary'
+                    }, function(e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
+                  }
+                }
+              );
+            });
+          });
+        });
+      });
     });
   }
 

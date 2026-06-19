@@ -3710,10 +3710,19 @@ window.gasGet = (function () {
       var testRows = await getP('online_tests', 'test_id=eq.' + encodeURIComponent(tid));
       if (!testRows || !testRows.length) { cb(null, { status: 'error', reason: 'test_not_found' }); return; }
       var test = testRows[0];
-      var bc = test.batch_code;
+
+      // Support multi-batch: batch_codes is comma-separated, batch_code is just the first
+      var allBatchCodes = (test.batch_codes || test.batch_code || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+
+      // Fetch students from all batches, then flatten
+      var studentArraysP = Promise.all(
+        allBatchCodes.map(function(bc) {
+          return getP('students', 'batch_code=eq.' + encodeURIComponent(bc));
+        })
+      ).then(function(arrs) { return [].concat.apply([], arrs); });
 
       var [students, starts, responses, warnings] = await Promise.all([
-        getP('students', 'batch_code=eq.' + encodeURIComponent(bc)),
+        studentArraysP,
         getP('test_starts', 'test_id=eq.' + encodeURIComponent(tid)),
         getP('test_responses', 'test_id=eq.' + encodeURIComponent(tid)),
         getP('test_warnings', 'test_id=eq.' + encodeURIComponent(tid))
@@ -3796,25 +3805,60 @@ window.gasGet = (function () {
       var tid = p.testId;
       var testRows = await getP('online_tests', 'test_id=eq.' + encodeURIComponent(tid));
       if (!testRows || !testRows.length) { cb(null, { status: 'error', reason: 'test_not_found' }); return; }
-      var bc = testRows[0].batch_code;
+      var test = testRows[0];
 
-      var [students, responses] = await Promise.all([
-        getP('students', 'batch_code=eq.' + encodeURIComponent(bc)),
-        getP('test_responses', 'test_id=eq.' + encodeURIComponent(tid))
-      ]);
+      // Support multi-batch: batch_codes is comma-separated, batch_code is just the first
+      var allBatchCodes = (test.batch_codes || test.batch_code || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
 
-      var respMap = {};
-      responses.forEach(function(r) { respMap[r.student_id] = r; });
+      // Fetch students from ALL batches in parallel
+      var studentArrays = await Promise.all(
+        allBatchCodes.map(function(bc) {
+          return getP('students', 'batch_code=eq.' + encodeURIComponent(bc));
+        })
+      );
+      var students = [].concat.apply([], studentArrays);
 
-      var summary = students.map(function(s) {
-        var r = respMap[s.student_id];
+      var rawResponses = await getP('test_responses', 'test_id=eq.' + encodeURIComponent(tid));
+
+      var studentMap = {};
+      students.forEach(function(s) { studentMap[s.student_id] = s; });
+
+      // Build responses array with all fields the frontend expects
+      var responses = rawResponses.map(function(r) {
+        var student = studentMap[r.student_id] || {};
+        var pct = r.percentage != null ? r.percentage : (r.total_marks ? Math.round(((r.total_score || r.score || 0) / r.total_marks) * 100) : null);
+        var result = r.result || (pct != null ? (pct >= (test.passing_score || 60) ? 'Pass' : 'Fail') : null);
         return {
-          studentId: s.student_id, studentName: s.name, score: r ? r.score : null,
-          submittedAt: r ? r.submitted_at : null, answers: r ? r.answers : null
+          studentId:   r.student_id,
+          studentName: student.name || r.student_id,
+          totalScore:  r.total_score != null ? r.total_score : (r.auto_score != null ? r.auto_score : r.score),
+          totalMarks:  r.total_marks != null ? r.total_marks : test.total_marks,
+          percentage:  pct,
+          result:      result,
+          submittedAt: r.submitted_at,
+          submitType:  r.submit_type || 'Manual',
+          attemptNo:   r.attempt_no || 1
         };
       });
 
-      cb(null, { status: 'ok', summary: summary, students: summary });
+      // Aggregate stats
+      var passed = responses.filter(function(r){ return r.result === 'Pass'; }).length;
+      var failed = responses.filter(function(r){ return r.result === 'Fail'; }).length;
+      var pcts = responses.map(function(r){ return r.percentage; }).filter(function(v){ return v != null; });
+      var avgPercentage = pcts.length ? Math.round(pcts.reduce(function(a,b){ return a+b; }, 0) / pcts.length) : 0;
+
+      cb(null, {
+        status: 'ok',
+        responses: responses,
+        total: students.length,
+        submitted: responses.length,
+        passed: passed,
+        failed: failed,
+        avgPercentage: avgPercentage,
+        // legacy keys kept for compatibility
+        summary: responses,
+        students: responses
+      });
     } catch(err) {
       cb(err, null);
     }

@@ -3111,7 +3111,11 @@ window.gasGet = (function () {
             var results = responses.map(function(r) {
               var t = testMap[r.test_id];
               if (!t) return null;
-              var pct = r.percentage != null ? parseFloat(r.percentage) : null;
+              // Derive percentage from stored score/total_marks when percentage column is null (legacy rows)
+              var pct = r.percentage != null ? parseFloat(r.percentage)
+                      : (r.score != null && r.total_marks != null && parseFloat(r.total_marks) > 0)
+                        ? Math.round((parseFloat(r.score) / parseFloat(r.total_marks)) * 100)
+                        : null;
               var ps  = parseFloat(t.passing_score) || OT_PASS_PERCENT;
               var mode = t.results_mode || 'summary';
 
@@ -3818,8 +3822,9 @@ window.gasGet = (function () {
 
           GET('test_responses', 'test_id=eq.' + encodeURIComponent(tid), function(e4, responses) {
             responses = (responses || []).filter(function(r) {
-              // Only backfill rows where percentage is missing or score looks uncomputed
-              return r.percentage == null || (r.percentage === 0 && r.score === 0);
+              // Backfill all MCQ-scorable rows on every release/re-release
+              // so legacy rows with score>0 but null percentage get fixed too
+              return true;
             });
 
             if (!responses.length) {

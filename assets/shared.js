@@ -4082,6 +4082,53 @@ window.gasGet = (function () {
     });
   }
 
+  /* resetStudentAttempt — wipe submission + warnings + start so student can retake */
+  async function h_resetStudentAttempt(p, cb) {
+    if (!p.instructor) { cb(null, {status:'error', reason:'auth_required'}); return; }
+    if (!p.testId || !p.studentId) { cb(null, {status:'error', reason:'missing_params'}); return; }
+    var tid = String(p.testId).trim();
+    var sid = String(p.studentId).trim();
+    function delP(table, qs) {
+      return new Promise(function(resolve) {
+        DEL(table, qs, function(err) { resolve(!err); });
+      });
+    }
+    function getP(table, qs) {
+      return new Promise(function(resolve) {
+        GET(table, qs, function(err, data) { resolve(err ? [] : (data||[])); });
+      });
+    }
+    try {
+      // Count existing resets before we add the new log entry
+      var prevResets = await getP('test_warnings',
+        'test_id=eq.' + encodeURIComponent(tid) +
+        '&student_id=eq.' + encodeURIComponent(sid) +
+        '&warn_type=eq.reset');
+      var resetCount = prevResets.length + 1;
+
+      // Delete submission, warnings, and start record
+      await Promise.all([
+        delP('test_responses', 'test_id=eq.' + encodeURIComponent(tid) + '&student_id=eq.' + encodeURIComponent(sid)),
+        delP('test_warnings',  'test_id=eq.' + encodeURIComponent(tid) + '&student_id=eq.' + encodeURIComponent(sid)),
+        delP('test_starts',    'test_id=eq.' + encodeURIComponent(tid) + '&student_id=eq.' + encodeURIComponent(sid))
+      ]);
+
+      // Log the reset event in test_warnings
+      await new Promise(function(resolve) {
+        POST('test_warnings', '', {
+          test_id: tid, student_id: sid,
+          instructor: p.instructor, warn_type: 'reset',
+          count: 1, created_at: new Date().toISOString()
+        }, function() { resolve(); });
+      });
+
+      cb(null, {status:'ok', deletedRows:1, resetCount:resetCount,
+                message:'Attempt reset #' + resetCount + '. Student can now retake the test.'});
+    } catch(e) {
+      cb(null, {status:'error', reason: e.message || 'unknown'});
+    }
+  }
+
   /* getProctorRoom */
   async function h_getProctorRoom(p, cb) {
     function getP(table, qs) {
@@ -4451,6 +4498,7 @@ window.gasGet = (function () {
       case 'getTestQuestionsInstructor':return h_getTestQuestionsInstructor(params, cb);
       case 'getProctorRoom':            return h_getProctorRoom(params, cb);
       case 'getTestResultsSummary':     return h_getTestResultsSummary(params, cb);
+      case 'resetStudentAttempt':       return h_resetStudentAttempt(params, cb);
 
       default:
         console.warn('[gasGet→SB] Action not handled by Supabase wrapper, routing to GAS:', a, params);

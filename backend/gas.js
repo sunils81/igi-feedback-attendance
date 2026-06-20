@@ -5651,24 +5651,7 @@ function otResetStudentAttempt(ss, p) {
     }).length;
   }
 
-  // ── DEBUG: capture what was received and what was in the sheet ──
-  var debugInfo = {
-    receivedTestId: testId,
-    receivedStudentId: studentId,
-    responsesRowCount: 0,
-    sampleRows: []
-  };
-  if (shR && shR.getLastRow() > 1) {
-    var dbgRows = shR.getRange(2, 1, shR.getLastRow()-1, 3).getValues();
-    debugInfo.responsesRowCount = dbgRows.length;
-    // Show first 5 rows so we can see actual stored values
-    for (var di = 0; di < Math.min(5, dbgRows.length); di++) {
-      debugInfo.sampleRows.push([String(dbgRows[di][0]), String(dbgRows[di][1]), String(dbgRows[di][2])]);
-    }
-  }
-
   return {status:'ok', deletedRows: deletedCount, resetCount: resetCount,
-          debug: debugInfo,
           message:'Attempt reset #' + resetCount + '. Student can now retake the test.'};
 }
 

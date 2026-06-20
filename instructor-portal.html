@@ -5635,6 +5635,19 @@ function otRenderTests(tests) {
   regularTests.forEach(function(t) {
     var badgeStatus = t.status === 'Draft' ? 'draft' : t.status === 'Active' ? 'active' : t.resultsReleased === 'Yes' ? 'released' : 'closed';
     var actAt = t.activatedAt ? new Date(t.activatedAt).toLocaleString('en-IN') : '—';
+    // Released mode pill shown inside the card
+    var releasedModePill = '';
+    if (t.status === 'Closed' && t.resultsReleased === 'Yes' && t.testType !== 'Portfolio Upload') {
+      var isFull = t.resultsMode === 'full';
+      releasedModePill = '<div style="margin-top:8px;display:flex;align-items:center;gap:8px;background:'+(isFull?'#f0fdf4':'#fffbeb')+';border:1px solid '+(isFull?'#a7f3d0':'#fde68a')+';border-radius:8px;padding:7px 10px;">'
+        + '<span style="font-size:13px;">'+(isFull?'👁':'📊')+'</span>'
+        + '<div style="flex:1;">'
+        +   '<div style="font-size:12px;font-weight:700;color:'+(isFull?'#065f46':'#92400e')+'">'+(isFull?'Students can see their answers':'Students see score only')+'</div>'
+        +   '<div style="font-size:11px;color:#6b7280;">'+(isFull?'Each question, their answer, and the correct answer is visible':'Only their total score and percentage is shown')+'</div>'
+        + '</div>'
+        + '<button onclick="otOpenReleaseModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',true)" style="flex-shrink:0;background:none;border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;font-size:11px;color:#374151;cursor:pointer;white-space:nowrap;">Change</button>'
+        + '</div>';
+    }
     html += '<div class="ot-card">'
       + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">'
       +   '<span class="ot-badge '+(t.testType==='Final'?'final':'weekly')+'">'+escHtml(t.testType)+'</span>'
@@ -5648,13 +5661,12 @@ function otRenderTests(tests) {
           : '<div style="font-size:12px;color:#6b7280;">Questions: <b>'+(t.questionCount||0)+'</b> · Duration: <b>'+t.duration+' min</b></div>')
       + (t.testType !== 'Portfolio Upload' ? '<div style="font-size:12px;color:#6b7280;">Neg Marking: <b>'+escHtml(t.negativeMarking)+'</b></div>' : '')
       + (t.activatedAt ? '<div style="font-size:11px;color:#9ca3af;margin-top:4px;">Activated: '+actAt+'</div>' : '')
+      + releasedModePill
       + '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
       + (t.status === 'Draft' ? '<button class="ot-btn success" onclick="otActivateTest(\''+escHtml(t.testId)+'\')">▶ Activate</button>' : '')
       + (t.status === 'Draft' ? '<button class="ot-btn ghost" onclick="otOpenEditSettingsModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',\''+escHtml(String(t.duration))+'\',\''+escHtml(t.batchCodes||t.batchCode||'')+'\',\''+escHtml(t.negativeMarking||'No')+'\',\''+escHtml(String(t.passingScore||60))+'\',\''+escHtml(t.instructions||'')+'\')">✏ Edit Settings</button>' : '')
       + (t.status === 'Active' && t.testType !== 'Portfolio Upload' ? '<button class="ot-btn warn" onclick="otOpenProctorForTest(\''+escHtml(t.testId)+'\')">👁 Proctor Room</button>' : '')
-      + (t.status === 'Closed' && t.resultsReleased !== 'Yes' ? '<button class="ot-btn primary" onclick="otReleaseResultsFor(\''+escHtml(t.testId)+'\',\'summary\')">📢 Release Results</button>' : '')
-      + (t.status === 'Closed' && t.resultsReleased !== 'Yes' && t.testType !== 'Portfolio Upload' ? '<button class="ot-btn ghost" onclick="otReleaseResultsFor(\''+escHtml(t.testId)+'\',\'full\')">&amp; Show Breakdown</button>' : '')
-      + (t.status === 'Closed' && t.resultsReleased === 'Yes' && t.testType !== 'Portfolio Upload' ? '<button class="ot-btn ghost" onclick="otReleaseResultsFor(\''+escHtml(t.testId)+'\',\''+escHtml(t.resultsMode==='full'?'summary':'full')+'\')" title="'+(t.resultsMode==='full'?'Switch back to score-only view':'Let students see their questions &amp; answers')+'">'+(t.resultsMode==='full'?'📋 Summary Only':'🔍 Show Breakdown')+'</button>' : '')
+      + (t.status === 'Closed' && t.resultsReleased !== 'Yes' ? '<button class="ot-btn primary" onclick="otOpenReleaseModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',false)">📢 Release Results</button>' : '')
       + '<button class="ot-btn ghost" onclick="otViewResults(\''+escHtml(t.testId)+'\')">📊 Results</button>'
       + (t.testType !== 'Portfolio Upload' ? '<button class="ot-btn ghost" onclick="otOpenQuestionsModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',\''+escHtml(t.status)+'\')">📝 '+(t.status==='Draft'?'Manage':'View')+' Questions</button>' : '')
       + '<button class="ot-btn ghost" onclick="otPromptDuplicate(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">👯 Duplicate</button>'
@@ -6113,14 +6125,86 @@ function otRemoveQ(testId, qId, btn) {
   });
 }
 
-function otReleaseResultsFor(testId, mode) {
-  var label = mode === 'full' ? 'full breakdown (questions right/wrong)' : 'summary (score + percentage only)';
-  if (!confirm('Release results in '+label+' mode?')) return;
+function otOpenReleaseModal(testId, testLabel, isUpdate) {
+  // Remove any existing modal
+  var existing = document.getElementById('ot-release-modal');
+  if (existing) existing.remove();
+
+  var overlay = document.createElement('div');
+  overlay.id = 'ot-release-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;">
+      <div style="background:#0D1B2E;padding:18px 20px;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="color:#C9A84C;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-bottom:2px;">${isUpdate ? 'Update' : 'Release'} Results</div>
+          <div style="color:#fff;font-size:14px;font-weight:600;">${escHtml(testLabel)}</div>
+        </div>
+        <button onclick="document.getElementById('ot-release-modal').remove()" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;opacity:.7;line-height:1;">✕</button>
+      </div>
+      <div style="padding:20px;">
+        <div style="font-size:13px;color:#374151;font-weight:600;margin-bottom:12px;">What will students see?</div>
+
+        <label id="ot-rm-label-summary" style="display:flex;gap:12px;align-items:flex-start;border:2px solid #e5e7eb;border-radius:10px;padding:12px 14px;cursor:pointer;margin-bottom:8px;transition:border-color .15s;">
+          <input type="radio" name="ot-release-mode" value="summary" checked style="margin-top:2px;accent-color:#0D1B2E;">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#111827;">📊 Score &amp; Percentage only</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:2px;">Students see their total score and how they did — but not the individual questions or answers.</div>
+            <div style="margin-top:8px;background:#f9fafb;border-radius:6px;padding:8px 10px;font-size:11px;color:#374151;border:1px solid #e5e7eb;">
+              <b>Student sees:</b> Score 4/5 · 80% · Pass ✅
+            </div>
+          </div>
+        </label>
+
+        <label id="ot-rm-label-full" style="display:flex;gap:12px;align-items:flex-start;border:2px solid #e5e7eb;border-radius:10px;padding:12px 14px;cursor:pointer;transition:border-color .15s;">
+          <input type="radio" name="ot-release-mode" value="full" style="margin-top:2px;accent-color:#0D1B2E;">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#111827;">👁 Score + Full Answer Review</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:2px;">Students can also review each question, see what they answered, and check the correct answer.</div>
+            <div style="margin-top:8px;background:#f0fdf4;border-radius:6px;padding:8px 10px;font-size:11px;color:#374151;border:1px solid #a7f3d0;">
+              <b>Student sees:</b> Score + Q1 ✅ Correct · Q2 ❌ Wrong (correct was B) · …
+            </div>
+          </div>
+        </label>
+
+        <button onclick="otConfirmRelease('${escHtml(testId)}')" style="width:100%;margin-top:16px;background:#0D1B2E;color:#fff;border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;">
+          ${isUpdate ? '✅ Update what students see' : '📢 Release Results to Students'}
+        </button>
+        <div style="font-size:11px;color:#9ca3af;text-align:center;margin-top:8px;">You can change this setting at any time after releasing.</div>
+      </div>
+    </div>`;
+
+  // Highlight selected radio option border
+  overlay.addEventListener('change', function(e) {
+    if (e.target.name !== 'ot-release-mode') return;
+    document.getElementById('ot-rm-label-summary').style.borderColor = e.target.value === 'summary' ? '#0D1B2E' : '#e5e7eb';
+    document.getElementById('ot-rm-label-full').style.borderColor    = e.target.value === 'full'    ? '#0D1B2E' : '#e5e7eb';
+  });
+  // Set initial highlight
+  document.getElementById('ot-rm-label-summary').style.borderColor = '#0D1B2E';
+
+  // Close on backdrop click
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+function otConfirmRelease(testId) {
+  var sel = document.querySelector('input[name="ot-release-mode"]:checked');
+  var mode = sel ? sel.value : 'summary';
+  var btn = document.querySelector('#ot-release-modal button[onclick*="otConfirmRelease"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Releasing…'; }
   gasGet({action:'releaseResults', instructor:instructorName, testId:testId, resultsMode:mode}, function(err, d) {
-    if (err || !d || d.status !== 'ok') return alert('Error releasing results');
-    alert('✅ Results released!');
+    var modal = document.getElementById('ot-release-modal');
+    if (modal) modal.remove();
+    if (err || !d || d.status !== 'ok') return showToast('❌ Error releasing results — please try again.', true);
+    showToast('✅ Results released! Students can now view their scores.');
     otLoadTests();
   });
+}
+
+// Keep old function name as alias for any other callers (e.g. Results tab buttons)
+function otReleaseResultsFor(testId, mode) {
+  otOpenReleaseModal(testId, testId, true);
 }
 
 function otOpenProctorForTest(testId) {
@@ -6313,12 +6397,15 @@ function otLoadResults() {
     // Release buttons if not yet released
     var testObj = otCurrentTests.find(function(t){ return t.testId===testId; });
     if (testObj && testObj.resultsReleased !== 'Yes') {
-      html += '<div style="margin-top:16px;display:flex;gap:10px;">'
-        + '<button class="ot-btn primary" onclick="otReleaseResultsFor(\''+escHtml(testId)+'\',\'summary\')">📢 Release Results (Summary)</button>'
-        + '<button class="ot-btn ghost" onclick="otReleaseResultsFor(\''+escHtml(testId)+'\',\'full\')">Release Full Breakdown</button>'
+      html += '<div style="margin-top:16px;">'
+        + '<button class="ot-btn primary" onclick="otOpenReleaseModal(\''+escHtml(testId)+'\',\''+escHtml(testObj.testLabel||testId)+'\',false)">📢 Release Results to Students</button>'
         + '</div>';
     } else if (testObj && testObj.resultsReleased === 'Yes') {
-      html += '<div style="margin-top:14px;background:#d1fae5;color:#065f46;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;">✅ Results are released to students</div>';
+      var isFull = testObj.resultsMode === 'full';
+      html += '<div style="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+        + '<div style="background:#d1fae5;color:#065f46;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;">✅ Results released · '+(isFull?'Students can see answer breakdown':'Score only')+'</div>'
+        + '<button class="ot-btn ghost" style="font-size:12px;" onclick="otOpenReleaseModal(\''+escHtml(testId)+'\',\''+escHtml(testObj.testLabel||testId)+'\',true)">Change what students see</button>'
+        + '</div>';
     }
     el.innerHTML = html;
   });

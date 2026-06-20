@@ -3072,8 +3072,82 @@ window.gasGet = (function () {
   }
 
   function h_getStudentResults(p, cb) {
-    GET('test_responses', 'student_id=eq.' + encodeURIComponent(p.studentId), function(e, rows) {
-      cb(null, { status: e ? 'error' : 'ok', results: rows || [] });
+    var sid = String(p.studentId || '').trim();
+    var bc  = String(p.batchCode  || '').trim();
+    if (!sid) { cb(null, { status: 'error', reason: 'missing_studentId' }); return; }
+
+    // 1. Fetch all released tests that include this batch
+    GET('online_tests', 'results_released=eq.Yes', function(e1, tests) {
+      if (e1) { cb(null, { status: 'error', reason: 'fetch_tests_failed' }); return; }
+      tests = (tests || []).filter(function(t) {
+        if (!bc) return true;
+        var codes = String(t.batch_codes || t.batch_code || '').split(',').map(function(s){ return s.trim().toUpperCase(); });
+        return codes.indexOf(bc.toUpperCase()) !== -1;
+      });
+      var testMap = {};
+      tests.forEach(function(t) { testMap[t.test_id] = t; });
+      var releasedIds = Object.keys(testMap);
+      if (!releasedIds.length) {
+        cb(null, { status: 'ok', weeklyResults: [], finalResults: [], weeklyAverage: null, specialBadges: [], cumulativeHonour: null });
+        return;
+      }
+
+      // 2. Fetch student's responses for those tests
+      GET('test_responses',
+        'student_id=eq.' + encodeURIComponent(sid) +
+        '&test_id=in.(' + releasedIds.map(encodeURIComponent).join(',') + ')',
+        function(e2, responses) {
+          if (e2) { cb(null, { status: 'error', reason: 'fetch_responses_failed' }); return; }
+          responses = responses || [];
+
+          var OT_PASS_PERCENT = 60;
+
+          var results = responses.map(function(r) {
+            var t = testMap[r.test_id];
+            if (!t) return null;
+            var pct = r.percentage != null ? parseFloat(r.percentage) : null;
+            var ps  = parseFloat(t.passing_score) || OT_PASS_PERCENT;
+            return {
+              testId:       r.test_id,
+              testLabel:    t.title || r.test_id,
+              testType:     t.test_type || 'Weekly',
+              submittedAt:  r.submitted_at,
+              submitType:   r.submit_type || 'manual',
+              totalScore:   r.score,
+              totalMarks:   r.total_marks,
+              percentage:   pct,
+              result:       r.result || (pct != null ? (pct >= ps ? 'Pass' : 'Fail') : 'Pending'),
+              resultsMode:  t.results_mode || 'summary',
+              attemptNo:    r.attempt_no || 1,
+              allowRetake:  t.allow_retake || 'No',
+              passingScore: ps,
+              badge:        null,
+              classRank:    null,
+              feedback:     '',
+              questionBreakdown: []
+            };
+          }).filter(Boolean);
+
+          var weekly  = results.filter(function(r){ return r.testType === 'Weekly'; });
+          var final_  = results.filter(function(r){ return r.testType === 'Final'; });
+
+          var weeklyAvg = null;
+          if (weekly.length > 0) {
+            var wScores = weekly.map(function(r){ return r.percentage || 0; }).sort(function(a,b){ return b-a; });
+            var top3 = wScores.slice(0, 3);
+            weeklyAvg = Math.round(top3.reduce(function(s,v){ return s+v; }, 0) / top3.length);
+          }
+
+          cb(null, {
+            status: 'ok',
+            weeklyResults:    weekly,
+            finalResults:     final_,
+            weeklyAverage:    weeklyAvg,
+            specialBadges:    [],
+            cumulativeHonour: null
+          });
+        }
+      );
     });
   }
 

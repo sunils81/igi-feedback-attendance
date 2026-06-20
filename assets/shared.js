@@ -4255,9 +4255,42 @@ window.gasGet = (function () {
         };
       });
 
+      // Add non-submitters so every enrolled student appears in the table
+      var submittedIds = new Set(responses.map(function(r){ return String(r.studentId); }));
+      var targetStudents = String(test.target_students || 'ALL').trim();
+      students.forEach(function(s) {
+        var sid = String(s.student_id || '');
+        if (submittedIds.has(sid)) return;
+        // If test was targeted to specific students, skip those not in target list
+        if (targetStudents !== 'ALL' && targetStudents !== '') {
+          var allowed = targetStudents.replace(/[\[\]"']/g,'').split(',').map(function(x){ return x.trim().toUpperCase(); });
+          if (allowed.indexOf(sid.toUpperCase()) === -1) return;
+        }
+        responses.push({
+          studentId:   sid,
+          studentName: s.name || sid,
+          totalScore:  null,
+          totalMarks:  computedTotalMarks || null,
+          percentage:  null,
+          result:      'Not Submitted',
+          submittedAt: null,
+          submitType:  '—',
+          attemptNo:   null
+        });
+      });
+
+      // Sort: submitted first (by submitted_at desc), then not-submitted alphabetically
+      responses.sort(function(a, b) {
+        if (a.result === 'Not Submitted' && b.result !== 'Not Submitted') return 1;
+        if (b.result === 'Not Submitted' && a.result !== 'Not Submitted') return -1;
+        if (a.result === 'Not Submitted' && b.result === 'Not Submitted') return (a.studentName||'').localeCompare(b.studentName||'');
+        return new Date(b.submittedAt||0) - new Date(a.submittedAt||0);
+      });
+
       // Aggregate stats
       var passed = responses.filter(function(r){ return r.result === 'Pass'; }).length;
       var failed = responses.filter(function(r){ return r.result === 'Fail'; }).length;
+      var notSubmitted = responses.filter(function(r){ return r.result === 'Not Submitted'; }).length;
       var pcts = responses.map(function(r){ return r.percentage; }).filter(function(v){ return v != null; });
       var avgPercentage = pcts.length ? Math.round(pcts.reduce(function(a,b){ return a+b; }, 0) / pcts.length) : 0;
 
@@ -4265,11 +4298,11 @@ window.gasGet = (function () {
         status: 'ok',
         responses: responses,
         total: students.length,
-        submitted: responses.length,
+        submitted: responses.length - notSubmitted,
         passed: passed,
         failed: failed,
+        notSubmitted: notSubmitted,
         avgPercentage: avgPercentage,
-        // legacy keys kept for compatibility
         summary: responses,
         students: responses
       });

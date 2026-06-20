@@ -5603,38 +5603,56 @@ function otResetStudentAttempt(ss, p) {
   // Delete from OT_RESPONSES
   // Headers: Response ID(0), Test ID(1), Student ID(2) — must read 3 cols
   var shR = ss.getSheetByName(SH_OT_RESPONSES);
+  var deletedCount = 0;
   if (shR && shR.getLastRow() > 1) {
     var rRows = shR.getRange(2, 1, shR.getLastRow()-1, 3).getValues();
     for (var i = rRows.length - 1; i >= 0; i--) {
-      if (String(rRows[i][1]) === testId && String(rRows[i][2]).toUpperCase() === studentId) {
+      if (String(rRows[i][1]).trim() === testId && String(rRows[i][2]).trim().toUpperCase() === studentId) {
         shR.deleteRow(i + 2);
+        deletedCount++;
       }
     }
   }
 
-  // Delete from OT_WARNINGS
+  // Delete from OT_WARNINGS (Headers: Test ID(0), Student ID(1))
   var shW = ss.getSheetByName(SH_OT_WARNINGS);
   if (shW && shW.getLastRow() > 1) {
     var wRows = shW.getRange(2, 1, shW.getLastRow()-1, 2).getValues();
     for (var j = wRows.length - 1; j >= 0; j--) {
-      if (String(wRows[j][0]) === testId && String(wRows[j][1]).toUpperCase() === studentId) {
+      if (String(wRows[j][0]).trim() === testId && String(wRows[j][1]).trim().toUpperCase() === studentId) {
         shW.deleteRow(j + 2);
       }
     }
   }
 
-  // Delete from OT_STARTS
+  // Delete from OT_STARTS (Headers: Test ID(0), Student ID(1))
   var shS = ss.getSheetByName(SH_OT_STARTS);
   if (shS && shS.getLastRow() > 1) {
     var sRows = shS.getRange(2, 1, shS.getLastRow()-1, 2).getValues();
     for (var k = sRows.length - 1; k >= 0; k--) {
-      if (String(sRows[k][0]) === testId && String(sRows[k][1]).toUpperCase() === studentId) {
+      if (String(sRows[k][0]).trim() === testId && String(sRows[k][1]).trim().toUpperCase() === studentId) {
         shS.deleteRow(k + 2);
       }
     }
   }
 
-  return {status:'ok', message:'Attempt reset. Student can now retake the test.'};
+  // Log the reset to OT_WARNINGS sheet as a record (type: 'reset')
+  var shWLog = ss.getSheetByName(SH_OT_WARNINGS);
+  if (shWLog) {
+    shWLog.appendRow([testId, studentId, p.instructor, 'reset', 1, new Date().toISOString()]);
+  }
+
+  // Count total resets for this student+test (from warnings log)
+  var resetCount = 0;
+  if (shW && shW.getLastRow() > 1) {
+    var wAll = shW.getRange(2, 1, shW.getLastRow()-1, 4).getValues();
+    resetCount = wAll.filter(function(r) {
+      return String(r[0]).trim() === testId && String(r[1]).trim().toUpperCase() === studentId && String(r[3]) === 'reset';
+    }).length;
+  }
+
+  return {status:'ok', deletedRows: deletedCount, resetCount: resetCount,
+          message:'Attempt reset #' + resetCount + '. Student can now retake the test.'};
 }
 
 function otSaveManualGrade(ss, p) {

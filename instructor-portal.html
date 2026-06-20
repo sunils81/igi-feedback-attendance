@@ -6291,8 +6291,11 @@ function otResetStudentAttempt(studentId, studentName) {
   if (!otActiveTestId) return alert('No test selected.');
   if (!confirm('Reset attempt for ' + studentName + '?\n\nThis will delete their submission and warnings so they can retake the test from scratch.')) return;
   gasGet({action:'resetStudentAttempt', instructor:instructorName, testId:otActiveTestId, studentId:studentId}, function(err, d) {
-    if (err || !d || d.status !== 'ok') return alert('Error resetting attempt: ' + (d && d.reason || 'unknown'));
-    alert('✅ Attempt reset for ' + studentName + '. They can now retake the test.');
+    if (err || !d || d.status !== 'ok') {
+      return alert('Error resetting attempt: ' + (d && d.reason || (err && err.message) || 'unknown'));
+    }
+    var resetNo = d.resetCount || 1;
+    alert('✅ Reset #' + resetNo + ' done for ' + studentName + '.\n\nDeleted ' + (d.deletedRows||0) + ' submission row(s).\nStudent can now retake the test — their portal updates within 15 seconds.');
     otLoadProctor();
   });
 }

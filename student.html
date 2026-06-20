@@ -584,6 +584,11 @@
     font-size: 13px !important;
   }
 }
+/* Answer breakdown toggle */
+.ot-breakdown-details[open] .ot-breakdown-chevron { transform: rotate(180deg); }
+.ot-breakdown-details summary::-webkit-details-marker { display:none; }
+.ot-breakdown-details summary { outline:none; }
+.ot-breakdown-details[open] summary > div { background:#e8eeff; border-color:#a5b4fc; }
 </style>
 <!-- QR code generator (used for student ID card) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -2979,9 +2984,20 @@ function otRenderMyResults(weekly, final_, weeklyAvg, specials, cumHonour) {
   function otRenderQuestionBreakdown(r) {
     var qs = r.questionBreakdown || [];
     if ((r.resultsMode || 'summary') !== 'full' || !qs.length) return '';
-    var html = '<details style="margin-top:12px;border-top:1px solid #f3f4f6;padding-top:10px;">'
-      + '<summary style="cursor:pointer;font-size:12px;font-weight:800;color:#0D1B2E;list-style:none;">Answer feedback</summary>'
-      + '<div style="display:grid;gap:8px;margin-top:10px;">';
+    var html = '<details style="margin-top:12px;" class="ot-breakdown-details">'
+      + '<summary style="list-style:none;cursor:pointer;">'
+      +   '<div style="display:flex;align-items:center;justify-content:space-between;background:#f0f4ff;border:1.5px solid #c7d4f8;border-radius:10px;padding:10px 14px;transition:background .15s;">'
+      +     '<div style="display:flex;align-items:center;gap:8px;">'
+      +       '<span style="font-size:16px;">📝</span>'
+      +       '<div>'
+      +         '<div style="font-size:13px;font-weight:800;color:#0D1B2E;">Review your answers</div>'
+      +         '<div style="font-size:11px;color:#6b7280;">Tap to see each question, your answer &amp; the correct answer</div>'
+      +       '</div>'
+      +     '</div>'
+      +     '<span class="ot-breakdown-chevron" style="font-size:16px;color:#4f6ef7;font-weight:700;transition:transform .2s;">▾</span>'
+      +   '</div>'
+      + '</summary>'
+      + '<div style="display:grid;gap:8px;margin-top:8px;">';
     qs.forEach(function(q) {
       var isTheory = q.type === 'Theory';
       var ok = q.isCorrect === true;

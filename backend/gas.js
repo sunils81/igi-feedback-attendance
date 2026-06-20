@@ -5601,11 +5601,12 @@ function otResetStudentAttempt(ss, p) {
   var studentId = String(p.studentId).trim().toUpperCase();
 
   // Delete from OT_RESPONSES
+  // Headers: Response ID(0), Test ID(1), Student ID(2) — must read 3 cols
   var shR = ss.getSheetByName(SH_OT_RESPONSES);
   if (shR && shR.getLastRow() > 1) {
-    var rRows = shR.getRange(2, 1, shR.getLastRow()-1, 2).getValues();
+    var rRows = shR.getRange(2, 1, shR.getLastRow()-1, 3).getValues();
     for (var i = rRows.length - 1; i >= 0; i--) {
-      if (String(rRows[i][0]) === testId && String(rRows[i][1]).toUpperCase() === studentId) {
+      if (String(rRows[i][1]) === testId && String(rRows[i][2]).toUpperCase() === studentId) {
         shR.deleteRow(i + 2);
       }
     }

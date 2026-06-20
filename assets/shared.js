@@ -3102,50 +3102,117 @@ window.gasGet = (function () {
 
           var OT_PASS_PERCENT = 60;
 
-          var results = responses.map(function(r) {
-            var t = testMap[r.test_id];
-            if (!t) return null;
-            var pct = r.percentage != null ? parseFloat(r.percentage) : null;
-            var ps  = parseFloat(t.passing_score) || OT_PASS_PERCENT;
-            return {
-              testId:       r.test_id,
-              testLabel:    t.title || r.test_id,
-              testType:     t.test_type || 'Weekly',
-              submittedAt:  r.submitted_at,
-              submitType:   r.submit_type || 'manual',
-              totalScore:   r.score,
-              totalMarks:   r.total_marks,
-              percentage:   pct,
-              result:       r.result || (pct != null ? (pct >= ps ? 'Pass' : 'Fail') : 'Pending'),
-              resultsMode:  t.results_mode || 'summary',
-              attemptNo:    r.attempt_no || 1,
-              allowRetake:  t.allow_retake || 'No',
-              passingScore: ps,
-              badge:        null,
-              classRank:    null,
-              feedback:     '',
-              questionBreakdown: []
-            };
-          }).filter(Boolean);
+          // Check if any tests need full breakdown (results_mode === 'full')
+          var fullModeIds = releasedIds.filter(function(tid) {
+            return (testMap[tid].results_mode || 'summary') === 'full';
+          });
 
-          var weekly  = results.filter(function(r){ return r.testType === 'Weekly'; });
-          var final_  = results.filter(function(r){ return r.testType === 'Final'; });
+          function buildResults(qMap, tqMap) {
+            var results = responses.map(function(r) {
+              var t = testMap[r.test_id];
+              if (!t) return null;
+              var pct = r.percentage != null ? parseFloat(r.percentage) : null;
+              var ps  = parseFloat(t.passing_score) || OT_PASS_PERCENT;
+              var mode = t.results_mode || 'summary';
 
-          var weeklyAvg = null;
-          if (weekly.length > 0) {
-            var wScores = weekly.map(function(r){ return r.percentage || 0; }).sort(function(a,b){ return b-a; });
-            var top3 = wScores.slice(0, 3);
-            weeklyAvg = Math.round(top3.reduce(function(s,v){ return s+v; }, 0) / top3.length);
+              // Build question breakdown for 'full' mode tests
+              var breakdown = [];
+              if (mode === 'full' && tqMap[r.test_id] && r.answers) {
+                var answers = typeof r.answers === 'string' ? JSON.parse(r.answers) : (r.answers || {});
+                var tqs = tqMap[r.test_id] || [];
+                tqs.forEach(function(tq, i) {
+                  var q = qMap[String(tq.question_id)] || {};
+                  var qType = q.q_type || 'MCQ';
+                  var maxMarks = parseFloat(q.max_marks || 1);
+                  var correctAns = String(q.correct_ans || '').trim();
+                  var raw = String(answers[String(tq.question_id)] !== undefined ? answers[String(tq.question_id)] : '');
+                  // Map option index to letter text
+                  function optText(val) {
+                    if (!val) return '';
+                    var idx = parseInt(val, 10) - 1;
+                    var opts = [q.option_a, q.option_b, q.option_c, q.option_d];
+                    return (idx >= 0 && opts[idx]) ? String(opts[idx]) : val;
+                  }
+                  var item = {
+                    qNo: i + 1, qId: String(tq.question_id), type: qType,
+                    question: q.question || '', marks: maxMarks,
+                    studentAnswer: optText(raw), rawStudentAnswer: raw,
+                    correctAnswer: optText(correctAns), isCorrect: null,
+                    score: '', maxMarks: maxMarks
+                  };
+                  if (qType === 'Theory' || qType === 'FileUpload') {
+                    item.graded = false; item.feedback = '';
+                  } else if (!raw) {
+                    item.isCorrect = false; item.score = 0;
+                  } else {
+                    item.isCorrect = raw === correctAns;
+                    item.score = item.isCorrect ? maxMarks : 0;
+                  }
+                  breakdown.push(item);
+                });
+              }
+
+              return {
+                testId:            r.test_id,
+                testLabel:         t.title || r.test_id,
+                testType:          t.test_type || 'Weekly',
+                submittedAt:       r.submitted_at,
+                submitType:        r.submit_type || 'manual',
+                totalScore:        r.score,
+                totalMarks:        r.total_marks,
+                percentage:        pct,
+                result:            r.result || (pct != null ? (pct >= ps ? 'Pass' : 'Fail') : 'Pending'),
+                resultsMode:       mode,
+                attemptNo:         r.attempt_no || 1,
+                allowRetake:       t.allow_retake || 'No',
+                passingScore:      ps,
+                badge:             null,
+                classRank:         null,
+                feedback:          '',
+                questionBreakdown: breakdown
+              };
+            }).filter(Boolean);
+
+            var weekly  = results.filter(function(r){ return r.testType === 'Weekly'; });
+            var final_  = results.filter(function(r){ return r.testType === 'Final'; });
+            var weeklyAvg = null;
+            if (weekly.length > 0) {
+              var wScores = weekly.map(function(r){ return r.percentage || 0; }).sort(function(a,b){ return b-a; });
+              var top3 = wScores.slice(0, 3);
+              weeklyAvg = Math.round(top3.reduce(function(s,v){ return s+v; }, 0) / top3.length);
+            }
+            cb(null, { status: 'ok', weeklyResults: weekly, finalResults: final_,
+              weeklyAverage: weeklyAvg, specialBadges: [], cumulativeHonour: null });
           }
 
-          cb(null, {
-            status: 'ok',
-            weeklyResults:    weekly,
-            finalResults:     final_,
-            weeklyAverage:    weeklyAvg,
-            specialBadges:    [],
-            cumulativeHonour: null
-          });
+          // If no full-mode tests, skip fetching question data
+          if (!fullModeIds.length) {
+            return buildResults({}, {});
+          }
+
+          // Fetch test_questions for full-mode tests
+          GET('test_questions',
+            'test_id=in.(' + fullModeIds.map(encodeURIComponent).join(',') + ')&order=order_no.asc',
+            function(e3, tqs) {
+              tqs = tqs || [];
+              var tqMap = {}; // testId -> [{question_id, order_no}]
+              tqs.forEach(function(tq) {
+                if (!tqMap[tq.test_id]) tqMap[tq.test_id] = [];
+                tqMap[tq.test_id].push(tq);
+              });
+              var qids = tqs.map(function(tq){ return tq.question_id; });
+              if (!qids.length) return buildResults({}, tqMap);
+
+              GET('question_bank',
+                'id=in.(' + qids.map(encodeURIComponent).join(',') + ')',
+                function(e4, qrows) {
+                  var qMap = {};
+                  (qrows || []).forEach(function(q){ qMap[String(q.id)] = q; });
+                  buildResults(qMap, tqMap);
+                }
+              );
+            }
+          );
         }
       );
     });

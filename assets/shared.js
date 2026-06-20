@@ -989,7 +989,9 @@ window.gasGet = (function () {
               markedBy: markedBy,
               status: marked ? (isAbsent ? 'absent' : 'present') : 'pending',
               resolvedAddress: resolvedAddress,
-              locationStatus: att ? att.location_status : ''
+              locationStatus: att ? att.location_status : '',
+              geoStatus:    att ? (att.geo_status || null) : null,
+              geoDistanceM: att && att.geo_distance_m != null ? Number(att.geo_distance_m) : null
             };
           });
           var presentCount = mappedStudents.filter(function(s) { return s.status === 'present'; }).length;
@@ -3312,7 +3314,10 @@ window.gasGet = (function () {
           var a = attMap[key] || {};
           return { enrollmentNo: s.student_id, name: s.name,
             instructorVerified: a.instructor_verified || false,
-            instructorOverride: a.instructor_override || null };
+            instructorOverride: a.instructor_override || null,
+            geoStatus: a.geo_status || null,
+            geoDistanceM: a.geo_distance_m != null ? Number(a.geo_distance_m) : null,
+            resolvedAddress: a.resolved_address || null };
         });
         var absent = (students || []).filter(function(s) {
           return !presentSet.has(String(s.student_id || '').trim().toUpperCase());
@@ -3385,6 +3390,10 @@ window.gasGet = (function () {
       session_code: p.sessionCode, student_id: p.enrollmentNo || p.studentId, batch_code: p.batchCode,
       attendance: 'Present', feedback_score: Number(p.q1_rating || p.rating || 5), feedback_text: p.q6_suggestion || p.suggestion || '', marked_at: nowISO()
     };
+    // Geo fields (Mumbai pilot) — store if provided
+    if (p.geoStatus)     row.geo_status     = p.geoStatus;
+    if (p.geoDistanceM != null && p.geoDistanceM !== '') row.geo_distance_m = Number(p.geoDistanceM);
+    if (p.geoAccuracyM != null && p.geoAccuracyM !== '') row.geo_accuracy_m = Number(p.geoAccuracyM);
     POST('attendance_feedback', 'on_conflict=session_code,student_id', row, function(e) {
       cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
     });

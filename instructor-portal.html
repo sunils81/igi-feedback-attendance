@@ -3282,8 +3282,18 @@ function fetchAttendance(sess, batch) {
       pendingVerify.forEach(function(s){
         var sid = escH(s.enrollmentNo);
         var sc = escH(sess);
+        // Geo badge
+        var geoBadge = '';
+        if (s.geoStatus === 'at_centre') {
+          geoBadge = '<span style="font-size:10px;background:#d1fae5;color:#065f46;border-radius:20px;padding:1px 7px;font-weight:700;margin-left:6px">✅ At Centre</span>';
+        } else if (s.geoStatus === 'outside_range') {
+          var distTxt = s.geoDistanceM != null ? s.geoDistanceM + 'm' : 'Outside';
+          geoBadge = '<span style="font-size:10px;background:#fef3c7;color:#92400e;border-radius:20px;padding:1px 7px;font-weight:700;margin-left:6px">⚠️ ' + escH(distTxt) + '</span>';
+        } else if (s.geoStatus === 'not_shared') {
+          geoBadge = '<span style="font-size:10px;background:#f1f5f9;color:#64748b;border-radius:20px;padding:1px 7px;font-weight:700;margin-left:6px">❓ No location</span>';
+        }
         html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #FDE68A">';
-        html += '<span style="font-size:13px;font-weight:500;color:var(--navy)">' + escH(s.name) + '</span>';
+        html += '<span style="font-size:13px;font-weight:500;color:var(--navy)">' + escH(s.name) + geoBadge + '</span>';
         html += '<div style="display:flex;gap:6px">';
         html += '<button onclick="verifyStudent(\'' + sc + '\',\'' + sid + '\',\'confirm\')" style="font-size:11px;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:6px;padding:4px 9px;cursor:pointer;font-weight:600">✓ Present</button>';
         html += '<button onclick="verifyStudent(\'' + sc + '\',\'' + sid + '\',\'override_absent\')" style="font-size:11px;background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;border-radius:6px;padding:4px 9px;cursor:pointer;font-weight:600">✗ Absent</button>';

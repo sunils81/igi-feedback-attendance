@@ -1091,6 +1091,8 @@
         <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Q6 — Suggestion <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
         <textarea id="q6" rows="2" placeholder="Any improvement you'd like to see…" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;resize:none;outline:none"></textarea>
       </div>
+      <!-- Geo status badge — populated by showGeoStatusBadge() when form opens -->
+      <div id="fb-geo-badge" style="margin-bottom:14px;display:none"></div>
       <button class="btn btn-gold" id="fb-submit-btn" onclick="submitFeedback()">Submit Attendance & Feedback ✓</button>
       <button class="btn btn-outline" onclick="cancelFeedback()" style="margin-top:8px;width:100%">← Back</button>
       <div class="err-box" id="fb-err"></div>
@@ -1174,6 +1176,55 @@ const SESSION_TTL = 12 * 60 * 60 * 1000; // 12 hours
 
 let portalData   = null;  // full response from getStudentPortalData
 let _stuLocation = null;  // {lat, lng, accuracy, resolvedAddress, locationStatus}
+
+// ── Geo-attendance config (Mumbai pilot) ──────────────────────
+// UPDATE: verify these coordinates match the actual IGI centre entrance
+const GEO_CENTRES = {
+  'Mumbai':   { lat: 19.0596, lng: 72.8295 },  // IGI Mumbai — update if needed
+  'Delhi':    { lat: 28.6139, lng: 77.2090 },  // placeholder — update
+  'Surat':    { lat: 21.1702, lng: 72.8311 },  // placeholder — update
+  'Kolkata':  { lat: 22.5726, lng: 88.3639 },  // placeholder — update
+  'Jaipur':   { lat: 26.9124, lng: 75.7873 },  // placeholder — update
+};
+const GEO_RADIUS_M = 100;  // within 100 m = "at centre"
+
+function geoHaversineM(lat1, lng1, lat2, lng2) {
+  var R = 6371000; // earth radius metres
+  var dLat = (lat2 - lat1) * Math.PI / 180;
+  var dLng = (lng2 - lng1) * Math.PI / 180;
+  var a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+          Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+}
+
+function computeGeoStatus(centreName) {
+  // Returns {geoStatus, geoDistanceM, geoAccuracyM}
+  var loc = _stuLocation;
+  if (!loc || loc.locationStatus !== 'captured' || loc.lat === '' || loc.lng === '') {
+    return { geoStatus: 'not_shared', geoDistanceM: null, geoAccuracyM: null };
+  }
+  var centre = GEO_CENTRES[centreName];
+  if (!centre) {
+    // Centre not yet configured — treat same as captured but no distance
+    return { geoStatus: 'not_shared', geoDistanceM: null, geoAccuracyM: loc.accuracy || null };
+  }
+  var dist = geoHaversineM(Number(loc.lat), Number(loc.lng), centre.lat, centre.lng);
+  return {
+    geoStatus:     dist <= GEO_RADIUS_M ? 'at_centre' : 'outside_range',
+    geoDistanceM:  dist,
+    geoAccuracyM:  loc.accuracy || null
+  };
+}
+
+function geoBadgeHTML(geoStatus, geoDistanceM) {
+  if (geoStatus === 'at_centre') {
+    return '<span style="display:inline-flex;align-items:center;gap:4px;background:#d1fae5;color:#065f46;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700;">✅ At Centre</span>';
+  } else if (geoStatus === 'outside_range') {
+    var distTxt = geoDistanceM != null ? geoDistanceM + 'm away' : 'Outside range';
+    return '<span style="display:inline-flex;align-items:center;gap:4px;background:#fef3c7;color:#92400e;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700;">⚠️ ' + distTxt + '</span>';
+  }
+  return '<span style="display:inline-flex;align-items:center;gap:4px;background:#f1f5f9;color:#64748b;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700;">❓ Location not shared</span>';
+}
 let activeBatch  = null;  // current batch being submitted
 let topicData    = null;  // from getExpectedTopic
 let studentCalendarMonth = new Date();
@@ -1748,6 +1799,24 @@ function openFeedback(batchCode) {
   // Load topic options
   buildTopicUI(b);
   showScreen('s-feedback');
+  // Show geo status badge (after a brief delay so location has time to resolve)
+  setTimeout(function() { showGeoStatusBadge(b.centre); }, 500);
+}
+
+function showGeoStatusBadge(centreName) {
+  var el = document.getElementById('fb-geo-badge');
+  if (!el) return;
+  var geo = computeGeoStatus(centreName);
+  var centreConfigured = !!GEO_CENTRES[centreName];
+  if (!centreConfigured) { el.style.display = 'none'; return; }
+  var badgeInner = geoBadgeHTML(geo.geoStatus, geo.geoDistanceM);
+  el.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;">' +
+    '<div style="flex:1">' +
+      '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#64748b;margin-bottom:4px">Your location</div>' +
+      badgeInner +
+    '</div>' +
+  '</div>';
+  el.style.display = 'block';
 }
 
 function buildTopicUI(b) {
@@ -1854,12 +1923,16 @@ function submitFeedback() {
     }
     // Also write to ATT_Records (fire-and-forget, non-blocking)
     var loc = _stuLocation || {};
+    var geoResult = computeGeoStatus(activeBatch.centre || '');
     gasGet({
       action:'selfMarkAttendance',
       studentId: saved.enrollmentNo,
       sessionCode: activeBatch.sessionCode,
       lat: loc.lat||'', lng: loc.lng||'', accuracy: loc.accuracy||'',
-      resolvedAddress: loc.resolvedAddress||'', locationStatus: loc.locationStatus||'unavailable'
+      resolvedAddress: loc.resolvedAddress||'', locationStatus: loc.locationStatus||'unavailable',
+      geoStatus:    geoResult.geoStatus,
+      geoDistanceM: geoResult.geoDistanceM != null ? String(geoResult.geoDistanceM) : '',
+      geoAccuracyM: geoResult.geoAccuracyM != null ? String(geoResult.geoAccuracyM) : ''
     }, function(){});  // ignore response — feedback already saved above
     showThanks(false);
     showToast('Attendance saved.');

@@ -6258,6 +6258,9 @@ function otLoadProctor() {
         + (s.percentage!==null&&s.percentage!==''
             ? '<div style="font-size:13px;font-weight:600;">'+(s.percentage||0)+'% <span class="'+(s.result==='Pass'?'pass-pill':'fail-pill')+'">'+escHtml(s.result||'')+'</span></div>'
             : '<div class="pend-pill">Pending grades</div>')
+        + '<button onclick="otResetStudentAttempt(\''+escHtml(s.studentId)+'\',\''+escHtml(s.studentName||s.studentId)+'\')" '
+        + 'title="Delete this submission so student can retake" '
+        + 'style="margin-left:6px;padding:3px 8px;font-size:11px;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;white-space:nowrap;">↩ Reset</button>'
         + '</div>';
     });
     // Show pending
@@ -6282,6 +6285,16 @@ function otLoadProctor() {
   // Auto-refresh every 20s
   if (otProctorTimer) clearInterval(otProctorTimer);
   otProctorTimer = setInterval(otLoadProctor, 20000);
+}
+
+function otResetStudentAttempt(studentId, studentName) {
+  if (!otActiveTestId) return alert('No test selected.');
+  if (!confirm('Reset attempt for ' + studentName + '?\n\nThis will delete their submission and warnings so they can retake the test from scratch.')) return;
+  gasGet({action:'resetStudentAttempt', instructor:instructorName, testId:otActiveTestId, studentId:studentId}, function(err, d) {
+    if (err || !d || d.status !== 'ok') return alert('Error resetting attempt: ' + (d && d.reason || 'unknown'));
+    alert('✅ Attempt reset for ' + studentName + '. They can now retake the test.');
+    otLoadProctor();
+  });
 }
 
 function otCloseTest() {

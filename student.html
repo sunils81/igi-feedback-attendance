@@ -2823,18 +2823,23 @@ function otRenderTimer() {
 }
 
 // ── Anti-Cheat ───────────────────────────────────────────────
+var otLastWarnTs = 0; // cooldown: ignore cascaded events within 1.5 s of each other
+
 function otBindAntiCheat() {
   if (otAntiCheatBound) return;
   otAntiCheatBound = true;
 
   document.addEventListener('visibilitychange', function() {
-    if (document.hidden && !otSubmitted) otTriggerWarning('tab-switch');
+    if (!otActiveTestInfo || otSubmitted) return;
+    if (document.hidden) otTriggerWarning('tab-switch');
   });
   window.addEventListener('blur', function() {
-    if (!otSubmitted) otTriggerWarning('window-blur');
+    if (!otActiveTestInfo || otSubmitted) return;
+    otTriggerWarning('window-blur');
   });
   document.addEventListener('fullscreenchange', function() {
-    if (!document.fullscreenElement && !otSubmitted) otTriggerWarning('fullscreen-exit');
+    if (!otActiveTestInfo || otSubmitted) return;
+    if (!document.fullscreenElement) otTriggerWarning('fullscreen-exit');
   });
 }
 
@@ -2844,7 +2849,12 @@ function otRequestFullscreen() {
 }
 
 function otTriggerWarning(type) {
-  if (otSubmitted) return;
+  if (!otActiveTestInfo || otSubmitted) return;
+  // Cooldown: browser often fires blur + fullscreenchange + visibilitychange
+  // simultaneously when fullscreen is denied — count that as ONE warning.
+  var now = Date.now();
+  if (now - otLastWarnTs < 1500) return;
+  otLastWarnTs = now;
   otWarningCount++;
   var sid = portalData ? (portalData.enrollmentNo||portalData.studentId||'') : '';
   var sname = portalData ? (portalData.studentName||'') : '';

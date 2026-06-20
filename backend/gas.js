@@ -3008,6 +3008,7 @@ function doGet(e) {
     if (act==='submitTestResponse')      return respond(otSubmitTestResponse(ss,p));
     if (act==='logTestWarning')          return respond(otLogTestWarning(ss,p));
     if (act==='getProctorRoom')          return respond(otGetProctorRoom(ss,p));
+    if (act==='resetStudentAttempt')     return respond(otResetStudentAttempt(ss,p));
     if (act==='saveManualGrade'||act==='gradeManualQuestion') return respond(otSaveManualGrade(ss,p));
     if (act==='getPendingManualGrades')  return respond(otGetPendingManualGrades(ss,p));
     if (act==='getStudentResults')       return respond(otGetStudentResultsV3(ss,p));
@@ -4683,6 +4684,7 @@ function ensureOTStartsHeaders(sh) {
     if (act==='submitTestResponse')         return respond(otSubmitTestResponse(ss,p));
     if (act==='logTestWarning')             return respond(otLogTestWarning(ss,p));
     if (act==='getProctorRoom')             return respond(otGetProctorRoom(ss,p));
+    if (act==='resetStudentAttempt')        return respond(otResetStudentAttempt(ss,p));
     if (act==='saveManualGrade')            return respond(otSaveManualGrade(ss,p));
     if (act==='getPendingManualGrades')     return respond(otGetPendingManualGrades(ss,p));
     if (act==='getStudentResults')          return respond(otGetStudentResults(ss,p));
@@ -5586,6 +5588,52 @@ function otGetProctorRoom(ss, p) {
     pending:enrolled.filter(function(s){return submittedIds.indexOf(s.studentId)===-1;}).length,
     submitted:submissions.length,total:enrolled.length,
     expiryAt:testRow&&testRow[17]?new Date(testRow[17]).toISOString():''};
+}
+
+// Delete a student's response + warnings for a test so they can retake it.
+// Requires instructor auth.
+function otResetStudentAttempt(ss, p) {
+  if (!p.instructor) return {status:'error', reason:'auth_required'};
+  if (!p.testId || !p.studentId) return {status:'error', reason:'missing_params'};
+  ensureOnlineTestSheets(ss);
+
+  var testId    = String(p.testId).trim();
+  var studentId = String(p.studentId).trim().toUpperCase();
+
+  // Delete from OT_RESPONSES
+  var shR = ss.getSheetByName(SH_OT_RESPONSES);
+  if (shR && shR.getLastRow() > 1) {
+    var rRows = shR.getRange(2, 1, shR.getLastRow()-1, 2).getValues();
+    for (var i = rRows.length - 1; i >= 0; i--) {
+      if (String(rRows[i][0]) === testId && String(rRows[i][1]).toUpperCase() === studentId) {
+        shR.deleteRow(i + 2);
+      }
+    }
+  }
+
+  // Delete from OT_WARNINGS
+  var shW = ss.getSheetByName(SH_OT_WARNINGS);
+  if (shW && shW.getLastRow() > 1) {
+    var wRows = shW.getRange(2, 1, shW.getLastRow()-1, 2).getValues();
+    for (var j = wRows.length - 1; j >= 0; j--) {
+      if (String(wRows[j][0]) === testId && String(wRows[j][1]).toUpperCase() === studentId) {
+        shW.deleteRow(j + 2);
+      }
+    }
+  }
+
+  // Delete from OT_STARTS
+  var shS = ss.getSheetByName(SH_OT_STARTS);
+  if (shS && shS.getLastRow() > 1) {
+    var sRows = shS.getRange(2, 1, shS.getLastRow()-1, 2).getValues();
+    for (var k = sRows.length - 1; k >= 0; k--) {
+      if (String(sRows[k][0]) === testId && String(sRows[k][1]).toUpperCase() === studentId) {
+        shS.deleteRow(k + 2);
+      }
+    }
+  }
+
+  return {status:'ok', message:'Attempt reset. Student can now retake the test.'};
 }
 
 function otSaveManualGrade(ss, p) {

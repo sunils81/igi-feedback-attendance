@@ -5677,6 +5677,7 @@ function otRenderTests(tests) {
       + (t.status === 'Draft' ? '<button class="ot-btn ghost" onclick="otOpenEditSettingsModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',\''+escHtml(String(t.duration))+'\',\''+escHtml(t.batchCodes||t.batchCode||'')+'\',\''+escHtml(t.negativeMarking||'No')+'\',\''+escHtml(String(t.passingScore||60))+'\',\''+escHtml(t.instructions||'')+'\')">✏ Edit Settings</button>' : '')
       + (t.status === 'Active' && t.testType !== 'Portfolio Upload' ? '<button class="ot-btn warn" onclick="otOpenProctorForTest(\''+escHtml(t.testId)+'\')">👁 Proctor Room</button>' : '')
       + (t.status === 'Closed' && t.resultsReleased !== 'Yes' ? '<button class="ot-btn primary" onclick="otOpenReleaseModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',false)">📢 Release Results</button>' : '')
+      + (t.status === 'Closed' ? '<button class="ot-btn success" onclick="otActivateTest(\''+escHtml(t.testId)+'\')">🔄 Reopen Test</button>' : '')
       + '<button class="ot-btn ghost" onclick="otViewResults(\''+escHtml(t.testId)+'\')">📊 Results</button>'
       + (t.testType !== 'Portfolio Upload' ? '<button class="ot-btn ghost" onclick="otOpenQuestionsModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',\''+escHtml(t.status)+'\')">📝 '+(t.status==='Draft'?'Manage':'View')+' Questions</button>' : '')
       + '<button class="ot-btn ghost" onclick="otPromptDuplicate(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">👯 Duplicate</button>'
@@ -5712,11 +5713,16 @@ function otPopulateTestDropdowns(tests) {
 }
 
 function otActivateTest(testId) {
-  if (!confirm('Activate this test? Students in the batch will see it immediately.')) return;
+  if (!confirm('Activate / Reopen this test? Students in the batch will be able to take it.')) return;
   gasGet({action:'activateTest', instructor:instructorName, testId:testId}, function(err, d) {
     if (err || !d || d.status !== 'ok') return alert('Error: '+(d&&d.reason||'Failed'));
     alert('✅ Test is now LIVE! Students can see it.');
     otLoadTests();
+    // Refresh results if we are on the results tab for this test
+    var resultsTestVal = (document.getElementById('ot-results-test')||{}).value;
+    if (resultsTestVal === testId) {
+      otLoadResults();
+    }
   });
 }
 
@@ -6446,13 +6452,19 @@ function otLoadResults() {
 
     // Release buttons if not yet released
     var testObj = otCurrentTests.find(function(t){ return t.testId===testId; });
+    var reopenHtml = '';
+    if (testObj && testObj.status === 'Closed') {
+      reopenHtml = '<button class="ot-btn success" style="margin-right:8px;" onclick="otActivateTest(\''+escHtml(testId)+'\')">🔄 Reopen Test</button>';
+    }
     if (testObj && testObj.resultsReleased !== 'Yes') {
-      html += '<div style="margin-top:16px;">'
+      html += '<div style="margin-top:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+        + reopenHtml
         + '<button class="ot-btn primary" onclick="otOpenReleaseModal(\''+escHtml(testId)+'\',\''+escHtml(testObj.testLabel||testId)+'\',false)">📢 Release Results to Students</button>'
         + '</div>';
     } else if (testObj && testObj.resultsReleased === 'Yes') {
       var isFull = testObj.resultsMode === 'full';
       html += '<div style="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+        + reopenHtml
         + '<div style="background:#d1fae5;color:#065f46;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;">✅ Results released · '+(isFull?'Students can see answer breakdown':'Score only')+'</div>'
         + '<button class="ot-btn ghost" style="font-size:12px;" onclick="otOpenReleaseModal(\''+escHtml(testId)+'\',\''+escHtml(testObj.testLabel||testId)+'\',true)">Change what students see</button>'
         + '</div>';

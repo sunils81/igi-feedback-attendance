@@ -3014,9 +3014,9 @@ window.gasGet = (function () {
   function h_getStudentActiveTest(p, cb) {
     var sid = p.studentId;
     var batch = (p.batchCode || '').trim().toUpperCase();
-    // Fetch ALL Live/Scheduled tests, then filter by whether student's batch appears in batch_codes
+    // Fetch ALL Live/Active/Scheduled tests, then filter by whether student's batch appears in batch_codes
     // (batch_codes is a comma-separated text field that may contain multiple batches)
-    GET('online_tests', 'status=in.(Live,Scheduled)', function(e, allTests) {
+    GET('online_tests', 'status=in.(Live,Active,Scheduled)', function(e, allTests) {
       if (e) { cb(null, { status: 'ok', activeTest: null, activeTests: [] }); return; }
       // Filter: test must list this student's batch in batch_codes OR batch_code
       var tests = (allTests || []).filter(function(t) {
@@ -3042,7 +3042,7 @@ window.gasGet = (function () {
     GET('online_tests', 'test_id=eq.' + encodeURIComponent(tid), function(e, tests) {
       if (e || !tests || !tests.length) { cb(null, { status: 'error', reason: 'test_not_found' }); return; }
       var test = tests[0];
-      if (test.status !== 'Live') { cb(null, { status: 'error', reason: 'test_not_active' }); return; }
+      if (test.status !== 'Live' && test.status !== 'Active') { cb(null, { status: 'error', reason: 'test_not_active' }); return; }
       GET('test_questions', 'test_id=eq.' + encodeURIComponent(tid), function(e2, tqs) {
         var qids = (tqs || []).map(function(tq) { return tq.question_id; });
         if (!qids.length) { cb(null, { status: 'ok', questions: [] }); return; }

@@ -4443,10 +4443,14 @@ window.gasGet = (function () {
       case 'getCRMLeads':               return h_getCRMLeads(params, cb);
       case 'saveCRMLead':               return h_saveCRMLead(params, cb);
       case 'addCRMFollowup':            return h_addCRMFollowup(params, cb);
+      case 'snoozeCRMFollowup':         return h_snoozeCRMFollowup(params, cb);
       case 'getCRMAssignmentRules':     return h_getCRMAssignmentRules(params, cb);
       case 'saveCRMAssignmentRule':     return h_saveCRMAssignmentRule(params, cb);
       case 'updateLeadScore':           return h_updateLeadScore(params, cb);
-      case 'convertLeadToStudent':       return h_convertLeadToStudent(params, cb);
+      case 'assignLeadRoundRobin':      return h_assignLeadRoundRobin(params, cb);
+      case 'bulkReassignCRMLeads':      return h_bulkReassignCRMLeads(params, cb);
+      case 'enrollCRMLead':             return h_enrollCRMLead(params, cb);
+      case 'convertLeadToStudent':      return h_convertLeadToStudent(params, cb);
       case 'initiateCrossCentreUpsell': return h_initiateCrossCentreUpsell(params, cb);
 
       /* Student Portal */
@@ -4564,21 +4568,26 @@ window.gasGet = (function () {
 
   function h_saveCRMLead(p, cb) {
     var body = {
-      first_name:     p.firstName,
-      last_name:      p.lastName || '',
-      email:          p.email || '',
-      mobile:         p.mobile || '',
-      course:         p.course,
-      centre:         p.centre,
-      lead_stage:     p.leadStage || 'New',
-      lead_sub_stage: p.leadSubStage || 'Unassigned',
-      lead_owner:     p.leadOwner || '',
-      lead_co_owner:  p.leadCoOwner || '',
-      source:         p.source || 'Direct',
-      fb_lead_id:     p.fbLeadId || null,
-      notes:          p.notes || '',
-      web_meta:       p.webMeta || {},
-      lead_score:     p.leadScore !== undefined ? parseInt(p.leadScore) : 0
+      first_name:          p.firstName,
+      last_name:           p.lastName || '',
+      email:               p.email || '',
+      mobile:              p.mobile || '',
+      course:              p.course,
+      centre:              p.centre,
+      lead_stage:          p.leadStage || 'New',
+      lead_sub_stage:      p.leadSubStage || 'Unassigned',
+      lead_owner:          p.leadOwner || '',
+      lead_co_owner:       p.leadCoOwner || '',
+      source:              p.source || 'Direct',
+      fb_lead_id:          p.fbLeadId || null,
+      notes:               p.notes || '',
+      web_meta:            p.webMeta || {},
+      lead_score:          p.leadScore !== undefined ? parseInt(p.leadScore) : 0,
+      lead_remark:         p.leadRemark || '',
+      alt_mobile:          p.altMobile || '',
+      book_my_slot:        p.bookMySlot || '',
+      when_to_join:        p.whenToJoin || '',
+      current_profession:  p.currentProfession || ''
     };
     if (p.id) {
       PATCH('crm_leads', 'id=eq.' + encodeURIComponent(p.id), body, function(e, data) {
@@ -4604,6 +4613,67 @@ window.gasGet = (function () {
     POST('crm_followups', '', body, function(e, data) {
       if (e) return cb(e, null);
       cb(null, { status: 'ok', id: data && data.length ? data[0].id : null });
+    });
+  }
+
+  function h_snoozeCRMFollowup(p, cb) {
+    if (!p.followupId) return cb(new Error('followupId required'), null);
+    var snoozeUntil = p.snoozeUntil || new Date(Date.now() + (parseInt(p.hours||24)) * 3600000).toISOString();
+    PATCH('crm_followups', 'id=eq.' + encodeURIComponent(p.followupId), {
+      snoozed_until: snoozeUntil,
+      status: 'Snoozed'
+    }, function(e, data) {
+      if (e) return cb(e, null);
+      cb(null, { status: 'ok' });
+    });
+  }
+
+  function h_bulkReassignCRMLeads(p, cb) {
+    var leadIds = p.leadIds || [];
+    var newOwner = (p.newOwner || '').trim();
+    var reassignedBy = (p.reassignedBy || 'Admin').trim();
+    if (!leadIds.length || !newOwner) return cb(new Error('leadIds and newOwner required'), null);
+    var ts = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    var done = 0, failed = 0;
+    leadIds.forEach(function(id) {
+      GET('crm_leads', 'id=eq.' + encodeURIComponent(id) + '&select=id,lead_owner,notes', function(eg, rows) {
+        var lead = rows && rows[0];
+        var oldOwner = lead ? (lead.lead_owner || 'Unassigned') : 'Unknown';
+        var noteEntry = '[' + ts + ' IST] Reassigned from ' + oldOwner + ' → ' + newOwner + ' by ' + reassignedBy;
+        var updatedNotes = noteEntry + '\n\n' + ((lead && lead.notes) || '');
+        PATCH('crm_leads', 'id=eq.' + encodeURIComponent(id), {
+          lead_owner: newOwner, notes: updatedNotes, updated_at: new Date().toISOString()
+        }, function(ep) {
+          ep ? failed++ : done++;
+          if (done + failed === leadIds.length) {
+            cb(null, { status: 'ok', reassigned: done, failed: failed, newOwner: newOwner });
+          }
+        });
+      });
+    });
+  }
+
+  function h_enrollCRMLead(p, cb) {
+    if (!p.leadId || !p.batchCode) return cb(new Error('leadId and batchCode required'), null);
+    var ts = new Date().toISOString();
+    var noteEntry = '[' + new Date().toLocaleString() + '] Enrolled in ' + p.batchCode + ' by ' + (p.enrolledBy || 'Counselor');
+    // Update lead stage to Enrolled
+    PATCH('crm_leads', 'id=eq.' + encodeURIComponent(p.leadId), {
+      lead_stage: 'Enrolled',
+      lead_sub_stage: 'Enrolled',
+      updated_at: ts
+    }, function(e) {
+      if (e) return cb(e, null);
+      // Add followup note
+      POST('crm_followups', '', {
+        lead_id: p.leadId,
+        reminder_date: ts,
+        note: noteEntry,
+        status: 'Completed',
+        created_by: p.enrolledBy || 'Counselor'
+      }, function() {
+        cb(null, { status: 'ok', leadId: p.leadId, batchCode: p.batchCode });
+      });
     });
   }
 

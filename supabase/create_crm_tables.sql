@@ -26,9 +26,13 @@ CREATE TABLE IF NOT EXISTS crm_leads (
   web_meta       JSONB DEFAULT '{}',
   
   notes          TEXT DEFAULT '',
+  lead_remark    TEXT DEFAULT '',            -- Short last-remark visible in table (< 120 chars)
   created_at     TIMESTAMPTZ DEFAULT NOW(),
   updated_at     TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ALTER TABLE for existing deployments (idempotent)
+ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS lead_remark TEXT DEFAULT '';
 
 -- Strict deduplication indices
 CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_leads_email ON crm_leads(email) WHERE email IS NOT NULL AND email != '';
@@ -43,12 +47,19 @@ CREATE TABLE IF NOT EXISTS crm_followups (
   reminder_date  TIMESTAMPTZ NOT NULL,
   note           TEXT,
   status         TEXT DEFAULT 'Pending',     -- 'Pending' | 'Completed' | 'Snoozed'
+  snoozed_until  TIMESTAMPTZ,               -- When snoozed, the new wake-up time
   created_by     TEXT DEFAULT '',
   created_at     TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ALTER TABLE for existing deployments (idempotent)
+ALTER TABLE crm_followups ADD COLUMN IF NOT EXISTS snoozed_until TIMESTAMPTZ;
+
 CREATE INDEX IF NOT EXISTS idx_crm_followups_lead ON crm_followups(lead_id);
 CREATE INDEX IF NOT EXISTS idx_crm_followups_pending ON crm_followups(reminder_date) WHERE status = 'Pending';
+CREATE INDEX IF NOT EXISTS idx_crm_followups_snoozed ON crm_followups(snoozed_until) WHERE status = 'Snoozed';
+CREATE INDEX IF NOT EXISTS idx_crm_leads_remark ON crm_leads(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_crm_leads_owner_stage ON crm_leads(lead_owner, lead_stage, updated_at DESC);
 
 -- 3. COUNSELOR WEIGHTS FOR ROUND-ROBIN
 CREATE TABLE IF NOT EXISTS crm_assignment_rules (

@@ -1339,153 +1339,254 @@
     </div>
   </div>
 
-  <!-- TAB: CRM SYSTEM -->
+  <!-- TAB: CRM SYSTEM — Meritto-parity build -->
   <div id="t-crm" class="tab-content">
-    <!-- Summary KPIs Row -->
-    <div class="stats-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:14px">
-      <div class="card" style="margin:0">
-        <div class="sub">Total Assigned Leads</div>
-        <h2 id="crm-stat-total">0</h2>
+
+    <!-- ── KPI Score Board ── -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:14px">
+      <div class="card" style="margin:0;padding:14px 16px">
+        <div class="sub" style="font-size:10px;text-transform:uppercase;letter-spacing:.06em">Total Leads</div>
+        <h2 id="crm-stat-total" style="margin:4px 0 0;font-size:26px">0</h2>
       </div>
-      <div class="card" style="margin:0;border-left:4px solid #dc2626">
-        <div class="sub" style="color:#dc2626">🆕 Untouched Leads</div>
-        <h2 id="crm-stat-untouched" style="color:#dc2626">0</h2>
+      <div class="card" style="margin:0;padding:14px 16px;border-left:4px solid #dc2626">
+        <div class="sub" style="color:#dc2626;font-size:10px;text-transform:uppercase;letter-spacing:.06em">🆕 Untouched</div>
+        <h2 id="crm-stat-untouched" style="color:#dc2626;margin:4px 0 0;font-size:26px">0</h2>
       </div>
-      <div class="card" style="margin:0;border-left:4px solid #d97706">
-        <div class="sub" style="color:#b45309">📞 Today's Reminders</div>
-        <h2 id="crm-stat-reminders" style="color:#b45309">0</h2>
+      <div class="card" style="margin:0;padding:14px 16px;border-left:4px solid #d97706">
+        <div class="sub" style="color:#b45309;font-size:10px;text-transform:uppercase;letter-spacing:.06em">📞 Today's Follow-Ups</div>
+        <h2 id="crm-stat-reminders" style="color:#b45309;margin:4px 0 0;font-size:26px">0</h2>
       </div>
-      <div class="card" style="margin:0;border-left:4px solid #168b57">
-        <div class="sub" style="color:#168b57">🎯 Converted (MTD)</div>
-        <h2 id="crm-stat-converted" style="color:#168b57">0</h2>
+      <div class="card" style="margin:0;padding:14px 16px;border-left:4px solid #e05c00">
+        <div class="sub" style="color:#e05c00;font-size:10px;text-transform:uppercase;letter-spacing:.06em">⚠️ Overdue</div>
+        <h2 id="crm-stat-overdue" style="color:#e05c00;margin:4px 0 0;font-size:26px">0</h2>
+      </div>
+      <div class="card" style="margin:0;padding:14px 16px;border-left:4px solid #168b57">
+        <div class="sub" style="color:#168b57;font-size:10px;text-transform:uppercase;letter-spacing:.06em">🎯 Converted MTD</div>
+        <h2 id="crm-stat-converted" style="color:#168b57;margin:4px 0 0;font-size:26px">0</h2>
       </div>
     </div>
 
-    <!-- Controls & Actions Row -->
-    <div class="card" style="margin-bottom:14px;padding:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-        <div style="display:flex;gap:10px;align-items:center;flex:1;min-width:280px">
-          <input type="text" id="crm-search" placeholder="🔍 Search leads by Name, Email, Mobile..." oninput="filterLeads()" style="flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
-          <select id="crm-stage-filter" onchange="filterLeads()" style="padding:8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;background:var(--white)">
+    <!-- ── Sub-Tabs: Queue / Today's Calls / Overdue ── -->
+    <div class="rev-sub-tabs" style="margin-bottom:0">
+      <button class="rev-sub-tab active" id="crm-subtab-queue" onclick="switchCRMSubTab('queue')">📋 Lead Queue</button>
+      <button class="rev-sub-tab" id="crm-subtab-today" onclick="switchCRMSubTab('today')">📞 Today's Calls <span id="crm-today-count" style="background:#d97706;color:#fff;border-radius:20px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle;display:none"></span></button>
+      <button class="rev-sub-tab" id="crm-subtab-overdue" onclick="switchCRMSubTab('overdue')">⚠️ Overdue <span id="crm-overdue-count" style="background:#dc2626;color:#fff;border-radius:20px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle;display:none"></span></button>
+    </div>
+
+    <!-- ── Advanced Filter Bar ── -->
+    <div class="card" style="margin-bottom:0;padding:12px 16px;border-top:none;border-radius:0 0 10px 10px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
+        <div style="flex:1;min-width:200px">
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Search</div>
+          <input type="text" id="crm-search" placeholder="Name, email, mobile, course..." oninput="filterLeads()" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Lead Stage</div>
+          <select id="crm-stage-filter" onchange="filterLeads()" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;background:var(--white)">
             <option value="">All Stages</option>
-            <option value="New">New</option>
-            <option value="Contacted">Contacted</option>
-            <option value="Demo">Demo</option>
-            <option value="Interested">Interested</option>
-            <option value="Enrolled">Enrolled</option>
-            <option value="Lost">Lost</option>
-          </select>
-          <select id="crm-source-filter" onchange="filterLeads()" style="padding:8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;background:var(--white)">
-            <option value="">All Sources</option>
-            <option value="Website">Website</option>
-            <option value="Facebook Lead Ads">Facebook Ads</option>
-            <option value="Direct">Direct/Manual</option>
-            <option value="Internal Cross-Sell">Upsell/Cross-Sell</option>
+            <option value="New">🆕 New / Untouched</option>
+            <option value="Contacted">📞 Contacted</option>
+            <option value="Interested">💡 Interested</option>
+            <option value="Demo">🖥 Demo</option>
+            <option value="Follow-Up Ongoing">🔄 Follow-Up</option>
+            <option value="Application Initiated">📝 Application</option>
+            <option value="Enrolled">✅ Enrolled</option>
+            <option value="Lost">❌ Lost</option>
           </select>
         </div>
-        <button class="btn btn-gold" onclick="openAddLeadModal()">+ Add Lead Manually</button>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Sub-Stage</div>
+          <select id="crm-substage-filter" onchange="filterLeads()" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;background:var(--white)">
+            <option value="">All Sub-Stages</option>
+            <option value="Untouched">Untouched</option>
+            <option value="Call Attempted">Call Attempted</option>
+            <option value="Call Connected">Call Connected</option>
+            <option value="Engaged / Interested">Engaged / Interested</option>
+            <option value="Follow-Up Ongoing">Follow-Up Ongoing</option>
+            <option value="Application Initiated">Application Initiated</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Source</div>
+          <select id="crm-source-filter" onchange="filterLeads()" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;background:var(--white)">
+            <option value="">All Sources</option>
+            <option value="Facebook Lead Ads">Facebook Ads</option>
+            <option value="Website">Website</option>
+            <option value="WhatsApp">WhatsApp</option>
+            <option value="Walk-In">Walk-In</option>
+            <option value="Direct">Direct</option>
+            <option value="Internal Cross-Sell">Cross-Sell</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Course</div>
+          <select id="crm-course-filter" onchange="filterLeads()" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;background:var(--white)">
+            <option value="">All Courses</option>
+          </select>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:flex-end">
+          <button class="btn btn-outline" style="padding:7px 12px;font-size:12px;height:34px" onclick="clearCRMFilters()">Clear</button>
+          <button class="btn btn-gold" style="padding:7px 12px;font-size:12px;height:34px" onclick="openAddLeadModal()">+ Add Lead</button>
+        </div>
       </div>
+      <div style="margin-top:8px;font-size:11px;color:var(--muted)">Showing <strong id="crm-count-display">0</strong> leads — <span id="crm-total-display">0 total</span></div>
     </div>
 
-    <!-- Main Workspace Layout -->
-    <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:14px;align-items:start">
-      
-      <!-- Leads Queue/List Card -->
-      <div class="card" style="margin:0;padding:16px">
-        <h3 style="margin-top:0;color:var(--navy);font-size:15px">Admission Leads Queue</h3>
+    <!-- ── Main Workspace: Table + Detail Panel ── -->
+    <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:14px;align-items:start;margin-top:14px">
+
+      <!-- Leads Table -->
+      <div class="card" style="margin:0;padding:0;overflow:hidden">
         <div style="overflow-x:auto">
-          <table class="compact-table" style="width:100%">
+          <table class="compact-table" style="width:100%;min-width:700px">
             <thead>
               <tr>
-                <th class="text-left">Lead Details</th>
-                <th class="text-left">Course / Centre</th>
-                <th class="text-center">Score</th>
+                <th class="text-left" style="padding:10px 12px">Lead / Contact</th>
+                <th class="text-left">Course · Centre</th>
+                <th class="text-left">Owner</th>
+                <th class="text-center">Age</th>
                 <th class="text-center">Stage</th>
-                <th class="text-center">Action</th>
+                <th class="text-left" style="max-width:160px">Last Remark</th>
+                <th class="text-center">Actions</th>
               </tr>
             </thead>
             <tbody id="crm-leads-tbody">
-              <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted)">Loading leads...</td></tr>
+              <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--muted)">Loading leads…</td></tr>
             </tbody>
           </table>
         </div>
+        <div id="crm-load-more-wrap" style="display:none;text-align:center;padding:10px;border-top:1px solid var(--border)">
+          <button class="btn btn-outline" style="font-size:12px;padding:6px 14px" onclick="crmLoadMore()">Load More Leads</button>
+          <span id="crm-showing-label" style="font-size:11px;color:var(--muted);margin-left:8px"></span>
+        </div>
       </div>
 
-      <!-- Lead Details & Daily Activity Panel -->
-      <div class="card" id="crm-detail-card" style="margin:0;padding:16px;background:var(--white);border:1.5px solid var(--border)">
-        <div id="crm-detail-empty" style="text-align:center;padding:48px 16px;color:var(--muted)">
-          <div style="font-size:32px;margin-bottom:8px">🎯</div>
-          <div>Select a lead from the queue to view details, log calls, set reminders, or enroll.</div>
+      <!-- Lead Detail Panel -->
+      <div class="card" id="crm-detail-card" style="margin:0;padding:16px;position:sticky;top:80px">
+        <div id="crm-detail-empty" style="text-align:center;padding:40px 12px;color:var(--muted)">
+          <div style="font-size:36px;margin-bottom:8px">🎯</div>
+          <div style="font-size:13px;font-weight:600;color:var(--navy)">Select a lead to view details</div>
+          <div style="font-size:12px;margin-top:4px">Log calls, set reminders, or enroll from here.</div>
         </div>
-        
+
         <div id="crm-detail-content" style="display:none">
-          <!-- Header details -->
-          <div style="display:flex;justify-content:space-between;align-items:start;border-bottom:1.5px solid var(--border);padding-bottom:12px;margin-bottom:12px">
+          <!-- Header -->
+          <div style="display:flex;justify-content:space-between;align-items:start;border-bottom:1.5px solid var(--border);padding-bottom:10px;margin-bottom:10px">
             <div>
-              <h3 id="crm-detail-name" style="margin:0;color:var(--navy)">-</h3>
-              <div id="crm-detail-source-badge" style="font-size:11px;color:var(--muted);margin-top:3px"></div>
+              <h3 id="crm-detail-name" style="margin:0;color:var(--navy);font-size:15px">-</h3>
+              <div id="crm-detail-source-badge" style="font-size:11px;color:var(--muted);margin-top:2px"></div>
+              <div id="crm-detail-age-label" style="font-size:11px;margin-top:3px"></div>
             </div>
             <div style="text-align:right">
-              <span class="badge" id="crm-detail-stage-badge" style="font-size:11px;font-weight:700"></span>
-              <div id="crm-detail-score-wrap" style="font-size:11px;color:var(--muted);margin-top:4px">Lead Score: <strong id="crm-detail-score">0</strong></div>
+              <span class="badge" id="crm-detail-stage-badge" style="font-size:10px;font-weight:700"></span>
+              <div style="font-size:10px;color:var(--muted);margin-top:4px">Score: <strong id="crm-detail-score">0</strong></div>
             </div>
           </div>
 
-          <!-- Profile details -->
-          <div style="margin-bottom:12px">
-            <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Enquiry Profile</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#f8fafc;padding:10px;border-radius:6px;font-size:12px">
-              <div><strong>Email:</strong> <span id="crm-detail-email">-</span></div>
-              <div><strong>Mobile:</strong> <span id="crm-detail-mobile">-</span></div>
-              <div><strong>Centre:</strong> <span id="crm-detail-centre">-</span></div>
-              <div><strong>Course:</strong> <span id="crm-detail-course">-</span></div>
-              <div style="grid-column:span 2"><strong>Owner / Co-owner:</strong> <span id="crm-detail-owner">-</span></div>
-            </div>
+          <!-- Profile grid -->
+          <div style="background:#f8fafc;border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <div><span style="color:var(--muted)">📧</span> <a id="crm-detail-email-link" href="#" style="color:var(--navy);text-decoration:none" onclick="return false">-</a></div>
+            <div><span style="color:var(--muted)">📱</span> <strong id="crm-detail-mobile">-</strong></div>
+            <div><span style="color:var(--muted)">🏫</span> <span id="crm-detail-centre">-</span></div>
+            <div><span style="color:var(--muted)">📚</span> <span id="crm-detail-course">-</span></div>
+            <div style="grid-column:span 2"><span style="color:var(--muted)">👤</span> <span id="crm-detail-owner">-</span></div>
+            <div style="grid-column:span 2" id="crm-detail-substage-row"><span style="color:var(--muted)">🔖</span> Sub-stage: <strong id="crm-detail-substage">-</strong></div>
+          </div>
+
+          <!-- Next Batch Availability -->
+          <div id="crm-batch-avail" style="display:none;background:rgba(22,139,87,0.07);border:1px solid rgba(22,139,87,0.2);border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:10px">
+            <strong style="color:#168b57">📅 Next Available Batch:</strong> <span id="crm-batch-avail-text">-</span>
+          </div>
+
+          <!-- Cross-Sell Suggestion -->
+          <div id="crm-crosssell-hint" style="display:none;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.3);border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:10px">
+            <strong style="color:var(--navy)">💡 Upsell Suggestion:</strong> <span id="crm-crosssell-text">-</span>
           </div>
 
           <!-- Academic Context Card -->
-          <div id="crm-academic-card" style="display:none;background:rgba(24,95,165,0.06);border:1px solid rgba(24,95,165,0.15);padding:10px;border-radius:6px;margin-bottom:12px;font-size:12px">
+          <div id="crm-academic-card" style="display:none;background:rgba(24,95,165,0.06);border:1px solid rgba(24,95,165,0.15);padding:8px 10px;border-radius:6px;margin-bottom:10px;font-size:12px">
             <div style="font-weight:700;color:var(--navy);margin-bottom:4px">🎓 Student Academic Context</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
               <div>Batch: <strong id="crm-acad-batch">-</strong></div>
               <div>Status: <span id="crm-acad-status">-</span></div>
-              <div>Attendance Rate: <strong id="crm-acad-attendance">-</strong></div>
-              <div>Exam Score: <strong id="crm-acad-marks">-</strong></div>
+              <div>Attendance: <strong id="crm-acad-attendance">-</strong></div>
+              <div>Exam Avg: <strong id="crm-acad-marks">-</strong></div>
             </div>
           </div>
 
-          <!-- Call Outcomes -->
-          <div style="margin-bottom:12px">
-            <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Log Call Outcome</div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap">
-              <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;border-radius:4px" onclick="logCallOutcome('call-connected')">📞 Connected</button>
-              <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;border-radius:4px" onclick="logCallOutcome('call-no-answer')">🔕 No Answer</button>
-              <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;border-radius:4px" onclick="logCallOutcome('call-dnd-off')">❌ Switched Off</button>
-              <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;border-radius:4px;border-color:#dc2626;color:#dc2626" onclick="logCallOutcome('marked-lost')">🗑️ Mark Lost</button>
+          <!-- Quick Call Outcome Buttons -->
+          <div style="margin-bottom:10px">
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Log Call Outcome</div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap">
+              <button class="btn btn-outline" style="padding:5px 9px;font-size:11px;border-radius:5px;border-color:#168b57;color:#168b57" onclick="logCallOutcome('call-connected')">📞 Connected</button>
+              <button class="btn btn-outline" style="padding:5px 9px;font-size:11px;border-radius:5px" onclick="logCallOutcome('call-no-answer')">🔕 No Answer</button>
+              <button class="btn btn-outline" style="padding:5px 9px;font-size:11px;border-radius:5px" onclick="logCallOutcome('call-dnd-off')">📵 Switched Off</button>
+              <button class="btn btn-outline" style="padding:5px 9px;font-size:11px;border-radius:5px;border-color:#dc2626;color:#dc2626" onclick="logCallOutcome('marked-lost')">🗑️ Mark Lost</button>
             </div>
           </div>
 
-          <!-- Timeline Notes -->
-          <div style="margin-bottom:12px">
-            <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Activity Log & Notes</div>
-            <textarea id="crm-note-input" placeholder="Type notes here..." style="width:100%;height:50px;font-family:inherit;font-size:12px;padding:6px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box;resize:none"></textarea>
-            <button class="btn btn-outline" style="margin-top:4px;padding:4px 8px;font-size:11px;border-color:var(--gold);color:var(--navy);border-radius:4px" onclick="saveCRMNote()">Save Note</button>
-            <div id="crm-timeline-display" style="max-height:100px;overflow-y:auto;background:#f8fafc;padding:6px;border-radius:6px;font-size:11px;color:var(--muted);margin-top:6px;white-space:pre-wrap"></div>
+          <!-- WhatsApp Quick Launch -->
+          <div style="margin-bottom:10px">
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">WhatsApp</div>
+            <button class="btn" style="padding:6px 12px;font-size:12px;background:#25D366;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700" onclick="launchWhatsApp()">💬 Open WhatsApp Chat</button>
           </div>
 
-          <!-- Set Follow-up Reminder -->
-          <div style="margin-bottom:16px;border-top:1px solid var(--border);padding-top:12px">
-            <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Set Follow-up Task</div>
+          <!-- Sub-Stage Updater -->
+          <div style="margin-bottom:10px">
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Update Sub-Stage</div>
             <div style="display:flex;gap:6px">
-              <input type="datetime-local" id="crm-remind-date" style="padding:6px;font-size:12px;border:1.5px solid var(--border);border-radius:6px;flex:1">
-              <button class="btn" style="padding:6px 12px;font-size:12px" onclick="saveCRMReminder()">Save Task</button>
+              <select id="crm-substage-update" style="flex:1;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;background:var(--white)">
+                <option value="">Select Sub-Stage</option>
+                <option value="Untouched">Untouched</option>
+                <option value="Call Attempted">Call Attempted</option>
+                <option value="Call Connected">Call Connected</option>
+                <option value="Engaged / Interested">Engaged / Interested</option>
+                <option value="Follow-Up Ongoing">Follow-Up Ongoing</option>
+                <option value="Application Initiated">Application Initiated</option>
+              </select>
+              <button class="btn btn-outline" style="padding:6px 10px;font-size:12px" onclick="updateLeadSubStage()">Update</button>
             </div>
           </div>
 
-          <!-- Bottom Action Funnel -->
-          <div style="display:flex;gap:8px;border-top:1.5px solid var(--border);padding-top:12px">
-            <button class="btn btn-gold" id="btn-crm-enroll" style="flex:1" onclick="openCRMEnrollModal()">🎯 Convert / Enroll Lead</button>
-            <button class="btn btn-outline" id="btn-crm-upsell" style="flex:1" onclick="openCRMUpsellModal()">🔄 Cross-Sell/Upsell</button>
+          <!-- Short Remark -->
+          <div style="margin-bottom:10px">
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Short Remark (shows in table)</div>
+            <div style="display:flex;gap:6px">
+              <input type="text" id="crm-remark-input" maxlength="120" placeholder="e.g. Interested, callback next week..." style="flex:1;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
+              <button class="btn btn-outline" style="padding:6px 10px;font-size:12px;border-color:var(--gold)" onclick="saveCRMRemark()">Save</button>
+            </div>
+          </div>
+
+          <!-- Activity Notes -->
+          <div style="margin-bottom:10px">
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Add Activity Note</div>
+            <textarea id="crm-note-input" placeholder="Detailed notes, context, key info..." style="width:100%;height:52px;font-family:inherit;font-size:12px;padding:6px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box;resize:none"></textarea>
+            <button class="btn btn-outline" style="margin-top:4px;padding:4px 8px;font-size:11px;border-color:var(--gold);color:var(--navy);border-radius:4px" onclick="saveCRMNote()">📝 Save Note</button>
+            <div id="crm-timeline-display" style="max-height:110px;overflow-y:auto;background:#f8fafc;padding:6px;border-radius:6px;font-size:11px;color:var(--muted);margin-top:6px;white-space:pre-wrap;line-height:1.5"></div>
+          </div>
+
+          <!-- Follow-Up Reminder + Snooze -->
+          <div style="margin-bottom:12px;border-top:1px solid var(--border);padding-top:10px">
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Set Follow-Up Reminder</div>
+            <div style="display:flex;gap:6px">
+              <input type="datetime-local" id="crm-remind-date" style="flex:1;padding:6px;font-size:12px;border:1.5px solid var(--border);border-radius:6px">
+              <button class="btn" style="padding:6px 10px;font-size:12px" onclick="saveCRMReminder()">Set</button>
+            </div>
+            <!-- Snooze active reminder -->
+            <div id="crm-snooze-row" style="display:none;margin-top:6px">
+              <div style="font-size:10px;font-weight:700;color:#b45309;margin-bottom:4px">⏰ Active reminder — Snooze:</div>
+              <div style="display:flex;gap:5px;flex-wrap:wrap">
+                <button class="btn btn-outline" style="font-size:11px;padding:3px 8px;border-color:#d97706;color:#b45309" onclick="snoozeCRMReminder(1)">+1 hr</button>
+                <button class="btn btn-outline" style="font-size:11px;padding:3px 8px;border-color:#d97706;color:#b45309" onclick="snoozeCRMReminder(4)">+4 hrs</button>
+                <button class="btn btn-outline" style="font-size:11px;padding:3px 8px;border-color:#d97706;color:#b45309" onclick="snoozeCRMReminder(24)">Tomorrow</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Actions -->
+          <div style="display:flex;gap:8px;border-top:1.5px solid var(--border);padding-top:10px">
+            <button class="btn btn-gold" id="btn-crm-enroll" style="flex:1;font-size:12px" onclick="openCRMEnrollModal()">🎯 Convert / Enroll</button>
+            <button class="btn btn-outline" id="btn-crm-upsell" style="flex:1;font-size:12px" onclick="openCRMUpsellModal()">🔄 Cross-Sell</button>
           </div>
         </div>
       </div>
@@ -11501,346 +11602,598 @@ function fpwdResetPIN() {
 
 // ── CRM SYSTEM FRONTEND ──────────────────────────────────────
 var crmLeadsList = [];
+var crmFilteredList = [];
 var activeLead = null;
+var crmPageSize = 30;
+var crmPageOffset = 0;
+var crmCurrentSubTab = 'queue';
 
+// ── IGI Cross-sell Matrix ──────────────────────────────────────────────────
+var CRM_CROSSSELL_MAP = {
+  'Diamond Graduate': 'Colored Stone Graduate or Jewelry Design',
+  'Colored Stone Graduate': 'Diamond Graduate or Gem-A Diploma',
+  'Jewelry Design': 'CAD Design or JewelPad Design',
+  'Jewelry Design Manual': 'CAD Design',
+  'CAD Design': 'Jewelry Design Manual or JewelPad Design',
+  'Polished Diamond Grading': 'Diamond Graduate',
+  'Rough Diamond Graduate': 'Diamond Graduate',
+  'Diploma in Pearls': 'Colored Stone Graduate',
+  'Gem-A Foundation': 'Gem-A Diploma'
+};
+
+// ── Sub-tab switching ──────────────────────────────────────────────────────
+function switchCRMSubTab(tab) {
+  crmCurrentSubTab = tab;
+  ['queue','today','overdue'].forEach(function(t) {
+    var btn = document.getElementById('crm-subtab-' + t);
+    if (btn) btn.classList.toggle('active', t === tab);
+  });
+  filterLeads();
+}
+
+// ── Populate course filter from COURSES constant ───────────────────────────
+function populateCRMCourseFilter() {
+  var sel = document.getElementById('crm-course-filter');
+  if (!sel || typeof COURSES === 'undefined') return;
+  COURSES.forEach(function(c) {
+    var opt = document.createElement('option');
+    opt.value = c; opt.textContent = c;
+    sel.appendChild(opt);
+  });
+}
+
+// ── Lead age helper ────────────────────────────────────────────────────────
+function leadAgeDays(lead) {
+  if (!lead.created_at) return 0;
+  var created = new Date(lead.created_at);
+  var now = new Date();
+  return Math.floor((now - created) / 86400000);
+}
+
+function leadAgeLabel(days) {
+  if (days === 0) return '0d';
+  if (days === 1) return '1d';
+  return days + 'd';
+}
+
+function leadAgeColor(days) {
+  if (days <= 2) return '#168b57';
+  if (days <= 7) return '#d97706';
+  return '#dc2626';
+}
+
+// ── Today's follow-up check ────────────────────────────────────────────────
+function hasTodayFollowup(lead) {
+  var todayStr = new Date().toISOString().slice(0,10);
+  return (lead.crm_followups || []).some(function(f) {
+    return f.status === 'Pending' && f.reminder_date && f.reminder_date.slice(0,10) === todayStr;
+  });
+}
+
+function hasOverdueFollowup(lead) {
+  var todayStr = new Date().toISOString().slice(0,10);
+  return (lead.crm_followups || []).some(function(f) {
+    return f.status === 'Pending' && f.reminder_date && f.reminder_date.slice(0,10) < todayStr;
+  });
+}
+
+function getActiveFollowup(lead) {
+  var todayStr = new Date().toISOString().slice(0,10);
+  return (lead.crm_followups || []).find(function(f) {
+    return f.status === 'Pending' && f.reminder_date && f.reminder_date.slice(0,10) <= todayStr;
+  }) || null;
+}
+
+// ── Load CRM data ──────────────────────────────────────────────────────────
 function loadCRMData() {
+  populateCRMCourseFilter();
   var tbody = document.getElementById('crm-leads-tbody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px">' + loadingState('Loading leads...') + '</td></tr>';
-  
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px">' + loadingState('Loading leads…') + '</td></tr>';
   document.getElementById('crm-detail-content').style.display = 'none';
   document.getElementById('crm-detail-empty').style.display = 'block';
   activeLead = null;
-  
+
   gasGet({
     action: 'getCRMLeads',
     userRole: authRole || 'Counselor',
     userName: counselorName || ''
   }, function(e, d) {
     if (e || !d || d.status !== 'ok') {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:#dc2626">Failed to load CRM leads database.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#dc2626">Failed to load CRM leads. Please refresh.</td></tr>';
       return;
     }
-    
     crmLeadsList = d.leads || [];
     updateCRMKPIs();
-    renderCRMLeadsTable(crmLeadsList);
+    filterLeads();
   });
 }
 
+// ── KPI Score Board ────────────────────────────────────────────────────────
 function updateCRMKPIs() {
   var total = crmLeadsList.length;
-  var untouched = crmLeadsList.filter(function(l) { return l.lead_stage === 'New'; }).length;
-  
-  var todayStr = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
-  var pendingReminders = 0;
-  crmLeadsList.forEach(function(l) {
-    var followups = l.crm_followups || [];
-    followups.forEach(function(f) {
-      if (f.status === 'Pending' && f.reminder_date.slice(0, 10) <= todayStr) {
-        pendingReminders++;
-      }
-    });
-  });
-  
-  var curMonth = new Date().toISOString().slice(0, 7);
-  var converted = crmLeadsList.filter(function(l) {
-    return l.lead_stage === 'Enrolled' && l.created_at.slice(0, 7) === curMonth;
+  var untouched = crmLeadsList.filter(function(l) {
+    return l.lead_stage === 'New' || l.lead_sub_stage === 'Untouched';
   }).length;
+
+  var todayStr = new Date().toISOString().slice(0,10);
+  var todayFollowups = 0, overdueFollowups = 0, converted = 0;
+  var curMonth = new Date().toISOString().slice(0,7);
+
+  crmLeadsList.forEach(function(l) {
+    (l.crm_followups || []).forEach(function(f) {
+      if (f.status !== 'Pending') return;
+      var d = f.reminder_date ? f.reminder_date.slice(0,10) : '';
+      if (d === todayStr) todayFollowups++;
+      else if (d < todayStr) overdueFollowups++;
+    });
+    if (l.lead_stage === 'Enrolled' && (l.updated_at || '').slice(0,7) === curMonth) converted++;
+  });
 
   document.getElementById('crm-stat-total').textContent = total;
   document.getElementById('crm-stat-untouched').textContent = untouched;
-  document.getElementById('crm-stat-reminders').textContent = pendingReminders;
+  document.getElementById('crm-stat-reminders').textContent = todayFollowups;
+  document.getElementById('crm-stat-overdue').textContent = overdueFollowups;
   document.getElementById('crm-stat-converted').textContent = converted;
-  
+
+  // Sub-tab badges
+  var todayEl = document.getElementById('crm-today-count');
+  var overdueEl = document.getElementById('crm-overdue-count');
+  if (todayEl) { todayEl.textContent = todayFollowups; todayEl.style.display = todayFollowups ? 'inline-block' : 'none'; }
+  if (overdueEl) { overdueEl.textContent = overdueFollowups; overdueEl.style.display = overdueFollowups ? 'inline-block' : 'none'; }
+
+  // Tab badge
   var badge = document.getElementById('crm-reminder-badge');
   if (badge) {
-    if (untouched > 0 || pendingReminders > 0) {
-      badge.textContent = untouched + pendingReminders;
-      badge.style.display = 'inline-block';
-    } else {
-      badge.style.display = 'none';
-    }
+    var total_alert = untouched + todayFollowups + overdueFollowups;
+    badge.textContent = total_alert;
+    badge.style.display = total_alert > 0 ? 'inline-block' : 'none';
   }
 }
 
+// ── Filter & Render ────────────────────────────────────────────────────────
+function filterLeads() {
+  var query = (document.getElementById('crm-search').value || '').toLowerCase().trim();
+  var stage = document.getElementById('crm-stage-filter').value;
+  var substage = document.getElementById('crm-substage-filter').value;
+  var source = document.getElementById('crm-source-filter').value;
+  var course = document.getElementById('crm-course-filter').value;
+
+  var filtered = crmLeadsList.filter(function(l) {
+    // Sub-tab filter first
+    if (crmCurrentSubTab === 'today' && !hasTodayFollowup(l)) return false;
+    if (crmCurrentSubTab === 'overdue' && !hasOverdueFollowup(l)) return false;
+
+    var name = ((l.first_name || '') + ' ' + (l.last_name || '')).toLowerCase();
+    var matchQ = !query ||
+      name.includes(query) ||
+      (l.email || '').toLowerCase().includes(query) ||
+      (l.mobile || '').toLowerCase().includes(query) ||
+      (l.course || '').toLowerCase().includes(query) ||
+      (l.lead_remark || '').toLowerCase().includes(query);
+
+    var matchStage = !stage || l.lead_stage === stage;
+    var matchSubStage = !substage || l.lead_sub_stage === substage;
+    var matchSource = !source || l.source === source;
+    var matchCourse = !course || l.course === course;
+
+    return matchQ && matchStage && matchSubStage && matchSource && matchCourse;
+  });
+
+  // Sort: untouched new first, then by lead age desc (most urgent first)
+  filtered.sort(function(a, b) {
+    var aNew = a.lead_stage === 'New' ? 0 : 1;
+    var bNew = b.lead_stage === 'New' ? 0 : 1;
+    if (aNew !== bNew) return aNew - bNew;
+    var aAge = leadAgeDays(a);
+    var bAge = leadAgeDays(b);
+    return bAge - aAge; // older leads first (most urgent)
+  });
+
+  crmFilteredList = filtered;
+  crmPageOffset = 0;
+
+  var countEl = document.getElementById('crm-count-display');
+  var totalEl = document.getElementById('crm-total-display');
+  if (countEl) countEl.textContent = filtered.length;
+  if (totalEl) totalEl.textContent = crmLeadsList.length + ' total assigned';
+
+  renderCRMLeadsTable(filtered.slice(0, crmPageSize));
+  updateLoadMoreBtn(filtered.length);
+}
+
+function clearCRMFilters() {
+  ['crm-search','crm-stage-filter','crm-substage-filter','crm-source-filter','crm-course-filter'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  filterLeads();
+}
+
+function crmLoadMore() {
+  crmPageOffset += crmPageSize;
+  var slice = crmFilteredList.slice(0, crmPageOffset + crmPageSize);
+  renderCRMLeadsTable(slice);
+  updateLoadMoreBtn(crmFilteredList.length);
+}
+
+function updateLoadMoreBtn(total) {
+  var wrap = document.getElementById('crm-load-more-wrap');
+  var label = document.getElementById('crm-showing-label');
+  var showing = Math.min(crmPageOffset + crmPageSize, total);
+  if (wrap) wrap.style.display = total > crmPageSize ? 'block' : 'none';
+  if (label) label.textContent = 'Showing ' + showing + ' of ' + total;
+}
+
+// ── Render Leads Table ─────────────────────────────────────────────────────
 function renderCRMLeadsTable(list) {
   var tbody = document.getElementById('crm-leads-tbody');
   if (!tbody) return;
-  
+
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted)">No matching leads found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--muted)">No matching leads found.</td></tr>';
     return;
   }
-  
+
+  var stageColors = {
+    'New': '#dc2626', 'Contacted': '#d97706', 'Interested': '#2563eb',
+    'Demo': '#7c3aed', 'Follow-Up Ongoing': '#0891b2',
+    'Application Initiated': '#b45309', 'Enrolled': '#168b57', 'Lost': '#6b7280'
+  };
+  var stageBadgeClass = {
+    'New': 'badge-red', 'Contacted': 'badge-amber', 'Interested': 'badge-blue',
+    'Demo': 'badge-blue', 'Follow-Up Ongoing': 'badge-blue',
+    'Application Initiated': 'badge-amber', 'Enrolled': 'badge-green', 'Lost': 'badge-grey'
+  };
+
   tbody.innerHTML = list.map(function(l) {
-    var stageClass = 'badge-blue';
-    if (l.lead_stage === 'New') stageClass = 'badge-red';
-    else if (l.lead_stage === 'Contacted') stageClass = 'badge-amber';
-    else if (l.lead_stage === 'Interested') stageClass = 'badge-orange';
-    else if (l.lead_stage === 'Enrolled') stageClass = 'badge-green';
-    else if (l.lead_stage === 'Lost') stageClass = 'badge-grey';
-    
-    var scoreColor = '#b45309';
-    if (l.lead_score >= 70) scoreColor = '#168b57';
-    else if (l.lead_score < 30) scoreColor = '#dc2626';
-    
+    var age = leadAgeDays(l);
+    var ageColor = leadAgeColor(age);
     var name = escC(l.first_name + (l.last_name ? ' ' + l.last_name : ''));
-    var email = escC(l.email || '');
-    var mobile = escC(l.mobile || '');
-    
-    var viewBtn = '<button class="btn btn-outline" style="padding:4px 10px;font-size:11px;border-radius:5px" onclick="selectCRMLead(\'' + l.id + '\')">👁️&nbsp;View</button>';
-    
-    return '<tr style="cursor:pointer" onclick="selectCRMLead(\'' + l.id + '\')">' +
-      '<td class="text-left">' +
-        '<strong>' + name + '</strong>' +
-        '<div style="font-size:11px;color:var(--muted)">' + email + (email && mobile ? ' · ' : '') + mobile + '</div>' +
+    var stageClass = stageBadgeClass[l.lead_stage] || 'badge-blue';
+    var hasToday = hasTodayFollowup(l);
+    var hasOverdue = hasOverdueFollowup(l);
+    var rowBg = hasOverdue ? 'background:rgba(220,38,38,0.04)' : (hasToday ? 'background:rgba(217,119,6,0.04)' : '');
+    var remark = escC((l.lead_remark || '').slice(0, 60));
+    var ownerShort = escC((l.lead_owner || 'Unassigned').split(' ')[0]);
+
+    // Quick action buttons inline
+    var quickBtns =
+      '<button title="📞 Connected" style="border:1px solid #168b57;color:#168b57;background:none;border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;margin-right:3px" onclick="event.stopPropagation();quickLog(\'' + l.id + '\',\'call-connected\')">📞</button>' +
+      '<button title="🔕 No Answer" style="border:1px solid var(--border);color:var(--navy);background:none;border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;margin-right:3px" onclick="event.stopPropagation();quickLog(\'' + l.id + '\',\'call-no-answer\')">🔕</button>' +
+      '<button title="💬 WhatsApp" style="border:1px solid #25D366;color:#25D366;background:none;border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;margin-right:3px" onclick="event.stopPropagation();quickWA(\'' + escC(l.mobile || '') + '\',\'' + escC(l.first_name || '') + '\',\'' + escC(l.course || '') + '\')">💬</button>' +
+      '<button title="View Details" style="border:1px solid var(--border);color:var(--navy);background:none;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer" onclick="event.stopPropagation();selectCRMLead(\'' + l.id + '\')">👁</button>';
+
+    return '<tr style="cursor:pointer;' + rowBg + '" onclick="selectCRMLead(\'' + l.id + '\')">' +
+      '<td style="padding:9px 12px">' +
+        '<strong style="font-size:13px">' + name + '</strong>' +
+        (hasOverdue ? ' <span title="Overdue follow-up" style="color:#dc2626;font-size:10px">⚠️</span>' : '') +
+        (hasToday ? ' <span title="Follow-up today" style="color:#d97706;font-size:10px">🔔</span>' : '') +
+        '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + escC(l.email || '') + (l.mobile ? ' · ' + escC(l.mobile) : '') + '</div>' +
       '</td>' +
-      '<td class="text-left">' +
-        '<span>' + escC(l.course) + '</span>' +
+      '<td style="padding:9px 8px">' +
+        '<div style="font-size:12px;font-weight:600;color:var(--navy)">' + escC(l.course) + '</div>' +
         '<div style="font-size:11px;color:var(--muted)">' + escC(l.centre) + '</div>' +
       '</td>' +
-      '<td class="text-center"><strong style="color:' + scoreColor + '">' + (l.lead_score || 0) + '</strong></td>' +
-      '<td class="text-center"><span class="badge ' + stageClass + '" style="margin-left:0">' + escC(l.lead_stage) + '</span></td>' +
-      '<td class="text-center" onclick="event.stopPropagation()">' + viewBtn + '</td>' +
+      '<td style="padding:9px 8px;font-size:11px;color:var(--muted)">' + ownerShort + '</td>' +
+      '<td style="padding:9px 8px;text-align:center"><strong style="font-size:12px;color:' + ageColor + '">' + leadAgeLabel(age) + '</strong></td>' +
+      '<td style="padding:9px 8px;text-align:center"><span class="badge ' + stageClass + '" style="margin:0;font-size:10px">' + escC(l.lead_stage) + '</span>' +
+        (l.lead_sub_stage && l.lead_sub_stage !== 'Unassigned' ? '<div style="font-size:9px;color:var(--muted);margin-top:2px">' + escC(l.lead_sub_stage) + '</div>' : '') +
+      '</td>' +
+      '<td style="padding:9px 8px;max-width:150px"><span style="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + remark + '">' + (remark || '—') + '</span></td>' +
+      '<td style="padding:9px 8px;text-align:center;white-space:nowrap" onclick="event.stopPropagation()">' + quickBtns + '</td>' +
     '</tr>';
   }).join('');
 }
 
-function filterLeads() {
-  var query = document.getElementById('crm-search').value.toLowerCase().trim();
-  var stage = document.getElementById('crm-stage-filter').value;
-  var source = document.getElementById('crm-source-filter').value;
-  
-  var filtered = crmLeadsList.filter(function(l) {
-    var matchQuery = !query || 
-      (l.first_name + ' ' + l.last_name).toLowerCase().includes(query) ||
-      (l.email || '').toLowerCase().includes(query) ||
-      (l.mobile || '').toLowerCase().includes(query) ||
-      (l.course || '').toLowerCase().includes(query);
-      
-    var matchStage = !stage || l.lead_stage === stage;
-    var matchSource = !source || l.source === source;
-    
-    return matchQuery && matchStage && matchSource;
+// ── Quick inline call log (table row buttons) ──────────────────────────────
+function quickLog(leadId, outcome) {
+  var lead = crmLeadsList.find(function(l) { return l.id === leadId; });
+  if (!lead) return;
+  gasGet({ action: 'updateLeadScore', leadId: leadId, actionName: outcome }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { showToast('Failed to log.', 'error'); return; }
+    var idx = crmLeadsList.findIndex(function(l) { return l.id === leadId; });
+    if (idx >= 0) {
+      crmLeadsList[idx].lead_score = d.score;
+      var ts = new Date().toLocaleString();
+      var text = outcome === 'call-connected' ? 'Connected' : 'No Answer';
+      if (outcome === 'call-connected') { crmLeadsList[idx].lead_stage = 'Contacted'; crmLeadsList[idx].lead_sub_stage = 'Call Connected'; }
+      else { crmLeadsList[idx].lead_sub_stage = 'Call Attempted'; }
+      crmLeadsList[idx].notes = '[' + ts + '] Quick Log: ' + text + '\n' + (crmLeadsList[idx].notes || '');
+    }
+    showToast('Call logged: ' + (outcome === 'call-connected' ? '📞 Connected' : '🔕 No Answer'), 'success');
+    updateCRMKPIs();
+    filterLeads();
+    if (activeLead && activeLead.id === leadId) selectCRMLead(leadId);
   });
-  
-  renderCRMLeadsTable(filtered);
 }
 
+// ── Quick WhatsApp (table row) ─────────────────────────────────────────────
+function quickWA(mobile, name, course) {
+  if (!mobile) { showToast('No mobile number for this lead.', 'error'); return; }
+  var clean = mobile.replace(/[^0-9]/g, '');
+  if (clean.length === 10) clean = '91' + clean;
+  var msg = encodeURIComponent('Hi ' + name + ', I\'m calling from IGI School of Gemology regarding your enquiry about our ' + course + ' programme. Would this be a good time to talk?');
+  window.open('https://wa.me/' + clean + '?text=' + msg, '_blank');
+}
+
+// ── Select & render Lead Detail Panel ─────────────────────────────────────
 function selectCRMLead(leadId) {
   var lead = crmLeadsList.find(function(l) { return l.id === leadId; });
   if (!lead) return;
   activeLead = lead;
-  
+
   document.getElementById('crm-detail-empty').style.display = 'none';
   document.getElementById('crm-detail-content').style.display = 'block';
-  
-  document.getElementById('crm-detail-name').textContent = lead.first_name + (lead.last_name ? ' ' + lead.last_name : '');
-  document.getElementById('crm-detail-source-badge').textContent = 'Source: ' + lead.source + ' | Reference: ' + (lead.web_meta?.reference_id || 'Direct');
-  
+
+  var name = lead.first_name + (lead.last_name ? ' ' + lead.last_name : '');
+  document.getElementById('crm-detail-name').textContent = name;
+  document.getElementById('crm-detail-source-badge').textContent = 'Source: ' + (lead.source || 'Direct') + (lead.web_meta && lead.web_meta.reference_id ? ' · Ref: ' + lead.web_meta.reference_id : '');
+
+  var age = leadAgeDays(lead);
+  var ageEl = document.getElementById('crm-detail-age-label');
+  if (ageEl) ageEl.innerHTML = 'Lead Age: <strong style="color:' + leadAgeColor(age) + '">' + age + ' days</strong>';
+
   var stageEl = document.getElementById('crm-detail-stage-badge');
   stageEl.textContent = lead.lead_stage;
   stageEl.className = 'badge';
-  if (lead.lead_stage === 'New') stageEl.classList.add('badge-red');
-  else if (lead.lead_stage === 'Contacted') stageEl.classList.add('badge-amber');
-  else if (lead.lead_stage === 'Interested') stageEl.classList.add('badge-orange');
-  else if (lead.lead_stage === 'Enrolled') stageEl.classList.add('badge-green');
-  else if (lead.lead_stage === 'Lost') stageEl.classList.add('badge-grey');
-  else stageEl.classList.add('badge-blue');
-  
+  var sc = {New:'badge-red',Contacted:'badge-amber',Interested:'badge-blue',Demo:'badge-blue','Enrolled':'badge-green','Lost':'badge-grey'};
+  stageEl.classList.add(sc[lead.lead_stage] || 'badge-blue');
+
   document.getElementById('crm-detail-score').textContent = lead.lead_score || 0;
-  document.getElementById('crm-detail-email').textContent = lead.email || 'N/A';
+
+  var emailLink = document.getElementById('crm-detail-email-link');
+  emailLink.textContent = lead.email || 'N/A';
+  emailLink.href = lead.email ? 'mailto:' + lead.email : '#';
+
   document.getElementById('crm-detail-mobile').textContent = lead.mobile || 'N/A';
-  document.getElementById('crm-detail-centre').textContent = lead.centre;
-  document.getElementById('crm-detail-course').textContent = lead.course;
-  document.getElementById('crm-detail-owner').textContent = lead.lead_owner + (lead.lead_co_owner ? ' (Co: ' + lead.lead_co_owner + ')' : '');
-  
-  var timeline = document.getElementById('crm-timeline-display');
-  timeline.textContent = lead.notes || 'No activity notes logged yet.';
-  
-  document.getElementById('btn-crm-enroll').style.display = (lead.lead_stage === 'Enrolled') ? 'none' : 'block';
-  
+  document.getElementById('crm-detail-centre').textContent = lead.centre || '—';
+  document.getElementById('crm-detail-course').textContent = lead.course || '—';
+  document.getElementById('crm-detail-owner').textContent = (lead.lead_owner || 'Unassigned') + (lead.lead_co_owner ? ' (Co: ' + lead.lead_co_owner + ')' : '');
+  document.getElementById('crm-detail-substage').textContent = lead.lead_sub_stage || '—';
+
+  // Remark
+  var remarkInput = document.getElementById('crm-remark-input');
+  if (remarkInput) remarkInput.value = lead.lead_remark || '';
+
+  // Sub-stage selector sync
+  var subStageSel = document.getElementById('crm-substage-update');
+  if (subStageSel) subStageSel.value = lead.lead_sub_stage || '';
+
+  // Timeline
+  document.getElementById('crm-timeline-display').textContent = (lead.notes || 'No activity logged yet.');
+
+  // Enroll button
+  document.getElementById('btn-crm-enroll').style.display = lead.lead_stage === 'Enrolled' ? 'none' : 'flex';
+
+  // Snooze row
+  var activeFollowup = getActiveFollowup(lead);
+  var snoozeRow = document.getElementById('crm-snooze-row');
+  if (snoozeRow) snoozeRow.style.display = activeFollowup ? 'block' : 'none';
+  if (activeFollowup) document.getElementById('crm-active-followup-id') && (document.getElementById('crm-active-followup-id').value = activeFollowup.id);
+
+  // Next batch availability
+  var batchAvail = document.getElementById('crm-batch-avail');
+  var batchText = document.getElementById('crm-batch-avail-text');
+  if (batchAvail && batchText) {
+    batchAvail.style.display = 'none';
+    gasGet({ action: 'getNextBatch', centre: lead.centre, course: lead.course }, function(e, d) {
+      if (!e && d && d.batch) {
+        batchText.textContent = d.batch.batchCode + ' — starts ' + (d.batch.startDate || 'TBD') + ' (' + (d.batch.seatsLeft || '?') + ' seats left)';
+        batchAvail.style.display = 'block';
+      }
+    });
+  }
+
+  // Cross-sell suggestion
+  var xsHint = document.getElementById('crm-crosssell-hint');
+  var xsText = document.getElementById('crm-crosssell-text');
+  if (xsHint && xsText) {
+    var suggestion = CRM_CROSSSELL_MAP[lead.course];
+    if (suggestion && lead.lead_stage === 'Enrolled') {
+      xsText.textContent = 'Enrolled in ' + lead.course + ' — suggest: ' + suggestion;
+      xsHint.style.display = 'block';
+    } else {
+      xsHint.style.display = 'none';
+    }
+  }
+
+  // Academic context
   var acadCard = document.getElementById('crm-academic-card');
   if (lead.student_id) {
     acadCard.style.display = 'block';
-    document.getElementById('crm-acad-batch').textContent = 'Loading...';
+    document.getElementById('crm-acad-batch').textContent = 'Loading…';
     document.getElementById('crm-acad-status').textContent = '';
     document.getElementById('crm-acad-attendance').textContent = '';
     document.getElementById('crm-acad-marks').textContent = '';
-    
     gasGet({ action: 'studentProfile', studentId: lead.student_id }, function(err, res) {
-      if (err || !res || res.status !== 'ok' || !res.student) {
-        acadCard.style.display = 'none';
-        return;
-      }
+      if (err || !res || res.status !== 'ok' || !res.student) { acadCard.style.display = 'none'; return; }
       var s = res.student;
       document.getElementById('crm-acad-batch').textContent = s.batchCode || 'N/A';
       document.getElementById('crm-acad-status').textContent = s.status || 'Active';
-      
-      gasGet({ action: 'getStudentAttendance', studentId: lead.student_id }, function(err2, res2) {
-        if (!err2 && res2 && res2.records) {
-          var recs = res2.records;
-          var present = recs.filter(function(r) { return r.attendance === 'Present'; }).length;
-          var rate = recs.length ? Math.round(present / recs.length * 100) + '%' : '100%';
-          document.getElementById('crm-acad-attendance').textContent = rate + ' (' + recs.length + ' sessions)';
+      gasGet({ action: 'getStudentAttendance', studentId: lead.student_id }, function(e2, r2) {
+        if (!e2 && r2 && r2.records) {
+          var recs = r2.records;
+          var pct = recs.length ? Math.round(recs.filter(function(r){return r.attendance==='Present';}).length/recs.length*100)+'%' : '—';
+          document.getElementById('crm-acad-attendance').textContent = pct + ' (' + recs.length + ' sessions)';
         }
       });
-      
-      if (s.batchCode) {
-        gasGet({ action: 'getBatchAssessmentSummary', batchCode: s.batchCode }, function(err3, res3) {
-          if (!err3 && res3 && res3.students) {
-            var matchingStud = res3.students.find(function(x) { return x.studentId === lead.student_id; });
-            if (matchingStud) {
-              var avgScore = matchingStud.avgMarks != null ? Math.round(matchingStud.avgMarks) + '%' : 'N/A';
-              document.getElementById('crm-acad-marks').textContent = avgScore;
-            }
-          }
-        });
-      }
     });
   } else {
     acadCard.style.display = 'none';
   }
 }
 
+// ── Log Call Outcome (detail panel) ───────────────────────────────────────
 function logCallOutcome(outcome) {
   if (!activeLead) return;
-  gasGet({
-    action: 'updateLeadScore',
-    leadId: activeLead.id,
-    actionName: outcome
-  }, function(e, d) {
-    if (e || !d || d.status !== 'ok') {
-      showToast('Failed to log call outcome.', 'error');
-      return;
-    }
-    
+  gasGet({ action: 'updateLeadScore', leadId: activeLead.id, actionName: outcome }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { showToast('Failed to log call outcome.', 'error'); return; }
     var idx = crmLeadsList.findIndex(function(l) { return l.id === activeLead.id; });
+    var ts = new Date().toLocaleString();
+    var textMap = { 'call-connected': 'Connected', 'call-no-answer': 'No Answer', 'call-dnd-off': 'Switched Off', 'marked-lost': 'Marked Lost' };
+    var subStageMap = { 'call-connected': 'Call Connected', 'call-no-answer': 'Call Attempted', 'call-dnd-off': 'Call Attempted', 'marked-lost': 'Untouched' };
     if (idx >= 0) {
       crmLeadsList[idx].lead_score = d.score;
       if (outcome === 'call-connected') crmLeadsList[idx].lead_stage = 'Contacted';
       else if (outcome === 'marked-lost') crmLeadsList[idx].lead_stage = 'Lost';
-      
-      var timeStr = new Date().toLocaleString();
-      var outcomeText = outcome === 'call-connected' ? 'Connected' : (outcome === 'call-no-answer' ? 'No Answer' : (outcome === 'call-dnd-off' ? 'Switched Off' : 'Marked Lost'));
-      crmLeadsList[idx].notes = '[Call outcome: ' + outcomeText + ' logged at ' + timeStr + ']\n' + (crmLeadsList[idx].notes || '');
+      crmLeadsList[idx].lead_sub_stage = subStageMap[outcome] || crmLeadsList[idx].lead_sub_stage;
+      crmLeadsList[idx].notes = '[' + ts + '] Call: ' + textMap[outcome] + '\n' + (crmLeadsList[idx].notes || '');
     }
-    
-    showToast('Call outcome logged.', 'success');
+    showToast('Logged: ' + textMap[outcome], 'success');
     updateCRMKPIs();
     selectCRMLead(activeLead.id);
     filterLeads();
   });
 }
 
+// ── Update Sub-Stage ──────────────────────────────────────────────────────
+function updateLeadSubStage() {
+  if (!activeLead) return;
+  var val = document.getElementById('crm-substage-update').value;
+  if (!val) return;
+  gasGet({
+    action: 'saveCRMLead',
+    id: activeLead.id,
+    firstName: activeLead.first_name, lastName: activeLead.last_name,
+    email: activeLead.email, mobile: activeLead.mobile,
+    course: activeLead.course, centre: activeLead.centre,
+    leadStage: activeLead.lead_stage, leadSubStage: val,
+    leadOwner: activeLead.lead_owner, leadCoOwner: activeLead.lead_co_owner,
+    source: activeLead.source, notes: activeLead.notes,
+    leadScore: activeLead.lead_score, leadRemark: activeLead.lead_remark
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { showToast('Failed to update sub-stage.', 'error'); return; }
+    var idx = crmLeadsList.findIndex(function(l) { return l.id === activeLead.id; });
+    if (idx >= 0) crmLeadsList[idx].lead_sub_stage = val;
+    showToast('Sub-stage updated: ' + val, 'success');
+    selectCRMLead(activeLead.id);
+    filterLeads();
+  });
+}
+
+// ── Save Short Remark ─────────────────────────────────────────────────────
+function saveCRMRemark() {
+  if (!activeLead) return;
+  var val = (document.getElementById('crm-remark-input').value || '').trim().slice(0, 120);
+  gasGet({
+    action: 'saveCRMLead',
+    id: activeLead.id,
+    firstName: activeLead.first_name, lastName: activeLead.last_name,
+    email: activeLead.email, mobile: activeLead.mobile,
+    course: activeLead.course, centre: activeLead.centre,
+    leadStage: activeLead.lead_stage, leadSubStage: activeLead.lead_sub_stage,
+    leadOwner: activeLead.lead_owner, leadCoOwner: activeLead.lead_co_owner,
+    source: activeLead.source, notes: activeLead.notes,
+    leadScore: activeLead.lead_score, leadRemark: val
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { showToast('Failed to save remark.', 'error'); return; }
+    var idx = crmLeadsList.findIndex(function(l) { return l.id === activeLead.id; });
+    if (idx >= 0) crmLeadsList[idx].lead_remark = val;
+    showToast('Remark saved — visible in table.', 'success');
+    filterLeads();
+  });
+}
+
+// ── Save Activity Note ────────────────────────────────────────────────────
 function saveCRMNote() {
   if (!activeLead) return;
   var input = document.getElementById('crm-note-input');
   var val = (input.value || '').trim();
   if (!val) return;
-  
-  var timeStr = new Date().toLocaleString();
-  var updatedNotes = '[' + timeStr + ' - ' + (counselorName || 'Counselor') + ']\n' + val + '\n\n' + (activeLead.notes || '');
-  
+  var ts = new Date().toLocaleString();
+  var updated = '[' + ts + ' — ' + (counselorName || 'Counselor') + ']\n' + val + '\n\n' + (activeLead.notes || '');
   gasGet({
     action: 'saveCRMLead',
     id: activeLead.id,
-    firstName: activeLead.first_name,
-    lastName: activeLead.last_name,
-    email: activeLead.email,
-    mobile: activeLead.mobile,
-    course: activeLead.course,
-    centre: activeLead.centre,
-    leadStage: activeLead.lead_stage,
-    leadSubStage: activeLead.lead_sub_stage,
-    leadOwner: activeLead.lead_owner,
-    leadCoOwner: activeLead.lead_co_owner,
-    source: activeLead.source,
-    fbLeadId: activeLead.fb_lead_id,
-    notes: updatedNotes,
-    webMeta: activeLead.web_meta,
-    leadScore: activeLead.lead_score
+    firstName: activeLead.first_name, lastName: activeLead.last_name,
+    email: activeLead.email, mobile: activeLead.mobile,
+    course: activeLead.course, centre: activeLead.centre,
+    leadStage: activeLead.lead_stage, leadSubStage: activeLead.lead_sub_stage,
+    leadOwner: activeLead.lead_owner, leadCoOwner: activeLead.lead_co_owner,
+    source: activeLead.source, notes: updated,
+    leadScore: activeLead.lead_score, leadRemark: activeLead.lead_remark
   }, function(e, d) {
-    if (e || !d || d.status !== 'ok') {
-      showToast('Failed to save note.', 'error');
-      return;
-    }
-    
+    if (e || !d || d.status !== 'ok') { showToast('Failed to save note.', 'error'); return; }
     var idx = crmLeadsList.findIndex(function(l) { return l.id === activeLead.id; });
-    if (idx >= 0) {
-      crmLeadsList[idx].notes = updatedNotes;
-    }
-    
+    if (idx >= 0) crmLeadsList[idx].notes = updated;
     input.value = '';
-    showToast('Note added to timeline.', 'success');
+    showToast('Note saved to timeline.', 'success');
     selectCRMLead(activeLead.id);
   });
 }
 
+// ── WhatsApp Launch from Detail Panel ────────────────────────────────────
+function launchWhatsApp() {
+  if (!activeLead) return;
+  quickWA(activeLead.mobile || '', activeLead.first_name || '', activeLead.course || '');
+}
+
+// ── Save Follow-Up Reminder ───────────────────────────────────────────────
 function saveCRMReminder() {
   if (!activeLead) return;
   var dateEl = document.getElementById('crm-remind-date');
-  var dateVal = dateEl.value;
-  if (!dateVal) { showToast('Please select a reminder date/time.', 'error'); return; }
-  
-  var reminderNote = 'Follow-up call reminder';
+  if (!dateEl.value) { showToast('Please select a date/time.', 'error'); return; }
+  var iso = new Date(dateEl.value).toISOString();
   gasGet({
     action: 'addCRMFollowup',
     leadId: activeLead.id,
-    reminderDate: new Date(dateVal).toISOString(),
-    note: reminderNote,
+    reminderDate: iso,
+    note: 'Follow-up call',
     status: 'Pending',
     createdBy: counselorName || ''
   }, function(e, d) {
-    if (e || !d || d.status !== 'ok') {
-      showToast('Failed to save reminder.', 'error');
-      return;
-    }
-    
-    var timeStr = new Date().toLocaleString();
-    var reminderStr = new Date(dateVal).toLocaleString();
-    var updatedNotes = '[Reminder set for ' + reminderStr + ' logged at ' + timeStr + ']\n\n' + (activeLead.notes || '');
-    
+    if (e || !d || d.status !== 'ok') { showToast('Failed to set reminder.', 'error'); return; }
+    var ts = new Date().toLocaleString();
+    var rStr = new Date(dateEl.value).toLocaleString();
     var idx = crmLeadsList.findIndex(function(l) { return l.id === activeLead.id; });
     if (idx >= 0) {
-      crmLeadsList[idx].notes = updatedNotes;
+      crmLeadsList[idx].notes = '[Reminder set: ' + rStr + ' at ' + ts + ']\n\n' + (crmLeadsList[idx].notes || '');
       if (!crmLeadsList[idx].crm_followups) crmLeadsList[idx].crm_followups = [];
-      crmLeadsList[idx].crm_followups.push({
-        status: 'Pending',
-        reminder_date: new Date(dateVal).toISOString()
-      });
+      crmLeadsList[idx].crm_followups.push({ status: 'Pending', reminder_date: iso, id: d.id || null });
     }
-    
     dateEl.value = '';
-    showToast('Follow-up reminder set.', 'success');
+    showToast('Follow-up reminder set for ' + rStr, 'success');
     updateCRMKPIs();
     selectCRMLead(activeLead.id);
   });
 }
 
+// ── Snooze Active Reminder ────────────────────────────────────────────────
+function snoozeCRMReminder(hours) {
+  if (!activeLead) return;
+  var followup = getActiveFollowup(activeLead);
+  if (!followup) { showToast('No active reminder to snooze.', 'error'); return; }
+  var newTime = new Date(Date.now() + hours * 3600000).toISOString();
+  gasGet({
+    action: 'snoozeCRMFollowup',
+    followupId: followup.id,
+    snoozedUntil: newTime
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { showToast('Snooze failed.', 'error'); return; }
+    followup.status = 'Snoozed';
+    followup.snoozed_until = newTime;
+    var label = hours === 24 ? 'Tomorrow' : '+' + hours + 'hr';
+    showToast('Snoozed ' + label, 'success');
+    updateCRMKPIs();
+    selectCRMLead(activeLead.id);
+  });
+}
+
+// ── Add Lead Modal ────────────────────────────────────────────────────────
 function openAddLeadModal() {
   var modal = document.getElementById('crm-add-lead-modal');
   if (!modal) return;
-  
   var courseSel = document.getElementById('crm-new-course');
   var centreSel = document.getElementById('crm-new-centre');
-  
-  courseSel.innerHTML = COURSES.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
-  centreSel.innerHTML = CENTRES.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
-  
-  document.getElementById('crm-new-fname').value = '';
-  document.getElementById('crm-new-lname').value = '';
-  document.getElementById('crm-new-email').value = '';
-  document.getElementById('crm-new-mobile').value = '';
+  if (typeof COURSES !== 'undefined') courseSel.innerHTML = COURSES.map(function(c){ return '<option value="'+escC(c)+'">'+escC(c)+'</option>'; }).join('');
+  if (typeof CENTRES !== 'undefined') centreSel.innerHTML = CENTRES.map(function(c){ return '<option value="'+escC(c)+'">'+escC(c)+'</option>'; }).join('');
+  ['crm-new-fname','crm-new-lname','crm-new-email','crm-new-mobile'].forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
   document.getElementById('crm-new-err').style.display = 'none';
-  
   modal.style.display = 'flex';
 }
 
-function closeAddLeadModal() {
-  document.getElementById('crm-add-lead-modal').style.display = 'none';
-}
+function closeAddLeadModal() { document.getElementById('crm-add-lead-modal').style.display = 'none'; }
 
 function submitNewLead() {
   var fname = document.getElementById('crm-new-fname').value.trim();
@@ -11850,176 +12203,135 @@ function submitNewLead() {
   var course = document.getElementById('crm-new-course').value;
   var centre = document.getElementById('crm-new-centre').value;
   var errEl = document.getElementById('crm-new-err');
-  
   if (!fname) { errEl.textContent = 'First name is required.'; errEl.style.display = 'block'; return; }
-  
   errEl.style.display = 'none';
-  
   gasGet({ action: 'assignLeadRoundRobin', centre: centre }, function(err, res) {
     var owner = (res && res.assignedTo) || counselorName || 'Admin';
-    
     gasGet({
       action: 'saveCRMLead',
-      firstName: fname,
-      lastName: lname,
-      email: email,
-      mobile: mobile,
-      course: course,
-      centre: centre,
-      leadStage: 'New',
-      leadSubStage: 'Unassigned',
-      leadOwner: owner,
-      source: 'Direct',
-      leadScore: 10,
-      notes: '[' + new Date().toLocaleString() + '] Lead created manually by ' + (counselorName || 'Admin')
+      firstName: fname, lastName: lname, email: email, mobile: mobile,
+      course: course, centre: centre,
+      leadStage: 'New', leadSubStage: 'Untouched', leadOwner: owner, source: 'Direct',
+      leadScore: 10, leadRemark: '', notes: '[' + new Date().toLocaleString() + '] Lead created manually by ' + (counselorName || 'Admin')
     }, function(e, d) {
       if (e || !d || d.status !== 'ok') {
-        errEl.textContent = (d && d.reason) ? d.reason : 'Duplicate email/mobile or failed to save lead.';
+        errEl.textContent = (d && d.reason) ? d.reason : 'Duplicate or save failed.';
         errEl.style.display = 'block';
         return;
       }
-      
       closeAddLeadModal();
-      showToast('Lead created successfully & assigned to ' + owner, 'success');
+      showToast('Lead created & assigned to ' + owner, 'success');
       loadCRMData();
     });
   });
 }
 
+// ── Enroll Modal ──────────────────────────────────────────────────────────
 function openCRMEnrollModal() {
   if (!activeLead) return;
   var modal = document.getElementById('crm-enroll-modal');
   if (!modal) return;
-  
   document.getElementById('crm-enroll-name').value = activeLead.first_name + (activeLead.last_name ? ' ' + activeLead.last_name : '');
-  
   var batchSel = document.getElementById('crm-enroll-batch');
-  batchSel.innerHTML = '<option value="">-- Select Active Batch --</option>';
-  
+  batchSel.innerHTML = '<option value="">— Select Active Batch —</option>';
   gasGet({ action: 'getBatches', centre: activeLead.centre }, function(e, d) {
     if (!e && d && d.batches) {
-      var filtered = d.batches.filter(function(b) { return b.isActive; });
-      filtered.forEach(function(b) {
-        var o = document.createElement('option');
-        o.value = b.batchCode;
-        o.textContent = b.batchCode + ' — ' + b.course;
-        batchSel.appendChild(o);
-      });
+      d.batches.filter(function(b) { return b.status === 'Active' || b.status === 'Upcoming'; })
+        .forEach(function(b) {
+          var opt = document.createElement('option');
+          opt.value = b.batchCode;
+          opt.textContent = b.batchCode + ' — ' + b.courseName + ' (' + b.centre + ') · Starts: ' + (b.startDate || 'TBD');
+          batchSel.appendChild(opt);
+        });
     }
   });
-  
   document.getElementById('crm-enroll-course-fee').value = '';
   document.getElementById('crm-enroll-paid-amount').value = '';
   document.getElementById('crm-enroll-receipt').value = '';
   document.getElementById('crm-enroll-err').style.display = 'none';
-  
   modal.style.display = 'flex';
 }
-
-function closeCRMEnrollModal() {
-  document.getElementById('crm-enroll-modal').style.display = 'none';
-}
-
-function updateCRMEnrollFees() {
-  var batchSel = document.getElementById('crm-enroll-batch');
-  var batchCode = batchSel.value;
-  if (!batchCode) return;
-  
-  var course = activeLead.course;
-  var matchedFee = 0;
-  if (typeof COURSES_FEES !== 'undefined' && COURSES_FEES[course]) {
-    var rules = COURSES_FEES[course];
-    var base = Number(rules.fee) || 0;
-    var reg = Number(rules.regFee) || 0;
-    var gst = Number(rules.gst) || 0;
-    matchedFee = Math.round((base + reg) * (1 + gst / 100));
-  }
-  
-  document.getElementById('crm-enroll-course-fee').value = matchedFee || '';
-}
+function closeCRMEnrollModal() { document.getElementById('crm-enroll-modal').style.display = 'none'; }
+function updateCRMEnrollFees() {}
 
 function submitCRMEnrollment() {
+  if (!activeLead) return;
   var batch = document.getElementById('crm-enroll-batch').value;
-  var courseFee = document.getElementById('crm-enroll-course-fee').value;
+  var fee = document.getElementById('crm-enroll-course-fee').value;
   var paid = document.getElementById('crm-enroll-paid-amount').value;
-  var payMode = document.getElementById('crm-enroll-pay-mode').value;
+  var mode = document.getElementById('crm-enroll-pay-mode').value;
   var receipt = document.getElementById('crm-enroll-receipt').value.trim();
   var errEl = document.getElementById('crm-enroll-err');
-  
   if (!batch) { errEl.textContent = 'Please select a batch.'; errEl.style.display = 'block'; return; }
-  if (paid && parseFloat(paid) > 0 && !receipt) { errEl.textContent = 'Transaction receipt number is required for payments.'; errEl.style.display = 'block'; return; }
-  
   errEl.style.display = 'none';
-  
   gasGet({
-    action: 'convertLeadToStudent',
+    action: 'enrollCRMLead',
     leadId: activeLead.id,
-    name: activeLead.first_name + (activeLead.last_name ? ' ' + activeLead.last_name : ''),
-    email: activeLead.email,
-    mobile: activeLead.mobile,
-    course: activeLead.course,
-    centre: activeLead.centre,
     batchCode: batch,
-    amount: paid || 0,
-    paymentMode: payMode,
+    courseFee: parseFloat(fee) || 0,
+    paidAmount: parseFloat(paid) || 0,
+    payMode: mode,
     receiptNo: receipt,
-    courseFee: courseFee || 0,
-    gstAmount: courseFee ? Math.round(parseFloat(courseFee) * 18 / 118) : 0,
-    recordedBy: counselorName || 'Admin'
+    enrolledBy: counselorName || ''
   }, function(e, d) {
     if (e || !d || d.status !== 'ok') {
-      errEl.textContent = (d && d.reason) ? d.reason : 'Failed to finalize enrollment. Verify details.';
+      errEl.textContent = (d && d.reason) ? d.reason : 'Enrollment failed.';
       errEl.style.display = 'block';
       return;
     }
-    
+    var idx = crmLeadsList.findIndex(function(l) { return l.id === activeLead.id; });
+    if (idx >= 0) { crmLeadsList[idx].lead_stage = 'Enrolled'; crmLeadsList[idx].lead_sub_stage = 'Enrolled'; }
     closeCRMEnrollModal();
-    showToast('Lead enrolled successfully! Student ID generated: ' + d.studentId, 'success');
-    loadCRMData();
+    showToast('🎉 Lead converted & enrolled in ' + batch, 'success');
+    updateCRMKPIs();
+    selectCRMLead(activeLead.id);
+    filterLeads();
   });
 }
 
+// ── Cross-Sell / Upsell Modal ─────────────────────────────────────────────
 function openCRMUpsellModal() {
   if (!activeLead) return;
   var modal = document.getElementById('crm-upsell-modal');
   if (!modal) return;
-  
   var courseSel = document.getElementById('crm-upsell-course');
   var centreSel = document.getElementById('crm-upsell-centre');
-  
-  courseSel.innerHTML = COURSES.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
-  centreSel.innerHTML = CENTRES.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
-  
-  courseSel.value = activeLead.course;
-  centreSel.value = activeLead.centre;
+  if (typeof COURSES !== 'undefined') courseSel.innerHTML = COURSES.filter(function(c){ return c !== activeLead.course; }).map(function(c){ return '<option value="'+escC(c)+'">'+escC(c)+'</option>'; }).join('');
+  if (typeof CENTRES !== 'undefined') centreSel.innerHTML = CENTRES.map(function(c){ return '<option value="'+escC(c)+'">'+escC(c)+'</option>'; }).join('');
+  // Pre-select suggested cross-sell course
+  var suggested = CRM_CROSSSELL_MAP[activeLead.course];
+  if (suggested) {
+    var firstSuggested = suggested.split(' or ')[0].trim();
+    Array.from(courseSel.options).forEach(function(opt) { if (opt.value === firstSuggested) opt.selected = true; });
+  }
   document.getElementById('crm-upsell-err').style.display = 'none';
-  
   modal.style.display = 'flex';
 }
-
-function closeCRMUpsellModal() {
-  document.getElementById('crm-upsell-modal').style.display = 'none';
-}
+function closeCRMUpsellModal() { document.getElementById('crm-upsell-modal').style.display = 'none'; }
 
 function submitCRMUpsell() {
+  if (!activeLead) return;
   var course = document.getElementById('crm-upsell-course').value;
   var centre = document.getElementById('crm-upsell-centre').value;
   var errEl = document.getElementById('crm-upsell-err');
-  
+  if (!course) { errEl.textContent = 'Please select a course.'; errEl.style.display = 'block'; return; }
   errEl.style.display = 'none';
-  
   gasGet({
-    action: 'initiateCrossCentreUpsell',
-    leadId: activeLead.id,
-    targetCentre: centre,
-    targetCourse: course
+    action: 'saveCRMLead',
+    firstName: activeLead.first_name, lastName: activeLead.last_name,
+    email: activeLead.email, mobile: activeLead.mobile,
+    course: course, centre: centre,
+    leadStage: 'New', leadSubStage: 'Untouched',
+    leadOwner: '', leadCoOwner: activeLead.lead_owner,
+    source: 'Internal Cross-Sell', leadScore: 20,
+    leadRemark: 'Cross-sell from ' + activeLead.course,
+    notes: '[' + new Date().toLocaleString() + '] Cross-sell created from lead: ' + activeLead.id + ' by ' + (counselorName || 'Counselor')
   }, function(e, d) {
     if (e || !d || d.status !== 'ok') {
-      errEl.textContent = 'Failed to initiate upsell/cross-sell opportunity.';
+      errEl.textContent = (d && d.reason) ? d.reason : 'Failed. Duplicate or missing fields.';
       errEl.style.display = 'block';
       return;
     }
-    
     closeCRMUpsellModal();
     showToast('Secondary upsell opportunity created successfully.', 'success');
     loadCRMData();

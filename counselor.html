@@ -150,6 +150,12 @@
 /* Lead count bar */
 .crm-count-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:var(--off);border:1px solid var(--border);border-top:none;border-bottom:none;font-size:11px;color:var(--muted)}
 .crm-count-bar strong{color:var(--navy)}
+
+.crm-stage-pill{padding:4px 9px;font-size:11px;font-weight:600;border:1.5px solid var(--border);border-radius:20px;background:var(--white);color:var(--navy);cursor:pointer;transition:all .15s}
+.crm-stage-pill:hover{border-color:var(--gold);color:var(--gold)}
+.crm-stage-pill.active{background:var(--gold);color:#fff;border-color:var(--gold)}
+.crm-stage-pill[data-s="Lost"].active{background:#dc2626;border-color:#dc2626}
+.crm-stage-pill[data-s="Enrolled"].active{background:#16a34a;border-color:#16a34a}
 </style>
 
 <style>
@@ -1756,12 +1762,50 @@
             </div>
           </div>
 
+          <!-- Stage Quick-Change Pills -->
+          <div style="margin-bottom:10px">
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Change Stage</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px" id="crm-stage-pills">
+              <button onclick="quickStageChange('New')"          class="crm-stage-pill" data-s="New">New</button>
+              <button onclick="quickStageChange('Contacted')"    class="crm-stage-pill" data-s="Contacted">Contacted</button>
+              <button onclick="quickStageChange('Interested')"   class="crm-stage-pill" data-s="Interested">Interested</button>
+              <button onclick="quickStageChange('Demo')"         class="crm-stage-pill" data-s="Demo">Demo</button>
+              <button onclick="quickStageChange('Follow-Up Ongoing')" class="crm-stage-pill" data-s="Follow-Up Ongoing">Follow-Up</button>
+              <button onclick="quickStageChange('Application Initiated')" class="crm-stage-pill" data-s="Application Initiated">Applied</button>
+              <button onclick="quickStageChange('Enrolled')"     class="crm-stage-pill" data-s="Enrolled">Enrolled</button>
+              <button onclick="quickStageChange('Lost')"         class="crm-stage-pill" data-s="Lost">Lost</button>
+            </div>
+          </div>
+
           <!-- Activity Notes -->
           <div style="margin-bottom:10px">
-            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Add Activity Note</div>
-            <textarea id="crm-note-input" placeholder="Detailed notes, context, key info..." style="width:100%;height:52px;font-family:inherit;font-size:12px;padding:6px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box;resize:none"></textarea>
-            <button class="btn btn-outline" style="margin-top:4px;padding:4px 8px;font-size:11px;border-color:var(--gold);color:var(--navy);border-radius:4px" onclick="saveCRMNote()">📝 Save Note</button>
-            <div id="crm-timeline-display" style="max-height:110px;overflow-y:auto;background:#f8fafc;padding:6px;border-radius:6px;font-size:11px;color:var(--muted);margin-top:6px;white-space:pre-wrap;line-height:1.5"></div>
+            <!-- Notes + Timeline tabs -->
+            <div style="display:flex;gap:0;margin-bottom:8px;border:1.5px solid var(--border);border-radius:8px;overflow:hidden">
+              <button id="crm-tab-notes" onclick="switchDetailTab('notes')" style="flex:1;padding:6px;font-size:11px;font-weight:700;background:var(--gold);color:#fff;border:none;cursor:pointer;border-radius:0">📝 Notes</button>
+              <button id="crm-tab-timeline" onclick="switchDetailTab('timeline')" style="flex:1;padding:6px;font-size:11px;font-weight:600;background:var(--white);color:var(--navy);border:none;cursor:pointer;border-left:1.5px solid var(--border)">📋 Timeline</button>
+            </div>
+
+            <!-- Notes panel -->
+            <div id="crm-panel-notes">
+              <textarea id="crm-note-input" placeholder="Write a note about this lead — call outcome, interest level, next steps..." style="width:100%;height:64px;font-family:inherit;font-size:12px;padding:7px 8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box;resize:none;transition:border-color .15s" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+              <div style="display:flex;gap:6px;margin-top:5px">
+                <select id="crm-note-type" style="flex:1;padding:5px 7px;font-size:11px;border:1.5px solid var(--border);border-radius:5px;background:var(--white);color:var(--navy)">
+                  <option value="note">📝 Note</option>
+                  <option value="call">📞 Call Log</option>
+                  <option value="whatsapp">💬 WhatsApp</option>
+                  <option value="email">📧 Email</option>
+                  <option value="meeting">🤝 Meeting</option>
+                </select>
+                <button class="btn btn-gold" style="padding:5px 12px;font-size:11px;font-weight:700;border-radius:5px" onclick="saveCRMNote()">Save</button>
+              </div>
+            </div>
+
+            <!-- Timeline panel -->
+            <div id="crm-panel-timeline" style="display:none">
+              <div id="crm-timeline-list" style="max-height:200px;overflow-y:auto">
+                <div style="text-align:center;padding:16px;color:var(--muted);font-size:12px">Loading timeline…</div>
+              </div>
+            </div>
           </div>
 
           <!-- Follow-Up Reminder + Snooze -->
@@ -12283,7 +12327,13 @@ function selectCRMLead(leadId) {
   if (subStageSel) subStageSel.value = lead.lead_sub_stage || '';
 
   // Timeline
-  document.getElementById('crm-timeline-display').textContent = (lead.notes || 'No activity logged yet.');
+  // Reset to notes tab when selecting a new lead
+  switchDetailTab('notes');
+  // Highlight current stage pill
+  document.querySelectorAll('.crm-stage-pill').forEach(function(p) {
+    p.classList.toggle('active', p.dataset.s === lead.lead_stage);
+  });
+  var tl = document.getElementById('crm-timeline-list'); if (tl) tl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--muted);font-size:12px">Click Timeline tab to load activity.</div>';
 
   // Enroll button
   document.getElementById('btn-crm-enroll').style.display = lead.lead_stage === 'Enrolled' ? 'none' : 'flex';
@@ -12418,34 +12468,135 @@ function saveCRMRemark() {
 }
 
 // ── Save Activity Note ────────────────────────────────────────────────────
-function saveCRMNote() {
+function switchDetailTab(tab) {
+  document.getElementById('crm-panel-notes').style.display    = tab === 'notes'    ? 'block' : 'none';
+  document.getElementById('crm-panel-timeline').style.display = tab === 'timeline' ? 'block' : 'none';
+  var tNotes = document.getElementById('crm-tab-notes');
+  var tTL    = document.getElementById('crm-tab-timeline');
+  if (tNotes) { tNotes.style.background = tab === 'notes' ? 'var(--gold)' : 'var(--white)'; tNotes.style.color = tab === 'notes' ? '#fff' : 'var(--navy)'; }
+  if (tTL)    { tTL.style.background    = tab === 'timeline' ? 'var(--gold)' : 'var(--white)'; tTL.style.color = tab === 'timeline' ? '#fff' : 'var(--navy)'; }
+  if (tab === 'timeline' && activeLead) loadLeadTimeline(activeLead.id);
+}
+
+function loadLeadTimeline(leadId) {
+  var container = document.getElementById('crm-timeline-list');
+  if (!container) return;
+  container.innerHTML = '<div style="text-align:center;padding:12px;color:var(--muted);font-size:12px">Loading…</div>';
+  gasGet({ action: 'getLeadTimeline', leadId: leadId }, function(err, res) {
+    if (err || !res || res.status !== 'ok') {
+      container.innerHTML = '<div style="text-align:center;padding:12px;color:#dc2626;font-size:12px">Could not load timeline.</div>';
+      return;
+    }
+    var items = res.items || [];
+    if (!items.length) {
+      container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">No activity yet — notes, calls, and follow-ups will appear here.</div>';
+      return;
+    }
+    var icons = { note:'📝', call:'📞', whatsapp:'💬', email:'📧', meeting:'🤝', stage_change:'🔄', followup:'📅', system:'⚙️' };
+    var colors = { note:'#1e40af', call:'#166534', whatsapp:'#065f46', email:'#7c3aed', meeting:'#92400e', stage_change:'#c2410c', followup:'#0369a1', system:'#6b7280' };
+    container.innerHTML = items.map(function(item) {
+      var icon  = icons[item.activity_type]  || '📌';
+      var color = colors[item.activity_type] || '#6b7280';
+      var dt    = new Date(item.created_at);
+      var dateStr = dt.toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
+      var timeStr = dt.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+      return '<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9">'
+        + '<div style="width:28px;height:28px;border-radius:50%;background:'+color+'18;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px">'+icon+'</div>'
+        + '<div style="flex:1;min-width:0">'
+        +   '<div style="font-size:12px;color:var(--navy);line-height:1.4">' + escapeHtml(item.body || '') + '</div>'
+        +   '<div style="font-size:10px;color:var(--muted);margin-top:2px">'
+        +     '<strong style="color:'+color+'">' + escapeHtml(item.actor || 'System') + '</strong>'
+        +     ' · ' + dateStr + ' ' + timeStr
+        +   '</div>'
+        + '</div>'
+        + '</div>';
+    }).join('');
+  });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function quickStageChange(newStage) {
   if (!activeLead) return;
-  var input = document.getElementById('crm-note-input');
-  var val = (input.value || '').trim();
-  if (!val) return;
-  var ts = new Date().toLocaleString();
-  var updated = '[' + ts + ' — ' + (counselorName || 'Counselor') + ']\n' + val + '\n\n' + (activeLead.notes || '');
+  if (activeLead.lead_stage === newStage) return; // already at this stage
+  var oldStage = activeLead.lead_stage;
+  // Update pills UI immediately
+  document.querySelectorAll('.crm-stage-pill').forEach(function(p) {
+    p.classList.toggle('active', p.dataset.s === newStage);
+  });
+  // Update stage badge
+  var stEl = document.getElementById('crm-detail-stage-badge');
+  var stageBdg = {New:'st-new',Contacted:'st-contacted',Interested:'st-interested',Demo:'st-demo','Follow-Up Ongoing':'st-followup','Application Initiated':'st-app',Enrolled:'st-enrolled',Lost:'st-lost'};
+  if (stEl) { stEl.textContent = newStage; stEl.className = 'crm-badge ' + (stageBdg[newStage]||'st-contacted'); }
+
   gasGet({
     action: 'saveCRMLead',
     id: activeLead.id,
     firstName: activeLead.first_name, lastName: activeLead.last_name,
     email: activeLead.email, mobile: activeLead.mobile,
     course: activeLead.course, centre: activeLead.centre,
-    leadStage: activeLead.lead_stage, leadSubStage: activeLead.lead_sub_stage,
-    leadOwner: activeLead.lead_owner, leadCoOwner: activeLead.lead_co_owner,
-    source: activeLead.source, notes: updated,
-    leadScore: activeLead.lead_score, leadRemark: activeLead.lead_remark
-  }, function(e, d) {
-    if (e || !d || d.status !== 'ok') { showToast('Failed to save note.', 'error'); return; }
-    var idx = crmLeadsList.findIndex(function(l) { return l.id === activeLead.id; });
-    if (idx >= 0) crmLeadsList[idx].notes = updated;
-    input.value = '';
-    showToast('Note saved to timeline.', 'success');
-    selectCRMLead(activeLead.id);
+    leadStage: newStage, leadSubStage: activeLead.lead_sub_stage,
+    leadOwner: activeLead.lead_owner, source: activeLead.source,
+    notes: activeLead.notes, leadScore: activeLead.lead_score,
+    leadRemark: activeLead.lead_remark, altMobile: activeLead.alt_mobile,
+    bookMySlot: activeLead.book_my_slot, whenToJoin: activeLead.when_to_join,
+    currentProfession: activeLead.current_profession
+  }, function(err, res) {
+    if (err || !res || res.status !== 'ok') {
+      showToast('Failed to update stage.', 'error'); return;
+    }
+    activeLead.lead_stage = newStage;
+    // Update list cache
+    var li = crmLeadsList.find(function(l){ return l.id === activeLead.id; });
+    if (li) li.lead_stage = newStage;
+    showToast('Stage → ' + newStage, 'success');
+    // Log to timeline
+    gasGet({
+      action: 'saveLeadActivity',
+      leadId: activeLead.id,
+      activityType: 'stage_change',
+      body: 'Stage changed: ' + oldStage + ' → ' + newStage,
+      actor: counselorName || 'Counselor'
+    }, function() {});
   });
 }
 
-// ── WhatsApp Launch from Detail Panel ────────────────────────────────────
+
+function saveCRMNote() {
+  if (!activeLead) return;
+  var input = document.getElementById('crm-note-input');
+  var typeEl = document.getElementById('crm-note-type');
+  var body = (input.value || '').trim();
+  if (!body) return;
+  var actType = (typeEl && typeEl.value) || 'note';
+
+  input.disabled = true;
+  gasGet({
+    action: 'saveLeadActivity',
+    leadId: activeLead.id,
+    activityType: actType,
+    body: body,
+    actor: counselorName || 'Counselor'
+  }, function(err, res) {
+    input.disabled = false;
+    if (err || !res || res.status !== 'ok') {
+      showToast('Could not save note. Try again.', 'error');
+      return;
+    }
+    input.value = '';
+    showToast('Note saved!', 'success');
+    // Refresh timeline if visible
+    if (document.getElementById('crm-panel-timeline').style.display !== 'none') {
+      loadLeadTimeline(activeLead.id);
+    }
+    // Auto switch to timeline
+    switchDetailTab('timeline');
+  });
+}
+
+
 function launchWhatsApp() {
   if (!activeLead) return;
   quickWA(activeLead.mobile || '', activeLead.first_name || '', activeLead.course || '');

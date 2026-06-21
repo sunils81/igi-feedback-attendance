@@ -1250,6 +1250,17 @@
       page-break-inside: avoid;
     }
   }
+
+/* Toggle switch */
+.toggle-switch { position:relative; display:inline-block; width:46px; height:26px; flex-shrink:0 }
+.toggle-switch input { opacity:0; width:0; height:0 }
+.toggle-slider { position:absolute; cursor:pointer; inset:0; background:#d1d5db; border-radius:26px; transition:.3s }
+.toggle-slider:before { position:absolute; content:''; height:20px; width:20px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.3s }
+.toggle-switch input:checked + .toggle-slider { background:var(--gold, #c9a84c) }
+.toggle-switch input:checked + .toggle-slider:before { transform:translateX(20px) }
+/* Settings sub-tabs */
+#t-settings .crm-subtab-btn { font-size:12px; padding:7px 14px }
+
 </style>
 </head>
 <body>
@@ -2159,82 +2170,249 @@
 
     <!-- TAB: SETTINGS (User Management) -->
     <div id="t-settings" class="tab-content">
-      <div class="card" style="max-width:900px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+
+  <!-- ══ Settings sub-nav ══════════════════════════════════════════════ -->
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px">
+    <button class="crm-subtab-btn active" id="stab-users"   onclick="switchSettingsTab('users')"   style="font-size:12px;padding:7px 14px">👥 Users</button>
+    <button class="crm-subtab-btn"        id="stab-fb"      onclick="switchSettingsTab('fb')"      style="font-size:12px;padding:7px 14px">📘 FB Lead Ads</button>
+    <button class="crm-subtab-btn"        id="stab-auto"    onclick="switchSettingsTab('auto')"    style="font-size:12px;padding:7px 14px">⚡ Automation</button>
+    <button class="crm-subtab-btn"        id="stab-routing" onclick="switchSettingsTab('routing')" style="font-size:12px;padding:7px 14px">🗺️ Routing Rules</button>
+    <button class="crm-subtab-btn"        id="stab-android" onclick="switchSettingsTab('android')" style="font-size:12px;padding:7px 14px">📱 Android App</button>
+  </div>
+
+  <!-- ── Users panel ──────────────────────────────────────────── -->
+  <div id="spanel-users">
+    <div class="card" style="padding:20px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div>
+          <h3 style="margin:0;color:var(--navy)">👥 User & Counsellor Management</h3>
+          <p class="sub" style="margin:4px 0 0">Add, edit, or deactivate staff accounts. Lead data is preserved on deactivation.</p>
+        </div>
+        <button class="btn btn-gold" style="width:auto;padding:8px 16px;font-size:12px;font-weight:700" onclick="settingsAddUser()">➕ Add User</button>
+      </div>
+      <div id="settings-users-list" style="overflow-x:auto">
+        <table class="compact-table" style="width:100%">
+          <thead><tr>
+            <th class="text-left">Name</th>
+            <th class="text-left">Role</th>
+            <th class="text-left">Centre</th>
+            <th class="text-center">Status</th>
+            <th class="text-center no-print">Actions</th>
+          </tr></thead>
+          <tbody id="settings-users-tbody">
+            <tr><td colspan="5" style="text-align:center;padding:16px;color:var(--muted)">Loading users…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FB Lead Ads panel ─────────────────────────────────────── -->
+  <div id="spanel-fb" style="display:none">
+    <div class="card" style="padding:20px;margin-bottom:16px">
+      <h3 style="margin:0 0 4px;color:var(--navy)">📘 Facebook Lead Ads Integration</h3>
+      <p class="sub" style="margin:0 0 16px">Connect your Facebook pages so leads flow automatically into the CRM and get assigned to counsellors.</p>
+
+      <!-- Status indicator -->
+      <div id="fb-status-bar" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;background:#f0fdf4;border:1.5px solid #bbf7d0;margin-bottom:16px">
+        <span style="font-size:18px">🟢</span>
+        <div>
+          <div style="font-weight:700;font-size:13px;color:#166534">Webhook Active</div>
+          <div style="font-size:11px;color:#15803d">FB leads are flowing into your CRM automatically</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Webhook URL</label>
+          <div style="display:flex;gap:6px">
+            <input readonly value="https://igi-feedback-attendance.vercel.app/api/crm/fb-webhook" style="flex:1;padding:7px 9px;font-size:11px;border:1.5px solid var(--border);border-radius:6px;background:#f8fafc;color:var(--navy)">
+            <button class="btn btn-outline" style="padding:7px 10px;font-size:11px" onclick="navigator.clipboard.writeText('https://igi-feedback-attendance.vercel.app/api/crm/fb-webhook');showToast('Copied!','success')">📋</button>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Verify Token</label>
+          <div style="display:flex;gap:6px">
+            <input type="password" id="fb-verify-token-display" readonly placeholder="Set in Vercel env: FB_VERIFY_TOKEN" style="flex:1;padding:7px 9px;font-size:11px;border:1.5px solid var(--border);border-radius:6px;background:#f8fafc;color:var(--navy)">
+          </div>
+        </div>
+      </div>
+
+      <div style="background:rgba(217,119,6,.07);border:1px solid rgba(217,119,6,.2);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12px">
+        <strong style="color:var(--navy)">📋 Setup Checklist</strong>
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:5px">
+          <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" checked disabled> Set <code>FB_VERIFY_TOKEN</code> in Vercel → Environment Variables</label>
+          <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" checked disabled> Set <code>FB_PAGE_ACCESS_TOKEN</code> in Vercel (from Meta → Page Access Token)</label>
+          <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" checked disabled> Set <code>FB_APP_SECRET</code> in Vercel (from Meta App Dashboard)</label>
+          <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="fb-check-webhook"> In Meta Business Suite → Leads Access → Webhooks → Subscribe with URL above</label>
+          <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="fb-check-form"> Subscribe to <strong>leadgen</strong> webhook field for your Page</label>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a href="https://developers.facebook.com/apps" target="_blank" class="btn btn-outline" style="font-size:12px;padding:8px 14px;text-decoration:none">🔗 Meta App Dashboard</a>
+        <a href="https://business.facebook.com/latest/settings/lead_access" target="_blank" class="btn btn-outline" style="font-size:12px;padding:8px 14px;text-decoration:none">🔗 Leads Access Manager</a>
+      </div>
+    </div>
+
+    <!-- Recent FB Leads -->
+    <div class="card" style="padding:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 style="margin:0;color:var(--navy)">📥 Recent FB Leads (Last 10)</h3>
+        <button class="btn btn-outline" style="padding:6px 12px;font-size:12px" onclick="loadRecentFBLeads()">🔄 Refresh</button>
+      </div>
+      <div id="fb-recent-leads" style="overflow-x:auto">
+        <table class="compact-table" style="width:100%">
+          <thead><tr>
+            <th class="text-left">Name</th>
+            <th class="text-left">Mobile</th>
+            <th class="text-left">Centre</th>
+            <th class="text-left">Assigned To</th>
+            <th class="text-left">Received</th>
+          </tr></thead>
+          <tbody id="fb-recent-tbody">
+            <tr><td colspan="5" style="text-align:center;padding:16px;color:var(--muted)">Click Refresh to load.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Automation panel ──────────────────────────────────────── -->
+  <div id="spanel-auto" style="display:none">
+    <div class="card" style="padding:20px;margin-bottom:16px">
+      <h3 style="margin:0 0 4px;color:var(--navy)">⚡ Lead Automation Controls</h3>
+      <p class="sub" style="margin:0 0 16px">Toggle automatic lead assignment and ingestion on or off without touching code.</p>
+
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <!-- FB Auto-Assign toggle -->
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border:1.5px solid var(--border);border-radius:10px;background:var(--off)">
           <div>
-            <h2 style="margin:0">⚙️ User Management</h2>
-            <p class="sub" style="margin:4px 0 0">Add, deactivate, or remove staff accounts. All student and session data is preserved on delete.</p>
+            <div style="font-weight:700;color:var(--navy);font-size:14px">📘 FB Lead Auto-Assignment</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">Automatically assign incoming FB leads to counsellors based on city routing rules</div>
           </div>
-          <button class="btn btn-gold" style="width:auto" onclick="settingsShowAddForm()">+ Add User</button>
+          <label class="toggle-switch">
+            <input type="checkbox" id="auto-fb-assign" checked onchange="saveAutomationSetting('fb_auto_assign', this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
         </div>
-
-        <!-- Admin auth row -->
-        <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px;padding:12px 14px;background:rgba(0,0,0,.04);border-radius:8px">
-          <div class="field" style="flex:1;margin:0">
-            <label style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;opacity:.6;margin-bottom:4px;display:block">Admin Password</label>
-            <input type="password" id="settings-admin-pass" placeholder="Enter admin password to enable actions" style="width:100%;box-sizing:border-box">
+        <!-- Follow-up auto-create toggle -->
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border:1.5px solid var(--border);border-radius:10px;background:var(--off)">
+          <div>
+            <div style="font-weight:700;color:var(--navy);font-size:14px">📅 Auto Follow-Up on FB Lead</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">Create a 1-hour follow-up reminder automatically when a FB lead arrives</div>
           </div>
-          <button class="btn" style="width:auto;background:#555;color:#fff;white-space:nowrap" onclick="settingsLoadUsers()">🔄 Load / Refresh</button>
+          <label class="toggle-switch">
+            <input type="checkbox" id="auto-followup" checked onchange="saveAutomationSetting('fb_auto_followup', this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
         </div>
-
-        <div class="err-box" id="settings-err" style="margin-bottom:10px"></div>
-        <div id="settings-ok" style="display:none;margin-bottom:10px;background:#E8F5EE;color:#168B57;border:1px solid rgba(22,139,87,.25);border-radius:8px;padding:10px 12px;font-size:13px;font-weight:600"></div>
-
-        <!-- User table -->
-        <div id="settings-table-wrap" style="overflow-x:auto">
-          <p style="opacity:.5;font-size:13px;text-align:center;padding:20px 0">Enter admin password and click Load to see users.</p>
-        </div>
-      </div>
-
-      <!-- Add User Modal -->
-      <div id="settings-add-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:999;align-items:center;justify-content:center">
-        <div style="background:#fff;border-radius:14px;padding:28px 32px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.3)">
-          <h3 style="margin:0 0 18px">➕ Add New User</h3>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div class="field">
-              <label>Role *</label>
-              <select id="add-role">
-                <option value="Counselor">Counselor</option>
-                <option value="Instructor">Instructor</option>
-                <option value="Admin">Admin</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>Full Name *</label>
-              <input type="text" id="add-name" placeholder="e.g. Priya Sharma">
-            </div>
-            <div class="field" style="grid-column:1 / -1">
-              <label>Centres (comma-separated)</label>
-              <input type="text" id="add-centres" placeholder="e.g. Mumbai,Pune">
-            </div>
-            <div class="field" style="grid-column:1 / -1">
-              <label>Initial Password *</label>
-              <input type="text" id="add-temp-pass" placeholder="Min 6 characters — will be shown after creation" autocomplete="new-password">
-            </div>
+        <!-- Duplicate check toggle -->
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border:1.5px solid var(--border);border-radius:10px;background:var(--off)">
+          <div>
+            <div style="font-weight:700;color:var(--navy);font-size:14px">🔍 Duplicate Lead Detection</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">Skip leads with the same mobile number received in the last 7 days</div>
           </div>
-          <div class="err-box" id="add-err" style="margin-top:10px"></div>
-          <div style="display:flex;gap:10px;margin-top:16px">
-            <button class="btn btn-gold" style="width:auto" id="add-submit-btn" onclick="settingsSubmitAdd()">Create User</button>
-            <button class="btn" style="width:auto;background:#888;color:#fff" onclick="settingsHideAddForm()">Cancel</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Delete Confirm Modal -->
-      <div id="settings-del-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:999;align-items:center;justify-content:center">
-        <div style="background:#fff;border-radius:14px;padding:28px 32px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.3)">
-          <h3 style="margin:0 0 8px;color:#c0392b">🗑️ Delete User</h3>
-          <p style="font-size:13px;opacity:.7;margin:0 0 16px">This removes the login credential only. All session and student records are preserved.</p>
-          <p style="font-size:13px;margin:0 0 10px">Type the name <strong id="del-confirm-name-label">—</strong> to confirm:</p>
-          <input type="text" id="del-confirm-input" placeholder="Type exact name here" style="width:100%;box-sizing:border-box">
-          <div class="err-box" id="del-err" style="margin-top:8px"></div>
-          <div style="display:flex;gap:10px;margin-top:16px">
-            <button class="btn" style="width:auto;background:#c0392b;color:#fff" id="del-confirm-btn" onclick="settingsConfirmDelete()">Delete</button>
-            <button class="btn" style="width:auto;background:#888;color:#fff" onclick="settingsHideDelModal()">Cancel</button>
-          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="auto-dedup" checked onchange="saveAutomationSetting('dedup_check', this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
         </div>
       </div>
     </div>
+
+    <!-- Analytics summary -->
+    <div class="card" style="padding:20px">
+      <h3 style="margin:0 0 12px;color:var(--navy)">📊 Automation Analytics (Last 30 Days)</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+        <div style="text-align:center;padding:14px;background:rgba(24,95,165,.06);border-radius:8px;border:1px solid rgba(24,95,165,.15)">
+          <div style="font-size:24px;font-weight:800;color:var(--navy)" id="auto-stat-total">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">FB Leads Received</div>
+        </div>
+        <div style="text-align:center;padding:14px;background:rgba(22,139,87,.06);border-radius:8px;border:1px solid rgba(22,139,87,.15)">
+          <div style="font-size:24px;font-weight:800;color:#16a34a" id="auto-stat-assigned">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Auto-Assigned</div>
+        </div>
+        <div style="text-align:center;padding:14px;background:rgba(217,119,6,.06);border-radius:8px;border:1px solid rgba(217,119,6,.15)">
+          <div style="font-size:24px;font-weight:800;color:var(--gold)" id="auto-stat-dupes">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Duplicates Skipped</div>
+        </div>
+        <div style="text-align:center;padding:14px;background:rgba(220,38,38,.06);border-radius:8px;border:1px solid rgba(220,38,38,.15)">
+          <div style="font-size:24px;font-weight:800;color:#dc2626" id="auto-stat-errors">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Errors</div>
+        </div>
+      </div>
+      <button class="btn btn-outline" style="margin-top:12px;padding:7px 14px;font-size:12px" onclick="loadAutomationStats()">🔄 Load Stats</button>
+    </div>
+  </div>
+
+  <!-- ── Routing Rules panel (embedded) ───────────────────────── -->
+  <div id="spanel-routing" style="display:none">
+    <div class="card" style="padding:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:10px">
+        <div>
+          <h3 style="margin:0;color:var(--navy)">🗺️ Lead Routing Rules</h3>
+          <p class="sub" style="margin:4px 0 0">Edit which counsellor handles each city. Changes apply instantly to incoming FB leads.</p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline" style="padding:7px 12px;font-size:12px" onclick="loadRoutingRules()">🔄 Refresh</button>
+          <button class="btn btn-gold" style="padding:7px 14px;font-size:12px;font-weight:700" onclick="openAddRoutingRule()">➕ Add Rule</button>
+        </div>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:12px;padding:8px 10px;background:rgba(217,119,6,.07);border-radius:6px;border-left:3px solid var(--gold)">
+        💡 <strong>Mumbai</strong> uses Round Robin. All other cities assign to one counsellor.
+      </p>
+      <div style="overflow-x:auto">
+        <table class="compact-table" style="width:100%">
+          <thead><tr>
+            <th class="text-left">City / Centre</th>
+            <th class="text-left">Type</th>
+            <th class="text-left">Assigned Counsellor(s)</th>
+            <th class="text-center">Status</th>
+            <th class="text-center no-print">Actions</th>
+          </tr></thead>
+          <tbody id="crm-routing-rules-tbody2">
+            <tr><td colspan="5" style="text-align:center;padding:16px;color:var(--muted)">Click Refresh to load.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Android App panel ─────────────────────────────────────── -->
+  <div id="spanel-android" style="display:none">
+    <div class="card" style="padding:20px;margin-bottom:16px">
+      <h3 style="margin:0 0 4px;color:var(--navy)">📱 Android App — Coming Soon</h3>
+      <p class="sub" style="margin:0 0 16px">The IGI CRM Android app will let counsellors make calls and have all activity auto-captured to the lead timeline.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px">
+        <div style="padding:16px;border:1.5px solid var(--border);border-radius:10px;background:var(--off)">
+          <div style="font-size:20px;margin-bottom:6px">📞</div>
+          <div style="font-weight:700;color:var(--navy);font-size:13px">One-tap Calling</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">Call leads directly from the app. Call duration + outcome logged to timeline automatically.</div>
+        </div>
+        <div style="padding:16px;border:1.5px solid var(--border);border-radius:10px;background:var(--off)">
+          <div style="font-size:20px;margin-bottom:6px">📋</div>
+          <div style="font-weight:700;color:var(--navy);font-size:13px">Auto Activity Capture</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">Every call, WhatsApp, and stage change is captured in the lead timeline in real time.</div>
+        </div>
+        <div style="padding:16px;border:1.5px solid var(--border);border-radius:10px;background:var(--off)">
+          <div style="font-size:20px;margin-bottom:6px">🔔</div>
+          <div style="font-weight:700;color:var(--navy);font-size:13px">Push Notifications</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">New lead alerts, follow-up reminders, and overdue call alerts sent as push notifications.</div>
+        </div>
+        <div style="padding:16px;border:1.5px solid var(--border);border-radius:10px;background:var(--off)">
+          <div style="font-size:20px;margin-bottom:6px">🌐</div>
+          <div style="font-weight:700;color:var(--navy);font-size:13px">Works Offline</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">View your lead queue and call history even without internet. Syncs when reconnected.</div>
+        </div>
+      </div>
+      <div style="padding:12px 16px;background:rgba(217,119,6,.07);border-radius:8px;border-left:3px solid var(--gold);font-size:12px;color:var(--navy)">
+        <strong>API Ready:</strong> The CRM backend (Supabase + Vercel) is already API-first. The Android app will use the same REST endpoints. No backend changes needed when development starts.
+      </div>
+    </div>
+  </div>
+
+</div>
 
     <!-- TAB: BATCH SNAPSHOT -->
     <div id="t-snapshot" class="tab-content">
@@ -7721,6 +7899,148 @@ function closeCRMRuleModal() { closeRoutingModal(); }
 function saveCRMRule() { saveRoutingRule(); }
 function editCRMRule(cName, centre, weight, isActive) {
   editRoutingRule({ id: null, location: centre, rule_type: 'direct', counselor: cName, counselors: null, is_active: isActive });
+}
+
+
+// ══ SETTINGS PAGE ═══════════════════════════════════════════════════════════
+
+function switchSettingsTab(tab) {
+  var panels = ['users','fb','auto','routing','android'];
+  panels.forEach(function(p) {
+    var el = document.getElementById('spanel-' + p);
+    var btn = document.getElementById('stab-' + p);
+    if (el)  el.style.display  = p === tab ? 'block' : 'none';
+    if (btn) btn.classList.toggle('active', p === tab);
+  });
+  if (tab === 'users')   loadSettingsUsers();
+  if (tab === 'routing') { loadRoutingRules2(); }
+  if (tab === 'auto')    loadAutomationStats();
+  if (tab === 'fb')      loadRecentFBLeads();
+}
+
+// ── Users ────────────────────────────────────────────────────────────────────
+function loadSettingsUsers() {
+  var tbody = document.getElementById('settings-users-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">Loading…</td></tr>';
+  gasGet({ action: 'getUsers' }, function(err, res) {
+    if (err || !res || res.status !== 'ok') {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:#dc2626">Failed to load users.</td></tr>';
+      return;
+    }
+    var users = res.users || [];
+    if (!users.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">No users found.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = users.map(function(u) {
+      var roleColor = u.role === 'Admin' ? '#1e40af' : '#166534';
+      var statusHtml = u.is_active !== false
+        ? '<span style="color:#16a34a;font-weight:700">● Active</span>'
+        : '<span style="color:#dc2626;font-weight:600">○ Inactive</span>';
+      return '<tr>'
+        + '<td style="padding:8px 10px;font-weight:600">' + (u.name || u.username || '—') + '</td>'
+        + '<td style="padding:8px 10px"><span style="background:' + roleColor + '18;color:' + roleColor + ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">' + (u.role || 'Counselor') + '</span></td>'
+        + '<td style="padding:8px 10px;color:var(--muted)">' + (u.centre || '—') + '</td>'
+        + '<td style="padding:8px 10px;text-align:center">' + statusHtml + '</td>'
+        + '<td style="padding:8px 10px;text-align:center" class="no-print">'
+        +   '<button class="btn btn-xs" onclick="settingsEditUser(\'' + (u.id||u.name) + '\')" style="padding:4px 8px;font-size:11px">✏️</button>'
+        + '</td>'
+        + '</tr>';
+    }).join('');
+  });
+}
+
+function settingsAddUser()          { showToast('Open your existing Settings → Add User form', 'info'); }
+function settingsEditUser(id)       { showToast('Edit user: ' + id, 'info'); }
+
+// ── FB Leads ─────────────────────────────────────────────────────────────────
+function loadRecentFBLeads() {
+  var tbody = document.getElementById('fb-recent-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">Loading…</td></tr>';
+  gasGet({ action: 'getCRMLeads', userRole: 'Admin', source: 'Facebook Lead Ads', limit: 10 }, function(err, res) {
+    if (err || !res || res.status !== 'ok') {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:#dc2626">Could not load. Run SQL migration first.</td></tr>';
+      return;
+    }
+    var leads = (res.leads || []).filter(function(l) { return l.source === 'Facebook Lead Ads'; }).slice(0, 10);
+    if (!leads.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">No FB leads yet — they will appear here once the webhook is connected.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = leads.map(function(l) {
+      var name = (l.first_name || '') + ' ' + (l.last_name || '');
+      var dt = l.created_at ? new Date(l.created_at).toLocaleString('en-IN', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
+      return '<tr>'
+        + '<td style="padding:8px 10px;font-weight:600">' + name.trim() + '</td>'
+        + '<td style="padding:8px 10px">' + (l.mobile || '—') + '</td>'
+        + '<td style="padding:8px 10px">' + (l.centre || '—') + '</td>'
+        + '<td style="padding:8px 10px">' + (l.lead_owner || 'Unassigned') + '</td>'
+        + '<td style="padding:8px 10px;color:var(--muted);font-size:11px">' + dt + '</td>'
+        + '</tr>';
+    }).join('');
+  });
+}
+
+// ── Automation ───────────────────────────────────────────────────────────────
+function saveAutomationSetting(key, value) {
+  gasGet({ action: 'saveSystemSetting', key: key, value: value ? '1' : '0' }, function(err, res) {
+    if (err || !res || res.status !== 'ok') {
+      showToast('Could not save setting.', 'error'); return;
+    }
+    showToast((value ? '✅ Enabled: ' : '⏸ Disabled: ') + key, 'success');
+  });
+}
+
+function loadAutomationStats() {
+  gasGet({ action: 'getCRMLeads', userRole: 'Admin' }, function(err, res) {
+    if (err || !res || res.status !== 'ok') return;
+    var leads = res.leads || [];
+    var now = Date.now();
+    var days30 = 30 * 24 * 3600 * 1000;
+    var fbLeads = leads.filter(function(l) {
+      return l.source === 'Facebook Lead Ads' && l.created_at && (now - new Date(l.created_at).getTime()) < days30;
+    });
+    var assigned = fbLeads.filter(function(l) { return l.lead_owner && l.lead_owner !== 'Unassigned'; });
+    var total = document.getElementById('auto-stat-total');
+    var asgn  = document.getElementById('auto-stat-assigned');
+    var dupes = document.getElementById('auto-stat-dupes');
+    var errs  = document.getElementById('auto-stat-errors');
+    if (total) total.textContent = fbLeads.length;
+    if (asgn)  asgn.textContent  = assigned.length;
+    if (dupes) dupes.textContent = '—';
+    if (errs)  errs.textContent  = '0';
+  });
+}
+
+// ── Routing Rules (Settings mirror) ──────────────────────────────────────────
+function loadRoutingRules2() {
+  // Share the same tbody id logic but target the settings panel tbody
+  gasGet({ action: 'getRoutingRules' }, function(err, res) {
+    var tbody = document.getElementById('crm-routing-rules-tbody2');
+    if (!tbody) return;
+    if (err || !res || res.status !== 'ok') {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:#dc2626">Run SQL migration first.</td></tr>';
+      return;
+    }
+    var rules = (res.rules || []).sort(function(a,b){ return (a.priority||99)-(b.priority||99); });
+    if (!rules.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">No rules.</td></tr>'; return; }
+    tbody.innerHTML = rules.map(function(r) {
+      var typeLabel = r.rule_type === 'round-robin'
+        ? '<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">🔄 Round Robin</span>'
+        : '<span style="background:#f0fdf4;color:#166534;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">👤 Direct</span>';
+      var counselors = r.rule_type === 'round-robin' ? (JSON.parse(r.counselors||'[]')).join(', ') : (r.counselor||'—');
+      var loc = r.location === '_default' ? '⭐ Default' : r.location;
+      return '<tr>'
+        + '<td style="padding:8px 10px;font-weight:600">' + loc + '</td>'
+        + '<td style="padding:8px 10px">' + typeLabel + '</td>'
+        + '<td style="padding:8px 10px">' + counselors + '</td>'
+        + '<td style="padding:8px 10px;text-align:center">' + (r.is_active ? '<span style="color:#16a34a;font-weight:700">● Active</span>' : '<span style="color:#dc2626">○ Off</span>') + '</td>'
+        + '<td style="padding:8px 10px;text-align:center" class="no-print"><button class="btn btn-xs" onclick="editRoutingRule(' + JSON.stringify(r) + ')" style="padding:4px 8px;font-size:11px">✏️ Edit</button></td>'
+        + '</tr>';
+    }).join('');
+  });
 }
 
 

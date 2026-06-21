@@ -83,3 +83,32 @@ CREATE TABLE IF NOT EXISTS public.crm_assignment_log (
 );
 GRANT SELECT, INSERT ON public.crm_assignment_log TO anon;
 ALTER TABLE public.crm_assignment_log DISABLE ROW LEVEL SECURITY;
+
+-- STEP 7: Activity Timeline table (notes, calls, stage changes, etc.)
+CREATE TABLE IF NOT EXISTS public.crm_activities (
+  id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  lead_id       UUID NOT NULL REFERENCES public.crm_leads(id) ON DELETE CASCADE,
+  activity_type TEXT NOT NULL DEFAULT 'note',  -- note, call, whatsapp, email, meeting, stage_change, followup, system
+  body          TEXT NOT NULL,
+  actor         TEXT NOT NULL DEFAULT 'System',
+  metadata      JSONB,
+  created_at    TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_crm_activities_lead ON public.crm_activities(lead_id, created_at DESC);
+GRANT SELECT, INSERT ON public.crm_activities TO anon;
+ALTER TABLE public.crm_activities DISABLE ROW LEVEL SECURITY;
+
+-- STEP 8: System settings table (admin automation toggles, etc.)
+CREATE TABLE IF NOT EXISTS public.crm_system_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL DEFAULT '1',
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+GRANT SELECT, INSERT, UPDATE ON public.crm_system_settings TO anon;
+ALTER TABLE public.crm_system_settings DISABLE ROW LEVEL SECURITY;
+
+INSERT INTO public.crm_system_settings (key, value) VALUES
+  ('fb_auto_assign',   '1'),
+  ('fb_auto_followup', '1'),
+  ('dedup_check',      '1')
+ON CONFLICT (key) DO NOTHING;

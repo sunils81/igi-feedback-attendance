@@ -4448,6 +4448,10 @@ window.gasGet = (function () {
       case 'saveCRMAssignmentRule':     return h_saveCRMAssignmentRule(params, cb);
       case 'getRoutingRules':           return h_getRoutingRules(params, cb);
       case 'saveRoutingRule':           return h_saveRoutingRule(params, cb);
+      case 'getLeadTimeline':           return h_getLeadTimeline(params, cb);
+      case 'saveLeadActivity':          return h_saveLeadActivity(params, cb);
+      case 'saveSystemSetting':         return h_saveSystemSetting(params, cb);
+      case 'getSystemSetting':          return h_getSystemSetting(params, cb);
       case 'updateLeadScore':           return h_updateLeadScore(params, cb);
       case 'assignLeadRoundRobin':      return h_assignLeadRoundRobin(params, cb);
       case 'bulkReassignCRMLeads':      return h_bulkReassignCRMLeads(params, cb);
@@ -4697,6 +4701,52 @@ window.gasGet = (function () {
     };
     POST('crm_assignment_rules', '', body, function(e, data) {
       if (e) return cb(e, null);
+      cb(null, { status: 'ok' });
+    });
+  }
+
+  function h_saveSystemSetting(p, cb) {
+    var body = { key: p.key, value: String(p.value), updated_at: new Date().toISOString() };
+    // Upsert via POST with on-conflict
+    GET('crm_system_settings', 'key=eq.' + encodeURIComponent(p.key), function(e, rows) {
+      if (!e && rows && rows.length) {
+        PATCH('crm_system_settings', 'key=eq.' + encodeURIComponent(p.key), body, function(err) {
+          cb(null, err ? { status: 'error' } : { status: 'ok' });
+        });
+      } else {
+        POST('crm_system_settings', '', body, function(err) {
+          cb(null, err ? { status: 'error' } : { status: 'ok' });
+        });
+      }
+    });
+  }
+
+  function h_getSystemSetting(p, cb) {
+    GET('crm_system_settings', 'key=eq.' + encodeURIComponent(p.key), function(err, rows) {
+      if (err || !rows || !rows.length) return cb(null, { status: 'ok', value: null });
+      cb(null, { status: 'ok', value: rows[0].value });
+    });
+  }
+
+  function h_getLeadTimeline(p, cb) {
+    if (!p.leadId) return cb(null, { status: 'ok', items: [] });
+    GET('crm_activities', 'lead_id=eq.' + p.leadId + '&order=created_at.desc&limit=50', function(err, rows) {
+      if (err) return cb(null, { status: 'error', message: String(err) });
+      cb(null, { status: 'ok', items: rows || [] });
+    });
+  }
+
+  function h_saveLeadActivity(p, cb) {
+    if (!p.leadId || !p.body) return cb(null, { status: 'error', message: 'Missing leadId or body' });
+    var body = {
+      lead_id:       p.leadId,
+      activity_type: p.activityType || 'note',
+      body:          p.body,
+      actor:         p.actor || 'System',
+      created_at:    new Date().toISOString()
+    };
+    POST('crm_activities', '', body, function(err, res) {
+      if (err) return cb(null, { status: 'error', message: String(err) });
       cb(null, { status: 'ok' });
     });
   }

@@ -24,15 +24,20 @@ const FB_APP_SECRET = process.env.FB_APP_SECRET;
 // ── Location → Counselor Mapping ──────────────────────────────────────────────
 // For Mumbai: round-robin among the listed counselors
 // For all other cities: direct assignment
+// NOTE: This mapping can also be managed dynamically via the crm_routing_rules
+// table in Supabase (Admin → CRM → Routing Rules). Hard-coded here as fallback.
 const LOCATION_COUNSELORS = {
   'Kolkata':    { type: 'direct', counselor: 'Arpitta' },
   'Chennai':    { type: 'direct', counselor: 'Preethy' },
   'Pune':       { type: 'direct', counselor: 'Bianca' },
   'Ahmedabad':  { type: 'direct', counselor: 'Anuradha' },
+  'Lucknow':    { type: 'direct', counselor: 'Anuradha' },
   'Jaipur':     { type: 'direct', counselor: 'Kripa' },
   'Hyderabad':  { type: 'direct', counselor: 'Rajini' },
-  'Mumbai':     { type: 'round-robin', counselors: ['Bianca', 'Nadiya', 'Rajini'] },
+  'Bangalore':  { type: 'direct', counselor: 'Nadiya' },
+  'Bengaluru':  { type: 'direct', counselor: 'Nadiya' },
   'Delhi':      { type: 'direct', counselor: 'Bianca' },
+  'Mumbai':     { type: 'round-robin', counselors: ['Anuradha', 'Bianca', 'Omkar'] },
   // Fallback for unrecognised locations
   '_default':   { type: 'direct', counselor: 'Bianca' }
 };
@@ -85,7 +90,7 @@ async function getRoundRobinCounselor(location, counselors) {
       pointer: 1,
       counselors: JSON.stringify(counselors),
       updated_at: new Date().toISOString()
-    });
+    }).catch(() => {});
     return counselors[0];
   }
 

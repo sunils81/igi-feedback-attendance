@@ -4446,6 +4446,8 @@ window.gasGet = (function () {
       case 'snoozeCRMFollowup':         return h_snoozeCRMFollowup(params, cb);
       case 'getCRMAssignmentRules':     return h_getCRMAssignmentRules(params, cb);
       case 'saveCRMAssignmentRule':     return h_saveCRMAssignmentRule(params, cb);
+      case 'getRoutingRules':           return h_getRoutingRules(params, cb);
+      case 'saveRoutingRule':           return h_saveRoutingRule(params, cb);
       case 'updateLeadScore':           return h_updateLeadScore(params, cb);
       case 'assignLeadRoundRobin':      return h_assignLeadRoundRobin(params, cb);
       case 'bulkReassignCRMLeads':      return h_bulkReassignCRMLeads(params, cb);
@@ -4699,6 +4701,35 @@ window.gasGet = (function () {
     });
   }
 
+  function h_getRoutingRules(p, cb) {
+    GET('crm_routing_rules', 'order=priority.asc', function(err, rows) {
+      if (err) return cb(null, { status: 'error', message: err.message || String(err) });
+      cb(null, { status: 'ok', rules: rows || [] });
+    });
+  }
+
+  function h_saveRoutingRule(p, cb) {
+    var body = {
+      location:   p.location,
+      rule_type:  p.rule_type || 'direct',
+      counselor:  p.counselor || null,
+      counselors: p.counselors || null,
+      is_active:  p.is_active !== false,
+      updated_at: new Date().toISOString()
+    };
+    if (p.id) {
+      PATCH('crm_routing_rules', 'id=eq.' + p.id, body, function(err, res) {
+        if (err) return cb(null, { status: 'error', message: err.message || String(err) });
+        cb(null, { status: 'ok' });
+      });
+    } else {
+      POST('crm_routing_rules', '', body, function(err, res) {
+        if (err) return cb(null, { status: 'error', message: err.message || String(err) });
+        cb(null, { status: 'ok' });
+      });
+    }
+  }
+
   function h_updateLeadScore(p, cb) {
     GET('crm_leads', 'id=eq.' + encodeURIComponent(p.leadId), function(e, rows) {
       if (e || !rows || !rows.length) return cb(e || new Error('Lead not found'), null);
@@ -4794,41 +4825,70 @@ window.gasGet = (function () {
   }
 
   function h_assignLeadRoundRobin(p, cb) {
-    var centre = p.centre;
-    GET('crm_assignment_rules', 'centre=eq.' + encodeURIComponent(centre) + '&is_active=eq.true', function(eRules, rules) {
-      if (eRules || !rules || !rules.length) return cb(null, { status: 'ok', assignedTo: '' });
-      var counselorNames = rules.map(function(r) { return r.counselor_name; });
-      
-      GET('crm_leads', 'centre=eq.' + encodeURIComponent(centre) + '&select=lead_owner', function(eCounts, leads) {
-        var countsMap = {};
-        counselorNames.forEach(function(n) { countsMap[n] = 0; });
-        if (leads) {
-          leads.forEach(function(l) {
-            if (l.lead_owner && countsMap[l.lead_owner] !== undefined) countsMap[l.lead_owner]++;
-          });
-        }
-        
-        var totalLeads = leads ? leads.length : 0;
-        var totalWeight = rules.reduce(function(sum, r) { return sum + (Number(r.crm_weight) || 0); }, 0);
-        
-        if (totalWeight <= 0) return cb(null, { status: 'ok', assignedTo: counselorNames[0] });
-        
-        var bestCounselor = counselorNames[0];
-        var maxDeficit = -Infinity;
-        
-        rules.forEach(function(rule) {
-          var name = rule.counselor_name;
-          var weight = Number(rule.crm_weight) || 0;
-          var actual = countsMap[name] || 0;
-          var target = (weight / totalWeight) * (totalLeads + 1);
-          var deficit = target - actual;
-          if (deficit > maxDeficit) {
-            maxDeficit = deficit;
-            bestCounselor = name;
-          }
+    // Load routing rules from crm_routing_rules (admin-configurable)
+    var centre = (p.centre || '').trim();
+    GET('crm_routing_rules', 'is_active=eq.true&order=priority.asc', function(eRules, rules) {
+      // Build a location map from DB rules
+      var locationMap = {};
+      if (!eRules && rules && rules.length) {
+        rules.forEach(function(r) {
+          locationMap[r.location] = {
+            type: r.rule_type,
+            counselor: r.counselor || '',
+            counselors: r.counselors ? JSON.parse(r.counselors) : []
+          };
         });
-        
-        cb(null, { status: 'ok', assignedTo: bestCounselor });
+      } else {
+        // Fallback hardcoded map if table not available yet
+        locationMap = {
+          'Mumbai':    { type: 'round-robin', counselors: ['Anuradha','Bianca','Omkar'] },
+          'Bangalore': { type: 'direct', counselor: 'Nadiya' },
+          'Bengaluru': { type: 'direct', counselor: 'Nadiya' },
+          'Kolkata':   { type: 'direct', counselor: 'Arpitta' },
+          'Chennai':   { type: 'direct', counselor: 'Preethy' },
+          'Pune':      { type: 'direct', counselor: 'Bianca' },
+          'Ahmedabad': { type: 'direct', counselor: 'Anuradha' },
+          'Lucknow':   { type: 'direct', counselor: 'Anuradha' },
+          'Jaipur':    { type: 'direct', counselor: 'Kripa' },
+          'Hyderabad': { type: 'direct', counselor: 'Rajini' },
+          'Delhi':     { type: 'direct', counselor: 'Bianca' },
+          '_default':  { type: 'direct', counselor: 'Bianca' }
+        };
+      }
+
+      // Match centre to rule (exact, then partial, then default)
+      var rule = locationMap[centre];
+      if (!rule) {
+        var key = Object.keys(locationMap).find(function(k) {
+          return k !== '_default' && centre.toLowerCase().indexOf(k.toLowerCase()) >= 0;
+        });
+        rule = key ? locationMap[key] : (locationMap['_default'] || { type: 'direct', counselor: 'Bianca' });
+      }
+
+      if (rule.type !== 'round-robin' || !rule.counselors || !rule.counselors.length) {
+        return cb(null, { status: 'ok', assignedTo: rule.counselor || 'Bianca' });
+      }
+
+      // Round Robin: use crm_rr_state table for pointer
+      var rrKey = 'rr_' + centre.toLowerCase().replace(/\s+/g, '_');
+      GET('crm_rr_state', 'key=eq.' + encodeURIComponent(rrKey) + '&select=key,pointer,counselors', function(eRR, rrRows) {
+        var list = rule.counselors;
+        var pointer = 0;
+
+        if (!eRR && rrRows && rrRows.length) {
+          try { list = JSON.parse(rrRows[0].counselors) || list; } catch(ex) {}
+          pointer = parseInt(rrRows[0].pointer) || 0;
+        }
+
+        var assigned = list[pointer % list.length];
+        var next = (pointer + 1) % list.length;
+
+        if (!eRR && rrRows && rrRows.length) {
+          PATCH('crm_rr_state', 'key=eq.' + encodeURIComponent(rrKey), { pointer: next, updated_at: new Date().toISOString() }, function() {});
+        } else {
+          POST('crm_rr_state', '', { key: rrKey, pointer: next, counselors: JSON.stringify(list), updated_at: new Date().toISOString() }, function() {});
+        }
+        cb(null, { status: 'ok', assignedTo: assigned });
       });
     });
   }

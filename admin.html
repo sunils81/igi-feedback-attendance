@@ -1790,29 +1790,77 @@
 
           <!-- Round Robin Load Balancer Config -->
           <div class="card" style="padding:16px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
               <div>
-                <h3 style="color:var(--navy);margin-bottom:4px">⚖️ Round-Robin Load Balancer Monitor</h3>
-                <p class="sub">Configure active counselors' weights for automatic lead distribution by branch.</p>
+                <h3 style="color:var(--navy);margin-bottom:4px">🗺️ Lead Routing Rules</h3>
+                <p class="sub">Configure which counsellor handles each city/centre. FB leads and manual adds auto-assign based on these rules.</p>
               </div>
-              <button id="crm-admin-add-rule-btn" class="btn btn-gold no-print" onclick="openCRMAddRuleModal()" style="width:auto;padding:8px 14px;font-size:12px;font-weight:700">➕ Add Counselor Rule</button>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-outline no-print" onclick="loadRoutingRules()" style="padding:7px 12px;font-size:12px">🔄 Refresh</button>
+                <button class="btn btn-gold no-print" onclick="openAddRoutingRule()" style="padding:7px 14px;font-size:12px;font-weight:700">➕ Add Rule</button>
+              </div>
             </div>
-            
+            <p style="font-size:11px;color:var(--muted);margin-bottom:12px;padding:8px 10px;background:rgba(217,119,6,.07);border-radius:6px;border-left:3px solid var(--gold)">
+              💡 <strong>Mumbai</strong> uses Round Robin among selected counsellors. All other cities assign to a single counsellor. Changes apply immediately to new FB leads.
+            </p>
             <div style="overflow-x:auto">
               <table class="compact-table" style="width:100%">
                 <thead>
                   <tr>
-                    <th class="text-left">Counselor Name</th>
-                    <th class="text-center">Centre Location</th>
-                    <th class="text-center">RR Weight</th>
+                    <th class="text-left">City / Centre</th>
+                    <th class="text-left">Type</th>
+                    <th class="text-left">Assigned Counsellor(s)</th>
                     <th class="text-center">Status</th>
                     <th class="text-center no-print">Actions</th>
                   </tr>
                 </thead>
-                <tbody id="crm-admin-rules-tbody">
-                  <!-- Populated dynamically -->
+                <tbody id="crm-routing-rules-tbody">
+                  <tr><td colspan="5" style="text-align:center;padding:16px;color:var(--muted)">Loading routing rules…</td></tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          <!-- Add/Edit Routing Rule Modal -->
+          <div id="crm-routing-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+            <div style="background:var(--white);border-radius:12px;padding:24px;width:100%;max-width:440px;box-shadow:0 8px 40px rgba(0,0,0,.2)">
+              <h3 id="crm-routing-modal-title" style="margin-bottom:16px;color:var(--navy)">Add Routing Rule</h3>
+              <div style="margin-bottom:12px">
+                <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">City / Centre</label>
+                <input id="crm-routing-location" type="text" placeholder="e.g. Mumbai, Delhi, Pune…" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;box-sizing:border-box">
+              </div>
+              <div style="margin-bottom:12px">
+                <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Assignment Type</label>
+                <div style="display:flex;gap:8px">
+                  <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;padding:6px 12px;border:1.5px solid var(--gold);border-radius:6px;background:var(--gold);color:#fff;font-weight:700" id="lbl-direct-rule">
+                    <input type="radio" name="routing-type" value="direct" checked onchange="toggleRoutingType()" style="display:none"> 👤 Direct
+                  </label>
+                  <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;padding:6px 12px;border:1.5px solid var(--border);border-radius:6px;background:var(--white);color:var(--navy);font-weight:600" id="lbl-rr-rule">
+                    <input type="radio" name="routing-type" value="round-robin" onchange="toggleRoutingType()" style="display:none"> 🔄 Round Robin
+                  </label>
+                </div>
+              </div>
+              <div id="routing-direct-wrap" style="margin-bottom:12px">
+                <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Assign To Counsellor</label>
+                <select id="crm-routing-counselor" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;box-sizing:border-box;background:var(--white)">
+                  <option value="">— Select Counsellor —</option>
+                </select>
+              </div>
+              <div id="routing-rr-wrap" style="display:none;margin-bottom:12px">
+                <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">Round Robin Counsellors</label>
+                <div id="crm-routing-rr-picks" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1.5px solid var(--border);border-radius:6px;background:var(--off);min-height:44px"></div>
+                <div style="font-size:11px;color:var(--muted);margin-top:4px">Leads rotate evenly across selected counsellors</div>
+              </div>
+              <div style="margin-bottom:16px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+                  <input type="checkbox" id="crm-routing-active" checked> Rule is Active
+                </label>
+              </div>
+              <div id="crm-routing-err" style="display:none;color:#dc2626;font-size:12px;margin-bottom:10px;padding:6px 10px;background:#fef2f2;border-radius:6px"></div>
+              <div style="display:flex;gap:8px;justify-content:flex-end">
+                <button class="btn btn-outline" onclick="closeRoutingModal()">Cancel</button>
+                <button class="btn btn-gold" onclick="saveRoutingRule()" style="font-weight:700">Save Rule</button>
+              </div>
             </div>
           </div>
         </div>
@@ -6973,12 +7021,9 @@ function loadCRMAdminData() {
     checkDone();
   });
 
-  gasGet({ action: 'getCRMAssignmentRules' }, function(err, resRules) {
-    if (err || !resRules || resRules.status !== 'ok') {
-      errOccurred = true;
-    } else {
-      crmRules = resRules.rules || [];
-    }
+  // Load routing rules separately (non-blocking, populates the routing rules card)
+  gasGet({ action: 'getRoutingRules' }, function(err, resRules) {
+    crmRules = (!err && resRules && resRules.rules) ? resRules.rules : [];
     checkDone();
   });
 
@@ -6993,6 +7038,7 @@ function loadCRMAdminData() {
     }
     
     if (content) content.style.display = 'block';
+    loadRoutingRules();
     
     // Check if user is Amit (read-only restriction)
     const isAmit = (adminUser && adminUser.name && adminUser.name.toLowerCase().trim() === 'amit');
@@ -7503,132 +7549,180 @@ function executeBulkReassign() {
   }
 }
 
-function openCRMAddRuleModal() {
-  const isAmit = (adminUser && adminUser.name && adminUser.name.toLowerCase().trim() === 'amit');
-  if (isAmit) return;
-  
-  editingRuleCounselor = null;
-  document.getElementById('crm-rule-modal-title').textContent = 'Add Counselor Routing Rule';
-  
-  const nameInput = document.getElementById('crm-rule-counselor');
-  nameInput.value = '';
-  nameInput.disabled = false;
-  
-  document.getElementById('crm-rule-centre').value = 'Mumbai';
-  document.getElementById('crm-rule-weight').value = '100';
-  document.getElementById('crm-rule-active').checked = true;
-  document.getElementById('crm-rule-err').style.display = 'none';
-  
-  document.getElementById('crm-rule-modal').style.display = 'flex';
-}
-
-function editCRMRule(cName, centre, weight, isActive) {
-  const isAmit = (adminUser && adminUser.name && adminUser.name.toLowerCase().trim() === 'amit');
-  if (isAmit) return;
-  
-  editingRuleCounselor = cName;
-  document.getElementById('crm-rule-modal-title').textContent = 'Edit Counselor Routing Rule';
-  
-  const nameInput = document.getElementById('crm-rule-counselor');
-  nameInput.value = cName;
-  nameInput.disabled = true;
-  
-  document.getElementById('crm-rule-centre').value = centre;
-  document.getElementById('crm-rule-weight').value = weight;
-  document.getElementById('crm-rule-active').checked = isActive;
-  document.getElementById('crm-rule-err').style.display = 'none';
-  
-  document.getElementById('crm-rule-modal').style.display = 'flex';
-}
-
-function closeCRMRuleModal() {
-  document.getElementById('crm-rule-modal').style.display = 'none';
-}
-
-function saveCRMRule() {
-  const isAmit = (adminUser && adminUser.name && adminUser.name.toLowerCase().trim() === 'amit');
-  if (isAmit) {
-    showToast('Permission Denied: Read-only access.', 'error');
-    closeCRMRuleModal();
-    return;
-  }
-  
-  const cName = document.getElementById('crm-rule-counselor').value.trim();
-  const centre = document.getElementById('crm-rule-centre').value;
-  const weight = parseInt(document.getElementById('crm-rule-weight').value);
-  const active = document.getElementById('crm-rule-active').checked;
-  const errEl = document.getElementById('crm-rule-err');
-  
-  if (!cName) {
-    errEl.textContent = 'Counselor name cannot be empty.';
-    errEl.style.display = 'block';
-    return;
-  }
-  
-  if (isNaN(weight) || weight < 0) {
-    errEl.textContent = 'Weight must be 0 or a positive number.';
-    errEl.style.display = 'block';
-    return;
-  }
-  
-  errEl.style.display = 'none';
-  
-  const saveBtn = document.getElementById('crm-rule-save-btn');
-  saveBtn.disabled = true;
-  saveBtn.textContent = 'Saving...';
-  
-  gasGet({
-    action: 'saveCRMAssignmentRule',
-    counselorName: cName,
-    centre: centre,
-    crmWeight: weight,
-    isActive: active
-  }, function(err, res) {
-    saveBtn.disabled = false;
-    saveBtn.textContent = 'Save Config';
-    
+function loadRoutingRules() {
+  const tbody = document.getElementById('crm-routing-rules-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--muted)">Loading…</td></tr>';
+  gasGet({ action: 'getRoutingRules' }, function(err, res) {
     if (err || !res || res.status !== 'ok') {
-      errEl.textContent = 'Failed to save configuration. Please try again.';
-      errEl.style.display = 'block';
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:#dc2626">Failed to load routing rules. Run SQL migration first.</td></tr>';
       return;
     }
-    
-    showToast('Assignment rule saved successfully ✓', 'success');
-    closeCRMRuleModal();
-    
-    const existingIdx = crmRules.findIndex(r => r.counselor_name === cName);
-    if (existingIdx >= 0) {
-      crmRules[existingIdx].centre = centre;
-      crmRules[existingIdx].crm_weight = weight;
-      crmRules[existingIdx].is_active = active;
-    } else {
-      crmRules.push({
-        counselor_name: cName,
-        centre: centre,
-        crm_weight: weight,
-        is_active: active
-      });
-      crmRules.sort((a, b) => a.counselor_name.localeCompare(b.counselor_name));
+    var rules = res.rules || [];
+    if (!rules.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">No rules configured.</td></tr>';
+      return;
     }
-    refreshCRMAdminDashboard();
+    tbody.innerHTML = rules.sort(function(a,b){ return (a.priority||99)-(b.priority||99); }).map(function(r) {
+      var typeLabel = r.rule_type === 'round-robin'
+        ? '<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">🔄 Round Robin</span>'
+        : '<span style="background:#f0fdf4;color:#166534;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">👤 Direct</span>';
+      var counselors = r.rule_type === 'round-robin'
+        ? (JSON.parse(r.counselors || '[]')).join(', ')
+        : (r.counselor || '—');
+      var statusLabel = r.is_active
+        ? '<span style="color:#16a34a;font-weight:700">● Active</span>'
+        : '<span style="color:#dc2626;font-weight:600">○ Inactive</span>';
+      var loc = r.location === '_default' ? '⭐ Default (all others)' : r.location;
+      return '<tr>'
+        + '<td style="padding:8px 10px;font-weight:600">' + loc + '</td>'
+        + '<td style="padding:8px 10px">' + typeLabel + '</td>'
+        + '<td style="padding:8px 10px">' + counselors + '</td>'
+        + '<td style="padding:8px 10px;text-align:center">' + statusLabel + '</td>'
+        + '<td style="padding:8px 10px;text-align:center" class="no-print">'
+        +   '<button class="btn btn-xs" onclick="editRoutingRule(' + JSON.stringify(r) + ')" style="padding:4px 8px;font-size:11px;margin-right:4px">✏️ Edit</button>'
+        + '</td>'
+        + '</tr>';
+    }).join('');
   });
 }
 
+var _editingRoutingId = null;
+var _ALL_COUNSELORS = ['Nadiya','Anuradha','Bianca','Omkar','Arpitta','Preethy','Kripa','Rajini'];
 
-// ── Fixed Assets Register ─────────────────────────────────────────────────────
-var IGI_FX_ASSETS = [
-  'Microscope','UV Lamp','SG Kit / Weighing Scale','Polariscope','Refractometer',
-  'Dichroscope','Jodi Gauge','Tripod (Ghodi)','Big Grading Lamps','Small Grading Lamps',
-  'Big Assortment Pad','Small Assortment Pad','PC / Keyboard / Mouse','CAD PC',
-  'White Board','Projector','Laser Pointer','Projector Screen'
-];
-var FX_CONDITIONS = ['Good','Fair','Needs Service','Missing'];
-var FX_CONDITION_COLORS = {
-  'Good':          {bg:'#d1fae5',color:'#065f46'},
-  'Fair':          {bg:'#fef3c7',color:'#92400e'},
-  'Needs Service': {bg:'#fee2e2',color:'#991b1b'},
-  'Missing':       {bg:'#f3f4f6',color:'#6b7280'}
-};
+function _populateRoutingCounselorSelect(selected) {
+  var sel = document.getElementById('crm-routing-counselor');
+  if (!sel) return;
+  var names = _ALL_COUNSELORS.concat(
+    (crmLeads||[]).map(function(l){ return l.lead_owner; }).filter(function(n,i,a){ return n && a.indexOf(n)===i && _ALL_COUNSELORS.indexOf(n)<0; })
+  );
+  sel.innerHTML = '<option value="">— Select Counsellor —</option>'
+    + names.map(function(n){ return '<option value="'+n+'"'+(n===selected?' selected':'')+'>'+n+'</option>'; }).join('');
+}
+
+function _populateRoutingRRPicks(selected) {
+  var container = document.getElementById('crm-routing-rr-picks');
+  if (!container) return;
+  var names = _ALL_COUNSELORS.concat(
+    (crmLeads||[]).map(function(l){ return l.lead_owner; }).filter(function(n,i,a){ return n && a.indexOf(n)===i && _ALL_COUNSELORS.indexOf(n)<0; })
+  );
+  container.innerHTML = names.map(function(n) {
+    var checked = selected && selected.indexOf(n) >= 0;
+    var style = checked
+      ? 'background:var(--gold);color:#fff;border-color:var(--gold);font-weight:700'
+      : 'background:var(--white);color:var(--navy);border-color:var(--border)';
+    return '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;padding:4px 10px;border:1.5px solid;border-radius:20px;'+style+'">'
+      + '<input type="checkbox" name="rr-pick" value="'+n+'"'+(checked?' checked':'')+' style="display:none" onchange="this.parentElement.setAttribute(\'style\',\'display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;padding:4px 10px;border:1.5px solid;border-radius:20px;\'+(this.checked?\'background:var(--gold);color:#fff;border-color:var(--gold);font-weight:700\':\'background:var(--white);color:var(--navy);border-color:var(--border)\'))">'
+      + n + '</label>';
+  }).join('');
+}
+
+function toggleRoutingType() {
+  var type = document.querySelector('input[name="routing-type"]:checked').value;
+  var isRR = type === 'round-robin';
+  document.getElementById('routing-direct-wrap').style.display = isRR ? 'none' : 'block';
+  document.getElementById('routing-rr-wrap').style.display = isRR ? 'block' : 'none';
+  var lblD = document.getElementById('lbl-direct-rule');
+  var lblR = document.getElementById('lbl-rr-rule');
+  if (lblD) { lblD.style.background = isRR ? 'var(--white)' : 'var(--gold)'; lblD.style.color = isRR ? 'var(--navy)' : '#fff'; lblD.style.borderColor = isRR ? 'var(--border)' : 'var(--gold)'; }
+  if (lblR) { lblR.style.background = isRR ? 'var(--gold)' : 'var(--white)'; lblR.style.color = isRR ? '#fff' : 'var(--navy)'; lblR.style.borderColor = isRR ? 'var(--gold)' : 'var(--border)'; }
+}
+
+function openAddRoutingRule() {
+  _editingRoutingId = null;
+  document.getElementById('crm-routing-modal-title').textContent = 'Add Routing Rule';
+  document.getElementById('crm-routing-location').value = '';
+  document.getElementById('crm-routing-location').disabled = false;
+  document.querySelector('input[name="routing-type"][value="direct"]').checked = true;
+  document.getElementById('crm-routing-active').checked = true;
+  document.getElementById('crm-routing-err').style.display = 'none';
+  _populateRoutingCounselorSelect('');
+  _populateRoutingRRPicks([]);
+  toggleRoutingType();
+  document.getElementById('crm-routing-modal').style.display = 'flex';
+}
+
+function editRoutingRule(r) {
+  _editingRoutingId = r.id;
+  document.getElementById('crm-routing-modal-title').textContent = 'Edit Routing Rule';
+  document.getElementById('crm-routing-location').value = r.location === '_default' ? '_default' : r.location;
+  document.getElementById('crm-routing-location').disabled = r.location === '_default';
+  var type = r.rule_type || 'direct';
+  document.querySelector('input[name="routing-type"][value="'+type+'"]').checked = true;
+  document.getElementById('crm-routing-active').checked = !!r.is_active;
+  document.getElementById('crm-routing-err').style.display = 'none';
+  var rrList = [];
+  try { rrList = JSON.parse(r.counselors || '[]'); } catch(ex) {}
+  _populateRoutingCounselorSelect(r.counselor || '');
+  _populateRoutingRRPicks(rrList);
+  toggleRoutingType();
+  document.getElementById('crm-routing-modal').style.display = 'flex';
+}
+
+function closeRoutingModal() {
+  document.getElementById('crm-routing-modal').style.display = 'none';
+}
+
+function saveRoutingRule() {
+  var errEl = document.getElementById('crm-routing-err');
+  var location = document.getElementById('crm-routing-location').value.trim();
+  var type = document.querySelector('input[name="routing-type"]:checked').value;
+  var active = document.getElementById('crm-routing-active').checked;
+
+  if (!location) {
+    errEl.textContent = 'City / Centre name is required.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  var counselor = '', counselors = '[]';
+  if (type === 'direct') {
+    counselor = document.getElementById('crm-routing-counselor').value;
+    if (!counselor) {
+      errEl.textContent = 'Please select a counsellor for direct assignment.';
+      errEl.style.display = 'block';
+      return;
+    }
+  } else {
+    var picks = Array.from(document.querySelectorAll('input[name="rr-pick"]:checked')).map(function(c){ return c.value; });
+    if (picks.length < 2) {
+      errEl.textContent = 'Round Robin needs at least 2 counsellors.';
+      errEl.style.display = 'block';
+      return;
+    }
+    counselors = JSON.stringify(picks);
+  }
+
+  var payload = {
+    action: 'saveRoutingRule',
+    id: _editingRoutingId || null,
+    location: location,
+    rule_type: type,
+    counselor: counselor || null,
+    counselors: type === 'round-robin' ? counselors : null,
+    is_active: active
+  };
+
+  gasGet(payload, function(err, res) {
+    if (err || !res || res.status !== 'ok') {
+      errEl.textContent = 'Save failed: ' + ((res && res.message) || 'Unknown error');
+      errEl.style.display = 'block';
+      return;
+    }
+    closeRoutingModal();
+    showToast('Routing rule saved!', 'success');
+    loadRoutingRules();
+  });
+}
+
+// ── Legacy modal shims (keep old modal working) ───────────────────────────
+function openCRMAddRuleModal() { openAddRoutingRule(); }
+function closeCRMRuleModal() { closeRoutingModal(); }
+function saveCRMRule() { saveRoutingRule(); }
+function editCRMRule(cName, centre, weight, isActive) {
+  editRoutingRule({ id: null, location: centre, rule_type: 'direct', counselor: cName, counselors: null, is_active: isActive });
+}
+
 
 function fxLoadData() {
   try { return JSON.parse(localStorage.getItem('igiFxAssets_v1') || '{}'); } catch(e) { return {}; }

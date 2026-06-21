@@ -6288,15 +6288,23 @@ function otLoadProctor() {
 }
 
 function otResetStudentAttempt(studentId, studentName) {
-  if (!otActiveTestId) return alert('No test selected.');
+  var testId = otActiveTestId || (document.getElementById('ot-results-test')||{}).value || '';
+  if (!testId) return alert('No test selected.');
   if (!confirm('Reset attempt for ' + studentName + '?\n\nThis will delete their submission and warnings so they can retake the test from scratch.')) return;
-  gasGet({action:'resetStudentAttempt', instructor:instructorName, testId:otActiveTestId, studentId:studentId}, function(err, d) {
+  gasGet({action:'resetStudentAttempt', instructor:instructorName, testId:testId, studentId:studentId}, function(err, d) {
     if (err || !d || d.status !== 'ok') {
       return alert('Error resetting attempt: ' + (d && d.reason || (err && err.message) || 'unknown'));
     }
     var resetNo = d.resetCount || 1;
     alert('✅ Reset #' + resetNo + ' done for ' + studentName + '.\n\nStudent can now retake the test — their portal updates within 15 seconds.');
-    otLoadProctor();
+    // Check which sub-tab is active and reload
+    var activeSubbtn = document.querySelector('.ot-subbtn.active');
+    var isProctor = activeSubbtn && activeSubbtn.getAttribute('onclick') && activeSubbtn.getAttribute('onclick').indexOf('proctor') !== -1;
+    if (isProctor) {
+      otLoadProctor();
+    } else {
+      otLoadResults();
+    }
   });
 }
 
@@ -6408,7 +6416,7 @@ function otLoadResults() {
     }
 
     html += '<table class="ot-results-table"><thead><tr>'
-      + '<th>Student</th><th>Attempt</th><th>Score</th><th>Total Marks</th><th>%</th><th>Result</th><th>Submitted</th><th>Type</th>'
+      + '<th>Student</th><th>Attempt</th><th>Score</th><th>Total Marks</th><th>%</th><th>Result</th><th>Submitted</th><th>Type</th><th>Actions</th>'
       + '</tr></thead><tbody>';
     d.responses.forEach(function(r) {
       var notDone = r.result === 'Not Submitted';
@@ -6420,6 +6428,8 @@ function otLoadResults() {
               : r.result==='Not Submitted' ? '<span style="background:#f3f4f6;color:#6b7280;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;">Not Submitted</span>'
               :                              '<span class="pend-pill">Pending</span>';
       var attNo = r.attemptNo || null;
+      var resetBtn = notDone ? '' : '<button onclick="otResetStudentAttempt(\''+escHtml(r.studentId)+'\',\''+escHtml(r.studentName||r.studentId)+'\')"'
+        + ' style="padding:3px 8px;font-size:11px;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;white-space:nowrap;">↩ Reset</button>';
       html += '<tr style="'+(notDone?'opacity:.55;':'')+'">'
         + '<td><b>'+escHtml(r.studentName||r.studentId)+'</b><br><span style="font-size:11px;color:#9ca3af;">'+escHtml(r.studentId)+'</span></td>'
         + '<td>'+(attNo ? '<span class="badge badge-amber">Attempt '+attNo+'</span>' : '<span style="color:#d1d5db;">—</span>')+'</td>'
@@ -6429,6 +6439,7 @@ function otLoadResults() {
         + '<td>'+res+'</td>'
         + '<td style="font-size:11px;">'+escHtml(r.submittedAt?new Date(r.submittedAt).toLocaleString('en-IN'):'—')+'</td>'
         + '<td>'+escHtml(r.submitType||'—')+'</td>'
+        + '<td>'+resetBtn+'</td>'
         + '</tr>';
     });
     html += '</tbody></table>';

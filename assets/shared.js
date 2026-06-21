@@ -58,6 +58,67 @@ window.gasGet = (function () {
   function PATCH(table, qs, body, cb)   { xhr('PATCH',  table, qs,   body, 'return=representation', cb); }
   function DEL(table, qs, cb)           { xhr('DELETE', table, qs,   null, 'return=minimal', cb); }
 
+  /* Helper functions to resolve direct + enrolled students for a batch or multiple batches */
+  function getStudentsForBatchPromise(bc) {
+    return new Promise(function(resolve) {
+      var done = 0, directList = [], enrollList = [];
+      function finish() {
+        if (++done < 2) return;
+        var map = {};
+        directList.forEach(function(s) { map[s.student_id] = s; });
+        enrollList.forEach(function(s) { if (!map[s.student_id]) map[s.student_id] = s; });
+        resolve(Object.values(map));
+      }
+      GET('students', 'batch_code=eq.' + encodeURIComponent(bc) + '&order=created_at.asc', function(e, rows) {
+        directList = rows || [];
+        finish();
+      });
+      GET('enrollments', 'batch_code=eq.' + encodeURIComponent(bc) + '&status=eq.Active&select=student_id', function(e, enrolls) {
+        var ids = (enrolls || []).map(function(en) { return en.student_id; });
+        if (!ids.length) { enrollList = []; finish(); return; }
+        GET('students', 'student_id=in.(' + ids.map(encodeURIComponent).join(',') + ')', function(e2, rows) {
+          enrollList = rows || [];
+          finish();
+        });
+      });
+    });
+  }
+
+  function resolveStudentsForBatch(bc, cb) {
+    getStudentsForBatchPromise(bc).then(function(res) {
+      cb(null, res);
+    }).catch(function(err) {
+      cb(err, null);
+    });
+  }
+
+  function resolveStudentsForBatchesPromise(bcs) {
+    return new Promise(function(resolve) {
+      if (!bcs || !bcs.length) { resolve([]); return; }
+      var done = 0, directList = [], enrollList = [];
+      function finish() {
+        if (++done < 2) return;
+        var map = {};
+        directList.forEach(function(s) { map[s.student_id] = s; });
+        enrollList.forEach(function(s) { if (!map[s.student_id]) map[s.student_id] = s; });
+        resolve(Object.values(map));
+      }
+      GET('students', 'batch_code=in.(' + bcs.map(encodeURIComponent).join(',') + ')', function(e, rows) {
+        directList = rows || [];
+        finish();
+      });
+      GET('enrollments', 'batch_code=in.(' + bcs.map(encodeURIComponent).join(',') + ')&status=eq.Active&select=student_id', function(e, enrolls) {
+        var ids = (enrolls || []).map(function(en) { return en.student_id; });
+        if (!ids.length) { enrollList = []; finish(); return; }
+        GET('students', 'student_id=in.(' + ids.map(encodeURIComponent).join(',') + ')', function(e2, rows) {
+          enrollList = rows || [];
+          finish();
+        });
+      });
+    });
+  }
+
+
   /* ── date utils ── */
   function toYMD(s) {
     if (!s) return null;
@@ -776,7 +837,7 @@ window.gasGet = (function () {
         }) });
       });
     }
-    GET('students', 'batch_code=eq.' + encodeURIComponent(p.batchCode), function (e, r) { students = r || []; finish(); });
+    resolveStudentsForBatch(p.batchCode, function (e, r) { students = r || []; finish(); });
     GET('batches', 'batch_code=eq.' + encodeURIComponent(p.batchCode), function (e, r) { batches = r || []; finish(); });
   }
 
@@ -937,7 +998,7 @@ window.gasGet = (function () {
         sessions: sessions, students: students });
     }
     GET('sessions',             'batch_code=eq.' + encodeURIComponent(batch) + '&order=sess_no.asc', function (e, r) { sess = r || []; done(); });
-    GET('students',             'batch_code=eq.' + encodeURIComponent(batch) + '&order=created_at.asc', function (e, r) { stus = r || []; done(); });
+    resolveStudentsForBatch(batch, function (e, r) { stus = r || []; done(); });
     GET('attendance_feedback',  'batch_code=eq.' + encodeURIComponent(batch),                           function (e, r) { atts = r || []; done(); });
   }
 
@@ -954,7 +1015,7 @@ window.gasGet = (function () {
         return;
       }
       var batch = bc || sess.batch_code;
-      GET('students', 'batch_code=eq.' + encodeURIComponent(batch) + '&order=created_at.asc', function(e2, students) {
+      resolveStudentsForBatch(batch, function(e2, students) {
         if (e2) { cb(e2, null); return; }
         GET('attendance_feedback', 'session_code=eq.' + encodeURIComponent(sc), function(e3, atts) {
           if (e3) { cb(e3, null); return; }
@@ -3295,7 +3356,7 @@ window.gasGet = (function () {
   function h_getSessionAttendanceLive(p, cb) {
     var sc = p.sessionCode;
     var bc = p.batchCode;
-    GET('students', 'batch_code=eq.' + encodeURIComponent(bc), function(e, students) {
+    resolveStudentsForBatch(bc, function(e, students) {
       if (e) { cb(null, { status: 'error' }); return; }
       GET('attendance_feedback', 'session_code=eq.' + encodeURIComponent(sc), function(e2, atts) {
         // Normalize student_id from attendance_feedback (trim + uppercase) to match any
@@ -3526,7 +3587,7 @@ window.gasGet = (function () {
       var assessments = await getP('assessments', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')');
       var assessIds = assessments.map(function(a) { return a.assessment_id; });
 
-      var pStudents = getP('students', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')');
+      var pStudents = resolveStudentsForBatchesPromise(batchCodes);
       var pSessions = getP('sessions', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')');
       var pAtt = getP('attendance_feedback', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')');
       var pMarks = assessIds.length > 0 ? getP('assessment_marks', 'assessment_id=in.(' + assessIds.map(encodeURIComponent).join(',') + ')') : Promise.resolve([]);
@@ -4103,7 +4164,7 @@ window.gasGet = (function () {
       var prevResets = await getP('test_warnings',
         'test_id=eq.' + encodeURIComponent(tid) +
         '&student_id=eq.' + encodeURIComponent(sid) +
-        '&warn_type=eq.reset');
+        '&warning_type=eq.reset');
       var resetCount = prevResets.length + 1;
 
       // Delete submission, warnings, and start record
@@ -4117,8 +4178,8 @@ window.gasGet = (function () {
       await new Promise(function(resolve) {
         POST('test_warnings', '', {
           test_id: tid, student_id: sid,
-          instructor: p.instructor, warn_type: 'reset',
-          count: 1, created_at: new Date().toISOString()
+          warning_type: 'reset',
+          count: 1, logged_at: nowISO()
         }, function() { resolve(); });
       });
 
@@ -4149,11 +4210,7 @@ window.gasGet = (function () {
       var allBatchCodes = (test.batch_codes || test.batch_code || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
 
       // Fetch students from all batches, then flatten
-      var studentArraysP = Promise.all(
-        allBatchCodes.map(function(bc) {
-          return getP('students', 'batch_code=eq.' + encodeURIComponent(bc));
-        })
-      ).then(function(arrs) { return [].concat.apply([], arrs); });
+      var studentArraysP = resolveStudentsForBatchesPromise(allBatchCodes);
 
       var [students, starts, responses, warnings] = await Promise.all([
         studentArraysP,
@@ -4245,12 +4302,7 @@ window.gasGet = (function () {
       var allBatchCodes = (test.batch_codes || test.batch_code || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
 
       // Fetch students from ALL batches in parallel
-      var studentArrays = await Promise.all(
-        allBatchCodes.map(function(bc) {
-          return getP('students', 'batch_code=eq.' + encodeURIComponent(bc));
-        })
-      );
-      var students = [].concat.apply([], studentArrays);
+      var students = await resolveStudentsForBatchesPromise(allBatchCodes);
 
       var rawResponses = await getP('test_responses', 'test_id=eq.' + encodeURIComponent(tid));
 

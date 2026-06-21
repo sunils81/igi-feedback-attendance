@@ -96,3 +96,11 @@ ON CONFLICT (counselor_name) DO UPDATE
 SET centre = EXCLUDED.centre,
     crm_weight = COALESCE(crm_assignment_rules.crm_weight, EXCLUDED.crm_weight),
     is_active = COALESCE(crm_assignment_rules.is_active, EXCLUDED.is_active);
+
+-- Extra lead fields added for Meritto-parity (idempotent)
+ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS alt_mobile TEXT DEFAULT '';
+ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS book_my_slot TEXT DEFAULT '';        -- e.g. 'Morning (9 AM – 12 PM)'
+ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS when_to_join TEXT DEFAULT '';        -- e.g. 'Within 1 Month'
+ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS current_profession TEXT DEFAULT '';  -- e.g. 'Diamond Trader'
+
+CREATE INDEX IF NOT EXISTS idx_crm_leads_jointime ON crm_leads(when_to_join) WHERE when_to_join != '';

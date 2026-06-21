@@ -1376,9 +1376,18 @@
     <!-- ── Advanced Filter Bar ── -->
     <div class="card" style="margin-bottom:0;padding:12px 16px;border-top:none;border-radius:0 0 10px 10px">
       <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
-        <div style="flex:1;min-width:200px">
+        <div style="flex:1;min-width:240px">
           <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Search</div>
-          <input type="text" id="crm-search" placeholder="Name, email, mobile, course..." oninput="filterLeads()" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;box-sizing:border-box">
+          <div style="display:flex;gap:0">
+            <select id="crm-search-by" onchange="filterLeads()" style="padding:7px 8px;border:1.5px solid var(--border);border-right:none;border-radius:6px 0 0 6px;font-size:11px;background:var(--white);color:var(--muted);min-width:80px">
+              <option value="all">All Fields</option>
+              <option value="name">Name</option>
+              <option value="email">Email</option>
+              <option value="mobile">Mobile</option>
+              <option value="course">Course</option>
+            </select>
+            <input type="text" id="crm-search" placeholder="Search leads…" oninput="filterLeads()" style="flex:1;padding:7px 10px;border:1.5px solid var(--border);border-radius:0 6px 6px 0;font-size:12px;box-sizing:border-box">
+          </div>
         </div>
         <div>
           <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Lead Stage</div>
@@ -1426,9 +1435,36 @@
         </div>
         <div style="margin-left:auto;display:flex;gap:8px;align-items:flex-end">
           <button class="btn btn-outline" style="padding:7px 12px;font-size:12px;height:34px" onclick="clearCRMFilters()">Clear</button>
+          <button class="btn btn-outline" title="Customise columns" style="padding:7px 10px;font-size:13px;height:34px" onclick="toggleCRMColumnPicker()">⚙️</button>
+          <button class="btn btn-outline" title="Export filtered leads as CSV" style="padding:7px 10px;font-size:13px;height:34px" onclick="exportCRMLeadsCSV()">⬇️ CSV</button>
           <button class="btn btn-gold" style="padding:7px 12px;font-size:12px;height:34px" onclick="openAddLeadModal()">+ Add Lead</button>
         </div>
       </div>
+
+      <!-- ── Column Picker Drawer ── -->
+      <div id="crm-column-picker" style="display:none;margin-top:8px;padding:10px 14px;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;font-size:12px">
+        <strong style="font-size:11px;color:var(--navy);text-transform:uppercase;letter-spacing:.5px">Visible Columns</strong>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" class="crm-col-toggle" data-col="owner" checked onchange="saveCRMColumns()"> Owner</label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" class="crm-col-toggle" data-col="age" checked onchange="saveCRMColumns()"> Age</label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" class="crm-col-toggle" data-col="stage" checked onchange="saveCRMColumns()"> Stage</label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" class="crm-col-toggle" data-col="remark" checked onchange="saveCRMColumns()"> Remark</label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" class="crm-col-toggle" data-col="actions" checked onchange="saveCRMColumns()"> Quick Actions</label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" class="crm-col-toggle" data-col="slot" onchange="saveCRMColumns()"> Call Slot</label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" class="crm-col-toggle" data-col="jointime" onchange="saveCRMColumns()"> Join Timeline</label>
+        </div>
+      </div>
+
+      <!-- ── Bulk Action Bar (appears when rows selected) ── -->
+      <div id="crm-bulk-bar" style="display:none;margin-top:8px;padding:8px 14px;background:var(--navy);color:#fff;border-radius:8px;display:none;align-items:center;gap:12px;flex-wrap:wrap">
+        <span id="crm-bulk-count" style="font-size:12px;font-weight:700">0 selected</span>
+        <div style="width:1px;height:20px;background:rgba(255,255,255,.3)"></div>
+        <button class="btn" style="padding:4px 10px;font-size:12px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px" onclick="bulkChangeCRMStage()">🏷 Change Stage</button>
+        <button class="btn" style="padding:4px 10px;font-size:12px;background:rgba(37,211,102,.2);color:#25D366;border:1px solid #25D366;border-radius:6px" onclick="openBulkWAModal()">💬 WhatsApp All</button>
+        <button class="btn" style="padding:4px 10px;font-size:12px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px" onclick="exportCRMLeadsCSV(true)">⬇️ Export Selected</button>
+        <button class="btn" style="padding:4px 10px;font-size:12px;background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;margin-left:auto" onclick="clearCRMBulkSelection()">✕ Clear</button>
+      </div>
+
       <div style="margin-top:8px;font-size:11px;color:var(--muted)">Showing <strong id="crm-count-display">0</strong> leads — <span id="crm-total-display">0 total</span></div>
     </div>
 
@@ -1441,13 +1477,16 @@
           <table class="compact-table" style="width:100%;min-width:700px">
             <thead>
               <tr>
-                <th class="text-left" style="padding:10px 12px">Lead / Contact</th>
-                <th class="text-left">Course · Centre</th>
-                <th class="text-left">Owner</th>
-                <th class="text-center">Age</th>
-                <th class="text-center">Stage</th>
-                <th class="text-left" style="max-width:160px">Last Remark</th>
-                <th class="text-center">Actions</th>
+                <th style="width:32px;padding:10px 8px"><input type="checkbox" id="crm-check-all" title="Select all" onchange="toggleAllCRMChecks(this.checked)"></th>
+                <th class="text-left" style="padding:10px 8px">Lead / Contact</th>
+                <th class="text-left" id="crm-th-course">Course · Centre</th>
+                <th class="text-left crm-col-owner" id="crm-th-owner">Owner</th>
+                <th class="text-center crm-col-age" id="crm-th-age">Age</th>
+                <th class="text-center crm-col-stage" id="crm-th-stage">Stage</th>
+                <th class="text-left crm-col-remark" id="crm-th-remark" style="max-width:160px">Last Remark</th>
+                <th class="text-left crm-col-slot" id="crm-th-slot" style="display:none">Call Slot</th>
+                <th class="text-left crm-col-jointime" id="crm-th-jointime" style="display:none">Join In</th>
+                <th class="text-center crm-col-actions" id="crm-th-actions">Actions</th>
               </tr>
             </thead>
             <tbody id="crm-leads-tbody">
@@ -1487,10 +1526,14 @@
           <div style="background:#f8fafc;border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
             <div><span style="color:var(--muted)">📧</span> <a id="crm-detail-email-link" href="#" style="color:var(--navy);text-decoration:none" onclick="return false">-</a></div>
             <div><span style="color:var(--muted)">📱</span> <strong id="crm-detail-mobile">-</strong></div>
+            <div><span style="color:var(--muted)">📱</span> Alt: <span id="crm-detail-alt-mobile" style="color:var(--muted)">—</span></div>
             <div><span style="color:var(--muted)">🏫</span> <span id="crm-detail-centre">-</span></div>
             <div><span style="color:var(--muted)">📚</span> <span id="crm-detail-course">-</span></div>
             <div style="grid-column:span 2"><span style="color:var(--muted)">👤</span> <span id="crm-detail-owner">-</span></div>
             <div style="grid-column:span 2" id="crm-detail-substage-row"><span style="color:var(--muted)">🔖</span> Sub-stage: <strong id="crm-detail-substage">-</strong></div>
+            <div><span style="color:var(--muted)">⏰</span> Slot: <span id="crm-detail-slot" style="font-weight:600;color:var(--navy)">—</span></div>
+            <div><span style="color:var(--muted)">📅</span> Join: <span id="crm-detail-jointime" style="font-weight:600;color:var(--navy)">—</span></div>
+            <div style="grid-column:span 2"><span style="color:var(--muted)">💼</span> Profession: <span id="crm-detail-profession" style="color:var(--muted)">—</span></div>
           </div>
 
           <!-- Next Batch Availability -->
@@ -1614,12 +1657,42 @@
         <input type="tel" id="crm-new-mobile" placeholder="10 digit number" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
       </div>
       <div class="field" style="margin-bottom:10px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Alternate Mobile</label>
+        <input type="tel" id="crm-new-alt-mobile" placeholder="Optional" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
+      </div>
+      <div class="field" style="margin-bottom:10px">
         <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Interested Course</label>
         <select id="crm-new-course" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box"></select>
       </div>
-      <div class="field" style="margin-bottom:14px">
+      <div class="field" style="margin-bottom:10px">
         <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">IGI Centre</label>
         <select id="crm-new-centre" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box"></select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div class="field">
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Preferred Call Slot</label>
+          <select id="crm-new-slot" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
+            <option value="">Not specified</option>
+            <option value="Morning (9 AM – 12 PM)">Morning (9–12)</option>
+            <option value="Afternoon (12 PM – 5 PM)">Afternoon (12–5)</option>
+            <option value="Evening (5 PM – 8 PM)">Evening (5–8)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">When to Join</label>
+          <select id="crm-new-jointime" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
+            <option value="">Not specified</option>
+            <option value="Immediately">Immediately</option>
+            <option value="Within 1 Month">Within 1 Month</option>
+            <option value="1–3 Months">1–3 Months</option>
+            <option value="3–6 Months">3–6 Months</option>
+            <option value="Just Exploring">Just Exploring</option>
+          </select>
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Current Profession</label>
+        <input type="text" id="crm-new-profession" placeholder="e.g. Diamond Trader, Student, Housewife…" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
       </div>
       <div class="err-box" id="crm-new-err" style="display:none;margin-bottom:10px;color:#dc2626;font-size:12px"></div>
       <div style="display:flex;gap:8px">
@@ -1700,6 +1773,72 @@
       </div>
     </div>
   </div>
+
+  <!-- ── WA Template Modal ───────────────────────────────────────────── -->
+  <div id="crm-wa-template-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+    <div style="width:100%;max-width:520px;padding:24px;background:var(--white);border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.2)">
+      <h3 style="margin-top:0;color:var(--navy);font-size:16px">💬 Send WhatsApp Message</h3>
+      <p class="sub" style="font-size:12px;margin-bottom:12px">Select a template — preview updates automatically. Sends via wa.me deep-link.</p>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap" id="crm-wa-template-btns">
+        <button class="btn btn-outline crm-wa-tpl-btn active" style="font-size:11px;padding:5px 10px" data-tpl="enquiry" onclick="selectWATpl(this,'enquiry')">📋 First Contact</button>
+        <button class="btn btn-outline crm-wa-tpl-btn" style="font-size:11px;padding:5px 10px" data-tpl="demo" onclick="selectWATpl(this,'demo')">🖥 Demo Invite</button>
+        <button class="btn btn-outline crm-wa-tpl-btn" style="font-size:11px;padding:5px 10px" data-tpl="followup" onclick="selectWATpl(this,'followup')">🔔 Follow-Up</button>
+        <button class="btn btn-outline crm-wa-tpl-btn" style="font-size:11px;padding:5px 10px" data-tpl="brochure" onclick="selectWATpl(this,'brochure')">📘 Brochure</button>
+        <button class="btn btn-outline crm-wa-tpl-btn" style="font-size:11px;padding:5px 10px" data-tpl="enroll" onclick="selectWATpl(this,'enroll')">🎓 Enroll Now</button>
+      </div>
+      <div style="background:var(--bg);border-radius:8px;padding:12px;font-size:13px;color:var(--navy);min-height:90px;white-space:pre-wrap;line-height:1.6;border:1.5px solid var(--border)" id="crm-wa-preview"></div>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn btn-gold" style="flex:1" onclick="launchWAFromModal()">Open WhatsApp ↗</button>
+        <button class="btn btn-outline" onclick="closeWATemplateModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Bulk Stage Change Modal ────────────────────────────────────── -->
+  <div id="crm-bulk-stage-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+    <div style="width:100%;max-width:380px;padding:24px;background:var(--white);border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.2)">
+      <h3 style="margin-top:0;color:var(--navy);font-size:16px">🏷 Bulk Stage Change</h3>
+      <p class="sub" style="font-size:12px;margin-bottom:14px" id="crm-bulk-stage-desc">Change stage for selected leads.</p>
+      <div class="field" style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">New Lead Stage</label>
+        <select id="crm-bulk-stage-select" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px">
+          <option value="New">🆕 New / Untouched</option>
+          <option value="Contacted">📞 Contacted</option>
+          <option value="Interested">💡 Interested</option>
+          <option value="Demo">🖥 Demo</option>
+          <option value="Follow-Up Ongoing">🔄 Follow-Up Ongoing</option>
+          <option value="Application Initiated">📝 Application Initiated</option>
+          <option value="Lost">❌ Lost</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-gold" onclick="submitBulkStageChange()">Apply to All Selected</button>
+        <button class="btn btn-outline" onclick="closeBulkStageModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Bulk WA Broadcast Modal ─────────────────────────────────── -->
+  <div id="crm-bulk-wa-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+    <div style="width:100%;max-width:480px;padding:24px;background:var(--white);border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.2)">
+      <h3 style="margin-top:0;color:var(--navy);font-size:16px">💬 WhatsApp Broadcast</h3>
+      <p class="sub" style="font-size:12px;margin-bottom:10px" id="crm-bulk-wa-desc">Opens a WhatsApp link for each selected lead (one at a time). You can also copy numbers.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px" id="crm-bulk-wa-tpl-btns">
+        <button class="btn btn-outline crm-bwa-tpl-btn active" style="font-size:11px;padding:5px 10px" data-tpl="enquiry" onclick="selectBulkWATpl(this,'enquiry')">📋 First Contact</button>
+        <button class="btn btn-outline crm-bwa-tpl-btn" style="font-size:11px;padding:5px 10px" data-tpl="followup" onclick="selectBulkWATpl(this,'followup')">🔔 Follow-Up</button>
+        <button class="btn btn-outline crm-bwa-tpl-btn" style="font-size:11px;padding:5px 10px" data-tpl="brochure" onclick="selectBulkWATpl(this,'brochure')">📘 Brochure</button>
+        <button class="btn btn-outline crm-bwa-tpl-btn" style="font-size:11px;padding:5px 10px" data-tpl="enroll" onclick="selectBulkWATpl(this,'enroll')">🎓 Enroll Now</button>
+      </div>
+      <div style="background:var(--bg);border-radius:8px;padding:10px;font-size:12px;color:var(--navy);white-space:pre-wrap;max-height:100px;overflow:auto;border:1.5px solid var(--border)" id="crm-bulk-wa-preview"></div>
+      <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-gold" onclick="launchBulkWA()">📤 Open All Links</button>
+        <button class="btn btn-outline" onclick="copyBulkWANumbers()">📋 Copy Numbers</button>
+        <button class="btn btn-outline" onclick="closeBulkWAModal()">Cancel</button>
+      </div>
+      <p style="margin-top:8px;font-size:11px;color:var(--muted)">⚠️ Browser will open each WA link — allow popups if blocked.</p>
+    </div>
+  </div>
+
   </div>
 
   <!-- Assign tab removed — instructor assigned during batch creation -->
@@ -11951,6 +12090,15 @@ function selectCRMLead(leadId) {
   document.getElementById('crm-detail-course').textContent = lead.course || '—';
   document.getElementById('crm-detail-owner').textContent = (lead.lead_owner || 'Unassigned') + (lead.lead_co_owner ? ' (Co: ' + lead.lead_co_owner + ')' : '');
   document.getElementById('crm-detail-substage').textContent = lead.lead_sub_stage || '—';
+  // Extra fields
+  var altEl = document.getElementById('crm-detail-alt-mobile');
+  if(altEl) altEl.textContent = lead.alt_mobile || '—';
+  var slotEl = document.getElementById('crm-detail-slot');
+  if(slotEl) slotEl.textContent = lead.book_my_slot || '—';
+  var joinEl = document.getElementById('crm-detail-jointime');
+  if(joinEl) joinEl.textContent = lead.when_to_join || '—';
+  var profEl = document.getElementById('crm-detail-profession');
+  if(profEl) profEl.textContent = lead.current_profession || '—';
 
   // Remark
   var remarkInput = document.getElementById('crm-remark-input');
@@ -12188,7 +12336,8 @@ function openAddLeadModal() {
   var centreSel = document.getElementById('crm-new-centre');
   if (typeof COURSES !== 'undefined') courseSel.innerHTML = COURSES.map(function(c){ return '<option value="'+escC(c)+'">'+escC(c)+'</option>'; }).join('');
   if (typeof CENTRES !== 'undefined') centreSel.innerHTML = CENTRES.map(function(c){ return '<option value="'+escC(c)+'">'+escC(c)+'</option>'; }).join('');
-  ['crm-new-fname','crm-new-lname','crm-new-email','crm-new-mobile'].forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
+  ['crm-new-fname','crm-new-lname','crm-new-email','crm-new-mobile','crm-new-alt-mobile','crm-new-profession'].forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
+  ['crm-new-slot','crm-new-jointime'].forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
   document.getElementById('crm-new-err').style.display = 'none';
   modal.style.display = 'flex';
 }
@@ -12200,8 +12349,12 @@ function submitNewLead() {
   var lname = document.getElementById('crm-new-lname').value.trim();
   var email = document.getElementById('crm-new-email').value.trim();
   var mobile = document.getElementById('crm-new-mobile').value.trim();
+  var altMobile = (document.getElementById('crm-new-alt-mobile') || {}).value || '';
   var course = document.getElementById('crm-new-course').value;
   var centre = document.getElementById('crm-new-centre').value;
+  var slot = (document.getElementById('crm-new-slot') || {}).value || '';
+  var jointime = (document.getElementById('crm-new-jointime') || {}).value || '';
+  var profession = (document.getElementById('crm-new-profession') || {}).value || '';
   var errEl = document.getElementById('crm-new-err');
   if (!fname) { errEl.textContent = 'First name is required.'; errEl.style.display = 'block'; return; }
   errEl.style.display = 'none';
@@ -12210,9 +12363,11 @@ function submitNewLead() {
     gasGet({
       action: 'saveCRMLead',
       firstName: fname, lastName: lname, email: email, mobile: mobile,
-      course: course, centre: centre,
+      altMobile: altMobile.trim(), course: course, centre: centre,
       leadStage: 'New', leadSubStage: 'Untouched', leadOwner: owner, source: 'Direct',
-      leadScore: 10, leadRemark: '', notes: '[' + new Date().toLocaleString() + '] Lead created manually by ' + (counselorName || 'Admin')
+      leadScore: 10, leadRemark: '',
+      bookMySlot: slot, whenToJoin: jointime, currentProfession: profession,
+      notes: '[' + new Date().toLocaleString() + '] Lead created manually by ' + (counselorName || 'Admin')
     }, function(e, d) {
       if (e || !d || d.status !== 'ok') {
         errEl.textContent = (d && d.reason) ? d.reason : 'Duplicate or save failed.';
@@ -12337,6 +12492,409 @@ function submitCRMUpsell() {
     loadCRMData();
   });
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// SEARCH-BY FIELD SELECTOR
+// ════════════════════════════════════════════════════════════════════════════
+// Override filterLeads search block to respect crm-search-by
+var _origFilterLeads = filterLeads;
+filterLeads = function() {
+  var query = (document.getElementById('crm-search').value || '').toLowerCase().trim();
+  var searchBy = (document.getElementById('crm-search-by') || {}).value || 'all';
+  var stage = document.getElementById('crm-stage-filter').value;
+  var substage = document.getElementById('crm-substage-filter').value;
+  var source = document.getElementById('crm-source-filter').value;
+  var course = document.getElementById('crm-course-filter').value;
+  var crmCurrentSubTabLocal = crmCurrentSubTab || 'queue';
+
+  var filtered = crmLeadsList.filter(function(l) {
+    if (crmCurrentSubTabLocal === 'today' && !hasTodayFollowup(l)) return false;
+    if (crmCurrentSubTabLocal === 'overdue' && !hasOverdueFollowup(l)) return false;
+
+    var matchQ = true;
+    if (query) {
+      var name = ((l.first_name||'') + ' ' + (l.last_name||'')).toLowerCase();
+      if (searchBy === 'name')   matchQ = name.includes(query);
+      else if (searchBy === 'email')  matchQ = (l.email||'').toLowerCase().includes(query);
+      else if (searchBy === 'mobile') matchQ = (l.mobile||'').replace(/\s/g,'').includes(query.replace(/\s/g,''));
+      else if (searchBy === 'course') matchQ = (l.course||'').toLowerCase().includes(query);
+      else matchQ = name.includes(query) || (l.email||'').toLowerCase().includes(query) ||
+                    (l.mobile||'').includes(query) || (l.course||'').toLowerCase().includes(query) ||
+                    (l.lead_remark||'').toLowerCase().includes(query);
+    }
+    var matchStage = !stage || l.lead_stage === stage;
+    var matchSubStage = !substage || l.lead_sub_stage === substage;
+    var matchSource = !source || l.source === source;
+    var matchCourse = !course || l.course === course;
+    return matchQ && matchStage && matchSubStage && matchSource && matchCourse;
+  });
+
+  filtered.sort(function(a,b){
+    var aNew = a.lead_stage==='New'?0:1, bNew = b.lead_stage==='New'?0:1;
+    if(aNew!==bNew) return aNew-bNew;
+    return leadAgeDays(b) - leadAgeDays(a);
+  });
+  crmFilteredList = filtered;
+  crmPageOffset = 0;
+  var countEl = document.getElementById('crm-count-display');
+  var totalEl = document.getElementById('crm-total-display');
+  if(countEl) countEl.textContent = filtered.length;
+  if(totalEl) totalEl.textContent = crmLeadsList.length + ' total assigned';
+  renderCRMLeadsTable(filtered.slice(0, crmPageSize));
+  updateLoadMoreBtn(filtered.length);
+  clearCRMBulkSelection();
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// COLUMN PICKER
+// ════════════════════════════════════════════════════════════════════════════
+var CRM_VISIBLE_COLS = null;
+
+function loadCRMColumns() {
+  try {
+    var saved = localStorage.getItem('igi_crm_cols');
+    CRM_VISIBLE_COLS = saved ? JSON.parse(saved) : {owner:true,age:true,stage:true,remark:true,actions:true,slot:false,jointime:false};
+  } catch(e) {
+    CRM_VISIBLE_COLS = {owner:true,age:true,stage:true,remark:true,actions:true,slot:false,jointime:false};
+  }
+  applyCRMColumns();
+}
+
+function saveCRMColumns() {
+  var cols = {};
+  document.querySelectorAll('.crm-col-toggle').forEach(function(cb){ cols[cb.dataset.col] = cb.checked; });
+  CRM_VISIBLE_COLS = cols;
+  try { localStorage.setItem('igi_crm_cols', JSON.stringify(cols)); } catch(e){}
+  applyCRMColumns();
+  filterLeads();
+}
+
+function applyCRMColumns() {
+  if (!CRM_VISIBLE_COLS) return;
+  var cols = CRM_VISIBLE_COLS;
+  // Sync checkboxes
+  document.querySelectorAll('.crm-col-toggle').forEach(function(cb){
+    cb.checked = cols[cb.dataset.col] !== false;
+  });
+  // Show/hide TH headers
+  var thMap = {owner:'crm-th-owner',age:'crm-th-age',stage:'crm-th-stage',remark:'crm-th-remark',actions:'crm-th-actions',slot:'crm-th-slot',jointime:'crm-th-jointime'};
+  Object.keys(thMap).forEach(function(col){
+    var th = document.getElementById(thMap[col]);
+    if(th) th.style.display = cols[col] ? '' : 'none';
+  });
+}
+
+function toggleCRMColumnPicker() {
+  var el = document.getElementById('crm-column-picker');
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// BULK SELECTION & ACTIONS
+// ════════════════════════════════════════════════════════════════════════════
+var crmSelectedIds = new Set();
+
+function toggleAllCRMChecks(checked) {
+  crmSelectedIds = new Set();
+  document.querySelectorAll('.crm-row-check').forEach(function(cb){
+    cb.checked = checked;
+    if(checked) crmSelectedIds.add(cb.dataset.id);
+  });
+  updateBulkBar();
+}
+
+function toggleCRMRowCheck(id, checked) {
+  if(checked) crmSelectedIds.add(id);
+  else crmSelectedIds.delete(id);
+  updateBulkBar();
+  var allCheck = document.getElementById('crm-check-all');
+  if(allCheck) allCheck.checked = (crmSelectedIds.size > 0 && crmSelectedIds.size === document.querySelectorAll('.crm-row-check').length);
+}
+
+function clearCRMBulkSelection() {
+  crmSelectedIds = new Set();
+  document.querySelectorAll('.crm-row-check').forEach(function(cb){ cb.checked = false; });
+  var allCheck = document.getElementById('crm-check-all');
+  if(allCheck) allCheck.checked = false;
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  var bar = document.getElementById('crm-bulk-bar');
+  var countEl = document.getElementById('crm-bulk-count');
+  if(!bar) return;
+  var n = crmSelectedIds.size;
+  bar.style.display = n > 0 ? 'flex' : 'none';
+  if(countEl) countEl.textContent = n + ' lead' + (n===1?'':'s') + ' selected';
+}
+
+function getSelectedLeads() {
+  return crmLeadsList.filter(function(l){ return crmSelectedIds.has(l.id); });
+}
+
+// ── Bulk Stage Change ────────────────────────────────────────────────────
+function bulkChangeCRMStage() {
+  var n = crmSelectedIds.size;
+  if(!n) return;
+  var desc = document.getElementById('crm-bulk-stage-desc');
+  if(desc) desc.textContent = 'Change stage for ' + n + ' selected lead(s).';
+  document.getElementById('crm-bulk-stage-modal').style.display = 'flex';
+}
+function closeBulkStageModal() { document.getElementById('crm-bulk-stage-modal').style.display = 'none'; }
+function submitBulkStageChange() {
+  var newStage = document.getElementById('crm-bulk-stage-select').value;
+  var leads = getSelectedLeads();
+  if(!leads.length) return;
+  var done = 0;
+  var ts = new Date().toLocaleString();
+  leads.forEach(function(l) {
+    gasGet({
+      action: 'saveCRMLead',
+      id: l.id, firstName: l.first_name, lastName: l.last_name,
+      email: l.email, mobile: l.mobile, course: l.course, centre: l.centre,
+      leadStage: newStage, leadSubStage: l.lead_sub_stage,
+      leadOwner: l.lead_owner, source: l.source,
+      notes: '[' + ts + '] Bulk stage change → ' + newStage + '\n\n' + (l.notes||''),
+      leadScore: l.lead_score, leadRemark: l.lead_remark
+    }, function(e, d) {
+      if(!e && d && d.status === 'ok') {
+        var idx = crmLeadsList.findIndex(function(x){ return x.id === l.id; });
+        if(idx>=0) crmLeadsList[idx].lead_stage = newStage;
+      }
+      done++;
+      if(done === leads.length) {
+        closeBulkStageModal();
+        showToast('Stage changed to "' + newStage + '" for ' + done + ' lead(s).', 'success');
+        clearCRMBulkSelection();
+        updateCRMKPIs();
+        filterLeads();
+      }
+    });
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// WHATSAPP TEMPLATES
+// ════════════════════════════════════════════════════════════════════════════
+var CRM_WA_TEMPLATES = {
+  enquiry: function(name, course, centre, slot) {
+    return 'Hi ' + (name||'there') + ' 👋\n\nThank you for your interest in the *' + (course||'IGI programme') + '* at IGI School of Gemology' + (centre ? ', ' + centre : '') + '.\n\nI\'m ' + (counselorName||'your IGI counsellor') + ' and would love to share more details with you.\n\nWould ' + (slot||'a quick call') + ' work for you? 🙏';
+  },
+  demo: function(name, course, centre) {
+    return 'Hi ' + (name||'there') + ' 😊\n\nWe\'re inviting you to a *FREE demo session* for the *' + (course||'IGI programme') + '*' + (centre ? ' at ' + centre : '') + '.\n\nYou\'ll get a hands-on feel of our curriculum before enrolling.\n\nReply *YES* to confirm your spot! 💎';
+  },
+  followup: function(name, course) {
+    return 'Hi ' + (name||'there') + ', this is ' + (counselorName||'your IGI counsellor') + ' following up on your enquiry for *' + (course||'IGI programme') + '*.\n\nWanted to check if you had any questions or if you\'d like to schedule a call? 📞\n\nWe have limited seats — happy to assist! 🙏';
+  },
+  brochure: function(name, course) {
+    return 'Hi ' + (name||'there') + ' 👋\n\nHere\'s the brochure for the *' + (course||'IGI programme') + '* — covers curriculum, duration, fees, and career scope in the gems & jewellery industry.\n\nFeel free to ask me anything after going through it! 💎';
+  },
+  enroll: function(name, course, centre) {
+    return 'Hi ' + (name||'there') + '!\n\nGreat news — seats are now open for *' + (course||'the programme') + '*' + (centre ? ' at IGI ' + centre : '') + '.\n\n✅ Early enrolment offer ends soon.\n\nReply *ENROLL* or call us to secure your seat today! 🎓';
+  }
+};
+
+var _currentWATpl = 'enquiry';
+
+function openWATemplateModal() {
+  if(!activeLead) return;
+  _currentWATpl = 'enquiry';
+  document.querySelectorAll('.crm-wa-tpl-btn').forEach(function(b){ b.classList.remove('active'); });
+  var firstBtn = document.querySelector('.crm-wa-tpl-btn[data-tpl="enquiry"]');
+  if(firstBtn) firstBtn.classList.add('active');
+  updateWAPreview();
+  document.getElementById('crm-wa-template-modal').style.display = 'flex';
+}
+
+function closeWATemplateModal() { document.getElementById('crm-wa-template-modal').style.display = 'none'; }
+
+function selectWATpl(btn, tpl) {
+  _currentWATpl = tpl;
+  document.querySelectorAll('.crm-wa-tpl-btn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  updateWAPreview();
+}
+
+function updateWAPreview() {
+  var name = activeLead ? activeLead.first_name : '';
+  var course = activeLead ? activeLead.course : '';
+  var centre = activeLead ? activeLead.centre : '';
+  var slot = activeLead ? (activeLead.book_my_slot || '') : '';
+  var fn = CRM_WA_TEMPLATES[_currentWATpl];
+  var msg = fn ? fn(name, course, centre, slot) : '';
+  var el = document.getElementById('crm-wa-preview');
+  if(el) el.textContent = msg;
+}
+
+function launchWAFromModal() {
+  if(!activeLead || !activeLead.mobile) { showToast('No mobile number on this lead.', 'error'); return; }
+  var clean = activeLead.mobile.replace(/[^0-9]/g,'');
+  if(clean.length===10) clean = '91'+clean;
+  var el = document.getElementById('crm-wa-preview');
+  var msg = el ? el.textContent : '';
+  window.open('https://wa.me/'+clean+'?text='+encodeURIComponent(msg), '_blank');
+  closeWATemplateModal();
+  // Log it
+  var ts = new Date().toLocaleString();
+  var idx = crmLeadsList.findIndex(function(l){ return l.id===activeLead.id; });
+  if(idx>=0) crmLeadsList[idx].notes = '['+ts+'] WhatsApp sent (template: '+_currentWATpl+')\n\n'+(crmLeadsList[idx].notes||'');
+  gasGet({action:'updateLeadScore',leadId:activeLead.id,actionName:'whatsapp-sent'}, function(){});
+}
+
+// ── Bulk WA Broadcast ────────────────────────────────────────────────────
+var _bulkWATpl = 'enquiry';
+
+function openBulkWAModal() {
+  var n = crmSelectedIds.size;
+  if(!n) return;
+  _bulkWATpl = 'enquiry';
+  document.querySelectorAll('.crm-bwa-tpl-btn').forEach(function(b){ b.classList.remove('active'); });
+  var firstBtn = document.querySelector('.crm-bwa-tpl-btn[data-tpl="enquiry"]');
+  if(firstBtn) firstBtn.classList.add('active');
+  updateBulkWAPreview();
+  var desc = document.getElementById('crm-bulk-wa-desc');
+  if(desc) desc.textContent = 'Template for ' + n + ' selected lead(s). Opens WA link per lead.';
+  document.getElementById('crm-bulk-wa-modal').style.display = 'flex';
+}
+function closeBulkWAModal() { document.getElementById('crm-bulk-wa-modal').style.display = 'none'; }
+
+function selectBulkWATpl(btn, tpl) {
+  _bulkWATpl = tpl;
+  document.querySelectorAll('.crm-bwa-tpl-btn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  updateBulkWAPreview();
+}
+
+function updateBulkWAPreview() {
+  var fn = CRM_WA_TEMPLATES[_bulkWATpl];
+  var sample = getSelectedLeads()[0];
+  var msg = fn ? fn(sample ? sample.first_name : '[Name]', sample ? sample.course : '[Course]', sample ? sample.centre : '[Centre]', '') : '';
+  var el = document.getElementById('crm-bulk-wa-preview');
+  if(el) el.textContent = msg + '\n\n[…personalised per lead]';
+}
+
+function launchBulkWA() {
+  var leads = getSelectedLeads().filter(function(l){ return l.mobile; });
+  if(!leads.length) { showToast('No leads with mobile numbers selected.', 'error'); return; }
+  var fn = CRM_WA_TEMPLATES[_bulkWATpl];
+  leads.forEach(function(l, i) {
+    setTimeout(function() {
+      var clean = l.mobile.replace(/[^0-9]/g,'');
+      if(clean.length===10) clean = '91'+clean;
+      var msg = fn ? fn(l.first_name, l.course, l.centre, l.book_my_slot||'') : '';
+      window.open('https://wa.me/'+clean+'?text='+encodeURIComponent(msg), '_blank');
+    }, i * 800); // stagger to avoid popup blockers
+  });
+  closeBulkWAModal();
+  showToast('Opening WhatsApp for ' + leads.length + ' leads…', 'success');
+}
+
+function copyBulkWANumbers() {
+  var leads = getSelectedLeads().filter(function(l){ return l.mobile; });
+  var nums = leads.map(function(l){ return l.first_name + ': ' + l.mobile; }).join('\n');
+  navigator.clipboard && navigator.clipboard.writeText(nums).then(function(){
+    showToast('Copied ' + leads.length + ' mobile numbers to clipboard.', 'success');
+  });
+}
+
+// ── Override launchWhatsApp to use template modal ────────────────────────
+launchWhatsApp = function() {
+  if(!activeLead) return;
+  openWATemplateModal();
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// EXPORT LEADS TO CSV
+// ════════════════════════════════════════════════════════════════════════════
+function exportCRMLeadsCSV(selectedOnly) {
+  var leads = selectedOnly ? getSelectedLeads() : crmFilteredList;
+  if(!leads.length) { showToast('No leads to export.', 'error'); return; }
+  var cols = ['Name','Email','Mobile','Alt Mobile','Course','Centre','Stage','Sub-Stage','Owner','Source','Score','Remark','Book My Slot','Join In','Profession','Lead Age (days)','Created At'];
+  var rows = leads.map(function(l){
+    var age = leadAgeDays(l);
+    var name = (l.first_name||'') + ' ' + (l.last_name||'');
+    return [
+      name.trim(), l.email||'', l.mobile||'', l.alt_mobile||'',
+      l.course||'', l.centre||'', l.lead_stage||'', l.lead_sub_stage||'',
+      l.lead_owner||'', l.source||'', l.lead_score||0, l.lead_remark||'',
+      l.book_my_slot||'', l.when_to_join||'', l.current_profession||'',
+      age, l.created_at ? new Date(l.created_at).toLocaleDateString('en-IN') : ''
+    ].map(function(v){ return '"' + String(v).replace(/"/g,'""') + '"'; }).join(',');
+  });
+  var csv = cols.map(function(c){ return '"'+c+'"'; }).join(',') + '\n' + rows.join('\n');
+  var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'IGI_CRM_Leads_' + new Date().toISOString().slice(0,10) + (selectedOnly ? '_selected' : '') + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Exported ' + leads.length + ' leads to CSV.', 'success');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PATCH renderCRMLeadsTable TO ADD CHECKBOXES + EXTRA COLS
+// ════════════════════════════════════════════════════════════════════════════
+var _origRenderTable = renderCRMLeadsTable;
+renderCRMLeadsTable = function(list) {
+  // Ensure column visibility is loaded
+  if(!CRM_VISIBLE_COLS) loadCRMColumns();
+  var cols = CRM_VISIBLE_COLS || {};
+  var tbody = document.getElementById('crm-leads-tbody');
+  if(!tbody) return;
+  if(!list.length) {
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--muted)">No matching leads found.</td></tr>';
+    return;
+  }
+  var stageClass = {'New':'badge-red','Contacted':'badge-amber','Interested':'badge-blue','Demo':'badge-blue','Follow-Up Ongoing':'badge-blue','Application Initiated':'badge-amber','Enrolled':'badge-green','Lost':'badge-grey'};
+  tbody.innerHTML = list.map(function(l) {
+    var age = leadAgeDays(l);
+    var ageColor = leadAgeColor(age);
+    var name = escC(l.first_name + (l.last_name ? ' '+l.last_name : ''));
+    var sc = stageClass[l.lead_stage] || 'badge-blue';
+    var hasToday = hasTodayFollowup(l);
+    var hasOverdue = hasOverdueFollowup(l);
+    var rowBg = hasOverdue ? 'background:rgba(220,38,38,0.04)' : (hasToday ? 'background:rgba(217,119,6,0.04)' : '');
+    var remark = escC((l.lead_remark||'').slice(0,60));
+    var ownerShort = escC((l.lead_owner||'Unassigned').split(' ')[0]);
+    var isChecked = crmSelectedIds.has(l.id) ? 'checked' : '';
+    var quickBtns =
+      '<button title="📞 Connected" style="border:1px solid #168b57;color:#168b57;background:none;border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;margin-right:3px" onclick="event.stopPropagation();quickLog(\''+l.id+'\',\'call-connected\')">📞</button>'+
+      '<button title="🔕 No Answer" style="border:1px solid var(--border);color:var(--navy);background:none;border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;margin-right:3px" onclick="event.stopPropagation();quickLog(\''+l.id+'\',\'call-no-answer\')">🔕</button>'+
+      '<button title="💬 WhatsApp" style="border:1px solid #25D366;color:#25D366;background:none;border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;margin-right:3px" onclick="event.stopPropagation();selectCRMLead(\''+l.id+'\');openWATemplateModal()">💬</button>'+
+      '<button title="View Details" style="border:1px solid var(--border);color:var(--navy);background:none;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer" onclick="event.stopPropagation();selectCRMLead(\''+l.id+'\')">👁</button>';
+    var slotDisplay = cols.slot ? '<td style="padding:9px 8px;font-size:11px;color:var(--muted);display:'+(cols.slot?'':'none')+'">' + escC(l.book_my_slot||'—') + '</td>' : '';
+    var joinDisplay = cols.jointime ? '<td style="padding:9px 8px;font-size:11px;color:var(--muted);display:'+(cols.jointime?'':'none')+'">' + escC(l.when_to_join||'—') + '</td>' : '';
+    return '<tr style="cursor:pointer;'+rowBg+'" onclick="selectCRMLead(\''+l.id+'\')">'+
+      '<td style="padding:9px 8px;text-align:center" onclick="event.stopPropagation()"><input type="checkbox" class="crm-row-check" data-id="'+l.id+'" '+isChecked+' onchange="toggleCRMRowCheck(\''+l.id+'\',this.checked)"></td>'+
+      '<td style="padding:9px 8px">'+
+        '<strong style="font-size:13px">'+name+'</strong>'+
+        (hasOverdue?' <span title="Overdue follow-up" style="color:#dc2626;font-size:10px">⚠️</span>':'')+
+        (hasToday?' <span title="Follow-up today" style="color:#d97706;font-size:10px">🔔</span>':'')+
+        '<div style="font-size:11px;color:var(--muted);margin-top:2px">'+escC(l.email||'')+(l.mobile?' · '+escC(l.mobile):'')+'</div>'+
+      '</td>'+
+      '<td style="padding:9px 8px"><div style="font-size:12px;font-weight:600;color:var(--navy)">'+escC(l.course)+'</div><div style="font-size:11px;color:var(--muted)">'+escC(l.centre)+'</div></td>'+
+      '<td class="crm-col-owner" style="padding:9px 8px;font-size:11px;color:var(--muted);display:'+(cols.owner!==false?'':'none')+'">'+ownerShort+'</td>'+
+      '<td class="crm-col-age" style="padding:9px 8px;text-align:center;display:'+(cols.age!==false?'':'none')+'"><strong style="font-size:12px;color:'+ageColor+'">'+leadAgeLabel(age)+'</strong></td>'+
+      '<td class="crm-col-stage" style="padding:9px 8px;text-align:center;display:'+(cols.stage!==false?'':'none')+'"><span class="badge '+sc+'" style="margin:0;font-size:10px">'+escC(l.lead_stage)+'</span>'+(l.lead_sub_stage&&l.lead_sub_stage!=='Unassigned'?'<div style="font-size:9px;color:var(--muted);margin-top:2px">'+escC(l.lead_sub_stage)+'</div>':'')+'</td>'+
+      '<td class="crm-col-remark" style="padding:9px 8px;max-width:150px;display:'+(cols.remark!==false?'':'none')+'"><span style="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+remark+'">'+(remark||'—')+'</span></td>'+
+      (cols.slot ? '<td class="crm-col-slot" style="padding:9px 8px;font-size:11px;color:var(--muted)">'+escC(l.book_my_slot||'—')+'</td>' : '')+
+      (cols.jointime ? '<td class="crm-col-jointime" style="padding:9px 8px;font-size:11px;color:var(--muted)">'+escC(l.when_to_join||'—')+'</td>' : '')+
+      '<td class="crm-col-actions" style="padding:9px 8px;text-align:center;white-space:nowrap;display:'+(cols.actions!==false?'':'none')+'" onclick="event.stopPropagation()">'+quickBtns+'</td>'+
+    '</tr>';
+  }).join('');
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// INIT: load columns on CRM tab load
+// ════════════════════════════════════════════════════════════════════════════
+var _origLoadCRMData = loadCRMData;
+loadCRMData = function() {
+  loadCRMColumns();
+  _origLoadCRMData();
+};
 </script>
 
 <!-- Add Past Alumni Modal -->

@@ -1864,16 +1864,38 @@
               <p class="sub">Bulk-reassign selected leads to a different counsellor.</p>
             </div>
           </div>
-          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+          <!-- Assignment Mode Toggle -->
+          <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap">
+            <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-right:2px">Mode:</span>
+            <label id="lbl-single-mode" style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;padding:5px 12px;border:1.5px solid var(--gold);border-radius:20px;background:var(--gold);color:#fff;font-weight:700;transition:all .2s">
+              <input type="radio" name="reassign-mode" value="single" checked onchange="toggleReassignMode()" style="display:none"> 👤 Assign to One
+            </label>
+            <label id="lbl-rr-mode" style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;padding:5px 12px;border:1.5px solid var(--border);border-radius:20px;background:var(--white);color:var(--navy);font-weight:600;transition:all .2s">
+              <input type="radio" name="reassign-mode" value="roundrobin" onchange="toggleReassignMode()" style="display:none"> 🔄 Round Robin
+            </label>
+            <span id="rr-mode-hint" style="display:none;font-size:11px;color:var(--muted);font-style:italic">Distributes leads evenly across selected counsellors</span>
+          </div>
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
             <select id="crm-reassign-from" style="font-size:12px;padding:7px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)" onchange="renderReassignLeadsList()">
               <option value="">— From Counsellor —</option>
             </select>
             <span style="color:var(--muted);font-size:18px">→</span>
-            <select id="crm-reassign-to" style="font-size:12px;padding:7px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
-              <option value="">— To Counsellor —</option>
-            </select>
+            <!-- Single mode: one target -->
+            <div id="single-target-wrap">
+              <select id="crm-reassign-to" style="font-size:12px;padding:7px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+                <option value="">— To Counsellor —</option>
+              </select>
+            </div>
+            <!-- Round Robin mode: multi-select -->
+            <div id="rr-target-wrap" style="display:none">
+              <div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase">Select counsellors for round robin</div>
+              <div id="crm-rr-checkboxes" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1.5px solid var(--border);border-radius:6px;background:var(--white);min-width:260px">
+                <!-- Populated by JS -->
+              </div>
+            </div>
             <button class="btn btn-gold no-print" onclick="executeBulkReassign()" style="padding:7px 14px;font-size:12px;font-weight:700">✅ Reassign Selected</button>
             <button class="btn btn-outline no-print" onclick="selectAllReassignLeads()" style="padding:7px 12px;font-size:12px">Select All</button>
+            <button class="btn btn-outline no-print" onclick="clearReassignSelections()" style="padding:7px 12px;font-size:12px">Clear</button>
           </div>
           <div style="overflow-x:auto">
             <table class="compact-table" style="width:100%">
@@ -7394,30 +7416,91 @@ function selectAllReassignLeads() {
   document.querySelectorAll('.crm-reassign-check').forEach(function(c){ c.checked = true; });
 }
 
+function clearReassignSelections() {
+  document.querySelectorAll('.crm-reassign-check').forEach(function(c){ c.checked = false; });
+  document.getElementById('crm-reassign-check-all').checked = false;
+}
+
 function toggleAllReassignChecks(checked) {
   document.querySelectorAll('.crm-reassign-check').forEach(function(c){ c.checked = checked; });
 }
 
-function executeBulkReassign() {
-  var fromOwner = document.getElementById('crm-reassign-from').value;
-  var toOwner = document.getElementById('crm-reassign-to').value;
-  if (!fromOwner || !toOwner) { showToast('Select both From and To counsellor.', 'error'); return; }
-  if (fromOwner === toOwner) { showToast('From and To counsellor must be different.', 'error'); return; }
-  var checked = Array.from(document.querySelectorAll('.crm-reassign-check:checked'));
-  if (!checked.length) { showToast('Select at least one lead to reassign.', 'error'); return; }
-  var leadIds = checked.map(function(c){ return c.dataset.leadId; });
+function toggleReassignMode() {
+  var mode = document.querySelector('input[name="reassign-mode"]:checked').value;
+  var isRR = mode === 'roundrobin';
+  document.getElementById('single-target-wrap').style.display = isRR ? 'none' : '';
+  document.getElementById('rr-target-wrap').style.display = isRR ? '' : 'none';
+  document.getElementById('rr-mode-hint').style.display = isRR ? '' : 'none';
+  var lblSingle = document.getElementById('lbl-single-mode');
+  var lblRR = document.getElementById('lbl-rr-mode');
+  if (lblSingle) { lblSingle.style.background = isRR ? 'var(--white)' : 'var(--gold)'; lblSingle.style.color = isRR ? 'var(--navy)' : '#fff'; lblSingle.style.borderColor = isRR ? 'var(--border)' : 'var(--gold)'; }
+  if (lblRR)     { lblRR.style.background = isRR ? 'var(--gold)' : 'var(--white)'; lblRR.style.color = isRR ? '#fff' : 'var(--navy)'; lblRR.style.borderColor = isRR ? 'var(--gold)' : 'var(--border)'; }
+  if (isRR) populateRRCheckboxes();
+}
 
-  gasGet({ action: 'bulkReassignCRMLeads', leadIds: leadIds, newOwner: toOwner, reassignedBy: adminUser ? adminUser.name : 'Admin' }, function(err, res) {
-    if (err || !res || res.status !== 'ok') { showToast('Bulk reassign failed. Please try again.', 'error'); return; }
-    // Update local data
-    leadIds.forEach(function(id) {
-      var idx = crmLeads.findIndex(function(l){ return l.id === id; });
-      if (idx >= 0) crmLeads[idx].lead_owner = toOwner;
+function populateRRCheckboxes() {
+  var wrap = document.getElementById('crm-rr-checkboxes');
+  if (!wrap) return;
+  var counselors = Array.from(new Set(crmLeads.map(function(l){ return l.lead_owner; }).filter(Boolean))).sort();
+  wrap.innerHTML = counselors.map(function(name) {
+    return '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;padding:3px 8px;border:1px solid var(--border);border-radius:20px;white-space:nowrap">' +
+      '<input type="checkbox" class="crm-rr-pick" value="' + escC(name) + '"> ' + escC(name) + '</label>';
+  }).join('');
+}
+
+function executeBulkReassign() {
+  var mode = document.querySelector('input[name="reassign-mode"]:checked').value;
+  var fromOwner = document.getElementById('crm-reassign-from').value;
+  if (!fromOwner) { showToast('Select a source counsellor.', 'error'); return; }
+  var checked = Array.from(document.querySelectorAll('.crm-reassign-check:checked'));
+  if (!checked.length) { showToast('Select at least one lead.', 'error'); return; }
+  var leadIds = checked.map(function(c){ return c.dataset.leadId; });
+  var reassignedBy = adminUser ? adminUser.name : 'Admin';
+
+  if (mode === 'single') {
+    var toOwner = document.getElementById('crm-reassign-to').value;
+    if (!toOwner) { showToast('Select a target counsellor.', 'error'); return; }
+    if (fromOwner === toOwner) { showToast('From and To must be different.', 'error'); return; }
+    gasGet({ action: 'bulkReassignCRMLeads', leadIds: leadIds, newOwner: toOwner, reassignedBy: reassignedBy }, function(err, res) {
+      if (err || !res || res.status !== 'ok') { showToast('Reassign failed. Try again.', 'error'); return; }
+      leadIds.forEach(function(id) {
+        var i = crmLeads.findIndex(function(l){ return l.id === id; });
+        if (i >= 0) crmLeads[i].lead_owner = toOwner;
+      });
+      showToast('✅ ' + leadIds.length + ' lead(s) → ' + toOwner, 'success');
+      renderReassignLeadsList(); renderCRMOwnerFollowups();
     });
-    showToast('✅ ' + leadIds.length + ' lead(s) reassigned to ' + toOwner, 'success');
-    renderReassignLeadsList();
-    renderCRMOwnerFollowups();
-  });
+
+  } else {
+    // Round Robin mode — distribute leads across selected counselors
+    var rrTargets = Array.from(document.querySelectorAll('.crm-rr-pick:checked')).map(function(c){ return c.value; });
+    if (!rrTargets.length) { showToast('Select at least one counsellor for round robin.', 'error'); return; }
+    // Distribute: lead[i] → rrTargets[i % rrTargets.length]
+    var batches = {};
+    leadIds.forEach(function(id, i) {
+      var owner = rrTargets[i % rrTargets.length];
+      if (!batches[owner]) batches[owner] = [];
+      batches[owner].push(id);
+    });
+    var ownerList = Object.keys(batches);
+    var done = 0;
+    ownerList.forEach(function(owner) {
+      gasGet({ action: 'bulkReassignCRMLeads', leadIds: batches[owner], newOwner: owner, reassignedBy: reassignedBy }, function(err, res) {
+        done++;
+        if (!err && res && res.status === 'ok') {
+          batches[owner].forEach(function(id) {
+            var i = crmLeads.findIndex(function(l){ return l.id === id; });
+            if (i >= 0) crmLeads[i].lead_owner = owner;
+          });
+        }
+        if (done === ownerList.length) {
+          var summary = ownerList.map(function(o){ return batches[o].length + '→' + o; }).join(', ');
+          showToast('✅ Round Robin complete: ' + summary, 'success');
+          renderReassignLeadsList(); renderCRMOwnerFollowups();
+        }
+      });
+    });
+  }
 }
 
 function openCRMAddRuleModal() {

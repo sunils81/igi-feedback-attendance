@@ -3018,10 +3018,18 @@ window.gasGet = (function () {
     // (batch_codes is a comma-separated text field that may contain multiple batches)
     GET('online_tests', 'status=in.(Live,Active,Scheduled)', function(e, allTests) {
       if (e) { cb(null, { status: 'ok', activeTest: null, activeTests: [] }); return; }
-      // Filter: test must list this student's batch in batch_codes OR batch_code
+      // Filter: test must list this student's batch in batch_codes OR batch_code AND student must be in target list if specified
       var tests = (allTests || []).filter(function(t) {
         var codes = (t.batch_codes || t.batch_code || '').toUpperCase().split(',').map(function(s){ return s.trim(); });
-        return codes.indexOf(batch) !== -1;
+        if (codes.indexOf(batch) === -1) return false;
+
+        // Check target students
+        var target = String(t.target_students || 'ALL').trim();
+        if (target !== 'ALL' && target !== '') {
+          var allowed = target.replace(/[\[\]"']/g,'').split(',').map(function(x){ return x.trim().toUpperCase(); });
+          if (allowed.indexOf(sid.toUpperCase()) === -1) return false;
+        }
+        return true;
       });
       if (!tests.length) { cb(null, { status: 'ok', activeTest: null, activeTests: [] }); return; }
       GET('test_responses', 'student_id=eq.' + encodeURIComponent(sid), function(e2, responses) {

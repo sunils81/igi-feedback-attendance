@@ -34,11 +34,11 @@
 .crm-kpi-sub{font-size:11px;color:var(--muted);margin-top:4px}
 
 /* Sub-tabs */
-.crm-subtab-bar{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:0;background:var(--white);border-radius:10px 10px 0 0;padding:0 16px;border:1px solid var(--border);border-bottom:none}
-.crm-subtab-btn{padding:11px 18px;font-size:12px;font-weight:600;color:var(--muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;white-space:nowrap}
-.crm-subtab-btn:hover{color:var(--navy)}
-.crm-subtab-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
-.crm-subtab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:20px;font-size:10px;font-weight:700;margin-left:5px;vertical-align:middle}
+.crm-subtab-bar{display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:0;background:var(--white);border-radius:10px 10px 0 0;padding:8px 16px;border:1px solid var(--border);border-bottom:none}
+.crm-subtab-btn{padding:8px 16px;font-size:12px;font-weight:700;color:var(--muted);background:none;border:none;cursor:pointer;border-radius:6px;transition:all .15s;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.crm-subtab-btn:hover{color:var(--navy);background:rgba(0,0,0,.03);transform:translateY(-0.5px)}
+.crm-subtab-btn.active{color:var(--gold);background:rgba(184,144,0,0.08);font-weight:800}
+.crm-subtab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:10px;font-size:10px;font-weight:700;margin-left:4px;vertical-align:middle}
 
 /* Filter bar */
 .crm-filter-bar{background:var(--white);border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;padding:12px 16px}
@@ -156,6 +156,71 @@
 .crm-stage-pill.active{background:var(--gold);color:#fff;border-color:var(--gold)}
 .crm-stage-pill[data-s="Lost"].active{background:#dc2626;border-color:#dc2626}
 .crm-stage-pill[data-s="Enrolled"].active{background:#16a34a;border-color:#16a34a}
+
+/* Column toggling via CSS */
+#crm-leads-table.hide-owner .crm-col-owner { display: none !important; }
+#crm-leads-table.hide-age .crm-col-age { display: none !important; }
+#crm-leads-table.hide-stage .crm-col-stage { display: none !important; }
+#crm-leads-table.hide-remark .crm-col-remark { display: none !important; }
+#crm-leads-table.hide-slot .crm-col-slot { display: none !important; }
+#crm-leads-table.hide-jointime .crm-col-jointime { display: none !important; }
+#crm-leads-table.hide-actions .crm-col-actions { display: none !important; }
+
+/* Vertical Timeline styling */
+.crm-timeline-feed {
+  position: relative;
+  padding-left: 20px;
+  margin-left: 8px;
+  border-left: 2px solid var(--border);
+  margin-top: 10px;
+}
+.crm-timeline-item {
+  position: relative;
+  margin-bottom: 14px;
+}
+.crm-timeline-item:last-child {
+  margin-bottom: 0;
+}
+.crm-timeline-dot {
+  position: absolute;
+  left: -27px;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--white);
+  border: 2px solid var(--gold);
+  z-index: 2;
+}
+.crm-timeline-card {
+  background: var(--off);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  transition: all 0.2s;
+}
+.crm-timeline-card:hover {
+  border-color: rgba(184,144,0,0.25);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+}
+.crm-timeline-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 3px;
+  font-weight: 600;
+}
+.crm-timeline-body {
+  font-size: 11.5px;
+  color: var(--navy);
+  line-height: 1.45;
+  word-break: break-word;
+}
+.crm-timeline-actor {
+  color: var(--navy);
+  font-weight: 700;
+}
 </style>
 
 <style>
@@ -1635,7 +1700,7 @@
       <!-- Leads Table -->
       <div class="crm-table-wrap">
         <div style="overflow-x:auto">
-          <table class="crm-table" style="min-width:720px">
+          <table class="crm-table" id="crm-leads-table" style="min-width:720px">
             <thead>
               <tr>
                 <th style="width:36px;padding:10px 14px"><input type="checkbox" id="crm-check-all" title="Select all" onchange="toggleAllCRMChecks(this.checked)" style="cursor:pointer"></th>
@@ -1651,7 +1716,7 @@
               </tr>
             </thead>
             <tbody id="crm-leads-tbody">
-              <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--muted)">Loading leads…</td></tr>
+              <tr><td colspan="10" style="text-align:center;padding:32px;color:var(--muted)">Loading leads…</td></tr>
             </tbody>
           </table>
         </div>
@@ -1777,16 +1842,11 @@
             </div>
           </div>
 
-          <!-- Activity Notes -->
-          <div style="margin-bottom:10px">
-            <!-- Notes + Timeline tabs -->
-            <div style="display:flex;gap:0;margin-bottom:8px;border:1.5px solid var(--border);border-radius:8px;overflow:hidden">
-              <button id="crm-tab-notes" onclick="switchDetailTab('notes')" style="flex:1;padding:6px;font-size:11px;font-weight:700;background:var(--gold);color:#fff;border:none;cursor:pointer;border-radius:0">📝 Notes</button>
-              <button id="crm-tab-timeline" onclick="switchDetailTab('timeline')" style="flex:1;padding:6px;font-size:11px;font-weight:600;background:var(--white);color:var(--navy);border:none;cursor:pointer;border-left:1.5px solid var(--border)">📋 Timeline</button>
-            </div>
-
-            <!-- Notes panel -->
-            <div id="crm-panel-notes">
+          <!-- Activity Notes & Timeline Unified -->
+          <div style="margin-bottom:12px">
+            <!-- Notes/Activity Log Form at top -->
+            <div id="crm-panel-notes" style="margin-bottom:12px">
+              <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Log Activity / Add Note</div>
               <textarea id="crm-note-input" placeholder="Write a note about this lead — call outcome, interest level, next steps..." style="width:100%;height:64px;font-family:inherit;font-size:12px;padding:7px 8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box;resize:none;transition:border-color .15s" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'"></textarea>
               <div style="display:flex;gap:6px;margin-top:5px">
                 <select id="crm-note-type" style="flex:1;padding:5px 7px;font-size:11px;border:1.5px solid var(--border);border-radius:5px;background:var(--white);color:var(--navy)">
@@ -1800,10 +1860,11 @@
               </div>
             </div>
 
-            <!-- Timeline panel -->
-            <div id="crm-panel-timeline" style="display:none">
-              <div id="crm-timeline-list" style="max-height:200px;overflow-y:auto">
-                <div style="text-align:center;padding:16px;color:var(--muted);font-size:12px">Loading timeline…</div>
+            <!-- Activity Timeline right below -->
+            <div id="crm-panel-timeline" style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px">
+              <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Activity Timeline</div>
+              <div id="crm-timeline-list" style="max-height:220px;overflow-y:auto;padding-right:4px">
+                <div style="text-align:center;padding:16px;color:var(--muted);font-size:12px">Select a lead to view timeline</div>
               </div>
             </div>
           </div>
@@ -11968,6 +12029,10 @@ function switchCRMSubTab(tab) {
     if (btn) btn.classList.toggle('active', t === tab);
   });
   filterLeads();
+  if (crmFilteredList.length === 0) {
+    var label = tab === 'today' ? "Today's Calls" : tab === 'overdue' ? "Overdue" : "Lead Queue";
+    showToast('No leads found in ' + label + '.', 'info');
+  }
 }
 
 // ── Populate course filter from COURSES constant ───────────────────────────
@@ -12003,28 +12068,35 @@ function leadAgeColor(days) {
 
 // ── Today's follow-up check ────────────────────────────────────────────────
 function hasTodayFollowup(lead) {
-  var todayStr = new Date().toISOString().slice(0,10);
+  var localTodayStr = new Date().toLocaleDateString('en-CA');
   return (lead.crm_followups || []).some(function(f) {
-    return f.status === 'Pending' && f.reminder_date && f.reminder_date.slice(0,10) === todayStr;
+    if (f.status !== 'Pending' || !f.reminder_date) return false;
+    var localRemindStr = new Date(f.reminder_date).toLocaleDateString('en-CA');
+    return localRemindStr === localTodayStr;
   });
 }
 
 function hasOverdueFollowup(lead) {
-  var todayStr = new Date().toISOString().slice(0,10);
+  var localTodayStr = new Date().toLocaleDateString('en-CA');
   return (lead.crm_followups || []).some(function(f) {
-    return f.status === 'Pending' && f.reminder_date && f.reminder_date.slice(0,10) < todayStr;
+    if (f.status !== 'Pending' || !f.reminder_date) return false;
+    var localRemindStr = new Date(f.reminder_date).toLocaleDateString('en-CA');
+    return localRemindStr < localTodayStr;
   });
 }
 
 function getActiveFollowup(lead) {
-  var todayStr = new Date().toISOString().slice(0,10);
+  var localTodayStr = new Date().toLocaleDateString('en-CA');
   return (lead.crm_followups || []).find(function(f) {
-    return f.status === 'Pending' && f.reminder_date && f.reminder_date.slice(0,10) <= todayStr;
+    if (f.status !== 'Pending' || !f.reminder_date) return false;
+    var localRemindStr = new Date(f.reminder_date).toLocaleDateString('en-CA');
+    return localRemindStr <= localTodayStr;
   }) || null;
 }
 
 // ── Load CRM data ──────────────────────────────────────────────────────────
 function loadCRMData() {
+  loadCRMColumns();
   populateCRMCourseFilter();
   var tbody = document.getElementById('crm-leads-tbody');
   if (!tbody) return;
@@ -12074,18 +12146,21 @@ function updateCRMKPIs() {
     return l.lead_stage === 'New' || l.lead_sub_stage === 'Untouched';
   }).length;
 
-  var todayStr = new Date().toISOString().slice(0,10);
+  var localTodayStr = new Date().toLocaleDateString('en-CA');
+  var localCurMonth = localTodayStr.slice(0, 7); // YYYY-MM
   var todayFollowups = 0, overdueFollowups = 0, converted = 0;
-  var curMonth = new Date().toISOString().slice(0,7);
 
   crmLeadsList.forEach(function(l) {
     (l.crm_followups || []).forEach(function(f) {
-      if (f.status !== 'Pending') return;
-      var d = f.reminder_date ? f.reminder_date.slice(0,10) : '';
-      if (d === todayStr) todayFollowups++;
-      else if (d < todayStr) overdueFollowups++;
+      if (f.status !== 'Pending' || !f.reminder_date) return;
+      var d = new Date(f.reminder_date).toLocaleDateString('en-CA');
+      if (d === localTodayStr) todayFollowups++;
+      else if (d < localTodayStr) overdueFollowups++;
     });
-    if (l.lead_stage === 'Enrolled' && (l.updated_at || '').slice(0,7) === curMonth) converted++;
+    if (l.lead_stage === 'Enrolled' && l.updated_at) {
+      var localUpdatedMonth = new Date(l.updated_at).toLocaleDateString('en-CA').slice(0, 7);
+      if (localUpdatedMonth === localCurMonth) converted++;
+    }
   });
 
   document.getElementById('crm-stat-total').textContent = total;
@@ -12189,57 +12264,84 @@ function renderCRMLeadsTable(list) {
   if (!tbody) return;
 
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--muted)">No matching leads found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--muted)">No matching leads found.</td></tr>';
     return;
   }
 
-  var stageColors = {
-    'New': '#dc2626', 'Contacted': '#d97706', 'Interested': '#2563eb',
-    'Demo': '#7c3aed', 'Follow-Up Ongoing': '#0891b2',
-    'Application Initiated': '#b45309', 'Enrolled': '#168b57', 'Lost': '#6b7280'
+  var stageAvClass = {
+    'New': 'av-new', 'Contacted': 'av-contacted', 'Interested': 'av-interested',
+    'Demo': 'av-demo', 'Follow-Up Ongoing': 'av-followup',
+    'Application Initiated': 'av-contacted', 'Enrolled': 'av-enrolled', 'Lost': 'av-lost'
   };
   var stageBadgeClass = {
-    'New': 'badge-red', 'Contacted': 'badge-amber', 'Interested': 'badge-blue',
-    'Demo': 'badge-blue', 'Follow-Up Ongoing': 'badge-blue',
-    'Application Initiated': 'badge-amber', 'Enrolled': 'badge-green', 'Lost': 'badge-grey'
+    'New': 'st-new', 'Contacted': 'st-contacted', 'Interested': 'st-interested',
+    'Demo': 'st-demo', 'Follow-Up Ongoing': 'st-followup',
+    'Application Initiated': 'st-app', 'Enrolled': 'st-enrolled', 'Lost': 'st-lost'
+  };
+  var srcIcon = {
+    'Facebook Lead Ads': '📘', 'Website': '🌐', 'WhatsApp': '💬',
+    'Walk-In': '🚶', 'Direct': '📞', 'Internal Cross-Sell': '🔄'
   };
 
   tbody.innerHTML = list.map(function(l) {
     var age = leadAgeDays(l);
     var ageColor = leadAgeColor(age);
-    var name = escC(l.first_name + (l.last_name ? ' ' + l.last_name : ''));
-    var stageClass = stageBadgeClass[l.lead_stage] || 'badge-blue';
     var hasToday = hasTodayFollowup(l);
     var hasOverdue = hasOverdueFollowup(l);
-    var rowBg = hasOverdue ? 'background:rgba(220,38,38,0.04)' : (hasToday ? 'background:rgba(217,119,6,0.04)' : '');
-    var remark = escC((l.lead_remark || '').slice(0, 60));
-    var ownerShort = escC((l.lead_owner || 'Unassigned').split(' ')[0]);
+    var rowCls = hasOverdue ? 'row-overdue' : (hasToday ? 'row-today' : '');
+    var fn = (l.first_name || '').trim(), ln = (l.last_name || '').trim();
+    var fullName = escC(fn + (ln ? ' ' + ln : ''));
+    var initials = ((fn[0] || '') + (ln[0] || fn[1] || '')).toUpperCase() || '?';
+    var avCl = stageAvClass[l.lead_stage] || 'av-contacted';
+    var bdgCl = stageBadgeClass[l.lead_stage] || 'st-contacted';
+    var score = Math.min(100, Math.max(0, parseInt(l.lead_score) || 0));
+    var scColor = score >= 70 ? '#168b57' : score >= 40 ? '#d97706' : '#dc2626';
+    var ownerShort = escC((l.lead_owner || '—').split(' ')[0]);
+    var remark = escC((l.lead_remark || '').slice(0, 55));
+    var icon = srcIcon[l.source] || '📌';
+    var isChecked = crmSelectedIds.has(l.id) ? 'checked' : '';
 
-    // Quick action buttons inline
-    var quickBtns =
-      '<button title="📞 Connected" style="border:1px solid #168b57;color:#168b57;background:none;border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;margin-right:3px" onclick="event.stopPropagation();quickLog(\'' + l.id + '\',\'call-connected\')">📞</button>' +
-      '<button title="🔕 No Answer" style="border:1px solid var(--border);color:var(--navy);background:none;border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;margin-right:3px" onclick="event.stopPropagation();quickLog(\'' + l.id + '\',\'call-no-answer\')">🔕</button>' +
-      '<button title="💬 WhatsApp" style="border:1px solid #25D366;color:#25D366;background:none;border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;margin-right:3px" onclick="event.stopPropagation();quickWA(\'' + escC(l.mobile || '') + '\',\'' + escC(l.first_name || '') + '\',\'' + escC(l.course || '') + '\')">💬</button>' +
-      '<button title="View Details" style="border:1px solid var(--border);color:var(--navy);background:none;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer" onclick="event.stopPropagation();selectCRMLead(\'' + l.id + '\')">👁</button>';
+    var qb = '<button class="crm-qa-btn call" title="Connected" onclick="event.stopPropagation();quickLog(\'' + l.id + '\',\'call-connected\')">📞</button> ' +
+             '<button class="crm-qa-btn" title="No answer" onclick="event.stopPropagation();quickLog(\'' + l.id + '\',\'call-no-answer\')">🔕</button> ' +
+             '<button class="crm-qa-btn wa" title="WhatsApp" onclick="event.stopPropagation();selectCRMLead(\'' + l.id + '\');openWATemplateModal()">💬</button> ' +
+             '<button class="crm-qa-btn" title="View" onclick="event.stopPropagation();selectCRMLead(\'' + l.id + '\')">👁</button>';
 
-    return '<tr style="cursor:pointer;' + rowBg + '" onclick="selectCRMLead(\'' + l.id + '\')">' +
-      '<td style="padding:9px 12px">' +
-        '<strong style="font-size:13px">' + name + '</strong>' +
-        (hasOverdue ? ' <span title="Overdue follow-up" style="color:#dc2626;font-size:10px">⚠️</span>' : '') +
-        (hasToday ? ' <span title="Follow-up today" style="color:#d97706;font-size:10px">🔔</span>' : '') +
-        '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + escC(l.email || '') + (l.mobile ? ' · ' + escC(l.mobile) : '') + '</div>' +
+    return '<tr class="' + rowCls + '" style="cursor:pointer" onclick="selectCRMLead(\'' + l.id + '\')">' +
+      '<td onclick="event.stopPropagation()" style="text-align:center;padding:10px 14px"><input type="checkbox" class="crm-row-check" data-id="' + l.id + '" ' + isChecked + ' onchange="toggleCRMRowCheck(\'' + l.id + '\',this.checked)" style="cursor:pointer"></td>' +
+      '<td style="padding:10px 14px">' +
+        '<div style="display:flex;align-items:center;gap:10px">' +
+          '<span class="crm-avatar ' + avCl + '">' + initials + '</span>' +
+          '<div>' +
+            '<div class="crm-lead-name">' + fullName +
+              (hasOverdue ? ' <span style="font-size:10px" title="Overdue">⚠️</span>' : '') +
+              (hasToday ? ' <span style="font-size:10px" title="Today">🔔</span>' : '') +
+            '</div>' +
+            '<div class="crm-lead-contact">' + escC(l.mobile || '—') + (l.email ? ' &nbsp;·&nbsp; ' + escC(l.email) : '') + '</div>' +
+          '</div>' +
+        '</div>' +
       '</td>' +
-      '<td style="padding:9px 8px">' +
-        '<div style="font-size:12px;font-weight:600;color:var(--navy)">' + escC(l.course) + '</div>' +
-        '<div style="font-size:11px;color:var(--muted)">' + escC(l.centre) + '</div>' +
+      '<td style="padding:10px 14px">' +
+        '<div style="font-size:12px;font-weight:700;color:var(--navy)">' + escC(l.course || '—') + '</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-top:1px">' + icon + ' ' + escC(l.centre || '') + '</div>' +
       '</td>' +
-      '<td style="padding:9px 8px;font-size:11px;color:var(--muted)">' + ownerShort + '</td>' +
-      '<td style="padding:9px 8px;text-align:center"><strong style="font-size:12px;color:' + ageColor + '">' + leadAgeLabel(age) + '</strong></td>' +
-      '<td style="padding:9px 8px;text-align:center"><span class="badge ' + stageClass + '" style="margin:0;font-size:10px">' + escC(l.lead_stage) + '</span>' +
-        (l.lead_sub_stage && l.lead_sub_stage !== 'Unassigned' ? '<div style="font-size:9px;color:var(--muted);margin-top:2px">' + escC(l.lead_sub_stage) + '</div>' : '') +
+      '<td class="crm-col-owner" style="padding:10px 14px;font-size:12px;font-weight:600;color:var(--navy)">' + ownerShort + '</td>' +
+      '<td class="crm-col-age" style="padding:10px 14px;text-align:center">' +
+        '<strong style="font-size:12px;color:' + ageColor + '">' + leadAgeLabel(age) + '</strong>' +
+        '<div style="display:flex;align-items:center;gap:4px;margin-top:4px">' +
+          '<div style="flex:1;height:3px;background:#e5e7eb;border-radius:2px;overflow:hidden">' +
+            '<div style="height:100%;width:' + score + '%;background:' + scColor + ';border-radius:2px;transition:width .3s"></div>' +
+          '</div>' +
+          '<span style="font-size:9px;color:' + scColor + ';font-weight:700;min-width:18px">' + score + '</span>' +
+        '</div>' +
       '</td>' +
-      '<td style="padding:9px 8px;max-width:150px"><span style="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + remark + '">' + (remark || '—') + '</span></td>' +
-      '<td style="padding:9px 8px;text-align:center;white-space:nowrap" onclick="event.stopPropagation()">' + quickBtns + '</td>' +
+      '<td class="crm-col-stage" style="padding:10px 14px;text-align:center">' +
+        '<span class="crm-badge ' + bdgCl + '">' + escC(l.lead_stage) + '</span>' +
+        (l.lead_sub_stage && l.lead_sub_stage !== 'Unassigned' ? '<div style="font-size:9px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:96px">' + escC(l.lead_sub_stage) + '</div>' : '') +
+      '</td>' +
+      '<td class="crm-col-remark" style="padding:10px 14px;max-width:140px"><span title="' + remark + '" style="font-size:11px;color:var(--muted);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (remark || '<em style="opacity:.5">No remark</em>') + '</span></td>' +
+      '<td class="crm-col-slot" style="padding:10px 14px;font-size:11px;color:var(--muted)">' + escC(l.book_my_slot || '—') + '</td>' +
+      '<td class="crm-col-jointime" style="padding:10px 14px;font-size:11px;color:var(--muted)">' + escC(l.when_to_join || '—') + '</td>' +
+      '<td class="crm-col-actions" style="padding:10px 14px;text-align:center;white-space:nowrap" onclick="event.stopPropagation()">' + qb + '</td>' +
     '</tr>';
   }).join('');
 }
@@ -12327,13 +12429,12 @@ function selectCRMLead(leadId) {
   if (subStageSel) subStageSel.value = lead.lead_sub_stage || '';
 
   // Timeline
-  // Reset to notes tab when selecting a new lead
-  switchDetailTab('notes');
+  // Immediately load timeline
+  if (lead.id) loadLeadTimeline(lead.id);
   // Highlight current stage pill
   document.querySelectorAll('.crm-stage-pill').forEach(function(p) {
     p.classList.toggle('active', p.dataset.s === lead.lead_stage);
   });
-  var tl = document.getElementById('crm-timeline-list'); if (tl) tl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--muted);font-size:12px">Click Timeline tab to load activity.</div>';
 
   // Enroll button
   document.getElementById('btn-crm-enroll').style.display = lead.lead_stage === 'Enrolled' ? 'none' : 'flex';
@@ -12469,13 +12570,7 @@ function saveCRMRemark() {
 
 // ── Save Activity Note ────────────────────────────────────────────────────
 function switchDetailTab(tab) {
-  document.getElementById('crm-panel-notes').style.display    = tab === 'notes'    ? 'block' : 'none';
-  document.getElementById('crm-panel-timeline').style.display = tab === 'timeline' ? 'block' : 'none';
-  var tNotes = document.getElementById('crm-tab-notes');
-  var tTL    = document.getElementById('crm-tab-timeline');
-  if (tNotes) { tNotes.style.background = tab === 'notes' ? 'var(--gold)' : 'var(--white)'; tNotes.style.color = tab === 'notes' ? '#fff' : 'var(--navy)'; }
-  if (tTL)    { tTL.style.background    = tab === 'timeline' ? 'var(--gold)' : 'var(--white)'; tTL.style.color = tab === 'timeline' ? '#fff' : 'var(--navy)'; }
-  if (tab === 'timeline' && activeLead) loadLeadTimeline(activeLead.id);
+  // Tabs removed, unified layout used instead
 }
 
 function loadLeadTimeline(leadId) {
@@ -12494,23 +12589,24 @@ function loadLeadTimeline(leadId) {
     }
     var icons = { note:'📝', call:'📞', whatsapp:'💬', email:'📧', meeting:'🤝', stage_change:'🔄', followup:'📅', system:'⚙️' };
     var colors = { note:'#1e40af', call:'#166534', whatsapp:'#065f46', email:'#7c3aed', meeting:'#92400e', stage_change:'#c2410c', followup:'#0369a1', system:'#6b7280' };
-    container.innerHTML = items.map(function(item) {
+    
+    container.innerHTML = '<div class="crm-timeline-feed">' + items.map(function(item) {
       var icon  = icons[item.activity_type]  || '📌';
       var color = colors[item.activity_type] || '#6b7280';
       var dt    = new Date(item.created_at);
-      var dateStr = dt.toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
+      var dateStr = dt.toLocaleDateString('en-IN', { day:'numeric', month:'short' });
       var timeStr = dt.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
-      return '<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9">'
-        + '<div style="width:28px;height:28px;border-radius:50%;background:'+color+'18;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px">'+icon+'</div>'
-        + '<div style="flex:1;min-width:0">'
-        +   '<div style="font-size:12px;color:var(--navy);line-height:1.4">' + escapeHtml(item.body || '') + '</div>'
-        +   '<div style="font-size:10px;color:var(--muted);margin-top:2px">'
-        +     '<strong style="color:'+color+'">' + escapeHtml(item.actor || 'System') + '</strong>'
-        +     ' · ' + dateStr + ' ' + timeStr
-        +   '</div>'
-        + '</div>'
-        + '</div>';
-    }).join('');
+      return '<div class="crm-timeline-item">' +
+        '<div class="crm-timeline-dot" style="border-color:' + color + '"></div>' +
+        '<div class="crm-timeline-card">' +
+          '<div class="crm-timeline-meta">' +
+            '<span>' + icon + ' <strong class="crm-timeline-actor">' + escapeHtml(item.actor || 'System') + '</strong></span>' +
+            '<span>' + dateStr + ' ' + timeStr + '</span>' +
+          '</div>' +
+          '<div class="crm-timeline-body">' + escapeHtml(item.body || '') + '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('') + '</div>';
   });
 }
 
@@ -12559,10 +12655,13 @@ function quickStageChange(newStage) {
       activityType: 'stage_change',
       body: 'Stage changed: ' + oldStage + ' → ' + newStage,
       actor: counselorName || 'Counselor'
-    }, function() {});
+    }, function() {
+      if (activeLead) {
+        loadLeadTimeline(activeLead.id);
+      }
+    });
   });
 }
-
 
 function saveCRMNote() {
   if (!activeLead) return;
@@ -12587,12 +12686,7 @@ function saveCRMNote() {
     }
     input.value = '';
     showToast('Note saved!', 'success');
-    // Refresh timeline if visible
-    if (document.getElementById('crm-panel-timeline').style.display !== 'none') {
-      loadLeadTimeline(activeLead.id);
-    }
-    // Auto switch to timeline
-    switchDetailTab('timeline');
+    loadLeadTimeline(activeLead.id);
   });
 }
 
@@ -12901,12 +12995,17 @@ function applyCRMColumns() {
   document.querySelectorAll('.crm-col-toggle').forEach(function(cb){
     cb.checked = cols[cb.dataset.col] !== false;
   });
-  // Show/hide TH headers
-  var thMap = {owner:'crm-th-owner',age:'crm-th-age',stage:'crm-th-stage',remark:'crm-th-remark',actions:'crm-th-actions',slot:'crm-th-slot',jointime:'crm-th-jointime'};
-  Object.keys(thMap).forEach(function(col){
-    var th = document.getElementById(thMap[col]);
-    if(th) th.style.display = cols[col] ? '' : 'none';
-  });
+  var table = document.getElementById('crm-leads-table');
+  if (table) {
+    var possibleCols = ['owner', 'age', 'stage', 'remark', 'slot', 'jointime', 'actions'];
+    possibleCols.forEach(function(col) {
+      if (cols[col] === false) {
+        table.classList.add('hide-' + col);
+      } else {
+        table.classList.remove('hide-' + col);
+      }
+    });
+  }
 }
 
 function toggleCRMColumnPicker() {
@@ -13159,90 +13258,7 @@ function exportCRMLeadsCSV(selectedOnly) {
   showToast('Exported ' + leads.length + ' leads to CSV.', 'success');
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// PATCH renderCRMLeadsTable TO ADD CHECKBOXES + EXTRA COLS
-// ════════════════════════════════════════════════════════════════════════════
-var _origRenderTable = renderCRMLeadsTable;
-renderCRMLeadsTable = function(list) {
-  if(!CRM_VISIBLE_COLS) loadCRMColumns();
-  var cols = CRM_VISIBLE_COLS || {};
-  var tbody = document.getElementById('crm-leads-tbody');
-  if(!tbody) return;
-  if(!list.length) {
-    tbody.innerHTML = '<tr><td colspan="11"><div class="crm-empty-state"><div class="crm-empty-icon">🔍</div><div class="crm-empty-title">No leads found</div><div class="crm-empty-sub">Try adjusting your filters or add a new lead.</div></div></td></tr>';
-    return;
-  }
-  var stageAvClass = {'New':'av-new','Contacted':'av-contacted','Interested':'av-interested','Demo':'av-demo','Follow-Up Ongoing':'av-followup','Application Initiated':'av-contacted','Enrolled':'av-enrolled','Lost':'av-lost'};
-  var stageBadgeClass = {'New':'st-new','Contacted':'st-contacted','Interested':'st-interested','Demo':'st-demo','Follow-Up Ongoing':'st-followup','Application Initiated':'st-app','Enrolled':'st-enrolled','Lost':'st-lost'};
-  var srcIcon = {'Facebook Lead Ads':'📘','Website':'🌐','WhatsApp':'💬','Walk-In':'🚶','Direct':'📞','Internal Cross-Sell':'🔄'};
-  tbody.innerHTML = list.map(function(l) {
-    var age = leadAgeDays(l);
-    var ageColor = leadAgeColor(age);
-    var hasToday = hasTodayFollowup(l);
-    var hasOverdue = hasOverdueFollowup(l);
-    var rowCls = hasOverdue ? 'row-overdue' : (hasToday ? 'row-today' : '');
-    var fn = (l.first_name||'').trim(), ln = (l.last_name||'').trim();
-    var fullName = escC(fn+(ln?' '+ln:''));
-    var initials = ((fn[0]||'')+(ln[0]||fn[1]||'')).toUpperCase()||'?';
-    var avCl = stageAvClass[l.lead_stage]||'av-contacted';
-    var bdgCl = stageBadgeClass[l.lead_stage]||'st-contacted';
-    var score = Math.min(100,Math.max(0,parseInt(l.lead_score)||0));
-    var scColor = score>=70?'#168b57':score>=40?'#d97706':'#dc2626';
-    var ownerShort = escC((l.lead_owner||'—').split(' ')[0]);
-    var remark = escC((l.lead_remark||'').slice(0,55));
-    var icon = srcIcon[l.source]||'📌';
-    var isChecked = crmSelectedIds.has(l.id)?'checked':'';
-    var qb = '<button class="crm-qa-btn call" title="Connected" onclick="event.stopPropagation();quickLog(\''+l.id+'\',\'call-connected\')">📞</button> '+
-             '<button class="crm-qa-btn" title="No answer" onclick="event.stopPropagation();quickLog(\''+l.id+'\',\'call-no-answer\')">🔕</button> '+
-             '<button class="crm-qa-btn wa" title="WhatsApp" onclick="event.stopPropagation();selectCRMLead(\''+l.id+'\');openWATemplateModal()">💬</button> '+
-             '<button class="crm-qa-btn" title="View" onclick="event.stopPropagation();selectCRMLead(\''+l.id+'\')">👁</button>';
-    return '<tr class="'+rowCls+'" style="cursor:pointer" onclick="selectCRMLead(\''+l.id+'\')">'+
-      '<td onclick="event.stopPropagation()" style="text-align:center;padding:10px 14px"><input type="checkbox" class="crm-row-check" data-id="'+l.id+'" '+isChecked+' onchange="toggleCRMRowCheck(\''+l.id+'\',this.checked)" style="cursor:pointer"></td>'+
-      '<td style="padding:10px 14px">'+
-        '<div style="display:flex;align-items:center;gap:10px">'+
-          '<span class="crm-avatar '+avCl+'">'+initials+'</span>'+
-          '<div>'+
-            '<div class="crm-lead-name">'+fullName+
-              (hasOverdue?' <span style="font-size:10px" title="Overdue">⚠️</span>':'')+
-              (hasToday?' <span style="font-size:10px" title="Today">🔔</span>':'')+
-            '</div>'+
-            '<div class="crm-lead-contact">'+escC(l.mobile||'—')+(l.email?' &nbsp;·&nbsp; '+escC(l.email):'')+'</div>'+
-          '</div>'+
-        '</div>'+
-      '</td>'+
-      '<td style="padding:10px 14px">'+
-        '<div style="font-size:12px;font-weight:700;color:var(--navy)">'+escC(l.course||'—')+'</div>'+
-        '<div style="font-size:11px;color:var(--muted);margin-top:1px">'+icon+' '+escC(l.centre||'')+'</div>'+
-      '</td>'+
-      (cols.owner!==false?'<td class="crm-col-owner" style="padding:10px 14px;font-size:12px;font-weight:600;color:var(--navy)">'+ownerShort+'</td>':'')+
-      (cols.age!==false?'<td class="crm-col-age" style="padding:10px 14px;text-align:center">'+
-        '<strong style="font-size:12px;color:'+ageColor+'">'+leadAgeLabel(age)+'</strong>'+
-        '<div style="display:flex;align-items:center;gap:4px;margin-top:4px">'+
-          '<div style="flex:1;height:3px;background:#e5e7eb;border-radius:2px;overflow:hidden">'+
-            '<div style="height:100%;width:'+score+'%;background:'+scColor+';border-radius:2px;transition:width .3s"></div>'+
-          '</div>'+
-          '<span style="font-size:9px;color:'+scColor+';font-weight:700;min-width:18px">'+score+'</span>'+
-        '</div>'+
-      '</td>':'')+
-      (cols.stage!==false?'<td class="crm-col-stage" style="padding:10px 14px;text-align:center">'+
-        '<span class="crm-badge '+bdgCl+'">'+escC(l.lead_stage)+'</span>'+
-        (l.lead_sub_stage&&l.lead_sub_stage!=='Unassigned'?'<div style="font-size:9px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:96px">'+escC(l.lead_sub_stage)+'</div>':'')+'</td>':'')+
-      (cols.remark!==false?'<td class="crm-col-remark" style="padding:10px 14px;max-width:140px"><span title="'+remark+'" style="font-size:11px;color:var(--muted);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(remark||'<em style="opacity:.5">No remark</em>')+'</span></td>':'')+
-      (cols.slot?'<td class="crm-col-slot" style="padding:10px 14px;font-size:11px;color:var(--muted)">'+escC(l.book_my_slot||'—')+'</td>':'')+
-      (cols.jointime?'<td class="crm-col-jointime" style="padding:10px 14px;font-size:11px;color:var(--muted)">'+escC(l.when_to_join||'—')+'</td>':'')+
-      (cols.actions!==false?'<td class="crm-col-actions" style="padding:10px 14px;text-align:center;white-space:nowrap" onclick="event.stopPropagation()">'+qb+'</td>':'')+
-    '</tr>';
-  }).join('');
-};
-
-// ════════════════════════════════════════════════════════════════════════════
-// INIT: load columns on CRM tab load
-// ════════════════════════════════════════════════════════════════════════════
-var _origLoadCRMData = loadCRMData;
-loadCRMData = function() {
-  loadCRMColumns();
-  _origLoadCRMData();
-};
+// Checkboxes and Columns patch merged into main table renderer definition above.
 </script>
 
 <!-- Add Past Alumni Modal -->

@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Instructor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=27"></script>
+<script src="/assets/shared.js?v=28"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style id="dyn-css"></style>
 <style>
@@ -1245,10 +1245,10 @@
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
         <div>
           <h3 style="margin:0 0 2px;font-size:16px;font-weight:700;">🗂 Test Templates</h3>
-          <p style="margin:0;font-size:12px;color:#6b7280;">Save reusable question sets. Deploy them to any batch in seconds.</p>
+          <p style="margin:0;font-size:12px;color:#6b7280;">Save Weekly Test 1/2/3 and Final Test templates, then assign them to batches whenever needed.</p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="ot-btn" onclick="tmplSeedDefaults()" style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;">🌱 Load Default Templates</button>
+          <button class="ot-btn" onclick="tmplSeedDefaults()" style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;">🌱 Create Weekly/Final Templates</button>
           <button class="ot-btn success" onclick="tmplOpenCreate()">➕ Create Template</button>
         </div>
       </div>
@@ -1309,10 +1309,10 @@
           <input type="hidden" id="tmpl-deploy-id">
           <div style="display:grid;gap:10px;">
             <div>
-              <label style="font-size:12px;font-weight:600;color:#374151;">Batch Code(s) *</label>
-              <input id="tmpl-deploy-batches" type="text" placeholder="e.g. BLR-DG-JUL26 or BLR-DG-JUL26,SUR-DG-JUL26"
-                style="width:100%;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;margin-top:4px;box-sizing:border-box;">
-              <span style="font-size:10px;color:#9ca3af;">Comma-separate for multiple batches</span>
+              <label style="font-size:12px;font-weight:600;color:#374151;">Select Batch(es) *</label>
+              <input id="tmpl-deploy-batches" type="hidden">
+              <div id="tmpl-deploy-batch-list" style="margin-top:6px;max-height:180px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:10px;padding:8px;background:#f9fafb;"></div>
+              <span id="tmpl-deploy-batch-count" style="font-size:10px;color:#9ca3af;">No batches selected</span>
             </div>
             <div>
               <label style="font-size:12px;font-weight:600;color:#374151;">Test Date</label>
@@ -5404,6 +5404,7 @@ function otCreateTest() {
 // ── Templates ────────────────────────────────────────────────
 
 var tmplQuestionIds = [];   // question IDs in the template being created/edited
+var tmplTemplatesCache = [];
 
 function tmplLoadTemplates() {
   var wrap = document.getElementById('tmpl-list-wrap');
@@ -5415,22 +5416,23 @@ function tmplLoadTemplates() {
       wrap.innerHTML = '<div style="text-align:center;padding:28px 20px">'
         + '<div style="font-size:32px;margin-bottom:8px">🗂</div>'
         + '<div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:4px">No templates found</div>'
-        + '<div style="font-size:12px;color:#6b7280;margin-bottom:16px">Templates are not set up yet. Click <b>🌱 Load Default Templates</b> to add IGI standard templates, or <b>➕ Create Template</b> to build your own.</div>'
+        + '<div style="font-size:12px;color:#6b7280;margin-bottom:16px">Templates are not set up yet. Click <b>🌱 Create Weekly/Final Templates</b> to add Weekly Test 1, Weekly Test 2, Weekly Test 3, and Final Test.</div>'
         + '<div style="font-size:11px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin:0 auto 14px;max-width:520px;text-align:left;">Backend response: ' + escHtml(reason) + '</div>'
         + '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'
-        + '<button class="ot-btn" onclick="tmplSeedDefaults()" style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;">🌱 Load Default Templates</button>'
+        + '<button class="ot-btn" onclick="tmplSeedDefaults()" style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;">🌱 Create Weekly/Final Templates</button>'
         + '<button class="ot-btn success" onclick="tmplOpenCreate()">➕ Create Template</button>'
         + '</div></div>';
       return;
     }
     var templates = d.templates || [];
+    tmplTemplatesCache = templates;
     if (!templates.length) {
       wrap.innerHTML = '<div style="text-align:center;padding:28px 20px">'
         + '<div style="font-size:32px;margin-bottom:8px">🗂</div>'
         + '<div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:4px">No templates yet</div>'
-        + '<div style="font-size:12px;color:#6b7280;margin-bottom:16px">Click <b>🌱 Load Default Templates</b> to add IGI standard templates, or <b>➕ Create Template</b> to build from scratch.</div>'
+        + '<div style="font-size:12px;color:#6b7280;margin-bottom:16px">Click <b>🌱 Create Weekly/Final Templates</b> to add Weekly Test 1, Weekly Test 2, Weekly Test 3, and Final Test, or <b>➕ Create Template</b> to build from scratch.</div>'
         + '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'
-        + '<button class="ot-btn" onclick="tmplSeedDefaults()" style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;">🌱 Load Default Templates</button>'
+        + '<button class="ot-btn" onclick="tmplSeedDefaults()" style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;">🌱 Create Weekly/Final Templates</button>'
         + '<button class="ot-btn success" onclick="tmplOpenCreate()">➕ Create Template</button>'
         + '</div></div>';
       return;
@@ -5446,15 +5448,15 @@ function tmplLoadTemplates() {
       + '</tr></thead><tbody>';
     templates.forEach(function(t) {
       html += '<tr style="border-bottom:1px solid var(--border,#f3f4f6);">'
-        + '<td style="padding:10px 12px;font-weight:600;">' + (t.templateName || t.title || '-') + '</td>'
-        + '<td style="padding:10px 12px;"><span style="background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:20px;font-size:11px;">' + (t.testType || 'Weekly') + '</span></td>'
+        + '<td style="padding:10px 12px;font-weight:600;">' + escHtml(t.templateName || t.title || '-') + '</td>'
+        + '<td style="padding:10px 12px;"><span style="background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:20px;font-size:11px;">' + escHtml(t.testType || 'Weekly') + '</span></td>'
         + '<td style="padding:10px 12px;text-align:center;">' + (t.questionCount || 0) + '</td>'
         + '<td style="padding:10px 12px;text-align:center;">' + (t.durationMins || 60) + ' min</td>'
         + '<td style="padding:10px 12px;text-align:center;">' + (t.passingScore || 60) + '%</td>'
         + '<td style="padding:10px 12px;text-align:right;white-space:nowrap;">'
-        + '<button class="ot-btn success" style="font-size:11px;padding:4px 10px;margin-left:4px;" onclick="tmplOpenDeploy(' + JSON.stringify(t) + ')">📋 Use for Batch</button>'
-        + '<button class="ot-btn" style="font-size:11px;padding:4px 10px;margin-left:4px;" onclick="tmplOpenEdit(' + JSON.stringify(t) + ')">✏️ Edit</button>'
-        + '<button class="ot-btn danger" style="font-size:11px;padding:4px 10px;margin-left:4px;" onclick="tmplDelete(\'' + t.testId + '\',\'' + (t.templateName||t.title||'').replace(/'/g,'') + '\')">🗑 Delete</button>'
+        + '<button class="ot-btn success" style="font-size:11px;padding:4px 10px;margin-left:4px;" onclick="tmplOpenDeployById(\'' + escHtml(t.testId) + '\')">📋 Use for Batch</button>'
+        + '<button class="ot-btn" style="font-size:11px;padding:4px 10px;margin-left:4px;" onclick="tmplOpenEditById(\'' + escHtml(t.testId) + '\')">✏️ Edit</button>'
+        + '<button class="ot-btn danger" style="font-size:11px;padding:4px 10px;margin-left:4px;" onclick="tmplDelete(\'' + escHtml(t.testId) + '\',\'' + escHtml((t.templateName||t.title||'').replace(/'/g,'')) + '\')">🗑 Delete</button>'
         + '</td></tr>';
     });
     html += '</tbody></table>';
@@ -5462,45 +5464,103 @@ function tmplLoadTemplates() {
   });
 }
 
+function tmplFindTemplate(testId) {
+  return (tmplTemplatesCache || []).find(function(t) { return String(t.testId) === String(testId); }) || null;
+}
+
+function tmplOpenEditById(testId) {
+  var t = tmplFindTemplate(testId);
+  if (!t) { alert('Template not found. Please refresh and try again.'); return; }
+  tmplOpenEdit(t);
+}
+
+function tmplOpenDeployById(testId) {
+  var t = tmplFindTemplate(testId);
+  if (!t) { alert('Template not found. Please refresh and try again.'); return; }
+  tmplOpenDeploy(t);
+}
+
 function tmplSeedDefaults() {
   var defaults = [
-    { templateName: 'Weekly Test — Short', testType: 'Weekly', durationMins: 30, passingScore: 60 },
-    { templateName: 'Weekly Test — Standard', testType: 'Weekly', durationMins: 45, passingScore: 60 },
-    { templateName: 'Chapter Assessment', testType: 'Weekly', durationMins: 60, passingScore: 65 },
-    { templateName: 'Mock Exam', testType: 'Mock', durationMins: 90, passingScore: 70 },
-    { templateName: 'Final Examination', testType: 'Final', durationMins: 120, passingScore: 75 }
+    { testId: 'TMPL-WEEKLY-1', templateName: 'Weekly Test 1', testType: 'Weekly', durationMins: 30, passingScore: 60 },
+    { testId: 'TMPL-WEEKLY-2', templateName: 'Weekly Test 2', testType: 'Weekly', durationMins: 30, passingScore: 60 },
+    { testId: 'TMPL-WEEKLY-3', templateName: 'Weekly Test 3', testType: 'Weekly', durationMins: 45, passingScore: 60 },
+    { testId: 'TMPL-FINAL', templateName: 'Final Test', testType: 'Final', durationMins: 90, passingScore: 60 }
   ];
   var wrap = document.getElementById('tmpl-list-wrap');
-  wrap.innerHTML = '<div style="color:#6b7280;font-size:13px;text-align:center;padding:24px;">Creating default templates…</div>';
-  var done = 0;
-  var failed = [];
-  defaults.forEach(function(t) {
-    gasGet({
-      action: 'saveTestTemplate',
-      templateName: t.templateName,
-      title: t.templateName,
-      testType: t.testType,
-      durationMins: t.durationMins,
-      passingScore: t.passingScore,
-      instructor: instructorName
-    }, function(e, d) {
-      done++;
-      if (e || !d || d.status !== 'ok') failed.push(t.templateName + ': ' + (d && d.reason ? d.reason : String(e || 'failed')));
-      if (done === defaults.length) {
-        if (failed.length) {
-          wrap.innerHTML = '<div style="text-align:center;padding:28px 20px">'
-            + '<div style="font-size:32px;margin-bottom:8px">⚠</div>'
-            + '<div style="font-size:14px;font-weight:600;color:#991b1b;margin-bottom:6px">Default templates could not be created</div>'
-            + '<div style="font-size:12px;color:#6b7280;margin-bottom:12px">The Templates migration may not be applied in Supabase yet.</div>'
-            + '<div style="font-size:11px;color:#7f1d1d;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 10px;text-align:left;white-space:pre-wrap;">' + escHtml(failed.join('\n')) + '</div>'
-            + '<div style="margin-top:14px"><button class="ot-btn" onclick="tmplLoadTemplates()">↻ Retry</button></div>'
-            + '</div>';
+  wrap.innerHTML = '<div style="color:#6b7280;font-size:13px;text-align:center;padding:24px;">Creating Weekly Test 1, Weekly Test 2, Weekly Test 3 and Final Test templates…</div>';
+  function runSeed() {
+    var done = 0;
+    var failed = [];
+    defaults.forEach(function(t) {
+      var qids = tmplDefaultQuestionIds(t.templateName);
+      gasGet({
+        action: 'saveTestTemplate',
+        testId: t.testId,
+        templateName: t.templateName,
+        title: t.templateName,
+        testType: t.testType,
+        durationMins: t.durationMins,
+        passingScore: t.passingScore,
+        instructor: instructorName
+      }, function(e, d) {
+        if (e || !d || d.status !== 'ok') {
+          done++;
+          failed.push(t.templateName + ': ' + (d && d.reason ? d.reason : String(e || 'failed')));
+          if (done === defaults.length) tmplFinishSeedDefaults(failed);
           return;
         }
-        tmplLoadTemplates();
-      }
+        gasGet({ action: 'saveTestQuestions', testId: d.testId, questionIds: JSON.stringify(qids) }, function(e2, d2) {
+          done++;
+          if (e2 || !d2 || d2.status !== 'ok') failed.push(t.templateName + ': questions not saved');
+          if (done === defaults.length) tmplFinishSeedDefaults(failed);
+        });
+      });
     });
-  });
+  }
+  if (!otAllQuestions || !otAllQuestions.length) {
+    gasGet({action:'getQuestionBank', instructor:instructorName||'admin', includeCorrect:'true'}, function(err, d) {
+      if (!err && d && d.status === 'ok') {
+        otAllQuestions = ((d.questions || []).concat(d.customQuestions || [])).map(otNormalizeQuestion);
+        otAllQuestions.forEach(function(q) { otQuestionsCache[q.id] = q; });
+      }
+      runSeed();
+    });
+  } else {
+    runSeed();
+  }
+}
+
+function tmplFinishSeedDefaults(failed) {
+  var wrap = document.getElementById('tmpl-list-wrap');
+  if (failed.length) {
+    wrap.innerHTML = '<div style="text-align:center;padding:28px 20px">'
+      + '<div style="font-size:32px;margin-bottom:8px">⚠</div>'
+      + '<div style="font-size:14px;font-weight:600;color:#991b1b;margin-bottom:6px">Default templates could not be created</div>'
+      + '<div style="font-size:12px;color:#6b7280;margin-bottom:12px">The Templates migration may not be applied in Supabase yet.</div>'
+      + '<div style="font-size:11px;color:#7f1d1d;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 10px;text-align:left;white-space:pre-wrap;">' + escHtml(failed.join('\n')) + '</div>'
+      + '<div style="margin-top:14px"><button class="ot-btn" onclick="tmplLoadTemplates()">↻ Retry</button></div>'
+      + '</div>';
+    return;
+  }
+  tmplLoadTemplates();
+}
+
+function tmplDefaultQuestionIds(templateName) {
+  var all = (otAllQuestions || []).filter(function(q) { return q && q.id; });
+  var textFor = function(q) { return String((q.topic || '') + ' ' + (q.question || '')).toLowerCase(); };
+  var configs = {
+    'Weekly Test 1': { limit: 15, words: ['clarity', 'color', 'colour', 'inclusion', 'blemish'] },
+    'Weekly Test 2': { limit: 15, words: ['measurement', 'proportion', 'polish', 'symmetry', '4c', 'carat', 'cut'] },
+    'Weekly Test 3': { limit: 20, words: ['fancy', 'treatment', 'synthetic', 'imitation', 'grading', 'diamond'] },
+    'Final Test':    { limit: 30, words: [] }
+  };
+  var cfg = configs[templateName] || { limit: 15, words: [] };
+  var picked = cfg.words.length
+    ? all.filter(function(q) { var hay = textFor(q); return cfg.words.some(function(w) { return hay.indexOf(w) !== -1; }); })
+    : all.slice();
+  if (picked.length < Math.min(5, cfg.limit)) picked = all.slice();
+  return picked.slice(0, cfg.limit).map(function(q) { return String(q.id); });
 }
 
 function tmplOpenCreate() {
@@ -5530,7 +5590,7 @@ function tmplOpenEdit(t) {
   document.getElementById('tmpl-list-wrap').style.display = 'none';
 
   // Load existing questions
-  gasGet({ action: 'getTestQuestions', testId: t.testId }, function(err, d) {
+  gasGet({ action: 'getTestQuestionsInstructor', testId: t.testId, instructor: instructorName }, function(err, d) {
     var qs = (d && d.questions) || [];
     tmplQuestionIds = qs.map(function(q){ return String(q.questionId || q.id); });
     tmplRenderQList(qs);
@@ -5551,7 +5611,7 @@ function tmplRenderQList(questions) {
     if (text.length > 80) text = text.slice(0, 80) + '…';
     return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #f3f4f6;">'
       + '<span style="color:#6b7280;font-size:11px;min-width:20px;">' + (i+1) + '.</span>'
-      + '<span style="flex:1;font-size:12px;">' + text + '</span>'
+      + '<span style="flex:1;font-size:12px;">' + escHtml(text) + '</span>'
       + '<button onclick="tmplRemoveQ(\'' + qid + '\')" style="border:none;background:none;color:#ef4444;cursor:pointer;font-size:14px;padding:0 4px;">×</button>'
       + '</div>';
   }).join('');
@@ -5595,7 +5655,6 @@ function tmplCancelForm() {
 function tmplSaveTemplate() {
   var name = (document.getElementById('tmpl-name').value || '').trim();
   if (!name) { alert('Please enter a template name.'); return; }
-  if (!tmplQuestionIds.length) { alert('Please add at least one question.'); return; }
   var tid = document.getElementById('tmpl-edit-id').value || '';
   var payload = {
     action:       'saveTestTemplate',
@@ -5611,12 +5670,11 @@ function tmplSaveTemplate() {
   gasGet(payload, function(err, d) {
     if (err || !d || d.status !== 'ok') { alert('Failed to save template. Please try again.'); return; }
     var newTid = d.testId;
-    // Save the questions
     gasGet({ action: 'saveTestQuestions', testId: newTid, questionIds: JSON.stringify(tmplQuestionIds) }, function(err2) {
       if (err2) { alert('Template saved but questions failed to save. Please edit and retry.'); }
       tmplCancelForm();
       tmplLoadTemplates();
-      alert('✅ Template "' + name + '" saved with ' + tmplQuestionIds.length + ' questions.');
+      alert('✅ Template "' + name + '" saved with ' + tmplQuestionIds.length + ' question' + (tmplQuestionIds.length === 1 ? '' : 's') + '.');
     });
   });
 }
@@ -5631,6 +5689,65 @@ function tmplOpenDeploy(t) {
   document.getElementById('tmpl-deploy-status').textContent = '';
   var modal = document.getElementById('tmpl-deploy-modal');
   modal.style.display = 'flex';
+  if (instructorBatchesCache && instructorBatchesCache.length) {
+    tmplRenderDeployBatchList([]);
+    return;
+  }
+  var wrap = document.getElementById('tmpl-deploy-batch-list');
+  var countEl = document.getElementById('tmpl-deploy-batch-count');
+  if (wrap) wrap.innerHTML = '<div style="font-size:12px;color:#6b7280;text-align:center;padding:12px;">Loading your batches...</div>';
+  if (countEl) countEl.textContent = 'Loading batches...';
+  gasGet({action:'getInstructorBatches', instructor:instructorName}, function(e, d) {
+    if (!e && d && d.batches) {
+      instructorBatchesCache = d.batches;
+      instructorBatchesCache.forEach(function(b) {
+        if (!b.syllabus || !b.syllabus.length) b.syllabus = getSyllabusForCourse(b.course);
+      });
+    }
+    tmplRenderDeployBatchList([]);
+  });
+}
+
+function tmplRenderDeployBatchList(selectedCodes) {
+  var wrap = document.getElementById('tmpl-deploy-batch-list');
+  var countEl = document.getElementById('tmpl-deploy-batch-count');
+  var hidden = document.getElementById('tmpl-deploy-batches');
+  if (!wrap || !hidden) return;
+  var selected = {};
+  (selectedCodes || []).forEach(function(c){ selected[String(c).trim()] = true; });
+  var batches = (typeof instructorBatchesCache !== 'undefined' && instructorBatchesCache) ? instructorBatchesCache : [];
+  if (!batches.length) {
+    wrap.innerHTML = '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:12px;">No batches available for this instructor.</div>';
+    if (countEl) countEl.textContent = 'No batches available';
+    hidden.value = '';
+    return;
+  }
+  var today = new Date(); today.setHours(0,0,0,0);
+  var html = batches.map(function(b) {
+    var code = b.batchCode || '';
+    var isInactive = b.active === false;
+    var isPast = b.endDateISO && (new Date(b.endDateISO) < today);
+    var disabled = (isInactive || isPast) ? ' disabled' : '';
+    var checked = selected[code] ? ' checked' : '';
+    var status = isInactive ? 'Inactive' : (isPast ? 'Completed' : ((b.startDateISO && new Date(b.startDateISO) > today) ? 'Upcoming' : 'Active'));
+    return '<label style="display:flex;align-items:flex-start;gap:8px;padding:7px 8px;border-bottom:1px solid #eef2f7;cursor:' + (disabled ? 'not-allowed' : 'pointer') + ';opacity:' + (disabled ? '.55' : '1') + ';">'
+      + '<input type="checkbox" class="tmpl-deploy-batch-cb" value="' + escHtml(code) + '"' + checked + disabled + ' onchange="tmplSyncDeployBatchSelection()" style="margin-top:2px;accent-color:#0f172a;">'
+      + '<span style="flex:1;font-size:12px;color:#374151;"><b>' + escHtml(code) + '</b>'
+      + '<span style="color:#6b7280;"> - ' + escHtml(b.course || b.courseName || '') + ' · ' + escHtml(b.centre || '') + '</span>'
+      + '<span style="display:inline-block;margin-left:6px;font-size:10px;color:#1d4ed8;background:#eff6ff;border-radius:999px;padding:1px 6px;">' + status + '</span>'
+      + '</span></label>';
+  }).join('');
+  wrap.innerHTML = html;
+  tmplSyncDeployBatchSelection();
+}
+
+function tmplSyncDeployBatchSelection() {
+  var boxes = Array.from(document.querySelectorAll('.tmpl-deploy-batch-cb:checked'));
+  var codes = boxes.map(function(cb){ return cb.value; });
+  var hidden = document.getElementById('tmpl-deploy-batches');
+  var countEl = document.getElementById('tmpl-deploy-batch-count');
+  if (hidden) hidden.value = codes.join(',');
+  if (countEl) countEl.textContent = codes.length ? (codes.length + ' batch' + (codes.length === 1 ? '' : 'es') + ' selected') : 'No batches selected';
 }
 
 function tmplCloseDeployModal() {
@@ -5641,7 +5758,7 @@ function tmplCloseDeployModal() {
 function tmplConfirmDeploy() {
   var tid = document.getElementById('tmpl-deploy-id').value;
   var batches = (document.getElementById('tmpl-deploy-batches').value || '').trim();
-  if (!batches) { alert('Please enter at least one batch code.'); return; }
+  if (!batches) { alert('Please select at least one batch.'); return; }
 
   var statusEl = document.getElementById('tmpl-deploy-status');
   statusEl.style.color = '#6b7280';

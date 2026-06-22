@@ -133,6 +133,7 @@ window.gasGet = (function () {
     return String(s);
   }
   function nowISO() { return new Date().toISOString(); }
+  function uniqueId(prefix) { return prefix + Date.now() + '-' + Math.random().toString(36).slice(2, 7).toUpperCase(); }
   function todayYMD() { var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
   function sameName(n1, n2) {
     var clean = function(s) {
@@ -3781,7 +3782,7 @@ window.gasGet = (function () {
     var instr = String(p.instructor || '').trim();
     GET('online_tests', 'created_by=eq.' + encodeURIComponent(instr) + '&order=created_at.desc', function(e, rows) {
       if (e) { cb(null, { status: 'ok', tests: [] }); return; }
-      var tests = rows || [];
+      var tests = (rows || []).filter(function(r) { return r.is_template !== true && r.is_template !== 'true'; });
       if (!tests.length) { cb(null, { status: 'ok', tests: [] }); return; }
       // Fetch question counts for all tests in one query
       var testIds = tests.map(function(r) { return r.test_id; });
@@ -3850,7 +3851,7 @@ window.gasGet = (function () {
 
   /* createOnlineTest */
   function h_createOnlineTest(p, cb) {
-    var tid = 'OT-' + Date.now();
+    var tid = uniqueId('OT-');
     var batchCodes = p.batchCodes || p.batchCode || '';
     var batchCode  = batchCodes.split(',')[0].trim();
     var isNeg = p.negativeMarking === 'true' || p.negativeMarking === 'Yes';
@@ -4037,7 +4038,7 @@ window.gasGet = (function () {
 
   /* getTestTemplates — returns all saved templates with question count */
   function h_getTestTemplates(p, cb) {
-    GET('online_tests', 'is_template=eq.true&order=created_at.desc', function(e, templates) {
+    GET('online_tests', 'is_template=eq.true&order=template_name.asc', function(e, templates) {
       if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
       templates = templates || [];
       if (!templates.length) { cb(null, { status: 'ok', templates: [] }); return; }
@@ -4065,7 +4066,7 @@ window.gasGet = (function () {
 
   /* saveTestTemplate — create or update a template (no batch assigned) */
   function h_saveTestTemplate(p, cb) {
-    var tid = p.testId || ('TMPL-' + Date.now());
+    var tid = p.testId || uniqueId('TMPL-');
     var payload = {
       test_id:       tid,
       title:         p.title || p.templateName || 'Untitled Template',
@@ -4075,7 +4076,7 @@ window.gasGet = (function () {
       passing_score: parseInt(p.passingScore || 60, 10),
       status:        'Draft',
       is_template:   true,
-      batch_code:    '',
+      batch_code:    null,
       batch_codes:   '',
       created_by:    p.instructor || '',
       created_at:    p.testId ? undefined : nowISO()  // only set on create
@@ -4101,7 +4102,8 @@ window.gasGet = (function () {
     GET('online_tests', 'test_id=eq.' + encodeURIComponent(srcId), function(e, tests) {
       if (e || !tests || !tests.length) { cb(null, { status: 'error', reason: 'template_not_found' }); return; }
       var t = tests[0];
-      var newId = 'OT-' + Date.now();
+      if (t.is_template !== true && t.is_template !== 'true') { cb(null, { status: 'error', reason: 'source_is_not_template' }); return; }
+      var newId = uniqueId('OT-');
       var newTest = {
         test_id:          newId,
         title:            t.title,
@@ -4114,9 +4116,9 @@ window.gasGet = (function () {
         batch_code:       batchCodes[0],
         batch_codes:      batchCodes.join(','),
         results_released: 'No',
+        scheduled_at:     p.heldOn || null,
         created_by:       p.instructor || t.created_by,
-        created_at:       nowISO(),
-        held_on:          p.heldOn || null
+        created_at:       nowISO()
       };
       POST('online_tests', 'on_conflict=test_id', newTest, function(e2) {
         if (e2) { cb(null, { status: 'error', reason: String(e2) }); return; }

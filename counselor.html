@@ -1783,6 +1783,7 @@
           <div style="position:relative">
             <button onclick="toggleCRMListMore(this)" title="More actions" style="border:1px solid var(--border);background:var(--white);border-radius:7px;padding:6px 10px;font-size:16px;cursor:pointer;line-height:1">⋮</button>
             <div id="crm-list-more-menu" style="display:none;position:absolute;top:36px;right:0;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:300;min-width:200px;overflow:hidden;font-size:12px">
+              <div onclick="openBulkUploadModal();toggleCRMListMore()" class="crm-qv-item">📤 Bulk Offline Upload</div>
               <div onclick="exportCRMLeadsCSV();toggleCRMListMore()" class="crm-qv-item">⬇️ Download Leads (CSV)</div>
               <div onclick="bulkChangeCRMStage();toggleCRMListMore()" class="crm-qv-item">🏷️ Change Lead Stage</div>
               <div onclick="openBulkWAModal();toggleCRMListMore()" class="crm-qv-item">💬 Communicate (WhatsApp)</div>
@@ -14686,6 +14687,231 @@ function exportCRMLeadsCSV(selectedOnly) {
 }
 
 // Checkboxes and Columns patch merged into main table renderer definition above.
+
+// ── Bulk Offline Upload ────────────────────────────────────────────────────
+var _bulkStep = 1;
+var _bulkRows = [];
+var _bulkHeaders = [];
+
+function openBulkUploadModal() {
+  _bulkStep = 1; _bulkRows = []; _bulkHeaders = [];
+  document.getElementById('bulk-upload-modal').style.display = 'flex';
+  bulkShowStep(1);
+}
+function closeBulkUploadModal() {
+  document.getElementById('bulk-upload-modal').style.display = 'none';
+  var fi = document.getElementById('bulk-file-input'); if (fi) fi.value = '';
+  document.getElementById('bulk-file-info').style.display = 'none';
+  document.getElementById('bulk-file-err').style.display = 'none';
+  document.getElementById('bulk-import-result').style.display = 'none';
+}
+function bulkShowStep(n) {
+  _bulkStep = n;
+  [1,2,3].forEach(function(i) {
+    var pane = document.getElementById('bulk-step-' + i);
+    var tab  = document.getElementById('bulk-step-' + i + '-tab');
+    if (!pane || !tab) return;
+    pane.style.display = (i === n) ? 'block' : 'none';
+    tab.style.color = (i === n) ? 'var(--navy)' : 'var(--muted)';
+    tab.style.fontWeight = (i === n) ? '700' : '600';
+    tab.style.borderBottom = (i === n) ? '2px solid var(--navy)' : 'none';
+  });
+  document.getElementById('bulk-btn-back').style.display = (n > 1) ? 'inline-block' : 'none';
+  var nextBtn = document.getElementById('bulk-btn-next');
+  if (n === 3) {
+    nextBtn.textContent = '⬆ Import Leads';
+    nextBtn.onclick = function() { doBulkImport(); };
+  } else {
+    nextBtn.textContent = 'Next →';
+    nextBtn.onclick = function() { bulkGoNext(); };
+  }
+}
+function bulkGoNext() {
+  if (_bulkStep === 1) { bulkShowStep(2); }
+  else if (_bulkStep === 2) {
+    if (!_bulkRows.length) {
+      var errEl = document.getElementById('bulk-file-err');
+      errEl.textContent = 'Please upload a CSV file first.';
+      errEl.style.display = 'block'; return;
+    }
+    buildBulkPreview();
+    bulkShowStep(3);
+  }
+}
+function bulkGoBack() {
+  if (_bulkStep > 1) bulkShowStep(_bulkStep - 1);
+}
+
+function downloadSampleCSV() {
+  var cols = ['First Name','Last Name','Email','Mobile','Alternate Mobile','State','City','Course','Centre','Source','Medium','Campaign','When to Join','Current Profession','Payment Plan','Course Mode','Notes'];
+  var sample = [
+    ['Priya','Sharma','priya@example.com','9876543210','','Maharashtra','Mumbai','Diamond Graduate','Mumbai','Website','CPC','DG2026','Immediately','Professional','Full Payment','Offline','Interested in DG program'],
+    ['Rahul','Patel','rahul@example.com','9876543211','','Gujarat','Surat','Colored Stone Graduate','Surat','Facebook','','','Within 1 Month','Student','EMI','Online','']
+  ];
+  var csv = [cols.join(',')].concat(sample.map(function(r) { return r.map(function(v){ return '"'+v+'"'; }).join(','); })).join('\n');
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'igi_lead_upload_template.csv';
+  a.click();
+}
+
+function handleBulkDrop(e) {
+  e.preventDefault();
+  document.getElementById('bulk-drop-zone').style.borderColor = 'var(--border)';
+  var file = e.dataTransfer.files[0];
+  if (file) parseBulkCSV(file);
+}
+function handleBulkFileSelect(e) {
+  var file = e.target.files[0];
+  if (file) parseBulkCSV(file);
+}
+
+function parseBulkCSV(file) {
+  var errEl = document.getElementById('bulk-file-err');
+  errEl.style.display = 'none';
+  if (!file.name.match(/\.csv$/i)) {
+    errEl.textContent = 'Only .csv files are supported.';
+    errEl.style.display = 'block'; return;
+  }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var lines = e.target.result.split(/\r?\n/).filter(function(l){ return l.trim(); });
+    if (lines.length < 2) {
+      errEl.textContent = 'CSV must have a header row and at least one data row.';
+      errEl.style.display = 'block'; return;
+    }
+    _bulkHeaders = parseCSVLine(lines[0]);
+    _bulkRows = lines.slice(1).map(function(l){ return parseCSVLine(l); }).filter(function(r){ return r.some(function(v){ return v.trim(); }); });
+    if (_bulkRows.length > 5000) { _bulkRows = _bulkRows.slice(0, 5000); }
+    document.getElementById('bulk-file-name').textContent = file.name;
+    document.getElementById('bulk-file-rows').textContent = '(' + _bulkRows.length + ' rows)';
+    document.getElementById('bulk-file-info').style.display = 'block';
+    document.getElementById('bulk-drop-zone').style.borderColor = 'var(--navy)';
+  };
+  reader.readAsText(file);
+}
+
+function parseCSVLine(line) {
+  var result = [], cur = '', inQ = false;
+  for (var i = 0; i < line.length; i++) {
+    var c = line[i];
+    if (c === '"') { inQ = !inQ; }
+    else if (c === ',' && !inQ) { result.push(cur.trim()); cur = ''; }
+    else { cur += c; }
+  }
+  result.push(cur.trim());
+  return result;
+}
+
+function buildBulkPreview() {
+  var head = document.getElementById('bulk-preview-head');
+  var body = document.getElementById('bulk-preview-body');
+  var info = document.getElementById('bulk-preview-info');
+  info.textContent = 'Showing first 5 of ' + _bulkRows.length + ' rows. All rows will be imported.';
+
+  var hRow = '<tr>' + _bulkHeaders.map(function(h){ return '<th style="padding:7px 10px;text-align:left;font-size:11px;color:var(--muted);white-space:nowrap;border-bottom:1.5px solid var(--border)">' + h + '</th>'; }).join('') + '</tr>';
+  head.innerHTML = hRow;
+
+  var preview = _bulkRows.slice(0, 5);
+  body.innerHTML = preview.map(function(row, ri) {
+    return '<tr style="background:' + (ri%2?'var(--off)':'var(--white)') + '">' +
+      _bulkHeaders.map(function(h, i){ return '<td style="padding:6px 10px;font-size:11.5px;border-bottom:1px solid var(--border);white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis">' + (row[i]||'') + '</td>'; }).join('') + '</tr>';
+  }).join('');
+
+  document.getElementById('bulk-import-result').style.display = 'none';
+}
+
+function colIdx(h) {
+  var map = {
+    'first name':0,'last name':1,'email':2,'mobile':3,'alternate mobile':4,'alt mobile':4,
+    'state':5,'city':6,'course':7,'centre':8,'center':8,'school of gemology location':8,
+    'source':9,'medium':10,'campaign':11,'when to join':12,'current profession':13,
+    'payment plan':14,'course mode':15,'notes':16
+  };
+  for (var i = 0; i < _bulkHeaders.length; i++) {
+    var key = _bulkHeaders[i].toLowerCase().trim();
+    if (key in map && map[key] !== undefined) {
+      // match by name
+    }
+    if (_bulkHeaders[i].toLowerCase().trim() === h.toLowerCase().trim()) return i;
+  }
+  // fuzzy match
+  var search = h.toLowerCase().trim();
+  for (var i = 0; i < _bulkHeaders.length; i++) {
+    if (_bulkHeaders[i].toLowerCase().trim().indexOf(search) !== -1 || search.indexOf(_bulkHeaders[i].toLowerCase().trim()) !== -1) return i;
+  }
+  return -1;
+}
+
+function getCol(row, name) {
+  var i = colIdx(name);
+  return (i >= 0 && row[i]) ? row[i].trim() : '';
+}
+
+function doBulkImport() {
+  var resultEl = document.getElementById('bulk-import-result');
+  var progressEl = document.getElementById('bulk-progress-info');
+  var nextBtn = document.getElementById('bulk-btn-next');
+  nextBtn.disabled = true;
+  nextBtn.textContent = 'Importing…';
+
+  var uploadType = document.getElementById('bulk-upload-type').value;
+  var owner = window.counselorName || 'Admin';
+  var ts = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+  var done = 0, succeeded = 0, failed = 0, failedRows = [];
+  var total = _bulkRows.length;
+
+  function processNext(idx) {
+    if (idx >= total) {
+      nextBtn.disabled = false;
+      nextBtn.textContent = '✓ Done';
+      progressEl.textContent = '';
+      var color = failed === 0 ? '#166534' : '#92400e';
+      var bg    = failed === 0 ? '#f0fdf4' : '#fffbeb';
+      var border= failed === 0 ? '#86efac' : '#fcd34d';
+      resultEl.style.cssText = 'display:block;background:' + bg + ';border:1.5px solid ' + border + ';border-radius:8px;padding:14px 16px;color:' + color;
+      resultEl.innerHTML = '<div style="font-size:14px;font-weight:700;margin-bottom:6px">' + (failed === 0 ? '✅' : '⚠️') + ' Import Complete</div>' +
+        '<div>✓ <strong>' + succeeded + '</strong> leads imported successfully</div>' +
+        (failed > 0 ? '<div style="margin-top:4px">✗ <strong>' + failed + '</strong> rows failed (duplicate or missing required field)</div>' : '') +
+        (failedRows.length > 0 ? '<div style="margin-top:8px;font-size:11px;color:#6b7280">Failed rows: ' + failedRows.slice(0,5).join(', ') + (failedRows.length > 5 ? '...' : '') + '</div>' : '');
+      loadCRMData();
+      return;
+    }
+    progressEl.textContent = 'Importing ' + (idx+1) + ' / ' + total + '…';
+    var row = _bulkRows[idx];
+    var email  = getCol(row, 'Email');
+    var mobile = getCol(row, 'Mobile');
+    if (uploadType === 'email' && !email) { failed++; failedRows.push(idx+2); done++; processNext(idx+1); return; }
+    if (uploadType === 'mobile' && !mobile) { failed++; failedRows.push(idx+2); done++; processNext(idx+1); return; }
+
+    gasGet({
+      action: 'saveCRMLead',
+      firstName: getCol(row,'First Name') || getCol(row,'Name') || 'Unknown',
+      lastName:  getCol(row,'Last Name'),
+      email:     email, mobile: mobile,
+      altMobile: getCol(row,'Alternate Mobile') || getCol(row,'Alt Mobile'),
+      course:    getCol(row,'Course'),
+      centre:    getCol(row,'Centre') || getCol(row,'Center') || getCol(row,'School of Gemology Location'),
+      leadStage: 'New', leadSubStage: 'Untouched',
+      leadOwner: owner, source: getCol(row,'Source') || 'Bulk Upload',
+      leadScore: 5, leadRemark: '',
+      bookMySlot: '', whenToJoin: getCol(row,'When to Join'),
+      currentProfession: getCol(row,'Current Profession'),
+      notes: (getCol(row,'Notes') ? '['+ts+' IST] '+getCol(row,'Notes')+'\n\n' : '') + '['+ts+' IST] Bulk uploaded by ' + owner,
+      webMeta: {
+        state: getCol(row,'State'), city: getCol(row,'City'),
+        course_mode: getCol(row,'Course Mode'), payment_plan: getCol(row,'Payment Plan'),
+        source_medium: getCol(row,'Medium'), campaign: getCol(row,'Campaign')
+      }
+    }, function(e, d) {
+      if (e || !d || d.status !== 'ok') { failed++; failedRows.push(idx+2); } else { succeeded++; }
+      processNext(idx+1);
+    });
+  }
+  processNext(0);
+}
+
 </script>
 
 <!-- Add Past Alumni Modal -->
@@ -14769,5 +14995,100 @@ function exportCRMLeadsCSV(selectedOnly) {
     </div>
   </div>
 </div>
+
+  <!-- MODAL: BULK OFFLINE UPLOAD -->
+  <div id="bulk-upload-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;align-items:center;justify-content:center">
+    <div style="width:100%;max-width:680px;background:var(--white);border-radius:14px;box-shadow:0 16px 48px rgba(0,0,0,.22);display:flex;flex-direction:column;max-height:92vh">
+      <!-- Header -->
+      <div style="padding:16px 22px 14px;border-bottom:1.5px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--navy)">Bulk Offline Upload</h3>
+          <div style="display:flex;gap:16px;margin-top:8px">
+            <span id="bulk-step-1-tab" style="font-size:12px;font-weight:700;color:var(--navy);border-bottom:2px solid var(--navy);padding-bottom:4px;cursor:default">Guidelines</span>
+            <span id="bulk-step-2-tab" style="font-size:12px;font-weight:600;color:var(--muted);cursor:default">Upload File</span>
+            <span id="bulk-step-3-tab" style="font-size:12px;font-weight:600;color:var(--muted);cursor:default">Preview & Import</span>
+          </div>
+        </div>
+        <button onclick="closeBulkUploadModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted)">×</button>
+      </div>
+
+      <!-- STEP 1: Guidelines -->
+      <div id="bulk-step-1" style="overflow-y:auto;padding:20px 24px;flex:1">
+        <div style="margin-bottom:16px">
+          <label style="font-size:13px;font-weight:600;color:var(--navy);display:block;margin-bottom:8px">Select Primary Upload Type:</label>
+          <select id="bulk-upload-type" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;width:220px">
+            <option value="email">Email</option>
+            <option value="mobile">Mobile</option>
+          </select>
+        </div>
+        <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px 18px;font-size:12.5px;color:#1e3a5f;line-height:1.7">
+          <div style="font-weight:700;margin-bottom:10px">When you create the CSV file for importing offline leads, make sure that the file meets the following formatting requirements:</div>
+          <ol style="margin:0;padding-left:18px">
+            <li style="margin-bottom:8px">The files to be imported must be in <strong>CSV (comma separated values)</strong> format.
+              <span onclick="downloadSampleCSV()" style="color:#2563eb;cursor:pointer;font-weight:600;margin-left:6px">(Download sample data)</span>
+            </li>
+            <li style="margin-bottom:8px">Every column in the CSV file should have a header name. This will help you to identify and map column header names with the existing labels.</li>
+            <li style="margin-bottom:8px">The only required field is <strong>Email Address</strong> (or <strong>Mobile Number</strong> if Mobile type is selected). All other fields are optional but recommended.</li>
+            <li style="margin-bottom:8px">Remove all <strong>blank lines</strong> from the file to be imported. A blank line is interpreted as the end of the file.</li>
+            <li style="margin-bottom:8px">If CSV file contains state/city or any pre-defined list values then these should match with IGI's defined values for successful import.</li>
+            <li style="margin-bottom:8px">Optional but important: add <strong>Source</strong> column in CSV to identify source of lead.</li>
+            <li style="margin-bottom:8px">After the import is complete, a summary will be shown with success and failure counts.</li>
+            <li style="margin-bottom:8px">The default character for importing multiple entries into a multi-select field is a vertical bar <strong>(|)</strong>. For example: BBA|BCA|BCom.</li>
+          </ol>
+          <div style="margin-top:12px;font-weight:600">Supported CSV columns:</div>
+          <div style="background:rgba(255,255,255,.7);border-radius:5px;padding:8px 12px;margin-top:6px;font-size:11px;color:#374151;line-height:1.8">
+            First Name, Last Name, Email, Mobile, Alternate Mobile, State, City, Course, Centre, Source, Medium, Campaign, When to Join, Current Profession, Payment Plan, Course Mode, Notes
+          </div>
+        </div>
+        <button onclick="downloadSampleCSV()" style="margin-top:14px;padding:8px 16px;background:#f0f4ff;border:1.5px solid #c7d2fe;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;color:#3730a3">
+          ⬇ Download Sample CSV Template
+        </button>
+      </div>
+
+      <!-- STEP 2: Upload File (hidden) -->
+      <div id="bulk-step-2" style="display:none;overflow-y:auto;padding:20px 24px;flex:1">
+        <div id="bulk-drop-zone"
+          ondragover="event.preventDefault();this.style.borderColor='var(--navy)'"
+          ondragleave="this.style.borderColor='var(--border)'"
+          ondrop="handleBulkDrop(event)"
+          style="border:2px dashed var(--border);border-radius:10px;padding:48px 24px;text-align:center;cursor:pointer;transition:border-color .2s"
+          onclick="document.getElementById('bulk-file-input').click()">
+          <div style="font-size:36px;margin-bottom:10px">📄</div>
+          <div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:6px">Drag & drop your CSV file here</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:14px">or click to browse</div>
+          <div style="font-size:11px;color:var(--muted)">Supports .csv files only · Max 5,000 rows</div>
+        </div>
+        <input type="file" id="bulk-file-input" accept=".csv" style="display:none" onchange="handleBulkFileSelect(event)">
+        <div id="bulk-file-info" style="display:none;margin-top:14px;padding:12px 16px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;font-size:13px;color:#166534">
+          <span id="bulk-file-name" style="font-weight:700"></span>
+          <span id="bulk-file-rows" style="color:var(--muted);margin-left:8px"></span>
+        </div>
+        <div id="bulk-file-err" style="display:none;margin-top:10px;padding:10px 14px;background:#fef2f2;border:1.5px solid #fca5a5;border-radius:8px;font-size:12px;color:#dc2626"></div>
+      </div>
+
+      <!-- STEP 3: Preview & Import (hidden) -->
+      <div id="bulk-step-3" style="display:none;overflow-y:auto;padding:16px 24px;flex:1">
+        <div id="bulk-preview-info" style="font-size:12px;color:var(--muted);margin-bottom:10px"></div>
+        <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px">
+          <table id="bulk-preview-table" style="width:100%;border-collapse:collapse;font-size:11.5px">
+            <thead id="bulk-preview-head" style="background:var(--off)"></thead>
+            <tbody id="bulk-preview-body"></tbody>
+          </table>
+        </div>
+        <div id="bulk-import-result" style="display:none;margin-top:12px;padding:12px 16px;border-radius:8px;font-size:13px"></div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding:12px 22px;border-top:1.5px solid var(--border);display:flex;gap:8px;justify-content:space-between;flex-shrink:0;align-items:center">
+        <div id="bulk-progress-info" style="font-size:12px;color:var(--muted)"></div>
+        <div style="display:flex;gap:8px">
+          <button id="bulk-btn-back" onclick="bulkGoBack()" style="display:none;padding:8px 18px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--navy)">← Back</button>
+          <button onclick="closeBulkUploadModal()" style="padding:8px 18px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--navy)">Cancel</button>
+          <button id="bulk-btn-next" onclick="bulkGoNext()" style="padding:8px 22px;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;background:var(--navy);color:#fff">Next →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

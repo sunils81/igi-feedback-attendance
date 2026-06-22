@@ -1751,18 +1751,39 @@
       <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0 8px;border-bottom:1.5px solid var(--border);margin-bottom:12px;flex-wrap:wrap;gap:8px">
         <div style="display:flex;align-items:center;gap:10px">
           <h2 style="margin:0;font-size:18px;font-weight:800;color:var(--navy)">Lead Manager</h2>
-          <div style="display:flex;align-items:center;gap:6px;background:var(--off);border:1px solid var(--border);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer">
-            <span style="color:var(--muted)">Quick View :</span>
-            <span style="color:var(--navy)">Lead Analysis</span>
-            <span style="color:var(--muted);font-size:10px">▾</span>
+          <div style="position:relative">
+            <div onclick="toggleQuickViewMenu()" style="display:flex;align-items:center;gap:6px;background:var(--off);border:1px solid var(--border);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;user-select:none">
+              <span style="color:var(--muted)">Quick View :</span>
+              <span id="crm-qv-label" style="color:var(--navy)">Lead Analysis</span>
+              <span style="color:var(--muted);font-size:10px">▾</span>
+            </div>
+            <div id="crm-qv-menu" style="display:none;position:absolute;top:34px;left:0;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:300;min-width:190px;overflow:hidden;font-size:12px">
+              <div style="padding:6px 10px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">MY VIEWS</div>
+              <div onclick="applyQuickView('all','Lead Analysis')" class="crm-qv-item">📊 Lead Analysis</div>
+              <div onclick="applyQuickView('untouched','Untouched')" class="crm-qv-item">🆕 Untouched</div>
+              <div onclick="applyQuickView('today_followups','Today's Follow-Ups')" class="crm-qv-item">📞 Today's Follow-Ups</div>
+              <div onclick="applyQuickView('overdue','Overdue')" class="crm-qv-item">⚠️ Overdue</div>
+              <div onclick="applyQuickView('interested','Interested')" class="crm-qv-item">💡 Interested</div>
+              <div onclick="applyQuickView('enrolled','Enrolled')" class="crm-qv-item">✅ Enrolled</div>
+              <div onclick="applyQuickView('lost','Lost')" class="crm-qv-item" style="border-top:1px solid var(--border)">❌ Lost</div>
+            </div>
           </div>
-          <button title="Save view" style="border:1px solid var(--border);background:var(--white);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px">💾</button>
         </div>
         <div style="display:flex;align-items:center;gap:10px">
           <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)">
             <span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block"></span>
             Last sync on: <strong id="crm-last-sync" style="color:var(--navy)">—</strong>
             <button onclick="loadCRMLeads(true)" title="Refresh" style="border:none;background:none;cursor:pointer;font-size:14px;padding:0 2px">🔄</button>
+          </div>
+          <div style="position:relative">
+            <button onclick="toggleCRMListMore(this)" title="More actions" style="border:1px solid var(--border);background:var(--white);border-radius:7px;padding:6px 10px;font-size:16px;cursor:pointer;line-height:1">⋮</button>
+            <div id="crm-list-more-menu" style="display:none;position:absolute;top:36px;right:0;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:300;min-width:200px;overflow:hidden;font-size:12px">
+              <div onclick="exportCRMLeadsCSV();toggleCRMListMore()" class="crm-qv-item">⬇️ Download Leads (CSV)</div>
+              <div onclick="bulkChangeCRMStage();toggleCRMListMore()" class="crm-qv-item">🏷️ Change Lead Stage</div>
+              <div onclick="openBulkWAModal();toggleCRMListMore()" class="crm-qv-item">💬 Communicate (WhatsApp)</div>
+              <div onclick="toggleCRMColumnPicker();toggleCRMListMore()" class="crm-qv-item" style="border-top:1px solid var(--border)">⚙️ Customize Columns</div>
+              <div onclick="toggleCRMFilterManager();toggleCRMListMore()" class="crm-qv-item">🔧 Manage Quick Filters</div>
+            </div>
           </div>
           <button onclick="openAddLeadModal()" style="background:var(--gold);color:#fff;border:none;border-radius:7px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">+ Add Lead</button>
         </div>
@@ -1823,6 +1844,36 @@
               </select>
               <input type="text" id="crm-search" placeholder="Search leads…" oninput="filterLeads()" class="crm-filter-input" style="border-radius:0 7px 7px 0;min-width:160px">
             </div>
+          </div>
+          <div class="crm-filter-group" style="position:relative">
+            <span class="crm-filter-label">User Reg. Date</span>
+            <div id="crm-date-filter-btn" onclick="toggleDateRangePicker()" style="display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:var(--white);cursor:pointer;font-size:12px;min-width:130px;color:var(--navy)">
+              <span>📅</span><span id="crm-date-label" style="flex:1">Select Here</span><span style="color:var(--muted);font-size:10px">▾</span>
+            </div>
+            <!-- Date Range Picker Dropdown -->
+            <div id="crm-date-picker" style="display:none;position:absolute;top:56px;left:0;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:300;min-width:180px;overflow:hidden;font-size:12px">
+              <div onclick="applyDateRange('today','Today')" class="crm-qv-item" style="color:#2563eb;font-weight:600">Today</div>
+              <div onclick="applyDateRange('yesterday','Yesterday')" class="crm-qv-item">Yesterday</div>
+              <div onclick="applyDateRange('7d','Last 7 Days')" class="crm-qv-item">Last 7 Days</div>
+              <div onclick="applyDateRange('30d','Last 30 Days')" class="crm-qv-item">Last 30 Days</div>
+              <div onclick="applyDateRange('thismonth','This Month')" class="crm-qv-item">This Month</div>
+              <div onclick="applyDateRange('lastmonth','Last Month')" class="crm-qv-item">Last Month</div>
+              <div style="border-top:1px solid var(--border);padding:8px 10px">
+                <div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:4px">CUSTOM RANGE</div>
+                <input type="date" id="crm-date-from" style="width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:5px;font-size:11px;margin-bottom:4px;box-sizing:border-box" onchange="applyDateRange('custom','Custom')">
+                <input type="date" id="crm-date-to" style="width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:5px;font-size:11px;margin-bottom:6px;box-sizing:border-box" onchange="applyDateRange('custom','Custom')">
+                <div style="display:flex;gap:6px">
+                  <button onclick="applyDateRange('custom','Custom')" style="flex:1;background:var(--gold);color:#fff;border:none;border-radius:5px;padding:5px;font-size:11px;cursor:pointer;font-weight:700">Apply</button>
+                  <button onclick="clearDateFilter()" style="flex:1;background:var(--off);color:var(--navy);border:1px solid var(--border);border-radius:5px;padding:5px;font-size:11px;cursor:pointer">Reset</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="crm-filter-group">
+            <span class="crm-filter-label">Lead Owner</span>
+            <select id="crm-owner-filter" onchange="filterLeads()" class="crm-filter-select">
+              <option value="">All Owners</option>
+            </select>
           </div>
           <div class="crm-filter-group">
             <span class="crm-filter-label">Lead Stage</span>
@@ -1887,6 +1938,24 @@
             <label class="crm-col-pill active"><input type="checkbox" class="crm-col-toggle" data-col="actions" checked onchange="saveCRMColumns()"> Quick Actions</label>
             <label class="crm-col-pill"><input type="checkbox" class="crm-col-toggle" data-col="slot" onchange="saveCRMColumns()"> Call Slot</label>
             <label class="crm-col-pill"><input type="checkbox" class="crm-col-toggle" data-col="jointime" onchange="saveCRMColumns()"> Join Timeline</label>
+          </div>
+        </div>
+
+        <!-- ── Filter Manager Panel ── -->
+        <div id="crm-filter-manager" style="display:none;background:var(--white);border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:8px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <span style="font-size:13px;font-weight:700;color:var(--navy)">Manage Quick Filters</span>
+            <button onclick="toggleCRMFilterManager()" style="border:none;background:none;cursor:pointer;font-size:16px;color:var(--muted)">✕</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" checked onchange="filterLeads()"> Lead Stage</label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" checked onchange="filterLeads()"> Lead Sub Stage</label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" checked onchange="filterLeads()"> User Registration Date</label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" checked onchange="filterLeads()"> Lead Owner / Teams</label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" checked onchange="filterLeads()"> Campaign Source</label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" onchange="filterLeads()"> Lead Origin</label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" onchange="filterLeads()"> Email Verification</label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" onchange="filterLeads()"> Mobile Verification</label>
           </div>
         </div>
 
@@ -12658,6 +12727,7 @@ function loadCRMData() {
     crmLeadsList = d.leads || [];
     updateCRMKPIs();
     filterLeads();
+    if (typeof populateOwnerFilter === 'function') populateOwnerFilter();
   });
 }
 
@@ -12716,6 +12786,7 @@ function filterLeads() {
   var substage = document.getElementById('crm-substage-filter').value;
   var source = document.getElementById('crm-source-filter').value;
   var course = document.getElementById('crm-course-filter').value;
+  var owner = (document.getElementById('crm-owner-filter') || {}).value || '';
 
   var filtered = crmLeadsList.filter(function(l) {
     // Sub-tab filter first
@@ -12734,8 +12805,17 @@ function filterLeads() {
     var matchSubStage = !substage || l.lead_sub_stage === substage;
     var matchSource = !source || l.source === source;
     var matchCourse = !course || l.course === course;
+    var matchOwner = !owner || (l.lead_owner || '') === owner;
 
-    return matchQ && matchStage && matchSubStage && matchSource && matchCourse;
+    // Date range filter
+    var matchDate = true;
+    if (window._crmDateFrom || window._crmDateTo) {
+      var createdTs = l.created_at ? new Date(l.created_at).getTime() : 0;
+      if (window._crmDateFrom && createdTs < window._crmDateFrom) matchDate = false;
+      if (window._crmDateTo && createdTs > window._crmDateTo) matchDate = false;
+    }
+
+    return matchQ && matchStage && matchSubStage && matchSource && matchCourse && matchOwner && matchDate;
   });
 
   // Sort: untouched new first, then by lead age desc (most urgent first)
@@ -12761,10 +12841,11 @@ function filterLeads() {
 }
 
 function clearCRMFilters() {
-  ['crm-search','crm-stage-filter','crm-substage-filter','crm-source-filter','crm-course-filter'].forEach(function(id) {
+  ['crm-search','crm-stage-filter','crm-substage-filter','crm-source-filter','crm-course-filter','crm-owner-filter'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.value = '';
   });
+  clearDateFilter();
   filterLeads();
 }
 
@@ -13358,6 +13439,177 @@ function saveLeadDetailsInline() {
   });
 }
 
+
+
+// ── Quick View styles ──────────────────────────────────────────────
+(function(){
+  var s = document.createElement('style');
+  s.textContent = '.crm-qv-item{padding:9px 14px;cursor:pointer;color:var(--navy);transition:background .1s}.crm-qv-item:hover{background:var(--off)}';
+  document.head.appendChild(s);
+})();
+
+// ── Quick View Menu ──────────────────────────────────────────────
+function toggleQuickViewMenu() {
+  var m = document.getElementById('crm-qv-menu');
+  if (!m) return;
+  var showing = m.style.display !== 'none';
+  m.style.display = showing ? 'none' : 'block';
+  if (!showing) {
+    setTimeout(function(){
+      document.addEventListener('click', function closeQV(e){
+        if (!m.contains(e.target)) { m.style.display='none'; document.removeEventListener('click',closeQV); }
+      });
+    }, 10);
+  }
+}
+
+function applyQuickView(preset, label) {
+  var qvLabel = document.getElementById('crm-qv-label');
+  if (qvLabel) qvLabel.textContent = label;
+  var m = document.getElementById('crm-qv-menu');
+  if (m) m.style.display = 'none';
+
+  // Reset all filters first
+  ['crm-search','crm-stage-filter','crm-substage-filter','crm-source-filter','crm-course-filter','crm-owner-filter'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  clearDateFilter(false); // clear without re-filtering
+
+  var stageEl = document.getElementById('crm-stage-filter');
+
+  switch(preset) {
+    case 'untouched':
+      if (stageEl) stageEl.value = 'New';
+      var subEl = document.getElementById('crm-substage-filter');
+      if (subEl) subEl.value = 'Untouched';
+      break;
+    case 'today_followups':
+      switchCRMSubTab('today');
+      return;
+    case 'overdue':
+      switchCRMSubTab('overdue');
+      return;
+    case 'interested':
+      if (stageEl) stageEl.value = 'Interested';
+      break;
+    case 'enrolled':
+      if (stageEl) stageEl.value = 'Enrolled';
+      break;
+    case 'lost':
+      if (stageEl) stageEl.value = 'Lost';
+      break;
+    default: // 'all' / Lead Analysis
+      break;
+  }
+  switchCRMSubTab('queue');
+  filterLeads();
+}
+
+// ── ⋮ More Menu ──────────────────────────────────────────────────
+function toggleCRMListMore(btn) {
+  var m = document.getElementById('crm-list-more-menu');
+  if (!m) return;
+  var showing = m.style.display !== 'none';
+  m.style.display = showing ? 'none' : 'block';
+  if (!showing) {
+    setTimeout(function(){
+      document.addEventListener('click', function closeMM(e){
+        if (!m.parentElement.contains(e.target)) { m.style.display='none'; document.removeEventListener('click',closeMM); }
+      });
+    }, 10);
+  }
+}
+
+// ── Filter Manager ────────────────────────────────────────────────
+function toggleCRMFilterManager() {
+  var p = document.getElementById('crm-filter-manager');
+  if (p) p.style.display = p.style.display === 'none' ? 'block' : 'none';
+}
+
+// ── Date Range Filter ────────────────────────────────────────────
+window._crmDateFrom = null;
+window._crmDateTo = null;
+
+function toggleDateRangePicker() {
+  var p = document.getElementById('crm-date-picker');
+  if (!p) return;
+  var showing = p.style.display !== 'none';
+  p.style.display = showing ? 'none' : 'block';
+  if (!showing) {
+    setTimeout(function(){
+      document.addEventListener('click', function closeDR(e){
+        var btn = document.getElementById('crm-date-filter-btn');
+        if (p && !p.contains(e.target) && btn && !btn.contains(e.target)) {
+          p.style.display='none'; document.removeEventListener('click',closeDR);
+        }
+      });
+    }, 10);
+  }
+}
+
+function applyDateRange(preset, label) {
+  var now = new Date(); now.setHours(23,59,59,999);
+  var from, to = now.getTime();
+
+  if (preset === 'today') {
+    var s = new Date(); s.setHours(0,0,0,0); from = s.getTime();
+    to = now.getTime();
+  } else if (preset === 'yesterday') {
+    var s = new Date(); s.setDate(s.getDate()-1); s.setHours(0,0,0,0); from = s.getTime();
+    var e = new Date(); e.setDate(e.getDate()-1); e.setHours(23,59,59,999); to = e.getTime();
+  } else if (preset === '7d') {
+    var s = new Date(); s.setDate(s.getDate()-6); s.setHours(0,0,0,0); from = s.getTime();
+  } else if (preset === '30d') {
+    var s = new Date(); s.setDate(s.getDate()-29); s.setHours(0,0,0,0); from = s.getTime();
+  } else if (preset === 'thismonth') {
+    var s = new Date(); s.setDate(1); s.setHours(0,0,0,0); from = s.getTime();
+  } else if (preset === 'lastmonth') {
+    var s = new Date(); s.setDate(1); s.setMonth(s.getMonth()-1); s.setHours(0,0,0,0); from = s.getTime();
+    var e = new Date(); e.setDate(0); e.setHours(23,59,59,999); to = e.getTime();
+  } else if (preset === 'custom') {
+    var fromEl = document.getElementById('crm-date-from');
+    var toEl = document.getElementById('crm-date-to');
+    if (fromEl && fromEl.value) { var s = new Date(fromEl.value); s.setHours(0,0,0,0); from = s.getTime(); } else { from = null; }
+    if (toEl && toEl.value) { var e = new Date(toEl.value); e.setHours(23,59,59,999); to = e.getTime(); } else { to = null; }
+    if (!from && !to) { clearDateFilter(); return; }
+  }
+
+  window._crmDateFrom = from || null;
+  window._crmDateTo = to || null;
+  var lbl = document.getElementById('crm-date-label');
+  if (lbl) lbl.textContent = label;
+  var picker = document.getElementById('crm-date-picker');
+  if (picker && preset !== 'custom') picker.style.display = 'none';
+  filterLeads();
+}
+
+function clearDateFilter(doFilter) {
+  window._crmDateFrom = null;
+  window._crmDateTo = null;
+  var lbl = document.getElementById('crm-date-label');
+  if (lbl) lbl.textContent = 'Select Here';
+  var fromEl = document.getElementById('crm-date-from');
+  var toEl = document.getElementById('crm-date-to');
+  if (fromEl) fromEl.value = '';
+  if (toEl) toEl.value = '';
+  if (doFilter !== false) filterLeads();
+}
+
+// ── Populate Lead Owner filter when leads load ─────────────────────
+function populateOwnerFilter() {
+  var sel = document.getElementById('crm-owner-filter');
+  if (!sel) return;
+  var owners = {};
+  crmLeadsList.forEach(function(l){ if (l.lead_owner) owners[l.lead_owner] = 1; });
+  var current = sel.value;
+  sel.innerHTML = '<option value="">All Owners</option>';
+  Object.keys(owners).sort().forEach(function(o){
+    var opt = document.createElement('option');
+    opt.value = o; opt.textContent = o;
+    if (o === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
 
 // ── Lead Details sub-tab switching ──
 function switchLeadSubTab(tab) {

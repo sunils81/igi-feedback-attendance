@@ -1,0 +1,540 @@
+diff --git a/counselor.html b/counselor.html
+index 594bd42..6cedb85 100644
+--- a/counselor.html
++++ b/counselor.html
+@@ -221,6 +221,106 @@
+   color: var(--navy);
+   font-weight: 700;
+ }
++
++/* Sticky Leads Table Header */
++#crm-leads-table thead th {
++  position: sticky;
++  top: 0;
++  background: var(--off);
++  z-index: 10;
++  box-shadow: inset 0 -1.5px 0 var(--border);
++}
++
++/* Profile Key-Value Grid */
++.crm-profile-grid {
++  background: #f8fafc;
++  border: 1px solid var(--border);
++  border-radius: 8px;
++  padding: 8px 10px;
++  font-size: 11.5px;
++  display: grid;
++  grid-template-columns: 1fr 1fr;
++  gap: 6px 10px;
++}
++.crm-profile-item {
++  display: flex;
++  align-items: center;
++  gap: 4px;
++  min-width: 0;
++}
++.crm-profile-icon {
++  font-size: 12.5px;
++  opacity: 0.7;
++  flex-shrink: 0;
++}
++.crm-profile-label {
++  color: var(--muted);
++  font-weight: 600;
++  margin-right: 2px;
++}
++.crm-profile-value {
++  font-weight: 700;
++  color: var(--navy);
++  white-space: nowrap;
++  overflow: hidden;
++  text-overflow: ellipsis;
++}
++
++/* Mini Action Tabs */
++.crm-action-tabs {
++  display: flex;
++  background: var(--off);
++  border: 1px solid var(--border);
++  border-radius: 8px;
++  padding: 2.5px;
++  gap: 3px;
++  margin-top: 4px;
++}
++.crm-action-tab-btn {
++  flex: 1;
++  border: none;
++  background: transparent;
++  color: var(--muted);
++  font-size: 10.5px;
++  font-weight: 700;
++  padding: 5px 8px;
++  border-radius: 6px;
++  cursor: pointer;
++  transition: all 0.15s;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  gap: 3px;
++}
++.crm-action-tab-btn:hover {
++  color: var(--navy);
++  background: rgba(0,0,0,0.02);
++}
++.crm-action-tab-btn.active {
++  background: var(--white);
++  color: var(--navy);
++  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
++}
++.crm-action-form-panel {
++  display: none;
++  background: var(--white);
++  border: 1px solid var(--border);
++  border-top: none;
++  border-radius: 0 0 8px 8px;
++  padding: 10px 12px;
++  margin-top: -3px;
++}
++.crm-action-form-panel.active {
++  display: block;
++}
++
++/* Height-constrained Flex Layout for CRM Tab */
++#t-crm.tab-content.active {
++  display: flex !important;
++  flex-direction: column;
++  height: calc(100vh - 130px);
++  overflow: hidden;
++}
+ </style>
+ 
+ <style>
+@@ -1555,10 +1655,10 @@
+   </div>
+ 
+   <!-- TAB: CRM SYSTEM — Meritto-parity build -->
+-  <div id="t-crm" class="tab-content">
++  <div id="t-crm" class="tab-content" style="height:calc(100vh - 100px); display:flex; flex-direction:column; overflow:hidden">
+ 
+     <!-- ── KPI Score Board ── -->
+-    <div class="crm-kpi-grid">
++    <div class="crm-kpi-grid" style="flex-shrink:0; margin-bottom:12px;">
+       <div class="crm-kpi-card kpi-total">
+         <span class="crm-kpi-icon">📊</span>
+         <div class="crm-kpi-label">Total Leads</div>
+@@ -1592,73 +1692,76 @@
+     </div>
+ 
+     <!-- ── Sub-Tabs: Queue / Today's Calls / Overdue ── -->
+-    <div class="crm-subtab-bar">
++    <div class="crm-subtab-bar" style="flex-shrink:0">
+       <button class="crm-subtab-btn active" id="crm-subtab-queue" onclick="switchCRMSubTab('queue')">📋 Lead Queue</button>
+       <button class="crm-subtab-btn" id="crm-subtab-today" onclick="switchCRMSubTab('today')">📞 Today's Calls <span id="crm-today-count" class="crm-subtab-badge" style="background:#d97706;color:#fff;display:none"></span></button>
+       <button class="crm-subtab-btn" id="crm-subtab-overdue" onclick="switchCRMSubTab('overdue')">⚠️ Overdue <span id="crm-overdue-count" class="crm-subtab-badge" style="background:#dc2626;color:#fff;display:none"></span></button>
+     </div>
+ 
+-    <!-- ── Advanced Filter Bar ── -->
+-    <div class="crm-filter-bar">
+-      <div class="crm-filter-row">
+-        <div class="crm-filter-group" style="flex:1;min-width:220px">
+-          <span class="crm-filter-label">Search</span>
+-          <div class="crm-search-wrap">
+-            <select id="crm-search-by" onchange="filterLeads()" class="crm-filter-select" style="min-width:90px;border-radius:7px 0 0 7px;border-right:none">
+-              <option value="all">All Fields</option>
+-              <option value="name">Name</option>
+-              <option value="email">Email</option>
+-              <option value="mobile">Mobile</option>
+-              <option value="course">Course</option>
++    <!-- ── Advanced Filter Bar + Workspace ── -->
++    <div style="flex:1; min-height:0; display:flex; flex-direction:column; margin-top:0">
++      <div class="crm-filter-bar" style="flex-shrink:0; border-radius:0; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
++        <div class="crm-filter-row" style="flex:1; min-width:0;">
++          <div class="crm-filter-group" style="flex:1; min-width:200px">
++            <span class="crm-filter-label">Search</span>
++            <div class="crm-search-wrap">
++              <select id="crm-search-by" onchange="filterLeads()" class="crm-filter-select" style="min-width:90px;border-radius:7px 0 0 7px;border-right:none">
++                <option value="all">All Fields</option>
++                <option value="name">Name</option>
++                <option value="email">Email</option>
++                <option value="mobile">Mobile</option>
++                <option value="course">Course</option>
++              </select>
++              <input type="text" id="crm-search" placeholder="Search leads…" oninput="filterLeads()" class="crm-filter-input" style="border-radius:0 7px 7px 0;min-width:160px">
++            </div>
++          </div>
++          <div class="crm-filter-group">
++            <span class="crm-filter-label">Lead Stage</span>
++            <select id="crm-stage-filter" onchange="filterLeads()" class="crm-filter-select">
++              <option value="">All Stages</option>
++              <option value="New">🆕 New</option>
++              <option value="Contacted">📞 Contacted</option>
++              <option value="Interested">💡 Interested</option>
++              <option value="Demo">🖥 Demo</option>
++              <option value="Follow-Up Ongoing">🔄 Follow-Up</option>
++              <option value="Application Initiated">📝 Application</option>
++              <option value="Enrolled">✅ Enrolled</option>
++              <option value="Lost">❌ Lost</option>
++            </select>
++          </div>
++          <div class="crm-filter-group">
++            <span class="crm-filter-label">Sub-Stage</span>
++            <select id="crm-substage-filter" onchange="filterLeads()" class="crm-filter-select">
++              <option value="">All Sub-Stages</option>
++              <option value="Untouched">Untouched</option>
++              <option value="Call Attempted">Call Attempted</option>
++              <option value="Call Connected">Call Connected</option>
++              <option value="Engaged / Interested">Engaged / Interested</option>
++              <option value="Follow-Up Ongoing">Follow-Up Ongoing</option>
++              <option value="Application Initiated">Application Initiated</option>
++              <option value="Enrolled Student">Enrolled Student</option>
++            </select>
++          </div>
++          <div class="crm-filter-group">
++            <span class="crm-filter-label">Source</span>
++            <select id="crm-source-filter" onchange="filterLeads()" class="crm-filter-select">
++              <option value="">All Sources</option>
++              <option value="Facebook Lead Ads">Facebook Ads</option>
++              <option value="Website">Website</option>
++              <option value="WhatsApp">WhatsApp</option>
++              <option value="Walk-In">Walk-In</option>
++              <option value="Direct">Direct/Call</option>
++              <option value="Internal Cross-Sell">Cross-Sell</option>
++            </select>
++          </div>
++          <div class="crm-filter-group">
++            <span class="crm-filter-label">Course</span>
++            <select id="crm-course-filter" onchange="filterLeads()" class="crm-filter-select" style="max-width:140px">
++              <option value="">All Courses</option>
+             </select>
+-            <input type="text" id="crm-search" placeholder="Search leads…" oninput="filterLeads()" class="crm-filter-input" style="border-radius:0 7px 7px 0;min-width:160px">
+           </div>
+         </div>
+-        <div class="crm-filter-group">
+-          <span class="crm-filter-label">Lead Stage</span>
+-          <select id="crm-stage-filter" onchange="filterLeads()" class="crm-filter-select">
+-            <option value="">All Stages</option>
+-            <option value="New">🆕 New</option>
+-            <option value="Contacted">📞 Contacted</option>
+-            <option value="Interested">💡 Interested</option>
+-            <option value="Demo">🖥 Demo</option>
+-            <option value="Follow-Up Ongoing">🔄 Follow-Up</option>
+-            <option value="Application Initiated">📝 Application</option>
+-            <option value="Enrolled">✅ Enrolled</option>
+-            <option value="Lost">❌ Lost</option>
+-          </select>
+-        </div>
+-        <div class="crm-filter-group">
+-          <span class="crm-filter-label">Sub-Stage</span>
+-          <select id="crm-substage-filter" onchange="filterLeads()" class="crm-filter-select">
+-            <option value="">All Sub-Stages</option>
+-            <option value="Untouched">Untouched</option>
+-            <option value="Call Attempted">Call Attempted</option>
+-            <option value="Call Connected">Call Connected</option>
+-            <option value="Engaged / Interested">Engaged / Interested</option>
+-            <option value="Follow-Up Ongoing">Follow-Up Ongoing</option>
+-            <option value="Application Initiated">Application Initiated</option>
+-          </select>
+-        </div>
+-        <div class="crm-filter-group">
+-          <span class="crm-filter-label">Source</span>
+-          <select id="crm-source-filter" onchange="filterLeads()" class="crm-filter-select">
+-            <option value="">All Sources</option>
+-            <option value="Facebook Lead Ads">Facebook Ads</option>
+-            <option value="Website">Website</option>
+-            <option value="WhatsApp">WhatsApp</option>
+-            <option value="Walk-In">Walk-In</option>
+-            <option value="Direct">Direct</option>
+-            <option value="Internal Cross-Sell">Cross-Sell</option>
+-          </select>
+-        </div>
+-        <div class="crm-filter-group">
+-          <span class="crm-filter-label">Course</span>
+-          <select id="crm-course-filter" onchange="filterLeads()" class="crm-filter-select">
+-            <option value="">All Courses</option>
+-          </select>
+-        </div>
+-        <div style="display:flex;gap:7px;align-items:flex-end;margin-left:auto">
++        <div style="display:flex;gap:7px;align-items:flex-end;margin-top:14px">
+           <button class="crm-filter-btn" onclick="clearCRMFilters()" title="Clear filters">Clear</button>
+           <button class="crm-filter-btn" title="Customise columns" onclick="toggleCRMColumnPicker()">⚙️ Columns</button>
+           <button class="crm-filter-btn" title="Export as CSV" onclick="exportCRMLeadsCSV()">⬇️ CSV</button>
+@@ -1667,7 +1770,7 @@
+       </div>
+ 
+       <!-- ── Column Picker Drawer ── -->
+-      <div id="crm-column-picker" class="crm-col-picker" style="display:none">
++      <div id="crm-column-picker" class="crm-col-picker" style="display:none; flex-shrink:0;">
+         <div class="crm-col-picker-title">Visible Columns</div>
+         <div class="crm-col-pills">
+           <label class="crm-col-pill active"><input type="checkbox" class="crm-col-toggle" data-col="owner" checked onchange="saveCRMColumns()"> Owner</label>
+@@ -1680,8 +1783,8 @@
+         </div>
+       </div>
+ 
+-      <!-- ── Bulk Action Bar (appears when rows selected) ── -->
+-      <div id="crm-bulk-bar" class="crm-bulk-bar">
++      <!-- ── Bulk Action Bar ── -->
++      <div id="crm-bulk-bar" class="crm-bulk-bar" style="flex-shrink:0;">
+         <span class="crm-bulk-count-chip" id="crm-bulk-count">0 selected</span>
+         <div class="crm-bulk-actions">
+           <button class="crm-bulk-btn" onclick="bulkChangeCRMStage()">🏷 Change Stage</button>
+@@ -1691,203 +1794,6 @@
+         </div>
+       </div>
+ 
+-      <div class="crm-count-bar" style="margin-top:10px;border-radius:7px">Showing <strong id="crm-count-display">0</strong> leads &nbsp;·&nbsp; <span id="crm-total-display" style="color:var(--muted)">0 total assigned</span></div>
+-    </div>
+-
+-    <!-- ── Main Workspace: Table + Detail Panel ── -->
+-    <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:14px;align-items:start;margin-top:14px">
+-
+-      <!-- Leads Table -->
+-      <div class="crm-table-wrap">
+-        <div style="overflow-x:auto">
+-          <table class="crm-table" id="crm-leads-table" style="min-width:720px">
+-            <thead>
+-              <tr>
+-                <th style="width:36px;padding:10px 14px"><input type="checkbox" id="crm-check-all" title="Select all" onchange="toggleAllCRMChecks(this.checked)" style="cursor:pointer"></th>
+-                <th>Lead / Contact</th>
+-                <th id="crm-th-course">Course · Centre</th>
+-                <th class="crm-col-owner" id="crm-th-owner">Owner</th>
+-                <th style="text-align:center" class="crm-col-age" id="crm-th-age">Age</th>
+-                <th style="text-align:center" class="crm-col-stage" id="crm-th-stage">Stage</th>
+-                <th class="crm-col-remark" id="crm-th-remark">Last Remark</th>
+-                <th class="crm-col-slot" id="crm-th-slot" style="display:none">Call Slot</th>
+-                <th class="crm-col-jointime" id="crm-th-jointime" style="display:none">Join In</th>
+-                <th style="text-align:center" class="crm-col-actions" id="crm-th-actions">Actions</th>
+-              </tr>
+-            </thead>
+-            <tbody id="crm-leads-tbody">
+-              <tr><td colspan="10" style="text-align:center;padding:32px;color:var(--muted)">Loading leads…</td></tr>
+-            </tbody>
+-          </table>
+-        </div>
+-        <div id="crm-load-more-wrap" style="display:none;text-align:center;padding:10px;border-top:1px solid var(--border)">
+-          <button class="btn btn-outline" style="font-size:12px;padding:6px 14px" onclick="crmLoadMore()">Load More Leads</button>
+-          <span id="crm-showing-label" style="font-size:11px;color:var(--muted);margin-left:8px"></span>
+-        </div>
+-      </div>
+-
+-      <!-- Lead Detail Panel -->
+-      <div class="crm-detail-panel" id="crm-detail-card" style="margin:0;position:sticky;top:80px;overflow-y:auto;max-height:calc(100vh - 110px)">
+-        <div id="crm-detail-empty" class="crm-empty-state">
+-          <div class="crm-empty-icon">🎯</div>
+-          <div class="crm-empty-title">Select a lead to view details</div>
+-          <div class="crm-empty-sub">Log calls, set reminders, or enroll from here.</div>
+-        </div>
+-
+-        <div id="crm-detail-content" style="display:none">
+-          <!-- Header -->
+-          <div class="crm-detail-header">
+-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+-              <div style="flex:1;min-width:0">
+-                <h3 id="crm-detail-name" class="crm-detail-name">—</h3>
+-                <div id="crm-detail-source-badge" class="crm-detail-meta" style="margin-top:3px"></div>
+-                <div id="crm-detail-age-label" style="font-size:11px;color:var(--muted);margin-top:2px"></div>
+-              </div>
+-            <div style="text-align:right">
+-              <span class="badge" id="crm-detail-stage-badge" style="font-size:10px;font-weight:700"></span>
+-              <div style="font-size:10px;color:var(--muted);margin-top:4px">Score: <strong id="crm-detail-score">0</strong></div>
+-            </div>
+-          </div>
+-
+-          <!-- Profile grid -->
+-          <div style="background:#f8fafc;border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+-            <div><span style="color:var(--muted)">📧</span> <a id="crm-detail-email-link" href="#" style="color:var(--navy);text-decoration:none" onclick="return false">-</a></div>
+-            <div><span style="color:var(--muted)">📱</span> <strong id="crm-detail-mobile">-</strong></div>
+-            <div><span style="color:var(--muted)">📱</span> Alt: <span id="crm-detail-alt-mobile" style="color:var(--muted)">—</span></div>
+-            <div><span style="color:var(--muted)">🏫</span> <span id="crm-detail-centre">-</span></div>
+-            <div><span style="color:var(--muted)">📚</span> <span id="crm-detail-course">-</span></div>
+-            <div style="grid-column:span 2"><span style="color:var(--muted)">👤</span> <span id="crm-detail-owner">-</span></div>
+-            <div style="grid-column:span 2" id="crm-detail-substage-row"><span style="color:var(--muted)">🔖</span> Sub-stage: <strong id="crm-detail-substage">-</strong></div>
+-            <div><span style="color:var(--muted)">⏰</span> Slot: <span id="crm-detail-slot" style="font-weight:600;color:var(--navy)">—</span></div>
+-            <div><span style="color:var(--muted)">📅</span> Join: <span id="crm-detail-jointime" style="font-weight:600;color:var(--navy)">—</span></div>
+-            <div style="grid-column:span 2"><span style="color:var(--muted)">💼</span> Profession: <span id="crm-detail-profession" style="color:var(--muted)">—</span></div>
+-          </div>
+-
+-          <!-- Next Batch Availability -->
+-          <div id="crm-batch-avail" style="display:none;background:rgba(22,139,87,0.07);border:1px solid rgba(22,139,87,0.2);border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:10px">
+-            <strong style="color:#168b57">📅 Next Available Batch:</strong> <span id="crm-batch-avail-text">-</span>
+-          </div>
+-
+-          <!-- Cross-Sell Suggestion -->
+-          <div id="crm-crosssell-hint" style="display:none;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.3);border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:10px">
+-            <strong style="color:var(--navy)">💡 Upsell Suggestion:</strong> <span id="crm-crosssell-text">-</span>
+-          </div>
+-
+-          <!-- Academic Context Card -->
+-          <div id="crm-academic-card" style="display:none;background:rgba(24,95,165,0.06);border:1px solid rgba(24,95,165,0.15);padding:8px 10px;border-radius:6px;margin-bottom:10px;font-size:12px">
+-            <div style="font-weight:700;color:var(--navy);margin-bottom:4px">🎓 Student Academic Context</div>
+-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+-              <div>Batch: <strong id="crm-acad-batch">-</strong></div>
+-              <div>Status: <span id="crm-acad-status">-</span></div>
+-              <div>Attendance: <strong id="crm-acad-attendance">-</strong></div>
+-              <div>Exam Avg: <strong id="crm-acad-marks">-</strong></div>
+-            </div>
+-          </div>
+-
+-          <!-- Quick Call Outcome Buttons -->
+-          <div style="margin-bottom:10px">
+-            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Log Call Outcome</div>
+-            <div style="display:flex;gap:5px;flex-wrap:wrap">
+-              <button class="btn btn-outline" style="padding:5px 9px;font-size:11px;border-radius:5px;border-color:#168b57;color:#168b57" onclick="logCallOutcome('call-connected')">📞 Connected</button>
+-              <button class="btn btn-outline" style="padding:5px 9px;font-size:11px;border-radius:5px" onclick="logCallOutcome('call-no-answer')">🔕 No Answer</button>
+-              <button class="btn btn-outline" style="padding:5px 9px;font-size:11px;border-radius:5px" onclick="logCallOutcome('call-dnd-off')">📵 Switched Off</button>
+-              <button class="btn btn-outline" style="padding:5px 9px;font-size:11px;border-radius:5px;border-color:#dc2626;color:#dc2626" onclick="logCallOutcome('marked-lost')">🗑️ Mark Lost</button>
+-            </div>
+-          </div>
+-
+-          <!-- WhatsApp Quick Launch -->
+-          <div style="margin-bottom:10px">
+-            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">WhatsApp</div>
+-            <button class="btn" style="padding:6px 12px;font-size:12px;background:#25D366;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700" onclick="launchWhatsApp()">💬 Open WhatsApp Chat</button>
+-          </div>
+-
+-          <!-- Sub-Stage Updater -->
+-          <div style="margin-bottom:10px">
+-            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Update Sub-Stage</div>
+-            <div style="display:flex;gap:6px">
+-              <select id="crm-substage-update" style="flex:1;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;background:var(--white)">
+-                <option value="">Select Sub-Stage</option>
+-                <option value="Untouched">Untouched</option>
+-                <option value="Call Attempted">Call Attempted</option>
+-                <option value="Call Connected">Call Connected</option>
+-                <option value="Engaged / Interested">Engaged / Interested</option>
+-                <option value="Follow-Up Ongoing">Follow-Up Ongoing</option>
+-                <option value="Application Initiated">Application Initiated</option>
+-              </select>
+-              <button class="btn btn-outline" style="padding:6px 10px;font-size:12px" onclick="updateLeadSubStage()">Update</button>
+-            </div>
+-          </div>
+-
+-          <!-- Short Remark -->
+-          <div style="margin-bottom:10px">
+-            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Short Remark (shows in table)</div>
+-            <div style="display:flex;gap:6px">
+-              <input type="text" id="crm-remark-input" maxlength="120" placeholder="e.g. Interested, callback next week..." style="flex:1;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
+-              <button class="btn btn-outline" style="padding:6px 10px;font-size:12px;border-color:var(--gold)" onclick="saveCRMRemark()">Save</button>
+-            </div>
+-          </div>
+-
+-          <!-- Stage Quick-Change Pills -->
+-          <div style="margin-bottom:10px">
+-            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Change Stage</div>
+-            <div style="display:flex;flex-wrap:wrap;gap:4px" id="crm-stage-pills">
+-              <button onclick="quickStageChange('New')"          class="crm-stage-pill" data-s="New">New</button>
+-              <button onclick="quickStageChange('Contacted')"    class="crm-stage-pill" data-s="Contacted">Contacted</button>
+-              <button onclick="quickStageChange('Interested')"   class="crm-stage-pill" data-s="Interested">Interested</button>
+-              <button onclick="quickStageChange('Demo')"         class="crm-stage-pill" data-s="Demo">Demo</button>
+-              <button onclick="quickStageChange('Follow-Up Ongoing')" class="crm-stage-pill" data-s="Follow-Up Ongoing">Follow-Up</button>
+-              <button onclick="quickStageChange('Application Initiated')" class="crm-stage-pill" data-s="Application Initiated">Applied</button>
+-              <button onclick="quickStageChange('Enrolled')"     class="crm-stage-pill" data-s="Enrolled">Enrolled</button>
+-              <button onclick="quickStageChange('Lost')"         class="crm-stage-pill" data-s="Lost">Lost</button>
+-            </div>
+-          </div>
+-
+-          <!-- Activity Notes & Timeline Unified -->
+-          <div style="margin-bottom:12px">
+-            <!-- Notes/Activity Log Form at top -->
+-            <div id="crm-panel-notes" style="margin-bottom:12px">
+-              <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Log Activity / Add Note</div>
+-              <textarea id="crm-note-input" placeholder="Write a note about this lead — call outcome, interest level, next steps..." style="width:100%;height:64px;font-family:inherit;font-size:12px;padding:7px 8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box;resize:none;transition:border-color .15s" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+-              <div style="display:flex;gap:6px;margin-top:5px">
+-                <select id="crm-note-type" style="flex:1;padding:5px 7px;font-size:11px;border:1.5px solid var(--border);border-radius:5px;background:var(--white);color:var(--navy)">
+-                  <option value="note">📝 Note</option>
+-                  <option value="call">📞 Call Log</option>
+-                  <option value="whatsapp">💬 WhatsApp</option>
+-                  <option value="email">📧 Email</option>
+-                  <option value="meeting">🤝 Meeting</option>
+-                </select>
+-                <button class="btn btn-gold" style="padding:5px 12px;font-size:11px;font-weight:700;border-radius:5px" onclick="saveCRMNote()">Save</button>
+-              </div>
+-            </div>
+-
+-            <!-- Activity Timeline right below -->
+-            <div id="crm-panel-timeline" style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px">
+-              <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Activity Timeline</div>
+-              <div id="crm-timeline-list" style="max-height:220px;overflow-y:auto;padding-right:4px">
+-                <div style="text-align:center;padding:16px;color:var(--muted);font-size:12px">Select a lead to view timeline</div>
+-              </div>
+-            </div>
+-          </div>
+-
+-          <!-- Follow-Up Reminder + Snooze -->
+-          <div style="margin-bottom:12px;border-top:1px solid var(--border);padding-top:10px">
+-            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Set Follow-Up Reminder</div>
+-            <div style="display:flex;gap:6px">
+-              <input type="datetime-local" id="crm-remind-date" style="flex:1;padding:6px;font-size:12px;border:1.5px solid var(--border);border-radius:6px">
+-              <button class="btn" style="padding:6px 10px;font-size:12px" onclick="saveCRMReminder()">Set</button>
+-            </div>
+-            <!-- Snooze active reminder -->
+-            <div id="crm-snooze-row" style="display:none;margin-top:6px">
+-              <div style="font-size:10px;font-weight:700;color:#b45309;margin-bottom:4px">⏰ Active reminder — Snooze:</div>
+-              <div style="display:flex;gap:5px;flex-wrap:wrap">
+-                <button class="btn btn-outline" style="font-size:11px;padding:3px 8px;border-color:#d97706;color:#b45309" onclick="snoozeCRMReminder(1)">+1 hr</button>
+-                <button class="btn btn-outline" style="font-size:11px;padding:3px 8px;border-color:#d97706;color:#b45309" onclick="snoozeCRMReminder(4)">+4 hrs</button>
+-                <button class="btn btn-outline" style="font-size:11px;padding:3px 8px;border-color:#d97706;color:#b45309" onclick="snoozeCRMReminder(24)">Tomorrow</button>
+-              </div>
+-            </div>
+-          </div>
+-
+-          <!-- Bottom Actions -->
+           <div style="display:flex;gap:8px;border-top:1.5px solid var(--border);padding-top:10px">
+             <button class="btn btn-gold" id="btn-crm-enroll" style="flex:1;font-size:12px" onclick="openCRMEnrollModal()">🎯 Convert / Enroll</button>
+             <button class="btn btn-outline" id="btn-crm-upsell" style="flex:1;font-size:12px" onclick="openCRMUpsellModal()">🔄 Cross-Sell</button>
+@@ -12384,7 +12290,29 @@ function selectCRMLead(leadId) {
+   activeLead = lead;
+ 
+   document.getElementById('crm-detail-empty').style.display = 'none';
+-  document.getElementById('crm-detail-content').style.display = 'block';
++  document.getElementById('crm-detail-content').style.display = 'flex'; // Changed to flex!
++
++  // Dynamic header styling based on stage
++  var stageColors = {
++    'New': 'linear-gradient(135deg, #fef2f2, #fee2e2)',
++    'Contacted': 'linear-gradient(135deg, #fffbeb, #fef3c7)',
++    'Interested': 'linear-gradient(135deg, #eff6ff, #dbeafe)',
++    'Demo': 'linear-gradient(135deg, #f5f3ff, #ede9fe)',
++    'Follow-Up Ongoing': 'linear-gradient(135deg, #ecfeff, #cffafe)',
++    'Application Initiated': 'linear-gradient(135deg, #fff7ed, #ffedd5)',
++    'Enrolled': 'linear-gradient(135deg, #f0fdf4, #dcfce7)',
++    'Lost': 'linear-gradient(135deg, #f9fafb, #f3f4f6)'
++  };
++  var stageTextColors = {
++    'New': '#dc2626', 'Contacted': '#b45309', 'Interested': '#2563eb',
++    'Demo': '#7c3aed', 'Follow-Up Ongoing': '#0891b2',
++    'Application Initiated': '#ea580c', 'Enrolled': '#16a34a', 'Lost': '#6b7280'
++  };
++  var header = document.querySelector('.crm-detail-header');
++  if (header) {
++    header.style.background = stageColors[lead.lead_stage] || 'var(--off)';
++    header.style.borderBottom = '1px solid ' + (stageTextColors[lead.lead_stage] || '#cbd5e1') + '30';
++  }
+ 
+   var name = lead.first_name + (lead.last_name ? ' ' + lead.last_name : '');
+   document.getElementById('crm-detail-name').textContent = name;
+@@ -12431,6 +12359,8 @@ function selectCRMLead(leadId) {
+   // Timeline
+   // Immediately load timeline
+   if (lead.id) loadLeadTimeline(lead.id);
++  // Reset mini tabs inside actions card to Note
++  switchCRMActionTab('note');
+   // Highlight current stage pill
+   document.querySelectorAll('.crm-stage-pill').forEach(function(p) {
+     p.classList.toggle('active', p.dataset.s === lead.lead_stage);
+@@ -12573,6 +12503,15 @@ function switchDetailTab(tab) {
+   // Tabs removed, unified layout used instead
+ }
+ 
++function switchCRMActionTab(tab) {
++  ['note', 'status', 'schedule'].forEach(function(t) {
++    var btn = document.getElementById('crm-tab-btn-' + t);
++    var panel = document.getElementById('crm-form-panel-' + t);
++    if (btn) btn.classList.toggle('active', t === tab);
++    if (panel) panel.classList.toggle('active', t === tab);
++  });
++}
++
+ function loadLeadTimeline(leadId) {
+   var container = document.getElementById('crm-timeline-list');
+   if (!container) return;

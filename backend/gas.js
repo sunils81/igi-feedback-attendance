@@ -3013,7 +3013,6 @@ function doGet(e) {
     if (act==='getPendingManualGrades')  return respond(otGetPendingManualGrades(ss,p));
     if (act==='getStudentResults')       return respond(otGetStudentResultsV3(ss,p));
     if (act==='getTestResultsSummary')   return respond(otGetTestResultsSummary(ss,p));
-    if (act==='overrideTestScore')       return respond(otOverrideTestScore(ss,p));
     if (act==='setupScheduledTrigger')   return respond(otSetupScheduledTrigger(ss,p));
 
     // ── sendOverdueEmails ─────────────────────────────────────
@@ -5764,45 +5763,22 @@ function otGetTestResultsSummary(ss, p) {
   ensureOnlineTestSheets(ss);
   var shR=ss.getSheetByName(SH_OT_RESPONSES);
   var rRows=shR.getLastRow()>1?shR.getRange(2,1,shR.getLastRow()-1,16).getValues():[];
-  var testResponses=rRows.filter(function(r){return r[1]===p.testId;}).map(function(r){
+  var allRows=rRows.filter(function(r){return r[1]===p.testId;}).map(function(r){
     return{studentId:r[2],studentName:r[3],submittedAt:r[5],submitType:r[6],
       autoScore:r[8],manualScore:r[9],totalScore:r[10],totalMarks:r[11],
       percentage:r[12],result:r[13],attemptNo:r[15]};
   });
+  // Deduplicate: keep the latest submission per student (guards against ghost 0-score records)
+  var byStudent={};
+  allRows.forEach(function(r){
+    var existing=byStudent[r.studentId];
+    if(!existing || new Date(r.submittedAt)>new Date(existing.submittedAt)) byStudent[r.studentId]=r;
+  });
+  var testResponses=Object.values(byStudent);
   var passed=testResponses.filter(function(r){return r.result==='Pass';}).length;
   var failed=testResponses.filter(function(r){return r.result==='Fail';}).length;
   var avgPct=testResponses.length>0?Math.round(testResponses.reduce(function(s,r){return s+(parseFloat(r.percentage)||0);},0)/testResponses.length):0;
   return{status:'ok',responses:testResponses,passed:passed,failed:failed,avgPercentage:avgPct,total:testResponses.length};
-}
-
-// ── Score Override (instructor correction for bad submissions) ──
-function otOverrideTestScore(ss, p) {
-  if (!p.instructor || !p.testId || !p.studentId || p.newScore === undefined || p.totalMarks === undefined)
-    return {status:'error', reason:'missing_params'};
-  ensureOnlineTestSheets(ss);
-  var shR  = ss.getSheetByName(SH_OT_RESPONSES);
-  var rRows = shR.getLastRow() > 1 ? shR.getRange(2,1,shR.getLastRow()-1,16).getValues() : [];
-  var rIdx  = rRows.findIndex(function(r){
-    return String(r[1]) === String(p.testId) && String(r[2]) === String(p.studentId);
-  });
-  if (rIdx === -1) return {status:'error', reason:'response_not_found'};
-
-  var shOT    = ss.getSheetByName(SH_ONLINE_TESTS);
-  var otRows  = shOT.getLastRow() > 1 ? shOT.getRange(2,1,shOT.getLastRow()-1,23).getValues() : [];
-  var testRow = otRows.find(function(r){ return r[0] === p.testId; });
-  var passScore = testRow ? (parseFloat(testRow[22]) || OT_PASS_PERCENT) : OT_PASS_PERCENT;
-
-  var newScore  = Math.max(0, parseFloat(p.newScore)  || 0);
-  var totalMarks = Math.max(1, parseFloat(p.totalMarks) || 1);
-  var pct    = Math.round(newScore / totalMarks * 100);
-  var result = pct >= passScore ? 'Pass' : 'Fail';
-
-  shR.getRange(rIdx+2, 9).setValue(newScore);   // autoScore
-  shR.getRange(rIdx+2, 11).setValue(newScore);  // totalScore
-  shR.getRange(rIdx+2, 13).setValue(pct);       // percentage
-  shR.getRange(rIdx+2, 14).setValue(result);    // result
-
-  return {status:'ok', newScore:newScore, pct:pct, result:result};
 }
 
 // ── Question Bank Data (355 questions from Excel) ──────────────

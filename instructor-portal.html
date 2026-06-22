@@ -6470,6 +6470,32 @@ function otLoadProctor() {
   otProctorTimer = setInterval(otLoadProctor, 20000);
 }
 
+function otEditScore(studentId, studentName, totalMarks) {
+  var testId = (document.getElementById('ot-results-test')||{}).value || '';
+  if (!testId) return;
+  var tm = parseFloat(totalMarks) || 30;
+  var raw = prompt('Edit score for ' + studentName + '\n\nEnter raw score out of ' + tm + ' (e.g. 27):');
+  if (raw === null) return;
+  var num = parseFloat(raw);
+  if (isNaN(num) || num < 0 || num > tm) { alert('Please enter a number between 0 and ' + tm + '.'); return; }
+  if (!confirm('Set score for ' + studentName + ' to ' + num + '/' + tm + ' (' + Math.round(num/tm*100) + '%)?\n\nThis will overwrite the current recorded score.')) return;
+  gasGet({
+    action: 'overrideTestScore',
+    instructor: instructorName,
+    testId: testId,
+    studentId: studentId,
+    newScore: num,
+    totalMarks: tm
+  }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      alert('Failed to update score. Please try again.');
+    } else {
+      alert('✅ Score updated: ' + d.newScore + '/' + tm + ' (' + d.pct + '% — ' + d.result + ')');
+      otLoadResults();
+    }
+  });
+}
+
 function otResetStudentAttempt(studentId, studentName) {
   var testId = otActiveTestId || (document.getElementById('ot-results-test')||{}).value || '';
   if (!testId) return alert('No test selected.');
@@ -6612,7 +6638,9 @@ function otLoadResults() {
               :                              '<span class="pend-pill">Pending</span>';
       var attNo = r.attemptNo || null;
       var resetBtn = notDone ? '' : '<button onclick="otResetStudentAttempt(\''+escHtml(r.studentId)+'\',\''+escHtml(r.studentName||r.studentId)+'\')"'
-        + ' style="padding:3px 8px;font-size:11px;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;white-space:nowrap;">↩ Reset</button>';
+        + ' style="padding:3px 8px;font-size:11px;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;white-space:nowrap;">↩ Reset</button>'
+        + ' <button onclick="otEditScore(\''+escHtml(r.studentId)+'\',\''+escHtml(r.studentName||r.studentId)+'\',\''+escHtml(String(r.totalMarks||30))+'\')"'
+        + ' style="padding:3px 8px;font-size:11px;background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;border-radius:6px;cursor:pointer;white-space:nowrap;margin-left:4px;">✏️ Edit Score</button>';
       html += '<tr style="'+(notDone?'opacity:.55;':'')+'">'
         + '<td><b>'+escHtml(r.studentName||r.studentId)+'</b><br><span style="font-size:11px;color:#9ca3af;">'+escHtml(r.studentId)+'</span></td>'
         + '<td>'+(attNo ? '<span class="badge badge-amber">Attempt '+attNo+'</span>' : '<span style="color:#d1d5db;">—</span>')+'</td>'

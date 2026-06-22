@@ -2057,16 +2057,37 @@
           
           <!-- Right Column (Flex: 1) -->
           <div style="flex:1; display:flex; flex-direction:column; min-width:0; overflow:hidden">
-            <!-- Stage Pipeline Bar -->
-            <div class="crm-pipeline-bar">
-              <div class="crm-pipeline-step" data-s="New" onclick="quickStageChange('New')">New</div>
-              <div class="crm-pipeline-step" data-s="Contacted" onclick="quickStageChange('Contacted')">Contacted</div>
-              <div class="crm-pipeline-step" data-s="Interested" onclick="quickStageChange('Interested')">Interested</div>
-              <div class="crm-pipeline-step" data-s="Demo" onclick="quickStageChange('Demo')">Demo</div>
-              <div class="crm-pipeline-step" data-s="Follow-Up Ongoing" onclick="quickStageChange('Follow-Up Ongoing')">Follow-Up</div>
-              <div class="crm-pipeline-step" data-s="Application Initiated" onclick="quickStageChange('Application Initiated')">Applied</div>
-              <div class="crm-pipeline-step" data-s="Enrolled" onclick="quickStageChange('Enrolled')">Enrolled</div>
-              <div class="crm-pipeline-step" data-s="Lost" onclick="quickStageChange('Lost')">Lost</div>
+            <!-- Change Stage Panel (Meritto-style) -->
+            <div id="crm-change-stage-bar" style="background:var(--white);border-bottom:1.5px solid var(--border);padding:12px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;flex-shrink:0">
+              <div style="flex:1;min-width:150px">
+                <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Lead Stage</label>
+                <select id="crm-stage-inline-sel" onchange="onInlineStageChange()" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;background:var(--white);color:var(--navy);font-weight:600;cursor:pointer">
+                  <option value="">Select Stage</option>
+                  <option value="New">New</option>
+                  <option value="Contacted">Contacted</option>
+                  <option value="Interested">Interested</option>
+                  <option value="Demo">Demo</option>
+                  <option value="Follow-Up Ongoing">Follow-Up Ongoing</option>
+                  <option value="Application Initiated">Application Initiated</option>
+                  <option value="Enrolled">Enrolled</option>
+                  <option value="Lost">Lost</option>
+                </select>
+              </div>
+              <div style="flex:1;min-width:150px">
+                <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Lead Sub Stage</label>
+                <select id="crm-substage-inline-sel" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;background:var(--white);color:var(--navy);cursor:pointer">
+                  <option value="">Select Sub Stage</option>
+                </select>
+              </div>
+              <div style="min-width:130px">
+                <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Followup Date</label>
+                <input type="date" id="crm-followup-date-inline" style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;background:var(--white);color:var(--navy);box-sizing:border-box">
+              </div>
+              <div style="flex:2;min-width:180px">
+                <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Note</label>
+                <input type="text" id="crm-stage-note-inline" placeholder="Add a note..." style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;background:var(--white);box-sizing:border-box">
+              </div>
+              <button onclick="saveInlineStageChange()" style="background:var(--gold);color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;height:36px;align-self:flex-end">Save</button>
             </div>
 
             <!-- Horizontal Tabs -->
@@ -2082,49 +2103,63 @@
             <!-- Tab Content Area -->
             <div style="flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden">
               
-              <!-- Tab 1: Lead Details -->
-              <div class="crm-detail-tab-pane active" id="crm-detail-tab-pane-details" style="flex:1; overflow-y:auto">
-                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px; background:#f8fafc; border:1px solid var(--border); border-radius:8px; padding:16px">
-                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:6px 0; border-bottom:1px dashed var(--border)">
-                    <span style="color:var(--muted); font-weight:600">Email:</span>
-                    <strong id="crm-tab-val-email" style="color:var(--navy)">-</strong>
+              <!-- Tab 1: Lead Details (editable) -->
+              <div class="crm-detail-tab-pane active" id="crm-detail-tab-pane-details" style="flex:1; overflow-y:auto; padding:16px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;background:var(--white);border:1px solid var(--border);border-radius:8px;overflow:hidden">
+                  <!-- Email -->
+                  <div style="padding:12px 14px;border-bottom:1px solid var(--border);border-right:1px solid var(--border)">
+                    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Email Address</div>
+                    <input type="email" id="crm-edit-email" style="width:100%;border:none;outline:none;font-size:13px;color:var(--navy);font-weight:600;background:transparent;box-sizing:border-box" placeholder="—">
                   </div>
-                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:6px 0; border-bottom:1px dashed var(--border)">
-                    <span style="color:var(--muted); font-weight:600">Mobile:</span>
-                    <strong id="crm-tab-val-mobile" style="color:var(--navy)">-</strong>
+                  <!-- Mobile -->
+                  <div style="padding:12px 14px;border-bottom:1px solid var(--border)">
+                    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Mobile</div>
+                    <input type="tel" id="crm-edit-mobile" style="width:100%;border:none;outline:none;font-size:13px;color:var(--navy);font-weight:600;background:transparent;box-sizing:border-box" placeholder="—">
                   </div>
-                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:6px 0; border-bottom:1px dashed var(--border)">
-                    <span style="color:var(--muted); font-weight:600">Alt Mobile:</span>
-                    <strong id="crm-tab-val-alt-mobile" style="color:var(--navy)">-</strong>
+                  <!-- Alt Mobile -->
+                  <div style="padding:12px 14px;border-bottom:1px solid var(--border);border-right:1px solid var(--border)">
+                    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Alt Mobile</div>
+                    <input type="tel" id="crm-edit-alt-mobile" style="width:100%;border:none;outline:none;font-size:13px;color:var(--navy);font-weight:600;background:transparent;box-sizing:border-box" placeholder="—">
                   </div>
-                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:6px 0; border-bottom:1px dashed var(--border)">
-                    <span style="color:var(--muted); font-weight:600">Centre:</span>
-                    <strong id="crm-tab-val-centre" style="color:var(--navy)">-</strong>
+                  <!-- Centre -->
+                  <div style="padding:12px 14px;border-bottom:1px solid var(--border)">
+                    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Centre</div>
+                    <input type="text" id="crm-edit-centre" style="width:100%;border:none;outline:none;font-size:13px;color:var(--navy);font-weight:600;background:transparent;box-sizing:border-box" placeholder="—">
                   </div>
-                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:6px 0; border-bottom:1px dashed var(--border)">
-                    <span style="color:var(--muted); font-weight:600">Course:</span>
-                    <strong id="crm-tab-val-course" style="color:var(--navy)">-</strong>
+                  <!-- Course -->
+                  <div style="padding:12px 14px;border-bottom:1px solid var(--border);border-right:1px solid var(--border)">
+                    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Course</div>
+                    <input type="text" id="crm-edit-course" style="width:100%;border:none;outline:none;font-size:13px;color:var(--navy);font-weight:600;background:transparent;box-sizing:border-box" placeholder="—">
                   </div>
-                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:6px 0; border-bottom:1px dashed var(--border)">
-                    <span style="color:var(--muted); font-weight:600">Owner:</span>
-                    <strong id="crm-tab-val-owner" style="color:var(--navy)">-</strong>
+                  <!-- Owner (read-only) -->
+                  <div style="padding:12px 14px;border-bottom:1px solid var(--border)">
+                    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Owner</div>
+                    <div id="crm-tab-val-owner" style="font-size:13px;color:var(--navy);font-weight:600">—</div>
                   </div>
-                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:6px 0; border-bottom:1px dashed var(--border)">
-                    <span style="color:var(--muted); font-weight:600">Sub-stage:</span>
-                    <strong id="crm-tab-val-substage" style="color:var(--navy)">-</strong>
+                  <!-- Sub-stage (read-only, managed by Change Stage bar) -->
+                  <div style="padding:12px 14px;border-bottom:1px solid var(--border);border-right:1px solid var(--border)">
+                    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Sub-stage</div>
+                    <div id="crm-tab-val-substage" style="font-size:13px;color:var(--navy);font-weight:600">—</div>
                   </div>
-                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:6px 0; border-bottom:1px dashed var(--border)">
-                    <span style="color:var(--muted); font-weight:600">Call Slot:</span>
-                    <strong id="crm-tab-val-slot" style="color:var(--navy)">-</strong>
+                  <!-- Call Slot -->
+                  <div style="padding:12px 14px;border-bottom:1px solid var(--border)">
+                    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Call Slot</div>
+                    <input type="text" id="crm-edit-slot" style="width:100%;border:none;outline:none;font-size:13px;color:var(--navy);font-weight:600;background:transparent;box-sizing:border-box" placeholder="—">
                   </div>
-                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:6px 0; border-bottom:1px dashed var(--border)">
-                    <span style="color:var(--muted); font-weight:600">Join In:</span>
-                    <strong id="crm-tab-val-jointime" style="color:var(--navy)">-</strong>
+                  <!-- Join In -->
+                  <div style="padding:12px 14px;border-right:1px solid var(--border)">
+                    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Join In</div>
+                    <input type="text" id="crm-edit-jointime" style="width:100%;border:none;outline:none;font-size:13px;color:var(--navy);font-weight:600;background:transparent;box-sizing:border-box" placeholder="—">
                   </div>
-                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:6px 0; border-bottom:1px dashed var(--border)">
-                    <span style="color:var(--muted); font-weight:600">Profession:</span>
-                    <strong id="crm-tab-val-profession" style="color:var(--navy)">-</strong>
+                  <!-- Profession -->
+                  <div style="padding:12px 14px">
+                    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Profession</div>
+                    <input type="text" id="crm-edit-profession" style="width:100%;border:none;outline:none;font-size:13px;color:var(--navy);font-weight:600;background:transparent;box-sizing:border-box" placeholder="—">
                   </div>
+                </div>
+                <!-- Save Lead Details -->
+                <div style="margin-top:12px;display:flex;justify-content:flex-end">
+                  <button onclick="saveLeadDetailsInline()" style="background:var(--gold);color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:12px;font-weight:700;cursor:pointer">Save Lead Details</button>
                 </div>
               </div>
 
@@ -12908,17 +12943,27 @@ function selectCRMLead(leadId) {
   var profEl = document.getElementById('crm-detail-profession');
   if(profEl) profEl.textContent = lead.current_profession || '—';
 
-  // Populate Right-hand Details tab pane fields
-  if (document.getElementById('crm-tab-val-email')) document.getElementById('crm-tab-val-email').textContent = lead.email || '—';
-  if (document.getElementById('crm-tab-val-mobile')) document.getElementById('crm-tab-val-mobile').textContent = lead.mobile || '—';
-  if (document.getElementById('crm-tab-val-alt-mobile')) document.getElementById('crm-tab-val-alt-mobile').textContent = lead.alt_mobile || '—';
-  if (document.getElementById('crm-tab-val-centre')) document.getElementById('crm-tab-val-centre').textContent = lead.centre || '—';
-  if (document.getElementById('crm-tab-val-course')) document.getElementById('crm-tab-val-course').textContent = lead.course || '—';
-  if (document.getElementById('crm-tab-val-owner')) document.getElementById('crm-tab-val-owner').textContent = (lead.lead_owner || 'Unassigned') + (lead.lead_co_owner ? ' (Co: ' + lead.lead_co_owner + ')' : '');
-  if (document.getElementById('crm-tab-val-substage')) document.getElementById('crm-tab-val-substage').textContent = lead.lead_sub_stage || '—';
-  if (document.getElementById('crm-tab-val-slot')) document.getElementById('crm-tab-val-slot').textContent = lead.book_my_slot || '—';
-  if (document.getElementById('crm-tab-val-jointime')) document.getElementById('crm-tab-val-jointime').textContent = lead.when_to_join || '—';
-  if (document.getElementById('crm-tab-val-profession')) document.getElementById('crm-tab-val-profession').textContent = lead.current_profession || '—';
+  // Populate Lead Details editable fields
+  var setVal = function(id, v) { var el = document.getElementById(id); if (el) el.value = v || ''; };
+  var setTxt = function(id, v) { var el = document.getElementById(id); if (el) el.textContent = v || '—'; };
+  setVal('crm-edit-email', lead.email);
+  setVal('crm-edit-mobile', lead.mobile);
+  setVal('crm-edit-alt-mobile', lead.alt_mobile);
+  setVal('crm-edit-centre', lead.centre);
+  setVal('crm-edit-course', lead.course);
+  setVal('crm-edit-slot', lead.book_my_slot);
+  setVal('crm-edit-jointime', lead.when_to_join);
+  setVal('crm-edit-profession', lead.current_profession);
+  setTxt('crm-tab-val-owner', (lead.lead_owner || 'Unassigned') + (lead.lead_co_owner ? ' (Co: ' + lead.lead_co_owner + ')' : ''));
+  setTxt('crm-tab-val-substage', lead.lead_sub_stage);
+  // Populate inline Change Stage bar
+  var stageSel = document.getElementById('crm-stage-inline-sel');
+  if (stageSel) {
+    stageSel.value = lead.lead_stage || '';
+    if (typeof onInlineStageChange === 'function') onInlineStageChange();
+    var subSel = document.getElementById('crm-substage-inline-sel');
+    if (subSel) subSel.value = lead.lead_sub_stage || '';
+  }
 
   // Dynamic Avatar initials and stage class
   var initials = lead.first_name ? lead.first_name.charAt(0).toUpperCase() : '';
@@ -13127,6 +13172,99 @@ function updateLeadSubStage() {
     if (idx >= 0) crmLeadsList[idx].lead_sub_stage = val;
     showToast('Sub-stage updated: ' + val, 'success');
     selectCRMLead(activeLead.id);
+    filterLeads();
+  });
+}
+
+// ── Inline Stage Change (Meritto-style dropdowns) ─────────────────────────
+var CRM_INLINE_SUB_STAGES = {
+  'New': ['Untouched'],
+  'Contacted': ['Call Attempted', 'Call Connected', 'Not Responding', 'Not Interested'],
+  'Interested': ['Engaged / Interested', 'Invited for Demo', 'Demo Scheduled', 'Documents Requested'],
+  'Demo': ['Demo Done', 'Demo No Show', 'Counselling Done Over Call'],
+  'Follow-Up Ongoing': ['Parent/Partner Discussion Pending', 'Fee Concern', 'Timing Concern', 'Waiting for Next Batch', 'Reminder Call Scheduled'],
+  'Application Initiated': ['Application Submitted', 'Fee Pending', 'Documents Pending'],
+  'Enrolled': ['Enrolled'],
+  'Lost': ['Not Interested', 'Lost / Not Converted', 'Invalid Lead', 'DND', 'Alumni / Upsell']
+};
+
+function onInlineStageChange() {
+  var stage = (document.getElementById('crm-stage-inline-sel') || {}).value || '';
+  var subSel = document.getElementById('crm-substage-inline-sel');
+  if (!subSel) return;
+  var current = subSel.value;
+  subSel.innerHTML = '<option value="">Select Sub Stage</option>';
+  (CRM_INLINE_SUB_STAGES[stage] || []).forEach(function(s) {
+    var o = document.createElement('option');
+    o.value = s; o.textContent = s;
+    if (s === current) o.selected = true;
+    subSel.appendChild(o);
+  });
+}
+
+function saveInlineStageChange() {
+  if (!activeLead) return;
+  var newStage = (document.getElementById('crm-stage-inline-sel') || {}).value || '';
+  var newSubStage = (document.getElementById('crm-substage-inline-sel') || {}).value || '';
+  var followupDate = (document.getElementById('crm-followup-date-inline') || {}).value || '';
+  var note = ((document.getElementById('crm-stage-note-inline') || {}).value || '').trim();
+  if (!newStage) { showToast('Select a lead stage.', 'error'); return; }
+  var oldStage = activeLead.lead_stage;
+  gasGet({
+    action: 'saveCRMLead',
+    id: activeLead.id,
+    firstName: activeLead.first_name, lastName: activeLead.last_name,
+    email: activeLead.email, mobile: activeLead.mobile,
+    course: activeLead.course, centre: activeLead.centre,
+    leadStage: newStage, leadSubStage: newSubStage,
+    leadOwner: activeLead.lead_owner, source: activeLead.source,
+    notes: note || activeLead.notes, leadScore: activeLead.lead_score,
+    leadRemark: activeLead.lead_remark, altMobile: activeLead.alt_mobile,
+    bookMySlot: activeLead.book_my_slot, whenToJoin: activeLead.when_to_join,
+    currentProfession: activeLead.current_profession, followupDate: followupDate
+  }, function(err, res) {
+    if (err || !res || res.status !== 'ok') { showToast('Failed to save.', 'error'); return; }
+    activeLead.lead_stage = newStage;
+    activeLead.lead_sub_stage = newSubStage;
+    var idx = crmLeadsList.findIndex(function(l) { return l.id === activeLead.id; });
+    if (idx >= 0) { crmLeadsList[idx].lead_stage = newStage; crmLeadsList[idx].lead_sub_stage = newSubStage; }
+    if (note) gasGet({ action: 'saveLeadActivity', leadId: activeLead.id, activityType: 'note', body: note, actor: counselorName || 'Counselor' }, function(){});
+    if (oldStage !== newStage) gasGet({ action: 'saveLeadActivity', leadId: activeLead.id, activityType: 'stage_change', body: 'Stage changed: ' + oldStage + ' → ' + newStage, actor: counselorName || 'Counselor' }, function(){});
+    var noteEl = document.getElementById('crm-stage-note-inline');
+    if (noteEl) noteEl.value = '';
+    setTxt('crm-tab-val-substage', newSubStage);
+    setTxt('crm-detail-substage', newSubStage);
+    showToast('Stage saved: ' + newStage + (newSubStage ? ' › ' + newSubStage : ''), 'success');
+    selectCRMLead(activeLead.id);
+    filterLeads();
+  });
+}
+
+function saveLeadDetailsInline() {
+  if (!activeLead) return;
+  var g = function(id) { return ((document.getElementById(id) || {}).value || '').trim(); };
+  var email = g('crm-edit-email'), mobile = g('crm-edit-mobile'), altMobile = g('crm-edit-alt-mobile');
+  var centre = g('crm-edit-centre'), course = g('crm-edit-course');
+  var slot = g('crm-edit-slot'), jointime = g('crm-edit-jointime'), profession = g('crm-edit-profession');
+  gasGet({
+    action: 'saveCRMLead',
+    id: activeLead.id,
+    firstName: activeLead.first_name, lastName: activeLead.last_name,
+    email: email, mobile: mobile, altMobile: altMobile,
+    course: course, centre: centre,
+    leadStage: activeLead.lead_stage, leadSubStage: activeLead.lead_sub_stage,
+    leadOwner: activeLead.lead_owner, source: activeLead.source,
+    notes: activeLead.notes, leadScore: activeLead.lead_score,
+    leadRemark: activeLead.lead_remark, bookMySlot: slot, whenToJoin: jointime,
+    currentProfession: profession
+  }, function(err, res) {
+    if (err || !res || res.status !== 'ok') { showToast('Failed to save lead details.', 'error'); return; }
+    activeLead.email = email; activeLead.mobile = mobile; activeLead.alt_mobile = altMobile;
+    activeLead.course = course; activeLead.centre = centre;
+    activeLead.book_my_slot = slot; activeLead.when_to_join = jointime; activeLead.current_profession = profession;
+    var idx = crmLeadsList.findIndex(function(l) { return l.id === activeLead.id; });
+    if (idx >= 0) Object.assign(crmLeadsList[idx], { email: email, mobile: mobile, alt_mobile: altMobile, course: course, centre: centre });
+    showToast('Lead details saved.', 'success');
     filterLeads();
   });
 }

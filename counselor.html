@@ -1512,6 +1512,11 @@
 #inv-upd-grid input[type=number] { -moz-appearance:textfield; }
 </style>
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<style>
+.crm-nl{display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px}
+.crm-ni{width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;box-sizing:border-box;outline:none;background:var(--white);color:var(--navy)}
+.crm-ni:focus{border-color:var(--navy)}
+</style>
 </head>
 <body>
 <script>document.getElementById('dyn-css').textContent=CSS_VARS;</script>
@@ -2420,67 +2425,196 @@
   </div>
 
   <!-- MODAL: ADD LEAD MANUALLY -->
-  <div id="crm-add-lead-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
-    <div style="width:100%;max-width:420px;padding:24px;background:var(--white);border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.2)">
-      <h3 style="margin-top:0;color:var(--navy)">Add New Enquiry Lead</h3>
-      <div class="field" style="margin-bottom:10px">
-        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">First Name</label>
-        <input type="text" id="crm-new-fname" placeholder="Enter first name" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
+  <div id="crm-add-lead-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center">
+    <div style="width:100%;max-width:560px;background:var(--white);border-radius:14px;box-shadow:0 16px 48px rgba(0,0,0,.22);display:flex;flex-direction:column;max-height:92vh">
+      <!-- Header -->
+      <div style="padding:18px 22px 14px;border-bottom:1.5px solid var(--border);flex-shrink:0">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--navy)">Add Quick Lead</h3>
+          <button onclick="closeAddLeadModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1">×</button>
+        </div>
+        <!-- Upload Via toggle -->
+        <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+          <span style="font-size:12px;font-weight:600;color:var(--muted)">Upload Via</span>
+          <button id="crm-via-email" onclick="setLeadUploadVia('email')" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;border:2px solid var(--navy);background:rgba(13,27,46,.07);color:var(--navy);cursor:pointer">
+            ✉ Email ✓
+          </button>
+          <button id="crm-via-mobile" onclick="setLeadUploadVia('mobile')" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;border:1.5px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">
+            📱 Mobile
+          </button>
+        </div>
+        <p style="margin:6px 0 0;font-size:11px;color:var(--muted)">Lead Details <span style="color:#dc2626">*</span> Required fields</p>
       </div>
-      <div class="field" style="margin-bottom:10px">
-        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Last Name</label>
-        <input type="text" id="crm-new-lname" placeholder="Enter last name" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
-      </div>
-      <div class="field" style="margin-bottom:10px">
-        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Email ID</label>
-        <input type="email" id="crm-new-email" placeholder="name@email.com" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
-      </div>
-      <div class="field" style="margin-bottom:10px">
-        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Mobile Number</label>
-        <input type="tel" id="crm-new-mobile" placeholder="10 digit number" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
-      </div>
-      <div class="field" style="margin-bottom:10px">
-        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Alternate Mobile</label>
-        <input type="tel" id="crm-new-alt-mobile" placeholder="Optional" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
-      </div>
-      <div class="field" style="margin-bottom:10px">
-        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Interested Course</label>
-        <select id="crm-new-course" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box"></select>
-      </div>
-      <div class="field" style="margin-bottom:10px">
-        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">IGI Centre</label>
-        <select id="crm-new-centre" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box"></select>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-        <div class="field">
-          <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Preferred Call Slot</label>
-          <select id="crm-new-slot" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
-            <option value="">Not specified</option>
-            <option value="Morning (9 AM – 12 PM)">Morning (9–12)</option>
-            <option value="Afternoon (12 PM – 5 PM)">Afternoon (12–5)</option>
-            <option value="Evening (5 PM – 8 PM)">Evening (5–8)</option>
+      <!-- Scrollable body -->
+      <div style="overflow-y:auto;padding:16px 22px;flex:1">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label class="crm-nl">First Name <span style="color:#dc2626">*</span></label>
+            <input type="text" id="crm-new-fname" placeholder="Enter First Name" class="crm-ni">
+          </div>
+          <div>
+            <label class="crm-nl">Last Name</label>
+            <input type="text" id="crm-new-lname" placeholder="Enter Last Name" class="crm-ni">
+          </div>
+        </div>
+        <div style="margin-bottom:10px">
+          <label class="crm-nl">Email Address <span style="color:#dc2626">*</span></label>
+          <input type="email" id="crm-new-email" placeholder="Enter Email Address" class="crm-ni">
+        </div>
+        <div style="margin-bottom:10px">
+          <label class="crm-nl">Mobile Number</label>
+          <div style="display:flex;gap:0">
+            <span style="padding:8px 10px;background:#f1f5f9;border:1.5px solid var(--border);border-right:none;border-radius:6px 0 0 6px;font-size:12px;color:var(--muted);font-weight:600">+91</span>
+            <input type="tel" id="crm-new-mobile" placeholder="Enter Mobile Number" style="flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:0 6px 6px 0;font-size:13px;font-family:inherit;box-sizing:border-box;outline:none">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label class="crm-nl">Alternate Mobile</label>
+            <input type="tel" id="crm-new-alt-mobile" placeholder="Optional" class="crm-ni">
+          </div>
+          <div>
+            <label class="crm-nl">Current Profession</label>
+            <select id="crm-new-profession" class="crm-ni">
+              <option value="">Select Current Profession</option>
+              <option>Student</option><option>Professional</option><option>Diamond Trader</option>
+              <option>Jeweller</option><option>Housewife</option><option>Business Owner</option>
+              <option>Service</option><option>Other</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label class="crm-nl">State <span style="color:#dc2626">*</span></label>
+            <select id="crm-new-state" class="crm-ni" onchange="populateLeadCities()">
+              <option value="">Select State</option>
+              <option>Andhra Pradesh</option><option>Arunachal Pradesh</option><option>Assam</option>
+              <option>Bihar</option><option>Chhattisgarh</option><option>Goa</option><option>Gujarat</option>
+              <option>Haryana</option><option>Himachal Pradesh</option><option>Jharkhand</option>
+              <option>Karnataka</option><option>Kerala</option><option>Madhya Pradesh</option>
+              <option>Maharashtra</option><option>Manipur</option><option>Meghalaya</option>
+              <option>Mizoram</option><option>Nagaland</option><option>Odisha</option><option>Punjab</option>
+              <option>Rajasthan</option><option>Sikkim</option><option>Tamil Nadu</option>
+              <option>Telangana</option><option>Tripura</option><option>Uttar Pradesh</option>
+              <option>Uttarakhand</option><option>West Bengal</option>
+              <option>Delhi</option><option>Chandigarh</option><option>Puducherry</option>
+              <option>Outside India</option>
+            </select>
+          </div>
+          <div>
+            <label class="crm-nl">City <span style="color:#dc2626">*</span></label>
+            <input type="text" id="crm-new-city" placeholder="Enter City" class="crm-ni">
+          </div>
+        </div>
+        <div style="margin-bottom:10px">
+          <label class="crm-nl">Interested Course <span style="color:#dc2626">*</span></label>
+          <select id="crm-new-course" class="crm-ni"></select>
+        </div>
+        <div style="margin-bottom:10px">
+          <label class="crm-nl">Student Company or Corporate Batch Account</label>
+          <select id="crm-new-corporate" class="crm-ni">
+            <option value="">Select Student Company or Corporate Batch account</option>
+            <option>Individual</option><option>Corporate</option><option>Trade</option><option>Education</option>
           </select>
         </div>
-        <div class="field">
-          <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">When to Join</label>
-          <select id="crm-new-jointime" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
-            <option value="">Not specified</option>
-            <option value="Immediately">Immediately</option>
-            <option value="Within 1 Month">Within 1 Month</option>
-            <option value="1–3 Months">1–3 Months</option>
-            <option value="3–6 Months">3–6 Months</option>
-            <option value="Just Exploring">Just Exploring</option>
-          </select>
+        <div style="margin-bottom:10px">
+          <label class="crm-nl">School of Gemology Location <span style="color:#dc2626">*</span></label>
+          <select id="crm-new-centre" class="crm-ni"></select>
         </div>
+        <div style="margin-bottom:10px">
+          <label class="crm-nl">Existing or old IGI Account Email</label>
+          <input type="email" id="crm-new-existing-email" placeholder="Enter Existing or old IGI Account Email" class="crm-ni">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label class="crm-nl">Course Mode <span style="color:#dc2626">*</span></label>
+            <select id="crm-new-course-mode" class="crm-ni">
+              <option value="">Select Course Mode</option>
+              <option>Online</option><option>Offline</option><option>Hybrid</option>
+            </select>
+          </div>
+          <div>
+            <label class="crm-nl">When do you want to join</label>
+            <select id="crm-new-jointime" class="crm-ni">
+              <option value="">Select When do you want to join</option>
+              <option value="Immediately">Immediately</option>
+              <option value="Within 1 Month">Within 1 Month</option>
+              <option value="1–3 Months">1–3 Months</option>
+              <option value="3–6 Months">3–6 Months</option>
+              <option value="Just Exploring">Just Exploring</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label class="crm-nl">Payment Plan</label>
+            <select id="crm-new-payment-plan" class="crm-ni">
+              <option value="">Payment Plan</option>
+              <option>Full Payment</option><option>Installment</option><option>EMI</option>
+              <option>Corporate Sponsored</option><option>Scholarship</option>
+            </select>
+          </div>
+          <div>
+            <label class="crm-nl">Preferred Call Slot</label>
+            <select id="crm-new-slot" class="crm-ni">
+              <option value="">Not specified</option>
+              <option value="Morning (9–12)">Morning (9–12)</option>
+              <option value="Afternoon (12–5)">Afternoon (12–5)</option>
+              <option value="Evening (5–8)">Evening (5–8)</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label class="crm-nl">Counsellor Name</label>
+            <select id="crm-new-counsellor" class="crm-ni">
+              <option value="">Select Counsellor Name</option>
+            </select>
+          </div>
+          <div>
+            <label class="crm-nl">Assign Lead to Owner</label>
+            <select id="crm-new-owner" class="crm-ni">
+              <option value="">Auto-assign (Round Robin)</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+          <div>
+            <label class="crm-nl">Source <span style="color:#dc2626">*</span></label>
+            <select id="crm-new-source" class="crm-ni">
+              <option value="">Select Source</option>
+              <option>Website</option><option>Facebook</option><option>Google</option>
+              <option>Walk-In</option><option>Social</option><option>Offline</option>
+              <option>Event</option><option>Google Ads</option><option>Seminar</option>
+              <option>Referral</option><option>WhatsApp</option><option>Direct</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div>
+            <label class="crm-nl">Medium</label>
+            <select id="crm-new-medium" class="crm-ni">
+              <option value="">Select Medium</option>
+              <option>CPC</option><option>CPM</option><option>Organic</option>
+              <option>Email</option><option>SMS</option><option>WhatsApp</option>
+              <option>Banner</option><option>Video</option><option>Other</option>
+            </select>
+          </div>
+          <div>
+            <label class="crm-nl">Campaign</label>
+            <input type="text" id="crm-new-campaign" placeholder="Enter Campaign" class="crm-ni">
+          </div>
+        </div>
+        <div style="margin-bottom:14px">
+          <label class="crm-nl">Initial Note</label>
+          <textarea id="crm-new-note" placeholder="Add a note about this lead (optional)…" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;box-sizing:border-box;resize:vertical;min-height:80px;outline:none"></textarea>
+        </div>
+        <div id="crm-new-err" style="display:none;background:#fef2f2;border:1.5px solid #fca5a5;border-radius:6px;padding:8px 12px;color:#dc2626;font-size:12px;margin-bottom:10px"></div>
       </div>
-      <div class="field" style="margin-bottom:14px">
-        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Current Profession</label>
-        <input type="text" id="crm-new-profession" placeholder="e.g. Diamond Trader, Student, Housewife…" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;box-sizing:border-box">
-      </div>
-      <div class="err-box" id="crm-new-err" style="display:none;margin-bottom:10px;color:#dc2626;font-size:12px"></div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-gold" onclick="submitNewLead()">Create Lead</button>
-        <button class="btn btn-outline" onclick="closeAddLeadModal()">Cancel</button>
+      <!-- Footer -->
+      <div style="padding:12px 22px;border-top:1.5px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0">
+        <button onclick="closeAddLeadModal()" style="padding:8px 18px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--navy)">Cancel</button>
+        <button onclick="submitNewLead(true)" style="padding:8px 18px;border:1.5px solid var(--navy);border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--navy)">Save and Add new</button>
+        <button onclick="submitNewLead(false)" style="padding:8px 22px;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;background:var(--navy);color:#fff">Save</button>
       </div>
     </div>
   </div>
@@ -13909,59 +14043,191 @@ function snoozeCRMReminder(hours) {
 }
 
 // ── Add Lead Modal ────────────────────────────────────────────────────────
+function setLeadUploadVia(via) {
+  var eb = document.getElementById('crm-via-email');
+  var mb = document.getElementById('crm-via-mobile');
+  if (via === 'email') {
+    eb.style.border = '2px solid var(--navy)'; eb.style.background = 'rgba(13,27,46,.07)'; eb.style.color = 'var(--navy)';
+    mb.style.border = '1.5px solid var(--border)'; mb.style.background = 'transparent'; mb.style.color = 'var(--muted)';
+    document.getElementById('crm-new-email').required = true;
+    document.getElementById('crm-new-mobile').required = false;
+  } else {
+    mb.style.border = '2px solid var(--navy)'; mb.style.background = 'rgba(13,27,46,.07)'; mb.style.color = 'var(--navy)';
+    eb.style.border = '1.5px solid var(--border)'; eb.style.background = 'transparent'; eb.style.color = 'var(--muted)';
+    document.getElementById('crm-new-mobile').required = true;
+    document.getElementById('crm-new-email').required = false;
+  }
+}
+
+function populateLeadCities() {
+  // City is a free-text input — state selection just focuses city for quick typing
+  var cityEl = document.getElementById('crm-new-city');
+  if (cityEl) cityEl.focus();
+}
+
 function openAddLeadModal() {
   var modal = document.getElementById('crm-add-lead-modal');
   if (!modal) return;
+
+  // Reset all fields
+  ['crm-new-fname','crm-new-lname','crm-new-email','crm-new-mobile','crm-new-alt-mobile',
+   'crm-new-city','crm-new-existing-email','crm-new-campaign','crm-new-note'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  ['crm-new-state','crm-new-course','crm-new-centre','crm-new-corporate','crm-new-course-mode',
+   'crm-new-jointime','crm-new-payment-plan','crm-new-slot','crm-new-counsellor',
+   'crm-new-owner','crm-new-source','crm-new-medium','crm-new-profession'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+
+  // Populate course dropdown
   var courseSel = document.getElementById('crm-new-course');
+  if (courseSel && courseSel.options.length <= 1) {
+    courseSel.innerHTML = '<option value="">Select Course</option>';
+    (window.COURSES || []).forEach(function(c) {
+      var o = document.createElement('option'); o.value = c; o.textContent = c; courseSel.appendChild(o);
+    });
+  }
+
+  // Populate centre dropdown
   var centreSel = document.getElementById('crm-new-centre');
-  if (typeof COURSES !== 'undefined') courseSel.innerHTML = COURSES.map(function(c){ return '<option value="'+escC(c)+'">'+escC(c)+'</option>'; }).join('');
-  if (typeof CENTRES !== 'undefined') centreSel.innerHTML = CENTRES.map(function(c){ return '<option value="'+escC(c)+'">'+escC(c)+'</option>'; }).join('');
-  ['crm-new-fname','crm-new-lname','crm-new-email','crm-new-mobile','crm-new-alt-mobile','crm-new-profession'].forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
-  ['crm-new-slot','crm-new-jointime'].forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
+  if (centreSel && centreSel.options.length <= 1) {
+    centreSel.innerHTML = '<option value="">Select School of Gemology Location</option>';
+    (window.CENTRES || []).forEach(function(c) {
+      var o = document.createElement('option'); o.value = c; o.textContent = c; centreSel.appendChild(o);
+    });
+  }
+
+  // Populate counsellor + owner dropdowns from loaded leads
+  var counsellors = [];
+  (window.crmLeadsList || []).forEach(function(l) {
+    if (l.lead_owner && !counsellors.includes(l.lead_owner)) counsellors.push(l.lead_owner);
+  });
+  var cSel = document.getElementById('crm-new-counsellor');
+  var oSel = document.getElementById('crm-new-owner');
+  if (cSel) {
+    cSel.innerHTML = '<option value="">Select Counsellor Name</option>';
+    counsellors.forEach(function(c) { var o = document.createElement('option'); o.value = c; o.textContent = c; cSel.appendChild(o); });
+  }
+  if (oSel) {
+    oSel.innerHTML = '<option value="">Auto-assign (Round Robin)</option>';
+    counsellors.forEach(function(c) { var o = document.createElement('option'); o.value = c; o.textContent = c; oSel.appendChild(o); });
+  }
+
+  // Pre-select current counsellor's centre
+  if (centreSel && window.counselorCentre) centreSel.value = window.counselorCentre;
+
   document.getElementById('crm-new-err').style.display = 'none';
+  setLeadUploadVia('email');
   modal.style.display = 'flex';
+  setTimeout(function() { var el = document.getElementById('crm-new-fname'); if (el) el.focus(); }, 100);
 }
 
-function closeAddLeadModal() { document.getElementById('crm-add-lead-modal').style.display = 'none'; }
+function closeAddLeadModal() {
+  var modal = document.getElementById('crm-add-lead-modal');
+  if (modal) modal.style.display = 'none';
+}
 
-function submitNewLead() {
-  var fname = document.getElementById('crm-new-fname').value.trim();
-  var lname = document.getElementById('crm-new-lname').value.trim();
-  var email = document.getElementById('crm-new-email').value.trim();
-  var mobile = document.getElementById('crm-new-mobile').value.trim();
-  var altMobile = (document.getElementById('crm-new-alt-mobile') || {}).value || '';
-  var course = document.getElementById('crm-new-course').value;
-  var centre = document.getElementById('crm-new-centre').value;
-  var slot = (document.getElementById('crm-new-slot') || {}).value || '';
-  var jointime = (document.getElementById('crm-new-jointime') || {}).value || '';
-  var profession = (document.getElementById('crm-new-profession') || {}).value || '';
-  var errEl = document.getElementById('crm-new-err');
-  if (!fname) { errEl.textContent = 'First name is required.'; errEl.style.display = 'block'; return; }
+function submitNewLead(addNew) {
+  var fname    = (document.getElementById('crm-new-fname') || {}).value.trim();
+  var lname    = (document.getElementById('crm-new-lname') || {}).value.trim();
+  var email    = (document.getElementById('crm-new-email') || {}).value.trim();
+  var mobile   = (document.getElementById('crm-new-mobile') || {}).value.trim();
+  var altMob   = (document.getElementById('crm-new-alt-mobile') || {}).value.trim();
+  var state    = (document.getElementById('crm-new-state') || {}).value;
+  var city     = (document.getElementById('crm-new-city') || {}).value.trim();
+  var course   = (document.getElementById('crm-new-course') || {}).value;
+  var centre   = (document.getElementById('crm-new-centre') || {}).value;
+  var corporate= (document.getElementById('crm-new-corporate') || {}).value;
+  var existingEmail = (document.getElementById('crm-new-existing-email') || {}).value.trim();
+  var courseMode= (document.getElementById('crm-new-course-mode') || {}).value;
+  var jointime = (document.getElementById('crm-new-jointime') || {}).value;
+  var payPlan  = (document.getElementById('crm-new-payment-plan') || {}).value;
+  var slot     = (document.getElementById('crm-new-slot') || {}).value;
+  var counsellor=(document.getElementById('crm-new-counsellor') || {}).value;
+  var owner    = (document.getElementById('crm-new-owner') || {}).value;
+  var source   = (document.getElementById('crm-new-source') || {}).value || 'Direct';
+  var medium   = (document.getElementById('crm-new-medium') || {}).value;
+  var campaign = (document.getElementById('crm-new-campaign') || {}).value.trim();
+  var profession=(document.getElementById('crm-new-profession') || {}).value;
+  var note     = (document.getElementById('crm-new-note') || {}).value.trim();
+  var errEl    = document.getElementById('crm-new-err');
+
+  // Validation
+  if (!fname) {
+    errEl.textContent = 'First Name is required.';
+    errEl.style.display = 'block'; return;
+  }
+  if (!email && !mobile) {
+    errEl.textContent = 'Email or Mobile number is required.';
+    errEl.style.display = 'block'; return;
+  }
   errEl.style.display = 'none';
-  gasGet({ action: 'assignLeadRoundRobin', centre: centre }, function(err, res) {
-    var owner = (res && res.assignedTo) || counselorName || 'Admin';
+
+  var ts = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+  var autoNotes = '[' + ts + ' IST] Lead created manually by ' + (window.counselorName || 'Admin');
+  if (note) autoNotes = '[' + ts + ' IST] ' + note + '
+
+' + autoNotes;
+
+  var webMeta = {
+    state: state, city: city, corporate_name: corporate,
+    existing_igi_email: existingEmail, course_mode: courseMode,
+    payment_plan: payPlan, source_medium: medium, campaign: campaign
+  };
+
+  // If owner explicitly chosen, skip round-robin
+  function doSave(assignedOwner) {
     gasGet({
       action: 'saveCRMLead',
       firstName: fname, lastName: lname, email: email, mobile: mobile,
-      altMobile: altMobile.trim(), course: course, centre: centre,
-      leadStage: 'New', leadSubStage: 'Untouched', leadOwner: owner, source: 'Direct',
+      altMobile: altMob, course: course, centre: centre,
+      leadStage: 'New', leadSubStage: 'Untouched',
+      leadOwner: assignedOwner, source: source,
       leadScore: 10, leadRemark: '',
       bookMySlot: slot, whenToJoin: jointime, currentProfession: profession,
-      notes: '[' + new Date().toLocaleString() + '] Lead created manually by ' + (counselorName || 'Admin')
+      notes: autoNotes, webMeta: webMeta
     }, function(e, d) {
       if (e || !d || d.status !== 'ok') {
-        errEl.textContent = (d && d.reason) ? d.reason : 'Duplicate or save failed.';
+        var msg = 'Save failed.';
+        if (e && e.message) {
+          if (e.message.indexOf('23505') > -1 || e.message.toLowerCase().indexOf('duplicate') > -1) {
+            msg = 'A lead with this email or mobile already exists.';
+          } else if (e.message.indexOf('HTTP') > -1) {
+            msg = 'Server error: ' + e.message.substring(0, 120);
+          } else {
+            msg = e.message.substring(0, 120);
+          }
+        } else if (d && d.reason) {
+          msg = d.reason;
+        }
+        errEl.textContent = msg;
         errEl.style.display = 'block';
         return;
       }
-      closeAddLeadModal();
-      showToast('Lead created & assigned to ' + owner, 'success');
+      if (addNew) {
+        showToast('Lead created & assigned to ' + assignedOwner, 'success');
+        openAddLeadModal(); // keep modal open, reset fields
+      } else {
+        closeAddLeadModal();
+        showToast('Lead created & assigned to ' + assignedOwner, 'success');
+      }
       loadCRMData();
     });
-  });
+  }
+
+  if (owner) {
+    doSave(owner);
+  } else {
+    gasGet({ action: 'assignLeadRoundRobin', centre: centre }, function(err, res) {
+      var assignedTo = (res && res.assignedTo) || counsellor || window.counselorName || 'Admin';
+      doSave(assignedTo);
+    });
+  }
 }
 
-// ── Enroll Modal ──────────────────────────────────────────────────────────
+// ── Enroll Modal
+ ──────────────────────────────────────────────────────────
 function openCRMEnrollModal() {
   if (!activeLead) return;
   var modal = document.getElementById('crm-enroll-modal');

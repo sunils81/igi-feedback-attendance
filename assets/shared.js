@@ -148,8 +148,39 @@ window.gasGet = (function () {
         rows.forEach(function(r) {
           if (r.batch_code) counts[r.batch_code.toUpperCase()] = Number(r.student_count || 0);
         });
+        cb(counts);
+        return;
       }
-      cb(counts);
+
+      var seen = {};
+      var pending = 2;
+      function addStudent(batchCode, studentId) {
+        var bc = String(batchCode || '').trim().toUpperCase();
+        var sid = String(studentId || '').trim();
+        if (!bc || !sid) return;
+        var key = bc + '|' + sid;
+        if (seen[key]) return;
+        seen[key] = true;
+        counts[bc] = (counts[bc] || 0) + 1;
+      }
+      function finish() {
+        pending--;
+        if (pending <= 0) cb(counts);
+      }
+
+      GET('students', 'select=student_id,batch_code,status&batch_code=not.is.null', function(e1, students) {
+        (students || []).forEach(function(s) {
+          if (!s.status || String(s.status).toLowerCase() === 'active') addStudent(s.batch_code, s.student_id);
+        });
+        finish();
+      });
+
+      GET('enrollments', 'select=student_id,batch_code,status&status=eq.Active', function(e2, enrollments) {
+        (enrollments || []).forEach(function(en) {
+          addStudent(en.batch_code, en.student_id);
+        });
+        finish();
+      });
     });
   }
 
@@ -618,6 +649,18 @@ window.gasGet = (function () {
       });
     }
     next();
+  }
+
+  /* updateBatchDates — change start/end dates for a batch */
+  function h_updateBatchDates(p, cb) {
+    var bc = encodeURIComponent(p.batchCode);
+    var payload = {};
+    if (p.startDate) payload.start_date = p.startDate;
+    if (p.endDate)   payload.end_date   = p.endDate;
+    if (!Object.keys(payload).length) { cb(null, { status: 'error', reason: 'no_dates_provided' }); return; }
+    PATCH('batches', 'batch_code=eq.' + bc, payload, function(e) {
+      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+    });
   }
 
   /* getStudents */
@@ -4452,6 +4495,7 @@ window.gasGet = (function () {
       case 'assignInstructor':          return h_assignInstructor(params, cb);
       case 'saveCoInstructor':          return h_saveCoInstructor(params, cb);
       case 'deleteBatch':               return h_deleteBatch(params, cb);
+      case 'updateBatchDates':          return h_updateBatchDates(params, cb);
       case 'getStudents':               return h_getStudents(params, cb);
       case 'getNextEnrollment':         return h_getNextEnroll(params, cb);
       case 'addStudent':                return h_addStudent(params, cb);

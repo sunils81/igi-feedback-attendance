@@ -2836,6 +2836,11 @@
     <div class="card">
       <div class="section-tag">All Batches</div>
       <h2>Batch Overview</h2>
+      <div id="mb-bulk-bar" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:12px;align-items:center;gap:10px;flex-wrap:wrap">
+        <span id="mb-sel-count" style="font-size:13px;font-weight:600;color:#1d4ed8">0 selected</span>
+        <button class="btn" style="padding:5px 12px;font-size:12px;width:auto;background:var(--navy);color:#fff" onclick="openBulkExtendModal()">📅 Bulk Extend End Date</button>
+        <button class="btn btn-outline" style="padding:5px 12px;font-size:12px;width:auto" onclick="clearMbSelection()">&#10005; Clear</button>
+      </div>
       <div id="mb-list"><div class="spinner-wrap"><div class="spinner"></div><p>Loading batch overview…</p></div></div>
     </div>
   </div>
@@ -8229,7 +8234,10 @@ function loadMyBatches() {
         `;
 
       return `
-      <div class="batch-row">
+      <div class="batch-row" id="mbrow-${escC(b.batchCode)}">
+        <div style="display:flex;align-items:flex-start;gap:8px">
+          <input type="checkbox" class="mb-batch-cb" value="${escC(b.batchCode)}" onchange="onMbCheckChange()" style="margin-top:3px;width:15px;height:15px;cursor:pointer;accent-color:var(--navy)">
+          <div style="flex:1">
         <div class="bc">${b.batchCode}</div>
         <div class="bm">${b.course} &nbsp;·&nbsp; ${b.centre} &nbsp;·&nbsp; ${b.type} &nbsp;·&nbsp; ${b.startDate}${b.endDate?' → '+b.endDate:''} &nbsp;·&nbsp; 👥 ${sCount} Student${sCount !== 1 ? 's' : ''}</div>
         <div style="margin-top:4px">
@@ -8255,7 +8263,10 @@ function loadMyBatches() {
           </div>
         </div>
         <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
+          <button class="btn btn-outline" style="padding:4px 8px; font-size:11px; width:auto; color:var(--navy);" onclick="openBatchEditDatesModal('${escC(b.batchCode)}','${b.startDate||''}','${b.endDate||''}')">📅 Edit Dates</button>
           ${deleteButtonsHtml}
+        </div>
+          </div>
         </div>
       </div>`;
     }).join('');
@@ -14911,6 +14922,150 @@ function doBulkImport() {
   processNext(0);
 }
 
+
+// ── Batch Edit Dates ──────────────────────────────────────────────────────
+function dmyToISO(dmy) {
+  if (!dmy) return '';
+  var s = String(dmy).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  var p = s.split('/');
+  if (p.length !== 3) return '';
+  return p[2] + '-' + p[1].padStart(2,'0') + '-' + p[0].padStart(2,'0');
+}
+function isoToDMY(iso) {
+  if (!iso) return '';
+  var s = String(iso).trim();
+  if (s.indexOf('T') !== -1) s = s.split('T')[0];
+  var p = s.split('-');
+  if (p.length !== 3) return iso;
+  return p[2] + '/' + p[1] + '/' + p[0];
+}
+function openBatchEditDatesModal(batchCode, startDMY, endDMY) {
+  document.getElementById('bedit-code').value = batchCode;
+  document.getElementById('bedit-title').textContent = 'Change Dates — ' + batchCode;
+  document.getElementById('bedit-start').value = dmyToISO(startDMY);
+  document.getElementById('bedit-end').value = dmyToISO(endDMY);
+  document.getElementById('bedit-original-end').value = dmyToISO(endDMY);
+  document.getElementById('bedit-extend-days').value = '';
+  document.getElementById('bedit-extend-preview').textContent = '';
+  document.getElementById('batch-edit-dates-modal').style.display = 'flex';
+}
+function closeBatchEditDatesModal() {
+  document.getElementById('batch-edit-dates-modal').style.display = 'none';
+}
+function beditCalcExtend() {
+  var days = parseInt(document.getElementById('bedit-extend-days').value, 10);
+  var currentEnd = document.getElementById('bedit-original-end').value || document.getElementById('bedit-end').value;
+  if (!days || days < 1) { document.getElementById('bedit-extend-preview').textContent = ''; return; }
+  var base = currentEnd ? new Date(currentEnd) : new Date();
+  base.setDate(base.getDate() + days);
+  var newISO = base.toISOString().split('T')[0];
+  document.getElementById('bedit-extend-preview').textContent = 'Will set end date to ' + isoToDMY(newISO);
+}
+function saveBatchDates() {
+  var bc = document.getElementById('bedit-code').value;
+  var startISO = document.getElementById('bedit-start').value;
+  var endISO   = document.getElementById('bedit-end').value;
+  var extendDays = parseInt(document.getElementById('bedit-extend-days').value, 10);
+  if (extendDays > 0) {
+    var baseISO = document.getElementById('bedit-original-end').value || endISO;
+    var baseDate = baseISO ? new Date(baseISO) : new Date();
+    baseDate.setDate(baseDate.getDate() + extendDays);
+    endISO = baseDate.toISOString().split('T')[0];
+  }
+  if (!bc) return;
+  if (!startISO && !endISO) { alert('Please set at least one date.'); return; }
+  var btn = document.getElementById('bedit-save-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  var p = { action:'updateBatchDates', batchCode:bc };
+  if (startISO) p.startDate = startISO;
+  if (endISO)   p.endDate   = endISO;
+  gasGet(p, function(e,d) {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save Dates'; }
+    if (e || !d || d.status !== 'ok') { alert('Failed: ' + (d&&d.reason ? d.reason : String(e||'Unknown'))); return; }
+    closeBatchEditDatesModal();
+    if (allBatches) {
+      allBatches.forEach(function(b) {
+        if (b.batchCode === bc) {
+          if (startISO) b.startDate = isoToDMY(startISO);
+          if (endISO)   b.endDate   = isoToDMY(endISO);
+        }
+      });
+    }
+    loadMyBatches();
+  });
+}
+// ── Multi-select batch checkboxes ─────────────────────────────────────────
+function onMbCheckChange() {
+  var checked = document.querySelectorAll('.mb-batch-cb:checked');
+  var bar = document.getElementById('mb-bulk-bar');
+  var countEl = document.getElementById('mb-sel-count');
+  if (checked.length > 0) {
+    bar.style.display = 'flex';
+    countEl.textContent = checked.length + ' batch' + (checked.length > 1 ? 'es' : '') + ' selected';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+function clearMbSelection() {
+  document.querySelectorAll('.mb-batch-cb').forEach(function(cb) { cb.checked = false; });
+  document.getElementById('mb-bulk-bar').style.display = 'none';
+}
+function getSelectedBatchCodes() {
+  return Array.from(document.querySelectorAll('.mb-batch-cb:checked')).map(function(cb){ return cb.value; });
+}
+function openBulkExtendModal() {
+  var codes = getSelectedBatchCodes();
+  if (!codes.length) return;
+  var listEl = document.getElementById('bulk-extend-batch-list');
+  listEl.innerHTML = '<strong style="color:var(--navy)">' + codes.length + ' batch' + (codes.length>1?'es':'') + ' selected:</strong><br>' +
+    codes.map(function(c){ return '<span style="display:inline-block;background:#eff6ff;color:#1d4ed8;border-radius:4px;padding:2px 7px;font-size:11px;margin:2px 2px 0 0">' + c + '</span>'; }).join('');
+  document.getElementById('bulk-extend-days').value = '';
+  document.getElementById('bulk-extend-newdate').value = '';
+  document.getElementById('bulk-extend-err').textContent = '';
+  document.getElementById('bulk-extend-modal').style.display = 'flex';
+}
+function closeBulkExtendModal() {
+  document.getElementById('bulk-extend-modal').style.display = 'none';
+}
+function doBulkExtend() {
+  var codes = getSelectedBatchCodes();
+  var days  = parseInt(document.getElementById('bulk-extend-days').value, 10);
+  var fixedDate = document.getElementById('bulk-extend-newdate').value;
+  var errEl = document.getElementById('bulk-extend-err');
+  errEl.textContent = '';
+  if (!fixedDate && (!days || days < 1)) { errEl.textContent = 'Enter number of days OR a specific new end date.'; return; }
+  var btn = document.getElementById('bulk-extend-save-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  var done = 0;
+  var failed = [];
+  codes.forEach(function(bc) {
+    var newEnd = fixedDate;
+    if (!newEnd && days > 0 && allBatches) {
+      var b = allBatches.find(function(x){ return x.batchCode === bc; });
+      if (b && b.endDate) {
+        var d = new Date(dmyToISO(b.endDate));
+        d.setDate(d.getDate() + days);
+        newEnd = d.toISOString().split('T')[0];
+      }
+    }
+    if (!newEnd) { failed.push(bc + ' (no end date)'); done++; if(done===codes.length) finish(); return; }
+    gasGet({ action:'updateBatchDates', batchCode:bc, endDate:newEnd }, function(e,d) {
+      if (e || !d || d.status !== 'ok') { failed.push(bc); }
+      else if (allBatches) { allBatches.forEach(function(b){ if(b.batchCode===bc) b.endDate=isoToDMY(newEnd); }); }
+      done++;
+      if (done === codes.length) finish();
+    });
+  });
+  function finish() {
+    if (btn) { btn.disabled = false; btn.textContent = '📅 Extend Dates'; }
+    closeBulkExtendModal();
+    clearMbSelection();
+    if (failed.length) alert('Failed for: ' + failed.join(', '));
+    loadMyBatches();
+  }
+}
+
 </script>
 
 <!-- Add Past Alumni Modal -->
@@ -15089,5 +15244,70 @@ function doBulkImport() {
     </div>
   </div>
 
+
+<!-- Batch Edit Dates Modal -->
+<div id="batch-edit-dates-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
+    <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600">Edit Batch</div>
+        <h3 id="bedit-title" style="margin:2px 0 0;font-size:16px;font-weight:700">Change Dates</h3>
+      </div>
+      <button onclick="closeBatchEditDatesModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">&#10005;</button>
+    </div>
+    <div style="padding:20px">
+      <input type="hidden" id="bedit-code">
+      <input type="hidden" id="bedit-original-end">
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">START DATE</label>
+        <input type="date" id="bedit-start" class="crm-ni" style="width:100%;box-sizing:border-box">
+      </div>
+      <div style="margin-bottom:6px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">END DATE (Extend / Shorten)</label>
+        <input type="date" id="bedit-end" class="crm-ni" style="width:100%;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">OR EXTEND END DATE BY DAYS</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="number" id="bedit-extend-days" min="1" max="365" placeholder="e.g. 7" class="crm-ni" style="width:120px;box-sizing:border-box" oninput="beditCalcExtend()">
+          <span id="bedit-extend-preview" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+      </div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeBatchEditDatesModal()" class="btn btn-outline" style="width:auto;padding:8px 18px;font-size:13px">Cancel</button>
+      <button id="bedit-save-btn" onclick="saveBatchDates()" class="btn" style="width:auto;padding:8px 18px;font-size:13px;background:var(--navy);color:#fff">&#128190; Save Dates</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Extend End Date Modal -->
+<div id="bulk-extend-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
+    <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600">Bulk Action</div>
+        <h3 style="margin:2px 0 0;font-size:16px;font-weight:700">Extend End Dates</h3>
+      </div>
+      <button onclick="closeBulkExtendModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">&#10005;</button>
+    </div>
+    <div style="padding:20px">
+      <div id="bulk-extend-batch-list" style="margin-bottom:16px;font-size:13px;color:var(--muted)"></div>
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">EXTEND BY (DAYS)</label>
+        <input type="number" id="bulk-extend-days" min="1" max="365" placeholder="e.g. 7" class="crm-ni" style="width:100%;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">OR SET SPECIFIC NEW END DATE</label>
+        <input type="date" id="bulk-extend-newdate" class="crm-ni" style="width:100%;box-sizing:border-box">
+      </div>
+      <div id="bulk-extend-err" style="color:#dc2626;font-size:12px;margin-top:8px"></div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeBulkExtendModal()" class="btn btn-outline" style="width:auto;padding:8px 18px;font-size:13px">Cancel</button>
+      <button id="bulk-extend-save-btn" onclick="doBulkExtend()" class="btn" style="width:auto;padding:8px 18px;font-size:13px;background:var(--navy);color:#fff">&#128197; Extend Dates</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

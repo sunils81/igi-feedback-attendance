@@ -4600,6 +4600,16 @@ function ensureCQHeaders(sh) {
   sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
   sh.setFrozenRows(1);
 }
+// Returns a map of header-name (lowercase) → 0-based column index for any sheet.
+// Falls back to a default index if the header isn't found.
+function getSheetColMap(sh) {
+  var map = {};
+  if (!sh || sh.getLastRow() === 0) return map;
+  var hdr = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  hdr.forEach(function(h, i){ if (h) map[String(h).trim().toLowerCase()] = i; });
+  return map;
+}
+
 function ensureOTHeaders(sh) {
   if (sh.getLastRow()>0&&sh.getRange(1,1).getValue()!=='') return;
   const h=[
@@ -4909,18 +4919,23 @@ function otGetInstructorTests(ss, p) {
   if (!p.instructor) return {status:'error',reason:'auth_required'};
   ensureOnlineTestSheets(ss);
   var sh = ss.getSheetByName(SH_ONLINE_TESTS);
-  var rows = sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,23).getValues():[];
+  var colMap = getSheetColMap(sh);
+  var colCreatedBy = colMap['created by'] !== undefined ? colMap['created by'] : 13;
+  var numCols = Math.max(23, sh.getLastColumn());
+  var rows = sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,numCols).getValues():[];
   // Auto-check scheduled
   otCheckScheduledActivations_(ss, rows, sh);
   // Re-read after potential updates
-  rows = sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,23).getValues():[];
+  rows = sh.getLastRow()>1?sh.getRange(2,1,sh.getLastRow()-1,numCols).getValues():[];
   // Only show tests created by this instructor
   var instrName = String(p.instructor||'').trim().toLowerCase();
   var tests = rows.filter(function(r){
     if (!r[0]) return false;
-    var creator = String(r[13]||'').trim().toLowerCase();
+    var creator = String(r[colCreatedBy]||'').trim().toLowerCase();
     return creator === instrName;
-  }).map(otParseTestRow);
+  }).map(function(r){
+    var remapped = r.slice(); remapped[13] = r[colCreatedBy]; return otParseTestRow(remapped);
+  });
   var shOTQ = ss.getSheetByName(SH_OT_QUESTIONS);
   var otqRows = shOTQ.getLastRow()>1?shOTQ.getRange(2,1,shOTQ.getLastRow()-1,1).getValues():[];
   var qCounts = {};
@@ -5817,15 +5832,38 @@ function otGetBatchPerformanceSummary(ss, p) {
   //     Admin sees everything. The batch dropdown still shows all instructor-assigned batches
   //     (from step 1a) even if the instructor hasn't created any tests for that batch yet.
   var shOT = ss.getSheetByName(SH_ONLINE_TESTS);
-  var testRows = shOT.getLastRow()>1 ? shOT.getRange(2,1,shOT.getLastRow()-1,23).getValues() : [];
+
+  // Dynamically find column positions from the ACTUAL header row (sheet may predate fixed-index assumptions)
+  var otColIdx = {testId:0, testLabel:1, testType:2, batchCodes:3, course:4, duration:5, status:6,
+                  negMarking:7, negMarkVal:8, activatedAt:9, closedAt:10, resultsReleased:11, resultsMode:12,
+                  createdBy:13, createdAt:14, targetStudents:15, expiryMode:16, expiryAt:17,
+                  allowRetake:18, shuffleQ:19, instructions:20, scheduledAt:21, passingScore:22};
+  if (shOT.getLastRow() > 0) {
+    var hdrRow = shOT.getRange(1, 1, 1, shOT.getLastColumn()).getValues()[0];
+    var hdrMap = {};
+    hdrRow.forEach(function(h, i){ if (h) hdrMap[String(h).trim().toLowerCase()] = i; });
+    if (hdrMap['created by'] !== undefined) otColIdx.createdBy = hdrMap['created by'];
+    if (hdrMap['status']      !== undefined) otColIdx.status    = hdrMap['status'];
+    if (hdrMap['batch codes'] !== undefined) otColIdx.batchCodes= hdrMap['batch codes'];
+  }
+  var numCols = Math.max(23, shOT.getLastColumn());
+  var testRows = shOT.getLastRow()>1 ? shOT.getRange(2,1,shOT.getLastRow()-1,numCols).getValues() : [];
   var allTests = testRows.filter(function(r){
     if (!r[0]) return false;
     // Exclude templates
-    if (String(r[6]||'').toLowerCase() === 'template') return false;
+    if (String(r[otColIdx.status]||'').toLowerCase() === 'template') return false;
     if (isAdmin) return true;
-    // Only this instructor's own tests
-    return String(r[13]||'').trim().toLowerCase() === instrName;
-  }).map(otParseTestRow);
+    // Only this instructor's own tests (use dynamically-resolved createdBy column)
+    return String(r[otColIdx.createdBy]||'').trim().toLowerCase() === instrName;
+  }).map(function(r){
+    // Re-map using dynamic indices so otParseTestRow (fixed-index) still works for other fields
+    var remapped = r.slice();
+    // Swap createdBy into index 13 and status into index 6 if they moved
+    remapped[13] = r[otColIdx.createdBy];
+    remapped[6]  = r[otColIdx.status];
+    remapped[3]  = r[otColIdx.batchCodes];
+    return otParseTestRow(remapped);
+  });
 
   // 2. Load all responses
   var shR = ss.getSheetByName(SH_OT_RESPONSES);
@@ -5975,19 +6013,34 @@ function otGetTestTemplates(ss, p) {
   var instrName = String(p.instructor).trim().toLowerCase();
   ensureOnlineTestSheets(ss);
   var sh = ss.getSheetByName(SH_ONLINE_TESTS);
-  var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,23).getValues() : [];
   var shQ = ss.getSheetByName(SH_OT_QUESTIONS);
   var qRows = shQ && shQ.getLastRow()>1 ? shQ.getRange(2,1,shQ.getLastRow()-1,1).getValues() : [];
   var qCount = {};
   qRows.forEach(function(r){ if(r[0]) qCount[r[0]] = (qCount[r[0]]||0)+1; });
 
+  // Resolve actual column positions from header row
+  var tmplColStatus = 6, tmplColCreatedBy = 13;
+  if (sh.getLastRow() > 0) {
+    var tmplHdr = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
+    tmplHdr.forEach(function(h,i){
+      var hl = String(h).trim().toLowerCase();
+      if (hl === 'status') tmplColStatus = i;
+      if (hl === 'created by') tmplColCreatedBy = i;
+    });
+  }
+  var numColsTmpl = Math.max(23, sh.getLastColumn());
+  var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,numColsTmpl).getValues() : [];
+
   var templates = rows.filter(function(r){
     if (!r[0]) return false;
-    var status = String(r[6]||'').trim().toLowerCase();
-    var creator = String(r[13]||'').trim().toLowerCase();
+    var status = String(r[tmplColStatus]||'').trim().toLowerCase();
+    var creator = String(r[tmplColCreatedBy]||'').trim().toLowerCase();
     return status === 'template' && creator === instrName;
   }).map(function(r){
-    var t = otParseTestRow(r);
+    var remapped = r.slice();
+    remapped[6]  = r[tmplColStatus];
+    remapped[13] = r[tmplColCreatedBy];
+    var t = otParseTestRow(remapped);
     return {
       testId:       t.testId,
       templateName: t.testLabel,

@@ -4091,9 +4091,10 @@ window.gasGet = (function () {
     loadBatches(function(batches) {
       if (!batches || !batches.length) { cb(null, { status: 'ok', batches: [] }); return; }
 
-      // Step 2: Get all non-template tests created by this instructor
-      GET('online_tests', 'created_by=eq.' + encodeURIComponent(instr) + '&is_template=eq.false&order=created_at.asc', function(e2, tests) {
-        tests = (tests || []).filter(function(t) { return !t.is_template; });
+      // Step 2: Get all tests created by this instructor, filter non-templates client-side
+      // (is_template may be NULL for older rows, so don't filter server-side)
+      GET('online_tests', 'created_by=eq.' + encodeURIComponent(instr) + '&order=created_at.asc', function(e2, tests) {
+        tests = (tests || []).filter(function(t) { return t.is_template !== true && t.is_template !== 'true'; });
 
         // Step 3: Get responses for these tests
         var testIds = tests.map(function(t) { return t.test_id; });

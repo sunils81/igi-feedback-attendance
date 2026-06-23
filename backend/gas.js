@@ -3014,6 +3014,9 @@ function doGet(e) {
     if (act==='getStudentResults')       return respond(otGetStudentResultsV3(ss,p));
     if (act==='getTestResultsSummary')        return respond(otGetTestResultsSummary(ss,p));
     if (act==='getBatchPerformanceSummary')   return respond(otGetBatchPerformanceSummary(ss,p));
+    if (act==='getTestTemplates')             return respond(otGetTestTemplates(ss,p));
+    if (act==='saveTestTemplate')             return respond(otSaveTestTemplate(ss,p));
+    if (act==='deleteTestTemplate')           return respond(otDeleteTestTemplate(ss,p));
     if (act==='setupScheduledTrigger')        return respond(otSetupScheduledTrigger(ss,p));
 
     // ── sendOverdueEmails ─────────────────────────────────────
@@ -5785,7 +5788,8 @@ function otGetTestResultsSummary(ss, p) {
 // ════════════════════════════════════════════════════════════════
 // BATCH PERFORMANCE SUMMARY
 // Returns per-batch, per-student, per-week scores for the Batch Report tab.
-// Instructor sees only their own tests; Admin (isAdmin=true) sees all tests.
+// Instructor sees ALL their assigned batches (even with 0 tests yet).
+// Admin (isAdmin=true) sees all batches.
 // ════════════════════════════════════════════════════════════════
 function otGetBatchPerformanceSummary(ss, p) {
   if (!p.instructor) return {status:'error', reason:'missing_params'};
@@ -5794,10 +5798,30 @@ function otGetBatchPerformanceSummary(ss, p) {
 
   ensureOnlineTestSheets(ss);
 
-  // 1. Load all tests
+  // 1a. Load instructor's assigned batches from Batches sheet (so all batches appear even with 0 tests)
+  var instructorBatchCodes = {};
+  var shBatch = ss.getSheetByName(SH_BATCHES);
+  if (shBatch && shBatch.getLastRow() > 1) {
+    var batchData = shBatch.getRange(2,1,shBatch.getLastRow()-1,10).getValues();
+    batchData.forEach(function(r){
+      if (!r[0]) return;
+      var hasSlot = detectSlotOrDate(r[4]);
+      var assigned = String(hasSlot ? (r[9]||'') : (r[8]||'')).trim().toLowerCase();
+      if (isAdmin || assigned === instrName) {
+        instructorBatchCodes[String(r[0]).trim().toUpperCase()] = true;
+      }
+    });
+  }
+
+  // 1b. Load all tests
   var shOT = ss.getSheetByName(SH_ONLINE_TESTS);
   var testRows = shOT.getLastRow()>1 ? shOT.getRange(2,1,shOT.getLastRow()-1,23).getValues() : [];
-  var allTests = testRows.filter(function(r){ return r[0]; }).map(otParseTestRow);
+  var allTests = testRows.filter(function(r){
+    if (!r[0]) return false;
+    // Exclude templates
+    if (String(r[6]||'').toLowerCase() === 'template') return false;
+    return true;
+  }).map(otParseTestRow);
 
   // Filter by instructor unless admin
   if (!isAdmin) {
@@ -5833,8 +5857,10 @@ function otGetBatchPerformanceSummary(ss, p) {
     }
   });
 
-  // 3. Group tests by batch
+  // 3. Group tests by batch (from test data)
   var batchMap = {};
+  // Pre-seed with ALL instructor batches (even those with 0 tests)
+  Object.keys(instructorBatchCodes).forEach(function(bc){ batchMap[bc] = []; });
   allTests.forEach(function(t){
     var codes = String(t.batchCodes||'').split(',').map(function(s){return s.trim().toUpperCase();}).filter(Boolean);
     codes.forEach(function(bc){
@@ -5914,6 +5940,124 @@ function otGetBatchPerformanceSummary(ss, p) {
   });
 
   return {status:'ok', batches:batches};
+}
+
+// ════════════════════════════════════════════════════════════════
+// TEST TEMPLATES — stored in OnlineTests sheet with status='Template'
+// Templates are per-instructor: createdBy must match.
+// testId is namespaced as TMPL-{instrSafe}-{suffix} to avoid collisions.
+// ════════════════════════════════════════════════════════════════
+
+function otGetTestTemplates(ss, p) {
+  if (!p.instructor) return {status:'error', reason:'missing_params'};
+  var instrName = String(p.instructor).trim().toLowerCase();
+  ensureOnlineTestSheets(ss);
+  var sh = ss.getSheetByName(SH_ONLINE_TESTS);
+  var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,23).getValues() : [];
+  var shQ = ss.getSheetByName(SH_OT_QUESTIONS);
+  var qRows = shQ && shQ.getLastRow()>1 ? shQ.getRange(2,1,shQ.getLastRow()-1,1).getValues() : [];
+  var qCount = {};
+  qRows.forEach(function(r){ if(r[0]) qCount[r[0]] = (qCount[r[0]]||0)+1; });
+
+  var templates = rows.filter(function(r){
+    if (!r[0]) return false;
+    var status = String(r[6]||'').trim().toLowerCase();
+    var creator = String(r[13]||'').trim().toLowerCase();
+    return status === 'template' && creator === instrName;
+  }).map(function(r){
+    var t = otParseTestRow(r);
+    return {
+      testId:       t.testId,
+      templateName: t.testLabel,
+      title:        t.testLabel,
+      testType:     t.testType,
+      durationMins: t.duration,
+      passingScore: t.passingScore,
+      questionCount: qCount[t.testId] || 0
+    };
+  });
+  return {status:'ok', templates:templates};
+}
+
+function otSaveTestTemplate(ss, p) {
+  if (!p.instructor || !p.templateName) return {status:'error', reason:'missing_params'};
+  ensureOnlineTestSheets(ss);
+  var instrName = String(p.instructor).trim();
+  var instrSafe = instrName.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'').substring(0,12);
+
+  // Generate instructor-namespaced ID if not provided or if it's a global seed ID
+  var testId = String(p.testId||'').trim();
+  var seedPattern = /^TMPL-(WEEKLY-\d+|FINAL)$/i;
+  if (!testId || seedPattern.test(testId)) {
+    // Map seed IDs to namespaced ones, preserving the suffix
+    if (seedPattern.test(testId)) {
+      var suffix = testId.replace(/^TMPL-/i,'');
+      testId = 'TMPL-' + instrSafe + '-' + suffix;
+    } else {
+      testId = 'TMPL-' + instrSafe + '-' + Date.now();
+    }
+  }
+
+  var sh = ss.getSheetByName(SH_ONLINE_TESTS);
+  var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,23).getValues() : [];
+  var instrLower = instrName.toLowerCase();
+
+  // Find existing row that matches testId AND belongs to this instructor
+  var rowIdx = -1;
+  for (var i=0; i<rows.length; i++) {
+    if (String(rows[i][0]).trim() === testId &&
+        String(rows[i][13]||'').trim().toLowerCase() === instrLower) {
+      rowIdx = i + 2; // 1-indexed + header
+      break;
+    }
+  }
+
+  var duration   = parseInt(p.durationMins)||30;
+  var passing    = parseFloat(p.passingScore)||60;
+  var testLabel  = String(p.templateName||p.title||'Template').trim();
+  var testType   = String(p.testType||'Weekly').trim();
+  var now        = new Date().toISOString();
+
+  if (rowIdx > 0) {
+    // Update existing
+    var range = sh.getRange(rowIdx, 1, 1, 23);
+    var existing = range.getValues()[0];
+    existing[1] = testLabel;
+    existing[2] = testType;
+    existing[5] = duration;
+    existing[6] = 'Template';
+    existing[22] = passing;
+    range.setValues([existing]);
+  } else {
+    // Insert new row
+    sh.appendRow([
+      testId, testLabel, testType,
+      '', '', // batchCodes, course
+      duration, 'Template', 'No', 0, // status, negMark, negVal
+      '', '', 'No', 'show', // activatedAt, closedAt, resultsReleased, resultsMode
+      instrName, now, 'ALL', // createdBy, createdAt, targetStudents
+      'manual', '', 'No', 'No', '', '', passing // expiryMode, expiryAt, allowRetake, shuffle, instructions, scheduledAt, passingScore
+    ]);
+  }
+  return {status:'ok', testId:testId};
+}
+
+function otDeleteTestTemplate(ss, p) {
+  if (!p.instructor || !p.testId) return {status:'error', reason:'missing_params'};
+  ensureOnlineTestSheets(ss);
+  var sh = ss.getSheetByName(SH_ONLINE_TESTS);
+  var rows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,1).getValues() : [];
+  var instrLower = String(p.instructor).trim().toLowerCase();
+  // Read createdBy too
+  var fullRows = sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,14).getValues() : [];
+  for (var i=fullRows.length-1; i>=0; i--) {
+    if (String(fullRows[i][0]).trim() === String(p.testId).trim() &&
+        String(fullRows[i][13]||'').trim().toLowerCase() === instrLower) {
+      sh.deleteRow(i+2);
+      return {status:'ok'};
+    }
+  }
+  return {status:'error', reason:'not_found'};
 }
 
 // ── Question Bank Data (355 questions from Excel) ──────────────

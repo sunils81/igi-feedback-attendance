@@ -8611,21 +8611,27 @@ function otHandleTestTypeChange() {
       }
       
       // Async fetch Tray Board to render both Batch Banners and Tray Banners
+      // JD instructors (no Tray Hub access) skip tray board fetch entirely
+      var NO_TRAY_HUB = ['sneha garodia'];
+      var hasTrayHub = !NO_TRAY_HUB.some(function(n){ return n === (instructorName||'').trim().toLowerCase(); });
       var myCentre = getInstructorCentre(instructorName) || instructorName;
-      gasGet({ action: 'trayGetBoard' }, function(err, tb) {
-        var trays = [];
-        if (!err && tb && tb.status === 'ok') {
-          (tb.centres || []).forEach(function(c) {
-            ['diamond','coloredStone','organics'].forEach(function(tk) {
-              ((c[tk]||{}).trays || []).forEach(function(t) {
-                trays.push({ tray: t, centre: c.centre, typeKey: tk });
+      if (!hasTrayHub) {
+        renderDashboardBanners(batches, [], myCentre);
+      } else {
+        gasGet({ action: 'trayGetBoard' }, function(err, tb) {
+          var trays = [];
+          if (!err && tb && tb.status === 'ok') {
+            (tb.centres || []).forEach(function(c) {
+              ['diamond','coloredStone','organics'].forEach(function(tk) {
+                ((c[tk]||{}).trays || []).forEach(function(t) {
+                  trays.push({ tray: t, centre: c.centre, typeKey: tk });
+                });
               });
             });
-          });
-        }
-        
-        renderDashboardBanners(batches, trays, myCentre);
-      });
+          }
+          renderDashboardBanners(batches, trays, myCentre);
+        });
+      }
     });
   }
 

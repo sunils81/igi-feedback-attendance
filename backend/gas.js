@@ -5854,6 +5854,23 @@ function otGetBatchPerformanceSummary(ss, p) {
     }
   });
 
+  // 2b. Load enrolled students per batch from Student_Batches enrollment sheet
+  var enrolledByBatch = {};
+  Object.keys(instructorBatchCodes).forEach(function(bc){ enrolledByBatch[bc] = {}; });
+  try {
+    var enrollmentRows = getEnrollmentRows(ss);
+    var studentRows = getStudentRows(ss);
+    var studentById = {};
+    studentRows.forEach(function(s){ studentById[s.id] = s; });
+    enrollmentRows.forEach(function(e){
+      var bc = String(e.batchCode||'').trim().toUpperCase();
+      if (!enrolledByBatch[bc]) return; // only instructor's batches
+      if (e.status !== 'Active') return;
+      var s = studentById[e.studentId];
+      if (s) enrolledByBatch[bc][e.studentId] = s.name || e.studentId;
+    });
+  } catch(_) {}
+
   // 3. Group tests by batch (from test data)
   var batchMap = {};
   // Pre-seed with ALL instructor batches (even those with 0 tests)
@@ -5875,8 +5892,16 @@ function otGetBatchPerformanceSummary(ss, p) {
       return da - db;
     });
 
-    // Collect all unique students across all tests in this batch
+    // Collect all unique students:
+    // Start from enrollment data (shows all students even with no test attempts)
+    // then overlay names from response data (in case they differ)
     var studentNameMap = {};
+    // 1. Seed from enrollment
+    var enrolled = enrolledByBatch[bc] || {};
+    Object.keys(enrolled).forEach(function(sid){
+      studentNameMap[sid] = enrolled[sid];
+    });
+    // 2. Overlay from responses (adds students who took test even if not in enrollment)
     tests.forEach(function(t){
       var res = testResultMap[t.testId] || {};
       Object.keys(res).forEach(function(sid){

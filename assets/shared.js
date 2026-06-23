@@ -4036,9 +4036,10 @@ window.gasGet = (function () {
 
   /* ── TEST TEMPLATES ─────────────────────────────────────────────────── */
 
-  /* getTestTemplates — returns all saved templates with question count */
+  /* getTestTemplates — returns templates for this instructor only */
   function h_getTestTemplates(p, cb) {
-    GET('online_tests', 'is_template=eq.true&order=template_name.asc', function(e, templates) {
+    var instrFilter = p.instructor ? '&created_by=eq.' + encodeURIComponent(p.instructor) : '';
+    GET('online_tests', 'is_template=eq.true' + instrFilter + '&order=template_name.asc', function(e, templates) {
       if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
       templates = templates || [];
       if (!templates.length) { cb(null, { status: 'ok', templates: [] }); return; }
@@ -4060,6 +4061,115 @@ window.gasGet = (function () {
           };
         });
         cb(null, { status: 'ok', templates: out });
+      });
+    });
+  }
+
+  /* getBatchPerformanceSummary — read from Supabase (tests created by instructor, responses, enrollments) */
+  function h_getBatchPerformanceSummary(p, cb) {
+    var instr = String(p.instructor || '').trim();
+    var isAdmin = p.isAdmin === 'true';
+
+    // Step 1: Get batches for this instructor
+    var now = new Date().toISOString().slice(0, 10);
+    var batchQs = 'order=batch_code.asc';
+    if (!isAdmin) {
+      batchQs += '&or=(instructor.eq.' + encodeURIComponent(instr) + ',co_instructor.eq.' + encodeURIComponent(instr) + ')';
+    }
+    GET('batches', batchQs, function(e1, batches) {
+      if (e1 || !batches || !batches.length) { cb(null, { status: 'ok', batches: [] }); return; }
+
+      // Step 2: Get all non-template tests created by this instructor
+      GET('online_tests', 'created_by=eq.' + encodeURIComponent(instr) + '&is_template=eq.false&order=created_at.asc', function(e2, tests) {
+        tests = (tests || []).filter(function(t) { return !t.is_template; });
+
+        // Step 3: Get responses for these tests
+        var testIds = tests.map(function(t) { return t.test_id; });
+        function buildOutput(responses) {
+          var batchCodes = batches.map(function(b) { return b.batch_code; });
+
+          // Step 4: Get all active enrollments for these batches
+          GET('enrollments', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')&status=eq.Active&select=student_id,batch_code', function(e3, enrolls) {
+            enrolls = enrolls || [];
+            var allSids = enrolls.map(function(e) { return e.student_id; });
+            // deduplicate
+            var uniqSids = allSids.filter(function(v, i, a) { return a.indexOf(v) === i; });
+
+            function buildWithStudents(studentMap) {
+              var result = batches.map(function(b) {
+                var bc = b.batch_code;
+
+                // Tests assigned to this batch
+                var batchTests = tests.filter(function(t) {
+                  var codes = String(t.batch_codes || t.batch_code || '').split(',').map(function(c) { return c.trim(); });
+                  return codes.indexOf(bc) !== -1;
+                }).sort(function(a, b) { return (a.created_at || '') < (b.created_at || '') ? -1 : 1; });
+
+                // Enrolled students for this batch
+                var enrolledIds = enrolls.filter(function(e) { return e.batch_code === bc; }).map(function(e) { return e.student_id; });
+
+                // Build per-student weeks data
+                var studentsData = enrolledIds.map(function(sid) {
+                  var s = studentMap[sid] || {};
+                  var studentName = s.name || s.student_name || sid;
+
+                  var weeks = batchTests.map(function(t) {
+                    var resp = responses.find(function(r) { return r.test_id === t.test_id && r.student_id === sid; });
+                    if (!resp || resp.percentage === null || resp.percentage === undefined) {
+                      return { attempted: false, pct: null };
+                    }
+                    return { attempted: true, pct: Math.round(Number(resp.percentage)) };
+                  });
+
+                  var attempted = weeks.filter(function(w) { return w.attempted; });
+                  var avgPct = attempted.length ? Math.round(attempted.reduce(function(s, w) { return s + w.pct; }, 0) / attempted.length) : null;
+                  var trend = '→';
+                  if (attempted.length >= 2) {
+                    var last2 = weeks.filter(function(w) { return w.attempted; });
+                    var lastPct = last2[last2.length - 1].pct;
+                    var prevPct = last2[last2.length - 2].pct;
+                    trend = lastPct > prevPct ? '↑' : lastPct < prevPct ? '↓' : '→';
+                  }
+                  return { studentId: sid, studentName: studentName, weeks: weeks, avgPct: avgPct, trend: trend };
+                });
+
+                var batchPassCount = studentsData.filter(function(s) { return s.avgPct !== null && s.avgPct >= 60; }).length;
+                var attemptedStudents = studentsData.filter(function(s) { return s.avgPct !== null; });
+                var batchAvg = attemptedStudents.length ? Math.round(attemptedStudents.reduce(function(s, st) { return s + st.avgPct; }, 0) / attemptedStudents.length) : null;
+
+                return {
+                  batchCode: bc,
+                  totalStudents: enrolledIds.length,
+                  batchAvg: batchAvg,
+                  batchPassCount: batchPassCount,
+                  tests: batchTests.map(function(t) {
+                    return {
+                      testId: t.test_id,
+                      testLabel: t.title,
+                      activatedAt: t.starts_at || t.created_at,
+                      createdBy: t.created_by,
+                      status: t.status === 'Live' ? 'Active' : (t.status || '')
+                    };
+                  }),
+                  students: studentsData
+                };
+              });
+              cb(null, { status: 'ok', batches: result });
+            }
+
+            if (!uniqSids.length) { buildWithStudents({}); return; }
+            GET('students', 'student_id=in.(' + uniqSids.map(encodeURIComponent).join(',') + ')', function(e4, studentRows) {
+              var studentMap = {};
+              (studentRows || []).forEach(function(s) { studentMap[s.student_id] = s; });
+              buildWithStudents(studentMap);
+            });
+          });
+        }
+
+        if (!testIds.length) { buildOutput([]); return; }
+        GET('test_responses', 'test_id=in.(' + testIds.map(encodeURIComponent).join(',') + ')&select=test_id,student_id,percentage,result', function(e3, responses) {
+          buildOutput(responses || []);
+        });
       });
     });
   }
@@ -4606,6 +4716,7 @@ window.gasGet = (function () {
       case 'deleteOnlineTest':          return h_deleteOnlineTest(params, cb);
       case 'duplicateOnlineTest':       return h_duplicateOnlineTest(params, cb);
       case 'getTestTemplates':          return h_getTestTemplates(params, cb);
+      case 'getBatchPerformanceSummary': return h_getBatchPerformanceSummary(params, cb);
       case 'saveTestTemplate':          return h_saveTestTemplate(params, cb);
       case 'deployTemplate':            return h_deployTemplate(params, cb);
       case 'deleteTestTemplate':        return h_deleteTestTemplate(params, cb);

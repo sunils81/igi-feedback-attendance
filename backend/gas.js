@@ -3014,6 +3014,7 @@ function doGet(e) {
     if (act==='getStudentResults')       return respond(otGetStudentResultsV3(ss,p));
     if (act==='getTestResultsSummary')        return respond(otGetTestResultsSummary(ss,p));
     if (act==='getBatchPerformanceSummary')   return respond(otGetBatchPerformanceSummary(ss,p));
+    if (act==='debugOTColumns')              return respond(otDebugColumns(ss,p));
     if (act==='getTestTemplates')             return respond(otGetTestTemplates(ss,p));
     if (act==='saveTestTemplate')             return respond(otSaveTestTemplate(ss,p));
     if (act==='deleteTestTemplate')           return respond(otDeleteTestTemplate(ss,p));
@@ -5798,6 +5799,27 @@ function otGetTestResultsSummary(ss, p) {
   var failed=testResponses.filter(function(r){return r.result==='Fail';}).length;
   var avgPct=testResponses.length>0?Math.round(testResponses.reduce(function(s,r){return s+(parseFloat(r.percentage)||0);},0)/testResponses.length):0;
   return{status:'ok',responses:testResponses,passed:passed,failed:failed,avgPercentage:avgPct,total:testResponses.length};
+}
+
+// ════════════════════════════════════════════════════════════════
+// DEBUG — returns actual column headers + first 5 data rows of OnlineTests
+// Call: ?action=debugOTColumns&instructor=XXX
+// Remove after diagnosis.
+// ════════════════════════════════════════════════════════════════
+function otDebugColumns(ss, p) {
+  var sh = ss.getSheetByName(SH_ONLINE_TESTS);
+  if (!sh || sh.getLastRow() === 0) return {status:'ok', headers:[], rows:[]};
+  var numCols = sh.getLastColumn();
+  var headers = sh.getRange(1,1,1,numCols).getValues()[0];
+  var dataRows = sh.getLastRow() > 1
+    ? sh.getRange(2,1,Math.min(5, sh.getLastRow()-1),numCols).getValues()
+    : [];
+  // Return headers with their 0-based index, and first 5 rows
+  var headerMap = headers.map(function(h,i){ return {idx:i, name:String(h)}; });
+  var rows = dataRows.map(function(r){
+    return headers.map(function(h,i){ return {col:String(h), val:String(r[i]||'')}; });
+  });
+  return {status:'ok', headerMap:headerMap, sampleRows:rows, totalRows:sh.getLastRow()-1};
 }
 
 // ════════════════════════════════════════════════════════════════

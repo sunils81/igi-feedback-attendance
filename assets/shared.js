@@ -4109,7 +4109,7 @@ window.gasGet = (function () {
             var weeks = batchTests.map(function(t) {
               var resp = (responses || []).find(function(r) { return r.test_id === t.test_id && r.student_id === sid; });
               if (!resp || resp.percentage === null || resp.percentage === undefined) return { attempted: false, pct: null };
-              return { attempted: true, pct: Math.round(Number(resp.percentage)) };
+              return { attempted: true, pct: Math.round(Number(resp.percentage)), score: resp.score, totalMarks: resp.total_marks };
             });
             var attempted = weeks.filter(function(w) { return w.attempted; });
             var avgPct = attempted.length ? Math.round(attempted.reduce(function(s, w) { return s + w.pct; }, 0) / attempted.length) : null;
@@ -4149,7 +4149,7 @@ window.gasGet = (function () {
         // Step 5: Get student names
         function withStudents(studentMap) {
           if (!testIds.length) { buildOutput([], enrolls, studentMap); return; }
-          GET('test_responses', 'test_id=in.(' + testIds.map(encodeURIComponent).join(',') + ')&select=test_id,student_id,percentage,result', function(e3, responses) {
+          GET('test_responses', 'test_id=in.(' + testIds.map(encodeURIComponent).join(',') + ')&select=test_id,student_id,percentage,score,total_marks,result', function(e3, responses) {
             buildOutput(responses || [], enrolls, studentMap);
           });
         }

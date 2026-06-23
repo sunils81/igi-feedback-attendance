@@ -4065,123 +4065,100 @@ window.gasGet = (function () {
     });
   }
 
-  /* getBatchPerformanceSummary — read from Supabase (tests created by instructor, responses, enrollments) */
+  /* getBatchPerformanceSummary — read from Supabase (tests → batch codes → enrollments → responses) */
   function h_getBatchPerformanceSummary(p, cb) {
     var instr = String(p.instructor || '').trim();
-    var isAdmin = p.isAdmin === 'true';
 
-    // Step 1: Get batches for this instructor (two queries to avoid PostgREST or() issues with spaces)
-    function loadBatches(done) {
-      if (isAdmin) {
-        GET('batches', 'order=batch_code.asc', function(e, rows) { done(rows || []); });
-        return;
-      }
-      GET('batches', 'instructor=eq.' + encodeURIComponent(instr) + '&order=batch_code.asc', function(e1, rows1) {
-        GET('batches', 'co_instructor=eq.' + encodeURIComponent(instr) + '&order=batch_code.asc', function(e2, rows2) {
-          var seen = {};
-          var merged = (rows1 || []).concat(rows2 || []).filter(function(b) {
-            if (seen[b.batch_code]) return false;
-            seen[b.batch_code] = true;
-            return true;
-          });
-          done(merged);
+    // Step 1: Get all non-template tests by this instructor
+    GET('online_tests', 'created_by=eq.' + encodeURIComponent(instr) + '&order=created_at.asc', function(e1, allTests) {
+      if (e1) { cb(null, { status: 'ok', batches: [] }); return; }
+      var tests = (allTests || []).filter(function(t) {
+        return t.is_template !== true && t.is_template !== 'true' && !t.is_template;
+      });
+
+      // Step 2: Extract unique batch codes from tests
+      var batchSet = {};
+      tests.forEach(function(t) {
+        var codes = String(t.batch_codes || t.batch_code || '').split(',');
+        codes.forEach(function(c) {
+          c = c.trim();
+          if (c) batchSet[c] = true;
         });
       });
-    }
-    loadBatches(function(batches) {
-      if (!batches || !batches.length) { cb(null, { status: 'ok', batches: [] }); return; }
+      var batchCodes = Object.keys(batchSet).sort();
 
-      // Step 2: Get all tests created by this instructor, filter non-templates client-side
-      // (is_template may be NULL for older rows, so don't filter server-side)
-      GET('online_tests', 'created_by=eq.' + encodeURIComponent(instr) + '&order=created_at.asc', function(e2, tests) {
-        tests = (tests || []).filter(function(t) { return t.is_template !== true && t.is_template !== 'true'; });
+      if (!batchCodes.length) { cb(null, { status: 'ok', batches: [] }); return; }
 
-        // Step 3: Get responses for these tests
-        var testIds = tests.map(function(t) { return t.test_id; });
-        function buildOutput(responses) {
-          var batchCodes = batches.map(function(b) { return b.batch_code; });
+      // Step 3: Get responses for all instructor's tests
+      var testIds = tests.map(function(t) { return t.test_id; });
+      function buildOutput(responses, enrolls, studentMap) {
+        var result = batchCodes.map(function(bc) {
+          // Tests for this batch, sorted by creation date
+          var batchTests = tests.filter(function(t) {
+            var codes = String(t.batch_codes || t.batch_code || '').split(',').map(function(c) { return c.trim(); });
+            return codes.indexOf(bc) !== -1;
+          });
 
-          // Step 4: Get all active enrollments for these batches
-          GET('enrollments', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')&status=eq.Active&select=student_id,batch_code', function(e3, enrolls) {
-            enrolls = enrolls || [];
-            var allSids = enrolls.map(function(e) { return e.student_id; });
-            // deduplicate
-            var uniqSids = allSids.filter(function(v, i, a) { return a.indexOf(v) === i; });
+          // Enrolled students for this batch
+          var enrolledIds = (enrolls || []).filter(function(e) { return e.batch_code === bc; }).map(function(e) { return e.student_id; });
 
-            function buildWithStudents(studentMap) {
-              var result = batches.map(function(b) {
-                var bc = b.batch_code;
-
-                // Tests assigned to this batch
-                var batchTests = tests.filter(function(t) {
-                  var codes = String(t.batch_codes || t.batch_code || '').split(',').map(function(c) { return c.trim(); });
-                  return codes.indexOf(bc) !== -1;
-                }).sort(function(a, b) { return (a.created_at || '') < (b.created_at || '') ? -1 : 1; });
-
-                // Enrolled students for this batch
-                var enrolledIds = enrolls.filter(function(e) { return e.batch_code === bc; }).map(function(e) { return e.student_id; });
-
-                // Build per-student weeks data
-                var studentsData = enrolledIds.map(function(sid) {
-                  var s = studentMap[sid] || {};
-                  var studentName = s.name || s.student_name || sid;
-
-                  var weeks = batchTests.map(function(t) {
-                    var resp = responses.find(function(r) { return r.test_id === t.test_id && r.student_id === sid; });
-                    if (!resp || resp.percentage === null || resp.percentage === undefined) {
-                      return { attempted: false, pct: null };
-                    }
-                    return { attempted: true, pct: Math.round(Number(resp.percentage)) };
-                  });
-
-                  var attempted = weeks.filter(function(w) { return w.attempted; });
-                  var avgPct = attempted.length ? Math.round(attempted.reduce(function(s, w) { return s + w.pct; }, 0) / attempted.length) : null;
-                  var trend = '→';
-                  if (attempted.length >= 2) {
-                    var last2 = weeks.filter(function(w) { return w.attempted; });
-                    var lastPct = last2[last2.length - 1].pct;
-                    var prevPct = last2[last2.length - 2].pct;
-                    trend = lastPct > prevPct ? '↑' : lastPct < prevPct ? '↓' : '→';
-                  }
-                  return { studentId: sid, studentName: studentName, weeks: weeks, avgPct: avgPct, trend: trend };
-                });
-
-                var batchPassCount = studentsData.filter(function(s) { return s.avgPct !== null && s.avgPct >= 60; }).length;
-                var attemptedStudents = studentsData.filter(function(s) { return s.avgPct !== null; });
-                var batchAvg = attemptedStudents.length ? Math.round(attemptedStudents.reduce(function(s, st) { return s + st.avgPct; }, 0) / attemptedStudents.length) : null;
-
-                return {
-                  batchCode: bc,
-                  totalStudents: enrolledIds.length,
-                  batchAvg: batchAvg,
-                  batchPassCount: batchPassCount,
-                  tests: batchTests.map(function(t) {
-                    return {
-                      testId: t.test_id,
-                      testLabel: t.title,
-                      activatedAt: t.starts_at || t.created_at,
-                      createdBy: t.created_by,
-                      status: t.status === 'Live' ? 'Active' : (t.status || '')
-                    };
-                  }),
-                  students: studentsData
-                };
-              });
-              cb(null, { status: 'ok', batches: result });
-            }
-
-            if (!uniqSids.length) { buildWithStudents({}); return; }
-            GET('students', 'student_id=in.(' + uniqSids.map(encodeURIComponent).join(',') + ')', function(e4, studentRows) {
-              var studentMap = {};
-              (studentRows || []).forEach(function(s) { studentMap[s.student_id] = s; });
-              buildWithStudents(studentMap);
+          // Build per-student weeks data
+          var studentsData = enrolledIds.map(function(sid) {
+            var s = studentMap[sid] || {};
+            var studentName = s.name || s.student_name || sid;
+            var weeks = batchTests.map(function(t) {
+              var resp = (responses || []).find(function(r) { return r.test_id === t.test_id && r.student_id === sid; });
+              if (!resp || resp.percentage === null || resp.percentage === undefined) return { attempted: false, pct: null };
+              return { attempted: true, pct: Math.round(Number(resp.percentage)) };
             });
+            var attempted = weeks.filter(function(w) { return w.attempted; });
+            var avgPct = attempted.length ? Math.round(attempted.reduce(function(s, w) { return s + w.pct; }, 0) / attempted.length) : null;
+            var trend = '→';
+            if (attempted.length >= 2) {
+              var lastPct = attempted[attempted.length - 1].pct;
+              var prevPct = attempted[attempted.length - 2].pct;
+              trend = lastPct > prevPct ? '↑' : lastPct < prevPct ? '↓' : '→';
+            }
+            return { studentId: sid, studentName: studentName, weeks: weeks, avgPct: avgPct, trend: trend };
+          });
+
+          var batchPassCount = studentsData.filter(function(s) { return s.avgPct !== null && s.avgPct >= 60; }).length;
+          var attemptedStudents = studentsData.filter(function(s) { return s.avgPct !== null; });
+          var batchAvg = attemptedStudents.length ? Math.round(attemptedStudents.reduce(function(s, st) { return s + st.avgPct; }, 0) / attemptedStudents.length) : null;
+
+          return {
+            batchCode: bc,
+            totalStudents: enrolledIds.length,
+            batchAvg: batchAvg,
+            batchPassCount: batchPassCount,
+            tests: batchTests.map(function(t) {
+              return { testId: t.test_id, testLabel: t.title, activatedAt: t.starts_at || t.created_at,
+                       createdBy: t.created_by, status: t.status === 'Live' ? 'Active' : (t.status || '') };
+            }),
+            students: studentsData
+          };
+        });
+        cb(null, { status: 'ok', batches: result });
+      }
+
+      // Step 4: Get enrollments for all batch codes
+      GET('enrollments', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')&status=eq.Active&select=student_id,batch_code', function(e2, enrolls) {
+        enrolls = enrolls || [];
+        var uniqSids = enrolls.map(function(e) { return e.student_id; }).filter(function(v, i, a) { return a.indexOf(v) === i; });
+
+        // Step 5: Get student names
+        function withStudents(studentMap) {
+          if (!testIds.length) { buildOutput([], enrolls, studentMap); return; }
+          GET('test_responses', 'test_id=in.(' + testIds.map(encodeURIComponent).join(',') + ')&select=test_id,student_id,percentage,result', function(e3, responses) {
+            buildOutput(responses || [], enrolls, studentMap);
           });
         }
 
-        if (!testIds.length) { buildOutput([]); return; }
-        GET('test_responses', 'test_id=in.(' + testIds.map(encodeURIComponent).join(',') + ')&select=test_id,student_id,percentage,result', function(e3, responses) {
-          buildOutput(responses || []);
+        if (!uniqSids.length) { withStudents({}); return; }
+        GET('students', 'student_id=in.(' + uniqSids.map(encodeURIComponent).join(',') + ')', function(e3, studentRows) {
+          var studentMap = {};
+          (studentRows || []).forEach(function(s) { studentMap[s.student_id] = s; });
+          withStudents(studentMap);
         });
       });
     });

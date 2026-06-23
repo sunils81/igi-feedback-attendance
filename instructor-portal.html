@@ -9978,8 +9978,18 @@ function brInit() {
   // DEBUG: log actual column layout of OnlineTests sheet
   gasGet({ action:'debugOTColumns', instructor:instructorName }, function(e,dbg){
     if (dbg && dbg.headerMap) {
-      console.log('[DEBUG] OnlineTests column headers:', dbg.headerMap);
-      console.log('[DEBUG] Sample rows:', dbg.sampleRows);
+      console.log('[DEBUG] HEADERS: ' + JSON.stringify(dbg.headerMap));
+      if (dbg.sampleRows && dbg.sampleRows[0]) {
+        // Show only testId, status, createdBy columns for first 5 rows
+        var summary = dbg.sampleRows.map(function(row){
+          var obj = {};
+          row.forEach(function(c){ obj[c.col] = c.val; });
+          return {testId: obj['Test ID'], status: obj['Status'], createdBy: obj['Created By']};
+        });
+        console.log('[DEBUG] ROWS (testId/status/createdBy): ' + JSON.stringify(summary));
+      }
+    } else {
+      console.log('[DEBUG] Error or no data:', JSON.stringify(e), JSON.stringify(dbg));
     }
   });
   gasGet({ action:'getBatchPerformanceSummary', instructor:instructorName, isAdmin: isAdmin ? 'true' : 'false' }, function(err, d) {

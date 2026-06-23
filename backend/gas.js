@@ -5813,22 +5813,20 @@ function otGetBatchPerformanceSummary(ss, p) {
     });
   }
 
-  // 1b. Load all tests
+  // 1b. Load all tests — keep any test whose batchCodes overlap instructor's batches.
+  //     Do NOT filter by createdBy: tests may be created by admin or another instructor
+  //     on behalf of this instructor's batch.
   var shOT = ss.getSheetByName(SH_ONLINE_TESTS);
   var testRows = shOT.getLastRow()>1 ? shOT.getRange(2,1,shOT.getLastRow()-1,23).getValues() : [];
   var allTests = testRows.filter(function(r){
     if (!r[0]) return false;
     // Exclude templates
     if (String(r[6]||'').toLowerCase() === 'template') return false;
-    return true;
+    if (isAdmin) return true;
+    // Include test if any of its batchCodes is in instructor's assigned batches
+    var codes = String(r[3]||'').split(',').map(function(s){return s.trim().toUpperCase();});
+    return codes.some(function(bc){ return instructorBatchCodes[bc]; });
   }).map(otParseTestRow);
-
-  // Filter by instructor unless admin
-  if (!isAdmin) {
-    allTests = allTests.filter(function(t){
-      return String(t.createdBy||'').trim().toLowerCase() === instrName;
-    });
-  }
 
   // 2. Load all responses
   var shR = ss.getSheetByName(SH_OT_RESPONSES);

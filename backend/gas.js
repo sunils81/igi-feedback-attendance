@@ -5813,9 +5813,9 @@ function otGetBatchPerformanceSummary(ss, p) {
     });
   }
 
-  // 1b. Load all tests — keep any test whose batchCodes overlap instructor's batches.
-  //     Do NOT filter by createdBy: tests may be created by admin or another instructor
-  //     on behalf of this instructor's batch.
+  // 1b. Load all tests — filter by createdBy so each instructor sees only their own tests.
+  //     Admin sees everything. The batch dropdown still shows all instructor-assigned batches
+  //     (from step 1a) even if the instructor hasn't created any tests for that batch yet.
   var shOT = ss.getSheetByName(SH_ONLINE_TESTS);
   var testRows = shOT.getLastRow()>1 ? shOT.getRange(2,1,shOT.getLastRow()-1,23).getValues() : [];
   var allTests = testRows.filter(function(r){
@@ -5823,9 +5823,8 @@ function otGetBatchPerformanceSummary(ss, p) {
     // Exclude templates
     if (String(r[6]||'').toLowerCase() === 'template') return false;
     if (isAdmin) return true;
-    // Include test if any of its batchCodes is in instructor's assigned batches
-    var codes = String(r[3]||'').split(',').map(function(s){return s.trim().toUpperCase();});
-    return codes.some(function(bc){ return instructorBatchCodes[bc]; });
+    // Only this instructor's own tests
+    return String(r[13]||'').trim().toLowerCase() === instrName;
   }).map(otParseTestRow);
 
   // 2. Load all responses
@@ -5928,7 +5927,7 @@ function otGetBatchPerformanceSummary(ss, p) {
     return {
       batchCode: bc,
       tests: tests.map(function(t, i){
-        return {testId:t.testId, testLabel:t.testLabel||('Week '+(i+1)), testType:t.testType, activatedAt:t.activatedAt};
+        return {testId:t.testId, testLabel:t.testLabel||('Week '+(i+1)), testType:t.testType, activatedAt:t.activatedAt, createdBy:t.createdBy||''};
       }),
       students: students,
       batchAvg: batchAvg,

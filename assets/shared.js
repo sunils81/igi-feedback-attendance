@@ -4070,14 +4070,26 @@ window.gasGet = (function () {
     var instr = String(p.instructor || '').trim();
     var isAdmin = p.isAdmin === 'true';
 
-    // Step 1: Get batches for this instructor
-    var now = new Date().toISOString().slice(0, 10);
-    var batchQs = 'order=batch_code.asc';
-    if (!isAdmin) {
-      batchQs += '&or=(instructor.eq.' + encodeURIComponent(instr) + ',co_instructor.eq.' + encodeURIComponent(instr) + ')';
+    // Step 1: Get batches for this instructor (two queries to avoid PostgREST or() issues with spaces)
+    function loadBatches(done) {
+      if (isAdmin) {
+        GET('batches', 'order=batch_code.asc', function(e, rows) { done(rows || []); });
+        return;
+      }
+      GET('batches', 'instructor=eq.' + encodeURIComponent(instr) + '&order=batch_code.asc', function(e1, rows1) {
+        GET('batches', 'co_instructor=eq.' + encodeURIComponent(instr) + '&order=batch_code.asc', function(e2, rows2) {
+          var seen = {};
+          var merged = (rows1 || []).concat(rows2 || []).filter(function(b) {
+            if (seen[b.batch_code]) return false;
+            seen[b.batch_code] = true;
+            return true;
+          });
+          done(merged);
+        });
+      });
     }
-    GET('batches', batchQs, function(e1, batches) {
-      if (e1 || !batches || !batches.length) { cb(null, { status: 'ok', batches: [] }); return; }
+    loadBatches(function(batches) {
+      if (!batches || !batches.length) { cb(null, { status: 'ok', batches: [] }); return; }
 
       // Step 2: Get all non-template tests created by this instructor
       GET('online_tests', 'created_by=eq.' + encodeURIComponent(instr) + '&is_template=eq.false&order=created_at.asc', function(e2, tests) {

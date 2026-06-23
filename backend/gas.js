@@ -3012,8 +3012,9 @@ function doGet(e) {
     if (act==='saveManualGrade'||act==='gradeManualQuestion') return respond(otSaveManualGrade(ss,p));
     if (act==='getPendingManualGrades')  return respond(otGetPendingManualGrades(ss,p));
     if (act==='getStudentResults')       return respond(otGetStudentResultsV3(ss,p));
-    if (act==='getTestResultsSummary')   return respond(otGetTestResultsSummary(ss,p));
-    if (act==='setupScheduledTrigger')   return respond(otSetupScheduledTrigger(ss,p));
+    if (act==='getTestResultsSummary')        return respond(otGetTestResultsSummary(ss,p));
+    if (act==='getBatchPerformanceSummary')   return respond(otGetBatchPerformanceSummary(ss,p));
+    if (act==='setupScheduledTrigger')        return respond(otSetupScheduledTrigger(ss,p));
 
     // ── sendOverdueEmails ─────────────────────────────────────
     if (act==='sendOverdueEmails') {
@@ -5779,6 +5780,140 @@ function otGetTestResultsSummary(ss, p) {
   var failed=testResponses.filter(function(r){return r.result==='Fail';}).length;
   var avgPct=testResponses.length>0?Math.round(testResponses.reduce(function(s,r){return s+(parseFloat(r.percentage)||0);},0)/testResponses.length):0;
   return{status:'ok',responses:testResponses,passed:passed,failed:failed,avgPercentage:avgPct,total:testResponses.length};
+}
+
+// ════════════════════════════════════════════════════════════════
+// BATCH PERFORMANCE SUMMARY
+// Returns per-batch, per-student, per-week scores for the Batch Report tab.
+// Instructor sees only their own tests; Admin (isAdmin=true) sees all tests.
+// ════════════════════════════════════════════════════════════════
+function otGetBatchPerformanceSummary(ss, p) {
+  if (!p.instructor) return {status:'error', reason:'missing_params'};
+  var isAdmin = String(p.isAdmin||'').toLowerCase() === 'true';
+  var instrName = String(p.instructor||'').trim().toLowerCase();
+
+  ensureOnlineTestSheets(ss);
+
+  // 1. Load all tests
+  var shOT = ss.getSheetByName(SH_ONLINE_TESTS);
+  var testRows = shOT.getLastRow()>1 ? shOT.getRange(2,1,shOT.getLastRow()-1,23).getValues() : [];
+  var allTests = testRows.filter(function(r){ return r[0]; }).map(otParseTestRow);
+
+  // Filter by instructor unless admin
+  if (!isAdmin) {
+    allTests = allTests.filter(function(t){
+      return String(t.createdBy||'').trim().toLowerCase() === instrName;
+    });
+  }
+
+  // 2. Load all responses
+  var shR = ss.getSheetByName(SH_OT_RESPONSES);
+  var rRows = shR.getLastRow()>1 ? shR.getRange(2,1,shR.getLastRow()-1,16).getValues() : [];
+
+  // Build a map: testId → { studentId → latest response }
+  var testResultMap = {};
+  rRows.forEach(function(r){
+    if (!r[1]) return;
+    var testId = String(r[1]);
+    var studentId = String(r[2]);
+    if (!testResultMap[testId]) testResultMap[testId] = {};
+    var existing = testResultMap[testId][studentId];
+    var thisDate = r[5] ? new Date(r[5]) : new Date(0);
+    var existDate = existing ? (existing.submittedAt ? new Date(existing.submittedAt) : new Date(0)) : new Date(0);
+    if (!existing || thisDate > existDate) {
+      testResultMap[testId][studentId] = {
+        studentId: studentId,
+        studentName: String(r[3]||''),
+        submittedAt: r[5] ? new Date(r[5]).toISOString() : '',
+        percentage: parseFloat(r[12])||0,
+        result: String(r[13]||''),
+        totalScore: r[10],
+        totalMarks: r[11]
+      };
+    }
+  });
+
+  // 3. Group tests by batch
+  var batchMap = {};
+  allTests.forEach(function(t){
+    var codes = String(t.batchCodes||'').split(',').map(function(s){return s.trim().toUpperCase();}).filter(Boolean);
+    codes.forEach(function(bc){
+      if (!batchMap[bc]) batchMap[bc] = [];
+      batchMap[bc].push(t);
+    });
+  });
+
+  // 4. Build output per batch
+  var batches = Object.keys(batchMap).sort().map(function(bc){
+    // Sort tests by activatedAt (chronological = Week 1, 2, 3...)
+    var tests = batchMap[bc].slice().sort(function(a,b){
+      var da = a.activatedAt ? new Date(a.activatedAt) : new Date(0);
+      var db = b.activatedAt ? new Date(b.activatedAt) : new Date(0);
+      return da - db;
+    });
+
+    // Collect all unique students across all tests in this batch
+    var studentNameMap = {};
+    tests.forEach(function(t){
+      var res = testResultMap[t.testId] || {};
+      Object.keys(res).forEach(function(sid){
+        if (!studentNameMap[sid]) studentNameMap[sid] = res[sid].studentName || sid;
+      });
+    });
+    var studentIds = Object.keys(studentNameMap).sort(function(a,b){
+      return studentNameMap[a].localeCompare(studentNameMap[b]);
+    });
+
+    // Build per-student weekly data
+    var students = studentIds.map(function(sid){
+      var weeks = tests.map(function(t){
+        var res = testResultMap[t.testId] && testResultMap[t.testId][sid];
+        if (!res) return {testId:t.testId, attempted:false, pct:null, result:''};
+        return {testId:t.testId, attempted:true, pct:Math.round(res.percentage), result:res.result};
+      });
+      // Overall avg = average of attempted weeks only
+      var attempted = weeks.filter(function(w){return w.attempted;});
+      var avgPct = attempted.length > 0
+        ? Math.round(attempted.reduce(function(s,w){return s+(w.pct||0);},0) / attempted.length)
+        : null;
+      // Trend: compare last two attempted weeks
+      var trend = '—';
+      if (attempted.length >= 2) {
+        var diff = attempted[attempted.length-1].pct - attempted[attempted.length-2].pct;
+        trend = diff > 0 ? '↑' : (diff < 0 ? '↓' : '→');
+      }
+      return {
+        studentId: sid,
+        studentName: studentNameMap[sid],
+        weeks: weeks,
+        avgPct: avgPct,
+        trend: trend,
+        attemptedCount: attempted.length
+      };
+    });
+
+    // Batch-level summary
+    var allStudentsWithAttempts = students.filter(function(s){return s.avgPct !== null;});
+    var batchAvg = allStudentsWithAttempts.length > 0
+      ? Math.round(allStudentsWithAttempts.reduce(function(s,st){return s+(st.avgPct||0);},0) / allStudentsWithAttempts.length)
+      : null;
+    var batchPassCount = students.filter(function(s){
+      return s.weeks.some(function(w){return w.result==='Pass';});
+    }).length;
+
+    return {
+      batchCode: bc,
+      tests: tests.map(function(t, i){
+        return {testId:t.testId, testLabel:t.testLabel||('Week '+(i+1)), testType:t.testType, activatedAt:t.activatedAt};
+      }),
+      students: students,
+      batchAvg: batchAvg,
+      batchPassCount: batchPassCount,
+      totalStudents: studentIds.length
+    };
+  });
+
+  return {status:'ok', batches:batches};
 }
 
 // ── Question Bank Data (355 questions from Excel) ──────────────

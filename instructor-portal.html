@@ -789,6 +789,7 @@
       <button class="ot-subbtn proctor" onclick="otSubTab('proctor')">👁 Proctor Room</button>
       <button class="ot-subbtn grading" onclick="otSubTab('grading')">✏️ Grade Theory</button>
       <button class="ot-subbtn results" onclick="otSubTab('results')">📊 Results</button>
+      <button class="ot-subbtn batchreport" onclick="otSubTab('batchreport')">📈 Batch Report</button>
     </div>
 
     <!-- ── Panel 1: Question Bank ─────────────────────────── -->
@@ -1224,6 +1225,47 @@
         </div>
       </div>
       <div id="ot-results-body"></div>
+    </div>
+
+    <!-- ── Panel 7: Batch Report ───────────────────────────── -->
+    <div id="ot-batchreport" class="ot-panel">
+      <!-- Top controls -->
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+        <div>
+          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">Batch</label>
+          <select id="br-batch-select" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;min-width:200px;">
+            <option value="">— loading batches —</option>
+          </select>
+        </div>
+        <button class="ot-btn primary" style="align-self:flex-end" onclick="brLoad()">📈 Load Report</button>
+        <button class="ot-btn" style="align-self:flex-end;background:#f1f5f9;color:#334155" onclick="brExportCSV()">⬇ Export CSV</button>
+      </div>
+
+      <!-- Summary stats bar -->
+      <div id="br-summary" style="display:none;background:linear-gradient(135deg,#0D1B2E,#1a2f4e);color:#fff;border-radius:12px;padding:14px 20px;margin-bottom:16px;display:flex;gap:32px;flex-wrap:wrap;">
+        <div><span style="font-size:11px;opacity:.7;display:block">Batch</span><span id="br-s-batch" style="font-size:16px;font-weight:700">—</span></div>
+        <div><span style="font-size:11px;opacity:.7;display:block">Students</span><span id="br-s-students" style="font-size:16px;font-weight:700">—</span></div>
+        <div><span style="font-size:11px;opacity:.7;display:block">Tests Run</span><span id="br-s-tests" style="font-size:16px;font-weight:700">—</span></div>
+        <div><span style="font-size:11px;opacity:.7;display:block">Batch Avg</span><span id="br-s-avg" style="font-size:16px;font-weight:700">—</span></div>
+        <div><span style="font-size:11px;opacity:.7;display:block">Students Passing</span><span id="br-s-pass" style="font-size:16px;font-weight:700">—</span></div>
+      </div>
+
+      <!-- Legend -->
+      <div style="display:flex;gap:16px;margin-bottom:10px;font-size:11px;color:#555;flex-wrap:wrap;">
+        <span><span style="display:inline-block;width:12px;height:12px;background:#16a34a;border-radius:3px;margin-right:4px;vertical-align:middle"></span>≥80% Pass</span>
+        <span><span style="display:inline-block;width:12px;height:12px;background:#f59e0b;border-radius:3px;margin-right:4px;vertical-align:middle"></span>60–79%</span>
+        <span><span style="display:inline-block;width:12px;height:12px;background:#dc2626;border-radius:3px;margin-right:4px;vertical-align:middle"></span>&lt;60% Fail</span>
+        <span><span style="display:inline-block;width:12px;height:12px;background:#e2e8f0;border-radius:3px;margin-right:4px;vertical-align:middle"></span>Not Attempted</span>
+      </div>
+
+      <!-- Grid table -->
+      <div id="br-table-wrap" style="overflow-x:auto;">
+        <div id="br-empty" style="text-align:center;padding:48px;color:#94a3b8;font-size:14px;">Select a batch and click "Load Report"</div>
+        <table id="br-table" class="ot-results-table" style="display:none;min-width:600px;">
+          <thead id="br-thead"></thead>
+          <tbody id="br-tbody"></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- Persistent Test Creation Status Bar -->
@@ -4490,6 +4532,7 @@ function otSubTab(panel) {
   if (panel === 'create') { otRenderBatchPills(); otSyncSelectedPreview(); }
   if (panel === 'mytests') otLoadTests();
   if (panel === 'templates') tmplLoadTemplates();
+  if (panel === 'batchreport') brInit();
   otUpdateSelCount();
 }
 
@@ -9913,6 +9956,143 @@ function fpwdResetPIN() {
     document.getElementById('fpwd-step4').style.display='';
     _fpwdToken='';
   });
+}
+
+// ════════════════════════════════════════════════════════════════
+// BATCH REPORT
+// ════════════════════════════════════════════════════════════════
+var _brData = null; // cached response for CSV export
+
+function brInit() {
+  // Populate batch dropdown from the fetched data
+  var sel = document.getElementById('br-batch-select');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Loading… —</option>';
+  var isAdmin = (instructorAuthRole === 'Admin' || instructorAuthRole === 'Manager');
+  gasGet({ action:'getBatchPerformanceSummary', instructor:instructorName, isAdmin: isAdmin ? 'true' : 'false' }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      sel.innerHTML = '<option value="">— Error loading batches —</option>';
+      return;
+    }
+    _brData = d;
+    sel.innerHTML = '<option value="">— select batch —</option>';
+    (d.batches||[]).forEach(function(b) {
+      var opt = document.createElement('option');
+      opt.value = b.batchCode;
+      opt.textContent = b.batchCode + ' (' + b.totalStudents + ' students, ' + b.tests.length + ' tests)';
+      sel.appendChild(opt);
+    });
+    // Auto-select if only one batch
+    if (d.batches.length === 1) {
+      sel.value = d.batches[0].batchCode;
+      brRender(d.batches[0]);
+    }
+  });
+}
+
+function brLoad() {
+  var sel = document.getElementById('br-batch-select');
+  var bc = sel ? sel.value : '';
+  if (!bc) { alert('Please select a batch.'); return; }
+  if (!_brData) { alert('Data still loading, please wait.'); return; }
+  var batch = (_brData.batches||[]).find(function(b){ return b.batchCode === bc; });
+  if (!batch) { alert('Batch not found.'); return; }
+  brRender(batch);
+}
+
+function brCellStyle(pct, attempted) {
+  if (!attempted || pct === null) return 'background:#f1f5f9;color:#94a3b8;text-align:center;';
+  if (pct >= 80) return 'background:#dcfce7;color:#15803d;font-weight:600;text-align:center;';
+  if (pct >= 60) return 'background:#fef9c3;color:#92400e;font-weight:600;text-align:center;';
+  return 'background:#fee2e2;color:#991b1b;font-weight:600;text-align:center;';
+}
+
+function brRender(batch) {
+  // Summary bar
+  var summary = document.getElementById('br-summary');
+  if (summary) {
+    summary.style.display = 'flex';
+    document.getElementById('br-s-batch').textContent = batch.batchCode;
+    document.getElementById('br-s-students').textContent = batch.totalStudents;
+    document.getElementById('br-s-tests').textContent = batch.tests.length;
+    document.getElementById('br-s-avg').textContent = batch.batchAvg !== null ? batch.batchAvg + '%' : '—';
+    document.getElementById('br-s-pass').textContent = batch.batchPassCount + ' / ' + batch.totalStudents;
+  }
+
+  // Build table header: Student | Week 1 label | Week 2 label | ... | Overall Avg | Trend
+  var thead = document.getElementById('br-thead');
+  var tbody = document.getElementById('br-tbody');
+  if (!thead || !tbody) return;
+
+  var headerCells = '<th style="position:sticky;left:0;background:#0D1B2E;z-index:1;min-width:160px;">Student</th>';
+  batch.tests.forEach(function(t, i) {
+    var label = t.testLabel || ('Week ' + (i + 1));
+    headerCells += '<th style="text-align:center;min-width:90px;" title="' + (t.activatedAt ? new Date(t.activatedAt).toLocaleDateString('en-IN') : '') + '">' + label + '</th>';
+  });
+  headerCells += '<th style="text-align:center;min-width:90px;background:#1e3a5f;">Overall Avg</th>';
+  headerCells += '<th style="text-align:center;min-width:60px;">Trend</th>';
+  thead.innerHTML = '<tr>' + headerCells + '</tr>';
+
+  // Body rows
+  var rows = '';
+  (batch.students||[]).forEach(function(st) {
+    var cells = '<td style="position:sticky;left:0;background:#fff;z-index:1;font-weight:500;padding:8px 12px;">' + (st.studentName||st.studentId) + '</td>';
+    (st.weeks||[]).forEach(function(w) {
+      cells += '<td style="' + brCellStyle(w.pct, w.attempted) + 'padding:8px 6px;">'
+        + (w.attempted ? w.pct + '%' : '—') + '</td>';
+    });
+    // Overall avg
+    var avgStyle = brCellStyle(st.avgPct, st.avgPct !== null);
+    cells += '<td style="' + avgStyle + 'padding:8px 6px;font-size:13px;">'
+      + (st.avgPct !== null ? st.avgPct + '%' : '—') + '</td>';
+    // Trend
+    var trendColor = st.trend === '↑' ? '#16a34a' : (st.trend === '↓' ? '#dc2626' : '#64748b');
+    cells += '<td style="text-align:center;padding:8px 6px;font-size:15px;color:' + trendColor + ';">' + (st.trend||'—') + '</td>';
+    rows += '<tr>' + cells + '</tr>';
+  });
+
+  // At-risk footer row — class avg per week
+  var avgCells = '<td style="position:sticky;left:0;background:#f8fafc;z-index:1;font-weight:700;font-size:12px;color:#334155;padding:8px 12px;">Class Avg</td>';
+  batch.tests.forEach(function(t, i) {
+    var attempted = (batch.students||[]).filter(function(s){ return s.weeks[i] && s.weeks[i].attempted; });
+    var avg = attempted.length ? Math.round(attempted.reduce(function(s,st){ return s+(st.weeks[i].pct||0); },0)/attempted.length) : null;
+    avgCells += '<td style="' + brCellStyle(avg, avg!==null) + 'padding:8px 6px;font-size:12px;">'
+      + (avg !== null ? avg + '%' : '—') + '</td>';
+  });
+  avgCells += '<td style="' + brCellStyle(batch.batchAvg, batch.batchAvg!==null) + 'padding:8px 6px;font-size:12px;">'
+    + (batch.batchAvg !== null ? batch.batchAvg + '%' : '—') + '</td>';
+  avgCells += '<td></td>';
+  rows += '<tr style="border-top:2px solid #e2e8f0;">' + avgCells + '</tr>';
+
+  tbody.innerHTML = rows;
+  document.getElementById('br-table').style.display = '';
+  document.getElementById('br-empty').style.display = 'none';
+}
+
+function brExportCSV() {
+  var sel = document.getElementById('br-batch-select');
+  var bc = sel ? sel.value : '';
+  if (!bc || !_brData) { alert('Load a batch report first.'); return; }
+  var batch = (_brData.batches||[]).find(function(b){ return b.batchCode === bc; });
+  if (!batch) return;
+
+  var headers = ['Student'];
+  (batch.tests||[]).forEach(function(t, i){ headers.push(t.testLabel||('Week '+(i+1))); });
+  headers.push('Overall Avg', 'Trend');
+
+  var lines = [headers.join(',')];
+  (batch.students||[]).forEach(function(st) {
+    var row = ['"'+(st.studentName||st.studentId)+'"'];
+    (st.weeks||[]).forEach(function(w){ row.push(w.attempted ? w.pct+'%' : '—'); });
+    row.push(st.avgPct !== null ? st.avgPct+'%' : '—', st.trend||'—');
+    lines.push(row.join(','));
+  });
+
+  var blob = new Blob([lines.join('\n')], {type:'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = bc + '_batch_report.csv';
+  a.click();
 }
 </script>
 </body>

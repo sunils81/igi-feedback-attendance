@@ -1944,6 +1944,166 @@ window.gasGet = (function () {
     if (!mDB.length && !tDB.length && !ctDB.length) fin();
   }
 
+  /* getHRDashboard — pulls from Supabase; returns ₹L per counsellor, ₹Cr national */
+  function h_hrDash(p, cb) {
+    var viewMode = p.viewMode || 'fy';
+    var FY_MONTHS = ['2026-04','2026-05','2026-06','2026-07','2026-08','2026-09',
+                     '2026-10','2026-11','2026-12','2027-01','2027-02','2027-03'];
+    var APPR_MONTHS = ['2026-01','2026-02','2026-03'];
+    var ALL15_MONTHS = APPR_MONTHS.concat(FY_MONTHS);
+    var activeMonths = viewMode === 'appraisal' ? APPR_MONTHS
+                     : viewMode === '15m'       ? ALL15_MONTHS
+                     :                            FY_MONTHS;
+    var isFY = (viewMode === 'fy');
+    var HR_NATIONAL_TARGET = 55000000; // ₹5.5 Cr excl. GST
+    var ACTIVE_COUNSELLORS = ['Anuradha','Bianca','Omkar Kadam','Preethy','Sunita','Rohit','Arpita','Nadiya','Rajini','Kripa'];
+    var qtdMonths = ['2026-04','2026-05','2026-06'];
+
+    var monthly = [], annualFY = [], centreTgtFY = [], feedback = [];
+    var needed, n = 0;
+
+    function build() {
+      // Filter monthly to active months
+      var filt = monthly.filter(function(r) { return activeMonths.indexOf(r.month) >= 0; });
+
+      // Per-counsellor achievement
+      var achMap = {};
+      filt.forEach(function(r) {
+        var name = r.counsellor; if (!name) return;
+        if (!achMap[name]) achMap[name] = { ytd: 0, byMonth: {} };
+        var fee = Number(r.achieved_course_fee) || 0;
+        achMap[name].ytd += fee;
+        achMap[name].byMonth[r.month] = (achMap[name].byMonth[r.month] || 0) + fee;
+      });
+
+      // Annual FY targets per counsellor
+      var tgtMap = {};
+      annualFY.forEach(function(r) {
+        if (!r.counsellor) return;
+        tgtMap[r.counsellor] = (tgtMap[r.counsellor] || 0) + (Number(r.annual_course_fee_target) || 0);
+      });
+
+      // Centre targets
+      var centreTgtMap = {};
+      centreTgtFY.forEach(function(r) {
+        if (!r.centre) return;
+        centreTgtMap[r.centre] = (centreTgtMap[r.centre] || 0) + (Number(r.annual_course_fee_target) || 0);
+      });
+
+      // All counsellor names (active list + anyone with data)
+      var allNames = ACTIVE_COUNSELLORS.slice();
+      Object.keys(achMap).forEach(function(n) { if (allNames.indexOf(n) < 0) allNames.push(n); });
+
+      var sparkMonths = activeMonths.slice(-6);
+
+      var cards = allNames.map(function(name) {
+        var ach = achMap[name] || { ytd: 0, byMonth: {} };
+        var annualTarget = isFY ? (tgtMap[name] || 0) : 0;
+        var ytdPct = (isFY && annualTarget) ? Math.round(ach.ytd / annualTarget * 100) : 0;
+        var qtdAch = isFY ? qtdMonths.reduce(function(s,m){ return s+(ach.byMonth[m]||0); },0) : 0;
+        var qtdPct = (isFY && annualTarget) ? Math.round(qtdAch / (annualTarget/4) * 100) : 0;
+        var monthlyTgt = annualTarget / 12;
+        var last6 = sparkMonths.map(function(m) {
+          var ma = ach.byMonth[m] || 0;
+          return { month: m, pct: (isFY && monthlyTgt) ? Math.round(ma/monthlyTgt*100) : 0, hasData: ma > 0 };
+        });
+        var r3 = sparkMonths.slice(-3).reduce(function(s,m){ return s+(ach.byMonth[m]||0);},0);
+        var p3 = sparkMonths.slice(0,3).reduce(function(s,m){ return s+(ach.byMonth[m]||0);},0);
+        var trend = r3 > p3*1.05 ? 'up' : (r3 < p3*0.95 ? 'down' : 'flat');
+        var status = isFY ? (ytdPct>=90?'green':ytdPct>=70?'amber':'red') : 'neutral';
+        // ₹ in Lakhs (1L = 100000), rounded to 1dp
+        var ytdLakh    = Math.round(ach.ytd / 10000) / 10;
+        var targetLakh = isFY ? (Math.round(annualTarget / 10000) / 10) : 0;
+        return { name:name, ytdRaw:ach.ytd, annualTarget:annualTarget,
+                 ytdLakh:ytdLakh, targetLakh:targetLakh,
+                 ytdPct:ytdPct, qtdPct:qtdPct, last6:last6, trend:trend, status:status,
+                 hasData:ach.ytd>0, hasTarget:annualTarget>0 };
+      }).filter(function(c){ return c.hasData||c.hasTarget; });
+
+      // Sort by revenue
+      cards.sort(function(a,b){ return b.ytdRaw-a.ytdRaw; });
+      cards.forEach(function(c,i){ c.rank=i+1; });
+
+      // Relative indices for bars
+      var maxYtd = cards.length ? Math.max(cards[0].ytdRaw,1) : 1;
+      var maxTgt = Math.max.apply(null, cards.map(function(c){ return c.annualTarget||0; }).concat([1]));
+      cards.forEach(function(c) {
+        c.ytdIndex    = Math.round(c.ytdRaw/maxYtd*100);
+        c.targetIndex = isFY ? Math.round(c.annualTarget/maxTgt*100) : 100;
+        delete c.ytdRaw; delete c.annualTarget;
+      });
+
+      // Most improved
+      var mostImproved=null, bestSwing=-Infinity;
+      cards.forEach(function(c) {
+        var sw = c.last6.slice(-3).reduce(function(s,m){return s+m.pct;},0)
+               - c.last6.slice(0,3).reduce(function(s,m){return s+m.pct;},0);
+        if(sw>bestSwing){bestSwing=sw;mostImproved=c.name;}
+      });
+
+      // Centre cards
+      var centreAchMap = {};
+      filt.forEach(function(r) {
+        var isCorp = String(r.business_type||'').toLowerCase().indexOf('corporate')>=0;
+        var c = isCorp ? r.assigned_centre : (r.business_centre||r.assigned_centre);
+        if (!c) return;
+        centreAchMap[c] = (centreAchMap[c]||0)+(Number(r.achieved_course_fee)||0);
+      });
+      var allCentres = Object.keys(centreTgtMap);
+      Object.keys(centreAchMap).forEach(function(c){ if(allCentres.indexOf(c)<0) allCentres.push(c); });
+      var centreCards = allCentres.map(function(c) {
+        var tgt = centreTgtMap[c]||0, ach = centreAchMap[c]||0;
+        var pct = (isFY&&tgt) ? Math.round(ach/tgt*100) : 0;
+        var status = isFY?(pct>=90?'green':pct>=70?'amber':'red'):'neutral';
+        return { centre:c, ytdPct:pct, status:status, ytdRaw:ach,
+                 ytdLakh:Math.round(ach/10000)/10, targetLakh:isFY?Math.round(tgt/10000)/10:0,
+                 hasTarget:tgt>0 };
+      }).filter(function(c){ return c.hasTarget||c.ytdRaw>0; });
+      centreCards.sort(function(a,b){ return b.ytdRaw-a.ytdRaw; });
+      centreCards.forEach(function(c,i){ c.rank=i+1; delete c.ytdRaw; });
+
+      // National totals
+      var nationalAch=0;
+      Object.keys(achMap).forEach(function(n){ nationalAch+=achMap[n].ytd; });
+      var fyMWD = FY_MONTHS.filter(function(m){
+        return Object.keys(achMap).some(function(n){ return (achMap[n].byMonth[m]||0)>0; });
+      }).length;
+      var projFy = (isFY&&fyMWD>0) ? Math.round(nationalAch/fyMWD*12) : null;
+      var fyTotalTgt=0; annualFY.forEach(function(r){ fyTotalTgt+=(Number(r.annual_course_fee_target)||0); });
+      var natPct = (isFY&&fyTotalTgt) ? Math.round(nationalAch/fyTotalTgt*100) : 0;
+      var achCr  = Math.round(nationalAch/100000)/10;
+      var projCr = projFy ? Math.round(projFy/100000)/10 : null;
+      var gapCr  = isFY ? Math.round((HR_NATIONAL_TARGET-nationalAch)/100000)/10 : null;
+
+      cb(null, {
+        status:'ok', viewMode:viewMode,
+        national:{ ytdPct:natPct, achievedCr:achCr, targetCr:isFY?5.5:null,
+                   projectedCr:projCr, gapCr:gapCr,
+                   monthsWithData:isFY?fyMWD:activeMonths.filter(function(m){
+                     return Object.keys(achMap).some(function(n){return (achMap[n].byMonth[m]||0)>0;});
+                   }).length,
+                   topPerformer:cards[0]||null, mostImproved:mostImproved,
+                   bestCentre:centreCards[0]||null },
+        counsellors:cards, centres:centreCards, instructors:[]
+      });
+    }
+
+    // Fetch monthly data
+    if (viewMode === 'appraisal') {
+      needed = 3;
+      GET('revenue_monthly_achieved', 'month=in.(2026-01,2026-02,2026-03)', function(e,r){ monthly=r||[]; if(++n>=needed) build(); });
+    } else if (viewMode === '15m') {
+      needed = 4;
+      GET('revenue_monthly_achieved', 'month=in.(2026-01,2026-02,2026-03)', function(e,r){ monthly=monthly.concat(r||[]); if(++n>=needed) build(); });
+      GET('revenue_monthly_achieved', 'period=eq.2026-27', function(e,r){ monthly=monthly.concat(r||[]); if(++n>=needed) build(); });
+    } else {
+      needed = 3;
+      GET('revenue_monthly_achieved', 'period=eq.2026-27', function(e,r){ monthly=r||[]; if(++n>=needed) build(); });
+    }
+    GET('revenue_annual_targets', 'period=eq.2026-27', function(e,r){ annualFY=r||[]; if(++n>=needed) build(); });
+    GET('revenue_centre_targets', 'period=eq.2026-27', function(e,r){ centreTgtFY=r||[]; if(++n>=needed) build(); });
+  }
+
   /* getAdminDashboard */
   function h_adminDash(p, cb) {
     var batches, students, fees, monthly, annual, ctargets, assessments, marks, sessions, feedback;
@@ -4635,6 +4795,7 @@ window.gasGet = (function () {
       case 'reviewHODApproval':         return h_reviewHODApproval(params, cb);
       case 'getRevenueDashboard':       return h_revDash(params, cb);
       case 'saveRevenueTargets':        return h_saveRevenue(params, cb);
+      case 'getHRDashboard':            return h_hrDash(params, cb);
       case 'getAdminDashboard':         return h_adminDash(params, cb);
       case 'getAcademicHeadDashboard':  return h_getAcademicHeadDashboard(params, cb);
       case 'getBatchSnapshot':          return h_getBatchSnapshot(params, cb);

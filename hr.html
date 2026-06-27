@@ -406,11 +406,11 @@ function renderDashboard(d) {
 
   // ── Section 2: Leaderboard ────────────────────────────────────────────────
   var lbTitle = isFY ? 'Counsellor Leaderboard — FY 2026–27' : (vm === 'appraisal' ? 'Appraisal Leaderboard — Jan–Mar 2026' : '15-Month Revenue Ranking');
-  var lbSub   = 'Sorted by revenue achieved (highest earner = #1)' + (isFY ? '. Target % shown as secondary metric.' : '.');
+  var lbSub   = 'Sorted by revenue achieved (highest earner = #1). Revenue in Lakhs (₹L), excl. GST.';
   html += '<div class="section-head" style="margin-top:20px"><h2>🏆 ' + lbTitle + '</h2><p>' + lbSub + '</p></div>';
   html += '<div class="card" style="overflow:auto"><table class="lb-table"><thead><tr>';
-  html += '<th>Rank</th><th>Counsellor</th><th>Centre</th><th>Revenue Achievement</th>';
-  if (isFY) { html += '<th>Target Hit %</th><th>QTD Hit %</th>'; }
+  html += '<th>Rank</th><th>Counsellor</th><th>Centre</th><th>Revenue (₹L Achieved)</th>';
+  if (isFY) { html += '<th>Target (₹L)</th><th>YTD %</th><th>QTD %</th>'; }
   html += '<th>Trend</th></tr></thead><tbody>';
 
   counsellors.forEach(function(c) {
@@ -418,32 +418,33 @@ function renderDashboard(d) {
     var barColour = c.status === 'green' ? 'var(--green)' : (c.status === 'amber' ? '#F59E0B' : (c.status === 'red' ? 'var(--red)' : 'var(--navy)'));
     var trendIcon = c.trend === 'up' ? '⬆️' : (c.trend === 'down' ? '⬇️' : '➡️');
     var rankClass = c.rank === 1 ? 'rank-1' : (c.rank === 2 ? 'rank-2' : (c.rank === 3 ? 'rank-3' : 'rank-n'));
-
-    // Bar: in FY mode — bullet bar (achieved portion of target bar)
-    //      in other modes — simple relative bar (% of top earner)
-    var ytdIdx    = c.ytdIndex    || 0;  // 0–100 relative to top earner's revenue
-    var targetIdx = c.targetIndex || 100; // 0–100 relative to highest target
+    var ytdIdx    = c.ytdIndex    || 0;
+    var targetIdx = c.targetIndex || 100;
     var fillInBar, barTrackW;
     if (isFY) {
-      // Bullet bar: outer track = target width (relative), inner fill = achieved within that target
       barTrackW = targetIdx;
       fillInBar = targetIdx > 0 ? Math.min(Math.round(ytdIdx / targetIdx * 100), 100) : 0;
     } else {
-      // Simple bar: track always 100%, fill = relative to top earner
       barTrackW = 100;
       fillInBar = ytdIdx;
     }
+    var ytdL = (c.ytdLakh || 0).toFixed(1);
+    var tgtL = isFY ? (c.targetLakh || 0).toFixed(1) : null;
 
     html += '<tr>';
     html += '<td><span class="rank-badge ' + rankClass + '">' + c.rank + '</span></td>';
     html += '<td style="font-weight:700">' + esc(c.name) + '</td>';
     html += '<td>' + esc(c.centre || '—') + '</td>';
-    html += '<td style="min-width:160px">';
-    html += '<div style="background:var(--border);border-radius:4px;height:16px;width:' + barTrackW + '%;min-width:40px;position:relative;overflow:hidden">';
+    html += '<td style="min-width:200px">';
+    html += '<div style="display:flex;align-items:center;gap:8px">';
+    html += '<div style="flex:1;background:var(--border);border-radius:4px;height:14px;width:' + Math.max(barTrackW,4) + '%;min-width:60px;position:relative;overflow:hidden">';
     html += '<div style="position:absolute;left:0;top:0;height:100%;width:' + fillInBar + '%;background:' + barColour + ';border-radius:4px"></div>';
+    html += '</div>';
+    html += '<span style="font-size:12px;font-weight:700;font-family:JetBrains Mono,monospace;color:var(--navy);white-space:nowrap">₹' + ytdL + 'L</span>';
     html += '</div>';
     html += '</td>';
     if (isFY) {
+      html += '<td style="font-size:12px;font-family:JetBrains Mono,monospace;color:var(--muted)">₹' + tgtL + 'L</td>';
       html += '<td><span class="pct-pill ' + pillClass + '">' + c.ytdPct + '%</span></td>';
       html += '<td><span class="pct-pill ' + (c.qtdPct >= 90 ? 'pill-green' : c.qtdPct >= 70 ? 'pill-amber' : 'pill-red') + '">' + c.qtdPct + '%</span></td>';
     }
@@ -451,13 +452,13 @@ function renderDashboard(d) {
     html += '</tr>';
   });
 
-  if (!counsellors.length) html += '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted)">No data available for this period.</td></tr>';
+  if (!counsellors.length) html += '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--muted)">No data available for this period.</td></tr>';
   html += '</tbody></table></div>';
 
   // ── Head-to-Head visual ───────────────────────────────────────────────────
-  var chartTitle = isFY ? '📊 Revenue Achieved vs Individual Target' : '📊 Revenue Comparison — Relative to Top Earner';
-  var chartSub   = isFY ? 'Grey bar = annual target (proportional). Coloured fill = revenue achieved. Ordered by highest earner.'
-                        : 'Bars scaled to #1 earner = 100%. Ordered by revenue.';
+  var chartTitle = isFY ? '📊 Revenue Achieved vs Individual Target' : '📊 Revenue Comparison';
+  var chartSub   = isFY ? 'Grey track = annual target (proportional). Coloured fill = achieved. ₹L shown right.'
+                        : 'Bars relative to top earner (= 100%). ₹L achieved shown right.';
   html += '<div class="section-head" style="margin-top:20px"><h2>' + chartTitle + '</h2><p>' + chartSub + '</p></div>';
   html += '<div class="card">';
   counsellors.forEach(function(c) {
@@ -473,22 +474,25 @@ function renderDashboard(d) {
       trackW  = 100;
       fillPct = ytdIdx;
     }
+    var ytdL = (c.ytdLakh || 0).toFixed(1);
+    var tgtL = isFY ? (c.targetLakh || 0).toFixed(1) : null;
     html += '<div class="hbar-row">';
     html += '<div class="hbar-name">' + esc(c.name) + '</div>';
-    html += '<div style="flex:1;display:flex;align-items:center">';
-    html += '<div style="width:' + Math.max(trackW,4) + '%;background:var(--border);border-radius:4px;height:20px;position:relative;overflow:hidden">';
-    html += '<div style="position:absolute;left:0;top:0;height:100%;width:' + fillPct + '%;background:' + barColour + ';border-radius:4px;transition:width .5s ease"></div>';
+    html += '<div style="flex:1;display:flex;align-items:center;gap:8px">';
+    html += '<div style="flex:1;background:var(--border);border-radius:4px;height:20px;position:relative;overflow:hidden">';
+    html += '<div style="position:absolute;left:0;top:0;height:100%;width:' + Math.max(trackW,4) + '%;background:var(--border);border-radius:4px"></div>';
+    html += '<div style="position:absolute;left:0;top:0;height:100%;width:' + Math.round(trackW * fillPct / 100) + '%;background:' + barColour + ';border-radius:4px;transition:width .5s ease"></div>';
     html += '</div>';
+    html += '<span style="font-size:12px;font-weight:700;font-family:JetBrains Mono,monospace;min-width:52px;text-align:right;color:var(--navy)">₹' + ytdL + 'L</span>';
+    if (isFY) html += '<span style="font-size:10px;color:var(--muted);min-width:40px;text-align:right">/ ₹' + tgtL + 'L</span>';
     html += '</div>';
-    if (isFY) {
-      html += '<div class="hbar-pct"><span class="pct-pill ' + pillClass + '" style="font-size:11px">' + c.ytdPct + '%</span></div>';
-    }
+    html += '<div class="hbar-pct"><span class="pct-pill ' + pillClass + '" style="font-size:11px">' + (isFY ? c.ytdPct + '%' : ytdIdx + '%') + '</span></div>';
     html += '</div>';
   });
   html += '</div>';
 
   // ── Individual Scorecards ─────────────────────────────────────────────────
-  html += '<div class="section-head" style="margin-top:24px"><h2>🗂 Individual Scorecards</h2><p>Monthly trend and performance ring for each counsellor</p></div>';
+  html += '<div class="section-head" style="margin-top:24px"><h2>🗂 Individual Scorecards</h2><p>Revenue (₹L) vs target, % hit, and monthly trend</p></div>';
   html += '<div class="scorecard-grid">';
   counsellors.forEach(function(c) {
     var ringColour = c.status === 'green' ? '#059669' : (c.status === 'amber' ? '#F59E0B' : (c.status === 'red' ? '#DC2626' : '#0D1B2E'));
@@ -501,6 +505,8 @@ function renderDashboard(d) {
     var last6 = c.last6 || [];
     var maxBar = Math.max.apply(null, last6.map(function(m){ return m.pct; }).concat([1]));
     var scClass = (c.status === 'neutral' || !c.status) ? '' : c.status;
+    var ytdL = (c.ytdLakh || 0).toFixed(1);
+    var tgtL = isFY ? (c.targetLakh || 0).toFixed(1) : null;
 
     html += '<div class="scorecard ' + scClass + '">';
     html += '<div class="sc-header">';
@@ -509,6 +515,16 @@ function renderDashboard(d) {
     html += '<circle cx="35" cy="35" r="28" fill="none" stroke="' + ringBg + '" stroke-width="8"/>';
     html += '<circle cx="35" cy="35" r="28" fill="none" stroke="' + ringColour + '" stroke-width="8" stroke-linecap="round" stroke-dasharray="' + circumference.toFixed(1) + '" stroke-dashoffset="' + dashOffset.toFixed(1) + '"/>';
     html += '</svg><div class="sc-ring-pct">' + pct + '%</div></div>';
+    html += '</div>';
+    // Revenue figures row
+    html += '<div style="display:flex;gap:8px;margin:8px 0;padding:8px 10px;background:rgba(13,27,46,.04);border-radius:6px;align-items:baseline">';
+    html += '<span style="font-size:18px;font-weight:800;font-family:JetBrains Mono,monospace;color:var(--navy)">₹' + ytdL + 'L</span>';
+    if (isFY) {
+      html += '<span style="font-size:11px;color:var(--muted)">achieved</span>';
+      html += '<span style="font-size:11px;color:var(--muted);margin-left:auto">Target: <strong style="color:var(--navy)">₹' + tgtL + 'L</strong></span>';
+    } else {
+      html += '<span style="font-size:11px;color:var(--muted)">revenue in period</span>';
+    }
     html += '</div>';
     html += '<div class="sc-meta">';
     if (isFY) {
@@ -543,10 +559,14 @@ function renderDashboard(d) {
   centres.forEach(function(c) {
     var cls = (c.status === 'neutral' || !c.status) ? '' : c.status;
     var pctColour = c.status === 'green' ? 'var(--green)' : (c.status === 'amber' ? 'var(--amber)' : (c.status === 'red' ? 'var(--red)' : 'var(--navy)'));
+    var ytdL = (c.ytdLakh || 0).toFixed(1);
+    var tgtL = isFY ? (c.targetLakh || 0).toFixed(1) : null;
     html += '<div class="centre-dial ' + cls + '">';
     html += '<div class="cd-name">' + esc(c.centre) + '</div>';
     html += '<div class="cd-pct" style="color:' + pctColour + '">' + (isFY ? c.ytdPct + '%' : '#' + c.rank) + '</div>';
-    html += '<div class="cd-label">' + (isFY ? 'of annual target' : 'by revenue') + '</div>';
+    html += '<div style="font-size:12px;font-weight:700;font-family:JetBrains Mono,monospace;color:var(--navy);margin:2px 0">₹' + ytdL + 'L</div>';
+    if (isFY) html += '<div class="cd-label">of ₹' + tgtL + 'L target</div>';
+    else       html += '<div class="cd-label">by revenue</div>';
     html += '<div class="cd-rank">Rank #' + c.rank + ' of ' + centres.length + '</div>';
     html += '</div>';
   });
@@ -577,7 +597,7 @@ function renderDashboard(d) {
                 : (vm === 'appraisal' ? 'Appraisal Reference: Jan–Mar 2026 (transition quarter)'
                 : 'Combined: Jan 2026 – Mar 2027 (15 months)');
   html += '<div style="margin-top:28px;padding:12px 16px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);border-radius:8px;font-size:11px;color:var(--muted)">';
-  html += '📌 <strong>' + noteLabel + '</strong>. Individual revenue amounts are not shown — bars and rings represent relative performance. Data is live from the IGI database.';
+  html += '📌 <strong>' + noteLabel + '</strong>. Revenue shown in Lakhs (₹L), excl. GST. Data is live from the IGI Supabase database.';
   html += '</div>';
 
   document.getElementById('main-content').innerHTML = html;

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-  <script src="assets/shared.js?v=30"></script>
+  <script src="assets/shared.js?v=31"></script>
   <style>
     :root {
       --navy:#0D1B2E; --gold:#C9A84C; --gold-lt:#F5ECD0;
@@ -456,7 +456,7 @@ function renderDashboard(d) {
   var projCr  = n.projCr;
   var gapCr   = n.gapCr;
   var colorVsBP = isBP ? (n.paceVsBP || vsBP) : (vsPY||0); // pace-adjusted for Full FY so colour reflects "on track?"
-  var sc      = statusColor(colorVsBP);
+  var sc = (isBP && colorVsBP >= 75) ? {pill:'pill-green', bar:'#059669', text:'#059669'} : statusColor(colorVsBP);
   var fillPct = Math.min(isBP ? vsBP : (vsPY||0), 150);
   var fillW   = Math.min(Math.round(fillPct/150*100),100);
 
@@ -568,7 +568,8 @@ function renderDashboard(d) {
   html += '<th>Rank</th><th>Centre</th><th>Revenue</th><th>BP</th><th>vs BP</th><th>PY</th><th>vs PY</th></tr></thead><tbody>';
   ctr.forEach(function(c) {
     var rc = c.rank===1?'rank-1':c.rank===2?'rank-2':c.rank===3?'rank-3':'rank-n';
-    var sc2 = statusColor(c.vsBP||0);
+    var cColorPct = isBP ? (c.paceVsBP||c.vsBP||0) : (c.vsPY||0);
+    var sc2 = statusColor(cColorPct);
     var pysc = statusColor(c.vsPY||0);
     var achW = c.achIdx||0;
     html += '<tr>';
@@ -587,7 +588,7 @@ function renderDashboard(d) {
   // Centre cards view
   html += '<div class="centre-grid" style="margin-top:14px">';
   ctr.forEach(function(c) {
-    var sc2 = statusColor(c.vsBP||0);
+    var sc2 = statusColor(isBP ? (c.paceVsBP||c.vsBP||0) : (c.vsPY||0));
     var cls = sc2.pill==='pill-gold'?'gold':sc2.pill==='pill-green'?'green':sc2.pill==='pill-lime'?'lime':sc2.pill==='pill-amber'?'amber':'red';
     html += '<div class="cc-card '+cls+'">';
     html += '<div class="cc-name">'+esc(c.centre)+'</div>';

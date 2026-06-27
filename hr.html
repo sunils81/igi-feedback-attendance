@@ -358,18 +358,16 @@ function toggleCurrency() {
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 function fmtAmt(lakh) {
-  // lakh is already in Lakhs (float)
   if (gCurrency === 'usd') {
     var k = lakh * LAKH_TO_USD_K;
-    return '$' + k.toFixed(1);
+    return k.toFixed(1);
   }
   return '₹' + lakh.toFixed(1) + 'L';
 }
 function fmtAmtCr(cr) {
-  // cr in Crores
   if (gCurrency === 'usd') {
-    var k = cr * 100 * LAKH_TO_USD_K; // Cr → Lakh → USD(k)
-    return '$' + k.toFixed(0) + 'k';
+    var k = cr * 100 * LAKH_TO_USD_K;
+    return k.toFixed(0) + 'k';
   }
   return '₹' + cr.toFixed(2) + ' Cr';
 }
@@ -694,12 +692,12 @@ function drawHistChart() {
       plugins:{
         legend:{display:false},
         tooltip:{callbacks:{label:function(ctx){
-          return (gCurrency==='usd'?'$':'₹')+ctx.parsed.y+(gCurrency==='usd'?' (000)':'L');
+          return gCurrency==='usd' ? ctx.parsed.y+' (000)' : '₹'+ctx.parsed.y+'L';
         }}}
       },
       scales:{
         x:{grid:{display:false},ticks:{color:'#7A7060',font:{family:'Plus Jakarta Sans',size:11}}},
-        y:{grid:{color:'rgba(0,0,0,.05)'},ticks:{color:'#7A7060',font:{size:11},callback:function(v){return (gCurrency==='usd'?'$':'₹')+v+(gCurrency==='usd'?'k':'L');}}}
+        y:{grid:{color:'rgba(0,0,0,.05)'},ticks:{color:'#7A7060',font:{size:11},callback:function(v){return gCurrency==='usd' ? v+'k' : '₹'+v+'L';}}}
       }
     }
   });

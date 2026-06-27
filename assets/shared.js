@@ -2151,7 +2151,7 @@ window.gasGet = (function () {
       // Recompute more accurately from sumRows
       var _na=0; Object.keys(achCur).forEach(function(n){_na+=achCur[n].total;}); natAch=_na;
       var natPY   = 0; Object.keys(achPY).forEach(function(n){natPY+=achPY[n].total;});
-      var natBP   = Object.keys(tgtMap).reduce(function(s,n){return s+tgtMap[n];},0) * periodFrac;
+      var natBP   = HR_NATIONAL_TARGET * periodFrac; // always use fixed ₹5.5 Cr annual BP, not sum of individual targets
       var natVsBP = natBP  ? Math.round(natAch/natBP*100)  : 0;
       var natVsPY = natPY  ? Math.round(natAch/natPY*100)  : null;
       var natGrowth = natPY ? Math.round((natAch-natPY)/natPY*100) : null;
@@ -2169,7 +2169,7 @@ window.gasGet = (function () {
         national:{
           achCr:toCr(natAch), bpCr:toCr(natBP), pyAchCr:toCr(natPY),
           projCr: projFy?toCr(projFy):null,
-          gapCr:  toCr(Math.max(HR_NATIONAL_TARGET-natAch,0)),
+          gapCr:  toCr(Math.max(HR_NATIONAL_TARGET - natAch, 0)),
           annBPCr:5.5,
           vsBP:natVsBP, vsPY:natVsPY, growthPct:natGrowth, annVsBP:annVsBP,
           monthsWithData:mwd,

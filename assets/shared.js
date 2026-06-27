@@ -3723,19 +3723,23 @@ window.gasGet = (function () {
   }
 
   function h_getAssessments(p, cb) {
-    GET('assessments', 'batch_code=eq.' + encodeURIComponent(p.batchCode), function(e, rows) {
+    // Use embedded select to get marks count per assessment in one call
+    GET('assessments?select=*,assessment_marks(count)', 'batch_code=eq.' + encodeURIComponent(p.batchCode), function(e, rows) {
       cb(null, { status: e ? 'error' : 'ok', assessments: (rows || []).map(function(r) {
-        return { assessmentId: r.assessment_id, batchCode: r.batch_code, testName: r.test_name, testType: r.test_type, testDate: toDMY(r.held_on), totalMarks: r.max_marks };
+        var cnt = r.assessment_marks && r.assessment_marks[0] ? (r.assessment_marks[0].count || 0) : 0;
+        return { assessmentId: r.assessment_id, batchCode: r.batch_code, testName: r.test_name, testType: r.test_type,
+          testDate: toDMY(r.held_on), totalMarks: r.max_marks, marksEntered: Number(cnt) };
       }) });
     });
   }
 
   function h_createAssessment(p, cb) {
+    var aid = p.batchCode + '-A-' + Date.now(); // generate ID here so we can return it
     POST('assessments', 'on_conflict=assessment_id', {
-      assessment_id: p.batchCode + '-A-' + Date.now(), batch_code: p.batchCode, test_name: p.testName,
+      assessment_id: aid, batch_code: p.batchCode, test_name: p.testName,
       test_type: p.testType || 'Weekly', held_on: toYMD(p.testDate), max_marks: Number(p.totalMarks || 100), instructor: p.instructor || ''
     }, function(e) {
-      cb(null, e ? { status: 'error' } : { status: 'ok' });
+      cb(null, e ? { status: 'error' } : { status: 'ok', assessmentId: aid }); // return assessmentId!
     });
   }
 
@@ -3751,8 +3755,10 @@ window.gasGet = (function () {
     var marks = [];
     try { marks = JSON.parse(p.marks || '[]'); } catch(x) {}
     var rows = marks.map(function(m) {
+      var isDNA = m.dna || m.marks === 'DNA';
       return { assessment_id: p.assessmentId, student_id: m.enrollmentNo || m.studentId, student_name: m.studentName || '',
-        marks: Number(m.marks || 0), remarks: m.remarks || '' };
+        marks: isDNA ? null : (m.marks === '' || m.marks == null ? null : Number(m.marks)),
+        remarks: isDNA ? 'DNA' : (m.remarks || '') };
     });
     POST('assessment_marks', 'on_conflict=assessment_id,student_id', rows, function(e) {
       cb(null, e ? { status: 'error' } : { status: 'ok' });

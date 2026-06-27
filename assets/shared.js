@@ -2015,6 +2015,8 @@ window.gasGet = (function () {
     }
 
     function build() {
+      // Pace fraction: fraction of FY elapsed (used for pace-adjusted colours)
+      var ytdFrac = YTD_MONTHS.length / 12;
       // Targets
       var tgtMap = {}, centreMap = {};
       annualFY.forEach(function(r) {
@@ -2063,7 +2065,6 @@ window.gasGet = (function () {
         // vs BP
         var vsBP = perBP ? Math.round(cur.total/perBP*100) : 0;
         // Pace-adjusted: for Full FY, normalise by fraction of year elapsed so colours reflect "on track?" not raw %
-        var ytdFrac = YTD_MONTHS.length/12;
         var paceVsBP = (periodFilter==='fy' && ytdFrac>0) ? Math.round(vsBP/ytdFrac) : vsBP;
         // Q1 vs BP (always shown as QTD column)
         var q1VsBP = q1BP ? Math.round(q1a.total/q1BP*100) : 0;

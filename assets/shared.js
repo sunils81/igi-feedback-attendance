@@ -2061,6 +2061,9 @@ window.gasGet = (function () {
 
         // vs BP
         var vsBP = perBP ? Math.round(cur.total/perBP*100) : 0;
+        // Pace-adjusted: for Full FY, normalise by fraction of year elapsed so colours reflect "on track?" not raw %
+        var ytdFrac = YTD_MONTHS.length/12;
+        var paceVsBP = (periodFilter==='fy' && ytdFrac>0) ? Math.round(vsBP/ytdFrac) : vsBP;
         // Q1 vs BP (always shown as QTD column)
         var q1VsBP = q1BP ? Math.round(q1a.total/q1BP*100) : 0;
         // vs PY
@@ -2090,10 +2093,11 @@ window.gasGet = (function () {
           pyLakh:    Math.round(py.total/10000)/10,
           annBPLakh: Math.round(annBP/10000)/10,
           vsBP:      vsBP,
+          paceVsBP:  paceVsBP,
           q1VsBP:    q1VsBP,
           vsPY:      vsPY,
           growthPct: growthPct,
-          status:    statusColor(vsBP),
+          status:    statusColor(paceVsBP),
           trend:     trend,
           last6:     last6,
           hasData:   cur.total>0,
@@ -2128,14 +2132,15 @@ window.gasGet = (function () {
         var annT = centreTgtMap[c]||0;
         var perT = Math.round(annT * periodFrac);
         var vsBP = perT ? Math.round(ach/perT*100) : 0;
+        var cPaceVsBP = (periodFilter==='fy' && ytdFrac>0) ? Math.round(vsBP/ytdFrac) : vsBP;
         var growthPct = pyA ? Math.round((ach-pyA)/pyA*100) : null;
         var vsPY = pyA ? Math.round(ach/pyA*100) : null;
         return {
           centre:c, achRaw:ach, pyRaw:pyA,
           achLakh:Math.round(ach/10000)/10, bpLakh:Math.round(perT/10000)/10,
           pyLakh:Math.round(pyA/10000)/10,
-          vsBP:vsBP, vsPY:vsPY, growthPct:growthPct,
-          status:statusColor(vsBP), hasTarget:annT>0
+          vsBP:vsBP, paceVsBP:cPaceVsBP, vsPY:vsPY, growthPct:growthPct,
+          status:statusColor(cPaceVsBP), hasTarget:annT>0
         };
       }).filter(function(c){ return c.hasTarget||c.achRaw>0; });
       centreCards.sort(function(a,b){ return b.achRaw-a.achRaw; });

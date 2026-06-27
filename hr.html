@@ -305,7 +305,7 @@ var HIST_REVENUE = {
 };
 
 // ── State ────────────────────────────────────────────────
-var gPeriod   = 'ytd';   // active period filter
+var gPeriod   = 'ytd';  // default: YTD gives the most meaningful current picture
 var gCompare  = 'bp';    // 'bp' | 'py'
 var gCurrency = 'inr';   // 'inr' | 'usd'
 var gData     = null;    // last loaded dashboard data
@@ -467,7 +467,8 @@ function renderDashboard(d) {
   html += '</div>';
 
   // ── 3. Counsellor Leaderboard ───────────────────────────
-  html += '<div class="section-head"><h2>🏆 Counsellor Performance — '+pl+'</h2><p>'+fmtUnit()+' excl. GST · '+(isBP?'vs Business Plan (BP)':'vs Prior Year (PY)')+'</p></div>';
+  var paceNote = (gPeriod==='fy') ? ' · Bar colours show pace-adjusted achievement (on track for year?)' : '';
+  html += '<div class="section-head"><h2>🏆 Counsellor Performance — '+pl+'</h2><p>'+fmtUnit()+' excl. GST · '+(isBP?'vs Business Plan (BP)':'vs Prior Year (PY)')+paceNote+'</p></div>';
   html += '<div class="lb-wrap"><table class="lb-table"><thead><tr>';
   html += '<th>Rank</th><th>Counsellor</th><th>Centre</th>';
   html += '<th>Revenue ('+fmtUnit()+')</th>';
@@ -479,7 +480,8 @@ function renderDashboard(d) {
   cs.forEach(function(c) {
     var rc = c.rank===1?'rank-1':c.rank===2?'rank-2':c.rank===3?'rank-3':'rank-n';
     var pct = isBP ? c.vsBP : (c.vsPY||0);
-    var sc2 = statusColor(pct);
+    var colorPct = isBP ? (c.paceVsBP||c.vsBP) : (c.vsPY||0); // pace-adjusted for FY coloring
+    var sc2 = statusColor(colorPct);
     var ti  = c.trend==='up'?'▲':c.trend==='down'?'▼':'→';
     var tc  = c.trend==='up'?'#059669':c.trend==='down'?'#dc2626':'var(--muted)';
     var bpW = Math.min(c.bpIdx||0, 100);
@@ -510,8 +512,9 @@ function renderDashboard(d) {
   var maxAch = Math.max.apply(null, cs.map(function(c){return c.achLakh||0;}).concat([0.1]));
   var maxAll = Math.max(maxBP, maxAch);
   cs.forEach(function(c) {
-    var pct  = isBP ? c.vsBP : (c.vsPY||0);
-    var sc2  = statusColor(pct);
+    var pct      = isBP ? c.vsBP : (c.vsPY||0);
+    var colorPct = isBP ? (c.paceVsBP||c.vsBP) : (c.vsPY||0);
+    var sc2  = statusColor(colorPct);
     var bpW  = Math.round((c.bpLakh||0)/maxAll*100);
     var achW = Math.round((c.achLakh||0)/maxAll*100);
     html += '<div class="rbar-row">';

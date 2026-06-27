@@ -292,6 +292,19 @@ var USD_RATE = 84;       // 1 USD = ₹84
 // 1 Lakh = 100000 INR → USD = 100000/84 = 1190.5 → displayed as "1.2" in USD(000)
 var LAKH_TO_USD_K = 100000 / USD_RATE / 1000; // ≈ 1.190
 
+// ── MIS Slide Data (India Revenue, USD 000, extracted from monthly MIS presentations) ──
+// Source: Education slides Dec'25, Jan'26, Feb'26, Mar'26, Apr'26
+// BP for India = 47 USD(000)/month (except Dec-25 BP = 69)
+var MIS_INDIA = [
+  { month:'Dec-25', fy:'2025-26', indiaUSD:14,  bpUSD:69, totalEduUSD:176, indiaPY:34,  achPct:20,  vspy:-59, ytdIndia:512, ytdBP:631, ytdPY:528 },
+  { month:'Jan-26', fy:'2025-26', indiaUSD:82,  bpUSD:47, totalEduUSD:384, indiaPY:67,  achPct:174, vspy:21,  ytdIndia:null,ytdBP:null,ytdPY:null },
+  { month:'Feb-26', fy:'2025-26', indiaUSD:67,  bpUSD:47, totalEduUSD:207, indiaPY:38,  achPct:143, vspy:75,  ytdIndia:148, ytdBP:94,  ytdPY:105 },
+  { month:'Mar-26', fy:'2025-26', indiaUSD:27,  bpUSD:47, totalEduUSD:225, indiaPY:26,  achPct:57,  vspy:1,   ytdIndia:175, ytdBP:141, ytdPY:132 },
+  { month:'Apr-26', fy:'2026-27', indiaUSD:69,  bpUSD:47, totalEduUSD:230, indiaPY:61,  achPct:147, vspy:14,  ytdIndia:244, ytdBP:189, ytdPY:192 },
+];
+// Calendar-year 2025 full-year India = 512 USD(000) = 43.0 Cr INR (at 84)
+// Calendar-year 2025 full-year Education Total = 2,820 USD(000) (YTD Dec-25)
+
 var HIST_REVENUE = {
   2018:[3405336,941593,3116043,2609209,4535315,2994895,6373675,5196103,3274120,727163,3650639,860787],
   2019:[3045350,4713079,3492773,3529289,2758191,2202327,4364942,2283990,2518980,887720,2998288,2185025],
@@ -641,6 +654,41 @@ function renderDashboard(d) {
     html += '</tr>';
   });
   html += '</tbody></table></div>';
+
+  // ── MIS Reference Panel ──────────────────────────────────
+  html += '<div class="section-head" style="margin-top:28px"><h2>📋 MIS Reference — India Revenue</h2><p>Extracted from official monthly MIS slide decks · USD (000) · India geography only (excl. international centres)</p></div>';
+  html += '<div class="lb-wrap"><table class="lb-table"><thead><tr>';
+  html += '<th>Month</th><th>India Rev</th><th>Monthly BP</th><th>vs BP</th><th>vs PY</th><th>India as % of Edu Total</th><th>Education Total</th><th>YTD India</th><th>YTD vs BP</th></tr></thead><tbody>';
+  MIS_INDIA.forEach(function(r) {
+    var sc2 = statusColor(r.achPct);
+    var vsc = r.vspy >= 0 ? 'pill-green' : 'pill-red';
+    var indiaPct = Math.round(r.indiaUSD/r.totalEduUSD*100);
+    var ytdAch = r.ytdIndia && r.ytdBP ? Math.round(r.ytdIndia/r.ytdBP*100) : null;
+    var ytdSc = ytdAch ? statusColor(ytdAch) : null;
+    // Convert to display unit
+    var indiaDisp = gCurrency==='usd' ? r.indiaUSD+'' : Math.round(r.indiaUSD*84/10)/10+'L';
+    var bpDisp    = gCurrency==='usd' ? r.bpUSD+'' : Math.round(r.bpUSD*84/10)/10+'L';
+    var totDisp   = gCurrency==='usd' ? r.totalEduUSD+'' : Math.round(r.totalEduUSD*84/10)/10+'L';
+    var ytdDisp   = r.ytdIndia ? (gCurrency==='usd' ? r.ytdIndia+'' : Math.round(r.ytdIndia*84/10)/10+'L') : '—';
+    html += '<tr>';
+    html += '<td style="font-weight:700">'+r.month+'<span style="font-size:10px;color:var(--muted);margin-left:4px">FY'+r.fy.slice(-5)+'</span></td>';
+    html += '<td class="num" style="font-weight:800">'+indiaDisp+'</td>';
+    html += '<td class="num" style="color:var(--muted)">'+bpDisp+'</td>';
+    html += '<td><span class="pill '+sc2.pill+'">'+r.achPct+'%</span></td>';
+    html += '<td><span class="pill '+(r.vspy>=0?'pill-green':'pill-red')+'">'+(r.vspy>=0?'▲':'▼')+Math.abs(r.vspy)+'%</span></td>';
+    html += '<td><div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden"><div style="width:'+indiaPct+'%;height:100%;background:var(--gold);border-radius:4px"></div></div><span style="font-size:11px;font-weight:700">'+indiaPct+'%</span></div></td>';
+    html += '<td class="num" style="color:var(--muted)">'+totDisp+'</td>';
+    html += '<td class="num">'+(r.ytdIndia?ytdDisp:'—')+'</td>';
+    html += '<td>'+(ytdSc?'<span class="pill '+ytdSc.pill+'">'+ytdAch+'%</span>':'<span style="color:var(--muted)">—</span>')+'</td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  // Summary strip
+  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px">';
+  html += kpi('🇮🇳','India FY25 Full Year','512 USD(k)','= ₹43.0 Cr · Jan–Dec 2025');
+  html += kpi('📊','India Monthly BP','47 USD(k)','= ₹39.5L · per month','amber');
+  html += kpi('🌍','India as % of Edu','~21% avg','of total global Education revenue');
+  html += '</div>';
 
   // ── Footer ───────────────────────────────────────────────
   html += '<div style="margin-top:32px;padding:12px 16px;background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.2);border-radius:8px;font-size:11px;color:var(--muted)">';

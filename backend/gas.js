@@ -3815,199 +3815,222 @@ function getGlobalCounsellorStandings(ss, period, currentMonthKey, allAnnualTarg
   });
 }
 
-// ── HR Dashboard — read-only performance visibility, NO raw ₹ figures ─────────
-// Returns % achievements, rankings, centre health, instructor ratings.
-// Raw course/GST amounts are deliberately excluded.
-function buildHRDashboard(ss, p) {
-  var period = revenuePeriod(p) || '2026-27';
-  var currentMonth = p.currentMonth || '';
-  if (!currentMonth) {
-    var today = new Date();
-    var yr = today.getFullYear(), mo = today.getMonth() + 1;
-    currentMonth = yr + '-' + String(mo).padStart(2, '0');
-  }
+// ── HR Dashboard — three view modes ──────────────────────────────────────────
+// viewMode: 'fy'        → Apr 2026–Mar 2027, ₹5.5 Cr national target
+//           'appraisal' → Jan–Mar 2026 only, appraisal reference quarter
+//           '15m'       → Jan 2026–Mar 2027 combined (15 months)
+// Individual raw ₹ amounts never exposed. National ₹ Cr shown for FY mode only.
+var HR_NATIONAL_FY_TARGET = 55000000; // 5.5 Cr excl. GST
 
-  // ── Revenue data (aggregate only, never expose raw ₹ to HR) ──────────────
+function buildHRDashboard(ss, p) {
+  var viewMode = p.viewMode || 'fy';
+  var today = new Date();
+  var currentMonth = p.currentMonth || (today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0'));
+
+  // ── Month range per view mode ─────────────────────────────────────────────
+  var FY_MONTHS = ['2026-04','2026-05','2026-06','2026-07','2026-08','2026-09',
+                   '2026-10','2026-11','2026-12','2027-01','2027-02','2027-03'];
+  var APPRAISAL_MONTHS = ['2026-01','2026-02','2026-03'];
+  var COMBINED_MONTHS  = APPRAISAL_MONTHS.concat(FY_MONTHS); // 15 months
+
+  var activeMonths = viewMode === 'appraisal' ? APPRAISAL_MONTHS
+                   : viewMode === '15m'        ? COMBINED_MONTHS
+                   :                             FY_MONTHS; // default: fy
+
+  var FY_PERIOD = '2026-27';
+  var isFY = (viewMode === 'fy');
+
+  // ── Load data ─────────────────────────────────────────────────────────────
   var allAnnualTargets   = getRevenueAnnualTargetRows(ss);
   var allMonthlyAchieved = getRevenueMonthlyAchievedRows(ss);
 
-  // Build per-counsellor target map for the period
-  var counsellorTargetMap = {}; // name → { annualTarget, centre }
+  // FY counsellor targets (only used in FY mode for % calculations)
+  var counsellorTargetMap = {};
   allAnnualTargets.forEach(function(r) {
-    if (r.period !== period) return;
+    if (r.period !== FY_PERIOD) return;
     var name = r.counsellor;
     if (!counsellorTargetMap[name]) counsellorTargetMap[name] = { annualTarget: 0, centre: r.centre };
     counsellorTargetMap[name].annualTarget += Number(r.targetCourse) || 0;
   });
 
-  // Build per-counsellor monthly achievements (last 12 months)
-  var months12 = [];
-  var ref = new Date(currentMonth + '-01');
-  for (var mi = 11; mi >= 0; mi--) {
-    var d2 = new Date(ref.getFullYear(), ref.getMonth() - mi, 1);
-    months12.push(d2.getFullYear() + '-' + String(d2.getMonth() + 1).padStart(2, '0'));
-  }
+  // Achieved rows filtered to active month window
+  var filteredRows = allMonthlyAchieved.filter(function(r) {
+    return activeMonths.indexOf(r.month) >= 0;
+  });
 
-  // Current quarter months
-  var mNum = parseInt(currentMonth.split('-')[1], 10);
-  var yNum = parseInt(currentMonth.split('-')[0], 10);
-  var qMonths;
-  if (mNum >= 4 && mNum <= 6)       qMonths = [yNum+'-04', yNum+'-05', yNum+'-06'];
-  else if (mNum >= 7 && mNum <= 9)  qMonths = [yNum+'-07', yNum+'-08', yNum+'-09'];
-  else if (mNum >= 10 && mNum <= 12) qMonths = [yNum+'-10', yNum+'-11', yNum+'-12'];
-  else                               qMonths = [yNum+'-01', yNum+'-02', yNum+'-03'];
-
-  var counsellorAchMap = {}; // name → { ytd, qtd, byMonth:{} }
-  allMonthlyAchieved.forEach(function(r) {
-    if (r.period !== period) return;
+  // Per-counsellor achievement map
+  var counsellorAchMap = {};
+  filteredRows.forEach(function(r) {
     var name = r.counsellor;
-    if (!counsellorAchMap[name]) counsellorAchMap[name] = { ytd: 0, qtd: 0, byMonth: {} };
+    if (!counsellorAchMap[name]) counsellorAchMap[name] = { ytd: 0, byMonth: {} };
     var fee = Number(r.achievedCourse) || 0;
     counsellorAchMap[name].ytd += fee;
-    if (qMonths.indexOf(r.month) >= 0) counsellorAchMap[name].qtd += fee;
     counsellorAchMap[name].byMonth[r.month] = (counsellorAchMap[name].byMonth[r.month] || 0) + fee;
   });
 
-  // Build counsellor scorecards — % only, no raw amounts
+  // National totals
+  var nationalAchievedRaw = 0;
+  Object.keys(counsellorAchMap).forEach(function(n) { nationalAchievedRaw += counsellorAchMap[n].ytd; });
+
+  // Run-rate projection for FY (months with any data → extrapolate to 12)
+  var fyMonthsWithData = FY_MONTHS.filter(function(m) {
+    return Object.keys(counsellorAchMap).some(function(n) {
+      return (counsellorAchMap[n].byMonth[m] || 0) > 0;
+    });
+  }).length;
+  var projectedFyAch = (isFY && fyMonthsWithData > 0)
+    ? Math.round(nationalAchievedRaw / fyMonthsWithData * 12)
+    : null;
+
+  // ── Build counsellor cards ────────────────────────────────────────────────
   var activeNames = Object.keys(COUNSELOR_CREDS).filter(function(n) { return n !== 'Mrinal'; });
+
+  // Sparkline months: last 6 active months
+  var sparkMonths = activeMonths.slice(-6);
+
+  // Q1 FY months for QTD (Apr–Jun 2026)
+  var qtdMonths = ['2026-04','2026-05','2026-06'];
+
   var counsellorCards = activeNames.map(function(name) {
     var tgt = counsellorTargetMap[name] || { annualTarget: 0, centre: '—' };
-    var ach = counsellorAchMap[name] || { ytd: 0, qtd: 0, byMonth: {} };
+    var ach = counsellorAchMap[name]    || { ytd: 0, byMonth: {} };
     var annualTarget = tgt.annualTarget;
-    var ytdPct = annualTarget ? Math.round(ach.ytd / annualTarget * 100) : (ach.ytd ? 100 : 0);
-    var qtdTarget = annualTarget / 4;
-    var qtdPct = qtdTarget ? Math.round(ach.qtd / qtdTarget * 100) : (ach.qtd ? 100 : 0);
+    var centre = tgt.centre || (COUNSELOR_CREDS[name] ? COUNSELOR_CREDS[name].centres[0] : '—');
 
-    // Last 6 months relative bars — each month as % of (annualTarget / 12)
+    // % figures only meaningful in FY mode
+    var ytdPct = (isFY && annualTarget) ? Math.round(ach.ytd / annualTarget * 100) : 0;
+    var qtdAch = qtdMonths.reduce(function(s, m) { return s + (ach.byMonth[m] || 0); }, 0);
+    var qtdTarget = annualTarget / 4;
+    var qtdPct = (isFY && qtdTarget) ? Math.round(qtdAch / qtdTarget * 100) : 0;
+
+    // Sparkline — pct vs monthly target in FY mode; raw trend in other modes
     var monthlyTarget = annualTarget / 12;
-    var last6 = months12.slice(-6).map(function(m) {
+    var last6 = sparkMonths.map(function(m) {
       var mAch = ach.byMonth[m] || 0;
-      var mPct = monthlyTarget ? Math.round(mAch / monthlyTarget * 100) : (mAch ? 100 : 0);
-      return { month: m, pct: mPct };
+      var mPct = (isFY && monthlyTarget) ? Math.round(mAch / monthlyTarget * 100) : 0;
+      return { month: m, pct: mPct, hasData: mAch > 0 };
     });
 
-    // Trend: compare last 3 months vs 3 months before that
-    var recent3 = last6.slice(-3).reduce(function(s, m) { return s + m.pct; }, 0);
-    var prior3  = last6.slice(0, 3).reduce(function(s, m) { return s + m.pct; }, 0);
-    var trend = recent3 > prior3 + 5 ? 'up' : (recent3 < prior3 - 5 ? 'down' : 'flat');
+    // Trend based on raw revenue (works in all modes)
+    var recent3raw = sparkMonths.slice(-3).reduce(function(s,m){ return s+(ach.byMonth[m]||0);},0);
+    var prior3raw  = sparkMonths.slice(0,3).reduce(function(s,m){ return s+(ach.byMonth[m]||0);},0);
+    var trend = recent3raw > prior3raw * 1.05 ? 'up' : (recent3raw < prior3raw * 0.95 ? 'down' : 'flat');
 
-    // Status
-    var status = ytdPct >= 90 ? 'green' : (ytdPct >= 70 ? 'amber' : 'red');
+    var status = isFY
+      ? (ytdPct >= 90 ? 'green' : ytdPct >= 70 ? 'amber' : 'red')
+      : 'neutral';
 
     return {
       name: name,
-      centre: tgt.centre,
+      centre: centre,
       ytdPct: ytdPct,
       qtdPct: qtdPct,
-      ytdRaw: ach.ytd,           // absolute revenue — used for sorting & relative bars only
-      annualTarget: annualTarget, // used for relative bar width — never shown as ₹
+      ytdRaw: ach.ytd,        // used for sort + indices only, deleted before return
+      annualTarget: annualTarget,
       last6: last6,
       trend: trend,
       status: status,
+      hasData: ach.ytd > 0,
       hasTarget: annualTarget > 0
     };
-  }).filter(function(c) { return c.hasTarget || (counsellorAchMap[c.name] && counsellorAchMap[c.name].ytd > 0); });
+  }).filter(function(c) { return c.hasData || c.hasTarget; });
 
-  // Sort by absolute revenue achieved (not %) — highest earner = rank 1
+  // Sort by absolute revenue achieved (highest earner = #1 in all modes)
   counsellorCards.sort(function(a, b) { return b.ytdRaw - a.ytdRaw; });
   counsellorCards.forEach(function(c, i) { c.rank = i + 1; });
 
-  // Build relative indices (0–100 relative to highest) for bar charts — no raw ₹ exposed
-  var maxYtdRaw = counsellorCards.length ? counsellorCards[0].ytdRaw : 1;
-  var maxTarget = Math.max.apply(null, counsellorCards.map(function(c){ return c.annualTarget || 1; }));
+  // Relative indices for bar charts (0–100, never raw ₹)
+  var maxYtdRaw = counsellorCards.length ? Math.max(counsellorCards[0].ytdRaw, 1) : 1;
+  var maxTarget = Math.max.apply(null, counsellorCards.map(function(c){ return c.annualTarget||0; }).concat([1]));
   counsellorCards.forEach(function(c) {
-    c.ytdIndex    = maxYtdRaw  ? Math.round(c.ytdRaw       / maxYtdRaw  * 100) : 0;
-    c.targetIndex = maxTarget  ? Math.round(c.annualTarget  / maxTarget  * 100) : 0;
-    // Remove raw values so they don't leak to frontend
+    c.ytdIndex    = Math.round(c.ytdRaw / maxYtdRaw * 100);
+    c.targetIndex = isFY ? Math.round(c.annualTarget / maxTarget * 100) : 100;
     delete c.ytdRaw;
     delete c.annualTarget;
   });
 
-  // Most improved: biggest positive swing (recent3 - prior3)
-  var mostImproved = null;
-  var bestSwing = -Infinity;
+  // Most improved (raw revenue swing, all modes)
+  var mostImproved = null, bestSwing = -Infinity;
   counsellorCards.forEach(function(c) {
-    var r3 = c.last6.slice(-3).reduce(function(s, m) { return s + m.pct; }, 0);
-    var p3 = c.last6.slice(0, 3).reduce(function(s, m) { return s + m.pct; }, 0);
-    var swing = r3 - p3;
+    var r3 = c.last6.slice(-3).reduce(function(s, m) { return s + (m.hasData?1:0); }, 0);
+    var p3 = c.last6.slice(0, 3).reduce(function(s, m) { return s + (m.hasData?1:0); }, 0);
+    var swing = c.last6.slice(-3).reduce(function(s,m){return s+m.pct;},0)
+              - c.last6.slice(0,3).reduce(function(s,m){return s+m.pct;},0);
     if (swing > bestSwing) { bestSwing = swing; mostImproved = c.name; }
   });
 
   // ── Centre standings ──────────────────────────────────────────────────────
   var centreTargetMap2 = {};
   getRevenueCentreTargetRows(ss).forEach(function(r) {
-    if (r.period !== period) return;
+    if (r.period !== FY_PERIOD) return;
     if (!centreTargetMap2[r.centre]) centreTargetMap2[r.centre] = 0;
     centreTargetMap2[r.centre] += Number(r.targetCourse) || 0;
   });
-
   var centreAchMap = {};
-  allMonthlyAchieved.forEach(function(r) {
-    if (r.period !== period) return;
+  filteredRows.forEach(function(r) {
     var isCorp = String(r.businessType||'').toLowerCase().indexOf('corporate') >= 0;
     var c = isCorp ? r.assignedCentre : (r.businessCentre || r.assignedCentre);
     if (!c) return;
     centreAchMap[c] = (centreAchMap[c] || 0) + (Number(r.achievedCourse) || 0);
   });
-
-  var centreCards = Object.keys(centreTargetMap2).map(function(c) {
+  var allCentreNames = Object.keys(centreTargetMap2);
+  Object.keys(centreAchMap).forEach(function(c){ if (allCentreNames.indexOf(c)<0) allCentreNames.push(c); });
+  var centreCards = allCentreNames.map(function(c) {
     var tgt = centreTargetMap2[c] || 0;
     var ach = centreAchMap[c] || 0;
-    var pct = tgt ? Math.round(ach / tgt * 100) : (ach ? 100 : 0);
-    var status = pct >= 90 ? 'green' : (pct >= 70 ? 'amber' : 'red');
-    return { centre: c, ytdPct: pct, status: status, hasTarget: tgt > 0 };
-  }).filter(function(c) { return c.hasTarget; }).sort(function(a, b) { return b.ytdPct - a.ytdPct; });
-  centreCards.forEach(function(c, i) { c.rank = i + 1; });
+    var pct = (isFY && tgt) ? Math.round(ach / tgt * 100) : 0;
+    var status = isFY ? (pct >= 90 ? 'green' : pct >= 70 ? 'amber' : 'red') : 'neutral';
+    return { centre: c, ytdPct: pct, status: status, ytdRaw: ach, hasTarget: tgt > 0 };
+  }).filter(function(c){ return c.hasTarget || c.ytdRaw > 0; });
+  centreCards.sort(function(a, b) { return b.ytdRaw - a.ytdRaw; });
+  centreCards.forEach(function(c, i) { c.rank = i + 1; delete c.ytdRaw; });
 
-  // National overall % (sum of all counsellor targets vs achieved)
-  var totalTarget = counsellorCards.reduce(function(s, c) {
-    return s + (counsellorTargetMap[c.name] ? counsellorTargetMap[c.name].annualTarget : 0);
-  }, 0);
-  var totalAch = counsellorCards.reduce(function(s, c) {
-    return s + (counsellorAchMap[c.name] ? counsellorAchMap[c.name].ytd : 0);
-  }, 0);
-  var nationalPct = totalTarget ? Math.round(totalAch / totalTarget * 100) : 0;
+  // National FY target totals (for % in FY mode)
+  var fyTotalTarget = 0;
+  Object.keys(counsellorTargetMap).forEach(function(n){ fyTotalTarget += counsellorTargetMap[n].annualTarget; });
+  var nationalFyPct = (isFY && fyTotalTarget) ? Math.round(nationalAchievedRaw / fyTotalTarget * 100) : 0;
 
   // ── Instructor ratings ────────────────────────────────────────────────────
   var shFb = ss.getSheetByName(SH_FEEDBACK);
   var fbRows = shFb && shFb.getLastRow() > 1
     ? shFb.getRange(2, 1, shFb.getLastRow() - 1, 17).getValues().filter(function(r) { return r[0]; })
     : [];
-
   var instrRatings = {};
   fbRows.forEach(function(r) {
-    var instr = String(r[5] || '').trim();
-    var rating = Number(r[6]) || 0;
+    var instr = String(r[5]||'').trim(), rating = Number(r[6])||0;
     if (!instr || !rating) return;
     if (!instrRatings[instr]) instrRatings[instr] = { total: 0, count: 0 };
-    instrRatings[instr].total += rating;
-    instrRatings[instr].count++;
+    instrRatings[instr].total += rating; instrRatings[instr].count++;
   });
-
-  // Only include instructors who are dual-role (counsellor-instructors)
-  var dualNames = Object.keys(DUAL_ROLE);
-  var instructorCards = dualNames.map(function(name) {
+  var instructorCards = Object.keys(DUAL_ROLE).map(function(name) {
     var r = instrRatings[name] || { total: 0, count: 0 };
-    return {
-      name: name,
+    return { name: name,
       avgRating: r.count ? Math.round(r.total / r.count * 10) / 10 : null,
       sessionCount: r.count,
-      centre: DUAL_ROLE[name].centres ? DUAL_ROLE[name].centres[0] : '—'
-    };
+      centre: DUAL_ROLE[name].centres ? DUAL_ROLE[name].centres[0] : '—' };
   }).filter(function(c) { return c.sessionCount > 0; });
 
-  // ── National snapshot hero data ───────────────────────────────────────────
+  // ── Snapshot heroes ───────────────────────────────────────────────────────
   var topPerformer = counsellorCards[0] || null;
   var bestCentre   = centreCards[0] || null;
 
+  // National ₹ Cr figures — aggregate only, for national strip
+  var achCr  = Math.round(nationalAchievedRaw / 100000) / 10;   // e.g. 2.4
+  var tgtCr  = isFY ? 5.5 : null;
+  var projCr = projectedFyAch ? Math.round(projectedFyAch / 100000) / 10 : null;
+  var gapCr  = (isFY && tgtCr) ? Math.round((HR_NATIONAL_FY_TARGET - nationalAchievedRaw) / 100000) / 10 : null;
+
   return {
     status: 'ok',
-    period: period,
+    viewMode: viewMode,
     currentMonth: currentMonth,
-    months: months12,
-    qMonths: qMonths,
     national: {
-      ytdPct: nationalPct,
+      ytdPct: nationalFyPct,
+      achievedCr: achCr,
+      targetCr: tgtCr,
+      projectedCr: projCr,
+      gapCr: gapCr > 0 ? gapCr : 0,
+      monthsWithData: fyMonthsWithData,
       topPerformer: topPerformer ? { name: topPerformer.name, ytdPct: topPerformer.ytdPct } : null,
       mostImproved: mostImproved,
       bestCentre: bestCentre ? { centre: bestCentre.centre, ytdPct: bestCentre.ytdPct } : null

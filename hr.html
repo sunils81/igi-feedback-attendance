@@ -77,6 +77,10 @@
     .ctrl-btn:hover { background: var(--gold-lt); }
     .ctrl-btn.primary { background: var(--navy); color: var(--white); border-color: var(--navy); }
     .ctrl-btn.primary:hover { background: #1a3a5c; }
+    .mode-btn { padding: 7px 14px; border: none; border-right: 1.5px solid var(--border); background: var(--off); color: var(--muted); font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; transition: background .15s, color .15s; }
+    .mode-btn:last-child { border-right: none; }
+    .mode-btn:hover { background: var(--gold-lt); color: var(--navy); }
+    .mode-btn.active { background: var(--navy); color: var(--gold); }
 
     /* Main layout */
     .main { max-width: 1200px; margin: 0 auto; padding: 24px 24px 60px; }
@@ -262,16 +266,13 @@
   </div>
 
   <div class="controls-bar">
-    <span class="ctrl-label">Period</span>
-    <select id="ctrl-period" class="ctrl-select" onchange="loadData()">
-      <option value="2026-27" selected>FY 2026–27 (Current)</option>
-      <option value="2025-26">FY 2025–26</option>
-    </select>
-    <span class="ctrl-label" style="margin-left:12px">Month</span>
-    <select id="ctrl-month" class="ctrl-select" onchange="loadData()">
-      <!-- populated on load -->
-    </select>
-    <button class="ctrl-btn primary" onclick="loadData()" style="margin-left:8px">🔄 Refresh</button>
+    <span class="ctrl-label">View</span>
+    <div style="display:flex;gap:0;border:1.5px solid var(--border);border-radius:7px;overflow:hidden">
+      <button id="btn-fy"         class="mode-btn active" onclick="setMode('fy')">📅 FY 2026–27</button>
+      <button id="btn-appraisal"  class="mode-btn"        onclick="setMode('appraisal')">📋 Appraisal Ref (Jan–Mar 2026)</button>
+      <button id="btn-15m"        class="mode-btn"        onclick="setMode('15m')">📆 15-Month Combined</button>
+    </div>
+    <button class="ctrl-btn primary" onclick="loadData()" style="margin-left:12px">🔄 Refresh</button>
   </div>
 
   <div class="main">
@@ -283,32 +284,23 @@
 
 <script>
 // ── Auth state ────────────────────────────────────────────────────────────────
-var hrName = '', hrPin = '';
+var hrName = '', hrPin = '', hrViewMode = 'fy';
 
 function doLogin() {
-  const nameEl = document.getElementById('hr-name');
-  const pinEl  = document.getElementById('hr-pin');
-  const errEl  = document.getElementById('login-err');
-  const name   = (nameEl.value || '').trim();
-  const pin    = (pinEl.value || '').trim();
+  var nameEl = document.getElementById('hr-name');
+  var pinEl  = document.getElementById('hr-pin');
+  var errEl  = document.getElementById('login-err');
+  var name   = (nameEl.value || '').trim();
+  var pin    = (pinEl.value || '').trim();
   if (!name || !pin) { errEl.textContent = 'Enter username and password.'; return; }
   errEl.textContent = 'Signing in…';
-
   gasGet({ action: 'counselorLogin', name: name, pin: pin, pass: pin }, function(err, d) {
-    if (err || !d || d.status !== 'ok') {
-      errEl.textContent = 'Incorrect credentials. Please try again.';
-      return;
-    }
-    if (!d.isHR && d.authRole !== 'HR') {
-      // Allow admin to view HR portal too
-      if (!d.isAdmin) { errEl.textContent = 'This portal is for HR access only.'; return; }
-    }
-    hrName = name;
-    hrPin  = pin;
+    if (err || !d || d.status !== 'ok') { errEl.textContent = 'Incorrect credentials. Please try again.'; return; }
+    if (!d.isHR && d.authRole !== 'HR' && !d.isAdmin) { errEl.textContent = 'This portal is for HR access only.'; return; }
+    hrName = name; hrPin = pin;
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     document.getElementById('topbar-user').textContent = name;
-    populateMonthSelector();
     loadData();
   });
 }
@@ -321,38 +313,21 @@ function doLogout() {
   document.getElementById('login-err').textContent = '';
 }
 
-// ── Month selector ────────────────────────────────────────────────────────────
-function populateMonthSelector() {
-  const sel = document.getElementById('ctrl-month');
-  const now = new Date();
-  const months = [];
-  // Build last 12 months
-  for (var i = 11; i >= 0; i--) {
-    var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    var val = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-    var lbl = d.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
-    months.push({ val, lbl });
-  }
-  sel.innerHTML = months.map(function(m) {
-    var cur = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-    return '<option value="' + m.val + '"' + (m.val === cur ? ' selected' : '') + '>' + m.lbl + '</option>';
-  }).join('');
+function setMode(mode) {
+  hrViewMode = mode;
+  ['fy','appraisal','15m'].forEach(function(m) {
+    document.getElementById('btn-' + m).classList.toggle('active', m === mode);
+  });
+  loadData();
 }
 
 // ── Load data ─────────────────────────────────────────────────────────────────
 function loadData() {
-  const content = document.getElementById('main-content');
+  var content = document.getElementById('main-content');
   content.innerHTML = '<div class="loading-state"><span class="spinner"></span>Loading performance data…</div>';
-  const period = document.getElementById('ctrl-period').value;
-  const month  = document.getElementById('ctrl-month').value;
-  gasGet({
-    action: 'getHRDashboard',
-    hrName: hrName, hrPin: hrPin,
-    name: hrName, pass: hrPin,
-    period: period, currentMonth: month,
-    fromMonth: period.split('-')[0] + '-04',
-    toMonth: (parseInt(period.split('-')[0]) + 1) + '-03'
-  }, function(err, d) {
+  gasGet({ action: 'getHRDashboard', hrName: hrName, hrPin: hrPin,
+           name: hrName, pass: hrPin, viewMode: hrViewMode },
+  function(err, d) {
     if (err || !d || d.status !== 'ok') {
       content.innerHTML = '<div class="loading-state" style="color:var(--red)">Failed to load data. Please try refreshing.</div>';
       return;
@@ -363,175 +338,229 @@ function loadData() {
 
 // ── Render ─────────────────────────────────────────────────────────────────────
 function renderDashboard(d) {
-  const n = d.national || {};
-  const counsellors = d.counsellors || [];
-  const centres = d.centres || [];
-  const instructors = d.instructors || [];
-
+  var vm = d.viewMode || 'fy';
+  var isFY = (vm === 'fy');
+  var n = d.national || {};
+  var counsellors = d.counsellors || [];
+  var centres = d.centres || [];
+  var instructors = d.instructors || [];
   var html = '';
 
-  // ── Section 1: National Snapshot ──────────────────────────────────────────
-  html += '<div class="section-head"><h2>📊 National Snapshot</h2><p>At-a-glance performance summary for this period</p></div>';
-  html += '<div class="hero-grid">';
+  // Mode label
+  var modeLabel = isFY ? 'FY 2026–27 (Apr–Mar)' : (vm === 'appraisal' ? 'Appraisal Reference Period (Jan–Mar 2026)' : '15-Month Combined (Jan 2026 – Mar 2027)');
+  var modeNote  = isFY ? 'vs ₹5.5 Cr national target (excl. GST)' : (vm === 'appraisal' ? 'Used for upcoming appraisal cycle — ranked by revenue' : 'All 15 months combined — ranked by revenue');
 
-  // National %
-  var natPct = n.ytdPct || 0;
-  var natColour = natPct >= 90 ? 'var(--green)' : (natPct >= 70 ? 'var(--amber)' : 'var(--red)');
-  html += heroCard('🎯', 'National Target', '<span style="color:' + natColour + '">' + natPct + '%</span>', 'YTD achievement vs annual target');
+  // ── Section 1: National Snapshot ─────────────────────────────────────────
+  html += '<div class="section-head"><h2>📊 ' + modeLabel + '</h2><p>' + modeNote + '</p></div>';
 
-  // Top performer
-  var tp = n.topPerformer;
-  html += heroCard('🏆', 'Top Performer', tp ? tp.name : '—', tp ? tp.ytdPct + '% of target' : 'No data yet');
+  if (isFY) {
+    // FY mode: full ₹ Cr tracker + 4 hero cards
+    var achCr  = n.achievedCr  || 0;
+    var tgtCr  = n.targetCr    || 5.5;
+    var projCr = n.projectedCr || null;
+    var gapCr  = n.gapCr       || 0;
+    var pctFill = Math.min(Math.round(achCr / tgtCr * 100), 100);
+    var barCol  = pctFill >= 90 ? 'var(--green)' : (pctFill >= 70 ? '#F59E0B' : 'var(--red)');
+    var months  = n.monthsWithData || 0;
 
-  // Most improved
-  html += heroCard('📈', 'Most Improved', n.mostImproved || '—', 'Biggest positive trend this period');
+    // National target progress bar card
+    html += '<div class="card" style="margin-bottom:16px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    html += '<div><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">National Revenue Target — FY 2026–27</span></div>';
+    html += '<div style="font-size:11px;color:var(--muted)">' + months + ' month' + (months!==1?'s':'') + ' of data</div>';
+    html += '</div>';
+    html += '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">';
+    html += '<span style="font-size:32px;font-weight:800;font-family:JetBrains Mono,monospace;color:var(--navy)">₹' + achCr.toFixed(1) + ' Cr</span>';
+    html += '<span style="font-size:16px;color:var(--muted)">of ₹' + tgtCr.toFixed(1) + ' Cr target</span>';
+    html += '<span style="font-size:20px;font-weight:800;font-family:JetBrains Mono,monospace;color:' + barCol + ';margin-left:auto">' + pctFill + '%</span>';
+    html += '</div>';
+    html += '<div style="background:var(--border);border-radius:6px;height:14px;overflow:hidden;margin-bottom:10px">';
+    html += '<div style="height:100%;width:' + pctFill + '%;background:' + barCol + ';border-radius:6px;transition:width .8s ease"></div>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:24px;font-size:11px;color:var(--muted)">';
+    html += '<span>🎯 Gap: <strong style="color:var(--red)">₹' + gapCr.toFixed(1) + ' Cr</strong> remaining</span>';
+    if (projCr) html += '<span>📈 Run-rate projection: <strong style="color:var(--navy)">₹' + projCr.toFixed(1) + ' Cr</strong> by Mar 2027</span>';
+    html += '</div>';
+    html += '</div>';
 
-  // Best centre
-  var bc = n.bestCentre;
-  html += heroCard('🏫', 'Best Centre', bc ? bc.centre : '—', bc ? bc.ytdPct + '% of centre target' : 'No data yet');
+    // 4 hero cards
+    html += '<div class="hero-grid">';
+    var natColour = pctFill >= 90 ? 'var(--green)' : (pctFill >= 70 ? 'var(--amber)' : 'var(--red)');
+    html += heroCard('🎯', 'Target Hit', '<span style="color:' + natColour + '">' + pctFill + '%</span>', 'National YTD vs ₹5.5 Cr');
+    var tp = n.topPerformer;
+    html += heroCard('🏆', 'Top Earner', tp ? esc(tp.name) : '—', tp ? tp.ytdPct + '% of individual target' : 'No data yet');
+    html += heroCard('📈', 'Most Improved', esc(n.mostImproved || '—'), 'Biggest positive trend');
+    var bc = n.bestCentre;
+    html += heroCard('🏫', 'Best Centre', bc ? esc(bc.centre) : '—', bc ? bc.ytdPct + '% of centre target' : 'No data');
+    html += '</div>';
 
-  html += '</div>'; // hero-grid
+  } else {
+    // Non-FY: simpler 3 hero cards
+    html += '<div class="hero-grid" style="grid-template-columns:repeat(3,1fr)">';
+    html += heroCard('👥', 'Counsellors', counsellors.length + ' active', 'with data in this period');
+    var tp2 = n.topPerformer || (counsellors[0] ? { name: counsellors[0].name } : null);
+    html += heroCard('🏆', 'Top Earner', tp2 ? esc(tp2.name) : '—', '#1 by revenue in this period');
+    html += heroCard('🏫', 'Top Centre', centres[0] ? esc(centres[0].centre) : '—', '#1 by revenue in this period');
+    html += '</div>';
+  }
 
-  // ── Section 2: Counsellor Rankings (sorted by revenue achieved, not %) ──────
-  html += '<div class="section-head"><h2>🏆 Counsellor Leaderboard</h2><p>Ranked by revenue achieved YTD — highest earner = #1. Target % shown as secondary metric.</p></div>';
-
+  // ── Section 2: Leaderboard ────────────────────────────────────────────────
+  var lbTitle = isFY ? 'Counsellor Leaderboard — FY 2026–27' : (vm === 'appraisal' ? 'Appraisal Leaderboard — Jan–Mar 2026' : '15-Month Revenue Ranking');
+  var lbSub   = 'Sorted by revenue achieved (highest earner = #1)' + (isFY ? '. Target % shown as secondary metric.' : '.');
+  html += '<div class="section-head" style="margin-top:20px"><h2>🏆 ' + lbTitle + '</h2><p>' + lbSub + '</p></div>';
   html += '<div class="card" style="overflow:auto"><table class="lb-table"><thead><tr>';
-  html += '<th>Rank</th><th>Counsellor</th><th>Centre</th><th>Revenue vs Target</th>';
-  html += '<th>Target Hit %</th><th>QTD Hit %</th><th>Trend</th>';
-  html += '</tr></thead><tbody>';
+  html += '<th>Rank</th><th>Counsellor</th><th>Centre</th><th>Revenue Achievement</th>';
+  if (isFY) { html += '<th>Target Hit %</th><th>QTD Hit %</th>'; }
+  html += '<th>Trend</th></tr></thead><tbody>';
 
   counsellors.forEach(function(c) {
-    var pillClass = c.status === 'green' ? 'pill-green' : (c.status === 'amber' ? 'pill-amber' : 'pill-red');
+    var pillClass = c.status === 'green' ? 'pill-green' : (c.status === 'amber' ? 'pill-amber' : (c.status === 'red' ? 'pill-red' : 'pill-grey'));
+    var barColour = c.status === 'green' ? 'var(--green)' : (c.status === 'amber' ? '#F59E0B' : (c.status === 'red' ? 'var(--red)' : 'var(--navy)'));
     var trendIcon = c.trend === 'up' ? '⬆️' : (c.trend === 'down' ? '⬇️' : '➡️');
     var rankClass = c.rank === 1 ? 'rank-1' : (c.rank === 2 ? 'rank-2' : (c.rank === 3 ? 'rank-3' : 'rank-n'));
-    var barColour = c.status === 'green' ? 'var(--green)' : (c.status === 'amber' ? '#F59E0B' : 'var(--red)');
-    // Bullet bar: grey = target width, coloured fill = achieved
-    var targetW = c.targetIndex || 100;
-    var achievedW = c.ytdIndex || 0;
-    // Scale achieved within the target bar
-    var fillW = targetW > 0 ? Math.min(Math.round(achievedW / targetW * 100), 100) : 0;
+
+    // Bar: in FY mode — bullet bar (achieved portion of target bar)
+    //      in other modes — simple relative bar (% of top earner)
+    var ytdIdx    = c.ytdIndex    || 0;  // 0–100 relative to top earner's revenue
+    var targetIdx = c.targetIndex || 100; // 0–100 relative to highest target
+    var fillInBar, barTrackW;
+    if (isFY) {
+      // Bullet bar: outer track = target width (relative), inner fill = achieved within that target
+      barTrackW = targetIdx;
+      fillInBar = targetIdx > 0 ? Math.min(Math.round(ytdIdx / targetIdx * 100), 100) : 0;
+    } else {
+      // Simple bar: track always 100%, fill = relative to top earner
+      barTrackW = 100;
+      fillInBar = ytdIdx;
+    }
 
     html += '<tr>';
     html += '<td><span class="rank-badge ' + rankClass + '">' + c.rank + '</span></td>';
     html += '<td style="font-weight:700">' + esc(c.name) + '</td>';
     html += '<td>' + esc(c.centre || '—') + '</td>';
-    // Bullet bar cell
-    html += '<td style="min-width:140px">';
-    html += '<div style="background:var(--border);border-radius:4px;height:16px;width:' + targetW + '%;position:relative;overflow:hidden">';
-    html += '<div style="position:absolute;left:0;top:0;height:100%;width:' + fillW + '%;background:' + barColour + ';border-radius:4px;transition:width .5s"></div>';
+    html += '<td style="min-width:160px">';
+    html += '<div style="background:var(--border);border-radius:4px;height:16px;width:' + barTrackW + '%;min-width:40px;position:relative;overflow:hidden">';
+    html += '<div style="position:absolute;left:0;top:0;height:100%;width:' + fillInBar + '%;background:' + barColour + ';border-radius:4px"></div>';
     html += '</div>';
     html += '</td>';
-    html += '<td><span class="pct-pill ' + pillClass + '">' + c.ytdPct + '%</span></td>';
-    html += '<td><span class="pct-pill ' + (c.qtdPct >= 90 ? 'pill-green' : c.qtdPct >= 70 ? 'pill-amber' : 'pill-red') + '">' + c.qtdPct + '%</span></td>';
-    html += '<td class="trend-arrow" title="' + (c.trend === 'up' ? 'Improving' : c.trend === 'down' ? 'Declining' : 'Stable') + '">' + trendIcon + '</td>';
+    if (isFY) {
+      html += '<td><span class="pct-pill ' + pillClass + '">' + c.ytdPct + '%</span></td>';
+      html += '<td><span class="pct-pill ' + (c.qtdPct >= 90 ? 'pill-green' : c.qtdPct >= 70 ? 'pill-amber' : 'pill-red') + '">' + c.qtdPct + '%</span></td>';
+    }
+    html += '<td class="trend-arrow">' + trendIcon + '</td>';
     html += '</tr>';
   });
 
   if (!counsellors.length) html += '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted)">No data available for this period.</td></tr>';
   html += '</tbody></table></div>';
 
-  // ── Head-to-Head Bar Chart (revenue achieved vs individual target) ──────────
-  html += '<div class="section-head" style="margin-top:24px"><h2>📊 Revenue Achieved vs Target</h2><p>Each bar shows revenue achieved (filled) against individual annual target (full bar width). Ordered by highest revenue.</p></div>';
+  // ── Head-to-Head visual ───────────────────────────────────────────────────
+  var chartTitle = isFY ? '📊 Revenue Achieved vs Individual Target' : '📊 Revenue Comparison — Relative to Top Earner';
+  var chartSub   = isFY ? 'Grey bar = annual target (proportional). Coloured fill = revenue achieved. Ordered by highest earner.'
+                        : 'Bars scaled to #1 earner = 100%. Ordered by revenue.';
+  html += '<div class="section-head" style="margin-top:20px"><h2>' + chartTitle + '</h2><p>' + chartSub + '</p></div>';
   html += '<div class="card">';
-  html += '<div style="font-size:10px;color:var(--muted);margin-bottom:10px;display:flex;gap:16px">';
-  html += '<span style="display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:var(--border)"></span>Annual Target</span>';
-  html += '<span style="display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:var(--green)"></span>Achieved (on/above 90%)</span>';
-  html += '<span style="display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#F59E0B"></span>Achieved (70–89%)</span>';
-  html += '<span style="display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:var(--red)"></span>Achieved (below 70%)</span>';
-  html += '</div>';
   counsellors.forEach(function(c) {
-    var barColour = c.status === 'green' ? 'var(--green)' : (c.status === 'amber' ? '#F59E0B' : 'var(--red)');
-    var pillClass = c.status === 'green' ? 'pill-green' : (c.status === 'amber' ? 'pill-amber' : 'pill-red');
-    var targetW = c.targetIndex || 100;
-    var achievedW = c.ytdIndex || 0;
-    var fillW = targetW > 0 ? Math.min(Math.round(achievedW / targetW * 100), 100) : 0;
-
+    var barColour = c.status === 'green' ? 'var(--green)' : (c.status === 'amber' ? '#F59E0B' : (c.status === 'red' ? 'var(--red)' : '#0D1B2E'));
+    var pillClass = c.status === 'green' ? 'pill-green' : (c.status === 'amber' ? 'pill-amber' : (c.status === 'red' ? 'pill-red' : 'pill-grey'));
+    var ytdIdx    = c.ytdIndex || 0;
+    var targetIdx = c.targetIndex || 100;
+    var trackW, fillPct;
+    if (isFY) {
+      trackW  = targetIdx;
+      fillPct = targetIdx > 0 ? Math.min(Math.round(ytdIdx / targetIdx * 100), 100) : 0;
+    } else {
+      trackW  = 100;
+      fillPct = ytdIdx;
+    }
     html += '<div class="hbar-row">';
     html += '<div class="hbar-name">' + esc(c.name) + '</div>';
-    // Outer bar = target width, inner fill = achieved
-    html += '<div style="flex:1;display:flex;align-items:center;gap:6px">';
-    html += '<div style="width:' + targetW + '%;background:var(--border);border-radius:4px;height:20px;position:relative;overflow:hidden">';
-    html += '<div style="position:absolute;left:0;top:0;height:100%;width:' + fillW + '%;background:' + barColour + ';border-radius:4px;transition:width .6s ease"></div>';
+    html += '<div style="flex:1;display:flex;align-items:center">';
+    html += '<div style="width:' + Math.max(trackW,4) + '%;background:var(--border);border-radius:4px;height:20px;position:relative;overflow:hidden">';
+    html += '<div style="position:absolute;left:0;top:0;height:100%;width:' + fillPct + '%;background:' + barColour + ';border-radius:4px;transition:width .5s ease"></div>';
     html += '</div>';
     html += '</div>';
-    html += '<div class="hbar-pct"><span class="pct-pill ' + pillClass + '" style="font-size:11px">' + c.ytdPct + '%</span></div>';
+    if (isFY) {
+      html += '<div class="hbar-pct"><span class="pct-pill ' + pillClass + '" style="font-size:11px">' + c.ytdPct + '%</span></div>';
+    }
     html += '</div>';
   });
   html += '</div>';
 
   // ── Individual Scorecards ─────────────────────────────────────────────────
-  html += '<div class="section-head" style="margin-top:24px"><h2>🗂 Individual Scorecards</h2><p>Monthly trend for each counsellor over the last 6 months</p></div>';
+  html += '<div class="section-head" style="margin-top:24px"><h2>🗂 Individual Scorecards</h2><p>Monthly trend and performance ring for each counsellor</p></div>';
   html += '<div class="scorecard-grid">';
   counsellors.forEach(function(c) {
-    var ringColour = c.status === 'green' ? '#059669' : (c.status === 'amber' ? '#F59E0B' : '#DC2626');
-    var pct = Math.min(c.ytdPct, 100);
-    var circumference = 2 * Math.PI * 28; // r=28
+    var ringColour = c.status === 'green' ? '#059669' : (c.status === 'amber' ? '#F59E0B' : (c.status === 'red' ? '#DC2626' : '#0D1B2E'));
+    var ringBg     = c.status === 'green' ? '#dcfce7' : (c.status === 'amber' ? '#fef3c7' : (c.status === 'red' ? '#fee2e2' : '#e8e3d8'));
+    var pct = isFY ? Math.min(c.ytdPct, 100) : c.ytdIndex || 0;
+    var circumference = 2 * Math.PI * 28;
     var dashOffset = circumference * (1 - pct / 100);
-    var trendIcon = c.trend === 'up' ? '⬆ Improving' : (c.trend === 'down' ? '⬇ Declining' : '➡ Stable');
+    var trendIcon   = c.trend === 'up' ? '⬆ Improving' : (c.trend === 'down' ? '⬇ Declining' : '➡ Stable');
     var trendColour = c.trend === 'up' ? 'var(--green)' : (c.trend === 'down' ? 'var(--red)' : 'var(--muted)');
     var last6 = c.last6 || [];
     var maxBar = Math.max.apply(null, last6.map(function(m){ return m.pct; }).concat([1]));
+    var scClass = (c.status === 'neutral' || !c.status) ? '' : c.status;
 
-    html += '<div class="scorecard ' + c.status + '">';
+    html += '<div class="scorecard ' + scClass + '">';
     html += '<div class="sc-header">';
     html += '<div><div class="sc-name">' + esc(c.name) + '</div><div class="sc-centre">🏫 ' + esc(c.centre || '—') + ' &nbsp;|&nbsp; Rank #' + c.rank + '</div></div>';
-    // Ring
     html += '<div class="sc-ring"><svg width="70" height="70" viewBox="0 0 70 70">';
-    html += '<circle cx="35" cy="35" r="28" fill="none" stroke="' + (c.status==='green'?'#dcfce7':c.status==='amber'?'#fef3c7':'#fee2e2') + '" stroke-width="8"/>';
+    html += '<circle cx="35" cy="35" r="28" fill="none" stroke="' + ringBg + '" stroke-width="8"/>';
     html += '<circle cx="35" cy="35" r="28" fill="none" stroke="' + ringColour + '" stroke-width="8" stroke-linecap="round" stroke-dasharray="' + circumference.toFixed(1) + '" stroke-dashoffset="' + dashOffset.toFixed(1) + '"/>';
-    html += '</svg><div class="sc-ring-pct">' + c.ytdPct + '%</div></div>';
-    html += '</div>'; // sc-header
-
-    html += '<div class="sc-meta">';
-    html += '<div class="sc-meta-item"><label>YTD vs Target</label><strong>' + c.ytdPct + '%</strong></div>';
-    html += '<div class="sc-meta-item"><label>QTD vs Target</label><strong>' + c.qtdPct + '%</strong></div>';
-    html += '<div class="sc-meta-item" style="grid-column:1/-1"><label>Trend (last 6 months)</label><strong style="color:' + trendColour + '">' + trendIcon + '</strong></div>';
+    html += '</svg><div class="sc-ring-pct">' + pct + '%</div></div>';
     html += '</div>';
-
-    // Sparkline
+    html += '<div class="sc-meta">';
+    if (isFY) {
+      html += '<div class="sc-meta-item"><label>YTD vs Target</label><strong>' + c.ytdPct + '%</strong></div>';
+      html += '<div class="sc-meta-item"><label>QTD vs Target</label><strong>' + c.qtdPct + '%</strong></div>';
+    } else {
+      html += '<div class="sc-meta-item"><label>Revenue Rank</label><strong>#' + c.rank + '</strong></div>';
+      html += '<div class="sc-meta-item"><label>vs Top Earner</label><strong>' + (c.ytdIndex||0) + '%</strong></div>';
+    }
+    html += '<div class="sc-meta-item" style="grid-column:1/-1"><label>Trend</label><strong style="color:' + trendColour + '">' + trendIcon + '</strong></div>';
+    html += '</div>';
     if (last6.length) {
-      html += '<div style="font-size:10px;color:var(--muted);margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Monthly Performance (% of monthly target)</div>';
+      html += '<div style="font-size:10px;color:var(--muted);margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Monthly trend (last 6 months)</div>';
       html += '<div class="spark">';
       last6.forEach(function(m) {
         var h = maxBar > 0 ? Math.max(Math.round(m.pct / maxBar * 100), 4) : 4;
-        var cls = m.pct >= 90 ? 'green' : (m.pct >= 70 ? 'amber' : (m.pct > 0 ? 'red' : 'empty'));
-        html += '<div class="spark-bar ' + cls + '" style="height:' + h + '%" title="' + m.month + ': ' + m.pct + '%"></div>';
+        var cls = !m.hasData ? 'empty' : (m.pct >= 90 ? 'green' : (m.pct >= 70 ? 'amber' : 'red'));
+        html += '<div class="spark-bar ' + cls + '" style="height:' + h + '%" title="' + esc(m.month) + ': ' + m.pct + '%"></div>';
       });
-      html += '</div>';
-      html += '<div class="spark-labels">';
-      last6.forEach(function(m) {
-        html += '<div class="spark-label">' + m.month.slice(5) + '</div>';
-      });
+      html += '</div><div class="spark-labels">';
+      last6.forEach(function(m){ html += '<div class="spark-label">' + m.month.slice(5) + '</div>'; });
       html += '</div>';
     }
-    html += '</div>'; // scorecard
+    html += '</div>';
   });
-  html += '</div>'; // scorecard-grid
+  html += '</div>';
 
-  // ── Section 3: Centre Health ───────────────────────────────────────────────
-  html += '<div class="section-head" style="margin-top:28px"><h2>🏫 Centre Performance</h2><p>Each centre\'s YTD achievement vs its annual target</p></div>';
+  // ── Centre Performance ─────────────────────────────────────────────────────
+  var centreTitle = isFY ? 'Centre Performance — vs FY Target' : 'Centre Revenue — Ranked';
+  html += '<div class="section-head" style="margin-top:28px"><h2>🏫 ' + centreTitle + '</h2></div>';
   html += '<div class="centre-dial-grid">';
   centres.forEach(function(c) {
-    html += '<div class="centre-dial ' + c.status + '">';
+    var cls = (c.status === 'neutral' || !c.status) ? '' : c.status;
+    var pctColour = c.status === 'green' ? 'var(--green)' : (c.status === 'amber' ? 'var(--amber)' : (c.status === 'red' ? 'var(--red)' : 'var(--navy)'));
+    html += '<div class="centre-dial ' + cls + '">';
     html += '<div class="cd-name">' + esc(c.centre) + '</div>';
-    html += '<div class="cd-pct ' + c.status + '">' + c.ytdPct + '%</div>';
-    html += '<div class="cd-label">of annual target</div>';
+    html += '<div class="cd-pct" style="color:' + pctColour + '">' + (isFY ? c.ytdPct + '%' : '#' + c.rank) + '</div>';
+    html += '<div class="cd-label">' + (isFY ? 'of annual target' : 'by revenue') + '</div>';
     html += '<div class="cd-rank">Rank #' + c.rank + ' of ' + centres.length + '</div>';
     html += '</div>';
   });
-  if (!centres.length) html += '<div style="color:var(--muted);font-size:12px;padding:12px">No centre target data available.</div>';
+  if (!centres.length) html += '<div style="color:var(--muted);font-size:12px;padding:12px">No centre data available.</div>';
   html += '</div>';
 
-  // ── Section 4: Instructor Ratings ─────────────────────────────────────────
+  // ── Instructor Ratings ─────────────────────────────────────────────────────
   if (instructors.length) {
     html += '<div class="section-head" style="margin-top:28px"><h2>⭐ Instructor Ratings</h2><p>Average student feedback rating for instructor-counsellors</p></div>';
     html += '<div class="instr-grid">';
     instructors.forEach(function(ins) {
       var avg = ins.avgRating || 0;
       var stars = '';
-      for (var s = 1; s <= 5; s++) {
-        stars += '<span class="star">' + (s <= Math.round(avg) ? '⭐' : '☆') + '</span>';
-      }
+      for (var s = 1; s <= 5; s++) stars += '<span class="star">' + (s <= Math.round(avg) ? '⭐' : '☆') + '</span>';
       html += '<div class="instr-card">';
       html += '<div class="instr-name">' + esc(ins.name) + '</div>';
       html += '<div class="instr-centre">🏫 ' + esc(ins.centre) + '</div>';
@@ -543,9 +572,12 @@ function renderDashboard(d) {
     html += '</div>';
   }
 
-  // Period note
+  // Footer note
+  var noteLabel = isFY ? 'FY 2026–27 (Apr 2026 – Mar 2027) | ₹5.5 Cr national target excl. GST'
+                : (vm === 'appraisal' ? 'Appraisal Reference: Jan–Mar 2026 (transition quarter)'
+                : 'Combined: Jan 2026 – Mar 2027 (15 months)');
   html += '<div style="margin-top:28px;padding:12px 16px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.25);border-radius:8px;font-size:11px;color:var(--muted)">';
-  html += '📌 <strong>Note:</strong> This portal shows performance percentages only — no revenue amounts are displayed. Data reflects period <strong>' + esc(d.period || '') + '</strong> as of <strong>' + esc(d.currentMonth || '') + '</strong>. All figures are live from the IGI database.';
+  html += '📌 <strong>' + noteLabel + '</strong>. Individual revenue amounts are not shown — bars and rings represent relative performance. Data is live from the IGI database.';
   html += '</div>';
 
   document.getElementById('main-content').innerHTML = html;

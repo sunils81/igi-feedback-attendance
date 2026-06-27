@@ -2146,10 +2146,10 @@ window.gasGet = (function () {
         };
       }).filter(function(c){ return c.hasTarget||c.achRaw>0; });
       centreCards.sort(function(a,b){ return b.achRaw-a.achRaw; });
+      var ctrMaxAch = centreCards[0] ? centreCards[0].achRaw : 1; // capture BEFORE forEach deletes achRaw
       centreCards.forEach(function(c,i){
         c.rank=i+1;
-        var mx = centreCards[0] ? centreCards[0].achRaw : 1;
-        c.achIdx = Math.round(c.achRaw/mx*100);
+        c.achIdx = Math.round(c.achRaw/ctrMaxAch*100);
         delete c.achRaw; delete c.pyRaw;
       });
 

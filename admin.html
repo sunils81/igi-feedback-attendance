@@ -1459,6 +1459,117 @@
         </table>
       </div>
 
+      <!-- ── ADMIN REVENUE CORRECTION ─────────────────────────────────── -->
+      <div class="card" id="admin-rev-correction-card" style="margin-top:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px">
+          <div>
+            <h2 style="margin:0">✏️ Admin Revenue Corrections</h2>
+            <p class="sub" style="margin:4px 0 0">Override any counsellor's monthly revenue entry. A correction reason is mandatory and is logged permanently.</p>
+          </div>
+          <button class="btn btn-outline" style="width:auto;padding:6px 14px;font-size:12px;border:1.5px solid var(--gold);color:var(--navy);background:transparent;border-radius:6px;font-weight:600;cursor:pointer" onclick="adminRevCorrectionLoad()">🔄 Load Entries</button>
+        </div>
+        <!-- Filters -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px">
+          <div>
+            <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Counsellor</label>
+            <select id="arc-filter-counsellor" style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;margin-top:4px" onchange="adminRevCorrectionFilter()">
+              <option value="">All counsellors</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Month</label>
+            <select id="arc-filter-month" style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;margin-top:4px" onchange="adminRevCorrectionFilter()">
+              <option value="">All months</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Type</label>
+            <select id="arc-filter-type" style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;margin-top:4px" onchange="adminRevCorrectionFilter()">
+              <option value="">All types</option>
+              <option value="Centre Revenue">Centre Revenue</option>
+              <option value="Corporate Programs">Corporate Programs</option>
+            </select>
+          </div>
+        </div>
+        <div id="arc-table-wrap" style="overflow:auto;border:1px solid var(--border);border-radius:8px">
+          <table style="width:100%;border-collapse:collapse;min-width:760px;font-size:12px">
+            <thead>
+              <tr style="background:var(--navy);color:var(--gold)">
+                <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em">Month</th>
+                <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em">Counsellor</th>
+                <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em">Assigned</th>
+                <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em">Business Centre</th>
+                <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em">Type</th>
+                <th style="padding:9px 10px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:.06em">Students</th>
+                <th style="padding:9px 10px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:.06em">Course Fee (₹)</th>
+                <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em">Notes</th>
+                <th style="padding:9px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em">Action</th>
+              </tr>
+            </thead>
+            <tbody id="arc-tbody">
+              <tr><td colspan="9" style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Click "Load Entries" to view revenue records.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <!-- Inline editor (shown on Edit click) -->
+        <div id="arc-editor" style="display:none;margin-top:14px;padding:14px;background:var(--off);border:1.5px solid var(--gold);border-radius:10px">
+          <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:10px">✏️ Edit Entry: <span id="arc-editor-label"></span></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px">
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--muted)">Course Fee (excl. GST) ₹</label>
+              <input type="number" id="arc-edit-course" style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;margin-top:4px;box-sizing:border-box" oninput="arcUpdateGst()" placeholder="0">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--muted)">GST Amount ₹ (auto)</label>
+              <input type="text" id="arc-edit-gst" readonly style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;margin-top:4px;box-sizing:border-box;background:#f5f1e8;color:var(--muted)">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--muted)">Students</label>
+              <input type="number" id="arc-edit-students" style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;margin-top:4px;box-sizing:border-box" placeholder="0">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--muted)">Business Centre</label>
+              <select id="arc-edit-bizcentre" style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;margin-top:4px">
+                <option>Mumbai</option><option>Delhi</option><option>Kolkata</option><option>Surat</option>
+                <option>Chennai</option><option>Hyderabad</option><option>Bangalore</option>
+                <option>Lucknow</option><option>Ahmedabad</option><option>Jaipur</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--muted)">Business Type</label>
+              <select id="arc-edit-biztype" style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;margin-top:4px">
+                <option value="Centre Revenue">Centre Revenue</option>
+                <option value="Corporate Programs">Corporate Programs</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-bottom:10px">
+            <label style="font-size:11px;font-weight:700;color:var(--muted)">Correction Reason <span style="color:#dc2626">*</span></label>
+            <input type="text" id="arc-edit-reason" style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;margin-top:4px;box-sizing:border-box" placeholder="e.g. Counsellor entered wrong amount — corrected from ₹X to ₹Y">
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn" style="width:auto;padding:8px 18px;font-size:12px;background:var(--navy);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700" onclick="arcSaveCorrection()">💾 Save Correction</button>
+            <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px;border:1.5px solid var(--border);background:transparent;color:var(--navy);border-radius:6px;cursor:pointer" onclick="arcCancelEdit()">Cancel</button>
+            <span id="arc-save-msg" style="font-size:12px;color:var(--muted)"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── AUDIT FLAGS ────────────────────────────────────────────────── -->
+      <div class="card" id="admin-rev-audit-card" style="margin-top:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:10px">
+          <div>
+            <h2 style="margin:0">⚠️ Revenue Audit Flags</h2>
+            <p class="sub" style="margin:4px 0 0">Auto-detects duplicates, double-entry risk, centre mismatches, and unusual spikes.</p>
+          </div>
+          <button class="btn btn-outline" style="width:auto;padding:6px 14px;font-size:12px;border:1.5px solid var(--gold);color:var(--navy);background:transparent;border-radius:6px;font-weight:600;cursor:pointer" onclick="adminRevAuditLoad()">🔍 Run Audit</button>
+        </div>
+        <div id="arc-audit-summary" style="display:none;margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap"></div>
+        <div id="arc-audit-list">
+          <div style="padding:16px;text-align:center;color:var(--muted);font-size:12px">Click "Run Audit" to scan all revenue entries for inconsistencies.</div>
+        </div>
+      </div>
+
     </div>
 
     <!-- TAB 2: TARGET SETTING -->
@@ -3376,15 +3487,18 @@ function openPresentationMode() {
     let achievedGst = 0;
     let studentCount = 0;
     rowsToCheck.forEach(mr => {
-      if (revCanonical(mr.counsellor) === revCanonical(row.counsellor) && mr.businessCentre === c) {
+      const mrIsCorporate = String(mr.businessType||'').toLowerCase().includes('corporate') || String(mr.businessCentre||'').toLowerCase().includes('corporate');
+      // Corporate rows match on assignedCentre (home centre); regular rows match on businessCentre
+      const matchCentre = mrIsCorporate ? mr.assignedCentre : mr.businessCentre;
+      if (revCanonical(mr.counsellor) === revCanonical(row.counsellor) && matchCentre === c) {
         achievedCourse += Number(mr.achievedCourse) || 0;
         achievedGst += Number(mr.achievedGst) || 0;
         studentCount += Number(mr.studentCount) || 0;
       }
     });
-    
+
     const pct = targetCourse ? Math.round(achievedCourse / targetCourse * 100) : (achievedCourse ? 100 : 0);
-    
+
     counsellorsByCentre[c].push({
       counsellor: row.counsellor,
       targetCourse: targetCourse,
@@ -3423,7 +3537,9 @@ function openPresentationMode() {
       let achievedGst = 0;
       let studentCount = 0;
       rowsToCheck.forEach(mr => {
-        if (revCanonical(mr.counsellor) === cKey && mr.businessCentre === detectedCentre) {
+        const mrIsCorporate = String(mr.businessType||'').toLowerCase().includes('corporate') || String(mr.businessCentre||'').toLowerCase().includes('corporate');
+        const matchCentre = mrIsCorporate ? mr.assignedCentre : mr.businessCentre;
+        if (revCanonical(mr.counsellor) === cKey && matchCentre === detectedCentre) {
           achievedCourse += Number(mr.achievedCourse) || 0;
           achievedGst += Number(mr.achievedGst) || 0;
           studentCount += Number(mr.studentCount) || 0;
@@ -3823,9 +3939,11 @@ function renderRevenueTab() {
     let achievedCourse = 0;
     let achievedGst = 0;
     let studentCount = 0;
-    
+
     rowsToCheck.forEach(mr => {
-      if (revCanonical(mr.counsellor) === revCanonical(row.counsellor) && mr.businessCentre === c) {
+      const mrIsCorporate = String(mr.businessType||'').toLowerCase().includes('corporate') || String(mr.businessCentre||'').toLowerCase().includes('corporate');
+      const matchCentre = mrIsCorporate ? mr.assignedCentre : mr.businessCentre;
+      if (revCanonical(mr.counsellor) === revCanonical(row.counsellor) && matchCentre === c) {
         achievedCourse += Number(mr.achievedCourse) || 0;
         achievedGst += Number(mr.achievedGst) || 0;
         studentCount += Number(mr.studentCount) || 0;
@@ -3873,7 +3991,9 @@ function renderRevenueTab() {
       let achievedGst = 0;
       let studentCount = 0;
       rowsToCheck.forEach(mr => {
-        if (revCanonical(mr.counsellor) === cKey && mr.businessCentre === detectedCentre) {
+        const mrIsCorporate = String(mr.businessType||'').toLowerCase().includes('corporate') || String(mr.businessCentre||'').toLowerCase().includes('corporate');
+        const matchCentre = mrIsCorporate ? mr.assignedCentre : mr.businessCentre;
+        if (revCanonical(mr.counsellor) === cKey && matchCentre === detectedCentre) {
           achievedCourse += Number(mr.achievedCourse) || 0;
           achievedGst += Number(mr.achievedGst) || 0;
           studentCount += Number(mr.studentCount) || 0;
@@ -8146,6 +8266,184 @@ function fxExportCsv() {
   a.click();
 }
 // ── End Fixed Assets ──────────────────────────────────────────────────────────
+
+// ── ADMIN REVENUE CORRECTION ──────────────────────────────────────────────────
+var _arcAllRows = [];  // full set loaded from GAS
+var _arcEditRow = null; // row currently being edited
+
+function arcFmt(n) { return '₹' + Number(n||0).toLocaleString('en-IN'); }
+
+function adminRevCorrectionLoad() {
+  const tbody = document.getElementById('arc-tbody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted)">Loading…</td></tr>';
+  gasGet({ action: 'getAdminDashboard', isAdmin: 'true', isManager: 'false', period: '2026-27', fromMonth: '2026-04', toMonth: '2027-03' }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="9" style="padding:16px;text-align:center;color:#dc2626">Failed to load. Make sure you are logged in as admin.</td></tr>';
+      return;
+    }
+    _arcAllRows = (d.revenue && d.revenue.monthlyRows) ? d.revenue.monthlyRows : [];
+    // Populate filter dropdowns
+    const counsellors = [...new Set(_arcAllRows.map(r => r.counsellor))].sort();
+    const months = [...new Set(_arcAllRows.map(r => r.month))].sort();
+    const cSel = document.getElementById('arc-filter-counsellor');
+    const mSel = document.getElementById('arc-filter-month');
+    if (cSel) { cSel.innerHTML = '<option value="">All counsellors</option>' + counsellors.map(c => '<option>' + c + '</option>').join(''); }
+    if (mSel) { mSel.innerHTML = '<option value="">All months</option>' + months.map(m => '<option>' + m + '</option>').join(''); }
+    adminRevCorrectionFilter();
+  });
+}
+
+function adminRevCorrectionFilter() {
+  const fc = (document.getElementById('arc-filter-counsellor')||{}).value || '';
+  const fm = (document.getElementById('arc-filter-month')||{}).value || '';
+  const ft = (document.getElementById('arc-filter-type')||{}).value || '';
+  let rows = _arcAllRows;
+  if (fc) rows = rows.filter(r => r.counsellor === fc);
+  if (fm) rows = rows.filter(r => r.month === fm);
+  if (ft) rows = rows.filter(r => (r.businessType||'') === ft);
+  const tbody = document.getElementById('arc-tbody');
+  if (!tbody) return;
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--muted)">No entries match the filter.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(function(r, idx) {
+    const isCorp = String(r.businessType||'').toLowerCase().includes('corporate');
+    const typeTag = isCorp
+      ? '<span style="background:#e0e7ff;color:#3730a3;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700">Corporate</span>'
+      : '<span style="background:#dcfce7;color:#166534;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700">Centre</span>';
+    const notes = (r.notes||'').length > 40 ? r.notes.slice(0,40) + '…' : (r.notes||'—');
+    return '<tr style="border-bottom:1px solid var(--border)">' +
+      '<td style="padding:8px 10px;font-family:monospace;font-size:11px">' + r.month + '</td>' +
+      '<td style="padding:8px 10px;font-weight:600">' + (r.counsellor||'—') + '</td>' +
+      '<td style="padding:8px 10px">' + (r.assignedCentre||'—') + '</td>' +
+      '<td style="padding:8px 10px">' + (r.businessCentre||'—') + '</td>' +
+      '<td style="padding:8px 10px">' + typeTag + '</td>' +
+      '<td style="padding:8px 10px;text-align:right">' + (r.studentCount||0) + '</td>' +
+      '<td style="padding:8px 10px;text-align:right;font-weight:700">' + arcFmt(r.achievedCourse) + '</td>' +
+      '<td style="padding:8px 10px;color:var(--muted);font-size:11px" title="' + (r.notes||'') + '">' + notes + '</td>' +
+      '<td style="padding:8px 10px"><button onclick="arcOpenEdit(' + idx + ')" style="background:var(--navy);color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:11px;cursor:pointer;font-weight:600">✏️ Edit</button></td>' +
+      '</tr>';
+  }).join('');
+  // Store filtered index mapping
+  window._arcFilteredRows = rows;
+}
+
+function arcOpenEdit(idx) {
+  const rows = window._arcFilteredRows || _arcAllRows;
+  const r = rows[idx];
+  if (!r) return;
+  _arcEditRow = r;
+  const lbl = document.getElementById('arc-editor-label');
+  if (lbl) lbl.textContent = r.counsellor + ' · ' + r.month + ' · ' + (r.businessType||'Centre Revenue');
+  const cf = document.getElementById('arc-edit-course'); if (cf) cf.value = r.achievedCourse || 0;
+  const gf = document.getElementById('arc-edit-gst'); if (gf) gf.value = arcFmt(r.achievedGst || 0);
+  const sf = document.getElementById('arc-edit-students'); if (sf) sf.value = r.studentCount || 0;
+  const bc = document.getElementById('arc-edit-bizcentre'); if (bc) bc.value = r.businessCentre || r.assignedCentre;
+  const bt = document.getElementById('arc-edit-biztype'); if (bt) bt.value = r.businessType || 'Centre Revenue';
+  const reason = document.getElementById('arc-edit-reason'); if (reason) reason.value = '';
+  const msg = document.getElementById('arc-save-msg'); if (msg) msg.textContent = '';
+  const editor = document.getElementById('arc-editor'); if (editor) editor.style.display = 'block';
+  editor.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function arcUpdateGst() {
+  const cf = document.getElementById('arc-edit-course');
+  const gf = document.getElementById('arc-edit-gst');
+  if (cf && gf) gf.value = arcFmt(Math.round(Number(cf.value||0) * 1.18));
+}
+
+function arcCancelEdit() {
+  const editor = document.getElementById('arc-editor'); if (editor) editor.style.display = 'none';
+  _arcEditRow = null;
+}
+
+function arcSaveCorrection() {
+  if (!_arcEditRow) return;
+  const reason = (document.getElementById('arc-edit-reason')||{}).value || '';
+  if (!reason.trim()) {
+    const msg = document.getElementById('arc-save-msg');
+    if (msg) { msg.textContent = '⚠ Correction reason is required.'; msg.style.color = '#dc2626'; }
+    return;
+  }
+  const course = Number((document.getElementById('arc-edit-course')||{}).value||0);
+  const students = Number((document.getElementById('arc-edit-students')||{}).value||0);
+  const bizCentre = (document.getElementById('arc-edit-bizcentre')||{}).value || _arcEditRow.assignedCentre;
+  const bizType = (document.getElementById('arc-edit-biztype')||{}).value || 'Centre Revenue';
+  const msg = document.getElementById('arc-save-msg');
+  if (msg) { msg.textContent = 'Saving…'; msg.style.color = 'var(--muted)'; }
+  const btn = document.querySelector('#arc-editor .btn');
+  if (btn) btn.disabled = true;
+  gasGet({
+    action: 'adminCorrectRevenueRow',
+    adminPass: adminPass,
+    adminName: adminUser && adminUser.name ? adminUser.name : 'Admin',
+    month: _arcEditRow.month,
+    period: _arcEditRow.period || '2026-27',
+    counsellor: _arcEditRow.counsellor,
+    assignedCentre: _arcEditRow.assignedCentre,
+    businessCentre: bizCentre,
+    businessType: bizType,
+    achievedCourse: course,
+    studentCount: students,
+    reason: reason.trim()
+  }, function(err, d) {
+    if (btn) btn.disabled = false;
+    if (err || !d || d.status !== 'ok') {
+      if (msg) { msg.textContent = '❌ ' + (d && d.message ? d.message : 'Save failed. Check admin password.'); msg.style.color = '#dc2626'; }
+      return;
+    }
+    if (msg) { msg.textContent = '✅ Correction saved successfully.'; msg.style.color = '#059669'; }
+    arcCancelEdit();
+    showToast('Revenue correction saved for ' + _arcEditRow.counsellor + ' · ' + _arcEditRow.month, 'success');
+    // Refresh dashboard after a moment
+    setTimeout(function() { loadDashboardData(); adminRevCorrectionLoad(); }, 1200);
+  });
+}
+
+// ── REVENUE AUDIT FLAGS ────────────────────────────────────────────────────────
+function adminRevAuditLoad() {
+  const list = document.getElementById('arc-audit-list');
+  const summary = document.getElementById('arc-audit-summary');
+  if (list) list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted)">Running audit scan…</div>';
+  if (summary) summary.style.display = 'none';
+  gasGet({ action: 'getRevenueAuditFlags', adminPass: adminPass }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      if (list) list.innerHTML = '<div style="padding:16px;text-align:center;color:#dc2626">Audit failed. Check admin password.</div>';
+      return;
+    }
+    // Summary chips
+    if (summary) {
+      summary.style.display = 'flex';
+      summary.innerHTML =
+        '<span style="padding:5px 12px;border-radius:999px;font-size:12px;font-weight:700;background:' + (d.redCount ? '#fee2e2' : '#f0fdf4') + ';color:' + (d.redCount ? '#dc2626' : '#059669') + '">' +
+        '🔴 ' + d.redCount + ' Critical</span>' +
+        '<span style="padding:5px 12px;border-radius:999px;font-size:12px;font-weight:700;background:' + (d.amberCount ? '#fefce8' : '#f0fdf4') + ';color:' + (d.amberCount ? '#b45309' : '#059669') + '">' +
+        '🟡 ' + d.amberCount + ' Warning</span>' +
+        '<span style="padding:5px 12px;border-radius:999px;font-size:12px;font-weight:700;background:#f0fdf4;color:#059669">' +
+        '✅ ' + (d.flagCount === 0 ? 'Clean — no issues found' : d.flagCount + ' total flags') + '</span>';
+    }
+    if (!d.flags || !d.flags.length) {
+      if (list) list.innerHTML = '<div style="padding:20px;text-align:center;color:#059669;font-size:13px;font-weight:600">✅ No inconsistencies detected. Revenue ledger looks clean!</div>';
+      return;
+    }
+    if (list) list.innerHTML = d.flags.map(function(f) {
+      const isRed = f.severity === 'red';
+      const bg = isRed ? '#fff5f5' : '#fffbeb';
+      const border = isRed ? '#fca5a5' : '#fcd34d';
+      const dot = isRed ? '🔴' : '🟡';
+      const typeLabel = { duplicate_key: 'Duplicate', double_entry: 'Double Entry', centre_mismatch: 'Centre Mismatch', spike: 'Spike' }[f.type] || f.type;
+      return '<div style="margin-bottom:10px;padding:12px 14px;border:1.5px solid ' + border + ';border-radius:8px;background:' + bg + '">' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
+        dot + ' <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280">' + typeLabel + '</span>' +
+        '<span style="font-size:13px;font-weight:700;color:#1e293b">' + f.message + '</span>' +
+        '</div>' +
+        '<div style="font-size:12px;color:#374151;margin-bottom:6px">' + f.detail + '</div>' +
+        (f.rows && f.rows.length ? '<div style="font-size:11px;color:#6b7280">Rows: ' + f.rows.map(function(r){ return '#' + r.rowIndex + ' (' + (r.month||'') + ')'; }).join(', ') + '</div>' : '') +
+        '</div>';
+    }).join('');
+  });
+}
 
 // Hook into switchAdminTab for t-trayhub-admin
 var _origSwitchAdminTab = switchAdminTab;

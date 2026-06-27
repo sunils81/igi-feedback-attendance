@@ -2731,6 +2731,15 @@ function doGet(e) {
       return respond(getRevenueDiagnostic(ss, p.adminPass||p.pass||''));
     }
 
+    if (act==='adminCorrectRevenueRow') {
+      ensureSheets(ss);
+      return respond(adminCorrectRevenueRow(ss, p, p.adminPass||p.pass||''));
+    }
+
+    if (act==='getRevenueAuditFlags') {
+      return respond(getRevenueAuditFlags(ss, p.adminPass||p.pass||''));
+    }
+
     if (act==='getAdminDashboard') {
       ensureSheets(ss);
       if (String(p.isAdmin)!=='true') return respond({status:'error',reason:'auth'});
@@ -3613,9 +3622,11 @@ function buildRevenueDashboard(ss,p) {
   var achievedCourse=0,achievedGst=0;
   var studentCount=0, designatedCourse=0, designatedGst=0, otherCentreCourse=0, otherCentreGst=0, corporateCourse=0, corporateGst=0;
   achievedRows.forEach(function(r){
-    var viewCentre=p.viewMode==='business'?r.businessCentre:r.assignedCentre;
-    var bm=revenueAddBucket(byMonth,r.month), bc=revenueAddBucket(byCounsellor,r.counsellor), bViewCentre=revenueAddBucket(byCentre,viewCentre), bBusiness=revenueAddBucket(byBusinessCentre,r.businessCentre);
     var isCorporate=String(r.businessType||'').toLowerCase().indexOf('corporate')>=0||String(r.businessCentre||'').toLowerCase().indexOf('corporate')>=0;
+    // Corporate revenue is always attributed to the counsellor's assigned (home) centre,
+    // regardless of businessCentre value, so it counts in Mumbai (or wherever they're based).
+    var viewCentre=isCorporate?r.assignedCentre:(p.viewMode==='business'?r.businessCentre:r.assignedCentre);
+    var bm=revenueAddBucket(byMonth,r.month), bc=revenueAddBucket(byCounsellor,r.counsellor), bViewCentre=revenueAddBucket(byCentre,viewCentre), bBusiness=revenueAddBucket(byBusinessCentre,r.businessCentre);
     var isOtherCentre=!isCorporate&&r.assignedCentre!==r.businessCentre;
     [bm,bc,bViewCentre,bBusiness].forEach(function(b){
       b.achievedGst+=r.achievedGst;b.achievedCourse+=r.achievedCourse;b.studentCount+=r.studentCount;
@@ -3682,7 +3693,10 @@ function getGlobalCentreStandings(ss, period, currentMonthKey, allAnnualTargets,
   // 3. Rollup achievements (excluding GST, matching course target)
   allMonthlyAchieved.forEach(function(r) {
     if (r.period === period) {
-      var c = r.businessCentre || r.centre;
+      // Corporate rows always count toward the counsellor's assigned (home) centre
+      var isCorp = String(r.businessType||'').toLowerCase().indexOf('corporate') >= 0 ||
+                   String(r.businessCentre||'').toLowerCase().indexOf('corporate') >= 0;
+      var c = isCorp ? (r.assignedCentre || r.businessCentre || r.centre) : (r.businessCentre || r.centre);
       if (c) {
         if (!globalCentreMap[c]) {
           globalCentreMap[c] = { centre: c, annualTarget: 0, annualAchieved: 0, qtdAchieved: 0 };
@@ -4261,6 +4275,153 @@ function getRevenueDiagnostic(ss, adminPass) {
       },{})});
   });
   return {status:'ok', report: report};
+}
+
+// ── Admin: correct a single revenue row (override counsellor's entry) ─────────
+// Requires admin password. Records who corrected it and why in the Notes field.
+function adminCorrectRevenueRow(ss, p, adminPass) {
+  if (adminPass !== ADMIN_PASS) return {status:'error', reason:'auth'};
+  var month   = String(p.month||'').slice(0,7);
+  var period  = String(p.period||'2026-27').trim();
+  var counsellor = String(p.counsellor||'').trim();
+  var assignedCentre  = String(p.assignedCentre||'').trim();
+  var businessCentre  = String(p.businessCentre||assignedCentre).trim();
+  var businessType    = String(p.businessType||'Centre Revenue').trim();
+  var achievedCourse  = Number(p.achievedCourse) || 0;
+  var achievedGst     = achievedCourse * 1.18; // recalc GST
+  var studentCount    = Number(p.studentCount) || 0;
+  var reason          = String(p.reason||'').trim();
+  if (!month||!counsellor||!assignedCentre) return {status:'error', reason:'missing_fields'};
+  if (!reason) return {status:'error', reason:'reason_required', message:'Please provide a correction reason.'};
+
+  var notes = '[ADMIN CORRECTION by ' + (p.adminName||'Admin') + ' on ' + new Date().toISOString().slice(0,10) + '] ' + reason;
+  var sh = getOrCreateSheet(ss, SH_REVENUE_MONTHLY_ACHIEVED);
+  ensureRevenueMonthlyAchievedHeaders(sh);
+  var existingRows = parseRevenueMonthlyAchievedSheet(sh);
+  var key = revenueMonthlyLedgerKey({month:month, period:period, counsellor:counsellor, assignedCentre:assignedCentre, businessCentre:businessCentre, businessType:businessType});
+  var targetRow = null;
+  existingRows.forEach(function(r) {
+    if (revenueMonthlyLedgerKey(r) === key) targetRow = r;
+  });
+  var row = [month, period, counsellor, assignedCentre, businessCentre, businessType,
+             studentCount, achievedCourse, achievedGst, notes, 'Admin', 'Y', new Date().toISOString()];
+  if (targetRow) {
+    sh.getRange(targetRow.rowIndex, 1, 1, row.length).setValues([row]);
+  } else {
+    sh.appendRow(row);
+  }
+  try { SpreadsheetApp.flush(); } catch(_e) {}
+  // Bust cache
+  try {
+    var cacheKeys = ['rev|'+REVENUE_BACKEND_VERSION+'|||2026-27|true'];
+    revenueNameAliases(counsellor).forEach(function(n) {
+      var c = COUNSELOR_CREDS[n]||{};
+      cacheKeys.push('rev|'+REVENUE_BACKEND_VERSION+'|'+n+'|'+((c.centres||[]).join(','))+'|2026-27|false');
+    });
+    CacheService.getScriptCache().removeAll(cacheKeys);
+  } catch(_e2) {}
+  return {status:'ok', corrected: {month:month, counsellor:counsellor, assignedCentre:assignedCentre, businessCentre:businessCentre, businessType:businessType, achievedCourse:achievedCourse, studentCount:studentCount}};
+}
+
+// ── Admin: scan shared ledger for revenue inconsistencies ─────────────────────
+// Returns flags for: duplicates, double-entry risk, centre mismatches, large spikes.
+function getRevenueAuditFlags(ss, adminPass) {
+  if (adminPass !== ADMIN_PASS) return {status:'error', reason:'auth'};
+  var rows = getRevenueMonthlyAchievedRows(ss);
+  var flags = [];
+
+  // 1. Duplicate ledger keys (same month/counsellor/assigned/business/type)
+  var keyCount = {};
+  rows.forEach(function(r) {
+    var k = revenueMonthlyLedgerKey(r);
+    if (!keyCount[k]) keyCount[k] = [];
+    keyCount[k].push(r);
+  });
+  Object.keys(keyCount).forEach(function(k) {
+    if (keyCount[k].length > 1) {
+      var dupes = keyCount[k];
+      flags.push({
+        severity: 'red',
+        type: 'duplicate_key',
+        message: 'Duplicate entries: ' + dupes[0].counsellor + ' · ' + dupes[0].month + ' · ' + dupes[0].businessCentre + ' (' + dupes[0].businessType + ')',
+        detail: dupes.length + ' rows share the same ledger key. Amounts: ₹' + dupes.map(function(d){return d.achievedCourse.toLocaleString('en-IN');}).join(', '),
+        rows: dupes.map(function(d){return {rowIndex:d.rowIndex, month:d.month, counsellor:d.counsellor, achievedCourse:d.achievedCourse, updatedAt:d.updatedAt};})
+      });
+    }
+  });
+
+  // 2. Double-entry risk: same counsellor, same month, has BOTH own-centre AND corporate rows with suspiciously similar amounts
+  var byMonthCounsellor = {};
+  rows.forEach(function(r) {
+    var k = r.month + '|' + r.counsellor;
+    if (!byMonthCounsellor[k]) byMonthCounsellor[k] = [];
+    byMonthCounsellor[k].push(r);
+  });
+  Object.keys(byMonthCounsellor).forEach(function(k) {
+    var set = byMonthCounsellor[k];
+    var corpRows = set.filter(function(r){ return String(r.businessType||'').toLowerCase().indexOf('corporate') >= 0; });
+    var centreRows = set.filter(function(r){ return String(r.businessType||'').toLowerCase().indexOf('corporate') < 0; });
+    corpRows.forEach(function(cr) {
+      centreRows.forEach(function(nr) {
+        if (cr.achievedCourse > 0 && Math.abs(cr.achievedCourse - nr.achievedCourse) / Math.max(cr.achievedCourse, 1) < 0.05) {
+          flags.push({
+            severity: 'red',
+            type: 'double_entry',
+            message: 'Possible double entry: ' + cr.counsellor + ' · ' + cr.month,
+            detail: 'Corporate row (₹' + cr.achievedCourse.toLocaleString('en-IN') + ') and Centre row (₹' + nr.achievedCourse.toLocaleString('en-IN') + ') are nearly identical — same amount entered twice under different types?',
+            rows: [cr, nr].map(function(d){return {rowIndex:d.rowIndex, month:d.month, counsellor:d.counsellor, businessType:d.businessType, achievedCourse:d.achievedCourse};})
+          });
+        }
+      });
+    });
+  });
+
+  // 3. Centre mismatch: counsellor logged revenue for a centre not in their allowedCentres
+  var knownCentres = {};
+  Object.keys(COUNSELOR_CREDS).forEach(function(name) {
+    knownCentres[name] = COUNSELOR_CREDS[name].centres || [];
+  });
+  rows.forEach(function(r) {
+    var allowed = knownCentres[r.counsellor];
+    if (!allowed) return; // unknown counsellor — skip
+    var isCorporate = String(r.businessType||'').toLowerCase().indexOf('corporate') >= 0;
+    if (!isCorporate && allowed.length > 0 && allowed.indexOf(r.assignedCentre) < 0) {
+      flags.push({
+        severity: 'amber',
+        type: 'centre_mismatch',
+        message: 'Centre mismatch: ' + r.counsellor + ' · ' + r.month,
+        detail: r.counsellor + ' logged revenue for ' + r.assignedCentre + ' but is not in that centre\'s roster (allowed: ' + allowed.join(', ') + ')',
+        rows: [{rowIndex:r.rowIndex, month:r.month, counsellor:r.counsellor, assignedCentre:r.assignedCentre, achievedCourse:r.achievedCourse}]
+      });
+    }
+  });
+
+  // 4. Spike detection: month-over-month jump > 3x (only for locked rows — drafts excluded)
+  var lockedByKey = {}; // counsellor|assignedCentre → sorted list of {month, achievedCourse}
+  rows.filter(function(r){ return r.locked; }).forEach(function(r) {
+    var k = r.counsellor + '|' + r.assignedCentre;
+    if (!lockedByKey[k]) lockedByKey[k] = [];
+    lockedByKey[k].push({month:r.month, achievedCourse: r.achievedCourse, businessType: r.businessType, rowIndex: r.rowIndex});
+  });
+  Object.keys(lockedByKey).forEach(function(k) {
+    var series = lockedByKey[k].sort(function(a,b){return a.month < b.month ? -1 : 1;});
+    for (var i = 1; i < series.length; i++) {
+      var prev = series[i-1], curr = series[i];
+      if (prev.achievedCourse > 0 && curr.achievedCourse > prev.achievedCourse * 3) {
+        var parts = k.split('|');
+        flags.push({
+          severity: 'amber',
+          type: 'spike',
+          message: 'Revenue spike: ' + parts[0] + ' · ' + curr.month,
+          detail: parts[0] + ' (' + parts[1] + ') jumped from ₹' + prev.achievedCourse.toLocaleString('en-IN') + ' (' + prev.month + ') to ₹' + curr.achievedCourse.toLocaleString('en-IN') + ' (' + curr.month + ') — more than 3× increase',
+          rows: [{rowIndex:curr.rowIndex, month:curr.month, counsellor:parts[0], achievedCourse:curr.achievedCourse}]
+        });
+      }
+    }
+  });
+
+  flags.sort(function(a,b){ return a.severity === 'red' && b.severity !== 'red' ? -1 : (b.severity === 'red' && a.severity !== 'red' ? 1 : 0); });
+  return {status:'ok', flagCount: flags.length, redCount: flags.filter(function(f){return f.severity==='red';}).length, amberCount: flags.filter(function(f){return f.severity==='amber';}).length, flags: flags};
 }
 
 function saveRevenueCentreTargetRows(ss,rows,updatedBy) {

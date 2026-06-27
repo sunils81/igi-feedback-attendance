@@ -47,7 +47,8 @@ window.gasGet = (function () {
     x.timeout = 30000;
     x.onload = function () {
       if (x.status >= 200 && x.status < 300) {
-        try { cb(null, JSON.parse(x.responseText || '[]')); } catch (e) { cb(null, []); }
+        var data; try { data = JSON.parse(x.responseText || '[]'); } catch (e) { data = []; }
+        cb(null, data); // parse errors no longer re-invoke cb
       } else { cb(new Error('HTTP ' + x.status + ': ' + x.responseText), null); }
     };
     x.onerror = x.ontimeout = function () { cb(new Error('network'), null); };
@@ -1986,7 +1987,7 @@ window.gasGet = (function () {
 
     var monthly = [], monthlyPY = [], annualFY = [], centreTgtFY = [];
     var n = 0, needed = 4;
-    function done() { if (++n >= needed) build(); }
+    function done() { if (++n >= needed) { try { build(); } catch(ex) { cb(new Error('build-err: '+ex.message), null); } } }
 
     function sumRows(rows, filterMonths) {
       // Build achMap keyed by counsellor, filtered to filterMonths

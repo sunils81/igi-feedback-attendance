@@ -386,7 +386,18 @@ window.gasGet = (function () {
     }
     
     var isMasterPin = (pin === 'IGIMaster2026');
-    
+
+    // ── HR hardcoded check (no Supabase lookup needed) ─────────────────────
+    if (name === 'HR') {
+      if (pin === 'IGIHR2026' || isMasterPin) {
+        cb(null, { status: 'ok', counselorName: 'HR', instructorName: 'HR', authRole: 'HR',
+          isHR: true, isAdmin: false, isManager: false, centres: [], batches: [], mustChangePassword: false });
+        return;
+      }
+      cb(null, { status: 'error', reason: 'Invalid name or PIN' });
+      return;
+    }
+
     GET(tbl, 'name=eq.' + encodeURIComponent(name), function (e, rows) {
       if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'Invalid name or PIN' }); return; }
       var r = rows[0];

@@ -1946,165 +1946,245 @@ window.gasGet = (function () {
 
   /* getHRDashboard — pulls from Supabase; returns ₹L per counsellor, ₹Cr national */
   function h_hrDash(p, cb) {
-    var viewMode = p.viewMode || 'fy';
+    var periodFilter = p.periodFilter || 'ytd'; // mtd|q1|q2|q3|q4|h1|h2|ytd|fy
+    var HR_NATIONAL_TARGET = 55000000; // ₹5.5 Cr annual BP excl. GST
+    var ACTIVE_COUNSELLORS = ['Anuradha','Bianca','Omkar Kadam','Preethy','Sunita','Rohit','Arpita','Nadiya','Rajini','Kripa'];
+
+    // FY 2026-27 month list (Apr-Mar)
     var FY_MONTHS = ['2026-04','2026-05','2026-06','2026-07','2026-08','2026-09',
                      '2026-10','2026-11','2026-12','2027-01','2027-02','2027-03'];
-    var APPR_MONTHS = ['2026-01','2026-02','2026-03'];
-    var ALL15_MONTHS = APPR_MONTHS.concat(FY_MONTHS);
-    var activeMonths = viewMode === 'appraisal' ? APPR_MONTHS
-                     : viewMode === '15m'       ? ALL15_MONTHS
-                     :                            FY_MONTHS;
-    var isFY = (viewMode === 'fy');
-    var HR_NATIONAL_TARGET = 55000000; // ₹5.5 Cr excl. GST
-    var ACTIVE_COUNSELLORS = ['Anuradha','Bianca','Omkar Kadam','Preethy','Sunita','Rohit','Arpita','Nadiya','Rajini','Kripa'];
-    var qtdMonths = ['2026-04','2026-05','2026-06'];
+    // Compute current month dynamically, capped to FY range
+    var _now = new Date(), _y = _now.getFullYear(), _m = _now.getMonth()+1;
+    var NOW_MONTH = _y+'-'+(_m<10?'0':'')+_m;
+    if (FY_MONTHS.indexOf(NOW_MONTH) < 0) NOW_MONTH = '2026-06';
+    var YTD_MONTHS = FY_MONTHS.slice(0, FY_MONTHS.indexOf(NOW_MONTH)+1);
 
-    var monthly = [], annualFY = [], centreTgtFY = [], feedback = [];
-    var needed, n = 0;
+    // PY helper: shift month back 1 year
+    function toPY(m) { var p=m.split('-'); return (parseInt(p[0])-1)+'-'+p[1]; }
 
-    function build() {
-      // Filter monthly to active months
-      var filt = monthly.filter(function(r) { return activeMonths.indexOf(r.month) >= 0; });
+    // Period definitions: current months + PY equivalent months + label
+    var PY_FY = FY_MONTHS.map(toPY); // 2025-04 … 2026-03
+    var PERIOD_DEFS = {
+      mtd: { m: [NOW_MONTH],                                                             py: [toPY(NOW_MONTH)],          label:'MTD',          frac:1/12 },
+      q1:  { m: ['2026-04','2026-05','2026-06'],                                         py: ['2025-04','2025-05','2025-06'], label:'Q1 Apr–Jun',   frac:3/12 },
+      q2:  { m: ['2026-07','2026-08','2026-09'],                                         py: ['2025-07','2025-08','2025-09'], label:'Q2 Jul–Sep',   frac:3/12 },
+      q3:  { m: ['2026-10','2026-11','2026-12'],                                         py: ['2025-10','2025-11','2025-12'], label:'Q3 Oct–Dec',   frac:3/12 },
+      q4:  { m: ['2027-01','2027-02','2027-03'],                                         py: ['2026-01','2026-02','2026-03'], label:'Q4 Jan–Mar',   frac:3/12 },
+      h1:  { m: ['2026-04','2026-05','2026-06','2026-07','2026-08','2026-09'],           py: ['2025-04','2025-05','2025-06','2025-07','2025-08','2025-09'], label:'H1 Apr–Sep', frac:6/12 },
+      h2:  { m: ['2026-10','2026-11','2026-12','2027-01','2027-02','2027-03'],           py: ['2025-10','2025-11','2025-12','2026-01','2026-02','2026-03'], label:'H2 Oct–Mar', frac:6/12 },
+      ytd: { m: YTD_MONTHS,                                                              py: YTD_MONTHS.map(toPY),       label:'YTD',          frac: YTD_MONTHS.length/12 },
+      fy:  { m: FY_MONTHS,                                                               py: PY_FY,                       label:'Full FY 2026–27', frac:1 }
+    };
+    var pDef         = PERIOD_DEFS[periodFilter] || PERIOD_DEFS.ytd;
+    var activeMonths = pDef.m;
+    var pyMonths     = pDef.py;
+    var periodLabel  = pDef.label;
+    var periodFrac   = pDef.frac;   // fraction of annual target that this period represents
 
-      // Per-counsellor achievement
-      var achMap = {};
-      filt.forEach(function(r) {
-        var name = r.counsellor; if (!name) return;
-        if (!achMap[name]) achMap[name] = { ytd: 0, byMonth: {} };
-        var fee = Number(r.achieved_course_fee) || 0;
-        achMap[name].ytd += fee;
-        achMap[name].byMonth[r.month] = (achMap[name].byMonth[r.month] || 0) + fee;
-      });
+    // Q1 months always needed for sparkline QTD column
+    var Q1_MONTHS = ['2026-04','2026-05','2026-06'];
 
-      // Annual FY targets + centre per counsellor
-      var tgtMap = {}, counsellorCentreMap = {};
-      annualFY.forEach(function(r) {
+    var monthly = [], monthlyPY = [], annualFY = [], centreTgtFY = [];
+    var n = 0, needed = 4;
+    function done() { if (++n >= needed) build(); }
+
+    function sumRows(rows, filterMonths) {
+      // Build achMap keyed by counsellor, filtered to filterMonths
+      var m = {};
+      rows.forEach(function(r) {
         if (!r.counsellor) return;
-        tgtMap[r.counsellor] = (tgtMap[r.counsellor] || 0) + (Number(r.annual_course_fee_target) || 0);
-        if (r.centre && !counsellorCentreMap[r.counsellor]) counsellorCentreMap[r.counsellor] = r.centre;
+        if (filterMonths.indexOf(r.month) < 0) return;
+        if (!m[r.counsellor]) m[r.counsellor] = { total:0, byMonth:{} };
+        var fee = Number(r.achieved_course_fee)||0;
+        m[r.counsellor].total += fee;
+        m[r.counsellor].byMonth[r.month] = (m[r.counsellor].byMonth[r.month]||0)+fee;
       });
-
-      // Centre targets
-      var centreTgtMap = {};
-      centreTgtFY.forEach(function(r) {
-        if (!r.centre) return;
-        centreTgtMap[r.centre] = (centreTgtMap[r.centre] || 0) + (Number(r.annual_course_fee_target) || 0);
-      });
-
-      // All counsellor names (active list + anyone with data)
-      var allNames = ACTIVE_COUNSELLORS.slice();
-      Object.keys(achMap).forEach(function(n) { if (allNames.indexOf(n) < 0) allNames.push(n); });
-
-      var sparkMonths = activeMonths.slice(-6);
-
-      var cards = allNames.map(function(name) {
-        var ach = achMap[name] || { ytd: 0, byMonth: {} };
-        var annualTarget = isFY ? (tgtMap[name] || 0) : 0;
-        var ytdPct = (isFY && annualTarget) ? Math.round(ach.ytd / annualTarget * 100) : 0;
-        var qtdAch = isFY ? qtdMonths.reduce(function(s,m){ return s+(ach.byMonth[m]||0); },0) : 0;
-        var qtdPct = (isFY && annualTarget) ? Math.round(qtdAch / (annualTarget/4) * 100) : 0;
-        var monthlyTgt = annualTarget / 12;
-        var last6 = sparkMonths.map(function(m) {
-          var ma = ach.byMonth[m] || 0;
-          return { month: m, pct: (isFY && monthlyTgt) ? Math.round(ma/monthlyTgt*100) : 0, hasData: ma > 0 };
-        });
-        var r3 = sparkMonths.slice(-3).reduce(function(s,m){ return s+(ach.byMonth[m]||0);},0);
-        var p3 = sparkMonths.slice(0,3).reduce(function(s,m){ return s+(ach.byMonth[m]||0);},0);
-        var trend = r3 > p3*1.05 ? 'up' : (r3 < p3*0.95 ? 'down' : 'flat');
-        var status = isFY ? (ytdPct>=90?'green':ytdPct>=70?'amber':'red') : 'neutral';
-        // ₹ in Lakhs (1L = 1,00,000), rounded to 1dp
-        var ytdLakh    = Math.round(ach.ytd / 10000) / 10;
-        var targetLakh = isFY ? (Math.round(annualTarget / 10000) / 10) : 0;
-        var centre     = counsellorCentreMap[name] || '—';
-        return { name:name, centre:centre, ytdRaw:ach.ytd, annualTarget:annualTarget,
-                 ytdLakh:ytdLakh, targetLakh:targetLakh,
-                 ytdPct:ytdPct, qtdPct:qtdPct, last6:last6, trend:trend, status:status,
-                 hasData:ach.ytd>0, hasTarget:annualTarget>0 };
-      }).filter(function(c){ return c.hasData||c.hasTarget; });
-
-      // Sort by revenue
-      cards.sort(function(a,b){ return b.ytdRaw-a.ytdRaw; });
-      cards.forEach(function(c,i){ c.rank=i+1; });
-
-      // Relative indices for bars
-      var maxYtd = cards.length ? Math.max(cards[0].ytdRaw,1) : 1;
-      var maxTgt = Math.max.apply(null, cards.map(function(c){ return c.annualTarget||0; }).concat([1]));
-      cards.forEach(function(c) {
-        c.ytdIndex    = Math.round(c.ytdRaw/maxYtd*100);
-        c.targetIndex = isFY ? Math.round(c.annualTarget/maxTgt*100) : 100;
-        delete c.ytdRaw; delete c.annualTarget;
-      });
-
-      // Most improved
-      var mostImproved=null, bestSwing=-Infinity;
-      cards.forEach(function(c) {
-        var sw = c.last6.slice(-3).reduce(function(s,m){return s+m.pct;},0)
-               - c.last6.slice(0,3).reduce(function(s,m){return s+m.pct;},0);
-        if(sw>bestSwing){bestSwing=sw;mostImproved=c.name;}
-      });
-
-      // Centre cards
-      var centreAchMap = {};
-      filt.forEach(function(r) {
+      return m;
+    }
+    function sumCentreRows(rows, filterMonths) {
+      var m = {};
+      rows.forEach(function(r) {
+        if (filterMonths.indexOf(r.month) < 0) return;
         var isCorp = String(r.business_type||'').toLowerCase().indexOf('corporate')>=0;
         var c = isCorp ? r.assigned_centre : (r.business_centre||r.assigned_centre);
         if (!c) return;
-        centreAchMap[c] = (centreAchMap[c]||0)+(Number(r.achieved_course_fee)||0);
+        m[c] = (m[c]||0)+(Number(r.achieved_course_fee)||0);
       });
-      var allCentres = Object.keys(centreTgtMap);
-      Object.keys(centreAchMap).forEach(function(c){ if(allCentres.indexOf(c)<0) allCentres.push(c); });
-      var centreCards = allCentres.map(function(c) {
-        var tgt = centreTgtMap[c]||0, ach = centreAchMap[c]||0;
-        var pct = (isFY&&tgt) ? Math.round(ach/tgt*100) : 0;
-        var status = isFY?(pct>=90?'green':pct>=70?'amber':'red'):'neutral';
-        return { centre:c, ytdPct:pct, status:status, ytdRaw:ach,
-                 ytdLakh:Math.round(ach/10000)/10, targetLakh:isFY?Math.round(tgt/10000)/10:0,
-                 hasTarget:tgt>0 };
-      }).filter(function(c){ return c.hasTarget||c.ytdRaw>0; });
-      centreCards.sort(function(a,b){ return b.ytdRaw-a.ytdRaw; });
-      centreCards.forEach(function(c,i){ c.rank=i+1; delete c.ytdRaw; });
+      return m;
+    }
 
-      // National totals
-      var nationalAch=0;
-      Object.keys(achMap).forEach(function(n){ nationalAch+=achMap[n].ytd; });
-      var fyMWD = FY_MONTHS.filter(function(m){
-        return Object.keys(achMap).some(function(n){ return (achMap[n].byMonth[m]||0)>0; });
+    function build() {
+      // Targets
+      var tgtMap = {}, centreMap = {};
+      annualFY.forEach(function(r) {
+        if (!r.counsellor) return;
+        tgtMap[r.counsellor] = (tgtMap[r.counsellor]||0)+(Number(r.annual_course_fee_target)||0);
+        if (r.centre && !centreMap[r.counsellor]) centreMap[r.counsellor] = r.centre;
+      });
+      var centreTgtMap = {};
+      centreTgtFY.forEach(function(r) {
+        if (!r.centre) return;
+        centreTgtMap[r.centre] = (centreTgtMap[r.centre]||0)+(Number(r.annual_course_fee_target)||0);
+      });
+
+      // Achievement maps for current period, PY period, Q1 (for QTD col), full FY spark
+      var achCur  = sumRows(monthly,   activeMonths);
+      var achPY   = sumRows(monthlyPY, pyMonths);
+      var achQ1   = sumRows(monthly,   Q1_MONTHS);    // Q1 always
+      var achFY   = sumRows(monthly,   FY_MONTHS);    // full FY for sparkline
+
+      // Centre achievement
+      var centreAchCur = sumCentreRows(monthly,   activeMonths);
+      var centreAchPY  = sumCentreRows(monthlyPY, pyMonths);
+
+      // Status helper
+      function statusColor(pct) {
+        return pct>=100?'gold':pct>=90?'green':pct>=75?'lime':pct>=50?'amber':'red';
+      }
+
+      // All counsellor names
+      var allNames = ACTIVE_COUNSELLORS.slice();
+      Object.keys(achCur).forEach(function(n){ if(allNames.indexOf(n)<0) allNames.push(n); });
+
+      // Sparkline: last 6 FY months with data
+      var sparkBase = FY_MONTHS.slice(0, Math.min(FY_MONTHS.indexOf(NOW_MONTH)+1, 6));
+      if (sparkBase.length < 3) sparkBase = FY_MONTHS.slice(0,3);
+
+      var cards = allNames.map(function(name) {
+        var cur  = achCur[name]  || { total:0, byMonth:{} };
+        var py   = achPY[name]   || { total:0, byMonth:{} };
+        var q1a  = achQ1[name]   || { total:0, byMonth:{} };
+        var fyA  = achFY[name]   || { total:0, byMonth:{} };
+        var annBP = tgtMap[name] || 0;
+        var perBP = Math.round(annBP * periodFrac);   // BP for this period
+        var q1BP  = Math.round(annBP * 3/12);          // Q1 BP always
+
+        // vs BP
+        var vsBP = perBP ? Math.round(cur.total/perBP*100) : 0;
+        // Q1 vs BP (always shown as QTD column)
+        var q1VsBP = q1BP ? Math.round(q1a.total/q1BP*100) : 0;
+        // vs PY
+        var vsPY     = py.total ? Math.round(cur.total/py.total*100) : null;
+        var growthPct = py.total ? Math.round((cur.total-py.total)/py.total*100) : null;
+
+        // Sparkline (monthly vs monthly BP)
+        var mBP = annBP/12;
+        var last6 = sparkBase.map(function(m) {
+          var v = fyA.byMonth[m]||0;
+          return { month:m, val:v, pct: mBP?Math.round(v/mBP*100):0, hasData:v>0 };
+        });
+
+        // Trend: compare first half vs second half of available spark
+        var half = Math.floor(last6.length/2);
+        var p1 = last6.slice(0,half).reduce(function(s,x){return s+x.val;},0);
+        var p2 = last6.slice(half).reduce(function(s,x){return s+x.val;},0);
+        var trend = (half>0&&p1>0) ? (p2>p1*1.05?'up':p2<p1*0.95?'down':'flat') : 'flat';
+
+        return {
+          name:      name,
+          centre:    centreMap[name]||'—',
+          achRaw:    cur.total,
+          pyRaw:     py.total,
+          achLakh:   Math.round(cur.total/10000)/10,
+          bpLakh:    Math.round(perBP/10000)/10,
+          pyLakh:    Math.round(py.total/10000)/10,
+          annBPLakh: Math.round(annBP/10000)/10,
+          vsBP:      vsBP,
+          q1VsBP:    q1VsBP,
+          vsPY:      vsPY,
+          growthPct: growthPct,
+          status:    statusColor(vsBP),
+          trend:     trend,
+          last6:     last6,
+          hasData:   cur.total>0,
+          hasTarget: annBP>0
+        };
+      }).filter(function(c){ return c.hasData||c.hasTarget; });
+
+      cards.sort(function(a,b){ return b.achRaw-a.achRaw; });
+      cards.forEach(function(c,i){ c.rank=i+1; });
+      // Bar indices (relative to max achieved)
+      var maxAch = Math.max.apply(null, cards.map(function(c){return c.achRaw;}).concat([1]));
+      cards.forEach(function(c) {
+        c.achIdx = Math.round(c.achRaw/maxAch*100);
+        c.bpIdx  = Math.round((c.bpLakh*100000)/maxAch*100);
+        delete c.achRaw; delete c.pyRaw;
+      });
+
+      // Most improved vs PY
+      var mostImproved=null, bestGrowth=-Infinity;
+      cards.forEach(function(c){
+        if(c.growthPct!==null && c.growthPct>bestGrowth && c.pyLakh>0){
+          bestGrowth=c.growthPct; mostImproved=c.name;
+        }
+      });
+
+      // Centre cards
+      var allCentres = Object.keys(centreTgtMap);
+      Object.keys(centreAchCur).forEach(function(c){ if(allCentres.indexOf(c)<0) allCentres.push(c); });
+      var centreCards = allCentres.map(function(c) {
+        var ach  = centreAchCur[c]||0;
+        var pyA  = centreAchPY[c]||0;
+        var annT = centreTgtMap[c]||0;
+        var perT = Math.round(annT * periodFrac);
+        var vsBP = perT ? Math.round(ach/perT*100) : 0;
+        var growthPct = pyA ? Math.round((ach-pyA)/pyA*100) : null;
+        var vsPY = pyA ? Math.round(ach/pyA*100) : null;
+        return {
+          centre:c, achRaw:ach, pyRaw:pyA,
+          achLakh:Math.round(ach/10000)/10, bpLakh:Math.round(perT/10000)/10,
+          pyLakh:Math.round(pyA/10000)/10,
+          vsBP:vsBP, vsPY:vsPY, growthPct:growthPct,
+          status:statusColor(vsBP), hasTarget:annT>0
+        };
+      }).filter(function(c){ return c.hasTarget||c.achRaw>0; });
+      centreCards.sort(function(a,b){ return b.achRaw-a.achRaw; });
+      centreCards.forEach(function(c,i){
+        c.rank=i+1;
+        var mx = centreCards[0] ? centreCards[0].achRaw : 1;
+        c.achIdx = Math.round(c.achRaw/mx*100);
+        delete c.achRaw; delete c.pyRaw;
+      });
+
+      // National
+      var natAch  = cards.reduce(function(s,c){ return s+(c.achLakh*100000); },0);
+      // Recompute more accurately from sumRows
+      var _na=0; Object.keys(achCur).forEach(function(n){_na+=achCur[n].total;}); natAch=_na;
+      var natPY   = 0; Object.keys(achPY).forEach(function(n){natPY+=achPY[n].total;});
+      var natBP   = Object.keys(tgtMap).reduce(function(s,n){return s+tgtMap[n];},0) * periodFrac;
+      var natVsBP = natBP  ? Math.round(natAch/natBP*100)  : 0;
+      var natVsPY = natPY  ? Math.round(natAch/natPY*100)  : null;
+      var natGrowth = natPY ? Math.round((natAch-natPY)/natPY*100) : null;
+      var annVsBP = Math.round(natAch/HR_NATIONAL_TARGET*100); // vs full FY BP
+      // Run-rate projection
+      var mwd = activeMonths.filter(function(m){
+        return Object.keys(achCur).some(function(n){return (achCur[n].byMonth[m]||0)>0;});
       }).length;
-      var projFy = (isFY&&fyMWD>0) ? Math.round(nationalAch/fyMWD*12) : null;
-      // National % always against the fixed ₹5.5 Cr target in FY mode
-      var natPct = isFY ? Math.round(nationalAch/HR_NATIONAL_TARGET*100) : 0;
-      // 1 Crore = 1,00,00,000 = 10,000,000 → divide by 100000 then by 100 for 2dp
-      var achCr  = Math.round(nationalAch/100000)/100;
-      var projCr = projFy ? Math.round(projFy/100000)/100 : null;
-      var gapCr  = isFY ? Math.round((HR_NATIONAL_TARGET-nationalAch)/100000)/100 : null;
+      var projFy = (mwd>0&&periodFilter==='ytd'||periodFilter==='fy') ? Math.round(natAch/mwd*12) : null;
+
+      function toCr(v) { return Math.round(v/100000)/100; }
 
       cb(null, {
-        status:'ok', viewMode:viewMode,
-        national:{ ytdPct:natPct, achievedCr:achCr, targetCr:isFY?5.5:null,
-                   projectedCr:projCr, gapCr:gapCr,
-                   monthsWithData:isFY?fyMWD:activeMonths.filter(function(m){
-                     return Object.keys(achMap).some(function(n){return (achMap[n].byMonth[m]||0)>0;});
-                   }).length,
-                   topPerformer:cards[0]||null, mostImproved:mostImproved,
-                   bestCentre:centreCards[0]||null },
-        counsellors:cards, centres:centreCards, instructors:[]
+        status:'ok', periodFilter:periodFilter, periodLabel:periodLabel,
+        national:{
+          achCr:toCr(natAch), bpCr:toCr(natBP), pyAchCr:toCr(natPY),
+          projCr: projFy?toCr(projFy):null,
+          gapCr:  toCr(Math.max(HR_NATIONAL_TARGET-natAch,0)),
+          annBPCr:5.5,
+          vsBP:natVsBP, vsPY:natVsPY, growthPct:natGrowth, annVsBP:annVsBP,
+          monthsWithData:mwd,
+          topPerformer:cards[0]||null, mostImproved:mostImproved,
+          bestCentre:centreCards[0]||null
+        },
+        counsellors:cards, centres:centreCards
       });
     }
 
-    // Fetch monthly data
-    if (viewMode === 'appraisal') {
-      needed = 3;
-      GET('revenue_monthly_achieved', 'month=in.(2026-01,2026-02,2026-03)', function(e,r){ monthly=r||[]; if(++n>=needed) build(); });
-    } else if (viewMode === '15m') {
-      needed = 4;
-      GET('revenue_monthly_achieved', 'month=in.(2026-01,2026-02,2026-03)', function(e,r){ monthly=monthly.concat(r||[]); if(++n>=needed) build(); });
-      GET('revenue_monthly_achieved', 'period=eq.2026-27', function(e,r){ monthly=monthly.concat(r||[]); if(++n>=needed) build(); });
-    } else {
-      needed = 3;
-      GET('revenue_monthly_achieved', 'period=eq.2026-27', function(e,r){ monthly=r||[]; if(++n>=needed) build(); });
-    }
-    GET('revenue_annual_targets', 'period=eq.2026-27', function(e,r){ annualFY=r||[]; if(++n>=needed) build(); });
-    GET('revenue_centre_targets', 'period=eq.2026-27', function(e,r){ centreTgtFY=r||[]; if(++n>=needed) build(); });
+    // Always fetch full FY current + full FY PY + targets
+    GET('revenue_monthly_achieved', 'period=eq.2026-27', function(e,r){ monthly=r||[];   done(); });
+    GET('revenue_monthly_achieved', 'period=eq.2025-26', function(e,r){ monthlyPY=r||[]; done(); });
+    GET('revenue_annual_targets',   'period=eq.2026-27', function(e,r){ annualFY=r||[];  done(); });
+    GET('revenue_centre_targets',   'period=eq.2026-27', function(e,r){ centreTgtFY=r||[];done(); });
   }
 
   /* getAdminDashboard */

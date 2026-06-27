@@ -3899,6 +3899,8 @@ function buildHRDashboard(ss, p) {
       centre: tgt.centre,
       ytdPct: ytdPct,
       qtdPct: qtdPct,
+      ytdRaw: ach.ytd,           // absolute revenue — used for sorting & relative bars only
+      annualTarget: annualTarget, // used for relative bar width — never shown as ₹
       last6: last6,
       trend: trend,
       status: status,
@@ -3906,9 +3908,20 @@ function buildHRDashboard(ss, p) {
     };
   }).filter(function(c) { return c.hasTarget || (counsellorAchMap[c.name] && counsellorAchMap[c.name].ytd > 0); });
 
-  // Sort by ytdPct desc for ranking
-  counsellorCards.sort(function(a, b) { return b.ytdPct - a.ytdPct; });
+  // Sort by absolute revenue achieved (not %) — highest earner = rank 1
+  counsellorCards.sort(function(a, b) { return b.ytdRaw - a.ytdRaw; });
   counsellorCards.forEach(function(c, i) { c.rank = i + 1; });
+
+  // Build relative indices (0–100 relative to highest) for bar charts — no raw ₹ exposed
+  var maxYtdRaw = counsellorCards.length ? counsellorCards[0].ytdRaw : 1;
+  var maxTarget = Math.max.apply(null, counsellorCards.map(function(c){ return c.annualTarget || 1; }));
+  counsellorCards.forEach(function(c) {
+    c.ytdIndex    = maxYtdRaw  ? Math.round(c.ytdRaw       / maxYtdRaw  * 100) : 0;
+    c.targetIndex = maxTarget  ? Math.round(c.annualTarget  / maxTarget  * 100) : 0;
+    // Remove raw values so they don't leak to frontend
+    delete c.ytdRaw;
+    delete c.annualTarget;
+  });
 
   // Most improved: biggest positive swing (recent3 - prior3)
   var mostImproved = null;

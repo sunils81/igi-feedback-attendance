@@ -392,26 +392,35 @@ function renderDashboard(d) {
 
   html += '</div>'; // hero-grid
 
-  // ── Section 2: Counsellor Rankings ────────────────────────────────────────
-  html += '<div class="section-head"><h2>🏆 Counsellor Leaderboard</h2><p>Ranked by YTD target achievement. No revenue figures — only percentage of individual annual target.</p></div>';
+  // ── Section 2: Counsellor Rankings (sorted by revenue achieved, not %) ──────
+  html += '<div class="section-head"><h2>🏆 Counsellor Leaderboard</h2><p>Ranked by revenue achieved YTD — highest earner = #1. Target % shown as secondary metric.</p></div>';
 
   html += '<div class="card" style="overflow:auto"><table class="lb-table"><thead><tr>';
-  html += '<th>Rank</th><th>Counsellor</th><th>Centre</th><th>Status</th>';
-  html += '<th>YTD % of Target</th><th>QTD % of Target</th><th>Trend</th>';
+  html += '<th>Rank</th><th>Counsellor</th><th>Centre</th><th>Revenue vs Target</th>';
+  html += '<th>Target Hit %</th><th>QTD Hit %</th><th>Trend</th>';
   html += '</tr></thead><tbody>';
 
   counsellors.forEach(function(c) {
     var pillClass = c.status === 'green' ? 'pill-green' : (c.status === 'amber' ? 'pill-amber' : 'pill-red');
-    var dotClass  = c.status === 'green' ? 'dot-green' : (c.status === 'amber' ? 'dot-amber' : 'dot-red');
-    var statusLbl = c.status === 'green' ? 'On Track' : (c.status === 'amber' ? 'Needs Attention' : 'Below Target');
     var trendIcon = c.trend === 'up' ? '⬆️' : (c.trend === 'down' ? '⬇️' : '➡️');
     var rankClass = c.rank === 1 ? 'rank-1' : (c.rank === 2 ? 'rank-2' : (c.rank === 3 ? 'rank-3' : 'rank-n'));
+    var barColour = c.status === 'green' ? 'var(--green)' : (c.status === 'amber' ? '#F59E0B' : 'var(--red)');
+    // Bullet bar: grey = target width, coloured fill = achieved
+    var targetW = c.targetIndex || 100;
+    var achievedW = c.ytdIndex || 0;
+    // Scale achieved within the target bar
+    var fillW = targetW > 0 ? Math.min(Math.round(achievedW / targetW * 100), 100) : 0;
 
     html += '<tr>';
     html += '<td><span class="rank-badge ' + rankClass + '">' + c.rank + '</span></td>';
     html += '<td style="font-weight:700">' + esc(c.name) + '</td>';
     html += '<td>' + esc(c.centre || '—') + '</td>';
-    html += '<td><span class="status-dot ' + dotClass + '"></span>' + statusLbl + '</td>';
+    // Bullet bar cell
+    html += '<td style="min-width:140px">';
+    html += '<div style="background:var(--border);border-radius:4px;height:16px;width:' + targetW + '%;position:relative;overflow:hidden">';
+    html += '<div style="position:absolute;left:0;top:0;height:100%;width:' + fillW + '%;background:' + barColour + ';border-radius:4px;transition:width .5s"></div>';
+    html += '</div>';
+    html += '</td>';
     html += '<td><span class="pct-pill ' + pillClass + '">' + c.ytdPct + '%</span></td>';
     html += '<td><span class="pct-pill ' + (c.qtdPct >= 90 ? 'pill-green' : c.qtdPct >= 70 ? 'pill-amber' : 'pill-red') + '">' + c.qtdPct + '%</span></td>';
     html += '<td class="trend-arrow" title="' + (c.trend === 'up' ? 'Improving' : c.trend === 'down' ? 'Declining' : 'Stable') + '">' + trendIcon + '</td>';
@@ -421,17 +430,30 @@ function renderDashboard(d) {
   if (!counsellors.length) html += '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted)">No data available for this period.</td></tr>';
   html += '</tbody></table></div>';
 
-  // ── Head-to-Head Bar Chart ─────────────────────────────────────────────────
-  html += '<div class="section-head" style="margin-top:24px"><h2>📊 Head-to-Head Comparison</h2><p>Visual comparison of all counsellors — bar length represents % of annual target achieved YTD</p></div>';
+  // ── Head-to-Head Bar Chart (revenue achieved vs individual target) ──────────
+  html += '<div class="section-head" style="margin-top:24px"><h2>📊 Revenue Achieved vs Target</h2><p>Each bar shows revenue achieved (filled) against individual annual target (full bar width). Ordered by highest revenue.</p></div>';
   html += '<div class="card">';
-  var maxPct = Math.max.apply(null, counsellors.map(function(c){ return c.ytdPct; }).concat([100]));
+  html += '<div style="font-size:10px;color:var(--muted);margin-bottom:10px;display:flex;gap:16px">';
+  html += '<span style="display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:var(--border)"></span>Annual Target</span>';
+  html += '<span style="display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:var(--green)"></span>Achieved (on/above 90%)</span>';
+  html += '<span style="display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#F59E0B"></span>Achieved (70–89%)</span>';
+  html += '<span style="display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:var(--red)"></span>Achieved (below 70%)</span>';
+  html += '</div>';
   counsellors.forEach(function(c) {
-    var barW = Math.min(Math.round(c.ytdPct / maxPct * 100), 100);
     var barColour = c.status === 'green' ? 'var(--green)' : (c.status === 'amber' ? '#F59E0B' : 'var(--red)');
     var pillClass = c.status === 'green' ? 'pill-green' : (c.status === 'amber' ? 'pill-amber' : 'pill-red');
+    var targetW = c.targetIndex || 100;
+    var achievedW = c.ytdIndex || 0;
+    var fillW = targetW > 0 ? Math.min(Math.round(achievedW / targetW * 100), 100) : 0;
+
     html += '<div class="hbar-row">';
     html += '<div class="hbar-name">' + esc(c.name) + '</div>';
-    html += '<div class="hbar-track"><div class="hbar-fill" style="width:' + barW + '%;background:' + barColour + '"></div></div>';
+    // Outer bar = target width, inner fill = achieved
+    html += '<div style="flex:1;display:flex;align-items:center;gap:6px">';
+    html += '<div style="width:' + targetW + '%;background:var(--border);border-radius:4px;height:20px;position:relative;overflow:hidden">';
+    html += '<div style="position:absolute;left:0;top:0;height:100%;width:' + fillW + '%;background:' + barColour + ';border-radius:4px;transition:width .6s ease"></div>';
+    html += '</div>';
+    html += '</div>';
     html += '<div class="hbar-pct"><span class="pct-pill ' + pillClass + '" style="font-size:11px">' + c.ytdPct + '%</span></div>';
     html += '</div>';
   });

@@ -1976,11 +1976,12 @@ window.gasGet = (function () {
         achMap[name].byMonth[r.month] = (achMap[name].byMonth[r.month] || 0) + fee;
       });
 
-      // Annual FY targets per counsellor
-      var tgtMap = {};
+      // Annual FY targets + centre per counsellor
+      var tgtMap = {}, counsellorCentreMap = {};
       annualFY.forEach(function(r) {
         if (!r.counsellor) return;
         tgtMap[r.counsellor] = (tgtMap[r.counsellor] || 0) + (Number(r.annual_course_fee_target) || 0);
+        if (r.centre && !counsellorCentreMap[r.counsellor]) counsellorCentreMap[r.counsellor] = r.centre;
       });
 
       // Centre targets
@@ -2011,10 +2012,11 @@ window.gasGet = (function () {
         var p3 = sparkMonths.slice(0,3).reduce(function(s,m){ return s+(ach.byMonth[m]||0);},0);
         var trend = r3 > p3*1.05 ? 'up' : (r3 < p3*0.95 ? 'down' : 'flat');
         var status = isFY ? (ytdPct>=90?'green':ytdPct>=70?'amber':'red') : 'neutral';
-        // ₹ in Lakhs (1L = 100000), rounded to 1dp
+        // ₹ in Lakhs (1L = 1,00,000), rounded to 1dp
         var ytdLakh    = Math.round(ach.ytd / 10000) / 10;
         var targetLakh = isFY ? (Math.round(annualTarget / 10000) / 10) : 0;
-        return { name:name, ytdRaw:ach.ytd, annualTarget:annualTarget,
+        var centre     = counsellorCentreMap[name] || '—';
+        return { name:name, centre:centre, ytdRaw:ach.ytd, annualTarget:annualTarget,
                  ytdLakh:ytdLakh, targetLakh:targetLakh,
                  ytdPct:ytdPct, qtdPct:qtdPct, last6:last6, trend:trend, status:status,
                  hasData:ach.ytd>0, hasTarget:annualTarget>0 };
@@ -2069,11 +2071,12 @@ window.gasGet = (function () {
         return Object.keys(achMap).some(function(n){ return (achMap[n].byMonth[m]||0)>0; });
       }).length;
       var projFy = (isFY&&fyMWD>0) ? Math.round(nationalAch/fyMWD*12) : null;
-      var fyTotalTgt=0; annualFY.forEach(function(r){ fyTotalTgt+=(Number(r.annual_course_fee_target)||0); });
-      var natPct = (isFY&&fyTotalTgt) ? Math.round(nationalAch/fyTotalTgt*100) : 0;
-      var achCr  = Math.round(nationalAch/100000)/10;
-      var projCr = projFy ? Math.round(projFy/100000)/10 : null;
-      var gapCr  = isFY ? Math.round((HR_NATIONAL_TARGET-nationalAch)/100000)/10 : null;
+      // National % always against the fixed ₹5.5 Cr target in FY mode
+      var natPct = isFY ? Math.round(nationalAch/HR_NATIONAL_TARGET*100) : 0;
+      // 1 Crore = 1,00,00,000 = 10,000,000 → divide by 100000 then by 100 for 2dp
+      var achCr  = Math.round(nationalAch/100000)/100;
+      var projCr = projFy ? Math.round(projFy/100000)/100 : null;
+      var gapCr  = isFY ? Math.round((HR_NATIONAL_TARGET-nationalAch)/100000)/100 : null;
 
       cb(null, {
         status:'ok', viewMode:viewMode,

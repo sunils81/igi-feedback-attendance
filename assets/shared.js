@@ -2163,6 +2163,7 @@ window.gasGet = (function () {
       var natVsPY = natPY  ? Math.round(natAch/natPY*100)  : null;
       var natGrowth = natPY ? Math.round((natAch-natPY)/natPY*100) : null;
       var annVsBP = Math.round(natAch/HR_NATIONAL_TARGET*100); // vs full FY BP
+      var natPaceVsBP = (periodFilter==='fy' && ytdFrac>0) ? Math.round(natVsBP/ytdFrac) : natVsBP;
       // Run-rate projection
       var mwd = activeMonths.filter(function(m){
         return Object.keys(achCur).some(function(n){return (achCur[n].byMonth[m]||0)>0;});
@@ -2178,7 +2179,7 @@ window.gasGet = (function () {
           projCr: projFy?toCr(projFy):null,
           gapCr:  toCr(Math.max(HR_NATIONAL_TARGET - natAch, 0)),
           annBPCr:5.5,
-          vsBP:natVsBP, vsPY:natVsPY, growthPct:natGrowth, annVsBP:annVsBP,
+          vsBP:natVsBP, paceVsBP:natPaceVsBP, vsPY:natVsPY, growthPct:natGrowth, annVsBP:annVsBP,
           monthsWithData:mwd,
           topPerformer:cards[0]||null, mostImproved:mostImproved,
           bestCentre:centreCards[0]||null

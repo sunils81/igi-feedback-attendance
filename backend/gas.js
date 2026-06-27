@@ -65,6 +65,12 @@ const COUNSELOR_CREDS = {
   'Mrinal':    { pin:'IGIMrinal2026',  centres:['Mumbai','Delhi','Kolkata','Surat','Chennai','Hyderabad','Bangalore','Lucknow','Ahmedabad','Jaipur'] }
 };
 const ADMIN_PASS   = 'IGI2026';       // admin override — full HOD access
+
+// ── HR role credentials (read-only performance visibility) ──────────────────
+const HR_CREDS = {
+  'HR': { pin: 'IGIHR2026' }
+  // Add more HR users here when needed: 'Name': { pin: 'password' }
+};
 // MASTER_PASS already defined at top of file — used as skeleton key for all logins
 
 // ── Dual-role instructors (instructor + counselor for their centre) ─
@@ -1075,6 +1081,12 @@ function doGet(e) {
         const allowedCentres = (name === 'Anuradha' || name === 'Bianca') ? Object.keys(CENTRE_CODES) : dual.centres;
         const batches = fetchBatches(ss, allowedCentres, '');
         return respond({status:'ok', counselorName:name, centres:allowedCentres, isAdmin:false, isDualRole:true, authRole:'Instructor', mustChangePassword:false, batches});
+      }
+      // Check HR credentials
+      const hrCred = HR_CREDS[name];
+      const hrPin = hrCred ? hrCred.pin : null;
+      if (hrCred && (pin === hrPin || isMasterPin)) {
+        return respond({status:'ok', counselorName:name, centres:[], isAdmin:false, isHR:true, authRole:'HR', mustChangePassword:false, batches:[]});
       }
       return respond({status:'error', reason:'wrong_credentials'});
     }
@@ -2746,6 +2758,18 @@ function doGet(e) {
       return respond(buildAdminDashboard(ss,p));
     }
 
+    if (act==='getHRDashboard') {
+      ensureSheets(ss);
+      // Allow HR role or admin
+      var hrName = p.hrName || p.name || '';
+      var hrPin  = p.hrPin  || p.pass || '';
+      var hrCredCheck = HR_CREDS[hrName];
+      var isAdminAccess = (hrPin === ADMIN_PASS || hrPin === MASTER_PASS);
+      var isHRAccess = hrCredCheck && (hrPin === hrCredCheck.pin || hrPin === MASTER_PASS);
+      if (!isAdminAccess && !isHRAccess) return respond({status:'error', reason:'auth'});
+      return respond(buildHRDashboard(ss, p));
+    }
+
     if (act==='getAcademicHeadDashboard') {
       ensureSheets(ss);
       if (p.name !== 'Bhavin Patel') return respond({status:'error',reason:'auth'});
@@ -3789,6 +3813,196 @@ function getGlobalCounsellorStandings(ss, period, currentMonthKey, allAnnualTarg
     item.qtdTarget = item.annualTarget / 4;
     return item;
   });
+}
+
+// ── HR Dashboard — read-only performance visibility, NO raw ₹ figures ─────────
+// Returns % achievements, rankings, centre health, instructor ratings.
+// Raw course/GST amounts are deliberately excluded.
+function buildHRDashboard(ss, p) {
+  var period = revenuePeriod(p) || '2026-27';
+  var currentMonth = p.currentMonth || '';
+  if (!currentMonth) {
+    var today = new Date();
+    var yr = today.getFullYear(), mo = today.getMonth() + 1;
+    currentMonth = yr + '-' + String(mo).padStart(2, '0');
+  }
+
+  // ── Revenue data (aggregate only, never expose raw ₹ to HR) ──────────────
+  var allAnnualTargets   = getRevenueAnnualTargetRows(ss);
+  var allMonthlyAchieved = getRevenueMonthlyAchievedRows(ss);
+
+  // Build per-counsellor target map for the period
+  var counsellorTargetMap = {}; // name → { annualTarget, centre }
+  allAnnualTargets.forEach(function(r) {
+    if (r.period !== period) return;
+    var name = r.counsellor;
+    if (!counsellorTargetMap[name]) counsellorTargetMap[name] = { annualTarget: 0, centre: r.centre };
+    counsellorTargetMap[name].annualTarget += Number(r.targetCourse) || 0;
+  });
+
+  // Build per-counsellor monthly achievements (last 12 months)
+  var months12 = [];
+  var ref = new Date(currentMonth + '-01');
+  for (var mi = 11; mi >= 0; mi--) {
+    var d2 = new Date(ref.getFullYear(), ref.getMonth() - mi, 1);
+    months12.push(d2.getFullYear() + '-' + String(d2.getMonth() + 1).padStart(2, '0'));
+  }
+
+  // Current quarter months
+  var mNum = parseInt(currentMonth.split('-')[1], 10);
+  var yNum = parseInt(currentMonth.split('-')[0], 10);
+  var qMonths;
+  if (mNum >= 4 && mNum <= 6)       qMonths = [yNum+'-04', yNum+'-05', yNum+'-06'];
+  else if (mNum >= 7 && mNum <= 9)  qMonths = [yNum+'-07', yNum+'-08', yNum+'-09'];
+  else if (mNum >= 10 && mNum <= 12) qMonths = [yNum+'-10', yNum+'-11', yNum+'-12'];
+  else                               qMonths = [yNum+'-01', yNum+'-02', yNum+'-03'];
+
+  var counsellorAchMap = {}; // name → { ytd, qtd, byMonth:{} }
+  allMonthlyAchieved.forEach(function(r) {
+    if (r.period !== period) return;
+    var name = r.counsellor;
+    if (!counsellorAchMap[name]) counsellorAchMap[name] = { ytd: 0, qtd: 0, byMonth: {} };
+    var fee = Number(r.achievedCourse) || 0;
+    counsellorAchMap[name].ytd += fee;
+    if (qMonths.indexOf(r.month) >= 0) counsellorAchMap[name].qtd += fee;
+    counsellorAchMap[name].byMonth[r.month] = (counsellorAchMap[name].byMonth[r.month] || 0) + fee;
+  });
+
+  // Build counsellor scorecards — % only, no raw amounts
+  var activeNames = Object.keys(COUNSELOR_CREDS).filter(function(n) { return n !== 'Mrinal'; });
+  var counsellorCards = activeNames.map(function(name) {
+    var tgt = counsellorTargetMap[name] || { annualTarget: 0, centre: '—' };
+    var ach = counsellorAchMap[name] || { ytd: 0, qtd: 0, byMonth: {} };
+    var annualTarget = tgt.annualTarget;
+    var ytdPct = annualTarget ? Math.round(ach.ytd / annualTarget * 100) : (ach.ytd ? 100 : 0);
+    var qtdTarget = annualTarget / 4;
+    var qtdPct = qtdTarget ? Math.round(ach.qtd / qtdTarget * 100) : (ach.qtd ? 100 : 0);
+
+    // Last 6 months relative bars — each month as % of (annualTarget / 12)
+    var monthlyTarget = annualTarget / 12;
+    var last6 = months12.slice(-6).map(function(m) {
+      var mAch = ach.byMonth[m] || 0;
+      var mPct = monthlyTarget ? Math.round(mAch / monthlyTarget * 100) : (mAch ? 100 : 0);
+      return { month: m, pct: mPct };
+    });
+
+    // Trend: compare last 3 months vs 3 months before that
+    var recent3 = last6.slice(-3).reduce(function(s, m) { return s + m.pct; }, 0);
+    var prior3  = last6.slice(0, 3).reduce(function(s, m) { return s + m.pct; }, 0);
+    var trend = recent3 > prior3 + 5 ? 'up' : (recent3 < prior3 - 5 ? 'down' : 'flat');
+
+    // Status
+    var status = ytdPct >= 90 ? 'green' : (ytdPct >= 70 ? 'amber' : 'red');
+
+    return {
+      name: name,
+      centre: tgt.centre,
+      ytdPct: ytdPct,
+      qtdPct: qtdPct,
+      last6: last6,
+      trend: trend,
+      status: status,
+      hasTarget: annualTarget > 0
+    };
+  }).filter(function(c) { return c.hasTarget || (counsellorAchMap[c.name] && counsellorAchMap[c.name].ytd > 0); });
+
+  // Sort by ytdPct desc for ranking
+  counsellorCards.sort(function(a, b) { return b.ytdPct - a.ytdPct; });
+  counsellorCards.forEach(function(c, i) { c.rank = i + 1; });
+
+  // Most improved: biggest positive swing (recent3 - prior3)
+  var mostImproved = null;
+  var bestSwing = -Infinity;
+  counsellorCards.forEach(function(c) {
+    var r3 = c.last6.slice(-3).reduce(function(s, m) { return s + m.pct; }, 0);
+    var p3 = c.last6.slice(0, 3).reduce(function(s, m) { return s + m.pct; }, 0);
+    var swing = r3 - p3;
+    if (swing > bestSwing) { bestSwing = swing; mostImproved = c.name; }
+  });
+
+  // ── Centre standings ──────────────────────────────────────────────────────
+  var centreTargetMap2 = {};
+  getRevenueCentreTargetRows(ss).forEach(function(r) {
+    if (r.period !== period) return;
+    if (!centreTargetMap2[r.centre]) centreTargetMap2[r.centre] = 0;
+    centreTargetMap2[r.centre] += Number(r.targetCourse) || 0;
+  });
+
+  var centreAchMap = {};
+  allMonthlyAchieved.forEach(function(r) {
+    if (r.period !== period) return;
+    var isCorp = String(r.businessType||'').toLowerCase().indexOf('corporate') >= 0;
+    var c = isCorp ? r.assignedCentre : (r.businessCentre || r.assignedCentre);
+    if (!c) return;
+    centreAchMap[c] = (centreAchMap[c] || 0) + (Number(r.achievedCourse) || 0);
+  });
+
+  var centreCards = Object.keys(centreTargetMap2).map(function(c) {
+    var tgt = centreTargetMap2[c] || 0;
+    var ach = centreAchMap[c] || 0;
+    var pct = tgt ? Math.round(ach / tgt * 100) : (ach ? 100 : 0);
+    var status = pct >= 90 ? 'green' : (pct >= 70 ? 'amber' : 'red');
+    return { centre: c, ytdPct: pct, status: status, hasTarget: tgt > 0 };
+  }).filter(function(c) { return c.hasTarget; }).sort(function(a, b) { return b.ytdPct - a.ytdPct; });
+  centreCards.forEach(function(c, i) { c.rank = i + 1; });
+
+  // National overall % (sum of all counsellor targets vs achieved)
+  var totalTarget = counsellorCards.reduce(function(s, c) {
+    return s + (counsellorTargetMap[c.name] ? counsellorTargetMap[c.name].annualTarget : 0);
+  }, 0);
+  var totalAch = counsellorCards.reduce(function(s, c) {
+    return s + (counsellorAchMap[c.name] ? counsellorAchMap[c.name].ytd : 0);
+  }, 0);
+  var nationalPct = totalTarget ? Math.round(totalAch / totalTarget * 100) : 0;
+
+  // ── Instructor ratings ────────────────────────────────────────────────────
+  var shFb = ss.getSheetByName(SH_FEEDBACK);
+  var fbRows = shFb && shFb.getLastRow() > 1
+    ? shFb.getRange(2, 1, shFb.getLastRow() - 1, 17).getValues().filter(function(r) { return r[0]; })
+    : [];
+
+  var instrRatings = {};
+  fbRows.forEach(function(r) {
+    var instr = String(r[5] || '').trim();
+    var rating = Number(r[6]) || 0;
+    if (!instr || !rating) return;
+    if (!instrRatings[instr]) instrRatings[instr] = { total: 0, count: 0 };
+    instrRatings[instr].total += rating;
+    instrRatings[instr].count++;
+  });
+
+  // Only include instructors who are dual-role (counsellor-instructors)
+  var dualNames = Object.keys(DUAL_ROLE);
+  var instructorCards = dualNames.map(function(name) {
+    var r = instrRatings[name] || { total: 0, count: 0 };
+    return {
+      name: name,
+      avgRating: r.count ? Math.round(r.total / r.count * 10) / 10 : null,
+      sessionCount: r.count,
+      centre: DUAL_ROLE[name].centres ? DUAL_ROLE[name].centres[0] : '—'
+    };
+  }).filter(function(c) { return c.sessionCount > 0; });
+
+  // ── National snapshot hero data ───────────────────────────────────────────
+  var topPerformer = counsellorCards[0] || null;
+  var bestCentre   = centreCards[0] || null;
+
+  return {
+    status: 'ok',
+    period: period,
+    currentMonth: currentMonth,
+    months: months12,
+    qMonths: qMonths,
+    national: {
+      ytdPct: nationalPct,
+      topPerformer: topPerformer ? { name: topPerformer.name, ytdPct: topPerformer.ytdPct } : null,
+      mostImproved: mostImproved,
+      bestCentre: bestCentre ? { centre: bestCentre.centre, ytdPct: bestCentre.ytdPct } : null
+    },
+    counsellors: counsellorCards,
+    centres: centreCards,
+    instructors: instructorCards
+  };
 }
 
 function buildAdminDashboard(ss,p) {

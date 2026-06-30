@@ -548,20 +548,20 @@ function renderDashboard(d) {
   // ── 4. Revenue bar chart ─────────────────────────────────
   html += '<div class="section-head" style="margin-top:24px"><h2>Revenue vs Business Plan — '+pl+'</h2><p>Gold marker = Business Plan. Fill colour = achievement level. '+fmtUnit()+' excl. GST.</p></div>';
   html += '<div class="card">';
-  var maxBP  = Math.max.apply(null, cs.map(function(c){return c.bpLakh||0;}).concat([0.1]));
-  var maxAch = Math.max.apply(null, cs.map(function(c){return c.achLakh||0;}).concat([0.1]));
-  var maxAll = Math.max(maxBP, maxAch);
+  // Each bar is self-scaled to own BP (track = BP, fill = achievement %)
+  // This prevents high-target counsellors (Anuradha ₹175L, Sunita ₹120L)
+  // from making everyone else's bars look tiny on a shared scale.
   cs.forEach(function(c) {
     var pct      = isBP ? c.vsBP : (c.vsPY||0);
     var colorPct = isBP ? (c.paceVsBP||c.vsBP) : (c.vsPY||0);
     var sc2  = statusColor(colorPct);
-    var bpW  = Math.round((c.bpLakh||0)/maxAll*100);
-    var achW = Math.round((c.achLakh||0)/maxAll*100);
+    // BP marker always at 100% (right edge), fill = % of own BP, capped at 100%
+    var achW = Math.min(pct, 100);
     html += '<div class="rbar-row">';
     html += '<div><div class="rbar-name">'+esc(c.name)+'</div><div class="rbar-sub">'+esc(c.centre)+'</div></div>';
     html += '<div class="rbar-chart">';
     html += '<div class="rbar-track" style="width:100%;height:10px"></div>';
-    html += '<div class="rbar-bp-mark" style="left:'+bpW+'%"></div>';
+    html += '<div class="rbar-bp-mark" style="left:100%"></div>';
     html += '<div class="rbar-fill" style="width:'+achW+'%;background:'+sc2.bar+'"></div>';
     html += '</div>';
     html += '<div class="rbar-nums"><span class="rbar-ach">'+fmtAmt(c.achLakh)+'</span><span class="rbar-bp">BP:'+fmtAmt(c.bpLakh)+'</span></div>';

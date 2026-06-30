@@ -1921,13 +1921,17 @@ window.gasGet = (function () {
     try { mRows  = JSON.parse(p.monthlyRows   || '[]'); } catch (x) {}
     try { tRows  = JSON.parse(p.targets       || '[]'); } catch (x) {}
     try { ctRows = JSON.parse(p.centreTargets || '[]'); } catch (x) {}
-    var mDB  = mRows.map(function (r) { return { month: r.month, period: r.period || '2026-27',
-      counsellor: r.counsellor, assigned_centre: r.assignedCentre || r.assigned_centre,
-      business_centre: r.businessCentre || r.business_centre, business_type: r.businessType || r.business_type,
-      student_count: Number(r.studentCount || r.student_count || 0),
-      achieved_course_fee: Number(r.achievedCourse || r.achieved_course_fee || 0),
-      achieved_course_fee_gst: Number(r.achievedGst || r.achieved_course_fee_gst || 0),
-      notes: r.notes || '', locked: r.locked || 'N', updated_by: p.updatedBy || 'Counselor', updated_at: nowISO() }; });
+    var mDB  = mRows.map(function (r) {
+      // locked column in Supabase is BOOLEAN — convert 'Y'/'N'/true/false → boolean
+      var isLocked = (r.locked === true || r.locked === 'Y');
+      return { month: r.month, period: r.period || '2026-27',
+        counsellor: r.counsellor, assigned_centre: r.assignedCentre || r.assigned_centre,
+        business_centre: r.businessCentre || r.business_centre, business_type: r.businessType || r.business_type,
+        student_count: Number(r.studentCount || r.student_count || 0),
+        achieved_course_fee: Number(r.achievedCourse || r.achieved_course_fee || 0),
+        achieved_course_fee_gst: Number(r.achievedGst || r.achieved_course_fee_gst || 0),
+        notes: r.notes || '', locked: isLocked, updated_by: p.updatedBy || 'Counselor', updated_at: nowISO() };
+    });
     var tDB  = tRows.map(function (r) { return { period: r.period || '2026-27', counsellor: r.counsellor,
       centre: r.centre, annual_course_fee_target: Number(r.targetCourse || r.annualCourseFeeTarget || 0),
       annual_course_fee_gst_target: Number(r.targetGst || r.annualCourseFeeGstTarget || 0),
@@ -1937,12 +1941,20 @@ window.gasGet = (function () {
       annual_course_fee_gst_target: Number(r.targetGst || r.annualCourseFeeGstTarget || 0),
       notes: r.notes || '', updated_by: p.updatedBy || 'Counselor', updated_at: nowISO() }; });
     var total = (mDB.length ? 1 : 0) + (tDB.length ? 1 : 0) + (ctDB.length ? 1 : 0) || 1;
-    var done = 0;
-    function fin() { if (++done < total) return; h_revDash(p, function (e, d) { cb(null, { status: 'ok', savedMonthly: mDB.length, dashboard: d || {} }); }); }
+    var done = 0, saveErr = null;
+    function fin(e) {
+      if (e) saveErr = e;          // capture first error
+      if (++done < total) return;
+      if (saveErr) {
+        // Surface the real error so the counsellor portal can show it
+        return cb(null, { status: 'error', message: 'Save failed: ' + (saveErr.message || saveErr), savedMonthly: 0 });
+      }
+      h_revDash(p, function (e2, d) { cb(null, { status: 'ok', savedMonthly: mDB.length, dashboard: d || {} }); });
+    }
     if (mDB.length)  POST('revenue_monthly_achieved', 'on_conflict=month,period,counsellor,business_centre,business_type', mDB,  fin);
     if (tDB.length)  POST('revenue_annual_targets',   'on_conflict=period,counsellor',       tDB,  fin);
     if (ctDB.length) POST('revenue_centre_targets',   'on_conflict=period,centre',           ctDB, fin);
-    if (!mDB.length && !tDB.length && !ctDB.length) fin();
+    if (!mDB.length && !tDB.length && !ctDB.length) fin(null);
   }
 
   /* getHRDashboard — pulls from Supabase; returns ₹L per counsellor, ₹Cr national */

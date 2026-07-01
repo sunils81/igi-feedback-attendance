@@ -664,13 +664,14 @@ window.gasGet = (function () {
     next();
   }
 
-  /* updateBatchDates — change start/end dates for a batch */
+  /* updateBatchDates — change start/end dates and/or batch slot */
   function h_updateBatchDates(p, cb) {
     var bc = encodeURIComponent(p.batchCode);
     var payload = {};
-    if (p.startDate) payload.start_date = p.startDate;
-    if (p.endDate)   payload.end_date   = p.endDate;
-    if (!Object.keys(payload).length) { cb(null, { status: 'error', reason: 'no_dates_provided' }); return; }
+    if (p.startDate)  payload.start_date  = p.startDate;
+    if (p.endDate)    payload.end_date    = p.endDate;
+    if (p.batchSlot)  payload.batch_slot  = p.batchSlot;
+    if (!Object.keys(payload).length) { cb(null, { status: 'error', reason: 'no_fields_provided' }); return; }
     PATCH('batches', 'batch_code=eq.' + bc, payload, function(e) {
       cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
     });
@@ -3013,9 +3014,15 @@ window.gasGet = (function () {
                     return af.session_code === s.session_code && af.attendance !== 'Absent';
                   });
                 }).length;
+                // Effective instructor: co_instructor takes precedence if active
+                var todayStr = todayYMD();
+                var effectiveInstructor = b.instructor || '';
+                if (b.co_instructor && (!b.co_instructor_until || b.co_instructor_until >= todayStr)) {
+                  effectiveInstructor = b.co_instructor;
+                }
                 var card = {
                   batchCode: batchCode, course: b.course, centre: b.centre, type: b.type, batchSlot: slot,
-                  instructor: b.instructor || '', startDateISO: startD.toISOString(), endDateISO: endD.toISOString(),
+                  instructor: effectiveInstructor, startDateISO: startD.toISOString(), endDateISO: endD.toISOString(),
                   startDateDisplay: toDMY(b.start_date), endDateDisplay: toDMY(b.end_date),
                   sessionCode: todaySess ? todaySess.session_code : null, sessNo: todaySess ? todaySess.sess_no : null,
                   topic: todaySess ? (todaySess.topic || '') : null, sessionExists: !!todaySess,

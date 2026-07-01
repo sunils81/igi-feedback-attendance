@@ -8263,7 +8263,7 @@ function loadMyBatches() {
           </div>
         </div>
         <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
-          <button class="btn btn-outline" style="padding:4px 8px; font-size:11px; width:auto; color:var(--navy);" onclick="openBatchEditDatesModal('${escC(b.batchCode)}','${b.startDate||''}','${b.endDate||''}')">📅 Edit Dates</button>
+          <button class="btn btn-outline" style="padding:4px 8px; font-size:11px; width:auto; color:var(--navy);" onclick="openBatchEditDatesModal('${escC(b.batchCode)}','${b.startDate||''}','${b.endDate||''}','${escC(b.batchSlot||'Full Day')}')">📅 Edit Batch</button>
           ${deleteButtonsHtml}
         </div>
           </div>
@@ -14941,14 +14941,16 @@ function isoToDMY(iso) {
   if (p.length !== 3) return iso;
   return p[2] + '/' + p[1] + '/' + p[0];
 }
-function openBatchEditDatesModal(batchCode, startDMY, endDMY) {
+function openBatchEditDatesModal(batchCode, startDMY, endDMY, batchSlot) {
   document.getElementById('bedit-code').value = batchCode;
-  document.getElementById('bedit-title').textContent = 'Change Dates — ' + batchCode;
+  document.getElementById('bedit-title').textContent = 'Edit Batch — ' + batchCode;
   document.getElementById('bedit-start').value = dmyToISO(startDMY);
   document.getElementById('bedit-end').value = dmyToISO(endDMY);
   document.getElementById('bedit-original-end').value = dmyToISO(endDMY);
   document.getElementById('bedit-extend-days').value = '';
   document.getElementById('bedit-extend-preview').textContent = '';
+  var slotEl = document.getElementById('bedit-slot');
+  if (slotEl) slotEl.value = batchSlot || 'Full Day';
   document.getElementById('batch-edit-dates-modal').style.display = 'flex';
 }
 function closeBatchEditDatesModal() {
@@ -14974,22 +14976,25 @@ function saveBatchDates() {
     baseDate.setDate(baseDate.getDate() + extendDays);
     endISO = baseDate.toISOString().split('T')[0];
   }
+  var batchSlot = (document.getElementById('bedit-slot') || {}).value || '';
   if (!bc) return;
-  if (!startISO && !endISO) { alert('Please set at least one date.'); return; }
+  if (!startISO && !endISO && !batchSlot) { alert('Please set at least one field.'); return; }
   var btn = document.getElementById('bedit-save-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
   var p = { action:'updateBatchDates', batchCode:bc };
-  if (startISO) p.startDate = startISO;
-  if (endISO)   p.endDate   = endISO;
+  if (startISO)  p.startDate  = startISO;
+  if (endISO)    p.endDate    = endISO;
+  if (batchSlot) p.batchSlot  = batchSlot;
   gasGet(p, function(e,d) {
-    if (btn) { btn.disabled = false; btn.textContent = '💾 Save Dates'; }
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save'; }
     if (e || !d || d.status !== 'ok') { alert('Failed: ' + (d&&d.reason ? d.reason : String(e||'Unknown'))); return; }
     closeBatchEditDatesModal();
     if (allBatches) {
       allBatches.forEach(function(b) {
         if (b.batchCode === bc) {
-          if (startISO) b.startDate = isoToDMY(startISO);
-          if (endISO)   b.endDate   = isoToDMY(endISO);
+          if (startISO)  b.startDate  = isoToDMY(startISO);
+          if (endISO)    b.endDate    = isoToDMY(endISO);
+          if (batchSlot) b.batchSlot  = batchSlot;
         }
       });
     }
@@ -15267,17 +15272,25 @@ function doBulkExtend() {
         <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">END DATE (Extend / Shorten)</label>
         <input type="date" id="bedit-end" class="crm-ni" style="width:100%;box-sizing:border-box">
       </div>
-      <div>
+      <div style="margin-bottom:14px">
         <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">OR EXTEND END DATE BY DAYS</label>
         <div style="display:flex;gap:6px;align-items:center">
           <input type="number" id="bedit-extend-days" min="1" max="365" placeholder="e.g. 7" class="crm-ni" style="width:120px;box-sizing:border-box" oninput="beditCalcExtend()">
           <span id="bedit-extend-preview" style="font-size:12px;color:var(--muted)"></span>
         </div>
       </div>
+      <div>
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">BATCH SLOT</label>
+        <select id="bedit-slot" class="crm-ni" style="width:100%;box-sizing:border-box">
+          <option value="Full Day">☀️ Full Day</option>
+          <option value="First Half">🌅 First Half</option>
+          <option value="Second Half">🌆 Second Half</option>
+        </select>
+      </div>
     </div>
     <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
       <button onclick="closeBatchEditDatesModal()" class="btn btn-outline" style="width:auto;padding:8px 18px;font-size:13px">Cancel</button>
-      <button id="bedit-save-btn" onclick="saveBatchDates()" class="btn" style="width:auto;padding:8px 18px;font-size:13px;background:var(--navy);color:#fff">&#128190; Save Dates</button>
+      <button id="bedit-save-btn" onclick="saveBatchDates()" class="btn" style="width:auto;padding:8px 18px;font-size:13px;background:var(--navy);color:#fff">&#128190; Save</button>
     </div>
   </div>
 </div>

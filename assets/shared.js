@@ -1952,10 +1952,130 @@ window.gasGet = (function () {
       }
       h_revDash(p, function (e2, d) { cb(null, { status: 'ok', savedMonthly: mDB.length, dashboard: d || {} }); });
     }
-    if (mDB.length)  POST('revenue_monthly_achieved', 'on_conflict=month,period,counsellor,business_centre,business_type', mDB,  fin);
+    // Option C: write audit log after successful monthly upsert (fire-and-forget)
+    function writeAuditLog(rows, updatedBy) {
+      if (!rows.length) return;
+      var auditRows = rows.map(function(r) {
+        return {
+          changed_at:       r.updated_at,
+          changed_by:       updatedBy,
+          action:           'upsert',
+          month:            r.month,
+          period:           r.period,
+          counsellor:       r.counsellor,
+          business_centre:  r.business_centre,
+          business_type:    r.business_type,
+          new_fee:          r.achieved_course_fee,
+          new_fee_gst:      r.achieved_course_fee_gst,
+          new_student_count:r.student_count,
+          new_notes:        r.notes,
+          new_locked:       r.locked
+        };
+      });
+      POST('revenue_audit_log', '', auditRows, function() {}); // ignore result — never fail the save
+    }
+    if (mDB.length)  POST('revenue_monthly_achieved', 'on_conflict=month,period,counsellor,business_centre,business_type', mDB, function(e) {
+      if (!e) writeAuditLog(mDB, p.updatedBy || 'Counselor');
+      fin(e);
+    });
     if (tDB.length)  POST('revenue_annual_targets',   'on_conflict=period,counsellor',       tDB,  fin);
     if (ctDB.length) POST('revenue_centre_targets',   'on_conflict=period,centre',           ctDB, fin);
     if (!mDB.length && !tDB.length && !ctDB.length) fin(null);
+  }
+
+  /* getRecentActivity — revenue saves + new students in the last N days */
+  function h_getRecentActivity(p, cb) {
+    var days = parseInt(p.days || 7, 10);
+    var cutoff = new Date(Date.now() - days * 86400000).toISOString();
+    var done = 0, revenueRows = [], studentRows = [], auditRows = [];
+
+    function finish() {
+      if (++done < 3) return;
+      var feed = [];
+
+      // Revenue activity from revenue_monthly_achieved
+      (revenueRows || []).forEach(function(r) {
+        feed.push({
+          type: 'revenue',
+          counsellor: r.counsellor || '',
+          month: r.month || '',
+          period: r.period || '',
+          businessCentre: r.business_centre || '',
+          businessType: r.business_type || '',
+          studentCount: r.student_count || 0,
+          fee: r.achieved_course_fee || 0,
+          updatedBy: r.updated_by || r.counsellor || '',
+          timestamp: r.updated_at || '',
+          notes: r.notes || ''
+        });
+      });
+
+      // New students added recently
+      (studentRows || []).forEach(function(r) {
+        feed.push({
+          type: 'student',
+          studentId: r.student_id || '',
+          studentName: r.name || '',
+          batchCode: r.batch_code || '',
+          centre: r.centre || '',
+          timestamp: r.created_at || ''
+        });
+      });
+
+      // Audit log entries (Option C — if table exists)
+      (auditRows || []).forEach(function(r) {
+        feed.push({
+          type: 'audit',
+          counsellor: r.counsellor || '',
+          month: r.month || '',
+          period: r.period || '',
+          businessCentre: r.business_centre || '',
+          businessType: r.business_type || '',
+          action: r.action || 'update',
+          oldFee: r.old_fee,
+          newFee: r.new_fee,
+          oldStudentCount: r.old_student_count,
+          newStudentCount: r.new_student_count,
+          changedBy: r.changed_by || '',
+          timestamp: r.changed_at || ''
+        });
+      });
+
+      // Sort newest first
+      feed.sort(function(a, b) { return new Date(b.timestamp) - new Date(a.timestamp); });
+
+      // Badge counts
+      var now = new Date();
+      var h24ago = new Date(now - 86400000).toISOString();
+      var last48 = feed.filter(function(f) { return f.timestamp > h24ago; });
+      var revLast24 = last48.filter(function(f) { return f.type === 'revenue'; });
+      var stuLast24 = last48.filter(function(f) { return f.type === 'student'; });
+
+      // Unique counsellors who saved today
+      var counsellorsToday = Array.from(new Set(revLast24.map(function(f) { return f.counsellor; }).filter(Boolean)));
+
+      cb(null, {
+        status: 'ok',
+        feed: feed,
+        badge: last48.length,
+        revenueLast24h: revLast24.length,
+        studentsLast24h: stuLast24.length,
+        counsellorsActiveToday: counsellorsToday
+      });
+    }
+
+    GET('revenue_monthly_achieved',
+      'updated_at=gt.' + encodeURIComponent(cutoff) + '&order=updated_at.desc&limit=200',
+      function(e, rows) { revenueRows = rows || []; finish(); });
+
+    GET('students',
+      'created_at=gt.' + encodeURIComponent(cutoff) + '&order=created_at.desc&limit=100',
+      function(e, rows) { studentRows = rows || []; finish(); });
+
+    // Try audit log (graceful: table may not exist yet)
+    GET('revenue_audit_log',
+      'changed_at=gt.' + encodeURIComponent(cutoff) + '&order=changed_at.desc&limit=200',
+      function(e, rows) { auditRows = e ? [] : (rows || []); finish(); });
   }
 
   /* getHRDashboard — pulls from Supabase; returns ₹L per counsellor, ₹Cr national */
@@ -4911,6 +5031,7 @@ window.gasGet = (function () {
       case 'reviewHODApproval':         return h_reviewHODApproval(params, cb);
       case 'getRevenueDashboard':       return h_revDash(params, cb);
       case 'saveRevenueTargets':        return h_saveRevenue(params, cb);
+      case 'getRecentActivity':         return h_getRecentActivity(params, cb);
       case 'getHRDashboard':            return h_hrDash(params, cb);
       case 'getAdminDashboard':         return h_adminDash(params, cb);
       case 'getAcademicHeadDashboard':  return h_getAcademicHeadDashboard(params, cb);

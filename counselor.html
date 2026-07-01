@@ -8255,12 +8255,16 @@ function loadMyBatches() {
           ${clashBadge}
           ${emptyBadge}
         </div>
-        ${b.instructor?'':renderInlineInstructorAssign(b.batchCode)}
-        <div style="margin-top:6px">
+        ${b.instructor?'':renderInlineInstructorAssign(b.batchCode,'')}
+        <div id="change-instr-panel-${escC(b.batchCode)}" style="display:none;margin-top:6px">
+          ${renderInlineInstructorAssign(b.batchCode, b.instructor||'')}
+        </div>
+        <div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          ${b.instructor?`<button onclick="document.getElementById('change-instr-panel-${escC(b.batchCode)}').style.display=document.getElementById('change-instr-panel-${escC(b.batchCode)}').style.display==='none'?'block':'none'" style="font-size:11px;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer;color:var(--navy)">✏️ Change Instructor</button>`:''}
           <button onclick="toggleCoPanel('${escC(b.batchCode)}')" style="font-size:11px;background:none;border:1px solid #bbf7d0;border-radius:6px;padding:3px 10px;cursor:pointer;color:#166534">↔ Cover instructor <span id="co-arrow-${escC(b.batchCode)}">${b.coInstructor?'▴':'▾'}</span></button>
-          <div id="co-panel-${escC(b.batchCode)}" style="display:${b.coInstructor?'block':'none'};margin-top:6px">
-            ${renderInlineCoInstructorAssign(b.batchCode, b.coInstructor||'', b.coInstructorUntil||'', b.endDate||'')}
-          </div>
+        </div>
+        <div id="co-panel-${escC(b.batchCode)}" style="display:${b.coInstructor?'block':'none'};margin-top:6px">
+          ${renderInlineCoInstructorAssign(b.batchCode, b.coInstructor||'', b.coInstructorUntil||'', b.endDate||'')}
         </div>
         <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
           <button class="btn btn-outline" style="padding:4px 8px; font-size:11px; width:auto; color:var(--navy);" onclick="openBatchEditDatesModal('${escC(b.batchCode)}','${b.startDate||''}','${b.endDate||''}','${escC(b.batchSlot||'Full Day')}')">📅 Edit Batch</button>
@@ -8320,16 +8324,16 @@ function promptDeleteBatch(batchCode, keepStudents) {
   });
 }
 
-function renderInlineInstructorAssign(batchCode) {
+function renderInlineInstructorAssign(batchCode, current) {
   const instList = [
     'Amit Sidpura','Asmita Saroday','Arjun Mistry','Bhavin Patel',
     'Sneha Garodia','Khorehmand Kasad','Nishchay Kapoor','Piyush Ahuja',
     'Preeti Agarwala','Sayan Banerjee','Deepak Nachankar','Sharoon Joy','Seema Athavale'
   ];
-  const opts = instList.map(i=>`<option value="${i}">${i}</option>`).join('');
+  const opts = instList.map(i=>`<option value="${i}"${i===current?' selected':''}>${i}</option>`).join('');
   return `<div class="inline-assign">
-    <select id="assign-${batchCode}"><option value="">Assign instructor</option>${opts}</select>
-    <button class="btn btn-outline" onclick="saveInlineInstructor('${batchCode}')">Save</button>
+    <select id="assign-${batchCode}"><option value="">Select instructor</option>${opts}</select>
+    <button class="btn btn-outline" onclick="saveInlineInstructor('${batchCode}')">✓ Save</button>
   </div>`;
 }
 

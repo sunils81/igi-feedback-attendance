@@ -4677,6 +4677,77 @@ window.gasGet = (function () {
     }
   }
 
+  /* ══════════════════════════════════════════════════════════════
+     CLASS RESOURCES — instructor-posted reference materials (PDF/JPEG,
+     uploaded to the class-materials Storage bucket) and recorded-lecture
+     links (Zoom/Teams/YouTube/Drive — link-paste only, no video upload).
+     A row with session_code = NULL is a batch-wide material; a row with
+     session_code set is tied to that specific lecture.
+  ══════════════════════════════════════════════════════════════ */
+  function h_getClassResources(p, cb) {
+    var bc = String(p.batchCode || '').trim();
+    if (!bc) { cb(null, { status: 'ok', items: [] }); return; }
+    GET('class_resources', 'batch_code=eq.' + encodeURIComponent(bc) + '&order=created_at.desc', function(e, rows) {
+      if (e) { cb(null, { status: 'error', items: [] }); return; }
+      var items = (rows || []).map(function(r) {
+        return {
+          id: r.id, batchCode: r.batch_code, sessionCode: r.session_code || null,
+          category: r.category, title: r.title, sourceType: r.source_type,
+          url: r.source_type === 'upload' ? r.file_url : r.external_url,
+          uploadedBy: r.uploaded_by, createdAt: r.created_at
+        };
+      });
+      cb(null, { status: 'ok', items: items });
+    });
+  }
+
+  function h_addClassResource(p, cb) {
+    var bc = String(p.batchCode || '').trim();
+    var title = String(p.title || '').trim();
+    if (!bc || !title) { cb(null, { status: 'error', reason: 'missing_fields' }); return; }
+    var sourceType = p.sourceType === 'upload' ? 'upload' : 'link';
+    var row = {
+      batch_code: bc,
+      session_code: p.sessionCode || null,
+      category: p.category === 'recording' ? 'recording' : 'material',
+      title: title,
+      source_type: sourceType,
+      file_url: sourceType === 'upload' ? String(p.fileUrl || '') : '',
+      external_url: sourceType === 'upload' ? '' : String(p.externalUrl || '').trim(),
+      file_size_bytes: p.fileSizeBytes ? Number(p.fileSizeBytes) : null,
+      uploaded_by: p.uploadedBy || ''
+    };
+    POST('class_resources', null, row, function(e) {
+      cb(null, e ? { status: 'error' } : { status: 'ok' });
+    });
+  }
+
+  function h_deleteClassResource(p, cb) {
+    var id = p.resourceId;
+    if (!id) { cb(null, { status: 'error', reason: 'missing_id' }); return; }
+    GET('class_resources', 'id=eq.' + encodeURIComponent(id), function(e, rows) {
+      var row = (rows && rows[0]) || null;
+      function finishDelete() {
+        DEL('class_resources', 'id=eq.' + encodeURIComponent(id), function(e2) {
+          cb(null, e2 ? { status: 'error' } : { status: 'ok' });
+        });
+      }
+      if (row && row.source_type === 'upload' && row.file_url) {
+        var marker = '/storage/v1/object/public/class-materials/';
+        var idx = row.file_url.indexOf(marker);
+        if (idx !== -1) {
+          var path = row.file_url.slice(idx + marker.length);
+          fetch(SB + '/storage/v1/object/class-materials/' + path, {
+            method: 'DELETE',
+            headers: { 'Authorization': 'Bearer ' + AK, 'apikey': AK }
+          }).then(finishDelete).catch(finishDelete);
+          return;
+        }
+      }
+      finishDelete();
+    });
+  }
+
   /* getInstructorTests */
   function h_getInstructorTests(p, cb) {
     var instr = String(p.instructor || '').trim();
@@ -5602,6 +5673,9 @@ window.gasGet = (function () {
       case 'updateStudentInfo':         return h_updateStudentInfo(params, cb);
       case 'getInstructorEligibility':  return h_getInstructorEligibility(params, cb);
       case 'getDiplomaEligibilityAll':  return h_getDiplomaEligibilityAll(params, cb);
+      case 'getClassResources':         return h_getClassResources(params, cb);
+      case 'addClassResource':          return h_addClassResource(params, cb);
+      case 'deleteClassResource':       return h_deleteClassResource(params, cb);
       case 'getInstructorTests':        return h_getInstructorTests(params, cb);
       case 'getQuestionBank':           return h_getQuestionBank(params, cb);
       case 'setupQuestionBank':         return h_setupQuestionBank(params, cb);

@@ -698,6 +698,10 @@
         <span class="tab-icon">📝</span>
         <span class="tab-label">Marks</span>
       </button>
+      <button class="nav-tab" onclick="switchTab('tab-resources', this); loadStudentResources();">
+        <span class="tab-icon">📎</span>
+        <span class="tab-label">Resources</span>
+      </button>
       <button class="nav-tab" onclick="switchTab('tab-fees', this)">
         <span class="tab-icon">💰</span>
         <span class="tab-label">Fees</span>
@@ -814,6 +818,13 @@
     <!-- Marks Tab Content -->
     <div id="tab-marks" class="tab-content">
       <div id="portal-marks"></div>
+    </div>
+
+    <!-- Resources Tab Content (materials + recorded lectures) -->
+    <div id="tab-resources" class="tab-content">
+      <div id="student-resources-wrap">
+        <div style="color:#9ca3af;font-size:13px;padding:20px 0;">Loading materials…</div>
+      </div>
     </div>
 
     <!-- Fees Tab Content -->
@@ -3431,6 +3442,97 @@ function loadStudentDiploma() {
     });
 
     wrap.innerHTML = html;
+  });
+}
+
+/* ══════════════════════════════════════════
+   RESOURCES TAB (materials + recorded lectures)
+   Read-only for students — instructors post these
+   from the instructor portal's Resources tab.
+══════════════════════════════════════════ */
+function gasGetP(action, params) {
+  return new Promise(function(resolve) {
+    var p = Object.assign({action: action}, params || {});
+    gasGet(p, function(e, d) { resolve((!e && d) ? d : null); });
+  });
+}
+
+function resIconSt(item) {
+  if (item.category === 'recording') return '🎥';
+  if (item.sourceType === 'upload' && item.url && /\.(jpg|jpeg|png)$/i.test(item.url)) return '🖼️';
+  return '📄';
+}
+
+function resItemRowSt(i) {
+  var dateStr = i.createdAt ? new Date(i.createdAt).toLocaleDateString('en-IN') : '';
+  return '<a href="'+escHtmlSt(i.url||'#')+'" target="_blank" rel="noopener" style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6;text-decoration:none;">' +
+    '<div style="font-size:12px;color:#0D1B2E;font-weight:600;">'+resIconSt(i)+' '+escHtmlSt(i.title)+'</div>' +
+    '<div style="font-size:10px;color:#9ca3af;">'+dateStr+'</div>' +
+  '</a>';
+}
+
+function loadStudentResources() {
+  var wrap = document.getElementById('student-resources-wrap');
+  if (!wrap) return;
+  if (!portalData) { wrap.innerHTML = '<p style="color:#9ca3af;font-size:13px;padding:20px 0;">Please log in first.</p>'; return; }
+  var batches = portalData.allBatches || portalData.batches || [];
+  if (!batches.length) { wrap.innerHTML = '<p style="color:#9ca3af;font-size:13px;padding:20px 0;">No active batches found.</p>'; return; }
+
+  wrap.innerHTML = '<p style="color:#9ca3af;font-size:13px;padding:20px 0;">Loading materials…</p>';
+
+  Promise.all(batches.map(function(b) {
+    return Promise.all([
+      gasGetP('getSessions', {batchCode: b.batchCode}),
+      gasGetP('getClassResources', {batchCode: b.batchCode})
+    ]).then(function(res) {
+      return { batch: b, sessions: (res[0] && res[0].sessions) || [], items: (res[1] && res[1].items) || [] };
+    });
+  })).then(function(results) {
+    var anyResults = results.some(function(r) { return r.items.length > 0; });
+    if (!anyResults) {
+      wrap.innerHTML = '<div style="padding:24px 0;text-align:center;color:#9ca3af;">' +
+        '<div style="font-size:32px;margin-bottom:8px;">📎</div>' +
+        '<div style="font-size:13px;">Nothing posted yet. Your instructor will share materials and recordings here.</div>' +
+      '</div>';
+      return;
+    }
+
+    var html = '';
+    results.forEach(function(r) {
+      var general = r.items.filter(function(i) { return i.category === 'material' && !i.sessionCode; });
+      var bySession = r.sessions.map(function(s) {
+        var items = r.items.filter(function(i) { return i.sessionCode === s.sessionCode; });
+        return { session: s, items: items };
+      }).filter(function(x) { return x.items.length > 0; });
+
+      if (!general.length && !bySession.length) return;
+
+      html += '<div style="margin-bottom:18px;">' +
+        '<div style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">' +
+          escHtmlSt(r.batch.course || '') + (r.batch.batchCode ? ' &nbsp;·&nbsp; ' + escHtmlSt(r.batch.batchCode) : '') +
+        '</div>';
+
+      if (general.length) {
+        html += '<div style="background:#f9fafb;border-radius:8px;padding:10px 12px;margin-bottom:10px;">' +
+          '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px;">GENERAL MATERIALS</div>' +
+          general.map(resItemRowSt).join('') +
+        '</div>';
+      }
+
+      bySession.forEach(function(x) {
+        var s = x.session;
+        html += '<div style="background:#f9fafb;border-radius:8px;padding:10px 12px;margin-bottom:10px;">' +
+          '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px;">S'+String(s.sessNo).padStart(2,'0')+' — '+escHtmlSt(s.sessionDate)+(s.topic?' — '+escHtmlSt(s.topic):'')+'</div>' +
+          x.items.map(resItemRowSt).join('') +
+        '</div>';
+      });
+
+      html += '</div>';
+    });
+
+    wrap.innerHTML = html || '<p style="color:#9ca3af;font-size:13px;padding:20px 0;">Nothing posted yet.</p>';
+  }).catch(function() {
+    wrap.innerHTML = '<p style="color:#dc2626;font-size:13px;padding:20px 0;">Could not load materials. Please try again.</p>';
   });
 }
 

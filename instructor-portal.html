@@ -301,6 +301,7 @@
     <button class="tab active" onclick="iTab('t-session')">📅 Session</button>
     <button class="tab" onclick="iTab('t-attendance')">👥 Attendance</button>
     <button class="tab" onclick="iTab('t-marks')">📝 Marks</button>
+    <button class="tab" onclick="iTab('t-resources')">📚 Resources</button>
     <button class="tab" onclick="iTab('t-mybatches')">🗂 My Batches</button>
     <button class="tab" id="t-batchmgmt-tab" style="display:none" onclick="iTab('t-batchmgmt')">🏫 Batches</button>
     <button class="tab" id="t-academic-tab" style="display:none" onclick="iTab('t-academic')">🎓 Academic Overview</button>
@@ -471,6 +472,59 @@
           <button class="btn btn-outline" style="width:auto" onclick="showMarksList()">← Back to Tests</button>
         </div>
         <div class="err-box" id="me-err"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TAB: RESOURCES (materials + recorded lectures) ── -->
+  <div id="t-resources" class="tab-content">
+    <!-- Sub-screen A: list view -->
+    <div id="res-list-screen">
+      <div class="card">
+        <div class="section-tag">Class Resources</div>
+        <h2>Materials &amp; Recordings</h2>
+        <p class="sub">Post reference documents (PDF/JPEG) for students, or share a recorded-lecture link (Zoom cloud recording, Teams, YouTube unlisted, Drive). Recordings are link-only — upload your video to your usual host first, then paste the link here.</p>
+        <div class="field"><label>Select Batch *</label>
+          <select id="res-batch" onchange="loadClassResources()"><option value="">Select batch</option></select>
+        </div>
+      </div>
+
+      <div class="card" id="res-general-card" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div class="section-tag" style="margin-bottom:0">General Materials</div>
+          <button class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:12px" onclick="showAddResourceScreen('material', null)">+ Add Material</button>
+        </div>
+        <p class="sub">Applies to the whole batch — syllabus, handbook, reference sheets.</p>
+        <div id="res-general-list"></div>
+      </div>
+
+      <div class="card" id="res-sessions-card" style="display:none">
+        <div class="section-tag">By Session</div>
+        <h2 style="margin-bottom:4px">Lecture Materials &amp; Recordings</h2>
+        <div id="res-sessions-list"></div>
+      </div>
+    </div>
+
+    <!-- Sub-screen B: add resource -->
+    <div id="res-add-screen" style="display:none">
+      <div class="card">
+        <div class="section-tag" id="res-add-tag">New Resource</div>
+        <h2 id="res-add-title">Add Material</h2>
+        <div class="field"><label>Title *</label>
+          <input type="text" id="ra-title" placeholder="e.g. Week 3 Handout — Clarity Grading">
+        </div>
+        <div class="field" id="ra-file-field"><label>File (PDF or JPEG, max 200MB) *</label>
+          <input type="file" id="ra-file" accept=".pdf,.jpg,.jpeg,.png">
+          <div id="ra-upload-progress" style="font-size:11px;color:var(--muted);margin-top:4px;display:none"></div>
+        </div>
+        <div class="field" id="ra-link-field" style="display:none"><label>Recording Link *</label>
+          <input type="url" id="ra-url" placeholder="https://zoom.us/rec/share/... or YouTube/Drive/Teams link">
+        </div>
+        <div class="err-box" id="ra-err"></div>
+        <div style="display:flex;gap:10px;margin-top:4px">
+          <button class="btn btn-gold" id="ra-save-btn" onclick="submitAddResource()">Save</button>
+          <button class="btn btn-outline" style="width:auto" onclick="showResourceList()">← Cancel</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2608,6 +2662,7 @@ function iTab(id) {
   if (id==='t-session')    { loadTodaySessions(); if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-attendance') { stopAttendanceRefresh(); if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-marks')      { if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
+  if (id==='t-resources')  { if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-mybatches')  loadMyBatches();
   if (id==='t-batchmgmt')  loadBatchMgmtTab();
   if (id==='t-academic')   loadAcademicDashboard(false);
@@ -2761,7 +2816,7 @@ function changePassword() {
 function loadInstructorBatches() {
   gasGet({action:'getInstructorBatches', instructor:instructorName}, function(e,d) {
     if (e||!d||!d.batches) {
-      ['at-batch','mk-batch','ex-batch'].forEach(id => {
+      ['at-batch','mk-batch','ex-batch','res-batch'].forEach(id => {
         const sel = document.getElementById(id);
         sel.innerHTML = '<option value="">Could not load batches</option>';
       });
@@ -3620,6 +3675,178 @@ function createTest() {
     openTestMarks(d.assessmentId,name,new Date(date).toLocaleDateString('en-IN'),Number(total),type);
     document.getElementById('ct-name').value='';
     document.getElementById('ct-total').value='';
+  });
+}
+
+// ── RESOURCES (materials + recorded lectures) ──────────────────
+var _CM_SB = 'https://atbexvtrcopaagcdbpqi.supabase.co';
+var _CM_AK = 'sb_publishable_TpzxX5a3M7lnFeND8xLfhQ_YJOxOkhb';
+var resCurrentBatch = '';
+var resAddMode = 'material';       // 'material' | 'recording'
+var resAddSessionCode = null;      // null = batch-wide
+var resSessionsCache = [];
+var resItemsCache = [];
+
+function loadClassResources() {
+  resCurrentBatch = document.getElementById('res-batch').value;
+  var generalCard = document.getElementById('res-general-card');
+  var sessionsCard = document.getElementById('res-sessions-card');
+  if (!resCurrentBatch) { generalCard.style.display='none'; sessionsCard.style.display='none'; return; }
+  generalCard.style.display='block'; sessionsCard.style.display='block';
+  document.getElementById('res-general-list').innerHTML = loadingState('Loading materials…');
+  document.getElementById('res-sessions-list').innerHTML = loadingState('Loading sessions…');
+
+  gasGet({action:'getSessions', batchCode:resCurrentBatch}, function(e1,d1) {
+    resSessionsCache = (!e1 && d1 && d1.sessions) ? d1.sessions : [];
+    gasGet({action:'getClassResources', batchCode:resCurrentBatch}, function(e2,d2) {
+      resItemsCache = (!e2 && d2 && d2.items) ? d2.items : [];
+      renderGeneralMaterials();
+      renderSessionResources();
+    });
+  });
+}
+
+function resIcon(item) {
+  if (item.category === 'recording') return '🎥';
+  if (item.sourceType === 'upload' && item.url && /\.(jpg|jpeg|png)$/i.test(item.url)) return '🖼️';
+  return '📄';
+}
+
+function renderGeneralMaterials() {
+  var list = document.getElementById('res-general-list');
+  var items = resItemsCache.filter(function(i) { return i.category === 'material' && !i.sessionCode; });
+  if (!items.length) { list.innerHTML = '<p style="font-size:12px;color:var(--muted);padding:6px 0">No general materials posted yet.</p>'; return; }
+  list.innerHTML = items.map(function(i) { return resItemRow(i); }).join('');
+}
+
+function renderSessionResources() {
+  var list = document.getElementById('res-sessions-list');
+  if (!resSessionsCache.length) { list.innerHTML = '<p style="font-size:12px;color:var(--muted);padding:6px 0">No sessions scheduled for this batch yet.</p>'; return; }
+  list.innerHTML = resSessionsCache.map(function(s) {
+    var items = resItemsCache.filter(function(i) { return i.sessionCode === s.sessionCode; });
+    var itemsHtml = items.length
+      ? items.map(function(i) { return resItemRow(i); }).join('')
+      : '<p style="font-size:11px;color:var(--muted);padding:4px 0">Nothing posted for this session yet.</p>';
+    return '<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px">' +
+        '<div style="font-weight:700;font-size:13px;color:var(--navy)">S'+String(s.sessNo).padStart(2,'0')+' — '+escHtml(s.sessionDate)+(s.topic?' — '+escHtml(s.topic):'')+'</div>' +
+        '<div style="display:flex;gap:6px">' +
+          '<button class="btn btn-outline" style="width:auto;padding:4px 10px;font-size:11px" onclick="showAddResourceScreen(\'material\',\''+s.sessionCode+'\')">+ Material</button>' +
+          '<button class="btn btn-outline" style="width:auto;padding:4px 10px;font-size:11px" onclick="showAddResourceScreen(\'recording\',\''+s.sessionCode+'\')">+ Recording</button>' +
+        '</div>' +
+      '</div>' +
+      itemsHtml +
+    '</div>';
+  }).join('');
+}
+
+function resItemRow(i) {
+  var dateStr = i.createdAt ? new Date(i.createdAt).toLocaleDateString('en-IN') : '';
+  return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6">' +
+    '<div style="font-size:12px;color:var(--navy)">'+resIcon(i)+' <a href="'+escHtml(i.url||'#')+'" target="_blank" rel="noopener" style="color:var(--navy);font-weight:600;text-decoration:none">'+escHtml(i.title)+'</a>' +
+      '<span style="color:var(--muted);font-size:10px;margin-left:6px">'+dateStr+'</span></div>' +
+    '<button class="btn btn-outline" style="width:auto;padding:3px 8px;font-size:10px;color:#dc2626;border-color:#fca5a5" onclick="deleteResourceItem(\''+i.id+'\')">Delete</button>' +
+  '</div>';
+}
+
+function showAddResourceScreen(mode, sessionCode) {
+  resAddMode = mode;
+  resAddSessionCode = sessionCode || null;
+  document.getElementById('ra-title').value = '';
+  document.getElementById('ra-file').value = '';
+  document.getElementById('ra-url').value = '';
+  document.getElementById('ra-err').classList.remove('show');
+  document.getElementById('ra-upload-progress').style.display = 'none';
+  var isRecording = mode === 'recording';
+  document.getElementById('ra-file-field').style.display = isRecording ? 'none' : 'block';
+  document.getElementById('ra-link-field').style.display = isRecording ? 'block' : 'none';
+  document.getElementById('res-add-tag').textContent = isRecording ? 'Recorded Lecture' : 'New Material';
+  document.getElementById('res-add-title').textContent = isRecording ? 'Add Recording Link' : (sessionCode ? 'Add Session Material' : 'Add General Material');
+  document.getElementById('res-list-screen').style.display = 'none';
+  document.getElementById('res-add-screen').style.display = 'block';
+}
+
+function showResourceList() {
+  document.getElementById('res-add-screen').style.display = 'none';
+  document.getElementById('res-list-screen').style.display = 'block';
+  loadClassResources();
+}
+
+function uploadFileToClassMaterials(file, batchCode, onProgress) {
+  return new Promise(function(resolve, reject) {
+    var safeName = file.name.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_.-]/g,'');
+    var path = batchCode + '/' + Date.now() + '-' + safeName;
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', _CM_SB + '/storage/v1/object/class-materials/' + path, true);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + _CM_AK);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.setRequestHeader('x-upsert', 'true');
+    if (xhr.upload && onProgress) {
+      xhr.upload.onprogress = function(evt) {
+        if (evt.lengthComputable) onProgress(Math.round(100 * evt.loaded / evt.total));
+      };
+    }
+    xhr.onload = function() {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(_CM_SB + '/storage/v1/object/public/class-materials/' + path);
+      } else {
+        reject(new Error('Upload failed (' + xhr.status + ')'));
+      }
+    };
+    xhr.onerror = function() { reject(new Error('Network error during upload')); };
+    xhr.send(file);
+  });
+}
+
+function submitAddResource() {
+  var title = document.getElementById('ra-title').value.trim();
+  var err = document.getElementById('ra-err');
+  var btn = document.getElementById('ra-save-btn');
+  err.classList.remove('show');
+  if (!title) { err.textContent = 'Please enter a title.'; err.classList.add('show'); return; }
+
+  function saveRow(sourceType, fileUrl, externalUrl, fileSizeBytes) {
+    gasGet({
+      action: 'addClassResource', batchCode: resCurrentBatch, sessionCode: resAddSessionCode,
+      category: resAddMode, title: title, sourceType: sourceType,
+      fileUrl: fileUrl || '', externalUrl: externalUrl || '', fileSizeBytes: fileSizeBytes || '',
+      uploadedBy: instructorName
+    }, function(e, d) {
+      btn.textContent = 'Save'; btn.disabled = false;
+      if (e || !d || d.status !== 'ok') { err.textContent = 'Could not save. Please try again.'; err.classList.add('show'); return; }
+      showToast('Posted.'); showResourceList();
+    });
+  }
+
+  if (resAddMode === 'recording') {
+    var url = document.getElementById('ra-url').value.trim();
+    if (!url || !/^https?:\/\//i.test(url)) { err.textContent = 'Please paste a valid recording link (starting with http:// or https://).'; err.classList.add('show'); return; }
+    btn.textContent = 'Saving…'; btn.disabled = true;
+    saveRow('link', null, url, null);
+  } else {
+    var fileInput = document.getElementById('ra-file');
+    var file = fileInput.files[0];
+    if (!file) { err.textContent = 'Please choose a PDF or image file.'; err.classList.add('show'); return; }
+    var maxBytes = 200 * 1024 * 1024;
+    if (file.size > maxBytes) { err.textContent = 'File is too large (max 200MB). For lecture recordings, paste a link instead.'; err.classList.add('show'); return; }
+    var progressEl = document.getElementById('ra-upload-progress');
+    progressEl.style.display = 'block'; progressEl.textContent = 'Uploading… 0%';
+    btn.textContent = 'Uploading…'; btn.disabled = true;
+    uploadFileToClassMaterials(file, resCurrentBatch, function(pct) { progressEl.textContent = 'Uploading… ' + pct + '%'; })
+      .then(function(publicUrl) { saveRow('upload', publicUrl, null, file.size); })
+      .catch(function(uploadErr) {
+        btn.textContent = 'Save'; btn.disabled = false;
+        err.textContent = uploadErr.message || 'Upload failed. Please try again.'; err.classList.add('show');
+      });
+  }
+}
+
+function deleteResourceItem(id) {
+  if (!confirm('Delete this item? This cannot be undone.')) return;
+  gasGet({action:'deleteClassResource', resourceId:id}, function(e,d) {
+    if (e || !d || d.status !== 'ok') { showToast('Could not delete. Please try again.', 'error'); return; }
+    showToast('Deleted.');
+    loadClassResources();
   });
 }
 

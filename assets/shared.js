@@ -267,6 +267,120 @@ window.gasGet = (function () {
     };
   }
 
+  /* ══════════════════════════════════════════════════════════════
+     ONLINE-TEST SCORING BRIDGE
+     Weekly/Final/Practical scores mostly come from the auto-graded
+     Online Tests system (online_tests/test_responses/test_questions/
+     question_bank), not just the manual Marks tab (assessments/
+     assessment_marks). buildDiplomaRow() only understands "assessment"
+     rows + a marksMap, so this turns released online tests into the
+     same shape: synthetic assessment rows (max_marks fixed at 100,
+     since the score is already normalised to a percentage) plus a
+     per-student marksMap keyed by test_id.
+
+     batchCodesArr: array of batch codes (any case) to fetch for.
+     Returns: { assessmentsByBatch: {BC -> [assessment...]}, marksByStudent: {studentId -> {test_id -> {marks}}} }
+  ══════════════════════════════════════════════════════════════ */
+  async function fetchOnlineTestPseudoData(batchCodesArr) {
+    function getP(table, qs) {
+      return new Promise(function(resolve) {
+        GET(table, qs, function(err, data) { resolve(err ? [] : (data || [])); });
+      });
+    }
+    var wanted = (batchCodesArr || []).map(function(b) { return String(b).toUpperCase(); }).filter(Boolean);
+    var empty = { assessmentsByBatch: {}, marksByStudent: {} };
+    if (!wanted.length) return empty;
+
+    var otRows = await getP('online_tests', 'results_released=eq.Yes&select=test_id,title,test_type,batch_codes,batch_code');
+    var relevant = otRows.filter(function(ot) {
+      var raw = ot.batch_codes || ot.batch_code || '';
+      var codes = String(raw).split(',').map(function(s) { return s.trim().toUpperCase(); }).filter(Boolean);
+      return codes.some(function(c) { return wanted.indexOf(c) !== -1; });
+    });
+    if (!relevant.length) return empty;
+
+    var testIds = relevant.map(function(t) { return t.test_id; });
+    var [responses, questions] = await Promise.all([
+      getP('test_responses', 'test_id=in.(' + testIds.map(encodeURIComponent).join(',') + ')&select=test_id,student_id,score,answers'),
+      getP('test_questions', 'test_id=in.(' + testIds.map(encodeURIComponent).join(',') + ')&select=test_id,question_id')
+    ]);
+
+    var qids = questions.map(function(q) { return q.question_id; });
+    var uniqueQids = qids.filter(function(v, i, a) { return a.indexOf(v) === i; });
+    var qMap = {};
+    if (uniqueQids.length) {
+      var qbRows = await getP('question_bank', 'id=in.(' + uniqueQids.map(encodeURIComponent).join(',') + ')&select=id,correct_ans,max_marks,q_type');
+      qbRows.forEach(function(q) { qMap[String(q.id)] = q; });
+    }
+    var testQMap = {};
+    questions.forEach(function(tq) { if (!testQMap[tq.test_id]) testQMap[tq.test_id] = []; testQMap[tq.test_id].push(tq.question_id); });
+
+    var optLetters = ['A', 'B', 'C', 'D'];
+    var pctByKey = {}; // test_id|student_id -> pct
+    responses.forEach(function(tr) {
+      var qidsForTest = testQMap[tr.test_id] || [];
+      var answers = tr.answers || {};
+      var totalMarks = 0, obtainedMarks = 0;
+      qidsForTest.forEach(function(qid) {
+        var q = qMap[String(qid)];
+        if (!q) return;
+        var maxMark = parseFloat(q.max_marks || 1);
+        totalMarks += maxMark;
+        if (q.q_type && q.q_type !== 'MCQ') return;
+        var ca = String(q.correct_ans || '').trim();
+        var studentAns = String(answers[String(qid)] || '').trim();
+        if (!studentAns || !ca) return;
+        var optIdx = parseInt(studentAns, 10) - 1;
+        var isCorrect = ca === studentAns
+          || (optIdx >= 0 && optLetters[optIdx] && ca.toUpperCase() === optLetters[optIdx])
+          || (optIdx >= 0 && String(optIdx + 1) === ca);
+        if (isCorrect) obtainedMarks += maxMark;
+      });
+      // Fall back to the stored score if we couldn't compute from questions (e.g. descriptive/portfolio tests)
+      if (totalMarks === 0 && tr.score != null) { obtainedMarks = parseFloat(tr.score || 0); totalMarks = 100; }
+      if (totalMarks === 0) return;
+      pctByKey[tr.test_id + '|' + tr.student_id] = Math.round(100 * obtainedMarks / totalMarks);
+    });
+
+    var assessmentsByBatch = {};
+    relevant.forEach(function(ot) {
+      var raw = ot.batch_codes || ot.batch_code || '';
+      var codes = String(raw).split(',').map(function(s) { return s.trim().toUpperCase(); }).filter(Boolean);
+      codes.forEach(function(bc) {
+        if (wanted.indexOf(bc) === -1) return;
+        if (!assessmentsByBatch[bc]) assessmentsByBatch[bc] = [];
+        assessmentsByBatch[bc].push({
+          assessment_id: ot.test_id, batch_code: bc, test_name: ot.title,
+          test_type: ot.test_type, max_marks: 100, held_on: null
+        });
+      });
+    });
+
+    var marksByStudent = {};
+    responses.forEach(function(tr) {
+      var key = tr.test_id + '|' + tr.student_id;
+      if (!(key in pctByKey)) return;
+      if (!marksByStudent[tr.student_id]) marksByStudent[tr.student_id] = {};
+      marksByStudent[tr.student_id][tr.test_id] = { marks: pctByKey[key], remarks: '' };
+    });
+
+    return { assessmentsByBatch: assessmentsByBatch, marksByStudent: marksByStudent };
+  }
+
+  /* Merge synthetic online-test assessments/marks into the manual (assessments/assessment_marks) ones. */
+  function mergeOnlineTestData(assessmentsByBatch, marksByStudent, otData) {
+    Object.keys(otData.assessmentsByBatch).forEach(function(bc) {
+      if (!assessmentsByBatch[bc]) assessmentsByBatch[bc] = [];
+      assessmentsByBatch[bc] = assessmentsByBatch[bc].concat(otData.assessmentsByBatch[bc]);
+    });
+    Object.keys(otData.marksByStudent).forEach(function(sid) {
+      if (!marksByStudent[sid]) marksByStudent[sid] = {};
+      Object.keys(otData.marksByStudent[sid]).forEach(function(tid) {
+        marksByStudent[sid][tid] = otData.marksByStudent[sid][tid];
+      });
+    });
+  }
+
   function getActiveStudentCountsByBatch(cb) {
     POST('rpc/get_active_student_counts', '', {}, function(e, rows) {
       var counts = {};
@@ -3661,18 +3775,31 @@ window.gasGet = (function () {
         if (a.attendance === 'Present' || a.attendance === 'Late') attByBatch[bc].present++;
       });
 
-      var assessMap = {};
-      assessments.forEach(function(a) { assessMap[a.assessment_id] = a; });
-
-      // Build a marks lookup: assessment_id → mark row
+      // Build a marks lookup: assessment_id → mark row (manual "Marks" tab entries)
       var marksMap = {};
       marks.forEach(function(m) { marksMap[m.assessment_id] = m; });
+
+      var assessmentsByBatch = {};
+      assessments.forEach(function(a) {
+        var bc = (a.batch_code || '').toUpperCase();
+        if (!assessmentsByBatch[bc]) assessmentsByBatch[bc] = [];
+        assessmentsByBatch[bc].push(a);
+      });
+
+      // Merge in auto-graded Online Tests (most Weekly/Final scores live here, not in the manual table)
+      var otData = await fetchOnlineTestPseudoData(batchCodes);
+      var otMarksForThisStudent = otData.marksByStudent[studentId] || {};
+      Object.keys(otData.assessmentsByBatch).forEach(function(bc) {
+        if (!assessmentsByBatch[bc]) assessmentsByBatch[bc] = [];
+        assessmentsByBatch[bc] = assessmentsByBatch[bc].concat(otData.assessmentsByBatch[bc]);
+      });
+      Object.keys(otMarksForThisStudent).forEach(function(tid) { marksMap[tid] = otMarksForThisStudent[tid]; });
 
       var rows = enrollments.map(function(e) {
         var bc = e.batch_code.toUpperCase();
         var b = batchMap[e.batch_code] || {};
         var att = attByBatch[bc] || { total: 0, present: 0 };
-        var batchAssessments = assessments.filter(function(a) { return (a.batch_code || '').toUpperCase() === bc; });
+        var batchAssessments = assessmentsByBatch[bc] || [];
 
         return buildDiplomaRow({
           studentId: studentId,
@@ -4410,6 +4537,10 @@ window.gasGet = (function () {
         assessmentsByBatch[bc].push(a);
       });
 
+      // Merge in auto-graded Online Tests (most Weekly/Final scores live here, not in the manual table)
+      var otData = await fetchOnlineTestPseudoData(batchCodes);
+      mergeOnlineTestData(assessmentsByBatch, marksByStudent, otData);
+
       var byBatch = {};
       students.forEach(function(s) {
         var bc = s.batch_code.toUpperCase();
@@ -4515,6 +4646,10 @@ window.gasGet = (function () {
         if (!marksByStudent[m.student_id]) marksByStudent[m.student_id] = {};
         marksByStudent[m.student_id][m.assessment_id] = m;
       });
+
+      // Merge in auto-graded Online Tests (most Weekly/Final scores live here, not in the manual table)
+      var otData = await fetchOnlineTestPseudoData(batches.map(function(b) { return b.batch_code; }));
+      mergeOnlineTestData(assessmentsByBatch, marksByStudent, otData);
 
       var diplomaList = students.map(function(st) {
         var b = batchMap[st.batch_code] || {};

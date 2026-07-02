@@ -15292,17 +15292,25 @@ function enrollClearStudent() {
 }
 
 function enrollToggleNewStudent() {
-  var form = document.getElementById('enroll-new-student-form');
-  var showing = form.style.display !== 'none';
+  var form     = document.getElementById('enroll-new-student-form');
+  var searchWrap = document.getElementById('enroll-search-wrap');
+  var toggle   = document.getElementById('enroll-new-student-toggle');
+  var showing  = form.style.display !== 'none';
   if (showing) {
-    form.style.display = 'none';
+    // collapse new-student form → restore search
+    form.style.display       = 'none';
+    searchWrap.style.display = 'block';
+    toggle.textContent       = '+ Not found? Create new student';
     _enrollState.isNewStudent = false;
   } else {
-    form.style.display = 'block';
-    _enrollState.isNewStudent = true;
+    // show new-student form → hide search field to avoid confusion
+    form.style.display       = 'block';
+    searchWrap.style.display = 'none';
+    document.getElementById('enroll-dd').classList.remove('open');
+    toggle.textContent       = '← Back to search';
+    _enrollState.isNewStudent    = true;
     _enrollState.selectedStudent = null;
     document.getElementById('enroll-selected-chip').style.display = 'none';
-    document.getElementById('enroll-dd').classList.remove('open');
     document.getElementById('enroll-ns-name').focus();
   }
 }
@@ -15790,7 +15798,7 @@ function enrollSave() {
       <!-- STEP 1: STUDENT -->
       <div class="enroll-step">
         <div class="enroll-step-title"><span class="enroll-step-num">1</span> Student</div>
-        <div class="enroll-search-wrap">
+        <div id="enroll-search-wrap" class="enroll-search-wrap">
           <input id="enroll-student-search" type="text" placeholder="Search by name or mobile…" autocomplete="off" oninput="enrollSearchDebounce()">
           <div id="enroll-dd" class="enroll-dd"></div>
         </div>

@@ -482,8 +482,25 @@
     <div id="res-list-screen">
       <div class="card">
         <div class="section-tag">Class Resources</div>
-        <h2>Materials &amp; Recordings</h2>
+        <div style="display:flex;align-items:center;gap:8px">
+          <h2 style="margin-bottom:0">Materials &amp; Recordings</h2>
+          <button type="button" onclick="toggleResInfo()" title="What should I post here?"
+            style="width:22px;height:22px;border-radius:50%;border:1.5px solid var(--gold);background:#fff;color:var(--navy);font-weight:800;font-size:12px;line-height:1;cursor:pointer;flex-shrink:0">i</button>
+        </div>
         <p class="sub">Post reference documents (PDF/JPEG) for students, or share a recorded-lecture link (Zoom cloud recording, Teams, YouTube unlisted, Drive). Recordings are link-only — upload your video to your usual host first, then paste the link here.</p>
+
+        <div id="res-info-box" style="display:none;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:12.5px;line-height:1.6;color:#78350f">
+          <div style="font-weight:700;margin-bottom:6px;color:#0D1B2E">What to post here</div>
+          <p style="margin:0 0 8px"><strong>📄 Material</strong> — anything a student should read or refer back to: syllabus, handouts, practice sheets, reference images/charts, grading rubrics. Upload as PDF or JPEG/PNG, max 200MB. Post it as <em>General</em> if it applies to the whole batch (e.g. syllabus), or against a specific session if it's only relevant to that lecture (e.g. that day's handout).</p>
+          <p style="margin:0 0 8px"><strong>🎥 Recording</strong> — a link to the lecture recording, always tied to the session it was recorded in. Do <strong>not</strong> try to upload the video file itself — paste a share link instead:</p>
+          <ul style="margin:0 0 8px;padding-left:18px">
+            <li><strong>Zoom:</strong> after the meeting ends, go to Zoom web portal → Recordings → open the recording → "Share" → copy the link (make sure sharing is enabled and, if needed, set a password students already have).</li>
+            <li><strong>Microsoft Teams:</strong> open the meeting chat/recording in Teams or Stream → "Share" or "Copy link" → make sure it's shared with "People in your organisation" or "Anyone with the link" so students can open it.</li>
+            <li><strong>Recorded on your computer:</strong> upload the file to YouTube as <em>Unlisted</em> or to Google Drive with link-sharing turned on, then paste that link here.</li>
+          </ul>
+          <p style="margin:0">Keep titles short and dated (e.g. "Week 3 Handout" or "Lecture Recording — 12 Jun") so students can find things quickly.</p>
+        </div>
+
         <div class="field"><label>Select Batch *</label>
           <select id="res-batch" onchange="loadClassResources()"><option value="">Select batch</option></select>
         </div>
@@ -509,7 +526,8 @@
     <div id="res-add-screen" style="display:none">
       <div class="card">
         <div class="section-tag" id="res-add-tag">New Resource</div>
-        <h2 id="res-add-title">Add Material</h2>
+        <h2 id="res-add-title" style="margin-bottom:4px">Add Material</h2>
+        <p class="sub" id="ra-hint">Upload a PDF or image students can refer back to.</p>
         <div class="field"><label>Title *</label>
           <input type="text" id="ra-title" placeholder="e.g. Week 3 Handout — Clarity Grading">
         </div>
@@ -2662,7 +2680,7 @@ function iTab(id) {
   if (id==='t-session')    { loadTodaySessions(); if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-attendance') { stopAttendanceRefresh(); if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-marks')      { if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
-  if (id==='t-resources')  { if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
+  if (id==='t-resources')  { syncResourcesBatchSelect(); }
   if (id==='t-mybatches')  loadMyBatches();
   if (id==='t-batchmgmt')  loadBatchMgmtTab();
   if (id==='t-academic')   loadAcademicDashboard(false);
@@ -2835,7 +2853,7 @@ function loadInstructorBatches() {
     }
     updateTabVisibilityForCourses();
     renderInstructorSummary();
-    ['at-batch','mk-batch','ex-batch'].forEach(id => {
+    ['at-batch','mk-batch','ex-batch','res-batch'].forEach(id => {
       const sel = document.getElementById(id);
       sel.innerHTML = '<option value="">Select a batch</option>';
       batches.forEach(b => {
@@ -3687,6 +3705,31 @@ var resAddSessionCode = null;      // null = batch-wide
 var resSessionsCache = [];
 var resItemsCache = [];
 
+function syncResourcesBatchSelect() {
+  var sel = document.getElementById('res-batch');
+  if (!sel) return;
+  if (instructorBatchesCache && instructorBatchesCache.length) {
+    // Cache already warm from another tab — just sync this dropdown's options, no need to re-fetch.
+    var current = sel.value;
+    sel.innerHTML = '<option value="">Select a batch</option>';
+    instructorBatchesCache.forEach(function(b) {
+      var o = document.createElement('option');
+      o.value = b.batchCode;
+      o.textContent = b.batchCode + ' — ' + b.course + ' (' + b.centre + ')';
+      sel.appendChild(o);
+    });
+    if (current) sel.value = current;
+  } else {
+    loadInstructorBatches();
+  }
+}
+
+function toggleResInfo() {
+  var box = document.getElementById('res-info-box');
+  if (!box) return;
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
 function loadClassResources() {
   resCurrentBatch = document.getElementById('res-batch').value;
   var generalCard = document.getElementById('res-general-card');
@@ -3762,6 +3805,11 @@ function showAddResourceScreen(mode, sessionCode) {
   document.getElementById('ra-link-field').style.display = isRecording ? 'block' : 'none';
   document.getElementById('res-add-tag').textContent = isRecording ? 'Recorded Lecture' : 'New Material';
   document.getElementById('res-add-title').textContent = isRecording ? 'Add Recording Link' : (sessionCode ? 'Add Session Material' : 'Add General Material');
+  document.getElementById('ra-hint').textContent = isRecording
+    ? 'Paste the share link from Zoom Recordings, Teams/Stream, YouTube (Unlisted), or Google Drive — do not upload the video file itself.'
+    : (sessionCode
+        ? 'Upload the PDF/image for this specific lecture (e.g. that day\'s handout).'
+        : 'Upload a PDF/image that applies to the whole batch (e.g. syllabus, reference sheet).');
   document.getElementById('res-list-screen').style.display = 'none';
   document.getElementById('res-add-screen').style.display = 'block';
 }

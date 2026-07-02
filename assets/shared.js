@@ -2078,6 +2078,99 @@ window.gasGet = (function () {
       function(e, rows) { auditRows = e ? [] : (rows || []); finish(); });
   }
 
+  /* getRevenueAuditFlags — client-side scan of revenue_monthly_achieved for anomalies */
+  function h_revAuditFlags(p, cb) {
+    var period = p.period || '2026-27';
+    GET('revenue_monthly_achieved',
+      'period=eq.' + encodeURIComponent(period) + '&order=counsellor.asc,month.asc&limit=2000',
+      function(e, rows) {
+        if (e || !rows) return cb(null, { status: 'error', reason: String(e || 'no_data') });
+        rows = rows || [];
+
+        var flags = [];
+
+        // ── Build counsellor averages for spike detection ──────────────────
+        var counsellorTotals = {}; // counsellor → {sum, count}
+        rows.forEach(function(r) {
+          var key = r.counsellor;
+          if (!counsellorTotals[key]) counsellorTotals[key] = { sum: 0, count: 0 };
+          if (r.achieved_course_fee > 0) {
+            counsellorTotals[key].sum += Number(r.achieved_course_fee);
+            counsellorTotals[key].count++;
+          }
+        });
+
+        rows.forEach(function(r, idx) {
+          var fee = Number(r.achieved_course_fee || 0);
+          var students = Number(r.student_count || 0);
+          var assignedCentre = (r.assigned_centre || '').trim();
+          var bizCentre = (r.business_centre || '').trim();
+
+          // 1. Centre mismatch — counsellor's assigned centre ≠ business centre recorded
+          if (assignedCentre && bizCentre && assignedCentre !== bizCentre) {
+            flags.push({
+              type: 'centre_mismatch',
+              severity: 'red',
+              message: r.counsellor + ' — centre mismatch',
+              detail: 'Assigned to ' + assignedCentre + ' but revenue logged under ' + bizCentre + ' · ' + r.month + ' · ' + (r.business_type || ''),
+              rows: [{ rowIndex: idx + 1, month: r.month }]
+            });
+          }
+
+          // 2. Fee spike — this entry is > 3× counsellor's own average
+          var ct = counsellorTotals[r.counsellor];
+          if (ct && ct.count >= 2 && fee > 0) {
+            var avg = ct.sum / ct.count;
+            if (fee > avg * 3) {
+              flags.push({
+                type: 'spike',
+                severity: 'amber',
+                message: r.counsellor + ' — unusually high revenue',
+                detail: '₹' + Math.round(fee).toLocaleString('en-IN') + ' in ' + r.month + ' (' + bizCentre + ' · ' + (r.business_type || '') + ') vs. avg ₹' + Math.round(avg).toLocaleString('en-IN'),
+                rows: [{ rowIndex: idx + 1, month: r.month }]
+              });
+            }
+          }
+
+          // 3. Students entered but ₹0 fee (or fee without students)
+          if (students > 0 && fee === 0) {
+            flags.push({
+              type: 'zero_fee',
+              severity: 'amber',
+              message: r.counsellor + ' — students with ₹0 fee',
+              detail: students + ' student' + (students !== 1 ? 's' : '') + ' enrolled but course fee is ₹0 · ' + r.month + ' · ' + bizCentre,
+              rows: [{ rowIndex: idx + 1, month: r.month }]
+            });
+          }
+          if (fee > 0 && students === 0) {
+            flags.push({
+              type: 'fee_no_students',
+              severity: 'amber',
+              message: r.counsellor + ' — fee with 0 students',
+              detail: '₹' + Math.round(fee).toLocaleString('en-IN') + ' recorded but 0 students · ' + r.month + ' · ' + bizCentre,
+              rows: [{ rowIndex: idx + 1, month: r.month }]
+            });
+          }
+
+          // 4. Suspiciously high per-student fee (>₹1,50,000 per student)
+          if (students > 0 && fee > 0 && (fee / students) > 150000) {
+            flags.push({
+              type: 'high_per_student',
+              severity: 'amber',
+              message: r.counsellor + ' — high per-student fee',
+              detail: '₹' + Math.round(fee / students).toLocaleString('en-IN') + '/student · ' + r.month + ' · ' + bizCentre + ' (' + students + ' students, ₹' + Math.round(fee).toLocaleString('en-IN') + ' total)',
+              rows: [{ rowIndex: idx + 1, month: r.month }]
+            });
+          }
+        });
+
+        var redCount   = flags.filter(function(f) { return f.severity === 'red';   }).length;
+        var amberCount = flags.filter(function(f) { return f.severity === 'amber'; }).length;
+        cb(null, { status: 'ok', flags: flags, flagCount: flags.length, redCount: redCount, amberCount: amberCount, rowsScanned: rows.length });
+      }
+    );
+  }
+
   /* getHRDashboard — pulls from Supabase; returns ₹L per counsellor, ₹Cr national */
   function h_hrDash(p, cb) {
     var periodFilter = p.periodFilter || 'ytd'; // mtd|q1|q2|q3|q4|h1|h2|ytd|fy
@@ -5032,6 +5125,7 @@ window.gasGet = (function () {
       case 'getRevenueDashboard':       return h_revDash(params, cb);
       case 'saveRevenueTargets':        return h_saveRevenue(params, cb);
       case 'getRecentActivity':         return h_getRecentActivity(params, cb);
+      case 'getRevenueAuditFlags':      return h_revAuditFlags(params, cb);
       case 'getHRDashboard':            return h_hrDash(params, cb);
       case 'getAdminDashboard':         return h_adminDash(params, cb);
       case 'getAcademicHeadDashboard':  return h_getAcademicHeadDashboard(params, cb);

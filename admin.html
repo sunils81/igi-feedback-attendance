@@ -8616,9 +8616,9 @@ function adminRevAuditLoad() {
   const summary = document.getElementById('arc-audit-summary');
   if (list) list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted)">Running audit scan…</div>';
   if (summary) summary.style.display = 'none';
-  gasGet({ action: 'getRevenueAuditFlags', adminPass: adminPass }, function(err, d) {
+  gasGet({ action: 'getRevenueAuditFlags', period: '2026-27' }, function(err, d) {
     if (err || !d || d.status !== 'ok') {
-      if (list) list.innerHTML = '<div style="padding:16px;text-align:center;color:#dc2626">Audit failed. Check admin password.</div>';
+      if (list) list.innerHTML = '<div style="padding:16px;text-align:center;color:#dc2626">Audit failed: ' + (d && d.reason ? d.reason : 'network error') + '</div>';
       return;
     }
     // Summary chips
@@ -8633,7 +8633,7 @@ function adminRevAuditLoad() {
         '✅ ' + (d.flagCount === 0 ? 'Clean — no issues found' : d.flagCount + ' total flags') + '</span>';
     }
     if (!d.flags || !d.flags.length) {
-      if (list) list.innerHTML = '<div style="padding:20px;text-align:center;color:#059669;font-size:13px;font-weight:600">✅ No inconsistencies detected. Revenue ledger looks clean!</div>';
+      if (list) list.innerHTML = '<div style="padding:20px;text-align:center;color:#059669;font-size:13px;font-weight:600">✅ No inconsistencies detected — ' + (d.rowsScanned||0) + ' entries scanned. Revenue ledger looks clean!</div>';
       return;
     }
     if (list) list.innerHTML = d.flags.map(function(f) {

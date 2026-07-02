@@ -7143,22 +7143,50 @@ function renderRevenueEntryPanel(m, designatedCentre, otherDefault, existingRows
     '</div>';
   }).join('');
 
+  var isAuto = isAutoRevenueMonth(m.key);
   var reasonText = isRevision ? '<div class="rev-revise-note">Revision requires a reason. Saving will replace the locked month after backend approval.</div>' : '';
-  return '<div class="rev-entry-panel" data-revise="'+(isRevision?'Y':'N')+'">'+
-    reasonText+
-    '<div class="rev-own-section">'+
-      '<div class="rev-own-label">Own Centre Revenue <span class="rev-centre-tag">'+escC(designatedCentre)+'</span></div>'+
-      '<div class="rev-compact-row">'+
-        '<div class="rev-ci"><label>Students</label><input type="number" class="rmc-students" min="0" placeholder="e.g. 5" value="'+escC(existingOwn.studentCount||'')+'" oninput="revUpdateTotal(this)"></div>'+
-        '<div class="rev-ci"><label>Course Fee &#8377; (excl. GST)</label><input type="number" class="rmc-course" min="0" placeholder="e.g. 500000" value="'+escC(existingOwn.achievedCourse||'')+'" oninput="revCalcGst(this,\'own\');revUpdateTotal(this)"></div>'+
-      '</div>'+
-      '<div class="rev-gst-inline" id="rev-gst-own-'+escC(m.key)+'">GST: <b>'+money(existingOwn.achievedGst||0)+'</b></div>'+
-      '<div class="rev-notes-row"><input type="text" class="rmc-notes" placeholder="'+(isRevision?'Revision reason (required)':'Notes (optional)')+'"></div>'+
-    '</div>'+
+
+  // Own-centre section: read-only for Jul-26+ (auto-derived from fee records)
+  var ownSection = '';
+  if (isAuto) {
+    var derivedFee = Number(existingOwn.achievedCourse || 0);
+    var derivedStu = Number(existingOwn.studentCount   || 0);
+    var derivedGst = Number(existingOwn.achievedGst    || 0);
+    var autoNote   = derivedFee > 0
+      ? ('₹' + Math.round(derivedFee).toLocaleString('en-IN') + ' · ' + derivedStu + ' student' + (derivedStu !== 1 ? 's' : '') + ' · GST ₹' + Math.round(derivedGst).toLocaleString('en-IN'))
+      : 'No fee records yet — enter fees to auto-populate revenue.';
+    ownSection =
+      '<div class="rev-own-section" style="background:#F4FBF7;border-radius:8px;padding:10px 12px;margin-bottom:8px">'+
+        '<div class="rev-own-label" style="margin-bottom:6px">Own Centre Revenue <span class="rev-centre-tag">'+escC(designatedCentre)+'</span> <span style="font-size:10px;background:#1D9E75;color:#fff;border-radius:4px;padding:2px 6px;margin-left:4px;font-weight:700">AUTO</span></div>'+
+        '<div style="font-size:13px;font-weight:700;color:var(--navy)">'+escC(autoNote)+'</div>'+
+        '<div style="font-size:11px;color:var(--muted);margin-top:4px">Auto-derived from your fee records. Enter student fees to update this figure.</div>'+
+        /* Hidden inputs carry the auto-derived values through revSaveMonthCard */
+        '<input type="hidden" class="rmc-students" value="'+escC(String(derivedStu))+'">'+
+        '<input type="hidden" class="rmc-course"   value="'+escC(String(derivedFee))+'">'+
+        '<input type="hidden" class="rmc-gst-val"  value="'+escC(String(derivedGst))+'">'+
+        '<input type="hidden" class="rmc-notes"    value="auto-derived">'+
+      '</div>';
+  } else {
+    ownSection =
+      '<div class="rev-own-section">'+
+        '<div class="rev-own-label">Own Centre Revenue <span class="rev-centre-tag">'+escC(designatedCentre)+'</span></div>'+
+        '<div class="rev-compact-row">'+
+          '<div class="rev-ci"><label>Students</label><input type="number" class="rmc-students" min="0" placeholder="e.g. 5" value="'+escC(existingOwn.studentCount||'')+'" oninput="revUpdateTotal(this)"></div>'+
+          '<div class="rev-ci"><label>Course Fee &#8377; (excl. GST)</label><input type="number" class="rmc-course" min="0" placeholder="e.g. 500000" value="'+escC(existingOwn.achievedCourse||'')+'" oninput="revCalcGst(this,\'own\');revUpdateTotal(this)"></div>'+
+        '</div>'+
+        '<div class="rev-gst-inline" id="rev-gst-own-'+escC(m.key)+'">GST: <b>'+money(existingOwn.achievedGst||0)+'</b></div>'+
+        '<div class="rev-notes-row"><input type="text" class="rmc-notes" placeholder="'+(isRevision?'Revision reason (required)':'Notes (optional)')+'"></div>'+
+      '</div>';
+  }
+
+  var reasonText2 = isRevision ? '<div class="rev-revise-note">Revision requires a reason. Saving will replace the locked month after backend approval.</div>' : '';
+  return '<div class="rev-entry-panel" data-revise="'+(isRevision?'Y':'N')+'" data-auto="'+(isAuto?'Y':'N')+'">'+
+    reasonText2+
+    ownSection+
     '<div class="rev-expand-row" onclick="revToggleBucket(this)"><span class="rev-expand-chevron'+(hasAnyOtherValue?' open':'')+'">&#9658;</span><span class="rev-expand-label">Other Centre Revenue</span><span class="rev-expand-badge '+(hasAnyOtherValue?'filled':'opt')+'">'+(hasAnyOtherValue?'Filled':'Optional')+'</span></div>'+
     '<div class="rev-bucket-body'+(hasAnyOtherValue?' open':'')+'" data-bucket="other">'+
       '<div class="rev-other-centre-list">'+othersHtml+'</div>'+
-      '<button type="button" class="rev-btn-add-centre" onclick="revAddOtherCentreRow(this)">+ Add Another Centre</button>'+
+      (isAuto ? '' : '<button type="button" class="rev-btn-add-centre" onclick="revAddOtherCentreRow(this)">+ Add Another Centre</button>')+
     '</div>'+
     '<div class="rev-expand-row" onclick="revToggleBucket(this)"><span class="rev-expand-chevron'+(existingCorp.achievedCourse||existingCorp.studentCount?' open':'')+'">&#9658;</span><span class="rev-expand-label">Corporate Program Revenue</span><span class="rev-expand-badge '+(existingCorp.achievedCourse||existingCorp.studentCount?'filled':'opt')+'">'+(existingCorp.achievedCourse||existingCorp.studentCount?'Filled':'Optional')+'</span></div>'+
     '<div class="rev-bucket-body'+(existingCorp.achievedCourse||existingCorp.studentCount?' open':'')+'" data-bucket="corp">'+
@@ -7320,6 +7348,13 @@ function revIsCorporate(row) {
          String(row.businessCentre||'').toLowerCase().indexOf('corporate') >= 0;
 }
 
+/* isAutoRevenueMonth — returns true for Jul-26 onwards (auto-derive era).
+   Pre-July months keep their manual entries unchanged. */
+function isAutoRevenueMonth(monthKey) {
+  var autoMonths = ['Jul-26','Aug-26','Sep-26','Oct-26','Nov-26','Dec-26','Jan-27','Feb-27','Mar-27'];
+  return autoMonths.indexOf(monthKey) >= 0;
+}
+
 function revSaveMonthCard(btn) {
   var monthKey = btn.getAttribute('data-month');
   var monthLabel = btn.getAttribute('data-label');
@@ -7334,12 +7369,16 @@ function revSaveMonthCard(btn) {
     return;
   }
 
-  // Bucket 1 — Own centre
-  var course1 = Number(body.querySelector('.rmc-course').value) || 0;
-  var gst1 = revenueGst(course1);
-  var stu1 = Number(body.querySelector('.rmc-students').value) || 0;
-  var notes1 = (body.querySelector('.rmc-notes').value || '').trim();
-  if (isRevision && !notes1) {
+  var isAutoMonth = body.getAttribute('data-auto') === 'Y';
+
+  // Bucket 1 — Own centre (hidden inputs for auto months; editable inputs for pre-July)
+  var course1 = Number((body.querySelector('.rmc-course') || {}).value) || 0;
+  var stu1    = Number((body.querySelector('.rmc-students') || {}).value) || 0;
+  var gst1    = isAutoMonth
+    ? (Number((body.querySelector('.rmc-gst-val') || {}).value) || Math.round(course1 * 0.18))
+    : revenueGst(course1);
+  var notes1  = ((body.querySelector('.rmc-notes') || {}).value || '').trim();
+  if (isRevision && !isAutoMonth && !notes1) {
     if (note) { note.textContent = '⚠ Add a revision reason before saving.'; note.style.color = 'var(--red)'; }
     return;
   }

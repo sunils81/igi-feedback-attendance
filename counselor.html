@@ -1517,6 +1517,59 @@
 .crm-ni{width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;box-sizing:border-box;outline:none;background:var(--white);color:var(--navy)}
 .crm-ni:focus{border-color:var(--navy)}
 </style>
+<style>
+/* ── Enrollment Modal ─────────────────────────────────────────── */
+#enroll-modal-overlay{position:fixed;inset:0;background:rgba(10,20,40,.55);z-index:9000;display:none;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
+#enroll-modal{background:var(--white);border-radius:14px;width:100%;max-width:620px;max-height:92vh;overflow-y:auto;box-shadow:0 24px 64px rgba(10,20,40,.28);display:flex;flex-direction:column}
+#enroll-modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 14px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--white);z-index:1;border-radius:14px 14px 0 0}
+#enroll-modal-head h3{margin:0;font-size:16px;font-weight:700;color:var(--navy)}
+#enroll-modal-close{background:none;border:none;font-size:22px;color:var(--muted);cursor:pointer;line-height:1;padding:2px 6px;border-radius:6px}
+#enroll-modal-close:hover{background:var(--bg);color:var(--navy)}
+#enroll-modal-body{padding:16px 20px;display:flex;flex-direction:column;gap:16px}
+.enroll-step{background:var(--bg);border-radius:10px;padding:14px 16px;border:1.5px solid var(--border)}
+.enroll-step-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.enroll-step-num{width:20px;height:20px;border-radius:50%;background:var(--navy);color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.enroll-search-wrap{position:relative}
+.enroll-search-wrap input{width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:var(--white);color:var(--navy);outline:none}
+.enroll-search-wrap input:focus{border-color:var(--navy)}
+.enroll-dd{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--white);border:1.5px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(10,20,40,.12);z-index:100;max-height:200px;overflow-y:auto;display:none}
+.enroll-dd.open{display:block}
+.enroll-dd-item{padding:9px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border)}
+.enroll-dd-item:last-child{border-bottom:none}
+.enroll-dd-item:hover{background:var(--bg)}
+.enroll-dd-item.muted{color:var(--muted);cursor:default}
+.enroll-dd-item.muted:hover{background:none}
+.enroll-selected-chip{display:flex;align-items:center;gap:8px;background:#EEF7F3;border:1.5px solid #1D9E75;border-radius:8px;padding:8px 12px;margin-top:6px}
+.enroll-selected-chip .chip-name{font-size:13px;font-weight:600;color:#0A4D2E;flex:1}
+.enroll-selected-chip .chip-sub{font-size:11px;color:#1D9E75}
+.enroll-chip-clear{background:none;border:none;cursor:pointer;color:#1D9E75;font-size:18px;line-height:1;padding:0 2px}
+.enroll-create-link{font-size:12px;color:var(--navy);text-decoration:underline;cursor:pointer;margin-top:8px;display:inline-block;font-weight:600}
+.enroll-create-link:hover{color:var(--gold)}
+.enroll-new-form{margin-top:10px;padding:12px;background:var(--white);border-radius:8px;border:1.5px dashed var(--border)}
+.enroll-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.enroll-grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.enroll-field label{display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+.enroll-field input,.enroll-field select{width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;font-family:inherit;background:var(--white);color:var(--navy);outline:none}
+.enroll-field input:focus,.enroll-field select:focus{border-color:var(--navy)}
+.enroll-fee-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px;background:var(--white);border-radius:8px;padding:12px;border:1.5px solid var(--border)}
+.enroll-fee-stat .v{font-size:15px;font-weight:700;color:var(--navy);font-family:'JetBrains Mono',monospace}
+.enroll-fee-stat .k{font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.04em}
+#enroll-modal-footer{padding:14px 20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;bottom:0;background:var(--white);border-radius:0 0 14px 14px}
+#enroll-err{flex:1;font-size:12px;color:var(--red);display:none}
+#enroll-err.show{display:block}
+.enroll-batch-row{display:flex;gap:8px;align-items:center}
+.enroll-batch-row select{flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;font-family:inherit;background:var(--white);color:var(--navy);outline:none}
+.enroll-batch-row select:focus{border-color:var(--navy)}
+@media(max-width:600px){.enroll-grid2,.enroll-grid3,.enroll-fee-summary{grid-template-columns:1fr}}
+/* enroll button in auto-month revenue panel */
+.rev-enroll-btn{display:inline-flex;align-items:center;gap:6px;background:var(--navy);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;margin-top:10px;font-family:inherit}
+.rev-enroll-btn:hover{opacity:.88}
+.rev-enroll-student-list{margin-top:10px;font-size:12px}
+.rev-enroll-student-list table{width:100%;border-collapse:collapse}
+.rev-enroll-student-list td{padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+.rev-enroll-student-list td:last-child{text-align:right;font-family:'JetBrains Mono',monospace;color:var(--navy);font-weight:700}
+.rev-enroll-student-list .no-rows{color:var(--muted);font-style:italic;padding:6px 0}
+</style>
 </head>
 <body>
 <script>document.getElementById('dyn-css').textContent=CSS_VARS;</script>
@@ -7152,14 +7205,16 @@ function renderRevenueEntryPanel(m, designatedCentre, otherDefault, existingRows
     var derivedFee = Number(existingOwn.achievedCourse || 0);
     var derivedStu = Number(existingOwn.studentCount   || 0);
     var derivedGst = Number(existingOwn.achievedGst    || 0);
-    var autoNote   = derivedFee > 0
-      ? ('₹' + Math.round(derivedFee).toLocaleString('en-IN') + ' · ' + derivedStu + ' student' + (derivedStu !== 1 ? 's' : '') + ' · GST ₹' + Math.round(derivedGst).toLocaleString('en-IN'))
-      : 'No fee records yet — enter fees to auto-populate revenue.';
+    var enrollBtnAttrs = 'data-month="'+escC(m.key)+'" data-centre="'+escC(designatedCentre)+'"';
     ownSection =
       '<div class="rev-own-section" style="background:#F4FBF7;border-radius:8px;padding:10px 12px;margin-bottom:8px">'+
-        '<div class="rev-own-label" style="margin-bottom:6px">Own Centre Revenue <span class="rev-centre-tag">'+escC(designatedCentre)+'</span> <span style="font-size:10px;background:#1D9E75;color:#fff;border-radius:4px;padding:2px 6px;margin-left:4px;font-weight:700">AUTO</span></div>'+
-        '<div style="font-size:13px;font-weight:700;color:var(--navy)">'+escC(autoNote)+'</div>'+
-        '<div style="font-size:11px;color:var(--muted);margin-top:4px">Auto-derived from your fee records. Enter student fees to update this figure.</div>'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:6px">'+
+          '<div class="rev-own-label">Own Centre Revenue <span class="rev-centre-tag">'+escC(designatedCentre)+'</span> <span style="font-size:10px;background:#1D9E75;color:#fff;border-radius:4px;padding:2px 6px;margin-left:4px;font-weight:700">AUTO</span></div>'+
+          '<button type="button" class="rev-enroll-btn" '+enrollBtnAttrs+' onclick="openEnrollModal(this.dataset.month,this.dataset.centre,counselorName||\'Counselor\')">&#43; Enroll New Student</button>'+
+        '</div>'+
+        (derivedFee > 0
+          ? '<div style="font-size:13px;font-weight:700;color:var(--navy)">₹'+Math.round(derivedFee).toLocaleString('en-IN')+' &middot; '+derivedStu+' student'+(derivedStu!==1?'s':'')+' &middot; GST ₹'+Math.round(derivedGst).toLocaleString('en-IN')+'</div>'
+          : '<div style="font-size:12px;color:var(--muted)">No enrollments yet &mdash; click <strong>Enroll New Student</strong> to add the first one for this month.</div>')+
         /* Hidden inputs carry the auto-derived values through revSaveMonthCard */
         '<input type="hidden" class="rmc-students" value="'+escC(String(derivedStu))+'">'+
         '<input type="hidden" class="rmc-course"   value="'+escC(String(derivedFee))+'">'+
@@ -15116,6 +15171,360 @@ function doBulkExtend() {
   }
 }
 
+/* ════════════════════════════════════════════════════════════════
+   ENROLLMENT MODAL — Revenue Tab July+ month cards
+   ════════════════════════════════════════════════════════════════ */
+var _enrollState = {
+  monthKey: '', centre: '', counsellor: '',
+  selectedStudent: null, isNewStudent: false,
+  selectedBatch: null,   isNewBatch: false,
+  batchList: []
+};
+var _enrollSearchTimer = null;
+
+function openEnrollModal(monthKey, centre, counsellor) {
+  _enrollState = { monthKey: monthKey, centre: centre, counsellor: counsellor,
+    selectedStudent: null, isNewStudent: false, selectedBatch: null, isNewBatch: false, batchList: [] };
+
+  // Reset student section
+  document.getElementById('enroll-student-search').value = '';
+  document.getElementById('enroll-dd').innerHTML = '';
+  document.getElementById('enroll-dd').classList.remove('open');
+  document.getElementById('enroll-selected-chip').style.display = 'none';
+  document.getElementById('enroll-new-student-toggle').style.display = 'none';
+  document.getElementById('enroll-new-student-form').style.display = 'none';
+  document.getElementById('enroll-ns-name').value = '';
+  document.getElementById('enroll-ns-mobile').value = '';
+  document.getElementById('enroll-ns-email').value = '';
+
+  // Reset batch section
+  document.getElementById('enroll-batch-select').innerHTML = '<option value="">Loading…</option>';
+  document.getElementById('enroll-new-batch-form').style.display = 'none';
+  document.getElementById('enroll-nb-course').innerHTML = '<option value="">— Select Course —</option>' +
+    (typeof COURSES !== 'undefined' ? COURSES.map(function(c){ return '<option>'+escC(c)+'</option>'; }).join('') : '');
+
+  // Reset fee section
+  document.getElementById('enroll-fee-step').style.display = 'none';
+  document.getElementById('enroll-course-fee').value = '';
+  document.getElementById('enroll-reg-fee').value = '0';
+  document.getElementById('enroll-disc-pct').value = '0';
+  document.getElementById('enroll-custom-disc-wrap').style.display = 'none';
+  document.getElementById('enroll-custom-disc').value = '';
+  document.getElementById('enroll-disc-reason').value = '';
+  document.getElementById('enroll-tds-pct').value = '0';
+  document.getElementById('enroll-n-inst').value = '1';
+  var today = new Date();
+  document.getElementById('enroll-date').value =
+    today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+
+  document.getElementById('enroll-err').textContent = '';
+  document.getElementById('enroll-err').classList.remove('show');
+  document.getElementById('enroll-modal-month').textContent = monthKey;
+  document.getElementById('enroll-modal-overlay').style.display = 'flex';
+
+  enrollLoadBatches(centre);
+  setTimeout(function(){ document.getElementById('enroll-student-search').focus(); }, 120);
+}
+
+function closeEnrollModal() {
+  document.getElementById('enroll-modal-overlay').style.display = 'none';
+}
+
+/* ── Student search ── */
+function enrollSearchDebounce() {
+  clearTimeout(_enrollSearchTimer);
+  var q = (document.getElementById('enroll-student-search').value || '').trim();
+  var dd = document.getElementById('enroll-dd');
+  if (q.length < 2) {
+    dd.classList.remove('open');
+    document.getElementById('enroll-new-student-toggle').style.display = q.length >= 1 ? 'block' : 'none';
+    return;
+  }
+  dd.innerHTML = '<div class="enroll-dd-item muted">Searching…</div>';
+  dd.classList.add('open');
+  _enrollSearchTimer = setTimeout(function(){ _enrollDoSearch(q); }, 320);
+}
+
+function _enrollDoSearch(q) {
+  gasGet({ action: 'searchStudents', query: q }, function(e, d) {
+    var results = (d && d.students) || [];
+    var dd = document.getElementById('enroll-dd');
+    document.getElementById('enroll-new-student-toggle').style.display = 'block';
+    if (!results.length) {
+      dd.innerHTML = '<div class="enroll-dd-item muted">No students found for "' + escC(q) + '"</div>';
+      dd.classList.add('open');
+      return;
+    }
+    dd.innerHTML = results.map(function(s) {
+      var sub = s.mobile ? s.mobile : (s.studentId || '');
+      return '<div class="enroll-dd-item" onclick="_enrollPickStudent(' +
+        JSON.stringify(String(s.studentId)) + ',' +
+        JSON.stringify(String(s.name)) + ',' +
+        JSON.stringify(String(s.mobile||'')) + ')">' +
+        '<strong>' + escC(s.name) + '</strong>' +
+        (sub ? ' <span style="color:#888;font-size:11px">· ' + escC(sub) + '</span>' : '') +
+      '</div>';
+    }).join('');
+    dd.classList.add('open');
+  });
+}
+
+function _enrollPickStudent(id, name, mobile) {
+  _enrollState.selectedStudent = { id: id, name: name, mobile: mobile };
+  _enrollState.isNewStudent = false;
+  document.getElementById('enroll-student-search').value = '';
+  document.getElementById('enroll-dd').classList.remove('open');
+  document.getElementById('enroll-new-student-toggle').style.display = 'none';
+  document.getElementById('enroll-new-student-form').style.display = 'none';
+  document.getElementById('enroll-chip-name').textContent = name;
+  document.getElementById('enroll-chip-sub').textContent = mobile ? '· ' + mobile : (id ? '· ' + id : '');
+  document.getElementById('enroll-selected-chip').style.display = 'flex';
+}
+
+function enrollClearStudent() {
+  _enrollState.selectedStudent = null;
+  _enrollState.isNewStudent = false;
+  document.getElementById('enroll-selected-chip').style.display = 'none';
+  document.getElementById('enroll-new-student-form').style.display = 'none';
+  document.getElementById('enroll-new-student-toggle').style.display = 'none';
+  document.getElementById('enroll-student-search').value = '';
+  document.getElementById('enroll-student-search').focus();
+}
+
+function enrollToggleNewStudent() {
+  var form = document.getElementById('enroll-new-student-form');
+  var showing = form.style.display !== 'none';
+  if (showing) {
+    form.style.display = 'none';
+    _enrollState.isNewStudent = false;
+  } else {
+    form.style.display = 'block';
+    _enrollState.isNewStudent = true;
+    _enrollState.selectedStudent = null;
+    document.getElementById('enroll-selected-chip').style.display = 'none';
+    document.getElementById('enroll-dd').classList.remove('open');
+    document.getElementById('enroll-ns-name').focus();
+  }
+}
+
+/* ── Batch section ── */
+function enrollLoadBatches(centre) {
+  gasGet({ action: 'getBatches', centres: centre }, function(e, d) {
+    var batches = (d && d.batches) || [];
+    _enrollState.batchList = batches;
+    var sel = document.getElementById('enroll-batch-select');
+    sel.innerHTML = '<option value="">— Select Batch —</option>' +
+      batches.map(function(b) {
+        var label = escC(b.batchCode) + ' · ' + escC(b.course || '') +
+          (b.startDate ? ' · from ' + escC(b.startDate) : '');
+        return '<option value="' + escC(b.batchCode) + '">' + label + '</option>';
+      }).join('');
+  });
+}
+
+function enrollBatchSelected() {
+  var code = document.getElementById('enroll-batch-select').value;
+  if (!code) {
+    _enrollState.selectedBatch = null;
+    document.getElementById('enroll-fee-step').style.display = 'none';
+    return;
+  }
+  var b = _enrollState.batchList.find(function(x){ return x.batchCode === code; });
+  _enrollState.selectedBatch = b || { batchCode: code };
+  _enrollState.isNewBatch = false;
+  document.getElementById('enroll-new-batch-form').style.display = 'none';
+  if (b && b.course && typeof COURSE_FEES_JS !== 'undefined') {
+    var def = COURSE_FEES_JS[b.course] || { fee: 0, regFee: 0 };
+    document.getElementById('enroll-course-fee').value = def.fee || '';
+    document.getElementById('enroll-reg-fee').value = def.regFee || 0;
+  }
+  document.getElementById('enroll-fee-step').style.display = 'block';
+  enrollCalcFee();
+}
+
+function enrollToggleNewBatch() {
+  var form = document.getElementById('enroll-new-batch-form');
+  var showing = form.style.display !== 'none';
+  if (showing) {
+    form.style.display = 'none';
+    _enrollState.isNewBatch = false;
+  } else {
+    form.style.display = 'block';
+    _enrollState.isNewBatch = true;
+    _enrollState.selectedBatch = null;
+    document.getElementById('enroll-batch-select').value = '';
+    document.getElementById('enroll-fee-step').style.display = 'block';
+    enrollCalcFee();
+    document.getElementById('enroll-nb-course').focus();
+  }
+}
+
+function enrollNBCourseChange() {
+  var course = document.getElementById('enroll-nb-course').value;
+  if (course && typeof COURSE_FEES_JS !== 'undefined' && COURSE_FEES_JS[course]) {
+    document.getElementById('enroll-course-fee').value = COURSE_FEES_JS[course].fee || '';
+    document.getElementById('enroll-reg-fee').value = COURSE_FEES_JS[course].regFee || 0;
+  }
+  enrollCalcFee();
+}
+
+function enrollDiscChange() {
+  var v = document.getElementById('enroll-disc-pct').value;
+  document.getElementById('enroll-custom-disc-wrap').style.display = v === 'custom' ? 'block' : 'none';
+  enrollCalcFee();
+}
+
+function enrollCalcFee() {
+  var cf  = Number(document.getElementById('enroll-course-fee').value) || 0;
+  var rf  = Number(document.getElementById('enroll-reg-fee').value)    || 0;
+  var dv  = document.getElementById('enroll-disc-pct').value;
+  var dp  = dv === 'custom' ? (Number(document.getElementById('enroll-custom-disc').value)||0) : Number(dv||0);
+  var da  = Math.round(cf * dp / 100);
+  var tp  = Number(document.getElementById('enroll-tds-pct').value) || 0;
+  var ta  = Math.round(cf * tp / 100);
+  var gst = Math.round(cf * 0.18);
+  var net = Math.round((cf + gst + rf) - da - ta);
+  document.getElementById('enroll-s-fee').textContent  = money(cf);
+  document.getElementById('enroll-s-gst').textContent  = money(gst);
+  document.getElementById('enroll-s-disc').textContent = da ? '-' + money(da) : '—';
+  document.getElementById('enroll-s-net').textContent  = money(net);
+}
+
+/* ── Save orchestration ── */
+function enrollSave() {
+  var st  = _enrollState;
+  var err = document.getElementById('enroll-err');
+  err.textContent = '';
+  err.classList.remove('show');
+
+  // Resolve student
+  var studentId = null, studentName = null, studentMobile = '';
+  if (st.isNewStudent) {
+    studentName   = (document.getElementById('enroll-ns-name').value || '').trim();
+    studentMobile = (document.getElementById('enroll-ns-mobile').value || '').trim();
+    if (!studentName || !studentMobile) {
+      err.textContent = 'Enter student name and mobile number.';
+      err.classList.add('show'); return;
+    }
+  } else if (st.selectedStudent) {
+    studentId     = st.selectedStudent.id;
+    studentName   = st.selectedStudent.name;
+    studentMobile = st.selectedStudent.mobile || '';
+  } else {
+    err.textContent = 'Select a student or create a new one.';
+    err.classList.add('show'); return;
+  }
+
+  // Resolve batch
+  var batchCode = null, batchCentre = st.centre, batchCourse = '';
+  if (st.isNewBatch) {
+    batchCourse = document.getElementById('enroll-nb-course').value;
+    var nbStart = document.getElementById('enroll-nb-start').value;
+    if (!batchCourse || !nbStart) {
+      err.textContent = 'Select course and start date for the new batch.';
+      err.classList.add('show'); return;
+    }
+  } else if (st.selectedBatch) {
+    batchCode   = st.selectedBatch.batchCode;
+    batchCourse = st.selectedBatch.course || '';
+    batchCentre = st.selectedBatch.centre || st.centre;
+  } else {
+    err.textContent = 'Select a batch or create a new one.';
+    err.classList.add('show'); return;
+  }
+
+  // Resolve fee
+  var cf = Number(document.getElementById('enroll-course-fee').value) || 0;
+  if (!cf) {
+    err.textContent = 'Enter the course fee.';
+    err.classList.add('show'); return;
+  }
+
+  var btn = document.getElementById('enroll-save-btn');
+  btn.textContent = 'Saving…';
+  btn.disabled = true;
+
+  function done(errMsg) {
+    btn.textContent = 'Save Enrollment';
+    btn.disabled = false;
+    if (errMsg) { err.textContent = errMsg; err.classList.add('show'); }
+  }
+
+  // Step A: create batch if needed
+  function stepBatch(next) {
+    if (!st.isNewBatch) { next(null); return; }
+    gasGet({ action: 'getBatchCode', centre: batchCentre, course: batchCourse,
+      month: st.monthKey.replace('-', '') }, function(e, d) {
+      if (e || !d || !d.batchCode) { next('Could not generate batch code. Try again.'); return; }
+      batchCode = d.batchCode;
+      gasGet({
+        action: 'createBatch', batchCode: batchCode, centre: batchCentre, course: batchCourse,
+        type:      document.getElementById('enroll-nb-type').value,
+        batchSlot: document.getElementById('enroll-nb-slot').value,
+        startDate: document.getElementById('enroll-nb-start').value,
+        counselorName: st.counsellor
+      }, function(e2) { next(e2 ? 'Could not create batch. Try again.' : null); });
+    });
+  }
+
+  // Step B: create student if needed
+  function stepStudent(next) {
+    if (!st.isNewStudent) { next(null); return; }
+    gasGet({ action: 'getNextEnrollment' }, function(e, d) {
+      if (e || !d || !d.enrollmentNo) { next('Could not get enrollment number. Try again.'); return; }
+      studentId = d.enrollmentNo;
+      gasGet({
+        action: 'addStudent', enrollmentNo: studentId, name: studentName,
+        mobile: studentMobile, mobileLast4: studentMobile.slice(-4),
+        email: (document.getElementById('enroll-ns-email').value || '').trim(),
+        batchCode: batchCode, batchCodes: batchCode
+      }, function(e2, d2) {
+        if (e2 || (d2 && d2.status === 'error')) { next('Could not create student. Try again.'); return; }
+        studentId = (d2 && d2.enrollmentNo) || studentId;
+        next(null);
+      });
+    });
+  }
+
+  // Step C: save fee record (triggers syncStudentRevenue auto-derive)
+  function stepFee(next) {
+    var dv = document.getElementById('enroll-disc-pct').value;
+    var dp = dv === 'custom' ? (Number(document.getElementById('enroll-custom-disc').value)||0) : Number(dv||0);
+    gasGet({
+      action: 'saveFeeRecord',
+      studentId:      studentId,
+      studentName:    studentName,
+      batchCode:      batchCode,
+      centre:         batchCentre,
+      course:         batchCourse,
+      courseFee:      cf,
+      regFee:         Number(document.getElementById('enroll-reg-fee').value) || 0,
+      discountPct:    dp,
+      discountReason: document.getElementById('enroll-disc-reason').value.trim(),
+      tdsPct:         Number(document.getElementById('enroll-tds-pct').value) || 0,
+      nInst:          Number(document.getElementById('enroll-n-inst').value)  || 1,
+      enteredBy:      st.counsellor || 'Counselor'
+    }, function(e, d) {
+      next((e || !d || d.status !== 'ok') ? 'Could not save fee record. Try again.' : null);
+    });
+  }
+
+  stepBatch(function(e1) {
+    if (e1) { done(e1); return; }
+    stepStudent(function(e2) {
+      if (e2) { done(e2); return; }
+      stepFee(function(e3) {
+        done(null);
+        if (e3) { err.textContent = e3; err.classList.add('show'); return; }
+        showToast('Student enrolled & fee saved ✓');
+        closeEnrollModal();
+        revenueData = null;
+        loadRevenueDashboard();
+      });
+    });
+  });
+}
+
 </script>
 
 <!-- Add Past Alumni Modal -->
@@ -15367,5 +15776,106 @@ function doBulkExtend() {
     </div>
   </div>
 </div>
+
+<!-- ── Enrollment Modal ─────────────────────────────────────────── -->
+<div id="enroll-modal-overlay" onclick="if(event.target===this)closeEnrollModal()">
+  <div id="enroll-modal">
+    <div id="enroll-modal-head">
+      <h3>Enroll New Student &mdash; <span id="enroll-modal-month"></span></h3>
+      <button id="enroll-modal-close" onclick="closeEnrollModal()" title="Close">&times;</button>
+    </div>
+    <div id="enroll-modal-body">
+
+      <!-- STEP 1: STUDENT -->
+      <div class="enroll-step">
+        <div class="enroll-step-title"><span class="enroll-step-num">1</span> Student</div>
+        <div class="enroll-search-wrap">
+          <input id="enroll-student-search" type="text" placeholder="Search by name or mobile…" autocomplete="off" oninput="enrollSearchDebounce()">
+          <div id="enroll-dd" class="enroll-dd"></div>
+        </div>
+        <div id="enroll-selected-chip" class="enroll-selected-chip" style="display:none">
+          <span class="chip-name" id="enroll-chip-name"></span>
+          <span class="chip-sub" id="enroll-chip-sub"></span>
+          <button class="enroll-chip-clear" onclick="enrollClearStudent()" title="Change">&times;</button>
+        </div>
+        <div id="enroll-new-student-toggle" class="enroll-create-link" style="display:none" onclick="enrollToggleNewStudent()">+ Not found? Create new student</div>
+        <div id="enroll-new-student-form" class="enroll-new-form" style="display:none">
+          <div class="enroll-grid3">
+            <div class="enroll-field"><label>Full Name *</label><input id="enroll-ns-name" type="text" placeholder="e.g. Priya Sharma"></div>
+            <div class="enroll-field"><label>Mobile *</label><input id="enroll-ns-mobile" type="tel" placeholder="10-digit number"></div>
+            <div class="enroll-field"><label>Email</label><input id="enroll-ns-email" type="email" placeholder="optional"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 2: BATCH -->
+      <div class="enroll-step">
+        <div class="enroll-step-title"><span class="enroll-step-num">2</span> Batch</div>
+        <div class="enroll-batch-row">
+          <select id="enroll-batch-select" onchange="enrollBatchSelected()">
+            <option value="">— Select Batch —</option>
+          </select>
+        </div>
+        <div id="enroll-new-batch-toggle" class="enroll-create-link" onclick="enrollToggleNewBatch()">+ Batch not listed? Create new</div>
+        <div id="enroll-new-batch-form" class="enroll-new-form" style="display:none">
+          <div class="enroll-grid2">
+            <div class="enroll-field"><label>Course *</label>
+              <select id="enroll-nb-course" onchange="enrollNBCourseChange()">
+                <option value="">— Select Course —</option>
+              </select>
+            </div>
+            <div class="enroll-field"><label>Type</label>
+              <select id="enroll-nb-type"><option>Weekday</option><option>Weekend</option><option>Intensive</option><option>Online</option></select>
+            </div>
+            <div class="enroll-field"><label>Slot / Timings</label><input id="enroll-nb-slot" type="text" placeholder="e.g. Mon/Wed 10am"></div>
+            <div class="enroll-field"><label>Start Date *</label><input id="enroll-nb-start" type="date"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 3: FEE -->
+      <div class="enroll-step" id="enroll-fee-step" style="display:none">
+        <div class="enroll-step-title"><span class="enroll-step-num">3</span> Fee Details</div>
+        <div class="enroll-grid2">
+          <div class="enroll-field"><label>Course Fee &#8377; (excl. GST)</label><input id="enroll-course-fee" type="number" min="0" placeholder="e.g. 165900" oninput="enrollCalcFee()"></div>
+          <div class="enroll-field"><label>Registration Fee &#8377;</label><input id="enroll-reg-fee" type="number" min="0" value="0" oninput="enrollCalcFee()"></div>
+          <div class="enroll-field"><label>Discount</label>
+            <select id="enroll-disc-pct" onchange="enrollDiscChange()">
+              <option value="0">No discount</option>
+              <option value="5">5%</option>
+              <option value="7">7%</option>
+              <option value="10">10%</option>
+              <option value="custom">Custom %</option>
+            </select>
+          </div>
+          <div class="enroll-field" id="enroll-custom-disc-wrap" style="display:none"><label>Custom Discount %</label><input id="enroll-custom-disc" type="number" min="0" max="100" oninput="enrollCalcFee()"></div>
+          <div class="enroll-field"><label>Discount Reason</label><input id="enroll-disc-reason" type="text" placeholder="optional"></div>
+          <div class="enroll-field"><label>TDS %</label><input id="enroll-tds-pct" type="number" min="0" max="100" value="0" oninput="enrollCalcFee()"></div>
+          <div class="enroll-field"><label>Instalments</label>
+            <select id="enroll-n-inst">
+              <option value="1">Full Payment (1)</option>
+              <option value="2">2 Instalments</option>
+              <option value="3">3 Instalments</option>
+            </select>
+          </div>
+          <div class="enroll-field"><label>Enrolment Date</label><input id="enroll-date" type="date"></div>
+        </div>
+        <div class="enroll-fee-summary">
+          <div class="enroll-fee-stat"><div class="v" id="enroll-s-fee">&#8377;0</div><div class="k">Course Fee</div></div>
+          <div class="enroll-fee-stat"><div class="v" id="enroll-s-gst">&#8377;0</div><div class="k">GST (18%)</div></div>
+          <div class="enroll-fee-stat"><div class="v" id="enroll-s-disc">—</div><div class="k">Discount</div></div>
+          <div class="enroll-fee-stat"><div class="v" id="enroll-s-net">&#8377;0</div><div class="k">Net Payable</div></div>
+        </div>
+      </div>
+
+    </div><!-- /body -->
+    <div id="enroll-modal-footer">
+      <button id="enroll-save-btn" class="btn btn-gold" style="width:auto;padding:9px 20px" onclick="enrollSave()">Save Enrollment</button>
+      <button class="btn btn-outline" style="width:auto;padding:9px 16px" onclick="closeEnrollModal()">Cancel</button>
+      <div id="enroll-err"></div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

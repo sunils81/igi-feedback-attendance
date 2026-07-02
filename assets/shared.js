@@ -711,6 +711,21 @@ window.gasGet = (function () {
     });
   }
 
+  /* searchStudents — live search by name (ilike) for the enrollment modal */
+  function h_searchStudents(p, cb) {
+    var q = String(p.query || '').trim();
+    if (!q) { cb(null, { students: [] }); return; }
+    var qs = 'name=ilike.*' + encodeURIComponent(q) + '*&limit=20&order=name.asc';
+    GET('students', qs, function(e, rows) {
+      if (e) { cb(null, { students: [] }); return; }
+      cb(null, {
+        students: (rows || []).map(function(r) {
+          return { studentId: r.student_id, name: r.name, mobile: r.mobile || '', email: r.email || '', batchCode: r.batch_code || '' };
+        })
+      });
+    });
+  }
+
   /* getNextEnrollment */
   function h_getNextEnroll(p, cb) {
     GET('students', 'select=student_id&order=student_id.desc&limit=1', function (e, rows) {
@@ -5262,6 +5277,7 @@ window.gasGet = (function () {
       case 'deleteBatch':               return h_deleteBatch(params, cb);
       case 'updateBatchDates':          return h_updateBatchDates(params, cb);
       case 'getStudents':               return h_getStudents(params, cb);
+      case 'searchStudents':            return h_searchStudents(params, cb);
       case 'getNextEnrollment':         return h_getNextEnroll(params, cb);
       case 'addStudent':                return h_addStudent(params, cb);
       case 'removeStudent':             return h_removeStudent(params, cb);

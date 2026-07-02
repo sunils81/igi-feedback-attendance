@@ -143,6 +143,130 @@ window.gasGet = (function () {
     return clean(n1) === clean(n2);
   }
 
+  /* ══════════════════════════════════════════════════════════════
+     SHARED DIPLOMA-ELIGIBILITY SCORING ENGINE
+     Single source of truth for student / instructor / counselor views.
+     All marks are normalised to a percentage (marks / max_marks * 100)
+     before any pass/fail comparison — never compare raw marks to 60.
+
+     Weekly bucket   : test_type Weekly | MCQ | Theory | Re-Test
+     Practical bucket: test_type Practical | MCQ + Practical
+     Final bucket    : test_type Final
+
+     opts = {
+       studentId, studentName, batchCode, course, centre,
+       batchAssessments: [assessment rows for this batch],
+       marksMap: { assessment_id -> assessment_marks row } (THIS student only),
+       attInfo: { total, present },
+       hodStatus: 'Approved' | 'Pending' | '',
+       dipRec: diplomas row or null
+     }
+  ══════════════════════════════════════════════════════════════ */
+  function buildDiplomaRow(opts) {
+    var studentId   = opts.studentId;
+    var studentName = opts.studentName || '';
+    var batchCode   = opts.batchCode || '';
+    var course      = opts.course || '';
+    var centre      = opts.centre || '';
+    var batchAssessments = opts.batchAssessments || [];
+    var marksMap    = opts.marksMap || {};
+    var attInfo     = opts.attInfo || { total: 0, present: 0 };
+    var hodStatus   = opts.hodStatus || '';
+    var dipRec      = opts.dipRec || null;
+
+    function markObtained(markRow) {
+      if (!markRow || markRow.marks === null || markRow.marks === undefined || markRow.marks === '') return null;
+      var v = parseFloat(markRow.marks);
+      return isNaN(v) ? null : v;
+    }
+    function pctOf(markRow, maxMarks) {
+      var obt = markObtained(markRow);
+      var max = parseFloat(maxMarks || 100);
+      if (obt === null || !max) return null;
+      return Math.round(100 * obt / max);
+    }
+    function typeOf(a) { return String(a.test_type || '').toLowerCase(); }
+
+    var isJewelPad = course.toLowerCase().indexOf('jewelpad') !== -1;
+    var mandatoryCount = isJewelPad ? 2 : 3;
+
+    var weeklyAssessments = batchAssessments
+      .filter(function(a) {
+        var t = typeOf(a);
+        return t === 'weekly' || t === 'mcq' || t === 'theory' || t === 're-test' || t.indexOf('weekly') !== -1;
+      })
+      .sort(function(a, b) { return new Date(a.held_on || 0) - new Date(b.held_on || 0); });
+
+    var practicalAssessments = batchAssessments.filter(function(a) { return typeOf(a).indexOf('practical') !== -1; });
+    var finalAssessments     = batchAssessments.filter(function(a) { return typeOf(a).indexOf('final') !== -1; });
+
+    // ── Weekly per-slot breakdown ──
+    var weeklyTests = weeklyAssessments.map(function(a, idx) {
+      var slotNo = idx + 1;
+      var mandatory = slotNo <= mandatoryCount;
+      var markRow = marksMap[a.assessment_id];
+      var maxMarks = parseFloat(a.max_marks || 100);
+      var marksObt = markObtained(markRow);
+      var pct = pctOf(markRow, maxMarks);
+      return {
+        slot: slotNo, testName: a.test_name || ('Weekly Test ' + slotNo), heldOn: a.held_on || null,
+        conducted: true, mandatory: mandatory, marksObt: marksObt, maxMarks: maxMarks,
+        pct: pct, pass: pct !== null && pct >= 60, notTaken: marksObt === null
+      };
+    });
+    for (var slot = weeklyTests.length + 1; slot <= mandatoryCount; slot++) {
+      weeklyTests.push({ slot: slot, testName: 'Weekly Test ' + slot, heldOn: null, conducted: false,
+        mandatory: true, marksObt: null, maxMarks: 100, pct: null, pass: false, notTaken: true });
+    }
+
+    var scoredMandatory = weeklyTests.filter(function(t) { return t.mandatory && t.pct !== null; });
+    var weeklyAvgVal = scoredMandatory.length
+      ? Math.round(scoredMandatory.reduce(function(s, t) { return s + t.pct; }, 0) / scoredMandatory.length)
+      : null;
+    var weeklyPass = weeklyAvgVal !== null && weeklyAvgVal >= 60;
+
+    // ── Final exam (mandatory) ──
+    var finalObt = 0, finalMax = 0, finalHasMark = false;
+    finalAssessments.forEach(function(a) {
+      var markRow = marksMap[a.assessment_id];
+      var obt = markObtained(markRow);
+      if (obt !== null) { finalObt += obt; finalMax += parseFloat(a.max_marks || 100); finalHasMark = true; }
+    });
+    var finalPct = finalHasMark && finalMax > 0 ? Math.round(100 * finalObt / finalMax) : null;
+    var finalPass = finalPct !== null && finalPct >= 60;
+
+    // ── Practical (independent gate; only required if the batch actually has a Practical test) ──
+    var practicalObt = 0, practicalMax = 0, practicalHasMark = false;
+    practicalAssessments.forEach(function(a) {
+      var markRow = marksMap[a.assessment_id];
+      var obt = markObtained(markRow);
+      if (obt !== null) { practicalObt += obt; practicalMax += parseFloat(a.max_marks || 100); practicalHasMark = true; }
+    });
+    var practicalPct = practicalHasMark && practicalMax > 0 ? Math.round(100 * practicalObt / practicalMax) : null;
+    var practicalRequired = practicalAssessments.length > 0;
+    var practicalPass = practicalRequired ? (practicalPct !== null && practicalPct >= 60) : true;
+
+    // ── Attendance (advisory only, never blocks eligibility) ──
+    var attPct = attInfo.total > 0 ? Math.round(100 * attInfo.present / attInfo.total) : null;
+    var attPass = attPct !== null && attPct >= 75;
+
+    var eligible = (weeklyPass && finalPass && practicalPass) || (hodStatus === 'Approved');
+
+    return {
+      studentId: studentId, studentName: studentName, batchCode: batchCode, centre: centre, course: course,
+      attendance: { attended: attInfo.present, total: attInfo.total, pct: attPct, pass: attPass },
+      weeklyTests: weeklyTests,
+      weeklyAvg: { value: weeklyAvgVal, pass: weeklyPass },
+      practicalMarks: { value: practicalPct, pass: practicalPass, required: practicalRequired },
+      finalExam: { value: finalPct, pass: finalPass },
+      eligible: eligible,
+      hodStatus: hodStatus,
+      diplomaStatus: dipRec ? 'Released' : 'Not Released',
+      diplomaReleasedAt: dipRec ? dipRec.released_at : null,
+      diplomaReleasedBy: dipRec ? dipRec.released_by : null
+    };
+  }
+
   function getActiveStudentCountsByBatch(cb) {
     POST('rpc/get_active_student_counts', '', {}, function(e, rows) {
       var counts = {};
@@ -1373,7 +1497,12 @@ window.gasGet = (function () {
         (marks || []).forEach(function (m) { if (!byT[m.assessment_id]) byT[m.assessment_id] = []; byT[m.assessment_id].push(m); });
         cb(null, { status: 'ok', tests: tests.map(function (t) {
           var ms = byT[t.assessment_id] || [];
-          var pcts = ms.map(function (m) { return Number(m.marks || 0); });
+          var maxMarks = Number(t.max_marks || 100) || 100;
+          // Normalise to a percentage (marks / max_marks * 100) — never average raw marks,
+          // since max_marks varies per test. Skip DNA / ungraded rows (marks === null).
+          var pcts = ms
+            .filter(function (m) { return m.marks !== null && m.marks !== undefined && m.marks !== ''; })
+            .map(function (m) { return Math.round(100 * Number(m.marks) / maxMarks); });
           var avg = pcts.length ? Math.round(pcts.reduce(function (s, v) { return s + v; }, 0) / pcts.length) : 0;
           return { assessmentId: t.assessment_id, testName: t.test_name, testType: t.test_type,
             testDate: toDMY(t.held_on), totalMarks: t.max_marks, avgPct: avg, marks: ms };
@@ -3543,116 +3672,19 @@ window.gasGet = (function () {
         var bc = e.batch_code.toUpperCase();
         var b = batchMap[e.batch_code] || {};
         var att = attByBatch[bc] || { total: 0, present: 0 };
+        var batchAssessments = assessments.filter(function(a) { return (a.batch_code || '').toUpperCase() === bc; });
 
-        // ── Course-type slot rules ──────────────────────────────────────
-        // JewelPad: WT1 & WT2 mandatory, WT3+ optional
-        // All others: WT1, WT2, WT3 mandatory, WT4+ optional
-        var isJewelPad = (b.course || '').toLowerCase().indexOf('jewelpad') !== -1;
-        var mandatoryCount = isJewelPad ? 2 : 3;
-
-        // ── Separate weekly vs final assessments for this batch ─────────
-        var batchAssessments = assessments.filter(function(a) {
-          return (a.batch_code || '').toUpperCase() === bc;
-        });
-        var weeklyAssessments = batchAssessments
-          .filter(function(a) { return (a.test_type || '').toLowerCase().indexOf('weekly') !== -1; })
-          .sort(function(a, b) { return new Date(a.held_on || 0) - new Date(b.held_on || 0); });
-        var finalAssessments = batchAssessments
-          .filter(function(a) { return (a.test_type || '').toLowerCase().indexOf('final') !== -1; });
-
-        // ── Build per-slot weekly test array ────────────────────────────
-        var weeklyTests = weeklyAssessments.map(function(a, idx) {
-          var slotNo = idx + 1;
-          var mandatory = slotNo <= mandatoryCount;
-          var markRow = marksMap[a.assessment_id];
-          var marksObt = markRow ? parseFloat(markRow.marks || 0) : null;
-          var maxMarks = parseFloat(a.max_marks || 100);
-          var pct = (marksObt !== null && maxMarks > 0) ? Math.round(100 * marksObt / maxMarks) : null;
-          if (pct !== null && isNaN(pct)) pct = null;
-          return {
-            slot:      slotNo,
-            testName:  a.test_name || ('Weekly Test ' + slotNo),
-            conducted: true,
-            mandatory: mandatory,
-            marksObt:  marksObt,
-            maxMarks:  maxMarks,
-            pct:       pct,
-            pass:      pct !== null && pct >= 60,
-            notTaken:  marksObt === null
-          };
-        });
-
-        // Add mandatory slots not yet conducted (so UI shows "Not yet conducted")
-        for (var slot = weeklyTests.length + 1; slot <= mandatoryCount; slot++) {
-          weeklyTests.push({
-            slot:      slot,
-            testName:  'Weekly Test ' + slot,
-            conducted: false,
-            mandatory: true,
-            marksObt:  null,
-            maxMarks:  100,
-            pct:       null,
-            pass:      false,
-            notTaken:  true
-          });
-        }
-
-        // ── Weekly pass: average of scored mandatory tests ≥ 60% ────────
-        var scoredMandatory = weeklyTests.filter(function(t) { return t.mandatory && t.pct !== null; });
-        var weeklyAvgVal = null;
-        if (scoredMandatory.length > 0) {
-          weeklyAvgVal = Math.round(
-            scoredMandatory.reduce(function(sum, t) { return sum + t.pct; }, 0) / scoredMandatory.length
-          );
-        }
-        var weeklyPass = weeklyAvgVal !== null && weeklyAvgVal >= 60;
-
-        // ── Final exam ──────────────────────────────────────────────────
-        var finalObt = 0, finalMax = 0;
-        finalAssessments.forEach(function(a) {
-          var markRow = marksMap[a.assessment_id];
-          if (markRow) {
-            finalObt += parseFloat(markRow.marks || 0);
-            finalMax += parseFloat(a.max_marks || 100);
-          }
-        });
-        var finalPct = finalMax > 0 ? Math.round(100 * finalObt / finalMax) : null;
-        if (finalPct !== null && isNaN(finalPct)) finalPct = null;
-        var finalPass = finalPct !== null && finalPct >= 60;
-
-        // ── Attendance ──────────────────────────────────────────────────
-        var attPct = att.total > 0 ? Math.round(100 * att.present / att.total) : null;
-        if (attPct !== null && isNaN(attPct)) attPct = null;
-        var attPass = attPct != null && attPct >= 75;
-
-        var hodStatus = hodMap[bc] || '';
-        var eligible = (weeklyPass && finalPass) || (hodStatus === 'Approved');
-        var dipRec = diplomaMap[e.batch_code];
-
-        return {
+        return buildDiplomaRow({
           studentId: studentId,
           batchCode: e.batch_code,
           course: b.course || '',
-          attendance: {
-            attended: att.present,
-            total: att.total,
-            pct: attPct,
-            pass: attPass
-          },
-          weeklyTests: weeklyTests,          // NEW: per-slot array
-          weeklyAvg: {                        // kept for backward compat (instructor portal)
-            value: weeklyAvgVal,
-            pass: weeklyPass
-          },
-          finalExam: {
-            value: finalPct,
-            pass: finalPass
-          },
-          eligible: eligible,
-          diplomaStatus: dipRec ? 'Released' : 'Not Released',
-          diplomaReleasedAt: dipRec ? dipRec.released_at : null,
-          diplomaReleasedBy: dipRec ? dipRec.released_by : null
-        };
+          centre: b.centre || '',
+          batchAssessments: batchAssessments,
+          marksMap: marksMap,
+          attInfo: att,
+          hodStatus: hodMap[bc] || '',
+          dipRec: diplomaMap[e.batch_code]
+        });
       });
 
       cb(null, { status: 'ok', rows: rows });
@@ -4332,7 +4364,7 @@ window.gasGet = (function () {
       students.forEach(function(s) { studentMap[s.student_id] = s; });
 
       var diplomaMap = {};
-      diplomas.forEach(function(d) { diplomaMap[d.student_id + '|' + d.batch_code] = d; });
+      diplomas.forEach(function(d) { diplomaMap[d.student_id + '|' + String(d.batch_code || '').toUpperCase()] = d; });
 
       var hodMap = {};
       hods.forEach(function(h) {
@@ -4364,21 +4396,18 @@ window.gasGet = (function () {
       var assessMap = {};
       assessments.forEach(function(a) { assessMap[a.assessment_id] = a; });
 
-      var marksByStudentBatch = {};
+      // marksByStudent[studentId][assessment_id] = mark row (feeds buildDiplomaRow's marksMap)
+      var marksByStudent = {};
       marks.forEach(function(m) {
-        var a = assessMap[m.assessment_id];
-        if (!a) return;
-        var bc = a.batch_code.toUpperCase();
-        var sid = m.student_id;
-        var key = sid + '|' + bc;
-        if (!marksByStudentBatch[key]) marksByStudentBatch[key] = { weeklyScores: [], finalScores: [] };
-        var isWeekly = (a.test_type || '').toLowerCase() === 'weekly' || (a.test_name || '').toLowerCase().indexOf('final') === -1;
-        var isFinal = (a.test_type || '').toLowerCase() === 'final' || (a.test_name || '').toLowerCase().indexOf('final') !== -1;
-        var val = parseFloat(m.marks || m.percentage);
-        if (!isNaN(val) && m.percentage !== 'DNA' && m.percentage !== '') {
-          if (isWeekly) marksByStudentBatch[key].weeklyScores.push(val);
-          if (isFinal) marksByStudentBatch[key].finalScores.push(val);
-        }
+        if (!marksByStudent[m.student_id]) marksByStudent[m.student_id] = {};
+        marksByStudent[m.student_id][m.assessment_id] = m;
+      });
+
+      var assessmentsByBatch = {};
+      assessments.forEach(function(a) {
+        var bc = (a.batch_code || '').toUpperCase();
+        if (!assessmentsByBatch[bc]) assessmentsByBatch[bc] = [];
+        assessmentsByBatch[bc].push(a);
       });
 
       var byBatch = {};
@@ -4404,52 +4433,110 @@ window.gasGet = (function () {
           var status = attMap[s.student_id + '|' + sc];
           if (status && status !== 'Absent') attended++;
         });
-        var attPct = totalSess > 0 ? Math.round(100 * attended / totalSess) : 0;
-        var attPass = attPct >= 75;
 
         var key = s.student_id + '|' + bc;
-        var sMarks = marksByStudentBatch[key] || { weeklyScores: [], finalScores: [] };
-
-        var weeklyAvg = sMarks.weeklyScores.length > 0 ? Math.round(sMarks.weeklyScores.reduce(function(a,b){return a+b;},0) / sMarks.weeklyScores.length) : null;
-        var finalExam = sMarks.finalScores.length > 0 ? Math.max.apply(null, sMarks.finalScores) : null;
-
-        var weeklyPass = weeklyAvg !== null && weeklyAvg >= 60;
-        var finalPass = finalExam !== null && finalExam >= 60;
-
         var hodStatus = hodMap[key] || '';
-        var eligible = (weeklyPass && finalPass) || (hodStatus === 'Approved');
-        var dipRec = diplomaMap[key];
 
-        byBatch[bc].totalCount++;
-        if (eligible) byBatch[bc].eligibleCount++;
-
-        byBatch[bc].students.push({
+        var row = buildDiplomaRow({
           studentId: s.student_id,
           studentName: s.name,
           batchCode: b.batch_code,
-          centre: b.centre,
-          course: b.course,
-          attendance: {
-            attended: attended,
-            total: totalSess,
-            pct: attPct,
-            pass: attPass
-          },
-          weeklyAvg: {
-            value: weeklyAvg,
-            pass: weeklyPass
-          },
-          finalExam: {
-            value: finalExam,
-            pass: finalPass
-          },
-          eligible: eligible,
+          course: b.course || '',
+          centre: b.centre || '',
+          batchAssessments: assessmentsByBatch[bc] || [],
+          marksMap: marksByStudent[s.student_id] || {},
+          attInfo: { total: totalSess, present: attended },
           hodStatus: hodStatus,
-          diplomaStatus: dipRec ? 'Released' : 'Not Released'
+          dipRec: diplomaMap[key]
         });
+
+        byBatch[bc].totalCount++;
+        if (row.eligible) byBatch[bc].eligibleCount++;
+        byBatch[bc].students.push(row);
       });
 
       cb(null, { status: 'ok', batches: Object.values(byBatch) });
+    } catch (err) {
+      cb(err, null);
+    }
+  }
+
+  /* getDiplomaEligibilityAll — flat, all-centres list for counselor/HOD Diploma Release tab.
+     Uses the same buildDiplomaRow() engine as instructor + student views so all three
+     portals always show identical numbers. */
+  async function h_getDiplomaEligibilityAll(p, cb) {
+    function getP(table, qs) {
+      return new Promise(function(resolve) {
+        GET(table, qs, function(err, data) { resolve(err ? [] : (data || [])); });
+      });
+    }
+    try {
+      var [students, batches, attRows, assessments, marks, diplomas, hods] = await Promise.all([
+        getP('students', 'select=student_id,name,batch_code'),
+        getP('batches', 'select=batch_code,centre,course,counselor'),
+        getP('attendance_feedback', 'select=student_id,batch_code,attendance'),
+        getP('assessments', 'select=assessment_id,batch_code,test_name,test_type,max_marks,held_on'),
+        getP('assessment_marks', 'select=assessment_id,student_id,marks,remarks'),
+        getP('diplomas', 'select=student_id,batch_code,released_by,released_at'),
+        getP('hod_approvals', 'status=eq.Approved&select=ref_code,status')
+      ]);
+
+      var batchMap = {};
+      batches.forEach(function(b) { batchMap[b.batch_code] = b; });
+
+      var diplomaMap = {};
+      diplomas.forEach(function(d) { diplomaMap[d.student_id + '|' + String(d.batch_code || '').toUpperCase()] = d; });
+
+      var hodMap = {};
+      hods.forEach(function(h) {
+        if (!h.ref_code) return;
+        var parts = h.ref_code.split('-HOD-');
+        if (parts.length === 2) hodMap[parts[1] + '|' + parts[0]] = h.status;
+      });
+
+      var attByStudentBatch = {};
+      attRows.forEach(function(a) {
+        if (!a.student_id || !a.batch_code) return;
+        var key = a.student_id + '|' + a.batch_code.toUpperCase();
+        if (!attByStudentBatch[key]) attByStudentBatch[key] = { total: 0, present: 0 };
+        attByStudentBatch[key].total++;
+        if (a.attendance === 'Present' || a.attendance === 'Late') attByStudentBatch[key].present++;
+      });
+
+      var assessmentsByBatch = {};
+      assessments.forEach(function(a) {
+        var bc = (a.batch_code || '').toUpperCase();
+        if (!assessmentsByBatch[bc]) assessmentsByBatch[bc] = [];
+        assessmentsByBatch[bc].push(a);
+      });
+
+      var marksByStudent = {};
+      marks.forEach(function(m) {
+        if (!marksByStudent[m.student_id]) marksByStudent[m.student_id] = {};
+        marksByStudent[m.student_id][m.assessment_id] = m;
+      });
+
+      var diplomaList = students.map(function(st) {
+        var b = batchMap[st.batch_code] || {};
+        var bc = (st.batch_code || '').toUpperCase();
+        var key = st.student_id + '|' + bc;
+        var row = buildDiplomaRow({
+          studentId: st.student_id,
+          studentName: st.name,
+          batchCode: st.batch_code,
+          course: b.course || '',
+          centre: b.centre || '',
+          batchAssessments: assessmentsByBatch[bc] || [],
+          marksMap: marksByStudent[st.student_id] || {},
+          attInfo: attByStudentBatch[key] || { total: 0, present: 0 },
+          hodStatus: hodMap[key] || '',
+          dipRec: diplomaMap[key]
+        });
+        row.counselorName = b.counselor || '';
+        return row;
+      });
+
+      cb(null, { status: 'ok', list: diplomaList });
     } catch (err) {
       cb(err, null);
     }
@@ -5379,6 +5466,7 @@ window.gasGet = (function () {
       case 'getStudentsForBatches':     return h_getStudentsForBatches(params, cb);
       case 'updateStudentInfo':         return h_updateStudentInfo(params, cb);
       case 'getInstructorEligibility':  return h_getInstructorEligibility(params, cb);
+      case 'getDiplomaEligibilityAll':  return h_getDiplomaEligibilityAll(params, cb);
       case 'getInstructorTests':        return h_getInstructorTests(params, cb);
       case 'getQuestionBank':           return h_getQuestionBank(params, cb);
       case 'setupQuestionBank':         return h_setupQuestionBank(params, cb);

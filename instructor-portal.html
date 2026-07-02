@@ -644,7 +644,7 @@
   <div id="t-eligibility" class="tab-content">
     <div class="section-tag">Diploma Eligibility</div>
     <h2>Student Diploma Eligibility</h2>
-    <p class="sub">Shows which students in your batches are on track for their diploma based on attendance, weekly test average, and final exam.</p>
+    <p class="sub">Shows which students in your batches are on track for their diploma. Eligibility requires: weekly test average ≥60%, Practical marks ≥60% (if a Practical test exists for the batch), and Final exam ≥60%. Attendance (≥75%) is shown for reference only and does not block eligibility.</p>
     <div id="elig-loading" style="text-align:center;padding:40px;color:#6b7280;font-size:14px;">Loading eligibility data…</div>
     <div id="elig-content" style="display:none;"></div>
   </div>
@@ -8379,8 +8379,9 @@ function renderEligibility(batches) {
       html += '<thead><tr style="background:#0D1B2E;color:#C9A84C;">';
       html += '<th style="padding:7px 10px;text-align:left;border-radius:6px 0 0 0;">Student</th>';
       html += '<th style="padding:7px 10px;text-align:center;">Attendance<br><span style="font-size:9px;font-weight:400;opacity:0.8;">advisory ≥75%</span></th>';
-      html += '<th style="padding:7px 10px;text-align:center;">Weekly Tests<br><span style="font-size:10px;font-weight:400;">each must be ≥60%</span></th>';
-      html += '<th style="padding:7px 10px;text-align:center;">Final Exam</th>';
+      html += '<th style="padding:7px 10px;text-align:center;">Weekly Tests<br><span style="font-size:10px;font-weight:400;">average must be ≥60%</span></th>';
+      html += '<th style="padding:7px 10px;text-align:center;">Practical<br><span style="font-size:9px;font-weight:400;opacity:0.8;">must be ≥60%</span></th>';
+      html += '<th style="padding:7px 10px;text-align:center;">Final Exam<br><span style="font-size:9px;font-weight:400;opacity:0.8;">must be ≥60%</span></th>';
       html += '<th style="padding:7px 10px;text-align:center;border-radius:0 6px 0 0;">Status</th>';
       html += '</tr></thead><tbody>';
 
@@ -8404,14 +8405,10 @@ function renderEligibility(batches) {
         }
         html += '</td>';
 
-        // Weekly tests — per-slot rows
+        // Weekly tests — per-slot rows + explicit average
         html += '<td style="padding:6px 10px;vertical-align:middle;">';
         const wTests = s.weeklyTests || [];
-        if (!wTests.length) {
-          // Fall back to old aggregate if weeklyTests not present
-          const wVal = s.weeklyAvg && s.weeklyAvg.value !== null ? s.weeklyAvg.value + '%' : null;
-          html += '<div style="text-align:center;">' + badge(wVal, s.weeklyAvg && s.weeklyAvg.pass, '') + '</div>';
-        } else {
+        if (wTests.length) {
           wTests.forEach(function(t) {
             var label = 'WT' + t.slot + (t.mandatory ? '' : '<span style="color:#9ca3af;font-size:9px;"> opt</span>');
             var scoreSpan;
@@ -8429,6 +8426,25 @@ function renderEligibility(batches) {
               + scoreSpan
               + '</div>';
           });
+        } else {
+          html += '<div style="font-size:10px;color:#9ca3af;">No weekly tests yet</div>';
+        }
+        // Explicit average line — always shown, not just implied by badges above
+        const wAvgVal = s.weeklyAvg && s.weeklyAvg.value !== null ? s.weeklyAvg.value + '%' : '—';
+        html += '<div style="margin-top:4px;padding-top:4px;border-top:1px dashed #e5e7eb;display:flex;justify-content:space-between;align-items:center;gap:6px;">'
+          + '<span style="font-size:10px;color:#0D1B2E;font-weight:700;">Avg</span>'
+          + badge(s.weeklyAvg && s.weeklyAvg.value !== null ? s.weeklyAvg.value : null, s.weeklyAvg && s.weeklyAvg.pass, '%')
+          + '</div>';
+        html += '</td>';
+
+        // Practical marks — independent gate (only required if a Practical test exists for the batch)
+        const prac = s.practicalMarks;
+        html += '<td style="padding:7px 10px;text-align:center;">';
+        if (!prac || !prac.required) {
+          html += '<span style="' + pendStyle + '">N/A</span>';
+        } else {
+          const pVal = prac.value !== null ? prac.value + '%' : null;
+          html += badge(pVal, prac.pass, '');
         }
         html += '</td>';
 
@@ -8437,9 +8453,10 @@ function renderEligibility(batches) {
         html += '<td style="padding:7px 10px;text-align:center;">' + badge(fVal, s.finalExam && s.finalExam.pass, '') + '</td>';
 
         // Overall
+        const hasAnyScore = (s.weeklyAvg && s.weeklyAvg.value !== null) || (s.finalExam && s.finalExam.value !== null) || (prac && prac.value !== null);
         if (s.eligible) {
           html += '<td style="padding:7px 10px;text-align:center;"><span style="background:#0D1B2E;color:#C9A84C;font-weight:700;padding:3px 10px;border-radius:12px;font-size:11px;">✓ Eligible</span></td>';
-        } else if ((!s.weeklyAvg || s.weeklyAvg.value === null) && (!s.finalExam || s.finalExam.value === null)) {
+        } else if (!hasAnyScore) {
           html += '<td style="padding:7px 10px;text-align:center;"><span style="' + pendStyle + '">In Progress</span></td>';
         } else {
           const missing = [];
@@ -8448,6 +8465,7 @@ function renderEligibility(batches) {
             const failedSlots = (s.weeklyTests || []).filter(function(t){ return t.mandatory && (!t.pass || t.notTaken); });
             missing.push(failedSlots.length ? 'WT' + failedSlots.map(function(t){return t.slot;}).join('/') : 'Weekly');
           }
+          if (prac && prac.required && !prac.pass) missing.push('Practical');
           if (!s.finalExam || !s.finalExam.pass) missing.push('Final');
           html += '<td style="padding:7px 10px;text-align:center;"><span style="' + failStyle + '">✗ ' + missing.join(', ') + '</span></td>';
         }

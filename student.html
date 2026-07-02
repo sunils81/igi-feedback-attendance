@@ -3294,7 +3294,7 @@ function loadStudentDiploma() {
 
     var html = '<div style="padding:4px 0 12px;">' +
       '<h3 style="font-size:15px;font-weight:800;color:#0D1B2E;margin:0 0 4px;">🎓 Diploma Eligibility</h3>' +
-      '<p style="font-size:11px;color:#6b7280;margin:0 0 14px;">Each weekly test and the final exam must be ≥ 60%. Attendance (≥75%) is advisory.</p>' +
+      '<p style="font-size:11px;color:#6b7280;margin:0 0 14px;">Your weekly test average, Practical marks (if applicable), and Final exam must each be ≥ 60%. Attendance (≥75%) is advisory.</p>' +
     '</div>';
 
     rows.forEach(function(row) {
@@ -3324,6 +3324,20 @@ function loadStudentDiploma() {
             ? '<span style="color:'+G+';font-weight:700;">✅ '+finalStr+'</span>'
             : '<span style="color:'+R+';font-weight:700;">✗ '+finalStr+'</span>')
         : '<span style="color:#9ca3af;">—</span>';
+
+      // Practical marks badge — independent gate, only shown as required if the batch has a Practical test
+      var pracInfo  = row.practicalMarks || {};
+      var pracVal   = pracInfo.value != null ? pracInfo.value : null;
+      var pracReq   = !!pracInfo.required;
+      var pracPass  = !!pracInfo.pass;
+      var pracStr   = pracVal != null ? Math.round(pracVal) + '%' : '—';
+      var pracBadge = !pracReq
+        ? '<span style="color:#9ca3af;">N/A</span>'
+        : (pracVal != null
+            ? (pracPass
+                ? '<span style="color:'+G+';font-weight:700;">✅ '+pracStr+'</span>'
+                : '<span style="color:'+R+';font-weight:700;">✗ '+pracStr+'</span>')
+            : '<span style="color:#9ca3af;">—</span>');
 
       // Weekly tests rows
       var weeklyRowsHtml = '';
@@ -3371,6 +3385,7 @@ function loadStudentDiploma() {
             : 'weekly tests';
           missing.push('Need ≥60% in ' + failDesc);
         }
+        if (pracReq && !pracPass) missing.push('Practical ' + pracStr + ' (need ≥60%)');
         if (!finalPass) missing.push('Final exam ' + finalStr + ' (need ≥60%)');
         if (!missing.length) missing.push('Assessment in progress');
         statusHtml = '<span style="color:#dc2626;font-weight:800;font-size:13px;">⏳ Not yet eligible</span>' +
@@ -3382,7 +3397,7 @@ function loadStudentDiploma() {
         '<div style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">' +
           (row.course || '') + (row.batchCode ? ' &nbsp;·&nbsp; ' + row.batchCode : '') +
         '</div>' +
-        // Top row: Attendance + Final Exam
+        // Top row: Attendance, Weekly Avg, Practical, Final Exam
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">' +
           '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
             '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">ATTENDANCE<br><span style="font-size:9px;font-weight:400;opacity:.8">advisory ≥75%</span></div>' +
@@ -3392,13 +3407,23 @@ function loadStudentDiploma() {
               : '') +
           '</div>' +
           '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
+            '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">WEEKLY AVERAGE<br><span style="font-size:9px;font-weight:400;opacity:.8">must be ≥60%</span></div>' +
+            '<div style="font-size:15px;">' + (weeklyAvgVal != null
+              ? (weeklyPass ? '<span style="color:'+G+';font-weight:700;">✅ '+Math.round(weeklyAvgVal)+'%</span>' : '<span style="color:'+R+';font-weight:700;">✗ '+Math.round(weeklyAvgVal)+'%</span>')
+              : '<span style="color:#9ca3af;">—</span>') + '</div>' +
+          '</div>' +
+          '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
+            '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">PRACTICAL<br><span style="font-size:9px;font-weight:400;opacity:.8">' + (pracReq ? 'must be ≥60%' : 'not applicable') + '</span></div>' +
+            '<div style="font-size:15px;">' + pracBadge + '</div>' +
+          '</div>' +
+          '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
             '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">FINAL EXAM<br><span style="font-size:9px;font-weight:400;opacity:.8">must be ≥60%</span></div>' +
             '<div style="font-size:15px;">' + finalBadge + '</div>' +
           '</div>' +
         '</div>' +
-        // Weekly tests section
+        // Weekly tests section — each test shown individually, not just the average
         '<div style="background:#f9fafb;border-radius:8px;padding:10px 12px;margin-bottom:10px;">' +
-          '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px;">WEEKLY TESTS &nbsp;<span style="font-weight:400;text-transform:none;letter-spacing:0;">(each must be ≥60%)</span></div>' +
+          '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px;">WEEKLY TESTS &nbsp;<span style="font-weight:400;text-transform:none;letter-spacing:0;">(average must be ≥60%)</span></div>' +
           weeklyRowsHtml +
         '</div>' +
         '<div style="border-top:1px solid #e5e7eb;padding-top:10px;">' + statusHtml + '</div>' +

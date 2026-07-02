@@ -3193,7 +3193,7 @@
         <h2 style="margin-bottom:0">🎓 Diploma Release</h2>
         <button id="btn-bulk-release" class="btn btn-gold" style="display:none;width:auto;padding:8px 16px" onclick="bulkReleaseDiplomas()">Release Selected (0)</button>
       </div>
-      <p class="sub">Release diplomas for eligible students from all centres. Eligibility criteria: weekly test average &ge; 60% <strong>and</strong> final exam score &ge; 60%. Attendance (&ge;75%) is shown as an advisory indicator but does not block release.</p>
+      <p class="sub">Release diplomas for eligible students from all centres. Eligibility criteria: weekly test average &ge; 60%, Practical marks &ge; 60% (if a Practical test exists for the batch), <strong>and</strong> final exam score &ge; 60%. Attendance (&ge;75%) is shown as an advisory indicator but does not block release.</p>
       
       <!-- Search and Filter bar -->
       <div style="display:flex;gap:12px;align-items:center;margin-top:14px;margin-bottom:14px;flex-wrap:wrap">
@@ -3228,13 +3228,14 @@
               <th class="text-left">Student</th>
               <th class="text-left">Batch &amp; Centre</th>
               <th class="text-center">Attendance <span style="font-weight:400;font-size:10px;opacity:0.75">(advisory, &ge;75%)</span></th>
-              <th class="text-center">Weekly Test Avg (&ge;60%)</th>
+              <th class="text-center">Weekly Tests <span style="font-weight:400;font-size:10px;opacity:0.75">(WT1, WT2, WT3&hellip; + average, &ge;60%)</span></th>
+              <th class="text-center">Practical <span style="font-weight:400;font-size:10px;opacity:0.75">(&ge;60%, if applicable)</span></th>
               <th class="text-center">Final Exam (&ge;60%)</th>
               <th class="text-center">Status / Actions</th>
             </tr>
           </thead>
           <tbody id="diploma-tbody">
-            <tr><td colspan="7" style="text-align:center;padding:16px;color:var(--muted)">Loading diploma eligibility records...</td></tr>
+            <tr><td colspan="8" style="text-align:center;padding:16px;color:var(--muted)">Loading diploma eligibility records...</td></tr>
           </tbody>
         </table>
       </div>
@@ -8825,192 +8826,20 @@ async function loadDiplomaData() {
   var tbody = document.getElementById('diploma-tbody');
   if (!tbody) return;
 
-  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading diploma eligibility records...</p></div></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading diploma eligibility records...</p></div></td></tr>';
 
-  try {
-    var SUPABASE_URL = 'https://atbexvtrcopaagcdbpqi.supabase.co';
-    var SUPABASE_ANON = 'sb_publishable_TpzxX5a3M7lnFeND8xLfhQ_YJOxOkhb';
-    var headers = { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON };
-
-    // Fetch core data in parallel
-    var [studentsResp, batchesResp, attResp, assessResp, marksResp, diplomasResp, onlineTestsResp] = await Promise.all([
-      fetch(SUPABASE_URL + '/rest/v1/students?select=student_id,name,batch_code', {headers: headers}),
-      fetch(SUPABASE_URL + '/rest/v1/batches?select=batch_code,centre,course,counselor', {headers: headers}),
-      fetch(SUPABASE_URL + '/rest/v1/attendance_feedback?select=student_id,attendance', {headers: headers}),
-      fetch(SUPABASE_URL + '/rest/v1/assessments?select=assessment_id,batch_code,test_type,max_marks', {headers: headers}),
-      fetch(SUPABASE_URL + '/rest/v1/assessment_marks?select=assessment_id,student_id,marks', {headers: headers}),
-      fetch(SUPABASE_URL + '/rest/v1/diplomas?select=student_id,batch_code,released_by,released_at', {headers: headers}),
-      fetch(SUPABASE_URL + '/rest/v1/online_tests?select=test_id,test_type,results_released,passing_score', {headers: headers})
-    ]);
-
-    var students    = await studentsResp.json();
-    var batches     = await batchesResp.json();
-    var attRows     = await attResp.json();
-    var assessments = await assessResp.json();
-    var marks       = await marksResp.json();
-    var diplomas    = await diplomasResp.json();
-    var onlineTests = await onlineTestsResp.json();
-
-    // Guard: all must be arrays (RLS block returns an object with "message")
-    if (!Array.isArray(students))    throw new Error('students fetch failed: ' + JSON.stringify(students));
-    if (!Array.isArray(batches))     throw new Error('batches fetch failed: ' + JSON.stringify(batches));
-    if (!Array.isArray(attRows))     attRows = [];
-    if (!Array.isArray(assessments)) assessments = [];
-    if (!Array.isArray(marks))       marks = [];
-    if (!Array.isArray(diplomas))    diplomas = [];
-    if (!Array.isArray(onlineTests)) onlineTests = [];
-
-    // Find released online tests and categorise them
-    var releasedTests = {};  // test_id → { category: 'weekly'|'final', passingScore }
-    onlineTests.forEach(function(ot) {
-      if (ot.results_released === 'Yes') {
-        var ttype = (ot.test_type || '').toLowerCase();
-        releasedTests[ot.test_id] = {
-          category: ttype.indexOf('final') !== -1 ? 'final' : 'weekly',
-          passingScore: ot.passing_score || 60
-        };
-      }
-    });
-
-    // For released tests, fetch responses + questions + question bank to compute scores
-    var studentScores = {};  // student_id → { weeklyTotal, weeklyMax, finalObt, finalMax }
-
-    var releasedTestIds = Object.keys(releasedTests);
-    if (releasedTestIds.length > 0) {
-      var tidsParam = releasedTestIds.map(encodeURIComponent).join(',');
-      var [tResponsesResp, tQuestionsResp] = await Promise.all([
-        fetch(SUPABASE_URL + '/rest/v1/test_responses?select=test_id,student_id,score,answers&test_id=in.(' + tidsParam + ')', {headers: headers}),
-        fetch(SUPABASE_URL + '/rest/v1/test_questions?select=test_id,question_id&test_id=in.(' + tidsParam + ')', {headers: headers})
-      ]);
-      var testResponses = await tResponsesResp.json();
-      var testQuestions = await tQuestionsResp.json();
-      if (!Array.isArray(testResponses)) testResponses = [];
-      if (!Array.isArray(testQuestions)) testQuestions = [];
-
-      // Get all unique question IDs across released tests
-      var allQids = testQuestions.map(function(tq) { return tq.question_id; });
-      var uniqueQids = allQids.filter(function(v, i, a) { return a.indexOf(v) === i; });
-
-      var qMap = {};  // question_id → question row
-      if (uniqueQids.length > 0) {
-        var qbResp = await fetch(
-          SUPABASE_URL + '/rest/v1/question_bank?select=id,correct_ans,max_marks,q_type&id=in.(' + uniqueQids.map(encodeURIComponent).join(',') + ')',
-          {headers: headers}
-        );
-        var qbRows = await qbResp.json();
-        if (Array.isArray(qbRows)) qbRows.forEach(function(q) { qMap[String(q.id)] = q; });
-      }
-
-      // Build per-test question list for scoring
-      var testQMap = {};  // test_id → [question_id, ...]
-      testQuestions.forEach(function(tq) {
-        if (!testQMap[tq.test_id]) testQMap[tq.test_id] = [];
-        testQMap[tq.test_id].push(tq.question_id);
-      });
-
-      var optLetters = ['A','B','C','D'];
-
-      // Score each student response
-      testResponses.forEach(function(tr) {
-        var testMeta = releasedTests[tr.test_id];
-        if (!testMeta) return;
-        var qids = testQMap[tr.test_id] || [];
-        var answers = tr.answers || {};
-        var totalMarks = 0, obtainedMarks = 0;
-
-        qids.forEach(function(qid) {
-          var q = qMap[String(qid)];
-          if (!q) return;
-          var maxMark = parseFloat(q.max_marks || 1);
-          totalMarks += maxMark;
-          if (q.q_type && q.q_type !== 'MCQ') return;
-          var ca = String(q.correct_ans || '').trim();
-          var studentAns = String((answers[String(qid)] || '')).trim();
-          if (!studentAns || !ca) return;
-          var optIdx = parseInt(studentAns, 10) - 1;
-          var isCorrect = ca === studentAns
-            || (optIdx >= 0 && optLetters[optIdx] && ca.toUpperCase() === optLetters[optIdx])
-            || (optIdx >= 0 && String(optIdx + 1) === ca);
-          if (isCorrect) obtainedMarks += maxMark;
-        });
-
-        // Fall back to stored score if we couldn't compute (e.g. no questions in bank)
-        if (totalMarks === 0 && tr.score != null) {
-          obtainedMarks = parseFloat(tr.score || 0);
-          totalMarks = 100; // assume out of 100 if we have no question info
-        }
-        if (totalMarks === 0) return;
-
-        var pct = Math.round((obtainedMarks / totalMarks) * 100);
-        if (!studentScores[tr.student_id]) studentScores[tr.student_id] = {weeklyTotal:0, weeklyMax:0, finalObt:0, finalMax:0};
-        var s = studentScores[tr.student_id];
-        if (testMeta.category === 'final') {
-          s.finalObt += pct; s.finalMax += 100;
-        } else {
-          s.weeklyTotal += pct; s.weeklyMax += 100;
-        }
-      });
+  // Uses the SAME scoring engine as the instructor + student portals (h_getDiplomaEligibilityAll
+  // in shared.js -> buildDiplomaRow()), so this table can never disagree with what instructors
+  // and students see. Do not re-implement the scoring math here.
+  gasGet({ action: 'getDiplomaEligibilityAll' }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      console.error('[Diploma] loadDiplomaData error:', err);
+      var tbody2 = document.getElementById('diploma-tbody');
+      if (tbody2) tbody2.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--red);padding:16px">Failed to load diploma eligibility records.</td></tr>';
+      return;
     }
 
-    // Index lookups
-    var batchMap = {};
-    batches.forEach(function(b) { batchMap[b.batch_code] = b; });
-
-    var diplomaMap = {};
-    diplomas.forEach(function(d) { diplomaMap[d.student_id + '|' + d.batch_code] = d; });
-
-    // Attendance % per student
-    var attByStudent = {};
-    attRows.forEach(function(a) {
-      if (!attByStudent[a.student_id]) attByStudent[a.student_id] = {total:0, present:0};
-      attByStudent[a.student_id].total++;
-      if (a.attendance === 'Present' || a.attendance === 'Late') attByStudent[a.student_id].present++;
-    });
-
-    // Merge traditional assessment marks into studentScores
-    var assessMap = {};
-    assessments.forEach(function(a) { assessMap[a.assessment_id] = a; });
-    marks.forEach(function(m) {
-      var a = assessMap[m.assessment_id];
-      if (!a) return;
-      if (!studentScores[m.student_id]) studentScores[m.student_id] = {weeklyTotal:0, weeklyMax:0, finalObt:0, finalMax:0};
-      var s = studentScores[m.student_id];
-      var ttype = (a.test_type || '').toLowerCase();
-      if (ttype.indexOf('final') !== -1) {
-        s.finalObt += parseFloat(m.marks || 0);
-        s.finalMax += parseFloat(a.max_marks || 100);
-      } else {
-        s.weeklyTotal += parseFloat(m.marks || 0);
-        s.weeklyMax   += parseFloat(a.max_marks || 100);
-      }
-    });
-
-    diplomaList = students.map(function(st) {
-      var batch = batchMap[st.batch_code] || {};
-      var att = attByStudent[st.student_id] || {total:0, present:0};
-      var sc = studentScores[st.student_id] || {weeklyTotal:0, weeklyMax:0, weeklyCount:0, finalObt:0, finalMax:0};
-      var attPct = att.total > 0 ? Math.round(100 * att.present / att.total) : null;
-      var weeklyAvg = sc.weeklyMax > 0 ? Math.round(100 * sc.weeklyTotal / sc.weeklyMax) : null;
-      var finalPct  = sc.finalMax  > 0 ? Math.round(100 * sc.finalObt  / sc.finalMax)  : null;
-      // Eligible if weekly avg >= 60 AND final >= 60 (attendance advisory only)
-      var eligible = (weeklyAvg !== null && weeklyAvg >= 60) && (finalPct !== null && finalPct >= 60);
-      var dipRec = diplomaMap[st.student_id + '|' + st.batch_code];
-      return {
-        studentId: st.student_id,
-        studentName: st.name,
-        batchCode: st.batch_code,
-        centre: batch.centre || '',
-        course: batch.course || '',
-        counselorName: batch.counselor || '',
-        attPct: attPct,
-        weeklyAvg: weeklyAvg,
-        finalPct: finalPct,
-        eligible: eligible,
-        diplomaStatus: dipRec ? 'Released' : 'Not Released',
-        diplomaReleasedAt: dipRec ? dipRec.released_at : null,
-        diplomaReleasedBy: dipRec ? dipRec.released_by : null
-      };
-    });
+    diplomaList = d.list || [];
 
     var courseFilter = document.getElementById('diploma-course-filter');
     if (courseFilter) {
@@ -9030,11 +8859,7 @@ async function loadDiplomaData() {
     }
 
     renderDiplomaTable(diplomaList);
-  } catch(err) {
-    console.error('[Diploma] loadDiplomaData error:', err);
-    var tbody2 = document.getElementById('diploma-tbody');
-    if (tbody2) tbody2.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--red);padding:16px">Failed to load diploma eligibility records: ' + escC(err.message) + '</td></tr>';
-  }
+  });
 }
 
 function renderDiplomaTable(list) {
@@ -9042,10 +8867,10 @@ function renderDiplomaTable(list) {
   if (!tbody) return;
   
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">No student records found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:16px">No student records found.</td></tr>';
     return;
   }
-  
+
   tbody.innerHTML = list.map(function(a) {
     // Support both old GAS shape (a.attendance.pct) and new Supabase flat shape (a.attPct)
     var attPct  = (a.attendance && a.attendance.pct  != null) ? a.attendance.pct  : a.attPct;
@@ -9062,9 +8887,36 @@ function renderDiplomaTable(list) {
     var weeklyVal  = (a.weeklyAvg && a.weeklyAvg.value != null) ? a.weeklyAvg.value : (a.weeklyAvg != null && typeof a.weeklyAvg === 'number' ? a.weeklyAvg : null);
     var weeklyPass = weeklyVal != null && weeklyVal >= 60;
     var weeklyStr  = weeklyVal != null ? weeklyVal + '%' : 'N/A';
-    var weeklyBadge = weeklyVal != null
-      ? (weeklyPass ? '<span style="color:#168B57;font-weight:700">✅ ' + weeklyStr + '</span>' : '<span style="color:#C94A4A;font-weight:700">❌ ' + weeklyStr + '</span>')
-      : '<span style="color:var(--muted)">N/A</span>';
+
+    // Per-test WT1, WT2, WT3... breakdown, each visible individually, plus the average — not just the average.
+    var wTests = a.weeklyTests || [];
+    var wtRowsHtml = wTests.map(function(t) {
+      var lbl = 'WT' + t.slot + (t.mandatory ? '' : ' (opt)');
+      var val;
+      if (!t.conducted) val = '<span style="color:var(--muted)">—</span>';
+      else if (t.notTaken) val = '<span style="color:#C94A4A;font-weight:700">✗</span>';
+      else val = '<span style="color:' + (t.pass ? '#168B57' : '#C94A4A') + ';font-weight:700">' + t.pct + '%</span>';
+      return '<div style="display:flex;justify-content:space-between;gap:6px;font-size:10px;line-height:1.6"><span style="color:var(--muted)">' + lbl + '</span>' + val + '</div>';
+    }).join('');
+    var weeklyBadge = '<div style="text-align:left;min-width:90px">' +
+      (wtRowsHtml || '<div style="font-size:10px;color:var(--muted)">No weekly tests yet</div>') +
+      '<div style="border-top:1px dashed var(--border);margin-top:2px;padding-top:2px;display:flex;justify-content:space-between;gap:6px;font-size:11px;font-weight:700">' +
+        '<span>Avg</span>' +
+        (weeklyVal != null
+          ? '<span style="color:' + (weeklyPass ? '#168B57' : '#C94A4A') + '">' + (weeklyPass ? '✅ ' : '❌ ') + weeklyStr + '</span>'
+          : '<span style="color:var(--muted)">N/A</span>') +
+      '</div>' +
+    '</div>';
+
+    var pracInfo  = a.practicalMarks || {};
+    var pracVal   = pracInfo.value != null ? pracInfo.value : null;
+    var pracReq   = !!pracInfo.required;
+    var pracPass  = !!pracInfo.pass;
+    var pracBadge = !pracReq
+      ? '<span style="color:var(--muted)">N/A</span>'
+      : (pracVal != null
+          ? '<span style="color:' + (pracPass ? '#168B57' : '#C94A4A') + ';font-weight:700">' + (pracPass ? '✅ ' : '❌ ') + pracVal + '%</span>'
+          : '<span style="color:var(--muted)">N/A</span>');
 
     var finalVal  = (a.finalExam && a.finalExam.value != null) ? a.finalExam.value : (a.finalPct != null ? a.finalPct : null);
     var finalPass = finalVal != null && finalVal >= 60;
@@ -9097,7 +8949,7 @@ function renderDiplomaTable(list) {
       actionCell = '<button class="btn btn-gold btn-xs" onclick="releaseDiploma(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', this)" style="padding:5px 10px;font-size:11px;margin:0 auto;display:block">Release Diploma</button>' + approvedBadge;
     } else {
       var requestBtn = '';
-      var isBorderline = (weeklyVal != null && weeklyVal >= 50 && weeklyVal < 60) || (finalVal != null && finalVal >= 50 && finalVal < 60);
+      var isBorderline = (weeklyVal != null && weeklyVal >= 50 && weeklyVal < 60) || (finalVal != null && finalVal >= 50 && finalVal < 60) || (pracReq && pracVal != null && pracVal >= 50 && pracVal < 60);
       if (isBorderline && (counselorName.toLowerCase() === 'bianca' || counselorName.toLowerCase() === 'anuradha')) {
         requestBtn = '<button class="btn btn-outline btn-xs" onclick="requestHODApproval(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', \'' + escC(a.studentName.replace(/'/g, "\\'")) + '\', ' + weeklyVal + ', ' + finalVal + ', this)" style="padding:4px 8px;font-size:10px;margin:5px auto 0;display:block;width:100%">Request HOD</button>';
       }
@@ -9121,6 +8973,7 @@ function renderDiplomaTable(list) {
       '<td class="text-left"><span style="font-family:monospace;font-weight:600">' + escC(a.batchCode) + '</span><br><span style="font-size:11px;color:var(--muted)">' + escC(a.centre) + '</span></td>' +
       '<td class="text-center">' + attBadge + '</td>' +
       '<td class="text-center">' + weeklyBadge + '</td>' +
+      '<td class="text-center">' + pracBadge + '</td>' +
       '<td class="text-center">' + finalBadge + '</td>' +
       '<td class="text-center">' + actionCell + '</td>' +
     '</tr>';

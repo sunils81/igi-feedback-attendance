@@ -3534,29 +3534,36 @@ function openPresentationMode() {
   
   const mappedCounsellors = new Set();
   const rowsToCheck = rev.monthlyPreviewRows || rev.monthlyRows || [];
-  
+
+  // Pre-build per-counsellor totals (all centres, no filter) — fixes dropped "other centre" revenue
+  const counsellorTotalMap = {};
+  (rev.counsellors || []).forEach(ct => {
+    counsellorTotalMap[revCanonical(ct.counsellor)] = {
+      achievedCourse: Number(ct.achievedCourse) || 0,
+      achievedGst:    Number(ct.achievedGst)    || 0,
+      studentCount:   Number(ct.studentCount)   || 0
+    };
+  });
+  const achievedAssigned = new Set();
+
   mapping.forEach(row => {
     mappedCounsellors.add(revCanonical(row.counsellor));
     const c = row.centre;
     if (!counsellorsByCentre[c]) counsellorsByCentre[c] = [];
-    
+
     const tRow = (rev.targetRows || []).find(tr => revCanonical(tr.counsellor) === revCanonical(row.counsellor) && tr.centre === c);
     const targetCourse = tRow ? (Number(tRow.targetCourse) || 0) : 0;
     const targetGst = tRow ? (Number(tRow.targetGst) || 0) : 0;
-    
-    let achievedCourse = 0;
-    let achievedGst = 0;
-    let studentCount = 0;
-    rowsToCheck.forEach(mr => {
-      const mrIsCorporate = String(mr.businessType||'').toLowerCase().includes('corporate') || String(mr.businessCentre||'').toLowerCase().includes('corporate');
-      // Corporate rows match on assignedCentre (home centre); regular rows match on businessCentre
-      const matchCentre = mrIsCorporate ? mr.assignedCentre : mr.businessCentre;
-      if (revCanonical(mr.counsellor) === revCanonical(row.counsellor) && matchCentre === c) {
-        achievedCourse += Number(mr.achievedCourse) || 0;
-        achievedGst += Number(mr.achievedGst) || 0;
-        studentCount += Number(mr.studentCount) || 0;
-      }
-    });
+
+    const cKey = revCanonical(row.counsellor);
+    let achievedCourse = 0, achievedGst = 0, studentCount = 0;
+    if (!achievedAssigned.has(cKey)) {
+      achievedAssigned.add(cKey);
+      const tot = counsellorTotalMap[cKey] || {};
+      achievedCourse = tot.achievedCourse || 0;
+      achievedGst    = tot.achievedGst    || 0;
+      studentCount   = tot.studentCount   || 0;
+    }
 
     const pct = targetCourse ? Math.round(achievedCourse / targetCourse * 100) : (achievedCourse ? 100 : 0);
 
@@ -3570,11 +3577,11 @@ function openPresentationMode() {
       pct: pct
     });
   });
-  
+
   const allSourceCounsellors = new Set();
   rowsToCheck.forEach(mr => { if (mr.counsellor) allSourceCounsellors.add(mr.counsellor); });
   (rev.targetRows || []).forEach(tr => { if (tr.counsellor) allSourceCounsellors.add(tr.counsellor); });
-  
+
   allSourceCounsellors.forEach(cName => {
     const cKey = revCanonical(cName);
     if (!mappedCounsellors.has(cKey)) {
@@ -3586,27 +3593,19 @@ function openPresentationMode() {
         const firstTar = (rev.targetRows || []).find(tr => revCanonical(tr.counsellor) === cKey);
         if (firstTar && firstTar.centre) detectedCentre = firstTar.centre;
       }
-      
+
       mappedCounsellors.add(cKey);
       if (!counsellorsByCentre[detectedCentre]) counsellorsByCentre[detectedCentre] = [];
-      
+
       const tRow = (rev.targetRows || []).find(tr => tr.counsellor && revCanonical(tr.counsellor) === cKey && tr.centre === detectedCentre);
       const targetCourse = tRow ? (Number(tRow.targetCourse) || 0) : 0;
       const targetGst = tRow ? (Number(tRow.targetGst) || 0) : 0;
-      
-      let achievedCourse = 0;
-      let achievedGst = 0;
-      let studentCount = 0;
-      rowsToCheck.forEach(mr => {
-        const mrIsCorporate = String(mr.businessType||'').toLowerCase().includes('corporate') || String(mr.businessCentre||'').toLowerCase().includes('corporate');
-        const matchCentre = mrIsCorporate ? mr.assignedCentre : mr.businessCentre;
-        if (revCanonical(mr.counsellor) === cKey && matchCentre === detectedCentre) {
-          achievedCourse += Number(mr.achievedCourse) || 0;
-          achievedGst += Number(mr.achievedGst) || 0;
-          studentCount += Number(mr.studentCount) || 0;
-        }
-      });
-      
+
+      const tot = counsellorTotalMap[cKey] || {};
+      const achievedCourse = tot.achievedCourse || 0;
+      const achievedGst    = tot.achievedGst    || 0;
+      const studentCount   = tot.studentCount   || 0;
+
       const pct = targetCourse ? Math.round(achievedCourse / targetCourse * 100) : (achievedCourse ? 100 : 0);
       
       counsellorsByCentre[detectedCentre].push({
@@ -4147,35 +4146,49 @@ function renderRevenueTab() {
   
   const mappedCounsellors = new Set();
   const rowsToCheck = rev.monthlyPreviewRows || rev.monthlyRows || [];
-  
+
+  // Pre-build per-counsellor totals from rev.counsellors (already summed across ALL centres in
+  // buildRevenueDashboardJSON — no centre filter). This fixes the bug where monthly rows matched
+  // by businessCentre === c dropped "other centre" revenue for counsellors like Anuradha who
+  // sell across multiple cities not in adminTargetRows().
+  const counsellorTotalMap = {};
+  (rev.counsellors || []).forEach(ct => {
+    counsellorTotalMap[revCanonical(ct.counsellor)] = {
+      achievedCourse: Number(ct.achievedCourse) || 0,
+      achievedGst:    Number(ct.achievedGst)    || 0,
+      studentCount:   Number(ct.studentCount)   || 0
+    };
+  });
+  // Counsellors seen in mapping — used to avoid double-counting when one counsellor has
+  // multiple mapping entries (e.g. Anuradha → Mumbai, Ahmedabad, Lucknow).
+  const achievedAssigned = new Set();
+
   // A. Process counselors from the canonical mapping list
   mapping.forEach(row => {
     mappedCounsellors.add(revCanonical(row.counsellor));
     const c = row.centre;
     if (!counsellorsByCentre[c]) counsellorsByCentre[c] = [];
-    
+
     // Find targets configured in rev.targetRows for this counselor/branch
     const tRow = (rev.targetRows || []).find(tr => revCanonical(tr.counsellor) === revCanonical(row.counsellor) && tr.centre === c);
     const targetCourse = tRow ? (Number(tRow.targetCourse) || 0) : 0;
     const targetGst = tRow ? (Number(tRow.targetGst) || 0) : 0;
-    
-    // Sum dynamic actual collections and student count from database rows for this counselor/branch
-    let achievedCourse = 0;
-    let achievedGst = 0;
-    let studentCount = 0;
 
-    rowsToCheck.forEach(mr => {
-      const mrIsCorporate = String(mr.businessType||'').toLowerCase().includes('corporate') || String(mr.businessCentre||'').toLowerCase().includes('corporate');
-      const matchCentre = mrIsCorporate ? mr.assignedCentre : mr.businessCentre;
-      if (revCanonical(mr.counsellor) === revCanonical(row.counsellor) && matchCentre === c) {
-        achievedCourse += Number(mr.achievedCourse) || 0;
-        achievedGst += Number(mr.achievedGst) || 0;
-        studentCount += Number(mr.studentCount) || 0;
-      }
-    });
-    
+    // Use pre-computed counsellor total (all centres, no filter).
+    // Only assign achieved values to the FIRST mapping entry for each counsellor to prevent
+    // double-counting (secondary entries like Anuradha→Ahmedabad show 0 achieved, target only).
+    const cKey = revCanonical(row.counsellor);
+    let achievedCourse = 0, achievedGst = 0, studentCount = 0;
+    if (!achievedAssigned.has(cKey)) {
+      achievedAssigned.add(cKey);
+      const tot = counsellorTotalMap[cKey] || {};
+      achievedCourse = tot.achievedCourse || 0;
+      achievedGst    = tot.achievedGst    || 0;
+      studentCount   = tot.studentCount   || 0;
+    }
+
     const pct = targetCourse ? Math.round(achievedCourse / targetCourse * 100) : (achievedCourse ? 100 : 0);
-    
+
     counsellorsByCentre[c].push({
       counsellor: row.counsellor,
       targetCourse: targetCourse,
@@ -4186,12 +4199,12 @@ function renderRevenueTab() {
       pct: pct
     });
   });
-  
+
   // B. Catch any other counselor in targets/monthly database that is not in hardcoded mapping list
   const allSourceCounsellors = new Set();
   rowsToCheck.forEach(mr => { if (mr.counsellor) allSourceCounsellors.add(mr.counsellor); });
   (rev.targetRows || []).forEach(tr => { if (tr.counsellor) allSourceCounsellors.add(tr.counsellor); });
-  
+
   allSourceCounsellors.forEach(cName => {
     const cKey = revCanonical(cName);
     if (!mappedCounsellors.has(cKey)) {
@@ -4203,29 +4216,22 @@ function renderRevenueTab() {
         const firstTar = (rev.targetRows || []).find(tr => revCanonical(tr.counsellor) === cKey);
         if (firstTar && firstTar.centre) detectedCentre = firstTar.centre;
       }
-      
+
       mappedCounsellors.add(cKey);
       if (!counsellorsByCentre[detectedCentre]) counsellorsByCentre[detectedCentre] = [];
-      
+
       const tRow = (rev.targetRows || []).find(tr => revCanonical(tr.counsellor) === cKey && tr.centre === detectedCentre);
       const targetCourse = tRow ? (Number(tRow.targetCourse) || 0) : 0;
       const targetGst = tRow ? (Number(tRow.targetGst) || 0) : 0;
-      
-      let achievedCourse = 0;
-      let achievedGst = 0;
-      let studentCount = 0;
-      rowsToCheck.forEach(mr => {
-        const mrIsCorporate = String(mr.businessType||'').toLowerCase().includes('corporate') || String(mr.businessCentre||'').toLowerCase().includes('corporate');
-        const matchCentre = mrIsCorporate ? mr.assignedCentre : mr.businessCentre;
-        if (revCanonical(mr.counsellor) === cKey && matchCentre === detectedCentre) {
-          achievedCourse += Number(mr.achievedCourse) || 0;
-          achievedGst += Number(mr.achievedGst) || 0;
-          studentCount += Number(mr.studentCount) || 0;
-        }
-      });
-      
+
+      // Use pre-computed total (no centre filter) for unmapped counsellors too
+      const tot = counsellorTotalMap[cKey] || {};
+      const achievedCourse = tot.achievedCourse || 0;
+      const achievedGst    = tot.achievedGst    || 0;
+      const studentCount   = tot.studentCount   || 0;
+
       const pct = targetCourse ? Math.round(achievedCourse / targetCourse * 100) : (achievedCourse ? 100 : 0);
-      
+
       counsellorsByCentre[detectedCentre].push({
         counsellor: cName,
         targetCourse: targetCourse,

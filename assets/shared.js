@@ -983,26 +983,26 @@ window.gasGet = (function () {
     });
   }
 
-  /* fmtMonthKey — formats a Date as 'Mon-YY' (e.g. 'Jul-26') */
+  /* fmtMonthKey — formats a Date as 'YYYY-MM' (e.g. '2026-07') matching revenue_monthly_achieved.month */
   function fmtMonthKey(dt) {
-    var mn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    return mn[dt.getMonth()] + '-' + String(dt.getFullYear()).slice(2);
+    return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0');
   }
 
   /* syncStudentRevenue — auto-upsert Centre Revenue from student_fees.course_fee.
-     Called fire-and-forget after h_saveFee. Only acts on Jul-26 onwards. */
+     Called fire-and-forget after h_saveFee. Only acts on 2026-07 onwards. */
   function syncStudentRevenue(counsellor, centre, monthKey, period) {
-    var autoMonths = ['Jul-26','Aug-26','Sep-26','Oct-26','Nov-26','Dec-26','Jan-27','Feb-27','Mar-27'];
+    var autoMonths = ['2026-07','2026-08','2026-09','2026-10','2026-11','2026-12','2027-01','2027-02','2027-03'];
     if (autoMonths.indexOf(monthKey) < 0) return; // Preserve pre-July manual entries untouched
 
-    var mn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    // Parse YYYY-MM format (e.g. '2026-07')
     var parts = monthKey.split('-');
-    var monIdx = mn.indexOf(parts[0]);
-    var yr = 2000 + parseInt(parts[1], 10);
+    var yr    = parseInt(parts[0], 10);   // 2026
+    var mo    = parseInt(parts[1], 10);   // 7 (1-indexed)
     // UTC month boundaries (acceptable edge on IST; date discrepancy < 1 day)
-    var startISO = yr + '-' + String(monIdx + 1).padStart(2, '0') + '-01T00:00:00.000Z';
-    var endMon = monIdx + 1 > 11 ? { m: 0, y: yr + 1 } : { m: monIdx + 1, y: yr };
-    var endISO   = endMon.y + '-' + String(endMon.m + 1).padStart(2, '0') + '-01T00:00:00.000Z';
+    var startISO = parts[0] + '-' + parts[1] + '-01T00:00:00.000Z';
+    var nextMo = mo, nextYr = yr;
+    if (nextMo > 11) { nextMo = 1; nextYr++; } else { nextMo++; }
+    var endISO = nextYr + '-' + String(nextMo).padStart(2, '0') + '-01T00:00:00.000Z';
 
     var qs = 'recorded_by=eq.' + encodeURIComponent(counsellor) +
              '&centre=eq.'     + encodeURIComponent(centre) +
@@ -1955,7 +1955,14 @@ window.gasGet = (function () {
       var tGst = 0, aGst = 0, stu = 0;
       var me = p.counsellor || '', isAdm = p.isAdmin === 'true';
       (annual || []).forEach(function (r) { if (!me || isAdm || r.counsellor === me) tGst += Number(r.annual_course_fee_gst_target || 0); });
-      (monthly || []).forEach(function (r) { if (!me || isAdm || r.counsellor === me) { aGst += Number(r.achieved_course_fee_gst || 0); stu += Number(r.student_count || 0); } });
+      // Month filter aligns with h_hrDash: FY 2026-27 = Apr-26 to Mar-27 only.
+      // Excludes pre-cycle Jan–Mar 2026 rows (period=2026-27 but month < 2026-04).
+      (monthly || []).forEach(function (r) {
+        if ((!me || isAdm || r.counsellor === me) && r.month >= '2026-04' && r.month <= '2027-03') {
+          aGst += Number(r.achieved_course_fee_gst || 0);
+          stu  += Number(r.student_count || 0);
+        }
+      });
       
       dash.months = months;
       dash.summary = {
@@ -2237,12 +2244,12 @@ window.gasGet = (function () {
 
     GET('student_fees', qs, function(e, rows) {
       if (e || !rows) return cb(null, { status: 'error', reason: String(e || 'no_data') });
-      var mn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
       var groups = {};
       rows.forEach(function(r) {
         if (!r.created_at) return;
         var dt  = new Date(r.created_at);
-        var mon = mn[dt.getMonth()] + '-' + String(dt.getFullYear()).slice(2);
+        // YYYY-MM format, matching revenue_monthly_achieved.month
+        var mon = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0');
         var key = (r.recorded_by || 'Unknown') + '|' + (r.centre || 'Unknown') + '|' + mon;
         if (!groups[key]) groups[key] = { counsellor: r.recorded_by || 'Unknown', centre: r.centre || 'Unknown', month: mon, fee: 0, gst: 0, count: 0 };
         groups[key].fee   += Number(r.course_fee  || 0);
@@ -2258,7 +2265,7 @@ window.gasGet = (function () {
   /* getRevenueReconciliation — compare manual revenue_monthly_achieved (Centre Revenue only)
      vs auto-derived from student_fees for historical months. Admin-only view. */
   function h_getRevenueReconciliation(p, cb) {
-    var months = p.months || ['Apr-26', 'May-26', 'Jun-26'];
+    var months = p.months || ['2026-04', '2026-05', '2026-06'];
     var period  = p.period  || '2026-27';
     var done = 0, manualRows = [], feeRows = [];
 
@@ -2278,12 +2285,12 @@ window.gasGet = (function () {
       });
 
       // Derived: sum course_fee per counsellor+centre+month from student_fees
-      var mn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
       var derivedMap = {};
       feeRows.forEach(function(r) {
         if (!r.created_at) return;
         var dt  = new Date(r.created_at);
-        var mon = mn[dt.getMonth()] + '-' + String(dt.getFullYear()).slice(2);
+        // YYYY-MM format, matching revenue_monthly_achieved.month
+        var mon = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0');
         if (months.indexOf(mon) < 0) return;
         var key = (r.recorded_by || '') + '|' + (r.centre || '') + '|' + mon;
         if (!derivedMap[key]) derivedMap[key] = { derivedFee: 0, derivedStudents: 0 };

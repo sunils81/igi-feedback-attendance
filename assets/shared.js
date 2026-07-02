@@ -198,7 +198,9 @@ window.gasGet = (function () {
       .sort(function(a, b) { return new Date(a.held_on || 0) - new Date(b.held_on || 0); });
 
     var practicalAssessments = batchAssessments.filter(function(a) { return typeOf(a).indexOf('practical') !== -1; });
-    var finalAssessments     = batchAssessments.filter(function(a) { return typeOf(a).indexOf('final') !== -1; });
+    // Portfolio counts as the Final Exam for design courses (JewelPad/Jewelry Design/CAD) — auto-detected by
+    // whether the batch actually has a Portfolio-type test, not hardcoded by course name.
+    var finalAssessments     = batchAssessments.filter(function(a) { return typeOf(a).indexOf('final') !== -1 || typeOf(a).indexOf('portfolio') !== -1; });
 
     // ── Weekly per-slot breakdown ──
     var weeklyTests = weeklyAssessments.map(function(a, idx) {
@@ -320,13 +322,14 @@ window.gasGet = (function () {
     responses.forEach(function(tr) {
       var qidsForTest = testQMap[tr.test_id] || [];
       var answers = tr.answers || {};
-      var totalMarks = 0, obtainedMarks = 0;
+      var totalMarks = 0, obtainedMarks = 0, hasMCQ = false;
       qidsForTest.forEach(function(qid) {
         var q = qMap[String(qid)];
         if (!q) return;
+        if (q.q_type && q.q_type !== 'MCQ') return; // non-MCQ (descriptive/portfolio/file-upload) questions never auto-score
+        hasMCQ = true;
         var maxMark = parseFloat(q.max_marks || 1);
         totalMarks += maxMark;
-        if (q.q_type && q.q_type !== 'MCQ') return;
         var ca = String(q.correct_ans || '').trim();
         var studentAns = String(answers[String(qid)] || '').trim();
         if (!studentAns || !ca) return;
@@ -336,10 +339,18 @@ window.gasGet = (function () {
           || (optIdx >= 0 && String(optIdx + 1) === ca);
         if (isCorrect) obtainedMarks += maxMark;
       });
-      // Fall back to the stored score if we couldn't compute from questions (e.g. descriptive/portfolio tests)
-      if (totalMarks === 0 && tr.score != null) { obtainedMarks = parseFloat(tr.score || 0); totalMarks = 100; }
-      if (totalMarks === 0) return;
-      pctByKey[tr.test_id + '|' + tr.student_id] = Math.round(100 * obtainedMarks / totalMarks);
+      // Manually-graded tests (Portfolio, FileUpload Assignment): no MCQ questions to auto-score from, so use the
+      // instructor's manual grade instead. IMPORTANT: don't gate this on totalMarks===0 — a non-MCQ question still
+      // has its own max_marks, which would make totalMarks nonzero and wrongly skip this fallback, silently
+      // zeroing out every manually-graded score. Gate on whether any MCQ question actually contributed instead.
+      if (hasMCQ && totalMarks > 0) {
+        pctByKey[tr.test_id + '|' + tr.student_id] = Math.round(100 * obtainedMarks / totalMarks);
+      } else if (tr.percentage != null) {
+        pctByKey[tr.test_id + '|' + tr.student_id] = Math.round(parseFloat(tr.percentage));
+      } else if (tr.score != null) {
+        pctByKey[tr.test_id + '|' + tr.student_id] = Math.round(parseFloat(tr.score));
+      }
+      // else: ungraded submission — leave unset so it shows as "not yet scored" rather than 0%.
     });
 
     var assessmentsByBatch = {};
@@ -4017,6 +4028,72 @@ window.gasGet = (function () {
     });
   }
 
+  /* ── Portfolio submission + grading ──────────────────────────────
+     Previously these three actions (otSubmitPortfolio, otGetPortfolioSubmissions,
+     gradeManualQuestion) were absent from this dispatcher and silently fell through
+     to the old Google Apps Script backend, which the rest of the app no longer uses —
+     meaning portfolio submission/grading was effectively broken. These write into the
+     same test_responses table as regular online tests, so a graded portfolio's score
+     is automatically picked up by fetchOnlineTestPseudoData() / buildDiplomaRow()
+     with no further wiring needed. */
+  function h_otSubmitPortfolio(p, cb) {
+    var tid = p.testId, sid = p.studentId;
+    if (!tid || !sid) { cb(null, { status: 'error', reason: 'missing_params' }); return; }
+    GET('online_tests', 'test_id=eq.' + encodeURIComponent(tid), function(e1, tests) {
+      var test = tests && tests[0];
+      if (!test || test.status !== 'Live') { cb(null, { status: 'error', reason: 'test_not_active' }); return; }
+      if (test.expiry_at && new Date(test.expiry_at) < new Date()) { cb(null, { status: 'error', reason: 'test_not_active' }); return; }
+      GET('test_responses', 'test_id=eq.' + encodeURIComponent(tid) + '&student_id=eq.' + encodeURIComponent(sid), function(e2, existing) {
+        if (existing && existing.length) { cb(null, { status: 'error', reason: 'already_submitted' }); return; }
+        POST('test_responses', 'on_conflict=test_id,student_id', {
+          test_id: tid, student_id: sid, batch_code: p.batchCode || '',
+          answers: { fileUrl: p.fileUrl || '', notes: p.notes || '', studentName: p.studentName || '' },
+          score: null, result: 'Pending', submit_type: 'portfolio', submitted_at: nowISO()
+        }, function(e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
+      });
+    });
+  }
+
+  function h_otGetPortfolioSubmissions(p, cb) {
+    var tid = p.testId;
+    if (!tid) { cb(null, { status: 'ok', submissions: [] }); return; }
+    GET('test_responses', 'test_id=eq.' + encodeURIComponent(tid) + '&order=submitted_at.desc', function(e, rows) {
+      if (e) { cb(null, { status: 'error', submissions: [] }); return; }
+      var responses = rows || [];
+      var ids = responses.map(function(r) { return r.student_id; }).filter(Boolean);
+      if (!ids.length) { cb(null, { status: 'ok', submissions: [] }); return; }
+      GET('students', 'student_id=in.(' + ids.map(encodeURIComponent).join(',') + ')&select=student_id,name', function(e2, srows) {
+        var nameMap = {};
+        (srows || []).forEach(function(s) { nameMap[s.student_id] = s.name; });
+        var submissions = responses.map(function(r) {
+          var ans = r.answers || {};
+          return {
+            responseId: r.id, studentId: r.student_id,
+            studentName: nameMap[r.student_id] || ans.studentName || r.student_id,
+            submittedAt: r.submitted_at, fileUrl: ans.fileUrl || '', notes: ans.notes || '',
+            score: r.score, result: r.result || 'Pending'
+          };
+        });
+        cb(null, { status: 'ok', submissions: submissions });
+      });
+    });
+  }
+
+  function h_gradeManualQuestion(p, cb) {
+    var tid = p.testId, sid = p.studentId;
+    var score = parseFloat(p.instructorScore);
+    var maxMarks = parseFloat(p.maxMarks || 100) || 100;
+    if (!tid || !sid || isNaN(score)) { cb(null, { status: 'error', reason: 'missing_params' }); return; }
+    var pct = Math.round(100 * score / maxMarks);
+    GET('online_tests', 'test_id=eq.' + encodeURIComponent(tid), function(e1, tests) {
+      var passingScore = (tests && tests[0] && tests[0].passing_score) || 60;
+      var result = pct >= passingScore ? 'Pass' : 'Fail';
+      PATCH('test_responses', 'test_id=eq.' + encodeURIComponent(tid) + '&student_id=eq.' + encodeURIComponent(sid), {
+        score: score, total_marks: maxMarks, percentage: pct, result: result
+      }, function(e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
+    });
+  }
+
   function h_getStudentResults(p, cb) {
     var sid = String(p.studentId || '').trim();
     var bc  = String(p.batchCode  || '').trim();
@@ -5697,6 +5774,9 @@ window.gasGet = (function () {
       case 'getProctorRoom':            return h_getProctorRoom(params, cb);
       case 'getTestResultsSummary':     return h_getTestResultsSummary(params, cb);
       case 'resetStudentAttempt':       return h_resetStudentAttempt(params, cb);
+      case 'otSubmitPortfolio':         return h_otSubmitPortfolio(params, cb);
+      case 'otGetPortfolioSubmissions': return h_otGetPortfolioSubmissions(params, cb);
+      case 'gradeManualQuestion':       return h_gradeManualQuestion(params, cb);
 
       default:
         console.warn('[gasGet→SB] Action not handled by Supabase wrapper, routing to GAS:', a, params);

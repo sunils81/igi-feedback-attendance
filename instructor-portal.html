@@ -4789,6 +4789,7 @@ var otSelectedIds = new Set();// selected question IDs
 var otCurrentTests = [];      // list of tests
 var otActiveTestId = null;    // test open in proctor room
 var otProctorTimer = null;
+var otProctorLastData = null;
 var otCurrentCQType = 'MCQ';
 var otPendingSubmissions = [];
 var otActiveGradingTestId = null;
@@ -6883,6 +6884,7 @@ function otLoadProctor() {
   otActiveTestId = testId;
   gasGet({action:'getProctorRoom', instructor:instructorName, testId:testId}, function(err, d) {
     if (err || !d || d.status !== 'ok') return;
+    otProctorLastData = d;
     var el = document.getElementById('ot-proctor-room');
     if (el) el.style.display = 'block';
 
@@ -6921,6 +6923,9 @@ function otLoadProctor() {
         + (warn && warn.count > 0 ? ' <span class="ot-warning-pill">⚠ '+warn.count+' warnings</span>' : '')
         + '</div>'
         + '<div style="font-size:12px;color:#f59e0b;">In progress…</div>'
+        + '<button onclick="otRemoveStudentFromTest(\''+escHtml(s.studentId)+'\',\''+escHtml(s.studentName||s.studentId)+'\')" '
+        + 'title="Cancel this test for this student only — everyone else keeps their access" '
+        + 'style="margin-left:6px;padding:3px 8px;font-size:11px;background:#fef2f2;color:#991b1b;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;white-space:nowrap;">✕ Remove</button>'
         + '</div>';
     });
     var el2 = document.getElementById('ot-proctor-students');
@@ -6933,6 +6938,34 @@ function otLoadProctor() {
   // Auto-refresh every 20s
   if (otProctorTimer) clearInterval(otProctorTimer);
   otProctorTimer = setInterval(otLoadProctor, 20000);
+}
+
+// Cancel a live test for one specific student (e.g. it was meant for one person
+// but was accidentally assigned to the whole batch). Works off the Proctor Room's
+// already-resolved 'enrolled' list, so it's correct whether the test was targeted
+// at 'ALL' or already at a specific subset — we just drop this one student from it.
+function otRemoveStudentFromTest(studentId, studentName) {
+  var testId = otActiveTestId;
+  if (!testId) return alert('No test selected.');
+  if (!otProctorLastData || !otProctorLastData.enrolled) return alert('Student list not loaded yet — try refreshing Proctor Room.');
+  if (!confirm('Cancel this test for ' + studentName + ' only?\n\nEveryone else assigned to this test keeps their access. ' + studentName + ' will no longer see or be able to take it.')) return;
+
+  var remaining = otProctorLastData.enrolled
+    .map(function(s) { return s.studentId; })
+    .filter(function(sid) { return sid !== studentId; });
+
+  if (!remaining.length) {
+    if (!confirm('This is the last student on this test. Removing them would leave no one assigned.\n\nClose the test instead?')) return;
+    return otCloseTest();
+  }
+
+  gasGet({action:'updateTestTargeting', instructor:instructorName, testId:testId, targetStudents: JSON.stringify(remaining)}, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      return alert('Error removing student: ' + (d && d.reason || (err && err.message) || 'unknown'));
+    }
+    showToast('✅ ' + studentName + ' removed from this test.');
+    otLoadProctor();
+  });
 }
 
 function otResetStudentAttempt(studentId, studentName) {

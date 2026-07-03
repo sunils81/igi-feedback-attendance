@@ -831,7 +831,12 @@ window.gasGet = (function () {
             coInstructor: r.co_instructor || '', coInstructorUntil: r.co_instructor_until || '',
             createdAt: r.created_at,
             status: r.is_active !== false ? 'Active' : 'Completed',
-            studentCount: sCount };
+            studentCount: sCount,
+            createdByCentre: r.created_by_centre || '',
+            createdByCounselor: r.created_by_counselor || '',
+            confirmedBy: r.confirmed_by || '',
+            confirmedAt: r.confirmed_at || null,
+            remoteCreated: !!(r.created_by_centre && r.created_by_centre !== r.centre) };
         }) });
       });
     });
@@ -866,12 +871,31 @@ window.gasGet = (function () {
 
   /* createBatch */
   function h_createBatch(p, cb) {
+    // Accountability: createdByCentre is the ACTOR's home centre; centre (p.centre) is the
+    // batch's own centre. When these differ, the batch was created remotely (e.g. a counselor
+    // at one centre setting up a batch for another) and is left unconfirmed until that centre's
+    // team acknowledges it. Same-centre creation (the normal case) is auto-confirmed.
+    var createdByCentre = p.createdByCentre || p.centre;
+    var isRemote = createdByCentre && p.centre && createdByCentre !== p.centre;
     POST('batches', 'on_conflict=batch_code', {
       batch_code: p.batchCode, centre: p.centre, course: p.course, type: p.type,
       batch_slot: p.batchSlot, start_date: p.startDate || null, end_date: p.endDate || null,
       counselor: p.counselorName || p.counselor, instructor: p.instructor || null,
       co_instructor: p.coInstructor || null,
-      co_instructor_until: p.coInstructorUntil || null
+      co_instructor_until: p.coInstructorUntil || null,
+      created_by_centre: createdByCentre,
+      created_by_counselor: p.createdByCounselor || p.counselorName || p.counselor || '',
+      confirmed_by: isRemote ? null : (p.counselorName || p.counselor || ''),
+      confirmed_at: isRemote ? null : nowISO()
+    }, function (e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', remoteCreated: isRemote }); });
+  }
+
+  /* confirmBatchCreation — destination centre acknowledges a batch someone else created for them */
+  function h_confirmBatchCreation(p, cb) {
+    if (!p.batchCode) { cb(null, { status: 'error', reason: 'missing_params' }); return; }
+    PATCH('batches', 'batch_code=eq.' + encodeURIComponent(p.batchCode), {
+      confirmed_by: p.confirmedBy || '',
+      confirmed_at: nowISO()
     }, function (e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
   }
 
@@ -5697,6 +5721,7 @@ window.gasGet = (function () {
       case 'getEndDate':                return h_getEndDate(params, cb);
       case 'getSchedulePreview':        return h_schedulePreview(params, cb);
       case 'createBatch':               return h_createBatch(params, cb);
+      case 'confirmBatchCreation':      return h_confirmBatchCreation(params, cb);
       case 'assignInstructor':          return h_assignInstructor(params, cb);
       case 'saveCoInstructor':          return h_saveCoInstructor(params, cb);
       case 'deleteBatch':               return h_deleteBatch(params, cb);

@@ -1675,6 +1675,15 @@
     <button onclick="document.getElementById('fees-reminder-banner').style.display='none'" style="background:transparent;border:none;color:#991b1b;font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
 
+  <!-- Pending batch-confirmation banner (batches another centre created for us) -->
+  <div id="remote-batch-banner" style="display:none;background:#fffbeb;border:1.5px solid #f59e0b;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#92400e;flex-direction:column;gap:6px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span>📋</span>
+      <span id="remote-batch-text" style="flex:1;font-weight:500;"></span>
+    </div>
+    <div id="remote-batch-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+  </div>
+
   <div id="counselor-summary" class="dashboard-summary" style="display:none"></div>
 
   <!-- TAB 1: CREATE BATCH -->
@@ -2906,6 +2915,12 @@
 
   <!-- TAB 5: REPORTS -->
   <div id="t-reports" class="tab-content">
+    <div class="card" id="hod-batch-oversight-card" style="display:none">
+      <div class="section-tag">Oversight</div>
+      <h2>Cross-Centre Batch Activity</h2>
+      <p class="sub">Batches created by a counselor for a centre other than their own, across all centres. Review these periodically for anything unstaffed or unconfirmed.</p>
+      <div id="hod-batch-oversight-body"><div style="font-size:12px;color:var(--muted);">Loading…</div></div>
+    </div>
     <div class="card admin-only" id="admin-report-card">
       <div class="section-tag">Admin Overview</div>
       <h2>Attendance & Test Records</h2>
@@ -4030,6 +4045,7 @@ function doLogin() {
     // Attendance: check for unfinalised sessions and show banner
     setTimeout(loadPendingAttBanner, 1500);
     setTimeout(loadOverdueFeesNotification, 2000);
+    setTimeout(loadPendingBatchConfirmBanner, 2500);
   });
 }
 
@@ -4041,6 +4057,11 @@ function applyAdminVisibility() {
   // Hide Target Setter for Manager
   var targetCard = document.getElementById('rev-centre-target-card');
   if (targetCard) targetCard.style.display = (isAdmin && !isManager) ? '' : 'none';
+
+  // Cross-centre batch oversight — visible to Managers/HODs (and Admins, though
+  // admins are redirected to admin.html before ever reaching this screen).
+  var hodCard = document.getElementById('hod-batch-oversight-card');
+  if (hodCard) hodCard.style.display = (isManager || isAdmin) ? 'block' : 'none';
 
   if (isAdmin) renderAdminDashboardPlaceholders();
 
@@ -4186,6 +4207,9 @@ function switchTab(id) {
   }
   if (id === 't-inventory') {
     initInventoryTab();
+  }
+  if (id === 't-reports') {
+    loadHodBatchOversight();
   }
   if (id==='t-fees') {
     if (isAdmin && !adminDashboardData) renderAdminDashboardPlaceholders();
@@ -12231,6 +12255,74 @@ function loadOverdueFeesNotification() {
   });
 }
 
+// Safeguard 3: surface batches created for OUR centre(s) by a counselor at another
+// centre, so nothing sits un-staffed just because the destination team didn't know
+// it existed. Non-blocking — just visibility + a one-click acknowledge.
+function loadPendingBatchConfirmBanner() {
+  if (!allowedCentres || !allowedCentres.length) return;
+  gasGet({ action: 'getBatches', centres: allowedCentres.join(',') }, function(e, d) {
+    if (e || !d || !d.batches) return;
+    var pending = d.batches.filter(function(b) { return b.remoteCreated && !b.confirmedAt; });
+    var banner = document.getElementById('remote-batch-banner');
+    var text = document.getElementById('remote-batch-text');
+    var list = document.getElementById('remote-batch-list');
+    if (!pending.length) { if (banner) banner.style.display = 'none'; return; }
+    text.textContent = pending.length + ' batch' + (pending.length>1?'es':'') + ' created for your centre by another counselor — review and confirm:';
+    list.innerHTML = pending.map(function(b) {
+      return '<div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #fde68a;border-radius:6px;padding:6px 10px;">'
+        + '<span style="flex:1;"><b>'+escC(b.batchCode)+'</b> · '+escC(b.course)+' · '+escC(b.centre)+' · created by '+escC(b.createdByCounselor||'—')+' ('+escC(b.createdByCentre)+')</span>'
+        + '<button onclick="ackRemoteBatch(\''+escC(b.batchCode)+'\', this)" style="background:#0D1B2E;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;">Acknowledge</button>'
+        + '</div>';
+    }).join('');
+    banner.style.display = 'flex';
+  });
+}
+
+// HOD/Manager oversight: every batch, org-wide, where the creator's home centre
+// differs from the batch's own centre — surfaces both confirmed and unconfirmed
+// cases so a manager can spot patterns, not just chase pending acknowledgements.
+function loadHodBatchOversight() {
+  if (!isManager && !isAdmin) return;
+  var body = document.getElementById('hod-batch-oversight-body');
+  if (!body) return;
+  gasGet({ action: 'getBatches', centres: '' }, function(e, d) {
+    if (e || !d || !d.batches) { body.innerHTML = '<div style="color:#dc2626;font-size:12px;">Failed to load.</div>'; return; }
+    var remote = d.batches.filter(function(b) { return b.remoteCreated; });
+    if (!remote.length) { body.innerHTML = '<div style="font-size:12px;color:var(--muted);">No cross-centre batches — everything was created by its own centre.</div>'; return; }
+    remote.sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); });
+    var rows = remote.map(function(b) {
+      var confirmed = !!b.confirmedAt;
+      return '<tr>'
+        + '<td style="padding:6px 8px;font-weight:600;">'+escC(b.batchCode)+'</td>'
+        + '<td style="padding:6px 8px;">'+escC(b.course)+'</td>'
+        + '<td style="padding:6px 8px;">'+escC(b.centre)+'</td>'
+        + '<td style="padding:6px 8px;">'+escC(b.createdByCounselor||'—')+' ('+escC(b.createdByCentre)+')</td>'
+        + '<td style="padding:6px 8px;">'+(confirmed
+            ? '<span style="color:#059669;font-weight:600;">✓ Confirmed</span>'
+            : '<span style="color:#d97706;font-weight:600;">⏳ Pending</span>')+'</td>'
+        + '</tr>';
+    }).join('');
+    body.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">'
+      + '<thead><tr style="text-align:left;color:var(--muted);border-bottom:1.5px solid var(--border);">'
+      + '<th style="padding:6px 8px;">Batch</th><th style="padding:6px 8px;">Course</th><th style="padding:6px 8px;">Centre</th>'
+      + '<th style="padding:6px 8px;">Created By</th><th style="padding:6px 8px;">Status</th></tr></thead>'
+      + '<tbody>' + rows + '</tbody></table></div>';
+  });
+}
+
+function ackRemoteBatch(batchCode, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  gasGet({ action: 'confirmBatchCreation', batchCode: batchCode, confirmedBy: counselorName || 'Counselor' }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      if (btn) { btn.disabled = false; btn.textContent = 'Acknowledge'; }
+      showToast('Could not confirm — try again.');
+      return;
+    }
+    showToast('✅ Batch acknowledged.');
+    loadPendingBatchConfirmBanner();
+  });
+}
+
 function triggerOverdueEmailNotifications() {
   if (!confirm('This will scan Student Fees for overdue installments and send summarized email notifications to the respective counselors (with cc to Sunil Sharma). Proceed?')) return;
   
@@ -15111,6 +15203,9 @@ function openEnrollModal(monthKey, centre, counsellor) {
     (typeof CENTRES !== 'undefined' ? CENTRES : [centre]).map(function(c) {
       return '<option value="'+escC(c)+'"'+(c === centre ? ' selected' : '')+'>'+escC(c)+'</option>';
     }).join('');
+  document.getElementById('enroll-nb-centre-warn').style.display = 'none';
+  document.getElementById('enroll-nb-centre-confirm').checked = false;
+  document.getElementById('enroll-nb-dup-warn').style.display = 'none';
 
   // Reset fee section
   document.getElementById('enroll-fee-step').style.display = 'none';
@@ -15286,6 +15381,59 @@ function enrollNBCourseChange() {
     document.getElementById('enroll-reg-fee').value = COURSE_FEES_JS[course].regFee || 0;
   }
   enrollCalcFee();
+  enrollCheckDuplicateBatch();
+}
+
+// Safeguard 1: warn (don't block) when the new batch's centre differs from the
+// counselor's own home centre — requires an explicit checkbox before Save proceeds.
+function enrollNBCentreChange() {
+  var centre = document.getElementById('enroll-nb-centre').value;
+  var warn = document.getElementById('enroll-nb-centre-warn');
+  var confirmCb = document.getElementById('enroll-nb-centre-confirm');
+  if (centre && centre !== _enrollState.centre) {
+    document.getElementById('enroll-nb-centre-warn-name').textContent = centre;
+    document.getElementById('enroll-nb-centre-home').textContent = _enrollState.centre;
+    warn.style.display = 'block';
+  } else {
+    warn.style.display = 'none';
+    if (confirmCb) confirmCb.checked = false;
+  }
+  enrollCheckDuplicateBatch();
+}
+
+// Safeguard 2: warn (don't block) when a similar batch already exists for the
+// selected centre + course, so counselors don't accidentally fragment enrollments
+// across near-duplicate batches. Offers a one-click "use this instead" escape hatch.
+function enrollCheckDuplicateBatch() {
+  var dupEl = document.getElementById('enroll-nb-dup-warn');
+  var centre = document.getElementById('enroll-nb-centre').value;
+  var course = document.getElementById('enroll-nb-course').value;
+  var start  = document.getElementById('enroll-nb-start').value;
+  if (!centre || !course) { dupEl.style.display = 'none'; return; }
+  gasGet({ action: 'getBatches', centres: centre }, function(e, d) {
+    if (e || !d || !d.batches) { dupEl.style.display = 'none'; return; }
+    var monthPrefix = start ? start.slice(0, 7) : null; // 'YYYY-MM'
+    var matches = d.batches.filter(function(b) {
+      if (b.course !== course || b.status !== 'Active') return false;
+      if (!monthPrefix) return true; // no date picked yet — show any same centre+course match
+      return (b.startDate || '').slice(0, 7) === monthPrefix;
+    });
+    if (!matches.length) { dupEl.style.display = 'none'; return; }
+    dupEl.innerHTML = '⚠ ' + matches.length + ' similar batch' + (matches.length>1?'es':'') + ' already exist' + (matches.length>1?'':'s') + ' for ' + escC(centre) + ' · ' + escC(course) + ':<br>'
+      + matches.map(function(b) {
+          return '&nbsp;&nbsp;• <b>' + escC(b.batchCode) + '</b> (from ' + escC(b.startDate||'—') + ') '
+            + '<a href="javascript:void(0)" onclick="enrollUseExistingBatch(\''+escC(b.batchCode)+'\')" style="color:#1d4ed8;font-weight:600;">Use this instead</a>';
+        }).join('<br>')
+      + '<br><span style="color:#6b7280;">Or continue below to create a new batch anyway (e.g. a different timing/slot in the same month).</span>';
+    dupEl.style.display = 'block';
+  });
+}
+
+function enrollUseExistingBatch(batchCode) {
+  enrollToggleNewBatch(); // collapses the new-batch form, restores the picker
+  var sel = document.getElementById('enroll-batch-select');
+  sel.value = batchCode;
+  enrollBatchSelected();
 }
 
 function enrollDiscChange() {
@@ -15353,6 +15501,13 @@ function enrollSave() {
       err.textContent = 'Select course and start date for the new batch.';
       err.classList.add('show'); return;
     }
+    if (batchCentre !== st.centre) {
+      var confirmCb = document.getElementById('enroll-nb-centre-confirm');
+      if (!confirmCb || !confirmCb.checked) {
+        err.textContent = 'This batch is for ' + batchCentre + ', not your home centre (' + st.centre + '). Check the confirmation box above to proceed.';
+        err.classList.add('show'); return;
+      }
+    }
   } else if (st.selectedBatch) {
     batchCode   = st.selectedBatch.batchCode;
     batchCourse = st.selectedBatch.course || '';
@@ -15391,6 +15546,8 @@ function enrollSave() {
         type:      document.getElementById('enroll-nb-type').value,
         batchSlot: document.getElementById('enroll-nb-slot').value,
         startDate: document.getElementById('enroll-nb-start').value,
+        createdByCentre: st.centre,
+        createdByCounselor: st.counsellor,
         counselorName: st.counsellor
       }, function(e2) { next(e2 ? 'Could not create batch. Try again.' : null); });
     });
@@ -15759,7 +15916,7 @@ function enrollSave() {
         <div id="enroll-new-batch-form" class="enroll-new-form" style="display:none">
           <div class="enroll-grid2">
             <div class="enroll-field"><label>Centre *</label>
-              <select id="enroll-nb-centre"></select>
+              <select id="enroll-nb-centre" onchange="enrollNBCentreChange()"></select>
               <div style="font-size:11px;color:var(--muted);margin-top:3px;">Defaults to your centre — change this if the batch belongs to another centre.</div>
             </div>
             <div class="enroll-field"><label>Course *</label>
@@ -15771,8 +15928,17 @@ function enrollSave() {
               <select id="enroll-nb-type"><option>Weekday</option><option>Weekend</option><option>Intensive</option><option>Online</option></select>
             </div>
             <div class="enroll-field"><label>Slot / Timings</label><input id="enroll-nb-slot" type="text" placeholder="e.g. Mon/Wed 10am"></div>
-            <div class="enroll-field"><label>Start Date *</label><input id="enroll-nb-start" type="date"></div>
+            <div class="enroll-field"><label>Start Date *</label><input id="enroll-nb-start" type="date" oninput="enrollCheckDuplicateBatch()"></div>
           </div>
+          <div id="enroll-nb-centre-warn" style="display:none;margin-top:10px;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;">
+            <div style="display:flex;align-items:flex-start;gap:8px;">
+              <input type="checkbox" id="enroll-nb-centre-confirm" style="width:auto;margin-top:2px;cursor:pointer;">
+              <label for="enroll-nb-centre-confirm" style="margin:0;cursor:pointer;font-size:12.5px;color:#92400e;">
+                You're creating this batch for <b id="enroll-nb-centre-warn-name"></b>, not your home centre (<span id="enroll-nb-centre-home"></span>). That centre's team will be notified to confirm and staff it. Check this box to confirm this is intentional.
+              </label>
+            </div>
+          </div>
+          <div id="enroll-nb-dup-warn" style="display:none;margin-top:10px;padding:10px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:12.5px;color:#1e3a8a;"></div>
         </div>
       </div>
 

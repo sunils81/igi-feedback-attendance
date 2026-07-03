@@ -4967,6 +4967,19 @@ window.gasGet = (function () {
     });
   }
 
+  /* updateTestTargeting — change which students a test (of any status) is assigned to.
+     Unlike updateTestSettings this is intentionally NOT restricted to Draft tests, since
+     its main purpose is letting an instructor correct/narrow the assignment on a test
+     that's already Live (e.g. it was meant for one student but shows the whole batch). */
+  function h_updateTestTargeting(p, cb) {
+    if (!p.testId) { cb(null, { status: 'error', reason: 'missing_params' }); return; }
+    PATCH('online_tests', 'test_id=eq.' + encodeURIComponent(p.testId),
+      { target_students: sanitizeTargetStudents(p.targetStudents) }, function(e) {
+        if (e) { cb(null, { status: 'error', reason: 'patch_failed' }); return; }
+        cb(null, { status: 'ok' });
+      });
+  }
+
   /* activateTest */
   function h_activateTest(p, cb) {
     PATCH('online_tests', 'test_id=eq.' + encodeURIComponent(p.testId), {
@@ -5432,12 +5445,26 @@ window.gasGet = (function () {
       // Fetch students from all batches, then flatten
       var studentArraysP = resolveStudentsForBatchesPromise(allBatchCodes);
 
-      var [students, starts, responses, warnings] = await Promise.all([
+      var [allBatchStudents, starts, responses, warnings] = await Promise.all([
         studentArraysP,
         getP('test_starts', 'test_id=eq.' + encodeURIComponent(tid)),
         getP('test_responses', 'test_id=eq.' + encodeURIComponent(tid)),
         getP('test_warnings', 'test_id=eq.' + encodeURIComponent(tid))
       ]);
+
+      // Narrow down to only the students this test is actually targeted at (mirrors
+      // h_getStudentActiveTest's access-control logic) so the Proctor Room can't show
+      // the whole batch as "enrolled" when the test was assigned to specific students.
+      var targetRaw = String(test.target_students || 'ALL').trim();
+      var students = allBatchStudents;
+      if (targetRaw && targetRaw !== 'ALL') {
+        var allowedIds = targetRaw.replace(/[\[\]"']/g, '').split(',')
+          .map(function(x) { return x.trim().toUpperCase(); })
+          .filter(function(x) { return x && x !== 'UNDEFINED' && x !== 'NULL'; });
+        students = allBatchStudents.filter(function(s) {
+          return allowedIds.indexOf(String(s.student_id || '').toUpperCase()) !== -1;
+        });
+      }
 
       var startsMap = {};
       starts.forEach(function(s) { startsMap[s.student_id] = s.started_at; });
@@ -5777,6 +5804,7 @@ window.gasGet = (function () {
       case 'setupQuestionBank':         return h_setupQuestionBank(params, cb);
       case 'createOnlineTest':          return h_createOnlineTest(params, cb);
       case 'updateTestSettings':        return h_updateTestSettings(params, cb);
+      case 'updateTestTargeting':       return h_updateTestTargeting(params, cb);
       case 'activateTest':              return h_activateTest(params, cb);
       case 'closeTest':                 return h_closeTest(params, cb);
       case 'releaseResults':            return h_releaseResults(params, cb);

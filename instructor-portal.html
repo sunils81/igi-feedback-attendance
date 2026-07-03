@@ -6177,6 +6177,7 @@ function otRenderTests(tests) {
       + (t.status === 'Draft' ? '<button class="ot-btn success" onclick="otActivateTest(\''+escHtml(t.testId)+'\')">▶ Activate</button>' : '')
       + (t.status === 'Draft' ? '<button class="ot-btn ghost" onclick="otOpenEditSettingsModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',\''+escHtml(String(t.duration))+'\',\''+escHtml(t.batchCodes||t.batchCode||'')+'\',\''+escHtml(t.negativeMarking||'No')+'\',\''+escHtml(String(t.passingScore||60))+'\',\''+escHtml(t.instructions||'')+'\')">✏ Edit Settings</button>' : '')
       + (t.status === 'Active' && t.testType !== 'Portfolio Upload' ? '<button class="ot-btn warn" onclick="otOpenProctorForTest(\''+escHtml(t.testId)+'\')">👁 Proctor Room</button>' : '')
+      + '<button class="ot-btn ghost" onclick="otOpenEditAssignModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',\''+escHtml(t.batchCodes||t.batchCode||'')+'\',\''+escHtml(t.targetStudentNames||'Entire Batch')+'\')">🎯 Edit Assigned</button>'
       + (t.status === 'Closed' && t.resultsReleased !== 'Yes' ? '<button class="ot-btn primary" onclick="otOpenReleaseModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',false)">📢 Release Results</button>' : '')
       + (t.status === 'Closed' ? '<button class="ot-btn success" onclick="otActivateTest(\''+escHtml(t.testId)+'\')">🔄 Reopen Test</button>' : '')
       + '<button class="ot-btn ghost" onclick="otViewResults(\''+escHtml(t.testId)+'\')">📊 Results</button>'
@@ -6348,6 +6349,146 @@ function otSaveTestSettings(testId) {
     }
     document.getElementById('ot-edit-settings-modal').remove();
     showToast('✅ Test settings updated!');
+    otLoadTests();
+  });
+}
+
+// ── Edit Assigned Students (works on tests of any status, incl. Live) ──────
+var otEaTestId = null;
+var otEaStudents = [];
+var otEaSelected = new Set();
+var otEaTargeting = 'all';
+
+function otOpenEditAssignModal(testId, testLabel, batchCodes, currentRaw) {
+  var existing = document.getElementById('ot-edit-assign-modal');
+  if (existing) existing.remove();
+  otEaTestId = testId;
+  otEaStudents = [];
+  otEaSelected = new Set();
+
+  var isAll = !currentRaw || currentRaw === 'Entire Batch' || currentRaw === 'ALL';
+  otEaTargeting = isAll ? 'all' : 'selected';
+  if (!isAll) {
+    var parsed = null;
+    try { parsed = JSON.parse(currentRaw); } catch (e) { parsed = null; }
+    if (Array.isArray(parsed)) {
+      parsed.forEach(function(id) { if (id) otEaSelected.add(String(id)); });
+    } else {
+      String(currentRaw).replace(/[\[\]"']/g, '').split(',').forEach(function(id) {
+        id = id.trim(); if (id) otEaSelected.add(id);
+      });
+    }
+  }
+
+  var modal = document.createElement('div');
+  modal.id = 'ot-edit-assign-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px;';
+  modal.innerHTML = '<div style="background:#fff;border-radius:14px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.2);">'
+    + '<div style="padding:20px 24px 16px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;">'
+    +   '<h3 style="margin:0;font-size:16px;font-weight:700;">🎯 Edit Assigned Students</h3>'
+    +   '<button onclick="document.getElementById(\'ot-edit-assign-modal\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#6b7280;">✕</button>'
+    + '</div>'
+    + '<div style="padding:14px 24px 0;font-size:12px;color:#6b7280;">'+escHtml(testLabel)+'</div>'
+    + '<div style="padding:12px 24px 20px;display:flex;flex-direction:column;gap:12px;">'
+    +   '<div style="display:flex;flex-wrap:wrap;">'
+    +     '<label class="ct-target-btn'+(otEaTargeting==='all'?' active':'')+'" id="ea-target-all-lbl" onclick="otEaTargetingSelect(\'all\')">'
+    +       '<input type="radio" name="ea-targeting" value="all"'+(otEaTargeting==='all'?' checked':'')+' style="accent-color:#0D1B2E;"> All enrolled students</label>'
+    +     '<label class="ct-target-btn'+(otEaTargeting==='selected'?' active':'')+'" id="ea-target-sel-lbl" onclick="otEaTargetingSelect(\'selected\')">'
+    +       '<input type="radio" name="ea-targeting" value="selected"'+(otEaTargeting==='selected'?' checked':'')+' style="accent-color:#0D1B2E;"> Selected students only</label>'
+    +   '</div>'
+    +   '<div id="ea-student-picker" style="display:'+(otEaTargeting==='selected'?'block':'none')+';">'
+    +     '<div style="display:flex;gap:8px;margin-bottom:8px;">'
+    +       '<button type="button" class="ot-btn ghost" onclick="otEaSelectAll()">Select All</button>'
+    +       '<button type="button" class="ot-btn ghost" onclick="otEaClear()">Clear</button>'
+    +     '</div>'
+    +     '<div id="ea-student-list" style="max-height:220px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;padding:6px;"><div style="color:#9ca3af;font-size:13px;padding:12px;text-align:center;">Loading students…</div></div>'
+    +     '<div id="ea-student-count" style="font-size:12px;color:#6b7280;margin-top:6px;"></div>'
+    +   '</div>'
+    + '</div>'
+    + '<div style="padding:16px 24px;border-top:1px solid #e5e7eb;display:flex;gap:10px;justify-content:flex-end;">'
+    +   '<button onclick="document.getElementById(\'ot-edit-assign-modal\').remove()" style="background:none;border:1.5px solid #e5e7eb;padding:9px 20px;border-radius:8px;font-size:13px;cursor:pointer;font-weight:600;">Cancel</button>'
+    +   '<button id="ea-save-btn" onclick="otSaveEditAssign()" style="background:#1d4ed8;color:#fff;border:none;padding:9px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">💾 Save</button>'
+    + '</div>'
+    + '</div>';
+  document.body.appendChild(modal);
+  otEaUpdateCount();
+
+  gasGet({action:'getStudentsForBatches', instructor:instructorName, batchCodes:(batchCodes||'')}, function(err, d) {
+    var listEl = document.getElementById('ea-student-list');
+    if (err || !d || !d.students || !d.students.length) {
+      if (listEl) listEl.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:12px;text-align:center;">No students found for this batch.</div>';
+      return;
+    }
+    otEaStudents = d.students.map(function(s) {
+      return { studentId: s.studentId||s.enrollmentNo||s.id, name: s.name||s.studentName||s.studentId||s.enrollmentNo };
+    });
+    otRenderEaPicker();
+  });
+}
+
+function otEaTargetingSelect(mode) {
+  otEaTargeting = mode;
+  var allLbl = document.getElementById('ea-target-all-lbl');
+  var selLbl = document.getElementById('ea-target-sel-lbl');
+  if (allLbl) allLbl.classList.toggle('active', mode === 'all');
+  if (selLbl) selLbl.classList.toggle('active', mode === 'selected');
+  var picker = document.getElementById('ea-student-picker');
+  if (picker) picker.style.display = mode === 'selected' ? 'block' : 'none';
+}
+
+function otRenderEaPicker() {
+  var listEl = document.getElementById('ea-student-list');
+  if (!listEl) return;
+  if (!otEaStudents.length) {
+    listEl.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:12px;text-align:center;">No students found.</div>';
+    return;
+  }
+  var html = '';
+  otEaStudents.forEach(function(s) {
+    if (!s.studentId) return;
+    var checked = otEaSelected.has(s.studentId) ? ' checked' : '';
+    html += '<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:13px;">'
+      + '<input type="checkbox"'+checked+' onchange="otEaToggle(\''+escHtml(s.studentId)+'\',this.checked)">'
+      + '<span>'+escHtml(s.name||'Student')+'</span>'
+      + '</label>';
+  });
+  listEl.innerHTML = html;
+  otEaUpdateCount();
+}
+
+function otEaToggle(sid, checked) {
+  if (checked) otEaSelected.add(sid); else otEaSelected.delete(sid);
+  otEaUpdateCount();
+}
+function otEaSelectAll() {
+  otEaStudents.forEach(function(s) { if (s.studentId) otEaSelected.add(s.studentId); });
+  otRenderEaPicker();
+}
+function otEaClear() {
+  otEaSelected.clear();
+  otRenderEaPicker();
+}
+function otEaUpdateCount() {
+  var el = document.getElementById('ea-student-count');
+  if (el) el.textContent = otEaSelected.size + ' student' + (otEaSelected.size === 1 ? '' : 's') + ' selected';
+}
+
+function otSaveEditAssign() {
+  if (!otEaTestId) return;
+  if (otEaTargeting === 'selected' && otEaSelected.size === 0) {
+    return alert('Select at least one student, or switch to "All enrolled students".');
+  }
+  var targetStudents = otEaTargeting === 'selected' ? JSON.stringify(Array.from(otEaSelected)) : 'ALL';
+  var btn = document.getElementById('ea-save-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  gasGet({action:'updateTestTargeting', instructor:instructorName, testId:otEaTestId, targetStudents:targetStudents}, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      if (btn) { btn.disabled = false; btn.textContent = '💾 Save'; }
+      return alert('Error: ' + (d && d.reason || (err && err.message) || 'Failed to update.'));
+    }
+    var m = document.getElementById('ot-edit-assign-modal');
+    if (m) m.remove();
+    showToast('✅ Assigned students updated!');
     otLoadTests();
   });
 }
@@ -9109,6 +9250,7 @@ function otHandleTestTypeChange() {
         + '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
         + (t.status === 'Draft' ? '<button class="ot-btn success" onclick="otActivateAssignment(\''+escHtml(t.testId)+'\')">▶ Activate</button>' : '')
         + (t.status === 'Active' ? '<button class="ot-btn danger" onclick="otCloseAssignment(\''+escHtml(t.testId)+'\')">❌ Close / Cancel</button>' : '')
+        + '<button class="ot-btn ghost" onclick="otOpenEditAssignModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',\''+escHtml(t.batchCode||'')+'\',\''+escHtml(t.targetStudentNames||'Entire Batch')+'\')">🎯 Edit Assigned</button>'
         + '<button class="ot-btn ghost" onclick="otPromptDuplicate(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">👯 Duplicate</button>'
         + '<button class="ot-btn danger" onclick="otDeleteAssignment(\''+escHtml(t.testId)+'\')">🗑️ Delete</button>'
         + '<button class="ot-btn primary" onclick="viewAssignmentSubmissions(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">✏️ Grade / View Submissions</button>'
@@ -9174,6 +9316,7 @@ function otHandleTestTypeChange() {
         + '<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">'
         + (t.status === 'Draft' ? '<button class="ot-btn success" onclick="otActivatePortfolio(\''+escHtml(t.testId)+'\')">▶ Activate</button>' : '')
         + (t.status === 'Active' ? '<button class="ot-btn danger" onclick="otClosePortfolio(\''+escHtml(t.testId)+'\')">❌ Close / Cancel</button>' : '')
+        + '<button class="ot-btn ghost" onclick="otOpenEditAssignModal(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\',\''+escHtml(t.batchCode||'')+'\',\''+escHtml(t.targetStudentNames||'Entire Batch')+'\')">🎯 Edit Assigned</button>'
         + '<button class="ot-btn ghost" onclick="otPromptDuplicate(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">👯 Duplicate</button>'
         + '<button class="ot-btn danger" onclick="otDeletePortfolio(\''+escHtml(t.testId)+'\')">🗑️ Delete</button>'
         + '<button class="ot-btn primary" onclick="viewPortfolioSubmissions(\''+escHtml(t.testId)+'\',\''+escHtml(t.testLabel)+'\')">✏️ Grade / View Submissions</button>'

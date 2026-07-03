@@ -7243,7 +7243,14 @@ function renderRevenueEntryPanel(m, designatedCentre, otherDefault, existingRows
     existingOthers = [{ businessCentre: otherDefault, studentCount: '', achievedCourse: '', achievedGst: 0 }];
   }
   var existingCorp = existingRows.filter(function(r){ return revIsCorporate(r); })[0] || {};
-  
+  // Location is packed into the notes column as a '[Location: ...]' prefix (no separate
+  // DB column) — split it back out for display when re-opening a saved entry.
+  (function(){
+    var m2 = /^\[Location:\s*([^\]]*)\]\s*/.exec(existingCorp.notes || '');
+    if (m2) { existingCorp.location = m2[1]; existingCorp.comment = (existingCorp.notes || '').slice(m2[0].length); }
+    else    { existingCorp.location = '';    existingCorp.comment = existingCorp.notes || ''; }
+  })();
+
   var hasAnyOtherValue = existingOthers.some(function(oth){ return oth.achievedCourse || oth.studentCount; });
   
   var othersHtml = existingOthers.map(function(oth) {
@@ -7317,10 +7324,14 @@ function renderRevenueEntryPanel(m, designatedCentre, otherDefault, existingRows
     '<div class="rev-expand-row" onclick="revToggleBucket(this)"><span class="rev-expand-chevron'+(existingCorp.achievedCourse||existingCorp.studentCount?' open':'')+'">&#9658;</span><span class="rev-expand-label">Corporate Program Revenue</span><span class="rev-expand-badge '+(existingCorp.achievedCourse||existingCorp.studentCount?'filled':'opt')+'">'+(existingCorp.achievedCourse||existingCorp.studentCount?'Filled':'Optional')+'</span></div>'+
     '<div class="rev-bucket-body'+(existingCorp.achievedCourse||existingCorp.studentCount?' open':'')+'" data-bucket="corp">'+
       '<div class="rev-compact-row">'+
-        '<div class="rev-ci"><label>Students</label><input type="number" class="rmc-cstudents" min="0" placeholder="0" value="'+escC(existingCorp.studentCount||'')+'" oninput="revUpdateTotal(this)"></div>'+
+        '<div class="rev-ci"><label>Sales Associates Trained</label><input type="number" class="rmc-cstudents" min="0" placeholder="0" value="'+escC(existingCorp.studentCount||'')+'" oninput="revUpdateTotal(this)"></div>'+
         '<div class="rev-ci"><label>Course Fee &#8377;</label><input type="number" class="rmc-ccourse" min="0" placeholder="0" value="'+escC(existingCorp.achievedCourse||'')+'" oninput="revCalcGst(this,\'corp\');revUpdateTotal(this)"></div>'+
       '</div>'+
       '<div class="rev-gst-inline" id="rev-gst-corp-'+escC(m.key)+'">GST: <b>'+money(existingCorp.achievedGst||0)+'</b></div>'+
+      '<div class="rev-compact-row">'+
+        '<div class="rev-ci"><label>Location / Client <span style="font-weight:400;color:var(--muted)">(optional)</span></label><input type="text" class="rmc-clocation" placeholder="e.g. Client site — Reliance Jewels, Bandra" value="'+escC(existingCorp.location||'')+'"></div>'+
+      '</div>'+
+      '<div class="rev-notes-row"><input type="text" class="rmc-cnotes" placeholder="Comments (optional)" value="'+escC(existingCorp.comment||'')+'"></div>'+
     '</div>'+
     '<div class="rev-card-footer">'+
       '<div class="rev-total-row"><span class="k">Total This Month (incl. GST)</span><span class="v" id="revtot-'+escC(m.key)+'">'+money(revTotalsFromRows(existingRows, designatedCentre).totalGst||0)+'</span></div>'+
@@ -7538,6 +7549,9 @@ function revSaveMonthCard(btn) {
   var course3 = Number(body.querySelector('.rmc-ccourse').value) || 0;
   var gst3 = revenueGst(course3);
   var stu3 = Number(body.querySelector('.rmc-cstudents').value) || 0;
+  var loc3 = ((body.querySelector('.rmc-clocation') || {}).value || '').trim();
+  var comment3 = ((body.querySelector('.rmc-cnotes') || {}).value || '').trim();
+  var notes3 = (loc3 ? '[Location: ' + loc3 + '] ' : '') + comment3;
 
   if (!course1 && !stu1 && !otherFilled && !course3 && !stu3) {
     if (note) { note.textContent = '⚠ Enter at least one value before saving.'; note.style.color = 'var(--red)'; }
@@ -7561,7 +7575,8 @@ function revSaveMonthCard(btn) {
     rows.push({
       month: monthKey, period: '2026-27', counsellor: me, assignedCentre: assignedCentre,
       businessCentre: assignedCentre, businessType: 'Corporate Programs',
-      studentCount: stu3, achievedCourse: course3, achievedGst: gst3, notes: isRevision ? notes1 : '',
+      studentCount: stu3, achievedCourse: course3, achievedGst: gst3,
+      notes: (isRevision ? notes1 + (notes3 ? ' | ' + notes3 : '') : notes3),
       revise: isRevision ? 'Y' : 'N', locked: isLock ? 'Y' : 'N'
     });
   }

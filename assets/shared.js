@@ -3701,9 +3701,12 @@ window.gasGet = (function () {
                 if (b.co_instructor && (!b.co_instructor_until || b.co_instructor_until >= todayStr)) {
                   effectiveInstructor = b.co_instructor;
                 }
+                var coInstructorActive = !!(b.co_instructor && (!b.co_instructor_until || b.co_instructor_until >= todayStr));
                 var card = {
                   batchCode: batchCode, course: b.course, centre: b.centre, type: b.type, batchSlot: slot,
-                  instructor: effectiveInstructor, startDateISO: startD.toISOString(), endDateISO: endD.toISOString(),
+                  instructor: effectiveInstructor,
+                  mainInstructor: b.instructor || '', coInstructor: b.co_instructor || '', coInstructorActive: coInstructorActive,
+                  startDateISO: startD.toISOString(), endDateISO: endD.toISOString(),
                   startDateDisplay: toDMY(b.start_date), endDateDisplay: toDMY(b.end_date),
                   sessionCode: todaySess ? todaySess.session_code : null, sessNo: todaySess ? todaySess.sess_no : null,
                   topic: todaySess ? (todaySess.topic || '') : null, sessionExists: !!todaySess,
@@ -3878,12 +3881,19 @@ window.gasGet = (function () {
   function h_submitFeedback(p, cb) {
     var fbText = JSON.stringify({
       studentName: p.studentName || '',
+      instructor: p.instructor || '',           // whoever effectively taught this session (main, or cover if active)
       q2_clarity: Number(p.q2 || p.q2_clarity || 0),
       q3: p.q3 || '',
       q4: p.q4 || '',
       q5: p.q5 || '',
       q6: p.q6 || p.q6_suggestion || '',
-      anonymous: (p.anonymous === 'true' || p.anonymous === 'Y') ? 'Y' : 'N'
+      anonymous: (p.anonymous === 'true' || p.anonymous === 'Y') ? 'Y' : 'N',
+      // Present only when this batch has an active cover instructor — separate feedback
+      // about the regular instructor, distinct from the primary rating (which is about
+      // whoever is effectively teaching, i.e. the cover instructor in that case).
+      mainInstructor: p.mainInstructor || '',
+      coInstructorRating: p.coInstructorRating ? Number(p.coInstructorRating) : null,
+      coInstructorComment: p.coInstructorComment || ''
     });
     POST('attendance_feedback', 'on_conflict=session_code,student_id', {
       session_code: p.sessionCode,

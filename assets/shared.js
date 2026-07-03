@@ -933,6 +933,7 @@ window.gasGet = (function () {
     function mapStu(r) {
       return { enrollmentNo: r.student_id || r.enrollment_no, name: r.name,
         mobileLast4: r.mobile_last4 || r.dob, mobile: r.mobile, email: r.email,
+        orderId: r.order_id || '',
         status: r.status, welcomeEmailStatus: r.welcome_email_status,
         welcomeEmailSentAt: r.welcome_email_sent_at };
     }
@@ -993,6 +994,7 @@ window.gasGet = (function () {
     // Step 1: upsert student record (one row per student; batch_code = primary/first batch)
     var studentRow = { student_id: studentId, name: p.name,
       mobile_last4: p.mobileLast4 || p.dob, mobile: p.mobile, email: p.email,
+      order_id: p.orderId || '',
       status: 'Active', batch_code: codes[0] };
     POST('students', 'on_conflict=student_id', studentRow, function(e) {
       if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
@@ -1066,6 +1068,7 @@ window.gasGet = (function () {
       patch.mobile_last4 = p.mobileLast4.trim();
     }
     if (p.email !== undefined) patch.email = (p.email || '').trim();
+    if (p.orderId !== undefined) patch.order_id = (p.orderId || '').trim();
     if (!Object.keys(patch).length) { cb(null, { status: 'ok', message: 'No changes' }); return; }
     PATCH('students', 'student_id=eq.' + encodeURIComponent(oldId), patch,
       function(e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
@@ -1091,7 +1094,7 @@ window.gasGet = (function () {
   function h_alumni(p, cb) {
     GET('batches', 'select=batch_code,centre,course,end_date,counselor', function (e, batches) {
       var bm = {}; (batches || []).forEach(function (b) { bm[b.batch_code] = b; });
-      GET('students', 'select=student_id,batch_code,name,mobile,email,status,created_at&order=created_at.desc', function (e2, rows) {
+      GET('students', 'select=student_id,batch_code,name,mobile,email,order_id,status,created_at&order=created_at.desc', function (e2, rows) {
         var todayStr = todayYMD();
         cb(null, { status: 'ok', alumni: (rows || []).map(function (r) {
           var b = bm[r.batch_code] || {};
@@ -1099,9 +1102,9 @@ window.gasGet = (function () {
           if (calculatedStatus === 'Active' && b.end_date && b.end_date < todayStr) {
             calculatedStatus = 'Completed';
           }
-          return { enrollmentNo: r.student_id, name: r.name, batchCode: r.batch_code,
+          return { enrollmentNo: r.student_id, studentId: r.student_id, name: r.name, batchCode: r.batch_code,
             centre: b.centre, course: b.course, counselor: b.counselor,
-            status: calculatedStatus, email: r.email, mobile: r.mobile };
+            status: calculatedStatus, email: r.email, mobile: r.mobile, orderId: r.order_id || '' };
         }) });
       });
     });

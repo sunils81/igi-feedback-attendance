@@ -1765,13 +1765,20 @@
       <div id="st-enrol-wrap" style="display:none">
         <div class="info-box">Enter the 4 digit Student ID from the enrolment system. Last 4 digits of mobile will fill automatically once Mobile is entered.</div>
         <div class="grid2">
-          <div class="field"><label>Student ID *</label><input type="text" id="st-enrol" placeholder="e.g. 6008" inputmode="numeric" onblur="lookupStudent()"></div>
+          <div class="field"><label>Student ID *</label><input type="text" id="st-enrol" placeholder="e.g. 6008" inputmode="numeric" onblur="lookupStudent()" oninput="checkStudentIdLooksLikeOrderId('st-enrol','st-enrol-warn')">
+            <div id="st-enrol-warn" style="display:none;font-size:11px;color:#B87A10;margin-top:4px;font-weight:600">⚠ This looks like an Order ID (5+ digits) — Student ID is normally 4 digits. Put it in the Order ID field below if so.</div>
+          </div>
           <div class="field"><label>Name *</label><input type="text" id="st-name" placeholder="Full name"></div>
           <div class="field"><label>Mobile *</label><input type="tel" id="st-mobile" placeholder="10 digits" inputmode="numeric" oninput="updateMobileLast4()"></div>
           <div class="field"><label>Email</label><input type="email" id="st-email" placeholder="student@email.com"></div>
         </div>
-        <div class="field"><label>Last 4 Digits of Mobile (auto)</label>
-          <input type="text" id="st-mobile-last4" class="auto-val" readonly placeholder="Auto-filled from mobile">
+        <div class="grid2">
+          <div class="field"><label>Last 4 Digits of Mobile (auto)</label>
+            <input type="text" id="st-mobile-last4" class="auto-val" readonly placeholder="Auto-filled from mobile">
+          </div>
+          <div class="field"><label>Order ID <span style="font-weight:400;color:var(--muted);text-transform:none">(payment/order reference, 5+ digits)</span></label>
+            <input type="text" id="st-order-id" placeholder="e.g. 45231" inputmode="numeric">
+          </div>
         </div>
         <div class="field"><label>Select Batch(es) *</label>
           <div id="st-batch-choices" class="batch-choice-list"></div>
@@ -4947,8 +4954,10 @@ function renderStudentTable(batch, query) {
   html += '<table class="compact-table"><thead><tr><th>Student</th><th>Mobile</th><th>Email Status</th><th>Actions</th></tr></thead><tbody>';
   html += filtered.map(s => {
     const emailLabel = welcomeEmailLabel(s);
+    const idLooksLikeOrder = /^\d{5,}$/.test(String(s.enrollmentNo || '').trim());
+    const idFlag = idLooksLikeOrder ? ' <span class="badge badge-amber" title="This Student ID has 5+ digits — looks like it may actually be an Order ID entered by mistake">⚠ Check ID</span>' : '';
     return '<tr>' +
-      '<td><strong>' + escC(s.name) + '</strong><div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--muted)">' + escC(s.enrollmentNo) + '</div></td>' +
+      '<td><strong>' + escC(s.name) + '</strong><div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--muted)">' + escC(s.enrollmentNo) + idFlag + '</div></td>' +
       '<td><span class="badge badge-amber">Last 4: ' + escC(s.mobileLast4 || s.dob || '') + '</span></td>' +
       '<td><span class="badge ' + (String(emailLabel).indexOf('failed') >= 0 ? 'badge-red' : 'badge-green') + '">' + escC(emailLabel) + '</span></td>' +
       '<td><div class="student-actions"><button class="del-btn" title="Edit student info" onclick="openStudentEditModal(\'' + escC(s.enrollmentNo) + '\',\'' + escC(s.name) + '\',\'' + escC(s.mobileLast4 || s.dob || '') + '\',\'' + escC(batch) + '\')">✏️ Edit</button><button class="del-btn" title="Resend welcome email" onclick="resendWelcomeEmail(\'' + escC(s.enrollmentNo) + '\',\'' + escC(batch) + '\')">Email</button><button class="del-btn danger" onclick="removeStudent(\'' + escC(s.enrollmentNo) + '\',\'' + escC(batch) + '\')">Remove</button></div></td>' +
@@ -4999,6 +5008,15 @@ function lookupStudent() {
   });
 }
 
+/* Flags Student ID fields that look like an Order ID (5+ digits) instead of the usual 4-digit ID */
+function checkStudentIdLooksLikeOrderId(inputElId, warnElId) {
+  const input = document.getElementById(inputElId);
+  const warn  = document.getElementById(warnElId);
+  if (!input || !warn) return;
+  const val = (input.value || '').trim();
+  warn.style.display = /^\d{5,}$/.test(val) ? 'block' : 'none';
+}
+
 function addStudent() {
   const batch  = document.getElementById('st-batch').value;
   const name   = document.getElementById('st-name').value.trim();
@@ -5006,6 +5024,8 @@ function addStudent() {
   const email  = document.getElementById('st-email').value.trim();
   const enrol  = document.getElementById('st-enrol').value.trim();
   const mobileLast4 = document.getElementById('st-mobile-last4').value.trim();
+  const orderIdEl = document.getElementById('st-order-id');
+  const orderId = orderIdEl ? orderIdEl.value.trim() : '';
   const batchCodes = selectedStudentBatches();
   const errEl  = document.getElementById('st-err');
   errEl.classList.remove('show');
@@ -5013,9 +5033,12 @@ function addStudent() {
   if (!batch||!name||!enrol||mobile.length<4||mobileLast4.length!==4||!batchCodes.length) {
     errEl.textContent='Please fill Student ID, Name, Mobile, and select at least one batch.'; errEl.classList.add('show'); return;
   }
+  if (orderId && !/^\d{5,}$/.test(orderId)) {
+    errEl.textContent='Order ID should be at least 5 digits, numbers only (leave blank if you don\'t have one yet).'; errEl.classList.add('show'); return;
+  }
   const btn = document.getElementById('st-btn');
   btn.textContent='Adding…'; btn.disabled=true;
-  gasGet({action:'addStudent',enrollmentNo:enrol,batchCode:batch,batchCodes:batchCodes.join(','),name,mobileLast4,mobile,email},function(e,d){
+  gasGet({action:'addStudent',enrollmentNo:enrol,batchCode:batch,batchCodes:batchCodes.join(','),name,mobileLast4,mobile,email,orderId},function(e,d){
     btn.textContent='Add Student →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') {
       errEl.textContent = (d && d.message) || 'Could not add student. Try again.';
@@ -5023,7 +5046,8 @@ function addStudent() {
       errEl.classList.add('show'); return;
     }
     showStudentEmailResult(d.email,'Student added.');
-    ['st-enrol','st-name','st-mobile','st-mobile-last4','st-email'].forEach(id=>document.getElementById(id).value='');
+    ['st-enrol','st-name','st-mobile','st-mobile-last4','st-email','st-order-id'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
+    const warnEl = document.getElementById('st-enrol-warn'); if (warnEl) warnEl.style.display='none';
     renderStudentBatchChoices();
     renderStudentList(batch);
   });
@@ -5087,16 +5111,20 @@ function openStudentEditModal(enrollmentNo, name, mobileLast4, batch) {
   document.getElementById('st-edit-batch').value   = batch;
   document.getElementById('st-edit-id').value      = enrollmentNo;
   document.getElementById('st-edit-name').value    = name || '';
-  
+
   // Find in local cache
   var students = counselorStudentsByBatch[batch] || [];
   var s = students.find(function(x) { return x.enrollmentNo === enrollmentNo; });
   document.getElementById('st-edit-mobile').value  = s && s.mobile ? s.mobile : '';
   document.getElementById('st-edit-email').value   = s && s.email ? s.email : '';
   document.getElementById('st-edit-mobile4').value = mobileLast4 || '';
+  var orderIdEl = document.getElementById('st-edit-order-id');
+  if (orderIdEl) orderIdEl.value = (s && s.orderId) || '';
 
   var errEl = document.getElementById('st-edit-err');
   if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+  var warnEl = document.getElementById('st-edit-id-warn');
+  if (warnEl) warnEl.style.display = 'none';
   var modal = document.getElementById('student-edit-modal');
   if (modal) { modal.style.display = 'flex'; }
 }
@@ -5111,9 +5139,13 @@ function openAlumniStudentEditModal(enrollmentNo, batch) {
   document.getElementById('st-edit-mobile').value  = s.mobile || s.contact || '';
   document.getElementById('st-edit-email').value   = s.email || '';
   document.getElementById('st-edit-mobile4').value = s.mobileLast4 || (s.mobile ? s.mobile.slice(-4) : '');
+  var orderIdEl = document.getElementById('st-edit-order-id');
+  if (orderIdEl) orderIdEl.value = s.orderId || '';
 
   var errEl = document.getElementById('st-edit-err');
   if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+  var warnEl = document.getElementById('st-edit-id-warn');
+  if (warnEl) warnEl.style.display = 'none';
   var modal = document.getElementById('student-edit-modal');
   if (modal) { modal.style.display = 'flex'; }
 }
@@ -5131,11 +5163,25 @@ function saveStudentEdit() {
   var mobile    = (document.getElementById('st-edit-mobile').value || '').trim().replace(/\D/g,'');
   var email     = (document.getElementById('st-edit-email').value || '').trim();
   var mobile4   = (document.getElementById('st-edit-mobile4').value || '').trim();
+  var orderIdEl = document.getElementById('st-edit-order-id');
+  var orderId   = orderIdEl ? orderIdEl.value.trim() : '';
   var errEl     = document.getElementById('st-edit-err');
 
   if (!newId) { errEl.textContent = 'Student ID cannot be empty.'; errEl.style.display = 'block'; return; }
   if (mobile && mobile.length < 4) { errEl.textContent = 'Mobile must be at least 4 digits.'; errEl.style.display = 'block'; return; }
+  if (orderId && !/^\d{5,}$/.test(orderId)) { errEl.textContent = 'Order ID should be at least 5 digits, numbers only.'; errEl.style.display = 'block'; return; }
   errEl.style.display = 'none';
+
+  // Renaming the Student ID is a meaningful change — it's the key used across attendance,
+  // fees, and marks. Ask for confirmation so it isn't fixed by a stray click.
+  if (newId !== oldId.toUpperCase()) {
+    var proceed = confirm(
+      'Change Student ID from ' + oldId + ' to ' + newId + '?\n\n' +
+      'Only do this to correct a data-entry mistake. If this student already has attendance, ' +
+      'fees, or marks recorded under ' + oldId + ', the save will be blocked to protect that history.'
+    );
+    if (!proceed) return;
+  }
 
   if (mobile && (!mobile4 || mobile4.length !== 4)) {
     mobile4 = mobile.slice(-4);
@@ -5149,15 +5195,16 @@ function saveStudentEdit() {
     name: name,
     mobile: mobile,
     mobileLast4: mobile4,
-    email: email
+    email: email,
+    orderId: orderId
   }, function(e, d) {
     if (e || !d || d.status !== 'ok') {
-      errEl.textContent = (d && d.reason) ? d.reason : 'Could not save. Please try again.';
+      errEl.textContent = (d && d.reason) ? d.reason : 'Could not save. If this student already has records under the old ID, the ID change was blocked — try again without changing the Student ID.';
       errEl.style.display = 'block'; return;
     }
     closeStudentEditModal();
     showToast('Student record updated ✓', 'success');
-    
+
     // Check if we are on Alumni tab
     var alumniTab = document.getElementById('t-alumni');
     if (alumniTab && alumniTab.classList.contains('active')) {
@@ -5172,6 +5219,7 @@ function saveStudentEdit() {
         }
         if (mobile4) alumniList[idx].mobileLast4 = mobile4;
         if (email) alumniList[idx].email = email;
+        alumniList[idx].orderId = orderId;
       }
       filterAlumniTable();
     } else {
@@ -7641,9 +7689,15 @@ function revMergeDashboardAfterSave(dashboard, submittedRows, counsellor, assign
   revenueData.monthlyPreviewRows = revMergeMonthlyRowsForSave(previousPreviewRows, incomingPreviewRows, counsellor, assignedCentre, monthKey);
   revRefreshRevenueSummaryTotals(revenueData);
 
-  if (!revDashboardHasSubmittedMonth(revenueData, monthKey, counsellor, assignedCentre)) {
-    revApplySavedMonthlyRows(submittedRows, counsellor, assignedCentre, monthKey);
-  }
+  // Always force-apply what was just submitted for this exact month/counsellor/centre scope,
+  // instead of trusting the re-fetched dashboard to already reflect it. Previously this only ran
+  // when revDashboardHasSubmittedMonth() returned false — but that check only looks for ANY row
+  // in this scope (draft or locked), not whether the freshly-saved lock state actually came back.
+  // Once a month had a draft row, this guard silently skipped applying the just-saved "locked: true"
+  // state, so clicking "Save & Lock" kept leaving the month showing as Draft. Applying it
+  // unconditionally is safe: revApplySavedMonthlyRows always de-dupes by the same month/counsellor/
+  // centre scope first, so it just replaces those rows with the truth of what was just sent.
+  revApplySavedMonthlyRows(submittedRows, counsellor, assignedCentre, monthKey);
 }
 
 function revApplySavedMonthlyRows(rows, counsellor, assignedCentre, monthKey) {
@@ -15443,7 +15497,13 @@ function enrollSave() {
     <input type="hidden" id="st-edit-batch">
     <div class="field" style="margin-bottom:12px">
       <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Student ID</label>
-      <input type="text" id="st-edit-id" style="text-transform:uppercase;background:#f3f4f6;cursor:not-allowed;color:#6b7280" readonly title="Student ID cannot be changed">
+      <input type="text" id="st-edit-id" style="text-transform:uppercase" oninput="checkStudentIdLooksLikeOrderId('st-edit-id','st-edit-id-warn')" placeholder="4 digit Student ID">
+      <div style="font-size:10.5px;color:var(--muted);margin-top:4px">Only change this if it was entered incorrectly. If this student already has attendance, fees, or marks recorded, the system will block the change to protect that history.</div>
+      <div id="st-edit-id-warn" style="display:none;font-size:11px;color:#B87A10;margin-top:4px;font-weight:600">⚠ This looks like an Order ID (5+ digits) — did you mean to put it in Order ID below instead?</div>
+    </div>
+    <div class="field" style="margin-bottom:12px">
+      <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Order ID <span style="font-weight:400;text-transform:none">(payment/order reference, 5+ digits)</span></label>
+      <input type="text" id="st-edit-order-id" placeholder="e.g. 45231" inputmode="numeric">
     </div>
     <div class="field" style="margin-bottom:12px">
       <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Full Name</label>

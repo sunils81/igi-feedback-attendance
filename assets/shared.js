@@ -1169,14 +1169,19 @@ window.gasGet = (function () {
   function h_saveFee(p, cb) {
     var n   = Number(p.nInst || 1);
     var cf  = Number(p.courseFee || 0);
-    var gst = Math.round(cf * 0.18);
-    var rf  = Number(p.regFee || 0);
-    var rg  = Math.round(rf * 0.18);
+    var gst = Math.round(cf * 0.18);   // GST on course fee ONLY
+    var rf  = Number(p.regFee || 0);   // registration fee, base amount
+    var regGstApplied = p.regGstApplied === 'Yes';
+    var rg  = regGstApplied ? Math.round(rf * 0.18) : 0;
+    var regComputed = rf + rg;         // registration fee, +GST if applicable
+    var regCustom = (p.regCustomAmount !== undefined && p.regCustomAmount !== null && p.regCustomAmount !== '')
+      ? Number(p.regCustomAmount) : null;
+    var regEffective = (regCustom !== null && !isNaN(regCustom)) ? regCustom : regComputed;
     var dp  = Number(p.discountPct || 0);
     var da  = Number(p.discountAmt || Math.round(cf * dp / 100));
     var tp  = Number(p.tdsPct || 0);
     var ta  = Number(p.tdsAmt || Math.round(cf * tp / 100));
-    var net = Math.round((cf + gst + rf + rg) - da - ta);
+    var net = Math.round((cf + gst + regEffective) - da - ta);
     var today = todayYMD();
     var inst = [1, 2, 3].map(function (i) {
       return { amt: Number(p['inst' + i + 'Amt'] || 0), due: toYMD(p['inst' + i + 'Due']),
@@ -1188,7 +1193,11 @@ window.gasGet = (function () {
     
     var meta = {
       registration_fee: rf,
+      registration_gst_applied: regGstApplied,
       registration_gst: rg,
+      registration_custom_amount: regCustom,
+      registration_effective_amount: regEffective,
+      comment: p.comment || '',
       discount_pct: dp,
       discount_amount: da,
       discount_reason: p.discountReason || '',

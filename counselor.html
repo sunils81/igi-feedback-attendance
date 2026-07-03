@@ -15107,11 +15107,18 @@ function openEnrollModal(monthKey, centre, counsellor) {
   document.getElementById('enroll-new-batch-form').style.display = 'none';
   document.getElementById('enroll-nb-course').innerHTML = '<option value="">— Select Course —</option>' +
     (typeof COURSES !== 'undefined' ? COURSES.map(function(c){ return '<option>'+escC(c)+'</option>'; }).join('') : '');
+  document.getElementById('enroll-nb-centre').innerHTML =
+    (typeof CENTRES !== 'undefined' ? CENTRES : [centre]).map(function(c) {
+      return '<option value="'+escC(c)+'"'+(c === centre ? ' selected' : '')+'>'+escC(c)+'</option>';
+    }).join('');
 
   // Reset fee section
   document.getElementById('enroll-fee-step').style.display = 'none';
   document.getElementById('enroll-course-fee').value = '';
   document.getElementById('enroll-reg-fee').value = '0';
+  document.getElementById('enroll-reg-gst').checked = false;
+  document.getElementById('enroll-reg-custom').value = '';
+  document.getElementById('enroll-comment').value = '';
   document.getElementById('enroll-disc-pct').value = '0';
   document.getElementById('enroll-custom-disc-wrap').style.display = 'none';
   document.getElementById('enroll-custom-disc').value = '';
@@ -15290,16 +15297,23 @@ function enrollDiscChange() {
 function enrollCalcFee() {
   var cf  = Number(document.getElementById('enroll-course-fee').value) || 0;
   var rf  = Number(document.getElementById('enroll-reg-fee').value)    || 0;
+  var regGstOn = document.getElementById('enroll-reg-gst').checked;
+  var regCustomRaw = document.getElementById('enroll-reg-custom').value;
+  var hasCustomReg = regCustomRaw !== '' && regCustomRaw != null;
+  var regComputed = regGstOn ? Math.round(rf * 1.18) : rf;   // registration fee, +GST if toggled on
+  var regEffective = hasCustomReg ? (Number(regCustomRaw) || 0) : regComputed;
   var dv  = document.getElementById('enroll-disc-pct').value;
   var dp  = dv === 'custom' ? (Number(document.getElementById('enroll-custom-disc').value)||0) : Number(dv||0);
   var da  = Math.round(cf * dp / 100);
   var tp  = Number(document.getElementById('enroll-tds-pct').value) || 0;
   var ta  = Math.round(cf * tp / 100);
-  var gst = Math.round(cf * 0.18);       // GST on course fee
-  var rg  = Math.round(rf * 0.18);       // GST on registration fee (matches h_saveFee backend)
-  var net = Math.round((cf + gst + rf + rg) - da - ta);
+  var gst = Math.round(cf * 0.18);       // GST on course fee ONLY — registration fee is handled separately above
+  var net = Math.round((cf + gst + regEffective) - da - ta);
   document.getElementById('enroll-s-fee').textContent  = money(cf);
-  document.getElementById('enroll-s-gst').textContent  = money(gst + rg);  // total GST
+  document.getElementById('enroll-s-gst').textContent  = money(gst);
+  document.getElementById('enroll-s-reg').textContent  = money(regEffective);
+  document.getElementById('enroll-s-reg-lbl').textContent =
+    hasCustomReg ? 'Registration Fee (custom)' : (regGstOn ? 'Registration Fee (+GST)' : 'Registration Fee (no GST)');
   document.getElementById('enroll-s-disc').textContent = da ? '-' + money(da) : '—';
   document.getElementById('enroll-s-net').textContent  = money(net);
 }
@@ -15334,6 +15348,7 @@ function enrollSave() {
   if (st.isNewBatch) {
     batchCourse = document.getElementById('enroll-nb-course').value;
     var nbStart = document.getElementById('enroll-nb-start').value;
+    batchCentre = document.getElementById('enroll-nb-centre').value || st.centre;
     if (!batchCourse || !nbStart) {
       err.textContent = 'Select course and start date for the new batch.';
       err.classList.add('show'); return;
@@ -15404,6 +15419,7 @@ function enrollSave() {
   function stepFee(next) {
     var dv = document.getElementById('enroll-disc-pct').value;
     var dp = dv === 'custom' ? (Number(document.getElementById('enroll-custom-disc').value)||0) : Number(dv||0);
+    var regCustomRaw = document.getElementById('enroll-reg-custom').value;
     gasGet({
       action: 'saveFeeRecord',
       studentId:      studentId,
@@ -15413,6 +15429,9 @@ function enrollSave() {
       course:         batchCourse,
       courseFee:      cf,
       regFee:         Number(document.getElementById('enroll-reg-fee').value) || 0,
+      regGstApplied:  document.getElementById('enroll-reg-gst').checked ? 'Yes' : 'No',
+      regCustomAmount: (regCustomRaw !== '' && regCustomRaw != null) ? Number(regCustomRaw) : '',
+      comment:        document.getElementById('enroll-comment').value.trim(),
       discountPct:    dp,
       discountReason: document.getElementById('enroll-disc-reason').value.trim(),
       tdsPct:         Number(document.getElementById('enroll-tds-pct').value) || 0,
@@ -15739,6 +15758,10 @@ function enrollSave() {
         <div id="enroll-new-batch-toggle" class="enroll-create-link" onclick="enrollToggleNewBatch()">+ Batch not listed? Create new</div>
         <div id="enroll-new-batch-form" class="enroll-new-form" style="display:none">
           <div class="enroll-grid2">
+            <div class="enroll-field"><label>Centre *</label>
+              <select id="enroll-nb-centre"></select>
+              <div style="font-size:11px;color:var(--muted);margin-top:3px;">Defaults to your centre — change this if the batch belongs to another centre.</div>
+            </div>
             <div class="enroll-field"><label>Course *</label>
               <select id="enroll-nb-course" onchange="enrollNBCourseChange()">
                 <option value="">— Select Course —</option>
@@ -15758,7 +15781,12 @@ function enrollSave() {
         <div class="enroll-step-title"><span class="enroll-step-num">3</span> Fee Details</div>
         <div class="enroll-grid2">
           <div class="enroll-field"><label>Course Fee &#8377; (excl. GST)</label><input id="enroll-course-fee" type="number" min="0" placeholder="e.g. 165900" oninput="enrollCalcFee()"></div>
-          <div class="enroll-field"><label>Registration Fee &#8377;</label><input id="enroll-reg-fee" type="number" min="0" value="0" oninput="enrollCalcFee()"></div>
+          <div class="enroll-field"><label>Registration Fee &#8377; (base)</label><input id="enroll-reg-fee" type="number" min="0" value="0" oninput="enrollCalcFee()"></div>
+          <div class="enroll-field" style="display:flex;align-items:center;gap:8px;padding-top:22px;">
+            <input type="checkbox" id="enroll-reg-gst" onchange="enrollCalcFee()" style="width:auto;margin:0;cursor:pointer;">
+            <label for="enroll-reg-gst" style="margin:0;cursor:pointer;font-weight:500;">Apply 18% GST to Registration Fee</label>
+          </div>
+          <div class="enroll-field"><label>Custom Registration Amount &#8377; <span style="font-weight:400;color:var(--muted);">(optional override)</span></label><input id="enroll-reg-custom" type="number" min="0" placeholder="Leave blank to use calculated amount" oninput="enrollCalcFee()"></div>
           <div class="enroll-field"><label>Discount</label>
             <select id="enroll-disc-pct" onchange="enrollDiscChange()">
               <option value="0">No discount</option>
@@ -15779,10 +15807,12 @@ function enrollSave() {
             </select>
           </div>
           <div class="enroll-field"><label>Enrolment Date</label><input id="enroll-date" type="date"></div>
+          <div class="enroll-field" style="grid-column:1/-1;"><label>Internal Notes / Comment <span style="font-weight:400;color:var(--muted);">(optional, staff-only)</span></label><textarea id="enroll-comment" rows="2" placeholder="e.g. payment plan agreed verbally, scholarship case, etc." style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;resize:vertical;"></textarea></div>
         </div>
         <div class="enroll-fee-summary">
           <div class="enroll-fee-stat"><div class="v" id="enroll-s-fee">&#8377;0</div><div class="k">Course Fee</div></div>
-          <div class="enroll-fee-stat"><div class="v" id="enroll-s-gst">&#8377;0</div><div class="k">GST (18%)</div></div>
+          <div class="enroll-fee-stat"><div class="v" id="enroll-s-gst">&#8377;0</div><div class="k">GST (18%, course only)</div></div>
+          <div class="enroll-fee-stat"><div class="v" id="enroll-s-reg">&#8377;0</div><div class="k" id="enroll-s-reg-lbl">Registration Fee</div></div>
           <div class="enroll-fee-stat"><div class="v" id="enroll-s-disc">—</div><div class="k">Discount</div></div>
           <div class="enroll-fee-stat"><div class="v" id="enroll-s-net">&#8377;0</div><div class="k">Net Payable</div></div>
         </div>

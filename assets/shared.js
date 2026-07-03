@@ -906,11 +906,40 @@ window.gasGet = (function () {
     });
   }
 
-  /* saveCoInstructor — assign or clear the co-instructor (with optional cover-until date) */
+  /* saveCoInstructor — assign or clear the co-instructor (with optional cover-until date).
+     Also keeps sessions.instructor in sync for anything not yet taught, so attendance/
+     feedback always reflect whoever is ACTUALLY covering as of each session's own date —
+     and automatically reverts once the cover period ends, without needing a separate step. */
   function h_saveCoInstructor(p, cb) {
-    PATCH('batches', 'batch_code=eq.' + encodeURIComponent(p.batchCode),
-      { co_instructor: p.coInstructor || null, co_instructor_until: p.coInstructorUntil || null },
-      function (e) { cb(null, e ? { status: 'error' } : { status: 'ok' }); }
+    var batchCode = p.batchCode;
+    var newCo = p.coInstructor || null;
+    var newUntil = p.coInstructorUntil || null;
+    PATCH('batches', 'batch_code=eq.' + encodeURIComponent(batchCode),
+      { co_instructor: newCo, co_instructor_until: newUntil },
+      function (e) {
+        if (e) { cb(null, { status: 'error' }); return; }
+        GET('batches', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=instructor', function (e2, rows) {
+          var mainInstructor = (rows && rows[0] && rows[0].instructor) || '';
+          // Only touch sessions that haven't been taught/finalized yet — history stays as-is.
+          var filterBase = 'batch_code=eq.' + encodeURIComponent(batchCode) + '&session_type=neq.Completed';
+          function done() { cb(null, { status: 'ok' }); }
+          if (!newCo) {
+            // Cover cleared entirely — every unresolved session reverts to the main instructor.
+            PATCH('sessions', filterBase, { instructor: mainInstructor }, function () { done(); });
+          } else if (!newUntil) {
+            // Permanent cover — every unresolved session (any date) gets the cover instructor.
+            PATCH('sessions', filterBase, { instructor: newCo }, function () { done(); });
+          } else {
+            // Cover ends on a specific date — sessions on/before it get the cover instructor;
+            // anything already scheduled past that date reverts to the main instructor.
+            PATCH('sessions', filterBase + '&session_date=lte.' + encodeURIComponent(newUntil),
+              { instructor: newCo }, function () {
+                PATCH('sessions', filterBase + '&session_date=gt.' + encodeURIComponent(newUntil),
+                  { instructor: mainInstructor }, function () { done(); });
+              });
+          }
+        });
+      }
     );
   }
 

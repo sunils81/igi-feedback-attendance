@@ -61,11 +61,17 @@ export default async function handler(req, res) {
     // Fetch all active batches where today is within the batch dates
     const batches = await supaGet(
       'batches',
-      `is_active=eq.true&start_date=lte.${today}&or=(end_date.is.null,end_date.gte.${today})&select=batch_code,instructor`
+      `is_active=eq.true&start_date=lte.${today}&or=(end_date.is.null,end_date.gte.${today})&select=batch_code,instructor,co_instructor,co_instructor_until`
     );
 
     for (const b of batches) {
       try {
+        // Effective instructor for TODAY: co_instructor takes precedence while active
+        // (same rule used everywhere else — student portal, proctor room, etc.)
+        const effectiveInstructor =
+          (b.co_instructor && (!b.co_instructor_until || b.co_instructor_until >= today))
+            ? b.co_instructor
+            : (b.instructor || '');
         // Check if a session already exists for this batch today (idempotency guard)
         const todaySess = await supaGet(
           'sessions',
@@ -89,7 +95,7 @@ export default async function handler(req, res) {
           batch_code: b.batch_code,
           session_date: today,
           sess_no: nextNo,
-          instructor: b.instructor || '',
+          instructor: effectiveInstructor,
           session_type: 'Scheduled'
         });
 

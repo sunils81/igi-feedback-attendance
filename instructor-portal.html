@@ -5226,7 +5226,7 @@ function otLoadStudentsForPicker() {
   gasGet({action:'getStudentsForBatches', instructor:instructorName, batchCodes:batches.join(',')}, function(err, d) {
     if (!err && d && d.students && d.students.length) {
       otPickerStudents = d.students.map(function(s) {
-        return { studentId: s.studentId||s.id, name: s.name||s.studentName||s.studentId, _batchCode: s.batchCode||batches[0] };
+        return { studentId: s.studentId||s.enrollmentNo||s.id, name: s.name||s.studentName||s.studentId||s.enrollmentNo, _batchCode: s.batchCode||batches[0] };
       });
       otRenderStudentPicker(otPickerStudents);
     } else {
@@ -5261,9 +5261,10 @@ function otRenderStudentPicker(students) {
   }
   var html = '';
   students.forEach(function(s) {
+    if (!s.studentId) return; // defensive: skip entries with no resolvable id
     var sel = otPickerSelected.has(s.studentId) ? ' selected' : '';
-    html += '<div class="ct-student-item'+sel+'" onclick="otPickerToggle(\''+escHtml(String(s.studentId))+'\')" id="ctsi-'+escHtml(String(s.studentId))+'">'
-      + '<input type="checkbox" '+(sel?' checked':'')+' onclick="event.stopPropagation();otPickerToggle(\''+escHtml(String(s.studentId))+'\')">'
+    html += '<div class="ct-student-item'+sel+'" onclick="otPickerToggle(\''+escHtml(s.studentId)+'\')" id="ctsi-'+escHtml(s.studentId)+'">'
+      + '<input type="checkbox" '+(sel?' checked':'')+' onclick="event.stopPropagation();otPickerToggle(\''+escHtml(s.studentId)+'\')">'
       + '<span style="font-weight:600;">'+escHtml(s.name||s.studentName||'Student')+'</span>'
       + '<span style="font-size:11px;color:#9ca3af;margin-left:auto;">'+escHtml(s._batchCode||'')+'</span>'
       + '</div>';

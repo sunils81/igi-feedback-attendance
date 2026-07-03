@@ -4900,6 +4900,22 @@ window.gasGet = (function () {
     cb(null, { status: 'ok', questions: [] });
   }
 
+  /* Sanitize a target_students payload so malformed/undefined ids never reach the DB.
+     Accepts a JSON array string, a comma-separated string, or 'ALL'/empty. */
+  function sanitizeTargetStudents(raw) {
+    if (!raw || raw === 'ALL') return 'ALL';
+    var ids;
+    try {
+      ids = JSON.parse(raw);
+      if (!Array.isArray(ids)) ids = String(raw).split(',');
+    } catch (e) {
+      ids = String(raw).split(',');
+    }
+    ids = ids.map(function(x) { return String(x || '').trim(); })
+              .filter(function(x) { return x && x.toLowerCase() !== 'undefined' && x.toLowerCase() !== 'null'; });
+    return ids.length ? JSON.stringify(ids) : 'ALL';
+  }
+
   /* createOnlineTest */
   function h_createOnlineTest(p, cb) {
     var tid = uniqueId('OT-');
@@ -4922,7 +4938,7 @@ window.gasGet = (function () {
       expiry_mode:       p.expiryMode || 'manual',
       expiry_at:         p.expiryAt || null,
       scheduled_at:      p.activateAt || null,
-      target_students:   p.targetStudents || 'ALL',
+      target_students:   sanitizeTargetStudents(p.targetStudents),
       status:            'Draft',
       created_by:        p.instructor || '',
       created_at:        nowISO()

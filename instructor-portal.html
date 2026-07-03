@@ -1264,7 +1264,14 @@
       </div>
       <div id="ot-proctor-room" style="display:none;">
         <div class="ot-stat-row" id="ot-proctor-stats"></div>
-        <div style="font-weight:600;font-size:13px;margin-bottom:10px;">Student Status</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+          <div style="font-weight:600;font-size:13px;">Student Status</div>
+          <div id="ot-proctor-bulkbar" style="display:none;align-items:center;gap:8px;">
+            <button class="ot-btn ghost" style="font-size:11px;padding:4px 10px;" onclick="otProctorSelectAllPending()">Select All Pending</button>
+            <button class="ot-btn ghost" style="font-size:11px;padding:4px 10px;" onclick="otProctorClearSelection()">Clear</button>
+            <button id="ot-proctor-remove-sel-btn" style="background:#dc2626;color:#fff;border:none;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;" onclick="otRemoveSelectedFromTest()">✕ Remove Selected (0)</button>
+          </div>
+        </div>
         <div id="ot-proctor-students"></div>
         <div style="margin-top:14px;">
           <button class="ot-btn danger" onclick="otCloseTest()">🔒 Close Test</button>
@@ -4790,6 +4797,7 @@ var otCurrentTests = [];      // list of tests
 var otActiveTestId = null;    // test open in proctor room
 var otProctorTimer = null;
 var otProctorLastData = null;
+var otProctorSelectedIds = new Set();
 var otCurrentCQType = 'MCQ';
 var otPendingSubmissions = [];
 var otActiveGradingTestId = null;
@@ -6885,6 +6893,7 @@ function otLoadProctor() {
   gasGet({action:'getProctorRoom', instructor:instructorName, testId:testId}, function(err, d) {
     if (err || !d || d.status !== 'ok') return;
     otProctorLastData = d;
+    otProctorSelectedIds = new Set();
     var el = document.getElementById('ot-proctor-room');
     if (el) el.style.display = 'block';
 
@@ -6918,6 +6927,7 @@ function otLoadProctor() {
     (d.enrolled||[]).filter(function(s){ return submittedIds.indexOf(s.studentId)===-1; }).forEach(function(s) {
       var warn = d.warnings[s.studentId];
       html += '<div class="proctor-row">'
+        + '<input type="checkbox" class="ot-proctor-cb" data-sid="'+escHtml(s.studentId)+'" onchange="otProctorToggleSelect(\''+escHtml(s.studentId)+'\',this.checked)" style="margin-right:8px;width:16px;height:16px;cursor:pointer;flex-shrink:0;">'
         + '<div class="proctor-dot pending" title="Not yet submitted"></div>'
         + '<div style="flex:1;"><b>'+escHtml(s.studentName||s.studentId)+'</b>'
         + (warn && warn.count > 0 ? ' <span class="ot-warning-pill">⚠ '+warn.count+' warnings</span>' : '')
@@ -6930,6 +6940,11 @@ function otLoadProctor() {
     });
     var el2 = document.getElementById('ot-proctor-students');
     if (el2) el2.innerHTML = html || '<div style="color:#9ca3af;font-size:13px;">No students connected yet.</div>';
+
+    var pendingCount = (d.enrolled||[]).filter(function(s){ return submittedIds.indexOf(s.studentId)===-1; }).length;
+    var bulkbar = document.getElementById('ot-proctor-bulkbar');
+    if (bulkbar) bulkbar.style.display = pendingCount > 1 ? 'flex' : 'none';
+    otProctorUpdateBulkBar();
 
     var ri = document.getElementById('ot-proctor-refresh-info');
     if(ri) ri.textContent = 'Last refreshed: ' + new Date().toLocaleTimeString('en-IN');
@@ -6964,6 +6979,72 @@ function otRemoveStudentFromTest(studentId, studentName) {
       return alert('Error removing student: ' + (d && d.reason || (err && err.message) || 'unknown'));
     }
     showToast('✅ ' + studentName + ' removed from this test.');
+    otLoadProctor();
+  });
+}
+
+// ── Bulk select + remove (checkboxes) ──────────────────────────
+function otProctorToggleSelect(studentId, checked) {
+  if (checked) otProctorSelectedIds.add(studentId); else otProctorSelectedIds.delete(studentId);
+  otProctorUpdateBulkBar();
+}
+
+function otProctorSelectAllPending() {
+  document.querySelectorAll('.ot-proctor-cb').forEach(function(cb) {
+    cb.checked = true;
+    otProctorSelectedIds.add(cb.getAttribute('data-sid'));
+  });
+  otProctorUpdateBulkBar();
+}
+
+function otProctorClearSelection() {
+  document.querySelectorAll('.ot-proctor-cb').forEach(function(cb) { cb.checked = false; });
+  otProctorSelectedIds.clear();
+  otProctorUpdateBulkBar();
+}
+
+function otProctorUpdateBulkBar() {
+  var btn = document.getElementById('ot-proctor-remove-sel-btn');
+  if (!btn) return;
+  var n = otProctorSelectedIds.size;
+  btn.textContent = '✕ Remove Selected (' + n + ')';
+  btn.disabled = n === 0;
+  btn.style.opacity = n === 0 ? '0.5' : '1';
+  btn.style.cursor = n === 0 ? 'default' : 'pointer';
+}
+
+function otRemoveSelectedFromTest() {
+  var testId = otActiveTestId;
+  if (!testId) return alert('No test selected.');
+  if (!otProctorLastData || !otProctorLastData.enrolled) return alert('Student list not loaded yet — try refreshing Proctor Room.');
+  var toRemove = Array.from(otProctorSelectedIds);
+  if (!toRemove.length) return;
+
+  var namesById = {};
+  otProctorLastData.enrolled.forEach(function(s) { namesById[s.studentId] = s.studentName || s.studentId; });
+  var names = toRemove.map(function(sid) { return namesById[sid] || sid; });
+
+  if (!confirm('Cancel this test for these ' + toRemove.length + ' student(s) only?\n\n' + names.join(', ') + '\n\nEveryone else assigned to this test keeps their access.')) return;
+
+  var remaining = otProctorLastData.enrolled
+    .map(function(s) { return s.studentId; })
+    .filter(function(sid) { return toRemove.indexOf(sid) === -1; });
+
+  if (!remaining.length) {
+    if (!confirm('This would remove everyone left on this test.\n\nClose the test instead?')) return;
+    return otCloseTest();
+  }
+
+  var btn = document.getElementById('ot-proctor-remove-sel-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Removing…'; }
+  gasGet({action:'updateTestTargeting', instructor:instructorName, testId:testId, targetStudents: JSON.stringify(remaining)}, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      if (btn) { btn.disabled = false; }
+      otProctorUpdateBulkBar();
+      return alert('Error removing students: ' + (d && d.reason || (err && err.message) || 'unknown'));
+    }
+    showToast('✅ ' + toRemove.length + ' student(s) removed from this test.');
+    otProctorSelectedIds = new Set();
     otLoadProctor();
   });
 }

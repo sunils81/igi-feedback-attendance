@@ -1,0 +1,1562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>IGI SOG — India Business Portal · Goa 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&family=Playfair+Display:wght@600;700;800;900&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/TextPlugin.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --navy:#0D1B2E;--navy2:#1a3a5c;
+  --gold:#C9A84C;--gold2:#b8960e;--gold3:#A07830;--gold-lt:#F5ECD0;
+  --ink:#0D1B2E;--ink2:#4A5568;--ink3:#7A7060;
+  --white:#ffffff;--off:#F8F7F4;--border:#E2DDD6;--border2:#EDE9E3;
+  --green:#059669;--lime:#65a30d;--amber:#d97706;--red:#dc2626;
+  --card:#ffffff;--card2:#F8F7F4;
+  --sidebar-w:240px;--hdr-h:58px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font-family:'Plus Jakarta Sans',sans-serif;background:var(--off);color:var(--ink)}
+
+/* ── LAYOUT ─────────────────────────────────────────── */
+#app{display:flex;flex-direction:column;height:100vh}
+#hdr{height:var(--hdr-h);background:var(--navy);
+  display:flex;align-items:center;padding:0 24px;gap:14px;
+  border-bottom:1px solid rgba(0,0,0,.18);flex-shrink:0}
+.hdr-logo{height:30px;flex-shrink:0;opacity:.9}
+.hdr-divider{width:1px;height:28px;background:rgba(255,255,255,.15);margin:0 4px}
+.hdr-title{font-size:16px;font-weight:800;color:var(--gold);letter-spacing:.2px;font-family:'Playfair Display',serif}
+.hdr-sub{font-size:11px;color:rgba(255,255,255,.45);margin-top:1px}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:16px}
+.hdr-badge{padding:4px 12px;background:var(--gold);border-radius:20px;
+  font-size:11px;font-weight:700;color:var(--navy);letter-spacing:.5px}
+.hdr-date{font-size:12px;color:rgba(255,255,255,.45);font-family:'JetBrains Mono',monospace}
+.live-dot{width:7px;height:7px;background:#22C55E;border-radius:50%;
+  box-shadow:0 0 0 3px rgba(34,197,94,.2);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 3px rgba(34,197,94,.25)}50%{box-shadow:0 0 0 6px rgba(34,197,94,.05)}}
+
+#body{display:flex;flex:1;overflow:hidden}
+/* ── SIDEBAR ─────────────────────────────────────────── */
+#sidebar{width:var(--sidebar-w);background:var(--white);
+  border-right:1px solid var(--border);display:flex;flex-direction:column;
+  padding:18px 0;flex-shrink:0}
+.sb-section{padding:0 14px;margin-bottom:4px}
+.sb-label{font-size:10px;font-weight:700;color:var(--ink3);letter-spacing:1.5px;
+  text-transform:uppercase;padding:0 8px;margin-bottom:8px}
+.tab-btn{width:100%;padding:10px 12px;border:none;background:none;cursor:pointer;
+  border-radius:8px;display:flex;align-items:center;gap:11px;transition:all .18s;
+  text-align:left}
+.tab-btn:hover{background:var(--off)}
+.tab-btn.active{background:var(--gold-lt);border-left:3px solid var(--gold)}
+.tab-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;
+  justify-content:center;font-size:16px;flex-shrink:0;
+  background:var(--off);transition:all .2s}
+.tab-btn.active .tab-icon{background:var(--gold);box-shadow:0 2px 8px rgba(201,168,76,.35)}
+.tab-name{font-size:13px;font-weight:600;color:var(--ink2);transition:color .2s}
+.tab-sub{font-size:10px;color:var(--ink3);margin-top:1px}
+.tab-btn.active .tab-name{color:var(--navy)}
+.tab-btn.active .tab-sub{color:var(--gold3)}
+.sb-divider{height:1px;background:var(--border2);margin:10px 14px}
+.sb-bottom{margin-top:auto;padding:0 14px}
+.sb-meta{font-size:10px;color:var(--ink3);text-align:center;padding:10px 8px;
+  border:1px solid var(--border);border-radius:8px;line-height:1.7;background:var(--off)}
+
+/* ── CONTENT AREA ────────────────────────────────────── */
+#content{flex:1;overflow-y:auto;overflow-x:hidden;position:relative}
+#content::-webkit-scrollbar{width:5px}
+#content::-webkit-scrollbar-track{background:transparent}
+#content::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12);border-radius:3px}
+.tab-panel{display:none;padding:28px;animation:fadeTab .35s ease}
+.tab-panel.active{display:block}
+@keyframes fadeTab{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── COMMON CARDS ────────────────────────────────────── */
+.section-title{font-size:10px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;
+  color:var(--ink3);margin-bottom:14px;display:flex;align-items:center;gap:10px}
+.section-title::after{content:'';flex:1;height:1px;background:var(--border)}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+.kpi-card{background:var(--white);border:1px solid var(--border);border-radius:12px;
+  padding:18px 20px;position:relative;overflow:hidden;transition:box-shadow .2s,transform .2s}
+.kpi-card:hover{transform:translateY(-2px);box-shadow:0 4px 16px rgba(0,0,0,.07)}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,var(--gold),var(--gold3))}
+.kpi-label{font-size:10px;font-weight:700;color:var(--ink3);letter-spacing:.8px;
+  text-transform:uppercase;margin-bottom:10px}
+.kpi-val{font-size:26px;font-weight:800;color:var(--navy);line-height:1;font-family:'JetBrains Mono',monospace}
+.kpi-sub{font-size:11px;color:var(--ink3);margin-top:6px}
+.kpi-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;
+  border-radius:12px;font-size:11px;font-weight:700;margin-top:8px}
+.badge-green{background:rgba(5,150,105,.1);color:var(--green)}
+.badge-amber{background:rgba(217,119,6,.1);color:var(--amber)}
+.badge-red{background:rgba(220,38,38,.1);color:var(--red)}
+.badge-gold{background:var(--gold-lt);color:var(--gold3)}
+.badge-lime{background:rgba(101,163,13,.1);color:var(--lime)}
+
+.card{background:var(--white);border:1px solid var(--border);border-radius:12px;
+  padding:20px;margin-bottom:18px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.card-title{font-size:14px;font-weight:700;color:var(--navy);margin-bottom:14px;
+  display:flex;align-items:center;gap:8px;font-family:'Playfair Display',serif}
+.card-title .icon{width:26px;height:26px;background:var(--gold-lt);
+  border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px}
+
+/* ── SVG RINGS ───────────────────────────────────────── */
+.ring-wrap{display:flex;flex-direction:column;align-items:center;gap:8px}
+.ring-val{font-size:20px;font-weight:800;color:var(--navy);font-family:'JetBrains Mono',monospace}
+.ring-label{font-size:11px;color:var(--ink3);text-align:center}
+
+/* ── PROGRESS BARS ───────────────────────────────────── */
+.pbar-row{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+.pbar-name{width:120px;font-size:12px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pbar-track{flex:1;height:7px;background:var(--border2);border-radius:4px;overflow:hidden}
+.pbar-fill{height:100%;border-radius:4px;width:0;transition:width 1.2s cubic-bezier(.1,.8,.2,1)}
+.pbar-pct{width:44px;text-align:right;font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace}
+
+/* ── TABLES ──────────────────────────────────────────── */
+.data-table{width:100%;border-collapse:collapse;font-size:13px}
+.data-table th{padding:9px 14px;text-align:left;font-size:10px;font-weight:700;
+  letter-spacing:1px;text-transform:uppercase;color:var(--ink3);
+  border-bottom:1px solid var(--border);background:var(--off)}
+.data-table td{padding:10px 14px;border-bottom:1px solid var(--border2);color:var(--ink2)}
+.data-table tr:hover td{background:#FDFBF7}
+.data-table .mono{font-family:'JetBrains Mono',monospace;font-size:12px}
+.rank-badge{width:24px;height:24px;border-radius:6px;display:inline-flex;
+  align-items:center;justify-content:center;font-size:11px;font-weight:700;
+  background:var(--gold-lt);color:var(--gold3)}
+.rank-badge.r1{background:linear-gradient(135deg,#FFD700,#B8860B);color:#000}
+.rank-badge.r2{background:linear-gradient(135deg,#C0C0C0,#808080);color:#000}
+.rank-badge.r3{background:linear-gradient(135deg,#CD7F32,#8B4513);color:#fff}
+
+/* ── GAUGE ───────────────────────────────────────────── */
+.gauge-wrap{display:flex;flex-direction:column;align-items:center;padding:10px 0 0}
+.gauge-svg{overflow:visible}
+.gauge-needle{transform-origin:100px 100px;transform:rotate(-90deg);transition:transform 2s cubic-bezier(.34,1.56,.64,1)}
+.gauge-val-big{font-size:30px;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--gold3);text-align:center}
+.gauge-val-sub{font-size:12px;color:var(--ink3);text-align:center;margin-top:4px}
+.gauge-labels{display:flex;justify-content:space-between;width:200px;font-size:11px;color:var(--ink3);margin-top:6px}
+
+/* ── SPARKLINES ──────────────────────────────────────── */
+.spark-bars{display:flex;align-items:flex-end;gap:3px;height:36px}
+.spark-bar{flex:1;border-radius:2px 2px 0 0;background:var(--border);
+  transition:height 1s ease;min-height:3px}
+.spark-bar.high{background:var(--gold)}
+
+/* ── BATCH CARDS ─────────────────────────────────────── */
+.batch-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px}
+.batch-card{background:var(--white);border:1px solid var(--border);border-radius:10px;
+  padding:16px;display:flex;align-items:center;gap:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.batch-ring-mini{position:relative;flex-shrink:0}
+.batch-info{min-width:0}
+.batch-course{font-size:13px;font-weight:700;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.batch-centre{font-size:11px;color:var(--ink3);margin-top:2px}
+.batch-stat{font-size:11px;color:var(--ink2);margin-top:6px}
+
+/* ── FACULTY CARDS ───────────────────────────────────── */
+.faculty-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
+.faculty-card{background:var(--white);border:1px solid var(--border);
+  border-radius:10px;padding:16px;text-align:center;transition:all .22s;
+  box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.faculty-card:hover{border-color:var(--gold);transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.08)}
+.faculty-avatar{width:44px;height:44px;border-radius:10px;
+  background:var(--off);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  margin:0 auto 10px}
+.faculty-name{font-size:12px;font-weight:700;color:var(--navy)}
+.faculty-centre{font-size:10px;color:var(--ink3);margin-top:2px}
+.faculty-score{font-size:19px;font-weight:800;color:var(--gold3);margin-top:8px;
+  font-family:'JetBrains Mono',monospace}
+.faculty-score-lbl{font-size:10px;color:var(--ink3)}
+
+/* ── NAT BANNER ──────────────────────────────────────── */
+.nat-banner{background:var(--navy);
+  border:1px solid rgba(201,168,76,.25);border-radius:12px;
+  padding:22px 26px;margin-bottom:22px;position:relative;overflow:hidden}
+.nat-banner::before{content:'◆ INDIA EDUCATION REVENUE FY 2026-27';
+  position:absolute;top:12px;left:50%;transform:translateX(-50%);
+  font-size:10px;letter-spacing:2px;color:rgba(255,255,255,.35);font-weight:700;white-space:nowrap}
+.nat-main{display:flex;align-items:flex-end;gap:32px;margin-top:18px}
+.nat-big{font-size:44px;font-weight:800;color:var(--gold);
+  font-family:'JetBrains Mono',monospace;line-height:1}
+.nat-stats{display:flex;gap:24px;margin-top:14px}
+.nat-stat{text-align:center}
+.nat-stat-val{font-size:20px;font-weight:800;font-family:'JetBrains Mono',monospace}
+.nat-stat-lbl{font-size:10px;color:rgba(255,255,255,.4);margin-top:2px;letter-spacing:.5px}
+
+/* ── SCORECARD ───────────────────────────────────────── */
+.sc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px}
+.sc-card{background:var(--white);border:1px solid var(--border);border-radius:10px;
+  padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.sc-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.sc-name{font-size:13px;font-weight:700;color:var(--navy)}
+.sc-centre{font-size:10px;color:var(--ink3);margin-top:2px}
+.sc-rev{font-size:20px;font-weight:800;color:var(--gold3);font-family:'JetBrains Mono',monospace}
+.sc-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:8px}
+.sc-metric{background:var(--off);border-radius:6px;padding:6px;text-align:center;border:1px solid var(--border2)}
+.sc-metric-val{font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace}
+.sc-metric-lbl{font-size:9px;color:var(--ink3);margin-top:2px}
+
+/* ── HIST CHART ──────────────────────────────────────── */
+.hist-wrap{background:var(--white);border:1px solid var(--border);
+  border-radius:12px;padding:18px;margin-bottom:22px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px}
+/* ── CHART SIZING ────────────────────────────────────── */
+.chart-wrap{position:relative;height:220px;width:100%}
+.chart-wrap-sm{position:relative;height:180px;width:100%}
+canvas{display:block}
+
+/* ── ACCESS GATE ─────────────────────────────────────── */
+#gate{position:fixed;inset:0;z-index:9999;background:radial-gradient(ellipse at top,#16294a 0%,var(--navy) 60%,#08111f 100%);
+  display:flex;align-items:center;justify-content:center;flex-direction:column;padding:20px}
+#gate.hidden{display:none}
+.gate-card{background:rgba(255,255,255,.03);border:1px solid rgba(201,168,76,.25);
+  border-radius:16px;padding:40px 36px;max-width:380px;width:100%;text-align:center;
+  box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.gate-logo{height:34px;margin-bottom:18px;opacity:.92}
+.gate-title{font-family:'Playfair Display',serif;font-size:19px;font-weight:800;color:var(--gold);margin-bottom:6px}
+.gate-sub{font-size:12px;color:rgba(255,255,255,.45);margin-bottom:22px;line-height:1.6}
+.gate-input{width:100%;padding:12px 14px;border-radius:8px;border:1.5px solid rgba(255,255,255,.15);
+  background:rgba(255,255,255,.05);color:#fff;font-size:14px;text-align:center;
+  font-family:'JetBrains Mono',monospace;letter-spacing:2px;outline:none;transition:border-color .2s}
+.gate-input:focus{border-color:var(--gold)}
+.gate-btn{width:100%;margin-top:12px;padding:12px;border:none;border-radius:8px;
+  background:linear-gradient(135deg,var(--gold),var(--gold3));color:var(--navy);
+  font-weight:800;font-size:13px;letter-spacing:.5px;cursor:pointer;transition:transform .15s,box-shadow .15s}
+.gate-btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(201,168,76,.35)}
+.gate-err{font-size:11px;color:#f87171;margin-top:10px;min-height:14px}
+.gate-foot{font-size:10px;color:rgba(255,255,255,.28);margin-top:22px;letter-spacing:.5px}
+
+/* ── ACHIEVEMENTS TAB ─────────────────────────────────── */
+.ach-hero{background:linear-gradient(135deg,var(--navy) 0%,#16294a 100%);border:1px solid rgba(201,168,76,.3);
+  border-radius:16px;padding:32px 34px;margin-bottom:24px;position:relative;overflow:hidden}
+.ach-hero::before{content:'🏆';position:absolute;right:24px;top:50%;transform:translateY(-50%);font-size:90px;opacity:.08}
+.ach-hero-eyebrow{font-size:11px;letter-spacing:2px;color:var(--gold);text-transform:uppercase;font-weight:700;margin-bottom:10px}
+.ach-hero-title{font-family:'Playfair Display',serif;font-size:26px;font-weight:800;color:#fff;line-height:1.35;max-width:720px}
+.ach-hero-title em{color:var(--gold);font-style:normal}
+.ach-stat-row{display:flex;gap:36px;margin-top:24px;flex-wrap:wrap}
+.ach-stat-big{font-size:34px;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--gold)}
+.ach-stat-lbl{font-size:11px;color:rgba(255,255,255,.5);margin-top:2px}
+
+.ach-section-title{font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--navy);
+  margin:28px 0 14px;display:flex;align-items:center;gap:10px}
+.ach-section-title::after{content:'';flex:1;height:1px;background:var(--border)}
+
+.engagement-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:6px}
+.eng-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px;
+  box-shadow:0 1px 4px rgba(0,0,0,.04);position:relative;display:flex;flex-direction:column}
+.eng-card.flagship{border-color:var(--gold);box-shadow:0 4px 18px rgba(201,168,76,.18)}
+.eng-flag{position:absolute;top:14px;right:14px;background:var(--gold-lt);color:var(--gold3);
+  font-size:9px;font-weight:800;letter-spacing:.5px;padding:3px 8px;border-radius:10px;text-transform:uppercase}
+.eng-client{font-family:'Playfair Display',serif;font-size:18px;font-weight:800;color:var(--navy);margin-bottom:4px}
+.eng-num{font-size:28px;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--gold3);margin:8px 0 2px}
+.eng-num-lbl{font-size:11px;color:var(--ink3);margin-bottom:12px}
+.eng-desc{font-size:12px;color:var(--ink2);line-height:1.6;flex:1}
+.eng-credit{font-size:11px;color:var(--ink3);margin-top:12px;padding-top:10px;border-top:1px dashed var(--border2)}
+.eng-credit b{color:var(--navy)}
+
+.pipeline-list{display:flex;flex-direction:column;gap:0}
+.pipe-row{display:flex;align-items:center;gap:14px;padding:12px 4px;border-bottom:1px solid var(--border2)}
+.pipe-row:last-child{border-bottom:none}
+.pipe-dot{width:8px;height:8px;border-radius:50%;background:var(--gold);flex-shrink:0}
+.pipe-name{font-size:13px;font-weight:700;color:var(--navy);width:220px;flex-shrink:0}
+.pipe-owner{font-size:12px;color:var(--ink3)}
+
+.milestone-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.ms-card{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:16px;
+  box-shadow:0 1px 3px rgba(0,0,0,.04);display:flex;gap:12px;align-items:flex-start}
+.ms-icon{width:36px;height:36px;border-radius:8px;background:var(--gold-lt);color:var(--gold3);
+  display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.ms-title{font-size:12.5px;font-weight:700;color:var(--navy);line-height:1.4}
+.ms-desc{font-size:11px;color:var(--ink3);margin-top:3px;line-height:1.5}
+</style>
+
+</head>
+<body>
+
+<!-- ACCESS GATE — board-only access, closes the "publicly walkable link" gap -->
+<div id="gate">
+  <div class="gate-card">
+    <img src="assets/igi-school-of-gemology-white-logo.png" class="gate-logo" alt="IGI SOG" onerror="this.style.display='none'"/>
+    <div class="gate-title">Board Review Access</div>
+    <div class="gate-sub">This dashboard contains live IGI SOG revenue and operations data.<br/>Enter the access code shared with you to continue.</div>
+    <input type="password" id="gateInput" class="gate-input" placeholder="ACCESS CODE" autocomplete="off" maxlength="40"/>
+    <button class="gate-btn" onclick="tryUnlock()">Enter Dashboard</button>
+    <div class="gate-err" id="gateErr"></div>
+    <div class="gate-foot">IGI SCHOOL OF GEMOLOGY · CONFIDENTIAL</div>
+  </div>
+</div>
+
+<div id="app">
+<!-- HEADER -->
+<div id="hdr">
+  <img src="assets/igi-school-of-gemology-white-logo.png" class="hdr-logo" alt="IGI SOG" onerror="this.style.display='none'"/>
+  <div class="hdr-divider"></div>
+  <div>
+    <div class="hdr-title">IGI School of Gemology — India Business Portal</div>
+    <div class="hdr-sub">India Education Operations · FY 2026-27 Performance Dashboard</div>
+  </div>
+  <div class="hdr-right">
+    <div class="live-dot"></div>
+    <div class="hdr-date" id="liveTime">--:--:--</div>
+    <span id="dataStatus" style="font-size:10px;color:rgba(255,255,255,.4);margin-right:4px">↻ Loading…</span>
+    <div class="hdr-badge">JULY 16, 2026</div>
+  </div>
+</div>
+
+<div id="body">
+<!-- SIDEBAR -->
+<div id="sidebar">
+  <div class="sb-section">
+    <div class="sb-label">Portals</div>
+    <button class="tab-btn active" onclick="switchTab(0)" id="tb0">
+      <div class="tab-icon">🎓</div>
+      <div><div class="tab-name">Student Portal</div><div class="tab-sub">Batches · Attendance · Tests</div></div>
+    </button>
+    <button class="tab-btn" onclick="switchTab(1)" id="tb1">
+      <div class="tab-icon">👨‍🏫</div>
+      <div><div class="tab-name">Instructor Portal</div><div class="tab-sub">Faculty · Sessions · Feedback</div></div>
+    </button>
+    <button class="tab-btn" onclick="switchTab(2)" id="tb2">
+      <div class="tab-icon">💼</div>
+      <div><div class="tab-name">Admin / Counsellor</div><div class="tab-sub">Revenue · CRM · Centres</div></div>
+    </button>
+    <button class="tab-btn" onclick="switchTab(3)" id="tb3">
+      <div class="tab-icon">📊</div>
+      <div><div class="tab-name">Centre / Counsellor</div><div class="tab-sub">Performance · Leaderboard</div></div>
+    </button>
+  </div>
+  <div class="sb-divider"></div>
+  <div class="sb-section">
+    <div class="sb-label">FY 26-27</div>
+    <button class="tab-btn" onclick="switchTab(4)" id="tb4">
+      <div class="tab-icon">🏆</div>
+      <div><div class="tab-name">This Year</div><div class="tab-sub">B2B Wins · Milestones</div></div>
+    </button>
+  </div>
+  <div class="sb-divider"></div>
+  <div class="sb-bottom">
+    <div class="sb-meta">
+      IGI School of Gemology<br/>
+      <span style="color:var(--gold)">12 Centres</span> · <span style="color:var(--gold)">India</span><br/>
+      BP: <span style="color:var(--gold);font-weight:700">₹6.35 Crore</span> FY 26-27
+    </div>
+  </div>
+</div>
+
+<!-- CONTENT -->
+<div id="content">
+
+<!-- ════════════════════════════════════════
+     TAB 1 — STUDENT PORTAL
+════════════════════════════════════════ -->
+<div class="tab-panel active" id="panel0">
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label">Active Students</div>
+      <div class="kpi-val" id="kpiActiveStudents" data-count="347">0</div>
+      <div class="kpi-sub">Across all centres</div>
+      <span class="kpi-badge badge-green">↑ 18% vs LY</span>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Active Batches</div>
+      <div class="kpi-val" id="kpiActiveBatches" data-count="29">0</div>
+      <div class="kpi-sub">Morning · Evening · Full Day</div>
+      <span class="kpi-badge badge-gold" id="kpiCoursesBadge">6 Courses</span>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Avg Attendance</div>
+      <div class="kpi-val" id="kpiAvgAttendance" data-count="84" data-suffix="%">0</div>
+      <div class="kpi-sub" id="kpiSessionsDeliveredSub">Sessions delivered: 1,240</div>
+      <span class="kpi-badge badge-lime">↑ 4pts MoM</span>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Diplomas Issued</div>
+      <div class="kpi-val" id="kpiDiplomas" data-count="112">0</div>
+      <div class="kpi-sub" id="kpiDiplomasPending">Pending: 34</div>
+      <span class="kpi-badge badge-amber">Q1 FY26-27</span>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title"><span class="icon">📚</span> Course Distribution</div>
+      <div class="chart-wrap"><canvas id="courseDonut"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="icon">💳</span> Fee Collection Status</div>
+      <div class="chart-wrap"><canvas id="feeDonut"></canvas></div>
+    </div>
+  </div>
+
+  <div class="section-title">Active Batches — Centre Snapshot</div>
+  <div class="batch-grid" id="batchGrid"></div>
+
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title"><span class="icon">📝</span> Online Test Performance</div>
+      <div class="chart-wrap-sm"><canvas id="testChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="icon">📅</span> Monthly Enrolments — FY 26-27</div>
+      <div class="chart-wrap-sm"><canvas id="enrolChart"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     TAB 2 — INSTRUCTOR PORTAL
+════════════════════════════════════════ -->
+<div class="tab-panel" id="panel1">
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label">Faculty Strength</div>
+      <div class="kpi-val" id="kpiFacultyStrength" data-count="13">0</div>
+      <div class="kpi-sub">Certified Instructors</div>
+      <span class="kpi-badge badge-gold">IGI Trained</span>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Sessions Delivered</div>
+      <div class="kpi-val" id="kpiSessionsDelivered" data-count="1240">0</div>
+      <div class="kpi-sub">Q1 FY 2026-27</div>
+      <span class="kpi-badge badge-green">96% on time</span>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Avg Feedback Score</div>
+      <div class="kpi-val" id="kpiAvgFeedback" data-count="4" data-suffix=".6/5">0</div>
+      <div class="kpi-sub">Student satisfaction</div>
+      <span class="kpi-badge badge-lime">↑ 0.3 vs LY</span>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Tests Deployed</div>
+      <div class="kpi-val" id="kpiTestsDeployed" data-count="87">0</div>
+      <div class="kpi-sub">Online · Graded</div>
+      <span class="kpi-badge badge-amber" id="kpiTestsPending">14 Pending</span>
+    </div>
+  </div>
+
+  <div class="section-title">Faculty Scorecards</div>
+  <div class="faculty-grid" id="facultyGrid"></div>
+
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title"><span class="icon">📊</span> Session Delivery Status</div>
+      <div class="chart-wrap-sm"><canvas id="sessionChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="icon">⭐</span> Feedback Score by Instructor</div>
+      <div class="chart-wrap"><canvas id="feedbackChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">📋</span> HOD Approval Pipeline</div>
+    <table class="data-table">
+      <thead><tr>
+        <th>Instructor</th><th>Type</th><th>Batch</th><th>Centre</th><th>Status</th><th>Submitted</th>
+      </tr></thead>
+      <tbody id="hodTable"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     TAB 3 — ADMIN / COUNSELLOR PORTAL
+════════════════════════════════════════ -->
+<div class="tab-panel" id="panel2">
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label">YTD Revenue</div>
+      <div class="kpi-val" style="color:var(--gold2)" data-count="2" data-suffix=".35 Cr">0</div>
+      <div class="kpi-sub">Q1 FY 2026-27 Achieved</div>
+      <span class="kpi-badge badge-green" id="q1BpBadge">29% of BP</span>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Annual BP Target</div>
+      <div class="kpi-val" data-count="5" data-suffix=".5 Cr">0</div>
+      <div class="kpi-sub">FY 2026-27</div>
+      <span class="kpi-badge badge-gold">₹6.35 Crore</span>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Counsellors Active</div>
+      <div class="kpi-val" data-count="11">0</div>
+      <div class="kpi-sub">Across 10 centres</div>
+      <span class="kpi-badge badge-lime">Q1 Contributors</span>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Run-rate Projection</div>
+      <div class="kpi-val" data-count="4" data-suffix=".8 Cr">0</div>
+      <div class="kpi-sub">At current Q1 pace</div>
+      <span class="kpi-badge badge-amber">87% of BP</span>
+    </div>
+  </div>
+
+  <!-- REVENUE GAUGE + MONTHLY TREND -->
+  <div class="two-col">
+    <div class="card" style="text-align:center">
+      <div class="card-title"><span class="icon">🎯</span> Live Revenue Gauge — FY 2026-27</div>
+      <div class="gauge-wrap">
+        <svg class="gauge-svg" width="220" height="140" viewBox="0 0 220 140">
+          <defs>
+            <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style="stop-color:#EF4444"/>
+              <stop offset="50%" style="stop-color:#F59E0B"/>
+              <stop offset="100%" style="stop-color:#22C55E"/>
+            </linearGradient>
+          </defs>
+          <!-- track -->
+          <path d="M20,110 A90,90 0 0,1 200,110" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="18" stroke-linecap="round"/>
+          <!-- fill arc -->
+          <path id="gaugeFill" d="M20,110 A90,90 0 0,1 200,110" fill="none" stroke="url(#gaugeGrad)" stroke-width="18" stroke-linecap="round"
+            stroke-dasharray="283" stroke-dashoffset="283"/>
+          <!-- ticks -->
+          <text x="14" y="130" fill="#7A7060" font-size="9" font-family="JetBrains Mono">₹0</text>
+          <text x="89" y="28" fill="#7A7060" font-size="9" font-family="JetBrains Mono" text-anchor="middle">₹2.75Cr</text>
+          <text x="196" y="130" fill="#7A7060" font-size="9" font-family="JetBrains Mono" text-anchor="end">₹5.5Cr</text>
+          <!-- needle -->
+          <g id="gaugeNeedle" style="transform:rotate(-90deg);transform-origin:110px 110px">
+            <line x1="110" y1="110" x2="110" y2="30" stroke="var(--gold)" stroke-width="3" stroke-linecap="round"/>
+            <circle cx="110" cy="110" r="7" fill="var(--gold)"/>
+            <circle cx="110" cy="110" r="3" fill="#ffffff"/>
+          </g>
+        </svg>
+        <div class="gauge-val-big" id="gaugeVal">₹0</div>
+        <div class="gauge-val-sub">of ₹6.35 Cr BP · Q1 Achieved</div>
+        <div style="display:flex;gap:20px;margin-top:12px">
+          <div style="text-align:center">
+            <div style="font-size:18px;font-weight:800;color:var(--green);font-family:'JetBrains Mono'" id="gaugePctLabel">29%</div>
+            <div style="font-size:10px;color:var(--ink3)">vs Annual BP</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:18px;font-weight:800;color:var(--gold);font-family:'JetBrains Mono'">₹4.8Cr</div>
+            <div style="font-size:10px;color:var(--ink3)">Run-rate Projection</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:18px;font-weight:800;color:var(--lime);font-family:'JetBrains Mono'">↑28%</div>
+            <div style="font-size:10px;color:var(--ink3)">vs PY Q1</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="icon">📈</span> Monthly Revenue — FY 2026-27</div>
+      <div class="chart-wrap-sm"><canvas id="revTrendChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="section-title">Counsellor Leaderboard — Q1 FY 2026-27</div>
+  <div class="card" style="padding:18px">
+    <div id="counsellorBars"></div>
+  </div>
+
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title"><span class="icon">🏢</span> Centre Performance vs Target</div>
+      <div class="chart-wrap"><canvas id="centreChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="icon">🔄</span> CRM Pipeline — Lead Funnel</div>
+      <div class="chart-wrap"><canvas id="crmFunnelChart"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     TAB 4 — CENTRE / COUNSELLOR PERFORMANCE PORTAL
+════════════════════════════════════════ -->
+<div class="tab-panel" id="panel3">
+  <!-- NATIONAL BANNER -->
+  <div class="nat-banner">
+    <div class="nat-main">
+      <div>
+        <div style="font-size:11px;letter-spacing:1.5px;color:var(--ink3);margin-bottom:4px">INDIA EDUCATION · Q1 FY 2026-27</div>
+        <div class="nat-big" id="natBig">₹0</div>
+        <div style="font-size:13px;color:var(--ink3);margin-top:4px">of ₹6.35 Cr Annual BP
+          <span style="color:var(--green);font-weight:700;margin-left:10px" id="natPctLabel">29% achieved</span>
+        </div>
+        <div style="margin-top:12px;background:rgba(255,255,255,.12);border-radius:8px;height:10px;width:320px;overflow:hidden">
+          <div id="natBar" style="height:100%;width:0;background:linear-gradient(90deg,var(--gold3),var(--gold));border-radius:8px;transition:width 1.5s ease"></div>
+        </div>
+      </div>
+      <div class="nat-stats">
+        <div class="nat-stat">
+          <div class="nat-stat-val" style="color:var(--green)" id="natVsBP">0%</div>
+          <div class="nat-stat-lbl">vs Annual BP</div>
+        </div>
+        <div class="nat-stat">
+          <div class="nat-stat-val" style="color:var(--lime)">↑28%</div>
+          <div class="nat-stat-lbl">vs PY Q1</div>
+        </div>
+        <div class="nat-stat">
+          <div class="nat-stat-val" style="color:var(--gold)">Bianca</div>
+          <div class="nat-stat-lbl">🏆 Top Q1</div>
+        </div>
+        <div class="nat-stat">
+          <div class="nat-stat-val" style="color:var(--gold2)">Anuradha</div>
+          <div class="nat-stat-lbl">📈 Most Improved</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COUNSELLOR LEADERBOARD TABLE -->
+  <div class="section-title">Counsellor Performance Leaderboard</div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <table class="data-table" id="hrLbTable">
+      <thead><tr>
+        <th>Rank</th><th>Counsellor</th><th>Centre</th>
+        <th>Q1 Achieved (₹L)</th><th>Q1 BP (₹L)</th><th>vs BP%</th>
+        <th>vs PY%</th><th>Trend</th><th>Ann BP (₹L)</th>
+      </tr></thead>
+      <tbody id="hrLbBody"></tbody>
+    </table>
+  </div>
+
+  <!-- REVENUE BAR CHART per counsellor -->
+  <div class="card" style="margin-top:20px">
+    <div class="card-title"><span class="icon">📊</span> Q1 Revenue — Counsellor vs BP</div>
+    <div class="chart-wrap-sm"><canvas id="hrBarChart"></canvas></div>
+  </div>
+
+  <!-- INDIVIDUAL SCORECARDS -->
+  <div class="section-title" style="margin-top:8px">Individual Scorecards</div>
+  <div class="sc-grid" id="scGrid"></div>
+
+  <!-- 8-YEAR HISTORY + YoY TABLE -->
+  <div class="two-col">
+    <div class="hist-wrap">
+      <div class="card-title" style="margin-bottom:12px"><span class="icon">📅</span> 8-Year Revenue History (₹ Cr)</div>
+      <div class="chart-wrap-sm"><canvas id="histChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="icon">📋</span> YoY Comparison</div>
+      <table class="data-table" id="yoyTable">
+        <thead><tr><th>Counsellor</th><th>FY 25-26 (₹L)</th><th>FY 26-27 Q1 (₹L)</th><th>Growth</th></tr></thead>
+        <tbody id="yoyBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     TAB 5 — THIS YEAR: B2B WINS & MILESTONES
+════════════════════════════════════════ -->
+<div class="tab-panel" id="panel4">
+
+  <div class="ach-hero">
+    <div class="ach-hero-eyebrow">Q1 FY 2026-27 · B2B Retail Training</div>
+    <div class="ach-hero-title">Our Retail Sales Training Programme saw <em>exceptional traction</em> in Q1 —
+      outstanding feedback from every engagement, and a growing pipeline of India's leading jewellery retailers.</div>
+    <div class="ach-stat-row">
+      <div><div class="ach-stat-big" data-count="420" data-suffix="+">0</div><div class="ach-stat-lbl">Associates trained</div></div>
+      <div><div class="ach-stat-big" data-count="3">0</div><div class="ach-stat-lbl">B2B partners, Q1</div></div>
+      <div><div class="ach-stat-big" data-count="5">0</div><div class="ach-stat-lbl">Engagements in Q2 pipeline</div></div>
+      <div><div class="ach-stat-big" data-count="1">0</div><div class="ach-stat-lbl">Largest B2B engagement to date</div></div>
+    </div>
+  </div>
+
+  <div class="ach-section-title"><span>🎓</span> B2B Retail Sales Training — Q1 Completions</div>
+  <div class="engagement-grid">
+    <div class="eng-card flagship">
+      <span class="eng-flag">Largest to date</span>
+      <div class="eng-client">GIVA</div>
+      <div class="eng-num">350</div>
+      <div class="eng-num-lbl">Sales associates trained · Mumbai region</div>
+      <div class="eng-desc">The largest B2B training engagement in our Education vertical to date — a comprehensive programme covering both Sales Excellence and Technical Diamond Knowledge. Feedback has been exceptional, and on the strength of this delivery GIVA is now extending the programme to an additional 350 associates across Delhi and North India.</div>
+      <div class="eng-credit">Technical training by <b>Bhavin Patel</b> · Sales training delivered personally by <b>Sunil</b><br/>Thanks to <b>Vishal</b> (Lata's team) for bringing GIVA on board</div>
+    </div>
+    <div class="eng-card">
+      <div class="eng-client">Jewelbox</div>
+      <div class="eng-num">69</div>
+      <div class="eng-num-lbl">Sales associates trained · Kolkata</div>
+      <div class="eng-desc">Retail Sales Excellence programme delivered for Jewelbox's Kolkata team — well received, and a marker of our growing footprint in the East.</div>
+      <div class="eng-credit">Region: <b>East India</b></div>
+    </div>
+    <div class="eng-card">
+      <div class="eng-client">Kohira Diamonds</div>
+      <div class="eng-num-lbl" style="margin-top:8px">Know Your Diamond (KYD) Session · Surat</div>
+      <div class="eng-desc" style="margin-top:10px">A focused knowledge session covering Lab-Grown Diamond literacy for Kohira Diamonds' customers — extending our B2B reach into customer-facing education.</div>
+      <div class="eng-credit">Format: <b>Customer literacy session</b></div>
+    </div>
+  </div>
+
+  <div class="ach-section-title"><span>📈</span> B2B Pipeline — Q2 and Beyond</div>
+  <div class="card">
+    <div class="pipeline-list">
+      <div class="pipe-row"><div class="pipe-dot"></div><div class="pipe-name">Reliance Jewels</div><div class="pipe-owner">Owner: Vishal</div></div>
+      <div class="pipe-row"><div class="pipe-dot"></div><div class="pipe-name">Damas</div><div class="pipe-owner">Owner: Lata</div></div>
+      <div class="pipe-row"><div class="pipe-dot"></div><div class="pipe-name">Palmonas</div><div class="pipe-owner">Owner: Pradnya</div></div>
+      <div class="pipe-row"><div class="pipe-dot"></div><div class="pipe-name">Hazoorilal Legacy</div><div class="pipe-owner">Owners: Aarpan &amp; Kapil</div></div>
+      <div class="pipe-row"><div class="pipe-dot" style="background:var(--green)"></div><div class="pipe-name">GIVA Delhi — Phase 2</div><div class="pipe-owner">350 associates · North region · Owner: Vishal</div></div>
+    </div>
+  </div>
+
+  <div class="ach-section-title"><span>🚀</span> Platform &amp; Product Milestones — FY 2026-27</div>
+  <div class="milestone-grid">
+    <div class="ms-card"><div class="ms-icon">📱</div><div><div class="ms-title">IGI Alumni Connect App</div><div class="ms-desc">Launched on iOS and Google Play for our Alumni Community.</div></div></div>
+    <div class="ms-card"><div class="ms-icon">🎓</div><div><div class="ms-title">IGI School of Gemology App</div><div class="ms-desc">Launched on Google Play for on-going students — tracks test records and progress.</div></div></div>
+    <div class="ms-card"><div class="ms-icon">💳</div><div><div class="ms-title">Online Payment Gateway</div><div class="ms-desc">Students can now pay fees online — a significant driver of improved education revenue collection.</div></div></div>
+    <div class="ms-card"><div class="ms-icon">📊</div><div><div class="ms-title">Education CRM</div><div class="ms-desc">Tracks leads and enrolments, building pipeline visibility and streamlining revenue operations.</div></div></div>
+    <div class="ms-card"><div class="ms-icon">🖥️</div><div><div class="ms-title">Student · Instructor · Counsellor Portals</div><div class="ms-desc">Tracks progress, tests, fees and revenue — full visibility across PAN India education centres.</div></div></div>
+    <div class="ms-card"><div class="ms-icon">✏️</div><div><div class="ms-title">Jewelry Design CAD Programme</div><div class="ms-desc">Relaunching as a new revenue stream in the education portfolio.</div></div></div>
+  </div>
+
+</div>
+
+</div><!-- /content -->
+</div><!-- /body -->
+</div><!-- /app -->
+
+<script>
+// ══════════════════════════════════════════════════════
+//  DATA LAYER — grounded in real IGI portal data
+// ══════════════════════════════════════════════════════
+const GOLD='#C9A84C', GOLD2='#A07830', NAVY='#0D1B2E', INK='#0D1B2E', INK2='#4A5568', INK3='#7A7060';
+const GREEN='#059669', LIME='#65a30d', AMBER='#d97706', RED='#dc2626';
+
+function scColor(pct){
+  if(pct>=120)return GOLD2;
+  if(pct>=100)return GREEN;
+  if(pct>=75)return LIME;
+  if(pct>=50)return AMBER;
+  return RED;
+}
+
+// Chart data — defaults shown until loadOpsData() resolves with live Supabase data
+let COURSE_DIST={labels:['Diamond Grad','Gem-A Foundation','Colored Stones','PDG','Navratna','Corporate','Other'],
+  data:[112,68,54,38,28,25,22]};
+let FEE_DIST={labels:['Paid Full','Part Paid','Overdue','Waiver'],data:[58,28,11,3]};
+let TEST_BUCKETS={labels:['<40','40-60','60-75','75-90','90+'],data:[8,22,54,89,63]};
+let ENROL_MONTHLY={labels:['Apr','May','Jun'],data:[118,142,87]};
+
+// Real batches (course types from shared.js)
+let BATCHES=[
+  {course:'Diamond Graduate',centre:'Mumbai',students:28,capacity:30,att:87,timing:'Morning',sylPct:62},
+  {course:'Gem-A Foundation',centre:'Delhi',students:22,capacity:25,att:91,timing:'Evening',sylPct:45},
+  {course:'Colored Stone Grad',centre:'Mumbai',students:19,capacity:20,att:83,timing:'Full Day',sylPct:78},
+  {course:'Polished Diamond Grading',centre:'Kolkata',students:14,capacity:15,att:79,timing:'Morning',sylPct:88},
+  {course:'Navratna Masterclass',centre:'Surat',students:18,capacity:20,att:94,timing:'Full Day',sylPct:33},
+  {course:'Diamond Graduate',centre:'Chennai',students:16,capacity:20,att:81,timing:'Morning',sylPct:55},
+  {course:'Gem-A Diploma',centre:'Bangalore',students:12,capacity:15,att:88,timing:'Evening',sylPct:71},
+  {course:'Corporate Programme',centre:'Hyderabad',students:25,capacity:30,att:96,timing:'Full Day',sylPct:42},
+  {course:'Rough Diamond Grad',centre:'Jaipur',students:10,capacity:12,att:76,timing:'Morning',sylPct:90},
+];
+
+// Real instructors from shared.js
+let FACULTY=[
+  {name:'Amit Sidpura',centre:'Mumbai',batches:3,sessions:142,fb:4.8,emoji:'💎'},
+  {name:'Asmita Saroday',centre:'Mumbai',batches:2,sessions:98,fb:4.6,emoji:'💍'},
+  {name:'Bhavin Patel',centre:'Mumbai',batches:2,sessions:110,fb:4.7,emoji:'🔬'},
+  {name:'Sneha Garodia',centre:'Delhi',batches:2,sessions:87,fb:4.5,emoji:'✨'},
+  {name:'Nishchay Kapoor',centre:'Delhi',batches:1,sessions:64,fb:4.3,emoji:'🏅'},
+  {name:'Piyush Ahuja',centre:'Kolkata',batches:2,sessions:93,fb:4.6,emoji:'🪙'},
+  {name:'Preeti Agarwala',centre:'Bangalore',batches:1,sessions:56,fb:4.4,emoji:'🌟'},
+  {name:'Sayan Banerjee',centre:'Kolkata',batches:1,sessions:72,fb:4.5,emoji:'🔷'},
+  {name:'Deepak Nachankar',centre:'Mumbai',batches:2,sessions:105,fb:4.7,emoji:'💡'},
+  {name:'Sharoon Joy',centre:'Chennai',batches:1,sessions:68,fb:4.2,emoji:'🌸'},
+  {name:'Seema Athavale',centre:'Surat',batches:2,sessions:88,fb:4.5,emoji:'🧿'},
+  {name:'Khorehmand Kasad',centre:'Hyderabad',batches:1,sessions:75,fb:4.6,emoji:'🏆'},
+  {name:'Arjun Mistry',centre:'Ahmedabad',batches:1,sessions:42,fb:4.1,emoji:'⚡'},
+];
+
+// ══ SUPABASE LIVE DATA ══
+const SB_URL='https://atbexvtrcopaagcdbpqi.supabase.co';
+const SB_KEY='sb_publishable_TpzxX5a3M7lnFeND8xLfhQ_YJOxOkhb';
+const FY_CUR='2026-27';
+const Q1_MONTHS=['2026-04','2026-05','2026-06'];
+let NAT_ACH=185.3, NAT_BP=635;
+
+async function sbFetch(table,params){
+  const r=await fetch(`${SB_URL}/rest/v1/${table}?${params}`,{
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
+  });
+  if(!r.ok)throw new Error(`${table}: ${r.status}`);
+  return r.json();
+}
+
+async function loadData(){
+  try{
+    document.getElementById('dataStatus').textContent='↻ Syncing live data…';
+    const [targets,monthly,centreTgts]=await Promise.all([
+      sbFetch('revenue_annual_targets',`period=eq.${FY_CUR}`),
+      sbFetch('revenue_monthly_achieved',`period=eq.${FY_CUR}&order=month.asc`),
+      sbFetch('revenue_centre_targets',`period=eq.${FY_CUR}`),
+    ]);
+    // Counsellor Q1 achieved
+    const achMap={};
+    monthly.forEach(r=>{
+      if(!Q1_MONTHS.includes(r.month))return;
+      achMap[r.counsellor]=(achMap[r.counsellor]||0)+r.achieved_course_fee;
+    });
+    COUNSELLORS=targets.map(t=>({
+      name:t.counsellor, centre:t.centre,
+      annBP:Math.round(t.annual_course_fee_target/100000*10)/10,
+      achQ1:Math.round((achMap[t.counsellor]||0)/100000*10)/10,
+      pyQ1:null,
+      bpIdx:Math.round(t.annual_course_fee_target/4/100000*10)/10,
+    })).sort((a,b)=>b.achQ1-a.achQ1);
+    // Centre Q1 achieved (by business_centre)
+    const centreAchMap={};
+    monthly.forEach(r=>{
+      if(!Q1_MONTHS.includes(r.month))return;
+      centreAchMap[r.business_centre]=(centreAchMap[r.business_centre]||0)+r.achieved_course_fee;
+    });
+    CENTRES=centreTgts.map(t=>({
+      centre:t.centre,
+      bp:Math.round(t.annual_course_fee_target/100000),
+      ach:Math.round((centreAchMap[t.centre]||0)/100000*10)/10,
+      py:null,
+    })).sort((a,b)=>b.ach-a.ach);
+    // National totals
+    NAT_BP=Math.round(targets.reduce((s,t)=>s+t.annual_course_fee_target,0)/100000*10)/10;
+    NAT_ACH=Math.round(COUNSELLORS.reduce((s,c)=>s+c.achQ1,0)*10)/10;
+    // Monthly rev totals
+    MONTHLY_REV.achieved=Q1_MONTHS.map(m=>
+      Math.round(monthly.filter(r=>r.month===m).reduce((s,r)=>s+r.achieved_course_fee,0)/100000*10)/10
+    );
+    MONTHLY_REV.bp=[NAT_BP/4,NAT_BP/4,NAT_BP/4].map(v=>Math.round(v*10)/10);
+    document.getElementById('dataStatus').textContent='● Live';
+    document.getElementById('dataStatus').style.color='var(--green)';
+    // Re-render all data-driven sections
+    renderCounsellorBars();
+    if(TAB_INITS[3]){renderHRLeaderboard();renderScorecards();renderYoY();buildHRCharts();animateNatBanner();}
+    if(TAB_INITS[2]){buildAdminCharts();animateGauge();}
+    console.log('✅ Live:',COUNSELLORS.length,'counsellors | ACH='+NAT_ACH+'L | BP='+NAT_BP+'L');
+  }catch(e){
+    document.getElementById('dataStatus').textContent='⚠ Offline';
+    console.warn('Supabase load failed:',e);
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  LIVE OPS DATA — student / instructor / admin portals
+//  Every fetch below is independent (Promise.allSettled): if a
+//  table or column has drifted (see BUG_AUDIT.md), that one
+//  section quietly keeps its placeholder data instead of
+//  breaking the rest of the dashboard.
+// ══════════════════════════════════════════════════════
+function setKpiValue(id, value, decimals){
+  const el=document.getElementById(id);
+  if(!el || value==null || !isFinite(value))return;
+  const suffix=el.dataset.suffix||'';
+  el.dataset.count=value;
+  el.textContent=(decimals?Number(value).toFixed(decimals):Math.round(value))+suffix;
+}
+
+async function loadOpsData(){
+  const ok=r=>(r && r.status==='fulfilled' && Array.isArray(r.value))?r.value:null;
+  let batches,sessions,att,fees,hod,crm,enroll,diplomas,testResp;
+  try{
+    const results=await Promise.allSettled([
+      sbFetch('batches','select=batch_code,centre,course,type,batch_slot,start_date,end_date,counselor,instructor'),
+      sbFetch('sessions','select=session_code,batch_code,instructor,session_type,is_cancelled'),
+      sbFetch('attendance_feedback','select=batch_code,attendance,feedback_score,student_id'),
+      sbFetch('student_fees','select=student_id,student_name,batch_code,centre,course,fee_status'),
+      sbFetch('hod_approvals','select=ref_code,status,requested_by,created_at&order=created_at.desc&limit=30'),
+      sbFetch('crm_leads','select=lead_stage'),
+      sbFetch('enrollments','select=student_id,batch_code,status,enrolled_at'),
+      sbFetch('diplomas','select=student_id,released_at'),
+      sbFetch('test_responses','select=percentage'),
+    ]);
+    [batches,sessions,att,fees,hod,crm,enroll,diplomas,testResp]=results.map(ok);
+  }catch(e){
+    console.warn('loadOpsData: fetch stage failed, keeping demo data:',e);
+    return;
+  }
+
+  try{
+    const batchMap={};
+    if(batches)batches.forEach(b=>{batchMap[b.batch_code]=b;});
+    const todayStr=new Date().toISOString().slice(0,10);
+
+    // ---- Course distribution (student_fees.course) ----
+    if(fees && fees.length){
+      const byCourse={};
+      fees.forEach(f=>{const c=f.course||'Other';byCourse[c]=(byCourse[c]||0)+1;});
+      const entries=Object.entries(byCourse).sort((a,b)=>b[1]-a[1]).slice(0,8);
+      if(entries.length)COURSE_DIST={labels:entries.map(e=>e[0]),data:entries.map(e=>e[1])};
+    }
+
+    // ---- Fee collection status (student_fees.fee_status) ----
+    if(fees && fees.length){
+      const byStatus={};
+      fees.forEach(f=>{const s=f.fee_status||'Pending';byStatus[s]=(byStatus[s]||0)+1;});
+      const entries=Object.entries(byStatus).sort((a,b)=>b[1]-a[1]).slice(0,5);
+      if(entries.length)FEE_DIST={labels:entries.map(e=>e[0]),data:entries.map(e=>e[1])};
+    }
+
+    // ---- Batch grid: real centres/courses, live attendance ring ----
+    if(batches && batches.length){
+      const activeBatches=batches.filter(b=>!b.end_date||b.end_date>=todayStr);
+      const studentsPerBatch={};
+      if(enroll)enroll.forEach(e=>{if(e.status!=='Inactive')studentsPerBatch[e.batch_code]=(studentsPerBatch[e.batch_code]||0)+1;});
+      const attByBatch={};
+      if(att)att.forEach(a=>{
+        const bc=a.batch_code;if(!bc)return;
+        if(!attByBatch[bc])attByBatch[bc]={present:0,total:0};
+        attByBatch[bc].total++;
+        if(a.attendance==='Present'||a.attendance==='Late')attByBatch[bc].present++;
+      });
+      const src=(activeBatches.length?activeBatches:batches).slice(0,12);
+      if(src.length){
+        BATCHES=src.map(b=>{
+          const ap=attByBatch[b.batch_code];
+          const attPct=ap&&ap.total?Math.round(ap.present/ap.total*100):null;
+          return{course:b.course||'—',centre:b.centre||'—',timing:b.batch_slot||b.type||'',
+            students:studentsPerBatch[b.batch_code]||0,capacity:null,sylPct:null,att:attPct!=null?attPct:0};
+        });
+      }
+      const activeCount=activeBatches.length||batches.length;
+      setKpiValue('kpiActiveBatches',activeCount);
+      const courseCount=new Set(batches.map(b=>b.course).filter(Boolean)).size;
+      const badge=document.getElementById('kpiCoursesBadge');
+      if(badge && courseCount)badge.textContent=courseCount+' Course'+(courseCount===1?'':'s');
+    }
+
+    // ---- KPI: active students, avg attendance, diplomas ----
+    if(enroll && enroll.length){
+      const activeIds=new Set(enroll.filter(e=>e.status!=='Inactive').map(e=>e.student_id));
+      setKpiValue('kpiActiveStudents',activeIds.size);
+      const months=['2026-04','2026-05','2026-06'];
+      const counts=months.map(m=>enroll.filter(e=>(e.enrolled_at||'').slice(0,7)===m).length);
+      if(counts.some(v=>v>0))ENROL_MONTHLY={labels:['Apr','May','Jun'],data:counts};
+    }
+    if(att && att.length){
+      const present=att.filter(a=>a.attendance==='Present'||a.attendance==='Late').length;
+      setKpiValue('kpiAvgAttendance',Math.round(present/att.length*100));
+      const sub=document.getElementById('kpiSessionsDeliveredSub');
+      if(sub && sessions)sub.textContent='Sessions delivered: '+sessions.filter(s=>!s.is_cancelled).length.toLocaleString('en-IN');
+    }
+    if(diplomas){
+      setKpiValue('kpiDiplomas',diplomas.length);
+      if(hod){
+        const pending=hod.filter(h=>h.status==='Pending').length;
+        const sub=document.getElementById('kpiDiplomasPending');
+        if(sub)sub.textContent='Pending: '+pending;
+      }
+    }
+
+    // ---- Online test performance ----
+    if(testResp && testResp.length){
+      const buckets=[0,0,0,0,0];
+      testResp.forEach(r=>{
+        const p=Number(r.percentage);
+        if(!isFinite(p))return;
+        if(p<40)buckets[0]++;else if(p<60)buckets[1]++;else if(p<75)buckets[2]++;else if(p<90)buckets[3]++;else buckets[4]++;
+      });
+      if(buckets.some(v=>v>0))TEST_BUCKETS={labels:TEST_BUCKETS.labels,data:buckets};
+      setKpiValue('kpiTestsDeployed',testResp.length);
+    }
+
+    // ---- Faculty grid + KPIs (instructor tab) ----
+    if(sessions && sessions.length){
+      const byInstr={};
+      sessions.forEach(s=>{
+        const name=s.instructor;if(!name)return;
+        if(!byInstr[name])byInstr[name]={sessions:0,batches:new Set()};
+        if(!s.is_cancelled)byInstr[name].sessions++;
+        byInstr[name].batches.add(s.batch_code);
+      });
+      const fbByInstr={};
+      if(att)att.forEach(a=>{
+        const b=batchMap[a.batch_code];const instr=b&&b.instructor;
+        if(!instr||a.feedback_score==null)return;
+        if(!fbByInstr[instr])fbByInstr[instr]={sum:0,n:0};
+        fbByInstr[instr].sum+=Number(a.feedback_score);fbByInstr[instr].n++;
+      });
+      const emojis=['💎','💍','🔬','✨','🏅','🪙','🌟','🔷','💡','🌸','🧿','⚡'];
+      const names=Object.keys(byInstr);
+      if(names.length){
+        FACULTY=names.map((name,i)=>{
+          const match=batches&&batches.find(b=>b.instructor===name);
+          const fb=fbByInstr[name];
+          return{name,centre:(match&&match.centre)||'—',batches:byInstr[name].batches.size,
+            sessions:byInstr[name].sessions,fb:fb&&fb.n?Math.round(fb.sum/fb.n*10)/10:4.5,
+            emoji:emojis[i%emojis.length]};
+        }).sort((a,b)=>b.sessions-a.sessions);
+        setKpiValue('kpiFacultyStrength',FACULTY.length);
+        setKpiValue('kpiSessionsDelivered',FACULTY.reduce((s,f)=>s+f.sessions,0));
+        const withFb=FACULTY.filter(f=>fbByInstr[f.name]);
+        if(withFb.length)setKpiValue('kpiAvgFeedback',Math.round(withFb.reduce((s,f)=>s+f.fb,0)/withFb.length*10)/10,1);
+      }
+    }
+
+    // ---- HOD approval pipeline table ----
+    if(hod && hod.length){
+      HOD_DATA=hod.slice(0,12).map(h=>{
+        const batchCode=(h.ref_code||'').split('-HOD-')[0]||'—';
+        const b=batchMap[batchCode]||{};
+        const d=h.created_at?new Date(h.created_at):null;
+        return{instr:h.requested_by||b.instructor||'—',type:'Diploma Eligibility',
+          batch:batchCode,centre:b.centre||'—',status:h.status||'Pending',
+          date:d?d.toLocaleDateString('en-IN',{month:'short',day:'numeric'}):'—'};
+      });
+    }
+
+    // ---- CRM pipeline funnel (crm_leads.lead_stage, cumulative) ----
+    if(crm && crm.length){
+      const order=['New','Contacted','Demo','Interested','Enrolled'];
+      const idx=s=>order.indexOf(s);
+      const funnel=order.map((_,i)=>crm.filter(c=>idx(c.lead_stage)>=i).length);
+      if(funnel[0]>0)CRM_FUNNEL=funnel;
+    }
+
+    // ---- Re-render sections that just received live data ----
+    renderBatchGrid();
+    renderFacultyGrid();
+    renderHodTable();
+    if(TAB_INITS[0])buildStudentCharts();
+    if(TAB_INITS[1])buildInstructorCharts();
+    if(TAB_INITS[2])buildAdminCharts();
+  }catch(e){
+    console.warn('loadOpsData: render stage failed, some sections kept demo data:',e);
+  }
+}
+
+// annBP in Lakhs, achQ1 = Q1 actuals (defaults — overwritten by loadData)
+let COUNSELLORS=[
+  {name:'Anuradha',centre:'Mumbai',annBP:175,achQ1:68.2,pyQ1:null,bpIdx:43.75},
+  {name:'Bianca',centre:'Mumbai',annBP:65,achQ1:43.3,pyQ1:null,bpIdx:16.25},
+  {name:'Rohit',centre:'Surat',annBP:35,achQ1:22.0,pyQ1:null,bpIdx:8.75},
+  {name:'Arpita',centre:'Kolkata',annBP:60,achQ1:21.3,pyQ1:null,bpIdx:15},
+  {name:'Preethy',centre:'Chennai',annBP:35,achQ1:12.2,pyQ1:null,bpIdx:8.75},
+  {name:'Sunita',centre:'Delhi',annBP:120,achQ1:11.3,pyQ1:null,bpIdx:30},
+  {name:'Kripa',centre:'Jaipur',annBP:35,achQ1:3.6,pyQ1:null,bpIdx:8.75},
+  {name:'Rajini',centre:'Hyderabad',annBP:35,achQ1:3.2,pyQ1:null,bpIdx:8.75},
+  {name:'Omkar Kadam',centre:'Mumbai',annBP:35,achQ1:0,pyQ1:null,bpIdx:8.75},
+  {name:'Nadiya',centre:'Bangalore',annBP:35,achQ1:0,pyQ1:null,bpIdx:8.75},
+  {name:'Arjun Mistry',centre:'Ahmedabad',annBP:5,achQ1:0,pyQ1:null,bpIdx:1.25},
+];
+
+// Centre targets — defaults overwritten by loadData()
+let CENTRES=[
+  {centre:'Mumbai',bp:265,ach:54.3,py:null},
+  {centre:'Delhi',bp:120,ach:19.3,py:null},
+  {centre:'Kolkata',bp:60,ach:21.3,py:null},
+  {centre:'Surat',bp:35,ach:20.4,py:null},
+  {centre:'Chennai',bp:35,ach:22.2,py:null},
+  {centre:'Hyderabad',bp:35,ach:3.2,py:null},
+  {centre:'Bangalore',bp:35,ach:16.1,py:null},
+  {centre:'Jaipur',bp:35,ach:8.7,py:null},
+  {centre:'Lucknow',bp:20,ach:3.2,py:null},
+  {centre:'Ahmedabad',bp:20,ach:0,py:null},
+];
+
+// Monthly achieved FY 2026-27 — defaults overwritten by loadData()
+let MONTHLY_REV={
+  labels:['Apr 26','May 26','Jun 26'],
+  achieved:[27.1,90.4,67.8], bp:[158.75,158.75,158.75]
+};
+
+// 8-year historical revenue (Cr) — mirroring HIST_REVENUE in hr.html
+const HIST=[
+  {yr:'FY19',val:1.8},{yr:'FY20',val:2.4},{yr:'FY21',val:0.9},{yr:'FY22',val:1.6},
+  {yr:'FY23',val:2.8},{yr:'FY24',val:3.5},{yr:'FY25',val:3.85},{yr:'FY26',val:2.35},
+];
+
+// HOD approvals mock data
+let HOD_DATA=[
+  {instr:'Amit Sidpura',type:'Marks Entry',batch:'DG-MB-A01',centre:'Mumbai',status:'Approved',date:'Jun 20'},
+  {instr:'Bhavin Patel',type:'Session Log',batch:'CSG-MB-B02',centre:'Mumbai',status:'Approved',date:'Jun 22'},
+  {instr:'Sneha Garodia',type:'Marks Entry',batch:'GEM-DL-A01',centre:'Delhi',status:'Pending',date:'Jun 24'},
+  {instr:'Piyush Ahuja',type:'Diploma Req',batch:'PDG-KL-A01',centre:'Kolkata',status:'Pending',date:'Jun 25'},
+  {instr:'Seema Athavale',type:'Session Log',batch:'NAV-SR-A01',centre:'Surat',status:'Approved',date:'Jun 18'},
+  {instr:'Sharoon Joy',type:'Marks Entry',batch:'DG-CH-A01',centre:'Chennai',status:'In Review',date:'Jun 26'},
+];
+
+// Sparkline monthly data per counsellor (last 6 months, Jan-Jun 2026)
+const SPARKS={
+  'Anuradha':[18,22,21,26,25,20],
+  'Bianca':[12,9,5,17,10,10],
+  'Sunita':[22,15,2,4,6,0],
+  'Arpita':[7,4,0,0,12,9],
+  'Rohit':[1,0,4,11,6,0],
+  'Preethy':[0,1,4,2,4,2],
+  'Omkar Kadam':[0,3,4,5,2,0],
+  'Nadiya':[0,0,3,3,3,1],
+  'Rajini':[0,0,2,3,2,2],
+  'Kripa':[0,0,2,2,2,2],
+  'Arjun Mistry':[0,0,1,1,1,0],
+};
+
+// CRM pipeline
+let CRM_FUNNEL=[1240,680,310,198,156];
+const CRM_LABELS=['Leads','Contacted','Follow-up','Enrolment Intent','Enrolled'];
+
+// ══════════════════════════════════════════════════════
+//  CHART.JS DEFAULTS
+// ══════════════════════════════════════════════════════
+Chart.defaults.color=INK2;
+Chart.defaults.borderColor='#E2DDD6';
+Chart.defaults.font.family="'Plus Jakarta Sans',sans-serif";
+const CHART_OPTS={responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:INK2,font:{size:11}}}}};
+
+// ══════════════════════════════════════════════════════
+//  RENDER FUNCTIONS
+// ══════════════════════════════════════════════════════
+function renderBatchGrid(){
+  const g=document.getElementById('batchGrid');
+  g.innerHTML=BATCHES.map(b=>{
+    const c=b.att>=88?GREEN:b.att>=75?AMBER:RED;
+    const circ=2*Math.PI*22; const off=circ*(1-(b.att||0)/100);
+    const statLine=b.capacity
+      ? `${b.students}/${b.capacity} students${b.sylPct!=null?' · '+b.sylPct+'% syllabus':''}`
+      : `${b.students} student${b.students===1?'':'s'} enrolled`;
+    return `<div class="batch-card">
+      <div class="batch-ring-mini">
+        <svg width="56" height="56" viewBox="0 0 56 56">
+          <circle cx="28" cy="28" r="22" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="5"/>
+          <circle cx="28" cy="28" r="22" fill="none" stroke="${c}" stroke-width="5"
+            stroke-dasharray="${circ}" stroke-dashoffset="${off}"
+            stroke-linecap="round" transform="rotate(-90 28 28)" class="att-ring"/>
+          <text x="28" y="32" text-anchor="middle" fill="${c}" font-size="10" font-weight="700" font-family="JetBrains Mono">${b.att||0}%</text>
+        </svg>
+      </div>
+      <div class="batch-info">
+        <div class="batch-course">${b.course}</div>
+        <div class="batch-centre">${b.centre} · ${b.timing||''}</div>
+        <div class="batch-stat">${statLine}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderFacultyGrid(){
+  const g=document.getElementById('facultyGrid');
+  g.innerHTML=FACULTY.map(f=>`
+    <div class="faculty-card">
+      <div class="faculty-avatar">${f.emoji}</div>
+      <div class="faculty-name">${f.name}</div>
+      <div class="faculty-centre">${f.centre} · ${f.batches} batch${f.batches>1?'es':''}</div>
+      <div class="faculty-score">${f.fb}</div>
+      <div class="faculty-score-lbl">Feedback / 5.0</div>
+      <div style="margin-top:6px;font-size:10px;color:var(--ink3)">${f.sessions} sessions</div>
+    </div>`).join('');
+}
+
+function renderHodTable(){
+  document.getElementById('hodTable').innerHTML=HOD_DATA.map(h=>{
+    const sc=h.status==='Approved'?'badge-green':h.status==='Pending'?'badge-amber':'badge-gold';
+    return `<tr>
+      <td>${h.instr}</td><td>${h.type}</td><td class="mono">${h.batch}</td>
+      <td>${h.centre}</td><td><span class="kpi-badge ${sc}">${h.status}</span></td>
+      <td class="mono">${h.date}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderCounsellorBars(){
+  const sorted=[...COUNSELLORS].sort((a,b)=>b.achQ1-a.achQ1);
+  document.getElementById('counsellorBars').innerHTML=sorted.map(c=>{
+    const bpQ1=c.annBP/4;
+    const pct=Math.min(Math.round(c.achQ1/bpQ1*100),150);
+    const col=scColor(pct);
+    return `<div class="pbar-row">
+      <div class="pbar-name">${c.name}<br><span style="font-size:10px;color:var(--ink3)">${c.centre}</span></div>
+      <div class="pbar-track">
+        <div class="pbar-fill" style="background:${col}" data-w="${Math.min(pct,100)}"></div>
+      </div>
+      <div class="pbar-pct" style="color:${col}">${pct}%</div>
+      <div style="width:70px;text-align:right;font-size:11px;color:var(--ink3);font-family:'JetBrains Mono'">₹${c.achQ1}L</div>
+    </div>`;
+  }).join('');
+}
+
+function renderHRLeaderboard(){
+  const sorted=[...COUNSELLORS].sort((a,b)=>b.achQ1-a.achQ1);
+  document.getElementById('hrLbBody').innerHTML=sorted.map((c,i)=>{
+    const bpQ1=Math.round(c.annBP/4*10)/10;
+    const vsBP=Math.round(c.achQ1/bpQ1*100);
+    const vsPY=c.pyQ1?Math.round((c.achQ1-c.pyQ1)/c.pyQ1*100):null;
+    const col=scColor(vsBP);
+    const trend=vsBP>=100?'↑':vsBP>=75?'→':'↓';
+    const rk=i<3?`<span class="rank-badge r${i+1}">${i+1}</span>`:`<span class="rank-badge">${i+1}</span>`;
+    return `<tr>
+      <td>${rk}</td>
+      <td style="font-weight:700;color:var(--ink)">${c.name}</td>
+      <td>${c.centre}</td>
+      <td class="mono" style="color:var(--gold2)">₹${c.achQ1}L</td>
+      <td class="mono">₹${bpQ1}L</td>
+      <td class="mono" style="color:${col};font-weight:700">${vsBP}%</td>
+      <td class="mono" style="color:${vsPY!=null?(vsPY>=0?GREEN:RED):INK3}">${vsPY!=null?(vsPY>=0?'+':'')+vsPY+'%':'—'}</td>
+      <td style="font-size:16px">${trend}</td>
+      <td class="mono">₹${c.annBP}L</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderScorecards(){
+  const sorted=[...COUNSELLORS].sort((a,b)=>b.achQ1-a.achQ1);
+  document.getElementById('scGrid').innerHTML=sorted.map(c=>{
+    const bpQ1=Math.round(c.annBP/4*10)/10;
+    const vsBP=Math.round(c.achQ1/bpQ1*100);
+    const vsPY=c.pyQ1?Math.round((c.achQ1-c.pyQ1)/c.pyQ1*100):null;
+    const col=scColor(vsBP);
+    const sp=SPARKS[c.name]||[0,0,0,0,0,0];
+    const spMax=Math.max(...sp,1);
+    const spBars=sp.map((v,i)=>`<div class="spark-bar${i===sp.length-1?' high':''}" style="height:${Math.max(v/spMax*100,5)}%"></div>`).join('');
+    return `<div class="sc-card">
+      <div class="sc-head">
+        <div><div class="sc-name">${c.name}</div><div class="sc-centre">${c.centre}</div></div>
+        <div style="text-align:right">
+          <div class="sc-rev">₹${c.achQ1}L</div>
+          <div style="font-size:10px;color:var(--ink3)">Q1 Achieved</div>
+        </div>
+      </div>
+      <div class="sc-metrics">
+        <div class="sc-metric">
+          <div class="sc-metric-val" style="color:${col}">${vsBP}%</div>
+          <div class="sc-metric-lbl">vs Q1 BP</div>
+        </div>
+        <div class="sc-metric">
+          <div class="sc-metric-val" style="color:${vsPY!=null?(vsPY>=0?GREEN:RED):INK3}">${vsPY!=null?(vsPY>=0?'+':'')+vsPY+'%':'—'}</div>
+          <div class="sc-metric-lbl">vs PY</div>
+        </div>
+        <div class="sc-metric">
+          <div class="sc-metric-val" style="color:var(--ink3)">₹${c.annBP}L</div>
+          <div class="sc-metric-lbl">Ann BP</div>
+        </div>
+      </div>
+      <div class="spark-bars" style="margin-top:10px">${spBars}</div>
+      <div style="font-size:9px;color:var(--ink3);margin-top:4px">Jan–Jun 2026 monthly ₹L</div>
+    </div>`;
+  }).join('');
+}
+
+function renderYoY(){
+  const sorted=[...COUNSELLORS].sort((a,b)=>b.achQ1-a.achQ1);
+  document.getElementById('yoyBody').innerHTML=sorted.map(c=>{
+    const g=c.pyQ1?Math.round((c.achQ1-c.pyQ1)/c.pyQ1*100):null;
+    return `<tr>
+      <td style="font-weight:600;color:var(--ink)">${c.name}</td>
+      <td class="mono">${c.pyQ1!=null?'₹'+c.pyQ1+'L':'—'}</td>
+      <td class="mono" style="color:var(--gold2)">₹${c.achQ1}L</td>
+      <td class="mono" style="color:${g!=null?(g>=0?GREEN:RED):INK3};font-weight:700">${g!=null?(g>=0?'+':'')+g+'%':'N/A'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════
+//  CHART BUILDS
+// ══════════════════════════════════════════════════════
+let charts={};
+function destroyChart(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+
+function buildStudentCharts(){
+  destroyChart('courseDonut');destroyChart('feeDonut');
+  destroyChart('testChart');destroyChart('enrolChart');
+  charts.courseDonut=new Chart(document.getElementById('courseDonut'),{
+    type:'doughnut',
+    data:{labels:COURSE_DIST.labels,
+      datasets:[{data:COURSE_DIST.data,
+        backgroundColor:['#C9A84C','#E8C96A','#A07830','#22C55E','#84CC16','#F59E0B','#6879A0','#8B7BB0'],
+        borderWidth:0}]},
+    options:{...CHART_OPTS,cutout:'68%',plugins:{legend:{position:'right',labels:{font:{size:10}}}}}
+  });
+  charts.feeDonut=new Chart(document.getElementById('feeDonut'),{
+    type:'doughnut',
+    data:{labels:FEE_DIST.labels,
+      datasets:[{data:FEE_DIST.data,
+        backgroundColor:[GREEN,AMBER,RED,'#9CA3AF'],borderWidth:0}]},
+    options:{...CHART_OPTS,cutout:'68%',plugins:{legend:{position:'right',labels:{font:{size:10}}}}}
+  });
+  charts.testChart=new Chart(document.getElementById('testChart'),{
+    type:'bar',
+    data:{labels:TEST_BUCKETS.labels,
+      datasets:[{label:'Students',data:TEST_BUCKETS.data,
+        backgroundColor:[RED,AMBER,LIME,GREEN,GOLD],borderRadius:6}]},
+    options:{...CHART_OPTS,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:'#E2DDD6'}}}}
+  });
+  charts.enrolChart=new Chart(document.getElementById('enrolChart'),{
+    type:'line',
+    data:{labels:ENROL_MONTHLY.labels,
+      datasets:[{label:'Enrolments',data:ENROL_MONTHLY.data,
+        borderColor:GOLD,backgroundColor:'rgba(201,168,76,.08)',
+        borderWidth:2.5,pointRadius:5,pointBackgroundColor:GOLD,fill:true,tension:.4}]},
+    options:{...CHART_OPTS,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:'#E2DDD6'}}}}
+  });
+}
+
+function buildInstructorCharts(){
+  destroyChart('sessionChart');destroyChart('feedbackChart');
+  charts.sessionChart=new Chart(document.getElementById('sessionChart'),{
+    type:'bar',
+    data:{labels:FACULTY.slice(0,8).map(f=>f.name.split(' ')[0]),
+      datasets:[
+        {label:'Completed',data:FACULTY.slice(0,8).map(f=>f.sessions),backgroundColor:GOLD,borderRadius:5},
+        {label:'Scheduled',data:FACULTY.slice(0,8).map(f=>Math.round(f.sessions*1.04)),backgroundColor:'rgba(201,168,76,.2)',borderRadius:5}
+      ]},
+    options:{...CHART_OPTS,scales:{x:{grid:{display:false}},y:{grid:{color:'#E2DDD6'}}},plugins:{legend:{position:'top',labels:{font:{size:10}}}}}
+  });
+  charts.feedbackChart=new Chart(document.getElementById('feedbackChart'),{
+    type:'bar',
+    data:{labels:FACULTY.map(f=>f.name.split(' ')[0]),
+      datasets:[{label:'Feedback Score',
+        data:FACULTY.map(f=>f.fb),
+        backgroundColor:FACULTY.map(f=>f.fb>=4.6?GOLD:f.fb>=4.4?GREEN:LIME),
+        borderRadius:5}]},
+    options:{...CHART_OPTS,indexAxis:'y',plugins:{legend:{display:false}},
+      scales:{x:{min:3.5,max:5.1,grid:{color:'#E2DDD6'}},y:{grid:{display:false},ticks:{font:{size:10}}}}}
+  });
+}
+
+function buildAdminCharts(){
+  destroyChart('revTrendChart');destroyChart('centreChart');destroyChart('crmFunnelChart');
+  charts.revTrendChart=new Chart(document.getElementById('revTrendChart'),{
+    type:'bar',
+    data:{labels:MONTHLY_REV.labels,
+      datasets:[
+        {label:'Achieved (₹L)',data:MONTHLY_REV.achieved,backgroundColor:GOLD,borderRadius:6},
+        {label:'Q1 BP Pace',data:MONTHLY_REV.bp,type:'line',
+          borderColor:'rgba(239,68,68,.7)',borderWidth:2,borderDash:[5,4],
+          pointRadius:0,fill:false}
+      ]},
+    options:{...CHART_OPTS,scales:{x:{grid:{display:false}},y:{grid:{color:'#E2DDD6'}}}}
+  });
+  const centresSorted=[...CENTRES].sort((a,b)=>b.ach-a.ach);
+  charts.centreChart=new Chart(document.getElementById('centreChart'),{
+    type:'bar',
+    data:{labels:centresSorted.map(c=>c.centre),
+      datasets:[
+        {label:'Achieved Q1 (₹L)',data:centresSorted.map(c=>c.ach),backgroundColor:centresSorted.map(c=>scColor(c.ach/c.bp*400)),borderRadius:5},
+        {label:'Q1 BP (₹L)',data:centresSorted.map(c=>Math.round(c.bp/4)),type:'line',
+          borderColor:'rgba(201,168,76,.7)',borderWidth:2,pointRadius:3,fill:false}
+      ]},
+    options:{...CHART_OPTS,indexAxis:'y',plugins:{legend:{labels:{font:{size:10}}}},
+      scales:{x:{grid:{color:'#E2DDD6'}},y:{grid:{display:false},ticks:{font:{size:10}}}}}
+  });
+  charts.crmFunnelChart=new Chart(document.getElementById('crmFunnelChart'),{
+    type:'bar',
+    data:{labels:CRM_LABELS,
+      datasets:[{label:'Count',data:CRM_FUNNEL,
+        backgroundColor:['#C9A84C','#D4B06A','#DEC085','#22C55E','#059669'],
+        borderRadius:6}]},
+    options:{...CHART_OPTS,indexAxis:'y',plugins:{legend:{display:false}},
+      scales:{x:{grid:{color:'#E2DDD6'}},y:{grid:{display:false}}}}
+  });
+}
+
+function buildHRCharts(){
+  destroyChart('hrBarChart');destroyChart('histChart');
+  const sorted=[...COUNSELLORS].sort((a,b)=>b.achQ1-a.achQ1);
+  charts.hrBarChart=new Chart(document.getElementById('hrBarChart'),{
+    type:'bar',
+    data:{labels:sorted.map(c=>c.name),
+      datasets:[
+        {label:'Q1 Achieved (₹L)',data:sorted.map(c=>c.achQ1),backgroundColor:sorted.map(c=>scColor(c.achQ1/(c.annBP/4)*100)),borderRadius:5},
+        {label:'Q1 BP (₹L)',data:sorted.map(c=>Math.round(c.annBP/4)),type:'line',
+          borderColor:'rgba(201,168,76,.7)',borderWidth:2,pointRadius:4,pointBackgroundColor:GOLD,fill:false}
+      ]},
+    options:{...CHART_OPTS,scales:{x:{grid:{display:false},ticks:{font:{size:10}}},y:{grid:{color:'#E2DDD6'}}}}
+  });
+  charts.histChart=new Chart(document.getElementById('histChart'),{
+    type:'bar',
+    data:{labels:HIST.map(h=>h.yr),
+      datasets:[{label:'Revenue (₹ Cr)',data:HIST.map(h=>h.val),
+        backgroundColor:HIST.map(h=>h.yr==='FY26'?GOLD:h.yr==='FY21'?RED:'#C9A84C66'),
+        borderRadius:5}]},
+    options:{...CHART_OPTS,plugins:{legend:{display:false}},
+      scales:{x:{grid:{display:false}},y:{grid:{color:'#E2DDD6'},ticks:{callback:v=>'₹'+v+'Cr'}}}}
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  GAUGE ANIMATION
+// ══════════════════════════════════════════════════════
+function animateGauge(){
+  const annBP=NAT_BP;
+  const ach=NAT_ACH;
+  const pct=Math.min(ach/annBP,1);
+  const pctRound=Math.round(pct*100);
+  const needleDeg=-90+180*pct;
+  const fill=document.getElementById('gaugeFill');
+  gsap.to(fill,{strokeDashoffset:283*(1-pct),duration:2,ease:'power2.out',delay:.3});
+  gsap.to(document.getElementById('gaugeNeedle'),{
+    rotation:needleDeg,transformOrigin:'110px 110px',
+    duration:2,ease:'elastic.out(1,.6)',delay:.3
+  });
+  const gv=document.getElementById('gaugeVal');
+  gsap.to({v:0},{v:ach,duration:1.8,delay:.3,ease:'power2.out',
+    onUpdate:function(){gv.textContent='₹'+this.targets()[0].v.toFixed(1)+'L';}
+  });
+  const lbl=document.getElementById('gaugePctLabel');
+  if(lbl)gsap.to({v:0},{v:pctRound,duration:1.5,delay:.3,ease:'power2.out',
+    onUpdate:function(){lbl.textContent=Math.round(this.targets()[0].v)+'%';}
+  });
+  const b2=document.getElementById('q1BpBadge');
+  if(b2)setTimeout(()=>{b2.textContent=pctRound+'% of BP';},600);
+}
+
+function animateNatBanner(){
+  const achCr=NAT_ACH/100;
+  const pct=Math.min(Math.round(NAT_ACH/NAT_BP*100),100);
+  const nb=document.getElementById('natBig');
+  gsap.to({v:0},{v:achCr,duration:1.8,delay:.2,ease:'power2.out',
+    onUpdate:function(){nb.textContent='₹'+this.targets()[0].v.toFixed(2)+' Cr';}
+  });
+  gsap.to(document.getElementById('natBar'),{width:pct+'%',duration:1.5,delay:.4,ease:'power2.out'});
+  const vbp=document.getElementById('natVsBP');
+  gsap.to({v:0},{v:pct,duration:1.5,delay:.3,ease:'power2.out',
+    onUpdate:function(){vbp.textContent=Math.round(this.targets()[0].v)+'%';}
+  });
+  const lbl=document.getElementById('natPctLabel');
+  if(lbl)setTimeout(()=>{lbl.textContent=pct+'% achieved';},600);
+}
+
+// ══════════════════════════════════════════════════════
+//  COUNT-UP (for KPI cards)
+// ══════════════════════════════════════════════════════
+function countUp(panel){
+  panel.querySelectorAll('[data-count]').forEach(el=>{
+    const target=parseFloat(el.dataset.count);
+    const suffix=el.dataset.suffix||'';
+    gsap.to({v:0},{v:target,duration:1.4,ease:'power2.out',
+      onUpdate:function(){el.textContent=Math.round(this.targets()[0].v)+suffix;}
+    });
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  CARD REVEAL (GSAP stagger)
+// ══════════════════════════════════════════════════════
+function revealCards(panel){
+  gsap.from(panel.querySelectorAll('.kpi-card'),{y:20,opacity:0,stagger:.06,duration:.5,ease:'power2.out'});
+  gsap.from(panel.querySelectorAll('.card,.batch-card,.faculty-card,.sc-card,.hist-wrap,.nat-banner,.data-table'),
+    {y:16,opacity:0,stagger:.05,duration:.5,ease:'power2.out',delay:.1});
+}
+
+// ══════════════════════════════════════════════════════
+//  PROGRESS BAR ANIMATION
+// ══════════════════════════════════════════════════════
+function animatePbars(){
+  document.querySelectorAll('.pbar-fill[data-w]').forEach(el=>{
+    gsap.to(el,{width:el.dataset.w+'%',duration:1.2,ease:'power2.out',delay:.3});
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  TAB SWITCHING
+// ══════════════════════════════════════════════════════
+let activeTab=0;
+const TAB_INITS=[false,false,false,false,false];
+
+function switchTab(n){
+  if(n===activeTab)return;
+  const old=document.getElementById('panel'+activeTab);
+  gsap.to(old,{opacity:0,y:-8,duration:.2,onComplete:()=>{
+    old.classList.remove('active');
+    document.getElementById('tb'+activeTab).classList.remove('active');
+    activeTab=n;
+    document.getElementById('tb'+n).classList.add('active');
+    const panel=document.getElementById('panel'+n);
+    panel.classList.add('active');
+    panel.style.opacity=0;
+    gsap.to(panel,{opacity:1,y:0,duration:.3,ease:'power2.out'});
+    initTab(n);
+  }});
+}
+
+function initTab(n){
+  const panel=document.getElementById('panel'+n);
+  countUp(panel);
+  revealCards(panel);
+  if(n===0 && !TAB_INITS[0]){buildStudentCharts();TAB_INITS[0]=true;}
+  if(n===1 && !TAB_INITS[1]){buildInstructorCharts();TAB_INITS[1]=true;}
+  if(n===2 && !TAB_INITS[2]){buildAdminCharts();setTimeout(()=>{animateGauge();animatePbars();},200);TAB_INITS[2]=true;}
+  if(n===3 && !TAB_INITS[3]){buildHRCharts();renderHRLeaderboard();renderScorecards();renderYoY();
+    setTimeout(()=>{animateNatBanner();animatePbars();},200);TAB_INITS[3]=true;}
+  if(n===4 && !TAB_INITS[4]){TAB_INITS[4]=true;}
+  // re-trigger gauge/nat on revisit
+  if(n===2 && TAB_INITS[2]){setTimeout(()=>{animateGauge();animatePbars();},200);}
+  if(n===3 && TAB_INITS[3]){setTimeout(()=>{animateNatBanner();animatePbars();},200);}
+}
+
+// ══════════════════════════════════════════════════════
+//  LIVE CLOCK
+// ══════════════════════════════════════════════════════
+function tick(){
+  const n=new Date();
+  document.getElementById('liveTime').textContent=
+    n.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+}
+setInterval(tick,1000);tick();
+
+// ══════════════════════════════════════════════════════
+//  ACCESS GATE — passcode required before the dashboard loads.
+//  Mitigates the "publicly walkable link" exposure: view-source
+//  only reveals a SHA-256 hash, not the plaintext code.
+//  NOTE: this is a client-side deterrent, not a substitute for
+//  real server-side auth — see audit notes shared with Sunil.
+// ══════════════════════════════════════════════════════
+const GATE_HASH='3d8b3de38a594e18c6f6adfc07faaac27c883ee072ed926a1b19a0bcaf8dd4c2';
+const GATE_KEY='igi_board_unlock_v1';
+const GATE_TTL_DAYS=30;
+
+async function sha256Hex(str){
+  const buf=await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+function gateIsUnlocked(){
+  try{
+    const rec=JSON.parse(localStorage.getItem(GATE_KEY)||'null');
+    if(!rec)return false;
+    return (Date.now()-rec.t) < GATE_TTL_DAYS*24*60*60*1000;
+  }catch(e){return false;}
+}
+
+async function tryUnlock(){
+  const input=document.getElementById('gateInput');
+  const err=document.getElementById('gateErr');
+  const code=(input.value||'').trim();
+  const hash=await sha256Hex(code);
+  if(hash===GATE_HASH){
+    localStorage.setItem(GATE_KEY, JSON.stringify({t:Date.now()}));
+    document.getElementById('gate').classList.add('hidden');
+    initDashboard();
+  }else{
+    err.textContent='Incorrect access code — please check with Sunil.';
+    input.value='';
+    input.focus();
+  }
+}
+
+document.getElementById('gateInput')?.addEventListener('keydown',e=>{
+  if(e.key==='Enter')tryUnlock();
+});
+
+// ══════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════
+let dashboardInitDone=false;
+function initDashboard(){
+  if(dashboardInitDone)return;
+  dashboardInitDone=true;
+  renderBatchGrid();
+  renderFacultyGrid();
+  renderHodTable();
+  renderCounsellorBars();
+  loadData();    // fetch live revenue/counsellor/centre data → re-renders those sections
+  loadOpsData(); // fetch live student/instructor/admin ops data → re-renders the rest
+
+  // init tab 0
+  TAB_INITS[0]=true;
+  buildStudentCharts();
+  const p0=document.getElementById('panel0');
+  countUp(p0);
+  setTimeout(()=>revealCards(p0),100);
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  if(gateIsUnlocked()){
+    document.getElementById('gate').classList.add('hidden');
+    initDashboard();
+  }else{
+    document.getElementById('gateInput')?.focus();
+  }
+});
+</script>
+</body>
+</html>
+

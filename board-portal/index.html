@@ -468,27 +468,27 @@ canvas{display:block}
   <div class="kpi-grid">
     <div class="kpi-card">
       <div class="kpi-label">YTD Revenue</div>
-      <div class="kpi-val" style="color:var(--gold2)" data-count="2" data-suffix=".35 Cr">0</div>
+      <div class="kpi-val" id="kpiYtdRevenue" style="color:var(--gold2)" data-count="2.35" data-suffix=" Cr">0</div>
       <div class="kpi-sub">Q1 FY 2026-27 Achieved</div>
       <span class="kpi-badge badge-green" id="q1BpBadge">29% of BP</span>
     </div>
     <div class="kpi-card">
       <div class="kpi-label">Annual BP Target</div>
-      <div class="kpi-val" data-count="5" data-suffix=".5 Cr">0</div>
+      <div class="kpi-val" id="kpiAnnualBp" data-count="5.5" data-suffix=" Cr">0</div>
       <div class="kpi-sub">FY 2026-27</div>
       <span class="kpi-badge badge-gold">₹6.35 Crore</span>
     </div>
     <div class="kpi-card">
       <div class="kpi-label">Counsellors Active</div>
-      <div class="kpi-val" data-count="11">0</div>
+      <div class="kpi-val" id="kpiCounsellorsActive" data-count="11">0</div>
       <div class="kpi-sub">Across 10 centres</div>
       <span class="kpi-badge badge-lime">Q1 Contributors</span>
     </div>
     <div class="kpi-card">
       <div class="kpi-label">Run-rate Projection</div>
-      <div class="kpi-val" data-count="4" data-suffix=".8 Cr">0</div>
+      <div class="kpi-val" id="kpiRunRate" data-count="4.8" data-suffix=" Cr">0</div>
       <div class="kpi-sub">At current Q1 pace</div>
-      <span class="kpi-badge badge-amber">87% of BP</span>
+      <span class="kpi-badge badge-amber" id="runRateBadge">87% of BP</span>
     </div>
   </div>
 
@@ -607,7 +607,7 @@ canvas{display:block}
       <thead><tr>
         <th>Rank</th><th>Counsellor</th><th>Centre</th>
         <th>Q1 Achieved (₹L)</th><th>Q1 BP (₹L)</th><th>vs BP%</th>
-        <th>vs PY%</th><th>Trend</th><th>Ann BP (₹L)</th>
+        <th>Trend</th><th>Ann BP (₹L)</th>
       </tr></thead>
       <tbody id="hrLbBody"></tbody>
     </table>
@@ -630,11 +630,12 @@ canvas{display:block}
       <div class="chart-wrap-sm"><canvas id="histChart"></canvas></div>
     </div>
     <div class="card">
-      <div class="card-title"><span class="icon">📋</span> YoY Comparison</div>
+      <div class="card-title"><span class="icon">📋</span> Q1 FY 26-27 by Counsellor</div>
       <table class="data-table" id="yoyTable">
-        <thead><tr><th>Counsellor</th><th>FY 25-26 (₹L)</th><th>FY 26-27 Q1 (₹L)</th><th>Growth</th></tr></thead>
+        <thead><tr><th>Counsellor</th><th>Q1 Achieved (₹L)</th><th>vs Q1 BP</th></tr></thead>
         <tbody id="yoyBody"></tbody>
       </table>
+      <div style="font-size:10.5px;color:var(--ink3);margin-top:10px;padding-top:10px;border-top:1px dashed var(--border2)">Year-over-year comparison will appear once FY 25-26 per-counsellor figures are loaded.</div>
     </div>
   </div>
 </div>
@@ -818,6 +819,18 @@ async function loadData(){
     MONTHLY_REV.bp=[NAT_BP/4,NAT_BP/4,NAT_BP/4].map(v=>Math.round(v*10)/10);
     document.getElementById('dataStatus').textContent='● Live';
     document.getElementById('dataStatus').style.color='var(--green)';
+
+    // Keep the KPI tiles in sync with the same live figures driving the gauge/banner —
+    // previously these stayed on their hardcoded HTML defaults, so the tile and the
+    // gauge could show two different revenue numbers on the same screen.
+    setKpiValue('kpiYtdRevenue', NAT_ACH/100, 2);
+    setKpiValue('kpiAnnualBp', NAT_BP/100, 2);
+    setKpiValue('kpiCounsellorsActive', COUNSELLORS.filter(c=>c.achQ1>0).length);
+    const runRateL=NAT_ACH*4, runRatePct=NAT_BP?Math.round(runRateL/NAT_BP*100):0;
+    setKpiValue('kpiRunRate', runRateL/100, 2);
+    const rrBadge=document.getElementById('runRateBadge');
+    if(rrBadge)rrBadge.textContent=runRatePct+'% of BP';
+
     // Re-render all data-driven sections
     renderCounsellorBars();
     if(TAB_INITS[3]){renderHRLeaderboard();renderScorecards();renderYoY();buildHRCharts();animateNatBanner();}
@@ -1179,7 +1192,6 @@ function renderHRLeaderboard(){
       <td class="mono" style="color:var(--gold2)">₹${c.achQ1}L</td>
       <td class="mono">₹${bpQ1}L</td>
       <td class="mono" style="color:${col};font-weight:700">${vsBP}%</td>
-      <td class="mono" style="color:${vsPY!=null?(vsPY>=0?GREEN:RED):INK3}">${vsPY!=null?(vsPY>=0?'+':'')+vsPY+'%':'—'}</td>
       <td style="font-size:16px">${trend}</td>
       <td class="mono">₹${c.annBP}L</td>
     </tr>`;
@@ -1227,12 +1239,13 @@ function renderScorecards(){
 function renderYoY(){
   const sorted=[...COUNSELLORS].sort((a,b)=>b.achQ1-a.achQ1);
   document.getElementById('yoyBody').innerHTML=sorted.map(c=>{
-    const g=c.pyQ1?Math.round((c.achQ1-c.pyQ1)/c.pyQ1*100):null;
+    const bpQ1=Math.round(c.annBP/4*10)/10;
+    const vsBP=bpQ1?Math.round(c.achQ1/bpQ1*100):0;
+    const col=scColor(vsBP);
     return `<tr>
       <td style="font-weight:600;color:var(--ink)">${c.name}</td>
-      <td class="mono">${c.pyQ1!=null?'₹'+c.pyQ1+'L':'—'}</td>
       <td class="mono" style="color:var(--gold2)">₹${c.achQ1}L</td>
-      <td class="mono" style="color:${g!=null?(g>=0?GREEN:RED):INK3};font-weight:700">${g!=null?(g>=0?'+':'')+g+'%':'N/A'}</td>
+      <td class="mono" style="color:${col};font-weight:700">${vsBP}%</td>
     </tr>`;
   }).join('');
 }
@@ -1309,10 +1322,11 @@ function buildAdminCharts(){
       datasets:[
         {label:'Achieved (₹L)',data:MONTHLY_REV.achieved,backgroundColor:GOLD,borderRadius:6},
         {label:'Q1 BP Pace',data:MONTHLY_REV.bp,type:'line',
-          borderColor:'rgba(239,68,68,.7)',borderWidth:2,borderDash:[5,4],
-          pointRadius:0,fill:false}
+          borderColor:GOLD2,borderWidth:2,
+          pointRadius:3,pointBackgroundColor:GOLD2,fill:false}
       ]},
-    options:{...CHART_OPTS,scales:{x:{grid:{display:false}},y:{grid:{color:'#E2DDD6'}}}}
+    options:{...CHART_OPTS,plugins:{legend:{labels:{usePointStyle:true,pointStyle:'circle',font:{size:10}}}},
+      scales:{x:{grid:{display:false}},y:{grid:{color:'#E2DDD6'}}}}
   });
   const centresSorted=[...CENTRES].sort((a,b)=>b.ach-a.ach);
   charts.centreChart=new Chart(document.getElementById('centreChart'),{

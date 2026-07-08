@@ -293,13 +293,17 @@ window.gasGet = (function () {
     var empty = { assessmentsByBatch: {}, marksByStudent: {} };
     if (!wanted.length) return empty;
 
-    var otRows = await getP('online_tests', 'results_released=eq.Yes&select=test_id,title,test_type,batch_codes,batch_code');
+    var otRows = await getP('online_tests', 'results_released=eq.Yes&select=test_id,title,test_type,batch_codes,batch_code,passing_score');
     var relevant = otRows.filter(function(ot) {
       var raw = ot.batch_codes || ot.batch_code || '';
       var codes = String(raw).split(',').map(function(s) { return s.trim().toUpperCase(); }).filter(Boolean);
       return codes.some(function(c) { return wanted.indexOf(c) !== -1; });
     });
     if (!relevant.length) return empty;
+
+    // Passing threshold per test (defaults to 60%, same convention used everywhere else)
+    var psMap = {};
+    relevant.forEach(function(ot) { psMap[ot.test_id] = parseFloat(ot.passing_score) || 60; });
 
     var testIds = relevant.map(function(t) { return t.test_id; });
     var [responses, questions] = await Promise.all([
@@ -372,7 +376,12 @@ window.gasGet = (function () {
       var key = tr.test_id + '|' + tr.student_id;
       if (!(key in pctByKey)) return;
       if (!marksByStudent[tr.student_id]) marksByStudent[tr.student_id] = {};
-      marksByStudent[tr.student_id][tr.test_id] = { marks: pctByKey[key], remarks: '' };
+      // Derive Pass/Fail from the score so the student/instructor/counselor UIs don't show
+      // "Pending" for tests that have actually been released and graded — remarks was
+      // previously always '', which every consumer's fallback rendered as "Pending".
+      var passThreshold = psMap[tr.test_id] || 60;
+      var remarks = pctByKey[key] >= passThreshold ? 'Pass' : 'Fail';
+      marksByStudent[tr.student_id][tr.test_id] = { marks: pctByKey[key], remarks: remarks };
     });
 
     return { assessmentsByBatch: assessmentsByBatch, marksByStudent: marksByStudent };
@@ -4718,9 +4727,14 @@ window.gasGet = (function () {
       var pMarks = assessIds.length > 0 ? getP('assessment_marks', 'assessment_id=in.(' + assessIds.map(encodeURIComponent).join(',') + ')') : Promise.resolve([]);
       var pHod = getP('hod_approvals', 'status=eq.Approved');
       var pDips = getP('diplomas', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')');
+      // Multi-batch students (dual-enrolled) have ONE primary batch_code on the students row,
+      // but can have additional Active rows in enrollments. Without this, a student whose real
+      // test scores live under a batch other than their primary one (e.g. Yuvraj Saraf, primary
+      // DEL-COL-JUN26 but actually tested under DEL-DG-JUN26) would never show up there.
+      var pEnrollments = getP('enrollments', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')&status=eq.Active&select=student_id,batch_code');
 
-      var [students, sessions, attFeedback, marks, hods, diplomas] = await Promise.all([
-        pStudents, pSessions, pAtt, pMarks, pHod, pDips
+      var [students, sessions, attFeedback, marks, hods, diplomas, enrollments] = await Promise.all([
+        pStudents, pSessions, pAtt, pMarks, pHod, pDips, pEnrollments
       ]);
 
       var studentMap = {};
@@ -4777,49 +4791,68 @@ window.gasGet = (function () {
       var otData = await fetchOnlineTestPseudoData(batchCodes);
       mergeOnlineTestData(assessmentsByBatch, marksByStudent, otData);
 
+      // Build the full set of batch codes per student (primary + all active enrollments,
+      // deduped, restricted to this instructor's batches) instead of relying solely on
+      // the student's primary batch_code.
+      var batchCodesByStudent = {};
+      students.forEach(function(s) {
+        var bc = String(s.batch_code || '').toUpperCase();
+        if (!bc || !batchMap[bc]) return;
+        if (!batchCodesByStudent[s.student_id]) batchCodesByStudent[s.student_id] = [];
+        if (batchCodesByStudent[s.student_id].indexOf(bc) === -1) batchCodesByStudent[s.student_id].push(bc);
+      });
+      enrollments.forEach(function(en) {
+        var bc = String(en.batch_code || '').toUpperCase();
+        if (!bc || !batchMap[bc]) return;
+        if (!batchCodesByStudent[en.student_id]) batchCodesByStudent[en.student_id] = [];
+        if (batchCodesByStudent[en.student_id].indexOf(bc) === -1) batchCodesByStudent[en.student_id].push(bc);
+      });
+
       var byBatch = {};
       students.forEach(function(s) {
-        var bc = s.batch_code.toUpperCase();
-        var b = batchMap[bc];
-        if (!b) return;
+        var codes = batchCodesByStudent[s.student_id] || (s.batch_code ? [String(s.batch_code).toUpperCase()] : []);
+        codes.forEach(function(bc) {
+          var b = batchMap[bc];
+          if (!b) return;
 
-        if (!byBatch[bc]) {
-          byBatch[bc] = {
+          if (!byBatch[bc]) {
+            byBatch[bc] = {
+              batchCode: b.batch_code,
+              centre: b.centre,
+              course: b.course,
+              students: [],
+              eligibleCount: 0,
+              totalCount: 0
+            };
+          }
+
+          var totalSess = (sessionsByBatch[bc] || []).length;
+          var attended = 0;
+          (sessionsByBatch[bc] || []).forEach(function(sc) {
+            var status = attMap[s.student_id + '|' + sc];
+            if (status && status !== 'Absent') attended++;
+          });
+
+          var key = s.student_id + '|' + bc;
+          var hodStatus = hodMap[key] || '';
+
+          var row = buildDiplomaRow({
+            studentId: s.student_id,
+            studentName: s.name,
             batchCode: b.batch_code,
-            centre: b.centre,
-            course: b.course,
-            students: [],
-            eligibleCount: 0,
-            totalCount: 0
-          };
-        }
+            course: b.course || '',
+            centre: b.centre || '',
+            batchAssessments: assessmentsByBatch[bc] || [],
+            marksMap: marksByStudent[s.student_id] || {},
+            attInfo: { total: totalSess, present: attended },
+            hodStatus: hodStatus,
+            dipRec: diplomaMap[key]
+          });
 
-        var totalSess = (sessionsByBatch[bc] || []).length;
-        var attended = 0;
-        (sessionsByBatch[bc] || []).forEach(function(sc) {
-          var status = attMap[s.student_id + '|' + sc];
-          if (status && status !== 'Absent') attended++;
+          byBatch[bc].totalCount++;
+          if (row.eligible) byBatch[bc].eligibleCount++;
+          byBatch[bc].students.push(row);
         });
-
-        var key = s.student_id + '|' + bc;
-        var hodStatus = hodMap[key] || '';
-
-        var row = buildDiplomaRow({
-          studentId: s.student_id,
-          studentName: s.name,
-          batchCode: b.batch_code,
-          course: b.course || '',
-          centre: b.centre || '',
-          batchAssessments: assessmentsByBatch[bc] || [],
-          marksMap: marksByStudent[s.student_id] || {},
-          attInfo: { total: totalSess, present: attended },
-          hodStatus: hodStatus,
-          dipRec: diplomaMap[key]
-        });
-
-        byBatch[bc].totalCount++;
-        if (row.eligible) byBatch[bc].eligibleCount++;
-        byBatch[bc].students.push(row);
       });
 
       cb(null, { status: 'ok', batches: Object.values(byBatch) });

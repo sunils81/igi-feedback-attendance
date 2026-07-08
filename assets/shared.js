@@ -3748,17 +3748,51 @@ window.gasGet = (function () {
               });
               GET('assessments', 'batch_code=in.(' + bCodes.join(',') + ')', function (e6, assessments) {
                 GET('assessment_marks', 'student_id=eq.' + encodeURIComponent(enrollNo), function (e7, marks) {
-                  var studentAssessments = (assessments || []).map(function (ass) {
-                    var mRow = (marks || []).find(function (m) { return m.assessment_id === ass.assessment_id; });
-                    return {
-                      assessmentId: ass.assessment_id, batchCode: ass.batch_code, testName: ass.test_name, testType: ass.test_type,
-                      testDate: toDMY(ass.held_on), totalMarks: ass.max_marks, marksObtained: mRow ? mRow.marks : '',
-                      percentage: mRow && ass.max_marks ? Math.round((mRow.marks / ass.max_marks) * 100) : '',
-                      result: mRow ? mRow.remarks : '', remarks: mRow ? (mRow.remarks || '') : ''
-                    };
+                  // Merge in auto-graded Online Tests (released results) — most Weekly/Final
+                  // scores live in online_tests/test_responses, not the manual assessments
+                  // table, so the Report Card was silently only ever showing manual marks.
+                  var assessmentsByBatch = {};
+                  (assessments || []).forEach(function (a) {
+                    var bc = (a.batch_code || '').toUpperCase();
+                    if (!assessmentsByBatch[bc]) assessmentsByBatch[bc] = [];
+                    assessmentsByBatch[bc].push(a);
                   });
-                  cb(null, { status: 'ok', studentName: studentName, enrollmentNo: enrollNo, mobileLast4: student.mobile_last4 || mobColLast4,
-                    photoUrl: student.photo_url || '', batches: batchCards, allBatches: allEnrolledBatches, assessments: studentAssessments });
+                  var marksByStudent = {};
+                  marksByStudent[enrollNo] = {};
+                  (marks || []).forEach(function (m) { marksByStudent[enrollNo][m.assessment_id] = m; });
+
+                  fetchOnlineTestPseudoData(bCodes).then(function (otData) {
+                    mergeOnlineTestData(assessmentsByBatch, marksByStudent, otData);
+                    var allAssessments = [];
+                    Object.keys(assessmentsByBatch).forEach(function (bc) {
+                      allAssessments = allAssessments.concat(assessmentsByBatch[bc]);
+                    });
+                    var studentMarks = marksByStudent[enrollNo] || {};
+                    var studentAssessments = allAssessments.map(function (ass) {
+                      var mRow = studentMarks[ass.assessment_id];
+                      return {
+                        assessmentId: ass.assessment_id, batchCode: ass.batch_code, testName: ass.test_name, testType: ass.test_type,
+                        testDate: toDMY(ass.held_on), totalMarks: ass.max_marks, marksObtained: mRow ? mRow.marks : '',
+                        percentage: mRow && ass.max_marks ? Math.round((mRow.marks / ass.max_marks) * 100) : '',
+                        result: mRow ? mRow.remarks : '', remarks: mRow ? (mRow.remarks || '') : ''
+                      };
+                    });
+                    cb(null, { status: 'ok', studentName: studentName, enrollmentNo: enrollNo, mobileLast4: student.mobile_last4 || mobColLast4,
+                      photoUrl: student.photo_url || '', batches: batchCards, allBatches: allEnrolledBatches, assessments: studentAssessments });
+                  }).catch(function () {
+                    // Fall back to manual-only data if the online-test merge fails for any reason
+                    var studentAssessments = (assessments || []).map(function (ass) {
+                      var mRow = (marks || []).find(function (m) { return m.assessment_id === ass.assessment_id; });
+                      return {
+                        assessmentId: ass.assessment_id, batchCode: ass.batch_code, testName: ass.test_name, testType: ass.test_type,
+                        testDate: toDMY(ass.held_on), totalMarks: ass.max_marks, marksObtained: mRow ? mRow.marks : '',
+                        percentage: mRow && ass.max_marks ? Math.round((mRow.marks / ass.max_marks) * 100) : '',
+                        result: mRow ? mRow.remarks : '', remarks: mRow ? (mRow.remarks || '') : ''
+                      };
+                    });
+                    cb(null, { status: 'ok', studentName: studentName, enrollmentNo: enrollNo, mobileLast4: student.mobile_last4 || mobColLast4,
+                      photoUrl: student.photo_url || '', batches: batchCards, allBatches: allEnrolledBatches, assessments: studentAssessments });
+                  });
                 });
               });
             });

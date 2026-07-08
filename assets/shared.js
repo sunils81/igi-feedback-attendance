@@ -4838,18 +4838,41 @@ window.gasGet = (function () {
       });
     }
     try {
-      var [students, batches, attRows, assessments, marks, diplomas, hods] = await Promise.all([
+      var [students, batches, attRows, assessments, marks, diplomas, hods, enrollments] = await Promise.all([
         getP('students', 'select=student_id,name,batch_code'),
         getP('batches', 'select=batch_code,centre,course,counselor'),
         getP('attendance_feedback', 'select=student_id,batch_code,attendance'),
         getP('assessments', 'select=assessment_id,batch_code,test_name,test_type,max_marks,held_on'),
         getP('assessment_marks', 'select=assessment_id,student_id,marks,remarks'),
         getP('diplomas', 'select=student_id,batch_code,released_by,released_at'),
-        getP('hod_approvals', 'status=eq.Approved&select=ref_code,status')
+        getP('hod_approvals', 'status=eq.Approved&select=ref_code,status'),
+        getP('enrollments', 'status=eq.Active&select=student_id,batch_code')
       ]);
 
       var batchMap = {};
       batches.forEach(function(b) { batchMap[b.batch_code] = b; });
+
+      // Multi-batch students (e.g. dual-enrolled in two courses) have ONE primary
+      // batch_code on the students row, but can have additional Active rows in
+      // enrollments. h_getStudentPortalData already accounts for this; this handler
+      // previously didn't, so a student whose primary batch differed from the batch
+      // their actual tests/assessments were recorded against would show up as
+      // "Ineligible" with everything blank. Build the full set of batch codes per
+      // student (primary + all active enrollments, deduped) instead.
+      var batchCodesByStudent = {};
+      students.forEach(function(st) {
+        if (!batchCodesByStudent[st.student_id]) batchCodesByStudent[st.student_id] = [];
+        if (st.batch_code && batchCodesByStudent[st.student_id].indexOf(st.batch_code) === -1) {
+          batchCodesByStudent[st.student_id].push(st.batch_code);
+        }
+      });
+      enrollments.forEach(function(en) {
+        if (!en.student_id || !en.batch_code) return;
+        if (!batchCodesByStudent[en.student_id]) batchCodesByStudent[en.student_id] = [];
+        if (batchCodesByStudent[en.student_id].indexOf(en.batch_code) === -1) {
+          batchCodesByStudent[en.student_id].push(en.batch_code);
+        }
+      });
 
       var diplomaMap = {};
       diplomas.forEach(function(d) { diplomaMap[d.student_id + '|' + String(d.batch_code || '').toUpperCase()] = d; });
@@ -4887,24 +4910,29 @@ window.gasGet = (function () {
       var otData = await fetchOnlineTestPseudoData(batches.map(function(b) { return b.batch_code; }));
       mergeOnlineTestData(assessmentsByBatch, marksByStudent, otData);
 
-      var diplomaList = students.map(function(st) {
-        var b = batchMap[st.batch_code] || {};
-        var bc = (st.batch_code || '').toUpperCase();
-        var key = st.student_id + '|' + bc;
-        var row = buildDiplomaRow({
-          studentId: st.student_id,
-          studentName: st.name,
-          batchCode: st.batch_code,
-          course: b.course || '',
-          centre: b.centre || '',
-          batchAssessments: assessmentsByBatch[bc] || [],
-          marksMap: marksByStudent[st.student_id] || {},
-          attInfo: attByStudentBatch[key] || { total: 0, present: 0 },
-          hodStatus: hodMap[key] || '',
-          dipRec: diplomaMap[key]
+      var diplomaList = [];
+      students.forEach(function(st) {
+        var codes = batchCodesByStudent[st.student_id] || (st.batch_code ? [st.batch_code] : []);
+        codes.forEach(function(batchCode) {
+          var b = batchMap[batchCode];
+          if (!b) return; // batch no longer exists / bad reference — skip rather than show a blank row
+          var bc = batchCode.toUpperCase();
+          var key = st.student_id + '|' + bc;
+          var row = buildDiplomaRow({
+            studentId: st.student_id,
+            studentName: st.name,
+            batchCode: batchCode,
+            course: b.course || '',
+            centre: b.centre || '',
+            batchAssessments: assessmentsByBatch[bc] || [],
+            marksMap: marksByStudent[st.student_id] || {},
+            attInfo: attByStudentBatch[key] || { total: 0, present: 0 },
+            hodStatus: hodMap[key] || '',
+            dipRec: diplomaMap[key]
+          });
+          row.counselorName = b.counselor || '';
+          diplomaList.push(row);
         });
-        row.counselorName = b.counselor || '';
-        return row;
       });
 
       cb(null, { status: 'ok', list: diplomaList });

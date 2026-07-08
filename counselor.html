@@ -3211,10 +3211,10 @@
   <div id="t-diplomas" class="tab-content">
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
-        <h2 style="margin-bottom:0">🎓 Diploma Release</h2>
+        <h2 id="diploma-tab-title" style="margin-bottom:0">🎓 Diploma Release</h2>
         <button id="btn-bulk-release" class="btn btn-gold" style="display:none;width:auto;padding:8px 16px" onclick="bulkReleaseDiplomas()">Release Selected (0)</button>
       </div>
-      <p class="sub">Release diplomas for eligible students from all centres. Eligibility criteria: weekly test average &ge; 60%, Practical marks &ge; 60% (if a Practical test exists for the batch), <strong>and</strong> final exam score &ge; 60%. Attendance (&ge;75%) is shown as an advisory indicator but does not block release.</p>
+      <p class="sub" id="diploma-tab-sub">Release diplomas for eligible students from all centres. Eligibility criteria: weekly test average &ge; 60%, Practical marks &ge; 60% (if a Practical test exists for the batch), <strong>and</strong> final exam score &ge; 60%. Attendance (&ge;75%) is shown as an advisory indicator but does not block release.</p>
       
       <!-- Search and Filter bar -->
       <div style="display:flex;gap:12px;align-items:center;margin-top:14px;margin-bottom:14px;flex-wrap:wrap">
@@ -3960,6 +3960,13 @@ let isAdmin         = false;
 let isManager       = false;
 let allBatches      = [];
 let counselorReportRequestId = 0;
+
+// Diploma release (the actual "release" action) stays restricted to Bianca/Anuradha,
+// but every counsellor should be able to SEE their own centre's test records and
+// eligibility on the Diploma Eligibility tab (view-only for everyone else).
+function isDiplomaReleaseAuthorized() {
+  return !!counselorName && (counselorName.toLowerCase() === 'bianca' || counselorName.toLowerCase() === 'anuradha');
+}
 let counselorCalendarMonth = new Date();
 let counselorReportData = null;
 let currentExtractRows = [];
@@ -4065,11 +4072,27 @@ function applyAdminVisibility() {
 
   if (isAdmin) renderAdminDashboardPlaceholders();
 
-  const isDiplomaReleaseAuthorized = (counselorName.toLowerCase() === 'bianca' || counselorName.toLowerCase() === 'anuradha');
+  // Diploma Eligibility tab is visible to every counsellor now (view test records +
+  // eligibility for their own centre); only the Release action itself stays locked
+  // down to Bianca/Anuradha inside renderDiplomaTable()/the bulk-release button.
   const dTab = document.getElementById('tab-diplomas');
+  const dAuthorized = isDiplomaReleaseAuthorized();
   if (dTab) {
-    dTab.style.display = isDiplomaReleaseAuthorized ? '' : 'none';
+    dTab.style.display = '';
+    dTab.textContent = dAuthorized ? '🎓 Diploma Release' : '🎓 Diploma Eligibility';
   }
+  const dTitle = document.getElementById('diploma-tab-title');
+  if (dTitle) dTitle.textContent = dAuthorized ? '🎓 Diploma Release' : '🎓 Diploma Eligibility';
+  const dSub = document.getElementById('diploma-tab-sub');
+  if (dSub) {
+    dSub.innerHTML = dAuthorized
+      ? 'Release diplomas for eligible students from all centres. Eligibility criteria: weekly test average &ge; 60%, Practical marks &ge; 60% (if a Practical test exists for the batch), <strong>and</strong> final exam score &ge; 60%. Attendance (&ge;75%) is shown as an advisory indicator but does not block release.'
+      : 'View test records and diploma eligibility for your centre. Eligibility criteria: weekly test average &ge; 60%, Practical marks &ge; 60% (if a Practical test exists for the batch), <strong>and</strong> final exam score &ge; 60%. Attendance (&ge;75%) is shown as an advisory indicator but does not block eligibility. Releasing diplomas is restricted to Bianca and Anuradha.';
+  }
+  const bulkBtn = document.getElementById('btn-bulk-release');
+  if (bulkBtn && !dAuthorized) bulkBtn.style.display = 'none';
+  const selectAllCb = document.getElementById('diploma-select-all');
+  if (selectAllCb && !dAuthorized) selectAllCb.style.display = 'none';
 
   const isMumbaiAdmin = (counselorName.toLowerCase() === 'bianca' || counselorName.toLowerCase() === 'anuradha');
   const dispatchTab = document.getElementById('inv-tab-dispatch');
@@ -8930,7 +8953,18 @@ async function loadDiplomaData() {
       return;
     }
 
-    diplomaList = d.list || [];
+    var allDiplomaRows = d.list || [];
+    // Every counsellor can see this tab now, but non-authorized counsellors (anyone
+    // other than Bianca/Anuradha) should only see their own centre's records —
+    // same allowedCentres pattern used on the Alumni tab.
+    if (!isAdmin && !isDiplomaReleaseAuthorized() && allowedCentres && allowedCentres.length > 0) {
+      var allowedLowerD = allowedCentres.map(function(c) { return c.toLowerCase(); });
+      diplomaList = allDiplomaRows.filter(function(a) {
+        return a.centre && allowedLowerD.indexOf(a.centre.toLowerCase()) !== -1;
+      });
+    } else {
+      diplomaList = allDiplomaRows;
+    }
 
     var courseFilter = document.getElementById('diploma-course-filter');
     if (courseFilter) {
@@ -9016,6 +9050,9 @@ function renderDiplomaTable(list) {
       ? (finalPass ? '<span style="color:#168B57;font-weight:700">✅ ' + finalStr + '</span>' : '<span style="color:#C94A4A;font-weight:700">❌ ' + finalStr + '</span>')
       : '<span style="color:var(--muted)">N/A</span>';
 
+    // Release Diploma / Re-release / Request HOD stay restricted to Bianca & Anuradha.
+    // Every other counsellor gets the same eligibility facts, view-only.
+    var authorized = isDiplomaReleaseAuthorized();
     var actionCell = '';
     var canRelease = false;
     if (a.diplomaStatus === 'Released') {
@@ -9029,19 +9066,23 @@ function renderDiplomaTable(list) {
         '✅ Released<br>' +
         '<span style="font-size:11px;color:var(--muted)">by ' + escC(a.diplomaReleasedBy) + ' on ' + relDate + '</span>' +
         '</div>' +
-        '<button class="btn btn-xs" onclick="releaseDiploma(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', this)" style="padding:3px 8px;font-size:10px;margin-top:4px;background:#f3f4f6;color:#6b7280;border:1px solid #d1d5db;border-radius:4px;cursor:pointer">🔄 Re-release</button>';
+        (authorized ? '<button class="btn btn-xs" onclick="releaseDiploma(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', this)" style="padding:3px 8px;font-size:10px;margin-top:4px;background:#f3f4f6;color:#6b7280;border:1px solid #d1d5db;border-radius:4px;cursor:pointer">🔄 Re-release</button>' : '');
     } else if (a.hodStatus === 'Pending') {
       actionCell = '<span class="badge" style="background:#FFFBEB;color:#D97706;border:1px solid #FCD34D;padding:3px 8px;font-size:11px">⏳ Pending HOD</span>';
     } else if (a.hodStatus === 'Rejected') {
       actionCell = '<span class="badge" style="background:#FEF2F2;color:#DC2626;border:1px solid #FCA5A5;padding:3px 8px;font-size:11px">❌ HOD Rejected</span>';
     } else if (a.eligible) {
-      canRelease = true;
       var approvedBadge = a.hodStatus === 'Approved' ? '<div style="color:#168B57;font-size:10px;font-weight:700;margin-top:4px">👑 HOD Approved</div>' : '';
-      actionCell = '<button class="btn btn-gold btn-xs" onclick="releaseDiploma(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', this)" style="padding:5px 10px;font-size:11px;margin:0 auto;display:block">Release Diploma</button>' + approvedBadge;
+      if (authorized) {
+        canRelease = true;
+        actionCell = '<button class="btn btn-gold btn-xs" onclick="releaseDiploma(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', this)" style="padding:5px 10px;font-size:11px;margin:0 auto;display:block">Release Diploma</button>' + approvedBadge;
+      } else {
+        actionCell = '<span class="badge" style="background:#ECFDF5;color:#168B57;border:1px solid #A7F3D0;padding:3px 8px;font-size:11px">✅ Eligible</span>' + approvedBadge;
+      }
     } else {
       var requestBtn = '';
       var isBorderline = (weeklyVal != null && weeklyVal >= 50 && weeklyVal < 60) || (finalVal != null && finalVal >= 50 && finalVal < 60) || (pracReq && pracVal != null && pracVal >= 50 && pracVal < 60);
-      if (isBorderline && (counselorName.toLowerCase() === 'bianca' || counselorName.toLowerCase() === 'anuradha')) {
+      if (isBorderline && authorized) {
         requestBtn = '<button class="btn btn-outline btn-xs" onclick="requestHODApproval(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', \'' + escC(a.studentName.replace(/'/g, "\\'")) + '\', ' + weeklyVal + ', ' + finalVal + ', this)" style="padding:4px 8px;font-size:10px;margin:5px auto 0;display:block;width:100%">Request HOD</button>';
       }
       actionCell = '<span class="badge" style="background:#F4F4F5;color:#71717A;border:1px solid #E4E4E7;padding:3px 8px;font-size:11px">Ineligible</span>' + requestBtn;

@@ -3037,12 +3037,15 @@ function renderTodaySessions(sessions) {
         }
       }
       
+      var usedDays = s.usedDays || [];
       var selectHtml = '<select class="topic-select" id="topic-select-' + escH(s.batchCode) + '" onchange="handleTopicSelectChange(\'' + escH(s.batchCode) + '\', false)" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid var(--border);font-family:inherit;font-size:14px;background:#fff;margin-bottom:6px;">';
       selectHtml += '<option value="">-- Select Topic --</option>';
       syllabus.forEach(function(item) {
-        var optLabel = 'Day ' + item.day + ': ' + item.topic;
+        var alreadyCovered = usedDays.indexOf(item.day) !== -1;
+        var optLabel = 'Day ' + item.day + ': ' + item.topic + (alreadyCovered ? ' (already covered)' : '');
         var selected = (isPredefined && item.topic === matchedTopicValue) ? ' selected' : '';
-        selectHtml += '<option value="' + escH(item.topic) + '"' + selected + '>' + escH(optLabel) + '</option>';
+        var disabledAttr = (alreadyCovered && !selected) ? ' disabled' : '';
+        selectHtml += '<option value="' + escH(item.topic) + '"' + selected + disabledAttr + '>' + escH(optLabel) + '</option>';
       });
       var customSelected = (scheduledTopic && !isPredefined) ? ' selected' : '';
       selectHtml += '<option value="__custom__"' + customSelected + '>Other / Custom Topic</option>';
@@ -3093,12 +3096,15 @@ function renderTodaySessions(sessions) {
     
     // Determine if the saved topic differs from the scheduled topic (a previous override was confirmed)
     var topicIsOverridden = !!(s.topic && s.scheduledTopic && normalizeTopic(s.topic) !== normalizeTopic(s.scheduledTopic));
+    var usedDaysLive = s.usedDays || [];
     var selectHtml = '<select class="topic-select" id="tov-select-' + escH(s.sessionCode) + '" onchange="handleTopicSelectChange(\'' + escH(s.sessionCode) + '\', true)" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid var(--border);font-family:inherit;font-size:14px;background:#fff;margin-bottom:6px;">';
     selectHtml += '<option value="">-- Select Topic --</option>';
     syllabus.forEach(function(item) {
-      var optLabel = 'Day ' + item.day + ': ' + item.topic;
+      var alreadyCovered = usedDaysLive.indexOf(item.day) !== -1;
+      var optLabel = 'Day ' + item.day + ': ' + item.topic + (alreadyCovered ? ' (already covered)' : '');
       var selected = (isPredefined && item.topic === matchedTopicValue) ? ' selected' : '';
-      selectHtml += '<option value="' + escH(item.topic) + '"' + selected + '>' + escH(optLabel) + '</option>';
+      var disabledAttr = (alreadyCovered && !selected) ? ' disabled' : '';
+      selectHtml += '<option value="' + escH(item.topic) + '"' + selected + disabledAttr + '>' + escH(optLabel) + '</option>';
     });
     var customSelected = (currentTopic && !isPredefined) ? ' selected' : '';
     selectHtml += '<option value="__custom__"' + customSelected + '>Other / Custom Topic</option>';

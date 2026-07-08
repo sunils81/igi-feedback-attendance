@@ -4345,6 +4345,46 @@ window.gasGet = (function () {
     });
   }
 
+  // Normalizes a topic string for loose matching against syllabus entries
+  // (case/whitespace/dash-insensitive). Mirrors normalizeTopic() in instructor-portal.html.
+  function normTopicKey(s) {
+    return String(s || '')
+      .toLowerCase()
+      .replace(/[\s\-–—]+/g, ' ')
+      .trim();
+  }
+
+  // Given a course's syllabus and that batch's past (non-cancelled) sessions,
+  // works out which syllabus days are already covered and what the next one is.
+  // Progression is based on the batch's actual session history, not a fixed
+  // calendar offset, so holidays/extra sessions/skipped days don't throw it off.
+  function computeSyllabusProgress(syllabus, pastRows) {
+    var usedIdx = {};
+    (pastRows || []).forEach(function (r) {
+      var norm = normTopicKey(r.topic);
+      if (!norm) return;
+      for (var i = 0; i < syllabus.length; i++) {
+        if (normTopicKey(syllabus[i].topic) === norm) { usedIdx[i] = true; break; }
+      }
+    });
+    var usedIndices = Object.keys(usedIdx).map(Number);
+    var maxUsed = usedIndices.length ? Math.max.apply(null, usedIndices) : -1;
+    var pastCount = (pastRows || []).length;
+    // If topics matched syllabus entries, resume right after the furthest day covered.
+    // If there were past sessions but none matched (all custom topics), fall back to
+    // a plain count so progression still advances one day per session held.
+    var nextIndex = maxUsed >= 0 ? maxUsed + 1 : pastCount;
+    var usedDays = usedIndices.map(function (i) { return syllabus[i].day || (i + 1); })
+      .sort(function (a, b) { return a - b; });
+    var out = { dayNo: '', scheduledTopic: '', week: '', usedDays: usedDays };
+    if (syllabus.length && nextIndex < syllabus.length) {
+      out.dayNo = syllabus[nextIndex].day || (nextIndex + 1);
+      out.scheduledTopic = syllabus[nextIndex].topic;
+      out.week = syllabus[nextIndex].week || '';
+    }
+    return out;
+  }
+
   function h_getInstructorTodaySessions(p, cb) {
     var instr = String(p.instructor || '').trim();
     if (!instr) { cb(null, { status: 'ok', date: toDMY(todayYMD()), batches: [] }); return; }
@@ -4357,18 +4397,28 @@ window.gasGet = (function () {
         return !b.co_instructor_until || b.co_instructor_until >= today;
       });
       if (!matched.length) { cb(null, { status: 'ok', date: toDMY(today), batches: [] }); return; }
-      GET('sessions', 'session_date=eq.' + today, function (e2, sRows) {
+      var codesQs = matched.map(function (b) { return encodeURIComponent(b.batch_code); }).join(',');
+      // Pull the full session history (not just today) for these batches in one call,
+      // so we can both find today's session and work out each batch's syllabus progress.
+      GET('sessions', 'batch_code=in.(' + codesQs + ')&order=session_date.asc,sess_no.asc&select=session_code,batch_code,session_date,sess_no,topic,session_type', function (e2, allSess) {
+        allSess = allSess || [];
         var batches = matched.map(function (b) {
-          var todaySess = (sRows || []).find(function (s) { return s.batch_code === b.batch_code; });
+          var todaySess = allSess.find(function (s) { return s.batch_code === b.batch_code && s.session_date === today; });
           var startD = b.start_date || '';
           var endD = b.end_date || '';
           var activeToday = startD && endD && today >= startD && today <= endD;
+          var syllabus = (window.SYLLABI || {})[b.course] || [];
+          var pastRows = allSess.filter(function (s) {
+            return s.batch_code === b.batch_code && s.session_date < today && s.session_type !== 'Cancelled';
+          });
+          var prog = computeSyllabusProgress(syllabus, pastRows);
           return {
             batchCode: b.batch_code, centre: b.centre, course: b.course, type: b.type, batchSlot: b.batch_slot || 'Full Day',
             startDate: toDMY(startD), endDate: toDMY(endD), activeToday: !!activeToday, workingDay: true,
             sessionCode: todaySess ? todaySess.session_code : '', sessNo: todaySess ? todaySess.sess_no : '',
             sessionType: todaySess ? (todaySess.session_type || 'Scheduled') : '', topic: todaySess ? (todaySess.topic || '') : '',
-            syllabus: (window.SYLLABI || {})[b.course] || [], scheduledTopic: '', dayNo: '', week: ''
+            autoCreated: !!todaySess,
+            syllabus: syllabus, scheduledTopic: prog.scheduledTopic, dayNo: prog.dayNo, week: prog.week, usedDays: prog.usedDays
           };
         });
         cb(null, { status: 'ok', date: toDMY(today), todayISO: today, batches: batches });

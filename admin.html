@@ -1657,13 +1657,40 @@
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
           <h2 style="margin-bottom:0">💸 National Fee Summary</h2>
-          <div style="display:flex;gap:8px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button id="btn-trigger-overdue-emails" class="btn" style="width:auto;padding:6px 12px;font-size:12px;background:var(--navy);color:var(--gold);border-radius:6px;font-weight:600;cursor:pointer" onclick="triggerOverdueEmailNotifications()">✉️ Email Overdue Alerts</button>
+            <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="downloadFeeAuditCsv()">📄 Download Auditor Report (CSV)</button>
             <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="window.print()">🖨️ Print / Save PDF</button>
           </div>
         </div>
-        <p class="sub">Current collections and outstanding status across all registered student records.</p>
-        
+        <p class="sub">Current collections and outstanding status across all registered student records. Filters apply to the summary, breakdowns, pending list, and the auditor export below.</p>
+
+        <!-- Filter bar -->
+        <div style="display:flex;gap:12px;align-items:center;margin-top:12px;margin-bottom:6px;flex-wrap:wrap" class="no-print">
+          <select id="fee-filter-month" onchange="applyFeeFilters()"
+            style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+            <option value="">All Months</option>
+          </select>
+          <select id="fee-filter-course" onchange="applyFeeFilters()"
+            style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+            <option value="">All Courses</option>
+          </select>
+          <select id="fee-filter-centre" onchange="applyFeeFilters()"
+            style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+            <option value="">All Centres</option>
+          </select>
+          <select id="fee-filter-status" onchange="applyFeeFilters()"
+            style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+            <option value="">All Statuses</option>
+            <option value="Paid">Paid</option>
+            <option value="Partial">Partial</option>
+            <option value="Pending">Pending</option>
+            <option value="Overdue">Overdue</option>
+          </select>
+          <button class="btn btn-outline" style="width:auto;padding:8px 12px;font-size:12px;border:1.5px solid var(--border);background:transparent;color:var(--muted);border-radius:6px;cursor:pointer" onclick="resetFeeFilters()">Reset filters</button>
+          <span id="fee-filter-summary" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
+        </div>
+
         <div class="kpi-row" id="fee-kpis">
           <div class="kpi-card"><div class="kpi-label">Expected Net Fees</div><div class="kpi-value" id="fee-kpi-expected">—</div></div>
           <div class="kpi-card"><div class="kpi-label">Total Collected</div><div class="kpi-value" id="fee-kpi-collected">—</div></div>
@@ -1708,6 +1735,30 @@
               <tr><td colspan="7" style="text-align:center;color:var(--muted)">Loading fee data...</td></tr>
             </tbody>
           </table>
+        </div>
+
+        <div style="margin-top:24px">
+          <h3 style="font-size:16px;font-weight:700;margin-bottom:10px">⏰ Pending / Overdue Students</h3>
+          <p class="sub" style="margin-top:-4px">Individual students with an outstanding balance, matching the filters above. Overdue students are listed first.</p>
+          <div style="overflow-x:auto">
+            <table class="compact-table">
+              <thead>
+                <tr>
+                  <th class="text-left">Student</th>
+                  <th class="text-left">Batch</th>
+                  <th class="text-left">Course</th>
+                  <th class="text-left">Centre</th>
+                  <th>Expected (₹)</th>
+                  <th>Collected (₹)</th>
+                  <th>Outstanding (₹)</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="fee-pending-tbody">
+                <tr><td colspan="8" style="text-align:center;color:var(--muted)">Loading fee data...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -5022,18 +5073,109 @@ function saveAdminTargets() {
 function renderFeesTab() {
   const d = dashboardData;
   const f = d.fee || {};
-  const national = f.national || {};
-  const centres = f.centres || [];
-  const batches = f.batches || [];
-  
-  document.getElementById('fee-kpi-expected').textContent = money(national.expected);
-  document.getElementById('fee-kpi-collected').textContent = money(national.collected);
-  document.getElementById('fee-kpi-outstanding').textContent = money(national.outstanding);
-  document.getElementById('fee-kpi-overdue').textContent = money(national.overdue);
-  
+  // Full per-student, per-installment records — the single source of truth for the filters,
+  // the live-recomputed summary/breakdown tables, the Pending/Overdue list, and the CSV export.
+  window.__feeRows = f.students || [];
+
+  populateFeeFilterOptions(window.__feeRows);
+  applyFeeFilters();
+}
+
+function populateFeeFilterOptions(rows) {
+  const monthSel = document.getElementById('fee-filter-month');
+  const courseSel = document.getElementById('fee-filter-course');
+  const centreSel = document.getElementById('fee-filter-centre');
+  if (!monthSel || monthSel.dataset.populated === '1') return; // populate once; dashboard reloads keep filter choices
+
+  function monthLabel(ym) {
+    const parts = String(ym).split('-');
+    if (parts.length !== 2) return ym;
+    const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
+    return isNaN(dt.getTime()) ? ym : dt.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+  }
+
+  const months = Array.from(new Set(rows.map(r => r.month).filter(Boolean))).sort().reverse();
+  const courses = Array.from(new Set(rows.map(r => r.course).filter(Boolean))).sort();
+  const centres = Array.from(new Set(rows.map(r => r.centre).filter(Boolean))).sort();
+
+  months.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = monthLabel(m);
+    monthSel.appendChild(opt);
+  });
+  courses.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c;
+    courseSel.appendChild(opt);
+  });
+  centres.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c;
+    centreSel.appendChild(opt);
+  });
+  monthSel.dataset.populated = '1';
+}
+
+function resetFeeFilters() {
+  ['fee-filter-month', 'fee-filter-course', 'fee-filter-centre', 'fee-filter-status'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  applyFeeFilters();
+}
+
+// Returns the fee rows matching the current Month/Course/Centre/Status filter selections.
+// "Month" is the fee record's business/collection month (when it was recorded), consistent
+// with how monthly revenue is tracked elsewhere in the admin portal.
+function getFilteredFeeRows() {
+  const rows = window.__feeRows || [];
+  const month = (document.getElementById('fee-filter-month') || {}).value || '';
+  const course = (document.getElementById('fee-filter-course') || {}).value || '';
+  const centre = (document.getElementById('fee-filter-centre') || {}).value || '';
+  const status = (document.getElementById('fee-filter-status') || {}).value || '';
+  return rows.filter(r => {
+    if (month && r.month !== month) return false;
+    if (course && r.course !== course) return false;
+    if (centre && r.centre !== centre) return false;
+    if (status && r.fee_status !== status) return false;
+    return true;
+  });
+}
+
+function applyFeeFilters() {
+  const rows = getFilteredFeeRows();
+
+  // ── National KPIs ──
+  let expected = 0, collected = 0, outstanding = 0, overdue = 0;
+  rows.forEach(r => {
+    expected += Number(r.net_payable || 0);
+    collected += Number(r.collected || 0);
+    outstanding += Number(r.outstanding || 0);
+    if (r.fee_status === 'Overdue') overdue += Number(r.outstanding || 0);
+  });
+  document.getElementById('fee-kpi-expected').textContent = money(expected);
+  document.getElementById('fee-kpi-collected').textContent = money(collected);
+  document.getElementById('fee-kpi-outstanding').textContent = money(outstanding);
+  document.getElementById('fee-kpi-overdue').textContent = money(overdue);
+
+  // ── Collections by Centre (re-aggregated from filtered rows) ──
+  const byCentre = {};
+  rows.forEach(r => {
+    const c = r.centre || 'Unknown';
+    if (!byCentre[c]) byCentre[c] = { centre: c, students: 0, expected: 0, collected: 0, outstanding: 0, overdue: 0 };
+    byCentre[c].students++;
+    byCentre[c].expected += Number(r.net_payable || 0);
+    byCentre[c].collected += Number(r.collected || 0);
+    byCentre[c].outstanding += Number(r.outstanding || 0);
+    if (r.fee_status === 'Overdue') byCentre[c].overdue += Number(r.outstanding || 0);
+  });
+  const centreList = Object.values(byCentre).sort((a, b) => b.expected - a.expected);
   const centreBody = document.getElementById('fee-centre-tbody');
-  if (centres.length) {
-    centreBody.innerHTML = centres.map(c => {
+  if (centreList.length) {
+    centreBody.innerHTML = centreList.map(c => {
       return '<tr>' +
         '<td><strong>' + escC(c.centre) + '</strong></td>' +
         '<td style="text-align:right">' + c.students + '</td>' +
@@ -5044,13 +5186,24 @@ function renderFeesTab() {
       '</tr>';
     }).join('');
   } else {
-    centreBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No fee collections recorded.</td></tr>';
+    centreBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No fee collections match these filters.</td></tr>';
   }
-  
+
+  // ── Collections by Batch (re-aggregated from filtered rows) ──
+  const byBatch = {};
+  rows.forEach(r => {
+    const bc = String(r.batch_code || 'Unknown').toUpperCase();
+    if (!byBatch[bc]) byBatch[bc] = { batchCode: bc, course: r.course || '', students: 0, expected: 0, collected: 0, outstanding: 0, overdue: 0 };
+    byBatch[bc].students++;
+    byBatch[bc].expected += Number(r.net_payable || 0);
+    byBatch[bc].collected += Number(r.collected || 0);
+    byBatch[bc].outstanding += Number(r.outstanding || 0);
+    if (r.fee_status === 'Overdue') byBatch[bc].overdue += Number(r.outstanding || 0);
+  });
+  const batchList = Object.values(byBatch).sort((a, b) => b.expected - a.expected);
   const batchBody = document.getElementById('fee-batch-tbody');
-  if (batches.length) {
-    batches.sort((a,b) => b.expected - a.expected);
-    batchBody.innerHTML = batches.map(b => {
+  if (batchList.length) {
+    batchBody.innerHTML = batchList.map(b => {
       return '<tr>' +
         '<td><strong>' + escC(b.batchCode) + '</strong></td>' +
         '<td>' + escC(b.course) + '</td>' +
@@ -5062,8 +5215,76 @@ function renderFeesTab() {
       '</tr>';
     }).join('');
   } else {
-    batchBody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted)">No fee logs recorded.</td></tr>';
+    batchBody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted)">No fee logs match these filters.</td></tr>';
   }
+
+  // ── Pending / Overdue Students (individual student rows, not rolled up) ──
+  const pendingBody = document.getElementById('fee-pending-tbody');
+  const pendingRows = rows
+    .filter(r => Number(r.outstanding || 0) > 0)
+    .sort((a, b) => {
+      const rank = s => (s === 'Overdue' ? 0 : (s === 'Partial' ? 1 : 2));
+      const rd = rank(a.fee_status) - rank(b.fee_status);
+      return rd !== 0 ? rd : (Number(b.outstanding || 0) - Number(a.outstanding || 0));
+    });
+  if (pendingRows.length) {
+    pendingBody.innerHTML = pendingRows.map(r => {
+      const statusColor = r.fee_status === 'Overdue' ? 'var(--red)' : (r.fee_status === 'Partial' ? 'var(--gold)' : 'var(--muted)');
+      return '<tr>' +
+        '<td>' + escC(r.student_name || r.student_id) + '</td>' +
+        '<td>' + escC(r.batch_code) + '</td>' +
+        '<td>' + escC(r.course) + '</td>' +
+        '<td>' + escC(r.centre) + '</td>' +
+        '<td style="text-align:right">' + money(r.net_payable) + '</td>' +
+        '<td style="text-align:right;color:var(--green)">' + money(r.collected) + '</td>' +
+        '<td style="text-align:right;color:var(--red)">' + money(r.outstanding) + '</td>' +
+        '<td style="text-align:right;font-weight:600;color:' + statusColor + '">' + escC(r.fee_status) + '</td>' +
+      '</tr>';
+    }).join('');
+  } else {
+    pendingBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted)">No pending or overdue balances match these filters. 🎉</td></tr>';
+  }
+
+  const summaryEl = document.getElementById('fee-filter-summary');
+  if (summaryEl) {
+    summaryEl.textContent = rows.length + ' student fee record' + (rows.length === 1 ? '' : 's') + ' matching current filters';
+  }
+}
+
+// Full per-student, per-installment ledger — respects whatever Month/Course/Centre/Status
+// filters are currently applied, so what the auditor downloads matches what's on screen.
+function downloadFeeAuditCsv() {
+  const rows = getFilteredFeeRows();
+  const lines = [[
+    'Student ID', 'Student Name', 'Batch Code', 'Course', 'Centre', 'Business Month',
+    'Net Payable', 'Total Collected', 'Outstanding', 'Fee Status',
+    'Inst.1 Amount', 'Inst.1 Due', 'Inst.1 Paid', 'Inst.1 Paid Date', 'Inst.1 Mode', 'Inst.1 Reference',
+    'Inst.2 Amount', 'Inst.2 Due', 'Inst.2 Paid', 'Inst.2 Paid Date', 'Inst.2 Mode', 'Inst.2 Reference',
+    'Inst.3 Amount', 'Inst.3 Due', 'Inst.3 Paid', 'Inst.3 Paid Date', 'Inst.3 Mode', 'Inst.3 Reference',
+    'Discount %', 'Discount Amount', 'Discount Reason', 'TDS %', 'TDS Amount',
+    'Entered By', 'Recorded At'
+  ]];
+  rows.forEach(r => {
+    lines.push([
+      r.student_id, r.student_name, r.batch_code, r.course, r.centre, r.month,
+      r.net_payable, r.collected, r.outstanding, r.fee_status,
+      r.inst1_amount, r.inst1_due, r.inst1_paid, r.inst1_paid_date, r.inst1_mode, r.inst1_reference,
+      r.inst2_amount, r.inst2_due, r.inst2_paid, r.inst2_paid_date, r.inst2_mode, r.inst2_reference,
+      r.inst3_amount, r.inst3_due, r.inst3_paid, r.inst3_paid_date, r.inst3_mode, r.inst3_reference,
+      r.discount_pct, r.discount_amount, r.discount_reason, r.tds_pct, r.tds_amount,
+      r.entered_by, r.updated_at
+    ]);
+  });
+  if (!rows.length) {
+    showToast('No fee records match the current filters — nothing to export.', 'error');
+    return;
+  }
+  triggerCsvDownload(lines, 'Fee-Audit-Report-' + todayStamp() + '.csv');
+}
+
+function todayStamp() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
 // ── Render Tab 4: Academic Summary ────────────────────────────

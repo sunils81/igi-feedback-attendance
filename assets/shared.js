@@ -577,7 +577,14 @@ window.gasGet = (function () {
       outstanding: outstanding,
       fee_status: feeStatus,
       entered_by: r.recorded_by || '',
-      updated_at: r.created_at || ''
+      updated_at: r.created_at || '',
+      // "Business month" — same convention as h_getStudentRevenueDerived / revenue_monthly_achieved:
+      // the month the fee record was entered/recorded (created_at), in YYYY-MM. Used for the
+      // month-wise filter on the admin Fee Reconciliation report.
+      month: r.created_at ? (function() {
+        var dt = new Date(r.created_at);
+        return isNaN(dt.getTime()) ? '' : (dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0'));
+      })() : ''
     };
   }
 
@@ -3099,7 +3106,11 @@ window.gasGet = (function () {
         fee: {
           national: feeNational,
           centres: Object.keys(feeByCentre).map(function(k) { return feeByCentre[k]; }),
-          batches: Object.keys(feeByBatch).map(function(k) { return feeByBatch[k]; })
+          batches: Object.keys(feeByBatch).map(function(k) { return feeByBatch[k]; }),
+          // Full per-student, per-installment records — powers the Month/Course/Centre/Status
+          // filters, the Pending/Overdue Students list, and the auditor CSV export on the
+          // admin Fee Reconciliation tab. (Rollups above stay as-is for backward compatibility.)
+          students: mappedFees
         },
         attendance: attendance,
         tests: testSummary,

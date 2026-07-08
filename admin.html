@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=29"></script>
+<script src="assets/shared.js?v=30"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style>
@@ -1441,41 +1441,8 @@
               <th>YoY Growth</th>
             </tr>
           </thead>
-          <tbody>
-            <tr>
-              <td>April <span style="font-size:9px;color:var(--muted)">(M1)</span></td>
-              <td class="text-right">40,82,340</td>
-              <td class="text-right">32,19,910</td>
-              <td class="text-right">69,39,770</td>
-              <td><span class="growth-badge positive">+115.5%</span></td>
-            </tr>
-            <tr>
-              <td>May <span style="font-size:9px;color:var(--muted)">(M2)</span></td>
-              <td class="text-right">57,35,371</td>
-              <td class="text-right">57,35,371</td>
-              <td class="text-right">74,03,275</td>
-              <td><span class="growth-badge positive">+29.1%</span></td>
-            </tr>
-            <tr style="color:var(--muted);font-style:italic">
-              <td colspan="5" style="font-size:11px;padding:6px 8px">Jun–Mar: data will populate as months are entered</td>
-            </tr>
-            <tr style="border-top:1.5px solid var(--border);font-weight:bold;color:var(--gold)">
-              <td>Cycle YTD (Apr–May)</td>
-              <td class="text-right">98,17,711</td>
-              <td class="text-right">89,55,281</td>
-              <td class="text-right">1,43,43,045</td>
-              <td><span class="growth-badge positive">+60.2%</span></td>
-            </tr>
-            <tr>
-              <td colspan="5" style="padding:10px 0;background:transparent;">
-                <div class="info-callout-banner">
-                  <span class="icon">ℹ️</span>
-                  <div>
-                    <em>Jan–Mar 2026 (pre-cycle):</em> ₹83.4L + ₹73.2L + ₹35.5L = <strong>₹1.92Cr</strong> collected — not counted above
-                  </div>
-                </div>
-              </td>
-            </tr>
+          <tbody id="appraisal-cycle-tbody">
+            <tr><td colspan="5" style="text-align:center;color:var(--muted)">Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -1768,10 +1735,29 @@
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
           <h2 style="margin-bottom:0">📊 Academic Summary & Instructor Ratings</h2>
-          <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="window.print()">🖨️ Print / Save PDF</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="downloadFeedbackCsv()">📄 Download Feedback Report (CSV)</button>
+            <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="window.print()">🖨️ Print / Save PDF</button>
+          </div>
         </div>
-        <p class="sub">Consolidated ratings, session-wise feedback, and test completion benchmarks.</p>
-        
+        <p class="sub">Consolidated ratings, session-wise feedback, and test completion benchmarks. Filters below apply to the export.</p>
+
+        <div style="display:flex;gap:12px;align-items:center;margin-top:8px;margin-bottom:6px;flex-wrap:wrap" class="no-print">
+          <select id="acad-filter-instructor" onchange="renderAcademicCommentsFiltered()"
+            style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+            <option value="">All Instructors</option>
+          </select>
+          <select id="acad-filter-centre" onchange="renderAcademicCommentsFiltered()"
+            style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+            <option value="">All Centres</option>
+          </select>
+          <select id="acad-filter-course" onchange="renderAcademicCommentsFiltered()"
+            style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+            <option value="">All Courses</option>
+          </select>
+          <span id="acad-filter-summary" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
+        </div>
+
         <div class="charts-grid">
           <div class="chart-card">
             <div class="chart-title">⭐ Instructor Ratings</div>
@@ -4857,6 +4843,118 @@ function renderRevenueCharts(totalAchieved, rows) {
       }
     });
   }
+
+  renderAppraisalCycleTable();
+}
+
+// Appraisal Cycle YoY table — this used to be static HTML with April/May hand-typed once and
+// never updated (which is why June never "reflected" here — nothing did, automatically).
+// FY26-27 is now summed live from dashboardData.revenue.monthlyRows (same technique as the
+// Monthly Collections Trajectory chart above). FY24-25/FY25-26 are genuinely closed, historical
+// books, so they stay sourced from the HIST_REVENUE reference dataset — but computed here
+// instead of hand-copied, which also fixes a copy-paste bug where May FY25-26 was showing
+// April/May FY24-25's number instead of its own.
+function renderAppraisalCycleTable() {
+  const tbody = document.getElementById('appraisal-cycle-tbody');
+  if (!tbody) return;
+
+  const cycleMonths = [
+    { label: 'April',     short: 'M1',  cal: [2026, 4]  },
+    { label: 'May',       short: 'M2',  cal: [2026, 5]  },
+    { label: 'June',      short: 'M3',  cal: [2026, 6]  },
+    { label: 'July',      short: 'M4',  cal: [2026, 7]  },
+    { label: 'August',    short: 'M5',  cal: [2026, 8]  },
+    { label: 'September', short: 'M6',  cal: [2026, 9]  },
+    { label: 'October',   short: 'M7',  cal: [2026, 10] },
+    { label: 'November',  short: 'M8',  cal: [2026, 11] },
+    { label: 'December',  short: 'M9',  cal: [2026, 12] },
+    { label: 'January',   short: 'M10', cal: [2027, 1]  },
+    { label: 'February',  short: 'M11', cal: [2027, 2]  },
+    { label: 'March',     short: 'M12', cal: [2027, 3]  }
+  ];
+
+  function hist(year, monthNum) {
+    const arr = HIST_REVENUE[year];
+    return arr ? (arr[monthNum - 1] || 0) : 0;
+  }
+
+  // Live FY26-27 totals per month (incl. GST), plus how many rows for that month are still
+  // unlocked drafts — shown as an informational footnote rather than hidden, since the rest
+  // of the dashboard (HR view, overall YTD) also counts unlocked entries.
+  const liveByMonth = {};
+  const draftByMonth = {};
+  ((dashboardData.revenue && dashboardData.revenue.monthlyRows) || []).forEach(mr => {
+    const key = mr.month;
+    liveByMonth[key] = (liveByMonth[key] || 0) + (Number(mr.achievedGst) || 0);
+    if (!window.isRevenueLocked(mr.locked)) draftByMonth[key] = (draftByMonth[key] || 0) + 1;
+  });
+
+  const rows = cycleMonths.map(m => {
+    const [y, mo] = m.cal;
+    const key = y + '-' + String(mo).padStart(2, '0');
+    const hasLive = liveByMonth.hasOwnProperty(key);
+    return {
+      label: m.label, short: m.short,
+      fy2425: hist(y - 2, mo),
+      fy2526: hist(y - 1, mo),
+      fy2627: hasLive ? liveByMonth[key] : null,
+      draftCount: draftByMonth[key] || 0,
+      hasLive
+    };
+  });
+
+  function growthBadge(curr, prev) {
+    if (!prev) return '<span class="growth-badge positive">—</span>';
+    const pct = Math.round((curr - prev) / prev * 1000) / 10;
+    return '<span class="growth-badge ' + (pct >= 0 ? 'positive' : 'negative') + '">' + (pct >= 0 ? '+' : '') + pct + '%</span>';
+  }
+
+  let html = '';
+  let monthsWithLiveData = 0;
+  const ytd = { fy2425: 0, fy2526: 0, fy2627: 0 };
+
+  rows.forEach(r => {
+    if (!r.hasLive) return;
+    monthsWithLiveData++;
+    ytd.fy2425 += r.fy2425; ytd.fy2526 += r.fy2526; ytd.fy2627 += r.fy2627;
+    const draftNote = r.draftCount > 0
+      ? ' <span style="font-size:9px;color:var(--muted)" title="' + r.draftCount + ' ' + (r.draftCount === 1 ? 'entry' : 'entries') + ' still in Draft, not yet locked">*</span>'
+      : '';
+    html += '<tr>' +
+      '<td>' + r.label + ' <span style="font-size:9px;color:var(--muted)">(' + r.short + ')</span></td>' +
+      '<td class="text-right">' + Math.round(r.fy2425).toLocaleString('en-IN') + '</td>' +
+      '<td class="text-right">' + Math.round(r.fy2526).toLocaleString('en-IN') + '</td>' +
+      '<td class="text-right">' + Math.round(r.fy2627).toLocaleString('en-IN') + draftNote + '</td>' +
+      '<td>' + growthBadge(r.fy2627, r.fy2526) + '</td>' +
+    '</tr>';
+  });
+
+  const remaining = rows.length - monthsWithLiveData;
+  if (remaining > 0) {
+    const nextLabel = rows[monthsWithLiveData].label;
+    html += '<tr style="color:var(--muted);font-style:italic"><td colspan="5" style="font-size:11px;padding:6px 8px">' +
+      nextLabel + '–March: data will populate as months are entered</td></tr>';
+  }
+
+  const ytdLabel = monthsWithLiveData > 0 ? ('Cycle YTD (Apr–' + rows[monthsWithLiveData - 1].label + ')') : 'Cycle YTD';
+  html += '<tr style="border-top:1.5px solid var(--border);font-weight:bold;color:var(--gold)">' +
+    '<td>' + ytdLabel + '</td>' +
+    '<td class="text-right">' + Math.round(ytd.fy2425).toLocaleString('en-IN') + '</td>' +
+    '<td class="text-right">' + Math.round(ytd.fy2526).toLocaleString('en-IN') + '</td>' +
+    '<td class="text-right">' + Math.round(ytd.fy2627).toLocaleString('en-IN') + '</td>' +
+    '<td>' + growthBadge(ytd.fy2627, ytd.fy2526) + '</td>' +
+  '</tr>';
+
+  const preJan = hist(2026, 1), preFeb = hist(2026, 2), preMar = hist(2026, 3);
+  const preTotal = preJan + preFeb + preMar;
+  html += '<tr><td colspan="5" style="padding:10px 0;background:transparent;">' +
+    '<div class="info-callout-banner"><span class="icon">ℹ️</span><div>' +
+      '<em>Jan–Mar 2026 (pre-cycle):</em> ' + moneyShort(preJan) + ' + ' + moneyShort(preFeb) + ' + ' + moneyShort(preMar) +
+      ' = <strong>' + moneyShort(preTotal) + '</strong> collected — not counted above' +
+    '</div></div>' +
+  '</td></tr>';
+
+  tbody.innerHTML = html || '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No revenue data yet.</td></tr>';
 }
 
 // ── Render Tab 2: Targets (Sunil Only) ────────────────────────
@@ -5287,6 +5385,97 @@ function todayStamp() {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
+// Shared renderer for the Student Voice Comments Timeline — used both for the initial
+// unfiltered load and whenever the Instructor/Centre/Course filters change.
+function renderAcademicCommentsList(comms) {
+  const cList = document.getElementById('acad-comments-list');
+  if (!cList) return;
+  if (comms.length) {
+    cList.innerHTML = comms.map(c => {
+      const ratingStars = '★'.repeat(Number(c.rating) || 0);
+      let contentHtml = '';
+      if (c.q3) contentHtml += '<div style="margin-top:5px;font-size:12px;color:var(--navy)"><strong>What went well:</strong> ' + escC(c.q3) + '</div>';
+      if (c.q4) contentHtml += '<div style="margin-top:4px;font-size:12px;color:#A82D2D"><strong>Areas to improve:</strong> ' + escC(c.q4) + '</div>';
+      if (c.q5) contentHtml += '<div style="margin-top:4px;font-size:12px;color:#8F6D21"><strong>Suggestions:</strong> ' + escC(c.q5) + '</div>';
+      if (c.q6) contentHtml += '<div style="margin-top:6px;font-size:12px;color:var(--navy);background:rgba(201,168,76,0.06);padding:6px 10px;border-left:3px solid var(--gold);border-radius:4px;margin-top:6px"><strong>Message for HOD:</strong> ' + escC(c.q6) + '</div>';
+      if (!contentHtml) contentHtml = '<div style="margin-top:4px;font-size:11px;color:var(--muted);font-style:italic">No text comments submitted.</div>';
+
+      return '<div class="timeline-card" style="margin-bottom:8px">' +
+        '<div class="timeline-head" style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">' +
+          '<div class="timeline-title" style="font-size:13px;font-weight:700;color:var(--navy)">Session: ' + escC(c.sessionCode || 'General') + ' <span style="font-weight:400;font-size:11px;color:var(--muted)">(' + escC(c.course) + ' &middot; ' + escC(c.batchCode) + ')</span></div>' +
+          '<div class="timeline-meta" style="font-size:10px;color:var(--muted)">' + escC(c.studentName || '[Anonymous]') + ' &middot; <span class="star-rating" style="color:var(--gold)">' + ratingStars + '</span></div>' +
+        '</div>' +
+        '<div class="timeline-topic" style="font-size:12px;color:var(--navy);line-height:1.45">Instructor: <strong>' + escC(c.instructor) + '</strong> (' + escC(c.centre) + ')</div>' +
+        '<div style="margin-top:4px">' + contentHtml + '</div>' +
+      '</div>';
+    }).join('');
+  } else {
+    cList.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px">No text comments recorded.</div>';
+  }
+}
+
+function populateAcademicFilterOptions(rows) {
+  const instrSel = document.getElementById('acad-filter-instructor');
+  if (!instrSel || instrSel.dataset.populated === '1') return; // populate once per load
+  const courseSel = document.getElementById('acad-filter-course');
+  const centreSel = document.getElementById('acad-filter-centre');
+
+  const instructors = Array.from(new Set(rows.map(r => r.instructor).filter(Boolean))).sort();
+  const centres = Array.from(new Set(rows.map(r => r.centre).filter(Boolean))).sort();
+  const courses = Array.from(new Set(rows.map(r => r.course).filter(Boolean))).sort();
+
+  instructors.forEach(i => { const o = document.createElement('option'); o.value = i; o.textContent = i; instrSel.appendChild(o); });
+  centres.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; centreSel.appendChild(o); });
+  courses.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; courseSel.appendChild(o); });
+  instrSel.dataset.populated = '1';
+}
+
+function getFilteredFeedbackRows(rows) {
+  const instructor = (document.getElementById('acad-filter-instructor') || {}).value || '';
+  const centre = (document.getElementById('acad-filter-centre') || {}).value || '';
+  const course = (document.getElementById('acad-filter-course') || {}).value || '';
+  return rows.filter(r => {
+    if (instructor && r.instructor !== instructor) return false;
+    if (centre && r.centre !== centre) return false;
+    if (course && r.course !== course) return false;
+    return true;
+  });
+}
+
+function renderAcademicCommentsFiltered() {
+  const comms = getFilteredFeedbackRows(window.__academicComments || []);
+  renderAcademicCommentsList(comms);
+  const summaryEl = document.getElementById('acad-filter-summary');
+  if (summaryEl) {
+    const total = getFilteredFeedbackRows(window.__academicAllFeedback || []).length;
+    summaryEl.textContent = total + ' feedback record' + (total === 1 ? '' : 's') + ' matching current filters';
+  }
+}
+
+// Auditor export — every feedback submission (not just ones with written comments),
+// respecting the Instructor/Centre/Course filters currently applied.
+function downloadFeedbackCsv() {
+  const rows = getFilteredFeedbackRows(window.__academicAllFeedback || []);
+  if (!rows.length) {
+    showToast('No feedback records match the current filters — nothing to export.', 'error');
+    return;
+  }
+  const lines = [[
+    'Session Code', 'Student Name', 'Student ID', 'Anonymous', 'Batch Code', 'Centre', 'Course',
+    'Instructor', 'Topic', 'Rating (/5)', 'Q3 (Pace)', 'Q4 (Doubts Addressed)',
+    'Q5 (Suggestions)', 'Q6 (Message for HOD)', 'Submitted At'
+  ]];
+  rows.forEach(r => {
+    lines.push([
+      r.sessionCode || '', r.isAnonymous ? '[Anonymous]' : (r.studentName || ''), r.isAnonymous ? '' : (r.studentId || ''),
+      r.isAnonymous ? 'Yes' : 'No', r.batchCode || '', r.centre || '', r.course || '',
+      r.instructor || '', r.topic || '', r.rating || '', r.q3 || '', r.q4 || '', r.q5 || '', r.q6 || '',
+      r.timestamp || ''
+    ]);
+  });
+  triggerCsvDownload(lines, 'Feedback-Report-' + todayStamp() + '.csv');
+}
+
 // ── Render Tab 4: Academic Summary ────────────────────────────
 function renderAcademicTab() {
   const params = {
@@ -5333,32 +5522,12 @@ function renderAcademicTab() {
       }
     }
     
-    // Comments
-    const comms = d.comments || [];
-    const cList = document.getElementById('acad-comments-list');
-    if (comms.length) {
-      cList.innerHTML = comms.map(c => {
-        const ratingStars = '★'.repeat(Number(c.rating) || 0);
-        let contentHtml = '';
-        if (c.q3) contentHtml += '<div style="margin-top:5px;font-size:12px;color:var(--navy)"><strong>What went well:</strong> ' + escC(c.q3) + '</div>';
-        if (c.q4) contentHtml += '<div style="margin-top:4px;font-size:12px;color:#A82D2D"><strong>Areas to improve:</strong> ' + escC(c.q4) + '</div>';
-        if (c.q5) contentHtml += '<div style="margin-top:4px;font-size:12px;color:#8F6D21"><strong>Suggestions:</strong> ' + escC(c.q5) + '</div>';
-        if (c.q6) contentHtml += '<div style="margin-top:6px;font-size:12px;color:var(--navy);background:rgba(201,168,76,0.06);padding:6px 10px;border-left:3px solid var(--gold);border-radius:4px;margin-top:6px"><strong>Message for HOD:</strong> ' + escC(c.q6) + '</div>';
-        if (!contentHtml) contentHtml = '<div style="margin-top:4px;font-size:11px;color:var(--muted);font-style:italic">No text comments submitted.</div>';
+    // Comments — cache raw data for filtering/export, then render via the shared helper
+    window.__academicComments = d.comments || [];
+    window.__academicAllFeedback = d.allFeedback || [];
+    populateAcademicFilterOptions(window.__academicAllFeedback);
+    renderAcademicCommentsFiltered();
 
-        return '<div class="timeline-card" style="margin-bottom:8px">' +
-          '<div class="timeline-head" style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">' +
-            '<div class="timeline-title" style="font-size:13px;font-weight:700;color:var(--navy)">Session: ' + escC(c.sessionCode || 'General') + ' <span style="font-weight:400;font-size:11px;color:var(--muted)">(' + escC(c.course) + ' &middot; ' + escC(c.batchCode) + ')</span></div>' +
-            '<div class="timeline-meta" style="font-size:10px;color:var(--muted)">' + escC(c.studentName || '[Anonymous]') + ' &middot; <span class="star-rating" style="color:var(--gold)">' + ratingStars + '</span></div>' +
-          '</div>' +
-          '<div class="timeline-topic" style="font-size:12px;color:var(--navy);line-height:1.45">Instructor: <strong>' + escC(c.instructor) + '</strong> (' + escC(c.centre) + ')</div>' +
-          '<div style="margin-top:4px">' + contentHtml + '</div>' +
-        '</div>';
-      }).join('');
-    } else {
-      cList.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px">No text comments recorded.</div>';
-    }
-    
     // Attendance
     const attCentres = d.attendance ? Object.values(d.attendance.centres || {}) : [];
     const aBody = document.getElementById('acad-attendance-tbody');

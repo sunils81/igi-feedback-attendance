@@ -585,15 +585,15 @@ canvas{display:block}
           <div class="nat-stat-lbl">vs Annual BP</div>
         </div>
         <div class="nat-stat">
-          <div class="nat-stat-val" style="color:var(--lime)">↑28%</div>
+          <div class="nat-stat-val" style="color:var(--lime)" id="natVsPY" title="No prior-year per-counsellor data source is wired yet">—</div>
           <div class="nat-stat-lbl">vs PY Q1</div>
         </div>
         <div class="nat-stat">
-          <div class="nat-stat-val" style="color:var(--gold)">Bianca</div>
+          <div class="nat-stat-val" style="color:var(--gold)" id="natTopQ1">—</div>
           <div class="nat-stat-lbl">🏆 Top Q1</div>
         </div>
         <div class="nat-stat">
-          <div class="nat-stat-val" style="color:var(--gold2)">Anuradha</div>
+          <div class="nat-stat-val" style="color:var(--gold2)" id="natMostImproved">—</div>
           <div class="nat-stat-lbl">📈 Most Improved</div>
         </div>
       </div>
@@ -797,6 +797,27 @@ async function loadData(){
       pyQ1:null,
       bpIdx:Math.round(t.annual_course_fee_target/4/100000*10)/10,
     })).sort((a,b)=>b.achQ1-a.achQ1);
+    // Real trailing-month sparkline per counsellor (up to the last 6 distinct months that
+    // actually have data), replacing the hardcoded Jan-Jun mock trend.
+    const monthsSorted=Array.from(new Set(monthly.map(r=>r.month))).sort();
+    const sparkMonths=monthsSorted.slice(-6);
+    if(sparkMonths.length){
+      const sparkMap={};
+      monthly.forEach(r=>{
+        if(sparkMonths.indexOf(r.month)<0)return;
+        if(!sparkMap[r.counsellor])sparkMap[r.counsellor]={};
+        sparkMap[r.counsellor][r.month]=(sparkMap[r.counsellor][r.month]||0)+Number(r.achieved_course_fee||0);
+      });
+      const newSparks={};
+      Object.keys(sparkMap).forEach(name=>{
+        newSparks[name]=sparkMonths.map(m=>Math.round((sparkMap[name][m]||0)/100000*10)/10);
+      });
+      SPARKS=newSparks;
+      SPARK_MONTHS_LABEL=sparkMonths.map(m=>{
+        const [y,mo]=m.split('-');
+        return new Date(Number(y),Number(mo)-1,1).toLocaleDateString('en-IN',{month:'short'});
+      }).join('–')+' monthly ₹L';
+    }
     // Centre Q1 achieved (by business_centre)
     const centreAchMap={};
     monthly.forEach(r=>{
@@ -1078,8 +1099,11 @@ let HOD_DATA=[
   {instr:'Sharoon Joy',type:'Marks Entry',batch:'DG-CH-A01',centre:'Chennai',status:'In Review',date:'Jun 26'},
 ];
 
-// Sparkline monthly data per counsellor (last 6 months, Jan-Jun 2026)
-const SPARKS={
+// Sparkline monthly data per counsellor — demo values shown until loadData() replaces them
+// with a real trailing-month trend derived from revenue_monthly_achieved (was previously a
+// hardcoded mock that never updated, showing the same fake trend for every counsellor
+// regardless of their actual performance).
+let SPARKS={
   'Anuradha':[18,22,21,26,25,20],
   'Bianca':[12,9,5,17,10,10],
   'Sunita':[22,15,2,4,6,0],
@@ -1092,6 +1116,7 @@ const SPARKS={
   'Kripa':[0,0,2,2,2,2],
   'Arjun Mistry':[0,0,1,1,1,0],
 };
+let SPARK_MONTHS_LABEL='Jan–Jun 2026 monthly ₹L';
 
 // CRM pipeline
 let CRM_FUNNEL=[1240,680,310,198,156];
@@ -1231,7 +1256,7 @@ function renderScorecards(){
         </div>
       </div>
       <div class="spark-bars" style="margin-top:10px">${spBars}</div>
-      <div style="font-size:9px;color:var(--ink3);margin-top:4px">Jan–Jun 2026 monthly ₹L</div>
+      <div style="font-size:9px;color:var(--ink3);margin-top:4px">${SPARK_MONTHS_LABEL}</div>
     </div>`;
   }).join('');
 }
@@ -1416,6 +1441,25 @@ function animateNatBanner(){
   });
   const lbl=document.getElementById('natPctLabel');
   if(lbl)setTimeout(()=>{lbl.textContent=pct+'% achieved';},600);
+
+  // Top Q1 / Most Improved — previously hardcoded to "Bianca"/"Anuradha" regardless of
+  // real standings. Top Q1 comes straight from the live, already-sorted COUNSELLORS list.
+  // Most Improved is derived from the same real sparkline trend used on the scorecards
+  // (first vs. last available month) since there's no live prior-year-per-counsellor
+  // data source to compute a true YoY "most improved" from.
+  const topEl=document.getElementById('natTopQ1');
+  if(topEl && COUNSELLORS.length) topEl.textContent=COUNSELLORS[0].name;
+  const impEl=document.getElementById('natMostImproved');
+  if(impEl){
+    let best=null, bestDelta=-Infinity;
+    Object.keys(SPARKS).forEach(name=>{
+      const s=SPARKS[name];
+      if(!s || s.length<2) return;
+      const delta=s[s.length-1]-s[0];
+      if(delta>bestDelta){bestDelta=delta;best=name;}
+    });
+    if(best && bestDelta>0) impEl.textContent=best;
+  }
 }
 
 // ══════════════════════════════════════════════════════

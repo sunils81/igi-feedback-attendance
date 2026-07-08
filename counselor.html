@@ -6245,7 +6245,7 @@ function revMonthlyMap() {
 function revMonthIsSavedLocked(monthKey, counsellor, assignedCentre) {
   var k = monthKey+'|'+revCanonical(counsellor)+'|'+assignedCentre;
   var rows = (revMonthlyMap()[k]||[]);
-  return rows.length > 0 && rows.some(function(r){ return r.locked !== false; });
+  return rows.length > 0 && rows.some(function(r){ return window.isRevenueLocked(r.locked); });
 }
 
 function revCentreTargetMap() {
@@ -6905,7 +6905,7 @@ function revCurrentStreak(counsellor, assignedCentre, runRate) {
 function revAchievementChips(open, rows, pct, streak) {
   if (!open) return '<div class="rev-motive-row"><span class="rev-ach-chip build">Scheduled</span></div>';
   var html = '<div class="rev-motive-row">';
-  var isDraft = rows.length > 0 && rows.every(function(r){ return r.locked === false; });
+  var isDraft = rows.length > 0 && rows.every(function(r){ return !window.isRevenueLocked(r.locked); });
   if (isDraft) html += '<span class="rev-ach-chip draft">&#9999; Draft</span>';
   if (pct >= 100) html += '<span class="rev-ach-chip beat">&#127942; Target Beat</span>';
   else if (pct >= 80) html += '<span class="rev-ach-chip track">&#9889; On Track</span>';
@@ -7180,7 +7180,7 @@ function renderRevenueMonthCards(counsellor) {
     var open  = revenueMonthOpen(m.key);
     var rows = revRowsForMonth(m.key, counsellor, designatedCentre);
     var totals = revTotalsFromRows(rows, designatedCentre);
-    var saved = rows.some(function(r){ return r.locked !== false; });
+    var saved = rows.some(function(r){ return window.isRevenueLocked(r.locked); });
     var pct = runRate ? Math.round((totals.totalGst / runRate) * 100) : (totals.totalGst ? 100 : 0);
     var variance = totals.totalGst - runRate;
     var status = !open ? 'Future' : (saved ? (variance >= 0 ? 'Ahead' : 'Behind') : 'Open');
@@ -7233,7 +7233,7 @@ function renderRevenueSavedBreakup(rows, designatedCentre, counsellor) {
   if (!rows.length) return '';
   var totals = revTotalsFromRows(rows, designatedCentre);
   var last = rows[rows.length-1] || {};
-  var draftText = last.locked === false ? ' <span style="color:#C06010;font-weight:bold">(Draft)</span> &middot;' : '';
+  var draftText = !window.isRevenueLocked(last.locked) ? ' <span style="color:#C06010;font-weight:bold">(Draft)</span> &middot;' : '';
   
   // Find individual other centres
   var otherRows = rows.filter(function(r){ return !revIsCorporate(r) && r.businessCentre !== designatedCentre; });
@@ -7769,7 +7769,7 @@ function revApplySavedMonthlyRows(rows, counsellor, assignedCentre, monthKey) {
     return !revSameSavedMonthScope(r, monthKey, counsellor, assignedCentre);
   }).concat(rows.map(function(r){
     return Object.assign({}, r, {
-      locked: r.locked !== 'N' && r.locked !== false && String(r.locked).toLowerCase() !== 'n',
+      locked: window.isRevenueLocked(r.locked),
       updatedBy: counsellor || 'Counselor',
       updatedAt: new Date().toISOString()
     });
@@ -7779,7 +7779,7 @@ function revApplySavedMonthlyRows(rows, counsellor, assignedCentre, monthKey) {
     return !revSameSavedMonthScope(r, monthKey, counsellor, assignedCentre);
   }).concat(rows.map(function(r){
     return Object.assign({}, r, {
-      locked: r.locked !== 'N' && r.locked !== false && String(r.locked).toLowerCase() !== 'n',
+      locked: window.isRevenueLocked(r.locked),
       updatedBy: counsellor || 'Counselor',
       updatedAt: new Date().toISOString()
     });
@@ -8261,7 +8261,7 @@ function downloadRevenueCsv() {
   var lines = [['Month','Period','Counsellor','Designated Centre','Admitted Centre','Category','Students','Course Fee (excl. GST)','GST (incl.)','Status','Saved By','Saved At','Notes']];
   rows.forEach(function(r) {
     var category = revIsCorporate(r) ? 'Corporate Programs' : (r.assignedCentre === r.businessCentre ? 'Own Centre' : 'Other Centre');
-    var status = (r.locked === 'N' || r.locked === false || String(r.locked).toLowerCase() === 'n') ? 'Draft' : 'Locked';
+    var status = window.isRevenueLocked(r.locked) ? 'Locked' : 'Draft';
     lines.push([
       r.month || '',
       r.period || '2026-27',
@@ -12277,6 +12277,10 @@ function seedInventoryItemsFromPortal() {
   });
 }
 
+// Persistent, hard-to-miss fee alert. Covers all three cases a counsellor needs to act on:
+// fee never entered (Pending), partially collected (Partial), and past-due (Overdue) — not
+// just Overdue, which was the only case the old version flagged. Re-runs on every login, so
+// dismissing the banner only hides it for the current session, not permanently.
 function loadOverdueFeesNotification() {
   if (!allowedCentres || !allowedCentres.length) return;
   gasGet({
@@ -12284,8 +12288,11 @@ function loadOverdueFeesNotification() {
     centres: allowedCentres.join(',')
   }, function(e, d) {
     if (e || !d || d.status !== 'ok') return;
-    var count = d.overdueCount || 0;
-    
+    var count = d.attentionCount || 0;
+    var overdue = d.overdueCount || 0;
+    var partial = d.partialCount || 0;
+    var pending = d.pendingCount || 0;
+
     // 1. Update the Fees tab badge
     var badge = document.getElementById('fees-overdue-badge');
     if (badge) {
@@ -12296,13 +12303,17 @@ function loadOverdueFeesNotification() {
         badge.style.display = 'none';
       }
     }
-    
-    // 2. Update the persistent fees reminder banner
+
+    // 2. Update the persistent fees reminder banner with a breakdown, not just a total
     var banner = document.getElementById('fees-reminder-banner');
     var text = document.getElementById('fees-reminder-text');
     if (banner && text) {
       if (count > 0) {
-        text.textContent = count + ' student' + (count > 1 ? 's' : '') + ' have overdue fee installments!';
+        var parts = [];
+        if (overdue > 0) parts.push(overdue + ' overdue');
+        if (partial > 0) parts.push(partial + ' partially paid');
+        if (pending > 0) parts.push(pending + ' fee not entered');
+        text.textContent = count + ' student' + (count > 1 ? 's' : '') + ' need fee action: ' + parts.join(', ') + '.';
         banner.style.display = 'flex';
       } else {
         banner.style.display = 'none';

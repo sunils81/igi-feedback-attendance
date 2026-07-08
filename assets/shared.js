@@ -143,6 +143,25 @@ window.gasGet = (function () {
     return clean(n1) === clean(n2);
   }
 
+  /* isRevenueLocked — canonical parser for revenue_monthly_achieved.locked.
+     That column is TEXT (not boolean) in Supabase, and has accumulated four different
+     encodings over time: 'Y'/'N' (legacy Google-Sheets-era writes), and the real JS
+     booleans true/false written by the current save path — which Postgres stores as the
+     literal TEXT strings "true"/"false" since the column isn't boolean-typed. The old check
+     `r.locked === 'Y' || r.locked === true` never matched that third encoding, so any row
+     saved via the current code always read back as unlocked/Draft even right after a
+     successful "Save & Lock". This is the single source of truth going forward — every
+     place that reads a locked value (shared.js, counselor.html, admin.html) should route
+     through this instead of ad hoc comparisons. */
+  function isRevenueLocked(v) {
+    if (v === true || v === false) return v;
+    var s = String(v == null ? '' : v).trim().toLowerCase();
+    if (s === 'y' || s === 'true' || s === '1') return true;
+    if (s === 'n' || s === 'false' || s === '0' || s === '') return false;
+    return false; // unrecognized value — default to Draft rather than silently claiming "locked"
+  }
+  if (typeof window !== 'undefined') window.isRevenueLocked = isRevenueLocked;
+
   /* ══════════════════════════════════════════════════════════════
      SHARED DIPLOMA-ELIGIBILITY SCORING ENGINE
      Single source of truth for student / instructor / counselor views.
@@ -1179,7 +1198,12 @@ window.gasGet = (function () {
     });
   }
 
-  /* getOverdueFeesCount */
+  /* getOverdueFeesCount — powers the counsellor portal's persistent "Fees" alert (badge +
+     red banner). Originally only flagged installments already past their due date
+     (fee_status === 'Overdue'), which missed the two other cases counsellors are asked to
+     act on: a student with NO fee entered at all yet (Pending), and one who's paid part
+     but not the rest (Partial, not yet overdue). Now returns counts for all three plus a
+     capped student list so the banner can name names, not just show a number. */
   function h_getOverdueFeesCount(p, cb) {
     var centres = p.centres || '';
     var qs = '';
@@ -1187,20 +1211,43 @@ window.gasGet = (function () {
       var parts = centres.split(',').map(function(c) { return encodeURIComponent(c.trim()); }).join(',');
       qs = 'centre=in.(' + parts + ')';
     }
+    var empty = { status: 'ok', overdueCount: 0, pendingCount: 0, partialCount: 0, attentionCount: 0, students: [] };
     GET('batches', qs ? qs + '&select=batch_code,centre,course' : 'select=batch_code,centre,course', function (e, batches) {
-      if (e || !batches || !batches.length) { cb(null, { status: 'ok', overdueCount: 0 }); return; }
-      
+      if (e || !batches || !batches.length) { cb(null, empty); return; }
+
       GET('student_fees', qs, function (e2, rows) {
-        if (e2 || !rows || !rows.length) { cb(null, { status: 'ok', overdueCount: 0 }); return; }
-        
-        var overdueCount = 0;
+        if (e2 || !rows || !rows.length) { cb(null, empty); return; }
+
+        var overdueCount = 0, pendingCount = 0, partialCount = 0;
+        var students = [];
         rows.forEach(function (r) {
           var mapped = parseFeeRow(r, null, batches);
-          if (mapped.feeStatus === 'Overdue' || mapped.fee_status === 'Overdue') {
-            overdueCount++;
+          var st = mapped.fee_status;
+          if (st === 'Overdue') overdueCount++;
+          else if (st === 'Pending') pendingCount++;
+          else if (st === 'Partial') partialCount++;
+          if (st === 'Overdue' || st === 'Pending' || st === 'Partial') {
+            students.push({
+              studentId: mapped.student_id, studentName: mapped.student_name,
+              batchCode: mapped.batch_code, centre: mapped.centre,
+              feeStatus: st, outstanding: mapped.outstanding
+            });
           }
         });
-        cb(null, { status: 'ok', overdueCount: overdueCount });
+        // Worst-first, then largest outstanding balance
+        students.sort(function(a, b) {
+          function rank(s) { return s === 'Overdue' ? 0 : (s === 'Partial' ? 1 : 2); }
+          var rd = rank(a.feeStatus) - rank(b.feeStatus);
+          return rd !== 0 ? rd : (Number(b.outstanding || 0) - Number(a.outstanding || 0));
+        });
+        cb(null, {
+          status: 'ok',
+          overdueCount: overdueCount,
+          pendingCount: pendingCount,
+          partialCount: partialCount,
+          attentionCount: overdueCount + pendingCount + partialCount,
+          students: students.slice(0, 25)
+        });
       });
     });
   }
@@ -2034,7 +2081,7 @@ window.gasGet = (function () {
         achievedCourse: r.achieved_course_fee,
         achievedGst: r.achieved_course_fee_gst,
         notes: r.notes,
-        locked: r.locked === 'Y' || r.locked === true,
+        locked: isRevenueLocked(r.locked),
         updatedBy: r.updated_by
       };
     });
@@ -2075,7 +2122,7 @@ window.gasGet = (function () {
         assignedCentre: r.assigned_centre, businessCentre: r.business_centre,
         businessType: r.business_type, studentCount: r.student_count,
         achievedCourse: r.achieved_course_fee, achievedGst: r.achieved_course_fee_gst,
-        notes: r.notes, locked: r.locked === 'Y' || r.locked === true, updatedBy: r.updated_by
+        notes: r.notes, locked: isRevenueLocked(r.locked), updatedBy: r.updated_by
       };
     });
 
@@ -2335,15 +2382,19 @@ window.gasGet = (function () {
     try { tRows  = JSON.parse(p.targets       || '[]'); } catch (x) {}
     try { ctRows = JSON.parse(p.centreTargets || '[]'); } catch (x) {}
     var mDB  = mRows.map(function (r) {
-      // locked column in Supabase is BOOLEAN — convert 'Y'/'N'/true/false → boolean
-      var isLocked = (r.locked === true || r.locked === 'Y');
+      // locked column in Supabase is TEXT, not boolean (confirmed live — it holds a mix of
+      // 'Y'/'N' legacy values and 'true'/'false' text from earlier boolean writes). Always
+      // write the canonical 'Y'/'N' string from here on so new rows never add a THIRD
+      // encoding; isRevenueLocked() is the single place that reads back any of the
+      // historical encodings consistently.
+      var isLocked = isRevenueLocked(r.locked);
       return { month: r.month, period: r.period || '2026-27',
         counsellor: r.counsellor, assigned_centre: r.assignedCentre || r.assigned_centre,
         business_centre: r.businessCentre || r.business_centre, business_type: r.businessType || r.business_type,
         student_count: Number(r.studentCount || r.student_count || 0),
         achieved_course_fee: Number(r.achievedCourse || r.achieved_course_fee || 0),
         achieved_course_fee_gst: Number(r.achievedGst || r.achieved_course_fee_gst || 0),
-        notes: r.notes || '', locked: isLocked, updated_by: p.updatedBy || 'Counselor', updated_at: nowISO() };
+        notes: r.notes || '', locked: isLocked ? 'Y' : 'N', updated_by: p.updatedBy || 'Counselor', updated_at: nowISO() };
     });
     var tDB  = tRows.map(function (r) { return { period: r.period || '2026-27', counsellor: r.counsellor,
       centre: r.centre, annual_course_fee_target: Number(r.targetCourse || r.annualCourseFeeTarget || 0),
@@ -3167,6 +3218,10 @@ window.gasGet = (function () {
 
       var instructorStats = {};
       var comments = [];
+      // Every feedback submission (not just ones with free-text q5/q6), for the auditor
+      // export — instructor/centre/course filterable. `comments` stays scoped to
+      // free-text-only for the on-screen Student Voice timeline, unchanged.
+      var allFeedback = [];
 
       (feedback || []).forEach(function(r) {
         var instRaw = r.instructor || batchInstructorMap[String(r.batch_code || '').toUpperCase()] || '';
@@ -3225,25 +3280,31 @@ window.gasGet = (function () {
         var course = r.course || (bObj ? bObj.course : '');
         var topic = r.topic || (sObj ? sObj.topic_covered : '');
 
-        // Only include entries that have meaningful free-text (q5 or q6); q3/q4 are button selections
+        var centre = r.centre || (stRow ? stRow.centre : '') || (bObj ? bObj.centre : '');
+        var feedbackRow = {
+          sessionCode: r.session_code,
+          studentId: studentId,
+          studentName: studentName,
+          batchCode: r.batch_code,
+          centre: centre,
+          course: course,
+          instructor: inst,
+          topic: topic,
+          rating: rating,
+          q3: q3,
+          q4: q4,
+          q5: q5,
+          q6: q6,
+          isAnonymous: isAnon,
+          timestamp: r.marked_at || ''
+        };
+
+        allFeedback.push(feedbackRow);
+
+        // Only include entries that have meaningful free-text (q5 or q6) in the on-screen
+        // timeline; q3/q4 are button selections, not comments.
         if (q5 || q6) {
-          comments.push({
-            sessionCode: r.session_code,
-            studentId: studentId,
-            studentName: studentName,
-            batchCode: r.batch_code,
-            centre: r.centre || (stRow ? stRow.centre : '') || (bObj ? bObj.centre : ''),
-            course: course,
-            instructor: inst,
-            topic: topic,
-            rating: rating,
-            q3: q3,
-            q4: q4,
-            q5: q5,
-            q6: q6,
-            isAnonymous: isAnon,
-            timestamp: r.marked_at || ''
-          });
+          comments.push(feedbackRow);
         }
       });
 
@@ -3258,6 +3319,7 @@ window.gasGet = (function () {
       });
 
       comments.sort(function(a,b) { return String(b.timestamp).localeCompare(String(a.timestamp)); });
+      allFeedback.sort(function(a,b) { return String(b.timestamp).localeCompare(String(a.timestamp)); });
 
       var attendance = buildAdminAttendanceSummaryJSON(batches, sessions, feedback, students);
       var testSummary = buildAdminTestSummaryJSON(assessments, marks, batches);
@@ -3266,6 +3328,7 @@ window.gasGet = (function () {
         status: 'ok',
         instructorStats: statsList,
         comments: comments.slice(0, 150),
+        allFeedback: allFeedback.slice(0, 5000),
         attendance: attendance,
         tests: testSummary
       });

@@ -1122,7 +1122,22 @@ window.gasGet = (function () {
     // the Fees tab with no name/batch context once the student record itself went Inactive.
     // Scoped to the same fullFilter as the enrollment removal so a student's OTHER batches
     // (and their fee records) are left untouched.
-    DEL('student_fees', fullFilter, function() {});
+    //
+    // Before deleting, capture each row's (recorded_by, centre, created_at) so the Revenue
+    // tab's auto-derived monthly snapshot (revenue_monthly_achieved, built by
+    // syncStudentRevenue from a live re-query of student_fees) can be recalculated afterwards.
+    // syncStudentRevenue only ever ran after a SAVE, never after a delete — so removing a fee
+    // record left that month's "Achieved" total permanently overstated by the deleted amount,
+    // exactly what happened with student 7094's fee showing up in Jul 2026 Hyderabad revenue
+    // long after both the student and the fee row were gone.
+    GET('student_fees', fullFilter, function(e0, feeRowsToRemove) {
+      (feeRowsToRemove || []).forEach(function(r) {
+        DEL('student_fees', 'id=eq.' + encodeURIComponent(r.id), function() {
+          syncStudentRevenue(r.recorded_by || 'Counselor', r.centre,
+            fmtMonthKey(new Date(r.created_at || Date.now())), '2026-27');
+        });
+      });
+    });
 
     DEL('enrollments', fullFilter, function() {
       GET('enrollments', sidFilter + '&status=eq.Active', function(e2, remaining) {
@@ -1446,7 +1461,13 @@ window.gasGet = (function () {
              '&limit=500';
 
     GET('student_fees', qs, function(e, rows) {
-      if (e || !rows || rows.length === 0) return;
+      // Note: previously bailed out entirely when rows.length === 0, which meant that
+      // deleting the LAST remaining fee record for a (counsellor, centre, month) left the
+      // last-written totals sitting in revenue_monthly_achieved forever, permanently
+      // overstating that month's "Achieved" revenue with no way to self-correct. Now we
+      // still write through with zeroed totals so a fully-emptied month reads as ₹0, not stale.
+      if (e) return;
+      rows = rows || [];
       var totalFee = 0, totalGst = 0;
       rows.forEach(function(r) {
         totalFee += Number(r.course_fee  || 0);
@@ -1466,7 +1487,7 @@ window.gasGet = (function () {
         // for every auto-derived own-centre row (confirmed live: ~74% understated for Jul-26).
         achieved_course_fee_gst: totalFee + totalGst,
         student_count: rows.length,
-        notes: 'auto-derived',
+        notes: rows.length ? 'auto-derived' : 'auto-derived (zeroed — no remaining fee records this month)',
         updated_at: new Date().toISOString()
       };
       POST('revenue_monthly_achieved',

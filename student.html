@@ -8,7 +8,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Student Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=29"></script>
+<script src="/assets/shared.js?v=41"></script>
 <style id="dyn-css"></style>
 <style>
 .batch-card{background:var(--white);border-radius:var(--radius);border:1.5px solid var(--border);padding:20px;margin-bottom:14px;box-shadow:var(--shadow);transition:border-color .2s}
@@ -3408,6 +3408,18 @@ function loadStudentDiploma() {
         weeklyRowsHtml = '<div style="font-size:11px;color:#9ca3af;padding:6px 0;">No weekly tests recorded yet</div>';
       }
 
+      // Fee status badge — a hard gate alongside academics; no HOD override can substitute
+      // for an unpaid balance, so it's shown as its own criterion here.
+      var feeInfo       = row.feeStatus || {};
+      var feePaid       = !!feeInfo.paid;
+      var feeHasRecord  = !!feeInfo.hasRecord;
+      var feeOutstanding = feeInfo.outstanding;
+      var feeBadge = !feeHasRecord
+        ? '<span style="color:#9ca3af;">—</span>'
+        : (feePaid
+            ? '<span style="color:'+G+';font-weight:700;">✅ Paid</span>'
+            : '<span style="color:'+R+';font-weight:700;">✗ ₹'+Math.round(feeOutstanding||0).toLocaleString('en-IN')+' due</span>');
+
       // Status section
       var weeklyAvgVal = row.weeklyAvg ? row.weeklyAvg.value : null;
       var weeklyPass   = row.weeklyAvg ? row.weeklyAvg.pass  : false;
@@ -3429,6 +3441,7 @@ function loadStudentDiploma() {
         }
         if (pracReq && !pracPass) missing.push('Practical ' + pracStr + ' (need ≥60%)');
         if (!finalPass) missing.push('Final exam ' + finalStr + ' (need ≥60%)');
+        if (!feePaid) missing.push(feeHasRecord ? ('Fee balance of ₹'+Math.round(feeOutstanding||0).toLocaleString('en-IN')+' outstanding') : 'No fee record on file — contact your counsellor');
         if (!missing.length) missing.push('Assessment in progress');
         statusHtml = '<span style="color:#dc2626;font-weight:800;font-size:13px;">⏳ Not yet eligible</span>' +
           '<div style="font-size:11px;color:#6b7280;margin-top:4px;">' + missing.join(' &nbsp;·&nbsp; ') + '</div>';
@@ -3439,8 +3452,8 @@ function loadStudentDiploma() {
         '<div style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">' +
           (row.course || '') + (row.batchCode ? ' &nbsp;·&nbsp; ' + row.batchCode : '') +
         '</div>' +
-        // Top row: Attendance, Weekly Avg, Practical, Final Exam
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">' +
+        // Top row: Attendance, Weekly Avg, Practical, Final Exam, Fee Status
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">' +
           '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
             '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">ATTENDANCE<br><span style="font-size:9px;font-weight:400;opacity:.8">advisory ≥75%</span></div>' +
             '<div style="font-size:15px;">' + attBadge + '</div>' +
@@ -3461,6 +3474,10 @@ function loadStudentDiploma() {
           '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
             '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">FINAL EXAM<br><span style="font-size:9px;font-weight:400;opacity:.8">must be ≥60%</span></div>' +
             '<div style="font-size:15px;">' + finalBadge + '</div>' +
+          '</div>' +
+          '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
+            '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">FEE STATUS<br><span style="font-size:9px;font-weight:400;opacity:.8">must be fully paid</span></div>' +
+            '<div style="font-size:15px;">' + feeBadge + '</div>' +
           '</div>' +
         '</div>' +
         // Weekly tests section — each test shown individually, not just the average

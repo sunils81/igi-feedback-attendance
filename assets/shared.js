@@ -192,6 +192,12 @@ window.gasGet = (function () {
     var attInfo     = opts.attInfo || { total: 0, present: 0 };
     var hodStatus   = opts.hodStatus || '';
     var dipRec      = opts.dipRec || null;
+    // feeInfo comes from parseFeeRow() for this exact (student, batch) pair. Absence of a
+    // fee record is treated as NOT paid (fail-safe) rather than silently passing — a
+    // student with no fee record at all shouldn't be able to slip through un-gated.
+    var feeInfo        = opts.feeInfo || null;
+    var feeOutstanding = feeInfo ? Number(feeInfo.outstanding || 0) : null;
+    var feePaid         = !!feeInfo && feeOutstanding <= 0;
 
     function markObtained(markRow) {
       if (!markRow || markRow.marks === null || markRow.marks === undefined || markRow.marks === '') return null;
@@ -271,7 +277,11 @@ window.gasGet = (function () {
     var attPct = attInfo.total > 0 ? Math.round(100 * attInfo.present / attInfo.total) : null;
     var attPass = attPct !== null && attPct >= 75;
 
-    var eligible = (weeklyPass && finalPass && practicalPass) || (hodStatus === 'Approved');
+    // Fee-paid is a hard gate: neither the academic pass conditions nor an HOD academic
+    // override can substitute for it. An HOD approving weak test scores does not, and
+    // should not, also forgive an outstanding fee balance — that requires the fee record
+    // itself to be cleared.
+    var eligible = ((weeklyPass && finalPass && practicalPass) || hodStatus === 'Approved') && feePaid;
 
     return {
       studentId: studentId, studentName: studentName, batchCode: batchCode, centre: centre, course: course,
@@ -280,6 +290,7 @@ window.gasGet = (function () {
       weeklyAvg: { value: weeklyAvgVal, pass: weeklyPass },
       practicalMarks: { value: practicalPct, pass: practicalPass, required: practicalRequired },
       finalExam: { value: finalPct, pass: finalPass },
+      feeStatus: { paid: feePaid, outstanding: feeOutstanding, hasRecord: !!feeInfo },
       eligible: eligible,
       hodStatus: hodStatus,
       diplomaStatus: dipRec ? 'Released' : 'Not Released',
@@ -3949,13 +3960,22 @@ window.gasGet = (function () {
       var pMarks = getP('assessment_marks', 'student_id=eq.' + encodeURIComponent(studentId));
       var pHod = getP('hod_approvals', 'ref_code=in.(' + batchCodes.map(function(bc) { return encodeURIComponent(bc + '-HOD-' + studentId); }).join(',') + ')');
       var pDips = getP('diplomas', 'student_id=eq.' + encodeURIComponent(studentId));
+      var pFees = getP('student_fees', 'student_id=eq.' + encodeURIComponent(studentId) + '&batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')');
 
-      var [batches, attRows, assessments, marks, hods, diplomas] = await Promise.all([
-        pBatches, pAtt, pAssess, pMarks, pHod, pDips
+      var [batches, attRows, assessments, marks, hods, diplomas, fees] = await Promise.all([
+        pBatches, pAtt, pAssess, pMarks, pHod, pDips, pFees
       ]);
 
       var batchMap = {};
       batches.forEach(function(b) { batchMap[b.batch_code] = b; });
+
+      // Fee-paid gate — same canonical outstanding-balance computation used everywhere else.
+      var feeByBatch = {};
+      fees.forEach(function(fr) {
+        var parsed = parseFeeRow(fr, null, batches);
+        var fbc = String(parsed.batch_code || '').toUpperCase();
+        feeByBatch[fbc] = parsed;
+      });
 
       var diplomaMap = {};
       diplomas.forEach(function(d) { diplomaMap[d.batch_code] = d; });
@@ -4011,7 +4031,8 @@ window.gasGet = (function () {
           marksMap: marksMap,
           attInfo: att,
           hodStatus: hodMap[bc] || '',
-          dipRec: diplomaMap[e.batch_code]
+          dipRec: diplomaMap[e.batch_code],
+          feeInfo: feeByBatch[bc] || null
         });
       });
 
@@ -4806,18 +4827,29 @@ window.gasGet = (function () {
       var pMarks = assessIds.length > 0 ? getP('assessment_marks', 'assessment_id=in.(' + assessIds.map(encodeURIComponent).join(',') + ')') : Promise.resolve([]);
       var pHod = getP('hod_approvals', 'status=eq.Approved');
       var pDips = getP('diplomas', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')');
+      var pFees = getP('student_fees', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')');
       // Multi-batch students (dual-enrolled) have ONE primary batch_code on the students row,
       // but can have additional Active rows in enrollments. Without this, a student whose real
       // test scores live under a batch other than their primary one (e.g. Yuvraj Saraf, primary
       // DEL-COL-JUN26 but actually tested under DEL-DG-JUN26) would never show up there.
       var pEnrollments = getP('enrollments', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')&status=eq.Active&select=student_id,batch_code');
 
-      var [students, sessions, attFeedback, marks, hods, diplomas, enrollments] = await Promise.all([
-        pStudents, pSessions, pAtt, pMarks, pHod, pDips, pEnrollments
+      var [students, sessions, attFeedback, marks, hods, diplomas, enrollments, fees] = await Promise.all([
+        pStudents, pSessions, pAtt, pMarks, pHod, pDips, pEnrollments, pFees
       ]);
 
       var studentMap = {};
       students.forEach(function(s) { studentMap[s.student_id] = s; });
+
+      // Fee-paid gate — parseFeeRow gives the canonical outstanding balance (already net of
+      // discount/TDS) for each (student, batch), matching what the admin Fee Reconciliation
+      // tab shows. No fee record for a student+batch => treated as unpaid (fail-safe).
+      var feeMap = {};
+      fees.forEach(function(fr) {
+        var parsed = parseFeeRow(fr, students, allBatches);
+        var fkey = parsed.student_id + '|' + String(parsed.batch_code || '').toUpperCase();
+        feeMap[fkey] = parsed;
+      });
 
       var diplomaMap = {};
       diplomas.forEach(function(d) { diplomaMap[d.student_id + '|' + String(d.batch_code || '').toUpperCase()] = d; });
@@ -4925,7 +4957,8 @@ window.gasGet = (function () {
             marksMap: marksByStudent[s.student_id] || {},
             attInfo: { total: totalSess, present: attended },
             hodStatus: hodStatus,
-            dipRec: diplomaMap[key]
+            dipRec: diplomaMap[key],
+            feeInfo: feeMap[key] || null
           });
 
           byBatch[bc].totalCount++;
@@ -4950,7 +4983,7 @@ window.gasGet = (function () {
       });
     }
     try {
-      var [students, batches, attRows, assessments, marks, diplomas, hods, enrollments] = await Promise.all([
+      var [students, batches, attRows, assessments, marks, diplomas, hods, enrollments, fees] = await Promise.all([
         getP('students', 'select=student_id,name,batch_code'),
         getP('batches', 'select=batch_code,centre,course,counselor'),
         getP('attendance_feedback', 'select=student_id,batch_code,attendance'),
@@ -4958,8 +4991,18 @@ window.gasGet = (function () {
         getP('assessment_marks', 'select=assessment_id,student_id,marks,remarks'),
         getP('diplomas', 'select=student_id,batch_code,released_by,released_at'),
         getP('hod_approvals', 'status=eq.Approved&select=ref_code,status'),
-        getP('enrollments', 'status=eq.Active&select=student_id,batch_code')
+        getP('enrollments', 'status=eq.Active&select=student_id,batch_code'),
+        getP('student_fees', '')
       ]);
+
+      // Fee-paid gate — same canonical outstanding-balance computation as the admin Fee
+      // Reconciliation tab. No fee record for a student+batch => treated as unpaid.
+      var feeMap = {};
+      fees.forEach(function(fr) {
+        var parsed = parseFeeRow(fr, students, batches);
+        var fkey = parsed.student_id + '|' + String(parsed.batch_code || '').toUpperCase();
+        feeMap[fkey] = parsed;
+      });
 
       var batchMap = {};
       batches.forEach(function(b) { batchMap[b.batch_code] = b; });
@@ -5040,7 +5083,8 @@ window.gasGet = (function () {
             marksMap: marksByStudent[st.student_id] || {},
             attInfo: attByStudentBatch[key] || { total: 0, present: 0 },
             hodStatus: hodMap[key] || '',
-            dipRec: diplomaMap[key]
+            dipRec: diplomaMap[key],
+            feeInfo: feeMap[key] || null
           });
           row.counselorName = b.counselor || '';
           diplomaList.push(row);

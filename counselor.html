@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=40"></script>
+<script src="/assets/shared.js?v=41"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -3252,11 +3252,12 @@
               <th class="text-center">Weekly Tests <span style="font-weight:400;font-size:10px;opacity:0.75">(WT1, WT2, WT3&hellip; + average, &ge;60%)</span></th>
               <th class="text-center">Practical <span style="font-weight:400;font-size:10px;opacity:0.75">(&ge;60%, if applicable)</span></th>
               <th class="text-center">Final Exam (&ge;60%)</th>
+              <th class="text-center">Fee Status <span style="font-weight:400;font-size:10px;opacity:0.75">(must be fully paid)</span></th>
               <th class="text-center">Status / Actions</th>
             </tr>
           </thead>
           <tbody id="diploma-tbody">
-            <tr><td colspan="8" style="text-align:center;padding:16px;color:var(--muted)">Loading diploma eligibility records...</td></tr>
+            <tr><td colspan="9" style="text-align:center;padding:16px;color:var(--muted)">Loading diploma eligibility records...</td></tr>
           </tbody>
         </table>
       </div>
@@ -8946,7 +8947,7 @@ async function loadDiplomaData() {
   var tbody = document.getElementById('diploma-tbody');
   if (!tbody) return;
 
-  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading diploma eligibility records...</p></div></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading diploma eligibility records...</p></div></td></tr>';
 
   // Uses the SAME scoring engine as the instructor + student portals (h_getDiplomaEligibilityAll
   // in shared.js -> buildDiplomaRow()), so this table can never disagree with what instructors
@@ -8955,7 +8956,7 @@ async function loadDiplomaData() {
     if (err || !d || d.status !== 'ok') {
       console.error('[Diploma] loadDiplomaData error:', err);
       var tbody2 = document.getElementById('diploma-tbody');
-      if (tbody2) tbody2.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--red);padding:16px">Failed to load diploma eligibility records.</td></tr>';
+      if (tbody2) tbody2.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--red);padding:16px">Failed to load diploma eligibility records.</td></tr>';
       return;
     }
 
@@ -8998,7 +8999,7 @@ function renderDiplomaTable(list) {
   if (!tbody) return;
   
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:16px">No student records found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:16px">No student records found.</td></tr>';
     return;
   }
 
@@ -9056,9 +9057,24 @@ function renderDiplomaTable(list) {
       ? (finalPass ? '<span style="color:#168B57;font-weight:700">✅ ' + finalStr + '</span>' : '<span style="color:#C94A4A;font-weight:700">❌ ' + finalStr + '</span>')
       : '<span style="color:var(--muted)">N/A</span>';
 
+    // Fee-paid gate — computed server-side by buildDiplomaRow() and baked into a.eligible,
+    // but shown here as its own column so the REASON a student is blocked is visible
+    // (rather than a generic "Ineligible") since fees, unlike academics, can't be waived
+    // by an HOD override.
+    var feeInfo       = a.feeStatus || {};
+    var feePaid       = !!feeInfo.paid;
+    var feeHasRecord  = !!feeInfo.hasRecord;
+    var feeOutstanding = feeInfo.outstanding;
+    var feeBadge = !feeHasRecord
+      ? '<span style="color:#C94A4A;font-weight:700">❌ No Fee Record</span>'
+      : (feePaid
+          ? '<span style="color:#168B57;font-weight:700">✅ Paid</span>'
+          : '<span style="color:#C94A4A;font-weight:700">❌ ₹' + Math.round(feeOutstanding).toLocaleString('en-IN') + ' Due</span>');
+
     // Release Diploma / Re-release / Request HOD stay restricted to Bianca & Anuradha.
     // Every other counsellor gets the same eligibility facts, view-only.
     var authorized = isDiplomaReleaseAuthorized();
+    var academicsOk = (weeklyPass && finalPass && pracPass) || a.hodStatus === 'Approved';
     var actionCell = '';
     var canRelease = false;
     if (a.diplomaStatus === 'Released') {
@@ -9085,6 +9101,13 @@ function renderDiplomaTable(list) {
       } else {
         actionCell = '<span class="badge" style="background:#ECFDF5;color:#168B57;border:1px solid #A7F3D0;padding:3px 8px;font-size:11px">✅ Eligible</span>' + approvedBadge;
       }
+    } else if (academicsOk && !feePaid) {
+      // Academics (or an HOD override) already clear the bar — the sole remaining blocker
+      // is the outstanding fee balance. No "Request HOD" here: an HOD can waive weak test
+      // scores, not an unpaid invoice, so surfacing that button would be misleading.
+      var feeMsg = feeHasRecord ? ('₹' + Math.round(feeOutstanding).toLocaleString('en-IN') + ' outstanding') : 'no fee record found';
+      actionCell = '<span class="badge" style="background:#FEF2F2;color:#DC2626;border:1px solid #FCA5A5;padding:3px 8px;font-size:11px">💰 Fee Outstanding</span>' +
+        '<div style="font-size:10px;color:var(--muted);margin-top:4px">' + escC(feeMsg) + '</div>';
     } else {
       var requestBtn = '';
       var isBorderline = (weeklyVal != null && weeklyVal >= 50 && weeklyVal < 60) || (finalVal != null && finalVal >= 50 && finalVal < 60) || (pracReq && pracVal != null && pracVal >= 50 && pracVal < 60);
@@ -9113,6 +9136,7 @@ function renderDiplomaTable(list) {
       '<td class="text-center">' + weeklyBadge + '</td>' +
       '<td class="text-center">' + pracBadge + '</td>' +
       '<td class="text-center">' + finalBadge + '</td>' +
+      '<td class="text-center">' + feeBadge + '</td>' +
       '<td class="text-center">' + actionCell + '</td>' +
     '</tr>';
   }).join('');

@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Instructor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=39"></script>
+<script src="/assets/shared.js?v=41"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style id="dyn-css"></style>
 <style>
@@ -8928,6 +8928,7 @@ function renderEligibility(batches) {
       html += '<th style="padding:7px 10px;text-align:center;">Weekly Tests<br><span style="font-size:10px;font-weight:400;">average must be ≥60%</span></th>';
       html += '<th style="padding:7px 10px;text-align:center;">Practical<br><span style="font-size:9px;font-weight:400;opacity:0.8;">must be ≥60%</span></th>';
       html += '<th style="padding:7px 10px;text-align:center;">Final Exam<br><span style="font-size:9px;font-weight:400;opacity:0.8;">must be ≥60%</span></th>';
+      html += '<th style="padding:7px 10px;text-align:center;">Fee Status<br><span style="font-size:9px;font-weight:400;opacity:0.8;">must be fully paid</span></th>';
       html += '<th style="padding:7px 10px;text-align:center;border-radius:0 6px 0 0;">Status</th>';
       html += '</tr></thead><tbody>';
 
@@ -8998,11 +8999,24 @@ function renderEligibility(batches) {
         const fVal = s.finalExam && s.finalExam.value !== null ? s.finalExam.value + '%' : null;
         html += '<td style="padding:7px 10px;text-align:center;">' + badge(fVal, s.finalExam && s.finalExam.pass, '') + '</td>';
 
+        // Fee status — hard gate alongside academics. No HOD override can clear an unpaid
+        // balance, so this is shown as its own column rather than folded into "Status".
+        const feeInfo = s.feeStatus || {};
+        html += '<td style="padding:7px 10px;text-align:center;">';
+        if (!feeInfo.hasRecord) {
+          html += '<span style="background:#fee2e2;color:#991b1b;font-weight:700;padding:2px 8px;border-radius:12px;font-size:11px;">No Record</span>';
+        } else if (feeInfo.paid) {
+          html += '<span style="background:#dcfce7;color:#166534;font-weight:700;padding:2px 8px;border-radius:12px;font-size:11px;">✅ Paid</span>';
+        } else {
+          html += '<span style="background:#fee2e2;color:#991b1b;font-weight:700;padding:2px 8px;border-radius:12px;font-size:11px;">₹' + Math.round(feeInfo.outstanding || 0).toLocaleString('en-IN') + ' Due</span>';
+        }
+        html += '</td>';
+
         // Overall
         const hasAnyScore = (s.weeklyAvg && s.weeklyAvg.value !== null) || (s.finalExam && s.finalExam.value !== null) || (prac && prac.value !== null);
         if (s.eligible) {
           html += '<td style="padding:7px 10px;text-align:center;"><span style="background:#0D1B2E;color:#C9A84C;font-weight:700;padding:3px 10px;border-radius:12px;font-size:11px;">✓ Eligible</span></td>';
-        } else if (!hasAnyScore) {
+        } else if (!hasAnyScore && feeInfo.paid) {
           html += '<td style="padding:7px 10px;text-align:center;"><span style="' + pendStyle + '">In Progress</span></td>';
         } else {
           const missing = [];
@@ -9013,6 +9027,8 @@ function renderEligibility(batches) {
           }
           if (prac && prac.required && !prac.pass) missing.push('Practical');
           if (!s.finalExam || !s.finalExam.pass) missing.push('Final');
+          if (!feeInfo.paid) missing.push('Fee');
+          if (!missing.length) missing.push('Pending');
           html += '<td style="padding:7px 10px;text-align:center;"><span style="' + failStyle + '">✗ ' + missing.join(', ') + '</span></td>';
         }
         html += '</tr>';

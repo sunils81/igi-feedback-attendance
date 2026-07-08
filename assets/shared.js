@@ -1296,19 +1296,30 @@ window.gasGet = (function () {
   function h_saveFee(p, cb) {
     var n   = Number(p.nInst || 1);
     var cf  = Number(p.courseFee || 0);
-    var gst = Math.round(cf * 0.18);   // GST on course fee ONLY
-    var rf  = Number(p.regFee || 0);   // registration fee, base amount
+    var dp  = Number(p.discountPct || 0);
+    var da  = Number(p.discountAmt || Math.round(cf * dp / 100));
+    // Discount is applied to the course fee BEFORE GST. Computing GST on the full
+    // pre-discount fee and only then subtracting a GST-free discount effectively charged
+    // 18% GST on the discount itself (cf*1.18 - da  !=  (cf-da)*1.18) — a real bug, confirmed
+    // live: a 5% discount on Rs.1,65,900 was inflating net payable by ~Rs.1,493.
+    var netCf = cf - da;
+    var gst = Math.round(netCf * 0.18);   // GST on the discounted course fee, course fee ONLY
+    // Registration fee is a component ALREADY INCLUDED within the quoted course fee for
+    // every course — never an amount charged on top of it (confirmed policy). It is still
+    // tracked below (registration_effective_amount) so receipts/installment planning can
+    // show how much of net_payable is the registration portion, but it must NOT be added
+    // into net_payable — doing so was silently inflating every fee record that carried a
+    // nonzero registration fee, most visibly on the Enroll New Student flow.
+    var rf  = Number(p.regFee || 0);   // registration fee, base amount — informational only
     var regGstApplied = p.regGstApplied === 'Yes';
     var rg  = regGstApplied ? Math.round(rf * 0.18) : 0;
-    var regComputed = rf + rg;         // registration fee, +GST if applicable
+    var regComputed = rf + rg;         // registration fee, +GST if applicable (display only)
     var regCustom = (p.regCustomAmount !== undefined && p.regCustomAmount !== null && p.regCustomAmount !== '')
       ? Number(p.regCustomAmount) : null;
     var regEffective = (regCustom !== null && !isNaN(regCustom)) ? regCustom : regComputed;
-    var dp  = Number(p.discountPct || 0);
-    var da  = Number(p.discountAmt || Math.round(cf * dp / 100));
     var tp  = Number(p.tdsPct || 0);
-    var ta  = Number(p.tdsAmt || Math.round(cf * tp / 100));
-    var net = Math.round((cf + gst + regEffective) - da - ta);
+    var ta  = Number(p.tdsAmt || Math.round(netCf * tp / 100));
+    var net = Math.round(netCf + gst - ta);   // registration fee intentionally excluded — see above
     var today = todayYMD();
     var inst = [1, 2, 3].map(function (i) {
       return { amt: Number(p['inst' + i + 'Amt'] || 0), due: toYMD(p['inst' + i + 'Due']),

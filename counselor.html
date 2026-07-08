@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=41"></script>
+<script src="/assets/shared.js?v=42"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -15545,20 +15545,28 @@ function enrollCalcFee() {
   var regGstOn = document.getElementById('enroll-reg-gst').checked;
   var regCustomRaw = document.getElementById('enroll-reg-custom').value;
   var hasCustomReg = regCustomRaw !== '' && regCustomRaw != null;
-  var regComputed = regGstOn ? Math.round(rf * 1.18) : rf;   // registration fee, +GST if toggled on
+  var regComputed = regGstOn ? Math.round(rf * 1.18) : rf;   // registration fee, +GST if toggled on — informational only
   var regEffective = hasCustomReg ? (Number(regCustomRaw) || 0) : regComputed;
   var dv  = document.getElementById('enroll-disc-pct').value;
   var dp  = dv === 'custom' ? (Number(document.getElementById('enroll-custom-disc').value)||0) : Number(dv||0);
   var da  = Math.round(cf * dp / 100);
+  // Discount is applied to the course fee BEFORE GST — computing GST on the full pre-discount
+  // fee and then subtracting a GST-free discount effectively charged 18% GST on the discount
+  // itself. Fix: discount the base first, then compute GST on what's left.
+  var netCf = cf - da;
+  var gst = Math.round(netCf * 0.18);   // GST on the discounted course fee, course fee ONLY
   var tp  = Number(document.getElementById('enroll-tds-pct').value) || 0;
-  var ta  = Math.round(cf * tp / 100);
-  var gst = Math.round(cf * 0.18);       // GST on course fee ONLY — registration fee is handled separately above
-  var net = Math.round((cf + gst + regEffective) - da - ta);
+  var ta  = Math.round(netCf * tp / 100);
+  // Registration fee is a component ALREADY INCLUDED within the quoted course fee (true for
+  // every course), never an amount on top of it — so it is shown for reference only and is
+  // NOT added into Net Payable. Adding it here previously double-billed every enrollment by
+  // the registration amount.
+  var net = Math.round(netCf + gst - ta);
   document.getElementById('enroll-s-fee').textContent  = money(cf);
   document.getElementById('enroll-s-gst').textContent  = money(gst);
   document.getElementById('enroll-s-reg').textContent  = money(regEffective);
   document.getElementById('enroll-s-reg-lbl').textContent =
-    hasCustomReg ? 'Registration Fee (custom)' : (regGstOn ? 'Registration Fee (+GST)' : 'Registration Fee (no GST)');
+    (hasCustomReg ? 'Registration Fee (custom, included)' : (regGstOn ? 'Registration Fee (+GST, included)' : 'Registration Fee (no GST, included)'));
   document.getElementById('enroll-s-disc').textContent = da ? '-' + money(da) : '—';
   document.getElementById('enroll-s-net').textContent  = money(net);
 }
@@ -16044,7 +16052,7 @@ function enrollSave() {
         <div class="enroll-step-title"><span class="enroll-step-num">3</span> Fee Details</div>
         <div class="enroll-grid2">
           <div class="enroll-field"><label>Course Fee &#8377; (excl. GST)</label><input id="enroll-course-fee" type="number" min="0" placeholder="e.g. 165900" oninput="enrollCalcFee()"></div>
-          <div class="enroll-field"><label>Registration Fee &#8377; (base)</label><input id="enroll-reg-fee" type="number" min="0" value="0" oninput="enrollCalcFee()"></div>
+          <div class="enroll-field"><label>Registration Fee &#8377; (base) <span style="font-weight:400;color:var(--muted)">(included in Course Fee — not charged extra)</span></label><input id="enroll-reg-fee" type="number" min="0" value="0" oninput="enrollCalcFee()"></div>
           <div class="enroll-field" style="display:flex;align-items:center;gap:8px;padding-top:22px;">
             <input type="checkbox" id="enroll-reg-gst" onchange="enrollCalcFee()" style="width:auto;margin:0;cursor:pointer;">
             <label for="enroll-reg-gst" style="margin:0;cursor:pointer;font-weight:500;">Apply 18% GST to Registration Fee</label>

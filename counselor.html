@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=42"></script>
+<script src="/assets/shared.js?v=43"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -3004,7 +3004,7 @@
         <div class="fee-readonly"><div class="k">Course</div><div class="v" id="fee-ro-course">—</div></div>
       </div>
       <div class="grid2">
-        <div class="field"><label>Course Fee</label><input type="number" id="fee-course-fee" oninput="recalcFeeForm()"></div>
+        <div class="field"><label>Course Fee <span style="font-weight:400;color:var(--muted)">(fixed by course — not editable)</span></label><input type="number" id="fee-course-fee" readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed" title="Locked to the standard fee for this course. To offer a lower amount, use the Discount field below."></div>
         <div class="field"><label>Registration Fee <span style="font-weight:400;color:var(--muted)">(included)</span></label><input type="number" id="fee-reg-fee" oninput="recalcFeeForm()"></div>
         <div class="field"><label>Discount</label>
           <select id="fee-disc-pct" onchange="toggleCustomDiscount();recalcFeeForm()">
@@ -5549,7 +5549,12 @@ function openFeeForm(studentId) {
   document.getElementById('fee-ro-name').textContent = s.name;
   document.getElementById('fee-ro-batch').textContent = b.batchCode + ' · ' + b.centre;
   document.getElementById('fee-ro-course').textContent = b.course;
-  document.getElementById('fee-course-fee').value = existing ? existing.courseFee : defaults.fee;
+  // Course fee is always the fixed system price for this course (COURSE_FEES_JS), never a
+  // per-student value — even when editing an existing record. Adjustments for an individual
+  // student go through the Discount % field, not by typing a different course fee (that was
+  // the root cause of at least one wrong fee record: a counsellor overwrote this field
+  // directly and it stuck, silently, for a deleted/re-enrolled student).
+  document.getElementById('fee-course-fee').value = defaults.fee;
   document.getElementById('fee-reg-fee').value = existing ? existing.regFee : defaults.regFee;
   document.getElementById('fee-tds-pct').value = existing ? existing.tdsPct : 0;
   const disc = existing ? Number(existing.discPct || 0) : 0;
@@ -5617,17 +5622,23 @@ function currentDiscountPct() {
 
 function feeCalc() {
   const b = currentFeeStudent ? currentFeeStudent.batch : selectedFeeBatch();
-  const gst = feeDefaultsForCourse(b ? b.course : '').gst || 18;
+  const gstPct = feeDefaultsForCourse(b ? b.course : '').gst || 18;
   const courseFee = Number(document.getElementById('fee-course-fee').value) || 0;
   const regFee = Number(document.getElementById('fee-reg-fee').value) || 0;
-  const courseFeeG = courseFee + Math.round(courseFee * gst / 100);
-  const gross = courseFeeG;
   const discPct = currentDiscountPct();
-  const discAmt = Math.round(gross * discPct / 100);
+  // Discount (and TDS) apply to the course fee BEFORE GST — matching the Enroll New Student
+  // flow and h_saveFee. This used to discount the GST-INCLUSIVE gross (courseFee*1.18)
+  // instead, which meant the exact same discount % produced a different rupee amount here
+  // than in the Enroll flow for an identical course fee. Both now agree.
+  const discAmt = Math.round(courseFee * discPct / 100);
+  const netCourseFee = courseFee - discAmt;
+  const gstAmt = Math.round(netCourseFee * gstPct / 100);
   const tdsPct = Number(document.getElementById('fee-tds-pct').value) || 0;
-  const tdsAmt = Math.round((gross - discAmt) * tdsPct / 100);
-  const net = gross - discAmt - tdsAmt;
-  return {gst, courseFee, regFee, discPct, discAmt, tdsPct, tdsAmt, net};
+  const tdsAmt = Math.round(netCourseFee * tdsPct / 100);
+  // Registration fee is a component already included within the quoted course fee (never
+  // charged on top of it) — tracked here for display/receipts but excluded from net.
+  const net = netCourseFee + gstAmt - tdsAmt;
+  return {gst: gstPct, courseFee, regFee, discPct, discAmt, tdsPct, tdsAmt, net};
 }
 
 function renderInstallments(existing) {
@@ -16051,7 +16062,7 @@ function enrollSave() {
       <div class="enroll-step" id="enroll-fee-step" style="display:none">
         <div class="enroll-step-title"><span class="enroll-step-num">3</span> Fee Details</div>
         <div class="enroll-grid2">
-          <div class="enroll-field"><label>Course Fee &#8377; (excl. GST)</label><input id="enroll-course-fee" type="number" min="0" placeholder="e.g. 165900" oninput="enrollCalcFee()"></div>
+          <div class="enroll-field"><label>Course Fee &#8377; (excl. GST) <span style="font-weight:400;color:var(--muted)">(fixed by course — not editable)</span></label><input id="enroll-course-fee" type="number" min="0" placeholder="e.g. 165900" readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed" title="Locked to the standard fee for this course. To offer a lower amount, use the Discount field below."></div>
           <div class="enroll-field"><label>Registration Fee &#8377; (base) <span style="font-weight:400;color:var(--muted)">(included in Course Fee — not charged extra)</span></label><input id="enroll-reg-fee" type="number" min="0" value="0" oninput="enrollCalcFee()"></div>
           <div class="enroll-field" style="display:flex;align-items:center;gap:8px;padding-top:22px;">
             <input type="checkbox" id="enroll-reg-gst" onchange="enrollCalcFee()" style="width:auto;margin:0;cursor:pointer;">

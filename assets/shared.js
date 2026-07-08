@@ -1116,6 +1116,14 @@ window.gasGet = (function () {
     var sidFilter = 'student_id=eq.' + encodeURIComponent(sid);
     var fullFilter = sidFilter + (removedBatch ? '&batch_code=eq.' + encodeURIComponent(removedBatch) : '');
 
+    // Fee records are keyed by the same (student_id, batch_code) pair as enrollments, but were
+    // never cleaned up here — removing a student (or just their enrollment in one batch) left
+    // its student_fees row behind forever, showing up as an orphaned "Student #<id>" entry in
+    // the Fees tab with no name/batch context once the student record itself went Inactive.
+    // Scoped to the same fullFilter as the enrollment removal so a student's OTHER batches
+    // (and their fee records) are left untouched.
+    DEL('student_fees', fullFilter, function() {});
+
     DEL('enrollments', fullFilter, function() {
       GET('enrollments', sidFilter + '&status=eq.Active', function(e2, remaining) {
         remaining = remaining || [];
@@ -1297,7 +1305,16 @@ window.gasGet = (function () {
     var n   = Number(p.nInst || 1);
     var cf  = Number(p.courseFee || 0);
     var dp  = Number(p.discountPct || 0);
-    var da  = Number(p.discountAmt || Math.round(cf * dp / 100));
+    // Always derive the rupee discount from courseFee x discountPct here, ignoring any
+    // client-supplied discountAmt whenever a discountPct was sent. The Fee tab's own preview
+    // (feeCalc()) used to compute discountAmt off the GST-inclusive gross (cf*1.18) while the
+    // Enroll New Student flow only ever sent a percentage, which this backend turned into a
+    // pre-tax rupee amount — the two flows silently disagreed on what "5% off" meant in
+    // rupees for the exact same course fee. Deriving da server-side from dp+cf every time
+    // makes both flows agree, and is also now the basis feeCalc() itself uses (see there).
+    var da  = (p.discountPct !== undefined && p.discountPct !== null && p.discountPct !== '')
+      ? Math.round(cf * dp / 100)
+      : Number(p.discountAmt || 0);
     // Discount is applied to the course fee BEFORE GST. Computing GST on the full
     // pre-discount fee and only then subtracting a GST-free discount effectively charged
     // 18% GST on the discount itself (cf*1.18 - da  !=  (cf-da)*1.18) — a real bug, confirmed
@@ -1318,7 +1335,11 @@ window.gasGet = (function () {
       ? Number(p.regCustomAmount) : null;
     var regEffective = (regCustom !== null && !isNaN(regCustom)) ? regCustom : regComputed;
     var tp  = Number(p.tdsPct || 0);
-    var ta  = Number(p.tdsAmt || Math.round(netCf * tp / 100));
+    // Same reasoning as discount above: derive TDS from netCf x tdsPct here rather than
+    // trusting a client-computed tdsAmt that may have used a different (GST-inclusive) base.
+    var ta  = (p.tdsPct !== undefined && p.tdsPct !== null && p.tdsPct !== '')
+      ? Math.round(netCf * tp / 100)
+      : Number(p.tdsAmt || 0);
     var net = Math.round(netCf + gst - ta);   // registration fee intentionally excluded — see above
     var today = todayYMD();
     var inst = [1, 2, 3].map(function (i) {

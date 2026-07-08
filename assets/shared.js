@@ -1416,7 +1416,12 @@ window.gasGet = (function () {
         business_centre: centre,
         business_type: 'Centre Revenue',
         achieved_course_fee: totalFee,
-        achieved_course_fee_gst: totalGst,
+        // achieved_course_fee_gst is treated system-wide (leaderboards, HR/admin dashboards,
+        // manual entry via revenueGst()) as the GST-INCLUSIVE total (fee + tax), not the tax
+        // amount alone. student_fees.gst_amount is just the tax portion, so it must be added
+        // to the fee here — writing totalGst alone silently understated "achieved" revenue
+        // for every auto-derived own-centre row (confirmed live: ~74% understated for Jul-26).
+        achieved_course_fee_gst: totalFee + totalGst,
         student_count: rows.length,
         notes: 'auto-derived',
         updated_at: new Date().toISOString()

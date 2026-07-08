@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=39"></script>
+<script src="/assets/shared.js?v=40"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -7535,8 +7535,14 @@ function revSaveMonthCard(btn) {
   // Bucket 1 — Own centre (hidden inputs for auto months; editable inputs for pre-July)
   var course1 = Number((body.querySelector('.rmc-course') || {}).value) || 0;
   var stu1    = Number((body.querySelector('.rmc-students') || {}).value) || 0;
+  // NOTE: achieved_course_fee_gst is the GST-INCLUSIVE total (fee + 18% tax) everywhere in
+  // this system — revenueGst() below, Buckets 2/3, and every pre-July month all agree on
+  // that. The auto-derived value in .rmc-gst-val (set from syncStudentRevenue in shared.js)
+  // already follows that same convention, so the fallback here must match it too — it
+  // previously used course1*0.18 (tax-only), which silently halved-then-some the reported
+  // revenue for any own-centre entry saved without a pre-populated derived value.
   var gst1    = isAutoMonth
-    ? (Number((body.querySelector('.rmc-gst-val') || {}).value) || Math.round(course1 * 0.18))
+    ? (Number((body.querySelector('.rmc-gst-val') || {}).value) || revenueGst(course1))
     : revenueGst(course1);
   var notes1  = ((body.querySelector('.rmc-notes') || {}).value || '').trim();
   if (isRevision && !isAutoMonth && !notes1) {

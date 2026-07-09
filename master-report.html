@@ -66,6 +66,7 @@
       <button class="tab" onclick="mTab('m-centres')">🏢 Centres</button>
       <button class="tab" onclick="mTab('m-atrisk')">⚠ At Risk</button>
       <button class="tab" onclick="mTab('m-feedback')">💬 Feedback</button>
+      <button class="tab" onclick="mTabDiplomaAudit(this)">🎓 Diploma & Invoice Audit</button>
     </div>
 
     <!-- Instructor Performance -->
@@ -141,6 +142,21 @@
           <input type="text" id="f-search" placeholder="Search topic or name…" oninput="renderFeedback()" style="flex:1;min-width:140px">
         </div>
         <div id="fb-wrap"></div>
+      </div>
+    </div>
+
+    <!-- Diploma & Invoice Audit -->
+    <div id="m-diploma-audit" class="tab-content">
+      <div class="card">
+        <div class="section-tag">Audit Report</div>
+        <h2>Student Count &amp; Diploma Released — Course-wise &amp; Centre-wise</h2>
+        <p class="sub" style="margin-bottom:16px">Live from Student_Fees (invoice data) + Supabase diplomas (release + count). Rows with no invoice number are flagged for follow-up.</p>
+        <div class="filter-bar">
+          <select id="da-centre" onchange="renderDiplomaAudit()"><option value="">All Centres</option></select>
+          <select id="da-course" onchange="renderDiplomaAudit()"><option value="">All Courses</option></select>
+          <button class="btn btn-outline" style="width:auto" onclick="exportDiplomaAuditCSV()">Export CSV</button>
+        </div>
+        <div id="da-wrap"><div class="spinner-wrap"><div class="spinner"></div><p>Loading&#8230;</p></div></div>
       </div>
     </div>
 
@@ -462,6 +478,99 @@ function loadRevenueDashboard() {
     bHtml+='</tbody></table>';
     document.getElementById('rev-batches').innerHTML=bHtml||'<p style="color:var(--muted);font-size:13px">No batches with fee records yet.</p>';
   });
+}
+
+// ── Diploma & Invoice Audit ──────────────────────────────────────────────
+// Live view combining Student_Fees (invoice #/amount, via Apps Script) with
+// Supabase `diplomas` (release + count) — the same two systems the fee-entry
+// and diploma-release flows already write to. No separate data entry.
+var _daRows = [];
+
+function mTabDiplomaAudit(btn) {
+  document.querySelectorAll('.tab-content').forEach(function(t){t.classList.remove('active');});
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
+  document.getElementById('m-diploma-audit').classList.add('active');
+  btn.classList.add('active');
+  if (!window._daLoaded) { window._daLoaded = true; loadDiplomaAudit(); }
+}
+
+function loadDiplomaAudit() {
+  var SUPABASE_URL = 'https://atbexvtrcopaagcdbpqi.supabase.co';
+  var SUPABASE_ANON = 'sb_publishable_TpzxX5a3M7lnFeND8xLfhQ_YJOxOkhb';
+
+  gasGet({action:'getFeeRecords', masterPass:'IGIMaster2026'}, function(err, feeData) {
+    if (err || !feeData || feeData.status !== 'ok') {
+      document.getElementById('da-wrap').innerHTML = '<p style="color:var(--red)">Could not load fee/invoice data.</p>';
+      return;
+    }
+    fetch(SUPABASE_URL + '/rest/v1/diplomas?select=student_id,batch_code,diploma_count,released_at', {
+      headers: {apikey: SUPABASE_ANON, Authorization: 'Bearer ' + SUPABASE_ANON}
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(diplomas) {
+      var dipByKey = {};
+      (diplomas || []).forEach(function(d) { dipByKey[d.student_id + '|' + d.batch_code] = d; });
+
+      _daRows = (feeData.records || []).map(function(r) {
+        var dip = dipByKey[r.studentId + '|' + r.batchCode];
+        return {
+          centre: r.centre || '', course: r.course || '', studentName: r.studentName || '',
+          batchCode: r.batchCode || '', invoiceNumber: r.invoiceNumber || '',
+          invoiceAmount: r.invoiceAmount || 0,
+          diplomaCount: dip ? dip.diploma_count : 0,
+          flagged: !r.invoiceNumber
+        };
+      });
+      populateDiplomaAuditFilters();
+      renderDiplomaAudit();
+    })
+    .catch(function() {
+      document.getElementById('da-wrap').innerHTML = '<p style="color:var(--red)">Could not load diploma data from Supabase.</p>';
+    });
+  });
+}
+
+function populateDiplomaAuditFilters() {
+  var centres = Array.from(new Set(_daRows.map(function(r){return r.centre;}))).filter(Boolean).sort();
+  var courses = Array.from(new Set(_daRows.map(function(r){return r.course;}))).filter(Boolean).sort();
+  var cSel = document.getElementById('da-centre'), kSel = document.getElementById('da-course');
+  cSel.innerHTML = '<option value="">All Centres</option>';
+  kSel.innerHTML = '<option value="">All Courses</option>';
+  centres.forEach(function(c){ cSel.innerHTML += '<option value="'+c+'">'+c+'</option>'; });
+  courses.forEach(function(c){ kSel.innerHTML += '<option value="'+c+'">'+c+'</option>'; });
+}
+
+function renderDiplomaAudit() {
+  var centre = document.getElementById('da-centre').value;
+  var course = document.getElementById('da-course').value;
+  var rows = _daRows.filter(function(r){ return (!centre || r.centre===centre) && (!course || r.course===course); });
+
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--off)">';
+  ['Centre','Course','Student','Invoice #','Amount','Diplomas','Status'].forEach(function(h){
+    html += '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">'+h+'</th>';
+  });
+  html += '</tr></thead><tbody>';
+  rows.forEach(function(r) {
+    var rowStyle = r.flagged ? 'border-bottom:1px solid var(--off);background:#FFF9E6' : 'border-bottom:1px solid var(--off)';
+    html += '<tr style="'+rowStyle+'"><td style="padding:10px">'+r.centre+'</td><td style="padding:10px;font-size:11px;color:var(--muted)">'+r.course+'</td><td style="padding:10px">'+r.studentName+'</td>' +
+      '<td style="padding:10px;font-family:monospace">'+(r.invoiceNumber || '<em>missing</em>')+'</td>' +
+      '<td style="padding:10px;font-family:monospace">'+(r.invoiceAmount ? '₹'+Number(r.invoiceAmount).toLocaleString('en-IN') : '')+'</td>' +
+      '<td style="padding:10px;font-family:monospace">'+r.diplomaCount+'</td>' +
+      '<td style="padding:10px">'+(r.flagged ? '⚠ flagged' : '✓')+'</td></tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('da-wrap').innerHTML = html || '<p style="color:var(--muted);font-size:13px">No fee records yet.</p>';
+}
+
+function exportDiplomaAuditCSV() {
+  var rows = [['Centre','Course','Student','Invoice Number','Invoice Amount','Diploma Count']];
+  _daRows.forEach(function(r){ rows.push([r.centre, r.course, r.studentName, r.invoiceNumber, r.invoiceAmount, r.diplomaCount]); });
+  var csv = rows.map(function(r){ return r.map(function(v){ return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
+  var blob = new Blob([csv], {type:'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'diploma_invoice_audit_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
 }
 </script>
 </body>

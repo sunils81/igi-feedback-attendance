@@ -3017,6 +3017,7 @@
         </div>
         <div class="field" id="fee-custom-disc-wrap" style="display:none"><label>Custom Discount %</label><input type="number" id="fee-custom-disc" min="0" max="100" oninput="recalcFeeForm()"></div>
         <div class="field"><label>Discount Reason</label><input type="text" id="fee-disc-reason" placeholder="Optional"></div>
+        <div class="field"><label>Invoice Number</label><input type="text" id="fee-invoice-number" placeholder="e.g. BOM/26/INV/03721"></div>
         <div class="field"><label>TDS %</label><input type="number" id="fee-tds-pct" value="0" min="0" max="100" oninput="recalcFeeForm()"></div>
         <div class="field"><label>Payment Plan</label>
           <select id="fee-payment-plan" onchange="togglePaymentPlan()">
@@ -5561,6 +5562,7 @@ function openFeeForm(studentId) {
   document.getElementById('fee-disc-pct').value = ['0','5','7','10'].includes(String(disc)) ? String(disc) : 'custom';
   document.getElementById('fee-custom-disc').value = ['0','5','7','10'].includes(String(disc)) ? '' : disc;
   document.getElementById('fee-disc-reason').value = existing ? (existing.discReason || '') : '';
+  document.getElementById('fee-invoice-number').value = existing ? (existing.invoiceNumber || '') : '';
   const nInst = existing ? (existing.nInst || 1) : 1;
   document.getElementById('fee-n-inst').value = nInst;
   document.getElementById('fee-payment-plan').value = nInst > 1 ? 'installments' : 'full';
@@ -5768,7 +5770,9 @@ function saveFeeRecord() {
     tdsPct:calc.tdsPct,
     tdsAmt:calc.tdsAmt,
     nInst:n,
-    enteredBy:counselorName || 'Counselor'
+    enteredBy:counselorName || 'Counselor',
+    invoiceNumber:document.getElementById('fee-invoice-number').value.trim(),
+    invoiceAmount:calc.net
   };
   for (let i = 1; i <= 3; i++) {
     payload['inst' + i + 'Amt'] = i <= n ? (document.getElementById('fee-inst' + i + '-amt').value || 0) : 0;
@@ -9502,6 +9506,9 @@ function _showInstructorModal(studentId, batchCode, studentName, course, btn, pr
       '<label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">Course Instructor Name *</label>' +
       '<input id="dip-instructor-input" type="text" placeholder="e.g. Priya Mehta" value="' + escC(autoInstructor) + '" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:9px 12px;font-size:14px;outline:none">' +
       (autoInstructor ? '<p style="font-size:11px;color:#6b7280;margin:4px 0 0">Auto-filled from batch — edit if needed.</p>' : '') +
+      '<label style="display:block;font-size:12px;font-weight:600;color:#374151;margin:14px 0 6px">Diploma Certificates Issued</label>' +
+      '<input id="dip-count-input" type="number" min="1" value="1" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:9px 12px;font-size:14px;outline:none">' +
+      '<p style="font-size:11px;color:#6b7280;margin:4px 0 0">Usually 1. Set higher only for bundle courses issuing multiple certificates in this release (e.g. Graduate Gemologist).</p>' +
       '<p id="dip-modal-err" style="color:#dc2626;font-size:12px;margin:6px 0 0;display:none">Please enter instructor name.</p>' +
       '<div style="display:flex;gap:10px;margin-top:20px">' +
         '<button id="dip-modal-cancel" style="flex:1;padding:9px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;font-size:14px">Cancel</button>' +
@@ -9532,7 +9539,8 @@ function _showInstructorModal(studentId, batchCode, studentName, course, btn, pr
     statusEl.style.display = 'block';
     statusEl.textContent = '⏳ Fetching template...';
 
-    _doGenerateAndRelease(studentId, batchCode, instructorName, btn, statusEl)
+    var diplomaCount = Math.max(1, Number(document.getElementById('dip-count-input').value) || 1);
+    _doGenerateAndRelease(studentId, batchCode, instructorName, btn, statusEl, diplomaCount)
       .then(function() { modal.remove(); })
       .catch(function(err) {
         confirmBtn.disabled = false;
@@ -9545,7 +9553,7 @@ function _showInstructorModal(studentId, batchCode, studentName, course, btn, pr
   };
 }
 
-async function _doGenerateAndRelease(studentId, batchCode, instructorName, btn, statusEl) {
+async function _doGenerateAndRelease(studentId, batchCode, instructorName, btn, statusEl, diplomaCount) {
   // Find student in diplomaList
   var student = null;
   for (var i = 0; i < diplomaList.length; i++) {
@@ -9641,7 +9649,8 @@ async function _doGenerateAndRelease(studentId, batchCode, instructorName, btn, 
       completion_date: new Date().toISOString().split('T')[0],
       released_by: counselorName || instructorName,
       released_at: nowIso,
-      drive_link: storageLink
+      drive_link: storageLink,
+      diploma_count: diplomaCount || 1
     })
   });
   if (!sbInsertResp.ok) {

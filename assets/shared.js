@@ -503,7 +503,9 @@ window.gasGet = (function () {
     var tdsAmount = 0;
     var netPayable = courseFee + gstAmount;
     var nInst = 1;
-    
+    var invoiceNumber = '';
+    var invoiceAmount = 0;
+
     var insts = [
       { amt: r.amount || 0, due: r.payment_date || '', paid: (r.amount > 0) ? 'Y' : 'N', paidDate: r.payment_date || '', mode: r.payment_mode || '', ref: r.receipt_no || '' },
       { amt: 0, due: '', paid: 'N', paidDate: '', mode: '', ref: '' },
@@ -531,6 +533,8 @@ window.gasGet = (function () {
       tdsAmount = Number(jsonMeta.tds_amount || 0);
       netPayable = Number(jsonMeta.net_payable || (courseFee + gstAmount));
       nInst = Number(jsonMeta.n_installments || 1);
+      invoiceNumber = jsonMeta.invoice_number || '';
+      invoiceAmount = Number(jsonMeta.invoice_amount || 0);
       receiptNo = jsonMeta.actual_receipt_no || '';
       
       for (var i = 1; i <= 3; i++) {
@@ -569,6 +573,7 @@ window.gasGet = (function () {
     }
     
     return {
+      id: r.id,
       student_id: studentId,
       student_name: studentName,
       batch_code: batchCode,
@@ -605,6 +610,8 @@ window.gasGet = (function () {
       inst3_reference: insts[2].ref,
       collected: collected,
       outstanding: outstanding,
+      invoice_number: invoiceNumber,
+      invoice_amount: invoiceAmount,
       fee_status: feeStatus,
       entered_by: r.recorded_by || '',
       updated_at: r.created_at || '',
@@ -1296,7 +1303,7 @@ window.gasGet = (function () {
         if (e) { cb(null, { records: [] }); return; }
         cb(null, { records: (rows || []).map(function (r) {
           var mapped = parseFeeRow(r, students, batches);
-          return { studentId: mapped.student_id, studentName: mapped.student_name,
+          return { id: mapped.id, studentId: mapped.student_id, studentName: mapped.student_name,
             batchCode: mapped.batch_code, centre: mapped.centre, course: mapped.course,
             courseFee: mapped.course_fee, gstAmount: mapped.gst_amount, netPayable: mapped.net_payable,
             discountPct: mapped.discount_pct, discountAmt: mapped.discount_amount, discountReason: mapped.discount_reason,
@@ -1307,7 +1314,9 @@ window.gasGet = (function () {
             inst2PaidDate: toDMY(mapped.inst2_paid_date), inst2Mode: mapped.inst2_mode, inst2Ref: mapped.inst2_reference,
             inst3Amt: mapped.inst3_amount, inst3Due: toDMY(mapped.inst3_due), inst3Paid: mapped.inst3_paid,
             inst3PaidDate: toDMY(mapped.inst3_paid_date), inst3Mode: mapped.inst3_mode, inst3Ref: mapped.inst3_reference,
-            collected: mapped.collected, outstanding: mapped.outstanding, feeStatus: mapped.fee_status, enteredBy: mapped.entered_by };
+            collected: mapped.collected, outstanding: mapped.outstanding,
+            invoiceNumber: mapped.invoice_number, invoiceAmount: mapped.invoice_amount,
+            feeStatus: mapped.fee_status, enteredBy: mapped.entered_by };
         }) });
       });
     }
@@ -1378,7 +1387,10 @@ window.gasGet = (function () {
       tds_pct: tp,
       tds_amount: ta,
       net_payable: net,
-      n_installments: n
+      n_installments: n,
+      invoice_number: p.invoiceNumber || '',
+      invoice_amount: (p.invoiceAmount !== undefined && p.invoiceAmount !== null && p.invoiceAmount !== '')
+        ? Number(p.invoiceAmount) : net
     };
     
     for (var i = 1; i <= 3; i++) {
@@ -1430,6 +1442,32 @@ window.gasGet = (function () {
           if (!e) syncStudentRevenue(dbRow.recorded_by, dbRow.centre, fmtMonthKey(new Date()), '2026-27');
         });
       }
+    });
+  }
+
+  /* deleteFeeRecord — lets a counsellor remove a fee record they entered (e.g. a duplicate
+     left behind by a mis-entry, same class of issue h_removeStudent's cascade delete now
+     prevents going forward, for records that predate that fix or were never linked to a
+     removed student at all). Gated to the counsellor who entered it, unless requester is
+     Admin. Re-syncs revenue_monthly_achieved afterward, same as h_removeStudent, so deleting
+     a duplicate doesn't leave stale totals behind. */
+  function h_deleteFeeRecord(p, cb) {
+    var id = p.id;
+    if (!id) { cb(null, { status: 'error', reason: 'missing_id' }); return; }
+    GET('student_fees', 'id=eq.' + encodeURIComponent(id), function (e, rows) {
+      var row = rows && rows[0];
+      if (e || !row) { cb(null, { status: 'error', reason: 'not_found' }); return; }
+      var isAdmin = p.isAdmin === true || p.isAdmin === 'true';
+      if (!isAdmin && row.recorded_by && row.recorded_by !== p.requestedBy) {
+        cb(null, { status: 'error', reason: 'not_owner' });
+        return;
+      }
+      DEL('student_fees', 'id=eq.' + encodeURIComponent(id), function (e2) {
+        if (e2) { cb(null, { status: 'error', reason: String(e2) }); return; }
+        syncStudentRevenue(row.recorded_by || 'Counselor', row.centre,
+          fmtMonthKey(new Date(row.created_at || Date.now())), '2026-27');
+        cb(null, { status: 'ok' });
+      });
     });
   }
 
@@ -6097,6 +6135,7 @@ window.gasGet = (function () {
       case 'getOverdueFeesCount':       return h_getOverdueFeesCount(params, cb);
       case 'getFeeRecords':             return h_getFeeRecords(params, cb);
       case 'saveFeeRecord':             return h_saveFee(params, cb);
+      case 'deleteFeeRecord':           return h_deleteFeeRecord(params, cb);
       case 'getHolidays':               return h_getHolidays(params, cb);
       case 'addHoliday':                return h_addHoliday(params, cb);
       case 'getSessions':               return h_getSessions(params, cb);

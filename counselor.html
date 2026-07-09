@@ -5529,7 +5529,9 @@ function renderFeeOverview(batch, students, records) {
       '<td><strong style="font-family:\'JetBrains Mono\',monospace;color:#1a7a3c">' + money(r ? r.collected : 0) + '</strong></td>' +
       '<td><strong style="font-family:\'JetBrains Mono\',monospace;color:' + ((r && Number(r.outstanding) > 0) || !r ? 'var(--red)' : '#1a7a3c') + '">' + money(r ? r.outstanding : fallback) + '</strong></td>' +
       '<td><span class="fee-status ' + escC(statusCls) + '">' + escC(status) + '</span></td>' +
-      '<td><button class="del-btn" onclick="openFeeForm(\'' + escC(s.enrollmentNo) + '\')">' + (r ? 'Update' : 'Add') + ' Fee</button></td>' +
+      '<td><button class="del-btn" onclick="openFeeForm(\'' + escC(s.enrollmentNo) + '\')">' + (r ? 'Update' : 'Add') + ' Fee</button>' +
+      (r ? ' <button class="del-btn danger" title="Remove this fee record (e.g. a duplicate entry) — only the counsellor who entered it, or an Admin, can do this" onclick="deleteFeeRecordUI(\'' + escC(r.id) + '\',\'' + escC(r.enteredBy || '') + '\',\'' + escC(s.name) + '\',' + (Number(r.collected) || 0) + ')">Remove</button>' : '') +
+      '</td>' +
     '</tr>';
   }).join('');
   html += '</tbody></table>';
@@ -5578,6 +5580,29 @@ function openFeeForm(studentId) {
 function hideFeeForm() {
   document.getElementById('fee-form-card').style.display = 'none';
   currentFeeStudent = null;
+}
+
+function deleteFeeRecordUI(recordId, enteredBy, studentName, collected) {
+  if (!recordId) { showToast('Could not identify this record.', 'error'); return; }
+  if (!isAdmin && enteredBy && enteredBy !== counselorName) {
+    showToast('Only ' + enteredBy + ' (who entered this record) or an Admin can remove it.', 'error');
+    return;
+  }
+  var warn = collected > 0
+    ? ('This record has ' + money(collected) + ' collected against it. ')
+    : '';
+  if (!confirm(warn + 'Remove this fee record for ' + studentName + '? This cannot be undone.')) return;
+  gasGet({action:'deleteFeeRecord', id:recordId, requestedBy:counselorName, isAdmin:isAdmin}, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      var reason = d && d.reason === 'not_owner'
+        ? 'Only the counsellor who entered this record can remove it.'
+        : 'Could not remove this record. Please try again.';
+      showToast(reason, 'error');
+      return;
+    }
+    showToast('Fee record removed.');
+    loadFeeOverview();
+  });
 }
 
 function toggleCustomDiscount() {

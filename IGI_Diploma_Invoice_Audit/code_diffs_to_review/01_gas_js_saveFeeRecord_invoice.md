@@ -1,4 +1,20 @@
-# backend/gas.js — capture Invoice Number on fee entry
+# SUPERSEDED — do not apply this file
+
+This diff targeted `backend/gas.js`, which turned out to be dead code for
+`saveFeeRecord`/`getFeeRecords` by the time I looked closer. The live
+implementation is `assets/shared.js`'s Supabase-backed dispatcher
+(`h_saveFee`, `h_getFeeRecords`, `parseFeeRow`) — it already replaces
+`gasGet()` transparently and only falls back to `backend/gas.js`/the
+Google Sheet for actions that haven't been ported yet. `saveFeeRecord`
+has been ported.
+
+**This has already been fixed directly in `assets/shared.js` and applied
+to your actual file** — no manual step needed for this one, unlike the
+original plan below (kept for history only).
+
+---
+
+# Original (obsolete) plan: backend/gas.js — capture Invoice Number on fee entry
 
 Where: the `saveFeeRecord` handler, ~line 2556, and `getFeeRecords`, ~line 2619.
 This is the ACTUAL live backend for the counselor Fee Setup form (via

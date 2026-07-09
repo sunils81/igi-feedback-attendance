@@ -1,5 +1,18 @@
 #!/usr/bin/env python3
 """
+SUPERSEDED — do not run this file. Use backfill_invoices_supabase.py instead.
+
+This script assumed fee data lived in a Google Sheet reachable only via
+the Apps Script Web App. That assumption was wrong: fee entry already
+runs on Supabase (assets/shared.js's h_saveFee), confirmed by tracing the
+actual dispatcher in that file. backfill_invoices_supabase.py does the
+same job correctly against Supabase's student_fees table directly, and
+doesn't need the manual student_batch_map.csv step this version required.
+Kept here only for history — original docstring below is no longer
+accurate.
+
+---
+
 IGI Portal — Backfill Invoice Number / Amount into the live Student_Fees
 Google Sheet, for the Jan-Jun 2026 audit period.
 

@@ -3017,7 +3017,10 @@
         </div>
         <div class="field" id="fee-custom-disc-wrap" style="display:none"><label>Custom Discount %</label><input type="number" id="fee-custom-disc" min="0" max="100" oninput="recalcFeeForm()"></div>
         <div class="field"><label>Discount Reason</label><input type="text" id="fee-disc-reason" placeholder="Optional"></div>
-        <div class="field"><label>Invoice Number</label><input type="text" id="fee-invoice-number" placeholder="e.g. BOM/26/INV/03721"></div>
+        <div class="field"><label>Invoice Number</label><input type="text" id="fee-invoice-number" placeholder="e.g. BOM/26/INV/03721" onchange="checkInvoiceDuplicateWarning()"></div>
+        <div class="field"><label>Invoice Date <span style="font-weight:400;color:var(--muted)">(optional — often raised after payment)</span></label><input type="date" id="fee-invoice-date"></div>
+        <div class="field" id="fee-invoice-dup-wrap" style="display:none"><label style="color:#7A5B00">⚠ Invoice number already used elsewhere — comment</label><input type="text" id="fee-invoice-shared-comment" placeholder="e.g. one invoice, 3 students, paid together by parent"></div>
+        <div class="field"><label>Receipt / Invoice File <span style="font-weight:400;color:var(--muted)">(optional)</span></label><input type="file" id="fee-invoice-file" accept=".pdf,.jpg,.jpeg,.png" onchange="uploadInvoiceFile(this)"><div id="fee-invoice-file-status" style="font-size:11px;color:var(--muted);margin-top:4px"></div></div>
         <div class="field"><label>TDS %</label><input type="number" id="fee-tds-pct" value="0" min="0" max="100" oninput="recalcFeeForm()"></div>
         <div class="field"><label>Payment Plan</label>
           <select id="fee-payment-plan" onchange="togglePaymentPlan()">
@@ -3976,6 +3979,7 @@ let counselorStudentsByBatch = {};
 let feeStudentsByBatch = {};
 let feeRecordsByStudent = {};
 let currentFeeStudent = null;
+let currentInvoiceFileUrl = '';
 let revenueInitialized = false;
 let revenueData = null;
 let revenuePendingSaveMeta = '';
@@ -5437,7 +5441,7 @@ function feeDefaultsForCourse(course) {
   return COURSE_FEES_JS[course] || {fee:0, regFee:0, gst:18};
 }
 
-function loadFeeOverview() {
+function loadFeeOverview(onDone) {
   const batch = document.getElementById('fee-batch').value;
   const list = document.getElementById('fee-list');
   const summary = document.getElementById('fee-summary');
@@ -5459,6 +5463,7 @@ function loadFeeOverview() {
     feeRecordsByStudent = {};
     records.forEach(r => feeRecordsByStudent[String(r.studentId).toUpperCase()] = r);
     renderFeeOverview(batch, students, records);
+    if (typeof onDone === 'function') onDone();
   }
   gasGet({action:'getStudents', batchCode:batch}, function(e,d) {
     studentsDone = true;
@@ -5514,7 +5519,7 @@ function renderFeeOverview(batch, students, records) {
     '<div class="summary-tile ' + (outstanding ? 'warn' : 'ok') + '"><div class="k">Outstanding</div><div class="v">' + money(outstanding) + '</div><div class="s">Balance pending</div></div>' +
     '<div class="summary-tile ' + (overdue ? 'warn' : 'ok') + '"><div class="k">Overdue</div><div class="v">' + overdue + '</div><div class="s">Students past due</div></div>';
 
-  let html = '<table class="compact-table"><thead><tr><th>Student</th><th>Expected</th><th>Collected</th><th>Outstanding</th><th>Status</th><th>Action</th></tr></thead><tbody>';
+  let html = '<table class="compact-table"><thead><tr><th>Student</th><th>Expected</th><th>Collected</th><th>Outstanding</th><th>Status</th><th title="Invoice number, amount &amp; date on file">Docs</th><th>Action</th></tr></thead><tbody>';
   html += displayStudents.map(s => {
     const r = recordMap[String(s.enrollmentNo).toUpperCase()];
     const b = selectedFeeBatch();
@@ -5523,12 +5528,17 @@ function renderFeeOverview(batch, students, records) {
     const status = r ? r.feeStatus : 'Pending';
     const statusCls = String(status || 'Pending').toLowerCase();
     const nameNote = s.isOrphan ? ' <span style="font-size:10px;color:var(--muted);font-weight:400">(multi-batch)</span>' : '';
+    const docsCell = !r ? '<span title="No fee record yet" style="color:var(--muted)">—</span>'
+      : r.docComplete
+        ? '<span title="Invoice number, amount &amp; date all on file" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#1D9E75"></span>'
+        : '<span title="Missing invoice number, amount, and/or date" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#C94A4A"></span>';
     return '<tr>' +
       '<td><strong>' + escC(s.name) + '</strong>' + nameNote + '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--muted)">' + escC(s.enrollmentNo) + '</div></td>' +
       '<td><strong style="font-family:\'JetBrains Mono\',monospace">' + money(r ? r.netPayable : fallback) + '</strong></td>' +
       '<td><strong style="font-family:\'JetBrains Mono\',monospace;color:#1a7a3c">' + money(r ? r.collected : 0) + '</strong></td>' +
       '<td><strong style="font-family:\'JetBrains Mono\',monospace;color:' + ((r && Number(r.outstanding) > 0) || !r ? 'var(--red)' : '#1a7a3c') + '">' + money(r ? r.outstanding : fallback) + '</strong></td>' +
       '<td><span class="fee-status ' + escC(statusCls) + '">' + escC(status) + '</span></td>' +
+      '<td>' + docsCell + '</td>' +
       '<td><button class="del-btn" onclick="openFeeForm(\'' + escC(s.enrollmentNo) + '\')">' + (r ? 'Update' : 'Add') + ' Fee</button>' +
       (r ? ' <button class="del-btn danger" title="Remove this fee record (e.g. a duplicate entry) — only the counsellor who entered it, or an Admin, can do this" onclick="deleteFeeRecordUI(\'' + escC(r.id) + '\',\'' + escC(r.enteredBy || '') + '\',\'' + escC(s.name) + '\',' + (Number(r.collected) || 0) + ')">Remove</button>' : '') +
       '</td>' +
@@ -5565,6 +5575,11 @@ function openFeeForm(studentId) {
   document.getElementById('fee-custom-disc').value = ['0','5','7','10'].includes(String(disc)) ? '' : disc;
   document.getElementById('fee-disc-reason').value = existing ? (existing.discReason || '') : '';
   document.getElementById('fee-invoice-number').value = existing ? (existing.invoiceNumber || '') : '';
+  document.getElementById('fee-invoice-date').value = existing ? (existing.invoiceDate || '') : '';
+  document.getElementById('fee-invoice-shared-comment').value = existing ? (existing.invoiceSharedComment || '') : '';
+  document.getElementById('fee-invoice-dup-wrap').style.display = existing && existing.invoiceSharedComment ? 'block' : 'none';
+  currentInvoiceFileUrl = existing ? (existing.invoiceFileUrl || '') : '';
+  document.getElementById('fee-invoice-file-status').textContent = currentInvoiceFileUrl ? '📎 File already on record — choose a new file to replace it.' : '';
   const nInst = existing ? (existing.nInst || 1) : 1;
   document.getElementById('fee-n-inst').value = nInst;
   document.getElementById('fee-payment-plan').value = nInst > 1 ? 'installments' : 'full';
@@ -5582,7 +5597,7 @@ function hideFeeForm() {
   currentFeeStudent = null;
 }
 
-function deleteFeeRecordUI(recordId, enteredBy, studentName, collected) {
+function deleteFeeRecordUI(recordId, enteredBy, studentName, collected, onDone) {
   if (!recordId) { showToast('Could not identify this record.', 'error'); return; }
   if (!isAdmin && enteredBy && enteredBy !== counselorName) {
     showToast('Only ' + enteredBy + ' (who entered this record) or an Admin can remove it.', 'error');
@@ -5601,7 +5616,7 @@ function deleteFeeRecordUI(recordId, enteredBy, studentName, collected) {
       return;
     }
     showToast('Fee record removed.');
-    loadFeeOverview();
+    if (typeof onDone === 'function') onDone(); else loadFeeOverview();
   });
 }
 
@@ -5797,7 +5812,10 @@ function saveFeeRecord() {
     nInst:n,
     enteredBy:counselorName || 'Counselor',
     invoiceNumber:document.getElementById('fee-invoice-number').value.trim(),
-    invoiceAmount:calc.net
+    invoiceAmount:calc.net,
+    invoiceDate:document.getElementById('fee-invoice-date').value || '',
+    invoiceSharedComment:document.getElementById('fee-invoice-shared-comment').value.trim(),
+    invoiceFileUrl:currentInvoiceFileUrl || ''
   };
   for (let i = 1; i <= 3; i++) {
     payload['inst' + i + 'Amt'] = i <= n ? (document.getElementById('fee-inst' + i + '-amt').value || 0) : 0;
@@ -5818,10 +5836,61 @@ function saveFeeRecord() {
       showToast('Could not save fee record.', 'error');
       return;
     }
-    showToast('Fee record saved.');
+    if (d.duplicateInvoice) {
+      showToast('Saved — but this invoice number is also used on another record. Add a comment explaining the shared invoice.', 'warn');
+    } else {
+      showToast('Fee record saved.');
+    }
     hideFeeForm();
     loadFeeOverview();
     if (isAdmin) { adminDashboardData = null; renderAdminDashboardPlaceholders('Fee record updated. Refresh the admin summaries to include the latest fee data.'); }
+  });
+}
+
+/* checkInvoiceDuplicateWarning — reveals the shared-invoice comment field as soon as the
+   counsellor types an invoice number, IF that number is already used elsewhere. This is a
+   soft, non-blocking nudge — the actual authoritative check happens server-side in
+   h_saveFee on every save (d.duplicateInvoice above), this is just earlier feedback. */
+function checkInvoiceDuplicateWarning() {
+  const num = document.getElementById('fee-invoice-number').value.trim();
+  const wrap = document.getElementById('fee-invoice-dup-wrap');
+  if (!num) { wrap.style.display = 'none'; return; }
+  gasGet({action:'checkInvoiceNumber', invoiceNumber:num, studentId:currentFeeStudent ? currentFeeStudent.student.enrollmentNo : ''}, function(e, d) {
+    if (!e && d && d.duplicate) wrap.style.display = 'block';
+  });
+}
+
+/* uploadInvoiceFile — uploads the selected receipt/invoice file directly to Supabase
+   Storage (bucket: fee-receipts) using the same anon key already used throughout this app,
+   then stashes the resulting public URL in currentInvoiceFileUrl so it's included the next
+   time saveFeeRecord() runs. Requires the fee-receipts bucket to exist — see
+   supabase/migration_fee_receipts_storage.sql. */
+function uploadInvoiceFile(input) {
+  const file = input.files && input.files[0];
+  const status = document.getElementById('fee-invoice-file-status');
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) {
+    showToast('File too large — 10MB max.', 'error');
+    input.value = '';
+    return;
+  }
+  status.textContent = 'Uploading…';
+  const sid = currentFeeStudent ? currentFeeStudent.student.enrollmentNo : 'unknown';
+  const path = 'receipts/' + encodeURIComponent(sid) + '-' + Date.now() + '-' + encodeURIComponent(file.name);
+  const SB_URL = 'https://atbexvtrcopaagcdbpqi.supabase.co';
+  const SB_KEY = 'sb_publishable_TpzxX5a3M7lnFeND8xLfhQ_YJOxOkhb';
+  fetch(SB_URL + '/storage/v1/object/fee-receipts/' + path, {
+    method: 'POST',
+    headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Content-Type': file.type || 'application/octet-stream' },
+    body: file
+  }).then(r => {
+    if (!r.ok) throw new Error('Upload failed (' + r.status + ')');
+    currentInvoiceFileUrl = SB_URL + '/storage/v1/object/public/fee-receipts/' + path;
+    status.textContent = '✅ Uploaded — will be saved with this fee record.';
+  }).catch(err => {
+    status.textContent = '';
+    showToast('Could not upload file. The bucket may not be set up yet — ask an admin.', 'error');
+    input.value = '';
   });
 }
 
@@ -7357,6 +7426,10 @@ function renderRevenueEntryPanel(m, designatedCentre, otherDefault, existingRows
         (derivedFee > 0
           ? '<div style="font-size:13px;font-weight:700;color:var(--navy)">₹'+Math.round(derivedFee).toLocaleString('en-IN')+' &middot; '+derivedStu+' student'+(derivedStu!==1?'s':'')+' &middot; GST ₹'+Math.round(derivedGst).toLocaleString('en-IN')+'</div>'
           : '<div style="font-size:12px;color:var(--muted)">No enrollments yet &mdash; click <strong>Enroll New Student</strong> to add the first one for this month.</div>')+
+        (derivedFee > 0
+          ? '<div class="rev-detail-toggle" data-month="'+escC(m.key)+'" data-centre="'+escC(designatedCentre)+'" data-loaded="N" data-label="View &amp; verify these '+derivedStu+' student'+(derivedStu!==1?'s':'')+'" style="cursor:pointer;font-size:12px;color:var(--accent, #1D9E75);font-weight:700;margin-top:6px;text-decoration:underline" onclick="revToggleDetail(this)">🔍 View &amp; verify these '+derivedStu+' student'+(derivedStu!==1?'s':'')+'</div>'+
+            '<div class="rev-detail-body" style="display:none"></div>'
+          : '')+
         /* Hidden inputs carry the auto-derived values through revSaveMonthCard */
         '<input type="hidden" class="rmc-students" value="'+escC(String(derivedStu))+'">'+
         '<input type="hidden" class="rmc-course"   value="'+escC(String(derivedFee))+'">'+
@@ -7372,6 +7445,10 @@ function renderRevenueEntryPanel(m, designatedCentre, otherDefault, existingRows
           '<div class="rev-ci"><label>Course Fee &#8377; (excl. GST)</label><input type="number" class="rmc-course" min="0" placeholder="e.g. 500000" value="'+escC(existingOwn.achievedCourse||'')+'" oninput="revCalcGst(this,\'own\');revUpdateTotal(this)"></div>'+
         '</div>'+
         '<div class="rev-gst-inline" id="rev-gst-own-'+escC(m.key)+'">GST: <b>'+money(existingOwn.achievedGst||0)+'</b></div>'+
+        (isRevision
+          ? '<div class="rev-reconcile-toggle" data-month="'+escC(m.key)+'" data-centre="'+escC(designatedCentre)+'" data-loaded="N" style="cursor:pointer;font-size:12px;color:#1D9E75;font-weight:700;margin:6px 0;text-decoration:underline" onclick="revToggleReconcile(this)">🧾 Reconcile with invoice data for '+escC(m.label)+'</div>'+
+            '<div class="rev-reconcile-body" style="display:none;background:#F4FBF7;border-radius:8px;padding:8px 10px;margin-bottom:8px"></div>'
+          : '')+
         '<div class="rev-notes-row"><input type="text" class="rmc-notes" placeholder="'+(isRevision?'Revision reason (required)':'Notes (optional)')+'"></div>'+
       '</div>';
   }
@@ -7430,6 +7507,124 @@ function revToggleBucket(row) {
   // Update badge
   var badge = row.querySelector('.rev-expand-badge');
   if (badge && isOpen) { badge.className='rev-expand-badge'; badge.textContent='Optional'; }
+}
+
+/* revToggleDetail — the "cross-check and verify" drill-down. Expands/collapses the
+   student-level list of fee records behind an AUTO Own Centre Revenue card. Fetches once
+   (data-loaded guards against re-fetching every click) via the getRevenueDetail action,
+   which uses the exact same recorded_by+centre+created_at filter as syncStudentRevenue —
+   so what's shown here always matches what the card total is summing. */
+function revToggleDetail(toggle) {
+  var body = toggle.nextElementSibling;
+  if (!body || !body.classList.contains('rev-detail-body')) return;
+  var showing = body.style.display !== 'none';
+  var baseLabel = toggle.getAttribute('data-label') || 'View & verify';
+  if (showing) { body.style.display = 'none'; toggle.innerHTML = '🔍 ' + baseLabel; return; }
+  body.style.display = 'block';
+  toggle.innerHTML = '🔼 Hide student-level detail';
+  if (toggle.getAttribute('data-loaded') === 'Y') return;
+  toggle.setAttribute('data-loaded', 'Y');
+  body.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px 0">Loading student-level detail…</div>';
+  gasGet({action:'getRevenueDetail', counsellor:counselorName, centre:toggle.getAttribute('data-centre'), month:toggle.getAttribute('data-month')}, function(e, d) {
+    var records = (!e && d && d.records) ? d.records : [];
+    revRenderDetailRows(body, records);
+  });
+}
+
+function revRenderDetailRows(body, records) {
+  if (!records.length) {
+    body.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px 0">No student-level records found for this month.</div>';
+    return;
+  }
+  var completeCount = records.filter(function(r){ return r.docComplete; }).length;
+  var summaryHtml = '<div style="font-size:12px;font-weight:600;padding:4px 4px 8px;color:'+(completeCount===records.length?'#1D9E75':'#7A5B00')+'">'+
+    (completeCount===records.length ? '✅ ' : '⚠ ') + completeCount + ' of ' + records.length + ' records fully documented (invoice number, amount &amp; date)' +
+    '</div>';
+  var rowsHtml = records.map(function(r) {
+    var mismatchBadge = r.monthMismatch
+      ? '<span title="Entered/edited in a different month than the actual payment — worth a look, not necessarily wrong" style="font-size:10px;background:#FFF3CD;color:#7A5B00;border-radius:4px;padding:2px 6px;font-weight:700;margin-left:6px">⚠ late entry</span>'
+      : '';
+    var invBadge = r.invoiceNumber
+      ? '<span style="font-size:11px;color:var(--muted)">Inv# '+escC(r.invoiceNumber)+'</span>'
+      : '<span style="font-size:11px;color:#B00020">No invoice #</span>';
+    return '<div class="rev-detail-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 4px;border-bottom:1px solid #EEE;flex-wrap:wrap">'+
+      '<div style="min-width:160px">'+
+        '<div style="font-size:13px;font-weight:600">'+escC(r.studentName||('Student #'+r.studentId))+'</div>'+
+        '<div style="font-size:11px;color:var(--muted)">'+escC(r.course||'')+' &middot; '+escC(r.batchCode||'')+'</div>'+
+      '</div>'+
+      '<div style="font-size:12px;color:var(--muted);min-width:150px">Paid: '+escC(r.paymentDate||'—')+' &middot; Entered: '+escC((r.createdAt||'').slice(0,10))+mismatchBadge+'</div>'+
+      '<div style="font-size:12px;min-width:100px">₹'+Math.round(r.courseFee||0).toLocaleString('en-IN')+'</div>'+
+      '<div style="min-width:110px">'+invBadge+'</div>'+
+      '<div style="display:flex;gap:6px">'+
+        '<button type="button" class="del-btn" onclick="revJumpToFeeRecord(\''+escC(r.batchCode)+'\',\''+escC(r.studentId)+'\')">Update</button>'+
+        '<button type="button" class="del-btn danger" onclick="deleteFeeRecordUI(\''+escC(r.id)+'\',\''+escC(r.enteredBy)+'\',\''+escC(r.studentName||r.studentId)+'\','+Number(r.courseFee||0)+',initRevenueTab)">Remove</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+  body.innerHTML = '<div style="margin-top:4px">' + summaryHtml + rowsHtml + '</div>';
+}
+
+/* revToggleReconcile — Apr/May/Jun (and any other pre-July, manually-entered) reconciliation.
+   Compares whatever a counsellor typed into the Students/Course Fee fields for a locked
+   month against what the invoice-linked student_fees data (via getRevenueDetail, which now
+   works for any month since it filters by revenue_month) actually adds up to. Never applies
+   anything automatically — the counsellor sees both numbers, the underlying student list,
+   and only overwrites the fields (still going through the existing Revision-with-reason
+   save flow) if they choose to. */
+function revToggleReconcile(toggle) {
+  var body = toggle.nextElementSibling;
+  if (!body || !body.classList.contains('rev-reconcile-body')) return;
+  var showing = body.style.display !== 'none';
+  if (showing) { body.style.display = 'none'; return; }
+  body.style.display = 'block';
+  if (toggle.getAttribute('data-loaded') === 'Y') return;
+  toggle.setAttribute('data-loaded', 'Y');
+  body.innerHTML = '<div style="font-size:12px;color:var(--muted)">Loading invoice-linked data…</div>';
+  gasGet({action:'getRevenueDetail', counsellor:counselorName, centre:toggle.getAttribute('data-centre'), month:toggle.getAttribute('data-month')}, function(e, d) {
+    var records = (!e && d && d.records) ? d.records : [];
+    var derivedFee = records.reduce(function(s,r){ return s + Number(r.courseFee||0); }, 0);
+    var derivedStu = records.length;
+    var ownSection = toggle.closest('.rev-own-section');
+    var manualStu = Number((ownSection.querySelector('.rmc-students')||{}).value) || 0;
+    var manualFee = Number((ownSection.querySelector('.rmc-course')||{}).value) || 0;
+    var matches = manualFee === derivedFee && manualStu === derivedStu;
+    var summaryHtml = '<div style="font-size:12px;margin-bottom:8px">'+
+      '<div>You entered: <strong>'+money(manualFee)+'</strong> &middot; '+manualStu+' student'+(manualStu!==1?'s':'')+'</div>'+
+      '<div>Invoice-linked data says: <strong>'+money(derivedFee)+'</strong> &middot; '+derivedStu+' student'+(derivedStu!==1?'s':'')+'</div>'+
+      (records.length === 0
+        ? '<div style="color:var(--muted);margin-top:4px">No invoice-linked records found for this month — the manual figure may be the only source of truth here.</div>'
+        : matches
+          ? '<div style="color:#1D9E75;font-weight:600;margin-top:4px">✅ Matches what you entered</div>'
+          : '<button type="button" class="del-btn" style="margin-top:6px" onclick="revApplyReconciliation(this,'+derivedFee+','+derivedStu+')">Apply invoice-linked figure</button>')+
+    '</div><div class="recon-list"></div>';
+    body.innerHTML = summaryHtml;
+    if (records.length) revRenderDetailRows(body.querySelector('.recon-list'), records);
+  });
+}
+
+function revApplyReconciliation(btn, fee, students) {
+  var ownSection = btn.closest('.rev-own-section');
+  var feeInput = ownSection.querySelector('.rmc-course');
+  var stuInput = ownSection.querySelector('.rmc-students');
+  feeInput.value = fee;
+  stuInput.value = students;
+  revCalcGst(feeInput, 'own');
+  revUpdateTotal(feeInput);
+  var notesInput = ownSection.querySelector('.rmc-notes');
+  if (notesInput && !notesInput.value) notesInput.value = 'Reconciled with invoice-linked fee records';
+  showToast('Applied — review and Save Revision to make it permanent.');
+}
+
+/* revJumpToFeeRecord — deep-links from the revenue drill-down straight into the Fees tab's
+   Update Fee form for one student, instead of making the counsellor hunt for the batch and
+   student manually. */
+function revJumpToFeeRecord(batchCode, studentId) {
+  switchTab('t-fees');
+  var sel = document.getElementById('fee-batch');
+  if (sel) sel.value = batchCode;
+  loadFeeOverview(function() {
+    openFeeForm(studentId);
+  });
 }
 
 function revCalcGst(input, bucket) {

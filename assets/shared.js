@@ -505,6 +505,9 @@ window.gasGet = (function () {
     var nInst = 1;
     var invoiceNumber = '';
     var invoiceAmount = 0;
+    var invoiceDate = '';
+    var invoiceSharedComment = '';
+    var invoiceFileUrl = '';
 
     var insts = [
       { amt: r.amount || 0, due: r.payment_date || '', paid: (r.amount > 0) ? 'Y' : 'N', paidDate: r.payment_date || '', mode: r.payment_mode || '', ref: r.receipt_no || '' },
@@ -535,6 +538,9 @@ window.gasGet = (function () {
       nInst = Number(jsonMeta.n_installments || 1);
       invoiceNumber = jsonMeta.invoice_number || '';
       invoiceAmount = Number(jsonMeta.invoice_amount || 0);
+      invoiceDate = jsonMeta.invoice_date || '';
+      invoiceSharedComment = jsonMeta.invoice_shared_comment || '';
+      invoiceFileUrl = jsonMeta.invoice_file_url || '';
       receiptNo = jsonMeta.actual_receipt_no || '';
       
       for (var i = 1; i <= 3; i++) {
@@ -612,6 +618,10 @@ window.gasGet = (function () {
       outstanding: outstanding,
       invoice_number: invoiceNumber,
       invoice_amount: invoiceAmount,
+      invoice_date: invoiceDate,
+      invoice_shared_comment: invoiceSharedComment,
+      invoice_file_url: invoiceFileUrl,
+      revenue_month: r.revenue_month || '',
       fee_status: feeStatus,
       entered_by: r.recorded_by || '',
       updated_at: r.created_at || '',
@@ -1316,6 +1326,9 @@ window.gasGet = (function () {
             inst3PaidDate: toDMY(mapped.inst3_paid_date), inst3Mode: mapped.inst3_mode, inst3Ref: mapped.inst3_reference,
             collected: mapped.collected, outstanding: mapped.outstanding,
             invoiceNumber: mapped.invoice_number, invoiceAmount: mapped.invoice_amount,
+            invoiceDate: mapped.invoice_date, invoiceSharedComment: mapped.invoice_shared_comment,
+            invoiceFileUrl: mapped.invoice_file_url,
+            docComplete: !!(mapped.invoice_number && mapped.invoice_amount && mapped.invoice_date),
             feeStatus: mapped.fee_status, enteredBy: mapped.entered_by };
         }) });
       });
@@ -1390,7 +1403,16 @@ window.gasGet = (function () {
       n_installments: n,
       invoice_number: p.invoiceNumber || '',
       invoice_amount: (p.invoiceAmount !== undefined && p.invoiceAmount !== null && p.invoiceAmount !== '')
-        ? Number(p.invoiceAmount) : net
+        ? Number(p.invoiceAmount) : net,
+      // invoice_date is deliberately separate from the payment/installment dates below —
+      // an invoice is often raised after the money is actually collected, so it must not
+      // feed revenue-month bucketing (see revenue_month on dbRow). It's documentation only.
+      invoice_date: p.invoiceDate || '',
+      // Free-text explanation for when one invoice legitimately covers multiple students
+      // (e.g. a parent or company paying for 2-3 students on one invoice) — surfaced by the
+      // duplicate-invoice-number flag below rather than required up front.
+      invoice_shared_comment: p.invoiceSharedComment || '',
+      invoice_file_url: p.invoiceFileUrl || ''
     };
     
     for (var i = 1; i <= 3; i++) {
@@ -1413,7 +1435,13 @@ window.gasGet = (function () {
       }
     }
     meta.actual_receipt_no = latestRef;
-    
+
+    // revenue_month — the authoritative bucket for AUTO revenue, replacing created_at.
+    // "First installment or full payment": inst[0] IS the full payment when nInst===1, and
+    // the actual first installment otherwise, so this one rule covers both cases the way
+    // it was asked for.
+    var revenueMonth = ((inst[0].paid && inst[0].paidDate) ? inst[0].paidDate : (latestDate || today)).slice(0, 7);
+
     var dbRow = {
       student_id: String(p.studentId),
       batch_code: p.batchCode,
@@ -1424,22 +1452,48 @@ window.gasGet = (function () {
       receipt_no: JSON.stringify(meta),
       course_fee: cf,
       gst_amount: gst,
-      recorded_by: p.enteredBy || 'Counselor'
+      recorded_by: p.enteredBy || 'Counselor',
+      revenue_month: revenueMonth
     };
-    
+
+    // Duplicate invoice number check — informational, never blocks the save. Legitimate
+    // when one invoice covers 2-3 students on a single parent/company payment; the UI
+    // surfaces this via invoice_shared_comment rather than treating it as an error.
+    function checkDuplicateInvoice(next) {
+      var invNum = (p.invoiceNumber || '').trim();
+      if (!invNum) { next(null); return; }
+      GET('student_fees', 'receipt_no=ilike.*' + encodeURIComponent('"invoice_number":"' + invNum + '"') + '*&student_id=neq.' + encodeURIComponent(p.studentId), function (e3, dupRows) {
+        next((dupRows || []).length > 0 ? dupRows.map(function (d) { return d.student_id; }) : null);
+      });
+    }
+
     GET('student_fees', 'student_id=eq.' + encodeURIComponent(p.studentId) + '&batch_code=eq.' + encodeURIComponent(p.batchCode), function(err, rows) {
       if (err) { cb(null, { status: 'error', reason: String(err) }); return; }
       if (rows && rows.length) {
         var rowId = rows[0].id;
-        var originalCreatedAt = rows[0].created_at;
+        var previousRevenueMonth = rows[0].revenue_month || '';
+        var previousCentre = rows[0].centre;
+        var previousRecordedBy = rows[0].recorded_by;
         PATCH('student_fees', 'id=eq.' + encodeURIComponent(rowId), dbRow, function (e) {
-          cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
-          if (!e) syncStudentRevenue(dbRow.recorded_by, dbRow.centre, fmtMonthKey(new Date(originalCreatedAt || Date.now())), '2026-27');
+          if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+          syncStudentRevenue(dbRow.recorded_by, dbRow.centre, revenueMonth, '2026-27');
+          // If editing this record moved it into a different revenue month (e.g. correcting
+          // a wrong payment date), the OLD month's total must be re-synced too, or it keeps
+          // counting a record that no longer belongs there.
+          if (previousRevenueMonth && previousRevenueMonth !== revenueMonth) {
+            syncStudentRevenue(previousRecordedBy || dbRow.recorded_by, previousCentre || dbRow.centre, previousRevenueMonth, '2026-27');
+          }
+          checkDuplicateInvoice(function (dupWith) {
+            cb(null, dupWith ? { status: 'ok', duplicateInvoice: true, duplicateWith: dupWith } : { status: 'ok' });
+          });
         });
       } else {
         POST('student_fees', null, dbRow, function (e) {
-          cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
-          if (!e) syncStudentRevenue(dbRow.recorded_by, dbRow.centre, fmtMonthKey(new Date()), '2026-27');
+          if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+          syncStudentRevenue(dbRow.recorded_by, dbRow.centre, revenueMonth, '2026-27');
+          checkDuplicateInvoice(function (dupWith) {
+            cb(null, dupWith ? { status: 'ok', duplicateInvoice: true, duplicateWith: dupWith } : { status: 'ok' });
+          });
         });
       }
     });
@@ -1465,9 +1519,72 @@ window.gasGet = (function () {
       DEL('student_fees', 'id=eq.' + encodeURIComponent(id), function (e2) {
         if (e2) { cb(null, { status: 'error', reason: String(e2) }); return; }
         syncStudentRevenue(row.recorded_by || 'Counselor', row.centre,
-          fmtMonthKey(new Date(row.created_at || Date.now())), '2026-27');
+          row.revenue_month || fmtMonthKey(new Date(row.created_at || Date.now())), '2026-27');
         cb(null, { status: 'ok' });
       });
+    });
+  }
+
+  /* getRevenueDetail — the "cross-check and verify" drill-down. Given a counsellor +
+     centre + month, returns the exact list of student_fees rows whose revenue_month
+     matches, so a counsellor can see the student-level detail behind a total instead of
+     just trusting the number. Filters by revenue_month (see migration_revenue_month_column.sql)
+     rather than created_at, so this list always matches whatever syncStudentRevenue summed
+     into the card, row for row — including for pre-July months, which makes this the same
+     function the Apr/May/Jun reconciliation view uses to show the invoice-derived total.
+     Rows are flagged when revenue_month differs from created_at's month — i.e. entered or
+     corrected in a different month than the one it actually counts toward, worth a second
+     look but not necessarily wrong (that's exactly what late/backfilled entry looks like). */
+  function h_getRevenueDetail(p, cb) {
+    var counsellor = p.counsellor || '';
+    var centre = p.centre || '';
+    var monthKey = p.month || '';
+    if (!/^\d{4}-\d{2}$/.test(monthKey)) { cb(null, { records: [] }); return; }
+
+    var qs = 'recorded_by=eq.' + encodeURIComponent(counsellor) +
+             '&centre=eq.'     + encodeURIComponent(centre) +
+             '&revenue_month=eq.' + encodeURIComponent(monthKey) +
+             '&order=payment_date.desc&limit=500';
+
+    GET('student_fees', qs, function (e, rows) {
+      if (e || !rows || !rows.length) { cb(null, { records: [] }); return; }
+      var batchCodes = [];
+      rows.forEach(function (r) { if (r.batch_code && batchCodes.indexOf(r.batch_code) < 0) batchCodes.push(r.batch_code); });
+      var students, batches, n = 0;
+      function finish() {
+        if (++n < 2) return;
+        var records = rows.map(function (r) {
+          var mapped = parseFeeRow(r, students, batches);
+          var createdMonth = (r.created_at || '').slice(0, 7);
+          return {
+            id: mapped.id, studentId: mapped.student_id, studentName: mapped.student_name,
+            batchCode: mapped.batch_code, course: mapped.course,
+            courseFee: mapped.course_fee, gstAmount: mapped.gst_amount,
+            paymentDate: r.payment_date || '', createdAt: r.created_at || '',
+            invoiceNumber: mapped.invoice_number, invoiceAmount: mapped.invoice_amount,
+            invoiceDate: mapped.invoice_date, invoiceFileUrl: mapped.invoice_file_url,
+            docComplete: !!(mapped.invoice_number && mapped.invoice_amount && mapped.invoice_date),
+            enteredBy: mapped.entered_by,
+            monthMismatch: !!(monthKey && createdMonth && monthKey !== createdMonth)
+          };
+        });
+        cb(null, { records: records });
+      }
+      var bcFilter = '&batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')';
+      GET('students', 'select=student_id,batch_code,name' + bcFilter, function (e1, r1) { students = r1 || []; finish(); });
+      GET('batches', 'select=batch_code,course' + bcFilter, function (e2, r2) { batches = r2 || []; finish(); });
+    });
+  }
+
+  /* checkInvoiceNumber — early, non-blocking check used while typing in the Fee form (before
+     save) to reveal the shared-invoice comment field as soon as possible. The authoritative
+     check still happens in h_saveFee at save time (duplicateInvoice in its response) —
+     this is purely to avoid the counsellor needing to save first to find out. */
+  function h_checkInvoiceNumber(p, cb) {
+    var invNum = (p.invoiceNumber || '').trim();
+    if (!invNum) { cb(null, { duplicate: false }); return; }
+    GET('student_fees', 'receipt_no=ilike.*' + encodeURIComponent('"invoice_number":"' + invNum + '"') + '*&student_id=neq.' + encodeURIComponent(p.studentId || ''), function (e, rows) {
+      cb(null, { duplicate: !e && rows && rows.length > 0 });
     });
   }
 
@@ -1477,25 +1594,24 @@ window.gasGet = (function () {
   }
 
   /* syncStudentRevenue — auto-upsert Centre Revenue from student_fees.course_fee.
-     Called fire-and-forget after h_saveFee. Only acts on 2026-07 onwards. */
+     Called fire-and-forget after h_saveFee/h_deleteFeeRecord. Only acts on 2026-07
+     onwards — pre-July months are never auto-overwritten; correcting them goes through
+     the explicit reconciliation flow (h_getRevenueDetail + the existing Revision-with-
+     reason save), never silently through this function.
+
+     Filters by revenue_month (see migration_revenue_month_column.sql), not created_at —
+     this is the actual fix for the root cause behind Kripa's July over-count: a fee
+     record entered/edited in July for a student who paid in an earlier month used to get
+     counted as July revenue because the old filter used created_at (row-touch time).
+     revenue_month is computed once at save time from the first installment's paid date
+     (or the full-payment date), so it reflects when the money actually moved. */
   function syncStudentRevenue(counsellor, centre, monthKey, period) {
     var autoMonths = ['2026-07','2026-08','2026-09','2026-10','2026-11','2026-12','2027-01','2027-02','2027-03'];
     if (autoMonths.indexOf(monthKey) < 0) return; // Preserve pre-July manual entries untouched
 
-    // Parse YYYY-MM format (e.g. '2026-07')
-    var parts = monthKey.split('-');
-    var yr    = parseInt(parts[0], 10);   // 2026
-    var mo    = parseInt(parts[1], 10);   // 7 (1-indexed)
-    // UTC month boundaries (acceptable edge on IST; date discrepancy < 1 day)
-    var startISO = parts[0] + '-' + parts[1] + '-01T00:00:00.000Z';
-    var nextMo = mo, nextYr = yr;
-    if (nextMo > 11) { nextMo = 1; nextYr++; } else { nextMo++; }
-    var endISO = nextYr + '-' + String(nextMo).padStart(2, '0') + '-01T00:00:00.000Z';
-
     var qs = 'recorded_by=eq.' + encodeURIComponent(counsellor) +
              '&centre=eq.'     + encodeURIComponent(centre) +
-             '&created_at=gte.' + encodeURIComponent(startISO) +
-             '&created_at=lt.'  + encodeURIComponent(endISO) +
+             '&revenue_month=eq.' + encodeURIComponent(monthKey) +
              '&limit=500';
 
     GET('student_fees', qs, function(e, rows) {
@@ -2792,14 +2908,19 @@ window.gasGet = (function () {
         manualMap[key].manualStudents += Number(r.student_count       || 0);
       });
 
-      // Derived: sum course_fee per counsellor+centre+month from student_fees
+      // Derived: sum course_fee per counsellor+centre+month from student_fees, bucketed by
+      // revenue_month (first-installment/full-payment date) — NOT created_at. Using
+      // created_at here was the same root cause behind Kripa's July over-count: a record
+      // entered/edited in one month for a payment that happened in another used to get
+      // attributed to whichever month the row was last touched. Falls back to created_at's
+      // month only for rows that predate the revenue_month migration/backfill.
       var derivedMap = {};
       feeRows.forEach(function(r) {
-        if (!r.created_at) return;
-        var dt  = new Date(r.created_at);
-        // YYYY-MM format, matching revenue_monthly_achieved.month
-        var mon = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0');
-        if (months.indexOf(mon) < 0) return;
+        var mon = r.revenue_month || (r.created_at ? (function(){
+          var dt = new Date(r.created_at);
+          return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0');
+        })() : '');
+        if (!mon || months.indexOf(mon) < 0) return;
         var key = (r.recorded_by || '') + '|' + (r.centre || '') + '|' + mon;
         if (!derivedMap[key]) derivedMap[key] = { derivedFee: 0, derivedStudents: 0 };
         derivedMap[key].derivedFee      += Number(r.course_fee  || 0);
@@ -6136,6 +6257,8 @@ window.gasGet = (function () {
       case 'getFeeRecords':             return h_getFeeRecords(params, cb);
       case 'saveFeeRecord':             return h_saveFee(params, cb);
       case 'deleteFeeRecord':           return h_deleteFeeRecord(params, cb);
+      case 'getRevenueDetail':          return h_getRevenueDetail(params, cb);
+      case 'checkInvoiceNumber':        return h_checkInvoiceNumber(params, cb);
       case 'getHolidays':               return h_getHolidays(params, cb);
       case 'addHoliday':                return h_addHoliday(params, cb);
       case 'getSessions':               return h_getSessions(params, cb);
@@ -6994,7 +7117,7 @@ body{font-family:"Plus Jakarta Sans",sans-serif;background:linear-gradient(180de
 .toast-host{position:fixed;right:16px;bottom:16px;display:grid;gap:8px;z-index:9999;max-width:min(360px,calc(100vw - 32px))}
 .toast{transform:translateY(8px);opacity:0;border-radius:10px;padding:11px 14px;background:var(--navy);color:var(--white);box-shadow:0 14px 34px rgba(13,27,46,.24);font-size:13px;font-weight:600;transition:opacity .18s,transform .18s}
 .toast.show{opacity:1;transform:translateY(0)}
-.toast-error{background:#8D2D2D}.toast-info{background:var(--navy2)}
+.toast-error{background:#8D2D2D}.toast-info{background:var(--navy2)}.toast-warn{background:#8A6D1E}
 .no-print{display:initial}
 @media(max-width:760px){.dashboard-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.wrap{padding:12px 12px 50px}.card{padding:18px 16px}.compact-table thead{display:none}.compact-table,.compact-table tbody,.compact-table tr,.compact-table td{display:block;width:100%}.compact-table tr{background:var(--off);border-radius:8px;margin-bottom:8px;padding:8px 10px}.compact-table td{background:transparent;padding:3px 0}.compact-table td:last-child{text-align:left}.att-cal-head{align-items:flex-start;flex-direction:column}.att-cal-actions{justify-content:flex-start}.att-cal-day{min-height:46px;padding:5px}.att-agenda-row{grid-template-columns:44px minmax(0,1fr);align-items:start}.att-agenda-stat{text-align:left;grid-column:2}}
 @media(max-width:430px){.dashboard-summary{grid-template-columns:1fr}.hdr-logo img{height:32px}}

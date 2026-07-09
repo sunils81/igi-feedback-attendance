@@ -36,8 +36,13 @@ VALUES
   ('2026-27', 'Preethy',      'Chennai',   3500000.00,  4130000.00,  '', 'Admin', NOW()),
   ('2026-27', 'Nadiya',       'Bangalore', 3500000.00,  4130000.00,  '', 'Admin', NOW()),
   ('2026-27', 'Rajini',       'Hyderabad', 3500000.00,  4130000.00,  '', 'Admin', NOW()),
-  ('2026-27', 'Kripa',        'Jaipur',    3500000.00,  4130000.00,  '', 'Admin', NOW()),
-  ('2026-27', 'Arjun Mistry', 'Ahmedabad',  500000.00,   590000.00,  '', 'Admin', NOW())
+  ('2026-27', 'Kripa',        'Jaipur',    3500000.00,  4130000.00,  '', 'Admin', NOW())
+  -- Arjun Mistry removed 2026-07-09: he is an instructor, not a counsellor (see
+  -- assets/shared.js INSTRUCTORS list). He was mistakenly seeded here with a counsellor
+  -- revenue target for Ahmedabad, which surfaced him on the counsellor leaderboard on the
+  -- CEO/board revenue dashboards. Ahmedabad's centre-level target remains in
+  -- revenue_centre_targets below — reassign it to whichever counsellor actually covers
+  -- Ahmedabad, if anyone does yet.
 ;
 
 ALTER TABLE revenue_annual_targets ENABLE ROW LEVEL SECURITY;

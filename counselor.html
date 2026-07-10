@@ -3011,7 +3011,7 @@
       </div>
       <div class="grid2">
         <div class="field"><label>Course Fee <span style="font-weight:400;color:var(--muted)">(fixed by course, excl. GST — not editable)</span></label><input type="number" id="fee-course-fee" readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed" title="Locked to the standard fee for this course. To offer a lower amount, use the Discount field below."><div id="fee-course-fee-gst-hint" style="font-size:11px;color:var(--muted);margin-top:4px"></div></div>
-        <div class="field"><label>Registration Fee <span style="font-weight:400;color:var(--muted)">(included)</span></label><input type="number" id="fee-reg-fee" oninput="recalcFeeForm()"></div>
+        <div class="field"><label>Registration Fee <span style="font-weight:400;color:var(--muted)">(included — charged as Installment 1)</span></label><input type="number" id="fee-reg-fee" oninput="recalcFeeForm()"></div>
         <div class="field"><label>Discount</label>
           <select id="fee-disc-pct" onchange="toggleCustomDiscount();recalcFeeForm()">
             <option value="0">No discount</option>
@@ -3027,7 +3027,6 @@
         <div class="field"><label>Invoice Date <span style="font-weight:400;color:var(--muted)">(optional — often raised after payment)</span></label><input type="date" id="fee-invoice-date"></div>
         <div class="field" id="fee-invoice-dup-wrap" style="display:none"><label style="color:#7A5B00">⚠ Invoice number already used elsewhere — comment</label><input type="text" id="fee-invoice-shared-comment" placeholder="e.g. one invoice, 3 students, paid together by parent"></div>
         <div class="field"><label>Receipt / Invoice File <span style="font-weight:400;color:var(--muted)">(optional)</span></label><input type="file" id="fee-invoice-file" accept=".pdf,.jpg,.jpeg,.png" onchange="uploadInvoiceFile(this)"><div id="fee-invoice-file-status" style="font-size:11px;color:var(--muted);margin-top:4px"></div></div>
-        <div class="field"><label>TDS %</label><input type="number" id="fee-tds-pct" value="0" min="0" max="100" oninput="recalcFeeForm()"></div>
         <div class="field"><label>Payment Plan</label>
           <select id="fee-payment-plan" onchange="togglePaymentPlan()">
             <option value="full">Full Payment</option>
@@ -5601,7 +5600,6 @@ function openFeeForm(studentId) {
   // directly and it stuck, silently, for a deleted/re-enrolled student).
   document.getElementById('fee-course-fee').value = defaults.fee;
   document.getElementById('fee-reg-fee').value = existing ? existing.regFee : defaults.regFee;
-  document.getElementById('fee-tds-pct').value = existing ? existing.tdsPct : 0;
   const disc = existing ? Number(existing.discPct || 0) : 0;
   document.getElementById('fee-disc-pct').value = ['0','5','7','10'].includes(String(disc)) ? String(disc) : 'custom';
   document.getElementById('fee-custom-disc').value = ['0','5','7','10'].includes(String(disc)) ? '' : disc;
@@ -5725,19 +5723,19 @@ function feeCalc() {
   const courseFee = Number(document.getElementById('fee-course-fee').value) || 0;
   const regFee = Number(document.getElementById('fee-reg-fee').value) || 0;
   const discPct = currentDiscountPct();
-  // Discount (and TDS) apply to the course fee BEFORE GST — matching the Enroll New Student
-  // flow and h_saveFee. This used to discount the GST-INCLUSIVE gross (courseFee*1.18)
-  // instead, which meant the exact same discount % produced a different rupee amount here
-  // than in the Enroll flow for an identical course fee. Both now agree.
+  // Discount applies to the course fee BEFORE GST — matching the Enroll New Student flow
+  // and h_saveFee. This used to discount the GST-INCLUSIVE gross (courseFee*1.18) instead,
+  // which meant the exact same discount % produced a different rupee amount here than in
+  // the Enroll flow for an identical course fee. Both now agree.
   const discAmt = Math.round(courseFee * discPct / 100);
   const netCourseFee = courseFee - discAmt;
   const gstAmt = Math.round(netCourseFee * gstPct / 100);
-  const tdsPct = Number(document.getElementById('fee-tds-pct').value) || 0;
-  const tdsAmt = Math.round(netCourseFee * tdsPct / 100);
   // Registration fee is a component already included within the quoted course fee (never
-  // charged on top of it) — tracked here for display/receipts but excluded from net.
-  const net = netCourseFee + gstAmt - tdsAmt;
-  return {gst: gstPct, courseFee, regFee, discPct, discAmt, tdsPct, tdsAmt, net, netCourseFee, gstAmt};
+  // charged on top of it) — tracked here for display/receipts but excluded from net. It's
+  // charged as Installment 1 (see renderInstallments/recalcFeeForm's auto-fill), not added
+  // on top of the course fee.
+  const net = netCourseFee + gstAmt;
+  return {gst: gstPct, courseFee, regFee, discPct, discAmt, net, netCourseFee, gstAmt};
 }
 
 function renderInstallments(existing) {
@@ -5750,7 +5748,7 @@ function renderInstallments(existing) {
     const inst = rec['inst' + i] || {};
     const hasExisting = inst.amt !== undefined && inst.amt !== '';
     html += '<div class="inst-grid">' +
-      '<div class="field"><label>Amount ' + i + '</label><input type="number" id="fee-inst' + i + '-amt" value="' + escC(inst.amt || '') + '" data-manual="' + (hasExisting ? '1' : '0') + '" oninput="feeInstManualInput(this,' + i + ')"></div>' +
+      '<div class="field"><label>Amount ' + i + (i === 1 ? ' <span id="fee-inst1-reg-hint" style="font-weight:400;color:var(--muted);display:none">(= registration fee)</span>' : '') + '</label><input type="number" id="fee-inst' + i + '-amt" value="' + escC(inst.amt || '') + '" data-manual="' + (hasExisting ? '1' : '0') + '" oninput="feeInstManualInput(this,' + i + ')"></div>' +
       '<div class="field"><label>Due Date</label><input type="date" id="fee-inst' + i + '-due" value="' + dateForInput(inst.due) + '"></div>' +
       '<div class="field"><label>Paid?</label><select id="fee-inst' + i + '-paid" onchange="onFeePaidChange(' + i + ')"><option value="N">No</option><option value="Y" ' + (inst.paid === 'Y' ? 'selected' : '') + '>Yes</option></select></div>' +
       '<div class="field" id="fee-inst' + i + '-paid-date-wrap" style="display:' + (inst.paid === 'Y' ? 'block' : 'none') + '"><label>Payment Date</label><input type="date" id="fee-inst' + i + '-paid-date" value="' + dateForInput(inst.paidDate || '') + '"></div>' +
@@ -5814,17 +5812,31 @@ function recalcFeeForm() {
   let collected = 0;
   let instTotal = 0;
   let allManual = true;
+  // When there's more than one installment, Installment 1 is the registration fee — paid
+  // upfront to secure the seat — and the remaining installments split what's left of net
+  // payable evenly. With only one installment (Full Payment), there's nothing to split
+  // separately, so it stays the full net amount as before.
+  const regForInst1 = (n > 1 && calc.regFee > 0) ? Math.min(calc.regFee, calc.net) : 0;
+  const remainingAfterReg = Math.max(calc.net - regForInst1, 0);
   for (let i = 1; i <= n; i++) {
     const amtEl = document.getElementById('fee-inst' + i + '-amt');
     const paidEl = document.getElementById('fee-inst' + i + '-paid');
-    // Auto-fill empty fields (no manual flag) with even split
+    // Auto-fill empty fields (no manual flag): Installment 1 gets the registration fee
+    // (when applicable), every other installment splits the remainder evenly.
     if (amtEl && !amtEl.value && amtEl.dataset.manual !== '1') {
-      amtEl.value = Math.round(calc.net / n);
+      if (i === 1 && regForInst1 > 0) {
+        amtEl.value = regForInst1;
+      } else {
+        const remainingCount = regForInst1 > 0 ? (n - 1) : n;
+        amtEl.value = Math.round(remainingAfterReg / remainingCount) || Math.round(calc.net / n);
+      }
     }
     if (amtEl && amtEl.dataset.manual !== '1') allManual = false;
     if (amtEl) instTotal += Number(amtEl.value) || 0;
     if (amtEl && paidEl && paidEl.value === 'Y') collected += Number(amtEl.value) || 0;
   }
+  const inst1Hint = document.getElementById('fee-inst1-reg-hint');
+  if (inst1Hint) inst1Hint.style.display = regForInst1 > 0 ? 'inline' : 'none';
   document.getElementById('fee-net').textContent = money(calc.net);
   document.getElementById('fee-paid').textContent = money(collected);
   document.getElementById('fee-out').textContent = money(Math.max(calc.net - collected, 0));
@@ -5873,8 +5885,6 @@ function saveFeeRecord() {
     discountPct:calc.discPct,
     discountAmt:calc.discAmt,
     discountReason:document.getElementById('fee-disc-reason').value.trim(),
-    tdsPct:calc.tdsPct,
-    tdsAmt:calc.tdsAmt,
     nInst:n,
     // enteredBy is the revenue-credit owner, not "whoever clicked Save". For a brand-new
     // record it's whoever is creating it (currentFeeStudent.recordOwner defaults to

@@ -3003,13 +3003,14 @@
         <div class="fee-readonly"><div class="k">Batch</div><div class="v" id="fee-ro-batch">—</div></div>
         <div class="fee-readonly"><div class="k">Course</div><div class="v" id="fee-ro-course">—</div></div>
         <div class="fee-readonly">
-          <div class="k">Counsellor <span style="font-weight:400" title="Whose revenue this fee record counts toward. Saving a correction (e.g. adding an invoice number) never changes this on its own — it stays with whoever it's currently credited to.">(revenue credit)</span></div>
+          <div class="k">Counsellor <span style="font-weight:400" title="Whose revenue this fee record counts toward. Saving a correction (e.g. adding an invoice number) never changes this on its own — it only moves if you deliberately pick someone else below.">(revenue credit)</span></div>
           <div class="v" id="fee-ro-counsellor">—</div>
-          <select id="fee-counsellor-admin" class="admin-only" style="display:none;margin-top:4px;font-size:12px" onchange="onFeeCounsellorAdminChange()"></select>
+          <select id="fee-counsellor-admin" style="display:none;margin-top:4px;font-size:12px" onchange="onFeeCounsellorAdminChange()"></select>
+          <div id="fee-counsellor-change-link" style="display:none;margin-top:4px"><a href="javascript:void(0)" style="font-size:11px" onclick="showFeeCounsellorPicker()">Wrong credit? Change counsellor</a></div>
         </div>
       </div>
       <div class="grid2">
-        <div class="field"><label>Course Fee <span style="font-weight:400;color:var(--muted)">(fixed by course — not editable)</span></label><input type="number" id="fee-course-fee" readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed" title="Locked to the standard fee for this course. To offer a lower amount, use the Discount field below."></div>
+        <div class="field"><label>Course Fee <span style="font-weight:400;color:var(--muted)">(fixed by course, excl. GST — not editable)</span></label><input type="number" id="fee-course-fee" readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed" title="Locked to the standard fee for this course. To offer a lower amount, use the Discount field below."><div id="fee-course-fee-gst-hint" style="font-size:11px;color:var(--muted);margin-top:4px"></div></div>
         <div class="field"><label>Registration Fee <span style="font-weight:400;color:var(--muted)">(included)</span></label><input type="number" id="fee-reg-fee" oninput="recalcFeeForm()"></div>
         <div class="field"><label>Discount</label>
           <select id="fee-disc-pct" onchange="toggleCustomDiscount();recalcFeeForm()">
@@ -5571,10 +5572,12 @@ function openFeeForm(studentId) {
   // A brand-new record defaults to whoever is creating it (unchanged, correct behaviour).
   // An existing record shows and preserves its current owner — saving a correction here
   // (invoice number, discount, etc.) must never silently reassign whose revenue this counts
-  // toward just because a different person happened to click Save. Only Admin gets a control
-  // to deliberately change it (e.g. fixing a genuine misattribution).
+  // toward just because a different person happened to click Save. Any counsellor can
+  // deliberately reassign it via "Wrong credit? Change counsellor" when it's genuinely
+  // misattributed — that's an explicit action, not something that happens by accident.
   const currentOwner = existing ? (existing.enteredBy || 'Unknown') : (counselorName || 'Counselor');
   currentFeeStudent.recordOwner = currentOwner;
+  currentFeeStudent.ownerReassigned = false;
   document.getElementById('fee-ro-counsellor').textContent = currentOwner + (existing ? '' : ' (new record)');
   const ownerSelect = document.getElementById('fee-counsellor-admin');
   if (ownerSelect) {
@@ -5585,7 +5588,12 @@ function openFeeForm(studentId) {
     if (names.indexOf(currentOwner) < 0 && currentOwner) {
       ownerSelect.insertAdjacentHTML('afterbegin', '<option value="' + currentOwner + '" selected>' + currentOwner + ' (current)</option>');
     }
+    ownerSelect.style.display = 'none';
   }
+  // Only offer "change counsellor" on records that already exist — a brand-new record's
+  // owner is just whoever is creating it, nothing to reassign yet.
+  const changeLink = document.getElementById('fee-counsellor-change-link');
+  if (changeLink) changeLink.style.display = existing ? 'block' : 'none';
   // Course fee is always the fixed system price for this course (COURSE_FEES_JS), never a
   // per-student value — even when editing an existing record. Adjustments for an individual
   // student go through the Discount % field, not by typing a different course fee (that was
@@ -5621,7 +5629,19 @@ function hideFeeForm() {
   currentFeeStudent = null;
 }
 
-// Admin explicitly picked a different counsellor to credit this record to. Updates the
+// Reveals the counsellor picker after an explicit "Wrong credit? Change counsellor" click —
+// deliberately hidden by default so the dropdown existing isn't itself an invitation to
+// casually flip someone's revenue. Any counsellor can use this, not just Admin; the point
+// is making a wrong credit fixable without waiting on Admin, while keeping the flip itself
+// a visible, deliberate action rather than a side effect of an unrelated save.
+function showFeeCounsellorPicker() {
+  const sel = document.getElementById('fee-counsellor-admin');
+  const link = document.getElementById('fee-counsellor-change-link');
+  if (sel) sel.style.display = 'block';
+  if (link) link.style.display = 'none';
+}
+
+// A different counsellor was explicitly picked to credit this record to. Updates the
 // in-memory owner (read by saveFeeRecord below) and the visible label, so it's obvious a
 // reassignment is about to happen before Save Fee Record is clicked.
 function onFeeCounsellorAdminChange() {
@@ -5717,7 +5737,7 @@ function feeCalc() {
   // Registration fee is a component already included within the quoted course fee (never
   // charged on top of it) — tracked here for display/receipts but excluded from net.
   const net = netCourseFee + gstAmt - tdsAmt;
-  return {gst: gstPct, courseFee, regFee, discPct, discAmt, tdsPct, tdsAmt, net};
+  return {gst: gstPct, courseFee, regFee, discPct, discAmt, tdsPct, tdsAmt, net, netCourseFee, gstAmt};
 }
 
 function renderInstallments(existing) {
@@ -5808,6 +5828,15 @@ function recalcFeeForm() {
   document.getElementById('fee-net').textContent = money(calc.net);
   document.getElementById('fee-paid').textContent = money(collected);
   document.getElementById('fee-out').textContent = money(Math.max(calc.net - collected, 0));
+  // The locked Course Fee field itself stays excl. GST (it feeds feeCalc's math directly —
+  // showing the GST-inclusive number THERE would double-count GST the moment this form
+  // reloads it). This hint shows the GST-inclusive figure alongside it instead, so it's
+  // visible without touching the value the calculation actually uses.
+  const gstHint = document.getElementById('fee-course-fee-gst-hint');
+  if (gstHint) {
+    gstHint.textContent = 'Incl. ' + calc.gst + '% GST: ' + money(calc.netCourseFee + calc.gstAmt) +
+      (calc.discAmt > 0 ? ' (after discount)' : '');
+  }
   // Show warning if all installments are manually set and don't match net
   const warnEl = document.getElementById('fee-inst-warn');
   if (warnEl && n > 1 && allManual && calc.net > 0) {
@@ -5850,10 +5879,11 @@ function saveFeeRecord() {
     // enteredBy is the revenue-credit owner, not "whoever clicked Save". For a brand-new
     // record it's whoever is creating it (currentFeeStudent.recordOwner defaults to
     // counselorName in that case — see openFeeForm). For an existing record it's whatever
-    // it was already credited to, UNLESS Admin explicitly picked someone else via the
-    // Counsellor dropdown (ownerReassigned) — that's the only path that's allowed to move
-    // credit from one counsellor to another. isAdmin/requestedBy let the backend enforce
-    // this even if a client-side bug ever tried to send a reassignment some other way.
+    // it was already credited to, UNLESS someone explicitly picked a different counsellor
+    // via "Wrong credit? Change counsellor" (ownerReassigned) — that's the only path
+    // allowed to move credit from one counsellor to another; every other save leaves it
+    // untouched. requestedBy tells the backend (and the audit log) who actually made that
+    // change, since ownerReassigned alone doesn't say who clicked it.
     enteredBy: (currentFeeStudent.recordOwner || counselorName || 'Counselor'),
     ownerReassigned: !!currentFeeStudent.ownerReassigned,
     requestedBy: counselorName || 'Counselor',

@@ -2134,6 +2134,16 @@ window.gasGet = (function () {
 
     allMonthly.forEach(function(r) {
       if (r.period === period) {
+        // Skip "Other Centre Revenue" rows here — a counsellor claiming personal credit for
+        // a sale fulfilled at a centre other than their own (assigned_centre !== business_centre)
+        // is a duplicate of that destination centre's own auto-derived Centre Revenue row.
+        // Counting both would double-count the same real transaction in this centre's total.
+        // Other Centre claims still count toward the individual counsellor's own achievement
+        // (see globalCounsellorMap / byCounsellor below) — just not here.
+        var isCorporateRow = String(r.business_type || '').toLowerCase().indexOf('corporate') >= 0 ||
+                             String(r.business_centre || '').toLowerCase().indexOf('corporate') >= 0;
+        var isOtherCentreRow = !isCorporateRow && r.assigned_centre && r.business_centre && r.assigned_centre !== r.business_centre;
+        if (isOtherCentreRow) return;
         var c = r.business_centre || r.centre || r.assigned_centre;
         if (c) {
           if (!globalCentreMap[c]) {
@@ -2271,8 +2281,16 @@ window.gasGet = (function () {
       var gst = Number(r.achieved_course_fee_gst || 0);
       var students = Number(r.student_count || 0);
       [bViewCentre, bBusiness].forEach(function(b) {
-        b.achievedCourse += course;
-        b.achievedGst += gst;
+        // achievedCourse/achievedGst is this centre's headline total — must not include
+        // Other Centre claims, since those are a counsellor's personal copy-credit for a
+        // sale that's already counted as real Centre Revenue under the destination centre's
+        // own counsellor. Folding both in here double-counts the same transaction. The
+        // otherCentreCourse/otherCentreGst sub-totals below still capture it separately for
+        // transparency, they just don't feed the headline figure.
+        if (!isOtherCentre) {
+          b.achievedCourse += course;
+          b.achievedGst += gst;
+        }
         b.studentCount += students;
         if (isCorporate) { b.corporateCourse += course; b.corporateGst += gst; }
         else if (isOtherCentre) { b.otherCentreCourse += course; b.otherCentreGst += gst; }
@@ -3025,6 +3043,13 @@ window.gasGet = (function () {
       rows.forEach(function(r) {
         if (filterMonths.indexOf(r.month) < 0) return;
         var isCorp = String(r.business_type||'').toLowerCase().indexOf('corporate')>=0;
+        // Other Centre Revenue rows (a counsellor personally crediting themselves for a sale
+        // fulfilled at a different centre) are excluded here — that same sale is already
+        // counted once as real Centre Revenue under the destination centre's own counsellor.
+        // Including both here double-counts it in this centre's (and, via natAch below, the
+        // national) total. The individual counsellor still gets personal credit via sumRows.
+        var isOtherCentre = !isCorp && r.assigned_centre && r.business_centre && r.assigned_centre !== r.business_centre;
+        if (isOtherCentre) return;
         var c = isCorp ? r.assigned_centre : (r.business_centre||r.assigned_centre);
         if (!c) return;
         m[c] = (m[c]||0)+(Number(r.achieved_course_fee)||0);
@@ -3173,9 +3198,15 @@ window.gasGet = (function () {
 
       // National
       var natAch  = cards.reduce(function(s,c){ return s+(c.achLakh*100000); },0);
-      // Recompute more accurately from sumRows
-      var _na=0; Object.keys(achCur).forEach(function(n){_na+=achCur[n].total;}); natAch=_na;
-      var natPY   = 0; Object.keys(achPY).forEach(function(n){natPY+=achPY[n].total;});
+      // Recompute more accurately — from centreAchCur/centreAchPY (sumCentreRows), NOT from
+      // summing each counsellor's own total (achCur/achPY). A counsellor's own total
+      // legitimately includes their Other Centre Revenue claims (personal recognition for a
+      // sale fulfilled elsewhere), but that same sale is already counted once as real Centre
+      // Revenue under the destination centre. Summing per-counsellor totals for the national
+      // figure double-counts every Other Centre claim company-wide; summing the (deduplicated)
+      // per-centre totals does not.
+      var _na=0; Object.keys(centreAchCur).forEach(function(c){_na+=centreAchCur[c];}); natAch=_na;
+      var natPY   = 0; Object.keys(centreAchPY).forEach(function(c){natPY+=centreAchPY[c];});
       var natBP   = HR_NATIONAL_TARGET * periodFrac; // always use fixed ₹5.5 Cr annual BP, not sum of individual targets
       var natVsBP = natBP  ? Math.round(natAch/natBP*100)  : 0;
       var natVsPY = natPY  ? Math.round(natAch/natPY*100)  : null;

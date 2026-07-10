@@ -379,23 +379,24 @@ function normalizeTopic(str) {
 // Given a course's syllabus and the batch's past (non-cancelled) sessions
 // (each { topic, session_date }, oldest first), work out which syllabus
 // days have already been taught and what the next one should be.
+//
+// Progression is simply "one syllabus day per session held" — the count of past
+// (non-cancelled) sessions determines the next day. This used to instead try to
+// detect which specific days were covered by exact-text-matching each session's
+// topic against the syllabus, and resume right after the furthest matched day.
+// In practice instructors almost always type their own topic wording rather than
+// the exact syllabus text, so that match rarely fires — and when it does (e.g.
+// because a session's topic happens to equal the syllabus text the cron itself
+// pre-filled), it can permanently freeze progression: once a later session's
+// topic stops matching, the "furthest matched day" stops advancing, so every
+// subsequent session gets pre-filled with that same frozen day's topic forever
+// (this is what caused a batch to get stuck re-suggesting "Day 4" every day).
+// Plain session-count progression avoids that trap entirely.
 function computeNextSyllabusDay(syllabus, pastSessions) {
-  const usedIdx = {};
-  (pastSessions || []).forEach((s) => {
-    const norm = normalizeTopic(s.topic);
-    if (!norm) return;
-    for (let i = 0; i < syllabus.length; i++) {
-      if (normalizeTopic(syllabus[i].topic) === norm) { usedIdx[i] = true; break; }
-    }
-  });
-  const usedIndices = Object.keys(usedIdx).map(Number);
-  const maxUsed = usedIndices.length ? Math.max(...usedIndices) : -1;
   const pastCount = (pastSessions || []).length;
-  // If we matched syllabus days, the next one is right after the furthest day covered.
-  // If there were past sessions but none matched (e.g. all custom topics), fall back
-  // to a simple count so progression still advances by one day per session held.
-  const nextIndex = maxUsed >= 0 ? maxUsed + 1 : pastCount;
-  const usedDays = usedIndices.map((i) => syllabus[i].day || (i + 1)).sort((a, b) => a - b);
+  const nextIndex = pastCount;
+  const usedDays = syllabus.slice(0, Math.min(pastCount, syllabus.length))
+    .map((s, i) => s.day || (i + 1));
   const result = { dayNo: '', topic: '', week: '', usedDays };
   if (syllabus.length && nextIndex < syllabus.length) {
     result.dayNo = syllabus[nextIndex].day || (nextIndex + 1);

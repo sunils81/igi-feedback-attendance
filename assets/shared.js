@@ -4781,26 +4781,24 @@ window.gasGet = (function () {
 
   // Given a course's syllabus and that batch's past (non-cancelled) sessions,
   // works out which syllabus days are already covered and what the next one is.
-  // Progression is based on the batch's actual session history, not a fixed
-  // calendar offset, so holidays/extra sessions/skipped days don't throw it off.
+  //
+  // Progression is simply "one syllabus day per session held" — the count of past
+  // (non-cancelled) sessions determines the next day. This used to instead try to
+  // detect which specific days were covered by exact-text-matching each session's
+  // topic against the syllabus, and resume right after the furthest matched day.
+  // In practice instructors almost always type their own topic wording rather than
+  // the exact syllabus text, so that match rarely fires — and when it does (e.g.
+  // because a session's topic happens to equal the syllabus text the cron itself
+  // pre-filled), it can permanently freeze progression: once a later session's
+  // topic stops matching, the "furthest matched day" stops advancing, so every
+  // subsequent session gets pre-filled with that same frozen day's topic forever
+  // (this is what caused a batch to get stuck re-suggesting "Day 4" every day).
+  // Plain session-count progression avoids that trap entirely.
   function computeSyllabusProgress(syllabus, pastRows) {
-    var usedIdx = {};
-    (pastRows || []).forEach(function (r) {
-      var norm = normTopicKey(r.topic);
-      if (!norm) return;
-      for (var i = 0; i < syllabus.length; i++) {
-        if (normTopicKey(syllabus[i].topic) === norm) { usedIdx[i] = true; break; }
-      }
-    });
-    var usedIndices = Object.keys(usedIdx).map(Number);
-    var maxUsed = usedIndices.length ? Math.max.apply(null, usedIndices) : -1;
     var pastCount = (pastRows || []).length;
-    // If topics matched syllabus entries, resume right after the furthest day covered.
-    // If there were past sessions but none matched (all custom topics), fall back to
-    // a plain count so progression still advances one day per session held.
-    var nextIndex = maxUsed >= 0 ? maxUsed + 1 : pastCount;
-    var usedDays = usedIndices.map(function (i) { return syllabus[i].day || (i + 1); })
-      .sort(function (a, b) { return a - b; });
+    var nextIndex = pastCount;
+    var usedDays = syllabus.slice(0, Math.min(pastCount, syllabus.length))
+      .map(function (s, i) { return s.day || (i + 1); });
     var out = { dayNo: '', scheduledTopic: '', week: '', usedDays: usedDays };
     if (syllabus.length && nextIndex < syllabus.length) {
       out.dayNo = syllabus[nextIndex].day || (nextIndex + 1);

@@ -3002,6 +3002,11 @@
         <div class="fee-readonly"><div class="k">Student</div><div class="v" id="fee-ro-name">—</div></div>
         <div class="fee-readonly"><div class="k">Batch</div><div class="v" id="fee-ro-batch">—</div></div>
         <div class="fee-readonly"><div class="k">Course</div><div class="v" id="fee-ro-course">—</div></div>
+        <div class="fee-readonly">
+          <div class="k">Counsellor <span style="font-weight:400" title="Whose revenue this fee record counts toward. Saving a correction (e.g. adding an invoice number) never changes this on its own — it stays with whoever it's currently credited to.">(revenue credit)</span></div>
+          <div class="v" id="fee-ro-counsellor">—</div>
+          <select id="fee-counsellor-admin" class="admin-only" style="display:none;margin-top:4px;font-size:12px" onchange="onFeeCounsellorAdminChange()"></select>
+        </div>
       </div>
       <div class="grid2">
         <div class="field"><label>Course Fee <span style="font-weight:400;color:var(--muted)">(fixed by course — not editable)</span></label><input type="number" id="fee-course-fee" readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed" title="Locked to the standard fee for this course. To offer a lower amount, use the Discount field below."></div>
@@ -5562,6 +5567,25 @@ function openFeeForm(studentId) {
   document.getElementById('fee-ro-name').textContent = s.name;
   document.getElementById('fee-ro-batch').textContent = b.batchCode + ' · ' + b.centre;
   document.getElementById('fee-ro-course').textContent = b.course;
+  // Counsellor (revenue credit) — sticky to whoever this record is currently attributed to.
+  // A brand-new record defaults to whoever is creating it (unchanged, correct behaviour).
+  // An existing record shows and preserves its current owner — saving a correction here
+  // (invoice number, discount, etc.) must never silently reassign whose revenue this counts
+  // toward just because a different person happened to click Save. Only Admin gets a control
+  // to deliberately change it (e.g. fixing a genuine misattribution).
+  const currentOwner = existing ? (existing.enteredBy || 'Unknown') : (counselorName || 'Counselor');
+  currentFeeStudent.recordOwner = currentOwner;
+  document.getElementById('fee-ro-counsellor').textContent = currentOwner + (existing ? '' : ' (new record)');
+  const ownerSelect = document.getElementById('fee-counsellor-admin');
+  if (ownerSelect) {
+    const names = allCounsellorNames();
+    ownerSelect.innerHTML = names.map(function(n) {
+      return '<option value="' + n + '"' + (n === currentOwner ? ' selected' : '') + '>' + n + '</option>';
+    }).join('');
+    if (names.indexOf(currentOwner) < 0 && currentOwner) {
+      ownerSelect.insertAdjacentHTML('afterbegin', '<option value="' + currentOwner + '" selected>' + currentOwner + ' (current)</option>');
+    }
+  }
   // Course fee is always the fixed system price for this course (COURSE_FEES_JS), never a
   // per-student value — even when editing an existing record. Adjustments for an individual
   // student go through the Discount % field, not by typing a different course fee (that was
@@ -5595,6 +5619,19 @@ function openFeeForm(studentId) {
 function hideFeeForm() {
   document.getElementById('fee-form-card').style.display = 'none';
   currentFeeStudent = null;
+}
+
+// Admin explicitly picked a different counsellor to credit this record to. Updates the
+// in-memory owner (read by saveFeeRecord below) and the visible label, so it's obvious a
+// reassignment is about to happen before Save Fee Record is clicked.
+function onFeeCounsellorAdminChange() {
+  if (!currentFeeStudent) return;
+  const sel = document.getElementById('fee-counsellor-admin');
+  const newOwner = sel && sel.value;
+  if (!newOwner) return;
+  currentFeeStudent.recordOwner = newOwner;
+  currentFeeStudent.ownerReassigned = true;
+  document.getElementById('fee-ro-counsellor').textContent = newOwner + ' (reassigning on save)';
 }
 
 function deleteFeeRecordUI(recordId, enteredBy, studentName, collected, onDone) {
@@ -5810,7 +5847,17 @@ function saveFeeRecord() {
     tdsPct:calc.tdsPct,
     tdsAmt:calc.tdsAmt,
     nInst:n,
-    enteredBy:counselorName || 'Counselor',
+    // enteredBy is the revenue-credit owner, not "whoever clicked Save". For a brand-new
+    // record it's whoever is creating it (currentFeeStudent.recordOwner defaults to
+    // counselorName in that case — see openFeeForm). For an existing record it's whatever
+    // it was already credited to, UNLESS Admin explicitly picked someone else via the
+    // Counsellor dropdown (ownerReassigned) — that's the only path that's allowed to move
+    // credit from one counsellor to another. isAdmin/requestedBy let the backend enforce
+    // this even if a client-side bug ever tried to send a reassignment some other way.
+    enteredBy: (currentFeeStudent.recordOwner || counselorName || 'Counselor'),
+    ownerReassigned: !!currentFeeStudent.ownerReassigned,
+    requestedBy: counselorName || 'Counselor',
+    isAdmin: isAdmin === true,
     invoiceNumber:document.getElementById('fee-invoice-number').value.trim(),
     invoiceAmount:calc.net,
     invoiceDate:document.getElementById('fee-invoice-date').value || '',
@@ -8266,6 +8313,17 @@ function adminTargetRows() {
     {counsellor:'Rajini',     centre:'Hyderabad'},
     {counsellor:'Kripa',      centre:'Jaipur'}
   ];
+}
+
+// Deduped list of every counsellor name, for the Admin "reassign revenue credit" picker on
+// the Fees tab (see fee-counsellor-admin). Built from adminTargetRows() so it stays in sync
+// with whoever's officially on the roster, without a second hardcoded list to fall out of date.
+function allCounsellorNames() {
+  var seen = {}, out = [];
+  adminTargetRows().forEach(function(r) {
+    if (!seen[r.counsellor]) { seen[r.counsellor] = true; out.push(r.counsellor); }
+  });
+  return out;
 }
 
 function renderAdminTargetPanel() {

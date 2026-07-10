@@ -1474,13 +1474,29 @@ window.gasGet = (function () {
         var previousRevenueMonth = rows[0].revenue_month || '';
         var previousCentre = rows[0].centre;
         var previousRecordedBy = rows[0].recorded_by;
+        // Revenue-credit ownership must never move just because someone other than the
+        // current owner saved a correction (invoice number, discount, etc.). Only an
+        // explicit Admin-driven reassignment (isAdmin + ownerReassigned, sent from the
+        // Fees tab's Counsellor picker) is allowed to change recorded_by on an existing
+        // record — everything else keeps whatever it was already credited to, regardless
+        // of who's logged in when Save is clicked. This is the server-side backstop for
+        // the same rule the client already enforces.
+        var isAdminReq = p.isAdmin === true || p.isAdmin === 'true';
+        var reassignAuthorized = isAdminReq && (p.ownerReassigned === true || p.ownerReassigned === 'true');
+        if (previousRecordedBy && dbRow.recorded_by !== previousRecordedBy && !reassignAuthorized) {
+          dbRow.recorded_by = previousRecordedBy;
+        }
         PATCH('student_fees', 'id=eq.' + encodeURIComponent(rowId), dbRow, function (e) {
           if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
           syncStudentRevenue(dbRow.recorded_by, dbRow.centre, revenueMonth, '2026-27');
-          // If editing this record moved it into a different revenue month (e.g. correcting
-          // a wrong payment date), the OLD month's total must be re-synced too, or it keeps
-          // counting a record that no longer belongs there.
-          if (previousRevenueMonth && previousRevenueMonth !== revenueMonth) {
+          // Re-sync the OLD (counsellor, centre, month) bucket whenever this save moved the
+          // record off of it — either because the revenue month changed (e.g. correcting a
+          // wrong payment date) or because an authorized reassignment changed the owner.
+          // Skipping this for an owner change (as the code used to) left the previous
+          // counsellor's cached total stale — still counting a record that had just been
+          // reassigned away from them — which is exactly how the same sale ends up looking
+          // double-counted until something unrelated happens to re-touch their bucket.
+          if (previousRevenueMonth && (previousRevenueMonth !== revenueMonth || previousRecordedBy !== dbRow.recorded_by)) {
             syncStudentRevenue(previousRecordedBy || dbRow.recorded_by, previousCentre || dbRow.centre, previousRevenueMonth, '2026-27');
           }
           checkDuplicateInvoice(function (dupWith) {

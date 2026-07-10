@@ -3011,7 +3011,7 @@
       </div>
       <div class="grid2">
         <div class="field"><label>Course Fee <span style="font-weight:400;color:var(--muted)">(fixed by course, excl. GST — not editable)</span></label><input type="number" id="fee-course-fee" readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed" title="Locked to the standard fee for this course. To offer a lower amount, use the Discount field below."><div id="fee-course-fee-gst-hint" style="font-size:11px;color:var(--muted);margin-top:4px"></div></div>
-        <div class="field"><label>Registration Fee <span style="font-weight:400;color:var(--muted)">(included — charged as Installment 1)</span></label><input type="number" id="fee-reg-fee" oninput="recalcFeeForm()"></div>
+        <div class="field"><label>Down Payment <span style="font-weight:400;color:var(--muted)">(booking amount — included in course fee, paid upfront)</span></label><input type="number" id="fee-reg-fee" oninput="recalcFeeForm()"></div>
         <div class="field"><label>Discount</label>
           <select id="fee-disc-pct" onchange="toggleCustomDiscount();recalcFeeForm()">
             <option value="0">No discount</option>
@@ -5743,12 +5743,13 @@ function renderInstallments(existing) {
   const n = Number(document.getElementById('fee-n-inst').value) || 1;
   const rec = existing || (currentFeeStudent && currentFeeStudent.existing) || {};
   const modes = ['','Cash','Card','UPI','RTGS','Collexo','Cheque','DD'];
-  let html = '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:12px 0 8px">Installments</div>';
+  let html = '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:12px 0 4px">Installments</div>' +
+    '<div id="fee-inst-remaining-hint" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>';
   for (let i = 1; i <= n; i++) {
     const inst = rec['inst' + i] || {};
     const hasExisting = inst.amt !== undefined && inst.amt !== '';
     html += '<div class="inst-grid">' +
-      '<div class="field"><label>Amount ' + i + (i === 1 ? ' <span id="fee-inst1-reg-hint" style="font-weight:400;color:var(--muted);display:none">(= registration fee)</span>' : '') + '</label><input type="number" id="fee-inst' + i + '-amt" value="' + escC(inst.amt || '') + '" data-manual="' + (hasExisting ? '1' : '0') + '" oninput="feeInstManualInput(this,' + i + ')"></div>' +
+      '<div class="field"><label>Amount ' + i + '</label><input type="number" id="fee-inst' + i + '-amt" value="' + escC(inst.amt || '') + '" data-manual="' + (hasExisting ? '1' : '0') + '" oninput="feeInstManualInput(this,' + i + ')"></div>' +
       '<div class="field"><label>Due Date</label><input type="date" id="fee-inst' + i + '-due" value="' + dateForInput(inst.due) + '"></div>' +
       '<div class="field"><label>Paid?</label><select id="fee-inst' + i + '-paid" onchange="onFeePaidChange(' + i + ')"><option value="N">No</option><option value="Y" ' + (inst.paid === 'Y' ? 'selected' : '') + '>Yes</option></select></div>' +
       '<div class="field" id="fee-inst' + i + '-paid-date-wrap" style="display:' + (inst.paid === 'Y' ? 'block' : 'none') + '"><label>Payment Date</label><input type="date" id="fee-inst' + i + '-paid-date" value="' + dateForInput(inst.paidDate || '') + '"></div>' +
@@ -5769,7 +5770,10 @@ function feeInstManualInput(el, idx) {
   // If field is cleared, unmark it as manual so it auto-fills again
   el.dataset.manual = el.value !== '' ? '1' : '0';
   const calc = feeCalc();
-  const net = calc.net;
+  // Installments only need to cover what's left after the Down Payment — not the full
+  // net payable — since the down payment is collected separately, upfront.
+  const downPayment = Math.min(Math.max(calc.regFee, 0), calc.net);
+  const remainingForInstallments = Math.max(calc.net - downPayment, 0);
   // Sum of manually-set fields
   let manualSum = 0;
   let autoCount = 0;
@@ -5780,7 +5784,7 @@ function feeInstManualInput(el, idx) {
     else autoCount++;
   }
   // Distribute remainder evenly across auto fields
-  const remainder = net - manualSum;
+  const remainder = remainingForInstallments - manualSum;
   if (autoCount > 0) {
     const share = Math.round(remainder / autoCount);
     let distributed = 0;
@@ -5809,34 +5813,30 @@ function dateForInput(v) {
 function recalcFeeForm() {
   const calc = feeCalc();
   const n = Number(document.getElementById('fee-n-inst').value) || 1;
-  let collected = 0;
+  let instPaid = 0;
   let instTotal = 0;
   let allManual = true;
-  // When there's more than one installment, Installment 1 is the registration fee — paid
-  // upfront to secure the seat — and the remaining installments split what's left of net
-  // payable evenly. With only one installment (Full Payment), there's nothing to split
-  // separately, so it stays the full net amount as before.
-  const regForInst1 = (n > 1 && calc.regFee > 0) ? Math.min(calc.regFee, calc.net) : 0;
-  const remainingAfterReg = Math.max(calc.net - regForInst1, 0);
+  // Down Payment (booking amount) is paid upfront and separate from the numbered
+  // installments — it is NOT "Installment 1". Installments 1..n split whatever's LEFT of
+  // net payable after the down payment, evenly. The down payment itself is treated as
+  // already collected the moment it's entered (that's the point of a booking amount), so
+  // it counts toward Collected / reduces Remaining immediately, without needing its own
+  // paid-date/mode fields.
+  const downPayment = Math.min(Math.max(calc.regFee, 0), calc.net);
+  const remainingForInstallments = Math.max(calc.net - downPayment, 0);
   for (let i = 1; i <= n; i++) {
     const amtEl = document.getElementById('fee-inst' + i + '-amt');
     const paidEl = document.getElementById('fee-inst' + i + '-paid');
-    // Auto-fill empty fields (no manual flag): Installment 1 gets the registration fee
-    // (when applicable), every other installment splits the remainder evenly.
+    // Auto-fill empty fields (no manual flag) with an even split of what's left after
+    // the down payment.
     if (amtEl && !amtEl.value && amtEl.dataset.manual !== '1') {
-      if (i === 1 && regForInst1 > 0) {
-        amtEl.value = regForInst1;
-      } else {
-        const remainingCount = regForInst1 > 0 ? (n - 1) : n;
-        amtEl.value = Math.round(remainingAfterReg / remainingCount) || Math.round(calc.net / n);
-      }
+      amtEl.value = Math.round(remainingForInstallments / n);
     }
     if (amtEl && amtEl.dataset.manual !== '1') allManual = false;
     if (amtEl) instTotal += Number(amtEl.value) || 0;
-    if (amtEl && paidEl && paidEl.value === 'Y') collected += Number(amtEl.value) || 0;
+    if (amtEl && paidEl && paidEl.value === 'Y') instPaid += Number(amtEl.value) || 0;
   }
-  const inst1Hint = document.getElementById('fee-inst1-reg-hint');
-  if (inst1Hint) inst1Hint.style.display = regForInst1 > 0 ? 'inline' : 'none';
+  const collected = downPayment + instPaid;
   document.getElementById('fee-net').textContent = money(calc.net);
   document.getElementById('fee-paid').textContent = money(collected);
   document.getElementById('fee-out').textContent = money(Math.max(calc.net - collected, 0));
@@ -5849,15 +5849,23 @@ function recalcFeeForm() {
     gstHint.textContent = 'Incl. ' + calc.gst + '% GST: ' + money(calc.netCourseFee + calc.gstAmt) +
       (calc.discAmt > 0 ? ' (after discount)' : '');
   }
-  // Show warning if all installments are manually set and don't match net
+  // Shows what the installments below actually need to add up to, since it's no longer
+  // the full net payable once a down payment is entered.
+  const instRemHint = document.getElementById('fee-inst-remaining-hint');
+  if (instRemHint) {
+    instRemHint.textContent = downPayment > 0
+      ? 'Splitting ' + money(remainingForInstallments) + ' across ' + n + ' installment' + (n !== 1 ? 's' : '') + ' (after ' + money(downPayment) + ' down payment)'
+      : '';
+  }
+  // Show warning if all installments are manually set and don't match what's left to collect
   const warnEl = document.getElementById('fee-inst-warn');
-  if (warnEl && n > 1 && allManual && calc.net > 0) {
-    const diff = instTotal - calc.net;
+  if (warnEl && n > 1 && allManual && remainingForInstallments > 0) {
+    const diff = instTotal - remainingForInstallments;
     if (Math.abs(diff) > 1) {
       warnEl.style.display = 'block';
       warnEl.textContent = diff > 0
-        ? '⚠ Installment total exceeds net payable by ' + money(diff) + '. Please adjust.'
-        : '⚠ Installment total is ' + money(-diff) + ' short of net payable. Please adjust.';
+        ? '⚠ Installment total exceeds the remaining balance by ' + money(diff) + '. Please adjust.'
+        : '⚠ Installment total is ' + money(-diff) + ' short of the remaining balance. Please adjust.';
     } else {
       warnEl.style.display = 'none';
     }

@@ -1384,7 +1384,13 @@ window.gasGet = (function () {
         paid: p['inst' + i + 'Paid'] === 'Y', paidDate: toYMD(p['inst' + i + 'PaidDate']),
         mode: p['inst' + i + 'Mode'] || '', ref: p['inst' + i + 'Ref'] || '' };
     });
-    var collected   = inst.slice(0, n).reduce(function (s, x) { return s + (x.paid ? x.amt : 0); }, 0);
+    // Down Payment (rf) is collected upfront, separate from the numbered installments, and
+    // counts toward "collected" immediately — matching what the Fees tab now shows the
+    // counsellor the moment they type it in. Leaving it out here (as the old
+    // registration-fee-is-informational-only behavior did) would make the stored record
+    // silently disagree with what's on screen — the same class of mismatch this whole
+    // portal's revenue reconciliation work has been about closing.
+    var collected   = rf + inst.slice(0, n).reduce(function (s, x) { return s + (x.paid ? x.amt : 0); }, 0);
     var outstanding = net - collected;
     
     var meta = {

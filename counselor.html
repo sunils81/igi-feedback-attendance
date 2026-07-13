@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=48"></script>
+<script src="/assets/shared.js?v=49"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -5785,7 +5785,7 @@ function renderInvoicesTab() {
   var html = '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
     '<th class="text-left">Student</th><th class="text-left">Batch</th><th class="text-left">Course</th>' +
     '<th class="text-left">Centre</th><th class="text-left">Invoice #</th><th>Invoice Date</th>' +
-    '<th>Course Fee</th><th>Discount</th><th>Net Payable</th><th>Collected</th><th>Outstanding</th><th>Status</th>' +
+    '<th>Course Fee</th><th>Discount</th><th>Net Payable</th><th>Collected</th><th>Outstanding</th><th>Status</th><th>Action</th>' +
     '</tr></thead><tbody>';
   html += sorted.map(function(r) {
     var statusCls = String(r.feeStatus || 'Pending').toLowerCase();
@@ -5802,6 +5802,7 @@ function renderInvoicesTab() {
       '<td style="font-family:\'JetBrains Mono\',monospace;color:#1a7a3c">' + money(r.collected) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace;color:' + (Number(r.outstanding) > 0 ? 'var(--red)' : '#1a7a3c') + '">' + money(r.outstanding) + '</td>' +
       '<td><span class="fee-status ' + escC(statusCls) + '">' + escC(r.feeStatus || 'Pending') + '</span></td>' +
+      '<td><button class="del-btn" onclick="openInvoiceEditModal(\'' + escC(r.id) + '\')">' + (r.invoiceNumber ? '✏️ Edit' : '🧾 Add') + '</button></td>' +
     '</tr>';
   }).join('');
   html += '</tbody></table></div>';
@@ -5814,6 +5815,66 @@ function toDMYClient(ymd) {
   if (!ymd) return '';
   var p = String(ymd).split('-');
   return p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0]) : ymd;
+}
+
+// Lets a counsellor fill in a missing invoice number/date (or fix a wrong one) straight
+// from the Invoices tab, without reopening the full Update Fee form on the record's own
+// batch — this only ever touches the invoice_number/invoice_date/invoice_amount fields,
+// never the collected amount, installments, discount, or revenue ownership.
+function openInvoiceEditModal(recordId) {
+  var rec = (allInvoiceRecords || []).find(function(r) { return String(r.id) === String(recordId); });
+  if (!rec) { showToast('Could not find this record — try refreshing.', 'error'); return; }
+  var old = document.getElementById('inv-edit-modal');
+  if (old) old.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'inv-edit-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML =
+    '<div style="background:#fff;border-radius:12px;padding:28px 32px;min-width:340px;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,.3)">' +
+      '<h3 style="margin:0 0 6px;font-size:17px;color:#0d1b2e">🧾 Invoice Details</h3>' +
+      '<p style="margin:0 0 18px;font-size:13px;color:#666">' + escC(rec.studentName || '') + ' &mdash; ' + escC(rec.batchCode || '') + '</p>' +
+      '<label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">Invoice Number</label>' +
+      '<input id="inv-edit-number" type="text" placeholder="e.g. STV/26/INV/53489" value="' + escC(rec.invoiceNumber || '') + '" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:9px 12px;font-size:14px;outline:none">' +
+      '<label style="display:block;font-size:12px;font-weight:600;color:#374151;margin:14px 0 6px">Invoice Date</label>' +
+      '<input id="inv-edit-date" type="date" value="' + escC(rec.invoiceDate || '') + '" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:9px 12px;font-size:14px;outline:none">' +
+      '<label style="display:block;font-size:12px;font-weight:600;color:#374151;margin:14px 0 6px">Invoice Amount</label>' +
+      '<input id="inv-edit-amount" type="number" value="' + (rec.invoiceAmount || rec.netPayable || 0) + '" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:9px 12px;font-size:14px;outline:none">' +
+      '<p id="inv-modal-err" style="color:#dc2626;font-size:12px;margin:6px 0 0;display:none"></p>' +
+      '<div style="display:flex;gap:10px;margin-top:20px">' +
+        '<button id="inv-modal-cancel" style="flex:1;padding:9px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;font-size:14px">Cancel</button>' +
+        '<button id="inv-modal-save" style="flex:2;padding:9px;border:none;border-radius:8px;background:#C8A951;color:#0d1b2e;font-weight:700;cursor:pointer;font-size:14px">Save Invoice Details</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(modal);
+
+  document.getElementById('inv-modal-cancel').onclick = function() { modal.remove(); };
+  document.getElementById('inv-modal-save').onclick = function() {
+    var invoiceNumber = document.getElementById('inv-edit-number').value.trim();
+    var invoiceDate = document.getElementById('inv-edit-date').value;
+    var invoiceAmount = document.getElementById('inv-edit-amount').value;
+    var errEl = document.getElementById('inv-modal-err');
+    if (!invoiceNumber) { errEl.textContent = 'Please enter an invoice number.'; errEl.style.display = 'block'; return; }
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    gasGet({action:'updateInvoiceDetails', recordId: rec.id, invoiceNumber, invoiceDate, invoiceAmount}, function(e, d) {
+      if (e || !d || d.status !== 'ok') {
+        errEl.textContent = 'Could not save — please try again.';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Save Invoice Details';
+        return;
+      }
+      rec.invoiceNumber = invoiceNumber;
+      rec.invoiceDate = invoiceDate;
+      rec.invoiceAmount = Number(invoiceAmount) || 0;
+      rec.docComplete = !!(rec.invoiceNumber && rec.invoiceAmount && rec.invoiceDate);
+      modal.remove();
+      showToast('Invoice details saved.');
+      renderInvoicesTab();
+    });
+  };
 }
 
 function downloadInvoicesCsv() {

@@ -1618,6 +1618,38 @@ window.gasGet = (function () {
     GET('batches', 'select=batch_code,course,centre', function (e, r) { batches = r || []; finish(); });
   }
 
+  /* updateInvoiceDetails — lightweight edit for JUST the invoice number/date/amount on an
+     existing fee record. Built for the cross-batch Invoices tab, where a counsellor fills
+     in a missing invoice without reopening the full Update Fee form (which recomputes
+     course fee, installments, discount, etc. — none of which should be touched here).
+     Only ever rewrites the invoice_* keys inside the receipt_no JSON blob; every other
+     key already in that blob (installment amounts/paid status, discount, etc.) is read
+     back untouched, and no other student_fees column is written at all. */
+  function h_updateInvoiceDetails(p, cb) {
+    var recordId = p.recordId;
+    if (!recordId) { cb(null, { status: 'error', reason: 'missing_record_id' }); return; }
+    GET('student_fees', 'id=eq.' + encodeURIComponent(recordId), function (e, rows) {
+      if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'not_found' }); return; }
+      var receiptNo = rows[0].receipt_no || '';
+      var meta = {};
+      if (receiptNo && receiptNo.trim().indexOf('{') === 0) {
+        try { meta = JSON.parse(receiptNo); } catch (ex) { meta = {}; }
+      } else if (receiptNo) {
+        // Legacy plain-text receipt reference (predates the JSON-meta format) —
+        // preserve it as the payment reference instead of silently discarding it.
+        meta.actual_receipt_no = receiptNo;
+      }
+      meta.invoice_number = p.invoiceNumber || '';
+      meta.invoice_date = p.invoiceDate || '';
+      if (p.invoiceAmount !== undefined && p.invoiceAmount !== null && p.invoiceAmount !== '') {
+        meta.invoice_amount = Number(p.invoiceAmount);
+      }
+      PATCH('student_fees', 'id=eq.' + encodeURIComponent(recordId), { receipt_no: JSON.stringify(meta) }, function (e2) {
+        cb(null, e2 ? { status: 'error', reason: String(e2) } : { status: 'ok' });
+      });
+    });
+  }
+
   /* saveFeeRecord */
   function h_saveFee(p, cb) {
     var n   = Number(p.nInst || 1);
@@ -7485,6 +7517,7 @@ window.gasGet = (function () {
       case 'getOverdueFeesCount':       return h_getOverdueFeesCount(params, cb);
       case 'getFeeRecords':             return h_getFeeRecords(params, cb);
       case 'getAllFeeRecords':          return h_getAllFeeRecords(params, cb);
+      case 'updateInvoiceDetails':      return h_updateInvoiceDetails(params, cb);
       case 'saveFeeRecord':             return h_saveFee(params, cb);
       case 'deleteFeeRecord':           return h_deleteFeeRecord(params, cb);
       case 'getRevenueDetail':          return h_getRevenueDetail(params, cb);

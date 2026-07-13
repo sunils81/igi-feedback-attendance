@@ -16120,7 +16120,11 @@ function enrollSave() {
         stateRegion: getStateForSave('enroll-ns'),
         batchCode: batchCode, batchCodes: batchCode
       }, function(e2, d2) {
-        if (e2 || (d2 && d2.status === 'error')) { next('Could not create student. Try again.'); return; }
+        if (e2 || (d2 && d2.status === 'error')) {
+          var reason = (d2 && d2.reason) || (e2 && e2.message) || '';
+          next('Could not create student.' + (reason ? ' (' + reason + ')' : ' Try again.'));
+          return;
+        }
         studentId = (d2 && d2.enrollmentNo) || studentId;
         next(null);
       });

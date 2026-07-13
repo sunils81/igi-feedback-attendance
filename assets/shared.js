@@ -1396,12 +1396,13 @@ window.gasGet = (function () {
     var regCustom = (p.regCustomAmount !== undefined && p.regCustomAmount !== null && p.regCustomAmount !== '')
       ? Number(p.regCustomAmount) : null;
     var regEffective = (regCustom !== null && !isNaN(regCustom)) ? regCustom : regComputed;
-    var tp  = Number(p.tdsPct || 0);
-    // Same reasoning as discount above: derive TDS from netCf x tdsPct here rather than
-    // trusting a client-computed tdsAmt that may have used a different (GST-inclusive) base.
-    var ta  = (p.tdsPct !== undefined && p.tdsPct !== null && p.tdsPct !== '')
-      ? Math.round(netCf * tp / 100)
-      : Number(p.tdsAmt || 0);
+    // TDS removed (matches Fees tab, commit 1133ffe, and the Enroll New Student flow which was
+    // the last caller still sending tdsPct). Invoices are raised on the full amount; any TDS a
+    // corporate payer withholds is reconciled separately outside this system and must never
+    // silently shrink net_payable/collected/outstanding here. tds_pct/tds_amount are kept at 0
+    // in the stored record so older code reading those fields still gets a defined value.
+    var tp  = 0;
+    var ta  = 0;
     var net = Math.round(netCf + gst - ta);   // registration fee intentionally excluded — see above
     var today = todayYMD();
     var inst = [1, 2, 3].map(function (i) {

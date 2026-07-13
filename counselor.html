@@ -15713,7 +15713,6 @@ function openEnrollModal(monthKey, centre, counsellor) {
   document.getElementById('enroll-custom-disc-wrap').style.display = 'none';
   document.getElementById('enroll-custom-disc').value = '';
   document.getElementById('enroll-disc-reason').value = '';
-  document.getElementById('enroll-tds-pct').value = '0';
   document.getElementById('enroll-n-inst').value = '1';
   var today = new Date();
   document.getElementById('enroll-date').value =
@@ -15970,13 +15969,14 @@ function enrollCalcFee() {
   // itself. Fix: discount the base first, then compute GST on what's left.
   var netCf = cf - da;
   var gst = Math.round(netCf * 0.18);   // GST on the discounted course fee, course fee ONLY
-  var tp  = Number(document.getElementById('enroll-tds-pct').value) || 0;
-  var ta  = Math.round(netCf * tp / 100);
   // Registration fee is a component ALREADY INCLUDED within the quoted course fee (true for
   // every course), never an amount on top of it — so it is shown for reference only and is
   // NOT added into Net Payable. Adding it here previously double-billed every enrollment by
   // the registration amount.
-  var net = Math.round(netCf + gst - ta);
+  // TDS removed (matches Fees tab, commit 1133ffe): invoices are raised on the full amount;
+  // any TDS a corporate payer withholds is reconciled separately outside this system and must
+  // never silently shrink what's tracked here as owed/collected.
+  var net = Math.round(netCf + gst);
   document.getElementById('enroll-s-fee').textContent  = money(cf);
   document.getElementById('enroll-s-gst').textContent  = money(gst);
   document.getElementById('enroll-s-reg').textContent  = money(regEffective);
@@ -16111,7 +16111,6 @@ function enrollSave() {
       comment:        document.getElementById('enroll-comment').value.trim(),
       discountPct:    dp,
       discountReason: document.getElementById('enroll-disc-reason').value.trim(),
-      tdsPct:         Number(document.getElementById('enroll-tds-pct').value) || 0,
       nInst:          Number(document.getElementById('enroll-n-inst').value)  || 1,
       enteredBy:      st.counsellor || 'Counselor'
     }, function(e, d) {
@@ -16484,7 +16483,6 @@ function enrollSave() {
           </div>
           <div class="enroll-field" id="enroll-custom-disc-wrap" style="display:none"><label>Custom Discount %</label><input id="enroll-custom-disc" type="number" min="0" max="100" oninput="enrollCalcFee()"></div>
           <div class="enroll-field"><label>Discount Reason</label><input id="enroll-disc-reason" type="text" placeholder="optional"></div>
-          <div class="enroll-field"><label>TDS %</label><input id="enroll-tds-pct" type="number" min="0" max="100" value="0" oninput="enrollCalcFee()"></div>
           <div class="enroll-field"><label>Instalments</label>
             <select id="enroll-n-inst">
               <option value="1">Full Payment (1)</option>

@@ -1151,26 +1151,116 @@ window.gasGet = (function () {
   }
 
   /* deleteBatch — cascade-deletes child records before removing the batch */
-  function h_deleteBatch(p, cb) {
-    var bc = encodeURIComponent(p.batchCode);
-    var tables = ['attendance', 'feedback', 'marks', 'sessions', 'students', 'student_fees'];
-    var idx = 0;
-    function next() {
-      if (idx >= tables.length) {
-        // Finally delete the batch itself
-        DEL('batches', 'batch_code=eq.' + bc, function(e) {
-          if (e) { cb(null, { status: 'error', message: 'Delete batch failed: ' + e.message }); return; }
-          cb(null, { status: 'ok' });
-        });
-        return;
-      }
-      var tbl = tables[idx++];
-      DEL(tbl, 'batch_code=eq.' + bc, function(e) {
-        // Ignore 404/not-found — table may not have rows; continue regardless
-        next();
+  // Two bugs fixed here:
+  // 1. keepStudents was accepted from the client but silently ignored — "Delete Batch (Keep
+  //    Students)" deleted student profiles exactly the same as "Delete Batch & Students".
+  // 2. The old table list named tables that don't exist ('attendance'/'feedback' — the real
+  //    table is attendance_feedback; 'marks' — the real table is assessment_marks, keyed by
+  //    assessment_id, not batch_code, so it needs its own sub-cascade through assessments
+  //    first) and never handled three tables that DO reference batch_code (enrollments,
+  //    class_resources, diplomas). Every DELETE error was swallowed unconditionally ("ignore
+  //    404, continue regardless"), so none of this ever surfaced — until the leftover
+  //    students/enrollments rows finally blocked the batches DELETE itself with the FK
+  //    violation this rewrite fixes ("Key is still referenced from table students").
+  async function h_deleteBatch(p, cb) {
+    var bc = String(p.batchCode || '').trim();
+    if (!bc) { cb(null, { status: 'error', reason: 'missing_batch_code' }); return; }
+    var qbc = 'batch_code=eq.' + encodeURIComponent(bc);
+    var keepStudents = p.keepStudents === true || p.keepStudents === 'true';
+
+    function delP(table, qs) {
+      return new Promise(function (resolve) {
+        DEL(table, qs, function (err) { resolve(err || null); });
       });
     }
-    next();
+    function getP(table, qs) {
+      return new Promise(function (resolve) {
+        GET(table, qs, function (err, data) { resolve(err ? [] : (data || [])); });
+      });
+    }
+
+    try {
+      // assessment_marks references assessment_id, not batch_code — resolve this batch's
+      // assessment IDs first (same order h_deleteAssessment already uses for one assessment).
+      var batchAssessments = await getP('assessments', qbc + '&select=assessment_id');
+      var assessmentIds = batchAssessments.map(function (a) { return a.assessment_id; }).filter(Boolean);
+      if (assessmentIds.length) {
+        await delP('assessment_marks', 'assessment_id=in.(' + assessmentIds.map(encodeURIComponent).join(',') + ')');
+      }
+      await delP('assessments', qbc);
+
+      // Everything else keyed directly by batch_code.
+      await Promise.all([
+        delP('attendance_feedback', qbc),
+        delP('sessions', qbc),
+        delP('class_resources', qbc),
+        delP('diplomas', qbc)
+      ]);
+
+      // student_fees: capture (recorded_by, centre, created_at) per row before deleting so
+      // the Revenue tab's auto-derived monthly snapshot can be recalculated afterward — same
+      // reasoning h_removeStudent already applies when deleting a single student's fee row.
+      var feeRows = await getP('student_fees', qbc);
+      if (feeRows.length) {
+        await delP('student_fees', qbc);
+        feeRows.forEach(function (r) {
+          syncStudentRevenue(r.recorded_by || 'Counselor', r.centre,
+            fmtMonthKey(new Date(r.created_at || Date.now())), '2026-27');
+        });
+      }
+
+      // Students: detach (keep profile) or fully remove — but never remove a student who is
+      // still actively enrolled in some OTHER batch, mirroring the check h_removeStudent uses.
+      var enrolledHere = await getP('enrollments', qbc + '&select=student_id');
+      var directStudents = await getP('students', qbc + '&select=student_id');
+      var studentIds = Array.from(new Set(
+        enrolledHere.map(function (r) { return r.student_id; })
+          .concat(directStudents.map(function (r) { return r.student_id; }))
+          .filter(Boolean)
+      ));
+
+      await delP('enrollments', qbc);
+
+      for (var i = 0; i < studentIds.length; i++) {
+        var sid = studentIds[i];
+        var sidQs = 'student_id=eq.' + encodeURIComponent(sid);
+        var remaining = await getP('enrollments', sidQs + '&status=eq.Active');
+        var fallbackBatch = remaining.length ? remaining[0].batch_code : null;
+
+        if (keepStudents) {
+          // Reassign to a batch they're still actively enrolled in, if any; otherwise just
+          // clear the link. The student row itself is never touched in this branch.
+          await new Promise(function (resolve) {
+            PATCH('students', sidQs, { batch_code: fallbackBatch }, function (err) {
+              if (err) {
+                // batch_code may be NOT NULL on some setups — fall back to '' rather than
+                // failing the whole delete over this one field.
+                PATCH('students', sidQs, { batch_code: fallbackBatch || '' }, function () { resolve(); });
+              } else resolve();
+            });
+          });
+        } else if (!fallbackBatch) {
+          // Not keeping students, and this was their only batch — remove the profile, same
+          // as h_removeStudent does for a single student.
+          await Promise.all([
+            delP('attendance_feedback', sidQs),
+            delP('diplomas', sidQs)
+          ]);
+          await delP('students', sidQs);
+        }
+        // else: not keeping students, but they're still actively enrolled elsewhere — only
+        // this batch's link to them is removed above; their profile stays untouched.
+      }
+
+      var batchErr = await delP('batches', 'batch_code=eq.' + encodeURIComponent(bc));
+      if (batchErr) {
+        cb(null, { status: 'error', message: 'Delete batch failed: ' + (batchErr.message || String(batchErr)) });
+        return;
+      }
+      cb(null, { status: 'ok' });
+    } catch (e) {
+      cb(null, { status: 'error', message: 'Delete batch failed: ' + (e && e.message ? e.message : String(e)) });
+    }
   }
 
   /* updateBatchDates — change start/end dates and/or batch slot */

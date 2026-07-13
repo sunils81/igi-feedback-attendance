@@ -5840,18 +5840,46 @@ function renderInstallments(existing) {
       ref: rec['inst' + i + 'Ref']
     };
     const hasExisting = inst.amt !== undefined && inst.amt !== '' && inst.amt !== null;
-    html += '<div class="inst-grid">' +
-      '<div class="field"><label>Amount ' + i + '</label><input type="number" id="fee-inst' + i + '-amt" value="' + escC(inst.amt || '') + '" data-manual="' + (hasExisting ? '1' : '0') + '" oninput="feeInstManualInput(this,' + i + ')"></div>' +
-      '<div class="field"><label>Due Date</label><input type="date" id="fee-inst' + i + '-due" value="' + dateForInput(inst.due) + '"></div>' +
-      '<div class="field"><label>Paid?</label><select id="fee-inst' + i + '-paid" onchange="onFeePaidChange(' + i + ')"><option value="N">No</option><option value="Y" ' + (inst.paid === 'Y' ? 'selected' : '') + '>Yes</option></select></div>' +
-      '<div class="field" id="fee-inst' + i + '-paid-date-wrap" style="display:' + (inst.paid === 'Y' ? 'block' : 'none') + '"><label>Payment Date</label><input type="date" id="fee-inst' + i + '-paid-date" value="' + dateForInput(inst.paidDate || '') + '"></div>' +
-      '<div class="field"><label>Mode</label><select id="fee-inst' + i + '-mode">' + modes.map(m => '<option value="' + m + '" ' + (inst.mode === m ? 'selected' : '') + '>' + (m || 'Select') + '</option>').join('') + '</select></div>' +
-      '<div class="field"><label>Reference</label><input type="text" id="fee-inst' + i + '-ref" value="' + escC(inst.ref || '') + '" placeholder="Receipt / UTR"></div>' +
-    '</div>';
+    // A paid installment starts LOCKED (all its fields disabled) so it can't be changed
+    // by an accidental click/keystroke — the counsellor has to deliberately hit "Revise"
+    // first. This is evaluated fresh every time the form is opened, so a fresh save where
+    // the counsellor just ticked Paid=Yes for the first time is only locked again the
+    // NEXT time this record is opened — not immediately after that same save.
+    const locked = inst.paid === 'Y';
+    const dis = locked ? ' disabled' : '';
+    html += '<div class="inst-grid" id="fee-inst' + i + '-row">' +
+      '<div class="field"><label>Amount ' + i + '</label><input type="number" id="fee-inst' + i + '-amt" value="' + escC(inst.amt || '') + '" data-manual="' + (hasExisting ? '1' : '0') + '" oninput="feeInstManualInput(this,' + i + ')"' + dis + '></div>' +
+      '<div class="field"><label>Due Date</label><input type="date" id="fee-inst' + i + '-due" value="' + dateForInput(inst.due) + '"' + dis + '></div>' +
+      '<div class="field"><label>Paid?</label><select id="fee-inst' + i + '-paid" onchange="onFeePaidChange(' + i + ')"' + dis + '><option value="N">No</option><option value="Y" ' + (inst.paid === 'Y' ? 'selected' : '') + '>Yes</option></select></div>' +
+      '<div class="field" id="fee-inst' + i + '-paid-date-wrap" style="display:' + (inst.paid === 'Y' ? 'block' : 'none') + '"><label>Payment Date</label><input type="date" id="fee-inst' + i + '-paid-date" value="' + dateForInput(inst.paidDate || '') + '"' + dis + '></div>' +
+      '<div class="field"><label>Mode</label><select id="fee-inst' + i + '-mode"' + dis + '>' + modes.map(m => '<option value="' + m + '" ' + (inst.mode === m ? 'selected' : '') + '>' + (m || 'Select') + '</option>').join('') + '</select></div>' +
+      '<div class="field"><label>Reference</label><input type="text" id="fee-inst' + i + '-ref" value="' + escC(inst.ref || '') + '" placeholder="Receipt / UTR"' + dis + '></div>' +
+    '</div>' +
+    (locked ? ('<div style="display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted);margin:-4px 0 8px">' +
+      '🔒 Already marked paid — locked to prevent accidental changes.' +
+      '<button type="button" class="btn btn-outline" id="fee-inst' + i + '-revise-btn" onclick="feeInstRevise(' + i + ')" style="font-size:11px;padding:4px 10px">✏️ Revise</button>' +
+    '</div>') : '');
   }
   html += '<div id="fee-inst-warn" style="display:none;font-size:12px;color:#b94a00;background:#fff3eb;border:1px solid #f5c09a;border-radius:6px;padding:6px 10px;margin-top:6px"></div>';
   wrap.innerHTML = html;
   recalcFeeForm();
+}
+
+// Unlocks a previously-paid installment row so a wrong amount/date/mode/reference can be
+// corrected. Requires a deliberate click rather than just being editable by default, so a
+// settled installment can't be changed by an accidental keystroke.
+function feeInstRevise(i) {
+  ['amt', 'due', 'paid', 'paid-date', 'mode', 'ref'].forEach(function (suffix) {
+    var el = document.getElementById('fee-inst' + i + '-' + suffix);
+    if (el) el.disabled = false;
+  });
+  // Treat the amount as manually controlled from here on, so the auto-distribution in
+  // recalcFeeForm() doesn't silently overwrite the correction the counsellor is about to make.
+  var amtEl = document.getElementById('fee-inst' + i + '-amt');
+  if (amtEl) amtEl.dataset.manual = '1';
+  var btn = document.getElementById('fee-inst' + i + '-revise-btn');
+  if (btn) btn.remove();
+  showToast('Installment ' + i + ' unlocked for editing.', 'info');
 }
 
 /* Called when a user manually types in an installment amount field.

@@ -5826,8 +5826,20 @@ function renderInstallments(existing) {
   let html = '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:12px 0 4px">Installments</div>' +
     '<div id="fee-inst-remaining-hint" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>';
   for (let i = 1; i <= n; i++) {
-    const inst = rec['inst' + i] || {};
-    const hasExisting = inst.amt !== undefined && inst.amt !== '';
+    // The saved record only ever has flat fields (inst1Amt, inst1Paid, inst1Due, ...) —
+    // there is no nested rec.inst1 object. Reading rec['inst'+i] here always returned
+    // undefined, so the Update Fee form silently showed a blank/default equal split
+    // instead of the real saved installment breakdown, even though the Batch Fees list
+    // (built from the same record) showed the correct Collected total.
+    const inst = {
+      amt: rec['inst' + i + 'Amt'],
+      due: rec['inst' + i + 'Due'],
+      paid: rec['inst' + i + 'Paid'],
+      paidDate: rec['inst' + i + 'PaidDate'],
+      mode: rec['inst' + i + 'Mode'],
+      ref: rec['inst' + i + 'Ref']
+    };
+    const hasExisting = inst.amt !== undefined && inst.amt !== '' && inst.amt !== null;
     html += '<div class="inst-grid">' +
       '<div class="field"><label>Amount ' + i + '</label><input type="number" id="fee-inst' + i + '-amt" value="' + escC(inst.amt || '') + '" data-manual="' + (hasExisting ? '1' : '0') + '" oninput="feeInstManualInput(this,' + i + ')"></div>' +
       '<div class="field"><label>Due Date</label><input type="date" id="fee-inst' + i + '-due" value="' + dateForInput(inst.due) + '"></div>' +
@@ -5904,14 +5916,38 @@ function recalcFeeForm() {
   // paid-date/mode fields.
   const downPayment = Math.min(Math.max(calc.regFee, 0), calc.net);
   const remainingForInstallments = Math.max(calc.net - downPayment, 0);
+  // Keep auto (non-manual) installment amounts in sync with the current Net Payable on
+  // EVERY recalc, not just while a field happens to still be empty. The old guard
+  // (`!amtEl.value`) meant that once a field had been auto-filled once, picking a discount
+  // afterward — the normal order of operations, and the only order when nInst===1 (Full
+  // payment) — never re-flowed into the amount, so it silently kept charging the
+  // pre-discount figure. Manually-typed amounts (data-manual="1") are left untouched;
+  // the remainder after those is split evenly across the auto fields, same rule
+  // feeInstManualInput already uses when a manual edit happens mid-form.
+  let manualSum = 0;
+  const autoEls = [];
+  for (let i = 1; i <= n; i++) {
+    const amtEl = document.getElementById('fee-inst' + i + '-amt');
+    if (!amtEl) continue;
+    if (amtEl.dataset.manual === '1') manualSum += Number(amtEl.value) || 0;
+    else autoEls.push(amtEl);
+  }
+  if (autoEls.length) {
+    const remainder = Math.max(remainingForInstallments - manualSum, 0);
+    const share = Math.round(remainder / autoEls.length);
+    let distributed = 0;
+    autoEls.forEach(function (el, idx) {
+      if (idx === autoEls.length - 1) {
+        el.value = remainder - distributed;
+      } else {
+        el.value = share;
+        distributed += share;
+      }
+    });
+  }
   for (let i = 1; i <= n; i++) {
     const amtEl = document.getElementById('fee-inst' + i + '-amt');
     const paidEl = document.getElementById('fee-inst' + i + '-paid');
-    // Auto-fill empty fields (no manual flag) with an even split of what's left after
-    // the down payment.
-    if (amtEl && !amtEl.value && amtEl.dataset.manual !== '1') {
-      amtEl.value = Math.round(remainingForInstallments / n);
-    }
     if (amtEl && amtEl.dataset.manual !== '1') allManual = false;
     if (amtEl) instTotal += Number(amtEl.value) || 0;
     if (amtEl && paidEl && paidEl.value === 'Y') instPaid += Number(amtEl.value) || 0;

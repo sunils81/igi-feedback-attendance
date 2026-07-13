@@ -5782,9 +5782,15 @@ function togglePaymentPlan() {
 }
 
 function onFeePaidChange(idx) {
-  const paidVal = document.getElementById('fee-inst' + idx + '-paid').value;
+  const paidSel = document.getElementById('fee-inst' + idx + '-paid');
+  const paidVal = paidSel.value;
   const wrap = document.getElementById('fee-inst' + idx + '-paid-date-wrap');
   const dateInput = document.getElementById('fee-inst' + idx + '-paid-date');
+  // Keep the Paid? dropdown's own color in sync live, so flipping it doesn't require a
+  // re-render to look right — green once Yes is picked, red/amber while it's still No.
+  paidSel.style.cssText = paidVal === 'Y'
+    ? 'background:#e8f8ef;border-color:#1D9E75;color:#0f6b41;font-weight:700'
+    : 'background:#fdf1ee;border-color:#e3a396;color:#a33b2a;font-weight:700';
   if (paidVal === 'Y') {
     if (wrap) wrap.style.display = 'block';
     if (dateInput && !dateInput.value) {
@@ -5852,10 +5858,10 @@ function renderInstallments(existing) {
     // NEXT time this record is opened — not immediately after that same save.
     const locked = inst.paid === 'Y';
     const dis = locked ? ' disabled' : '';
-    html += '<div class="inst-grid" id="fee-inst' + i + '-row">' +
+    html += '<div class="inst-grid" id="fee-inst' + i + '-row" style="padding:8px;border-radius:8px;background:' + (locked ? '#f4fbf7' : 'transparent') + '">' +
       '<div class="field"><label>Amount ' + i + '</label><input type="number" id="fee-inst' + i + '-amt" value="' + escC(inst.amt || '') + '" data-manual="' + (hasExisting ? '1' : '0') + '" oninput="feeInstManualInput(this,' + i + ')"' + dis + '></div>' +
       '<div class="field"><label>Due Date</label><input type="date" id="fee-inst' + i + '-due" value="' + dateForInput(inst.due) + '"' + dis + '></div>' +
-      '<div class="field"><label>Paid?</label><select id="fee-inst' + i + '-paid" onchange="onFeePaidChange(' + i + ')"' + dis + '><option value="N">No</option><option value="Y" ' + (inst.paid === 'Y' ? 'selected' : '') + '>Yes</option></select></div>' +
+      '<div class="field"><label>Paid?</label><select id="fee-inst' + i + '-paid" onchange="onFeePaidChange(' + i + ')" style="' + (inst.paid === 'Y' ? 'background:#e8f8ef;border-color:#1D9E75;color:#0f6b41;font-weight:700' : 'background:#fdf1ee;border-color:#e3a396;color:#a33b2a;font-weight:700') + '"' + dis + '><option value="N">No</option><option value="Y" ' + (inst.paid === 'Y' ? 'selected' : '') + '>Yes</option></select></div>' +
       '<div class="field" id="fee-inst' + i + '-paid-date-wrap" style="display:' + (inst.paid === 'Y' ? 'block' : 'none') + '"><label>Payment Date</label><input type="date" id="fee-inst' + i + '-paid-date" value="' + dateForInput(inst.paidDate || '') + '"' + dis + '></div>' +
       '<div class="field"><label>Mode</label><select id="fee-inst' + i + '-mode"' + dis + '>' + modes.map(m => '<option value="' + m + '" ' + (inst.mode === m ? 'selected' : '') + '>' + (m || 'Select') + '</option>').join('') + '</select></div>' +
       '<div class="field"><label>Reference</label><input type="text" id="fee-inst' + i + '-ref" value="' + escC(inst.ref || '') + '" placeholder="Receipt / UTR"' + dis + '></div>' +

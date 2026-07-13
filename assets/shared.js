@@ -1539,6 +1539,29 @@ window.gasGet = (function () {
   }
 
   /* getFeeRecords */
+  // Shared client-facing shape for a fee record — used by both h_getFeeRecords (one batch)
+  // and h_getAllFeeRecords (every batch, for the cross-batch Invoices tab). Kept in one place
+  // so a field added/fixed here never has to be duplicated across two near-identical mappers.
+  function feeRecordDTO(mapped) {
+    return { id: mapped.id, studentId: mapped.student_id, studentName: mapped.student_name,
+      batchCode: mapped.batch_code, centre: mapped.centre, course: mapped.course,
+      courseFee: mapped.course_fee, gstAmount: mapped.gst_amount, netPayable: mapped.net_payable,
+      discountPct: mapped.discount_pct, discountAmt: mapped.discount_amount, discountReason: mapped.discount_reason,
+      tdsPct: mapped.tds_pct, tdsAmt: mapped.tds_amount, nInst: mapped.n_installments,
+      inst1Amt: mapped.inst1_amount, inst1Due: toDMY(mapped.inst1_due), inst1Paid: mapped.inst1_paid,
+      inst1PaidDate: toDMY(mapped.inst1_paid_date), inst1Mode: mapped.inst1_mode, inst1Ref: mapped.inst1_reference,
+      inst2Amt: mapped.inst2_amount, inst2Due: toDMY(mapped.inst2_due), inst2Paid: mapped.inst2_paid,
+      inst2PaidDate: toDMY(mapped.inst2_paid_date), inst2Mode: mapped.inst2_mode, inst2Ref: mapped.inst2_reference,
+      inst3Amt: mapped.inst3_amount, inst3Due: toDMY(mapped.inst3_due), inst3Paid: mapped.inst3_paid,
+      inst3PaidDate: toDMY(mapped.inst3_paid_date), inst3Mode: mapped.inst3_mode, inst3Ref: mapped.inst3_reference,
+      collected: mapped.collected, outstanding: mapped.outstanding,
+      invoiceNumber: mapped.invoice_number, invoiceAmount: mapped.invoice_amount,
+      invoiceDate: mapped.invoice_date, invoiceSharedComment: mapped.invoice_shared_comment,
+      invoiceFileUrl: mapped.invoice_file_url,
+      docComplete: !!(mapped.invoice_number && mapped.invoice_amount && mapped.invoice_date),
+      feeStatus: mapped.fee_status, enteredBy: mapped.entered_by, month: mapped.month };
+  }
+
   function h_getFeeRecords(p, cb) {
     var students, batches;
     var n = 0;
@@ -1552,29 +1575,47 @@ window.gasGet = (function () {
       GET('student_fees', 'batch_code=eq.' + encodeURIComponent(p.batchCode) + '&order=created_at.asc', function (e, rows) {
         if (e) { cb(null, { records: [] }); return; }
         cb(null, { records: (rows || []).map(function (r) {
-          var mapped = parseFeeRow(r, students, batches);
-          return { id: mapped.id, studentId: mapped.student_id, studentName: mapped.student_name,
-            batchCode: mapped.batch_code, centre: mapped.centre, course: mapped.course,
-            courseFee: mapped.course_fee, gstAmount: mapped.gst_amount, netPayable: mapped.net_payable,
-            discountPct: mapped.discount_pct, discountAmt: mapped.discount_amount, discountReason: mapped.discount_reason,
-            tdsPct: mapped.tds_pct, tdsAmt: mapped.tds_amount, nInst: mapped.n_installments,
-            inst1Amt: mapped.inst1_amount, inst1Due: toDMY(mapped.inst1_due), inst1Paid: mapped.inst1_paid,
-            inst1PaidDate: toDMY(mapped.inst1_paid_date), inst1Mode: mapped.inst1_mode, inst1Ref: mapped.inst1_reference,
-            inst2Amt: mapped.inst2_amount, inst2Due: toDMY(mapped.inst2_due), inst2Paid: mapped.inst2_paid,
-            inst2PaidDate: toDMY(mapped.inst2_paid_date), inst2Mode: mapped.inst2_mode, inst2Ref: mapped.inst2_reference,
-            inst3Amt: mapped.inst3_amount, inst3Due: toDMY(mapped.inst3_due), inst3Paid: mapped.inst3_paid,
-            inst3PaidDate: toDMY(mapped.inst3_paid_date), inst3Mode: mapped.inst3_mode, inst3Ref: mapped.inst3_reference,
-            collected: mapped.collected, outstanding: mapped.outstanding,
-            invoiceNumber: mapped.invoice_number, invoiceAmount: mapped.invoice_amount,
-            invoiceDate: mapped.invoice_date, invoiceSharedComment: mapped.invoice_shared_comment,
-            invoiceFileUrl: mapped.invoice_file_url,
-            docComplete: !!(mapped.invoice_number && mapped.invoice_amount && mapped.invoice_date),
-            feeStatus: mapped.fee_status, enteredBy: mapped.entered_by };
+          return feeRecordDTO(parseFeeRow(r, students, batches));
         }) });
       });
     }
     resolveStudentsForBatch(p.batchCode, function (e, r) { students = r || []; finish(); });
     GET('batches', 'batch_code=eq.' + encodeURIComponent(p.batchCode), function (e, r) { batches = r || []; finish(); });
+  }
+
+  /* getAllFeeRecords — powers the cross-batch "Invoices" tab: every fee record across every
+     batch and month in one flat list, instead of having to click through batches one at a
+     time on the Fees tab. Scoped to the caller's allowed centres unless isAdmin (matches the
+     same centres param convention used by getBatches/getStudents elsewhere in this file);
+     an empty/omitted centres param means "no restriction" (Admin only — the frontend always
+     sends its own allowedCentres for non-admins). */
+  function h_getAllFeeRecords(p, cb) {
+    var centresFilter = (p.centres && String(p.centres).trim())
+      ? String(p.centres).split(',').map(function (c) { return c.trim(); }).filter(Boolean)
+      : null;
+    var students, batches;
+    var n = 0;
+    function finish() {
+      if (++n < 2) return;
+      var allowedBatchCodes = null;
+      if (centresFilter) {
+        allowedBatchCodes = {};
+        batches.forEach(function (b) {
+          if (centresFilter.indexOf(b.centre) !== -1) allowedBatchCodes[b.batch_code] = true;
+        });
+      }
+      GET('student_fees', 'order=created_at.asc', function (e, rows) {
+        if (e) { cb(null, { records: [] }); return; }
+        var filtered = allowedBatchCodes
+          ? (rows || []).filter(function (r) { return allowedBatchCodes[r.batch_code]; })
+          : (rows || []);
+        cb(null, { records: filtered.map(function (r) {
+          return feeRecordDTO(parseFeeRow(r, students, batches));
+        }) });
+      });
+    }
+    GET('students', 'select=student_id,name', function (e, r) { students = r || []; finish(); });
+    GET('batches', 'select=batch_code,course,centre', function (e, r) { batches = r || []; finish(); });
   }
 
   /* saveFeeRecord */
@@ -7443,6 +7484,7 @@ window.gasGet = (function () {
       case 'getStudentAlumni':          return h_alumni(params, cb);
       case 'getOverdueFeesCount':       return h_getOverdueFeesCount(params, cb);
       case 'getFeeRecords':             return h_getFeeRecords(params, cb);
+      case 'getAllFeeRecords':          return h_getAllFeeRecords(params, cb);
       case 'saveFeeRecord':             return h_saveFee(params, cb);
       case 'deleteFeeRecord':           return h_deleteFeeRecord(params, cb);
       case 'getRevenueDetail':          return h_getRevenueDetail(params, cb);

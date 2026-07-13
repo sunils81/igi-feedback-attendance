@@ -15752,21 +15752,38 @@ function _enrollDoSearch(q) {
     var results = (d && d.students) || [];
     var dd = document.getElementById('enroll-dd');
     document.getElementById('enroll-new-student-toggle').style.display = 'block';
+    dd.innerHTML = '';
     if (!results.length) {
-      dd.innerHTML = '<div class="enroll-dd-item muted">No students found for "' + escC(q) + '"</div>';
+      var noneEl = document.createElement('div');
+      noneEl.className = 'enroll-dd-item muted';
+      noneEl.textContent = 'No students found for "' + q + '"';
+      dd.appendChild(noneEl);
       dd.classList.add('open');
       return;
     }
-    dd.innerHTML = results.map(function(s) {
+    // Build items with DOM APIs + addEventListener (not string-built onclick="...") so
+    // names/IDs containing quotes or apostrophes (e.g. "D'Souza") can never break the
+    // click handler — a prior version embedded JSON.stringify() output (double-quoted)
+    // inside a double-quoted onclick attribute, which silently broke every click.
+    results.forEach(function(s) {
       var sub = s.mobile ? s.mobile : (s.studentId || '');
-      return '<div class="enroll-dd-item" onclick="_enrollPickStudent(' +
-        JSON.stringify(String(s.studentId)) + ',' +
-        JSON.stringify(String(s.name)) + ',' +
-        JSON.stringify(String(s.mobile||'')) + ')">' +
-        '<strong>' + escC(s.name) + '</strong>' +
-        (sub ? ' <span style="color:#888;font-size:11px">· ' + escC(sub) + '</span>' : '') +
-      '</div>';
-    }).join('');
+      var item = document.createElement('div');
+      item.className = 'enroll-dd-item';
+      var strong = document.createElement('strong');
+      strong.textContent = s.name || '';
+      item.appendChild(strong);
+      if (sub) {
+        var span = document.createElement('span');
+        span.style.color = '#888';
+        span.style.fontSize = '11px';
+        span.textContent = ' · ' + sub;
+        item.appendChild(span);
+      }
+      item.addEventListener('click', function() {
+        _enrollPickStudent(String(s.studentId || ''), String(s.name || ''), String(s.mobile || ''));
+      });
+      dd.appendChild(item);
+    });
     dd.classList.add('open');
   });
 }

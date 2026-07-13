@@ -3022,6 +3022,9 @@
           <div id="fee-counsellor-change-link" style="display:none;margin-top:4px"><a href="javascript:void(0)" style="font-size:11px" onclick="showFeeCounsellorPicker()">Wrong credit? Change counsellor</a></div>
         </div>
       </div>
+      <div id="fee-no-catalog-warn" style="display:none;margin:0 0 14px;padding:12px 14px;background:#FEF2F2;border:1px solid rgba(220,38,38,0.3);border-radius:8px;color:#991B1B;font-size:13px">
+        ⚠ <strong>No fee catalog entry for this course</strong> — Course Fee shows ₹0 because this course isn't in the system's price list, not because the fee is actually zero. Saving right now would overwrite this record's Net Payable/Outstanding with ₹0, discarding whatever was correctly recorded before. Saving is disabled until this course is added to the catalog — contact whoever maintains it before making any changes here.
+      </div>
       <div class="grid2">
         <div class="field"><label>Course Fee <span style="font-weight:400;color:var(--muted)">(fixed by course, excl. GST — not editable)</span></label><input type="number" id="fee-course-fee" readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed" title="Locked to the standard fee for this course. To offer a lower amount, use the Discount field below."><div id="fee-course-fee-gst-hint" style="font-size:11px;color:var(--muted);margin-top:4px"></div></div>
         <div class="field"><label>Down Payment <span style="font-weight:400;color:var(--muted)">(booking amount — included in course fee, paid upfront)</span></label><input type="number" id="fee-reg-fee" oninput="recalcFeeForm()"></div>
@@ -5666,6 +5669,15 @@ function openFeeForm(studentId) {
   // student go through the Discount % field, not by typing a different course fee (that was
   // the root cause of at least one wrong fee record: a counsellor overwrote this field
   // directly and it stuck, silently, for a deleted/re-enrolled student).
+  // Guardrail: if this course has no entry in COURSE_FEES_JS at all, feeDefaultsForCourse()
+  // silently falls back to {fee:0,...} — saving would overwrite this student's real
+  // Net Payable/Outstanding with ₹0. Confirmed this already happened to at least one student
+  // (Naini Paraswani, Diamond Graduate Integrated) whose record now shows Expected ₹0 and a
+  // negative Outstanding. Block Save entirely for unrecognized courses instead of silently
+  // corrupting the record further.
+  var hasFeeCatalogEntry = typeof COURSE_FEES_JS !== 'undefined' && Object.prototype.hasOwnProperty.call(COURSE_FEES_JS, b.course);
+  document.getElementById('fee-no-catalog-warn').style.display = hasFeeCatalogEntry ? 'none' : 'block';
+  document.getElementById('fee-save-btn').disabled = !hasFeeCatalogEntry;
   document.getElementById('fee-course-fee').value = defaults.fee;
   document.getElementById('fee-reg-fee').value = existing ? existing.regFee : defaults.regFee;
   const disc = existing ? Number(existing.discPct || 0) : 0;
@@ -5947,6 +5959,15 @@ function saveFeeRecord() {
   const err = document.getElementById('fee-err');
   const btn = document.getElementById('fee-save-btn');
   err.classList.remove('show');
+  // Defensive re-check (belt and braces alongside the disabled Save button in openFeeForm):
+  // never send a courseFee of 0 for a course that simply has no catalog entry — that's how
+  // Naini Paraswani's record got its Net Payable silently zeroed out.
+  const courseKey = currentFeeStudent.batch.course;
+  if (typeof COURSE_FEES_JS !== 'undefined' && !Object.prototype.hasOwnProperty.call(COURSE_FEES_JS, courseKey)) {
+    err.textContent = 'This course ("' + courseKey + '") has no fee catalog entry — saving is blocked to avoid overwriting the correct fee with ₹0. Add it to the course fee list first.';
+    err.classList.add('show');
+    return;
+  }
   const calc = feeCalc();
   const n = Number(document.getElementById('fee-n-inst').value) || 1;
   const payload = {

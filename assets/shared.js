@@ -7445,7 +7445,19 @@ const COURSE_FEES_JS = {
   'JD-CAD':                              {fee:82900, regFee:0,    gst:18},
   'Smart Learning DG':                   {fee:114900,regFee:0,    gst:18},
   'Smart Learning CSG':                  {fee:114900,regFee:0,    gst:18},
-  'Smart Learning GG':                   {fee:229800,regFee:0,    gst:18}
+  'Smart Learning GG':                   {fee:229800,regFee:0,    gst:18},
+  // The 5 entries below are current-name aliases for courses above that were renamed in the
+  // batch-creation Course dropdown without this catalog being updated to match — confirmed
+  // with the counsellor team, same price carries over under the new name. The old-name keys
+  // above are kept as-is (not deleted) so any batch/fee record still stamped with the old
+  // course string continues to resolve correctly.
+  'CAD Design':                          {fee:82900, regFee:0,    gst:18}, // = 'JD-CAD'
+  'Rough Diamond Graduate':              {fee:51900, regFee:0,    gst:18}, // = 'Rough Diamond'
+  'Identification of RES':               {fee:35900, regFee:0,    gst:18}, // = 'iRES'
+  // Diamond/Coloured Stone "Integrated" = recorded online lectures + 5/10 full practical
+  // days on-site — same program as "Smart Learning DG/CSG" under its current name.
+  'Diamond Graduate Integrated':         {fee:114900,regFee:0,    gst:18}, // = 'Smart Learning DG'
+  'Coloured Stone Integrated':           {fee:114900,regFee:0,    gst:18}  // = 'Smart Learning CSG'
 };
 
 // ── Central Money Formatting Utilities ────────────────────────

@@ -32,6 +32,122 @@ const INSTRUCTORS = [
   'Preeti Agarwala','Sayan Banerjee','Deepak Nachankar','Sharoon Joy','Seema Athavale'
 ];
 
+// Countries a student can be enrolled from. India is first/default since that's the
+// overwhelming majority of enrollments; "Other" is a deliberate catch-all for any country
+// not explicitly listed (rather than trying to maintain a full 195-country list) — picking
+// it reveals a free-text Country/dial-code entry instead of failing silently.
+const COUNTRIES = [
+  'India','United Arab Emirates','United States','United Kingdom','Canada','Australia',
+  'Singapore','Hong Kong','China','Taiwan','Sri Lanka','Nepal','Bangladesh','Pakistan',
+  'Afghanistan','Myanmar','Thailand','Malaysia','Indonesia','Philippines','Vietnam','Cambodia',
+  'Japan','South Korea','Saudi Arabia','Qatar','Kuwait','Oman','Bahrain','Jordan','Lebanon',
+  'Iran','Israel','Turkey','Egypt','South Africa','Nigeria','Kenya','Ghana','Tanzania',
+  'Botswana','Namibia','Zimbabwe','Zambia','Angola','Democratic Republic of Congo',
+  'Belgium','Netherlands','Germany','France','Italy','Spain','Portugal','Switzerland',
+  'Austria','Ireland','Sweden','Norway','Denmark','Poland','Greece','Ukraine','Russia',
+  'New Zealand','Mauritius','Brazil','Mexico','Argentina','Other'
+];
+
+// Dial code (no "+", no leading zeros) per country above. "Other" is intentionally absent —
+// the UI falls back to a free-text code field when a country has no entry here.
+const COUNTRY_DIAL_CODES = {
+  'India':'91','United Arab Emirates':'971','United States':'1','United Kingdom':'44',
+  'Canada':'1','Australia':'61','Singapore':'65','Hong Kong':'852','China':'86','Taiwan':'886',
+  'Sri Lanka':'94','Nepal':'977','Bangladesh':'880','Pakistan':'92','Afghanistan':'93',
+  'Myanmar':'95','Thailand':'66','Malaysia':'60','Indonesia':'62','Philippines':'63',
+  'Vietnam':'84','Cambodia':'855','Japan':'81','South Korea':'82','Saudi Arabia':'966',
+  'Qatar':'974','Kuwait':'965','Oman':'968','Bahrain':'973','Jordan':'962','Lebanon':'961',
+  'Iran':'98','Israel':'972','Turkey':'90','Egypt':'20','South Africa':'27','Nigeria':'234',
+  'Kenya':'254','Ghana':'233','Tanzania':'255','Botswana':'267','Namibia':'264',
+  'Zimbabwe':'263','Zambia':'260','Angola':'244','Democratic Republic of Congo':'243',
+  'Belgium':'32','Netherlands':'31','Germany':'49','France':'33','Italy':'39','Spain':'34',
+  'Portugal':'351','Switzerland':'41','Austria':'43','Ireland':'353','Sweden':'46',
+  'Norway':'47','Denmark':'45','Poland':'48','Greece':'30','Ukraine':'380','Russia':'7',
+  'New Zealand':'64','Mauritius':'230','Brazil':'55','Mexico':'52','Argentina':'54'
+};
+
+const INDIA_STATES = [
+  'Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat',
+  'Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh',
+  'Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan',
+  'Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal',
+  'Delhi','Chandigarh','Puducherry'
+];
+
+/* ── Reusable Country / State / Mobile-code widget wiring ──────────────────────────
+   Shared across every "new student" entry point (Enroll New Student modal, Add Student
+   tab, Add Past Alumni modal) so behavior — and the on-disk mobile format — stays
+   identical everywhere: India numbers are stored bare (matching every existing record,
+   which has never carried a "91" prefix); non-India numbers are stored with their dial
+   code prepended (digits only), which is also exactly the format the WhatsApp wa.me
+   deep-link code elsewhere already expects for non-10-digit numbers. Each entry point
+   just needs elements named "<prefix>-country", "<prefix>-state" (India dropdown),
+   "<prefix>-state-other" (free-text), "<prefix>-state-india-wrap" / "-state-other-wrap"
+   (the two toggled containers), "<prefix>-mobile-code" (dial code select),
+   "<prefix>-mobile-code-other" (free-text fallback for "Other"), and "<prefix>-mobile". */
+function populateCountryMobileFields(prefix) {
+  var countryEl = document.getElementById(prefix + '-country');
+  var codeEl    = document.getElementById(prefix + '-mobile-code');
+  var stateEl   = document.getElementById(prefix + '-state');
+  if (countryEl && !countryEl.options.length) {
+    countryEl.innerHTML = COUNTRIES.map(function (c) {
+      return '<option value="' + c + '"' + (c === 'India' ? ' selected' : '') + '>' + c + '</option>';
+    }).join('');
+  }
+  if (codeEl && !codeEl.options.length) {
+    codeEl.innerHTML = COUNTRIES.filter(function (c) { return c !== 'Other'; }).map(function (c) {
+      var dial = COUNTRY_DIAL_CODES[c] || '';
+      return '<option value="' + dial + '"' + (c === 'India' ? ' selected' : '') + '>+' + dial + ' ' + c + '</option>';
+    }).join('') + '<option value="">Other (type code)</option>';
+  }
+  if (stateEl && !stateEl.options.length) {
+    stateEl.innerHTML = '<option value="">Select State</option>' + INDIA_STATES.map(function (s) {
+      return '<option>' + s + '</option>';
+    }).join('');
+  }
+  onCountryFieldChange(prefix);
+}
+
+function onCountryFieldChange(prefix) {
+  var countryEl  = document.getElementById(prefix + '-country');
+  var codeEl     = document.getElementById(prefix + '-mobile-code');
+  var codeFreeEl = document.getElementById(prefix + '-mobile-code-other');
+  var indiaWrap  = document.getElementById(prefix + '-state-india-wrap');
+  var otherWrap  = document.getElementById(prefix + '-state-other-wrap');
+  var country = (countryEl && countryEl.value) || 'India';
+  var isIndia = country === 'India';
+  if (indiaWrap) indiaWrap.style.display = isIndia ? '' : 'none';
+  if (otherWrap) otherWrap.style.display = isIndia ? 'none' : '';
+  var dial = COUNTRY_DIAL_CODES[country];
+  if (codeEl && dial) codeEl.value = dial;
+  if (codeFreeEl) codeFreeEl.style.display = dial ? 'none' : '';
+}
+
+// Bare digits for India (matches every existing record); dial-code-prefixed digits for
+// everywhere else, so this never needs a separate "country code" column in the database.
+function buildMobileForSave(prefix) {
+  var countryEl  = document.getElementById(prefix + '-country');
+  var codeEl     = document.getElementById(prefix + '-mobile-code');
+  var codeFreeEl = document.getElementById(prefix + '-mobile-code-other');
+  var mobileEl   = document.getElementById(prefix + '-mobile');
+  var country = (countryEl && countryEl.value) || 'India';
+  var raw = ((mobileEl && mobileEl.value) || '').replace(/\D/g, '');
+  if (country === 'India') return raw;
+  var code = ((codeEl && codeEl.value) || (codeFreeEl && codeFreeEl.value) || COUNTRY_DIAL_CODES[country] || '').replace(/\D/g, '');
+  return raw ? (code + raw) : '';
+}
+
+function getStateForSave(prefix) {
+  var countryEl = document.getElementById(prefix + '-country');
+  var country = (countryEl && countryEl.value) || 'India';
+  if (country === 'India') {
+    var stateEl = document.getElementById(prefix + '-state');
+    return (stateEl && stateEl.value) || '';
+  }
+  var otherEl = document.getElementById(prefix + '-state-other');
+  return ((otherEl && otherEl.value) || '').trim();
+}
+
 window.gasGet = (function () {
   var SB  = 'https://atbexvtrcopaagcdbpqi.supabase.co';
   var AK  = 'sb_publishable_TpzxX5a3M7lnFeND8xLfhQ_YJOxOkhb';
@@ -1136,6 +1252,7 @@ window.gasGet = (function () {
     var studentRow = { student_id: studentId, name: p.name,
       mobile_last4: p.mobileLast4 || p.dob, mobile: p.mobile, email: p.email,
       order_id: p.orderId || '',
+      country: p.country || 'India', state_region: p.stateRegion || '',
       status: 'Active', batch_code: codes[0] };
     POST('students', 'on_conflict=student_id', studentRow, function(e) {
       if (e) { cb(null, { status: 'error', reason: String(e) }); return; }

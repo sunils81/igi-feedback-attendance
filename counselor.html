@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=45"></script>
+<script src="/assets/shared.js?v=46"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -1782,8 +1782,17 @@
             <div id="st-enrol-warn" style="display:none;font-size:11px;color:#B87A10;margin-top:4px;font-weight:600">⚠ This looks like an Order ID (5+ digits) — Student ID is normally 4 digits. Put it in the Order ID field below if so.</div>
           </div>
           <div class="field"><label>Name *</label><input type="text" id="st-name" placeholder="Full name"></div>
-          <div class="field"><label>Mobile *</label><input type="tel" id="st-mobile" placeholder="10 digits" inputmode="numeric" oninput="updateMobileLast4()"></div>
-          <div class="field"><label>Email</label><input type="email" id="st-email" placeholder="student@email.com"></div>
+          <div class="field"><label>Country *</label><select id="st-country" onchange="onCountryFieldChange('st')"></select></div>
+          <div class="field" id="st-state-india-wrap"><label>State</label><select id="st-state"></select></div>
+          <div class="field" id="st-state-other-wrap" style="display:none"><label>State / Region</label><input type="text" id="st-state-other" placeholder="e.g. Dubai, California"></div>
+          <div class="field"><label>Mobile *</label>
+            <div style="display:flex;gap:6px">
+              <select id="st-mobile-code" style="width:80px;flex-shrink:0" onchange="updateMobileLast4()"></select>
+              <input id="st-mobile-code-other" type="text" placeholder="code" style="width:52px;flex-shrink:0;display:none" oninput="updateMobileLast4()">
+              <input type="tel" id="st-mobile" placeholder="Mobile number" inputmode="numeric" style="flex:1;min-width:0" oninput="updateMobileLast4()">
+            </div>
+          </div>
+          <div class="field"><label>Email *</label><input type="email" id="st-email" placeholder="student@email.com"></div>
         </div>
         <div class="grid2">
           <div class="field"><label>Last 4 Digits of Mobile (auto)</label>
@@ -5010,6 +5019,7 @@ function loadCounselorAttendanceCalendar(anchor) {
 function loadStudents() {
   const batch = document.getElementById('st-batch').value;
   document.getElementById('st-enrol-wrap').style.display = batch ? 'block' : 'none';
+  if (batch) populateCountryMobileFields('st');
   document.getElementById('st-list-card').style.display  = batch ? 'block' : 'none';
   const bulkCard = document.getElementById('st-bulk-card');
   if (bulkCard) bulkCard.style.display = batch ? 'block' : 'none';
@@ -5130,8 +5140,10 @@ function checkStudentIdLooksLikeOrderId(inputElId, warnElId) {
 function addStudent() {
   const batch  = document.getElementById('st-batch').value;
   const name   = document.getElementById('st-name').value.trim();
-  const mobile = document.getElementById('st-mobile').value.replace(/\D/g,'');
+  const mobile = buildMobileForSave('st');
   const email  = document.getElementById('st-email').value.trim();
+  const country = document.getElementById('st-country').value || 'India';
+  const stateRegion = getStateForSave('st');
   const enrol  = document.getElementById('st-enrol').value.trim();
   const mobileLast4 = document.getElementById('st-mobile-last4').value.trim();
   const orderIdEl = document.getElementById('st-order-id');
@@ -5143,12 +5155,16 @@ function addStudent() {
   if (!batch||!name||!enrol||mobile.length<4||mobileLast4.length!==4||!batchCodes.length) {
     errEl.textContent='Please fill Student ID, Name, Mobile, and select at least one batch.'; errEl.classList.add('show'); return;
   }
+  if (!email) {
+    errEl.textContent='Email is required for every new student (welcome emails and portal access depend on it, and it\'s often the most reliable contact for students outside India).';
+    errEl.classList.add('show'); return;
+  }
   if (orderId && !/^\d{5,}$/.test(orderId)) {
     errEl.textContent='Order ID should be at least 5 digits, numbers only (leave blank if you don\'t have one yet).'; errEl.classList.add('show'); return;
   }
   const btn = document.getElementById('st-btn');
   btn.textContent='Adding…'; btn.disabled=true;
-  gasGet({action:'addStudent',enrollmentNo:enrol,batchCode:batch,batchCodes:batchCodes.join(','),name,mobileLast4,mobile,email,orderId},function(e,d){
+  gasGet({action:'addStudent',enrollmentNo:enrol,batchCode:batch,batchCodes:batchCodes.join(','),name,mobileLast4,mobile,email,country,stateRegion,orderId},function(e,d){
     btn.textContent='Add Student →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') {
       errEl.textContent = (d && d.message) || 'Could not add student. Try again.';
@@ -5156,7 +5172,7 @@ function addStudent() {
       errEl.classList.add('show'); return;
     }
     showStudentEmailResult(d.email,'Student added.');
-    ['st-enrol','st-name','st-mobile','st-mobile-last4','st-email','st-order-id'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
+    ['st-enrol','st-name','st-mobile','st-mobile-code-other','st-state-other','st-mobile-last4','st-email','st-order-id'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
     const warnEl = document.getElementById('st-enrol-warn'); if (warnEl) warnEl.style.display='none';
     renderStudentBatchChoices();
     renderStudentList(batch);
@@ -10487,10 +10503,11 @@ function openAddAlumniModal() {
   var modal = document.getElementById('add-alumni-modal');
   if (!modal) return;
   // Clear fields
-  ['aa-student-id','aa-name','aa-email','aa-mobile','aa-batch','aa-course','aa-centre'].forEach(function(id) {
+  ['aa-student-id','aa-name','aa-email','aa-mobile','aa-mobile-code-other','aa-state-other','aa-batch','aa-course','aa-centre'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.value = '';
   });
+  populateCountryMobileFields('aa');
   modal.style.display = 'flex';
 }
 
@@ -10503,7 +10520,9 @@ function submitAddAlumni() {
   var studentId = (document.getElementById('aa-student-id').value || '').trim();
   var name      = (document.getElementById('aa-name').value || '').trim();
   var email     = (document.getElementById('aa-email').value || '').trim();
-  var mobile    = (document.getElementById('aa-mobile').value || '').trim();
+  var mobile    = buildMobileForSave('aa');
+  var country   = document.getElementById('aa-country').value || 'India';
+  var stateRegion = getStateForSave('aa');
   var batchCode = (document.getElementById('aa-batch').value || '').trim();
   var course    = (document.getElementById('aa-course').value || '').trim();
   var centre    = (document.getElementById('aa-centre').value || '').trim();
@@ -10513,6 +10532,10 @@ function submitAddAlumni() {
     showToast('Student ID and Name are required.', 'error');
     return;
   }
+  if (!email) {
+    showToast('Email is required for every new student record.', 'error');
+    return;
+  }
 
   var btn = document.getElementById('aa-submit-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Adding...'; }
@@ -10520,6 +10543,8 @@ function submitAddAlumni() {
   // Add to students table with Completed status
   gasGet({
     action: 'addStudent',
+    country: country,
+    stateRegion: stateRegion,
     enrollmentNo: studentId,
     name: name,
     email: email,
@@ -15687,7 +15712,10 @@ function openEnrollModal(monthKey, centre, counsellor) {
   document.getElementById('enroll-new-student-form').style.display = 'none';
   document.getElementById('enroll-ns-name').value = '';
   document.getElementById('enroll-ns-mobile').value = '';
+  document.getElementById('enroll-ns-mobile-code-other').value = '';
+  document.getElementById('enroll-ns-state-other').value = '';
   document.getElementById('enroll-ns-email').value = '';
+  populateCountryMobileFields('enroll-ns');
 
   // Reset batch section
   document.getElementById('enroll-batch-select').innerHTML = '<option value="">Loading…</option>';
@@ -15997,9 +16025,14 @@ function enrollSave() {
   var studentId = null, studentName = null, studentMobile = '';
   if (st.isNewStudent) {
     studentName   = (document.getElementById('enroll-ns-name').value || '').trim();
-    studentMobile = (document.getElementById('enroll-ns-mobile').value || '').trim();
+    studentMobile = buildMobileForSave('enroll-ns');
+    var studentEmail = (document.getElementById('enroll-ns-email').value || '').trim();
     if (!studentName || !studentMobile) {
       err.textContent = 'Enter student name and mobile number.';
+      err.classList.add('show'); return;
+    }
+    if (!studentEmail) {
+      err.textContent = 'Enter an email address — required for every new student (welcome emails and portal access depend on it, and it\'s often the most reliable contact for students outside India).';
       err.classList.add('show'); return;
     }
   } else if (st.selectedStudent) {
@@ -16083,6 +16116,8 @@ function enrollSave() {
         action: 'addStudent', enrollmentNo: studentId, name: studentName,
         mobile: studentMobile, mobileLast4: studentMobile.slice(-4),
         email: (document.getElementById('enroll-ns-email').value || '').trim(),
+        country: document.getElementById('enroll-ns-country').value || 'India',
+        stateRegion: getStateForSave('enroll-ns'),
         batchCode: batchCode, batchCodes: batchCode
       }, function(e2, d2) {
         if (e2 || (d2 && d2.status === 'error')) { next('Could not create student. Try again.'); return; }
@@ -16151,12 +16186,28 @@ function enrollSave() {
         <input id="aa-name" type="text" placeholder="Student full name" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
       </div>
       <div>
-        <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Email Address</label>
+        <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Email Address *</label>
         <input id="aa-email" type="email" placeholder="student@example.com" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
       </div>
       <div>
+        <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Country</label>
+        <select id="aa-country" onchange="onCountryFieldChange('aa')" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;font-family:inherit"></select>
+      </div>
+      <div id="aa-state-india-wrap">
+        <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">State</label>
+        <select id="aa-state" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;font-family:inherit"></select>
+      </div>
+      <div id="aa-state-other-wrap" style="display:none">
+        <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">State / Region</label>
+        <input id="aa-state-other" type="text" placeholder="e.g. Dubai, California" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
+      </div>
+      <div>
         <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Mobile Number</label>
-        <input id="aa-mobile" type="tel" placeholder="10-digit mobile" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
+        <div style="display:flex;gap:6px">
+          <select id="aa-mobile-code" style="width:84px;flex-shrink:0;padding:8px 4px;border-radius:6px;border:1.5px solid var(--border);font-size:12px;font-family:inherit"></select>
+          <input id="aa-mobile-code-other" type="text" placeholder="code" style="width:52px;flex-shrink:0;display:none;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
+          <input id="aa-mobile" type="tel" placeholder="Mobile number" style="flex:1;min-width:0;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
+        </div>
       </div>
       <div style="display:flex;gap:10px">
         <div style="flex:1">
@@ -16417,8 +16468,17 @@ function enrollSave() {
         <div id="enroll-new-student-form" class="enroll-new-form" style="display:none">
           <div class="enroll-grid3">
             <div class="enroll-field"><label>Full Name *</label><input id="enroll-ns-name" type="text" placeholder="e.g. Priya Sharma"></div>
-            <div class="enroll-field"><label>Mobile *</label><input id="enroll-ns-mobile" type="tel" placeholder="10-digit number"></div>
-            <div class="enroll-field"><label>Email</label><input id="enroll-ns-email" type="email" placeholder="optional"></div>
+            <div class="enroll-field"><label>Country *</label><select id="enroll-ns-country" onchange="onCountryFieldChange('enroll-ns')"></select></div>
+            <div class="enroll-field" id="enroll-ns-state-india-wrap"><label>State</label><select id="enroll-ns-state"></select></div>
+            <div class="enroll-field" id="enroll-ns-state-other-wrap" style="display:none"><label>State / Region</label><input id="enroll-ns-state-other" type="text" placeholder="e.g. Dubai, California"></div>
+            <div class="enroll-field"><label>Mobile *</label>
+              <div style="display:flex;gap:6px">
+                <select id="enroll-ns-mobile-code" style="width:80px;flex-shrink:0"></select>
+                <input id="enroll-ns-mobile-code-other" type="text" placeholder="code" style="width:52px;flex-shrink:0;display:none">
+                <input id="enroll-ns-mobile" type="tel" placeholder="Mobile number" style="flex:1;min-width:0">
+              </div>
+            </div>
+            <div class="enroll-field"><label>Email *</label><input id="enroll-ns-email" type="email" placeholder="student@email.com"></div>
           </div>
         </div>
       </div>

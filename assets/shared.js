@@ -1544,7 +1544,12 @@ window.gasGet = (function () {
     var n = 0;
     function finish() {
       if (++n < 2) return;
-      GET('student_fees', 'batch_code=eq.' + encodeURIComponent(p.batchCode), function (e, rows) {
+      // order=created_at.asc so that if a duplicate (student_id, batch_code) row ever exists
+      // (see the atomic-upsert fix in h_saveFee below), the newest row — the one most likely
+      // to hold the real payment data rather than a stale placeholder — is LAST in the array
+      // and therefore wins the studentId-keyed merges the counselor.html callers do
+      // (feeRecordsByStudent / recordMap: `records.forEach(r => map[studentId] = r)`).
+      GET('student_fees', 'batch_code=eq.' + encodeURIComponent(p.batchCode) + '&order=created_at.asc', function (e, rows) {
         if (e) { cb(null, { records: [] }); return; }
         cb(null, { records: (rows || []).map(function (r) {
           var mapped = parseFeeRow(r, students, batches);
@@ -1709,68 +1714,70 @@ window.gasGet = (function () {
       });
     }
 
-    GET('student_fees', 'student_id=eq.' + encodeURIComponent(p.studentId) + '&batch_code=eq.' + encodeURIComponent(p.batchCode), function(err, rows) {
+    // order=created_at.desc — when duplicate rows exist for this (student_id, batch_code)
+    // (the exact condition the unique constraint + upsert below is meant to prevent going
+    // forward), always treat the newest one as canonical for the ownership/reassignment logic.
+    GET('student_fees', 'student_id=eq.' + encodeURIComponent(p.studentId) + '&batch_code=eq.' + encodeURIComponent(p.batchCode) + '&order=created_at.desc,id.desc', function(err, rows) {
       if (err) { cb(null, { status: 'error', reason: String(err) }); return; }
-      if (rows && rows.length) {
-        var rowId = rows[0].id;
-        var previousRevenueMonth = rows[0].revenue_month || '';
-        var previousCentre = rows[0].centre;
-        var previousRecordedBy = rows[0].recorded_by;
-        // Revenue-credit ownership must never move just because someone other than the
-        // current owner saved a correction (invoice number, discount, etc.) — that's the
-        // whole bug this exists to close. It's ALLOWED to move, by any counsellor (not just
-        // Admin — a wrong credit shouldn't need to wait on Admin to fix), but only via the
-        // explicit "Wrong credit? Change counsellor" action (ownerReassigned=true), never as
-        // a side effect of an unrelated save. Every reassignment is written to
-        // revenue_audit_log below so it's always visible who moved what, from whom, to whom.
-        var reassignRequested = (p.ownerReassigned === true || p.ownerReassigned === 'true');
-        var isReassignment = previousRecordedBy && dbRow.recorded_by !== previousRecordedBy;
-        if (isReassignment && !reassignRequested) {
-          dbRow.recorded_by = previousRecordedBy;
-          isReassignment = false;
-        }
-        PATCH('student_fees', 'id=eq.' + encodeURIComponent(rowId), dbRow, function (e) {
-          if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
-          syncStudentRevenue(dbRow.recorded_by, dbRow.centre, revenueMonth, '2026-27');
-          // Re-sync the OLD (counsellor, centre, month) bucket whenever this save moved the
-          // record off of it — either because the revenue month changed (e.g. correcting a
-          // wrong payment date) or because a reassignment changed the owner. Skipping this
-          // for an owner change (as the code used to) left the previous counsellor's cached
-          // total stale — still counting a record that had just been reassigned away from
-          // them — which is exactly how the same sale ends up looking double-counted until
-          // something unrelated happens to re-touch their bucket.
-          if (previousRevenueMonth && (previousRevenueMonth !== revenueMonth || isReassignment)) {
-            syncStudentRevenue(previousRecordedBy || dbRow.recorded_by, previousCentre || dbRow.centre, previousRevenueMonth, '2026-27');
-          }
-          if (isReassignment) {
-            POST('revenue_audit_log', '', [{
-              changed_at: new Date().toISOString(),
-              changed_by: p.requestedBy || 'Counselor',
-              action: 'reassign_fee_credit',
-              month: revenueMonth,
-              period: '2026-27',
-              counsellor: dbRow.recorded_by,
-              business_centre: dbRow.centre,
-              business_type: 'Centre Revenue',
-              new_fee: dbRow.course_fee,
-              new_fee_gst: dbRow.gst_amount,
-              new_student_count: 1,
-              new_notes: 'Reassigned student ' + p.studentId + ' (' + (p.studentName || '') + ') from ' + previousRecordedBy + ' to ' + dbRow.recorded_by
-            }], function() {}); // fire-and-forget — never block the save on the audit write
-          }
-          checkDuplicateInvoice(function (dupWith) {
-            cb(null, dupWith ? { status: 'ok', duplicateInvoice: true, duplicateWith: dupWith } : { status: 'ok' });
-          });
-        });
-      } else {
-        POST('student_fees', null, dbRow, function (e) {
-          if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
-          syncStudentRevenue(dbRow.recorded_by, dbRow.centre, revenueMonth, '2026-27');
-          checkDuplicateInvoice(function (dupWith) {
-            cb(null, dupWith ? { status: 'ok', duplicateInvoice: true, duplicateWith: dupWith } : { status: 'ok' });
-          });
-        });
+      var existing = (rows && rows.length) ? rows[0] : null;
+      var previousRevenueMonth = existing ? (existing.revenue_month || '') : '';
+      var previousCentre = existing ? existing.centre : null;
+      var previousRecordedBy = existing ? existing.recorded_by : null;
+      // Revenue-credit ownership must never move just because someone other than the
+      // current owner saved a correction (invoice number, discount, etc.) — that's the
+      // whole bug this exists to close. It's ALLOWED to move, by any counsellor (not just
+      // Admin — a wrong credit shouldn't need to wait on Admin to fix), but only via the
+      // explicit "Wrong credit? Change counsellor" action (ownerReassigned=true), never as
+      // a side effect of an unrelated save. Every reassignment is written to
+      // revenue_audit_log below so it's always visible who moved what, from whom, to whom.
+      var reassignRequested = (p.ownerReassigned === true || p.ownerReassigned === 'true');
+      var isReassignment = !!(previousRecordedBy && dbRow.recorded_by !== previousRecordedBy);
+      if (isReassignment && !reassignRequested) {
+        dbRow.recorded_by = previousRecordedBy;
+        isReassignment = false;
       }
+      // Atomic upsert keyed on the (student_id, batch_code) unique constraint (see
+      // migration_student_fees_unique.sql), replacing the old GET-then-PATCH-or-POST branch.
+      // That branch was NOT atomic: two near-simultaneous saves (e.g. a double-click, or a
+      // retry after a slow response) could both run this GET, both see "no existing row", and
+      // both POST — leaving two rows for the same student+batch with no defined order between
+      // them. Whichever row a later read happened to return first would decide what the
+      // counsellor saw, which is exactly how a saved partial payment could appear to "revert"
+      // to a blank/zero record. POST already sends resolution=merge-duplicates (see the POST
+      // helper above); with the unique constraint in place this makes the write a true upsert.
+      POST('student_fees', 'on_conflict=student_id,batch_code', dbRow, function (e) {
+        if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+        syncStudentRevenue(dbRow.recorded_by, dbRow.centre, revenueMonth, '2026-27');
+        // Re-sync the OLD (counsellor, centre, month) bucket whenever this save moved the
+        // record off of it — either because the revenue month changed (e.g. correcting a
+        // wrong payment date) or because a reassignment changed the owner. Skipping this
+        // for an owner change (as the code used to) left the previous counsellor's cached
+        // total stale — still counting a record that had just been reassigned away from
+        // them — which is exactly how the same sale ends up looking double-counted until
+        // something unrelated happens to re-touch their bucket.
+        if (previousRevenueMonth && (previousRevenueMonth !== revenueMonth || isReassignment)) {
+          syncStudentRevenue(previousRecordedBy || dbRow.recorded_by, previousCentre || dbRow.centre, previousRevenueMonth, '2026-27');
+        }
+        if (isReassignment) {
+          POST('revenue_audit_log', '', [{
+            changed_at: new Date().toISOString(),
+            changed_by: p.requestedBy || 'Counselor',
+            action: 'reassign_fee_credit',
+            month: revenueMonth,
+            period: '2026-27',
+            counsellor: dbRow.recorded_by,
+            business_centre: dbRow.centre,
+            business_type: 'Centre Revenue',
+            new_fee: dbRow.course_fee,
+            new_fee_gst: dbRow.gst_amount,
+            new_student_count: 1,
+            new_notes: 'Reassigned student ' + p.studentId + ' (' + (p.studentName || '') + ') from ' + previousRecordedBy + ' to ' + dbRow.recorded_by
+          }], function() {}); // fire-and-forget — never block the save on the audit write
+        }
+        checkDuplicateInvoice(function (dupWith) {
+          cb(null, dupWith ? { status: 'ok', duplicateInvoice: true, duplicateWith: dupWith } : { status: 'ok' });
+        });
+      });
     });
   }
 

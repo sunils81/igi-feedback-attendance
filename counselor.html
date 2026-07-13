@@ -8967,7 +8967,13 @@ function promptDeleteBatch(batchCode, keepStudents) {
     }
     showToast('Batch deleted successfully.');
     allBatches = null; // force reload
+    // The Fees/Report/Student batch dropdowns are backed by a sessionStorage cache
+    // (see _batchCacheKey/loadBatchDropdowns) that this delete never touched — so a
+    // deleted batch kept "resurfacing" there even though it was really gone. Clear the
+    // cache and force a fresh fetch so the dropdowns catch up immediately.
+    try { sessionStorage.removeItem(_batchCacheKey()); } catch(ex) {}
     loadMyBatches();
+    refreshBatchDropdowns();
   });
 }
 
@@ -9060,7 +9066,7 @@ function saveInlineInstructor(batchCode) {
     if (e||!d||d.status!=='ok') { showToast('Could not assign instructor. Please try again.', 'error'); return; }
     showToast('Instructor assigned.');
     loadMyBatches();
-    loadBatchDropdowns();
+    refreshBatchDropdowns();
   });
 }
 
@@ -9093,7 +9099,7 @@ function saveInlineCoInstructor(batchCode, batchEndISO) {
     showToast(label);
     allBatches = null; // force re-fetch so updated co-instructor is shown
     loadMyBatches();
-    loadBatchDropdowns();
+    refreshBatchDropdowns();
   });
 }
 

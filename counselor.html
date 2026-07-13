@@ -5595,7 +5595,7 @@ function renderFeeOverview(batch, students, records) {
     '<div class="summary-tile ' + (outstanding ? 'warn' : 'ok') + '"><div class="k">Outstanding</div><div class="v">' + money(outstanding) + '</div><div class="s">Balance pending</div></div>' +
     '<div class="summary-tile ' + (overdue ? 'warn' : 'ok') + '"><div class="k">Overdue</div><div class="v">' + overdue + '</div><div class="s">Students past due</div></div>';
 
-  let html = '<table class="compact-table"><thead><tr><th>Student</th><th>Expected</th><th>Collected</th><th>Outstanding</th><th>Status</th><th title="Invoice number, amount &amp; date on file">Docs</th><th>Action</th></tr></thead><tbody>';
+  let html = '<table class="compact-table"><thead><tr><th>Student</th><th>Expected</th><th>Collected</th><th>Outstanding</th><th>Status</th><th title="Invoice number on file, and whether amount &amp; date are also filled in">Invoice #</th><th>Action</th></tr></thead><tbody>';
   html += displayStudents.map(s => {
     const r = recordMap[String(s.enrollmentNo).toUpperCase()];
     const b = selectedFeeBatch();
@@ -5604,10 +5604,15 @@ function renderFeeOverview(batch, students, records) {
     const status = r ? r.feeStatus : 'Pending';
     const statusCls = String(status || 'Pending').toLowerCase();
     const nameNote = s.isOrphan ? ' <span style="font-size:10px;color:var(--muted);font-weight:400">(multi-batch)</span>' : '';
+    // Shows the actual invoice number now (previously only a green/red dot with the number
+    // hidden behind a hover tooltip) — the dot still flags whether amount & date are ALSO
+    // on file, but the number itself, the thing counsellors actually need to see, is visible.
     const docsCell = !r ? '<span title="No fee record yet" style="color:var(--muted)">—</span>'
-      : r.docComplete
-        ? '<span title="Invoice number, amount &amp; date all on file" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#1D9E75"></span>'
-        : '<span title="Missing invoice number, amount, and/or date" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#C94A4A"></span>';
+      : '<span style="display:inline-flex;align-items:center;gap:6px" title="' +
+          (r.docComplete ? 'Invoice number, amount &amp; date all on file' : 'Missing invoice amount and/or date') + '">' +
+          '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;flex-shrink:0;background:' + (r.docComplete ? '#1D9E75' : '#C94A4A') + '"></span>' +
+          (r.invoiceNumber ? '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11px">' + escC(r.invoiceNumber) + '</span>' : '<span style="font-size:11px;color:var(--muted)">No invoice #</span>') +
+        '</span>';
     return '<tr>' +
       '<td><strong>' + escC(s.name) + '</strong>' + nameNote + '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--muted)">' + escC(s.enrollmentNo) + '</div></td>' +
       '<td><strong style="font-family:\'JetBrains Mono\',monospace">' + money(r ? r.netPayable : fallback) + '</strong></td>' +

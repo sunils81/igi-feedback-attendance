@@ -7204,6 +7204,18 @@ var CENTRE_HOME_INSTRUCTORS = {
   'Chennai': ['Sharoon Joy']
 };
 
+// Category-specific coordinators per centre. Colored Stone / Organics inventory has its
+// own owner distinct from the Diamond team — used for notifications and management rights.
+// Falls back to CENTRE_HOME_INSTRUCTORS for any centre/category not listed here.
+var CENTRE_CATEGORY_INSTRUCTORS = {
+  'Mumbai': { CS: ['Asmita Saroday'], OR: ['Asmita Saroday'] }
+};
+function _categoryInstructors(centre, category) {
+  var byCat = CENTRE_CATEGORY_INSTRUCTORS[centre];
+  if (byCat && category && byCat[category]) return byCat[category];
+  return CENTRE_HOME_INSTRUCTORS[centre] || [];
+}
+
 // ── Sheet setup ─────────────────────────────────────────────────────────────
 function ensureTraySheets(ss) {
   function ensureSheet(name, headers) {
@@ -7479,9 +7491,9 @@ function trayConfirmLocation(ss, p) {
           trayAddNotif(ss, name, 'incoming_tray', histId+':'+p.trayId,
             '📦 Tray '+p.trayId+' is on its way from '+homeCentre+' ('+fromInstructor+').'+(p.expectedReturn?' Expected by '+p.expectedReturn:''));
         });
-        // Notify other home diamonds
+        // Notify other home diamonds / category coordinator
         _notifyHomeDiamonds(ss, homeCentre, fromInstructor, 'tray_dispatched', histId+':'+p.trayId,
-          '📤 '+p.trayId+' sent to '+(p.currentCentre||'unknown')+(p.borrowerInstructor?' ('+p.borrowerInstructor+')':''));
+          '📤 '+p.trayId+' sent to '+(p.currentCentre||'unknown')+(p.borrowerInstructor?' ('+p.borrowerInstructor+')':''), String(rows[i][1]));
       } else if (p.locationStatus === 'IN_USE') {
         var histId = trayHistId();
         var hsh = getTraySheet(ss, SH_TRAY_HISTORY);
@@ -8017,12 +8029,18 @@ function _getTrayHomeCentre(ss, trayId) {
   return '';
 }
 
-function _notifyHomeDiamonds(ss, homeCentre, excludeInstructor, type, refId, message) {
-  var diamonds = CENTRE_HOME_INSTRUCTORS[homeCentre] || [];
+function _notifyHomeDiamonds(ss, homeCentre, excludeInstructor, type, refId, message, category) {
+  var diamonds = _categoryInstructors(homeCentre, category);
   diamonds.forEach(function(name) {
     if (name === excludeInstructor) return;
     trayAddNotif(ss, name, type, refId, message);
   });
+}
+
+function _getTrayCategory(ss, trayId) {
+  var rows = trayRows(getTraySheet(ss, SH_TRAY_REGISTRY));
+  for (var i=0; i<rows.length; i++) { if (String(rows[i][0])===trayId) return String(rows[i][1]); }
+  return '';
 }
 
 function _getInstructorsForCentre(ss, centre) {
@@ -8214,7 +8232,7 @@ function trayDispatch(ss, p) {
       '📦 Tray '+p.trayId+' is on its way from '+fromCentre+' ('+(p.instructor||'Home')+').'+(endDate?' Expected by '+endDate:''));
   });
   _notifyHomeDiamonds(ss, _getTrayHomeCentre(ss,p.trayId), p.instructor||'', 'tray_dispatched', String(leg[0])+':'+p.trayId,
-    '📤 '+p.trayId+' dispatched to '+toCentre+(toInstructor?' ('+toInstructor+')':'')+(endDate?', due '+endDate:''));
+    '📤 '+p.trayId+' dispatched to '+toCentre+(toInstructor?' ('+toInstructor+')':'')+(endDate?', due '+endDate:''), _getTrayCategory(ss,p.trayId));
   return {status:'ok', trayId:p.trayId, toCentre:toCentre, toInstructor:toInstructor};
 }
 
@@ -8249,7 +8267,7 @@ function trayConfirmReceived(ss, p) {
   var toCentre = String(leg[4]);
   var toInstructor = p.instructor || String(leg[6]);
   _notifyHomeDiamonds(ss, _getTrayHomeCentre(ss,p.trayId), '', 'tray_received', String(leg[0])+':'+p.trayId,
-    '✅ '+p.trayId+' confirmed received at '+toCentre+(toInstructor?' by '+toInstructor:''));
+    '✅ '+p.trayId+' confirmed received at '+toCentre+(toInstructor?' by '+toInstructor:''), _getTrayCategory(ss,p.trayId));
   return {status:'ok', trayId:p.trayId, legId:String(leg[0])};
 }
 
@@ -8298,7 +8316,7 @@ function trayConfirmDispatched(ss, p) {
   } else {
     // No next leg — returning home
     toCentre = _getTrayHomeCentre(ss, p.trayId);
-    toInstructor = (CENTRE_HOME_INSTRUCTORS[toCentre]||[])[0] || '';
+    toInstructor = (_categoryInstructors(toCentre, _getTrayCategory(ss,p.trayId))||[])[0] || '';
     endDate = '';
     var histId = trayHistId();
     hsh.appendRow([histId, p.trayId, curLegNum+1,
@@ -8327,7 +8345,7 @@ function trayConfirmDispatched(ss, p) {
     }
   }
   _notifyHomeDiamonds(ss, _getTrayHomeCentre(ss,p.trayId), '', 'tray_forwarded', String(curLeg[0])+':'+p.trayId,
-    '🔁 '+p.trayId+' forwarded: '+String(curLeg[4])+' → '+toCentre+(toInstructor?' ('+toInstructor+')':''));
+    '🔁 '+p.trayId+' forwarded: '+String(curLeg[4])+' → '+toCentre+(toInstructor?' ('+toInstructor+')':''), _getTrayCategory(ss,p.trayId));
   return {status:'ok', trayId:p.trayId, nextCentre:toCentre, nextInstructor:toInstructor};
 }
 

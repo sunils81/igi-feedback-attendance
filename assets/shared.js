@@ -6528,6 +6528,883 @@ window.gasGet = (function () {
   }
 
   /* ══════════════════════════════════════════════════════════════
+     TRAY HUB — Supabase-backed (migrated off Google Sheets/Apps Script).
+     Tables: tray_registry, tray_bookings, tray_notifications,
+             tray_weekly_needs, tray_history (see supabase/migrations/
+             migration_tray_bookings_and_weekly_needs.sql + create_tables.sql).
+     Ported 1:1 from backend/gas.js's Tray Hub section — same params,
+     same return shapes, same notification routing. gas.js's copy is left
+     in place for reference/rollback only; it is no longer called for any
+     tray* action (see the switch below).
+  ══════════════════════════════════════════════════════════════ */
+
+  var TRAY_CENTRE_ABBR = {'Mumbai':'MUM','Delhi':'DEL','Surat':'SUR','Chennai':'CHN'};
+
+  // Category-specific coordinators per centre — mirrors the front-end
+  // CENTRE_CATEGORY_MANAGERS in instructor-portal.html. Colored Stone /
+  // Organics at Mumbai are Asmita's, not Amit/Bhavin's — this is what makes
+  // tray-movement notifications actually reach her instead of the Diamond team.
+  var TRAY_CENTRE_CATEGORY_INSTRUCTORS = {
+    'Mumbai': { DM: ['Amit Sidpura','Bhavin Patel'], CS: ['Asmita Saroday'], OR: ['Asmita Saroday'] }
+  };
+  var TRAY_CENTRE_HOME_INSTRUCTORS = {
+    'Mumbai':  ['Amit Sidpura', 'Bhavin Patel'],
+    'Delhi':   ['Nishchay Kapoor'],
+    'Surat':   ['Khorehmand Kasad'],
+    'Chennai': ['Sharoon Joy']
+  };
+  function trayCategoryInstructors(centre, category) {
+    var byCat = TRAY_CENTRE_CATEGORY_INSTRUCTORS[centre];
+    if (byCat && category && byCat[category]) return byCat[category];
+    return TRAY_CENTRE_HOME_INSTRUCTORS[centre] || [];
+  }
+
+  var TRAY_CATALOGUE = {
+    DM: {
+      'MS1': {name:'Master Set 1',          weekUsage:'Week 2–6'},
+      'MS2': {name:'Master Set 2',          weekUsage:'Week 2–6'},
+      'MS' : {name:'Master Set',            weekUsage:'Week 2–6'},
+      'RI1': {name:'Regular Inventory 1',   weekUsage:'Week 2–6'},
+      'RI2': {name:'Regular Inventory 2',   weekUsage:'Week 2–6'},
+      'FS' : {name:'Fancy Shapes',          weekUsage:'Week 4'},
+      'IM' : {name:'Imitation',             weekUsage:'Week 4'},
+      'WT' : {name:'Weekly Test',           weekUsage:'Week 3–4–5'},
+      'FT' : {name:'Final Test',            weekUsage:'Week 6'},
+      'LG1': {name:'Lab Grown 1',           weekUsage:'Week 4–5–6'},
+      'LG2': {name:'Lab Grown 2',           weekUsage:'Week 4–5–6'},
+      'DS' : {name:'Diamond Sorting',       weekUsage:'Week 5'},
+      'MJ' : {name:'Mounted Jewelry',       weekUsage:'Week 5'},
+      'RD1': {name:'Rough Diamonds 1',      weekUsage:'Week 1'},
+      'RD2': {name:'Rough Diamonds 2',      weekUsage:'Week 1'},
+      'RD3': {name:'Rough Diamonds 3',      weekUsage:'Week 1'}
+    },
+    CS: {
+      'OPI' : {name:'Optical Properties & Instruments', weekUsage:''},
+      'OPI2': {name:'Optical Properties & Instruments 2', weekUsage:''},
+      'INI' : {name:'Instruments & Inclusions',          weekUsage:''},
+      'INI2': {name:'Instruments & Inclusions 2',        weekUsage:''},
+      'RES' : {name:'Natural RES (Ruby·Emerald·Sapphire)',weekUsage:''},
+      'TRT' : {name:'Treatments',                        weekUsage:''},
+      'SYN' : {name:'Synthetics',                        weekUsage:''},
+      'GR1' : {name:'Group 1 (Garnet·Opal·Lapis)',       weekUsage:''},
+      'GR2' : {name:'Group 2 (Tourmaline·Topaz·Peridot)',weekUsage:''},
+      'GR3' : {name:'Group 3 (Feldspar·Jade·Tanzanite)', weekUsage:''},
+      'QTZ' : {name:'Quartz',                            weekUsage:''},
+      'QTZ1': {name:'Quartz 1 (Amethyst·Smoky·Citrine)', weekUsage:''},
+      'QTZ2': {name:'Quartz 2 (Agate·Chalcedony·Onyx)',  weekUsage:''},
+      'PRC' : {name:'Practice',                          weekUsage:''},
+      'PRC2': {name:'Practice 2',                        weekUsage:''},
+      'EXA' : {name:'Test Series A (A1-A11)',            weekUsage:''},
+      'EXB' : {name:'Test Series B (B1-B11)',            weekUsage:''},
+      'EXC' : {name:'Test Series C (C1-C11)',            weekUsage:''},
+      'EXD' : {name:'Test Series D (D1-D11)',            weekUsage:''},
+      'EXE' : {name:'Test Series E (E1-E11)',            weekUsage:''}
+    },
+    OR: {
+      'OR1': {name:'Organics 1 (Amber·Coral·Pearl)', weekUsage:''},
+      'OR2': {name:'Organics 2',                     weekUsage:''}
+    }
+  };
+
+  var TRAY_CENTRE_SETS = {
+    'Mumbai': [
+      ['DM', '01', 'MS1', 57], ['DM', '02', 'RI1', 57], ['DM', '03', 'RI2', 57],
+      ['DM', '04', 'FS', 25], ['DM', '05', 'IM', 25], ['DM', '06', 'WT', 25],
+      ['DM', '07', 'FT', 25], ['DM', '08', 'LG1', 25], ['DM', '09', 'LG2', 25],
+      ['DM', '10', 'DS', 25], ['DM', '11', 'MJ', 25], ['DM', '12', 'RD1', 25],
+      ['DM', '13', 'RD2', 25], ['DM', '14', 'RD3', 25], ['DM', '15', 'MS2', 57],
+      ['CS', '01', 'OPI', 25], ['CS', '12', 'OPI', 25],
+      ['CS', '02', 'INI', 25], ['CS', '13', 'INI', 25],
+      ['CS', '03', 'RES', 25], ['CS', '14', 'RES', 25],
+      ['CS', '04', 'TRT', 25], ['CS', '15', 'TRT', 25],
+      ['CS', '05', 'SYN', 25], ['CS', '16', 'SYN', 25],
+      ['CS', '06', 'GR1', 25], ['CS', '17', 'GR1', 25],
+      ['CS', '07', 'GR2', 25], ['CS', '18', 'GR2', 25],
+      ['CS', '08', 'QTZ', 25], ['CS', '19', 'QTZ', 25],
+      ['CS', '09', 'GR3', 25], ['CS', '20', 'GR3', 25],
+      ['CS', '10', 'PRC', 25], ['CS', '21', 'PRC', 25],
+      ['CS', '11', 'PRC', 25], ['CS', '22', 'PRC', 25],
+      ['CS', '23', 'PRC', 25],
+      ['CS', 'EX1', 'EXA', 11], ['CS', 'EX2', 'EXB', 11],
+      ['CS', 'EX3', 'EXC', 11], ['CS', 'EX4', 'EXD', 11],
+      ['CS', 'EX5', 'EXE', 11],
+      ['OR', '01', 'OR1', 25], ['OR', '02', 'OR2', 25]
+    ],
+    'Delhi': [
+      ['DM','MS',57],['DM','RI1',57],['DM','RI2',57],['DM','FS',25],
+      ['DM','IM',25],['DM','WT',25],['DM','FT',25],['DM','DS',25],['DM','RD1',25],
+      ['CS','OPI',17],['CS','SYN',20],['CS','RES',25],['CS','GR1',20],
+      ['CS','GR2',25],['CS','QTZ1',25],['CS','QTZ2',25],['CS','PRC',25]
+    ],
+    'Surat': [
+      ['DM','MS',57],['DM','RI1',57],['DM','RI2',57],['DM','FS',25],
+      ['DM','IM',25],['DM','WT',25],['DM','FT',25]
+    ],
+    'Chennai': [
+      ['DM','MS',57],['DM','RI1',57]
+    ]
+  };
+
+  /* ── low-level tray helpers ── */
+  function trayAddNotif(toInstructor, type, refId, message) {
+    if (!toInstructor) return;
+    POST('tray_notifications', null, {
+      notif_id: uniqueId('TN-'), to_instructor: toInstructor, type: type,
+      booking_id: refId, message: message, read: 'N', created_at: nowISO()
+    }, function(){});
+  }
+  function trayNotifyCoordinators(homeCentre, excludeInstructor, type, refId, message, category) {
+    var names = trayCategoryInstructors(homeCentre, category);
+    names.forEach(function(name){
+      if (name === excludeInstructor) return;
+      trayAddNotif(name, type, refId, message);
+    });
+  }
+  // Best-effort "who's at this centre" lookup for incoming-tray pings — falls back to
+  // the category coordinator list if no active instructor rows are found.
+  function trayInstructorsForCentre(centre, cb) {
+    if (!centre) { cb([]); return; }
+    GET('users', 'role=eq.Instructor&is_active=eq.true&select=name,centres', function(e, rows) {
+      var list = [];
+      (rows||[]).forEach(function(r) {
+        var centres = String(r.centres||'').split(',').map(function(c){ return c.trim().toUpperCase(); });
+        if (centres.indexOf(String(centre).toUpperCase().trim()) !== -1 && list.indexOf(r.name) === -1) list.push(r.name);
+      });
+      if (!list.length) list = (TRAY_CENTRE_HOME_INSTRUCTORS[centre] || []).slice();
+      cb(list);
+    });
+  }
+  // Closes any open SENT/RECEIVED/IN_USE leg for a tray when it comes back HOME.
+  function trayCloseOpenHistoryLeg(trayId, cb) {
+    GET('tray_history', 'tray_id=eq.' + encodeURIComponent(trayId) + '&status=in.(SENT,RECEIVED,IN_USE)', function(e, rows) {
+      if (e || !rows || !rows.length) { cb(); return; }
+      var today = todayYMD();
+      var done = 0;
+      rows.forEach(function(r) {
+        PATCH('tray_history', 'history_id=eq.' + encodeURIComponent(r.history_id), {actual_received: today, status: 'RETURNED'}, function(){
+          done++; if (done === rows.length) cb();
+        });
+      });
+    });
+  }
+
+  /* ── trayRegister ── p: {category|type, topicCode, centre, instructor, stoneCount, notes?} ── */
+  function h_trayRegister(p, cb) {
+    var cat, code;
+    if (p.category && p.topicCode) { cat = p.category; code = p.topicCode; }
+    else if (p.type) {
+      cat = (p.type === 'Diamond') ? 'DM' : (p.type === 'Organics' ? 'OR' : 'CS');
+      code = p.topicCode || (p.trayNumber ? 'T'+p.trayNumber : 'MISC');
+    } else { cb(null, {status:'error', message:'Missing category/topicCode'}); return; }
+    if (!p.centre || !p.instructor) { cb(null, {status:'error', message:'Missing centre or instructor'}); return; }
+    var count = parseInt(p.stoneCount) || 0;
+    if (count < 1) { cb(null, {status:'error', message:'Stone count must be > 0'}); return; }
+    var abbr = TRAY_CENTRE_ABBR[p.centre] || p.centre.substring(0,3).toUpperCase();
+    var id = abbr + '-' + cat + '-' + code;
+    GET('tray_registry', 'select=tray_id&tray_id=eq.' + encodeURIComponent(id), function(e, rows) {
+      if (rows && rows.length) { cb(null, {status:'error', message:'Tray '+id+' is already registered'}); return; }
+      var catObj = TRAY_CATALOGUE[cat] || {};
+      var info = catObj[code] || {name: code, weekUsage: ''};
+      POST('tray_registry', null, {
+        tray_id: id, category: cat, topic_code: code, topic_name: info.name,
+        home_centre: p.centre, home_instructor: p.instructor, stone_count: count,
+        week_usage: info.weekUsage, location_status: 'HOME', current_centre: p.centre,
+        expected_return: null, registered_at: nowISO(), notes: p.notes || ''
+      }, function(e2) {
+        cb(null, e2 ? {status:'error', message:String(e2)} : {status:'ok', trayId: id});
+      });
+    });
+  }
+
+  /* ── trayBulkSeed ── p: {filterCentre?, filterCategory?} ── */
+  function h_trayBulkSeed(p, cb) {
+    p = p || {};
+    var filterCentre = p.filterCentre || '';
+    var filterCategory = p.filterCategory || '';
+    GET('tray_registry', 'select=tray_id,category,home_centre', function(e, allRows) {
+      allRows = allRows || [];
+      var toDelete = [];
+      allRows.forEach(function(r) {
+        var shouldClear = false;
+        if (filterCentre) {
+          if (r.home_centre === filterCentre && (!filterCategory || r.category === filterCategory)) shouldClear = true;
+        } else if ((r.home_centre === 'Mumbai' || String(r.tray_id||'').endsWith('-DM-MS')) && (!filterCategory || r.category === filterCategory)) {
+          shouldClear = true;
+        }
+        if (shouldClear) toDelete.push(r.tray_id);
+      });
+      function afterClear() {
+        GET('tray_registry', 'select=tray_id', function(e2, existingRows) {
+          var existing = (existingRows||[]).map(function(r){ return r.tray_id; });
+          var toInsert = [];
+          var seeded = 0, skipped = 0;
+          var now = nowISO();
+          Object.keys(TRAY_CENTRE_SETS).forEach(function(centre) {
+            if (filterCentre && filterCentre !== centre) return;
+            var abbr = TRAY_CENTRE_ABBR[centre] || centre.substring(0,3).toUpperCase();
+            TRAY_CENTRE_SETS[centre].forEach(function(entry) {
+              var cat, code, stones, id, homeInstructor = '';
+              if (entry.length === 4) {
+                cat = entry[0]; var trayNo = entry[1]; code = entry[2]; stones = entry[3];
+                var trayStr = String(trayNo);
+                id = trayStr.indexOf('EX') === 0 ? (abbr+'-'+cat+'-T-'+trayStr) : (abbr+'-'+cat+'-T'+trayStr);
+              } else {
+                cat = entry[0]; code = entry[1]; stones = entry[2]; id = abbr+'-'+cat+'-'+code;
+              }
+              if (filterCategory && filterCategory !== cat) return;
+              if (centre === 'Mumbai') {
+                if (cat === 'CS' || cat === 'OR') homeInstructor = 'Asmita Saroday';
+                else if (cat === 'DM') homeInstructor = 'Amit / Bhavin';
+              }
+              if (existing.indexOf(id) !== -1) { skipped++; return; }
+              var catObj = TRAY_CATALOGUE[cat] || {};
+              var info = catObj[code] || {name: code, weekUsage: ''};
+              toInsert.push({
+                tray_id: id, category: cat, topic_code: code, topic_name: info.name,
+                home_centre: centre, home_instructor: homeInstructor, stone_count: stones,
+                week_usage: info.weekUsage, location_status: 'UNCONFIRMED', current_centre: centre,
+                expected_return: null, registered_at: now, notes: 'Bulk seeded'
+              });
+              existing.push(id);
+              seeded++;
+            });
+          });
+          if (!toInsert.length) { cb(null, {status:'ok', seeded:0, skipped:skipped}); return; }
+          POST('tray_registry', null, toInsert, function(e3) {
+            cb(null, e3 ? {status:'error', message:String(e3)} : {status:'ok', seeded:seeded, skipped:skipped});
+          });
+        });
+      }
+      if (toDelete.length) DEL('tray_registry', 'tray_id=in.(' + toDelete.map(encodeURIComponent).join(',') + ')', function(){ afterClear(); });
+      else afterClear();
+    });
+  }
+
+  /* ── trayGetBoard ── aggregated matrix: per centre x type -> {total, free, engaged, trays[]} ── */
+  function h_trayGetBoard(p, cb) {
+    GET('tray_registry', 'select=*', function(e1, regRows) {
+      if (e1) { cb(null, {status:'error', message:String(e1)}); return; }
+      GET('tray_bookings', 'status=in.(pending,active,returning)&select=*', function(e2, bookRows) {
+        if (e2) bookRows = [];
+        var now = new Date();
+        var activeBookings = {};
+        (bookRows||[]).forEach(function(r) {
+          activeBookings[r.tray_id] = {
+            status: r.status, bookingId: r.booking_id,
+            requestingCentre: r.requesting_centre, requestingInstructor: r.requesting_instructor,
+            deadline: r.deadline_date ? new Date(r.deadline_date) : null,
+            weeksBooked: parseInt(r.weeks_booked)||1
+          };
+        });
+        var centreMap = {};
+        (regRows||[]).forEach(function(r) {
+          var trayId = r.tray_id;
+          var cat = r.category || '';
+          var centre = r.home_centre || '';
+          if (!centre) return;
+          var stones = parseInt(r.stone_count)||0;
+          var locStatus = r.location_status || 'UNCONFIRMED';
+          var currentCtr = r.current_centre || centre;
+          var expectedReturn = r.expected_return ? String(r.expected_return).split('T')[0] : '';
+          var borrowerConfirmed = String(r.borrower_confirmed||'') === 'yes';
+          if (!centreMap[centre]) centreMap[centre] = {centre:centre, instructor:r.home_instructor||'', DM:[], CS:[], OR:[]};
+          var booking = activeBookings[trayId] || null;
+          var trayStatus = 'available';
+          var daysLeft = null;
+          if (locStatus === 'UNCONFIRMED') trayStatus = 'unconfirmed';
+          if (booking) {
+            trayStatus = booking.status === 'pending' ? 'requested' : (booking.status === 'returning' ? 'returning' : 'engaged');
+            if (booking.deadline) {
+              daysLeft = Math.ceil((booking.deadline.getTime() - now.getTime()) / 86400000);
+              if (daysLeft < 0) trayStatus = 'overdue';
+            }
+          }
+          var key = (cat === 'DM') ? 'DM' : (cat === 'OR' ? 'OR' : 'CS');
+          centreMap[centre][key].push({
+            trayId: trayId, category: cat, topicCode: r.topic_code||'', topicName: r.topic_name||'',
+            weekUsage: r.week_usage||'', stoneCount: stones, locationStatus: locStatus,
+            currentCentre: currentCtr, expectedReturn: expectedReturn, borrowerConfirmed: borrowerConfirmed,
+            status: trayStatus,
+            requestingCentre: booking ? booking.requestingCentre : null,
+            requestingInstructor: booking ? booking.requestingInstructor : null,
+            bookingId: booking ? booking.bookingId : null,
+            deadline: booking && booking.deadline ? booking.deadline.toISOString().split('T')[0] : null,
+            daysLeft: daysLeft
+          });
+        });
+        var centres = Object.keys(centreMap).map(function(k) {
+          var c = centreMap[k];
+          function summary(trays) {
+            return {
+              total: trays.length,
+              free: trays.filter(function(t){ return t.status==='available'; }).length,
+              engaged: trays.filter(function(t){ return ['engaged','overdue','returning'].indexOf(t.status)!==-1; }).length,
+              requested: trays.filter(function(t){ return t.status==='requested'; }).length,
+              unconfirmed: trays.filter(function(t){ return t.status==='unconfirmed'; }).length,
+              trays: trays
+            };
+          }
+          return { centre:c.centre, instructor:c.instructor, diamond:summary(c.DM), coloredStone:summary(c.CS), organics:summary(c.OR) };
+        });
+        centres.sort(function(a,b){ return a.centre.localeCompare(b.centre); });
+        cb(null, {status:'ok', centres:centres});
+      });
+    });
+  }
+
+  /* ── trayGetMine ── p: {centre} ── */
+  function h_trayGetMine(p, cb) {
+    if (!p.centre) { cb(null, {status:'error', message:'Centre required'}); return; }
+    h_trayGetBoard(p, function(e, board) {
+      if (e || !board || board.status !== 'ok') { cb(null, board || {status:'error'}); return; }
+      var mine = board.centres.filter(function(c){ return c.centre === p.centre; });
+      GET('tray_registry', 'select=tray_id&home_centre=eq.' + encodeURIComponent(p.centre), function(e2, regRows) {
+        var myTrayIds = (regRows||[]).map(function(r){ return r.tray_id; });
+        if (!myTrayIds.length) { cb(null, {status:'ok', myCentreData: mine[0]||null, incomingCount: 0}); return; }
+        GET('tray_bookings', 'status=eq.pending&tray_id=in.(' + myTrayIds.map(encodeURIComponent).join(',') + ')', function(e3, bookRows) {
+          cb(null, {status:'ok', myCentreData: mine[0]||null, incomingCount: (bookRows||[]).length});
+        });
+      });
+    });
+  }
+
+  /* ── trayBook ── p: {trayId, requestingInstructor, requestingCentre, weeksBooked, startDate, batchCode?} ── */
+  function h_trayBook(p, cb) {
+    if (!p.trayId || !p.requestingInstructor || !p.requestingCentre || !p.weeksBooked) {
+      cb(null, {status:'error', message:'Missing required fields'}); return;
+    }
+    var weeks = parseInt(p.weeksBooked) || 1;
+    var startDate = p.startDate ? new Date(p.startDate) : new Date();
+    var day = startDate.getDay();
+    var diff = (day === 0) ? -6 : 1 - day;
+    startDate.setDate(startDate.getDate() + diff);
+    startDate.setHours(0,0,0,0);
+    var deadline = new Date(startDate.getTime());
+    deadline.setDate(deadline.getDate() + (weeks*7) - 1);
+
+    GET('tray_registry', 'tray_id=eq.' + encodeURIComponent(p.trayId), function(e, rows) {
+      if (e || !rows || !rows.length) { cb(null, {status:'error', message:'Tray not found'}); return; }
+      var trayRow = rows[0];
+      if ((trayRow.home_centre||'') === p.requestingCentre) { cb(null, {status:'error', message:'Cannot request your own tray'}); return; }
+      GET('tray_bookings', 'tray_id=eq.' + encodeURIComponent(p.trayId) + '&status=in.(pending,active,returning)', function(e2, conflicts) {
+        if (conflicts && conflicts.length) { cb(null, {status:'error', message:'Tray already has an active booking'}); return; }
+        var bookingId = uniqueId('BK-');
+        var startYMD = startDate.toISOString().split('T')[0];
+        var deadlineYMD = deadline.toISOString().split('T')[0];
+        POST('tray_bookings', null, {
+          booking_id: bookingId, tray_id: p.trayId, home_centre: trayRow.home_centre,
+          requesting_instructor: p.requestingInstructor, requesting_centre: p.requestingCentre,
+          weeks_booked: weeks, start_date: startYMD, deadline_date: deadlineYMD,
+          status: 'pending', stone_count_on_return: null, reject_reason: '',
+          created_at: nowISO(), updated_at: nowISO(), batch_code: p.batchCode || ''
+        }, function(e3) {
+          if (e3) { cb(null, {status:'error', message:String(e3)}); return; }
+          var msg = p.requestingInstructor + ' (' + p.requestingCentre + ') has requested tray ' + p.trayId +
+            (p.batchCode ? ' for batch ' + p.batchCode : '') +
+            ' for ' + weeks + ' week' + (weeks>1?'s':'') + ' starting ' + startYMD + '.';
+          trayAddNotif(trayRow.home_instructor || '', 'request', bookingId, msg);
+          cb(null, {status:'ok', bookingId:bookingId, deadline:deadlineYMD});
+        });
+      });
+    });
+  }
+
+  /* ── trayRespond ── p: {bookingId, decision:'accept'|'reject', rejectReason?} ── */
+  function h_trayRespond(p, cb) {
+    if (!p.bookingId || !p.decision) { cb(null, {status:'error', message:'Missing bookingId or decision'}); return; }
+    GET('tray_bookings', 'booking_id=eq.' + encodeURIComponent(p.bookingId), function(e, rows) {
+      if (e || !rows || !rows.length) { cb(null, {status:'error', message:'Booking not found'}); return; }
+      var row = rows[0];
+      if (row.status !== 'pending') { cb(null, {status:'error', message:'Booking is no longer pending'}); return; }
+      var newStatus = (p.decision === 'accept') ? 'active' : 'rejected';
+      PATCH('tray_bookings', 'booking_id=eq.' + encodeURIComponent(p.bookingId), {
+        status: newStatus, reject_reason: p.rejectReason || '', updated_at: nowISO()
+      }, function(e2) {
+        if (e2) { cb(null, {status:'error', message:String(e2)}); return; }
+        if (newStatus === 'active') {
+          trayAddNotif(row.requesting_instructor, 'accepted', p.bookingId,
+            'Your request for tray ' + row.tray_id + ' has been accepted. Return by ' + (row.deadline_date||'') + '.');
+        } else {
+          trayAddNotif(row.requesting_instructor, 'rejected', p.bookingId,
+            'Your request for tray ' + row.tray_id + ' was declined.' + (p.rejectReason ? ' Reason: ' + p.rejectReason : ''));
+        }
+        cb(null, {status:'ok', newStatus:newStatus});
+      });
+    });
+  }
+
+  /* ── trayMarkReturning ── p: {bookingId, stoneCount} ── */
+  function h_trayMarkReturning(p, cb) {
+    if (!p.bookingId) { cb(null, {status:'error', message:'bookingId required'}); return; }
+    GET('tray_bookings', 'booking_id=eq.' + encodeURIComponent(p.bookingId), function(e, rows) {
+      if (e || !rows || !rows.length) { cb(null, {status:'error', message:'Booking not found'}); return; }
+      var row = rows[0];
+      PATCH('tray_bookings', 'booking_id=eq.' + encodeURIComponent(p.bookingId), {
+        status: 'returning', stone_count_on_return: parseInt(p.stoneCount)||0, updated_at: nowISO()
+      }, function(e2) {
+        if (e2) { cb(null, {status:'error', message:String(e2)}); return; }
+        GET('tray_registry', 'tray_id=eq.' + encodeURIComponent(row.tray_id), function(e3, regRows) {
+          var homeInstructor = (regRows && regRows.length) ? (regRows[0].home_instructor||row.home_centre) : row.home_centre;
+          trayAddNotif(homeInstructor, 'returning', p.bookingId,
+            'Tray ' + row.tray_id + ' has been dispatched by ' + row.requesting_instructor + ' (' + row.requesting_centre + '). Stone count declared: ' + (p.stoneCount||'—') + '.');
+          cb(null, {status:'ok'});
+        });
+      });
+    });
+  }
+
+  /* ── trayConfirmReturn ── p: {bookingId, stoneCount} ── */
+  function h_trayConfirmReturn(p, cb) {
+    if (!p.bookingId) { cb(null, {status:'error', message:'bookingId required'}); return; }
+    GET('tray_bookings', 'booking_id=eq.' + encodeURIComponent(p.bookingId), function(e, rows) {
+      if (e || !rows || !rows.length) { cb(null, {status:'error', message:'Booking not found'}); return; }
+      var row = rows[0];
+      var patch = { status: 'returned', updated_at: nowISO() };
+      if (p.stoneCount) patch.stone_count_on_return = parseInt(p.stoneCount);
+      PATCH('tray_bookings', 'booking_id=eq.' + encodeURIComponent(p.bookingId), patch, function(e2) {
+        if (e2) { cb(null, {status:'error', message:String(e2)}); return; }
+        trayAddNotif(row.requesting_instructor, 'confirmed', p.bookingId,
+          'Your return of tray ' + row.tray_id + ' has been confirmed by ' + row.home_centre + '. Thank you!');
+        cb(null, {status:'ok'});
+      });
+    });
+  }
+
+  /* ── trayConfirmLocation ── p: {trayId, locationStatus, currentCentre, expectedReturn, instructor, borrowerInstructor?} ── */
+  function h_trayConfirmLocation(p, cb) {
+    if (!p.trayId || !p.locationStatus) { cb(null, {status:'error', message:'Missing trayId or locationStatus'}); return; }
+    GET('tray_registry', 'tray_id=eq.' + encodeURIComponent(p.trayId), function(e, rows) {
+      if (e || !rows || !rows.length) { cb(null, {status:'error', message:'Tray not found: '+p.trayId}); return; }
+      var row = rows[0];
+      var homeCentre = row.home_centre || '';
+      var fromInstructor = p.instructor || row.home_instructor || '';
+      var patch = {
+        current_centre: p.currentCentre || homeCentre,
+        expected_return: p.expectedReturn || null,
+        location_status: p.locationStatus,
+        borrower_confirmed: '',
+        borrower_instructor: p.borrowerInstructor || ''
+      };
+      if (p.instructor && !row.home_instructor) patch.home_instructor = p.instructor;
+      PATCH('tray_registry', 'tray_id=eq.' + encodeURIComponent(p.trayId), patch, function(e2) {
+        if (e2) { cb(null, {status:'error', message:String(e2)}); return; }
+        function finish() { cb(null, {status:'ok', trayId:p.trayId}); }
+        if (p.locationStatus === 'ON_LOAN') {
+          var histId = uniqueId('TH-');
+          var today = todayYMD();
+          POST('tray_history', null, {
+            history_id: histId, tray_id: p.trayId, leg_number: 1,
+            from_centre: homeCentre, to_centre: p.currentCentre||'',
+            from_instructor: fromInstructor, to_instructor: p.borrowerInstructor||'',
+            planned_start: today, planned_end: p.expectedReturn||null,
+            actual_sent: today, actual_received: null, status: 'SENT'
+          }, function(){});
+          trayInstructorsForCentre(p.currentCentre, function(targets) {
+            if (p.borrowerInstructor && p.borrowerInstructor.trim() && targets.indexOf(p.borrowerInstructor)===-1) targets.push(p.borrowerInstructor);
+            targets.forEach(function(name){
+              trayAddNotif(name, 'incoming_tray', histId+':'+p.trayId,
+                '📦 Tray '+p.trayId+' is on its way from '+homeCentre+' ('+fromInstructor+').'+(p.expectedReturn?' Expected by '+p.expectedReturn:''));
+            });
+            trayNotifyCoordinators(homeCentre, fromInstructor, 'tray_dispatched', histId+':'+p.trayId,
+              '📤 '+p.trayId+' sent to '+(p.currentCentre||'unknown')+(p.borrowerInstructor?' ('+p.borrowerInstructor+')':''), row.category);
+            finish();
+          });
+        } else if (p.locationStatus === 'IN_USE') {
+          var histId2 = uniqueId('TH-');
+          var today2 = todayYMD();
+          POST('tray_history', null, {
+            history_id: histId2, tray_id: p.trayId, leg_number: 0,
+            from_centre: homeCentre, to_centre: homeCentre,
+            from_instructor: fromInstructor, to_instructor: fromInstructor,
+            planned_start: p.startDate||today2, planned_end: p.expectedReturn||null,
+            actual_sent: today2, actual_received: null, status: 'IN_USE'
+          }, function(){ finish(); });
+        } else if (p.locationStatus === 'HOME') {
+          trayCloseOpenHistoryLeg(p.trayId, function(){ finish(); });
+        } else {
+          finish();
+        }
+      });
+    });
+  }
+
+  /* ── trayBorrowerConfirm ── p: {trayId, borrowerInstructor, borrowerCentre, expectedReturn?} ── */
+  function h_trayBorrowerConfirm(p, cb) {
+    if (!p.trayId || !p.borrowerCentre) { cb(null, {status:'error', message:'Missing trayId or borrowerCentre'}); return; }
+    GET('tray_registry', 'tray_id=eq.' + encodeURIComponent(p.trayId), function(e, rows) {
+      if (e || !rows || !rows.length) { cb(null, {status:'error', message:'Tray not found: '+p.trayId}); return; }
+      var currentLoc = rows[0].location_status || 'UNCONFIRMED';
+      PATCH('tray_registry', 'tray_id=eq.' + encodeURIComponent(p.trayId), {
+        location_status: 'ON_LOAN', current_centre: p.borrowerCentre,
+        expected_return: p.expectedReturn || rows[0].expected_return || null,
+        borrower_confirmed: 'yes'
+      }, function(e2) {
+        cb(null, e2 ? {status:'error', message:String(e2)} : {status:'ok', trayId:p.trayId, previousStatus: currentLoc});
+      });
+    });
+  }
+
+  /* ── trayUpdateDetails ── p: {trayId, stoneCount?, notes?, weekUsage?} ── */
+  function h_trayUpdateDetails(p, cb) {
+    if (!p.trayId) { cb(null, {status:'error', message:'Missing trayId'}); return; }
+    var patch = {};
+    if (p.stoneCount !== undefined) patch.stone_count = parseInt(p.stoneCount)||0;
+    if (p.weekUsage  !== undefined) patch.week_usage = p.weekUsage;
+    if (p.notes      !== undefined) patch.notes = p.notes;
+    PATCH('tray_registry', 'tray_id=eq.' + encodeURIComponent(p.trayId), patch, function(e, updated) {
+      if (e) { cb(null, {status:'error', message:String(e)}); return; }
+      if (!updated || !updated.length) { cb(null, {status:'error', message:'Tray not found: '+p.trayId}); return; }
+      cb(null, {status:'ok', trayId:p.trayId});
+    });
+  }
+
+  /* ── trayGetWeekPlan ── p: {instructor, centre} — 4-week forward view ── */
+  function h_trayGetWeekPlan(p, cb) {
+    if (!p.instructor || !p.centre) { cb(null, {status:'error', message:'instructor and centre required'}); return; }
+    GET('tray_weekly_needs', 'instructor=eq.' + encodeURIComponent(p.instructor), function(e, needRows) {
+      var weeklyNeed = (needRows && needRows.length) ? (parseInt(needRows[0].trays_needed_per_week)||3) : 3;
+      GET('tray_registry', 'home_centre=eq.' + encodeURIComponent(p.centre) + '&select=tray_id,category', function(e2, regRows) {
+        var homeTrayIds = (regRows||[]).map(function(r){ return r.tray_id; });
+        var regTypeById = {};
+        (regRows||[]).forEach(function(r){ regTypeById[r.tray_id] = r.category; });
+        GET('tray_bookings', 'requesting_instructor=eq.' + encodeURIComponent(p.instructor) + '&status=in.(active,returning)', function(e3, myActive) {
+          myActive = myActive || [];
+          GET('tray_bookings', 'status=in.(active,returning)&select=tray_id', function(e4, allEngaged) {
+            var engagedIds = (allEngaged||[]).map(function(r){ return r.tray_id; });
+            var freeHomeTrayIds = homeTrayIds.filter(function(id){ return engagedIds.indexOf(id)===-1; });
+
+            var today = new Date(); today.setHours(0,0,0,0);
+            var dayOfWeek = today.getDay();
+            var monday = new Date(today);
+            monday.setDate(today.getDate() - (dayOfWeek===0?6:dayOfWeek-1));
+
+            var weeks = [];
+            for (var w=0; w<4; w++) {
+              var wStart = new Date(monday); wStart.setDate(monday.getDate()+w*7);
+              var wEnd = new Date(wStart); wEnd.setDate(wStart.getDate()+6);
+              wStart.setHours(0,0,0,0); wEnd.setHours(23,59,59,999);
+
+              var weekTrays = myActive.filter(function(r) {
+                var sd = r.start_date ? new Date(r.start_date) : null;
+                var dd = r.deadline_date ? new Date(r.deadline_date) : null;
+                if (!sd || !dd) return false;
+                return sd <= wEnd && dd >= wStart;
+              }).map(function(r) {
+                return {
+                  trayId: r.tray_id, type: regTypeById[r.tray_id] || '',
+                  from: r.home_centre, deadline: r.deadline_date ? String(r.deadline_date).split('T')[0] : '',
+                  status: r.status, bookingId: r.booking_id
+                };
+              });
+
+              var homeFreeForWeek = freeHomeTrayIds.map(function(id) {
+                return { trayId:id, type: regTypeById[id]||'', from:p.centre, deadline:'home', status:'available', bookingId:null };
+              });
+
+              var covered = weekTrays.length + homeFreeForWeek.length;
+              var coverStatus = covered >= weeklyNeed ? 'ok' : (covered > 0 ? 'partial' : 'empty');
+
+              weeks.push({
+                weekNum: w+1, label: w===0 ? 'This Week' : 'Week ' + (w+1),
+                startDate: wStart.toISOString().split('T')[0], endDate: wEnd.toISOString().split('T')[0],
+                trays: weekTrays, homeFree: homeFreeForWeek, covered: covered, need: weeklyNeed, coverStatus: coverStatus
+              });
+            }
+            cb(null, {status:'ok', weeks:weeks, weeklyNeed:weeklyNeed});
+          });
+        });
+      });
+    });
+  }
+
+  /* ── traySetWeeklyNeed ── p: {instructor, centre, traysNeeded} ── */
+  function h_traySetWeeklyNeed(p, cb) {
+    if (!p.instructor || !p.traysNeeded) { cb(null, {status:'error', message:'instructor and traysNeeded required'}); return; }
+    PATCH('tray_weekly_needs', 'instructor=eq.' + encodeURIComponent(p.instructor), {
+      trays_needed_per_week: parseInt(p.traysNeeded)||3, updated_at: nowISO()
+    }, function(e, updated) {
+      if (e) { cb(null, {status:'error', message:String(e)}); return; }
+      if (updated && updated.length) { cb(null, {status:'ok'}); return; }
+      POST('tray_weekly_needs', 'on_conflict=instructor', {
+        instructor: p.instructor, centre: p.centre||'', trays_needed_per_week: parseInt(p.traysNeeded)||3, updated_at: nowISO()
+      }, function(e2) { cb(null, e2 ? {status:'error', message:String(e2)} : {status:'ok'}); });
+    });
+  }
+
+  /* ── trayGetNotifications ── p: {instructor} ── */
+  function h_trayGetNotifications(p, cb) {
+    if (!p.instructor) { cb(null, {status:'ok', notifications:[]}); return; }
+    GET('tray_notifications', 'to_instructor=eq.' + encodeURIComponent(p.instructor) + '&read=eq.N&order=created_at.desc', function(e, rows) {
+      var list = (rows||[]).map(function(r){
+        return {notifId:r.notif_id, type:r.type, bookingId:r.booking_id, message:r.message, createdAt:r.created_at};
+      });
+      cb(null, {status:'ok', notifications:list});
+    });
+  }
+
+  /* ── trayMarkNotifRead ── p: {notifId} or {instructor} (marks all) ── */
+  function h_trayMarkNotifRead(p, cb) {
+    if (p.notifId) {
+      PATCH('tray_notifications', 'notif_id=eq.' + encodeURIComponent(p.notifId), {read:'Y'}, function(){ cb(null, {status:'ok'}); });
+    } else if (p.instructor) {
+      PATCH('tray_notifications', 'to_instructor=eq.' + encodeURIComponent(p.instructor) + '&read=eq.N', {read:'Y'}, function(){ cb(null, {status:'ok'}); });
+    } else {
+      cb(null, {status:'ok'});
+    }
+  }
+
+  /* ── trayGetHistory ── p: {trayId?, centre?, instructor?} ── */
+  function h_trayGetHistory(p, cb) {
+    var qs = 'order=actual_sent.desc,history_id.desc&limit=1000';
+    if (p.trayId) qs += '&tray_id=eq.' + encodeURIComponent(p.trayId);
+    GET('tray_history', qs, function(e, rows) {
+      var filtered = (rows||[]).filter(function(r) {
+        if (p.centre && r.from_centre !== p.centre && r.to_centre !== p.centre) return false;
+        if (p.instructor && r.from_instructor !== p.instructor && r.to_instructor !== p.instructor) return false;
+        return true;
+      }).slice(0, 200);
+      var history = filtered.map(function(r) {
+        return {
+          historyId:r.history_id, trayId:r.tray_id, legNumber:parseInt(r.leg_number)||0,
+          fromCentre:r.from_centre, toCentre:r.to_centre, fromInstructor:r.from_instructor, toInstructor:r.to_instructor,
+          plannedStart: r.planned_start ? String(r.planned_start).split('T')[0] : '',
+          plannedEnd: r.planned_end ? String(r.planned_end).split('T')[0] : '',
+          actualSent: r.actual_sent ? String(r.actual_sent).split('T')[0] : '',
+          actualReceived: r.actual_received ? String(r.actual_received).split('T')[0] : '',
+          status: r.status
+        };
+      });
+      cb(null, {status:'ok', history:history});
+    });
+  }
+
+  /* ── trayGetJourney ── p: {trayId} ── */
+  function h_trayGetJourney(p, cb) {
+    if (!p.trayId) { cb(null, {status:'error', message:'Missing trayId'}); return; }
+    GET('tray_history', 'tray_id=eq.' + encodeURIComponent(p.trayId) + '&order=leg_number.asc', function(e, rows) {
+      var legs = (rows||[]).map(function(r) {
+        return {
+          historyId:r.history_id, legNumber:parseInt(r.leg_number)||0,
+          fromCentre:r.from_centre, toCentre:r.to_centre, fromInstructor:r.from_instructor, toInstructor:r.to_instructor,
+          plannedStart: r.planned_start?String(r.planned_start).split('T')[0]:'',
+          plannedEnd: r.planned_end?String(r.planned_end).split('T')[0]:'',
+          actualSent: r.actual_sent?String(r.actual_sent).split('T')[0]:'',
+          actualReceived: r.actual_received?String(r.actual_received).split('T')[0]:'',
+          status: r.status
+        };
+      });
+      cb(null, {status:'ok', legs:legs});
+    });
+  }
+
+  /* ── trayPlanJourney ── p: {trayId, legs:[{toCentre,toInstructor,startDate,endDate}], instructor} ── */
+  function h_trayPlanJourney(p, cb) {
+    var legs = p.legs;
+    if (typeof legs === 'string') {
+      try { legs = JSON.parse(legs); } catch(e) { cb(null, {status:'error', message:'Invalid legs format'}); return; }
+    }
+    if (!p.trayId || !legs || !legs.length) { cb(null, {status:'error', message:'Missing trayId or legs'}); return; }
+    GET('tray_registry', 'tray_id=eq.' + encodeURIComponent(p.trayId), function(e, rows) {
+      if (e || !rows || !rows.length) { cb(null, {status:'error', message:'Tray not found'}); return; }
+      var trayRow = rows[0];
+      var homeCentre = trayRow.home_centre || '';
+      GET('tray_history', 'tray_id=eq.' + encodeURIComponent(p.trayId) + '&order=leg_number.asc', function(e2, existingLegs) {
+        existingLegs = existingLegs || [];
+        var maxLeg = existingLegs.reduce(function(m,r){ return Math.max(m, parseInt(r.leg_number)||0); }, 0);
+        var fromCentre = maxLeg>0 ? existingLegs[existingLegs.length-1].to_centre : homeCentre;
+        var fromInstructor = p.instructor || trayRow.home_instructor || '';
+        var toInsert = [];
+        legs.forEach(function(leg, idx) {
+          toInsert.push({
+            history_id: uniqueId('TH-'), tray_id: p.trayId, leg_number: maxLeg+idx+1,
+            from_centre: fromCentre, to_centre: leg.toCentre||'',
+            from_instructor: fromInstructor, to_instructor: leg.toInstructor||'',
+            planned_start: leg.startDate||null, planned_end: leg.endDate||null,
+            actual_sent: null, actual_received: null, status: 'PLANNED'
+          });
+          fromCentre = leg.toCentre || fromCentre;
+          fromInstructor = leg.toInstructor || '';
+        });
+        POST('tray_history', null, toInsert, function(e3) {
+          cb(null, e3 ? {status:'error', message:String(e3)} : {status:'ok', trayId:p.trayId, legsCreated:legs.length});
+        });
+      });
+    });
+  }
+
+  /* ── trayDispatch ── p: {trayId, histId?, instructor} — sends a PLANNED leg ── */
+  function h_trayDispatch(p, cb) {
+    if (!p.trayId) { cb(null, {status:'error', message:'Missing trayId'}); return; }
+    var qs = 'tray_id=eq.' + encodeURIComponent(p.trayId) + '&status=eq.PLANNED';
+    if (p.histId) qs += '&history_id=eq.' + encodeURIComponent(p.histId);
+    GET('tray_history', qs + '&order=leg_number.asc&limit=1', function(e, legs) {
+      if (e || !legs || !legs.length) { cb(null, {status:'error', message:'No PLANNED leg found. Use trayConfirmLocation for ad-hoc dispatch.'}); return; }
+      var leg = legs[0];
+      GET('tray_registry', 'tray_id=eq.' + encodeURIComponent(p.trayId), function(e2, regRows) {
+        if (e2 || !regRows || !regRows.length) { cb(null, {status:'error', message:'Tray not found in registry'}); return; }
+        var reg = regRows[0];
+        var currentLoc = reg.location_status || 'UNCONFIRMED';
+        var isAtHome = (currentLoc === 'HOME' || (currentLoc === 'UNCONFIRMED' && reg.current_centre === reg.home_centre));
+        if (!isAtHome) { cb(null, {status:'error', message:'Tray is not currently at Home centre. Only the custodian centre can dispatch it.'}); return; }
+        var today = todayYMD();
+        PATCH('tray_history', 'history_id=eq.' + encodeURIComponent(leg.history_id), {actual_sent: today, status:'SENT'}, function(e3) {
+          if (e3) { cb(null, {status:'error', message:String(e3)}); return; }
+          var toCentre = leg.to_centre, toInstructor = leg.to_instructor, fromCentre = leg.from_centre, endDate = leg.planned_end;
+          PATCH('tray_registry', 'tray_id=eq.' + encodeURIComponent(p.trayId), {
+            location_status:'ON_LOAN', current_centre: toCentre, expected_return: endDate||null,
+            borrower_confirmed: '', borrower_instructor: toInstructor
+          }, function() {
+            trayInstructorsForCentre(toCentre, function(targets) {
+              if (toInstructor && toInstructor.trim() && targets.indexOf(toInstructor)===-1) targets.push(toInstructor);
+              targets.forEach(function(name){
+                trayAddNotif(name, 'incoming_tray', leg.history_id+':'+p.trayId,
+                  '📦 Tray '+p.trayId+' is on its way from '+fromCentre+' ('+(p.instructor||'Home')+').'+(endDate?' Expected by '+endDate:''));
+              });
+              trayNotifyCoordinators(reg.home_centre, p.instructor||'', 'tray_dispatched', leg.history_id+':'+p.trayId,
+                '📤 '+p.trayId+' dispatched to '+toCentre+(toInstructor?' ('+toInstructor+')':'')+(endDate?', due '+endDate:''), reg.category);
+              cb(null, {status:'ok', trayId:p.trayId, toCentre:toCentre, toInstructor:toInstructor});
+            });
+          });
+        });
+      });
+    });
+  }
+
+  /* ── trayConfirmReceived ── p: {trayId, histId?, instructor} ── */
+  function h_trayConfirmReceived(p, cb) {
+    if (!p.trayId) { cb(null, {status:'error', message:'Missing trayId'}); return; }
+    var qs = 'tray_id=eq.' + encodeURIComponent(p.trayId) + '&status=eq.SENT';
+    if (p.histId) qs += '&history_id=eq.' + encodeURIComponent(p.histId);
+    GET('tray_history', qs + '&limit=1', function(e, legs) {
+      if (e || !legs || !legs.length) { cb(null, {status:'error', message:'No SENT leg found for tray'}); return; }
+      var leg = legs[0];
+      var today = todayYMD();
+      PATCH('tray_history', 'history_id=eq.' + encodeURIComponent(leg.history_id), {actual_received: today, status:'RECEIVED'}, function(e2) {
+        if (e2) { cb(null, {status:'error', message:String(e2)}); return; }
+        PATCH('tray_registry', 'tray_id=eq.' + encodeURIComponent(p.trayId), {borrower_confirmed:'yes'}, function(){
+          GET('tray_registry', 'tray_id=eq.' + encodeURIComponent(p.trayId), function(e3, regRows) {
+            var cat = (regRows && regRows.length) ? regRows[0].category : '';
+            var homeCentre = (regRows && regRows.length) ? regRows[0].home_centre : '';
+            var toInstructor = p.instructor || leg.to_instructor;
+            trayNotifyCoordinators(homeCentre, '', 'tray_received', leg.history_id+':'+p.trayId,
+              '✅ '+p.trayId+' confirmed received at '+leg.to_centre+(toInstructor?' by '+toInstructor:''), cat);
+            cb(null, {status:'ok', trayId:p.trayId, legId:leg.history_id});
+          });
+        });
+      });
+    });
+  }
+
+  /* ── trayConfirmDispatched ── p: {trayId, histId?, instructor} — forwards to next PLANNED leg, or home ── */
+  function h_trayConfirmDispatched(p, cb) {
+    if (!p.trayId) { cb(null, {status:'error', message:'Missing trayId'}); return; }
+    var qs = 'tray_id=eq.' + encodeURIComponent(p.trayId) + '&status=in.(RECEIVED,SENT)';
+    if (p.histId) qs += '&history_id=eq.' + encodeURIComponent(p.histId);
+    GET('tray_history', qs + '&order=leg_number.desc&limit=1', function(e, legs) {
+      if (e || !legs || !legs.length) { cb(null, {status:'error', message:'No active leg found for tray'}); return; }
+      var curLeg = legs[0];
+      var curLegNum = parseInt(curLeg.leg_number)||1;
+      PATCH('tray_history', 'history_id=eq.' + encodeURIComponent(curLeg.history_id), {status:'DISPATCHED'}, function() {
+        GET('tray_history', 'tray_id=eq.' + encodeURIComponent(p.trayId) + '&leg_number=eq.' + (curLegNum+1) + '&status=eq.PLANNED&limit=1', function(e2, nextLegs) {
+          var today = todayYMD();
+          function afterForward(toCentre, toInstructor, endDate) {
+            PATCH('tray_registry', 'tray_id=eq.' + encodeURIComponent(p.trayId), {
+              location_status:'ON_LOAN', current_centre: toCentre, expected_return: endDate||null,
+              borrower_confirmed:'', borrower_instructor: toInstructor
+            }, function() {
+              GET('tray_registry', 'tray_id=eq.' + encodeURIComponent(p.trayId), function(e3, regRows) {
+                var cat = (regRows && regRows.length) ? regRows[0].category : '';
+                var homeCentre = (regRows && regRows.length) ? regRows[0].home_centre : '';
+                trayNotifyCoordinators(homeCentre, '', 'tray_forwarded', curLeg.history_id+':'+p.trayId,
+                  '🔁 '+p.trayId+' forwarded: '+curLeg.to_centre+' → '+toCentre+(toInstructor?' ('+toInstructor+')':''), cat);
+                cb(null, {status:'ok', trayId:p.trayId, nextCentre:toCentre, nextInstructor:toInstructor});
+              });
+            });
+          }
+          if (nextLegs && nextLegs.length) {
+            var nextLeg = nextLegs[0];
+            PATCH('tray_history', 'history_id=eq.' + encodeURIComponent(nextLeg.history_id), {actual_sent: today, status:'SENT'}, function() {
+              trayInstructorsForCentre(nextLeg.to_centre, function(targets) {
+                if (nextLeg.to_instructor && targets.indexOf(nextLeg.to_instructor)===-1) targets.push(nextLeg.to_instructor);
+                targets.forEach(function(name){
+                  trayAddNotif(name, 'incoming_tray', nextLeg.history_id+':'+p.trayId,
+                    '📦 Tray '+p.trayId+' is on its way from '+curLeg.to_centre+(p.instructor?' ('+p.instructor+')':'')+'.'+(nextLeg.planned_end?' Expected by '+nextLeg.planned_end:''));
+                });
+                afterForward(nextLeg.to_centre, nextLeg.to_instructor, nextLeg.planned_end);
+              });
+            });
+          } else {
+            GET('tray_registry', 'tray_id=eq.' + encodeURIComponent(p.trayId), function(e4, regRows2) {
+              var homeCentre2 = (regRows2 && regRows2.length) ? regRows2[0].home_centre : '';
+              var cat2 = (regRows2 && regRows2.length) ? regRows2[0].category : '';
+              var toInstructorHome = (trayCategoryInstructors(homeCentre2, cat2)||[])[0] || '';
+              var histId = uniqueId('TH-');
+              POST('tray_history', null, {
+                history_id: histId, tray_id: p.trayId, leg_number: curLegNum+1,
+                from_centre: curLeg.to_centre, to_centre: homeCentre2,
+                from_instructor: p.instructor||curLeg.to_instructor, to_instructor: toInstructorHome,
+                planned_start: today, planned_end: null, actual_sent: today, actual_received: null, status:'SENT'
+              }, function() {
+                trayInstructorsForCentre(homeCentre2, function(targets) {
+                  if (toInstructorHome && targets.indexOf(toInstructorHome)===-1) targets.push(toInstructorHome);
+                  targets.forEach(function(name){
+                    trayAddNotif(name, 'incoming_tray', histId+':'+p.trayId,
+                      '📦 Tray '+p.trayId+' is returning home from '+curLeg.to_centre+(p.instructor?' ('+p.instructor+')':''));
+                  });
+                  afterForward(homeCentre2, toInstructorHome, '');
+                });
+              });
+            });
+          }
+        });
+      });
+    });
+  }
+
+  /* ── trayMarkInUse ── p: {trayId, startDate?, endDate, instructor} ── */
+  function h_trayMarkInUse(p, cb) {
+    if (!p.trayId) { cb(null, {status:'error', message:'Missing trayId'}); return; }
+    GET('tray_registry', 'tray_id=eq.' + encodeURIComponent(p.trayId), function(e, rows) {
+      var homeCentre = (rows && rows.length) ? (rows[0].home_centre||'') : '';
+      PATCH('tray_registry', 'tray_id=eq.' + encodeURIComponent(p.trayId), {
+        location_status:'IN_USE', expected_return: p.endDate || null
+      }, function() {
+        var today = p.startDate || todayYMD();
+        var histId = uniqueId('TH-');
+        POST('tray_history', null, {
+          history_id: histId, tray_id: p.trayId, leg_number: 0,
+          from_centre: homeCentre, to_centre: homeCentre,
+          from_instructor: p.instructor||'', to_instructor: p.instructor||'',
+          planned_start: today, planned_end: p.endDate||null,
+          actual_sent: today, actual_received: null, status:'IN_USE'
+        }, function(e3) {
+          cb(null, e3 ? {status:'error', message:String(e3)} : {status:'ok', trayId:p.trayId, histId:histId});
+        });
+      });
+    });
+  }
+
+  /* ── trayMarkInUseDone ── p: {trayId, histId?} ── */
+  function h_trayMarkInUseDone(p, cb) {
+    if (!p.trayId) { cb(null, {status:'error', message:'Missing trayId'}); return; }
+    var qs = 'tray_id=eq.' + encodeURIComponent(p.trayId) + '&status=eq.IN_USE';
+    if (p.histId) qs += '&history_id=eq.' + encodeURIComponent(p.histId);
+    GET('tray_history', qs + '&limit=1', function(e, legs) {
+      var today = todayYMD();
+      function finishRegistry() {
+        PATCH('tray_registry', 'tray_id=eq.' + encodeURIComponent(p.trayId), {location_status:'HOME', expected_return:null}, function(e2) {
+          cb(null, e2 ? {status:'error', message:String(e2)} : {status:'ok', trayId:p.trayId});
+        });
+      }
+      if (legs && legs.length) {
+        PATCH('tray_history', 'history_id=eq.' + encodeURIComponent(legs[0].history_id), {actual_received: today, status:'RETURNED'}, function(){ finishRegistry(); });
+      } else {
+        finishRegistry();
+      }
+    });
+  }
+
+  /* ══════════════════════════════════════════════════════════════
      MAIN DISPATCHER — replaces gasGet() transparently
   ══════════════════════════════════════════════════════════════ */
   return function gasGet(params, cb) {
@@ -6684,6 +7561,31 @@ window.gasGet = (function () {
       case 'otSubmitPortfolio':         return h_otSubmitPortfolio(params, cb);
       case 'otGetPortfolioSubmissions': return h_otGetPortfolioSubmissions(params, cb);
       case 'gradeManualQuestion':       return h_gradeManualQuestion(params, cb);
+
+      /* Tray Hub (Supabase-backed — migrated off Google Sheets/Apps Script) */
+      case 'trayRegister':              return h_trayRegister(params, cb);
+      case 'trayBulkSeed':              return h_trayBulkSeed(params, cb);
+      case 'trayGetBoard':              return h_trayGetBoard(params, cb);
+      case 'trayGetMine':               return h_trayGetMine(params, cb);
+      case 'trayBook':                  return h_trayBook(params, cb);
+      case 'trayRespond':               return h_trayRespond(params, cb);
+      case 'trayMarkReturning':         return h_trayMarkReturning(params, cb);
+      case 'trayConfirmReturn':         return h_trayConfirmReturn(params, cb);
+      case 'trayConfirmLocation':       return h_trayConfirmLocation(params, cb);
+      case 'trayBorrowerConfirm':       return h_trayBorrowerConfirm(params, cb);
+      case 'trayUpdateDetails':         return h_trayUpdateDetails(params, cb);
+      case 'trayGetWeekPlan':           return h_trayGetWeekPlan(params, cb);
+      case 'traySetWeeklyNeed':         return h_traySetWeeklyNeed(params, cb);
+      case 'trayGetNotifications':      return h_trayGetNotifications(params, cb);
+      case 'trayMarkNotifRead':         return h_trayMarkNotifRead(params, cb);
+      case 'trayGetHistory':            return h_trayGetHistory(params, cb);
+      case 'trayGetJourney':            return h_trayGetJourney(params, cb);
+      case 'trayPlanJourney':           return h_trayPlanJourney(params, cb);
+      case 'trayDispatch':              return h_trayDispatch(params, cb);
+      case 'trayConfirmReceived':       return h_trayConfirmReceived(params, cb);
+      case 'trayConfirmDispatched':     return h_trayConfirmDispatched(params, cb);
+      case 'trayMarkInUse':             return h_trayMarkInUse(params, cb);
+      case 'trayMarkInUseDone':         return h_trayMarkInUseDone(params, cb);
 
       default:
         console.warn('[gasGet→SB] Action not handled by Supabase wrapper, routing to GAS:', a, params);

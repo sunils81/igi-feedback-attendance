@@ -914,7 +914,23 @@ window.gasGet = (function () {
     var c = CC[p.centre]  || String(p.centre  || '').slice(0, 3).toUpperCase();
     var r = RC[p.course]  || String(p.course  || '').replace(/\s+/g, '').slice(0, 3).toUpperCase();
     var m = p.month ? String(p.month).slice(0, 3).toUpperCase() + String(p.month).slice(-2) : '';
-    cb(null, { batchCode: c + '-' + r + '-' + m });
+    var base = c + '-' + r + '-' + m;
+    // Check for existing batches with this base code and append -A/-B/... so two
+    // batches for the same centre+course+month never collide (a collision used to
+    // silently overwrite the older batch on create — see h_createBatch).
+    GET('batches', 'select=batch_code&batch_code=ilike.' + encodeURIComponent(base + '%'), function (e, rows) {
+      var existing = {};
+      (e ? [] : (rows || [])).forEach(function (row) {
+        if (row && row.batch_code) existing[String(row.batch_code).toUpperCase()] = true;
+      });
+      var suffixes = ['', '-A', '-B', '-C', '-D', '-E', '-F', '-G', '-H', '-I', '-J'];
+      var code = base;
+      for (var i = 0; i < suffixes.length; i++) {
+        code = base + suffixes[i];
+        if (!existing[code.toUpperCase()]) break;
+      }
+      cb(null, { batchCode: code });
+    });
   }
 
   /* getEndDate */
@@ -940,7 +956,9 @@ window.gasGet = (function () {
     // team acknowledges it. Same-centre creation (the normal case) is auto-confirmed.
     var createdByCentre = p.createdByCentre || p.centre;
     var isRemote = createdByCentre && p.centre && createdByCentre !== p.centre;
-    POST('batches', 'on_conflict=batch_code', {
+    // Plain insert (no on_conflict / merge-duplicates) — a colliding batch_code must fail
+    // with a unique-constraint error, not silently overwrite the existing batch's row.
+    xhr('POST', 'batches', '', {
       batch_code: p.batchCode, centre: p.centre, course: p.course, type: p.type,
       batch_slot: p.batchSlot, start_date: p.startDate || null, end_date: p.endDate || null,
       counselor: p.counselorName || p.counselor, instructor: p.instructor || null,
@@ -950,7 +968,14 @@ window.gasGet = (function () {
       created_by_counselor: p.createdByCounselor || p.counselorName || p.counselor || '',
       confirmed_by: isRemote ? null : (p.counselorName || p.counselor || ''),
       confirmed_at: isRemote ? null : nowISO()
-    }, function (e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', remoteCreated: isRemote }); });
+    }, 'return=representation', function (e) {
+      if (e) {
+        var isDup = /duplicate key|already exists|unique constraint|batch_code/i.test(String(e.message || e));
+        cb(null, { status: 'error', reason: isDup ? 'batch_exists' : String(e.message || e) });
+        return;
+      }
+      cb(null, { status: 'ok', remoteCreated: isRemote });
+    });
   }
 
   /* confirmBatchCreation — destination centre acknowledges a batch someone else created for them */

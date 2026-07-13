@@ -1750,8 +1750,12 @@
           <input type="text" id="b-rpass" placeholder="e.g. Sponsored batch, special schedule notes">
         </div>
       </div>
-      <div class="field"><label>Batch Code (auto-generated)</label>
-        <input type="text" id="b-code" class="auto-val" readonly placeholder="Fill centre + course + date above">
+      <div class="field"><label>Batch Code <span id="b-code-auto-label" style="font-size:10px;color:var(--teal);font-weight:400">(auto-generated)</span></label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="b-code" class="auto-val" readonly placeholder="Fill centre + course + date above" style="flex:1" oninput="checkBatchCodeDuplicate()">
+          <button type="button" onclick="toggleBatchCodeOverride()" style="white-space:nowrap;font-size:11px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;background:var(--white);cursor:pointer;color:var(--muted)" id="b-code-override-btn">Edit</button>
+        </div>
+        <div style="font-size:11px;color:var(--red);margin-top:4px;display:none" id="b-code-warn"></div>
       </div>
       <div id="b-schedule-preview" style="display:none;margin-bottom:14px">
         <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px">📅 Schedule Preview</div>
@@ -4422,8 +4426,12 @@ function genBatchCode() {
   const month = d.toLocaleString('default',{month:'short'}).toUpperCase() + String(d.getFullYear()).slice(2);
   gasGet({action:'getBatchCode', centre, course, month}, function(e, d2) {
     if (!e && d2 && d2.batchCode) {
-      document.getElementById('b-code').value = d2.batchCode;
+      const codeEl = document.getElementById('b-code');
+      if (codeEl.readOnly) { // don't clobber a manually-edited code
+        codeEl.value = d2.batchCode;
+      }
       loadSchedulePreview(course, start, d2.batchCode);
+      checkBatchCodeDuplicate();
     }
   });
   // Auto-calculate end date
@@ -4439,6 +4447,46 @@ function genBatchCode() {
       }
     }
   });
+}
+
+function toggleBatchCodeOverride() {
+  const codeEl = document.getElementById('b-code');
+  const btn    = document.getElementById('b-code-override-btn');
+  const lbl    = document.getElementById('b-code-auto-label');
+  if (codeEl.readOnly) {
+    codeEl.readOnly = false;
+    codeEl.style.background = '#fff9e6';
+    btn.textContent = 'Auto';
+    lbl.style.display = 'none';
+    codeEl.focus();
+  } else {
+    codeEl.readOnly = true;
+    codeEl.style.background = '';
+    btn.textContent = 'Edit';
+    lbl.style.display = 'inline';
+    genBatchCode(); // regenerate from centre+course+start
+  }
+}
+
+// Warn (and block submission) if the current batch code exactly matches
+// an already-known batch. This is a client-side safety net in case the
+// backend's own dedupe/duplicate check is ever out of sync with the app.
+function checkBatchCodeDuplicate() {
+  const codeEl = document.getElementById('b-code');
+  const warnEl = document.getElementById('b-code-warn');
+  const btn    = document.getElementById('b-btn');
+  const code   = (codeEl.value || '').trim().toUpperCase();
+  if (!code) { warnEl.style.display = 'none'; if (btn) btn.disabled = false; return false; }
+  const match = (allBatches || []).some(b => String(b.batchCode).toUpperCase() === code);
+  if (match) {
+    warnEl.textContent = '⚠ "' + codeEl.value.trim() + '" already belongs to an existing batch. Edit the code (e.g. add "-B" or a slot suffix) before creating — otherwise this will collide with that batch instead of creating a new one.';
+    warnEl.style.display = 'block';
+    if (btn) btn.disabled = true;
+    return true;
+  }
+  warnEl.style.display = 'none';
+  if (btn) btn.disabled = false;
+  return false;
 }
 
 function loadSchedulePreview(course, startDate, batchCode) {
@@ -4541,6 +4589,10 @@ function createBatch() {
   errEl.classList.remove('show');
   if (!batchCode||!centre||!course||!startDate) {
     errEl.textContent='Please fill Centre, Course, Type and Start Date.'; errEl.classList.add('show'); return;
+  }
+  if (checkBatchCodeDuplicate()) {
+    errEl.textContent='This batch code already belongs to another batch. Click "Edit" next to Batch Code and make it unique before creating.';
+    errEl.classList.add('show'); return;
   }
   const btn = document.getElementById('b-btn');
   btn.textContent='Creating…'; btn.disabled=true;

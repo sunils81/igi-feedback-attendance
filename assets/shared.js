@@ -95,10 +95,13 @@ function populateCountryMobileFields(prefix) {
     }).join('');
   }
   if (codeEl && !codeEl.options.length) {
+    // Label is just "+<dial>" (country name is already shown by the Country field right next
+    // to it, and this select sits in a narrow flex row alongside the mobile number input) —
+    // the full country name lives in the title attribute for a hover tooltip instead.
     codeEl.innerHTML = COUNTRIES.filter(function (c) { return c !== 'Other'; }).map(function (c) {
       var dial = COUNTRY_DIAL_CODES[c] || '';
-      return '<option value="' + dial + '"' + (c === 'India' ? ' selected' : '') + '>+' + dial + ' ' + c + '</option>';
-    }).join('') + '<option value="">Other (type code)</option>';
+      return '<option value="' + dial + '" title="' + c + '"' + (c === 'India' ? ' selected' : '') + '>+' + dial + '</option>';
+    }).join('') + '<option value="" title="Other">Other</option>';
   }
   if (stateEl && !stateEl.options.length) {
     stateEl.innerHTML = '<option value="">Select State</option>' + INDIA_STATES.map(function (s) {

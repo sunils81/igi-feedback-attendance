@@ -19,7 +19,7 @@ const COUNSELOR_PASS_LOCAL = 'IGI2026'; // used for holiday management calls
 const CENTRES  = ['Mumbai','Delhi','Surat','Kolkata','Lucknow','Jaipur','Hyderabad','Chennai','Bangalore','Thrissur','Ahmedabad','Pune'];
 const COURSES  = [
   'Diamond Graduate','Colored Stone Graduate','Jewelry Design','Jewelry Design Manual','CAD Design',
-  'JewelPad Design','Diploma in Pearls','Polished Diamond Grading',
+  'JewelPad Design','JewelPad Online','Diploma in Pearls','Polished Diamond Grading',
   'Rough Diamond Graduate','Identification of RES','Small Diamond Assortment',
   'Diamond Graduate Integrated','Coloured Stone Integrated',
   'Corporate Programs','Seminars','Gem-A Foundation','Gem-A Diploma',
@@ -692,11 +692,18 @@ window.gasGet = (function () {
     }
     
     var feeStatus = allPaid ? 'Paid' : (hasOverdue ? 'Overdue' : (collected > 0 ? 'Partial' : 'Pending'));
-    
+
     if (!isJson && outstanding > 0 && r.payment_date && r.payment_date < todayStr) {
       feeStatus = 'Overdue';
     }
-    
+    // Overrides everything above — a corrected course fee (e.g. the JewelPad
+    // Design→Online fee fix) can leave a student having already collected MORE than the
+    // now-correct net payable. That's a real state (a refund/credit is owed), not "Paid",
+    // and must never be silently hidden under a normal-looking status.
+    if (collected > netPayable + 1) {
+      feeStatus = 'Overpaid';
+    }
+
     return {
       id: r.id,
       student_id: studentId,
@@ -1028,7 +1035,7 @@ window.gasGet = (function () {
   function h_getBatchCode(p, cb) {
     var CC = { Mumbai:'MUM', Chennai:'CHE', Bangalore:'BLR', Delhi:'DEL', Kolkata:'KOL',
                Hyderabad:'HYD', Pune:'PUN', Ahmedabad:'AMD', Jaipur:'JAI', Surat:'SUR' };
-    var RC = { 'Diamond Graduate':'DG', 'JewelPad Design':'JP', 'Diamond Grading':'DGR',
+    var RC = { 'Diamond Graduate':'DG', 'JewelPad Design':'JP', 'JewelPad Online':'JPO', 'Diamond Grading':'DGR',
                'Colored Stones':'CS', 'Jewelry Design':'JD', 'Pearls':'PRL' };
     var c = CC[p.centre]  || String(p.centre  || '').slice(0, 3).toUpperCase();
     var r = RC[p.course]  || String(p.course  || '').replace(/\s+/g, '').slice(0, 3).toUpperCase();
@@ -1054,7 +1061,9 @@ window.gasGet = (function () {
 
   /* getEndDate */
   function h_getEndDate(p, cb) {
-    var SC = { 'Diamond Graduate': 39, 'JewelPad Design': 20, 'Diamond Grading': 15,
+    // JewelPad Online defaults to the same session count as JewelPad Design (on-campus) —
+    // adjust here if the online program actually runs for a different number of sessions.
+    var SC = { 'Diamond Graduate': 39, 'JewelPad Design': 20, 'JewelPad Online': 20, 'Diamond Grading': 15,
                'Colored Stones': 15, 'Jewelry Design': 18, 'Pearls': 10 };
     var n    = SC[p.course] || 20;
     var days = Math.ceil(n / 3 * 7) + 4;
@@ -8416,6 +8425,11 @@ const COURSE_FEES_JS = {
   'Colored Stone Graduate':              {fee:185900,regFee:25000,gst:18},
   'Graduate Gemologist':                 {fee:351800,regFee:50000,gst:18},
   'JewelPad Design':                     {fee:41900, regFee:0,    gst:18},
+  // Online delivery of the same JewelPad program at a lower fee — this course never had its
+  // own entry before (only 'JewelPad Design' existed), so any genuinely-online batch had no
+  // correct option and defaulted to the ₹41,900 offline rate. See migration_jewelpad_online_correction.sql
+  // for the retroactive fix to batches/students already mischarged under 'JewelPad Design'.
+  'JewelPad Online':                     {fee:35900, regFee:0,    gst:18},
   'Navratna Masterclass (10 Half Days)': {fee:51900, regFee:0,    gst:18},
   'Navratna Masterclass (5 Full Days)':  {fee:51900, regFee:0,    gst:18},
   'Gem-A Foundation':                    {fee:285500,regFee:0,    gst:18},

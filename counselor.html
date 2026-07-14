@@ -978,6 +978,11 @@
 .rev-bar-bd-item strong {
   color: var(--gold);
 }
+.rev-bar-bd-corp {
+  color: #8fb4ff;
+  font-size: 0.95em;
+  margin-left: 4px;
+}
 
 @media(max-width:620px){
   .rev-kpi-bar{grid-template-columns:1fr 1fr}.rev-month-grid{grid-template-columns:1fr}
@@ -6935,24 +6940,34 @@ function revAnnualTargetForCounsellor(counsellor) {
 function revAchievedForCounsellor(counsellor) {
   var achieved = 0, students = 0;
   var ownAchieved = 0, otherAchieved = 0, corpAchieved = 0;
+  var ownStudents = 0, otherStudents = 0, corpStudents = 0;
   ((revenueData && revenueData.monthlyRows)||[]).forEach(function(r){
     if (revSameCounsellor(r.counsellor, counsellor)) {
       // Use course fee (excl. GST) to match the target basis
       var fee = Number(r.achievedCourse)||0;
+      var st = Number(r.studentCount)||0;
       achieved += fee;
-      students += Number(r.studentCount)||0;
+      students += st;
       if (revIsCorporate(r)) {
         corpAchieved += fee;
+        corpStudents += st;
       } else if (r.businessCentre !== r.assignedCentre) {
         otherAchieved += fee;
+        otherStudents += st;
       } else {
         ownAchieved += fee;
+        ownStudents += st;
       }
     }
   });
-  return {achieved:achieved, students:students, ownAchieved:ownAchieved, otherAchieved:otherAchieved, corpAchieved:corpAchieved};
+  return {achieved:achieved, students:students, ownAchieved:ownAchieved, otherAchieved:otherAchieved, corpAchieved:corpAchieved,
+          ownStudents:ownStudents, otherStudents:otherStudents, corpStudents:corpStudents};
 }
 
+// revCentreAchievedAll — Centre Standings rollup for one centre. Splits each contributor's
+// totals into "regular" (Centre Revenue — own + other-centre rows) and "corporate" (Corporate
+// Programs / branch tie-up rows, per revIsCorporate) so a counsellor's corporate-program
+// admissions never get silently blended into their regular course student count.
 function revCentreAchievedAll(centre) {
   var achieved = 0, students = 0;
   var contributors = {};
@@ -6961,12 +6976,18 @@ function revCentreAchievedAll(centre) {
     if (r.businessCentre === centre) {
       var fee = Number(r.achievedCourse)||0;
       var st = Number(r.studentCount)||0;
+      var isCorp = revIsCorporate(r);
       achieved += fee;
       students += st;
       var name = r.counsellor || 'Unknown';
-      if (!contributors[name]) contributors[name] = { achieved: 0, students: 0 };
-      contributors[name].achieved += fee;
-      contributors[name].students += st;
+      if (!contributors[name]) contributors[name] = { achieved: 0, students: 0, corpAchieved: 0, corpStudents: 0 };
+      if (isCorp) {
+        contributors[name].corpAchieved += fee;
+        contributors[name].corpStudents += st;
+      } else {
+        contributors[name].achieved += fee;
+        contributors[name].students += st;
+      }
     }
   });
   var cmap = revCentreTargetMap();
@@ -7411,7 +7432,13 @@ function renderMyRevenue() {
   var p=document.getElementById('rev-kpi-pct'); if(p) p.textContent = target ? pct+'% of your target revenue achieved' : 'No target set';
   var g=document.getElementById('rev-kpi-gap'); if(g) g.textContent = money(gap);
   var gs=document.getElementById('rev-kpi-gap-s'); if(gs) gs.textContent = pct>=100 ? 'Target met! 🎉' : 'Still to achieve';
-  var s=document.getElementById('rev-kpi-students'); if(s) s.textContent = students;
+  // "Students This Year" counts regular course admissions only — corporate/branch tie-up
+  // students are tracked separately (Corporate breakdown card below) so a counsellor's
+  // corporate program headcount never gets silently folded into their regular count.
+  var regularStudents = (stats.ownStudents||0) + (stats.otherStudents||0);
+  var s=document.getElementById('rev-kpi-students'); if(s) s.textContent = regularStudents;
+  var ss=document.getElementById('rev-kpi-students-s');
+  if (ss) ss.textContent = stats.corpStudents ? '2026-27 · +' + stats.corpStudents + ' corporate' : '2026-27';
   // Dynamic tint on Achieved KPI
   var akpi = a && a.closest('.rev-kpi');
   if (akpi) {
@@ -7434,9 +7461,9 @@ function renderMyRevenue() {
   if (bdRow) {
     if (me && !isAdmin && achieved > 0) {
       bdRow.style.display = 'grid';
-      if (bdOwn) bdOwn.textContent = money(stats.ownAchieved || 0);
-      if (bdOther) bdOther.textContent = money(stats.otherAchieved || 0);
-      if (bdCorp) bdCorp.textContent = money(stats.corpAchieved || 0);
+      if (bdOwn) bdOwn.textContent = money(stats.ownAchieved || 0) + (stats.ownStudents ? ' (' + stats.ownStudents + ' stu)' : '');
+      if (bdOther) bdOther.textContent = money(stats.otherAchieved || 0) + (stats.otherStudents ? ' (' + stats.otherStudents + ' stu)' : '');
+      if (bdCorp) bdCorp.textContent = money(stats.corpAchieved || 0) + (stats.corpStudents ? ' (' + stats.corpStudents + ' stu)' : '');
     } else {
       bdRow.style.display = 'none';
     }
@@ -7486,7 +7513,14 @@ function renderMumbaiCentreBar(counsellor) {
       bdnEl.style.display = 'block';
       var breakdownItems = cNames.map(function(name) {
         var cData = cs.contributors[name];
-        return '<span class="rev-bar-bd-item"><strong>' + escC(name) + '</strong>: ' + money(cData.achieved) + ' (' + cData.students + ' stu)</span>';
+        var line = '<strong>' + escC(name) + '</strong>: ' + money(cData.achieved) + ' (' + cData.students + ' stu)';
+        // Corporate/branch tie-up admissions are kept out of the regular course-student
+        // count above and shown as their own figure, so a counsellor's corporate program
+        // students are never mixed into their individual/regular enrolment count.
+        if (cData.corpStudents > 0 || cData.corpAchieved > 0) {
+          line += ' <span class="rev-bar-bd-corp">+ Corporate: ' + money(cData.corpAchieved) + ' (' + cData.corpStudents + ' stu)</span>';
+        }
+        return '<span class="rev-bar-bd-item">' + line + '</span>';
       }).join(' &middot; ');
       bdnEl.innerHTML = 'Contributors &middot; ' + breakdownItems;
     } else {
@@ -7883,15 +7917,17 @@ function revRowsForMonth(monthKey, counsellor, assignedCentre) {
 }
 
 function revTotalsFromRows(rows, designatedCentre) {
-  var out = {ownGst:0, otherGst:0, corpGst:0, totalGst:0, students:0};
+  var out = {ownGst:0, otherGst:0, corpGst:0, totalGst:0, students:0,
+             ownStudents:0, otherStudents:0, corpStudents:0};
   rows.forEach(function(r){
     // Use course fee (excl. GST) to match the target basis
     var fee = Number(r.achievedCourse)||0;
+    var st = Number(r.studentCount)||0;
     out.totalGst += fee;
-    out.students += Number(r.studentCount)||0;
-    if (revIsCorporate(r)) out.corpGst += fee;
-    else if (r.businessCentre !== designatedCentre) out.otherGst += fee;
-    else out.ownGst += fee;
+    out.students += st;
+    if (revIsCorporate(r)) { out.corpGst += fee; out.corpStudents += st; }
+    else if (r.businessCentre !== designatedCentre) { out.otherGst += fee; out.otherStudents += st; }
+    else { out.ownGst += fee; out.ownStudents += st; }
   });
   return out;
 }
@@ -7915,9 +7951,9 @@ function renderRevenueSavedBreakup(rows, designatedCentre, counsellor) {
   }
 
   return '<div class="rev-saved-grid" style="margin-top:10px">'+
-      '<div class="rev-saved-cell">Own Centre<strong>'+money(totals.ownGst)+'</strong></div>'+
-      '<div class="rev-saved-cell">Other Centre<strong>'+money(totals.otherGst)+'</strong></div>'+
-      '<div class="rev-saved-cell">Corporate<strong>'+money(totals.corpGst)+'</strong></div>'+
+      '<div class="rev-saved-cell">Own Centre<strong>'+money(totals.ownGst)+(totals.ownStudents?' ('+totals.ownStudents+' stu)':'')+'</strong></div>'+
+      '<div class="rev-saved-cell">Other Centre<strong>'+money(totals.otherGst)+(totals.otherStudents?' ('+totals.otherStudents+' stu)':'')+'</strong></div>'+
+      '<div class="rev-saved-cell">Corporate<strong>'+money(totals.corpGst)+(totals.corpStudents?' ('+totals.corpStudents+' stu)':'')+'</strong></div>'+
     '</div>'+
     otherBreakdownHtml +
     '<div class="rev-saved-meta">'+totals.students+' student'+(totals.students===1?'':'s')+' &middot;' +

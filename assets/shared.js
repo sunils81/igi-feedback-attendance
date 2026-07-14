@@ -8431,12 +8431,18 @@ const COURSE_FEES_JS = {
   'Diamond Graduate':                    {fee:165900,regFee:25000,gst:18},
   'Colored Stone Graduate':              {fee:185900,regFee:25000,gst:18},
   'Graduate Gemologist':                 {fee:351800,regFee:50000,gst:18},
-  'JewelPad Design':                     {fee:41900, regFee:0,    gst:18},
-  // Online delivery of the same JewelPad program at a lower fee — this course never had its
-  // own entry before (only 'JewelPad Design' existed), so any genuinely-online batch had no
-  // correct option and defaulted to the ₹41,900 offline rate. See migration_jewelpad_online_correction.sql
-  // for the retroactive fix to batches/students already mischarged under 'JewelPad Design'.
-  'JewelPad Online':                     {fee:35900, regFee:0,    gst:18},
+  // JewelPad Design = offline/on-campus delivery. Price updated — was ₹41,900 (that old
+  // rate still shows correctly on every already-saved record from before this change,
+  // since Update Fee now always keeps an existing record's own saved course fee rather
+  // than re-pulling today's catalog price — see openFeeForm in counselor.html).
+  'JewelPad Design':                     {fee:49900, regFee:0,    gst:18},
+  // Online delivery of the same JewelPad program — this course never had its own catalog
+  // entry before (only 'JewelPad Design' existed), so any genuinely-online batch had no
+  // correct option and defaulted to the offline rate; see
+  // migration_jewelpad_online_correction.sql for the retroactive fix to batches/students
+  // mischarged under 'JewelPad Design' before this course existed. Price updated from the
+  // original ₹35,900 — same "existing records keep their own saved fee" protection applies.
+  'JewelPad Online':                     {fee:41900, regFee:0,    gst:18},
   'Navratna Masterclass (10 Half Days)': {fee:51900, regFee:0,    gst:18},
   'Navratna Masterclass (5 Full Days)':  {fee:51900, regFee:0,    gst:18},
   'Gem-A Foundation':                    {fee:285500,regFee:0,    gst:18},

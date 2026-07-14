@@ -1350,6 +1350,7 @@
       <button class="tab" onclick="switchAdminTab('t-academic')">📊 Academic Insights</button>
       <button class="tab" onclick="switchAdminTab('t-alumni')">🎓 Student Alumni</button>
       <button class="tab" id="tab-crm-admin" onclick="switchAdminTab('t-crm-admin')">🎯 CRM Analytics</button>
+      <button class="tab" id="tab-companion-admin" onclick="switchAdminTab('t-companion-admin')">🧭 Prospects Companion <span id="cmp-admin-conflict-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
       <button class="tab" onclick="switchAdminTab('t-history')">📅 Historical Intelligence</button>
       <button class="tab" onclick="switchAdminTab('t-reports')">📋 Master Export</button>
       <button class="tab" id="tab-password-reset" onclick="switchAdminTab('t-password-reset')">🔐 Password Reset</button>
@@ -2289,6 +2290,85 @@
         <div style="display:flex;gap:8px">
           <button id="crm-rule-save-btn" class="btn" onclick="saveCRMRule()">Save Config</button>
           <button class="btn btn-outline" onclick="closeCRMRuleModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: PROSPECTS & NOTES COMPANION (org-wide view) -->
+    <style>
+      .cmpa-kpi{background:var(--white);border:1.5px solid var(--border);border-radius:12px;padding:14px 16px}
+      .cmpa-kpi-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px}
+      .cmpa-kpi-value{font-size:26px;font-weight:800;color:var(--navy)}
+      .cmpa-filter{font-size:12px;padding:7px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)}
+      .cmpa-conflict-row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--white)}
+      .cmpa-conflict-row.escalated{border-color:#dc2626;background:#fef2f2}
+      .cmpa-badge{font-size:10px;font-weight:700;padding:2px 9px;border-radius:20px;background:var(--bg);color:var(--muted)}
+      .cmpa-temp-hot{background:#fee2e2;color:#dc2626}
+      .cmpa-temp-warm{background:#fef3c7;color:#b45309}
+      .cmpa-temp-cold{background:#e0f2fe;color:#0369a1}
+    </style>
+    <div id="t-companion-admin" class="tab-content">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
+          <h2 style="margin-bottom:0">🧭 Prospects &amp; Notes Companion</h2>
+          <button class="btn btn-gold" style="width:auto" onclick="loadCompanionAdminData()">🔄 Refresh</button>
+        </div>
+        <p class="sub">Org-wide visibility into every counsellor's tentative-prospect tracking — separate from the CRM pipeline. Personal notes stay private and are never shown here.</p>
+
+        <div id="cmpa-kpi-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:16px 0 20px"></div>
+
+        <!-- Conflict Queue -->
+        <div class="card" style="background:linear-gradient(135deg,var(--gold-pale),var(--white));border:1.5px solid var(--border);padding:18px;margin-bottom:22px">
+          <h3 style="margin-bottom:4px;color:var(--navy)">⚠️ Conflict Queue</h3>
+          <p class="sub" style="margin-bottom:12px">Duplicate-claim events from manual add or CSV import. Transfer requests older than 48h are flagged as escalated.</p>
+          <div id="cmpa-conflicts-list"></div>
+        </div>
+
+        <!-- Analytics -->
+        <div style="display:flex;gap:20px;margin-bottom:22px;flex-wrap:wrap">
+          <div class="card" style="flex:1;min-width:280px;margin:0;padding:16px">
+            <h3 style="color:var(--navy);margin-bottom:8px">💬 Top Concern Themes</h3>
+            <div id="cmpa-concern-themes" style="font-size:13px"></div>
+          </div>
+          <div class="card" style="flex:2;min-width:360px;margin:0;padding:16px">
+            <h3 style="color:var(--navy);margin-bottom:8px">👥 Counsellor Breakdown</h3>
+            <div style="overflow-x:auto">
+              <table class="compact-table" style="width:100%">
+                <thead><tr><th class="text-left">Counsellor</th><th class="text-center">Total</th><th class="text-center">Stale</th><th class="text-center">Converted</th><th class="text-center">Conv. Rate</th></tr></thead>
+                <tbody id="cmpa-counselor-stats"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Org-wide table -->
+        <div class="card" style="padding:16px">
+          <h3 style="color:var(--navy);margin-bottom:8px">📋 All Prospects</h3>
+          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px">
+            <div><div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Counsellor</div>
+              <select id="cmpa-filter-counselor" class="cmpa-filter" onchange="cmpAdminLoadOverview()"><option value="">All</option></select></div>
+            <div><div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Centre</div>
+              <select id="cmpa-filter-centre" class="cmpa-filter" onchange="cmpAdminLoadOverview()"><option value="">All</option></select></div>
+            <div><div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Temperature</div>
+              <select id="cmpa-filter-temp" class="cmpa-filter" onchange="cmpAdminLoadOverview()"><option value="">All</option><option>Hot</option><option>Warm</option><option>Cold</option></select></div>
+            <div><div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Status</div>
+              <select id="cmpa-filter-status" class="cmpa-filter" onchange="cmpAdminLoadOverview()"><option value="">All</option><option>Active</option><option>Snoozed</option><option>Nurture</option><option>Converted-Partial</option><option>Converted-Full</option><option>Lost</option></select></div>
+            <div style="margin-left:auto;display:flex;gap:8px;align-items:flex-end" id="cmpa-bulk-bar">
+              <select id="cmpa-bulk-newowner" class="cmpa-filter"><option value="">Reassign selected to…</option></select>
+              <button class="btn btn-outline" style="width:auto" onclick="cmpAdminBulkReassign()">Reassign</button>
+            </div>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="compact-table" style="width:100%">
+              <thead><tr>
+                <th><input type="checkbox" id="cmpa-select-all" onchange="cmpAdminToggleSelectAll(this.checked)"></th>
+                <th class="text-left">Name</th><th class="text-left">Owner</th><th class="text-left">Centre</th>
+                <th class="text-center">Temp</th><th class="text-left">Course</th><th class="text-left">Status</th>
+                <th class="text-center">Last Contact</th><th class="text-left">Concerns</th>
+              </tr></thead>
+              <tbody id="cmpa-prospects-tbody"><tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">Loading…</td></tr></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -4081,6 +4161,10 @@ function switchAdminTab(tabId) {
     loadCRMAdminData();
     return;
   }
+  if (tabId === 't-companion-admin') {
+    loadCompanionAdminData();
+    return;
+  }
   if (tabId === 't-invoices') {
     loadAllInvoices();
     return;
@@ -4090,6 +4174,241 @@ function switchAdminTab(tabId) {
     loadDashboardData();
   } else {
     renderTabContent(tabId);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// PROSPECTS & NOTES COMPANION — Admin view
+// ══════════════════════════════════════════════════════════════
+let cmpAdminProspects = [];
+let cmpAdminConflicts = [];
+let cmpAdminSelected = new Set();
+let cmpAdminFiltersReady = false;
+
+function cmpAdminToast(msg, isError) {
+  let host = document.getElementById('cmpa-toast-host');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'cmpa-toast-host';
+    host.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px';
+    document.body.appendChild(host);
+  }
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'background:' + (isError ? '#dc2626' : 'var(--navy)') + ';color:#fff;padding:10px 16px;border-radius:8px;font-size:12.5px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:320px';
+  host.appendChild(t);
+  setTimeout(function() { t.style.opacity = '0'; t.style.transition = 'opacity .3s'; setTimeout(function() { t.remove(); }, 300); }, 3000);
+}
+
+function cmpAdminPopulateFilters() {
+  if (cmpAdminFiltersReady) return;
+  cmpAdminFiltersReady = true;
+  const counselors = (typeof _ALL_COUNSELORS !== 'undefined') ? _ALL_COUNSELORS : [];
+  const centres = (typeof _IGI_CENTRES !== 'undefined') ? _IGI_CENTRES : [];
+  const cSel = document.getElementById('cmpa-filter-counselor');
+  const centreSel = document.getElementById('cmpa-filter-centre');
+  const ownerSel = document.getElementById('cmpa-bulk-newowner');
+  counselors.forEach(function(n) {
+    cSel.insertAdjacentHTML('beforeend', '<option>' + escC(n) + '</option>');
+    ownerSel.insertAdjacentHTML('beforeend', '<option>' + escC(n) + '</option>');
+  });
+  centres.forEach(function(c) { centreSel.insertAdjacentHTML('beforeend', '<option>' + escC(c) + '</option>'); });
+}
+
+function loadCompanionAdminData() {
+  cmpAdminPopulateFilters();
+  cmpAdminLoadOverview();
+  cmpAdminLoadConflicts();
+  cmpAdminLoadAnalytics();
+}
+
+async function cmpAdminLoadOverview() {
+  const tbody = document.getElementById('cmpa-prospects-tbody');
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">Loading…</td></tr>';
+  const counselorName = document.getElementById('cmpa-filter-counselor').value;
+  const centre = document.getElementById('cmpa-filter-centre').value;
+  const temperature = document.getElementById('cmpa-filter-temp').value;
+  const status = document.getElementById('cmpa-filter-status').value;
+  let qs = 'scope=admin';
+  if (counselorName) qs += '&counselorName=' + encodeURIComponent(counselorName);
+  if (centre) qs += '&centre=' + encodeURIComponent(centre);
+  if (temperature) qs += '&temperature=' + encodeURIComponent(temperature);
+  if (status) qs += '&status=' + encodeURIComponent(status);
+  try {
+    const r = await fetch('/api/companion/prospects-list?' + qs);
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.reason || 'Failed to load');
+    cmpAdminProspects = d.prospects;
+    cmpAdminSelected.clear();
+    cmpAdminRenderKpis(d.summary);
+    cmpAdminRenderTable();
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#dc2626">Could not load — ' + escC(err.message) + '</td></tr>';
+  }
+}
+
+function cmpAdminRenderKpis(summary) {
+  const grid = document.getElementById('cmpa-kpi-grid');
+  const converted = cmpAdminProspects.filter(function(p) { return p.status === 'Converted-Partial' || p.status === 'Converted-Full'; }).length;
+  const cards = [
+    { label: 'Total Prospects', value: cmpAdminProspects.length },
+    { label: 'Due Today', value: summary ? summary.dueToday : 0 },
+    { label: 'Going Cold', value: summary ? summary.goingCold : 0 },
+    { label: 'Converted', value: converted },
+    { label: 'Pending Conflicts', value: cmpAdminConflicts.filter(function(c) { return c.resolution === 'pending' || c.resolution === 'transfer_requested'; }).length }
+  ];
+  grid.innerHTML = cards.map(function(c) {
+    return '<div class="cmpa-kpi"><div class="cmpa-kpi-label">' + c.label + '</div><div class="cmpa-kpi-value">' + c.value + '</div></div>';
+  }).join('');
+}
+
+function cmpAdminRenderTable() {
+  const tbody = document.getElementById('cmpa-prospects-tbody');
+  if (!cmpAdminProspects.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">No prospects match these filters.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = cmpAdminProspects.map(function(p) {
+    const tempClass = p.temperature === 'Hot' ? 'cmpa-temp-hot' : (p.temperature === 'Cold' ? 'cmpa-temp-cold' : 'cmpa-temp-warm');
+    return '<tr>' +
+      '<td><input type="checkbox" onchange="cmpAdminToggleRow(\'' + p.id + '\', this.checked)" ' + (cmpAdminSelected.has(p.id) ? 'checked' : '') + '></td>' +
+      '<td>' + escC(p.name) + '<div style="font-size:10px;color:var(--muted)">' + escC(p.phone_raw || p.phone || '') + '</div></td>' +
+      '<td>' + escC(p.owner_counselor) + '</td>' +
+      '<td>' + escC(p.centre || '—') + '</td>' +
+      '<td class="text-center"><span class="cmpa-badge ' + tempClass + '">' + escC(p.temperature) + '</span></td>' +
+      '<td>' + escC((p.course_interest || []).join(', ') || '—') + '</td>' +
+      '<td>' + escC(p.status) + '</td>' +
+      '<td class="text-center">' + escC(p.last_contacted || '—') + '</td>' +
+      '<td>' + escC((p.concern_tags || []).join(', ') || '—') + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+function cmpAdminToggleSelectAll(checked) {
+  cmpAdminSelected.clear();
+  if (checked) cmpAdminProspects.forEach(function(p) { cmpAdminSelected.add(p.id); });
+  cmpAdminRenderTable();
+}
+function cmpAdminToggleRow(id, checked) {
+  if (checked) cmpAdminSelected.add(id); else cmpAdminSelected.delete(id);
+}
+
+async function cmpAdminBulkReassign() {
+  const newOwner = document.getElementById('cmpa-bulk-newowner').value;
+  if (!newOwner) { cmpAdminToast('Pick a counsellor to reassign to', true); return; }
+  if (!cmpAdminSelected.size) { cmpAdminToast('Select at least one prospect', true); return; }
+  if (!confirm('Reassign ' + cmpAdminSelected.size + ' prospect(s) to ' + newOwner + '?')) return;
+  try {
+    const r = await fetch('/api/companion/admin-reassign', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prospectIds: Array.from(cmpAdminSelected), newOwner: newOwner, reassignedBy: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin') })
+    });
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.reason || 'Failed');
+    cmpAdminToast('Reassigned ' + d.reassigned + ' prospect(s)');
+    cmpAdminLoadOverview();
+  } catch (err) {
+    cmpAdminToast('Could not reassign — ' + err.message, true);
+  }
+}
+
+async function cmpAdminLoadConflicts() {
+  const list = document.getElementById('cmpa-conflicts-list');
+  list.innerHTML = '<div style="color:var(--muted);font-size:12.5px;padding:8px 0">Loading…</div>';
+  try {
+    const r = await fetch('/api/companion/admin-conflicts?resolution=pending');
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.reason || 'Failed to load');
+    cmpAdminConflicts = d.conflicts;
+    cmpAdminRenderConflicts();
+    const badge = document.getElementById('cmp-admin-conflict-badge');
+    const openCount = cmpAdminConflicts.length;
+    if (badge) {
+      if (openCount > 0) { badge.textContent = openCount; badge.style.display = 'inline-block'; }
+      else { badge.style.display = 'none'; }
+    }
+  } catch (err) {
+    list.innerHTML = '<div style="color:#dc2626;font-size:12.5px">Could not load conflict queue — ' + escC(err.message) + '</div>';
+  }
+}
+
+function cmpAdminRenderConflicts() {
+  const list = document.getElementById('cmpa-conflicts-list');
+  if (!cmpAdminConflicts.length) {
+    list.innerHTML = '<div style="color:var(--muted);font-size:12.5px;padding:8px 0">No open duplicate-claim conflicts. 🎉</div>';
+    return;
+  }
+  const counselors = (typeof _ALL_COUNSELORS !== 'undefined') ? _ALL_COUNSELORS : [];
+  list.innerHTML = cmpAdminConflicts.map(function(c) {
+    const p = c.companion_prospects || {};
+    const ownerOptions = counselors.map(function(n) { return '<option ' + (n === c.claimant_counselor ? 'selected' : '') + '>' + escC(n) + '</option>'; }).join('');
+    return '<div class="cmpa-conflict-row' + (c.is_escalated ? ' escalated' : '') + '">' +
+      '<div style="font-size:12.5px;color:var(--navy)">' +
+      (c.is_escalated ? '<b style="color:#dc2626">ESCALATED — </b>' : '') +
+      '<b>' + escC(c.claimant_counselor) + '</b> tried to claim <b>' + escC(p.name || '(deleted)') + '</b>, already owned by <b>' + escC(c.existing_owner) + '</b> ' +
+      '<span class="cmpa-badge">' + escC(c.resolution) + '</span> · matched on ' + escC(c.match_type) + ' · via ' + escC(c.source) +
+      '</div>' +
+      '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">' +
+      '<select id="cmpa-conflict-owner-' + c.id + '" class="cmpa-filter" style="font-size:11px;padding:5px 8px">' + ownerOptions + '</select>' +
+      '<button class="btn btn-outline" style="width:auto;padding:5px 10px;font-size:11px" onclick="cmpAdminResolveConflict(\'' + c.id + '\',\'reassign\')">Reassign</button>' +
+      '<button class="btn btn-outline" style="width:auto;padding:5px 10px;font-size:11px" onclick="cmpAdminResolveConflict(\'' + c.id + '\',\'approve_shared\')">Approve Shared</button>' +
+      '<button class="btn btn-outline" style="width:auto;padding:5px 10px;font-size:11px" onclick="cmpAdminResolveConflict(\'' + c.id + '\',\'dismiss\')">Dismiss</button>' +
+      '</div></div>';
+  }).join('');
+}
+
+async function cmpAdminResolveConflict(conflictId, action) {
+  const ownerSel = document.getElementById('cmpa-conflict-owner-' + conflictId);
+  const newOwner = ownerSel ? ownerSel.value : '';
+  try {
+    const r = await fetch('/api/companion/admin-conflicts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conflictId: conflictId, action: action, newOwner: newOwner, adminName: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin') })
+    });
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.reason || 'Failed');
+    cmpAdminToast('Conflict resolved');
+    cmpAdminLoadConflicts();
+    cmpAdminLoadOverview();
+  } catch (err) {
+    cmpAdminToast('Could not resolve — ' + err.message, true);
+  }
+}
+
+async function cmpAdminLoadAnalytics() {
+  try {
+    const r = await fetch('/api/companion/admin-analytics');
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.reason || 'Failed to load');
+    cmpAdminRenderAnalytics(d);
+  } catch (err) {
+    document.getElementById('cmpa-concern-themes').innerHTML = '<span style="color:#dc2626;font-size:12px">Could not load analytics — ' + escC(err.message) + '</span>';
+  }
+}
+
+function cmpAdminRenderAnalytics(d) {
+  const themesEl = document.getElementById('cmpa-concern-themes');
+  if (!d.concernThemes.length) {
+    themesEl.innerHTML = '<div style="color:var(--muted);font-size:12.5px">No concern tags logged yet.</div>';
+  } else {
+    const max = d.concernThemes[0].count;
+    themesEl.innerHTML = d.concernThemes.map(function(t) {
+      const pct = Math.round((t.count / max) * 100);
+      return '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>' + escC(t.tag) + '</span><b>' + t.count + '</b></div>' +
+        '<div style="background:var(--bg);border-radius:6px;height:6px;overflow:hidden"><div style="background:var(--gold);height:100%;width:' + pct + '%"></div></div></div>';
+    }).join('');
+  }
+
+  const tbody = document.getElementById('cmpa-counselor-stats');
+  if (!d.counselorStats.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--muted)">No data yet.</td></tr>';
+  } else {
+    tbody.innerHTML = d.counselorStats.map(function(c) {
+      return '<tr><td>' + escC(c.counselor) + '</td><td class="text-center">' + c.total + '</td>' +
+        '<td class="text-center">' + (c.stale > 0 ? '<b style="color:#dc2626">' + c.stale + '</b>' : c.stale) + '</td>' +
+        '<td class="text-center">' + (c.convertedPartial + c.convertedFull) + '</td>' +
+        '<td class="text-center">' + c.conversionRate + '%</td></tr>';
+    }).join('');
   }
 }
 

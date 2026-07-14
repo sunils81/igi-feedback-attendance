@@ -1631,6 +1631,8 @@
     </div>
   </div>
 
+  <div id="daily-welcome-banner" class="no-print" style="display:none;background:linear-gradient(90deg,rgba(184,144,0,.08),rgba(184,144,0,.02));border:1.5px solid var(--border);border-left:4px solid var(--gold);border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:var(--navy);font-weight:600;opacity:0;transform:translateY(-4px);transition:opacity .4s ease,transform .4s ease"></div>
+
   <div class="account-actions">
     <button class="del-btn no-print" style="background:var(--navy);color:var(--white);margin-right:8px" onclick="window.print()">🖨️ Print / Save PDF</button>
     <button class="del-btn no-print" id="change-pass-toggle" onclick="togglePasswordCard()">Change Password</button>
@@ -1655,6 +1657,7 @@
     <button class="tab" onclick="switchTab('t-students')">👥 Students</button>
     <button class="tab" onclick="switchTab('t-alumni')">🎓 Alumni</button>
     <button class="tab" id="tab-crm" onclick="switchTab('t-crm')">🎯 CRM <span id="crm-reminder-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
+    <button class="tab" id="tab-prospects" onclick="switchTab('t-prospects')">🧭 Prospects <span id="prospects-due-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" onclick="switchTab('t-mybatches')">🗂 My Batches</button>
     <button class="tab" onclick="switchTab('t-reports')">📊 Reports</button>
     <button class="tab" id="tab-fees" onclick="switchTab('t-fees')">💰 Fees <span id="fees-overdue-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
@@ -2847,6 +2850,219 @@
 
   </div><!-- /t-crm -->
 
+  <style>
+    .cmp-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+    .cmp-chip{padding:7px 14px;border-radius:20px;border:1.5px solid var(--border);background:var(--white);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap}
+    .cmp-chip:hover{border-color:var(--gold);color:var(--gold)}
+    .cmp-chip.active{background:var(--gold);border-color:var(--gold);color:#fff}
+    .cmp-search{flex:1;min-width:180px;padding:8px 12px;border:1.5px solid var(--border);border-radius:20px;font-size:12px;font-family:inherit;outline:none}
+    .cmp-search:focus{border-color:var(--gold)}
+    .cmp-subnav{display:flex;gap:6px;margin-bottom:16px;border-bottom:1.5px solid var(--border)}
+    .cmp-subtab{padding:9px 18px;font-size:13px;font-weight:700;color:var(--muted);background:none;border:none;border-bottom:3px solid transparent;cursor:pointer;margin-bottom:-2px}
+    .cmp-subtab.active{color:var(--navy);border-bottom-color:var(--gold)}
+    .cmp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+    .cmp-card{background:var(--white);border:1.5px solid var(--border);border-radius:14px;padding:16px;box-shadow:0 2px 10px rgba(10,20,40,.04);transition:box-shadow .15s,transform .15s;cursor:pointer;display:flex;flex-direction:column;gap:8px}
+    .cmp-card:hover{box-shadow:0 8px 24px rgba(10,20,40,.09);transform:translateY(-1px)}
+    .cmp-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+    .cmp-card-name{font-size:14px;font-weight:800;color:var(--navy)}
+    .cmp-card-phone{font-size:11px;color:var(--muted)}
+    .cmp-temp{font-size:10px;font-weight:800;padding:3px 9px;border-radius:20px;white-space:nowrap;text-transform:uppercase;letter-spacing:.03em}
+    .cmp-temp-hot{background:#fee2e2;color:#dc2626}
+    .cmp-temp-warm{background:#fef3c7;color:#b45309}
+    .cmp-temp-cold{background:#e0f2fe;color:#0369a1}
+    .cmp-card-courses{font-size:11px;color:var(--navy);font-weight:600}
+    .cmp-tagrow{display:flex;flex-wrap:wrap;gap:5px}
+    .cmp-tag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--bg);color:var(--muted)}
+    .cmp-card-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:2px}
+    .cmp-card-meta.due{color:#dc2626;font-weight:700}
+    .cmp-card-meta.cold{color:#d97706;font-weight:700}
+    .cmp-card-status{font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.04em}
+    .cmp-note-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+    .cmp-note-card{background:#fffdf5;border:1.5px solid #f0e2b8;border-radius:10px;padding:14px;font-size:12.5px;color:var(--navy);display:flex;flex-direction:column;gap:8px;min-height:90px}
+    .cmp-note-card.pinned{border-color:var(--gold);box-shadow:0 2px 10px rgba(184,144,0,.12)}
+    .cmp-note-text{white-space:pre-wrap;flex:1;line-height:1.45}
+    .cmp-note-foot{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--muted)}
+    .cmp-note-actions button{background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;color:var(--muted)}
+    .cmp-note-actions button:hover{color:var(--gold)}
+    .cmp-quicknote{width:100%;padding:12px 14px;border:1.5px dashed var(--border);border-radius:10px;font-size:13px;font-family:inherit;outline:none;resize:vertical;min-height:44px;margin:10px 0;background:var(--white);box-sizing:border-box}
+    .cmp-quicknote:focus{border-color:var(--gold);border-style:solid}
+    .cmp-modal-overlay{display:none;position:fixed;inset:0;background:rgba(10,20,40,.55);z-index:9999;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
+    .cmp-modal{background:var(--white);border-radius:14px;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;box-shadow:0 24px 64px rgba(10,20,40,.28)}
+    .cmp-modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px 14px;border-bottom:1.5px solid var(--border);position:sticky;top:0;background:var(--white);border-radius:14px 14px 0 0}
+    .cmp-modal-body{padding:18px 22px;display:flex;flex-direction:column;gap:12px}
+    .cmp-modal-foot{padding:14px 22px;border-top:1.5px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;position:sticky;bottom:0;background:var(--white);border-radius:0 0 14px 14px}
+    .cmp-conflict-box{background:#fff7ed;border:1.5px solid #fed7aa;border-radius:10px;padding:14px;font-size:12.5px;color:var(--navy);line-height:1.7}
+    .cmp-check-row{display:flex;flex-wrap:wrap;gap:8px}
+    .cmp-check-pill{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;border:1.5px solid var(--border);font-size:11px;font-weight:600;color:var(--muted);cursor:pointer}
+    .cmp-check-pill:has(input:checked){border-color:var(--gold);color:var(--gold);background:rgba(184,144,0,.06)}
+    .cmp-import-table{width:100%;border-collapse:collapse;font-size:11.5px}
+    .cmp-import-table th{background:var(--navy);color:var(--gold);text-align:left;padding:7px 8px;position:sticky;top:0}
+    .cmp-import-table td{border-bottom:1px solid var(--border);padding:7px 8px}
+  </style>
+
+  <div id="t-prospects" class="tab-content">
+
+    <div class="cmp-subnav">
+      <button class="cmp-subtab active" id="cmp-subtab-prospects" onclick="cmpSwitchSubTab('prospects')">📇 Prospects</button>
+      <button class="cmp-subtab" id="cmp-subtab-notes" onclick="cmpSwitchSubTab('notes')">📝 Notes</button>
+    </div>
+
+    <!-- PROSPECTS SUB-VIEW -->
+    <div id="cmp-view-prospects">
+      <div class="card" style="margin-bottom:14px">
+        <div class="section-tag">Tentative &amp; Lukewarm Leads</div>
+        <h2 style="margin-bottom:2px">Prospects</h2>
+        <p class="sub" style="margin-top:0">Your personal tracking space — separate from the CRM pipeline, for leads that aren't ready for a hard stage yet.</p>
+        <div class="cmp-toolbar">
+          <button class="cmp-chip active" data-cmp-filter="all" onclick="cmpFilterProspects('all')">All</button>
+          <button class="cmp-chip" data-cmp-filter="due" onclick="cmpFilterProspects('due')">⏰ Due Today <span id="cmp-due-count"></span></button>
+          <button class="cmp-chip" data-cmp-filter="cold" onclick="cmpFilterProspects('cold')">🥶 Going Cold <span id="cmp-cold-count"></span></button>
+          <button class="cmp-chip" data-cmp-filter="nurture" onclick="cmpFilterProspects('nurture')">🌱 Nurture</button>
+          <input type="text" class="cmp-search" id="cmp-search" placeholder="Search name, phone, email…" oninput="cmpRenderProspects()">
+          <button class="btn btn-outline" style="width:auto" onclick="cmpOpenImportModal()">⬆ Import CSV</button>
+          <button class="btn btn-outline" style="width:auto" onclick="cmpExportCsv()">⬇ Export</button>
+          <button class="btn btn-gold" style="width:auto" onclick="cmpOpenProspectModal()">+ Add Prospect</button>
+        </div>
+      </div>
+      <div id="cmp-prospects-grid" class="cmp-grid"></div>
+    </div>
+
+    <!-- NOTES SUB-VIEW -->
+    <div id="cmp-view-notes" style="display:none">
+      <div class="card" style="margin-bottom:14px">
+        <div class="section-tag">Private &amp; Personal</div>
+        <h2 style="margin-bottom:2px">Notes</h2>
+        <p class="sub" style="margin-top:0">Quick capture, always private to you — never visible to admins or other counsellors.</p>
+        <textarea class="cmp-quicknote" id="cmp-quicknote-input" placeholder="Jot something down and press Enter to save…" rows="2"></textarea>
+        <div class="cmp-toolbar" style="margin-top:0">
+          <input type="text" class="cmp-search" id="cmp-note-search" placeholder="Search notes…" oninput="cmpRenderNotes()">
+        </div>
+      </div>
+      <div id="cmp-notes-grid" class="cmp-note-grid"></div>
+    </div>
+
+  </div><!-- /t-prospects -->
+
+  <!-- Add / Edit Prospect Modal -->
+  <div class="cmp-modal-overlay" id="cmp-prospect-modal">
+    <div class="cmp-modal">
+      <div class="cmp-modal-head">
+        <h3 id="cmp-modal-title" style="margin:0;font-size:16px;font-weight:700;color:var(--navy)">Add Prospect</h3>
+        <button onclick="cmpCloseProspectModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1">×</button>
+      </div>
+      <div class="cmp-modal-body">
+        <input type="hidden" id="cmp-p-id">
+        <div class="grid2">
+          <div class="field"><label>Name *</label><input type="text" id="cmp-p-name" placeholder="Full name"></div>
+          <div class="field"><label>Phone</label><input type="tel" id="cmp-p-phone" placeholder="10-digit mobile"></div>
+        </div>
+        <div class="field"><label>Email</label><input type="email" id="cmp-p-email" placeholder="Optional"></div>
+        <div class="field"><label>Course(s) of Interest</label><div class="cmp-check-row" id="cmp-p-courses"></div></div>
+        <div class="field"><label>Temperature</label>
+          <div class="cmp-check-row">
+            <label class="cmp-check-pill"><input type="radio" name="cmp-p-temp" value="Hot"> 🔥 Hot</label>
+            <label class="cmp-check-pill"><input type="radio" name="cmp-p-temp" value="Warm" checked> 🌤 Warm</label>
+            <label class="cmp-check-pill"><input type="radio" name="cmp-p-temp" value="Cold"> ❄️ Cold</label>
+          </div>
+        </div>
+        <div class="field"><label>Concerns</label><div class="cmp-check-row" id="cmp-p-concerns"></div></div>
+        <div class="field"><label>Concern Note</label><textarea id="cmp-p-concern-note" rows="2" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;box-sizing:border-box" placeholder="Optional detail…"></textarea></div>
+        <div class="grid2">
+          <div class="field"><label>Status</label>
+            <select id="cmp-p-status" onchange="cmpToggleIntakeField()">
+              <option value="Active">Active</option>
+              <option value="Snoozed">Snoozed</option>
+              <option value="Nurture">Nurture / Future Intake</option>
+              <option value="Lost">Lost</option>
+            </select>
+          </div>
+          <div class="field" id="cmp-p-intake-field" style="display:none"><label>Target Intake Cycle</label><input type="text" id="cmp-p-intake" placeholder="e.g. Spring 2027"></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Next Follow-up</label><input type="date" id="cmp-p-nextfollowup"></div>
+          <div class="field"><label>Last Contacted</label><input type="date" id="cmp-p-lastcontacted"></div>
+        </div>
+        <div class="field"><label>Centre</label><select id="cmp-p-centre"></select></div>
+      </div>
+      <div class="cmp-modal-foot">
+        <button class="btn btn-gold" style="width:auto" onclick="cmpSaveProspect()">Save Prospect</button>
+        <button class="btn btn-outline" style="width:auto" onclick="cmpCloseProspectModal()">Cancel</button>
+        <button class="btn btn-outline" id="cmp-p-logfee-btn" style="width:auto;margin-left:auto;color:#0369a1;border-color:#0369a1;display:none" onclick="cmpOpenFeeModal()">💰 Log Fee / Convert</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Duplicate Conflict Modal -->
+  <div class="cmp-modal-overlay" id="cmp-conflict-modal">
+    <div class="cmp-modal" style="max-width:460px">
+      <div class="cmp-modal-head"><h3 style="margin:0;font-size:16px;font-weight:700;color:var(--navy)">⚠️ Already Being Tracked</h3>
+        <button onclick="cmpCloseConflictModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1">×</button>
+      </div>
+      <div class="cmp-modal-body">
+        <div class="cmp-conflict-box" id="cmp-conflict-details"></div>
+      </div>
+      <div class="cmp-modal-foot" style="flex-direction:column;align-items:stretch">
+        <button class="btn btn-outline" style="width:100%;margin-bottom:6px" onclick="cmpResolveConflict('view_only')">👀 View Only</button>
+        <button class="btn btn-outline" style="width:100%;margin-bottom:6px" onclick="cmpResolveConflict('request_transfer')">🔄 Request Ownership Transfer</button>
+        <button class="btn btn-gold" style="width:100%" onclick="cmpResolveConflict('flag_shared')">🔗 Flag as Shared Interest</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CSV Import Modal -->
+  <div class="cmp-modal-overlay" id="cmp-import-modal">
+    <div class="cmp-modal" style="max-width:720px">
+      <div class="cmp-modal-head">
+        <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--navy)">Import Prospects (CSV)</h3>
+        <button onclick="cmpCloseImportModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1">×</button>
+      </div>
+      <div class="cmp-modal-body">
+        <div id="cmp-import-step1">
+          <p style="font-size:12.5px;color:var(--muted)">Download the template, fill it in, then upload it below. Columns: Name, Phone, Email, Course Interest, Concern, Notes.</p>
+          <button class="btn btn-outline" style="width:auto" onclick="cmpDownloadTemplate()">⬇ Download Template</button>
+          <div style="margin-top:12px"><input type="file" id="cmp-import-file" accept=".csv" onchange="cmpHandleCsvFile(event)"></div>
+        </div>
+        <div id="cmp-import-step2" style="display:none">
+          <div id="cmp-import-summary" style="font-size:12.5px;margin-bottom:10px"></div>
+          <div style="overflow:auto;max-height:360px;border:1.5px solid var(--border);border-radius:8px">
+            <table class="cmp-import-table" id="cmp-import-table"><thead><tr><th>Row</th><th>Name</th><th>Phone</th><th>Status</th><th>Decision</th></tr></thead><tbody id="cmp-import-tbody"></tbody></table>
+          </div>
+        </div>
+        <div id="cmp-import-step3" style="display:none">
+          <div id="cmp-import-result" style="font-size:13px"></div>
+        </div>
+      </div>
+      <div class="cmp-modal-foot">
+        <button class="btn btn-gold" id="cmp-import-commit-btn" style="width:auto;display:none" onclick="cmpCommitImport()">Commit Import</button>
+        <button class="btn btn-outline" style="width:auto" onclick="cmpCloseImportModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fee / Conversion Modal -->
+  <div class="cmp-modal-overlay" id="cmp-fee-modal">
+    <div class="cmp-modal" style="max-width:400px">
+      <div class="cmp-modal-head"><h3 style="margin:0;font-size:16px;font-weight:700;color:var(--navy)">Log Fee / Token</h3>
+        <button onclick="cmpCloseFeeModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1">×</button>
+      </div>
+      <div class="cmp-modal-body">
+        <div class="field"><label>Amount (₹) *</label><input type="number" id="cmp-fee-amount" placeholder="e.g. 5000"></div>
+        <div class="field"><label>Date</label><input type="date" id="cmp-fee-date"></div>
+        <div class="field"><label>Type</label>
+          <div class="cmp-check-row">
+            <label class="cmp-check-pill"><input type="radio" name="cmp-fee-type" value="token" checked> Token / Partial</label>
+            <label class="cmp-check-pill"><input type="radio" name="cmp-fee-type" value="full"> Full Fee</label>
+          </div>
+        </div>
+        <p style="font-size:11px;color:var(--muted)">Status will auto-update to Converted — Partial or Converted — Full.</p>
+      </div>
+      <div class="cmp-modal-foot">
+        <button class="btn btn-gold" style="width:auto" onclick="cmpSaveFeeEntry()">Save &amp; Convert</button>
+        <button class="btn btn-outline" style="width:auto" onclick="cmpCloseFeeModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <div id="t-alumni" class="tab-content">
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
@@ -4006,6 +4222,7 @@ function initCounselorPortal() {
         prefetchRevenue();
         setTimeout(loadPendingAttBanner, 1500);
         setTimeout(loadOverdueFeesNotification, 2000);
+        if (!isAdmin) setTimeout(cmpLoadProspects, 1000);
       }
     }
   } catch(ex) {}
@@ -4116,6 +4333,7 @@ function doLogin() {
     }
     // Kick off revenue prefetch in background — ready before user clicks the tab
     prefetchRevenue();
+    if (!isAdmin) setTimeout(cmpLoadProspects, 800);
     // Holidays loaded lazily when the tab is opened (see switchTab)
     // Attendance: check for unfinalised sessions and show banner
     setTimeout(loadPendingAttBanner, 1500);
@@ -4364,7 +4582,458 @@ function switchTab(id) {
       _attPopulateBatchDropdown([]);
     }
   }
+  if (id === 't-prospects') {
+    loadCompanionData();
+  }
 }
+
+// ══════════════════════════════════════════════════════════════
+// PROSPECTS & NOTES COMPANION — independent of the crm_leads pipeline
+// ══════════════════════════════════════════════════════════════
+let cmpProspects = [];
+let cmpNotes = [];
+let cmpActiveFilter = 'all';
+let cmpImportPreviewRows = [];
+
+function cmpToast(msg, isError) {
+  let host = document.getElementById('cmp-toast-host');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'cmp-toast-host';
+    host.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px';
+    document.body.appendChild(host);
+  }
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'background:' + (isError ? '#dc2626' : 'var(--navy)') + ';color:#fff;padding:10px 16px;border-radius:8px;font-size:12.5px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:320px';
+  host.appendChild(t);
+  setTimeout(function() { t.style.opacity = '0'; t.style.transition = 'opacity .3s'; setTimeout(function() { t.remove(); }, 300); }, 3000);
+}
+
+function cmpSwitchSubTab(which) {
+  document.getElementById('cmp-subtab-prospects').classList.toggle('active', which === 'prospects');
+  document.getElementById('cmp-subtab-notes').classList.toggle('active', which === 'notes');
+  document.getElementById('cmp-view-prospects').style.display = which === 'prospects' ? 'block' : 'none';
+  document.getElementById('cmp-view-notes').style.display = which === 'notes' ? 'block' : 'none';
+}
+
+function loadCompanionData() {
+  cmpLoadProspects();
+  cmpLoadNotes();
+}
+
+async function cmpLoadProspects() {
+  const grid = document.getElementById('cmp-prospects-grid');
+  grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted)">Loading…</div>';
+  try {
+    const r = await fetch('/api/companion/prospects-list?scope=mine&counselorName=' + encodeURIComponent(counselorName));
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.reason || 'Failed to load');
+    cmpProspects = d.prospects;
+    document.getElementById('cmp-due-count').textContent = d.summary.dueToday ? '(' + d.summary.dueToday + ')' : '';
+    document.getElementById('cmp-cold-count').textContent = d.summary.goingCold ? '(' + d.summary.goingCold + ')' : '';
+    const badge = document.getElementById('prospects-due-badge');
+    if (badge) {
+      if (d.summary.dueToday > 0) { badge.textContent = d.summary.dueToday; badge.style.display = 'inline-block'; }
+      else { badge.style.display = 'none'; }
+    }
+    cmpRenderProspects();
+    cmpShowDailyWelcome();
+  } catch (err) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#dc2626">Could not load prospects — ' + escC(err.message) + '<br><button class="btn btn-outline" style="width:auto;margin-top:10px" onclick="cmpLoadProspects()">Retry</button></div>';
+  }
+}
+
+function cmpFilterProspects(f) {
+  cmpActiveFilter = f;
+  document.querySelectorAll('.cmp-chip').forEach(function(c) { c.classList.toggle('active', c.getAttribute('data-cmp-filter') === f); });
+  cmpRenderProspects();
+}
+
+function cmpRenderProspects() {
+  const grid = document.getElementById('cmp-prospects-grid');
+  const searchEl = document.getElementById('cmp-search');
+  const search = (searchEl && searchEl.value || '').toLowerCase();
+  let list;
+  if (cmpActiveFilter === 'due') list = cmpProspects.filter(function(p) { return p.is_due_today; });
+  else if (cmpActiveFilter === 'cold') list = cmpProspects.filter(function(p) { return p.is_going_cold; });
+  else if (cmpActiveFilter === 'nurture') list = cmpProspects.filter(function(p) { return p.status === 'Nurture'; });
+  else list = cmpProspects.filter(function(p) { return !['Converted-Partial', 'Converted-Full', 'Lost'].includes(p.status); });
+
+  if (search) {
+    list = list.filter(function(p) {
+      return (p.name || '').toLowerCase().includes(search) || (p.phone_raw || '').includes(search) || (p.email || '').toLowerCase().includes(search);
+    });
+  }
+
+  if (!list.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:48px 24px"><div style="font-size:36px;margin-bottom:10px">🧭</div><div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:6px">No prospects here yet</div><div style="font-size:12px;color:var(--muted)">Add a tentative lead to start tracking it — it takes under 10 seconds.</div></div>';
+    return;
+  }
+
+  grid.innerHTML = list.map(function(p) {
+    const tempClass = p.temperature === 'Hot' ? 'cmp-temp-hot' : (p.temperature === 'Cold' ? 'cmp-temp-cold' : 'cmp-temp-warm');
+    const courses = (p.course_interest || []).join(', ') || '—';
+    const tags = (p.concern_tags || []).map(function(t) { return '<span class="cmp-tag">' + escC(t) + '</span>'; }).join('');
+    let metaClass = '', metaText = '';
+    if (p.is_due_today) { metaClass = 'due'; metaText = '⏰ Follow up due today'; }
+    else if (p.is_going_cold) { metaClass = 'cold'; metaText = '🥶 Going cold' + (p.last_contacted ? ' — last contact ' + p.last_contacted : ' — never contacted'); }
+    else if (p.next_follow_up) { metaText = 'Next: ' + p.next_follow_up; }
+    else { metaText = p.last_contacted ? 'Last contact: ' + p.last_contacted : 'No contact logged'; }
+    return '<div class="cmp-card" onclick="cmpOpenProspectModal(\'' + p.id + '\')">' +
+      '<div class="cmp-card-top"><div><div class="cmp-card-name">' + escC(p.name) + '</div><div class="cmp-card-phone">' + escC(p.phone_raw || p.phone || '') + (p.email ? ' · ' + escC(p.email) : '') + '</div></div>' +
+      '<span class="cmp-temp ' + tempClass + '">' + escC(p.temperature) + '</span></div>' +
+      '<div class="cmp-card-courses">🎓 ' + escC(courses) + '</div>' +
+      (tags ? '<div class="cmp-tagrow">' + tags + '</div>' : '') +
+      '<div class="cmp-card-meta ' + metaClass + '"><span>' + metaText + '</span><span class="cmp-card-status">' + escC(p.status) + '</span></div></div>';
+  }).join('');
+}
+
+const CMP_CONCERN_OPTIONS = ['Fee', 'Location', 'Timing/Intake', 'Comparing Options', 'Parental Consent', 'Eligibility'];
+
+function cmpPopulateCourseCheckboxes(selected) {
+  const wrap = document.getElementById('cmp-p-courses');
+  const list = (typeof COURSES !== 'undefined' ? COURSES : []);
+  wrap.innerHTML = list.map(function(c) {
+    return '<label class="cmp-check-pill"><input type="checkbox" value="' + escC(c) + '" ' + (selected && selected.includes(c) ? 'checked' : '') + '> ' + escC(c) + '</label>';
+  }).join('');
+}
+function cmpPopulateConcernCheckboxes(selected) {
+  const wrap = document.getElementById('cmp-p-concerns');
+  wrap.innerHTML = CMP_CONCERN_OPTIONS.map(function(c) {
+    return '<label class="cmp-check-pill"><input type="checkbox" value="' + escC(c) + '" ' + (selected && selected.includes(c) ? 'checked' : '') + '> ' + escC(c) + '</label>';
+  }).join('');
+}
+function cmpPopulateCentreSelect(selected) {
+  const sel = document.getElementById('cmp-p-centre');
+  const centres = (allowedCentres && allowedCentres.length) ? allowedCentres : (typeof CENTRES !== 'undefined' ? CENTRES : []);
+  sel.innerHTML = centres.map(function(c) { return '<option ' + (c === selected ? 'selected' : '') + '>' + escC(c) + '</option>'; }).join('');
+}
+function cmpToggleIntakeField() {
+  const show = document.getElementById('cmp-p-status').value === 'Nurture';
+  document.getElementById('cmp-p-intake-field').style.display = show ? 'block' : 'none';
+}
+
+function cmpOpenProspectModal(id) {
+  const modal = document.getElementById('cmp-prospect-modal');
+  const p = id ? cmpProspects.find(function(x) { return x.id === id; }) : null;
+  document.getElementById('cmp-modal-title').textContent = p ? 'Edit Prospect' : 'Add Prospect';
+  document.getElementById('cmp-p-id').value = p ? p.id : '';
+  document.getElementById('cmp-p-name').value = p ? p.name : '';
+  document.getElementById('cmp-p-phone').value = p ? (p.phone_raw || p.phone || '') : '';
+  document.getElementById('cmp-p-email').value = p ? (p.email || '') : '';
+  document.getElementById('cmp-p-concern-note').value = p ? (p.concern_note || '') : '';
+  document.getElementById('cmp-p-status').value = p ? p.status : 'Active';
+  document.getElementById('cmp-p-intake').value = p ? (p.intake_cycle || '') : '';
+  document.getElementById('cmp-p-nextfollowup').value = p ? (p.next_follow_up || '') : '';
+  document.getElementById('cmp-p-lastcontacted').value = p ? (p.last_contacted || '') : '';
+  cmpPopulateCourseCheckboxes(p ? p.course_interest : []);
+  cmpPopulateConcernCheckboxes(p ? p.concern_tags : []);
+  cmpPopulateCentreSelect(p ? p.centre : (allowedCentres && allowedCentres[0]));
+  document.querySelectorAll('input[name="cmp-p-temp"]').forEach(function(r) { r.checked = (r.value === (p ? p.temperature : 'Warm')); });
+  cmpToggleIntakeField();
+  document.getElementById('cmp-p-logfee-btn').style.display = p ? 'inline-block' : 'none';
+  modal.style.display = 'flex';
+}
+function cmpCloseProspectModal() { document.getElementById('cmp-prospect-modal').style.display = 'none'; }
+
+function cmpGatherProspectForm() {
+  const courseEls = document.querySelectorAll('#cmp-p-courses input:checked');
+  const concernEls = document.querySelectorAll('#cmp-p-concerns input:checked');
+  const tempEl = document.querySelector('input[name="cmp-p-temp"]:checked');
+  return {
+    id: document.getElementById('cmp-p-id').value || undefined,
+    name: document.getElementById('cmp-p-name').value.trim(),
+    phone: document.getElementById('cmp-p-phone').value.trim(),
+    email: document.getElementById('cmp-p-email').value.trim(),
+    course_interest: Array.from(courseEls).map(function(e) { return e.value; }),
+    temperature: tempEl ? tempEl.value : 'Warm',
+    concern_tags: Array.from(concernEls).map(function(e) { return e.value; }),
+    concern_note: document.getElementById('cmp-p-concern-note').value.trim(),
+    status: document.getElementById('cmp-p-status').value,
+    intake_cycle: document.getElementById('cmp-p-intake').value.trim(),
+    next_follow_up: document.getElementById('cmp-p-nextfollowup').value || null,
+    last_contacted: document.getElementById('cmp-p-lastcontacted').value || null,
+    centre: document.getElementById('cmp-p-centre').value,
+    owner_counselor: counselorName
+  };
+}
+
+async function cmpSaveProspect(forceFlag, conflictId) {
+  const payload = cmpGatherProspectForm();
+  if (!payload.name) { cmpToast('Name is required', true); return; }
+  if (forceFlag) { payload.force = true; payload.conflictId = conflictId; }
+  try {
+    const r = await fetch('/api/companion/prospects-save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const d = await r.json();
+    if (d.status === 'conflict') { cmpOpenConflictModal(d); return; }
+    if (d.status !== 'ok') throw new Error(d.reason || 'Save failed');
+    cmpCloseProspectModal();
+    cmpLoadProspects();
+    cmpToast(d.note || 'Prospect saved');
+  } catch (err) {
+    cmpToast('Could not save — ' + err.message, true);
+  }
+}
+
+function cmpOpenConflictModal(d) {
+  document.getElementById('cmp-prospect-modal').style.display = 'none';
+  const box = document.getElementById('cmp-conflict-details');
+  const ex = d.existing;
+  box.innerHTML = 'Already tracked by <b>' + escC(ex.owner_counselor) + '</b> since ' + escC((ex.created_at || '').slice(0, 10)) + '<br>' +
+    'Temperature: <b>' + escC(ex.temperature) + '</b> · Status: ' + escC(ex.status) + '<br>' +
+    'Last contacted: ' + escC(ex.last_contacted || 'never');
+  document.getElementById('cmp-conflict-modal').dataset.conflictId = d.conflictId;
+  document.getElementById('cmp-conflict-modal').style.display = 'flex';
+}
+function cmpCloseConflictModal() { document.getElementById('cmp-conflict-modal').style.display = 'none'; }
+
+async function cmpResolveConflict(action) {
+  const conflictId = document.getElementById('cmp-conflict-modal').dataset.conflictId;
+  if (action === 'flag_shared') {
+    document.getElementById('cmp-conflict-modal').style.display = 'none';
+    await cmpSaveProspect(true, conflictId);
+    return;
+  }
+  try {
+    const r = await fetch('/api/companion/prospects-claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conflictId: conflictId, action: action, actorName: counselorName }) });
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.reason || 'Failed');
+    cmpToast(action === 'view_only' ? 'Marked view-only' : 'Ownership transfer requested');
+    cmpCloseConflictModal();
+  } catch (err) {
+    cmpToast('Could not resolve — ' + err.message, true);
+  }
+}
+
+// ── Fee / Conversion ──────────────────────────────────────────
+function cmpOpenFeeModal() {
+  document.getElementById('cmp-fee-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('cmp-fee-modal').style.display = 'flex';
+}
+function cmpCloseFeeModal() { document.getElementById('cmp-fee-modal').style.display = 'none'; }
+async function cmpSaveFeeEntry() {
+  const id = document.getElementById('cmp-p-id').value;
+  const amount = Number(document.getElementById('cmp-fee-amount').value);
+  const date = document.getElementById('cmp-fee-date').value;
+  const typeEl = document.querySelector('input[name="cmp-fee-type"]:checked');
+  const type = typeEl ? typeEl.value : 'token';
+  if (!id) { cmpToast('Save the prospect first', true); return; }
+  if (!amount) { cmpToast('Enter an amount', true); return; }
+  try {
+    const r = await fetch('/api/companion/prospects-save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, owner_counselor: counselorName, feeEntry: { amount: amount, date: date, type: type } }) });
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.reason || 'Failed');
+    cmpToast('Converted — ' + (type === 'full' ? 'Full' : 'Partial'));
+    cmpCloseFeeModal();
+    cmpCloseProspectModal();
+    cmpLoadProspects();
+  } catch (err) {
+    cmpToast('Could not log fee — ' + err.message, true);
+  }
+}
+
+// ── Notes ─────────────────────────────────────────────────────
+async function cmpLoadNotes() {
+  try {
+    const r = await fetch('/api/companion/notes?counselorName=' + encodeURIComponent(counselorName));
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.reason);
+    cmpNotes = d.notes;
+    cmpRenderNotes();
+  } catch (err) {
+    const grid = document.getElementById('cmp-notes-grid');
+    if (grid) grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:24px;color:#dc2626">Could not load notes — ' + escC(err.message) + '</div>';
+  }
+}
+
+function cmpRenderNotes() {
+  const grid = document.getElementById('cmp-notes-grid');
+  const searchEl = document.getElementById('cmp-note-search');
+  const search = (searchEl && searchEl.value || '').toLowerCase();
+  let list = cmpNotes;
+  if (search) list = list.filter(function(n) { return (n.text || '').toLowerCase().includes(search); });
+  if (!list.length) { grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted);font-size:12.5px">No notes yet — jot something above.</div>'; return; }
+  grid.innerHTML = list.map(function(n) {
+    const linked = n.linked_prospect_id ? cmpProspects.find(function(p) { return p.id === n.linked_prospect_id; }) : null;
+    return '<div class="cmp-note-card ' + (n.pinned ? 'pinned' : '') + '">' +
+      '<div class="cmp-note-text">' + escC(n.text) + '</div>' +
+      (linked ? '<div class="cmp-tag" style="align-self:flex-start">🔗 ' + escC(linked.name) + '</div>' : '') +
+      '<div class="cmp-note-foot"><span>' + new Date(n.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + '</span>' +
+      '<span class="cmp-note-actions"><button onclick="cmpTogglePinNote(\'' + n.id + '\', ' + (!n.pinned) + ')" title="Pin">' + (n.pinned ? '📌' : '📍') + '</button>' +
+      '<button onclick="cmpDeleteNote(\'' + n.id + '\')" title="Delete">🗑</button></span></div></div>';
+  }).join('');
+}
+
+async function cmpAddQuickNote() {
+  const input = document.getElementById('cmp-quicknote-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  try {
+    const r = await fetch('/api/companion/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text, owner_counselor: counselorName }) });
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.reason);
+    cmpLoadNotes();
+  } catch (err) { cmpToast('Could not save note — ' + err.message, true); }
+}
+async function cmpTogglePinNote(id, pinned) {
+  try {
+    await fetch('/api/companion/notes', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, pinned: pinned }) });
+    cmpLoadNotes();
+  } catch (err) { cmpToast('Could not update note', true); }
+}
+async function cmpDeleteNote(id) {
+  if (!confirm('Delete this note?')) return;
+  try {
+    await fetch('/api/companion/notes', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) });
+    cmpLoadNotes();
+  } catch (err) { cmpToast('Could not delete note', true); }
+}
+
+// ── Daily Welcome Banner ─────────────────────────────────────
+function cmpShowDailyWelcome() {
+  const banner = document.getElementById('daily-welcome-banner');
+  if (!banner || banner.dataset.shown) return;
+  const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const reconnectedYesterday = cmpProspects.filter(function(p) { return p.last_contacted === yesterdayStr; }).length;
+  const dueToday = cmpProspects.filter(function(p) { return p.is_due_today; }).length;
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : (hour < 17 ? 'Good afternoon' : 'Good evening');
+  const firstName = (counselorName || '').split(' ')[0];
+  let msg;
+  if (reconnectedYesterday > 0) {
+    msg = greeting + ', ' + firstName + ' — you reconnected with ' + reconnectedYesterday + ' prospect' + (reconnectedYesterday > 1 ? 's' : '') + ' yesterday. ';
+    msg += dueToday > 0 ? dueToday + ' more due today.' : 'Nothing urgent due today.';
+  } else if (dueToday > 0) {
+    msg = greeting + ', ' + firstName + ' — ' + dueToday + ' prospect' + (dueToday > 1 ? 's are' : ' is') + ' due for follow-up today.';
+  } else {
+    const fallbacks = [
+      greeting + ', ' + firstName + ' — small, steady conversations build the strongest pipeline.',
+      greeting + ', ' + firstName + ' — one good call can turn a cold lead warm again.',
+      greeting + ', ' + firstName + ' — today’s a good day to check in on someone you almost forgot.'
+    ];
+    msg = fallbacks[new Date().getDate() % fallbacks.length];
+  }
+  banner.textContent = '✨ ' + msg;
+  banner.style.display = 'block';
+  banner.dataset.shown = '1';
+  requestAnimationFrame(function() { banner.style.opacity = '1'; banner.style.transform = 'translateY(0)'; });
+}
+
+// ── CSV Import / Export ──────────────────────────────────────
+function cmpDownloadTemplate() {
+  const csv = 'Name,Phone,Email,Course Interest,Concern,Notes\n"John Doe","9876543210","john@example.com","Diamond Grading","Fee","Interested but comparing options"\n';
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'prospects_template.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function cmpParseCsv(text) {
+  const lines = text.split(/\r?\n/).filter(function(l) { return l.trim(); });
+  if (!lines.length) return [];
+  const headers = lines[0].split(',').map(function(h) { return h.trim().toLowerCase().replace(/"/g, ''); });
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i].match(/(".*?"|[^,]+)(?=,|$)/g) || [];
+    const clean = cells.map(function(c) { return c.trim().replace(/^"|"$/g, ''); });
+    const row = {};
+    headers.forEach(function(h, idx) {
+      if (h.includes('name')) row.name = clean[idx] || '';
+      else if (h.includes('phone')) row.phone = clean[idx] || '';
+      else if (h.includes('email')) row.email = clean[idx] || '';
+      else if (h.includes('course')) row.course_interest = clean[idx] || '';
+      else if (h.includes('concern')) row.concern = clean[idx] || '';
+      else if (h.includes('note')) row.notes = clean[idx] || '';
+    });
+    if (row.name) rows.push(row);
+  }
+  return rows;
+}
+
+function cmpOpenImportModal() {
+  document.getElementById('cmp-import-step1').style.display = 'block';
+  document.getElementById('cmp-import-step2').style.display = 'none';
+  document.getElementById('cmp-import-step3').style.display = 'none';
+  document.getElementById('cmp-import-commit-btn').style.display = 'none';
+  document.getElementById('cmp-import-file').value = '';
+  document.getElementById('cmp-import-modal').style.display = 'flex';
+}
+function cmpCloseImportModal() { document.getElementById('cmp-import-modal').style.display = 'none'; }
+
+async function cmpHandleCsvFile(evt) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  const text = await file.text();
+  const rows = cmpParseCsv(text);
+  if (!rows.length) { cmpToast('No valid rows found in CSV', true); return; }
+  try {
+    const r = await fetch('/api/companion/prospects-import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'preview', rows: rows, owner_counselor: counselorName }) });
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.reason);
+    cmpImportPreviewRows = d.results;
+    cmpRenderImportPreview(d.summary);
+  } catch (err) { cmpToast('Could not preview CSV — ' + err.message, true); }
+}
+
+function cmpRenderImportPreview(summary) {
+  document.getElementById('cmp-import-step1').style.display = 'none';
+  document.getElementById('cmp-import-step2').style.display = 'block';
+  document.getElementById('cmp-import-commit-btn').style.display = 'inline-block';
+  document.getElementById('cmp-import-summary').innerHTML = '<b>' + summary.total + '</b> rows — ' + summary.new + ' new, ' + summary.ownDuplicate + ' already yours, ' + summary.conflict + ' owned by someone else, ' + summary.invalid + ' invalid.';
+  const tbody = document.getElementById('cmp-import-tbody');
+  tbody.innerHTML = cmpImportPreviewRows.map(function(res, idx) {
+    const row = res.row;
+    let statusLabel = '', decisionHtml = '—';
+    if (res.rowStatus === 'new') statusLabel = '<span style="color:#168b57;font-weight:700">New</span>';
+    else if (res.rowStatus === 'own_duplicate') statusLabel = '<span style="color:#0369a1;font-weight:700">Already yours</span>';
+    else if (res.rowStatus === 'invalid') statusLabel = '<span style="color:#dc2626;font-weight:700">Invalid — ' + escC(res.reason || '') + '</span>';
+    else if (res.rowStatus === 'conflict') {
+      statusLabel = '<span style="color:#d97706;font-weight:700">Tracked by ' + escC(res.existing.owner_counselor) + '</span>';
+      decisionHtml = '<select onchange="cmpImportPreviewRows[' + idx + '].decision=this.value">' +
+        '<option value="skip">Skip</option><option value="shared">Flag as shared</option><option value="transfer_request">Request transfer</option></select>';
+      res.decision = 'skip';
+    }
+    return '<tr><td>' + (idx + 1) + '</td><td>' + escC(row.name || '') + '</td><td>' + escC(row.phone || '') + '</td><td>' + statusLabel + '</td><td>' + decisionHtml + '</td></tr>';
+  }).join('');
+}
+
+async function cmpCommitImport() {
+  const validRows = cmpImportPreviewRows.filter(function(r) { return r.rowStatus !== 'invalid'; });
+  const payload = validRows.map(function(r) {
+    return { row: r.row, decision: r.rowStatus === 'conflict' ? (r.decision || 'skip') : (r.rowStatus === 'own_duplicate' ? 'skip' : 'create') };
+  });
+  try {
+    const r = await fetch('/api/companion/prospects-import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'commit', rows: payload, owner_counselor: counselorName, centre: (allowedCentres && allowedCentres[0]) || '' }) });
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.reason);
+    document.getElementById('cmp-import-step2').style.display = 'none';
+    document.getElementById('cmp-import-step3').style.display = 'block';
+    document.getElementById('cmp-import-commit-btn').style.display = 'none';
+    const s = d.summary;
+    document.getElementById('cmp-import-result').innerHTML = '✅ Import complete — <b>' + s.created + '</b> created, ' + s.shared + ' flagged shared, ' + s.transferRequested + ' transfer requests sent, ' + s.skipped + ' skipped, ' + s.failed + ' failed.';
+    cmpLoadProspects();
+  } catch (err) { cmpToast('Import failed — ' + err.message, true); }
+}
+
+function cmpExportCsv() {
+  const header = 'Name,Phone,Email,Course Interest,Temperature,Concern,Status,Next Follow-up,Last Contacted\n';
+  const rows = cmpProspects.map(function(p) {
+    return [p.name, p.phone_raw || p.phone, p.email, (p.course_interest || []).join('; '), p.temperature, (p.concern_tags || []).join('; '), p.status, p.next_follow_up || '', p.last_contacted || '']
+      .map(function(v) { return '"' + String(v || '').replace(/"/g, '""') + '"'; }).join(',');
+  }).join('\n');
+  const blob = new Blob([header + rows], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'prospects_export_' + new Date().toISOString().slice(0, 10) + '.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Enter-to-save on the quick note box (Shift+Enter for newline)
+document.addEventListener('DOMContentLoaded', function() {
+  const qn = document.getElementById('cmp-quicknote-input');
+  if (qn) qn.addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); cmpAddQuickNote(); } });
+});
 
 // ── Revenue Dashboard Sub-tabs Helper functions ────────────────────
 var revenueViewType = 'single';

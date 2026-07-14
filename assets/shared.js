@@ -1769,9 +1769,8 @@ window.gasGet = (function () {
       invoice_number: p.invoiceNumber || '',
       invoice_amount: (p.invoiceAmount !== undefined && p.invoiceAmount !== null && p.invoiceAmount !== '')
         ? Number(p.invoiceAmount) : net,
-      // invoice_date is deliberately separate from the payment/installment dates below —
-      // an invoice is often raised after the money is actually collected, so it must not
-      // feed revenue-month bucketing (see revenue_month on dbRow). It's documentation only.
+      // invoice_date — stored here, and now ALSO the primary input to revenue_month below
+      // when present (see revenue_month on dbRow for the current rule and why it changed).
       invoice_date: p.invoiceDate || '',
       // Free-text explanation for when one invoice legitimately covers multiple students
       // (e.g. a parent or company paying for 2-3 students on one invoice) — surfaced by the
@@ -1802,10 +1801,18 @@ window.gasGet = (function () {
     meta.actual_receipt_no = latestRef;
 
     // revenue_month — the authoritative bucket for AUTO revenue, replacing created_at.
-    // "First installment or full payment": inst[0] IS the full payment when nInst===1, and
-    // the actual first installment otherwise, so this one rule covers both cases the way
-    // it was asked for.
-    var revenueMonth = ((inst[0].paid && inst[0].paidDate) ? inst[0].paidDate : (latestDate || today)).slice(0, 7);
+    // Invoice date now takes priority when one is entered: it's a deliberate, counsellor-
+    // entered statement of which month a sale belongs to, and was previously EXCLUDED from
+    // this decision on purpose (see invoice_date comment above) on the theory that invoices
+    // are often raised after the money is collected, so using it could push revenue later
+    // than when it actually landed. [Reversed 2026-07-14 per Sunil: in practice the more
+    // common failure was the opposite — a correctly-set invoice date getting silently
+    // overridden by a mistyped/wrong-month installment paid-date, moving real revenue into
+    // the wrong month with no way for the counsellor to see it happened.] Falls back to the
+    // prior rule — first installment/full payment date, else latest paid date, else today —
+    // whenever no invoice date is on the record, so months without one behave exactly as before.
+    var revenueMonth = (p.invoiceDate ? toYMD(p.invoiceDate)
+      : ((inst[0].paid && inst[0].paidDate) ? inst[0].paidDate : (latestDate || today))).slice(0, 7);
 
     var dbRow = {
       student_id: String(p.studentId),

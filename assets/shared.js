@@ -1375,6 +1375,26 @@ window.gasGet = (function () {
     });
   }
 
+  /* checkStudentMobile — non-blocking duplicate nudge for the Add Student form. Looks up
+     whether this mobile number's last 4 digits already belong to a DIFFERENT student_id, so
+     a counsellor adding an existing student to a second/combined-course batch (e.g. GG =
+     DG + CSG) gets warned before typing a fresh ID and accidentally creating a second student
+     profile for the same real person — exactly what happened with Akshay Saraf (7128 vs
+     7129), which fragmented his fees/enrollments across two IDs. Warn-only, never blocks —
+     shared family numbers are a real (if rare) case, so this must stay advisory. */
+  function h_checkStudentMobile(p, cb) {
+    var last4 = String(p.mobileLast4 || '').trim();
+    if (!/^\d{4}$/.test(last4)) { cb(null, { match: null }); return; }
+    var excludeId = String(p.excludeStudentId || '').trim();
+    var qs = 'mobile_last4=eq.' + encodeURIComponent(last4) + '&select=student_id,name,mobile,batch_code,status&limit=1';
+    if (excludeId) qs += '&student_id=neq.' + encodeURIComponent(excludeId);
+    GET('students', qs, function (e, rows) {
+      if (e || !rows || !rows.length) { cb(null, { match: null }); return; }
+      var m = rows[0];
+      cb(null, { match: { studentId: m.student_id, name: m.name, mobile: m.mobile, batchCode: m.batch_code, status: m.status } });
+    });
+  }
+
   /* removeStudent — cleans both students (if sole batch) and enrollments */
   function h_removeStudent(p, cb) {
     var sid = String(p.enrollmentNo || '').trim();
@@ -7547,6 +7567,7 @@ window.gasGet = (function () {
       case 'deleteFeeRecord':           return h_deleteFeeRecord(params, cb);
       case 'getRevenueDetail':          return h_getRevenueDetail(params, cb);
       case 'checkInvoiceNumber':        return h_checkInvoiceNumber(params, cb);
+      case 'checkStudentMobile':        return h_checkStudentMobile(params, cb);
       case 'getHolidays':               return h_getHolidays(params, cb);
       case 'addHoliday':                return h_addHoliday(params, cb);
       case 'getSessions':               return h_getSessions(params, cb);

@@ -1804,6 +1804,7 @@
         <div class="grid2">
           <div class="field"><label>Last 4 Digits of Mobile (auto)</label>
             <input type="text" id="st-mobile-last4" class="auto-val" readonly placeholder="Auto-filled from mobile">
+            <div id="st-mobile-dup-warn" style="display:none;font-size:11px;color:#B87A10;margin-top:4px;font-weight:600"></div>
           </div>
           <div class="field"><label>Order ID <span style="font-weight:400;color:var(--muted);text-transform:none">(payment/order reference, 5+ digits)</span></label>
             <input type="text" id="st-order-id" placeholder="e.g. 45231" inputmode="numeric">
@@ -5157,6 +5158,40 @@ function selectedStudentBatches() {
 function updateMobileLast4() {
   const mobile = document.getElementById('st-mobile').value.replace(/\D/g,'');
   document.getElementById('st-mobile-last4').value = mobile.length >= 4 ? mobile.slice(-4) : '';
+  checkStudentMobileDuplicate();
+}
+
+// checkStudentMobileDuplicate — warns (never blocks) when the mobile just entered already
+// belongs to a different Student ID, so adding an existing student to a second/combined-
+// course batch doesn't accidentally create a second profile for the same person (see
+// h_checkStudentMobile in shared.js for the Akshay Saraf 7128/7129 case this guards against).
+let _stMobileDupSeq = 0;
+function checkStudentMobileDuplicate() {
+  const warn = document.getElementById('st-mobile-dup-warn');
+  const last4 = document.getElementById('st-mobile-last4').value.trim();
+  const excludeId = document.getElementById('st-enrol').value.trim();
+  if (!warn) return;
+  if (!/^\d{4}$/.test(last4)) { warn.style.display = 'none'; return; }
+  const seq = ++_stMobileDupSeq;
+  gasGet({action:'checkStudentMobile', mobileLast4:last4, excludeStudentId:excludeId}, function(e, d) {
+    if (seq !== _stMobileDupSeq) return; // a newer keystroke has since fired a fresher check
+    if (e || !d || !d.match) { warn.style.display = 'none'; return; }
+    const m = d.match;
+    warn.innerHTML = '⚠ This mobile is already registered as Student ID <strong>' + escC(m.studentId) + '</strong>' +
+      (m.name ? ' (' + escC(m.name) + ')' : '') + ' — if this is the same person, ' +
+      '<a href="javascript:void(0)" onclick="useExistingStudentId(\'' + escC(m.studentId) + '\')" style="color:#B87A10;text-decoration:underline">use that ID instead</a> ' +
+      'and select this batch, rather than creating a new profile.';
+    warn.style.display = 'block';
+  });
+}
+
+// useExistingStudentId — one-click fix for the duplicate-mobile warning: swaps the Student
+// ID field to the existing match and re-runs the normal lookup to pull in their name/mobile/
+// existing batches, so this batch can just be added to their one real profile.
+function useExistingStudentId(studentId) {
+  document.getElementById('st-enrol').value = studentId;
+  document.getElementById('st-mobile-dup-warn').style.display = 'none';
+  lookupStudent();
 }
 
 function lookupStudent() {

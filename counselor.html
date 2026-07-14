@@ -5782,6 +5782,17 @@ function renderInvoicesTab() {
   // Newest invoice date first; records with no invoice date yet sort to the bottom.
   var sorted = rows.slice().sort(function(a, b) { return (b.invoiceDate||'').localeCompare(a.invoiceDate||''); });
 
+  // Group by invoice number (within the current filtered view) so a repeated invoice can be
+  // flagged at a glance — either as an expected same-student split across batches (e.g. a
+  // Graduate Gemologist student's DG + CSG fee records sharing one bundled invoice) or a
+  // shared/sponsored invoice covering different students, which is what invoiceSharedComment
+  // exists for. Neither case is an error; this is purely a "here's why this repeats" hint.
+  var invoiceGroups = {};
+  rows.forEach(function(r) {
+    if (!r.invoiceNumber) return;
+    (invoiceGroups[r.invoiceNumber] = invoiceGroups[r.invoiceNumber] || []).push(r);
+  });
+
   var html = '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
     '<th class="text-left">Student</th><th class="text-left">Batch</th><th class="text-left">Course</th>' +
     '<th class="text-left">Centre</th><th class="text-left">Invoice #</th><th>Invoice Date</th>' +
@@ -5789,12 +5800,21 @@ function renderInvoicesTab() {
     '</tr></thead><tbody>';
   html += sorted.map(function(r) {
     var statusCls = String(r.feeStatus || 'Pending').toLowerCase();
+    var group = r.invoiceNumber ? invoiceGroups[r.invoiceNumber] : null;
+    var dupBadge = '';
+    if (group && group.length > 1) {
+      var sameStudent = group.every(function(g) { return String(g.studentId).toUpperCase() === String(r.studentId).toUpperCase(); });
+      var otherNames = Array.from(new Set(group.filter(function(g){ return String(g.studentId).toUpperCase() !== String(r.studentId).toUpperCase(); }).map(function(g){ return g.studentName; }))).join(', ');
+      dupBadge = sameStudent
+        ? ' <span title="Same invoice also covers this student\'s other batch — normal for a bundled course like Graduate Gemologist (DG + CSG)" style="display:inline-block;background:var(--off);color:var(--muted);border-radius:999px;padding:1px 7px;font-size:10px;font-weight:700">×' + group.length + '</span>'
+        : ' <span title="Shared invoice — also used by: ' + escC(otherNames) + '" style="display:inline-block;background:var(--gold-pale);color:#B87A10;border-radius:999px;padding:1px 7px;font-size:10px;font-weight:700">×' + group.length + ' shared</span>';
+    }
     return '<tr>' +
       '<td><strong>' + escC(r.studentName || '') + '</strong><div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--muted)">' + escC(r.studentId || '') + '</div></td>' +
       '<td>' + escC(r.batchCode || '') + '</td>' +
       '<td>' + escC(r.course || '') + '</td>' +
       '<td>' + escC(r.centre || '') + '</td>' +
-      '<td style="font-family:\'JetBrains Mono\',monospace">' + (r.invoiceNumber ? escC(r.invoiceNumber) : '<span style="color:var(--muted)">—</span>') + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\',monospace">' + (r.invoiceNumber ? escC(r.invoiceNumber) : '<span style="color:var(--muted)">—</span>') + dupBadge + '</td>' +
       '<td>' + (r.invoiceDate ? escC(toDMYClient(r.invoiceDate)) : '<span style="color:var(--muted)">—</span>') + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(r.courseFee) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + (Number(r.discountAmt) ? money(r.discountAmt) : '—') + '</td>' +

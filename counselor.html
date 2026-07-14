@@ -5279,6 +5279,16 @@ async function cmpDeleteNote(id) {
 }
 
 // ── Daily Welcome Banner ─────────────────────────────────────
+const CMP_INSPIRATIONAL_QUOTES = [
+  { text: 'Success is the sum of small efforts, repeated day in and day out.', author: 'Robert Collier' },
+  { text: 'The way to get started is to quit talking and begin doing.', author: 'Walt Disney' },
+  { text: 'Do what you can, with what you have, where you are.', author: 'Theodore Roosevelt' },
+  { text: 'It always seems impossible until it’s done.', author: 'Nelson Mandela' },
+  { text: 'Well done is better than well said.', author: 'Benjamin Franklin' },
+  { text: 'Opportunities don’t happen. You create them.', author: 'Chris Grosser' },
+  { text: 'People don’t buy what you do; they buy why you do it.', author: 'Simon Sinek' }
+];
+
 function cmpShowDailyWelcome() {
   const banner = document.getElementById('daily-welcome-banner');
   if (!banner || banner.dataset.shown) return;
@@ -5288,19 +5298,27 @@ function cmpShowDailyWelcome() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : (hour < 17 ? 'Good afternoon' : 'Good evening');
   const firstName = (counselorName || '').split(' ')[0];
+
+  // Revenue converted via Prospects this month (fee entries logged on any of this
+  // counsellor's prospects), so the banner can speak to real numbers when there are any.
+  const monthKey = new Date().toISOString().slice(0, 7);
+  let revenueThisMonth = 0;
+  cmpProspects.forEach(function(p) {
+    (p.fee_entries || []).forEach(function(f) {
+      if (f && f.date && f.date.slice(0, 7) === monthKey) revenueThisMonth += Number(f.amount) || 0;
+    });
+  });
+
   let msg;
-  if (reconnectedYesterday > 0) {
-    msg = greeting + ', ' + firstName + ' — you reconnected with ' + reconnectedYesterday + ' prospect' + (reconnectedYesterday > 1 ? 's' : '') + ' yesterday. ';
-    msg += dueToday > 0 ? dueToday + ' more due today.' : 'Nothing urgent due today.';
-  } else if (dueToday > 0) {
+  if (dueToday > 0) {
     msg = greeting + ', ' + firstName + ' — ' + dueToday + ' prospect' + (dueToday > 1 ? 's are' : ' is') + ' due for follow-up today.';
+  } else if (reconnectedYesterday > 0) {
+    msg = greeting + ', ' + firstName + ' — you reconnected with ' + reconnectedYesterday + ' prospect' + (reconnectedYesterday > 1 ? 's' : '') + ' yesterday. Nothing urgent due today.';
+  } else if (revenueThisMonth > 0) {
+    msg = greeting + ', ' + firstName + ' — you’ve converted ' + money(revenueThisMonth) + ' from Prospects this month. Keep the momentum going.';
   } else {
-    const fallbacks = [
-      greeting + ', ' + firstName + ' — small, steady conversations build the strongest pipeline.',
-      greeting + ', ' + firstName + ' — one good call can turn a cold lead warm again.',
-      greeting + ', ' + firstName + ' — today’s a good day to check in on someone you almost forgot.'
-    ];
-    msg = fallbacks[new Date().getDate() % fallbacks.length];
+    const quote = CMP_INSPIRATIONAL_QUOTES[new Date().getDate() % CMP_INSPIRATIONAL_QUOTES.length];
+    msg = greeting + ', ' + firstName + ' — “' + quote.text + '” — ' + quote.author;
   }
   banner.textContent = '✨ ' + msg;
   banner.style.display = 'block';

@@ -2854,7 +2854,19 @@
     .cmp-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
     .cmp-chip{padding:7px 14px;border-radius:20px;border:1.5px solid var(--border);background:var(--white);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap}
     .cmp-chip:hover{border-color:var(--gold);color:var(--gold)}
-    .cmp-chip.active{background:var(--gold);border-color:var(--gold);color:#fff}
+    .cmp-chip.active{background:var(--navy);border-color:var(--navy);color:var(--gold-light)}
+    .cmp-kpi-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
+    .cmp-kpi-tile{background:var(--white);border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;box-shadow:0 2px 10px rgba(10,20,40,.04);border-left:3px solid var(--navy);transition:box-shadow .15s,transform .15s}
+    .cmp-kpi-tile:hover{box-shadow:0 6px 18px rgba(10,20,40,.08);transform:translateY(-1px)}
+    .cmp-kpi-tile.hot{border-left-color:#dc2626}
+    .cmp-kpi-tile.due{border-left-color:#b45309}
+    .cmp-kpi-tile.converted{border-left-color:#168b57}
+    .cmp-kpi-label{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+    .cmp-kpi-value{font-family:"JetBrains Mono",monospace;font-size:21px;font-weight:700;color:var(--navy);margin-top:6px}
+    .cmp-kpi-tile.hot .cmp-kpi-value{color:#dc2626}
+    .cmp-kpi-tile.due .cmp-kpi-value{color:#b45309}
+    .cmp-kpi-tile.converted .cmp-kpi-value{color:#168b57}
+    .cmp-avatar{width:34px;height:34px;border-radius:50%;background:var(--navy);color:var(--gold-light);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0}
     .cmp-search{flex:1;min-width:180px;padding:8px 12px;border:1.5px solid var(--border);border-radius:20px;font-size:12px;font-family:inherit;outline:none}
     .cmp-search:focus{border-color:var(--gold)}
     .cmp-subnav{display:flex;gap:6px;margin-bottom:16px;border-bottom:1.5px solid var(--border)}
@@ -2972,6 +2984,12 @@
         <div class="section-tag">Tentative &amp; Lukewarm Leads</div>
         <h2 style="margin-bottom:2px">Prospects</h2>
         <p class="sub" style="margin-top:0">Your personal tracking space — separate from the CRM pipeline, for leads that aren't ready for a hard stage yet.</p>
+        <div class="cmp-kpi-strip" id="cmp-kpi-strip">
+          <div class="cmp-kpi-tile total"><div class="cmp-kpi-label">Total Prospects</div><div class="cmp-kpi-value" id="cmp-kpi-total">0</div></div>
+          <div class="cmp-kpi-tile hot"><div class="cmp-kpi-label">Hot Leads</div><div class="cmp-kpi-value" id="cmp-kpi-hot">0</div></div>
+          <div class="cmp-kpi-tile due"><div class="cmp-kpi-label">Due Today</div><div class="cmp-kpi-value" id="cmp-kpi-due">0</div></div>
+          <div class="cmp-kpi-tile converted"><div class="cmp-kpi-label">Converted, This Month</div><div class="cmp-kpi-value" id="cmp-kpi-converted">₹0</div></div>
+        </div>
         <div class="cmp-toolbar">
           <button class="cmp-chip active" data-cmp-filter="all" onclick="cmpFilterProspects('all')">All</button>
           <button class="cmp-chip" data-cmp-filter="due" onclick="cmpFilterProspects('due')">⏰ Due Today <span id="cmp-due-count"></span></button>
@@ -4819,7 +4837,35 @@ function cmpChangeProspectsMonth(delta) {
   cmpRenderProspects();
 }
 
+function cmpInitials(name) {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+}
+
+function cmpConvertedThisMonth() {
+  const monthKey = new Date().toISOString().slice(0, 7);
+  let total = 0;
+  cmpProspects.forEach(function(p) {
+    (p.fee_entries || []).forEach(function(f) {
+      if (f && f.date && f.date.slice(0, 7) === monthKey) total += Number(f.amount) || 0;
+    });
+  });
+  return total;
+}
+
+function cmpRenderKpiStrip() {
+  const totalEl = document.getElementById('cmp-kpi-total');
+  if (!totalEl) return;
+  const active = cmpProspects.filter(function(p) { return !['Converted-Partial', 'Converted-Full', 'Lost'].includes(p.status); });
+  document.getElementById('cmp-kpi-total').textContent = active.length;
+  document.getElementById('cmp-kpi-hot').textContent = active.filter(function(p) { return p.temperature === 'Hot'; }).length;
+  document.getElementById('cmp-kpi-due').textContent = cmpProspects.filter(function(p) { return p.is_due_today; }).length;
+  document.getElementById('cmp-kpi-converted').textContent = money(cmpConvertedThisMonth());
+}
+
 function cmpRenderProspects() {
+  cmpRenderKpiStrip();
   const grid = document.getElementById('cmp-prospects-grid');
   const monthLabel = document.getElementById('cmp-prospects-month-label');
   if (monthLabel) monthLabel.textContent = cmpProspectsMonth.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
@@ -4856,7 +4902,7 @@ function cmpRenderProspects() {
     else if (p.next_follow_up) { metaText = 'Next: ' + p.next_follow_up; }
     else { metaText = p.last_contacted ? 'Last contact: ' + p.last_contacted : 'No contact logged'; }
     return '<div class="cmp-card" onclick="cmpOpenProspectModal(\'' + p.id + '\')">' +
-      '<div class="cmp-card-top"><div><div class="cmp-card-name">' + escC(p.name) + '</div><div class="cmp-card-phone">' + (p.phone_raw ? escC(p.country_code || '+91') + ' ' : '') + escC(p.phone_raw || p.phone || '') + (p.email ? ' · ' + escC(p.email) : '') + '</div></div>' +
+      '<div class="cmp-card-top"><div style="display:flex;gap:10px;align-items:center;min-width:0"><div class="cmp-avatar">' + escC(cmpInitials(p.name)) + '</div><div style="min-width:0"><div class="cmp-card-name">' + escC(p.name) + '</div><div class="cmp-card-phone">' + (p.phone_raw ? escC(p.country_code || '+91') + ' ' : '') + escC(p.phone_raw || p.phone || '') + (p.email ? ' · ' + escC(p.email) : '') + '</div></div></div>' +
       '<span class="cmp-temp ' + tempClass + '">' + escC(p.temperature) + '</span></div>' +
       '<div class="cmp-card-courses">🎓 ' + escC(courses) + '</div>' +
       (tags ? '<div class="cmp-tagrow">' + tags + '</div>' : '') +
@@ -5301,13 +5347,7 @@ function cmpShowDailyWelcome() {
 
   // Revenue converted via Prospects this month (fee entries logged on any of this
   // counsellor's prospects), so the banner can speak to real numbers when there are any.
-  const monthKey = new Date().toISOString().slice(0, 7);
-  let revenueThisMonth = 0;
-  cmpProspects.forEach(function(p) {
-    (p.fee_entries || []).forEach(function(f) {
-      if (f && f.date && f.date.slice(0, 7) === monthKey) revenueThisMonth += Number(f.amount) || 0;
-    });
-  });
+  const revenueThisMonth = cmpConvertedThisMonth();
 
   let msg;
   if (dueToday > 0) {

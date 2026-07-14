@@ -691,7 +691,14 @@ window.gasGet = (function () {
       }
     }
     
-    var feeStatus = allPaid ? 'Paid' : (hasOverdue ? 'Overdue' : (collected > 0 ? 'Partial' : 'Pending'));
+    // allPaid only means "every counted installment is individually flagged Paid=Y" — it
+    // says nothing about whether those installments' amounts actually add up to what's
+    // owed. A stale/uncorrected course fee (e.g. before the JewelPad Design→Online fix
+    // was re-saved) could have every installment marked paid while still leaving real
+    // money outstanding, and used to show as "Paid" regardless — exactly backwards.
+    // "Paid" now also requires outstanding to actually be ~0.
+    var trulyPaid = allPaid && outstanding <= 1;
+    var feeStatus = trulyPaid ? 'Paid' : (hasOverdue ? 'Overdue' : (collected > 0 ? 'Partial' : 'Pending'));
 
     if (!isJson && outstanding > 0 && r.payment_date && r.payment_date < todayStr) {
       feeStatus = 'Overdue';

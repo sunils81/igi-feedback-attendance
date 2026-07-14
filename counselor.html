@@ -5578,7 +5578,18 @@ function loadFeeOverview(onDone) {
   let records = [];
   function finish() {
     if (!studentsDone || !recordsDone) return;
-    feeStudentsByBatch[batch] = students;
+    // Cache the SAME merged list (enrolled roster + "orphan"/multi-batch students — anyone
+    // with a fee record for this batch but no matching enrollment row) that renderFeeOverview
+    // displays below. Previously this only cached the enrolled roster, so openFeeForm's
+    // lookup-by-enrollmentNo could never find an orphan row, and clicking "Update Fee"/"Add
+    // Fee" on one (e.g. a student added to two batches for a combined course like GG =
+    // DG + CSG) always failed with "Select a batch and student first" even though the row
+    // was right there on screen.
+    const enrolledIds = new Set(students.map(s => String(s.enrollmentNo).toUpperCase()));
+    const orphanStudents = records
+      .filter(r => !enrolledIds.has(String(r.studentId).toUpperCase()))
+      .map(r => ({ enrollmentNo: r.studentId, name: r.studentName || ('Student #' + r.studentId), isOrphan: true }));
+    feeStudentsByBatch[batch] = students.concat(orphanStudents);
     feeRecordsByStudent = {};
     records.forEach(r => feeRecordsByStudent[String(r.studentId).toUpperCase()] = r);
     renderFeeOverview(batch, students, records);

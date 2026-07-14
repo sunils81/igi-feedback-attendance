@@ -5681,7 +5681,11 @@ let allInvoiceRecords = null;
 function loadAllInvoices(force) {
   if (allInvoiceRecords && !force) { renderInvoicesTab(); return; }
   document.getElementById('inv-list').innerHTML = emptyState('🧾', 'Loading invoices…', 'Pulling every fee record across every batch — this only fetches once per visit.');
-  gasGet({action:'getAllFeeRecords', centres: isAdmin ? '' : allowedCentres.join(',')}, function(e, d) {
+  // Pass counsellor name too — a record now shows up if its batch is in the counsellor's
+  // home centre(s) OR the counsellor personally recorded it (e.g. a sale contributed to a
+  // different centre, like Rohit's Mumbai student or Anuradha's other-centre contributions).
+  // Previously this was centre-only, so a counsellor's own cross-centre business never showed.
+  gasGet({action:'getAllFeeRecords', centres: isAdmin ? '' : allowedCentres.join(','), counsellor: isAdmin ? '' : (counselorName || '')}, function(e, d) {
     if (e || !d || !d.records) {
       document.getElementById('inv-list').innerHTML = emptyState('⚠️', 'Could not load invoices', 'Please try Refresh.');
       return;

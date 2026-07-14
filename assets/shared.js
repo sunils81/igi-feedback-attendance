@@ -1609,6 +1609,12 @@ window.gasGet = (function () {
     var centresFilter = (p.centres && String(p.centres).trim())
       ? String(p.centres).split(',').map(function (c) { return c.trim(); }).filter(Boolean)
       : null;
+    // A record also passes if the counsellor personally recorded it (student_fees.recorded_by),
+    // even when its batch belongs to a different centre — e.g. Rohit's Mumbai student, or
+    // Anuradha's "other centre contribution" sales. Without this, a counsellor's own
+    // cross-centre business silently never appeared on their Invoices tab, since it was
+    // filtered purely by whether the BATCH's centre was in their home centre list.
+    var counsellorName = (p.counsellor && String(p.counsellor).trim()) || null;
     var students, batches;
     var n = 0;
     function finish() {
@@ -1622,9 +1628,12 @@ window.gasGet = (function () {
       }
       GET('student_fees', 'order=created_at.asc', function (e, rows) {
         if (e) { cb(null, { records: [] }); return; }
-        var filtered = allowedBatchCodes
-          ? (rows || []).filter(function (r) { return allowedBatchCodes[r.batch_code]; })
-          : (rows || []);
+        var filtered = (!allowedBatchCodes && !counsellorName)
+          ? (rows || [])
+          : (rows || []).filter(function (r) {
+              return (allowedBatchCodes && allowedBatchCodes[r.batch_code]) ||
+                     (counsellorName && r.recorded_by === counsellorName);
+            });
         cb(null, { records: filtered.map(function (r) {
           return feeRecordDTO(parseFeeRow(r, students, batches));
         }) });

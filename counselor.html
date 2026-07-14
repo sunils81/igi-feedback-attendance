@@ -16202,6 +16202,7 @@ function openEnrollModal(monthKey, centre, counsellor) {
   document.getElementById('enroll-selected-chip').style.display = 'none';
   document.getElementById('enroll-new-student-toggle').style.display = 'block';
   document.getElementById('enroll-new-student-form').style.display = 'none';
+  document.getElementById('enroll-ns-student-id').value = '';
   document.getElementById('enroll-ns-name').value = '';
   document.getElementById('enroll-ns-mobile').value = '';
   document.getElementById('enroll-ns-mobile-code-other').value = '';
@@ -16349,7 +16350,16 @@ function enrollToggleNewStudent() {
     _enrollState.isNewStudent    = true;
     _enrollState.selectedStudent = null;
     document.getElementById('enroll-selected-chip').style.display = 'none';
-    document.getElementById('enroll-ns-name').focus();
+    // Pre-fill with the next available ID as a suggestion only — the counsellor can
+    // type a different Student ID (e.g. to match a batch/enrollment scheme, or one
+    // already issued offline). This no longer silently overrides whatever they enter.
+    var idEl = document.getElementById('enroll-ns-student-id');
+    if (idEl && !idEl.value) {
+      gasGet({ action: 'getNextEnrollment' }, function(e, d) {
+        if (!e && d && d.enrollmentNo && !idEl.value) idEl.value = d.enrollmentNo;
+      });
+    }
+    document.getElementById('enroll-ns-student-id').focus();
   }
 }
 
@@ -16516,9 +16526,14 @@ function enrollSave() {
   // Resolve student
   var studentId = null, studentName = null, studentMobile = '';
   if (st.isNewStudent) {
+    studentId     = (document.getElementById('enroll-ns-student-id').value || '').trim().toUpperCase();
     studentName   = (document.getElementById('enroll-ns-name').value || '').trim();
     studentMobile = buildMobileForSave('enroll-ns');
     var studentEmail = (document.getElementById('enroll-ns-email').value || '').trim();
+    if (!studentId) {
+      err.textContent = 'Enter a Student ID for the new student.';
+      err.classList.add('show'); return;
+    }
     if (!studentName || !studentMobile) {
       err.textContent = 'Enter student name and mobile number.';
       err.classList.add('show'); return;
@@ -16598,12 +16613,17 @@ function enrollSave() {
     });
   }
 
-  // Step B: create student if needed
+  // Step B: create student if needed (studentId comes from the counsellor-entered
+  // "Student ID *" field, validated in enrollSave() above — no longer auto-generated
+  // here). Guard against reusing an ID that's already assigned, since addStudent's
+  // upsert-on-conflict would otherwise silently merge into that existing record.
   function stepStudent(next) {
     if (!st.isNewStudent) { next(null); return; }
-    gasGet({ action: 'getNextEnrollment' }, function(e, d) {
-      if (e || !d || !d.enrollmentNo) { next('Could not get enrollment number. Try again.'); return; }
-      studentId = d.enrollmentNo;
+    gasGet({ action: 'getStudentProfile', studentId: studentId }, function(eCheck, dCheck) {
+      if (!eCheck && dCheck && dCheck.status === 'ok') {
+        next('Student ID ' + studentId + ' is already in use. Enter a different ID.');
+        return;
+      }
       gasGet({
         action: 'addStudent', enrollmentNo: studentId, name: studentName,
         mobile: studentMobile, mobileLast4: studentMobile.slice(-4),
@@ -16963,6 +16983,7 @@ function enrollSave() {
         <div id="enroll-new-student-toggle" class="enroll-create-link" style="display:none" onclick="enrollToggleNewStudent()">+ Not found? Create new student</div>
         <div id="enroll-new-student-form" class="enroll-new-form" style="display:none">
           <div class="enroll-grid3">
+            <div class="enroll-field"><label>Student ID *</label><input id="enroll-ns-student-id" type="text" placeholder="e.g. 7130" style="text-transform:uppercase"></div>
             <div class="enroll-field"><label>Full Name *</label><input id="enroll-ns-name" type="text" placeholder="e.g. Priya Sharma"></div>
             <div class="enroll-field"><label>Country *</label><select id="enroll-ns-country" onchange="onCountryFieldChange('enroll-ns')"></select></div>
             <div class="enroll-field" id="enroll-ns-state-india-wrap"><label>State</label><select id="enroll-ns-state"></select></div>

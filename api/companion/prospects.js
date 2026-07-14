@@ -90,9 +90,9 @@ async function handleList(req, res) {
 // ── POST op=save: create or update ───────────────────────────
 async function handleSave(req, res, body) {
   const {
-    id, name, phone, email, course_interest, temperature, concern_tags, concern_note,
+    id, name, phone, country_code, email, course_interest, course_mode, temperature, concern_tags, concern_note,
     status, intake_cycle, next_follow_up, last_contacted, centre, owner_counselor,
-    force, feeEntry, source, conflictId
+    reminder_enabled, force, feeEntry, source, conflictId
   } = body;
 
   if (!owner_counselor) return res.status(400).json({ status: 'error', reason: 'owner_counselor is required' });
@@ -104,8 +104,10 @@ async function handleSave(req, res, body) {
     const patch = { updated_at: new Date().toISOString() };
     if (name !== undefined) patch.name = name;
     if (phone !== undefined) { patch.phone = phoneNorm; patch.phone_raw = phone; }
+    if (country_code !== undefined) patch.country_code = country_code;
     if (email !== undefined) patch.email = emailNorm;
     if (course_interest !== undefined) patch.course_interest = course_interest;
+    if (course_mode !== undefined) patch.course_mode = course_mode;
     if (temperature !== undefined) patch.temperature = temperature;
     if (concern_tags !== undefined) patch.concern_tags = concern_tags;
     if (concern_note !== undefined) patch.concern_note = concern_note;
@@ -114,6 +116,7 @@ async function handleSave(req, res, body) {
     if (next_follow_up !== undefined) patch.next_follow_up = next_follow_up || null;
     if (last_contacted !== undefined) patch.last_contacted = last_contacted || null;
     if (centre !== undefined) patch.centre = centre;
+    if (reminder_enabled !== undefined) patch.reminder_enabled = !!reminder_enabled;
 
     if (feeEntry && feeEntry.amount) {
       const existing = await supaGet('companion_prospects', `id=eq.${id}&select=fee_entries`);
@@ -143,8 +146,10 @@ async function handleSave(req, res, body) {
   const newRow = {
     name,
     phone: phoneNorm, phone_raw: phone || '',
+    country_code: country_code || '+91',
     email: emailNorm,
     course_interest: course_interest || [],
+    course_mode: course_mode || '',
     temperature: temperature || 'Warm',
     concern_tags: concern_tags || [],
     concern_note: concern_note || '',
@@ -154,15 +159,18 @@ async function handleSave(req, res, body) {
     last_contacted: last_contacted || null,
     centre: centre || '',
     owner_counselor,
+    reminder_enabled: !!reminder_enabled,
     fee_entries: []
   };
 
   if (match && match.owner_counselor === owner_counselor) {
     const updated = await supaPatch('companion_prospects', `id=eq.${match.id}`, {
       course_interest: newRow.course_interest.length ? newRow.course_interest : match.course_interest,
+      course_mode: newRow.course_mode || match.course_mode,
       temperature: newRow.temperature,
       concern_tags: newRow.concern_tags.length ? newRow.concern_tags : match.concern_tags,
       concern_note: newRow.concern_note || match.concern_note,
+      reminder_enabled: newRow.reminder_enabled,
       updated_at: new Date().toISOString()
     });
     return res.status(200).json({ status: 'ok', prospect: updated[0], note: 'Matched your own existing record — updated instead of duplicating.' });

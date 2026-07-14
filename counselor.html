@@ -1657,6 +1657,7 @@
     <button class="tab" onclick="switchTab('t-students')">👥 Students</button>
     <button class="tab" onclick="switchTab('t-alumni')">🎓 Alumni</button>
     <button class="tab" id="tab-crm" onclick="switchTab('t-crm')">🎯 CRM <span id="crm-reminder-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
+    <button class="tab" id="tab-notebook" onclick="switchTab('t-notebook')">📓 My Notebook</button>
     <button class="tab" id="tab-prospects" onclick="switchTab('t-prospects')">🧭 Prospects <span id="prospects-due-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" onclick="switchTab('t-mybatches')">🗂 My Batches</button>
     <button class="tab" onclick="switchTab('t-reports')">📊 Reports</button>
@@ -2869,10 +2870,10 @@
     .cmp-avatar{width:34px;height:34px;border-radius:50%;background:var(--navy);color:var(--gold-light);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0}
     .cmp-search{flex:1;min-width:180px;padding:8px 12px;border:1.5px solid var(--border);border-radius:20px;font-size:12px;font-family:inherit;outline:none}
     .cmp-search:focus{border-color:var(--gold)}
-    .cmp-subnav{display:flex;gap:6px;margin-bottom:16px;border-bottom:1.5px solid var(--border)}
-    .cmp-subtab{padding:9px 18px;font-size:13px;font-weight:700;color:var(--muted);background:none;border:none;border-bottom:3px solid transparent;cursor:pointer;margin-bottom:-2px}
-    .cmp-subtab.active{color:var(--navy);border-bottom-color:var(--gold)}
     .cmp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+    .cmp-proverb{margin:0 0 14px;font-family:"Noto Serif","Georgia",serif;font-style:italic;font-size:13px;color:var(--navy);background:var(--gold-pale);border-left:3px solid var(--gold);border-radius:0 8px 8px 0;padding:9px 14px}
+    .cmp-paper{background-color:#FBF9F3;background-image:linear-gradient(rgba(201,168,76,0.16) 1px, transparent 1px);background-size:100% 30px;background-position:0 44px;padding:18px;border-radius:14px;position:relative}
+    .cmp-paper::before{content:'';position:absolute;top:0;bottom:0;left:56px;width:1.5px;background:rgba(216,90,90,0.28);pointer-events:none}
     .cmp-card{background:var(--white);border:1.5px solid var(--border);border-radius:14px;padding:16px;box-shadow:0 2px 10px rgba(10,20,40,.04);transition:box-shadow .15s,transform .15s;cursor:pointer;display:flex;flex-direction:column;gap:8px}
     .cmp-card:hover{box-shadow:0 8px 24px rgba(10,20,40,.09);transform:translateY(-1px)}
     .cmp-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
@@ -2971,19 +2972,14 @@
     .cmp-note-toolbar span:hover{color:var(--gold)}
   </style>
 
-  <div id="t-prospects" class="tab-content">
+  <div id="t-prospects" class="tab-content cmp-paper">
 
-    <div class="cmp-subnav">
-      <button class="cmp-subtab active" id="cmp-subtab-prospects" onclick="cmpSwitchSubTab('prospects')">📇 Prospects</button>
-      <button class="cmp-subtab" id="cmp-subtab-notes" onclick="cmpSwitchSubTab('notes')">📝 Notes</button>
-    </div>
-
-    <!-- PROSPECTS SUB-VIEW -->
     <div id="cmp-view-prospects">
       <div class="card" style="margin-bottom:14px">
         <div class="section-tag">Tentative &amp; Lukewarm Leads</div>
         <h2 style="margin-bottom:2px">Prospects</h2>
         <p class="sub" style="margin-top:0">Your personal tracking space — separate from the CRM pipeline, for leads that aren't ready for a hard stage yet.</p>
+        <p class="cmp-proverb" id="cmp-proverb"></p>
         <div class="cmp-kpi-strip" id="cmp-kpi-strip">
           <div class="cmp-kpi-tile total"><div class="cmp-kpi-label">Total Prospects</div><div class="cmp-kpi-value" id="cmp-kpi-total">0</div></div>
           <div class="cmp-kpi-tile hot"><div class="cmp-kpi-label">Hot Leads</div><div class="cmp-kpi-value" id="cmp-kpi-hot">0</div></div>
@@ -3009,33 +3005,32 @@
       <div id="cmp-prospects-grid" class="cmp-grid"></div>
     </div>
 
-    <!-- NOTES SUB-VIEW -->
-    <div id="cmp-view-notes" style="display:none">
-      <div class="card" style="margin-bottom:14px">
-        <div class="section-tag">Private &amp; Personal</div>
-        <h2 style="margin-bottom:2px">Notes</h2>
-        <p class="sub" style="margin-top:0">Your working notebook — quick capture, checklists, and day-by-day history. Always private to you.</p>
-        <div class="cmp-notebook-wrap">
-          <textarea class="cmp-quicknote" id="cmp-quicknote-input" placeholder="Write a note… start a line with - for a bullet, [] for a checklist item" rows="5"></textarea>
-          <div class="cmp-note-toolbar">
-            <span onclick="cmpInsertNotePrefix('- ')">• Bullet</span>
-            <span onclick="cmpInsertNotePrefix('[] ')">☐ Checklist</span>
-            <span style="margin-left:auto;color:var(--muted)">Enter to save · Shift+Enter for a new line</span>
-          </div>
-        </div>
-        <div class="cmp-toolbar" style="margin-top:10px">
-          <div class="cmp-month-nav">
-            <button type="button" onclick="cmpChangeNotesMonth(-1)">‹</button>
-            <span id="cmp-notes-month-label"></span>
-            <button type="button" onclick="cmpChangeNotesMonth(1)">›</button>
-          </div>
-          <input type="text" class="cmp-search" id="cmp-note-search" placeholder="Search notes…" oninput="cmpRenderNotes()">
+  </div><!-- /t-prospects -->
+
+  <div id="t-notebook" class="tab-content cmp-paper">
+    <div class="card" style="margin-bottom:14px">
+      <div class="section-tag">Private &amp; Personal</div>
+      <h2 style="margin-bottom:2px">My Notebook</h2>
+      <p class="sub" style="margin-top:0">Your working notebook — quick capture, checklists, and day-by-day history. Always private to you.</p>
+      <div class="cmp-notebook-wrap">
+        <textarea class="cmp-quicknote" id="cmp-quicknote-input" placeholder="Write a note… start a line with - for a bullet, [] for a checklist item" rows="5"></textarea>
+        <div class="cmp-note-toolbar">
+          <span onclick="cmpInsertNotePrefix('- ')">• Bullet</span>
+          <span onclick="cmpInsertNotePrefix('[] ')">☐ Checklist</span>
+          <span style="margin-left:auto;color:var(--muted)">Enter to save · Shift+Enter for a new line</span>
         </div>
       </div>
-      <div id="cmp-notes-list"></div>
+      <div class="cmp-toolbar" style="margin-top:10px">
+        <div class="cmp-month-nav">
+          <button type="button" onclick="cmpChangeNotesMonth(-1)">‹</button>
+          <span id="cmp-notes-month-label"></span>
+          <button type="button" onclick="cmpChangeNotesMonth(1)">›</button>
+        </div>
+        <input type="text" class="cmp-search" id="cmp-note-search" placeholder="Search notes…" oninput="cmpRenderNotes()">
+      </div>
     </div>
-
-  </div><!-- /t-prospects -->
+    <div id="cmp-notes-list"></div>
+  </div><!-- /t-notebook -->
 
   <!-- Add / Edit Prospect Modal -->
   <div class="cmp-modal-overlay" id="cmp-prospect-modal">
@@ -4762,7 +4757,10 @@ function switchTab(id) {
     }
   }
   if (id === 't-prospects') {
-    loadCompanionData();
+    cmpLoadProspects();
+  }
+  if (id === 't-notebook') {
+    cmpLoadNotes();
   }
 }
 
@@ -4789,17 +4787,6 @@ function cmpToast(msg, isError) {
   setTimeout(function() { t.style.opacity = '0'; t.style.transition = 'opacity .3s'; setTimeout(function() { t.remove(); }, 300); }, 3000);
 }
 
-function cmpSwitchSubTab(which) {
-  document.getElementById('cmp-subtab-prospects').classList.toggle('active', which === 'prospects');
-  document.getElementById('cmp-subtab-notes').classList.toggle('active', which === 'notes');
-  document.getElementById('cmp-view-prospects').style.display = which === 'prospects' ? 'block' : 'none';
-  document.getElementById('cmp-view-notes').style.display = which === 'notes' ? 'block' : 'none';
-}
-
-function loadCompanionData() {
-  cmpLoadProspects();
-  cmpLoadNotes();
-}
 
 async function cmpLoadProspects() {
   const grid = document.getElementById('cmp-prospects-grid');
@@ -4854,7 +4841,23 @@ function cmpConvertedThisMonth() {
   return total;
 }
 
+const CMP_SALES_PROVERBS = [
+  { text: 'The fortune is in the follow-up.', author: 'Sales proverb' },
+  { text: 'Prospecting is not about making a sale — it’s about making a connection.', author: 'Sales wisdom' },
+  { text: 'Every “no” gets you one step closer to a “yes.”', author: 'Sales proverb' },
+  { text: 'You don’t have to be great to start, but you have to start to be great.', author: 'Zig Ziglar' },
+  { text: 'Stop selling. Start helping.', author: 'Zig Ziglar' },
+  { text: 'The best salespeople are the best listeners.', author: 'Sales wisdom' }
+];
+function cmpRenderProverb() {
+  const el = document.getElementById('cmp-proverb');
+  if (!el) return;
+  const q = CMP_SALES_PROVERBS[new Date().getDate() % CMP_SALES_PROVERBS.length];
+  el.textContent = '“' + q.text + '” — ' + q.author;
+}
+
 function cmpRenderKpiStrip() {
+  cmpRenderProverb();
   const totalEl = document.getElementById('cmp-kpi-total');
   if (!totalEl) return;
   const active = cmpProspects.filter(function(p) { return !['Converted-Partial', 'Converted-Full', 'Lost'].includes(p.status); });

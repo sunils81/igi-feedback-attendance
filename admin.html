@@ -4235,7 +4235,7 @@ async function cmpAdminLoadOverview() {
   if (temperature) qs += '&temperature=' + encodeURIComponent(temperature);
   if (status) qs += '&status=' + encodeURIComponent(status);
   try {
-    const r = await fetch('/api/companion/prospects-list?' + qs);
+    const r = await fetch('/api/companion/prospects?' + qs);
     const d = await r.json();
     if (d.status !== 'ok') throw new Error(d.reason || 'Failed to load');
     cmpAdminProspects = d.prospects;
@@ -4299,9 +4299,9 @@ async function cmpAdminBulkReassign() {
   if (!cmpAdminSelected.size) { cmpAdminToast('Select at least one prospect', true); return; }
   if (!confirm('Reassign ' + cmpAdminSelected.size + ' prospect(s) to ' + newOwner + '?')) return;
   try {
-    const r = await fetch('/api/companion/admin-reassign', {
+    const r = await fetch('/api/companion/admin', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prospectIds: Array.from(cmpAdminSelected), newOwner: newOwner, reassignedBy: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin') })
+      body: JSON.stringify({ op: 'reassign', prospectIds: Array.from(cmpAdminSelected), newOwner: newOwner, reassignedBy: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin') })
     });
     const d = await r.json();
     if (d.status !== 'ok') throw new Error(d.reason || 'Failed');
@@ -4316,7 +4316,7 @@ async function cmpAdminLoadConflicts() {
   const list = document.getElementById('cmpa-conflicts-list');
   list.innerHTML = '<div style="color:var(--muted);font-size:12.5px;padding:8px 0">Loading…</div>';
   try {
-    const r = await fetch('/api/companion/admin-conflicts?resolution=pending');
+    const r = await fetch('/api/companion/admin?view=conflicts&resolution=pending');
     const d = await r.json();
     if (d.status !== 'ok') throw new Error(d.reason || 'Failed to load');
     cmpAdminConflicts = d.conflicts;
@@ -4361,9 +4361,9 @@ async function cmpAdminResolveConflict(conflictId, action) {
   const ownerSel = document.getElementById('cmpa-conflict-owner-' + conflictId);
   const newOwner = ownerSel ? ownerSel.value : '';
   try {
-    const r = await fetch('/api/companion/admin-conflicts', {
+    const r = await fetch('/api/companion/admin', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conflictId: conflictId, action: action, newOwner: newOwner, adminName: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin') })
+      body: JSON.stringify({ op: 'resolve-conflict', conflictId: conflictId, action: action, newOwner: newOwner, adminName: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin') })
     });
     const d = await r.json();
     if (d.status !== 'ok') throw new Error(d.reason || 'Failed');
@@ -4377,7 +4377,7 @@ async function cmpAdminResolveConflict(conflictId, action) {
 
 async function cmpAdminLoadAnalytics() {
   try {
-    const r = await fetch('/api/companion/admin-analytics');
+    const r = await fetch('/api/companion/admin?view=analytics');
     const d = await r.json();
     if (d.status !== 'ok') throw new Error(d.reason || 'Failed to load');
     cmpAdminRenderAnalytics(d);

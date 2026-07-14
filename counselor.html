@@ -4626,7 +4626,7 @@ async function cmpLoadProspects() {
   const grid = document.getElementById('cmp-prospects-grid');
   grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted)">Loading…</div>';
   try {
-    const r = await fetch('/api/companion/prospects-list?scope=mine&counselorName=' + encodeURIComponent(counselorName));
+    const r = await fetch('/api/companion/prospects?scope=mine&counselorName=' + encodeURIComponent(counselorName));
     const d = await r.json();
     if (d.status !== 'ok') throw new Error(d.reason || 'Failed to load');
     cmpProspects = d.prospects;
@@ -4762,9 +4762,10 @@ function cmpGatherProspectForm() {
 async function cmpSaveProspect(forceFlag, conflictId) {
   const payload = cmpGatherProspectForm();
   if (!payload.name) { cmpToast('Name is required', true); return; }
+  payload.op = 'save';
   if (forceFlag) { payload.force = true; payload.conflictId = conflictId; }
   try {
-    const r = await fetch('/api/companion/prospects-save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const r = await fetch('/api/companion/prospects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const d = await r.json();
     if (d.status === 'conflict') { cmpOpenConflictModal(d); return; }
     if (d.status !== 'ok') throw new Error(d.reason || 'Save failed');
@@ -4796,7 +4797,7 @@ async function cmpResolveConflict(action) {
     return;
   }
   try {
-    const r = await fetch('/api/companion/prospects-claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conflictId: conflictId, action: action, actorName: counselorName }) });
+    const r = await fetch('/api/companion/prospects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'claim', conflictId: conflictId, action: action, actorName: counselorName }) });
     const d = await r.json();
     if (d.status !== 'ok') throw new Error(d.reason || 'Failed');
     cmpToast(action === 'view_only' ? 'Marked view-only' : 'Ownership transfer requested');
@@ -4821,7 +4822,7 @@ async function cmpSaveFeeEntry() {
   if (!id) { cmpToast('Save the prospect first', true); return; }
   if (!amount) { cmpToast('Enter an amount', true); return; }
   try {
-    const r = await fetch('/api/companion/prospects-save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, owner_counselor: counselorName, feeEntry: { amount: amount, date: date, type: type } }) });
+    const r = await fetch('/api/companion/prospects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'save', id: id, owner_counselor: counselorName, feeEntry: { amount: amount, date: date, type: type } }) });
     const d = await r.json();
     if (d.status !== 'ok') throw new Error(d.reason || 'Failed');
     cmpToast('Converted — ' + (type === 'full' ? 'Full' : 'Partial'));
@@ -4969,7 +4970,7 @@ async function cmpHandleCsvFile(evt) {
   const rows = cmpParseCsv(text);
   if (!rows.length) { cmpToast('No valid rows found in CSV', true); return; }
   try {
-    const r = await fetch('/api/companion/prospects-import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'preview', rows: rows, owner_counselor: counselorName }) });
+    const r = await fetch('/api/companion/prospects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'import', mode: 'preview', rows: rows, owner_counselor: counselorName }) });
     const d = await r.json();
     if (d.status !== 'ok') throw new Error(d.reason);
     cmpImportPreviewRows = d.results;
@@ -5005,7 +5006,7 @@ async function cmpCommitImport() {
     return { row: r.row, decision: r.rowStatus === 'conflict' ? (r.decision || 'skip') : (r.rowStatus === 'own_duplicate' ? 'skip' : 'create') };
   });
   try {
-    const r = await fetch('/api/companion/prospects-import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'commit', rows: payload, owner_counselor: counselorName, centre: (allowedCentres && allowedCentres[0]) || '' }) });
+    const r = await fetch('/api/companion/prospects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'import', mode: 'commit', rows: payload, owner_counselor: counselorName, centre: (allowedCentres && allowedCentres[0]) || '' }) });
     const d = await r.json();
     if (d.status !== 'ok') throw new Error(d.reason);
     document.getElementById('cmp-import-step2').style.display = 'none';

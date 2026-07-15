@@ -1,9 +1,14 @@
 // /api/companion/notes.js
 // Vercel serverless — Notes tab of the Prospects & Notes Companion.
 // GET    ?counselorName=&search=&linkedProspectId=   — list, pinned first
-// POST   { text, owner_counselor, linked_prospect_id?, pinned? }   — create
-// PATCH  { id, text?, pinned?, linked_prospect_id? }               — update
+// POST   { text, owner_counselor, linked_prospect_id?, pinned?, reminder_at? }   — create
+// PATCH  { id, text?, pinned?, linked_prospect_id?, reminder_at? }               — update
 // DELETE { id }                                                    — delete
+//
+// reminder_at (ISO timestamp, nullable) is a one-time reminder for a notebook note —
+// surfaced as a due/overdue badge on the note card and an optional desktop notification
+// (see cmpCheckReminders in counselor.html). Pass null/omit to leave unset, or PATCH with
+// reminder_at:null to clear an existing reminder.
 //
 // Notes are private to their owner by default — every query here is owner-scoped
 // and there is intentionally no "scope=admin" mode, per the Plan of Action.
@@ -60,25 +65,27 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { text, owner_counselor, linked_prospect_id, pinned } = req.body || {};
+      const { text, owner_counselor, linked_prospect_id, pinned, reminder_at } = req.body || {};
       if (!text || !text.trim()) return res.status(400).json({ status: 'error', reason: 'text is required' });
       if (!owner_counselor) return res.status(400).json({ status: 'error', reason: 'owner_counselor is required' });
       const created = await supaPost('companion_notes', {
         text: text.trim(),
         owner_counselor,
         linked_prospect_id: linked_prospect_id || null,
-        pinned: !!pinned
+        pinned: !!pinned,
+        reminder_at: reminder_at || null
       });
       return res.status(200).json({ status: 'ok', note: created[0] });
     }
 
     if (req.method === 'PATCH') {
-      const { id, text, pinned, linked_prospect_id } = req.body || {};
+      const { id, text, pinned, linked_prospect_id, reminder_at } = req.body || {};
       if (!id) return res.status(400).json({ status: 'error', reason: 'id is required' });
       const patch = { updated_at: new Date().toISOString() };
       if (text !== undefined) patch.text = text;
       if (pinned !== undefined) patch.pinned = !!pinned;
       if (linked_prospect_id !== undefined) patch.linked_prospect_id = linked_prospect_id || null;
+      if (reminder_at !== undefined) patch.reminder_at = reminder_at || null;
       const updated = await supaPatch('companion_notes', `id=eq.${id}`, patch);
       return res.status(200).json({ status: 'ok', note: updated[0] });
     }

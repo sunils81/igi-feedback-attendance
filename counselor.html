@@ -2899,6 +2899,17 @@
       background-image:linear-gradient(rgba(201,168,76,0.18) 1px, transparent 1px);background-size:100% 30px;background-position:0 112px;background-repeat:repeat;}
     .cmp-notebook-page::before{content:'';position:absolute;top:112px;bottom:20px;left:34px;width:1.5px;background:rgba(216,90,90,0.3);pointer-events:none}
     .cmp-notebook-page-head{padding-bottom:6px}
+    .cmp-notebook-clock{position:absolute;top:20px;right:24px;text-align:right;font-family:"Plus Jakarta Sans",sans-serif}
+    .cmp-notebook-clock .cmp-notebook-time{font-size:15px;font-weight:700;color:var(--navy)}
+    .cmp-notebook-clock .cmp-notebook-date{font-size:11px;color:var(--muted)}
+    .cmp-reminder-picker{display:none;align-items:center;gap:8px;padding:6px 0 4px;font-size:12px}
+    .cmp-reminder-picker input[type="datetime-local"]{padding:5px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;outline:none}
+    .cmp-reminder-picker input[type="datetime-local"]:focus{border-color:var(--gold)}
+    .cmp-reminder-picker button{background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px}
+    .cmp-reminder-picker button:hover{color:#dc2626}
+    .cmp-reminder-tag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:#eef2ff;color:#3949ab;display:inline-flex;align-items:center;gap:4px}
+    .cmp-reminder-tag.due{background:#fde8e8;color:#c0362c}
+    .cmp-reminder-tag button{background:none;border:none;cursor:pointer;color:inherit;font-size:10px;padding:0;line-height:1}
     .cmp-quicknote{display:block;width:100%;min-height:120px;padding:6px 0;border:none;border-top:1.5px solid rgba(201,168,76,0.3);font-family:"Georgia",serif;font-size:14.5px;line-height:30px;outline:none;resize:vertical;box-sizing:border-box;color:var(--navy);background:transparent}
     .cmp-quicknote:focus{background:rgba(255,255,255,0.45)}
     .cmp-quicknote::placeholder{font-family:"Plus Jakarta Sans",sans-serif;font-style:italic;color:var(--muted)}
@@ -3007,14 +3018,24 @@
   <div id="t-notebook" class="tab-content">
     <div class="cmp-notebook-page">
       <div class="cmp-notebook-page-head">
+        <div class="cmp-notebook-clock" id="cmp-notebook-clock">
+          <div class="cmp-notebook-time" id="cmp-notebook-clock-time"></div>
+          <div class="cmp-notebook-date" id="cmp-notebook-clock-date"></div>
+        </div>
         <div class="section-tag">Private &amp; Personal</div>
         <h2 style="margin-bottom:2px">My Notebook</h2>
         <p class="sub" style="margin-top:0">Your working notebook — quick capture, checklists, and day-by-day history. Always private to you.</p>
       </div>
       <textarea class="cmp-quicknote" id="cmp-quicknote-input" placeholder="Write a note… start a line with - for a bullet, [] for a checklist item" rows="4"></textarea>
+      <div class="cmp-reminder-picker" id="cmp-reminder-picker">
+        <span>⏰ Remind me at</span>
+        <input type="datetime-local" id="cmp-reminder-input">
+        <button type="button" onclick="cmpClearReminderPicker()" title="Cancel reminder">✕</button>
+      </div>
       <div class="cmp-note-toolbar">
         <span onclick="cmpInsertNotePrefix('- ')">• Bullet</span>
         <span onclick="cmpInsertNotePrefix('[] ')">☐ Checklist</span>
+        <span onclick="cmpToggleReminderPicker()">⏰ Reminder</span>
         <span style="margin-left:auto;color:var(--muted)">Enter to save · Shift+Enter for a new line</span>
       </div>
       <div class="cmp-toolbar" style="margin-top:2px;margin-bottom:6px">
@@ -5181,6 +5202,7 @@ async function cmpLoadNotes() {
     if (d.status !== 'ok') throw new Error(d.reason);
     cmpNotes = d.notes;
     cmpRenderNotes();
+    if (typeof cmpCheckNoteReminders === 'function') cmpCheckNoteReminders();
   } catch (err) {
     const list = document.getElementById('cmp-notes-list');
     if (list) list.innerHTML = '<div style="text-align:center;padding:24px;color:#dc2626">Could not load notes — ' + escC(err.message) + '</div>';
@@ -5243,6 +5265,13 @@ function cmpNoteRowHtml(n) {
   const linked = n.linked_prospect_id ? cmpProspects.find(function(p) { return p.id === n.linked_prospect_id; }) : null;
   const spine = n.pinned ? 'var(--gold)' : '#d8dce2';
   const time = new Date(n.created_at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+  let reminderTag = '';
+  if (n.reminder_at) {
+    const due = new Date(n.reminder_at) <= new Date();
+    const label = new Date(n.reminder_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    reminderTag = '<span class="cmp-reminder-tag' + (due ? ' due' : '') + '" style="margin-top:6px;margin-right:6px">⏰ ' + (due ? 'Due — ' : '') + escC(label) +
+      '<button onclick="cmpClearNoteReminder(\'' + n.id + '\')" title="Clear reminder">✕</button></span>';
+  }
   return '<div class="cmp-notebook-row"><div class="cmp-notebook-spine" style="background:' + spine + '"></div>' +
     '<div class="cmp-notebook-card">' +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
@@ -5250,8 +5279,10 @@ function cmpNoteRowHtml(n) {
     '<span class="cmp-note-actions"><button onclick="cmpTogglePinNote(\'' + n.id + '\', ' + (!n.pinned) + ')" title="Pin">' + (n.pinned ? '📌' : '📍') + '</button><button onclick="cmpDeleteNote(\'' + n.id + '\')" title="Delete">🗑</button></span>' +
     '</div>' +
     '<div>' + cmpRenderNoteBody(n.id, n.text) + '</div>' +
+    '<div>' +
+    reminderTag +
     (linked ? '<div class="cmp-tag" style="display:inline-block;margin-top:6px">🔗 ' + escC(linked.name) + '</div>' : '') +
-    '</div></div>';
+    '</div></div></div>';
 }
 
 function cmpRenderNotes() {
@@ -5302,19 +5333,53 @@ async function cmpAddQuickNote() {
   const input = document.getElementById('cmp-quicknote-input');
   const text = input.value.trim();
   if (!text) return;
+  const reminderInput = document.getElementById('cmp-reminder-input');
+  let reminderAt = null;
+  if (reminderInput && reminderInput.value) {
+    reminderAt = new Date(reminderInput.value).toISOString();
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission();
+  }
   input.value = '';
   try {
-    const r = await fetch('/api/companion/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text, owner_counselor: counselorName }) });
+    const r = await fetch('/api/companion/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text, owner_counselor: counselorName, reminder_at: reminderAt }) });
     const d = await r.json();
     if (d.status !== 'ok') throw new Error(d.reason);
+    cmpClearReminderPicker();
     cmpLoadNotes();
   } catch (err) { cmpToast('Could not save note — ' + err.message, true); }
+}
+function cmpToggleReminderPicker() {
+  const picker = document.getElementById('cmp-reminder-picker');
+  if (!picker) return;
+  const showing = picker.style.display === 'flex';
+  picker.style.display = showing ? 'none' : 'flex';
+  if (!showing) {
+    const input = document.getElementById('cmp-reminder-input');
+    if (input && !input.value) {
+      const soon = new Date(Date.now() + 60 * 60 * 1000); // default: an hour from now
+      soon.setMinutes(0, 0, 0);
+      input.value = new Date(soon.getTime() - soon.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    }
+    input && input.focus();
+  }
+}
+function cmpClearReminderPicker() {
+  const picker = document.getElementById('cmp-reminder-picker');
+  const input = document.getElementById('cmp-reminder-input');
+  if (picker) picker.style.display = 'none';
+  if (input) input.value = '';
 }
 async function cmpTogglePinNote(id, pinned) {
   try {
     await fetch('/api/companion/notes', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, pinned: pinned }) });
     cmpLoadNotes();
   } catch (err) { cmpToast('Could not update note', true); }
+}
+async function cmpClearNoteReminder(id) {
+  try {
+    await fetch('/api/companion/notes', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, reminder_at: null }) });
+    cmpLoadNotes();
+  } catch (err) { cmpToast('Could not clear reminder', true); }
 }
 async function cmpDeleteNote(id) {
   if (!confirm('Delete this note?')) return;
@@ -5323,6 +5388,18 @@ async function cmpDeleteNote(id) {
     cmpLoadNotes();
   } catch (err) { cmpToast('Could not delete note', true); }
 }
+
+// ── Live clock at the top of My Notebook ─────────────────────
+function cmpUpdateNotebookClock() {
+  const timeEl = document.getElementById('cmp-notebook-clock-time');
+  const dateEl = document.getElementById('cmp-notebook-clock-date');
+  if (!timeEl || !dateEl) return;
+  const now = new Date();
+  timeEl.textContent = now.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  dateEl.textContent = now.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+}
+setInterval(cmpUpdateNotebookClock, 1000);
+document.addEventListener('DOMContentLoaded', cmpUpdateNotebookClock);
 
 // ── Daily Welcome Banner ─────────────────────────────────────
 const CMP_INSPIRATIONAL_QUOTES = [
@@ -5500,6 +5577,27 @@ function cmpCheckReminders() {
   } catch (ex) {}
 }
 setInterval(function() { if (typeof cmpLoadProspects === 'function' && counselorName) cmpCheckReminders(); }, 5 * 60 * 1000);
+
+// Notebook note reminders — same in-app badge (always visible, see cmpNoteRowHtml) plus a
+// once-per-day desktop notification for any reminder_at that has passed and hasn't fired yet.
+function cmpCheckNoteReminders() {
+  if (!cmpNotes || !cmpNotes.length) return;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  if (cmpNotifiedToday._day !== todayStr) cmpNotifiedToday = { _day: todayStr };
+  const now = new Date();
+  const due = cmpNotes.filter(function(n) {
+    return n.reminder_at && new Date(n.reminder_at) <= now && !cmpNotifiedToday['note_' + n.id];
+  });
+  if (!due.length) return;
+  due.forEach(function(n) { cmpNotifiedToday['note_' + n.id] = true; });
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  try {
+    const body = due.length === 1 ? (due[0].text || '').slice(0, 120) : due.length + ' notebook reminders are due.';
+    const n = new Notification('Notebook reminder', { body: body });
+    n.onclick = function() { window.focus(); };
+  } catch (ex) {}
+}
+setInterval(function() { if (counselorName) cmpCheckNoteReminders(); }, 5 * 60 * 1000);
 
 // ── Revenue Dashboard Sub-tabs Helper functions ────────────────────
 var revenueViewType = 'single';

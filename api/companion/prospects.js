@@ -68,14 +68,43 @@ async function handleList(req, res) {
 
   const rows = await supaGet('companion_prospects', qs);
 
+  // Pull a lightweight note summary (count + most recent note) per prospect so
+  // the card grid can show "what's the latest" without a click-through fetch
+  // per lead. One batched query, not N+1.
+  const noteSummary = {};
+  const rowIds = rows.map(p => p.id).filter(Boolean);
+  if (rowIds.length) {
+    try {
+      const idsFilter = 'id=in.(' + rowIds.map(id => `"${id}"`).join(',') + ')';
+      const notes = await supaGet(
+        'companion_notes',
+        idsFilter.replace('id=', 'linked_prospect_id=') + '&select=linked_prospect_id,text,created_at&order=created_at.desc&limit=2000'
+      );
+      notes.forEach(n => {
+        const pid = n.linked_prospect_id;
+        if (!pid) return;
+        if (!noteSummary[pid]) noteSummary[pid] = { count: 1, latestText: n.text, latestAt: n.created_at };
+        else noteSummary[pid].count++;
+      });
+    } catch (noteErr) {
+      console.error('[companion/prospects] note summary failed', noteErr.message);
+    }
+  }
+
   const todayStr = new Date().toISOString().slice(0, 10);
   const goingColdCutoff = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
 
-  const enriched = rows.map(p => ({
-    ...p,
-    is_due_today: !!(p.next_follow_up && p.next_follow_up <= todayStr && !['Converted-Partial', 'Converted-Full', 'Lost'].includes(p.status)),
-    is_going_cold: !!((!p.last_contacted || p.last_contacted <= goingColdCutoff) && p.status === 'Active')
-  }));
+  const enriched = rows.map(p => {
+    const notes = noteSummary[p.id];
+    return {
+      ...p,
+      is_due_today: !!(p.next_follow_up && p.next_follow_up <= todayStr && !['Converted-Partial', 'Converted-Full', 'Lost'].includes(p.status)),
+      is_going_cold: !!((!p.last_contacted || p.last_contacted <= goingColdCutoff) && p.status === 'Active'),
+      note_count: notes ? notes.count : 0,
+      latest_note_text: notes ? notes.latestText : '',
+      latest_note_at: notes ? notes.latestAt : null
+    };
+  });
 
   const summary = {
     total: enriched.length,

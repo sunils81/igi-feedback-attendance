@@ -2916,6 +2916,11 @@
     .cmp-card-meta.due{color:#dc2626;font-weight:700}
     .cmp-card-meta.cold{color:#d97706;font-weight:700}
     .cmp-card-status{font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.04em}
+    .cmp-card-concern{font-size:11px;color:#7c5c10;background:#fffbeb;border-radius:6px;padding:4px 8px;line-height:1.4}
+    .cmp-card-noteline{font-size:11px;color:var(--navy);background:var(--bg);border-radius:6px;padding:4px 8px;line-height:1.4;display:flex;gap:4px;align-items:baseline}
+    .cmp-card-noteline.muted{color:var(--muted);font-style:italic;background:transparent;padding:0 2px}
+    .cmp-note-count{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:15px;padding:0 4px;border-radius:8px;background:var(--navy);color:#fff;font-size:9.5px;font-weight:800}
+    .cmp-note-time{color:var(--muted);white-space:nowrap}
     .cmp-note-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
     .cmp-note-card{background:#fffdf5;border:1.5px solid #f0e2b8;border-radius:10px;padding:14px;font-size:12.5px;color:var(--navy);display:flex;flex-direction:column;gap:8px;min-height:90px}
     .cmp-note-card.pinned{border-color:var(--gold);box-shadow:0 2px 10px rgba(184,144,0,.12)}
@@ -2957,6 +2962,16 @@
     .cmp-quicknote:focus{background:rgba(255,255,255,0.45)}
     .cmp-quicknote::placeholder{font-family:"Plus Jakarta Sans",sans-serif;font-style:italic;color:var(--muted)}
     .cmp-modal-overlay{display:none;position:fixed;inset:0;background:rgba(10,20,40,.55);z-index:9999;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
+    .cmp-detail-overlay{display:none;position:fixed;inset:0;background:rgba(10,20,40,.45);z-index:9998;justify-content:flex-end}
+    .cmp-detail-panel{background:var(--white);width:min(440px,100%);height:100%;box-shadow:-12px 0 32px rgba(10,20,40,.18);display:flex;flex-direction:column;animation:cmpSlideIn .18s ease-out}
+    @keyframes cmpSlideIn{from{transform:translateX(28px);opacity:.4}to{transform:translateX(0);opacity:1}}
+    .cmp-detail-head{display:flex;justify-content:space-between;align-items:flex-start;padding:18px 20px;border-bottom:1.5px solid var(--border);flex-shrink:0}
+    .cmp-detail-body{padding:16px 20px;overflow-y:auto;flex:1}
+    .cmp-detail-actions{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+    .cmp-detail-actions a{font-size:12px;font-weight:700;padding:7px 13px;border-radius:8px;border:1.5px solid var(--border);color:var(--navy);text-decoration:none;background:var(--bg)}
+    .cmp-detail-row{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:12.5px}
+    .cmp-detail-row .k{color:var(--muted)}
+    .cmp-detail-row .v{font-weight:600;color:var(--navy);text-align:right}
     .cmp-modal{background:var(--white);border-radius:14px;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;box-shadow:0 24px 64px rgba(10,20,40,.28)}
     .cmp-modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px 14px;border-bottom:1.5px solid var(--border);position:sticky;top:0;background:var(--white);border-radius:14px 14px 0 0}
     .cmp-modal-body{padding:18px 22px;display:flex;flex-direction:column;gap:12px}
@@ -3226,6 +3241,69 @@
         <button class="btn btn-gold" style="width:auto" onclick="cmpSaveProspect()">Save Prospect</button>
         <button class="btn btn-outline" style="width:auto" onclick="cmpCloseProspectModal()">Cancel</button>
         <button class="btn btn-outline" id="cmp-p-logfee-btn" style="width:auto;margin-left:auto;color:#0369a1;border-color:#0369a1;display:none" onclick="cmpOpenFeeModal()">💰 Log Fee / Convert</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Prospect Detail (read-only quick view) -->
+  <div class="cmp-detail-overlay" id="cmp-prospect-detail">
+    <div class="cmp-detail-panel">
+      <div class="cmp-detail-head">
+        <div style="display:flex;gap:12px;align-items:center;min-width:0">
+          <div class="cmp-avatar" id="cmp-d-avatar" style="width:42px;height:42px;font-size:15px;flex-shrink:0"></div>
+          <div style="min-width:0">
+            <div id="cmp-d-name" style="font-size:16px;font-weight:800;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+            <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
+              <span class="cmp-temp" id="cmp-d-temp"></span>
+              <span class="cmp-card-status" id="cmp-d-status"></span>
+            </div>
+          </div>
+        </div>
+        <button onclick="cmpCloseProspectDetail()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;flex-shrink:0">×</button>
+      </div>
+
+      <div class="cmp-detail-body">
+        <div class="cmp-detail-actions" id="cmp-d-actions"></div>
+
+        <div class="cmp-section">
+          <p class="cmp-section-label">Contact</p>
+          <div id="cmp-d-contact"></div>
+        </div>
+
+        <div class="cmp-section">
+          <p class="cmp-section-label">Interest</p>
+          <div id="cmp-d-interest"></div>
+        </div>
+
+        <div class="cmp-section" id="cmp-d-concern-section" style="display:none">
+          <p class="cmp-section-label">Concerns</p>
+          <div class="cmp-tagrow" id="cmp-d-concern-tags" style="margin-bottom:6px"></div>
+          <div id="cmp-d-concern-note" style="font-size:12.5px;color:var(--navy);font-style:italic"></div>
+        </div>
+
+        <div class="cmp-section">
+          <p class="cmp-section-label">Follow-up</p>
+          <div id="cmp-d-followup"></div>
+        </div>
+
+        <div class="cmp-section" id="cmp-d-fee-section" style="display:none">
+          <p class="cmp-section-label">Fees Logged</p>
+          <div id="cmp-d-fees"></div>
+        </div>
+
+        <div class="cmp-section">
+          <p class="cmp-section-label">Timeline <span style="font-weight:400;text-transform:none;letter-spacing:0">— notes linked to this lead</span></p>
+          <div style="display:flex;gap:6px;margin-bottom:10px">
+            <input type="text" id="cmp-d-timeline-input" placeholder="Log an update about this lead…" style="flex:1" onkeydown="if(event.key==='Enter'){cmpAddDetailTimelineNote();}">
+            <button class="btn btn-outline" style="width:auto" onclick="cmpAddDetailTimelineNote()">Add</button>
+          </div>
+          <div id="cmp-d-timeline-list"></div>
+        </div>
+      </div>
+
+      <div class="cmp-modal-foot">
+        <button class="btn btn-gold" style="width:auto" onclick="cmpEditFromDetail()">✎ Edit Prospect</button>
+        <button class="btn btn-outline" style="width:auto" onclick="cmpCloseProspectDetail()">Close</button>
       </div>
     </div>
   </div>
@@ -4913,6 +4991,24 @@ function cmpInitials(name) {
   return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
 }
 
+function cmpTruncate(text, len) {
+  if (!text) return '';
+  return text.length > len ? text.slice(0, len).trim() + '…' : text;
+}
+
+function cmpTimeAgo(iso) {
+  if (!iso) return '';
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return days + 'd ago';
+  return Math.floor(days / 30) + 'mo ago';
+}
+
 function cmpConvertedThisMonth() {
   const monthKey = new Date().toISOString().slice(0, 7);
   let total = 0;
@@ -4987,11 +5083,20 @@ function cmpRenderProspects() {
     else if (p.is_going_cold) { metaClass = 'cold'; metaText = '🥶 Going cold' + (p.last_contacted ? ' — last contact ' + p.last_contacted : ' — never contacted'); }
     else if (p.next_follow_up) { metaText = 'Next: ' + p.next_follow_up; }
     else { metaText = p.last_contacted ? 'Last contact: ' + p.last_contacted : 'No contact logged'; }
-    return '<div class="cmp-card" onclick="cmpOpenProspectModal(\'' + p.id + '\')">' +
+
+    const concernNoteLine = p.concern_note ? '<div class="cmp-card-concern">💬 ' + escC(cmpTruncate(p.concern_note, 80)) + '</div>' : '';
+    const noteCount = p.note_count || 0;
+    const noteLine = noteCount
+      ? '<div class="cmp-card-noteline"><span class="cmp-note-count">' + noteCount + '</span><span>' + escC(cmpTruncate(p.latest_note_text || '', 70)) + '</span>' + (p.latest_note_at ? '<span class="cmp-note-time">· ' + cmpTimeAgo(p.latest_note_at) + '</span>' : '') + '</div>'
+      : '<div class="cmp-card-noteline muted">No notes logged yet</div>';
+
+    return '<div class="cmp-card" onclick="cmpOpenProspectDetail(\'' + p.id + '\')">' +
       '<div class="cmp-card-top"><div style="display:flex;gap:10px;align-items:center;min-width:0"><div class="cmp-avatar">' + escC(cmpInitials(p.name)) + '</div><div style="min-width:0"><div class="cmp-card-name">' + escC(p.name) + '</div><div class="cmp-card-phone">' + (p.phone_raw ? escC(p.country_code || '+91') + ' ' : '') + escC(p.phone_raw || p.phone || '') + (p.email ? ' · ' + escC(p.email) : '') + '</div></div></div>' +
       '<span class="cmp-temp ' + tempClass + '">' + escC(p.temperature) + '</span></div>' +
       '<div class="cmp-card-courses">🎓 ' + escC(courses) + '</div>' +
       (tags ? '<div class="cmp-tagrow">' + tags + '</div>' : '') +
+      concernNoteLine +
+      noteLine +
       '<div class="cmp-card-meta ' + metaClass + '"><span>' + metaText + '</span><span class="cmp-card-status">' + escC(p.status) + '</span></div></div>';
   }).join('');
 }
@@ -5089,6 +5194,112 @@ function cmpOpenProspectModal(id) {
   modal.style.display = 'flex';
 }
 function cmpCloseProspectModal() { document.getElementById('cmp-prospect-modal').style.display = 'none'; document.getElementById('cmp-info-tooltip').classList.remove('show'); }
+
+// ── Read-only Prospect Detail (click a card → this, not the edit form) ──
+function cmpDRow(label, value) {
+  return '<div class="cmp-detail-row"><span class="k">' + label + '</span><span class="v">' + value + '</span></div>';
+}
+
+function cmpOpenProspectDetail(id) {
+  const p = cmpProspects.find(function(x) { return x.id === id; });
+  if (!p) return;
+  const panel = document.getElementById('cmp-prospect-detail');
+  panel.dataset.prospectId = id;
+
+  document.getElementById('cmp-d-avatar').textContent = cmpInitials(p.name);
+  document.getElementById('cmp-d-name').textContent = p.name;
+  const tempClass = p.temperature === 'Hot' ? 'cmp-temp-hot' : (p.temperature === 'Cold' ? 'cmp-temp-cold' : 'cmp-temp-warm');
+  const tempEl = document.getElementById('cmp-d-temp');
+  tempEl.className = 'cmp-temp ' + tempClass;
+  tempEl.textContent = p.temperature;
+  document.getElementById('cmp-d-status').textContent = p.status;
+
+  const phoneDisplay = p.phone_raw || p.phone || '';
+  const dialNumber = (p.country_code || '+91') + (p.phone || phoneDisplay.replace(/\D/g, ''));
+  let actions = '';
+  if (phoneDisplay) {
+    actions += '<a href="tel:' + escC(dialNumber) + '">📞 Call</a>';
+    actions += '<a href="https://wa.me/' + escC(dialNumber.replace(/[^\d]/g, '')) + '" target="_blank" rel="noopener">💬 WhatsApp</a>';
+  }
+  if (p.email) actions += '<a href="mailto:' + escC(p.email) + '">✉️ Email</a>';
+  document.getElementById('cmp-d-actions').innerHTML = actions || '<span style="font-size:11.5px;color:var(--muted)">No phone or email on file</span>';
+
+  document.getElementById('cmp-d-contact').innerHTML =
+    cmpDRow('Phone', escC((phoneDisplay ? (p.country_code || '+91') + ' ' + phoneDisplay : '—'))) +
+    cmpDRow('Email', escC(p.email || '—')) +
+    cmpDRow('Centre', escC(p.centre || '—'));
+
+  document.getElementById('cmp-d-interest').innerHTML =
+    cmpDRow('Courses', escC((p.course_interest || []).join(', ') || '—')) +
+    cmpDRow('Mode', escC(p.course_mode || '—')) +
+    (p.intake_cycle ? cmpDRow('Target Intake', escC(p.intake_cycle)) : '');
+
+  const concernSection = document.getElementById('cmp-d-concern-section');
+  if ((p.concern_tags && p.concern_tags.length) || p.concern_note) {
+    concernSection.style.display = 'block';
+    document.getElementById('cmp-d-concern-tags').innerHTML = (p.concern_tags || []).map(function(t) { return '<span class="cmp-tag">' + escC(t) + '</span>'; }).join('');
+    document.getElementById('cmp-d-concern-note').textContent = p.concern_note || '';
+  } else {
+    concernSection.style.display = 'none';
+  }
+
+  document.getElementById('cmp-d-followup').innerHTML =
+    cmpDRow('Next Follow-up', escC(p.next_follow_up || '—')) +
+    cmpDRow('Last Contacted', escC(p.last_contacted || 'Never')) +
+    cmpDRow('Reminder', p.reminder_enabled ? 'On 🔔' : 'Off');
+
+  const feeSection = document.getElementById('cmp-d-fee-section');
+  if (p.fee_entries && p.fee_entries.length) {
+    feeSection.style.display = 'block';
+    document.getElementById('cmp-d-fees').innerHTML = p.fee_entries.map(function(f) {
+      return cmpDRow((f.type === 'full' ? 'Full Fee' : 'Token') + ' · ' + escC(f.date || ''), '₹' + (Number(f.amount) || 0).toLocaleString('en-IN'));
+    }).join('');
+  } else {
+    feeSection.style.display = 'none';
+  }
+
+  document.getElementById('cmp-d-timeline-input').value = '';
+  cmpLoadDetailTimeline(id);
+  panel.style.display = 'flex';
+}
+
+function cmpCloseProspectDetail() { document.getElementById('cmp-prospect-detail').style.display = 'none'; }
+
+function cmpEditFromDetail() {
+  const id = document.getElementById('cmp-prospect-detail').dataset.prospectId;
+  cmpCloseProspectDetail();
+  cmpOpenProspectModal(id);
+}
+
+async function cmpLoadDetailTimeline(prospectId) {
+  const list = document.getElementById('cmp-d-timeline-list');
+  list.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px 0">Loading…</div>';
+  try {
+    const r = await fetch('/api/companion/notes?counselorName=' + encodeURIComponent(counselorName) + '&linkedProspectId=' + encodeURIComponent(prospectId));
+    const d = await r.json();
+    if (d.status !== 'ok') throw new Error(d.reason);
+    if (!d.notes.length) { list.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px 0">No notes logged for this lead yet.</div>'; return; }
+    list.innerHTML = d.notes.slice().reverse().map(function(n) {
+      return '<div class="cmp-timeline-item"><div class="cmp-timeline-dot"></div><div><div class="cmp-timeline-text">' + escC(n.text) + '</div><div class="cmp-timeline-date">' + new Date(n.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) + '</div></div></div>';
+    }).join('');
+  } catch (err) {
+    list.innerHTML = '<div style="font-size:12px;color:#dc2626;padding:6px 0">Could not load timeline — ' + escC(err.message) + '</div>';
+  }
+}
+
+async function cmpAddDetailTimelineNote() {
+  const input = document.getElementById('cmp-d-timeline-input');
+  const text = input.value.trim();
+  const prospectId = document.getElementById('cmp-prospect-detail').dataset.prospectId;
+  if (!text || !prospectId) return;
+  input.value = '';
+  try {
+    await fetch('/api/companion/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text, owner_counselor: counselorName, linked_prospect_id: prospectId }) });
+    cmpLoadDetailTimeline(prospectId);
+    cmpLoadNotes();
+    cmpLoadProspects();
+  } catch (err) { cmpToast('Could not add — ' + err.message, true); }
+}
 
 // Opening the calendar picker on the Next Follow-up field, and keeping the
 // reminder row's label in sync with whatever date is picked, so turning the

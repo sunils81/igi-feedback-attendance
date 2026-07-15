@@ -8637,7 +8637,7 @@ window.DiamondCalc = (function () {
               '<button type="button" class="dcalc-cur-btn" data-cur="inr" onclick="DiamondCalc._setCurrency(\'' + containerId + '\',\'inr\')">₹ INR</button>' +
             '</div>' +
             '<span class="dcalc-rate-note" id="' + p + 'rate-note">Fetching live rate…</span>' +
-            (opts.presentationToggle ? '<button type="button" class="dcalc-present-btn" onclick="DiamondCalc._togglePresent(\'' + containerId + '\')">🖥️ Present</button>' : '') +
+            (opts.presentationToggle ? '<button type="button" class="dcalc-present-btn" id="' + p + 'present-btn" onclick="DiamondCalc._togglePresent(\'' + containerId + '\')">🖥️ Present</button>' : '') +
           '</div>' +
         '</div>' +
 
@@ -8705,12 +8705,57 @@ window.DiamondCalc = (function () {
     wrap.querySelectorAll('.dcalc-panel').forEach(function(pnl) { pnl.classList.toggle('active', pnl.dataset.panel === tab); });
   }
 
+  function _syncPresentBtn(wrap) {
+    if (!wrap) return;
+    const btn = wrap.querySelector('.dcalc-present-btn');
+    if (!btn) return;
+    const presenting = wrap.classList.contains('dcalc-present');
+    btn.textContent = presenting ? '✕ Exit Present' : '🖥️ Present';
+  }
+
   function _togglePresent(containerId) {
     const root = document.getElementById(containerId);
     if (!root) return;
     const wrap = root.querySelector('.dcalc-wrap');
-    if (wrap) wrap.classList.toggle('dcalc-present');
+    if (!wrap) return;
+    const isPresenting = wrap.classList.contains('dcalc-present');
+    if (!isPresenting) {
+      wrap.classList.add('dcalc-present');
+      const reqFs = wrap.requestFullscreen || wrap.webkitRequestFullscreen || wrap.msRequestFullscreen;
+      if (reqFs) {
+        const result = reqFs.call(wrap);
+        if (result && result.catch) result.catch(function() { /* fullscreen denied/unsupported — the enlarged layout still applies */ });
+      }
+    } else {
+      wrap.classList.remove('dcalc-present');
+      _exitFullscreenIfActive();
+    }
+    _syncPresentBtn(wrap);
   }
+
+  function _exitFullscreenIfActive() {
+    const fsEl = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+    if (!fsEl) return;
+    const exitFs = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+    if (exitFs) {
+      const result = exitFs.call(document);
+      if (result && result.catch) result.catch(function() {});
+    }
+  }
+
+  // Keep the enlarged layout (and button label) in sync if the presenter exits
+  // fullscreen via Esc or the browser's own UI instead of clicking Present again.
+  ['fullscreenchange', 'webkitfullscreenchange', 'MSFullscreenChange'].forEach(function(evt) {
+    document.addEventListener(evt, function() {
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+      if (!fsEl) {
+        document.querySelectorAll('.dcalc-wrap.dcalc-present').forEach(function(w) {
+          w.classList.remove('dcalc-present');
+          _syncPresentBtn(w);
+        });
+      }
+    });
+  });
 
   function _toggleReverseMode(containerId) {
     const p = containerId + '-';

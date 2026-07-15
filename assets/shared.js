@@ -8597,9 +8597,10 @@ window.DiamondCalc = (function () {
         '<div class="dcalc-panel" data-panel="weight">' +
           '<p class="dcalc-note">Standard published gemological rule-of-thumb formulas — estimates only. Always confirm true weight by weighing the stone (measurement-based estimates can vary ±5–10%).</p>' +
           '<div class="dcalc-grid">' +
-            '<div class="dcalc-field"><label>Shape</label><select id="' + p + 'wt-shape">' + SHAPES.map(function(s) { return '<option value="' + s.key + '">' + s.label + '</option>'; }).join('') + '</select></div>' +
-            '<div class="dcalc-field"><label>Length (mm)</label><input type="number" step="0.01" min="0" id="' + p + 'wt-length" placeholder="e.g. 6.50"></div>' +
-            '<div class="dcalc-field"><label>Width (mm)</label><input type="number" step="0.01" min="0" id="' + p + 'wt-width" placeholder="e.g. 6.53"></div>' +
+            '<div class="dcalc-field"><label>Shape</label><select id="' + p + 'wt-shape" onchange="DiamondCalc._toggleWeightShape(\'' + containerId + '\')">' + SHAPES.map(function(s) { return '<option value="' + s.key + '">' + s.label + '</option>'; }).join('') + '</select></div>' +
+            '<div class="dcalc-field" id="' + p + 'wt-diameter-field"><label>Diameter (mm)</label><input type="number" step="0.01" min="0" id="' + p + 'wt-diameter" placeholder="e.g. 6.50"></div>' +
+            '<div class="dcalc-field" id="' + p + 'wt-length-field" style="display:none"><label>Length (mm)</label><input type="number" step="0.01" min="0" id="' + p + 'wt-length" placeholder="e.g. 8.00"></div>' +
+            '<div class="dcalc-field" id="' + p + 'wt-width-field" style="display:none"><label>Width (mm)</label><input type="number" step="0.01" min="0" id="' + p + 'wt-width" placeholder="e.g. 5.00"></div>' +
             '<div class="dcalc-field"><label>Depth (mm)</label><input type="number" step="0.01" min="0" id="' + p + 'wt-depth" placeholder="e.g. 3.95"></div>' +
           '</div>' +
           '<button type="button" class="btn btn-gold dcalc-calc-btn" style="width:auto" onclick="DiamondCalc._calcWeight(\'' + containerId + '\')">Estimate Weight</button>' +
@@ -8652,6 +8653,21 @@ window.DiamondCalc = (function () {
     if (pctField) pctField.style.display = mode === 'rate' ? '' : 'none';
   }
 
+  // Round stones are measured as a single diameter (+ depth), not separate length/width
+  // like the fancy shapes — swap which fields show based on the selected shape.
+  function _toggleWeightShape(containerId) {
+    const p = containerId + '-';
+    const shapeKey = document.getElementById(p + 'wt-shape').value;
+    const shape = SHAPES.filter(function(s) { return s.key === shapeKey; })[0];
+    const isRound = !!(shape && shape.mode === 'round');
+    const diaField = document.getElementById(p + 'wt-diameter-field');
+    const lenField = document.getElementById(p + 'wt-length-field');
+    const widField = document.getElementById(p + 'wt-width-field');
+    if (diaField) diaField.style.display = isRound ? '' : 'none';
+    if (lenField) lenField.style.display = isRound ? 'none' : '';
+    if (widField) widField.style.display = isRound ? 'none' : '';
+  }
+
   function _calcPrice(containerId) {
     const p = containerId + '-';
     const carat = parseFloat(document.getElementById(p + 'price-carat').value);
@@ -8673,17 +8689,18 @@ window.DiamondCalc = (function () {
     const p = containerId + '-';
     const shapeKey = document.getElementById(p + 'wt-shape').value;
     const shape = SHAPES.filter(function(s) { return s.key === shapeKey; })[0];
-    const L = parseFloat(document.getElementById(p + 'wt-length').value);
-    const W = parseFloat(document.getElementById(p + 'wt-width').value);
     const D = parseFloat(document.getElementById(p + 'wt-depth').value);
     const resultEl = document.getElementById(p + 'wt-result');
-    if (!L || !W || !D) { resultEl.innerHTML = '<span class="dcalc-err">Enter length, width, and depth.</span>'; return; }
     let weight, formula;
     if (shape.mode === 'round') {
-      const avgD = (L + W) / 2;
-      weight = avgD * avgD * D * shape.factor;
-      formula = 'Avg Diameter² × Depth × ' + shape.factor + ' = ' + avgD.toFixed(2) + '² × ' + D + ' × ' + shape.factor;
+      const diameter = parseFloat(document.getElementById(p + 'wt-diameter').value);
+      if (!diameter || !D) { resultEl.innerHTML = '<span class="dcalc-err">Enter diameter and depth.</span>'; return; }
+      weight = diameter * diameter * D * shape.factor;
+      formula = 'Diameter² × Depth × ' + shape.factor + ' = ' + diameter + '² × ' + D + ' × ' + shape.factor;
     } else {
+      const L = parseFloat(document.getElementById(p + 'wt-length').value);
+      const W = parseFloat(document.getElementById(p + 'wt-width').value);
+      if (!L || !W || !D) { resultEl.innerHTML = '<span class="dcalc-err">Enter length, width, and depth.</span>'; return; }
       weight = L * W * D * shape.factor;
       formula = 'L × W × Depth × ' + shape.factor + ' = ' + L + ' × ' + W + ' × ' + D + ' × ' + shape.factor;
     }
@@ -8715,5 +8732,5 @@ window.DiamondCalc = (function () {
     }
   }
 
-  return { mount: mount, _switch: _switch, _togglePresent: _togglePresent, _toggleReverseMode: _toggleReverseMode, _calcPrice: _calcPrice, _calcWeight: _calcWeight, _calcReverse: _calcReverse };
+  return { mount: mount, _switch: _switch, _togglePresent: _togglePresent, _toggleReverseMode: _toggleReverseMode, _toggleWeightShape: _toggleWeightShape, _calcPrice: _calcPrice, _calcWeight: _calcWeight, _calcReverse: _calcReverse };
 })();

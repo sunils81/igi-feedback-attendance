@@ -4404,6 +4404,59 @@ window.gasGet = (function () {
     ] });
   }
 
+  /* Auto-create today's session for any currently-running batch that doesn't
+     have one yet. Fixes the common failure mode where an instructor forgets
+     to click "Create Today's Session" and students are stuck seeing "not yet
+     started" all day with no way to mark attendance — this is triggered
+     lazily the next time any student's portal data is fetched, which in
+     practice happens well before the instructor would ever notice, since
+     there are usually many students checking before class starts. Only
+     fires once a batch's scheduled window has actually opened, so it won't
+     create a phantom session hours early just because someone opened the
+     app before class. Existing sessions (including manually-created "Extra"
+     sessions) are left untouched either way. */
+  function _ensureTodaysSessions(batches, existingSessions, cb) {
+    var todayYMDStr = todayYMD();
+    var toCreate = [];
+    (batches || []).forEach(function (b) {
+      var batchCode = b.batch_code;
+      var startD = new Date(b.start_date);
+      var endD = new Date(b.end_date);
+      var now = new Date();
+      if (now < startD || now > endD) return; // batch isn't currently running
+      var already = (existingSessions || []).some(function (s) {
+        return s.batch_code === batchCode && s.session_date === todayYMDStr;
+      });
+      if (already) return;
+      var slot = b.batch_slot || 'Full Day';
+      var win = { open: 8, close: 24 };
+      if (slot === 'First Half') win = { open: 8, close: 14 };
+      else if (slot === 'Second Half') win = { open: 12, close: 20 };
+      if (now.getHours() < win.open) return; // too early — window hasn't opened yet
+      toCreate.push(b);
+    });
+    if (!toCreate.length) { cb(existingSessions || []); return; }
+    var merged = (existingSessions || []).slice();
+    var remaining = toCreate.length;
+    toCreate.forEach(function (b) {
+      var batchCode = b.batch_code;
+      GET('sessions', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=sess_no&order=sess_no.desc&limit=1', function (e, rows) {
+        var alreadyNow = merged.some(function (s) { return s.batch_code === batchCode && s.session_date === todayYMDStr; });
+        if (alreadyNow) { if (--remaining === 0) cb(merged); return; }
+        var nextNo = rows && rows.length ? (Number(rows[0].sess_no || 0) + 1) : 1;
+        var sessCode = batchCode + '-S' + String(nextNo).padStart(2, '0');
+        var newRow = {
+          session_code: sessCode, batch_code: batchCode, session_date: todayYMDStr,
+          sess_no: nextNo, instructor: b.instructor || '', session_type: 'Scheduled', topic: ''
+        };
+        POST('sessions', 'on_conflict=session_code', newRow, function (e2) {
+          if (!e2) merged.push(newRow);
+          if (--remaining === 0) cb(merged);
+        });
+      });
+    });
+  }
+
   /* ── Student Portal Actions ── */
   function h_getStudentPortalData(p, cb) {
     var enrollNo = String(p.studentId || p.enrollmentNo || '').trim().toUpperCase();
@@ -4434,7 +4487,8 @@ window.gasGet = (function () {
         }
         GET('batches', 'batch_code=in.(' + bCodes.join(',') + ')', function (e3, batches) {
           var todayYMDStr = todayYMD();
-          GET('sessions', 'batch_code=in.(' + bCodes.join(',') + ')', function (e4, sessions) {
+          GET('sessions', 'batch_code=in.(' + bCodes.join(',') + ')', function (e4, sessionsRaw) {
+           _ensureTodaysSessions(batches, sessionsRaw, function (sessions) {
             GET('attendance_feedback', 'student_id=eq.' + encodeURIComponent(enrollNo), function (e5, atts) {
               var batchCards = [];
               var allEnrolledBatches = [];
@@ -4545,6 +4599,7 @@ window.gasGet = (function () {
                 });
               });
             });
+           });
           });
         });
       });

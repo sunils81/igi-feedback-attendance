@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=59"></script>
+<script src="/assets/shared.js?v=60"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -1575,6 +1575,25 @@
 .rev-enroll-student-list td{padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
 .rev-enroll-student-list td:last-child{text-align:right;font-family:'JetBrains Mono',monospace;color:var(--navy);font-weight:700}
 .rev-enroll-student-list .no-rows{color:var(--muted);font-style:italic;padding:6px 0}
+/* Glossary (shared UI mounted via GlossaryModule.mount, see assets/shared.js) */
+.glossary-wrap{background:var(--white);border:1.5px solid var(--border);border-radius:12px;padding:16px}
+.glossary-search{width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:20px;font-size:13px;font-family:inherit;color:var(--navy);outline:none;box-sizing:border-box;margin-bottom:12px}
+.glossary-search:focus{border-color:var(--gold)}
+.glossary-cats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.glossary-cat-btn{background:none;border:1.5px solid var(--border);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer}
+.glossary-cat-btn.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.glossary-count{font-size:11px;color:var(--muted);margin-bottom:10px}
+.glossary-list{display:flex;flex-direction:column;gap:10px;max-height:520px;overflow-y:auto}
+.glossary-term-card{background:var(--bg,#F7F8FA);border-radius:10px;padding:12px 14px}
+.glossary-term-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap}
+.glossary-term-name{font-size:14px;font-weight:700;color:var(--navy)}
+.glossary-term-badge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:12px;white-space:nowrap}
+.glossary-badge-diamond{background:#e0e7ff;color:#3730a3}
+.glossary-badge-colored{background:#fee2e2;color:#991b1b}
+.glossary-badge-jewelry{background:#fef3c7;color:#92400e}
+.glossary-badge-general{background:#d1fae5;color:#065f46}
+.glossary-term-def{font-size:12.5px;color:var(--navy);line-height:1.6}
+.glossary-empty{font-size:12px;color:var(--muted);text-align:center;padding:20px 0}
 </style>
 </head>
 <body>
@@ -1658,6 +1677,7 @@
     <button class="tab" onclick="switchTab('t-alumni')">🎓 Alumni</button>
     <button class="tab" id="tab-crm" onclick="switchTab('t-crm')">🎯 CRM <span id="crm-reminder-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-notebook" onclick="switchTab('t-notebook')">📓 My Notebook</button>
+    <button class="tab" id="tab-glossary" onclick="switchTab('t-glossary')">📖 Glossary</button>
     <button class="tab" id="tab-prospects" onclick="switchTab('t-prospects')">🧭 Prospects <span id="prospects-due-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" onclick="switchTab('t-mybatches')">🗂 My Batches</button>
     <button class="tab" onclick="switchTab('t-reports')">📊 Reports</button>
@@ -3273,6 +3293,15 @@
     </div>
   </div>
 
+  <div id="t-glossary" class="tab-content">
+    <div class="card">
+      <div class="section-tag">Reference</div>
+      <h2 style="margin-bottom:2px">Glossary</h2>
+      <p class="sub" style="margin-top:0">Quick-reference terms across Diamond, Colored Stone, and Jewelry Design — handy during admissions calls.</p>
+      <div id="cmp-glossary-mount"></div>
+    </div>
+  </div>
+
   <div id="t-alumni" class="tab-content">
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
@@ -4715,6 +4744,13 @@ function switchTab(id) {
   if (btn) btn.classList.add('active');
   
   renderContextSummary(id);
+  if (id === 't-glossary') {
+    var glossRoot = document.getElementById('cmp-glossary-mount');
+    if (glossRoot && !glossRoot.dataset.mounted && typeof GlossaryModule !== 'undefined') {
+      GlossaryModule.mount('cmp-glossary-mount');
+      glossRoot.dataset.mounted = '1';
+    }
+  }
   if (id === 't-alumni') {
     loadAlumniData();
   }

@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Instructor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=59"></script>
+<script src="/assets/shared.js?v=60"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style id="dyn-css"></style>
 <style>
@@ -57,6 +57,25 @@
 .dcalc-wrap.dcalc-present .dcalc-result-row{font-size:20px}
 .dcalc-wrap.dcalc-present .dcalc-result-final{font-size:28px}
 .dcalc-wrap.dcalc-present .dcalc-formula{font-size:16px}
+/* Glossary (shared UI mounted via GlossaryModule.mount, see assets/shared.js) */
+.glossary-wrap{background:var(--white);border:1.5px solid var(--border);border-radius:12px;padding:16px}
+.glossary-search{width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:20px;font-size:13px;font-family:inherit;color:var(--navy);outline:none;box-sizing:border-box;margin-bottom:12px}
+.glossary-search:focus{border-color:var(--gold)}
+.glossary-cats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.glossary-cat-btn{background:none;border:1.5px solid var(--border);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer}
+.glossary-cat-btn.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.glossary-count{font-size:11px;color:var(--muted);margin-bottom:10px}
+.glossary-list{display:flex;flex-direction:column;gap:10px;max-height:520px;overflow-y:auto}
+.glossary-term-card{background:var(--off,#F7F8FA);border-radius:10px;padding:12px 14px}
+.glossary-term-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap}
+.glossary-term-name{font-size:14px;font-weight:700;color:var(--navy)}
+.glossary-term-badge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:12px;white-space:nowrap}
+.glossary-badge-diamond{background:#e0e7ff;color:#3730a3}
+.glossary-badge-colored{background:#fee2e2;color:#991b1b}
+.glossary-badge-jewelry{background:#fef3c7;color:#92400e}
+.glossary-badge-general{background:#d1fae5;color:#065f46}
+.glossary-term-def{font-size:12.5px;color:var(--navy);line-height:1.6}
+.glossary-empty{font-size:12px;color:var(--muted);text-align:center;padding:20px 0}
 .rb-pass{background:#E8F5EE;color:#1a7a3c}
 .rb-fail{background:#FEF2F2;color:#C94A4A}
 .rb-dna{background:#F4F1EB;color:var(--muted)}
@@ -344,6 +363,7 @@
     <button class="tab" onclick="iTab('t-marks')">📝 Marks</button>
     <button class="tab" onclick="iTab('t-resources')">📚 Resources</button>
     <button class="tab" onclick="iTab('t-diamondcalc')">🧮 Diamond Calculator</button>
+    <button class="tab" onclick="iTab('t-glossary')">📖 Glossary</button>
     <button class="tab" onclick="iTab('t-mybatches')">🗂 My Batches</button>
     <button class="tab" id="t-batchmgmt-tab" style="display:none" onclick="iTab('t-batchmgmt')">🏫 Batches</button>
     <button class="tab" id="t-academic-tab" style="display:none" onclick="iTab('t-academic')">🎓 Academic Overview</button>
@@ -779,6 +799,16 @@
     <h2>Diamond Calculator</h2>
     <p class="sub">Price, weight-estimate, and reverse-solve calculators for live classroom demonstrations. Use the Present button to enlarge for projecting on screen.</p>
     <div id="instr-diamond-calc"></div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- TAB: GLOSSARY                                              -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div id="t-glossary" class="tab-content">
+    <div class="section-tag">Reference</div>
+    <h2>Glossary</h2>
+    <p class="sub">Diamond, Colored Stone, and Jewelry Design terms with study-guide style explanations.</p>
+    <div id="instr-glossary-mount"></div>
   </div>
 
   <!-- ══════════════════════════════════════════════════════════ -->
@@ -2758,6 +2788,13 @@ function iTab(id) {
     if (dcRoot && !dcRoot.dataset.mounted && typeof DiamondCalc !== 'undefined') {
       DiamondCalc.mount('instr-diamond-calc', { presentationToggle: true });
       dcRoot.dataset.mounted = '1';
+    }
+  }
+  if (id==='t-glossary') {
+    var glRoot = document.getElementById('instr-glossary-mount');
+    if (glRoot && !glRoot.dataset.mounted && typeof GlossaryModule !== 'undefined') {
+      GlossaryModule.mount('instr-glossary-mount');
+      glRoot.dataset.mounted = '1';
     }
   }
   if (id==='t-mybatches')  loadMyBatches();

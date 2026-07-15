@@ -8887,3 +8887,157 @@ window.DiamondCalc = (function () {
 
   return { mount: mount, _switch: _switch, _togglePresent: _togglePresent, _toggleReverseMode: _toggleReverseMode, _toggleWeightShape: _toggleWeightShape, _setCurrency: _setCurrency, _calcPrice: _calcPrice, _calcWeight: _calcWeight, _calcReverse: _calcReverse };
 })();
+
+// ── Glossary of Diamond / Colored Stone / Jewelry Design terms ──────────
+// Shared, searchable reference tool mounted the same way as DiamondCalc.
+// All definitions below are written fresh in plain English for teaching
+// purposes — general gemological concepts, not reproduced from any
+// proprietary or copyrighted source (unlike Rapaport price data, which
+// this app deliberately never stores or displays).
+window.GlossaryModule = (function () {
+  const CATS = [
+    { key: "diamond", label: "💎 Diamond" },
+    { key: "colored", label: "🔴 Colored Stone" },
+    { key: "jewelry", label: "💍 Jewelry Design" },
+    { key: "general", label: "🔬 General" }
+  ];
+
+  const TERMS = [
+    // ── Diamond ──
+    { term: "Carat Weight", cat: "diamond", def: "A carat is the standard unit of weight for diamonds and other gemstones, equal to 200 milligrams. It measures weight, not size — two diamonds of the same carat weight can look different in diameter depending on how they're cut. Carat weight is usually the single biggest driver of a diamond's price, especially once a stone crosses a whole- or half-carat threshold." },
+    { term: "Color Grade", cat: "diamond", def: "Diamond color is graded on the GIA D-to-Z scale, where D is completely colorless and Z has a noticeable yellow or brown tint. Grading is done by comparing a stone against a set of master stones under controlled lighting, since differences between adjacent grades can be very subtle to the untrained eye. Colorless and near-colorless diamonds (D–J) are the most commonly traded range in the bridal market." },
+    { term: "Clarity Grade", cat: "diamond", def: "Clarity describes how free a diamond is of internal inclusions and external blemishes, graded from Flawless (FL) down to Included (I3) under 10x magnification. Most inclusions are invisible without magnification and don't affect a diamond's beauty, but they do affect rarity and price. The GIA clarity scale runs FL, IF, VVS1, VVS2, VS1, VS2, SI1, SI2, SI3, I1, I2, I3." },
+    { term: "Cut Grade", cat: "diamond", def: "Cut grade evaluates how well a diamond's proportions, symmetry, and polish let it interact with light — it's the only one of the 4Cs directly controlled by the cutter rather than nature. A well-cut diamond returns more brilliance and fire even at the same carat, color, and clarity. GIA grades cut from Excellent to Poor for standard round brilliants." },
+    { term: "Fluorescence", cat: "diamond", def: "Fluorescence is the visible glow — usually blue — that some diamonds emit under ultraviolet light, caused by trace elements in the crystal structure. It's graded None, Faint, Medium, Strong, or Very Strong, and in most stones has no visible effect face-up in normal light. In rare cases strong fluorescence can make a diamond look slightly hazy." },
+    { term: "Brilliance", cat: "diamond", def: "Brilliance is the total white light returned to the eye from the crown of a polished diamond, produced through internal reflection off the pavilion facets. It's driven primarily by cut quality — proportions that are too shallow or too deep let light leak out the bottom instead of bouncing back. Brilliance is one of the main visual qualities cut grade is designed to measure." },
+    { term: "Fire (Dispersion)", cat: "diamond", def: "Fire refers to the flashes of spectral color — reds, blues, greens — a diamond throws off as white light splits into its component wavelengths passing through the stone. This optical effect is called dispersion, and diamond has notably high dispersion compared to most other gems. Fire is most visible under point-source lighting like a jeweler's spotlight rather than flat daylight." },
+    { term: "Scintillation", cat: "diamond", def: "Scintillation is the sparkle pattern created as a diamond, its light source, or the viewer moves, alternating bright flashes with dark facets. It reflects both the cut's facet arrangement and how evenly light returns across the stone. Well-cut diamonds show a balanced, contrast-rich scintillation pattern rather than large dull zones." },
+    { term: "Table", cat: "diamond", def: "The table is the large, flat facet on the very top of a diamond, and its size relative to the stone's diameter — expressed as a percentage — is one of the key proportions used to assess cut quality. A table that's too large or too small can throw off the balance of brilliance and fire." },
+    { term: "Crown & Pavilion", cat: "diamond", def: "The crown is the upper portion of a cut diamond above the girdle, and the pavilion is the lower portion below it, tapering to a point or small facet. Together their angles determine how light entering through the crown reflects internally and exits — the physical basis for a diamond's brilliance." },
+    { term: "Girdle", cat: "diamond", def: "The girdle is the narrow band running around a diamond's widest point, separating the crown from the pavilion, and is the part typically gripped by a setting's prongs. Girdle thickness is described from Extremely Thin to Extremely Thick and affects both a stone's durability and how efficiently it's cut from the rough." },
+    { term: "Culet", cat: "diamond", def: "The culet is the small facet — or in modern cuts sometimes just a point — at the very bottom tip of a diamond's pavilion. A culet that's too large can appear as a small dark or light spot when viewed through the table, slightly reducing brilliance." },
+    { term: "Inclusion vs. Blemish", cat: "diamond", def: "An inclusion is an internal characteristic — a crystal, feather, or cloud enclosed within the stone — while a blemish is a surface-level characteristic such as a scratch or nick. Both are weighed together when assigning a clarity grade, though inclusions generally carry more weight since they're part of the stone's internal structure." },
+    { term: "Grading Report", cat: "diamond", def: "A grading report is an independent lab's documented assessment of a diamond's 4Cs and other identifying characteristics, along with a plotted diagram of its clarity features. It is not an appraisal or a guarantee of value, but it gives buyers and sellers a common, trusted reference point for what they're actually transacting." },
+    { term: "Fancy Color Diamond", cat: "diamond", def: "A fancy color diamond falls outside the normal D-to-Z colorless range and displays a distinct, often vivid, bodycolor such as yellow, pink, or blue, caused by trace elements or structural defects in the crystal lattice. These are graded on a separate hue/tone/saturation scale, and rarity in certain colors can command significant premiums." },
+    { term: "Treated Diamond", cat: "diamond", def: "A treated diamond has been deliberately altered after mining to improve its appearance — common methods include HPHT (high pressure, high temperature) processing to change color, and laser drilling or fracture filling to reduce the visibility of inclusions. Reputable sellers are expected to disclose any treatment, since it affects both value and long-term stability." },
+
+    // ── Colored Stone ──
+    { term: "Species vs. Variety", cat: "colored", def: "Species refers to a mineral's basic chemical and crystal identity (like corundum), while variety refers to a specific colored form of that species (like ruby or sapphire, both varieties of corundum). Knowing the species tells you the stone's fundamental physical properties; the variety name is what's usually used commercially." },
+    { term: "Hue, Tone, Saturation", cat: "colored", def: "Colored stones are described using three components: hue (the actual color family, like blue or green), tone (how light or dark it is), and saturation (how intense or muted the color appears). Together these are what graders and buyers use to compare color quality, since unlike diamonds there's no single universal numeric grading scale." },
+    { term: "Pleochroism", cat: "colored", def: "Pleochroism is the optical property of certain crystals showing different colors or shades when viewed from different angles, caused by how the crystal structure interacts with light along different axes. It's a diagnostic tool for identification, and in stones like tanzanite it also affects how a cutter orients the rough to maximize the desired face-up color." },
+    { term: "Origin", cat: "colored", def: "Origin refers to the geographic source of a colored stone — for example, Burmese vs. Mozambican ruby, or Kashmir vs. Ceylon sapphire — determined through trace-element and inclusion analysis by a gemological lab. Certain origins carry strong market premiums due to historical reputation and perceived rarity." },
+    { term: "Treatment Disclosure", cat: "colored", def: "Most colored stones on the market have been treated in some way — heating to improve color and clarity is standard practice for the majority of rubies and sapphires sold today. Full and accurate disclosure of any treatment is an ethical and often legal requirement, since it can significantly affect a stone's value and care requirements." },
+    { term: "Ruby", cat: "colored", def: "Ruby is the red variety of the mineral corundum, with its color caused by trace amounts of chromium. Fine rubies are prized for a pure, vivid red often described as \"pigeon's blood,\" and top-quality untreated stones from historically significant origins are among the most valuable colored gems in the world." },
+    { term: "Sapphire", cat: "colored", def: "Sapphire refers to all gem varieties of corundum except red (which is called ruby) — most famously the blue variety colored by traces of iron and titanium, but also pink, yellow, green, and other \"fancy sapphire\" colors. Sapphire is prized for its hardness, second only to diamond, making it highly durable for everyday jewelry." },
+    { term: "Emerald", cat: "colored", def: "Emerald is the green variety of the mineral beryl, colored by trace chromium and/or vanadium. Emeralds typically contain visible inclusions — often called \"jardin,\" French for garden — generally accepted as part of the stone's natural character, and are almost always treated with oil or resin to improve clarity." },
+    { term: "Cabochon vs. Faceted", cat: "colored", def: "A cabochon is a stone cut and polished into a smooth, domed shape without flat facets, typically used for opaque or phenomenon-displaying stones like star sapphires. Faceting, by contrast, cuts a stone into flat polished planes to maximize brilliance and is used for most transparent gemstones." },
+    { term: "Asterism", cat: "colored", def: "Asterism is the star-shaped pattern of reflected light seen in certain cabochon-cut stones, most famously star sapphires and rubies, caused by needle-like mineral inclusions intersecting at specific angles within the crystal. The effect only appears when the stone is cut as a properly oriented cabochon." },
+    { term: "Chatoyancy", cat: "colored", def: "Chatoyancy, or the \"cat's eye\" effect, is a bright, narrow band of reflected light that appears to move across a cabochon-cut stone as it's tilted, caused by parallel needle-like inclusions or fibrous structures within the gem. Chrysoberyl cat's eye is considered the benchmark for this effect in the trade." },
+    { term: "Refractive Index", cat: "colored", def: "Refractive index (RI) measures how much a material bends light passing through it, and is one of the most useful diagnostic properties for identifying a gemstone since it's highly consistent within a given species. RI is measured with an instrument called a refractometer and is one of the first tests run when identifying an unknown stone." },
+    { term: "Specific Gravity", cat: "colored", def: "Specific gravity (SG) is the ratio of a gemstone's density to that of an equal volume of water, and like refractive index it's a consistent, measurable property useful for identification. It's typically tested using a hydrostatic weighing setup and helps distinguish between stones that might otherwise look similar to the eye." },
+    { term: "Synthetic vs. Natural vs. Simulant", cat: "colored", def: "A natural stone forms in the earth with no human involvement in its creation; a synthetic has essentially the same chemical, physical, and optical properties as its natural counterpart but is grown in a lab; a simulant merely imitates the look of a gemstone without sharing its composition, like cubic zirconia simulating diamond. Distinguishing between the three is a core responsibility of gemological identification." },
+
+    // ── Jewelry Design ──
+    { term: "CAD for Jewelry", cat: "jewelry", def: "Computer-Aided Design (CAD) software lets jewelry designers build precise, editable 3D models of a piece before it's ever made physically, allowing quick iteration on proportions, stone placement, and metal weight. CAD files are typically sent directly to a 3D printer to produce a wax or resin pattern for casting." },
+    { term: "Lost-Wax Casting", cat: "jewelry", def: "Lost-wax casting is the traditional — and still dominant — method of turning a jewelry design into metal: a wax model is surrounded by investment plaster, the wax is melted out (\"lost\"), and molten metal is poured into the resulting cavity. Today the wax pattern is often produced by a 3D printer from a CAD file rather than carved by hand." },
+    { term: "Prong Setting", cat: "jewelry", def: "A prong setting holds a stone in place using thin metal claws — usually four or six — that grip the stone near its girdle while leaving most of it exposed to light. It's the most common setting style for solitaire engagement rings because it maximizes light entry and brilliance." },
+    { term: "Bezel Setting", cat: "jewelry", def: "A bezel setting surrounds a stone with a continuous metal rim rather than individual prongs, offering excellent protection for the stone at the cost of somewhat reduced light entry from the sides. It's a popular choice for everyday-wear pieces and for softer or more fragile gemstones." },
+    { term: "Pavé Setting", cat: "jewelry", def: "Pavé (French for \"paved\") setting covers a surface with small stones set closely together, held by tiny shared beads or prongs so the metal is barely visible and the surface appears \"paved\" with gems. It's commonly used to add sparkle to a band or halo without a single dominant stone." },
+    { term: "Channel Setting", cat: "jewelry", def: "A channel setting holds a row of stones between two parallel strips of metal, with no visible prongs, giving a smooth, protected line of stones often used in wedding bands. The recessed setting protects stone edges well but limits light entering from the sides compared to prong settings." },
+    { term: "Filigree", cat: "jewelry", def: "Filigree is a decorative metalworking technique using fine twisted or curled wires, often gold or silver, soldered together into lace-like ornamental patterns. It's strongly associated with Edwardian and vintage-style jewelry design." },
+    { term: "Repoussé", cat: "jewelry", def: "Repoussé is a metalworking technique where a design is hammered into relief from the reverse side of a sheet of metal, creating a raised pattern on the front. It's an old technique still used in fine jewelry and metal art for its distinctive sculptural, dimensional look." },
+    { term: "Rhodium Plating", cat: "jewelry", def: "Rhodium plating applies a thin layer of rhodium — a hard, bright-white metal in the platinum family — over white gold or silver jewelry to give it a brighter white finish and added scratch resistance. Because white gold has a naturally slight yellowish tinge, rhodium plating is standard practice and typically needs reapplying every year or two as it wears." },
+    { term: "Alloy", cat: "jewelry", def: "Since pure gold (24K) is too soft for most jewelry, it's mixed with other metals — like copper, silver, or zinc — to create an alloy with the desired karat, color, and hardness. The same 18K gold can look yellow, white, or rose depending entirely on which metals are alloyed in and in what proportion." },
+    { term: "Casting", cat: "jewelry", def: "Casting is the overall process of shaping molten metal into a jewelry piece using a mold, most commonly via lost-wax casting in the fine jewelry trade. After casting, a piece still requires substantial hand-finishing — cutting sprues, filing, polishing, and stone setting — before it's a finished product." },
+    { term: "Finishing / Polishing", cat: "jewelry", def: "Finishing covers the final stages of jewelry-making after casting or fabrication — filing away rough edges, sanding, and polishing the metal to its final shine, or applying a specific texture like matte or hammered. It's a highly skilled stage since over-polishing can round off crisp design details or reduce metal weight." },
+
+    // ── General ──
+    { term: "4Cs", cat: "general", def: "The 4Cs — Carat, Color, Clarity, and Cut — are the four factors used to describe and grade a diamond's quality, a framework popularized by GIA in the mid-20th century. They remain the standard vocabulary for discussing and pricing diamonds across the global trade." },
+    { term: "Gemology", cat: "general", def: "Gemology is the science of identifying, grading, and evaluating gemstones, drawing on mineralogy, optics, and crystallography. A gemologist uses a combination of visual observation and specialized instruments to determine what a stone is, whether it's natural or treated, and how it compares in quality to others of its kind." },
+    { term: "Loupe", cat: "general", def: "A loupe is a small handheld magnifying lens, typically 10x magnification in gemology, used for a first-pass visual inspection of a stone's inclusions, cut quality, and surface condition. It's the most basic and universally carried tool in a gemologist's kit." },
+    { term: "Gemological Microscope", cat: "general", def: "A gemological microscope provides much higher and more controllable magnification than a loupe, along with adjustable — often darkfield — lighting that makes internal inclusions, treatment evidence, and growth structures far easier to see and photograph. It's the primary tool labs use for detailed clarity grading and identification work." },
+    { term: "Refractometer", cat: "general", def: "A refractometer measures a gemstone's refractive index by analyzing how light bends when passing from the stone into a denser reference material inside the instrument. It's one of the fastest, most reliable tests for identifying a polished, transparent gemstone." },
+    { term: "Spectroscope", cat: "general", def: "A spectroscope splits light passing through or reflecting off a gemstone into its component wavelengths, revealing an absorption pattern that can indicate the trace elements responsible for its color — useful both for identification and for detecting some treatments or synthetics." },
+    { term: "Mohs Hardness Scale", cat: "general", def: "The Mohs scale ranks a mineral's resistance to scratching on a relative 1-to-10 scale, with talc at 1 and diamond at 10. Hardness affects how well a stone resists everyday wear, though it says nothing about a stone's toughness, or resistance to chipping and cracking from impact." },
+    { term: "Toughness", cat: "general", def: "Toughness describes a gemstone's resistance to breaking, chipping, or cracking under impact or pressure — a separate property from hardness. A stone can be very hard but still relatively brittle: diamond, despite being the hardest known natural material, can chip if struck at the wrong angle along a cleavage plane." },
+    { term: "Luster", cat: "general", def: "Luster describes the quality and intensity of light reflected off a gemstone's surface, described with terms like vitreous (glassy, as in quartz), adamantine (diamond-like), or metallic. It's one of the first properties a gemologist notes since certain luster types are strongly associated with specific stones." },
+    { term: "Enhancement / Treatment", cat: "general", def: "Enhancement (or treatment) is any process beyond cutting and polishing used to improve a gemstone's appearance or durability — heating, irradiation, fracture filling, dyeing, and coating are all common examples across different stone types. The trade distinguishes treatments by permanence and stability, and ethical practice requires disclosing them to buyers." }
+  ];
+
+  function escG(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function(c) { return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
+
+  const activeCatByContainer = {};
+  const searchByContainer = {};
+
+  function mount(containerId) {
+    const root = document.getElementById(containerId);
+    if (!root) return;
+    const p = containerId + "-";
+    activeCatByContainer[containerId] = "all";
+    searchByContainer[containerId] = "";
+
+    root.innerHTML =
+      '<div class="glossary-wrap" id="' + p + 'wrap">' +
+        '<input type="text" class="glossary-search" id="' + p + 'search" placeholder="Search terms…" oninput="GlossaryModule._onSearch(\'' + containerId + '\')">' +
+        '<div class="glossary-cats" id="' + p + 'cats">' +
+          '<button type="button" class="glossary-cat-btn active" data-cat="all" onclick="GlossaryModule._setCat(\'' + containerId + '\',\'all\')">All</button>' +
+          CATS.map(function(c) { return '<button type="button" class="glossary-cat-btn" data-cat="' + c.key + '" onclick="GlossaryModule._setCat(\'' + containerId + '\',\'' + c.key + '\')">' + c.label + '</button>'; }).join('') +
+        '</div>' +
+        '<div class="glossary-count" id="' + p + 'count"></div>' +
+        '<div class="glossary-list" id="' + p + 'list"></div>' +
+      '</div>';
+
+    _render(containerId);
+  }
+
+  function _setCat(containerId, cat) {
+    activeCatByContainer[containerId] = cat;
+    const p = containerId + "-";
+    const catsEl = document.getElementById(p + "cats");
+    if (catsEl) {
+      catsEl.querySelectorAll(".glossary-cat-btn").forEach(function(b) {
+        b.classList.toggle("active", b.getAttribute("data-cat") === cat);
+      });
+    }
+    _render(containerId);
+  }
+
+  function _onSearch(containerId) {
+    const p = containerId + "-";
+    const el = document.getElementById(p + "search");
+    searchByContainer[containerId] = el ? el.value.toLowerCase() : "";
+    _render(containerId);
+  }
+
+  function _render(containerId) {
+    const p = containerId + "-";
+    const listEl = document.getElementById(p + "list");
+    const countEl = document.getElementById(p + "count");
+    if (!listEl) return;
+    const cat = activeCatByContainer[containerId] || "all";
+    const q = (searchByContainer[containerId] || "").trim();
+    const filtered = TERMS.filter(function(t) {
+      if (cat !== "all" && t.cat !== cat) return false;
+      if (q && t.term.toLowerCase().indexOf(q) === -1 && t.def.toLowerCase().indexOf(q) === -1) return false;
+      return true;
+    }).sort(function(a, b) { return a.term.localeCompare(b.term); });
+
+    if (countEl) countEl.textContent = filtered.length + (filtered.length === 1 ? " term" : " terms");
+
+    if (!filtered.length) {
+      listEl.innerHTML = '<div class="glossary-empty">No terms match your search.</div>';
+      return;
+    }
+    const catLabel = {};
+    CATS.forEach(function(c) { catLabel[c.key] = c.label; });
+    listEl.innerHTML = filtered.map(function(t) {
+      return '<div class="glossary-term-card">' +
+        '<div class="glossary-term-head"><span class="glossary-term-name">' + escG(t.term) + '</span>' +
+        '<span class="glossary-term-badge glossary-badge-' + t.cat + '">' + escG(catLabel[t.cat] || t.cat) + '</span></div>' +
+        '<div class="glossary-term-def">' + escG(t.def) + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  return { mount: mount, _setCat: _setCat, _onSearch: _onSearch };
+})();

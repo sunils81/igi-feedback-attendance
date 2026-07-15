@@ -2895,10 +2895,21 @@
     .cmp-note-foot{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--muted)}
     .cmp-note-actions button{background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;color:var(--muted)}
     .cmp-note-actions button:hover{color:var(--gold)}
-    .cmp-notebook-page{position:relative;background-color:#FBF9F3;border:1.5px solid var(--border);border-radius:14px;box-shadow:0 2px 14px rgba(10,20,40,.05);padding:20px 24px 20px 58px;
-      background-image:linear-gradient(rgba(201,168,76,0.18) 1px, transparent 1px);background-size:100% 30px;background-position:0 112px;background-repeat:repeat;}
-    .cmp-notebook-page::before{content:'';position:absolute;top:112px;bottom:20px;left:34px;width:1.5px;background:rgba(216,90,90,0.3);pointer-events:none}
+    .cmp-notebook-page{position:relative;background-color:#FBF9F3;border:1.5px solid var(--border);border-radius:14px;box-shadow:0 2px 14px rgba(10,20,40,.05);padding:20px 24px 20px 58px;min-height:680px;
+      background-image:linear-gradient(rgba(201,168,76,0.18) 1px, transparent 1px);background-size:100% 30px;background-position:0 224px;background-repeat:repeat;}
+    .cmp-notebook-page::before{content:'';position:absolute;top:224px;bottom:20px;left:34px;width:1.5px;background:rgba(216,90,90,0.3);pointer-events:none}
     .cmp-notebook-page-head{padding-bottom:6px}
+    .cmp-notebook-widgets{position:relative;display:flex;gap:14px;margin:8px 0 18px;flex-wrap:wrap}
+    .cmp-widget-card{flex:1 1 220px;min-width:220px;background:rgba(255,255,255,0.6);border:1.5px solid rgba(201,168,76,0.35);border-radius:10px;padding:12px 14px;box-shadow:0 1px 6px rgba(10,20,40,.04)}
+    .cmp-widget-title{font-size:11.5px;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em}
+    .cmp-widget-line{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+    .cmp-widget-line input[type="checkbox"]{flex-shrink:0;cursor:pointer}
+    .cmp-widget-line-input{flex:1;border:none;border-bottom:1px solid transparent;background:transparent;font-size:12.5px;font-family:"Georgia",serif;color:var(--navy);outline:none;padding:2px 0;min-width:0}
+    .cmp-widget-line-input:focus{border-bottom-color:var(--gold)}
+    .cmp-widget-remove{background:none;border:none;color:var(--muted);cursor:pointer;font-size:10px;padding:0 2px;flex-shrink:0}
+    .cmp-widget-remove:hover{color:#dc2626}
+    .cmp-widget-add{margin-top:2px;background:none;border:none;color:var(--gold);cursor:pointer;font-size:11px;font-weight:700;padding:0}
+    .cmp-widget-add:hover{text-decoration:underline}
     .cmp-notebook-clock{position:absolute;top:20px;right:24px;text-align:right;font-family:"Plus Jakarta Sans",sans-serif}
     .cmp-notebook-clock .cmp-notebook-time{font-size:15px;font-weight:700;color:var(--navy)}
     .cmp-notebook-clock .cmp-notebook-date{font-size:11px;color:var(--muted)}
@@ -2910,7 +2921,7 @@
     .cmp-reminder-tag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:#eef2ff;color:#3949ab;display:inline-flex;align-items:center;gap:4px}
     .cmp-reminder-tag.due{background:#fde8e8;color:#c0362c}
     .cmp-reminder-tag button{background:none;border:none;cursor:pointer;color:inherit;font-size:10px;padding:0;line-height:1}
-    .cmp-quicknote{display:block;width:100%;min-height:120px;padding:6px 0;border:none;border-top:1.5px solid rgba(201,168,76,0.3);font-family:"Georgia",serif;font-size:14.5px;line-height:30px;outline:none;resize:vertical;box-sizing:border-box;color:var(--navy);background:transparent}
+    .cmp-quicknote{display:block;width:100%;min-height:180px;padding:6px 0;border:none;border-top:1.5px solid rgba(201,168,76,0.3);font-family:"Georgia",serif;font-size:14.5px;line-height:30px;outline:none;resize:vertical;box-sizing:border-box;color:var(--navy);background:transparent}
     .cmp-quicknote:focus{background:rgba(255,255,255,0.45)}
     .cmp-quicknote::placeholder{font-family:"Plus Jakarta Sans",sans-serif;font-style:italic;color:var(--muted)}
     .cmp-modal-overlay{display:none;position:fixed;inset:0;background:rgba(10,20,40,.55);z-index:9999;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
@@ -3026,7 +3037,8 @@
         <h2 style="margin-bottom:2px">My Notebook</h2>
         <p class="sub" style="margin-top:0">Your working notebook — quick capture, checklists, and day-by-day history. Always private to you.</p>
       </div>
-      <textarea class="cmp-quicknote" id="cmp-quicknote-input" placeholder="Write a note… start a line with - for a bullet, [] for a checklist item" rows="4"></textarea>
+      <div class="cmp-notebook-widgets" id="cmp-notebook-widgets"></div>
+      <textarea class="cmp-quicknote" id="cmp-quicknote-input" placeholder="Write a note… start a line with - for a bullet, [] for a checklist item" rows="6"></textarea>
       <div class="cmp-reminder-picker" id="cmp-reminder-picker">
         <span>⏰ Remind me at</span>
         <input type="datetime-local" id="cmp-reminder-input">
@@ -5203,10 +5215,131 @@ async function cmpLoadNotes() {
     cmpNotes = d.notes;
     cmpRenderNotes();
     if (typeof cmpCheckNoteReminders === 'function') cmpCheckNoteReminders();
+    if (typeof cmpLoadNotebookWidgets === 'function') cmpLoadNotebookWidgets();
   } catch (err) {
     const list = document.getElementById('cmp-notes-list');
     if (list) list.innerHTML = '<div style="text-align:center;padding:24px;color:#dc2626">Could not load notes — ' + escC(err.message) + '</div>';
   }
+}
+
+// ── Today's Focus widgets (5 Things To Do Today / Weekly Goal / Monthly Goal) ──
+// Each widget is a companion_notes row tagged note_type+period_key (see notes.js);
+// cmpWidgetState holds the currently-loaded note object per widget key.
+const CMP_WIDGETS = [
+  { key: 'daily', type: 'daily_todo', title: '📝 5 Things To Do Today', max: 5, fixed: true, periodKey: cmpTodayKey },
+  { key: 'weekly', type: 'weekly_goal', title: '🎯 Weekly Goal', max: 5, fixed: false, periodKey: cmpIsoWeekKey },
+  { key: 'monthly', type: 'monthly_goal', title: '🏆 Monthly Goal', max: 5, fixed: false, periodKey: cmpMonthKey }
+];
+let cmpWidgetState = { daily: null, weekly: null, monthly: null };
+
+function cmpTodayKey() {
+  const n = new Date();
+  return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0');
+}
+function cmpMonthKey() {
+  const n = new Date();
+  return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0');
+}
+function cmpIsoWeekKey() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7)); // shift to this week's Thursday
+  const week1 = new Date(d.getFullYear(), 0, 4);
+  const weekNo = 1 + Math.round(((d - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+  return d.getFullYear() + '-W' + String(weekNo).padStart(2, '0');
+}
+
+async function cmpLoadNotebookWidgets() {
+  for (const cfg of CMP_WIDGETS) {
+    const periodKey = cfg.periodKey();
+    let note = (cmpNotes || []).find(function(n) { return n.note_type === cfg.type && n.period_key === periodKey; });
+    if (!note) {
+      const defaultText = cfg.fixed ? Array(cfg.max).fill('[] ').join('\n') : '[] ';
+      try {
+        const r = await fetch('/api/companion/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: defaultText, owner_counselor: counselorName, note_type: cfg.type, period_key: periodKey }) });
+        const d = await r.json();
+        if (d.status === 'ok') { note = d.note; cmpNotes.push(note); }
+      } catch (err) { /* will retry on next load */ }
+    }
+    cmpWidgetState[cfg.key] = note || null;
+  }
+  cmpRenderWidgets();
+}
+
+function cmpRenderWidgets() {
+  const host = document.getElementById('cmp-notebook-widgets');
+  if (!host) return;
+  host.innerHTML = CMP_WIDGETS.map(function(cfg) {
+    const note = cmpWidgetState[cfg.key];
+    if (!note) return '<div class="cmp-widget-card"><div class="cmp-widget-title">' + cfg.title + '</div><div style="font-size:11px;color:var(--muted)">Loading…</div></div>';
+    const lines = (note.text || '').split('\n');
+    const rows = lines.map(function(line, idx) {
+      const parsed = cmpParseNoteLine(line);
+      const removeBtn = (!cfg.fixed && lines.length > 1)
+        ? '<button type="button" class="cmp-widget-remove" onclick="cmpRemoveWidgetLine(\'' + cfg.key + '\',' + idx + ')" title="Remove">✕</button>'
+        : '';
+      return '<div class="cmp-widget-line">' +
+        '<input type="checkbox" ' + (parsed.checked ? 'checked' : '') + ' onchange="cmpToggleWidgetLine(\'' + cfg.key + '\',' + idx + ')">' +
+        '<input type="text" class="cmp-widget-line-input" value="' + escC(parsed.text) + '" placeholder="…" data-widget="' + cfg.key + '" data-idx="' + idx + '" onblur="cmpSaveWidgetLine(this)" onkeydown="if(event.key===\'Enter\'){this.blur();}">' +
+        removeBtn +
+        '</div>';
+    }).join('');
+    const addBtn = (!cfg.fixed && lines.length < cfg.max)
+      ? '<button type="button" class="cmp-widget-add" onclick="cmpAddWidgetLine(\'' + cfg.key + '\')">+ Add</button>'
+      : '';
+    return '<div class="cmp-widget-card"><div class="cmp-widget-title">' + cfg.title + '</div>' + rows + addBtn + '</div>';
+  }).join('');
+}
+
+async function cmpPatchWidgetNote(note) {
+  try {
+    await fetch('/api/companion/notes', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: note.id, text: note.text }) });
+  } catch (err) { cmpToast('Could not save — ' + err.message, true); }
+}
+
+function cmpToggleWidgetLine(key, idx) {
+  const note = cmpWidgetState[key];
+  if (!note) return;
+  const lines = note.text.split('\n');
+  const parsed = cmpParseNoteLine(lines[idx]);
+  lines[idx] = '[' + (parsed.checked ? ' ' : 'x') + '] ' + parsed.text;
+  note.text = lines.join('\n');
+  cmpRenderWidgets();
+  cmpPatchWidgetNote(note);
+}
+
+function cmpSaveWidgetLine(el) {
+  const key = el.dataset.widget, idx = Number(el.dataset.idx);
+  const note = cmpWidgetState[key];
+  if (!note) return;
+  const lines = note.text.split('\n');
+  const parsed = cmpParseNoteLine(lines[idx]);
+  lines[idx] = '[' + (parsed.checked ? 'x' : ' ') + '] ' + el.value;
+  note.text = lines.join('\n');
+  cmpPatchWidgetNote(note);
+}
+
+function cmpAddWidgetLine(key) {
+  const cfg = CMP_WIDGETS.find(function(c) { return c.key === key; });
+  const note = cmpWidgetState[key];
+  if (!note || !cfg) return;
+  const lines = note.text.split('\n');
+  if (lines.length >= cfg.max) return;
+  lines.push('[] ');
+  note.text = lines.join('\n');
+  cmpRenderWidgets();
+  cmpPatchWidgetNote(note);
+}
+
+function cmpRemoveWidgetLine(key, idx) {
+  const note = cmpWidgetState[key];
+  if (!note) return;
+  const lines = note.text.split('\n');
+  if (lines.length <= 1) return;
+  lines.splice(idx, 1);
+  note.text = lines.join('\n');
+  cmpRenderWidgets();
+  cmpPatchWidgetNote(note);
 }
 
 function cmpChangeNotesMonth(delta) {
@@ -5292,7 +5425,7 @@ function cmpRenderNotes() {
   const searchEl = document.getElementById('cmp-note-search');
   const search = (searchEl && searchEl.value || '').toLowerCase();
   const ym = cmpNotesMonth.getFullYear() + '-' + String(cmpNotesMonth.getMonth() + 1).padStart(2, '0');
-  let notesInMonth = cmpNotes.filter(function(n) { return (n.created_at || '').slice(0, 7) === ym; });
+  let notesInMonth = cmpNotes.filter(function(n) { return (n.note_type === 'note' || !n.note_type) && (n.created_at || '').slice(0, 7) === ym; });
   if (search) notesInMonth = notesInMonth.filter(function(n) { return (n.text || '').toLowerCase().includes(search); });
 
   if (!notesInMonth.length) {

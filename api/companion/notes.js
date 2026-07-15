@@ -1,7 +1,7 @@
 // /api/companion/notes.js
 // Vercel serverless — Notes tab of the Prospects & Notes Companion.
 // GET    ?counselorName=&search=&linkedProspectId=   — list, pinned first
-// POST   { text, owner_counselor, linked_prospect_id?, pinned?, reminder_at? }   — create
+// POST   { text, owner_counselor, linked_prospect_id?, pinned?, reminder_at?, note_type?, period_key? }   — create
 // PATCH  { id, text?, pinned?, linked_prospect_id?, reminder_at? }               — update
 // DELETE { id }                                                    — delete
 //
@@ -9,6 +9,14 @@
 // surfaced as a due/overdue badge on the note card and an optional desktop notification
 // (see cmpCheckReminders in counselor.html). Pass null/omit to leave unset, or PATCH with
 // reminder_at:null to clear an existing reminder.
+//
+// note_type/period_key back the "Today's Focus" widgets on My Notebook (5 Things To Do
+// Today / Weekly Goal / Monthly Goal) — each widget is just a note tagged with a type
+// ('daily_todo' | 'weekly_goal' | 'monthly_goal') and a period key ('YYYY-MM-DD' |
+// 'YYYY-Www' | 'YYYY-MM'), one row per counsellor per period. Regular notebook entries
+// are note_type 'note' (the default) and are unaffected. POSTing a widget note is
+// idempotent — if a row for that owner/type/period already exists it's returned as-is
+// instead of creating a duplicate (see cmpLoadNotebookWidgets in counselor.html).
 //
 // Notes are private to their owner by default — every query here is owner-scoped
 // and there is intentionally no "scope=admin" mode, per the Plan of Action.
@@ -65,15 +73,29 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { text, owner_counselor, linked_prospect_id, pinned, reminder_at } = req.body || {};
-      if (!text || !text.trim()) return res.status(400).json({ status: 'error', reason: 'text is required' });
+      const { text, owner_counselor, linked_prospect_id, pinned, reminder_at, note_type, period_key } = req.body || {};
       if (!owner_counselor) return res.status(400).json({ status: 'error', reason: 'owner_counselor is required' });
+
+      // Widget notes (daily_todo/weekly_goal/monthly_goal) are one-per-period — if this
+      // owner already has a row for this type+period, hand that back instead of creating
+      // a duplicate (the unique index would reject it anyway).
+      if (note_type && note_type !== 'note' && period_key) {
+        const existing = await supaGet(
+          'companion_notes',
+          `owner_counselor=eq.${encodeURIComponent(owner_counselor)}&note_type=eq.${encodeURIComponent(note_type)}&period_key=eq.${encodeURIComponent(period_key)}&limit=1`
+        );
+        if (existing && existing.length) return res.status(200).json({ status: 'ok', note: existing[0] });
+      }
+
+      if (!text || !text.trim()) return res.status(400).json({ status: 'error', reason: 'text is required' });
       const created = await supaPost('companion_notes', {
         text: text.trim(),
         owner_counselor,
         linked_prospect_id: linked_prospect_id || null,
         pinned: !!pinned,
-        reminder_at: reminder_at || null
+        reminder_at: reminder_at || null,
+        note_type: note_type || 'note',
+        period_key: period_key || null
       });
       return res.status(200).json({ status: 'ok', note: created[0] });
     }

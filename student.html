@@ -1520,6 +1520,43 @@ function captureLocationAndShow() {
   );
 }
 
+// ── Alumni Mode ──────────────────────────────────────────────
+// Once a student has no active/ongoing batch left (every batch they were
+// ever enrolled in has expired), the tabs that only make sense mid-course
+// (today's live session/attendance, pending fee dues, current assignments)
+// are hidden. Everything tied to their permanent record — Courses history,
+// Calendar, Marks, Resources, Portfolio, Diploma, Alumni network, and the
+// Diamond Calculator — stays available indefinitely.
+function applyAlumniTabVisibility(d) {
+  var allBatches = (d && (d.allBatches || d.batches)) || [];
+  if (!allBatches.length) return; // no batch data at all yet — leave tabs as-is
+
+  var hasActiveBatch = allBatches.some(function(b) { return !b.expired; });
+  var hasCompletedOne = allBatches.some(function(b) { return b.expired; });
+  var alumniOnly = hasCompletedOne && !hasActiveBatch;
+
+  var operationalSelectors = [
+    '.nav-tab[onclick*="tab-today"]',
+    '.nav-tab[onclick*="tab-fees"]',
+    '#nav-tab-assignments'
+  ];
+
+  var wasActiveOperationalTab = false;
+  operationalSelectors.forEach(function(sel) {
+    var btn = document.querySelector(sel);
+    if (!btn) return;
+    if (alumniOnly && btn.classList.contains('active')) wasActiveOperationalTab = true;
+    btn.style.display = alumniOnly ? 'none' : '';
+  });
+
+  // If we just hid the tab the student was landed on (default is Today),
+  // move them somewhere still visible — Diploma if graduated, else Alumni.
+  if (alumniOnly && wasActiveOperationalTab) {
+    var landingBtn = document.getElementById('nav-tab-diploma') || document.getElementById('nav-tab-alumni');
+    if (landingBtn) landingBtn.click();
+  }
+}
+
 function renderPortal(d) {
   const hrs = new Date().getHours();
   let greet = "Hello";
@@ -1554,6 +1591,8 @@ function renderPortal(d) {
     });
     portTab.style.display = isJDStudent ? '' : 'none';
   }
+
+  applyAlumniTabVisibility(d);
 
   renderStudentSummary(d);
   loadStudentFees();

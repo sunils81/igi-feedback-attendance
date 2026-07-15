@@ -8565,20 +8565,80 @@ window.DiamondCalc = (function () {
 
   function escDC(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function fmtUsd(n) { if (!isFinite(n)) return '—'; return '$' + n.toLocaleString('en-US', { maximumFractionDigits: 2 }); }
+  function fmtInr(n) { if (!isFinite(n)) return '—'; return '₹' + Math.round(n).toLocaleString('en-IN'); }
+
+  // ── Live USD→INR rate (fetched once per page load, shared across every mounted
+  // calculator) — exchange rates are freely available public market data, unlike
+  // Rapaport's price list, so a live fetch here carries none of those concerns.
+  let liveRate = null;
+  let liveRateIsFallback = false;
+  let ratePromise = null;
+  const RATE_FALLBACK = 87.0; // last-known approximate — only used if every live source fails
+  const currencyByContainer = {};
+  const lastResults = {};
+
+  function fetchLiveRate() {
+    if (ratePromise) return ratePromise;
+    const sources = [
+      { url: 'https://open.er-api.com/v6/latest/USD', pick: function(d) { return d && d.rates && d.rates.INR; } },
+      { url: 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json', pick: function(d) { return d && d.usd && d.usd.inr; } }
+    ];
+    ratePromise = (async function() {
+      for (const src of sources) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(function() { controller.abort(); }, 4000);
+          const r = await fetch(src.url, { signal: controller.signal });
+          clearTimeout(timeout);
+          if (!r.ok) continue;
+          const d = await r.json();
+          const rate = src.pick(d);
+          if (rate && isFinite(rate)) { liveRate = rate; liveRateIsFallback = false; return rate; }
+        } catch (err) { /* try next source */ }
+      }
+      liveRate = RATE_FALLBACK;
+      liveRateIsFallback = true;
+      return liveRate;
+    })();
+    return ratePromise;
+  }
+
+  function _fmtMoney(amountUsd, containerId) {
+    const cur = currencyByContainer[containerId] || 'usd';
+    if (cur === 'inr') return fmtInr(amountUsd * (liveRate || RATE_FALLBACK));
+    return fmtUsd(amountUsd);
+  }
+
+  function _updateRateNote(containerId) {
+    const el = document.getElementById(containerId + '-rate-note');
+    if (!el) return;
+    if (liveRate == null) { el.textContent = 'Fetching live rate…'; return; }
+    el.textContent = '1 USD = ' + fmtInr(liveRate) + (liveRateIsFallback ? ' (approx., live rate unavailable)' : ' (live)');
+  }
 
   function mount(containerId, opts) {
     opts = opts || {};
     const root = document.getElementById(containerId);
     if (!root) return;
     const p = containerId + '-'; // id prefix so two mounts on the same page never collide
+    currencyByContainer[containerId] = 'usd';
 
     root.innerHTML =
       '<div class="dcalc-wrap" id="' + p + 'wrap">' +
         '<div class="dcalc-subtabs">' +
-          '<button type="button" class="dcalc-subtab active" data-tab="price" onclick="DiamondCalc._switch(\'' + containerId + '\',\'price\')">💰 Price Calculator</button>' +
-          '<button type="button" class="dcalc-subtab" data-tab="weight" onclick="DiamondCalc._switch(\'' + containerId + '\',\'weight\')">📐 Weight Estimator</button>' +
-          '<button type="button" class="dcalc-subtab" data-tab="reverse" onclick="DiamondCalc._switch(\'' + containerId + '\',\'reverse\')">🔄 Reverse Solve</button>' +
-          (opts.presentationToggle ? '<button type="button" class="dcalc-present-btn" onclick="DiamondCalc._togglePresent(\'' + containerId + '\')">🖥️ Present</button>' : '') +
+          '<div class="dcalc-subtabs-left">' +
+            '<button type="button" class="dcalc-subtab active" data-tab="price" onclick="DiamondCalc._switch(\'' + containerId + '\',\'price\')">💰 Price Calculator</button>' +
+            '<button type="button" class="dcalc-subtab" data-tab="weight" onclick="DiamondCalc._switch(\'' + containerId + '\',\'weight\')">📐 Weight Estimator</button>' +
+            '<button type="button" class="dcalc-subtab" data-tab="reverse" onclick="DiamondCalc._switch(\'' + containerId + '\',\'reverse\')">🔄 Reverse Solve</button>' +
+          '</div>' +
+          '<div class="dcalc-subtabs-right">' +
+            '<div class="dcalc-currency-toggle">' +
+              '<button type="button" class="dcalc-cur-btn active" data-cur="usd" onclick="DiamondCalc._setCurrency(\'' + containerId + '\',\'usd\')">$ USD</button>' +
+              '<button type="button" class="dcalc-cur-btn" data-cur="inr" onclick="DiamondCalc._setCurrency(\'' + containerId + '\',\'inr\')">₹ INR</button>' +
+            '</div>' +
+            '<span class="dcalc-rate-note" id="' + p + 'rate-note">Fetching live rate…</span>' +
+            (opts.presentationToggle ? '<button type="button" class="dcalc-present-btn" onclick="DiamondCalc._togglePresent(\'' + containerId + '\')">🖥️ Present</button>' : '') +
+          '</div>' +
         '</div>' +
 
         '<div class="dcalc-panel active" data-panel="price">' +
@@ -8626,6 +8686,14 @@ window.DiamondCalc = (function () {
           '<div class="dcalc-result" id="' + p + 'rev-result"></div>' +
         '</div>' +
       '</div>';
+
+    fetchLiveRate().then(function() {
+      _updateRateNote(containerId);
+      // If a result was already computed and someone's viewing it in INR, refresh
+      // it now that the live rate (rather than the fallback) has come in.
+      _renderPriceResult(containerId);
+      _renderReverseResult(containerId);
+    });
   }
 
   function _switch(containerId, tab) {
@@ -8668,6 +8736,16 @@ window.DiamondCalc = (function () {
     if (widField) widField.style.display = isRound ? 'none' : '';
   }
 
+  function _setCurrency(containerId, cur) {
+    currencyByContainer[containerId] = cur;
+    const root = document.getElementById(containerId);
+    if (root) {
+      root.querySelectorAll('.dcalc-cur-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.cur === cur); });
+    }
+    _renderPriceResult(containerId);
+    _renderReverseResult(containerId);
+  }
+
   function _calcPrice(containerId) {
     const p = containerId + '-';
     const carat = parseFloat(document.getElementById(p + 'price-carat').value);
@@ -8678,11 +8756,20 @@ window.DiamondCalc = (function () {
     const listPrice = rate * carat;
     const finalPrice = listPrice * (1 - pct / 100);
     const savings = listPrice - finalPrice;
+    lastResults[containerId] = { panel: 'price', listPrice: listPrice, finalPrice: finalPrice, savings: savings, pct: pct, carat: carat };
+    _renderPriceResult(containerId);
+  }
+
+  function _renderPriceResult(containerId) {
+    const p = containerId + '-';
+    const r = lastResults[containerId];
+    const resultEl = document.getElementById(p + 'price-result');
+    if (!r || r.panel !== 'price' || !resultEl) return;
     resultEl.innerHTML =
-      '<div class="dcalc-result-row"><span>List Price</span><b>' + fmtUsd(listPrice) + '</b></div>' +
-      '<div class="dcalc-result-row"><span>Discount (' + pct + '%)</span><b>−' + fmtUsd(savings) + '</b></div>' +
-      '<div class="dcalc-result-row dcalc-result-final"><span>Final Price</span><b>' + fmtUsd(finalPrice) + '</b></div>' +
-      '<div class="dcalc-result-row"><span>Price per Carat</span><b>' + fmtUsd(finalPrice / carat) + '</b></div>';
+      '<div class="dcalc-result-row"><span>List Price</span><b>' + _fmtMoney(r.listPrice, containerId) + '</b></div>' +
+      '<div class="dcalc-result-row"><span>Discount (' + r.pct + '%)</span><b>−' + _fmtMoney(r.savings, containerId) + '</b></div>' +
+      '<div class="dcalc-result-row dcalc-result-final"><span>Final Price</span><b>' + _fmtMoney(r.finalPrice, containerId) + '</b></div>' +
+      '<div class="dcalc-result-row"><span>Price per Carat</span><b>' + _fmtMoney(r.finalPrice / r.carat, containerId) + '</b></div>';
   }
 
   function _calcWeight(containerId) {
@@ -8721,16 +8808,29 @@ window.DiamondCalc = (function () {
       if (!rate) { resultEl.innerHTML = '<span class="dcalc-err">Enter the rate per carat.</span>'; return; }
       const listPrice = rate * carat;
       const pct = (1 - target / listPrice) * 100;
-      resultEl.innerHTML =
-        '<div class="dcalc-result-row"><span>List Price</span><b>' + fmtUsd(listPrice) + '</b></div>' +
-        '<div class="dcalc-result-row dcalc-result-final"><span>Implied ' + (pct < 0 ? 'Premium' : 'Discount') + '</span><b>' + Math.abs(pct).toFixed(1) + '%</b></div>';
+      lastResults[containerId] = { panel: 'reverse', mode: 'pct', listPrice: listPrice, pct: pct };
     } else {
       const pct = parseFloat(document.getElementById(p + 'rev-pct').value) || 0;
       const rate = target / (carat * (1 - pct / 100));
+      lastResults[containerId] = { panel: 'reverse', mode: 'rate', rate: rate };
+    }
+    _renderReverseResult(containerId);
+  }
+
+  function _renderReverseResult(containerId) {
+    const p = containerId + '-';
+    const r = lastResults[containerId];
+    const resultEl = document.getElementById(p + 'rev-result');
+    if (!r || r.panel !== 'reverse' || !resultEl) return;
+    if (r.mode === 'pct') {
       resultEl.innerHTML =
-        '<div class="dcalc-result-row dcalc-result-final"><span>Implied Rate per Carat</span><b>' + fmtUsd(rate) + '</b></div>';
+        '<div class="dcalc-result-row"><span>List Price</span><b>' + _fmtMoney(r.listPrice, containerId) + '</b></div>' +
+        '<div class="dcalc-result-row dcalc-result-final"><span>Implied ' + (r.pct < 0 ? 'Premium' : 'Discount') + '</span><b>' + Math.abs(r.pct).toFixed(1) + '%</b></div>';
+    } else {
+      resultEl.innerHTML =
+        '<div class="dcalc-result-row dcalc-result-final"><span>Implied Rate per Carat</span><b>' + _fmtMoney(r.rate, containerId) + '</b></div>';
     }
   }
 
-  return { mount: mount, _switch: _switch, _togglePresent: _togglePresent, _toggleReverseMode: _toggleReverseMode, _toggleWeightShape: _toggleWeightShape, _calcPrice: _calcPrice, _calcWeight: _calcWeight, _calcReverse: _calcReverse };
+  return { mount: mount, _switch: _switch, _togglePresent: _togglePresent, _toggleReverseMode: _toggleReverseMode, _toggleWeightShape: _toggleWeightShape, _setCurrency: _setCurrency, _calcPrice: _calcPrice, _calcWeight: _calcWeight, _calcReverse: _calcReverse };
 })();

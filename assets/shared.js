@@ -2076,9 +2076,17 @@ window.gasGet = (function () {
   /* getSessions */
   function h_getSessions(p, cb) {
     GET('sessions', 'batch_code=eq.' + encodeURIComponent(p.batchCode) + '&order=sess_no.asc', function (e, rows) {
-      cb(null, { sessions: (rows || []).map(function (r) {
+      rows = rows || [];
+      // displaySessNo: cosmetic rank among non-cancelled sessions only, so the
+      // number shown doesn't drift ahead of the actual count of classes held.
+      var displayNoByCode = {};
+      rows.filter(function (r) { return r.session_type !== 'Cancelled'; })
+        .sort(function (a, b) { return new Date(a.session_date) - new Date(b.session_date); })
+        .forEach(function (r, idx) { displayNoByCode[r.session_code] = idx + 1; });
+      cb(null, { sessions: rows.map(function (r) {
         return { sessionCode: r.session_code, batchCode: r.batch_code,
           sessionDate: toDMY(r.session_date), sessNo: r.sess_no,
+          displaySessNo: displayNoByCode[r.session_code] || r.sess_no,
           instructor: r.instructor, sessionType: r.session_type, topic: r.topic };
       }) });
     });
@@ -2087,14 +2095,20 @@ window.gasGet = (function () {
   /* createSession */
   function h_createSession(p, cb) {
     GET('sessions', 'batch_code=eq.' + encodeURIComponent(p.batchCode) +
-      '&select=sess_no&order=sess_no.desc&limit=1', function (e, rows) {
-      var nextNo   = rows && rows.length ? (Number(rows[0].sess_no || 0) + 1) : 1;
+      '&select=sess_no,session_type&order=sess_no.desc', function (e, rows) {
+      rows = rows || [];
+      var nextNo   = rows.length ? (Number(rows[0].sess_no || 0) + 1) : 1;
+      // displaySessNo is a cosmetic count of non-cancelled sessions only, so the
+      // "Session N" label students/instructors see doesn't drift ahead of the
+      // actual number of classes held whenever an earlier session was cancelled.
+      var nonCancelledCount = rows.filter(function (r) { return r.session_type !== 'Cancelled'; }).length;
+      var displayNo = nonCancelledCount + 1;
       var sessCode = p.batchCode + '-S' + String(nextNo).padStart(2, '0');
       POST('sessions', 'on_conflict=session_code', {
         session_code: sessCode, batch_code: p.batchCode,
         session_date: p.sessionDate || todayYMD(), sess_no: nextNo,
         instructor: p.instructor || '', session_type: p.sessionType || 'Scheduled', topic: p.topic || ''
-      }, function (e2) { cb(null, e2 ? { status: 'error' } : { status: 'ok', sessionCode: sessCode }); });
+      }, function (e2) { cb(null, e2 ? { status: 'error' } : { status: 'ok', sessionCode: sessCode, sessNo: nextNo, displaySessNo: displayNo }); });
     });
   }
 
@@ -2104,6 +2118,13 @@ window.gasGet = (function () {
     var sess, stus, atts; var n = 0;
     function done() {
       if (++n < 3) return;
+      // displaySessNo: cosmetic rank among non-cancelled sessions only (date order), so
+      // the "Session N" number shown in reports doesn't drift ahead of the actual count
+      // of classes held whenever an earlier session was cancelled.
+      var displayNoByCode = {};
+      (sess || []).filter(function (s) { return s.session_type !== 'Cancelled'; })
+        .slice().sort(function (a, b) { return new Date(a.session_date) - new Date(b.session_date); })
+        .forEach(function (s, idx) { displayNoByCode[s.session_code] = idx + 1; });
       var sessions = (sess || []).map(function (s) {
         var cancelled = s.session_type === 'Cancelled';
         var af  = (atts || []).filter(function (a) { return a.session_code === s.session_code; });
@@ -2114,6 +2135,7 @@ window.gasGet = (function () {
         // own status rather than showing up as "pending" and nagging for finalisation.
         var attStatus = cancelled ? 'cancelled' : (isConfirmed ? 'confirmed' : 'pending');
         return { sessionCode: s.session_code, sessNo: s.sess_no,
+          displaySessNo: displayNoByCode[s.session_code] || s.sess_no,
           sessionDate: toDMY(s.session_date), date: toDMY(s.session_date), topic: s.topic || '',
           sessionType: s.session_type || 'Scheduled', instructor: s.instructor || '',
           avgScore: Number(avg), presentCount: af.filter(function (a) { return a.attendance !== 'Absent'; }).length,
@@ -4534,11 +4556,21 @@ window.gasGet = (function () {
                 // counted as attended, and not counted against the student as a miss either.
                 var bSess = (sessions || []).filter(function (s) { return s.batch_code === batchCode && s.session_type !== 'Cancelled'; })
                   .sort(function (a, b) { return new Date(b.session_date) - new Date(a.session_date); });
+                // The raw sess_no on the sessions table keeps incrementing forever, including
+                // past any cancelled day (its session_code already used that number, so it can't
+                // be reused without colliding) — so it can drift ahead of the actual number of
+                // real classes held. displaySessNo is a separate, purely cosmetic count of real
+                // (non-cancelled) sessions in date order, so "Session N" shown to the student
+                // always matches how many real classes have actually happened.
+                var displaySessNoByCode = {};
+                bSess.slice().sort(function (a, b) { return new Date(a.session_date) - new Date(b.session_date); })
+                  .forEach(function (s, idx) { displaySessNoByCode[s.session_code] = idx + 1; });
                 var history = bSess.slice(0, 7).map(function (s) {
                   var attended = (atts || []).some(function (af) {
                     return af.session_code === s.session_code && af.attendance !== 'Absent';
                   });
-                  return { sessionCode: s.session_code, sessNo: s.sess_no, sessionDate: toDMY(s.session_date), topic: s.topic || '', attended: attended };
+                  return { sessionCode: s.session_code, sessNo: s.sess_no, displaySessNo: displaySessNoByCode[s.session_code] || s.sess_no,
+                    sessionDate: toDMY(s.session_date), topic: s.topic || '', attended: attended };
                 });
                 var attendedCount = bSess.filter(function (s) {
                   return (atts || []).some(function (af) {
@@ -4559,6 +4591,7 @@ window.gasGet = (function () {
                   startDateISO: startD.toISOString(), endDateISO: endD.toISOString(),
                   startDateDisplay: toDMY(b.start_date), endDateDisplay: toDMY(b.end_date),
                   sessionCode: todaySess ? todaySess.session_code : null, sessNo: todaySess ? todaySess.sess_no : null,
+                  displaySessNo: todaySess ? (displaySessNoByCode[todaySess.session_code] || todaySess.sess_no) : null,
                   topic: todaySess ? (todaySess.topic || '') : null, sessionExists: !!todaySess,
                   alreadySubmitted: alreadySubmitted, windowActive: isActive, windowOpen: windowOpen, windowClosed: windowClosed,
                   windowOpenHr: win.open, windowCloseHr: win.close, history: history,
@@ -5253,23 +5286,51 @@ window.gasGet = (function () {
 
   function h_getInstructorTodaySessions(p, cb) {
     var instr = String(p.instructor || '').trim();
-    if (!instr) { cb(null, { status: 'ok', date: toDMY(todayYMD()), batches: [] }); return; }
+    if (!instr) { cb(null, { status: 'ok', date: toDMY(todayYMD()), batches: [], upcoming: [] }); return; }
     GET('batches', 'order=created_at.desc', function (e, bRows) {
-      if (e || !bRows || !bRows.length) { cb(null, { status: 'ok', date: toDMY(todayYMD()), batches: [] }); return; }
+      if (e || !bRows || !bRows.length) { cb(null, { status: 'ok', date: toDMY(todayYMD()), batches: [], upcoming: [] }); return; }
       var today = todayYMD(); // must be defined before the filter uses it
       var matched = bRows.filter(function (b) {
         if (sameName(b.instructor, instr)) return true;
         if (!b.co_instructor || !sameName(b.co_instructor, instr)) return false;
         return !b.co_instructor_until || b.co_instructor_until >= today;
       });
-      if (!matched.length) { cb(null, { status: 'ok', date: toDMY(today), batches: [] }); return; }
-      var codesQs = matched.map(function (b) { return encodeURIComponent(b.batch_code); }).join(',');
+      // Batches that ended a while ago clutter the daily view with no benefit — keep
+      // them visible for a short grace period (in case a stray makeup session is still
+      // needed) and then drop them from this list entirely. Historical data is still
+      // reachable via My Batches / reports.
+      var GRACE_DAYS = 3;
+      var graceCutoffDate = new Date(today); graceCutoffDate.setDate(graceCutoffDate.getDate() - GRACE_DAYS);
+      var graceCutoff = graceCutoffDate.toISOString().slice(0, 10);
+      var alive = matched.filter(function (b) { return !b.end_date || b.end_date >= graceCutoff; });
+      // Batches that haven't started yet are split out into a separate "upcoming" list
+      // (rendered as a compact collapsed section) instead of a full card each, so the
+      // Today view doesn't fill up with sessions that are weeks or months away.
+      var current  = alive.filter(function (b) { return !b.start_date || b.start_date <= today; });
+      var upcoming = alive.filter(function (b) { return b.start_date && b.start_date > today; })
+        .sort(function (a, c) { return new Date(a.start_date) - new Date(c.start_date); })
+        .map(function (b) {
+          return { batchCode: b.batch_code, centre: b.centre, course: b.course,
+            batchSlot: b.batch_slot || 'Full Day', startDate: toDMY(b.start_date) };
+        });
+      if (!current.length) { cb(null, { status: 'ok', date: toDMY(today), batches: [], upcoming: upcoming }); return; }
+      var codesQs = current.map(function (b) { return encodeURIComponent(b.batch_code); }).join(',');
       // Pull the full session history (not just today) for these batches in one call,
       // so we can both find today's session and work out each batch's syllabus progress.
       GET('sessions', 'batch_code=in.(' + codesQs + ')&order=session_date.asc,sess_no.asc&select=session_code,batch_code,session_date,sess_no,topic,session_type', function (e2, allSess) {
         allSess = allSess || [];
-        var batches = matched.map(function (b) {
-          var todaySess = allSess.find(function (s) { return s.batch_code === b.batch_code && s.session_date === today; });
+        // displaySessNo is a cosmetic per-batch rank among non-cancelled sessions only,
+        // so the "Session N" label shown to instructors doesn't drift ahead of the
+        // actual number of classes held whenever an earlier session was cancelled.
+        var displayNoByCode = {};
+        current.forEach(function (b) {
+          allSess.filter(function (s) { return s.batch_code === b.batch_code && s.session_type !== 'Cancelled'; })
+            .sort(function (a, c) { return new Date(a.session_date) - new Date(c.session_date); })
+            .forEach(function (s, idx) { displayNoByCode[s.session_code] = idx + 1; });
+        });
+        var batches = current.map(function (b) {
+          var todaySess = allSess.find(function (s) { return s.batch_code === b.batch_code && s.session_date === today && s.session_type !== 'Cancelled'; });
+          var cancelledTodaySess = allSess.find(function (s) { return s.batch_code === b.batch_code && s.session_date === today && s.session_type === 'Cancelled'; });
           var startD = b.start_date || '';
           var endD = b.end_date || '';
           var activeToday = startD && endD && today >= startD && today <= endD;
@@ -5282,12 +5343,15 @@ window.gasGet = (function () {
             batchCode: b.batch_code, centre: b.centre, course: b.course, type: b.type, batchSlot: b.batch_slot || 'Full Day',
             startDate: toDMY(startD), endDate: toDMY(endD), activeToday: !!activeToday, workingDay: true,
             sessionCode: todaySess ? todaySess.session_code : '', sessNo: todaySess ? todaySess.sess_no : '',
+            displaySessNo: todaySess ? (displayNoByCode[todaySess.session_code] || todaySess.sess_no) : '',
             sessionType: todaySess ? (todaySess.session_type || 'Scheduled') : '', topic: todaySess ? (todaySess.topic || '') : '',
             autoCreated: !!todaySess,
+            cancelled: !!cancelledTodaySess,
+            cancelledReason: cancelledTodaySess ? String(cancelledTodaySess.topic || '').replace(/^CANCELLED:\s*/, '') : '',
             syllabus: syllabus, scheduledTopic: prog.scheduledTopic, dayNo: prog.dayNo, week: prog.week, usedDays: prog.usedDays
           };
         });
-        cb(null, { status: 'ok', date: toDMY(today), todayISO: today, batches: batches });
+        cb(null, { status: 'ok', date: toDMY(today), todayISO: today, batches: batches, upcoming: upcoming });
       });
     });
   }

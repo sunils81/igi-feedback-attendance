@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=64"></script>
+<script src="/assets/shared.js?v=66"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -6289,7 +6289,7 @@ function _renderCounselorReportData(d, wrap, requestId) {
       var cancelled = String(s.sessionType || '').toLowerCase() === 'cancelled';
       html += '<div class="timeline-card attendance-card' + (isToday ? ' today' : '') + (cancelled ? ' cancelled' : '') + '">';
       html += '<div class="attendance-head">';
-      html += '<div><div class="attendance-title"><span>Session ' + escC(s.sessNo) + '</span><span>&middot;</span><span>' + escC(s.sessionDate) + '</span>' + (isToday ? '<span class="today-pill">Today</span>' : '') + (cancelled ? '<span class="cancelled-pill">Cancelled</span>' : '') + '</div>';
+      html += '<div><div class="attendance-title"><span>Session ' + escC(s.displaySessNo || s.sessNo) + '</span><span>&middot;</span><span>' + escC(s.sessionDate) + '</span>' + (isToday ? '<span class="today-pill">Today</span>' : '') + (cancelled ? '<span class="cancelled-pill">Cancelled</span>' : '') + '</div>';
       html += '<div class="attendance-topic">' + escC(s.topic || 'Topic not set') + '</div></div>';
       var sc2=s.avgScore>=4?'#1a7a3c':s.avgScore>=3?'#B87A10':'#C94A4A';
       html += '<div style="text-align:right">';
@@ -6384,6 +6384,7 @@ function renderAttendanceExtract() {
   var to = document.getElementById('rp-extract-to').value;
   var threshold = Number(document.getElementById('rp-extract-threshold').value) || 75;
   var sessions = (d.sessions || []).filter(function(s) {
+    if (s.cancelled) return false; // a class that never happened shouldn't count for or against anyone
     var iso = parseReportDateISO(s.sessionDate);
     return (!from || iso >= from) && (!to || iso <= to);
   });
@@ -6394,7 +6395,7 @@ function renderAttendanceExtract() {
       sessions.forEach(function(s) {
         var attended = studentAttendedSession(st, s.sessionCode);
         if (attended) present++;
-        else missed.push('S' + s.sessNo);
+        else missed.push('S' + (s.displaySessNo || s.sessNo));
       });
       var pct = sessions.length ? Math.round(present * 100 / sessions.length) : 0;
       if (pct < threshold) rows.push({studentId:st.enrollmentNo, student:st.name, present, total:sessions.length, pct:pct + '%', missed:missed.join(', ')});
@@ -6405,7 +6406,7 @@ function renderAttendanceExtract() {
         if (studentId && String(st.enrollmentNo) !== String(studentId)) return;
         var attended = studentAttendedSession(st, s.sessionCode);
         if (type === 'absentees' && attended) return;
-        rows.push({date:s.sessionDate, session:'S' + s.sessNo, topic:s.topic || 'Topic not set', studentId:st.enrollmentNo, student:st.name, status:attended?'Present':'Absent', instructor:s.instructor || ''});
+        rows.push({date:s.sessionDate, session:'S' + (s.displaySessNo || s.sessNo), topic:s.topic || 'Topic not set', studentId:st.enrollmentNo, student:st.name, status:attended?'Present':'Absent', instructor:s.instructor || ''});
       });
     });
   }

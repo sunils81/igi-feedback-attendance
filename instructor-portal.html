@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Instructor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=64"></script>
+<script src="/assets/shared.js?v=66"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style id="dyn-css"></style>
 <style>
@@ -395,6 +395,15 @@
       <div id="today-batches-wrap">
         <div class="spinner-wrap"><div class="spinner"></div><p>Preparing today's sessions…</p></div>
       </div>
+    </div>
+
+    <!-- Upcoming batches (not yet started) — collapsed by default to avoid clutter -->
+    <div class="card" id="upcoming-batches-card" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleUpcomingBatches()">
+        <div class="section-tag" style="margin-bottom:0">📅 Upcoming Batches <span id="upcoming-count-badge" style="background:var(--gold-pale);color:#6b4c10;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;margin-left:6px">0</span></div>
+        <span id="upcoming-toggle-icon" style="color:var(--muted);font-size:11px;font-weight:600">▼ Show</span>
+      </div>
+      <div id="upcoming-batches-wrap" style="display:none;margin-top:10px"></div>
     </div>
 
     <!-- Extra session card (only for non-scheduled days) -->
@@ -3056,8 +3065,10 @@ function loadTodaySessions() {
   gasGet({action:'getInstructorTodaySessions', instructor:instructorName, centres:centresParam}, function(e,d) {
     if (e||!d) {
       wrap.innerHTML='<div class="info-box" style="background:#FEF2F2;border-left-color:var(--red);color:var(--red)">Could not load sessions. Please refresh.</div>';
+      renderUpcomingBatches([]);
       return;
     }
+    renderUpcomingBatches(d.upcoming);
     if (!d.batches||!d.batches.length) {
       instructorTodayCache = [];
       renderInstructorSummary();
@@ -3074,6 +3085,36 @@ function loadTodaySessions() {
     renderInstructorSummary();
     renderTodaySessions(batches);
   });
+}
+
+var upcomingBatchesCache = [];
+var upcomingBatchesExpanded = false;
+
+function renderUpcomingBatches(list) {
+  upcomingBatchesCache = list || [];
+  var card = document.getElementById('upcoming-batches-card');
+  var badge = document.getElementById('upcoming-count-badge');
+  if (!card || !badge) return;
+  if (!upcomingBatchesCache.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  badge.textContent = upcomingBatchesCache.length;
+  var wrap = document.getElementById('upcoming-batches-wrap');
+  wrap.innerHTML = upcomingBatchesCache.map(function(b) {
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--off);font-size:12.5px">' +
+      '<div><strong style="color:var(--navy)">' + escHtml(b.batchCode) + '</strong> <span style="color:var(--muted)">· ' + escHtml(b.course) + ' · ' + escHtml(b.centre) + '</span></div>' +
+      '<div style="color:var(--muted);font-size:11px;white-space:nowrap;margin-left:10px">Starts ' + escHtml(b.startDate) + '</div>' +
+    '</div>';
+  }).join('');
+  // Collapse again on every refresh so it doesn't stay pinned open across tab switches
+  upcomingBatchesExpanded = false;
+  wrap.style.display = 'none';
+  document.getElementById('upcoming-toggle-icon').textContent = '▼ Show';
+}
+
+function toggleUpcomingBatches() {
+  upcomingBatchesExpanded = !upcomingBatchesExpanded;
+  document.getElementById('upcoming-batches-wrap').style.display = upcomingBatchesExpanded ? 'block' : 'none';
+  document.getElementById('upcoming-toggle-icon').textContent = upcomingBatchesExpanded ? '▲ Hide' : '▼ Show';
 }
 
 function createTodaySession(batchCode) {
@@ -3094,7 +3135,7 @@ function createTodaySession(batchCode) {
       return;
     }
     const link = window.location.origin + '/feedback?s=' + encodeURIComponent(d.sessionCode);
-    showSessionShare(d.sessionCode, link, d.sessNo, d.sessionType||'Scheduled');
+    showSessionShare(d.sessionCode, link, d.displaySessNo || d.sessNo, d.sessionType||'Scheduled');
     loadInstructorBatches();
     loadTodaySessions();
   });
@@ -3155,7 +3196,7 @@ function createSession() {
     const baseUrl  = window.location.origin + '/feedback';
     const fullLink = baseUrl + '?s=' + encodeURIComponent(d.sessionCode);
     document.getElementById('ss-code').textContent  = d.sessionCode;
-    document.getElementById('ss-type-disp').textContent = 'Session ' + d.sessNo + ' · ' + (d.sessionType||'Scheduled');
+    document.getElementById('ss-type-disp').textContent = 'Session ' + (d.displaySessNo || d.sessNo) + ' · ' + (d.sessionType||'Scheduled');
     document.getElementById('ss-link').value = fullLink;
     document.getElementById('ss-qr').src = 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=' + encodeURIComponent(fullLink);
     document.getElementById('ss-qr-txt').textContent = fullLink;
@@ -3175,6 +3216,14 @@ function renderTodaySessions(sessions) {
   for (var i = 0; i < sessions.length; i++) {
     var s = sessions[i];
     var slotBadge = slotColors[s.batchSlot] || 'day-badge-full';
+    if (s.cancelled) {
+      html += '<div class="day-batch-card" style="background:#FEF2F2;border-color:#C94A4A">';
+      html += '<div class="dbc-title">' + escH(s.batchCode) + ' <span style="font-size:11px;color:#C94A4A;font-weight:700">CANCELLED</span></div>';
+      html += '<div class="dbc-meta"><span class="day-badge ' + slotBadge + '">' + escH(s.batchSlot) + '</span> ' + escH(s.course) + ' &middot; ' + escH(s.centre) + '</div>';
+      html += '<div style="font-size:12px;color:#C94A4A">' + escH(s.cancelledReason || 'Session cancelled') + '</div>';
+      html += '</div>';
+      continue;
+    }
     if (!s.sessionCode) {
       html += '<div class="day-batch-card">';
       html += '<div class="dbc-title">' + escH(s.batchCode) + '</div>';
@@ -3223,14 +3272,6 @@ function renderTodaySessions(sessions) {
       html += '</div>';
       continue;
     }
-    if (s.cancelled) {
-      html += '<div class="day-batch-card" style="background:#FEF2F2;border-color:#C94A4A">';
-      html += '<div class="dbc-title">' + escH(s.batchCode) + ' <span style="font-size:11px;color:#C94A4A;font-weight:700">CANCELLED</span></div>';
-      html += '<div class="dbc-meta"><span class="day-badge ' + slotBadge + '">' + escH(s.batchSlot) + '</span> ' + escH(s.course) + ' &middot; ' + escH(s.centre) + '</div>';
-      html += '<div style="font-size:12px;color:#C94A4A">' + escH(s.topic || 'Session cancelled') + '</div>';
-      html += '</div>';
-      continue;
-    }
     var displayTopic = (s.topic && s.topic.indexOf('CANCELLED') !== 0) ? s.topic : '';
     var autoTxt = s.autoCreated ? ' <span style="font-size:10px;color:#1D9E75;font-weight:600">Auto</span>' : '';
     html += '<div class="day-batch-card created" id="dbc-' + escH(s.sessionCode) + '">';
@@ -3239,7 +3280,7 @@ function renderTodaySessions(sessions) {
     html += '<span style="font-family:monospace;font-size:10px;color:var(--muted);margin-left:8px">' + escH(s.sessionCode) + '</span>';
     html += autoTxt + '</div>';
     html += '<div class="dbc-meta"><span class="day-badge ' + slotBadge + '">' + escH(s.batchSlot) + '</span> ';
-    html += escH(s.course) + ' &middot; ' + escH(s.centre) + ' &middot; Session ' + s.sessNo + '</div>';
+    html += escH(s.course) + ' &middot; ' + escH(s.centre) + ' &middot; Session ' + (s.displaySessNo || s.sessNo) + '</div>';
     if (s.scheduledTopic) {
       html += '<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">Day ' + s.dayNo + (s.week ? ' &middot; ' + escH(s.week) : '') + '</div>';
       html += '<div style="font-size:12px;background:var(--gold-pale);border-left:3px solid var(--gold);padding:8px 10px;border-radius:0 6px 6px 0;color:#6b4c10;margin-bottom:10px;line-height:1.4">' + escH(s.scheduledTopic) + '</div>';
@@ -3420,7 +3461,7 @@ function createExtraSession() {
       err.classList.add('show'); return;
     }
     const link = window.location.origin + '/feedback?s=' + encodeURIComponent(d.sessionCode);
-    showSessionShare(d.sessionCode, link, d.sessNo, d.sessionType||'Extra');
+    showSessionShare(d.sessionCode, link, d.displaySessNo || d.sessNo, d.sessionType||'Extra');
     document.getElementById('ex-topic').value='';
     loadTodaySessions();
   });
@@ -3462,7 +3503,7 @@ function loadSessionsForBatch() {
     d.sessions.forEach(s => {
       const o = document.createElement('option');
       o.value = s.sessionCode;
-      o.textContent = 'S'+String(s.sessNo).padStart(2,'0')+' — '+s.sessionDate+(s.topic?' — '+s.topic.substring(0,30):'');
+      o.textContent = 'S'+String(s.displaySessNo || s.sessNo).padStart(2,'0')+' — '+s.sessionDate+(s.topic?' — '+s.topic.substring(0,30):'');
       sel.appendChild(o);
     });
     if (d.sessions.length) { sel.value = d.sessions[0].sessionCode; loadAttendance(); }
@@ -3953,7 +3994,7 @@ function renderSessionResources() {
       : '<p style="font-size:11px;color:var(--muted);padding:4px 0">Nothing posted for this session yet.</p>';
     return '<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px">' +
-        '<div style="font-weight:700;font-size:13px;color:var(--navy)">S'+String(s.sessNo).padStart(2,'0')+' — '+escHtml(s.sessionDate)+(s.topic?' — '+escHtml(s.topic):'')+'</div>' +
+        '<div style="font-weight:700;font-size:13px;color:var(--navy)">S'+String(s.displaySessNo || s.sessNo).padStart(2,'0')+' — '+escHtml(s.sessionDate)+(s.topic?' — '+escHtml(s.topic):'')+'</div>' +
         '<div style="display:flex;gap:6px">' +
           '<button class="btn btn-outline" style="width:auto;padding:4px 10px;font-size:11px" onclick="showAddResourceScreen(\'material\',\''+s.sessionCode+'\')">+ Material</button>' +
           '<button class="btn btn-outline" style="width:auto;padding:4px 10px;font-size:11px" onclick="showAddResourceScreen(\'recording\',\''+s.sessionCode+'\')">+ Recording</button>' +

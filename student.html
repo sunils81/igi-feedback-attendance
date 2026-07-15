@@ -8,7 +8,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Student Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=64"></script>
+<script src="/assets/shared.js?v=66"></script>
 <style id="dyn-css"></style>
 <style>
 .batch-card{background:var(--white);border-radius:var(--radius);border:1.5px solid var(--border);padding:20px;margin-bottom:14px;box-shadow:var(--shadow);transition:border-color .2s}
@@ -1483,10 +1483,13 @@ function renderSyllabusProgress(b) {
     if (cn.includes('colored stone') || cn.includes('stone')) return 20;
     return 30;
   }
-  const maxSessNo = (b.history && b.history.length) ? Math.max(...b.history.map(h => Number(h.sessNo) || 0)) : 0;
+  // displaySessNo counts only real (non-cancelled) sessions in date order, so progress
+  // always matches actual classes held rather than the raw DB sequence number, which
+  // keeps incrementing past any cancelled day and would otherwise drift ahead over time.
+  const maxSessNo = (b.history && b.history.length) ? Math.max(...b.history.map(h => Number(h.displaySessNo || h.sessNo) || 0)) : 0;
   // Fall back to history.length when sess_no is null/0 in DB (e.g. JewelPad batches)
   const lastSessNo = maxSessNo > 0 ? maxSessNo : (b.history ? b.history.length : 0);
-  const currentSess = b.sessNo ? (Number(b.sessNo) || (lastSessNo + 1)) : (lastSessNo || ((b.historySummary && b.historySummary.total) || 0));
+  const currentSess = b.displaySessNo || b.sessNo ? (Number(b.displaySessNo || b.sessNo) || (lastSessNo + 1)) : (lastSessNo || ((b.historySummary && b.historySummary.total) || 0));
   let estTotal = estimateTotalSessions(b.course);
   if (currentSess > estTotal) estTotal = currentSess;
   const progressPct = estTotal > 0 ? Math.min(100, Math.round((currentSess / estTotal) * 100)) : 0;
@@ -1734,7 +1737,7 @@ function renderPortal(d) {
       return `<div class="batch-card active-card">
         <span class="slot-badge ${slotBadgeClass}" style="display:inline-flex; align-items:center;"><span class="pulse-dot"></span>${slotLabel}</span>
         <div class="bc-course">${b.course}</div>
-        <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''} · Session ${b.sessNo}</div>
+        <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''} · Session ${b.displaySessNo || b.sessNo}</div>
         ${topicLine}
         ${renderSyllabusProgress(b)}
         <button class="btn btn-gold" onclick="openFeedback('${b.batchCode}')">Mark Attendance &amp; Submit Feedback →</button>
@@ -1789,7 +1792,7 @@ function renderPortal(d) {
         innerCard = `<div class="batch-card active-card" style="margin-bottom:0px; border-bottom-left-radius:0; border-bottom-right-radius:0; border-bottom:none;">
           <span class="slot-badge ${slotBadgeClass}" style="display:inline-flex; align-items:center;"><span class="pulse-dot"></span>${slotLabel}</span>
           <div class="bc-course">${b.course}</div>
-          <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''} · Session ${b.sessNo}</div>
+          <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''} · Session ${b.displaySessNo || b.sessNo}</div>
           ${topicLine}
           ${renderSyllabusProgress(b)}
           <button class="btn btn-gold" onclick="openFeedback('${b.batchCode}')">Mark Attendance &amp; Submit Feedback →</button>
@@ -1836,7 +1839,7 @@ function renderHistory(b, collapsible) {
     ${h.map(x=>`<div class="timeline-card hist-row ${x.attended?'':'missed'}">
       <span class="hist-dot ${x.attended?'present':'missed'}"></span>
       <div class="hist-main">
-        <div class="hist-title">Session ${x.sessNo} · ${x.sessionDate}</div>
+        <div class="hist-title">Session ${x.displaySessNo || x.sessNo} · ${x.sessionDate}</div>
         <div class="hist-meta">${x.topic||'Topic not set'}</div>
       </div>
       <span class="badge ${x.attended?'badge-green':'badge-amber'}">${x.attended?'Present':'Not marked'}</span>
@@ -1936,7 +1939,7 @@ function renderStudentSummary(d) {
           `<span class="pc-icon">🎓</span>` +
           `<div class="pc-details">` +
             `<div class="pc-label">Upcoming Class</div>` +
-            `<span class="pc-value" style="text-align: right; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${next ? (next.course || next.batchCode) : ''}">${next ? 'S' + (next.sessNo || '—') + ' · ' + (next.course || next.batchCode).split(' ')[0] : '—'}</span>` +
+            `<span class="pc-value" style="text-align: right; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${next ? (next.course || next.batchCode) : ''}">${next ? 'S' + ((next.displaySessNo || next.sessNo) || '—') + ' · ' + (next.course || next.batchCode).split(' ')[0] : '—'}</span>` +
           `</div>` +
         `</div>` +
         `<div class="pc-row">` +
@@ -2058,7 +2061,7 @@ function openFeedback(batchCode) {
   document.getElementById('fb-err').classList.remove('show');
   // Fill header
   document.getElementById('fb-course').textContent = b.course + (b.batchSlot!=='Full Day'?' — '+b.batchSlot:'');
-  document.getElementById('fb-meta').textContent   = 'Session '+b.sessNo+' · '+b.centre+(b.instructor?' · '+b.instructor:'')
+  document.getElementById('fb-meta').textContent   = 'Session '+(b.displaySessNo||b.sessNo)+' · '+b.centre+(b.instructor?' · '+b.instructor:'')
     + (b.coInstructorActive && b.mainInstructor ? ' (covering for '+b.mainInstructor+')' : '');
   // Co-instructor block: only when this batch currently has an active cover instructor
   var coBlock = document.getElementById('fb-co-instructor-block');
@@ -2231,7 +2234,7 @@ function showThanks(alreadyDone) {
       <span style="color:var(--muted)">Course</span><strong>${activeBatch.course}</strong>
     </div>
     <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-      <span style="color:var(--muted)">Session</span><strong>${activeBatch.batchCode} · Session ${activeBatch.sessNo}</strong>
+      <span style="color:var(--muted)">Session</span><strong>${activeBatch.batchCode} · Session ${activeBatch.displaySessNo || activeBatch.sessNo}</strong>
     </div>
     <div style="display:flex;justify-content:space-between">
       <span style="color:var(--muted)">Rating</span><strong>${'⭐'.repeat(ratings.q1)||'—'}</strong>

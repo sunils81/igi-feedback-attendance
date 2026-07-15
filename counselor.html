@@ -2910,9 +2910,13 @@
     .cmp-widget-remove:hover{color:#dc2626}
     .cmp-widget-add{margin-top:2px;background:none;border:none;color:var(--gold);cursor:pointer;font-size:11px;font-weight:700;padding:0}
     .cmp-widget-add:hover{text-decoration:underline}
-    .cmp-notebook-clock{position:absolute;top:20px;right:24px;text-align:right;font-family:"Plus Jakarta Sans",sans-serif}
+    .cmp-notebook-header-right{position:absolute;top:20px;right:24px;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+    .cmp-notebook-clock{text-align:right;font-family:"Plus Jakarta Sans",sans-serif}
     .cmp-notebook-clock .cmp-notebook-time{font-size:15px;font-weight:700;color:var(--navy)}
     .cmp-notebook-clock .cmp-notebook-date{font-size:11px;color:var(--muted)}
+    .cmp-notebook-search{width:190px;padding:6px 12px;border:1.5px solid var(--border);border-radius:16px;font-size:11.5px;font-family:"Plus Jakarta Sans",sans-serif;outline:none;background:rgba(255,255,255,0.7);color:var(--navy)}
+    .cmp-notebook-search:focus{border-color:var(--gold);background:rgba(255,255,255,0.95)}
+    .cmp-notebook-search::placeholder{color:var(--muted)}
     .cmp-reminder-picker{display:none;align-items:center;gap:8px;padding:6px 0 4px;font-size:12px}
     .cmp-reminder-picker input[type="datetime-local"]{padding:5px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;outline:none}
     .cmp-reminder-picker input[type="datetime-local"]:focus{border-color:var(--gold)}
@@ -3029,9 +3033,12 @@
   <div id="t-notebook" class="tab-content">
     <div class="cmp-notebook-page">
       <div class="cmp-notebook-page-head">
-        <div class="cmp-notebook-clock" id="cmp-notebook-clock">
-          <div class="cmp-notebook-time" id="cmp-notebook-clock-time"></div>
-          <div class="cmp-notebook-date" id="cmp-notebook-clock-date"></div>
+        <div class="cmp-notebook-header-right">
+          <div class="cmp-notebook-clock" id="cmp-notebook-clock">
+            <div class="cmp-notebook-time" id="cmp-notebook-clock-time"></div>
+            <div class="cmp-notebook-date" id="cmp-notebook-clock-date"></div>
+          </div>
+          <input type="text" class="cmp-notebook-search" id="cmp-note-search" placeholder="🔎 Search all notes…" oninput="cmpRenderNotes()">
         </div>
         <div class="section-tag">Private &amp; Personal</div>
         <h2 style="margin-bottom:2px">My Notebook</h2>
@@ -3056,7 +3063,6 @@
           <span id="cmp-notes-month-label"></span>
           <button type="button" onclick="cmpChangeNotesMonth(1)">›</button>
         </div>
-        <input type="text" class="cmp-search" id="cmp-note-search" placeholder="Search notes…" oninput="cmpRenderNotes()">
       </div>
       <div id="cmp-notes-list"></div>
     </div>
@@ -5254,7 +5260,7 @@ async function cmpLoadNotebookWidgets() {
     const periodKey = cfg.periodKey();
     let note = (cmpNotes || []).find(function(n) { return n.note_type === cfg.type && n.period_key === periodKey; });
     if (!note) {
-      const defaultText = cfg.fixed ? Array(cfg.max).fill('[] ').join('\n') : '[] ';
+      const defaultText = cfg.fixed ? Array(cfg.max).fill('[ ] ').join('\n') : '[ ] ';
       try {
         const r = await fetch('/api/companion/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: defaultText, owner_counselor: counselorName, note_type: cfg.type, period_key: periodKey }) });
         const d = await r.json();
@@ -5325,7 +5331,7 @@ function cmpAddWidgetLine(key) {
   if (!note || !cfg) return;
   const lines = note.text.split('\n');
   if (lines.length >= cfg.max) return;
-  lines.push('[] ');
+  lines.push('[ ] ');
   note.text = lines.join('\n');
   cmpRenderWidgets();
   cmpPatchWidgetNote(note);
@@ -5343,6 +5349,10 @@ function cmpRemoveWidgetLine(key, idx) {
 }
 
 function cmpChangeNotesMonth(delta) {
+  // Browsing by month is a different mode than the global search up top — clear any active
+  // search so the month view isn't silently filtered by leftover search text.
+  const searchEl = document.getElementById('cmp-note-search');
+  if (searchEl) searchEl.value = '';
   cmpNotesMonth = new Date(cmpNotesMonth.getFullYear(), cmpNotesMonth.getMonth() + delta, 1);
   cmpRenderNotes();
 }
@@ -5358,7 +5368,10 @@ function cmpInsertNotePrefix(prefix) {
 }
 
 function cmpParseNoteLine(line) {
-  const checkMatch = line.match(/^\[( |x|X)\]\s?(.*)$/);
+  // Accepts "[ ]", "[x]"/"[X]", and a bare "[]" (no space typed yet) as an unchecked box —
+  // the toolbar's Checklist/Reminder buttons insert "[] " as a starting point before the
+  // user fills anything in, so this has to parse before a space is added.
+  const checkMatch = line.match(/^\[([ xX]?)\]\s?(.*)$/);
   if (checkMatch) return { type: 'check', checked: checkMatch[1].toLowerCase() === 'x', text: checkMatch[2] };
   if (/^-\s?/.test(line)) return { type: 'bullet', text: line.replace(/^-\s?/, '') };
   return { type: 'text', text: line };
@@ -5383,7 +5396,7 @@ async function cmpToggleChecklistLine(noteId, lineIdx) {
   const note = cmpNotes.find(function(n) { return n.id === noteId; });
   if (!note) return;
   const lines = note.text.split('\n');
-  const m = lines[lineIdx].match(/^\[( |x|X)\](.*)$/);
+  const m = lines[lineIdx].match(/^\[([ xX]?)\](.*)$/);
   if (!m) return;
   const newChecked = m[1].toLowerCase() !== 'x';
   lines[lineIdx] = '[' + (newChecked ? 'x' : ' ') + ']' + m[2];
@@ -5421,15 +5434,27 @@ function cmpNoteRowHtml(n) {
 function cmpRenderNotes() {
   const list = document.getElementById('cmp-notes-list');
   const monthLabel = document.getElementById('cmp-notes-month-label');
-  if (monthLabel) monthLabel.textContent = cmpNotesMonth.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
   const searchEl = document.getElementById('cmp-note-search');
-  const search = (searchEl && searchEl.value || '').toLowerCase();
-  const ym = cmpNotesMonth.getFullYear() + '-' + String(cmpNotesMonth.getMonth() + 1).padStart(2, '0');
-  let notesInMonth = cmpNotes.filter(function(n) { return (n.note_type === 'note' || !n.note_type) && (n.created_at || '').slice(0, 7) === ym; });
-  if (search) notesInMonth = notesInMonth.filter(function(n) { return (n.text || '').toLowerCase().includes(search); });
+  const search = (searchEl && searchEl.value || '').toLowerCase().trim();
+
+  // The search box up top is global — it searches every note regardless of month. Leave it
+  // blank and the list falls back to the month-nav view right above the entries.
+  let notesInMonth;
+  if (search) {
+    if (monthLabel) monthLabel.textContent = 'Search results';
+    notesInMonth = cmpNotes.filter(function(n) {
+      return (n.note_type === 'note' || !n.note_type) && (n.text || '').toLowerCase().includes(search);
+    });
+  } else {
+    if (monthLabel) monthLabel.textContent = cmpNotesMonth.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    const ym = cmpNotesMonth.getFullYear() + '-' + String(cmpNotesMonth.getMonth() + 1).padStart(2, '0');
+    notesInMonth = cmpNotes.filter(function(n) { return (n.note_type === 'note' || !n.note_type) && (n.created_at || '').slice(0, 7) === ym; });
+  }
 
   if (!notesInMonth.length) {
-    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:12.5px">No notes this month — jot something above.</div>';
+    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:12.5px">' +
+      (search ? 'No notes match “' + escC(searchEl.value) + '”.' : 'No notes this month — jot something above.') +
+      '</div>';
     return;
   }
 

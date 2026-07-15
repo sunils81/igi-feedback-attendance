@@ -100,15 +100,19 @@ async function handleList(req, res) {
       ...p,
       is_due_today: !!(p.next_follow_up && p.next_follow_up <= todayStr && !['Converted-Partial', 'Converted-Full', 'Lost'].includes(p.status)),
       is_going_cold: !!((!p.last_contacted || p.last_contacted <= goingColdCutoff) && p.status === 'Active'),
+      is_touched_today: p.last_contacted === todayStr,
       note_count: notes ? notes.count : 0,
       latest_note_text: notes ? notes.latestText : '',
       latest_note_at: notes ? notes.latestAt : null
     };
   });
 
+  const dueTodayList = enriched.filter(p => p.is_due_today);
   const summary = {
     total: enriched.length,
-    dueToday: enriched.filter(p => p.is_due_today).length,
+    dueToday: dueTodayList.length,
+    dueTodayTouched: dueTodayList.filter(p => p.is_touched_today).length,
+    needsTouchToday: dueTodayList.filter(p => !p.is_touched_today).length,
     goingCold: enriched.filter(p => p.is_going_cold).length,
     hot: enriched.filter(p => p.temperature === 'Hot' && p.status === 'Active').length
   };

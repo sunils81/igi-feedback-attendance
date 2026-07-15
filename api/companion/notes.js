@@ -97,6 +97,21 @@ export default async function handler(req, res) {
         note_type: note_type || 'note',
         period_key: period_key || null
       });
+
+      // Logging an update about a lead is, in practice, a touchpoint — auto-stamp
+      // last_contacted so the counsellor doesn't have to separately mark it. Best
+      // effort: a failure here shouldn't fail the note itself.
+      if (linked_prospect_id) {
+        try {
+          await supaPatch('companion_prospects', `id=eq.${linked_prospect_id}`, {
+            last_contacted: new Date().toISOString().slice(0, 10),
+            updated_at: new Date().toISOString()
+          });
+        } catch (touchErr) {
+          console.error('[companion/notes] auto-touch failed', touchErr.message);
+        }
+      }
+
       return res.status(200).json({ status: 'ok', note: created[0] });
     }
 

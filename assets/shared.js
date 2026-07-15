@@ -8765,11 +8765,14 @@ window.DiamondCalc = (function () {
     const r = lastResults[containerId];
     const resultEl = document.getElementById(p + 'price-result');
     if (!r || r.panel !== 'price' || !resultEl) return;
+    // Follows the trade's own calculation order: list rate → discount → net rate per
+    // carat → multiplied by weight = Price of the Stone, which is the number that
+    // actually matters and belongs on the bottom line, not a per-carat aside.
     resultEl.innerHTML =
       '<div class="dcalc-result-row"><span>List Price</span><b>' + _fmtMoney(r.listPrice, containerId) + '</b></div>' +
       '<div class="dcalc-result-row"><span>Discount (' + r.pct + '%)</span><b>−' + _fmtMoney(r.savings, containerId) + '</b></div>' +
-      '<div class="dcalc-result-row dcalc-result-final"><span>Final Price</span><b>' + _fmtMoney(r.finalPrice, containerId) + '</b></div>' +
-      '<div class="dcalc-result-row"><span>Price per Carat</span><b>' + _fmtMoney(r.finalPrice / r.carat, containerId) + '</b></div>';
+      '<div class="dcalc-result-row"><span>Net Rate per Carat</span><b>' + _fmtMoney(r.finalPrice / r.carat, containerId) + '</b></div>' +
+      '<div class="dcalc-result-row dcalc-result-final"><span>Price of the Stone</span><b>' + _fmtMoney(r.finalPrice, containerId) + '</b></div>';
   }
 
   function _calcWeight(containerId) {

@@ -8582,13 +8582,13 @@ window.DiamondCalc = (function () {
         '</div>' +
 
         '<div class="dcalc-panel active" data-panel="price">' +
-          '<p class="dcalc-note">Enter the per-carat rate you\'ve looked up from your own price-list subscription — this tool only does the arithmetic; it doesn\'t store or look up any price data itself.</p>' +
+          '<p class="dcalc-note">Enter the actual per-carat rate (in US$, not the "hundreds" shorthand some price sheets print) that you\'ve looked up from your own price-list subscription — this tool only does the arithmetic; it doesn\'t store or look up any price data itself.</p>' +
           '<div class="dcalc-grid">' +
             '<div class="dcalc-field"><label>Carat Weight</label><input type="number" step="0.01" min="0" id="' + p + 'price-carat" placeholder="e.g. 1.05"></div>' +
             '<div class="dcalc-field"><label>Color</label><select id="' + p + 'price-color">' + COLORS.map(function(c) { return '<option>' + c + '</option>'; }).join('') + '</select></div>' +
             '<div class="dcalc-field"><label>Clarity</label><select id="' + p + 'price-clarity">' + CLARITIES.map(function(c) { return '<option' + (c === 'SI1' ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></div>' +
-            '<div class="dcalc-field"><label>Rate per Carat (US$ 100s)</label><input type="number" step="0.1" min="0" id="' + p + 'price-rate" placeholder="e.g. 63.0"></div>' +
-            '<div class="dcalc-field"><label>% Off (−) / Over (+) Rate</label><input type="number" step="0.1" id="' + p + 'price-pct" placeholder="e.g. -20 for 20% off"></div>' +
+            '<div class="dcalc-field"><label>Rate per Carat (US$)</label><input type="number" step="1" min="0" id="' + p + 'price-rate" placeholder="e.g. 6300"></div>' +
+            '<div class="dcalc-field"><label>Discount %</label><input type="number" step="0.1" min="0" max="100" id="' + p + 'price-pct" placeholder="e.g. 20"></div>' +
           '</div>' +
           '<button type="button" class="btn btn-gold dcalc-calc-btn" style="width:auto" onclick="DiamondCalc._calcPrice(\'' + containerId + '\')">Calculate</button>' +
           '<div class="dcalc-result" id="' + p + 'price-result"></div>' +
@@ -8607,19 +8607,19 @@ window.DiamondCalc = (function () {
         '</div>' +
 
         '<div class="dcalc-panel" data-panel="reverse">' +
-          '<p class="dcalc-note">Given a target price, solve backward for the implied rate or discount/premium.</p>' +
+          '<p class="dcalc-note">Given a target price, solve backward for the implied rate or discount.</p>' +
           '<div class="dcalc-field" style="max-width:260px;margin-bottom:14px">' +
             '<label>Solve For</label>' +
             '<select id="' + p + 'rev-mode" onchange="DiamondCalc._toggleReverseMode(\'' + containerId + '\')">' +
-              '<option value="pct">Discount/Premium %</option>' +
+              '<option value="pct">Discount %</option>' +
               '<option value="rate">Rate per Carat</option>' +
             '</select>' +
           '</div>' +
           '<div class="dcalc-grid">' +
             '<div class="dcalc-field"><label>Carat Weight</label><input type="number" step="0.01" min="0" id="' + p + 'rev-carat" placeholder="e.g. 1.05"></div>' +
             '<div class="dcalc-field"><label>Target Total Price (US$)</label><input type="number" step="1" min="0" id="' + p + 'rev-target" placeholder="e.g. 5200"></div>' +
-            '<div class="dcalc-field" id="' + p + 'rev-rate-field"><label>Rate per Carat (US$ 100s)</label><input type="number" step="0.1" min="0" id="' + p + 'rev-rate" placeholder="e.g. 63.0"></div>' +
-            '<div class="dcalc-field" id="' + p + 'rev-pct-field" style="display:none"><label>% Off (−) / Over (+) Rate</label><input type="number" step="0.1" id="' + p + 'rev-pct" placeholder="e.g. -20"></div>' +
+            '<div class="dcalc-field" id="' + p + 'rev-rate-field"><label>Rate per Carat (US$)</label><input type="number" step="1" min="0" id="' + p + 'rev-rate" placeholder="e.g. 6300"></div>' +
+            '<div class="dcalc-field" id="' + p + 'rev-pct-field" style="display:none"><label>Discount %</label><input type="number" step="0.1" min="0" max="100" id="' + p + 'rev-pct" placeholder="e.g. 20"></div>' +
           '</div>' +
           '<button type="button" class="btn btn-gold dcalc-calc-btn" style="width:auto" onclick="DiamondCalc._calcReverse(\'' + containerId + '\')">Solve</button>' +
           '<div class="dcalc-result" id="' + p + 'rev-result"></div>' +
@@ -8659,12 +8659,12 @@ window.DiamondCalc = (function () {
     const pct = parseFloat(document.getElementById(p + 'price-pct').value) || 0;
     const resultEl = document.getElementById(p + 'price-result');
     if (!carat || !rate) { resultEl.innerHTML = '<span class="dcalc-err">Enter carat weight and rate per carat.</span>'; return; }
-    const rapPrice = rate * 100 * carat;
-    const finalPrice = rapPrice * (1 + pct / 100);
-    const diff = finalPrice - rapPrice;
+    const listPrice = rate * carat;
+    const finalPrice = listPrice * (1 - pct / 100);
+    const savings = listPrice - finalPrice;
     resultEl.innerHTML =
-      '<div class="dcalc-result-row"><span>List Price</span><b>' + fmtUsd(rapPrice) + '</b></div>' +
-      '<div class="dcalc-result-row"><span>' + (pct < 0 ? 'Discount' : 'Premium') + ' (' + Math.abs(pct) + '%)</span><b>' + (pct < 0 ? '−' : '+') + fmtUsd(Math.abs(diff)) + '</b></div>' +
+      '<div class="dcalc-result-row"><span>List Price</span><b>' + fmtUsd(listPrice) + '</b></div>' +
+      '<div class="dcalc-result-row"><span>Discount (' + pct + '%)</span><b>−' + fmtUsd(savings) + '</b></div>' +
       '<div class="dcalc-result-row dcalc-result-final"><span>Final Price</span><b>' + fmtUsd(finalPrice) + '</b></div>' +
       '<div class="dcalc-result-row"><span>Price per Carat</span><b>' + fmtUsd(finalPrice / carat) + '</b></div>';
   }
@@ -8702,17 +8702,16 @@ window.DiamondCalc = (function () {
     if (mode === 'pct') {
       const rate = parseFloat(document.getElementById(p + 'rev-rate').value);
       if (!rate) { resultEl.innerHTML = '<span class="dcalc-err">Enter the rate per carat.</span>'; return; }
-      const rapPrice = rate * 100 * carat;
-      const pct = (target / rapPrice - 1) * 100;
+      const listPrice = rate * carat;
+      const pct = (1 - target / listPrice) * 100;
       resultEl.innerHTML =
-        '<div class="dcalc-result-row"><span>List Price</span><b>' + fmtUsd(rapPrice) + '</b></div>' +
-        '<div class="dcalc-result-row dcalc-result-final"><span>Implied ' + (pct < 0 ? 'Discount' : 'Premium') + '</span><b>' + (pct < 0 ? '−' : '+') + Math.abs(pct).toFixed(1) + '%</b></div>';
+        '<div class="dcalc-result-row"><span>List Price</span><b>' + fmtUsd(listPrice) + '</b></div>' +
+        '<div class="dcalc-result-row dcalc-result-final"><span>Implied ' + (pct < 0 ? 'Premium' : 'Discount') + '</span><b>' + Math.abs(pct).toFixed(1) + '%</b></div>';
     } else {
       const pct = parseFloat(document.getElementById(p + 'rev-pct').value) || 0;
-      const rate = target / (100 * carat * (1 + pct / 100));
+      const rate = target / (carat * (1 - pct / 100));
       resultEl.innerHTML =
-        '<div class="dcalc-result-row dcalc-result-final"><span>Implied Rate per Carat</span><b>' + rate.toFixed(2) + ' (US$ 100s)</b></div>' +
-        '<div class="dcalc-formula">i.e. ≈ ' + fmtUsd(rate * 100) + ' per carat at list</div>';
+        '<div class="dcalc-result-row dcalc-result-final"><span>Implied Rate per Carat</span><b>' + fmtUsd(rate) + '</b></div>';
     }
   }
 

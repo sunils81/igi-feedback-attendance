@@ -9041,3 +9041,110 @@ window.GlossaryModule = (function () {
 
   return { mount: mount, _setCat: _setCat, _onSearch: _onSearch };
 })();
+
+// ── Fact of the Day ──────────────────────────────────────────────────────
+// A small, curated fact bank (same trust model as GlossaryModule — written
+// fresh, general public knowledge, nothing reproduced from a proprietary
+// source) that rotates one fact per calendar day per category. Deterministic
+// by date, so every student/instructor/counselor sees the same fact on a
+// given day, and it cycles back through the list once exhausted.
+window.FactOfDay = (function () {
+  const FACTS = [
+    // ── Diamond ──
+    { cat: "diamond", fact: "Diamonds are made almost entirely of a single element — carbon — the same element found in pencil graphite, just arranged in a completely different crystal structure." },
+    { cat: "diamond", fact: "The name \"diamond\" comes from the Greek word \"adamas,\" meaning unbreakable or invincible." },
+    { cat: "diamond", fact: "Most gem-quality diamonds formed 1 to 3 billion years ago, roughly 100–200 km below the Earth's surface, and were carried up to the surface by volcanic eruptions." },
+    { cat: "diamond", fact: "Diamond is the hardest known natural material, but \"hardness\" only measures scratch resistance — it can still chip or crack from a sharp blow at the wrong angle." },
+    { cat: "diamond", fact: "Until diamond deposits were discovered in Brazil in the 1700s, India was essentially the world's only source of diamonds for well over a thousand years." },
+    { cat: "diamond", fact: "De Beers' 1947 slogan \"A Diamond is Forever\" is widely regarded as one of the most successful ad campaigns in history, and helped cement the diamond engagement ring tradition." },
+    { cat: "diamond", fact: "Only a fraction of mined rough diamonds — often estimated around 20% — are gem quality; the rest go toward industrial uses like cutting and grinding tools." },
+    { cat: "diamond", fact: "The Cullinan Diamond, found in South Africa in 1905, was the largest gem-quality rough diamond ever discovered; stones cut from it are now part of the British Crown Jewels." },
+    { cat: "diamond", fact: "Diamonds can occur in almost every color, though colorless-to-near-colorless stones dominate the bridal market — vivid \"fancy color\" diamonds like blue, pink, and red are far rarer." },
+    { cat: "diamond", fact: "A diamond's brilliance depends more on precise cutting proportions than on the size of the rough stone a cutter starts with — a smaller, better-cut diamond can outsparkle a larger, poorly cut one." },
+    { cat: "diamond", fact: "The standard modern round brilliant cut, with its 57 or 58 facets, was mathematically refined in 1919 by Marcel Tolkowsky to optimize light return." },
+    { cat: "diamond", fact: "Diamond is one of the few gem materials that can also be created synthetically with essentially identical chemical and optical properties to a natural stone." },
+    { cat: "diamond", fact: "Roughly a third of diamonds show some degree of blue fluorescence under UV light — a trait first noticed by gemologists studying stones in natural daylight, which contains UV rays." },
+    { cat: "diamond", fact: "Some diamonds contain trace mineral inclusions that act like tiny time capsules, letting scientists study conditions deep inside the Earth from billions of years ago." },
+    { cat: "diamond", fact: "The diamond's association with April as a birthstone comes from a list standardized in 1912 by the American National Association of Jewelers, though older, looser birthstone traditions vary by culture." },
+
+    // ── Colored Stone ──
+    { cat: "colored", fact: "Ruby and sapphire are actually the same mineral, corundum — ruby is simply the red variety, and sapphire is the name for every other color, including blue." },
+    { cat: "colored", fact: "Emerald, aquamarine, and morganite are all varieties of the same mineral species, beryl, distinguished mainly by which trace elements color them." },
+    { cat: "colored", fact: "Alexandrite is famous for appearing to change color — green in daylight, red under incandescent light — an effect gemologists call the \"alexandrite effect.\"" },
+    { cat: "colored", fact: "Opal's shifting rainbow colors, called \"play-of-color,\" come from microscopic silica spheres inside the stone diffracting light — not from any pigment at all." },
+    { cat: "colored", fact: "Nearly all natural sapphires and rubies sold today have been heat-treated to improve color and clarity — standard, stable, and expected practice in the trade when disclosed." },
+    { cat: "colored", fact: "Tanzanite was only discovered in 1967, in a single area of Tanzania near Mount Kilimanjaro, making it one of the youngest and most geographically limited gemstones in the world." },
+    { cat: "colored", fact: "Pearls are the only gems formed inside a living organism, created when an oyster or mollusk layers a substance called nacre around an irritant." },
+    { cat: "colored", fact: "Peridot is one of the few gemstones that forms deep in the Earth's mantle rather than the crust — trace amounts have even been found in meteorites." },
+    { cat: "colored", fact: "Garnet isn't a single gemstone but a whole family of related minerals that come in almost every color except blue." },
+    { cat: "colored", fact: "The world's most famous emeralds historically came from Colombia, but fine-quality emeralds are also mined in Zambia, Brazil, and several other countries today." },
+    { cat: "colored", fact: "\"Jade\" actually refers to two different minerals — jadeite and nephrite — which look similar but have distinct chemical compositions and hardness levels." },
+    { cat: "colored", fact: "Amethyst and citrine are both varieties of quartz, and in fact form together in some crystals, creating a bicolor stone called ametrine." },
+    { cat: "colored", fact: "Star sapphires and rubies owe their six-rayed \"star\" to tiny needle-like rutile inclusions lined up in three directions inside the crystal." },
+    { cat: "colored", fact: "Turquoise has been used in jewelry and ornamentation for over 6,000 years, with some of the earliest known pieces found in ancient Egyptian tombs." },
+    { cat: "colored", fact: "Kashmir sapphires, mined from a remote Himalayan region in the late 1800s, remain among the most valuable colored stones at auction, decades after the original deposit was largely exhausted." },
+
+    // ── Jewelry Design ──
+    { cat: "jewelry", fact: "The word \"jewelry\" traces back to the Latin \"jocale,\" meaning plaything or trinket." },
+    { cat: "jewelry", fact: "Ancient Egyptian goldsmiths were already using lost-wax casting — still a core jewelry-making method today — more than 5,000 years ago." },
+    { cat: "jewelry", fact: "White gold doesn't exist in nature; it's created by alloying yellow gold with white metals like palladium or nickel, then usually finished with rhodium plating for extra brightness." },
+    { cat: "jewelry", fact: "The karat system for gold purity gets its name from the carob seed, once used as a small, fairly consistent unit of weight for trading gold and gems." },
+    { cat: "jewelry", fact: "Platinum is denser than gold, which is why a platinum ring of the same design typically weighs noticeably more than its gold counterpart." },
+    { cat: "jewelry", fact: "The claddagh ring, a traditional Irish design showing two hands holding a crowned heart, dates back to 17th-century Galway and symbolizes love, loyalty, and friendship." },
+    { cat: "jewelry", fact: "CAD (computer-aided design) has transformed jewelry-making by letting designers preview and adjust a piece in precise 3D before a single gram of metal is cast." },
+    { cat: "jewelry", fact: "Mokume-gane, a Japanese metalworking technique dating to the 17th century, layers different colored metals together and manipulates them to create a wood-grain-like pattern." },
+    { cat: "jewelry", fact: "The eternity ring — a band fully set with stones around its entire circumference — is thought to symbolize a love with no beginning or end." },
+    { cat: "jewelry", fact: "Filigree jewelry, made from fine twisted wire soldered into lace-like patterns, was especially popular during the Edwardian era in the early 1900s." },
+    { cat: "jewelry", fact: "Micro-pavé setting, which places many tiny stones extremely close together with minimal visible metal, became widely practical only with precision tools developed in the last few decades." },
+    { cat: "jewelry", fact: "Some jeweler's saw blades have over 80 teeth per inch, allowing intricate detail work in metal that would be impossible with standard tools." },
+
+    // ── General ──
+    { cat: "general", fact: "The 4Cs framework for grading diamonds — carat, color, clarity, cut — was popularized by GIA in the mid-20th century and is now common trade language worldwide." },
+    { cat: "general", fact: "A gemologist's loupe is traditionally 10x magnification — roughly the threshold where most clarity characteristics become visible without making the whole stone hard to view at once." },
+    { cat: "general", fact: "Not all gemstones are minerals — pearl, amber, and coral, for example, come from organic sources rather than crystallizing from mineral-rich fluids." },
+    { cat: "general", fact: "The Mohs hardness scale, still used today, was created in 1812 by German mineralogist Friedrich Mohs and ranks minerals purely by their ability to scratch one another." },
+    { cat: "general", fact: "Refractive index — how much a material bends light — is one of the most reliable properties for identifying an unknown gemstone, since it's very consistent within a given mineral species." },
+    { cat: "general", fact: "Birthstones as we know them today are a fairly modern tradition — the widely used list was standardized in the U.S. in 1912, though looser month-gem associations go back centuries." },
+    { cat: "general", fact: "Synthetic gemstones share the same chemical composition and crystal structure as their natural counterparts — the difference is where and how they formed, not what they're made of." },
+    { cat: "general", fact: "Fluorescence in gemstones — a visible glow under UV light — happens because trace elements in the crystal react to invisible ultraviolet wavelengths." },
+    { cat: "general", fact: "Gemstone treatments are as old as the trade itself — heat treatment of corundum, for example, has been practiced for centuries, long before modern disclosure standards existed." },
+    { cat: "general", fact: "A \"carat\" and a \"karat\" are different units entirely — carat measures a gemstone's weight, while karat measures the purity of gold in an alloy." }
+  ];
+
+  const CAT_LABEL = { diamond: "💎 Diamond", colored: "🔴 Colored Stone", jewelry: "💍 Jewelry Design", general: "🔬 General" };
+
+  function escF(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function(c) { return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
+
+  // Deterministic pick: same calendar day => same fact, cycling through the
+  // filtered pool once it's exhausted. Using local calendar date (not UTC)
+  // so the fact changes at local midnight for whoever is looking at it.
+  function _pick(categories) {
+    var pool = FACTS;
+    if (categories && categories.length) {
+      var filtered = FACTS.filter(function(f) { return categories.indexOf(f.cat) !== -1; });
+      if (filtered.length) pool = filtered;
+    }
+    var now = new Date();
+    var dayNum = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 86400000);
+    var idx = ((dayNum % pool.length) + pool.length) % pool.length;
+    return pool[idx];
+  }
+
+  function mount(containerId, opts) {
+    opts = opts || {};
+    var root = document.getElementById(containerId);
+    if (!root) return;
+    var f = _pick(opts.categories);
+    root.innerHTML =
+      '<div class="fotd-card">' +
+        '<div class="fotd-head">' +
+          '<span class="fotd-icon">💡</span>' +
+          '<span class="fotd-title">Fact of the Day</span>' +
+          '<span class="glossary-term-badge glossary-badge-' + f.cat + '">' + CAT_LABEL[f.cat] + '</span>' +
+        '</div>' +
+        '<div class="fotd-text">' + escF(f.fact) + '</div>' +
+      '</div>';
+  }
+
+  return { mount: mount };
+})();

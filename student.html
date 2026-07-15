@@ -8,7 +8,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Student Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=60"></script>
+<script src="/assets/shared.js?v=61"></script>
 <style id="dyn-css"></style>
 <style>
 .batch-card{background:var(--white);border-radius:var(--radius);border:1.5px solid var(--border);padding:20px;margin-bottom:14px;box-shadow:var(--shadow);transition:border-color .2s}
@@ -637,6 +637,12 @@
 .glossary-badge-general{background:#d1fae5;color:#065f46}
 .glossary-term-def{font-size:12.5px;color:var(--navy);line-height:1.6}
 .glossary-empty{font-size:12px;color:var(--muted);text-align:center;padding:20px 0}
+/* Fact of the Day (shared UI mounted via FactOfDay.mount, see assets/shared.js) */
+.fotd-card{background:linear-gradient(135deg,rgba(201,168,76,.10),rgba(201,168,76,.02));border:1.5px solid var(--border);border-left:4px solid var(--gold);border-radius:12px;padding:14px 16px}
+.fotd-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+.fotd-icon{font-size:15px}
+.fotd-title{font-size:12px;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.03em}
+.fotd-text{font-size:13px;color:var(--navy);line-height:1.55}
 </style>
 <!-- QR code generator (used for student ID card) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -860,6 +866,7 @@
         <div id="ot-released-alert-names" style="font-size:12px;opacity:0.9;margin-bottom:12px;line-height:1.4;">The results for your recent online test have been released.</div>
         <button onclick="switchTab('tab-results', document.getElementById('nav-tab-tests'));" style="background:var(--gold);color:var(--navy);border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:800;cursor:pointer;transition:background .2s;">View My Results →</button>
       </div>
+      <div id="student-fact-of-day" style="margin-bottom:14px;"></div>
       <div id="student-summary" style="margin-top: 14px;"></div>
       <div id="portal-batches-today"></div>
     </div>
@@ -1598,6 +1605,19 @@ function applyAlumniTabVisibility(d) {
   }
 }
 
+// Determine which Fact of the Day categories apply to this student, based on
+// every course they've ever been enrolled in (so it still works post-graduation).
+function studentFactCategories(d) {
+  var batches = (d && (d.allBatches || d.batches)) || [];
+  var names = batches.map(function(b) { return (b.course || '').toLowerCase(); });
+  var cats = [];
+  if (names.some(function(c) { return c.indexOf('diamond') !== -1; })) cats.push('diamond');
+  if (names.some(function(c) { return c.indexOf('colored stone') !== -1 || c.indexOf('coloured stone') !== -1; })) cats.push('colored');
+  if (names.some(function(c) { return c.indexOf('jd') !== -1 || c.indexOf('jewelry') !== -1 || c.indexOf('jewelpad') !== -1 || c.indexOf('jp') !== -1; })) cats.push('jewelry');
+  if (!cats.length) cats.push('general');
+  return cats;
+}
+
 function renderPortal(d) {
   const hrs = new Date().getHours();
   let greet = "Hello";
@@ -1634,6 +1654,11 @@ function renderPortal(d) {
   }
 
   applyAlumniTabVisibility(d);
+
+  var fotdRoot = document.getElementById('student-fact-of-day');
+  if (fotdRoot && typeof FactOfDay !== 'undefined') {
+    FactOfDay.mount('student-fact-of-day', { categories: studentFactCategories(d) });
+  }
 
   renderStudentSummary(d);
   loadStudentFees();

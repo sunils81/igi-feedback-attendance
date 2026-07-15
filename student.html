@@ -8,7 +8,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Student Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=63"></script>
+<script src="/assets/shared.js?v=64"></script>
 <style id="dyn-css"></style>
 <style>
 .batch-card{background:var(--white);border-radius:var(--radius);border:1.5px solid var(--border);padding:20px;margin-bottom:14px;box-shadow:var(--shadow);transition:border-color .2s}
@@ -1660,6 +1660,12 @@ function renderPortal(d) {
     FactOfDay.mount('student-fact-of-day', { categories: studentFactCategories(d) });
   }
 
+  // Make sure a cancelled-today class is impossible to miss, not just visible if the
+  // student happens to scroll to the right batch card on the Today tab.
+  (d.batches || []).filter(function(b) { return b.sessionCancelledToday; }).forEach(function(b) {
+    showToast('🚫 Today\'s ' + b.course + ' session (' + b.batchCode + ') has been cancelled' + (b.cancelledReason ? ': ' + b.cancelledReason : '.'), 'error');
+  });
+
   renderStudentSummary(d);
   loadStudentFees();
   loadStudentAttendanceCalendar(studentCalendarMonth);
@@ -1678,6 +1684,16 @@ function renderPortal(d) {
     todayWrap.innerHTML = d.batches.map(b => {
       const slotBadgeClass = b.batchSlot==='First Half'?'slot-first':b.batchSlot==='Second Half'?'slot-second':'slot-full';
       const slotLabel      = b.batchSlot==='First Half'?'🌅 First Half':b.batchSlot==='Second Half'?'🌆 Second Half':'☀️ Full Day';
+
+      if (b.sessionCancelledToday) {
+        return `<div class="batch-card inactive-card" style="border-color:#fca5a5">
+          <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
+          <div class="bc-course">${b.course}</div>
+          <div class="bc-meta">${b.batchCode} · ${b.centre}</div>
+          ${renderSyllabusProgress(b)}
+          <div class="bc-waiting" style="color:#b91c1c">🚫 Today's session has been cancelled${b.cancelledReason ? ': ' + b.cancelledReason : '.'}</div>
+        </div>`;
+      }
 
       if (b.alreadySubmitted) {
         return `<div class="batch-card done-card">
@@ -1733,7 +1749,15 @@ function renderPortal(d) {
       const slotLabel      = b.batchSlot==='First Half'?'🌅 First Half':b.batchSlot==='Second Half'?'🌆 Second Half':'☀️ Full Day';
 
       let innerCard = '';
-      if (b.alreadySubmitted) {
+      if (b.sessionCancelledToday) {
+        innerCard = `<div class="batch-card inactive-card" style="margin-bottom:0px; border-bottom-left-radius:0; border-bottom-right-radius:0; border-bottom:none; border-color:#fca5a5">
+          <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
+          <div class="bc-course">${b.course}</div>
+          <div class="bc-meta">${b.batchCode} · ${b.centre}</div>
+          ${renderSyllabusProgress(b)}
+          <div class="bc-waiting" style="color:#b91c1c">🚫 Today's session has been cancelled${b.cancelledReason ? ': ' + b.cancelledReason : '.'}</div>
+        </div>`;
+      } else if (b.alreadySubmitted) {
         innerCard = `<div class="batch-card done-card" style="margin-bottom:0px; border-bottom-left-radius:0; border-bottom-right-radius:0; border-bottom:none;">
           <span class="slot-badge ${slotBadgeClass}">${slotLabel}</span>
           <div class="bc-course">${b.course}</div>

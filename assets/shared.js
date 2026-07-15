@@ -4510,6 +4510,12 @@ window.gasGet = (function () {
                 var todaySess = (sessions || []).find(function (s) {
                   return s.batch_code === batchCode && s.session_date === todayYMDStr && s.session_type !== 'Cancelled';
                 });
+                // Separately surface a cancelled-today session so the portal can tell the
+                // student their class was called off, instead of just silently reverting
+                // to the generic "session not yet started" waiting message.
+                var cancelledTodaySess = (sessions || []).find(function (s) {
+                  return s.batch_code === batchCode && s.session_date === todayYMDStr && s.session_type === 'Cancelled';
+                });
                 var slot = b.batch_slot || 'Full Day';
                 var win = { open: 8, close: 24 };
                 if (slot === 'First Half') win = { open: 8, close: 14 };
@@ -4556,6 +4562,8 @@ window.gasGet = (function () {
                   topic: todaySess ? (todaySess.topic || '') : null, sessionExists: !!todaySess,
                   alreadySubmitted: alreadySubmitted, windowActive: isActive, windowOpen: windowOpen, windowClosed: windowClosed,
                   windowOpenHr: win.open, windowCloseHr: win.close, history: history,
+                  sessionCancelledToday: !!cancelledTodaySess,
+                  cancelledReason: cancelledTodaySess ? String(cancelledTodaySess.topic || '').replace(/^CANCELLED:\s*/, '') : '',
                   historySummary: { attended: attendedCount, total: bSess.length, pct: bSess.length ? Math.round((attendedCount / bSess.length) * 100) : 0 }
                 };
                 batchCards.push(card);

@@ -8575,6 +8575,7 @@ window.DiamondCalc = (function () {
   let ratePromise = null;
   const RATE_FALLBACK = 87.0; // last-known approximate — only used if every live source fails
   const currencyByContainer = {};
+  const showFormulaByContainer = {};
   const lastResults = {};
 
   function fetchLiveRate() {
@@ -8622,6 +8623,9 @@ window.DiamondCalc = (function () {
     if (!root) return;
     const p = containerId + '-'; // id prefix so two mounts on the same page never collide
     currencyByContainer[containerId] = 'usd';
+    // Instructors see the worked formula (useful for teaching); students get the estimated
+    // weight only, so they have to do the arithmetic themselves rather than read it off.
+    showFormulaByContainer[containerId] = opts.showFormula !== false;
 
     root.innerHTML =
       '<div class="dcalc-wrap" id="' + p + 'wrap">' +
@@ -8839,9 +8843,10 @@ window.DiamondCalc = (function () {
       weight = L * W * D * shape.factor;
       formula = 'L × W × Depth × ' + shape.factor + ' = ' + L + ' × ' + W + ' × ' + D + ' × ' + shape.factor;
     }
+    const showFormula = showFormulaByContainer[containerId] !== false;
     resultEl.innerHTML =
       '<div class="dcalc-result-row dcalc-result-final"><span>Estimated Weight</span><b>' + weight.toFixed(3) + ' ct</b></div>' +
-      '<div class="dcalc-formula">' + escDC(formula) + '</div>';
+      (showFormula ? '<div class="dcalc-formula">' + escDC(formula) + '</div>' : '');
   }
 
   function _calcReverse(containerId) {

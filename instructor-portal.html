@@ -248,6 +248,8 @@
     </div>
   </div>
 
+  <div id="teaching-quote-banner" class="no-print" style="display:none;background:linear-gradient(90deg,rgba(184,144,0,.08),rgba(184,144,0,.02));border:1.5px solid var(--border);border-left:4px solid var(--gold);border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:13px;font-style:italic;color:var(--navy);font-weight:600;opacity:0;transform:translateY(-4px);transition:opacity .4s ease,transform .4s ease"></div>
+
   <div class="account-actions" style="display:flex;gap:8px;align-items:center;">
     <!-- Bell notification button with badge -->
     <div style="position:relative;display:inline-block">
@@ -2665,6 +2667,7 @@ function tryRestoreSession() {
     loadInstructorBatches();
     loadTodaySessions();
     loadUpcomingBatchNotifications();
+    showTeachingQuoteBanner();
   } catch(e) {}
 }
 
@@ -2752,7 +2755,55 @@ function doLogin() {
     loadTodaySessions();
     loadUpcomingBatchNotifications();
     saveSession();
+    showTeachingQuoteBanner();
   });
+}
+
+// ── Inspiring quote on teaching, shown on every login ─────────────────────
+// Tries a live public quotes API first (a fresh one every time, straight from the
+// internet); if that's blocked, times out, or the API is down, falls back to a
+// small curated local list so the banner never breaks — either way the pick is
+// randomized so it's different on every login.
+const TEACHING_QUOTE_FALLBACK = [
+  { q: "Teaching is the one profession that creates all other professions.", a: "Unknown" },
+  { q: "The mediocre teacher tells. The good teacher explains. The superior teacher demonstrates. The great teacher inspires.", a: "William Arthur Ward" },
+  { q: "A teacher affects eternity; he can never tell where his influence stops.", a: "Henry Adams" },
+  { q: "Education is not the filling of a pail, but the lighting of a fire.", a: "William Butler Yeats" },
+  { q: "Teachers who love teaching, teach children to love learning.", a: "Robert John Meehan" },
+  { q: "The art of teaching is the art of assisting discovery.", a: "Mark Van Doren" },
+  { q: "What we learn with pleasure we never forget.", a: "Alfred Mercier" },
+  { q: "Good teaching is one-fourth preparation and three-fourths theatre.", a: "Gail Godwin" },
+  { q: "To teach is to touch a life forever.", a: "Unknown" },
+  { q: "A good teacher is like a candle — it consumes itself to light the way for others.", a: "Unknown" },
+  { q: "The best teachers are those who show you where to look but don't tell you what to see.", a: "Alexandra K. Trenfor" },
+  { q: "Teaching is the profession that teaches all the other professions.", a: "Unknown" },
+  { q: "Every student can learn, just not on the same day, or the same way.", a: "George Evans" },
+  { q: "One looks back with appreciation to the brilliant teachers, but with gratitude to those who touched our human feelings.", a: "Carl Jung" }
+];
+
+async function fetchLoginQuote(tag, fallbackList) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(function() { controller.abort(); }, 4000);
+    const r = await fetch('https://api.quotable.io/random?tags=' + encodeURIComponent(tag), { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!r.ok) throw new Error('bad status');
+    const d = await r.json();
+    if (!d || !d.content) throw new Error('bad payload');
+    return { q: d.content, a: d.author || 'Unknown' };
+  } catch (err) {
+    return fallbackList[Math.floor(Math.random() * fallbackList.length)];
+  }
+}
+
+async function showTeachingQuoteBanner() {
+  const banner = document.getElementById('teaching-quote-banner');
+  if (!banner) return;
+  const quote = await fetchLoginQuote('education', TEACHING_QUOTE_FALLBACK);
+  banner.textContent = ''; // clear before rebuilding with text nodes (no raw HTML from the API)
+  banner.appendChild(document.createTextNode('💡 “' + quote.q + '” — ' + quote.a));
+  banner.style.display = 'block';
+  requestAnimationFrame(function() { banner.style.opacity = '1'; banner.style.transform = 'translateY(0)'; });
 }
 
 function applyPasswordChangeState() {

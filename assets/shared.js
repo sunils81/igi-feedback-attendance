@@ -2105,17 +2105,23 @@ window.gasGet = (function () {
     function done() {
       if (++n < 3) return;
       var sessions = (sess || []).map(function (s) {
+        var cancelled = s.session_type === 'Cancelled';
         var af  = (atts || []).filter(function (a) { return a.session_code === s.session_code; });
         var rtg = af.map(function (a) { return Number(a.feedback_score || 0); }).filter(Boolean);
         var avg = rtg.length ? (rtg.reduce(function (t, v) { return t + v; }, 0) / rtg.length).toFixed(1) : 0;
         var isConfirmed = af.some(function(a) { return a.instructor_verified; });
-        var attStatus = isConfirmed ? 'confirmed' : 'pending';
+        // Cancelled sessions never happened — there's nothing to confirm, so they get their
+        // own status rather than showing up as "pending" and nagging for finalisation.
+        var attStatus = cancelled ? 'cancelled' : (isConfirmed ? 'confirmed' : 'pending');
         return { sessionCode: s.session_code, sessNo: s.sess_no,
           sessionDate: toDMY(s.session_date), date: toDMY(s.session_date), topic: s.topic || '',
           sessionType: s.session_type || 'Scheduled', instructor: s.instructor || '',
           avgScore: Number(avg), presentCount: af.filter(function (a) { return a.attendance !== 'Absent'; }).length,
-          attStatus: attStatus };
+          attStatus: attStatus, cancelled: cancelled };
       });
+      // Cancelled sessions are excluded from the attendance percentage denominator
+      // entirely — a class that never happened shouldn't count against or for anyone.
+      var countedSessions = sessions.filter(function (se) { return !se.cancelled; });
       var students = (stus || []).map(function (s) {
         var sid = String(s.student_id);
         var att = sessions.map(function (se) {
@@ -2124,7 +2130,10 @@ window.gasGet = (function () {
           });
           return { sessionCode: se.sessionCode, attended: !!(hit && hit.attendance !== 'Absent') };
         });
-        var pct = sessions.length ? Math.round(att.filter(function (a) { return a.attended; }).length / sessions.length * 100) : 0;
+        var countedAtt = att.filter(function (a) {
+          return countedSessions.some(function (se) { return se.sessionCode === a.sessionCode; });
+        });
+        var pct = countedSessions.length ? Math.round(countedAtt.filter(function (a) { return a.attended; }).length / countedSessions.length * 100) : 0;
         return { enrollmentNo: sid, name: s.name, mobileLast4: s.mobile_last4 || s.dob,
           streakPct: pct, attendedSessions: att };
       });
@@ -2251,7 +2260,8 @@ window.gasGet = (function () {
       var sFilter = 'session_date=gte.' + cutoff + '&session_date=lte.' + today;
       var sessions = await getP('sessions', sFilter);
       sessions = sessions.filter(function(s) {
-        return allowedBatchCodes.has(String(s.batch_code).toUpperCase());
+        // Cancelled sessions never happened — nothing to finalize, so don't nag about them.
+        return allowedBatchCodes.has(String(s.batch_code).toUpperCase()) && s.session_type !== 'Cancelled';
       });
       if (!sessions.length) {
         cb(null, { status: 'ok', pending: [], count: 0 });
@@ -2815,7 +2825,7 @@ window.gasGet = (function () {
     (batches || []).forEach(function(b) {
       var code = String(b.batch_code || '').toUpperCase();
       var centre = b.centre || '';
-      var bSess = (sessions || []).filter(function(s) { return String(s.batch_code || '').toUpperCase() === code; });
+      var bSess = (sessions || []).filter(function(s) { return String(s.batch_code || '').toUpperCase() === code && s.session_type !== 'Cancelled'; });
       var bStudents = studentsByBatch[code] || [];
       var sumPct = 0, localCount = 0, localRisk = 0;
       
@@ -4498,7 +4508,7 @@ window.gasGet = (function () {
                 var endD = new Date(b.end_date);
                 var isExpired = new Date() > endD;
                 var todaySess = (sessions || []).find(function (s) {
-                  return s.batch_code === batchCode && s.session_date === todayYMDStr;
+                  return s.batch_code === batchCode && s.session_date === todayYMDStr && s.session_type !== 'Cancelled';
                 });
                 var slot = b.batch_slot || 'Full Day';
                 var win = { open: 8, close: 24 };
@@ -4514,7 +4524,9 @@ window.gasGet = (function () {
                     return af.session_code === todaySess.session_code && af.attendance !== 'Absent';
                   });
                 }
-                var bSess = (sessions || []).filter(function (s) { return s.batch_code === batchCode; })
+                // Cancelled sessions never happened, so they're excluded entirely — not
+                // counted as attended, and not counted against the student as a miss either.
+                var bSess = (sessions || []).filter(function (s) { return s.batch_code === batchCode && s.session_type !== 'Cancelled'; })
                   .sort(function (a, b) { return new Date(b.session_date) - new Date(a.session_date); });
                 var history = bSess.slice(0, 7).map(function (s) {
                   var attended = (atts || []).some(function (af) {
@@ -5279,8 +5291,14 @@ window.gasGet = (function () {
   }
 
   function h_cancelSession(p, cb) {
-    PATCH('sessions', 'session_code=eq.' + encodeURIComponent(p.sessionCode), { session_type: 'Cancelled', topic: 'CANCELLED: ' + (p.reason || '') }, function(e) {
-      cb(null, e ? { status: 'error' } : { status: 'ok' });
+    // A cancelled session means the class never actually happened, so any
+    // attendance/feedback already recorded against it (e.g. a student who
+    // self-marked before the cancellation) is meaningless and gets removed
+    // along with it — no "phantom present" mark stays on anyone's record.
+    DEL('attendance_feedback', 'session_code=eq.' + encodeURIComponent(p.sessionCode), function() {
+      PATCH('sessions', 'session_code=eq.' + encodeURIComponent(p.sessionCode), { session_type: 'Cancelled', topic: 'CANCELLED: ' + (p.reason || '') }, function(e) {
+        cb(null, e ? { status: 'error' } : { status: 'ok' });
+      });
     });
   }
 

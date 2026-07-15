@@ -66,10 +66,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Fetch all active batches where today is within the batch dates
+    // Fetch all active batches where today is within the batch dates.
+    // is_active is treated as null-or-true (not a strict eq.true) because some
+    // older batch rows never got backfilled after the column was added — the
+    // rest of the app (see shared.js) already treats a missing/null is_active
+    // as active for the same reason; a strict eq.true here silently excluded
+    // those batches from ever getting an auto-created session.
     const batches = await supaGet(
       'batches',
-      `is_active=eq.true&start_date=lte.${today}&or=(end_date.is.null,end_date.gte.${today})&select=batch_code,course,instructor,co_instructor,co_instructor_until`
+      `and=(or(is_active.is.null,is_active.eq.true),start_date.lte.${today},or(end_date.is.null,end_date.gte.${today}))&select=batch_code,course,instructor,co_instructor,co_instructor_until`
     );
 
     for (const b of batches) {

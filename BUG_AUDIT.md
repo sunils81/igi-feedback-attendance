@@ -78,7 +78,7 @@ This audit was performed from scratch on the current state of the repository. It
 The following issues were identified in previous audits but **have been verified as FIXED** in the current codebase:
 
 1. **Missing Revenue Tables:** `revenue_monthly_achieved`, `revenue_annual_targets`, and `revenue_centre_targets` were manually re-created via migrations to support the frontend payload. The primary key on `revenue_monthly_achieved` was also correctly updated to support composite upserts.
-2. **Cron Job Crash:** `api/cron/create-sessions.js` now correctly filters by `is_active=eq.true` instead of the broken `status=eq.Active`.
+2. **Cron Job Crash:** `api/cron/create-sessions.js` now correctly filters by `is_active` instead of the broken `status=eq.Active`. Note: a strict `is_active=eq.true` was itself later found to silently skip batches whose `is_active` is `NULL` (never backfilled after the column was added) — the filter was updated again to treat null-or-true as active, matching the same defensive handling already used elsewhere in `shared.js`.
 3. **Missing `co_instructor` columns:** Added via `supabase/migrations/fix_missing_columns.sql`.
 4. **Missing `marked_by` column:** Added via `supabase/migrations/fix_missing_columns.sql`.
 5. **Missing `UNIQUE` constraint on Holidays:** Added via `supabase/migrations/fix_missing_columns.sql`.

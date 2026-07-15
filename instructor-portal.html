@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Instructor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=52"></script>
+<script src="/assets/shared.js?v=53"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style id="dyn-css"></style>
 <style>
@@ -18,6 +18,36 @@
 .marks-input:focus{border-color:var(--gold)}
 .pct-display{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;min-width:44px;display:inline-block;text-align:center}
 .result-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px}
+/* Diamond Calculator (shared UI mounted via DiamondCalc.mount, see assets/shared.js) */
+.dcalc-wrap{background:var(--white);border:1.5px solid var(--border);border-radius:12px;padding:16px;transition:padding .2s ease}
+.dcalc-subtabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;border-bottom:1.5px solid var(--border);padding-bottom:10px}
+.dcalc-subtab{background:none;border:1.5px solid var(--border);border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;transition:font-size .2s ease,padding .2s ease}
+.dcalc-subtab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.dcalc-present-btn{margin-left:auto;background:var(--gold);border:none;border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:700;color:var(--navy);cursor:pointer}
+.dcalc-panel{display:none}
+.dcalc-panel.active{display:block}
+.dcalc-note{font-size:11.5px;color:var(--muted);font-style:italic;margin-bottom:14px;line-height:1.5;transition:font-size .2s ease}
+.dcalc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:14px}
+.dcalc-field label{display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);margin-bottom:4px;transition:font-size .2s ease}
+.dcalc-field input,.dcalc-field select{width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;color:var(--navy);outline:none;box-sizing:border-box;transition:font-size .2s ease,padding .2s ease}
+.dcalc-field input:focus,.dcalc-field select:focus{border-color:var(--gold)}
+.dcalc-calc-btn{margin-bottom:14px;transition:font-size .2s ease,padding .2s ease}
+.dcalc-result{background:var(--off,#F7F8FA);border-radius:10px;padding:14px}
+.dcalc-result-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:13px;color:var(--navy);transition:font-size .2s ease}
+.dcalc-result-row b{font-family:'JetBrains Mono',monospace}
+.dcalc-result-final{border-top:1.5px solid var(--border);margin-top:4px;padding-top:10px;font-size:15px;font-weight:700}
+.dcalc-formula{font-size:11px;color:var(--muted);margin-top:8px;font-family:'JetBrains Mono',monospace;transition:font-size .2s ease}
+.dcalc-err{color:#dc2626;font-size:12.5px;font-weight:600}
+/* Presentation mode — enlarges everything for projecting on screen during a live demo */
+.dcalc-wrap.dcalc-present{padding:32px}
+.dcalc-wrap.dcalc-present .dcalc-subtab{font-size:18px;padding:12px 22px}
+.dcalc-wrap.dcalc-present .dcalc-note{font-size:16px}
+.dcalc-wrap.dcalc-present .dcalc-field label{font-size:14px}
+.dcalc-wrap.dcalc-present .dcalc-field input,.dcalc-wrap.dcalc-present .dcalc-field select{font-size:22px;padding:14px 16px}
+.dcalc-wrap.dcalc-present .dcalc-calc-btn{font-size:20px;padding:16px 28px}
+.dcalc-wrap.dcalc-present .dcalc-result-row{font-size:20px}
+.dcalc-wrap.dcalc-present .dcalc-result-final{font-size:28px}
+.dcalc-wrap.dcalc-present .dcalc-formula{font-size:16px}
 .rb-pass{background:#E8F5EE;color:#1a7a3c}
 .rb-fail{background:#FEF2F2;color:#C94A4A}
 .rb-dna{background:#F4F1EB;color:var(--muted)}
@@ -304,6 +334,7 @@
     <button class="tab" onclick="iTab('t-attendance')">👥 Attendance</button>
     <button class="tab" onclick="iTab('t-marks')">📝 Marks</button>
     <button class="tab" onclick="iTab('t-resources')">📚 Resources</button>
+    <button class="tab" onclick="iTab('t-diamondcalc')">🧮 Diamond Calculator</button>
     <button class="tab" onclick="iTab('t-mybatches')">🗂 My Batches</button>
     <button class="tab" id="t-batchmgmt-tab" style="display:none" onclick="iTab('t-batchmgmt')">🏫 Batches</button>
     <button class="tab" id="t-academic-tab" style="display:none" onclick="iTab('t-academic')">🎓 Academic Overview</button>
@@ -724,6 +755,21 @@
     <p class="sub">Shows which students in your batches are on track for their diploma. Eligibility requires: weekly test average ≥60%, Practical marks ≥60% (if a Practical test exists for the batch), and Final exam ≥60%. Attendance (≥75%) is shown for reference only and does not block eligibility.</p>
     <div id="elig-loading" style="text-align:center;padding:40px;color:#6b7280;font-size:14px;">Loading eligibility data…</div>
     <div id="elig-content" style="display:none;"></div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- TAB: DIAMOND CALCULATOR                                   -->
+  <!-- Pure arithmetic tool — the instructor types in a per-carat -->
+  <!-- rate they've looked up themselves from their own price     -->
+  <!-- subscription. No price-list data is stored, looked up, or  -->
+  <!-- displayed by this app. Weight-estimate formulas are        -->
+  <!-- standard published gemological rule-of-thumb approximations. -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div id="t-diamondcalc" class="tab-content">
+    <div class="section-tag">Teaching Tool</div>
+    <h2>Diamond Calculator</h2>
+    <p class="sub">Price, weight-estimate, and reverse-solve calculators for live classroom demonstrations. Use the Present button to enlarge for projecting on screen.</p>
+    <div id="instr-diamond-calc"></div>
   </div>
 
   <!-- ══════════════════════════════════════════════════════════ -->
@@ -2698,6 +2744,13 @@ function iTab(id) {
   if (id==='t-attendance') { stopAttendanceRefresh(); if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-marks')      { if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-resources')  { syncResourcesBatchSelect(); }
+  if (id==='t-diamondcalc') {
+    var dcRoot = document.getElementById('instr-diamond-calc');
+    if (dcRoot && !dcRoot.dataset.mounted && typeof DiamondCalc !== 'undefined') {
+      DiamondCalc.mount('instr-diamond-calc', { presentationToggle: true });
+      dcRoot.dataset.mounted = '1';
+    }
+  }
   if (id==='t-mybatches')  loadMyBatches();
   if (id==='t-batchmgmt')  loadBatchMgmtTab();
   if (id==='t-academic')   loadAcademicDashboard(false);

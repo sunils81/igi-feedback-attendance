@@ -8,7 +8,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Student Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=52"></script>
+<script src="/assets/shared.js?v=53"></script>
 <style id="dyn-css"></style>
 <style>
 .batch-card{background:var(--white);border-radius:var(--radius);border:1.5px solid var(--border);padding:20px;margin-bottom:14px;box-shadow:var(--shadow);transition:border-color .2s}
@@ -591,6 +591,26 @@
 .ot-breakdown-details summary::-webkit-details-marker { display:none; }
 .ot-breakdown-details summary { outline:none; }
 .ot-breakdown-details[open] summary > div { background:#e8eeff; border-color:#a5b4fc; }
+/* Diamond Calculator (shared UI mounted via DiamondCalc.mount, see assets/shared.js) */
+.dcalc-wrap{background:var(--white);border:1.5px solid var(--border);border-radius:12px;padding:16px}
+.dcalc-subtabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;border-bottom:1.5px solid var(--border);padding-bottom:10px}
+.dcalc-subtab{background:none;border:1.5px solid var(--border);border-radius:20px;padding:7px 14px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer}
+.dcalc-subtab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.dcalc-present-btn{margin-left:auto;background:var(--gold);border:none;border-radius:20px;padding:7px 14px;font-size:12px;font-weight:700;color:var(--navy);cursor:pointer}
+.dcalc-panel{display:none}
+.dcalc-panel.active{display:block}
+.dcalc-note{font-size:11px;color:var(--muted);font-style:italic;margin-bottom:14px;line-height:1.5}
+.dcalc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:14px}
+.dcalc-field label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);margin-bottom:4px}
+.dcalc-field input,.dcalc-field select{width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;color:var(--navy);outline:none;box-sizing:border-box}
+.dcalc-field input:focus,.dcalc-field select:focus{border-color:var(--gold)}
+.dcalc-calc-btn{margin-bottom:14px}
+.dcalc-result{background:var(--bg,#F7F8FA);border-radius:10px;padding:14px}
+.dcalc-result-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:13px;color:var(--navy)}
+.dcalc-result-row b{font-family:'JetBrains Mono',monospace}
+.dcalc-result-final{border-top:1.5px solid var(--border);margin-top:4px;padding-top:10px;font-size:15px;font-weight:700}
+.dcalc-formula{font-size:11px;color:var(--muted);margin-top:8px;font-family:'JetBrains Mono',monospace}
+.dcalc-err{color:#dc2626;font-size:12px;font-weight:600}
 </style>
 <!-- QR code generator (used for student ID card) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -710,6 +730,10 @@
       <button class="nav-tab" onclick="switchTab('tab-fees', this)">
         <span class="tab-icon">💰</span>
         <span class="tab-label">Fees</span>
+      </button>
+      <button class="nav-tab" onclick="switchTab('tab-diamondcalc', this); mountStudentDiamondCalc();">
+        <span class="tab-icon">🧮</span>
+        <span class="tab-label">Calculator</span>
       </button>
       <button class="nav-tab" id="nav-tab-tests" onclick="switchTab('tab-results', this); otLoadMyResults();" style="position:relative;">
         <span class="tab-icon">🧪</span>
@@ -835,6 +859,17 @@
     <!-- Fees Tab Content -->
     <div id="tab-fees" class="tab-content">
       <div id="portal-fees"></div>
+    </div>
+
+    <!-- Diamond Calculator Tab Content — pure arithmetic tool, no price-list data
+         stored or displayed by this app (see assets/shared.js DiamondCalc module) -->
+    <div id="tab-diamondcalc" class="tab-content">
+      <div class="card">
+        <div class="section-tag">Study Tool</div>
+        <h2>Diamond Calculator</h2>
+        <p class="sub">Price, weight-estimate, and reverse-solve calculators for practice.</p>
+        <div id="student-diamond-calc"></div>
+      </div>
     </div>
 
     <div id="tab-results" class="tab-content">
@@ -1322,6 +1357,14 @@ function switchTab(tabId, el) {
     stResultsRefreshTimer = setInterval(function() {
       if (!document.hidden) otLoadMyResults();
     }, 90000);
+  }
+}
+
+function mountStudentDiamondCalc() {
+  const root = document.getElementById('student-diamond-calc');
+  if (root && !root.dataset.mounted && typeof DiamondCalc !== 'undefined') {
+    DiamondCalc.mount('student-diamond-calc', { presentationToggle: false });
+    root.dataset.mounted = '1';
   }
 }
 

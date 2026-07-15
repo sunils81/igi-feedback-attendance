@@ -8530,3 +8530,191 @@ function amtL(v) {
   if (v >= 1000)     return '₹'+(v/1000).toFixed(1)+'K';
   return '₹'+v;
 }
+
+// ══════════════════════════════════════════════════════════════
+// DIAMOND CALCULATOR — shared UI mounted in both instructor-portal.html
+// (Diamond Calculator tab, with a Present toggle for projecting on screen)
+// and student.html (Calculator tab).
+//
+// This is a pure arithmetic tool: the instructor/student types in a
+// per-carat rate they've looked up themselves (e.g. from their own
+// Rapaport/price-list subscription) and the tool just does the math.
+// No price-list data is stored, fetched, or displayed by this app.
+//
+// The weight-estimator's shape factors are standard published
+// gemological rule-of-thumb approximations (common knowledge across
+// GIA-style trade references) — they are generic geometric estimates,
+// not derived from or affiliated with Rapaport in any way, and are
+// explicitly labeled as estimates only.
+// ══════════════════════════════════════════════════════════════
+window.DiamondCalc = (function () {
+  const SHAPES = [
+    { key: 'round',    label: 'Round',    factor: 0.0061,  mode: 'round' },
+    { key: 'princess', label: 'Princess', factor: 0.0080,  mode: 'lwd' },
+    { key: 'emerald',  label: 'Emerald',  factor: 0.0080,  mode: 'lwd' },
+    { key: 'oval',     label: 'Oval',     factor: 0.0062,  mode: 'lwd' },
+    { key: 'marquise', label: 'Marquise', factor: 0.00565, mode: 'lwd' },
+    { key: 'pear',     label: 'Pear',     factor: 0.0060,  mode: 'lwd' },
+    { key: 'heart',    label: 'Heart',    factor: 0.0059,  mode: 'lwd' },
+    { key: 'cushion',  label: 'Cushion',  factor: 0.0080,  mode: 'lwd' },
+    { key: 'radiant',  label: 'Radiant',  factor: 0.0081,  mode: 'lwd' },
+    { key: 'asscher',  label: 'Asscher',  factor: 0.0080,  mode: 'lwd' }
+  ];
+  const COLORS = ['D','E','F','G','H','I','J','K','L','M','N'];
+  const CLARITIES = ['FL','IF','VVS1','VVS2','VS1','VS2','SI1','SI2','SI3','I1','I2','I3'];
+
+  function escDC(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function fmtUsd(n) { if (!isFinite(n)) return '—'; return '$' + n.toLocaleString('en-US', { maximumFractionDigits: 2 }); }
+
+  function mount(containerId, opts) {
+    opts = opts || {};
+    const root = document.getElementById(containerId);
+    if (!root) return;
+    const p = containerId + '-'; // id prefix so two mounts on the same page never collide
+
+    root.innerHTML =
+      '<div class="dcalc-wrap" id="' + p + 'wrap">' +
+        '<div class="dcalc-subtabs">' +
+          '<button type="button" class="dcalc-subtab active" data-tab="price" onclick="DiamondCalc._switch(\'' + containerId + '\',\'price\')">💰 Price Calculator</button>' +
+          '<button type="button" class="dcalc-subtab" data-tab="weight" onclick="DiamondCalc._switch(\'' + containerId + '\',\'weight\')">📐 Weight Estimator</button>' +
+          '<button type="button" class="dcalc-subtab" data-tab="reverse" onclick="DiamondCalc._switch(\'' + containerId + '\',\'reverse\')">🔄 Reverse Solve</button>' +
+          (opts.presentationToggle ? '<button type="button" class="dcalc-present-btn" onclick="DiamondCalc._togglePresent(\'' + containerId + '\')">🖥️ Present</button>' : '') +
+        '</div>' +
+
+        '<div class="dcalc-panel active" data-panel="price">' +
+          '<p class="dcalc-note">Enter the per-carat rate you\'ve looked up from your own price-list subscription — this tool only does the arithmetic; it doesn\'t store or look up any price data itself.</p>' +
+          '<div class="dcalc-grid">' +
+            '<div class="dcalc-field"><label>Carat Weight</label><input type="number" step="0.01" min="0" id="' + p + 'price-carat" placeholder="e.g. 1.05"></div>' +
+            '<div class="dcalc-field"><label>Color</label><select id="' + p + 'price-color">' + COLORS.map(function(c) { return '<option>' + c + '</option>'; }).join('') + '</select></div>' +
+            '<div class="dcalc-field"><label>Clarity</label><select id="' + p + 'price-clarity">' + CLARITIES.map(function(c) { return '<option' + (c === 'SI1' ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></div>' +
+            '<div class="dcalc-field"><label>Rate per Carat (US$ 100s)</label><input type="number" step="0.1" min="0" id="' + p + 'price-rate" placeholder="e.g. 63.0"></div>' +
+            '<div class="dcalc-field"><label>% Off (−) / Over (+) Rate</label><input type="number" step="0.1" id="' + p + 'price-pct" placeholder="e.g. -20 for 20% off"></div>' +
+          '</div>' +
+          '<button type="button" class="btn btn-gold dcalc-calc-btn" style="width:auto" onclick="DiamondCalc._calcPrice(\'' + containerId + '\')">Calculate</button>' +
+          '<div class="dcalc-result" id="' + p + 'price-result"></div>' +
+        '</div>' +
+
+        '<div class="dcalc-panel" data-panel="weight">' +
+          '<p class="dcalc-note">Standard published gemological rule-of-thumb formulas — estimates only. Always confirm true weight by weighing the stone (measurement-based estimates can vary ±5–10%).</p>' +
+          '<div class="dcalc-grid">' +
+            '<div class="dcalc-field"><label>Shape</label><select id="' + p + 'wt-shape">' + SHAPES.map(function(s) { return '<option value="' + s.key + '">' + s.label + '</option>'; }).join('') + '</select></div>' +
+            '<div class="dcalc-field"><label>Length (mm)</label><input type="number" step="0.01" min="0" id="' + p + 'wt-length" placeholder="e.g. 6.50"></div>' +
+            '<div class="dcalc-field"><label>Width (mm)</label><input type="number" step="0.01" min="0" id="' + p + 'wt-width" placeholder="e.g. 6.53"></div>' +
+            '<div class="dcalc-field"><label>Depth (mm)</label><input type="number" step="0.01" min="0" id="' + p + 'wt-depth" placeholder="e.g. 3.95"></div>' +
+          '</div>' +
+          '<button type="button" class="btn btn-gold dcalc-calc-btn" style="width:auto" onclick="DiamondCalc._calcWeight(\'' + containerId + '\')">Estimate Weight</button>' +
+          '<div class="dcalc-result" id="' + p + 'wt-result"></div>' +
+        '</div>' +
+
+        '<div class="dcalc-panel" data-panel="reverse">' +
+          '<p class="dcalc-note">Given a target price, solve backward for the implied rate or discount/premium.</p>' +
+          '<div class="dcalc-field" style="max-width:260px;margin-bottom:14px">' +
+            '<label>Solve For</label>' +
+            '<select id="' + p + 'rev-mode" onchange="DiamondCalc._toggleReverseMode(\'' + containerId + '\')">' +
+              '<option value="pct">Discount/Premium %</option>' +
+              '<option value="rate">Rate per Carat</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="dcalc-grid">' +
+            '<div class="dcalc-field"><label>Carat Weight</label><input type="number" step="0.01" min="0" id="' + p + 'rev-carat" placeholder="e.g. 1.05"></div>' +
+            '<div class="dcalc-field"><label>Target Total Price (US$)</label><input type="number" step="1" min="0" id="' + p + 'rev-target" placeholder="e.g. 5200"></div>' +
+            '<div class="dcalc-field" id="' + p + 'rev-rate-field"><label>Rate per Carat (US$ 100s)</label><input type="number" step="0.1" min="0" id="' + p + 'rev-rate" placeholder="e.g. 63.0"></div>' +
+            '<div class="dcalc-field" id="' + p + 'rev-pct-field" style="display:none"><label>% Off (−) / Over (+) Rate</label><input type="number" step="0.1" id="' + p + 'rev-pct" placeholder="e.g. -20"></div>' +
+          '</div>' +
+          '<button type="button" class="btn btn-gold dcalc-calc-btn" style="width:auto" onclick="DiamondCalc._calcReverse(\'' + containerId + '\')">Solve</button>' +
+          '<div class="dcalc-result" id="' + p + 'rev-result"></div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function _switch(containerId, tab) {
+    const root = document.getElementById(containerId);
+    if (!root) return;
+    const wrap = root.querySelector('.dcalc-wrap');
+    if (!wrap) return;
+    wrap.querySelectorAll('.dcalc-subtab').forEach(function(b) { b.classList.toggle('active', b.dataset.tab === tab); });
+    wrap.querySelectorAll('.dcalc-panel').forEach(function(pnl) { pnl.classList.toggle('active', pnl.dataset.panel === tab); });
+  }
+
+  function _togglePresent(containerId) {
+    const root = document.getElementById(containerId);
+    if (!root) return;
+    const wrap = root.querySelector('.dcalc-wrap');
+    if (wrap) wrap.classList.toggle('dcalc-present');
+  }
+
+  function _toggleReverseMode(containerId) {
+    const p = containerId + '-';
+    const mode = document.getElementById(p + 'rev-mode').value;
+    const rateField = document.getElementById(p + 'rev-rate-field');
+    const pctField = document.getElementById(p + 'rev-pct-field');
+    if (rateField) rateField.style.display = mode === 'pct' ? '' : 'none';
+    if (pctField) pctField.style.display = mode === 'rate' ? '' : 'none';
+  }
+
+  function _calcPrice(containerId) {
+    const p = containerId + '-';
+    const carat = parseFloat(document.getElementById(p + 'price-carat').value);
+    const rate = parseFloat(document.getElementById(p + 'price-rate').value);
+    const pct = parseFloat(document.getElementById(p + 'price-pct').value) || 0;
+    const resultEl = document.getElementById(p + 'price-result');
+    if (!carat || !rate) { resultEl.innerHTML = '<span class="dcalc-err">Enter carat weight and rate per carat.</span>'; return; }
+    const rapPrice = rate * 100 * carat;
+    const finalPrice = rapPrice * (1 + pct / 100);
+    const diff = finalPrice - rapPrice;
+    resultEl.innerHTML =
+      '<div class="dcalc-result-row"><span>List Price</span><b>' + fmtUsd(rapPrice) + '</b></div>' +
+      '<div class="dcalc-result-row"><span>' + (pct < 0 ? 'Discount' : 'Premium') + ' (' + Math.abs(pct) + '%)</span><b>' + (pct < 0 ? '−' : '+') + fmtUsd(Math.abs(diff)) + '</b></div>' +
+      '<div class="dcalc-result-row dcalc-result-final"><span>Final Price</span><b>' + fmtUsd(finalPrice) + '</b></div>' +
+      '<div class="dcalc-result-row"><span>Price per Carat</span><b>' + fmtUsd(finalPrice / carat) + '</b></div>';
+  }
+
+  function _calcWeight(containerId) {
+    const p = containerId + '-';
+    const shapeKey = document.getElementById(p + 'wt-shape').value;
+    const shape = SHAPES.filter(function(s) { return s.key === shapeKey; })[0];
+    const L = parseFloat(document.getElementById(p + 'wt-length').value);
+    const W = parseFloat(document.getElementById(p + 'wt-width').value);
+    const D = parseFloat(document.getElementById(p + 'wt-depth').value);
+    const resultEl = document.getElementById(p + 'wt-result');
+    if (!L || !W || !D) { resultEl.innerHTML = '<span class="dcalc-err">Enter length, width, and depth.</span>'; return; }
+    let weight, formula;
+    if (shape.mode === 'round') {
+      const avgD = (L + W) / 2;
+      weight = avgD * avgD * D * shape.factor;
+      formula = 'Avg Diameter² × Depth × ' + shape.factor + ' = ' + avgD.toFixed(2) + '² × ' + D + ' × ' + shape.factor;
+    } else {
+      weight = L * W * D * shape.factor;
+      formula = 'L × W × Depth × ' + shape.factor + ' = ' + L + ' × ' + W + ' × ' + D + ' × ' + shape.factor;
+    }
+    resultEl.innerHTML =
+      '<div class="dcalc-result-row dcalc-result-final"><span>Estimated Weight</span><b>' + weight.toFixed(3) + ' ct</b></div>' +
+      '<div class="dcalc-formula">' + escDC(formula) + '</div>';
+  }
+
+  function _calcReverse(containerId) {
+    const p = containerId + '-';
+    const mode = document.getElementById(p + 'rev-mode').value;
+    const carat = parseFloat(document.getElementById(p + 'rev-carat').value);
+    const target = parseFloat(document.getElementById(p + 'rev-target').value);
+    const resultEl = document.getElementById(p + 'rev-result');
+    if (!carat || !target) { resultEl.innerHTML = '<span class="dcalc-err">Enter carat weight and target price.</span>'; return; }
+    if (mode === 'pct') {
+      const rate = parseFloat(document.getElementById(p + 'rev-rate').value);
+      if (!rate) { resultEl.innerHTML = '<span class="dcalc-err">Enter the rate per carat.</span>'; return; }
+      const rapPrice = rate * 100 * carat;
+      const pct = (target / rapPrice - 1) * 100;
+      resultEl.innerHTML =
+        '<div class="dcalc-result-row"><span>List Price</span><b>' + fmtUsd(rapPrice) + '</b></div>' +
+        '<div class="dcalc-result-row dcalc-result-final"><span>Implied ' + (pct < 0 ? 'Discount' : 'Premium') + '</span><b>' + (pct < 0 ? '−' : '+') + Math.abs(pct).toFixed(1) + '%</b></div>';
+    } else {
+      const pct = parseFloat(document.getElementById(p + 'rev-pct').value) || 0;
+      const rate = target / (100 * carat * (1 + pct / 100));
+      resultEl.innerHTML =
+        '<div class="dcalc-result-row dcalc-result-final"><span>Implied Rate per Carat</span><b>' + rate.toFixed(2) + ' (US$ 100s)</b></div>' +
+        '<div class="dcalc-formula">i.e. ≈ ' + fmtUsd(rate * 100) + ' per carat at list</div>';
+    }
+  }
+
+  return { mount: mount, _switch: _switch, _togglePresent: _togglePresent, _toggleReverseMode: _toggleReverseMode, _calcPrice: _calcPrice, _calcWeight: _calcWeight, _calcReverse: _calcReverse };
+})();

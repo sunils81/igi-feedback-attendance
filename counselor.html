@@ -2884,6 +2884,15 @@
     .cmp-chip{padding:7px 14px;border-radius:20px;border:1.5px solid var(--border);background:var(--white);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap}
     .cmp-chip:hover{border-color:var(--gold);color:var(--gold)}
     .cmp-chip.active{background:var(--navy);border-color:var(--navy);color:var(--gold-light)}
+    .cmp-chip.temp-hot.active{background:#dc2626;border-color:#dc2626;color:#fff}
+    .cmp-chip.temp-warm.active{background:#b45309;border-color:#b45309;color:#fff}
+    .cmp-chip.temp-cold.active{background:#0369a1;border-color:#0369a1;color:#fff}
+    .cmp-toolbar-divider{width:1px;align-self:stretch;min-height:22px;background:var(--border);margin:0 2px}
+    .cmp-course-select{padding:7px 10px;border:1.5px solid var(--border);border-radius:20px;font-size:12px;font-family:inherit;color:var(--navy);font-weight:600;background:var(--white);outline:none;max-width:220px}
+    .cmp-course-select:focus{border-color:var(--gold)}
+    .cmp-kpi-tile.clickable{cursor:pointer}
+    .cmp-kpi-tile.clickable:hover{border-color:var(--gold)}
+    .cmp-kpi-tile.hot.active{background:#fef2f2;border-left-color:#dc2626;box-shadow:0 0 0 1.5px #dc2626 inset}
     .cmp-kpi-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
     .cmp-kpi-tile{background:var(--white);border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;box-shadow:0 2px 10px rgba(10,20,40,.04);border-left:3px solid var(--navy);transition:box-shadow .15s,transform .15s}
     .cmp-kpi-tile:hover{box-shadow:0 6px 18px rgba(10,20,40,.08);transform:translateY(-1px)}
@@ -3048,8 +3057,8 @@
         <p class="cmp-proverb" id="cmp-proverb"></p>
         <div class="cmp-kpi-strip" id="cmp-kpi-strip">
           <div class="cmp-kpi-tile total"><div class="cmp-kpi-label">Total Prospects</div><div class="cmp-kpi-value" id="cmp-kpi-total">0</div></div>
-          <div class="cmp-kpi-tile hot"><div class="cmp-kpi-label">Hot Leads</div><div class="cmp-kpi-value" id="cmp-kpi-hot">0</div></div>
-          <div class="cmp-kpi-tile due"><div class="cmp-kpi-label">Due Today</div><div class="cmp-kpi-value" id="cmp-kpi-due">0</div></div>
+          <div class="cmp-kpi-tile hot clickable" id="cmp-kpi-hot-tile" onclick="cmpToggleTempFilter('Hot')" title="Click to filter Hot leads"><div class="cmp-kpi-label">Hot Leads</div><div class="cmp-kpi-value" id="cmp-kpi-hot">0</div></div>
+          <div class="cmp-kpi-tile due clickable" onclick="cmpFilterProspects('due')" title="Click to filter Due Today"><div class="cmp-kpi-label">Due Today</div><div class="cmp-kpi-value" id="cmp-kpi-due">0</div></div>
           <div class="cmp-kpi-tile converted"><div class="cmp-kpi-label">Converted, This Month</div><div class="cmp-kpi-value" id="cmp-kpi-converted">₹0</div></div>
         </div>
         <div class="cmp-toolbar">
@@ -3062,6 +3071,16 @@
             <span id="cmp-prospects-month-label"></span>
             <button type="button" onclick="cmpChangeProspectsMonth(1)">›</button>
           </div>
+        </div>
+        <div class="cmp-toolbar" id="cmp-toolbar-2" style="margin-top:8px">
+          <button class="cmp-chip temp-hot" data-cmp-temp="Hot" onclick="cmpToggleTempFilter('Hot')">🔥 Hot <span id="cmp-temp-count-hot"></span></button>
+          <button class="cmp-chip temp-warm" data-cmp-temp="Warm" onclick="cmpToggleTempFilter('Warm')">☀️ Warm <span id="cmp-temp-count-warm"></span></button>
+          <button class="cmp-chip temp-cold" data-cmp-temp="Cold" onclick="cmpToggleTempFilter('Cold')">❄️ Cold <span id="cmp-temp-count-cold"></span></button>
+          <div class="cmp-toolbar-divider"></div>
+          <select class="cmp-course-select" id="cmp-course-filter" onchange="cmpSetCourseFilter(this.value)">
+            <option value="">🎓 All Courses</option>
+          </select>
+          <div class="cmp-toolbar-divider"></div>
           <input type="text" class="cmp-search" id="cmp-search" placeholder="Search name, phone, email…" oninput="cmpRenderProspects()">
           <button class="btn btn-outline" style="width:auto" onclick="cmpOpenImportModal()">⬆ Import CSV</button>
           <button class="btn btn-outline" style="width:auto" onclick="cmpExportCsv()">⬇ Export</button>
@@ -4931,6 +4950,8 @@ function switchTab(id) {
 let cmpProspects = [];
 let cmpNotes = [];
 let cmpActiveFilter = 'all';
+let cmpActiveTemp = '';
+let cmpActiveCourse = '';
 let cmpImportPreviewRows = [];
 
 function cmpToast(msg, isError) {
@@ -4976,7 +4997,25 @@ let cmpProspectsMonth = new Date();
 
 function cmpFilterProspects(f) {
   cmpActiveFilter = f;
-  document.querySelectorAll('.cmp-chip').forEach(function(c) { c.classList.toggle('active', c.getAttribute('data-cmp-filter') === f); });
+  document.querySelectorAll('.cmp-chip[data-cmp-filter]').forEach(function(c) { c.classList.toggle('active', c.getAttribute('data-cmp-filter') === f); });
+  cmpRenderProspects();
+}
+
+// Temperature is a separate facet from the segment chips above (All/Due/Cold/Nurture) —
+// clicking Hot again clears it back to "all temperatures" instead of needing an explicit
+// "All" option cluttering the row.
+function cmpToggleTempFilter(t) {
+  cmpActiveTemp = (cmpActiveTemp === t) ? '' : t;
+  cmpSyncTempFilterUI();
+  cmpRenderProspects();
+}
+function cmpSyncTempFilterUI() {
+  document.querySelectorAll('.cmp-chip[data-cmp-temp]').forEach(function(c) { c.classList.toggle('active', c.getAttribute('data-cmp-temp') === cmpActiveTemp); });
+  const hotTile = document.getElementById('cmp-kpi-hot-tile');
+  if (hotTile) hotTile.classList.toggle('active', cmpActiveTemp === 'Hot');
+}
+function cmpSetCourseFilter(v) {
+  cmpActiveCourse = v;
   cmpRenderProspects();
 }
 
@@ -5069,8 +5108,45 @@ function cmpRenderProspects() {
     });
   }
 
+  // `list` at this point = everything matching the segment chip + month + search,
+  // before temperature/course narrow it further. Facet counts are computed against
+  // this shared base (each facet ignoring only its own filter) so the numbers always
+  // answer "how many would I see if I picked this" given what's already selected.
+  const tempCounts = { Hot: 0, Warm: 0, Cold: 0 };
+  const courseCounts = {};
+  list.forEach(function(p) {
+    if (!cmpActiveCourse || (p.course_interest || []).includes(cmpActiveCourse)) {
+      if (tempCounts[p.temperature] !== undefined) tempCounts[p.temperature]++;
+    }
+    if (!cmpActiveTemp || p.temperature === cmpActiveTemp) {
+      (p.course_interest || []).forEach(function(c) { courseCounts[c] = (courseCounts[c] || 0) + 1; });
+    }
+  });
+  document.getElementById('cmp-temp-count-hot').textContent = tempCounts.Hot ? '(' + tempCounts.Hot + ')' : '';
+  document.getElementById('cmp-temp-count-warm').textContent = tempCounts.Warm ? '(' + tempCounts.Warm + ')' : '';
+  document.getElementById('cmp-temp-count-cold').textContent = tempCounts.Cold ? '(' + tempCounts.Cold + ')' : '';
+
+  const courseSelect = document.getElementById('cmp-course-filter');
+  if (courseSelect) {
+    const courseNames = Object.keys(courseCounts).sort(function(a, b) { return courseCounts[b] - courseCounts[a] || a.localeCompare(b); });
+    courseSelect.innerHTML = '<option value="">🎓 All Courses</option>' + courseNames.map(function(c) {
+      return '<option value="' + escC(c) + '"' + (c === cmpActiveCourse ? ' selected' : '') + '>' + escC(c) + ' (' + courseCounts[c] + ')</option>';
+    }).join('');
+    // If the previously selected course has dropped to zero matches under the
+    // current temp filter, keep it selected but the option above already reflects 0.
+    if (cmpActiveCourse && !courseNames.includes(cmpActiveCourse)) {
+      courseSelect.insertAdjacentHTML('beforeend', '<option value="' + escC(cmpActiveCourse) + '" selected>' + escC(cmpActiveCourse) + ' (0)</option>');
+    }
+  }
+
+  if (cmpActiveTemp) list = list.filter(function(p) { return p.temperature === cmpActiveTemp; });
+  if (cmpActiveCourse) list = list.filter(function(p) { return (p.course_interest || []).includes(cmpActiveCourse); });
+
   if (!list.length) {
-    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:48px 24px"><div style="font-size:36px;margin-bottom:10px">🧭</div><div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:6px">No prospects here yet</div><div style="font-size:12px;color:var(--muted)">Add a tentative lead to start tracking it — it takes under 10 seconds.</div></div>';
+    const filtersActive = cmpActiveTemp || cmpActiveCourse || search;
+    grid.innerHTML = filtersActive
+      ? '<div style="grid-column:1/-1;text-align:center;padding:48px 24px"><div style="font-size:36px;margin-bottom:10px">🔍</div><div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:6px">No prospects match these filters</div><div style="font-size:12px;color:var(--muted)">Try clearing the temperature, course, or search filter.</div></div>'
+      : '<div style="grid-column:1/-1;text-align:center;padding:48px 24px"><div style="font-size:36px;margin-bottom:10px">🧭</div><div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:6px">No prospects here yet</div><div style="font-size:12px;color:var(--muted)">Add a tentative lead to start tracking it — it takes under 10 seconds.</div></div>';
     return;
   }
 

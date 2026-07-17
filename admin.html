@@ -3844,7 +3844,8 @@ function openPresentationMode() {
   }
   
   const pctOverall = targetCourseBaseline ? Math.round(totalAchievedCourse / targetCourseBaseline * 100) : 0;
-  
+  totalStudentsCount = fiscalYtdStudentCount(rev);
+
   document.getElementById('pres-kpi-ytd').textContent = money(totalAchievedCourse);
   document.getElementById('pres-kpi-gst').textContent = money(totalAchievedGst - totalAchievedCourse);
   document.getElementById('pres-kpi-target').textContent = pctOverall + '%';
@@ -4567,6 +4568,22 @@ function renderTabContent(tabId) {
   }
 }
 
+// Fiscal-YTD (Apr 1 → today) student count, computed live off today's date.
+// The dashboard fetch pulls the whole FY window (Apr 2026–Mar 2027) so monthly
+// target math stays correct, but "Students Enrolled" should only reflect months
+// up to today, not the full year. This trims the raw achieved rows to that cutoff.
+function fiscalYtdStudentCount(rev) {
+  const fyStart = new Date(2026, 3, 1);   // Apr 1, 2026
+  const fyEnd   = new Date(2027, 2, 31);  // Mar 31, 2027
+  const now = new Date();
+  const clamped = now < fyStart ? fyStart : (now > fyEnd ? fyEnd : now);
+  const currentMonthKey = clamped.getFullYear() + '-' + String(clamped.getMonth() + 1).padStart(2, '0');
+  const rows = rev.monthlyRows || rev.monthlyPreviewRows || [];
+  return rows.reduce(function(sum, r) {
+    return (r.month && r.month <= currentMonthKey) ? sum + (Number(r.studentCount) || 0) : sum;
+  }, 0);
+}
+
 // ── Render Tab 1: Revenue ─────────────────────────────────────
 function renderRevenueTab() {
   const d = dashboardData;
@@ -4712,7 +4729,8 @@ function renderRevenueTab() {
   }
 
   const pctOverall = targetCourseBaseline ? Math.round(totalAchievedCourse / targetCourseBaseline * 100) : 0;
-  
+  totalStudentsCount = fiscalYtdStudentCount(rev);
+
   // Run Rate & Pacing
   const now = new Date();
   const endOfFY = new Date(2027, 2, 31); // ends March 31, 2027

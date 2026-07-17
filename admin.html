@@ -6637,6 +6637,90 @@ function revMoneyAbbr(val) {
   return '₹' + Math.round(v).toLocaleString('en-IN');
 }
 
+// Standings leaderboards can be ranked either by hit % or by absolute revenue achieved.
+// Raw (unsorted-by-mode) lists are cached here so toggling doesn't require a re-fetch,
+// and the chosen mode per panel persists until changed again.
+let standingsRawData = { annualCounsellors: [], quarterCounsellors: [], annualCentres: [], quarterCentres: [] };
+let standingsSortMode = { annualCounsellors: 'pct', quarterCounsellors: 'pct', annualCentres: 'pct', quarterCentres: 'pct' };
+
+function sortStandingsList(list, mode) {
+  var sorted = (list || []).slice();
+  if (mode === 'achieved') {
+    sorted.sort(function(a, b) { return b.achieved - a.achieved || b.pct - a.pct; });
+  } else {
+    sorted.sort(function(a, b) { return b.pct - a.pct || b.achieved - a.achieved; });
+  }
+  return sorted;
+}
+
+// Helper to build rankings list HTML — top-level so it can be reused when a
+// leaderboard is re-sorted without re-rendering the whole standings tab.
+function buildLeaderboardHtml(listItems, isCentre) {
+  if (!listItems.length) return '<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px">No standings found.</div>';
+  return listItems.map(function(item, idx) {
+    var rank = idx + 1;
+    var rankIcon = rank === 1 ? '🥇' : (rank === 2 ? '🥈' : (rank === 3 ? '🥉' : '#' + rank));
+    var badgeStyle = 'background:var(--off);color:var(--muted);border:1px solid var(--border);';
+    if (item.pct >= 100) {
+      badgeStyle = 'background:#E8F5EE;color:#168B57;border:1px solid rgba(22,139,87,0.2);box-shadow:0 0 6px rgba(22,139,87,0.1)';
+    } else if (item.pct >= 60) {
+      badgeStyle = 'background:var(--gold-pale);color:#B87A10;border:1px solid rgba(184,122,16,0.2)';
+    } else if (item.pct > 0) {
+      badgeStyle = 'background:#FFF5F5;color:var(--red);border:1px solid rgba(201,74,74,0.15)';
+    }
+
+    var nameLabel = isCentre ? escC(item.centre) : escC(item.name) + ' <span style="font-size:10px;font-weight:400;color:var(--muted)">(' + escC(item.centre) + ')</span>';
+
+    return '<div class="rev-leader-row">' +
+      '<div style="font-size:14px;font-weight:700;text-align:center">' + rankIcon + '</div>' +
+      '<div>' +
+        '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + nameLabel + '</div>' +
+        '<div style="font-size:10px;color:var(--muted);margin-top:2px;">' + revMoneyAbbr(item.achieved) + ' of ' + revMoneyAbbr(item.target) + '</div>' +
+      '</div>' +
+      '<div style="padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700;text-align:center;' + badgeStyle + '">' + item.pct + '% Hit</div>' +
+    '</div>';
+  }).join('');
+}
+
+// Small pill toggle markup used in each leaderboard panel header to switch sort mode.
+function buildStandingSortToggle(key) {
+  var mode = standingsSortMode[key];
+  function btn(m, label) {
+    var active = mode === m;
+    return '<button type="button" data-mode="' + m + '" onclick="setStandingSort(\'' + key + '\',\'' + m + '\')" ' +
+      'style="border:none;background:' + (active ? 'var(--navy)' : 'transparent') + ';color:' + (active ? '#fff' : 'var(--muted)') + ';' +
+      'font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;cursor:pointer">' + label + '</button>';
+  }
+  return '<div id="standing-toggle-' + key + '" style="display:flex;gap:2px;background:var(--white);border-radius:6px;padding:2px;border:1px solid var(--border)">' +
+    btn('pct', '% Hit') + btn('achieved', '₹ Revenue') +
+  '</div>';
+}
+
+// Re-sorts and re-renders a single leaderboard panel in place (used on initial render and on toggle click).
+function renderStandingListPanel(key) {
+  var containerId = 'standing-list-' + key;
+  var el = document.getElementById(containerId);
+  if (!el) return;
+  var isCentre = key.indexOf('Centres') >= 0;
+  var mode = standingsSortMode[key];
+  var sorted = sortStandingsList(standingsRawData[key], mode);
+  el.innerHTML = buildLeaderboardHtml(sorted, isCentre);
+
+  var toggleWrap = document.getElementById('standing-toggle-' + key);
+  if (toggleWrap) {
+    toggleWrap.querySelectorAll('button').forEach(function(b) {
+      var active = b.getAttribute('data-mode') === mode;
+      b.style.background = active ? 'var(--navy)' : 'transparent';
+      b.style.color = active ? '#fff' : 'var(--muted)';
+    });
+  }
+}
+
+function setStandingSort(key, mode) {
+  standingsSortMode[key] = mode;
+  renderStandingListPanel(key);
+}
+
 function renderStandingsTab() {
   const rBox = document.getElementById('rev-counsellor-standings-box');
   const cBox = document.getElementById('rev-centre-standings-box');
@@ -6754,84 +6838,78 @@ function renderStandingsTab() {
 
   if (hBox) hBox.innerHTML = hHtml;
 
-  // Helper to build rankings list HTML
-  function buildLeaderboardHtml(listItems, isCentre) {
-    if (!listItems.length) return '<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px">No standings found.</div>';
-    return listItems.map(function(item, idx) {
-      var rank = idx + 1;
-      var rankIcon = rank === 1 ? '🥇' : (rank === 2 ? '🥈' : (rank === 3 ? '🥉' : '#' + rank));
-      var badgeStyle = 'background:var(--off);color:var(--muted);border:1px solid var(--border);';
-      if (item.pct >= 100) {
-        badgeStyle = 'background:#E8F5EE;color:#168B57;border:1px solid rgba(22,139,87,0.2);box-shadow:0 0 6px rgba(22,139,87,0.1)';
-      } else if (item.pct >= 60) {
-        badgeStyle = 'background:var(--gold-pale);color:#B87A10;border:1px solid rgba(184,122,16,0.2)';
-      } else if (item.pct > 0) {
-        badgeStyle = 'background:#FFF5F5;color:var(--red);border:1px solid rgba(201,74,74,0.15)';
-      }
-      
-      var nameLabel = isCentre ? escC(item.centre) : escC(item.name) + ' <span style="font-size:10px;font-weight:400;color:var(--muted)">(' + escC(item.centre) + ')</span>';
-      
-      return '<div class="rev-leader-row">' +
-        '<div style="font-size:14px;font-weight:700;text-align:center">' + rankIcon + '</div>' +
-        '<div>' +
-          '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + nameLabel + '</div>' +
-          '<div style="font-size:10px;color:var(--muted);margin-top:2px;">' + revMoneyAbbr(item.achieved) + ' of ' + revMoneyAbbr(item.target) + '</div>' +
-        '</div>' +
-        '<div style="padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700;text-align:center;' + badgeStyle + '">' + item.pct + '% Hit</div>' +
-      '</div>';
-    }).join('');
-  }
+  // Cache raw lists (already sorted by pct by default) so toggle clicks can re-sort in place.
+  standingsRawData.annualCounsellors = annualCounsellors;
+  standingsRawData.quarterCounsellors = quarterCounsellors;
+  standingsRawData.annualCentres = annualCentres;
+  standingsRawData.quarterCentres = quarterCentres;
 
   // 4. Render Counselor Box
   if (rBox) {
-    rBox.innerHTML = 
+    rBox.innerHTML =
       '<div class="section-tag" style="background:var(--gold);color:var(--navy);display:inline-block;padding:2px 8px;font-size:10px;font-weight:700;border-radius:4px;text-transform:uppercase;margin-bottom:8px">Counsellor Rankings</div>' +
       '<h2 style="margin: 0 0 4px 0">🏆 Counselor Standing</h2>' +
-      '<p class="sub" style="margin-bottom:16px;font-size:12px;color:var(--muted)">Rankings of individual counsellors based on target hit rate.</p>' +
+      '<p class="sub" style="margin-bottom:16px;font-size:12px;color:var(--muted)">Rankings of individual counsellors based on target hit rate or revenue achieved — toggle below.</p>' +
       '<div class="grid2">' +
         '<div style="background:var(--off);padding:14px;border-radius:10px;border:1px solid var(--border)">' +
-          '<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">' +
+          '<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
             '<span>Annual YTD Standing</span>' +
             '<span style="font-size:10px;background:var(--navy);color:var(--white);padding:2px 6px;border-radius:4px">FY 2026-27</span>' +
           '</div>' +
-          '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Ranked by YTD course fee achievement % vs annual target.</div>' +
-          '<div style="display:grid;gap:6px">' + buildLeaderboardHtml(annualCounsellors, false) + '</div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:6px;flex-wrap:wrap">' +
+            '<div style="font-size:11px;color:var(--muted)">Ranked by YTD course fee achievement.</div>' +
+            buildStandingSortToggle('annualCounsellors') +
+          '</div>' +
+          '<div id="standing-list-annualCounsellors" style="display:grid;gap:6px"></div>' +
         '</div>' +
         '<div style="background:var(--off);padding:14px;border-radius:10px;border:1px solid var(--border)">' +
-          '<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">' +
+          '<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
             '<span>Quarterly Standing ' + escC(quarterLabel) + '</span>' +
             '<span style="font-size:10px;background:var(--gold);color:var(--navy);padding:2px 6px;border-radius:4px;font-weight:700">' + escC(quarterBadge) + '</span>' +
           '</div>' +
-          '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Ranked by current quarter course fee achievement % vs quarterly target.</div>' +
-          '<div style="display:grid;gap:6px">' + buildLeaderboardHtml(quarterCounsellors, false) + '</div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:6px;flex-wrap:wrap">' +
+            '<div style="font-size:11px;color:var(--muted)">Ranked by current quarter fee achievement.</div>' +
+            buildStandingSortToggle('quarterCounsellors') +
+          '</div>' +
+          '<div id="standing-list-quarterCounsellors" style="display:grid;gap:6px"></div>' +
         '</div>' +
       '</div>';
   }
 
   // 5. Render Centre Box
   if (cBox) {
-    cBox.innerHTML = 
+    cBox.innerHTML =
       '<div class="section-tag" style="background:var(--gold);color:var(--navy);display:inline-block;padding:2px 8px;font-size:10px;font-weight:700;border-radius:4px;text-transform:uppercase;margin-bottom:8px">Centre Rankings</div>' +
       '<h2 style="margin: 0 0 4px 0">🏢 Centre Standing</h2>' +
-      '<p class="sub" style="margin-bottom:16px;font-size:12px;color:var(--muted)">Rankings of centres / branches based on target hit rate.</p>' +
+      '<p class="sub" style="margin-bottom:16px;font-size:12px;color:var(--muted)">Rankings of centres / branches based on target hit rate or revenue achieved — toggle below.</p>' +
       '<div class="grid2">' +
         '<div style="background:var(--off);padding:14px;border-radius:10px;border:1px solid var(--border)">' +
-          '<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">' +
+          '<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
             '<span>Annual YTD Standing</span>' +
             '<span style="font-size:10px;background:var(--navy);color:var(--white);padding:2px 6px;border-radius:4px">FY 2026-27</span>' +
           '</div>' +
-          '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Ranked by YTD course fee achievement % vs annual target.</div>' +
-          '<div style="display:grid;gap:6px">' + buildLeaderboardHtml(annualCentres, true) + '</div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:6px;flex-wrap:wrap">' +
+            '<div style="font-size:11px;color:var(--muted)">Ranked by YTD course fee achievement.</div>' +
+            buildStandingSortToggle('annualCentres') +
+          '</div>' +
+          '<div id="standing-list-annualCentres" style="display:grid;gap:6px"></div>' +
         '</div>' +
         '<div style="background:var(--off);padding:14px;border-radius:10px;border:1px solid var(--border)">' +
-          '<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">' +
+          '<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
             '<span>Quarterly Standing ' + escC(quarterLabel) + '</span>' +
             '<span style="font-size:10px;background:var(--gold);color:var(--navy);padding:2px 6px;border-radius:4px;font-weight:700">' + escC(quarterBadge) + '</span>' +
           '</div>' +
-          '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Ranked by current quarter course fee achievement % vs quarterly target.</div>' +
-          '<div style="display:grid;gap:6px">' + buildLeaderboardHtml(quarterCentres, true) + '</div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:6px;flex-wrap:wrap">' +
+            '<div style="font-size:11px;color:var(--muted)">Ranked by current quarter fee achievement.</div>' +
+            buildStandingSortToggle('quarterCentres') +
+          '</div>' +
+          '<div id="standing-list-quarterCentres" style="display:grid;gap:6px"></div>' +
+        '</div>' +
       '</div>';
   }
+
+  // Populate each leaderboard's list using its persisted sort mode.
+  ['annualCounsellors', 'quarterCounsellors', 'annualCentres', 'quarterCentres'].forEach(renderStandingListPanel);
 }
 
 let alumniList = [];

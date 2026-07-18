@@ -1449,7 +1449,7 @@
       <div class="charts-grid">
         <div class="chart-card">
           <div class="chart-title">YTD Historical Comparison</div>
-          <div class="chart-subtitle">FY cycle YTD (Apr–Mar) compared to last 3 years (₹ Crores)</div>
+          <div class="chart-subtitle">Revenue from Apr 1 through today's month, same window every year, vs. last 3 years (₹ Crores, incl. GST)</div>
           <div class="chart-wrap">
             <canvas id="ytdComparisonChart"></canvas>
           </div>
@@ -5314,6 +5314,36 @@ function renderRevenueCharts(totalAchieved, rows) {
   if (charts.monthlyTrend) charts.monthlyTrend.destroy();
 
   // YTD Historical Comparison — figures in ₹ Crores (1 Cr = 100 L)
+  //
+  // The first three bars used to be hardcoded numbers (261.04L, 240.36L,
+  // 335.60L) of undocumented, unknown cutoff date, compared against a live,
+  // continuously-growing FY26-27 figure — comparing a frozen snapshot against
+  // a still-accumulating total made FY25-26 look inflated even in a quarter
+  // where FY26-27 was actually pacing ahead. Fixed by computing all three
+  // historical bars from HIST_REVENUE (the same reconciled monthly dataset
+  // used on the Historical Intelligence tab) using the exact same "Apr 1
+  // through today's month" window as the live bar, so it's a genuine
+  // apples-to-apples comparison and self-updates as the year progresses.
+  // See: IGI Portal Suite — Data Integrity & Cross-Portal Audit, Finding 2/6,
+  // and the follow-up YTD Historical Comparison fix.
+  function fyAprYtdRevenue(fyStartCalYear, monthsElapsed) {
+    let sum = 0;
+    for (let i = 0; i < monthsElapsed; i++) {
+      // Fiscal month 0..8 = Apr..Dec of fyStartCalYear; 9..11 = Jan..Mar of the next calendar year.
+      const calYear = i <= 8 ? fyStartCalYear : fyStartCalYear + 1;
+      const calMonthIdx = i <= 8 ? (3 + i) : (i - 9);
+      const arr = HIST_REVENUE[calYear];
+      if (arr && arr[calMonthIdx] != null) sum += arr[calMonthIdx];
+    }
+    return sum;
+  }
+  const _ytdToday = new Date();
+  const _ytdCalMonth = _ytdToday.getMonth() + 1; // 1-12
+  const _ytdMonthsElapsed = _ytdCalMonth >= 4 ? (_ytdCalMonth - 3) : (_ytdCalMonth + 9); // Apr=1 .. Mar=12
+  const ytdFY2324 = fyAprYtdRevenue(2023, _ytdMonthsElapsed) / 10000000;
+  const ytdFY2425 = fyAprYtdRevenue(2024, _ytdMonthsElapsed) / 10000000;
+  const ytdFY2526 = fyAprYtdRevenue(2025, _ytdMonthsElapsed) / 10000000;
+
   const ytdCtx = document.getElementById('ytdComparisonChart');
   if (ytdCtx) {
     charts.ytdComparison = new Chart(ytdCtx, {
@@ -5322,7 +5352,7 @@ function renderRevenueCharts(totalAchieved, rows) {
         labels: ['FY 23–24 YTD', 'FY 24–25 YTD', 'FY 25–26 YTD', 'FY 26–27 YTD'],
         datasets: [{
           label: 'Revenue YTD (₹ Crores)',
-          data: [261.04 / 100, 240.36 / 100, 335.60 / 100, (totalAchieved / 10000000)],
+          data: [ytdFY2324, ytdFY2425, ytdFY2526, (totalAchieved / 10000000)],
           backgroundColor: ['rgba(138,128,112,0.1)', 'rgba(138,128,112,0.2)', 'rgba(24,95,165,0.7)', 'rgba(201,168,76,0.85)'],
           borderColor: ['rgba(138,128,112,0.2)', 'rgba(138,128,112,0.4)', '#185FA5', '#C9A84C'],
           borderWidth: 1.5,

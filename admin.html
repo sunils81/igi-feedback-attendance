@@ -1456,7 +1456,7 @@
       <!-- Revenue by Course -->
       <div class="chart-card full" style="margin-top:16px">
         <div class="chart-title">📚 Revenue by Course</div>
-        <div class="chart-subtitle">Fee collections aggregated by course &middot; <span id="course-rev-subtitle">all recorded fee data</span></div>
+        <div class="chart-subtitle">Booked revenue — full course fee recognized at enrolment (net payable), not just cash collected so far &middot; <span id="course-rev-subtitle">all recorded fee data</span></div>
         <div class="chart-wrap" style="height:280px">
           <canvas id="courseRevenueChart"></canvas>
         </div>
@@ -1466,17 +1466,20 @@
               <tr>
                 <th class="text-left">Course</th>
                 <th>Students</th>
-                <th>Collected (₹)</th>
-                <th>Avg Revenue / Student (₹)</th>
+                <th>Booked Revenue (₹)</th>
+                <th>Avg Booked / Student (₹)</th>
+                <th>Cash Collected (₹)</th>
+                <th>Collection %</th>
                 <th>Outstanding (₹)</th>
-                <th>% of Total Collected</th>
+                <th>% of Total Booked</th>
               </tr>
             </thead>
             <tbody id="course-revenue-tbody">
-              <tr><td colspan="6" style="text-align:center;color:var(--muted)">Loading…</td></tr>
+              <tr><td colspan="8" style="text-align:center;color:var(--muted)">Loading…</td></tr>
             </tbody>
           </table>
         </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:8px">Booked Revenue = net payable at enrolment (matches how revenue is booked across the rest of this dashboard). Cash Collected = instalments actually received to date.</p>
       </div>
 
       <!-- Appraisal Cycle YoY — Apr Onwards -->
@@ -5443,6 +5446,12 @@ function renderAppraisalCycleTable() {
 // Aggregates the per-student fee ledger (dashboardData.fee.students — the same source
 // used by the Fees tab) by course, so leadership can see which programs are actually
 // driving collections rather than just centre/counsellor totals.
+// Revenue by course is headlined by BOOKED revenue (net_payable — the full course fee
+// recognized at enrolment), not cash collected. This matches how revenue is booked
+// everywhere else in this dashboard (counsellor achieved-revenue entries are logged in
+// full at enrolment too), so course totals here reconcile with the rest of the portal
+// instead of understating recently-enrolled courses whose instalments are still coming in.
+// Cash Collected / Collection % are kept as secondary columns for collections health.
 function renderRevenueByCourse(d) {
   const chartWrap = document.getElementById('courseRevenueChart');
   const tbody = document.getElementById('course-revenue-tbody');
@@ -5452,17 +5461,20 @@ function renderRevenueByCourse(d) {
   const feeStudents = (d.fee && d.fee.students) || [];
 
   const byCourse = {};
+  let totalBooked = 0;
   let totalCollected = 0;
   feeStudents.forEach(r => {
     const course = (r.course && String(r.course).trim()) || 'Unspecified';
-    if (!byCourse[course]) byCourse[course] = { course: course, students: 0, collected: 0, outstanding: 0 };
+    if (!byCourse[course]) byCourse[course] = { course: course, students: 0, booked: 0, collected: 0, outstanding: 0 };
     byCourse[course].students++;
+    byCourse[course].booked += Number(r.net_payable || 0);
     byCourse[course].collected += Number(r.collected || 0);
     byCourse[course].outstanding += Number(r.outstanding || 0);
+    totalBooked += Number(r.net_payable || 0);
     totalCollected += Number(r.collected || 0);
   });
 
-  const courseList = Object.values(byCourse).sort((a, b) => b.collected - a.collected);
+  const courseList = Object.values(byCourse).sort((a, b) => b.booked - a.booked);
 
   if (subtitleEl) {
     subtitleEl.textContent = courseList.length
@@ -5474,13 +5486,16 @@ function renderRevenueByCourse(d) {
   if (tbody) {
     if (courseList.length) {
       tbody.innerHTML = courseList.map(c => {
-        const pctOfTotal = totalCollected ? (c.collected / totalCollected * 100) : 0;
-        const avgPerStudent = c.students ? (c.collected / c.students) : 0;
+        const pctOfTotal = totalBooked ? (c.booked / totalBooked * 100) : 0;
+        const avgBookedPerStudent = c.students ? (c.booked / c.students) : 0;
+        const collectionPct = c.booked ? (c.collected / c.booked * 100) : 0;
         return '<tr>' +
           '<td><strong>' + escC(c.course) + '</strong></td>' +
           '<td style="text-align:right">' + c.students + '</td>' +
+          '<td style="text-align:right;color:var(--navy);font-weight:700">' + money(c.booked) + '</td>' +
+          '<td style="text-align:right;font-weight:600">' + money(avgBookedPerStudent) + '</td>' +
           '<td style="text-align:right;color:var(--green)">' + money(c.collected) + '</td>' +
-          '<td style="text-align:right;font-weight:600">' + money(avgPerStudent) + '</td>' +
+          '<td style="text-align:right">' + collectionPct.toFixed(0) + '%</td>' +
           '<td style="text-align:right;color:var(--red)">' + money(c.outstanding) + '</td>' +
           '<td style="text-align:right;font-weight:600">' + pctOfTotal.toFixed(1) + '%</td>' +
         '</tr>';
@@ -5488,17 +5503,19 @@ function renderRevenueByCourse(d) {
       '<tr style="border-top:1.5px solid var(--border);font-weight:bold;color:var(--gold)">' +
         '<td>Total</td>' +
         '<td style="text-align:right">' + feeStudents.length + '</td>' +
+        '<td style="text-align:right">' + money(totalBooked) + '</td>' +
+        '<td style="text-align:right">' + money(feeStudents.length ? totalBooked / feeStudents.length : 0) + '</td>' +
         '<td style="text-align:right">' + money(totalCollected) + '</td>' +
-        '<td style="text-align:right">' + money(feeStudents.length ? totalCollected / feeStudents.length : 0) + '</td>' +
+        '<td style="text-align:right">' + (totalBooked ? (totalCollected / totalBooked * 100).toFixed(0) : '0') + '%</td>' +
         '<td style="text-align:right">' + money(courseList.reduce((s, c) => s + c.outstanding, 0)) + '</td>' +
         '<td style="text-align:right">100.0%</td>' +
       '</tr>';
     } else {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No course-wise fee data available yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted)">No course-wise fee data available yet.</td></tr>';
     }
   }
 
-  // Chart (horizontal bar, top 12 courses by collections)
+  // Chart (horizontal bar, top 12 courses by booked revenue)
   if (chartWrap) {
     if (charts.courseRevenue) { charts.courseRevenue.destroy(); charts.courseRevenue = null; }
     const top = courseList.slice(0, 12);
@@ -5509,8 +5526,8 @@ function renderRevenueByCourse(d) {
         data: {
           labels: top.map(c => c.course),
           datasets: [{
-            label: 'Collected (₹)',
-            data: top.map(c => c.collected),
+            label: 'Booked Revenue (₹)',
+            data: top.map(c => c.booked),
             backgroundColor: 'rgba(201,168,76,0.75)',
             borderColor: '#C9A84C',
             borderWidth: 1.5,
@@ -5532,11 +5549,12 @@ function renderRevenueByCourse(d) {
               borderColor: '#C9A84C',
               borderWidth: 1,
               callbacks: {
-                label: ctx => ' ' + moneyShort(ctx.raw) + ' collected',
+                label: ctx => ' ' + moneyShort(ctx.raw) + ' booked',
                 afterLabel: ctx => {
                   const c = top[ctx.dataIndex];
-                  const avg = c && c.students ? c.collected / c.students : 0;
-                  return c ? ' ' + c.students + ' students · ' + moneyShort(avg) + ' / student' : '';
+                  if (!c) return '';
+                  const collPct = c.booked ? Math.round(c.collected / c.booked * 100) : 0;
+                  return ' ' + c.students + ' students · ' + moneyShort(c.collected) + ' collected (' + collPct + '%)';
                 }
               }
             },

@@ -572,6 +572,12 @@
     border: 1.5px solid var(--red);
   }
 
+  .centre-health-card.health-grey {
+    background: rgba(13, 27, 46, 0.02);
+    border: 1.5px dashed var(--border);
+    cursor: default;
+  }
+
   /* Accordion detail */
   .centre-detail-accordion {
     border-top: 1px dashed var(--border);
@@ -1450,7 +1456,7 @@
       <div class="card">
         <h2>🏫 Branch Performance Health</h2>
         <p class="sub">Click on any card to view detailed counselor-level contribution breakdowns.</p>
-        <div class="centre-health-grid" id="admin-branch-grid"></div>
+        <div id="admin-branch-grid"></div>
       </div>
 
       <!-- Revenue by Course -->
@@ -4876,42 +4882,65 @@ function renderRevenueTab() {
   renderRevenueByCourse(d);
 }
 
+// Branch Performance Health — cards are grouped into performance tiers (best-first) rather
+// than a flat alphabetical grid, so leadership sees winners first. Branches with no target
+// configured (₹0 target) are pulled out of the red/"needs attention" bucket entirely — they
+// aren't underperforming, they're just not set up yet — and shown as a separate neutral
+// "Not Yet Configured" group at the very end.
 function renderBranchHealthGrid(rows, rev, counsellorsByCentre) {
   const grid = document.getElementById('admin-branch-grid');
   if (!grid) return;
-  
-  grid.innerHTML = rows.map(function(r) {
+
+  const branches = rows.map(function(r) {
     const branchCounsellors = counsellorsByCentre[r.centre] || [];
-    
+
     const target = Number(r.targetCourse) || 0;
     const targetGst = Number(r.targetGst) || 0;
     let achieved = 0;
     let achievedGst = 0;
     let studentCount = 0;
-    
+
     branchCounsellors.forEach(lc => {
       achieved += lc.achievedCourse;
       achievedGst += lc.achievedGst;
       studentCount += lc.studentCount;
     });
-    
-    const pct = target ? Math.round(achieved / target * 100) : (achieved ? 100 : 0);
-    const col = pct >= 75 ? '#1D9E75' : (pct >= 40 ? '#C9A84C' : '#C94A4A');
-    const colorClass = pct >= 75 ? 'green' : (pct >= 40 ? 'amber' : 'red');
-    const dot = pct >= 75 ? '🟢' : (pct >= 40 ? '🟡' : '🔴');
-    
-    const centreId = 'centre-detail-' + r.centre.replace(/\s+/g, '-');
-    const iconId = 'centre-icon-' + r.centre.replace(/\s+/g, '-');
-    
-    // Expandable accordion counselors list
+
+    const hasTarget = target > 0;
+    const pct = hasTarget ? Math.round(achieved / target * 100) : (achieved ? 100 : 0);
+
+    return {
+      centre: r.centre, batches: r.batches || 0, target, targetGst,
+      achieved, achievedGst, studentCount, hasTarget, pct,
+      branchCounsellors: branchCounsellors
+    };
+  });
+
+  const configured = branches.filter(b => b.hasTarget).sort((a, b) => b.pct - a.pct || b.achieved - a.achieved);
+  const notConfigured = branches.filter(b => !b.hasTarget).sort((a, b) => a.centre.localeCompare(b.centre));
+
+  const onTrack       = configured.filter(b => b.pct >= 75);
+  const building       = configured.filter(b => b.pct >= 40 && b.pct < 75);
+  const needsAttention = configured.filter(b => b.pct < 40);
+
+  // Trophy badge on the single top performer (only if it has genuine achievement)
+  const topCentre = (configured.length && configured[0].pct > 0) ? configured[0].centre : null;
+
+  function cardHtml(b) {
+    const col = b.pct >= 75 ? '#1D9E75' : (b.pct >= 40 ? '#C9A84C' : '#C94A4A');
+    const colorClass = b.pct >= 75 ? 'green' : (b.pct >= 40 ? 'amber' : 'red');
+    const centreId = 'centre-detail-' + b.centre.replace(/\s+/g, '-');
+    const iconId = 'centre-icon-' + b.centre.replace(/\s+/g, '-');
+    const isTop = b.centre === topCentre;
+
     let accordionHtml = '';
-    if (branchCounsellors.length) {
-      accordionHtml = 
+    if (b.branchCounsellors.length) {
+      accordionHtml =
         '<div class="centre-detail-accordion" id="' + centreId + '" style="display:none" onclick="event.stopPropagation()">' +
           '<table class="centre-detail-table">' +
             '<thead><tr><th>Counselor</th><th style="text-align:right">Target (Excl/Incl)</th><th style="text-align:right">YTD (Excl/Incl)</th><th style="text-align:right">Students</th><th style="text-align:right">% Hit</th></tr></thead>' +
             '<tbody>' +
-              branchCounsellors.map(lc => {
+              b.branchCounsellors.map(lc => {
                 return '<tr>' +
                   '<td><strong>' + escC(lc.counsellor) + '</strong></td>' +
                   '<td style="text-align:right">' + moneyShort(lc.targetCourse) + ' / ' + moneyShort(lc.targetGst) + '</td>' +
@@ -4924,30 +4953,72 @@ function renderBranchHealthGrid(rows, rev, counsellorsByCentre) {
           '</table>' +
         '</div>';
     } else {
-      accordionHtml = 
+      accordionHtml =
         '<div class="centre-detail-accordion" id="' + centreId + '" style="display:none" onclick="event.stopPropagation()">' +
           '<div style="font-size:10px;color:var(--muted);text-align:center;padding:4px">No counselors mapped.</div>' +
         '</div>';
     }
 
-    return '<div class="centre-health-card health-' + colorClass + '" onclick="toggleAdminCentreCard(\'' + escC(r.centre) + '\')">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
-        '<h3 style="font-size:13px;font-weight:700;color:var(--navy);margin:0">' +
-          '<span id="' + iconId + '" style="font-size:9px;color:var(--muted);margin-right:6px">▶</span>' + dot + ' ' + escC(r.centre) +
+    return '<div class="centre-health-card health-' + colorClass + '" style="border-left:4px solid ' + col + '" onclick="toggleAdminCentreCard(\'' + escC(b.centre) + '\')">' +
+      (isTop ? '<div style="display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:800;color:#8f6d21;background:rgba(201,168,76,0.18);border-radius:20px;padding:2px 8px;margin-bottom:7px;letter-spacing:.03em">🏆 TOP PERFORMER</div>' : '') +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+        '<h3 style="font-size:13px;font-weight:700;color:var(--navy);margin:0;display:flex;align-items:center;gap:5px">' +
+          '<span id="' + iconId + '" style="font-size:9px;color:var(--muted)">▶</span>' + escC(b.centre) +
         '</h3>' +
-        '<span style="font-size:18px;font-weight:700;color:' + col + '">' + pct + '%</span>' +
+        '<span style="font-size:20px;font-weight:800;color:' + col + '">' + b.pct + '%</span>' +
       '</div>' +
-      '<div style="font-size:11px;color:var(--muted);line-height:1.4">' +
-        'Target: <strong>' + moneyShort(target) + '</strong> Excl | <strong>' + moneyShort(targetGst) + '</strong> Incl<br/>' +
-        'YTD: <strong style="color:var(--green)">' + moneyShort(achieved) + '</strong> Excl | <strong style="color:var(--green)">' + moneyShort(achievedGst) + '</strong> Incl<br/>' +
-        escC(r.batches || 0) + ' batches &middot; ' + studentCount + ' studs' +
+      '<div style="background:rgba(0,0,0,0.06);border-radius:5px;height:7px;margin-bottom:9px;overflow:hidden">' +
+        '<div style="width:' + Math.min(b.pct, 100) + '%;height:7px;border-radius:5px;background:linear-gradient(90deg,' + col + '99,' + col + ')"></div>' +
       '</div>' +
-      '<div style="background:rgba(0,0,0,0.07);border-radius:4px;height:5px;margin-top:8px;margin-bottom:8px;overflow:hidden">' +
-        '<div style="width:' + Math.min(pct, 100) + '%;height:5px;border-radius:4px;background:' + col + '"></div>' +
+      '<div style="font-size:11px;color:var(--muted);line-height:1.6">' +
+        '<div>🎯 Target <strong style="color:var(--navy)">' + moneyShort(b.target) + '</strong> Excl &middot; <strong style="color:var(--navy)">' + moneyShort(b.targetGst) + '</strong> Incl</div>' +
+        '<div>💰 YTD <strong style="color:var(--green)">' + moneyShort(b.achieved) + '</strong> Excl &middot; <strong style="color:var(--green)">' + moneyShort(b.achievedGst) + '</strong> Incl</div>' +
+        '<div>🏫 ' + escC(b.batches) + ' batches &middot; 👥 ' + b.studentCount + ' studs</div>' +
       '</div>' +
       accordionHtml +
     '</div>';
-  }).join('');
+  }
+
+  function notConfiguredCardHtml(b) {
+    return '<div class="centre-health-card health-grey">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+        '<h3 style="font-size:13px;font-weight:700;color:var(--muted);margin:0">' + escC(b.centre) + '</h3>' +
+        '<span style="font-size:11px;font-weight:700;color:var(--muted);background:rgba(13,27,46,0.06);border-radius:20px;padding:2px 9px">No target</span>' +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--muted);line-height:1.6">' +
+        '<div>No annual target configured for this branch yet.</div>' +
+        '<div>🏫 ' + escC(b.batches) + ' batches &middot; 👥 ' + b.studentCount + ' studs</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function tierHeader(icon, label, sub, count) {
+    return '<div style="display:flex;align-items:center;gap:8px;margin:20px 0 10px">' +
+      '<span style="font-size:12px;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.05em">' + icon + ' ' + label + '</span>' +
+      '<span style="font-size:11px;color:var(--muted);font-weight:600">' + sub + ' &middot; ' + count + ' branch' + (count === 1 ? '' : 'es') + '</span>' +
+      '<div style="flex:1;height:1px;background:var(--border)"></div>' +
+    '</div>';
+  }
+
+  let html = '';
+  if (onTrack.length) {
+    html += tierHeader('🟢', 'On Track', '≥75% of target', onTrack.length);
+    html += '<div class="centre-health-grid">' + onTrack.map(b => cardHtml(b)).join('') + '</div>';
+  }
+  if (building.length) {
+    html += tierHeader('🟡', 'Building Momentum', '40–74% of target', building.length);
+    html += '<div class="centre-health-grid">' + building.map(b => cardHtml(b)).join('') + '</div>';
+  }
+  if (needsAttention.length) {
+    html += tierHeader('🔴', 'Needs Attention', '<40% of target', needsAttention.length);
+    html += '<div class="centre-health-grid">' + needsAttention.map(b => cardHtml(b)).join('') + '</div>';
+  }
+  if (notConfigured.length) {
+    html += tierHeader('⚪', 'Not Yet Configured', 'no annual target set', notConfigured.length);
+    html += '<div class="centre-health-grid">' + notConfigured.map(b => notConfiguredCardHtml(b)).join('') + '</div>';
+  }
+
+  grid.innerHTML = html || '<div style="text-align:center;color:var(--muted);padding:16px">No branch data available.</div>';
 }
 
 function toggleAdminCentreCard(centreName) {

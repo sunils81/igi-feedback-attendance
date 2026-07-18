@@ -6618,9 +6618,10 @@ function renderHistoricalTab() {
   if (!histCharts.annual) {
 
   // ── Annual Revenue Bar + YoY % line ────────────────────────
+  // Revenue in ₹ Crores (1 Cr = 100 L) for consistency with the rest of the dashboard.
   const annualRevenue = HIST_YEARS.map(y => {
     const vals = HIST_REVENUE[y].filter(v => v !== null);
-    return Math.round(vals.reduce((a,b)=>a+b,0) / 100000 * 10) / 10;
+    return Math.round(vals.reduce((a,b)=>a+b,0) / 10000000 * 100) / 100;
   });
   const yoyPct = HIST_YEARS.map((y,i) => {
     if (i === 0) return null;
@@ -6634,31 +6635,40 @@ function renderHistoricalTab() {
     i === HIST_YEARS.length-2 ? 'rgba(24,95,165,0.7)' : 'rgba(13,27,46,0.25)'
   );
 
+  const dlPlugins = (typeof ChartDataLabels !== 'undefined') ? [ChartDataLabels] : [];
+
   const annualCtx = document.getElementById('hist-annual-chart');
   if (annualCtx) {
     histCharts.annual = new Chart(annualCtx, {
       data: {
         labels: HIST_YEARS.map((y,i) => y === 2020 ? '2020\n(COVID)' : y === 2026 ? '2026\n(YTD)' : String(y)),
         datasets: [
-          { type:'bar', label:'Annual Revenue (₹L)', data: annualRevenue,
+          { type:'bar', label:'Annual Revenue (₹ Cr)', data: annualRevenue,
             backgroundColor: barColors, borderRadius:4, yAxisID:'y' },
           { type:'line', label:'YoY Growth %', data: yoyPct,
             borderColor:'#C9A84C', backgroundColor:'transparent',
             borderWidth:2, pointBackgroundColor:'#C9A84C', pointRadius:4,
-            tension:0.3, yAxisID:'y2' }
+            tension:0.3, yAxisID:'y2', datalabels:{ display:false } }
         ]
       },
+      plugins: dlPlugins,
       options: {
         responsive:true, maintainAspectRatio:false,
+        layout:{ padding:{ top:22 } },
         plugins: {
           legend:{position:'top',labels:{boxWidth:10}},
           tooltip:{ callbacks:{ label: ctx => ctx.dataset.yAxisID==='y2'
             ? ` ${ctx.raw > 0 ? '+' : ''}${ctx.raw}%`
-            : ` ₹${ctx.raw}L` }}
+            : ` ₹${ctx.raw.toFixed(2)} Cr` }},
+          datalabels:{
+            anchor:'end', align:'top', offset:4,
+            color:'#0D1B2E', font:{ weight:'700', size:10 },
+            formatter: v => `₹${Number(v).toFixed(2)}Cr`
+          }
         },
         scales: {
           x:{grid:{color:gridColor}},
-          y:{grid:{color:gridColor}, ticks:{callback:v=>`₹${v}L`}, position:'left'},
+          y:{grid:{color:gridColor}, ticks:{callback:v=>`₹${v}Cr`}, position:'left'},
           y2:{grid:{display:false}, ticks:{callback:v=>`${v>0?'+':''}${v}%`}, position:'right'}
         }
       }
@@ -6682,9 +6692,19 @@ function renderHistoricalTab() {
           borderWidth:2.5, pointBackgroundColor:'#185FA5', pointRadius:4,
           fill:true, tension:0.3 }]
       },
+      plugins: dlPlugins,
       options:{
         responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`₹${(ctx.raw/1000).toFixed(1)}K per student`}}},
+        layout:{ padding:{ top:22 } },
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{label:ctx=>`₹${(ctx.raw/1000).toFixed(1)}K per student`}},
+          datalabels:{
+            anchor:'end', align:'top', offset:6,
+            color:'#185FA5', font:{ weight:'700', size:10 },
+            formatter: v => `₹${(v/1000).toFixed(0)}K`
+          }
+        },
         scales:{
           x:{grid:{color:gridColor}},
           y:{grid:{color:gridColor},ticks:{callback:v=>`₹${(v/1000).toFixed(0)}K`}}
@@ -6705,9 +6725,18 @@ function renderHistoricalTab() {
           backgroundColor: HIST_YEARS.map(y=>y===2020?'rgba(201,74,74,0.4)':y===2026?'rgba(201,168,76,0.75)':'rgba(13,27,46,0.2)'),
           borderRadius:4 }]
       },
+      plugins: dlPlugins,
       options:{
         responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{display:false}},
+        layout:{ padding:{ top:22 } },
+        plugins:{
+          legend:{display:false},
+          datalabels:{
+            anchor:'end', align:'top', offset:4,
+            color:'#0D1B2E', font:{ weight:'700', size:10 },
+            formatter: v => Number(v).toLocaleString('en-IN')
+          }
+        },
         scales:{x:{grid:{color:gridColor}},y:{grid:{color:gridColor}}}
       }
     });
@@ -6785,13 +6814,14 @@ function renderHistoricalTab() {
           actual = achievedSum;
         }
       }
-      const targetL = Math.round(target / 100000);
-      const actualL = Math.round(actual / 100000);
-      const pct = targetL ? Math.round(actualL / targetL * 100) : (actualL ? 100 : 0);
+      // ₹ Crores (1 Cr = 100 L), 2 decimals
+      const targetCr = Math.round(target / 10000000 * 100) / 100;
+      const actualCr = Math.round(actual / 10000000 * 100) / 100;
+      const pct = targetCr ? Math.round(actualCr / targetCr * 100) : (actualCr ? 100 : 0);
       return {
         city: hc.city,
-        proj: targetL,
-        actual: actualL,
+        proj: targetCr,
+        actual: actualCr,
         pct: pct
       };
     });
@@ -6801,28 +6831,38 @@ function renderHistoricalTab() {
     const totalPct = totalProj ? Math.round(totalActual / totalProj * 100) : (totalActual ? 100 : 0);
     const totalDot = totalPct >= 100 ? '🟢' : (totalPct >= 70 ? '🟡' : '🔴');
 
+    const cityDlPlugins = (typeof ChartDataLabels !== 'undefined') ? [ChartDataLabels] : [];
+
     histCharts.city = new Chart(cityCtx, {
       type:'bar',
       data:{
         labels: dynamicCities.map(c=>c.city),
         datasets:[
-          { label:'Projection (₹L)', data:dynamicCities.map(c=>c.proj),
-            backgroundColor:'rgba(13,27,46,0.15)', borderRadius:4 },
-          { label:'Actual (₹L)', data:dynamicCities.map(c=>c.actual),
+          { label:'Projection (₹ Cr)', data:dynamicCities.map(c=>c.proj),
+            backgroundColor:'rgba(13,27,46,0.15)', borderRadius:4,
+            datalabels:{ display:false } },
+          { label:'Actual (₹ Cr)', data:dynamicCities.map(c=>c.actual),
             backgroundColor: dynamicCities.map(c=>
               c.pct>=100?'rgba(29,158,117,0.75)':c.pct>=70?'rgba(201,168,76,0.75)':'rgba(201,74,74,0.65)'),
             borderRadius:4 }
         ]
       },
+      plugins: cityDlPlugins,
       options:{
         responsive:true,maintainAspectRatio:false,
+        layout:{ padding:{ top:22 } },
         plugins:{
           legend:{position:'top',labels:{boxWidth:10}},
-          tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ₹${ctx.raw}L`}}
+          tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ₹${ctx.raw.toFixed(2)} Cr`}},
+          datalabels:{
+            anchor:'end', align:'top', offset:4,
+            color:'#0D1B2E', font:{ weight:'700', size:9 },
+            formatter: v => `₹${Number(v).toFixed(2)}Cr`
+          }
         },
         scales:{
           x:{grid:{color:gridColor}},
-          y:{grid:{color:gridColor},ticks:{callback:v=>`₹${v}L`}}
+          y:{grid:{color:gridColor},ticks:{callback:v=>`₹${v}Cr`}}
         }
       }
     });
@@ -6830,13 +6870,13 @@ function renderHistoricalTab() {
     // City table
     const cityTable = document.getElementById('hist-city-table');
     if (cityTable) {
-      let th = '<table class="compact-table"><thead><tr><th>City</th><th class="text-right">Projection (₹L)</th><th class="text-right">Actual (₹L)</th><th class="text-right">Achievement</th><th class="text-center">Status</th></tr></thead><tbody>';
+      let th = '<table class="compact-table"><thead><tr><th>City</th><th class="text-right">Projection (₹ Cr)</th><th class="text-right">Actual (₹ Cr)</th><th class="text-right">Achievement</th><th class="text-center">Status</th></tr></thead><tbody>';
       th += dynamicCities.map(c => {
         const dot = c.pct>=100?'🟢':c.pct>=70?'🟡':'🔴';
-        return `<tr><td>${c.city}</td><td class="text-right">${c.proj}L</td><td class="text-right">${c.actual}L</td>`+
+        return `<tr><td>${c.city}</td><td class="text-right">₹${c.proj.toFixed(2)}Cr</td><td class="text-right">₹${c.actual.toFixed(2)}Cr</td>`+
           `<td class="text-right"><strong>${c.pct}%</strong></td><td class="text-center">${dot}</td></tr>`;
       }).join('');
-      th += `<tr style="font-weight:700;border-top:2px solid var(--border)"><td>National</td><td class="text-right">${totalProj}L</td><td class="text-right">${totalActual}L</td><td class="text-right">${totalPct}%</td><td class="text-center">${totalDot}</td></tr>`;
+      th += `<tr style="font-weight:700;border-top:2px solid var(--border)"><td>National</td><td class="text-right">₹${totalProj.toFixed(2)}Cr</td><td class="text-right">₹${totalActual.toFixed(2)}Cr</td><td class="text-right">${totalPct}%</td><td class="text-center">${totalDot}</td></tr>`;
       th += '</tbody></table>';
       cityTable.innerHTML = th;
     }

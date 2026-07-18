@@ -23,6 +23,7 @@
     --teal: #1D9E75;
     --green: #1D9E75;
     --red: #C94A4A;
+    --amber-deep: #B45309;
     --blue: #185FA5;
     --r-sm: 8px;
     --r-md: 16px;
@@ -568,8 +569,8 @@
   }
 
   .centre-health-card.health-red {
-    background: rgba(201, 74, 74, 0.04);
-    border: 1.5px solid var(--red);
+    background: rgba(180, 83, 9, 0.05);
+    border: 1.5px solid var(--amber-deep);
   }
 
   .centre-health-card.health-grey {
@@ -590,21 +591,31 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 11px;
+    table-layout: fixed;
   }
 
   .centre-detail-table th {
     color: var(--muted);
     text-align: left;
-    padding-bottom: 4px;
+    padding: 0 4px 5px 0;
     text-transform: uppercase;
     font-size: 8px;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    vertical-align: bottom;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .centre-detail-table td {
-    padding: 5px 0;
+    padding: 6px 4px 6px 0;
     border-bottom: 1px solid rgba(13,27,46,.03);
     color: var(--navy);
+    vertical-align: middle;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .centre-detail-table tr:last-child td { border: none; }
@@ -4650,6 +4661,20 @@ function isCorporateRevenueRow(r) {
   return businessType.indexOf('corporate') >= 0 || businessCentre.indexOf('corporate') >= 0;
 }
 
+// Fiscal-year pacing (Apr 2026 → Mar 2027): returns how many percentage points of the full
+// annual target "should" be achieved by today, given how much of the FY has elapsed. A branch
+// or a national total sitting at 30% of its annual target in month 4 of 12 (~30% elapsed) is
+// exactly on schedule, not "behind" — judging any %-of-target figure against the full 100%
+// regardless of the date makes every branch look like it's failing for 11 of 12 months.
+function fyExpectedPct() {
+  const fyStart = new Date(2026, 3, 1);
+  const fyEnd = new Date(2027, 2, 31);
+  const now = new Date();
+  const clamped = now < fyStart ? fyStart : (now > fyEnd ? fyEnd : now);
+  const frac = Math.min(Math.max((clamped - fyStart) / (fyEnd - fyStart), 0), 1);
+  return Math.max(frac * 100, 3);
+}
+
 // ── Render Tab 1: Revenue ─────────────────────────────────────
 function renderRevenueTab() {
   const d = dashboardData;
@@ -4896,6 +4921,9 @@ function renderBranchHealthGrid(rows, rev, counsellorsByCentre) {
   const grid = document.getElementById('admin-branch-grid');
   if (!grid) return;
 
+  // Pace-adjusted, not raw %-of-annual-target — see fyExpectedPct() above.
+  const expectedPct = fyExpectedPct();
+
   const branches = rows.map(function(r) {
     const branchCounsellors = counsellorsByCentre[r.centre] || [];
 
@@ -4915,27 +4943,31 @@ function renderBranchHealthGrid(rows, rev, counsellorsByCentre) {
 
     const hasTarget = target > 0;
     const pct = hasTarget ? Math.round(achieved / target * 100) : (achieved ? 100 : 0);
+    const paceRatio = hasTarget ? Math.round(pct / expectedPct * 100) : (achieved ? 100 : 0);
 
     return {
       centre: r.centre, batches: r.batches || 0, target, targetGst,
-      achieved, achievedGst, studentCount, corporateStudentCount, hasTarget, pct,
+      achieved, achievedGst, studentCount, corporateStudentCount, hasTarget, pct, paceRatio,
       branchCounsellors: branchCounsellors
     };
   });
 
-  const configured = branches.filter(b => b.hasTarget).sort((a, b) => b.pct - a.pct || b.achieved - a.achieved);
+  const configured = branches.filter(b => b.hasTarget).sort((a, b) => b.paceRatio - a.paceRatio || b.pct - a.pct || b.achieved - a.achieved);
   const notConfigured = branches.filter(b => !b.hasTarget).sort((a, b) => a.centre.localeCompare(b.centre));
 
-  const onTrack       = configured.filter(b => b.pct >= 75);
-  const building       = configured.filter(b => b.pct >= 40 && b.pct < 75);
-  const needsAttention = configured.filter(b => b.pct < 40);
+  // Tiers are pace-adjusted, not raw %-of-annual-target — a branch at 30% of its full-year
+  // goal in month 4 of 12 (expected ~30%) is on schedule, not "behind."
+  const onTrack       = configured.filter(b => b.paceRatio >= 90);
+  const building       = configured.filter(b => b.paceRatio >= 50 && b.paceRatio < 90);
+  const needsAttention = configured.filter(b => b.paceRatio < 50);
 
   // Trophy badge on the single top performer (only if it has genuine achievement)
   const topCentre = (configured.length && configured[0].pct > 0) ? configured[0].centre : null;
 
   function cardHtml(b) {
-    const col = b.pct >= 75 ? '#1D9E75' : (b.pct >= 40 ? '#C9A84C' : '#C94A4A');
-    const colorClass = b.pct >= 75 ? 'green' : (b.pct >= 40 ? 'amber' : 'red');
+    const col = b.paceRatio >= 90 ? '#1D9E75' : (b.paceRatio >= 50 ? '#C9A84C' : '#B45309');
+    const colorClass = b.paceRatio >= 90 ? 'green' : (b.paceRatio >= 50 ? 'amber' : 'red');
+    const paceLabel = b.paceRatio >= 110 ? '🚀 Ahead of pace' : (b.paceRatio >= 90 ? '📅 On pace' : (b.paceRatio >= 50 ? '⏳ Behind pace' : '⚠️ Well behind pace'));
     const centreId = 'centre-detail-' + b.centre.replace(/\s+/g, '-');
     const iconId = 'centre-icon-' + b.centre.replace(/\s+/g, '-');
     const isTop = b.centre === topCentre;
@@ -4945,22 +4977,24 @@ function renderBranchHealthGrid(rows, rev, counsellorsByCentre) {
       accordionHtml =
         '<div class="centre-detail-accordion" id="' + centreId + '" style="display:none" onclick="event.stopPropagation()">' +
           '<table class="centre-detail-table">' +
-            '<thead><tr><th>Counselor</th><th style="text-align:right">Target (Excl/Incl)</th><th style="text-align:right">YTD (Excl/Incl)</th><th style="text-align:right">Students</th><th style="text-align:right">% Hit</th></tr></thead>' +
+            '<colgroup><col style="width:32%"><col style="width:20%"><col style="width:20%"><col style="width:16%"><col style="width:12%"></colgroup>' +
+            '<thead><tr><th>Counselor</th><th style="text-align:right">Target</th><th style="text-align:right">YTD</th><th style="text-align:right">Studs</th><th style="text-align:right">% Hit</th></tr></thead>' +
             '<tbody>' +
               b.branchCounsellors.map(lc => {
                 const studLabel = lc.corporateStudentCount
-                  ? lc.studentCount + ' <span style="color:var(--muted);font-weight:400">(+' + lc.corporateStudentCount + ' corp.)</span>'
+                  ? lc.studentCount + ' <span style="color:var(--muted);font-weight:400">(+' + lc.corporateStudentCount + ')</span>'
                   : String(lc.studentCount);
                 return '<tr>' +
                   '<td><strong>' + escC(lc.counsellor) + '</strong></td>' +
-                  '<td style="text-align:right">' + moneyShort(lc.targetCourse) + ' / ' + moneyShort(lc.targetGst) + '</td>' +
-                  '<td style="text-align:right;color:var(--green)">' + moneyShort(lc.achievedCourse) + ' / ' + moneyShort(lc.achievedGst) + '</td>' +
+                  '<td style="text-align:right">' + moneyShort(lc.targetCourse) + '</td>' +
+                  '<td style="text-align:right;color:var(--green)">' + moneyShort(lc.achievedCourse) + '</td>' +
                   '<td style="text-align:right">' + studLabel + '</td>' +
                   '<td style="text-align:right;font-weight:600">' + lc.pct + '%</td>' +
                 '</tr>';
               }).join('') +
             '</tbody>' +
           '</table>' +
+          '<div style="font-size:9px;color:var(--muted);margin-top:5px;text-align:right">Figures excl. GST &middot; corporate students in parentheses</div>' +
         '</div>';
     } else {
       accordionHtml =
@@ -4977,9 +5011,10 @@ function renderBranchHealthGrid(rows, rev, counsellorsByCentre) {
         '</h3>' +
         '<span style="font-size:20px;font-weight:800;color:' + col + '">' + b.pct + '%</span>' +
       '</div>' +
-      '<div style="background:rgba(0,0,0,0.06);border-radius:5px;height:7px;margin-bottom:9px;overflow:hidden">' +
+      '<div style="background:rgba(0,0,0,0.06);border-radius:5px;height:7px;margin-bottom:7px;overflow:hidden">' +
         '<div style="width:' + Math.min(b.pct, 100) + '%;height:7px;border-radius:5px;background:linear-gradient(90deg,' + col + '99,' + col + ')"></div>' +
       '</div>' +
+      '<div style="font-size:10px;font-weight:700;color:' + col + ';margin-bottom:8px">' + paceLabel + ' <span style="color:var(--muted);font-weight:500">&middot; ' + b.paceRatio + '% of expected pace</span></div>' +
       '<div style="font-size:11px;color:var(--muted);line-height:1.6">' +
         '<div>🎯 Target <strong style="color:var(--navy)">' + moneyShort(b.target) + '</strong> Excl &middot; <strong style="color:var(--navy)">' + moneyShort(b.targetGst) + '</strong> Incl</div>' +
         '<div>💰 YTD <strong style="color:var(--green)">' + moneyShort(b.achieved) + '</strong> Excl &middot; <strong style="color:var(--green)">' + moneyShort(b.achievedGst) + '</strong> Incl</div>' +
@@ -5014,15 +5049,15 @@ function renderBranchHealthGrid(rows, rev, counsellorsByCentre) {
 
   let html = '';
   if (onTrack.length) {
-    html += tierHeader('🟢', 'On Track', '≥75% of target', onTrack.length);
+    html += tierHeader('🟢', 'On Track', '≥90% of expected pace', onTrack.length);
     html += '<div class="centre-health-grid">' + onTrack.map(b => cardHtml(b)).join('') + '</div>';
   }
   if (building.length) {
-    html += tierHeader('🟡', 'Building Momentum', '40–74% of target', building.length);
+    html += tierHeader('🟡', 'Building Momentum', '50–89% of expected pace', building.length);
     html += '<div class="centre-health-grid">' + building.map(b => cardHtml(b)).join('') + '</div>';
   }
   if (needsAttention.length) {
-    html += tierHeader('🔴', 'Needs Attention', '<40% of target', needsAttention.length);
+    html += tierHeader('🟠', 'Needs Attention', '<50% of expected pace', needsAttention.length);
     html += '<div class="centre-health-grid">' + needsAttention.map(b => cardHtml(b)).join('') + '</div>';
   }
   if (notConfigured.length) {
@@ -5058,8 +5093,11 @@ function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTarge
   const gapVal = gstViewIncl ? gapValGst : gapValCourse;
   const reqMonthlyRunRate = gstViewIncl ? reqMonthlyRunRateGst : reqMonthlyRunRateCourse;
   
-  const ringColor = pctOverall >= 75 ? '#1D9E75' : (pctOverall >= 40 ? '#C9A84C' : '#C94A4A');
-  
+  // Pace-adjusted against how much of the fiscal year has elapsed — see fyExpectedPct().
+  const expectedPctNational = fyExpectedPct();
+  const paceRatioNational = Math.round(pctOverall / expectedPctNational * 100);
+  const ringColor = paceRatioNational >= 90 ? '#1D9E75' : (paceRatioNational >= 50 ? '#C9A84C' : '#B45309');
+
   const circumference = 2 * Math.PI * 44; // 276.46
   const offset = circumference - Math.min(pctOverall/100, 1) * circumference;
   
@@ -5120,12 +5158,14 @@ function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTarge
   const pacingEl = document.getElementById('rev-pacing-note');
   if (pacingEl) {
     let noteText = '';
-    if (pctOverall >= 75) {
-      noteText = '✅ Excellent pacing — on track to exceed annual target.';
-    } else if (pctOverall >= 40) {
-      noteText = '⚡ Steady. Need ' + money(reqMonthlyRunRate) + '/month (' + kLabel + ') over ' + monthsLeft + ' months to hit target.';
+    if (paceRatioNational >= 110) {
+      noteText = '🚀 Ahead of pace — running ' + paceRatioNational + '% of the schedule expected ' + Math.round(expectedPctNational) + '% into the fiscal year.';
+    } else if (paceRatioNational >= 90) {
+      noteText = '✅ On pace for the fiscal year — tracking to hit target.';
+    } else if (paceRatioNational >= 50) {
+      noteText = '⚡ Building momentum. Need ' + money(reqMonthlyRunRate) + '/month (' + kLabel + ') over ' + monthsLeft + ' months to hit target.';
     } else {
-      noteText = '⚠️ Below pacing. Significant acceleration needed across centres.';
+      noteText = '⚠️ Behind pace for this point in the fiscal year. Significant acceleration needed across centres.';
     }
     if (targetBaselineModel === 'corporate') {
       noteText += ' <span style="display:block;margin-top:5px;font-size:11px;color:#8f6d21;background:rgba(201,168,76,0.06);padding:4px 8px;border-radius:4px;border-left:2.5px solid var(--gold)"><em>Note: National pacing tracks against corporate ₹5.5Cr target. Counselor cards and leaderboard continue to track custom buffer targets.</em></span>';

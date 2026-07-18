@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="assets/shared.js?v=66"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style>
   :root {
@@ -1403,6 +1404,22 @@
             <span id="gst-label-incl" style="color:var(--muted)">Incl. GST</span>
           </label>
         </div>
+
+        <div style="width:1px;height:16px;background:rgba(201,168,76,0.3);align-self:center"></div>
+
+        <!-- Students Enrolled — Count Basis Toggle -->
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;font-weight:600;color:var(--muted)">Students Since:</span>
+          <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:12px;font-weight:600;color:var(--navy)">
+            <span id="stud-label-fy" style="color:var(--navy)">Apr (FY)</span>
+            <div id="stud-toggle-track" onclick="toggleStudentBasis()"
+              style="width:42px;height:22px;background:var(--gold);border-radius:11px;position:relative;cursor:pointer;transition:background .2s;display:inline-block">
+              <div id="stud-toggle-thumb"
+                style="width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px;transition:left .2s;box-shadow:0 1px 4px rgba(0,0,0,.2)"></div>
+            </div>
+            <span id="stud-label-cal" style="color:var(--muted)">Jan (Calendar)</span>
+          </label>
+        </div>
       </div>
 
       <!-- Redesigned Hero YTD Progress & KPIs (Amit's theme) -->
@@ -1415,14 +1432,14 @@
       <div class="charts-grid">
         <div class="chart-card">
           <div class="chart-title">YTD Historical Comparison</div>
-          <div class="chart-subtitle">FY cycle YTD (Apr–Mar) compared to last 3 years (₹ Lakhs)</div>
+          <div class="chart-subtitle">FY cycle YTD (Apr–Mar) compared to last 3 years (₹ Crores)</div>
           <div class="chart-wrap">
             <canvas id="ytdComparisonChart"></canvas>
           </div>
         </div>
         <div class="chart-card">
           <div class="chart-title">Monthly Collections Trajectory</div>
-          <div class="chart-subtitle">Appraisal cycle Apr→Mar · FY 26–27 (gold) vs FY 25–26 (grey) · Incl. GST</div>
+          <div class="chart-subtitle">Appraisal cycle Apr→Mar · FY 26–27 (gold) vs FY 25–26 (grey) · ₹ Crores · Incl. GST</div>
           <div class="chart-wrap">
             <canvas id="monthlyTrendChart"></canvas>
           </div>
@@ -1434,6 +1451,31 @@
         <h2>🏫 Branch Performance Health</h2>
         <p class="sub">Click on any card to view detailed counselor-level contribution breakdowns.</p>
         <div class="centre-health-grid" id="admin-branch-grid"></div>
+      </div>
+
+      <!-- Revenue by Course -->
+      <div class="chart-card full" style="margin-top:16px">
+        <div class="chart-title">📚 Revenue by Course</div>
+        <div class="chart-subtitle">Fee collections aggregated by course &middot; <span id="course-rev-subtitle">all recorded fee data</span></div>
+        <div class="chart-wrap" style="height:280px">
+          <canvas id="courseRevenueChart"></canvas>
+        </div>
+        <div style="overflow:auto;margin-top:14px">
+          <table class="compact-table">
+            <thead>
+              <tr>
+                <th class="text-left">Course</th>
+                <th>Students</th>
+                <th>Collected (₹)</th>
+                <th>Outstanding (₹)</th>
+                <th>% of Total Collected</th>
+              </tr>
+            </thead>
+            <tbody id="course-revenue-tbody">
+              <tr><td colspan="5" style="text-align:center;color:var(--muted)">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <!-- Appraisal Cycle YoY — Apr Onwards -->
@@ -4730,6 +4772,12 @@ function renderRevenueTab() {
 
   const pctOverall = targetCourseBaseline ? Math.round(totalAchievedCourse / targetCourseBaseline * 100) : 0;
   totalStudentsCount = fiscalYtdStudentCount(rev);
+  // "Students Since: Jan (Calendar)" toggle — add back the Jan–Mar 2026 pre-cycle students
+  // (collected but outside the Apr 2026–Mar 2027 appraisal window) on top of fiscal-YTD.
+  if (studentCountBasis === 'calendar') {
+    const pc = dashboardData.preCycle;
+    totalStudentsCount += (pc && Number(pc.students)) || 0;
+  }
 
   // Run Rate & Pacing
   const now = new Date();
@@ -4819,6 +4867,9 @@ function renderRevenueTab() {
 
   // Render Chart.js (YTD Comparison uses GST YTD to match historical GST YoY reference)
   renderRevenueCharts(totalAchievedGst, rows);
+
+  // Revenue by Course breakdown (from the per-student fee ledger)
+  renderRevenueByCourse(d);
 }
 
 function renderBranchHealthGrid(rows, rev, counsellorsByCentre) {
@@ -4956,7 +5007,9 @@ function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTarge
         '<div class="kpi-card" style="min-width:140px;flex:1">' +
           '<div class="kpi-label">Students Enrolled</div>' +
           '<div class="kpi-value">' + totalStudentsCount + ' studs</div>' +
-          '<div class="kpi-meta">' + monthsLeft + ' months left in FY</div>' +
+          '<div class="kpi-meta">' + (studentCountBasis === 'calendar'
+            ? 'Since Jan 2026 (calendar)'
+            : monthsLeft + ' months left in FY') + '</div>' +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -5122,15 +5175,18 @@ function handleLeaderboardBranchChange(selectVal) {
 function renderRevenueCharts(totalAchieved, rows) {
   const textDim = '#8A8070';
   const gridColor = 'rgba(13,27,46,0.05)';
-  
+  // Scope chartjs-plugin-datalabels to just these two charts (not registered globally,
+  // so it won't affect the other Chart.js instances elsewhere in the dashboard).
+  const dlPlugins = (typeof ChartDataLabels !== 'undefined') ? [ChartDataLabels] : [];
+
   Chart.defaults.color = textDim;
   Chart.defaults.font.family = "'Plus Jakarta Sans', sans-serif";
   Chart.defaults.font.size = 10;
-  
+
   if (charts.ytdComparison) charts.ytdComparison.destroy();
   if (charts.monthlyTrend) charts.monthlyTrend.destroy();
-  
-  // YTD Historical Comparison
+
+  // YTD Historical Comparison — figures in ₹ Crores (1 Cr = 100 L)
   const ytdCtx = document.getElementById('ytdComparisonChart');
   if (ytdCtx) {
     charts.ytdComparison = new Chart(ytdCtx, {
@@ -5138,17 +5194,19 @@ function renderRevenueCharts(totalAchieved, rows) {
       data: {
         labels: ['FY 23–24 YTD', 'FY 24–25 YTD', 'FY 25–26 YTD', 'FY 26–27 YTD'],
         datasets: [{
-          label: 'Revenue YTD (₹ Lakhs)',
-          data: [261.04, 240.36, 335.60, (totalAchieved / 100000)],
+          label: 'Revenue YTD (₹ Crores)',
+          data: [261.04 / 100, 240.36 / 100, 335.60 / 100, (totalAchieved / 10000000)],
           backgroundColor: ['rgba(138,128,112,0.1)', 'rgba(138,128,112,0.2)', 'rgba(24,95,165,0.7)', 'rgba(201,168,76,0.85)'],
           borderColor: ['rgba(138,128,112,0.2)', 'rgba(138,128,112,0.4)', '#185FA5', '#C9A84C'],
           borderWidth: 1.5,
           borderRadius: 4
         }]
       },
+      plugins: dlPlugins,
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        layout: { padding: { top: 22 } },
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -5157,26 +5215,35 @@ function renderRevenueCharts(totalAchieved, rows) {
             bodyColor: '#0D1B2E',
             borderColor: '#C9A84C',
             borderWidth: 1,
-            callbacks: { label: ctx => ` ₹${ctx.raw.toFixed(2)}L` }
+            callbacks: { label: ctx => ` ₹${ctx.raw.toFixed(2)} Cr` }
+          },
+          datalabels: {
+            anchor: 'end',
+            align: 'top',
+            offset: 4,
+            color: '#0D1B2E',
+            font: { weight: '700', size: 11 },
+            formatter: v => `₹${v.toFixed(2)}Cr`
           }
         },
         scales: {
           x: { grid: { color: gridColor } },
-          y: { grid: { color: gridColor }, ticks: { callback: v => `₹${v}L` } }
+          y: { grid: { color: gridColor }, ticks: { callback: v => `₹${v}Cr` } }
         }
       }
     });
   }
-  
-  // Monthly trajectory — Apr 2026–Mar 2027 cycle (Apr = M1)
+
+  // Monthly trajectory — Apr 2026–Mar 2027 cycle (Apr = M1) — figures in ₹ Crores
   const trendCtx = document.getElementById('monthlyTrendChart');
   if (trendCtx) {
     // Cycle months: Apr(M1)→Mar(M12)
     const cycleMonths = ['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar'];
-    // FY25-26 baseline: Apr2025→Mar2026
-    const baseline_fy2526 = [32.19, 57.35, 35.33, 82.03, 24.76, 52.10, 6.46, 58.52, 9.43, 83.41, 73.23, 35.54];
-    // FY26-27 actuals: Apr2026=69.40, May2026=74.03; rest from live data
-    const liveData_fy2627 = [69.40, 74.03, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    // FY25-26 baseline: Apr2025→Mar2026 (₹ Lakhs, converted to Crores below)
+    const baseline_fy2526_L = [32.19, 57.35, 35.33, 82.03, 24.76, 52.10, 6.46, 58.52, 9.43, 83.41, 73.23, 35.54];
+    const baseline_fy2526 = baseline_fy2526_L.map(v => v / 100);
+    // FY26-27 actuals: Apr2026=69.40L, May2026=74.03L; rest from live data (all in ₹ Crores)
+    const liveData_fy2627 = [69.40 / 100, 74.03 / 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
     // Fill Jun 2026 onwards (cycle months 3–9 = calendar months 6–12)
     const dynamicMonthly = {};
@@ -5189,7 +5256,7 @@ function renderRevenueCharts(totalAchieved, rows) {
         if (yr === 2026 && mo >= 4)  cycleIdx = mo - 4;       // Apr=0..Dec=8
         if (yr === 2027 && mo <= 3)  cycleIdx = mo + 8;       // Jan=9, Feb=10, Mar=11
         if (cycleIdx >= 2 && cycleIdx < 12) {
-          dynamicMonthly[cycleIdx] = (dynamicMonthly[cycleIdx] || 0) + (Number(mr.achievedGst) || 0) / 100000;
+          dynamicMonthly[cycleIdx] = (dynamicMonthly[cycleIdx] || 0) + (Number(mr.achievedGst) || 0) / 10000000;
         }
       });
     }
@@ -5209,7 +5276,8 @@ function renderRevenueCharts(totalAchieved, rows) {
             backgroundColor: 'transparent',
             borderWidth: 1.5,
             borderDash: [4, 4],
-            pointRadius: 2
+            pointRadius: 2,
+            datalabels: { display: false } // keep baseline uncluttered; live cycle carries the labels
           },
           {
             label: 'FY 26–27 Live',
@@ -5224,9 +5292,11 @@ function renderRevenueCharts(totalAchieved, rows) {
           }
         ]
       },
+      plugins: dlPlugins,
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        layout: { padding: { top: 24 } },
         plugins: {
           legend: { position: 'top', labels: { boxWidth: 10 } },
           tooltip: {
@@ -5235,12 +5305,21 @@ function renderRevenueCharts(totalAchieved, rows) {
             bodyColor: '#0D1B2E',
             borderColor: '#C9A84C',
             borderWidth: 1,
-            callbacks: { label: ctx => ` ${ctx.dataset.label}: ₹${ctx.raw.toFixed(2)}L` }
+            callbacks: { label: ctx => ` ${ctx.dataset.label}: ₹${ctx.raw.toFixed(2)} Cr` }
+          },
+          datalabels: {
+            display: ctx => ctx.dataset.label === 'FY 26–27 Live' && ctx.raw > 0,
+            anchor: 'end',
+            align: 'top',
+            offset: 6,
+            color: '#8f6d21',
+            font: { weight: '700', size: 10 },
+            formatter: v => `₹${v.toFixed(2)}Cr`
           }
         },
         scales: {
           x: { grid: { color: gridColor } },
-          y: { grid: { color: gridColor }, ticks: { callback: v => `₹${v}L` } }
+          y: { grid: { color: gridColor }, ticks: { callback: v => `₹${v}Cr` } }
         }
       }
     });
@@ -5357,6 +5436,115 @@ function renderAppraisalCycleTable() {
   '</td></tr>';
 
   tbody.innerHTML = html || '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No revenue data yet.</td></tr>';
+}
+
+// ── Revenue by Course ──────────────────────────────────────────
+// Aggregates the per-student fee ledger (dashboardData.fee.students — the same source
+// used by the Fees tab) by course, so leadership can see which programs are actually
+// driving collections rather than just centre/counsellor totals.
+function renderRevenueByCourse(d) {
+  const chartWrap = document.getElementById('courseRevenueChart');
+  const tbody = document.getElementById('course-revenue-tbody');
+  const subtitleEl = document.getElementById('course-rev-subtitle');
+  if (!chartWrap && !tbody) return;
+
+  const feeStudents = (d.fee && d.fee.students) || [];
+
+  const byCourse = {};
+  let totalCollected = 0;
+  feeStudents.forEach(r => {
+    const course = (r.course && String(r.course).trim()) || 'Unspecified';
+    if (!byCourse[course]) byCourse[course] = { course: course, students: 0, collected: 0, outstanding: 0 };
+    byCourse[course].students++;
+    byCourse[course].collected += Number(r.collected || 0);
+    byCourse[course].outstanding += Number(r.outstanding || 0);
+    totalCollected += Number(r.collected || 0);
+  });
+
+  const courseList = Object.values(byCourse).sort((a, b) => b.collected - a.collected);
+
+  if (subtitleEl) {
+    subtitleEl.textContent = courseList.length
+      ? (feeStudents.length + ' fee records across ' + courseList.length + ' course' + (courseList.length === 1 ? '' : 's'))
+      : 'all recorded fee data';
+  }
+
+  // Table
+  if (tbody) {
+    if (courseList.length) {
+      tbody.innerHTML = courseList.map(c => {
+        const pctOfTotal = totalCollected ? (c.collected / totalCollected * 100) : 0;
+        return '<tr>' +
+          '<td><strong>' + escC(c.course) + '</strong></td>' +
+          '<td style="text-align:right">' + c.students + '</td>' +
+          '<td style="text-align:right;color:var(--green)">' + money(c.collected) + '</td>' +
+          '<td style="text-align:right;color:var(--red)">' + money(c.outstanding) + '</td>' +
+          '<td style="text-align:right;font-weight:600">' + pctOfTotal.toFixed(1) + '%</td>' +
+        '</tr>';
+      }).join('') +
+      '<tr style="border-top:1.5px solid var(--border);font-weight:bold;color:var(--gold)">' +
+        '<td>Total</td>' +
+        '<td style="text-align:right">' + feeStudents.length + '</td>' +
+        '<td style="text-align:right">' + money(totalCollected) + '</td>' +
+        '<td style="text-align:right">' + money(courseList.reduce((s, c) => s + c.outstanding, 0)) + '</td>' +
+        '<td style="text-align:right">100.0%</td>' +
+      '</tr>';
+    } else {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No course-wise fee data available yet.</td></tr>';
+    }
+  }
+
+  // Chart (horizontal bar, top 12 courses by collections)
+  if (chartWrap) {
+    if (charts.courseRevenue) { charts.courseRevenue.destroy(); charts.courseRevenue = null; }
+    const top = courseList.slice(0, 12);
+    if (top.length) {
+      const dlPlugins = (typeof ChartDataLabels !== 'undefined') ? [ChartDataLabels] : [];
+      charts.courseRevenue = new Chart(chartWrap, {
+        type: 'bar',
+        data: {
+          labels: top.map(c => c.course),
+          datasets: [{
+            label: 'Collected (₹)',
+            data: top.map(c => c.collected),
+            backgroundColor: 'rgba(201,168,76,0.75)',
+            borderColor: '#C9A84C',
+            borderWidth: 1.5,
+            borderRadius: 4
+          }]
+        },
+        plugins: dlPlugins,
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          layout: { padding: { right: 60 } },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#FDFCF9',
+              titleColor: '#0D1B2E',
+              bodyColor: '#0D1B2E',
+              borderColor: '#C9A84C',
+              borderWidth: 1,
+              callbacks: { label: ctx => ' ' + moneyShort(ctx.raw) + ' collected' }
+            },
+            datalabels: {
+              anchor: 'end',
+              align: 'right',
+              color: '#0D1B2E',
+              font: { weight: '700', size: 10 },
+              formatter: v => moneyShort(v)
+            }
+          },
+          scales: {
+            x: { grid: { color: 'rgba(13,27,46,0.05)' }, ticks: { callback: v => moneyShort(v) } },
+            y: { grid: { display: false } }
+          }
+        }
+      });
+    }
+  }
 }
 
 // ── Render Tab 2: Targets (Sunil Only) ────────────────────────
@@ -6342,6 +6530,27 @@ function toggleGstView() {
   if (lblExcl) lblExcl.style.color = gstViewIncl ? 'var(--muted)' : 'var(--navy)';
   if (lblIncl) lblIncl.style.color = gstViewIncl ? 'var(--navy)' : 'var(--muted)';
   // Re-render revenue tab with updated GST preference
+  if (dashboardData) renderRevenueTab();
+}
+
+// ── STUDENTS ENROLLED — COUNT BASIS TOGGLE ────────────────────
+// 'fy'       → fiscal-YTD, Apr 1 2026 through today (matches the appraisal cycle)
+// 'calendar' → calendar-YTD, Jan 1 2026 through today (adds the Jan–Mar 2026 pre-cycle
+//              students on top of the fiscal-YTD count, since that quarter falls outside
+//              the FY26-27 appraisal window but is still part of this calendar year)
+let studentCountBasis = 'fy';
+function toggleStudentBasis() {
+  studentCountBasis = studentCountBasis === 'fy' ? 'calendar' : 'fy';
+  const thumb = document.getElementById('stud-toggle-thumb');
+  const track = document.getElementById('stud-toggle-track');
+  const lblFy = document.getElementById('stud-label-fy');
+  const lblCal = document.getElementById('stud-label-cal');
+  const isCal = studentCountBasis === 'calendar';
+  if (thumb) thumb.style.left = isCal ? '22px' : '2px';
+  if (track) track.style.background = isCal ? '#185FA5' : '#C9A84C';
+  if (lblFy) lblFy.style.color = isCal ? 'var(--muted)' : 'var(--navy)';
+  if (lblCal) lblCal.style.color = isCal ? 'var(--navy)' : 'var(--muted)';
+  // Re-render revenue tab with updated student count basis
   if (dashboardData) renderRevenueTab();
 }
 

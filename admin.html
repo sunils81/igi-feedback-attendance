@@ -2443,7 +2443,7 @@
           <h2 style="margin-bottom:0">📅 8-Year Revenue Story (2018–2026)</h2>
           <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="window.print()">🖨️ Print / Save PDF</button>
         </div>
-        <p class="sub">Annual revenue 2018–2025 (complete years) + 2026 YTD May. Excl. GST. COVID lockdown months excluded from 2020.</p>
+        <p class="sub">Annual revenue 2018–2025 (complete years) + 2026 YTD May. Excl. GST. YoY line compares matching months only (2026 vs. Jan–May 2025).</p>
         <div style="position:relative;height:260px;margin-top:14px"><canvas id="hist-annual-chart"></canvas></div>
       </div>
 
@@ -6790,11 +6790,23 @@ function renderHistoricalTab() {
     const vals = HIST_REVENUE[y].filter(v => v !== null);
     return Math.round(vals.reduce((a,b)=>a+b,0) / HIST_GST_RATE / 10000000 * 100) / 100;
   });
+  // Like-for-like YoY: only compare months present in BOTH years, so a
+  // partial year (2020 minus lockdown, or 2026 YTD) never gets divided
+  // against a prior full year — that would understate growth artificially
+  // (e.g. 2026 Jan-May vs all of 2025 looked like a decline when Jan-May
+  // vs Jan-May is actually a solid increase).
   const yoyPct = HIST_YEARS.map((y,i) => {
     if (i === 0) return null;
-    const prev = annualRevenue[i-1];
-    if (!prev) return null;
-    return Math.round((annualRevenue[i] - prev) / prev * 1000) / 10;
+    const prevYear = HIST_YEARS[i-1];
+    const curMonths = HIST_REVENUE[y];
+    const prevMonths = HIST_REVENUE[prevYear];
+    let curSum = 0, prevSum = 0;
+    curMonths.forEach((v, mi) => {
+      const pv = prevMonths[mi];
+      if (v !== null && pv !== null) { curSum += v; prevSum += pv; }
+    });
+    if (!prevSum) return null;
+    return Math.round((curSum - prevSum) / prevSum * 1000) / 10;
   });
   const barColors = HIST_YEARS.map((y,i) =>
     y === 2020 ? 'rgba(201,74,74,0.55)' :

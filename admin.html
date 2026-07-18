@@ -6968,15 +6968,40 @@ function renderHistoricalTab() {
   }
 
   // ── Seasonality Heatmap ─────────────────────────────────────
-  // Compute max revenue for scaling
-  let maxRev = 0;
-  HIST_YEARS.forEach(y => { HIST_REVENUE[y].forEach(v => { if(v&&v>maxRev) maxRev=v; }); });
-
   // Distinguish genuine "no data" (COVID lockdown) from months that simply
   // haven't happened yet, so both stop getting the same misleading "LD" tag.
   const heatToday = new Date();
   const heatCurY  = heatToday.getFullYear();
   const heatCurM  = heatToday.getMonth(); // 0-indexed
+
+  // Months that have already happened can still be missing from the static
+  // HIST_REVENUE snapshot simply because that snapshot hasn't been refreshed
+  // yet — not because revenue is actually zero. Backfill any such gap from
+  // the same live dashboardData.revenue.monthlyRows feed already used by the
+  // Monthly Collections Trajectory chart and the Appraisal Cycle table, so a
+  // month with real live revenue never gets mislabeled as a lockdown ("LD").
+  const heatLiveByMonth = {};
+  ((dashboardData.revenue && dashboardData.revenue.monthlyRows) || []).forEach(mr => {
+    const mStr = String(mr.month || '');
+    const parts = mStr.split('-').map(Number);
+    const yr = parts[0], mo = parts[1];
+    if (!yr || !mo) return;
+    const key = yr + '-' + mo;
+    heatLiveByMonth[key] = (heatLiveByMonth[key] || 0) + (Number(mr.achievedGst) || 0);
+  });
+  const HIST_REVENUE_DISPLAY = {};
+  HIST_YEARS.forEach(y => {
+    HIST_REVENUE_DISPLAY[y] = HIST_REVENUE[y].map((v, mi) => {
+      if (v !== null) return v;
+      const liveVal = heatLiveByMonth[y + '-' + (mi + 1)];
+      return (liveVal && liveVal > 0) ? liveVal : null;
+    });
+  });
+
+  // Compute max revenue for scaling (using the live-backfilled data so
+  // current-month colour intensity is scaled consistently with history)
+  let maxRev = 0;
+  HIST_YEARS.forEach(y => { HIST_REVENUE_DISPLAY[y].forEach(v => { if(v&&v>maxRev) maxRev=v; }); });
 
   const heatWrap = document.getElementById('hist-heatmap');
   if (heatWrap) {
@@ -6991,7 +7016,7 @@ function renderHistoricalTab() {
     HIST_YEARS.forEach(y => {
       tbl += `<tr><td style="padding:6px 8px;font-weight:700;color:var(--navy);white-space:nowrap">${y==='2026'?'2026*':y}</td>`;
       let yearTotal = 0;
-      HIST_REVENUE[y].forEach((v,mi) => {
+      HIST_REVENUE_DISPLAY[y].forEach((v,mi) => {
         const isFuture = (Number(y) > heatCurY) || (Number(y) === heatCurY && mi > heatCurM);
         if (v === null) {
           if (isFuture) {

@@ -20,7 +20,7 @@ WHERE counselor = 'Arpitta';
 -- 2. Find out how many leads (if any) were already misrouted under the typo'd
 --    name, before deciding how to reassign them. Run this SELECT first and
 --    review the results.
-SELECT id, lead_name, mobile, location, lead_owner, created_at
+SELECT id, first_name, last_name, mobile, centre, lead_owner, created_at
 FROM public.crm_leads
 WHERE lead_owner = 'Arpitta'
 ORDER BY created_at DESC;

@@ -2443,7 +2443,7 @@
           <h2 style="margin-bottom:0">📅 8-Year Revenue Story (2018–2026)</h2>
           <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="window.print()">🖨️ Print / Save PDF</button>
         </div>
-        <p class="sub">Annual revenue 2018–2025 (complete years) + 2026 YTD May. Excl. GST. YoY line compares matching months only (2026 vs. Jan–May 2025).</p>
+        <p class="sub">Annual revenue 2018–2025 (complete years) + 2026 YTD May. Excl. GST. Green/red % below each bar is YoY growth, comparing matching months only (e.g. 2026 vs. Jan–May 2025).</p>
         <div style="position:relative;height:260px;margin-top:14px"><canvas id="hist-annual-chart"></canvas></div>
       </div>
 
@@ -6839,37 +6839,59 @@ function renderHistoricalTab() {
 
   const annualCtx = document.getElementById('hist-annual-chart');
   if (annualCtx) {
+    // Growth % used to be a second line plotted on its own right-hand axis
+    // overlaid on the bars — visually, the line's height only reflects the
+    // -40%..+80% growth scale, completely unrelated to how tall the bar next
+    // to it is, so it randomly looked like it was "inside" some bars and
+    // "above" others depending on where the two independent scales happened
+    // to line up. Replaced with a single axis: growth % is now a second line
+    // of text directly on each bar's own label, colour-coded, so there's
+    // nothing to misread a position against.
     histCharts.annual = new Chart(annualCtx, {
       data: {
         labels: HIST_YEARS.map((y,i) => y === 2020 ? '2020\n(COVID)' : y === 2026 ? '2026\n(YTD)' : String(y)),
         datasets: [
           { type:'bar', label:'Annual Revenue (₹ Cr)', data: annualRevenue,
-            backgroundColor: barColors, borderRadius:4, yAxisID:'y' },
-          { type:'line', label:'YoY Growth %', data: yoyPct,
-            borderColor:'#C9A84C', backgroundColor:'transparent',
-            borderWidth:2, pointBackgroundColor:'#C9A84C', pointRadius:4,
-            tension:0.3, yAxisID:'y2', datalabels:{ display:false } }
+            backgroundColor: barColors, borderRadius:4, yAxisID:'y' }
         ]
       },
       plugins: dlPlugins,
       options: {
         responsive:true, maintainAspectRatio:false,
-        layout:{ padding:{ top:22 } },
+        layout:{ padding:{ top:30 } },
         plugins: {
-          legend:{position:'top',labels:{boxWidth:10}},
-          tooltip:{ callbacks:{ label: ctx => ctx.dataset.yAxisID==='y2'
-            ? ` ${ctx.raw > 0 ? '+' : ''}${ctx.raw}%`
-            : ` ₹${ctx.raw.toFixed(2)} Cr` }},
+          legend:{display:false},
+          tooltip:{ callbacks:{
+            label: ctx => ` ₹${ctx.raw.toFixed(2)} Cr`,
+            afterLabel: ctx => {
+              const pct = yoyPct[ctx.dataIndex];
+              return pct == null ? '' : ` YoY: ${pct > 0 ? '+' : ''}${pct}% (vs. same months prior year)`;
+            }
+          }},
           datalabels:{
             anchor:'end', align:'top', offset:4,
-            color:'#0D1B2E', font:{ weight:'700', size:10 },
-            formatter: v => `₹${Number(v).toFixed(2)}Cr`
+            font: ctx => yoyPct[ctx.dataIndex] == null
+              ? [{ weight:'700', size:10 }]
+              : [{ weight:'700', size:10 }, { weight:'600', size:9 }],
+            color: ctx => {
+              const pct = yoyPct[ctx.dataIndex];
+              if (pct == null) return ['#0D1B2E'];
+              return ['#0D1B2E', pct >= 0 ? '#1D9E75' : '#C94A4A'];
+            },
+            formatter: (v, ctx) => {
+              const revLine = `₹${Number(v).toFixed(2)}Cr`;
+              const pct = yoyPct[ctx.dataIndex];
+              // Always return an array, even for the single-line case (2018 has
+              // no prior year to compare), so the label shape always matches
+              // the font/color arrays above line-for-line.
+              if (pct == null) return [revLine];
+              return [revLine, `${pct > 0 ? '+' : ''}${pct}%`];
+            }
           }
         },
         scales: {
           x:{grid:{color:gridColor}},
-          y:{grid:{color:gridColor}, ticks:{callback:v=>`₹${v}Cr`}, position:'left'},
-          y2:{grid:{display:false}, ticks:{callback:v=>`${v>0?'+':''}${v}%`}, position:'right'}
+          y:{grid:{color:gridColor}, ticks:{callback:v=>`₹${v}Cr`}, position:'left'}
         }
       }
     });

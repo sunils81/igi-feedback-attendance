@@ -1467,12 +1467,13 @@
                 <th class="text-left">Course</th>
                 <th>Students</th>
                 <th>Collected (₹)</th>
+                <th>Avg Revenue / Student (₹)</th>
                 <th>Outstanding (₹)</th>
                 <th>% of Total Collected</th>
               </tr>
             </thead>
             <tbody id="course-revenue-tbody">
-              <tr><td colspan="5" style="text-align:center;color:var(--muted)">Loading…</td></tr>
+              <tr><td colspan="6" style="text-align:center;color:var(--muted)">Loading…</td></tr>
             </tbody>
           </table>
         </div>
@@ -5474,10 +5475,12 @@ function renderRevenueByCourse(d) {
     if (courseList.length) {
       tbody.innerHTML = courseList.map(c => {
         const pctOfTotal = totalCollected ? (c.collected / totalCollected * 100) : 0;
+        const avgPerStudent = c.students ? (c.collected / c.students) : 0;
         return '<tr>' +
           '<td><strong>' + escC(c.course) + '</strong></td>' +
           '<td style="text-align:right">' + c.students + '</td>' +
           '<td style="text-align:right;color:var(--green)">' + money(c.collected) + '</td>' +
+          '<td style="text-align:right;font-weight:600">' + money(avgPerStudent) + '</td>' +
           '<td style="text-align:right;color:var(--red)">' + money(c.outstanding) + '</td>' +
           '<td style="text-align:right;font-weight:600">' + pctOfTotal.toFixed(1) + '%</td>' +
         '</tr>';
@@ -5486,11 +5489,12 @@ function renderRevenueByCourse(d) {
         '<td>Total</td>' +
         '<td style="text-align:right">' + feeStudents.length + '</td>' +
         '<td style="text-align:right">' + money(totalCollected) + '</td>' +
+        '<td style="text-align:right">' + money(feeStudents.length ? totalCollected / feeStudents.length : 0) + '</td>' +
         '<td style="text-align:right">' + money(courseList.reduce((s, c) => s + c.outstanding, 0)) + '</td>' +
         '<td style="text-align:right">100.0%</td>' +
       '</tr>';
     } else {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No course-wise fee data available yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No course-wise fee data available yet.</td></tr>';
     }
   }
 
@@ -5527,7 +5531,14 @@ function renderRevenueByCourse(d) {
               bodyColor: '#0D1B2E',
               borderColor: '#C9A84C',
               borderWidth: 1,
-              callbacks: { label: ctx => ' ' + moneyShort(ctx.raw) + ' collected' }
+              callbacks: {
+                label: ctx => ' ' + moneyShort(ctx.raw) + ' collected',
+                afterLabel: ctx => {
+                  const c = top[ctx.dataIndex];
+                  const avg = c && c.students ? c.collected / c.students : 0;
+                  return c ? ' ' + c.students + ' students · ' + moneyShort(avg) + ' / student' : '';
+                }
+              }
             },
             datalabels: {
               anchor: 'end',

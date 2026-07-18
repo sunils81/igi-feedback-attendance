@@ -2463,7 +2463,7 @@
       <!-- Seasonality Heatmap -->
       <div class="card" style="margin-top:0">
         <h2>🌡️ Seasonality Heatmap</h2>
-        <p class="sub">Monthly revenue intensity across 9 years. Darker gold = stronger month. Grey = COVID lockdown. Spot your best and weakest intake cycles.</p>
+        <p class="sub">Monthly revenue intensity across 9 years (2018–2026). Darker gold = stronger month. Pink = COVID lockdown. Grey dash = not yet reported.</p>
         <div id="hist-heatmap" style="overflow-x:auto;margin-top:14px"></div>
       </div>
 
@@ -6917,6 +6917,12 @@ function renderHistoricalTab() {
   let maxRev = 0;
   HIST_YEARS.forEach(y => { HIST_REVENUE[y].forEach(v => { if(v&&v>maxRev) maxRev=v; }); });
 
+  // Distinguish genuine "no data" (COVID lockdown) from months that simply
+  // haven't happened yet, so both stop getting the same misleading "LD" tag.
+  const heatToday = new Date();
+  const heatCurY  = heatToday.getFullYear();
+  const heatCurM  = heatToday.getMonth(); // 0-indexed
+
   const heatWrap = document.getElementById('hist-heatmap');
   if (heatWrap) {
     let tbl = '<table style="border-collapse:collapse;width:100%;font-size:12px">';
@@ -6931,24 +6937,39 @@ function renderHistoricalTab() {
       tbl += `<tr><td style="padding:6px 8px;font-weight:700;color:var(--navy);white-space:nowrap">${y==='2026'?'2026*':y}</td>`;
       let yearTotal = 0;
       HIST_REVENUE[y].forEach((v,mi) => {
+        const isFuture = (Number(y) > heatCurY) || (Number(y) === heatCurY && mi > heatCurM);
         if (v === null) {
-          tbl += '<td style="padding:4px;text-align:center"><div style="background:rgba(201,74,74,0.12);border-radius:4px;padding:4px 2px;font-size:10px;color:#C94A4A;font-weight:600">LD</div></td>';
+          if (isFuture) {
+            tbl += '<td style="padding:4px;text-align:center"><div style="background:rgba(13,27,46,0.05);border-radius:4px;padding:4px 2px;font-size:10px;color:var(--muted);font-weight:500">–</div></td>';
+          } else {
+            tbl += '<td style="padding:4px;text-align:center"><div style="background:rgba(201,74,74,0.12);border-radius:4px;padding:4px 2px;font-size:10px;color:#C94A4A;font-weight:600">LD</div></td>';
+          }
         } else {
           yearTotal += v;
           const intensity = v / maxRev;
           const alpha = 0.1 + intensity * 0.85;
-          const textCol = intensity > 0.5 ? '#7A5C00' : 'var(--muted)';
+          const textCol = intensity > 0.45 ? '#5C4400' : 'var(--muted)';
           tbl += `<td style="padding:4px;text-align:center">` +
             `<div style="background:rgba(201,168,76,${alpha.toFixed(2)});border-radius:4px;padding:5px 3px;font-size:10px;color:${textCol};font-weight:600">` +
             `${(v/HIST_GST_RATE/100000).toFixed(1)}L` +
             `</div></td>`;
         }
       });
-      tbl += `<td style="padding:6px 8px;text-align:right;font-weight:700;color:var(--navy)">${(yearTotal/HIST_GST_RATE/100000).toFixed(1)}L</td>`;
+      tbl += `<td style="padding:6px 8px;text-align:right;font-weight:700;color:var(--navy);background:rgba(13,27,46,0.03)">${(yearTotal/HIST_GST_RATE/100000).toFixed(1)}L</td>`;
       tbl += '</tr>';
     });
     tbl += '</tbody></table>';
-    tbl += '<p style="font-size:11px;color:var(--muted);margin-top:8px">* 2026 shows Jan–May only. LD = Lockdown. Figures excl. GST.</p>';
+    // Legend so "darker = stronger" has an actual reference point
+    tbl += '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:16px;margin-top:12px;font-size:11px;color:var(--muted)">' +
+      '<div style="display:flex;align-items:center;gap:6px">' +
+        '<span>Weaker</span>' +
+        '<div style="width:120px;height:10px;border-radius:5px;background:linear-gradient(to right, rgba(201,168,76,0.1), rgba(201,168,76,0.95))"></div>' +
+        '<span>Stronger</span>' +
+      '</div>' +
+      '<div><span style="display:inline-block;width:10px;height:10px;background:rgba(201,74,74,0.3);border-radius:2px;margin-right:5px;vertical-align:middle"></span>COVID lockdown</div>' +
+      '<div><span style="display:inline-block;width:10px;height:10px;background:rgba(13,27,46,0.08);border-radius:2px;margin-right:5px;vertical-align:middle"></span>Not yet reported</div>' +
+    '</div>';
+    tbl += '<p style="font-size:11px;color:var(--muted);margin-top:8px">* 2026 shows year to date only. Figures excl. GST.</p>';
     heatWrap.innerHTML = tbl;
   }
   }

@@ -2443,7 +2443,7 @@
           <h2 style="margin-bottom:0">📅 8-Year Revenue Story (2018–2026)</h2>
           <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="window.print()">🖨️ Print / Save PDF</button>
         </div>
-        <p class="sub">Annual revenue 2018–2025 (complete years) + 2026 YTD May. Incl. GST. COVID lockdown months excluded from 2020.</p>
+        <p class="sub">Annual revenue 2018–2025 (complete years) + 2026 YTD May. Excl. GST. COVID lockdown months excluded from 2020.</p>
         <div style="position:relative;height:260px;margin-top:14px"><canvas id="hist-annual-chart"></canvas></div>
       </div>
 
@@ -2455,7 +2455,7 @@
         </div>
         <div class="chart-card">
           <div class="chart-title">👥 Annual Student Enrolments</div>
-          <div class="chart-subtitle">Total students enrolled per year across all centres.</div>
+          <div class="chart-subtitle">Total students enrolled per year across all centres. Approximate — a few implausible single-month spreadsheet entries are capped.</div>
           <div style="position:relative;height:200px;margin-top:10px"><canvas id="hist-students-chart"></canvas></div>
         </div>
       </div>
@@ -6749,6 +6749,32 @@ const HIST_CITIES = [
 
 let histCharts = {};
 
+// HIST_REVENUE is entered GST-inclusive (confirmed: the Appraisal Cycle Table reconciles it
+// month-by-month against live monthlyRows' achievedGst, so it has to stay incl-GST at the
+// source). The Historical Intelligence charts below should read as base course revenue though —
+// GST is a pass-through tax, not earned revenue — so divide by this rate at display time only.
+// 18% matches the Excl/Incl ratio used everywhere else in this dashboard (e.g. target cards).
+const HIST_GST_RATE = 1.18;
+
+// The historical spreadsheet has a handful of single-month spikes that don't hold up — e.g.
+// 2024 shows 553 students in one month and 422 in another (annual total 1,638), 2022 has three
+// months over 150 (annual 1,292). No year in this business has actually run north of ~1,000
+// enrolments. Rather than leave these skewing the "Annual Student Enrolments" chart, any month
+// is capped at 1.5x that year's own median month — a fixed, explainable rule, not a hand-picked
+// number. Years without genuine outliers (their raw total is already ≤1,000) are left exactly
+// as entered.
+function smoothedHistStudents(year) {
+  const raw = HIST_STUDENTS[year];
+  const nonNull = raw.filter(v => v !== null);
+  const total = nonNull.reduce((a, b) => a + b, 0);
+  if (total <= 1000) return raw;
+  const sorted = [...nonNull].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  const cap = Math.round(median * 1.5);
+  return raw.map(v => v === null ? null : Math.min(v, cap));
+}
+
 function renderHistoricalTab() {
   const textDim   = '#8A8070';
   const gridColor = 'rgba(13,27,46,0.05)';
@@ -6759,10 +6785,10 @@ function renderHistoricalTab() {
   if (!histCharts.annual) {
 
   // ── Annual Revenue Bar + YoY % line ────────────────────────
-  // Revenue in ₹ Crores (1 Cr = 100 L) for consistency with the rest of the dashboard.
+  // Revenue in ₹ Crores (1 Cr = 100 L), Excl. GST (see HIST_GST_RATE above).
   const annualRevenue = HIST_YEARS.map(y => {
     const vals = HIST_REVENUE[y].filter(v => v !== null);
-    return Math.round(vals.reduce((a,b)=>a+b,0) / 10000000 * 100) / 100;
+    return Math.round(vals.reduce((a,b)=>a+b,0) / HIST_GST_RATE / 10000000 * 100) / 100;
   });
   const yoyPct = HIST_YEARS.map((y,i) => {
     if (i === 0) return null;
@@ -6817,9 +6843,10 @@ function renderHistoricalTab() {
   }
 
   // ── Revenue Per Student line ────────────────────────────────
+  // Excl. GST revenue ÷ smoothed (outlier-capped) student counts.
   const rpsData = HIST_YEARS.filter(y=>y!==2026).map(y => {
-    const rev  = HIST_REVENUE[y].filter(v=>v!==null).reduce((a,b)=>a+b,0);
-    const studs = HIST_STUDENTS[y].filter(v=>v!==null).reduce((a,b)=>a+b,0);
+    const rev  = HIST_REVENUE[y].filter(v=>v!==null).reduce((a,b)=>a+b,0) / HIST_GST_RATE;
+    const studs = smoothedHistStudents(y).filter(v=>v!==null).reduce((a,b)=>a+b,0);
     return studs ? Math.round(rev/studs/1000)*1000 : 0;
   });
   const rpsCtx = document.getElementById('hist-rps-chart');
@@ -6855,7 +6882,9 @@ function renderHistoricalTab() {
   }
 
   // ── Annual students bar ─────────────────────────────────────
-  const studData = HIST_YEARS.map(y => HIST_STUDENTS[y].filter(v=>v!==null).reduce((a,b)=>a+b,0));
+  // Smoothed to remove a few implausible single-month spikes in the source spreadsheet — see
+  // smoothedHistStudents() above.
+  const studData = HIST_YEARS.map(y => smoothedHistStudents(y).filter(v=>v!==null).reduce((a,b)=>a+b,0));
   const studsCtx = document.getElementById('hist-students-chart');
   if (studsCtx) {
     histCharts.students = new Chart(studsCtx, {
@@ -6911,15 +6940,15 @@ function renderHistoricalTab() {
           const textCol = intensity > 0.5 ? '#7A5C00' : 'var(--muted)';
           tbl += `<td style="padding:4px;text-align:center">` +
             `<div style="background:rgba(201,168,76,${alpha.toFixed(2)});border-radius:4px;padding:5px 3px;font-size:10px;color:${textCol};font-weight:600">` +
-            `${(v/100000).toFixed(1)}L` +
+            `${(v/HIST_GST_RATE/100000).toFixed(1)}L` +
             `</div></td>`;
         }
       });
-      tbl += `<td style="padding:6px 8px;text-align:right;font-weight:700;color:var(--navy)">${(yearTotal/100000).toFixed(1)}L</td>`;
+      tbl += `<td style="padding:6px 8px;text-align:right;font-weight:700;color:var(--navy)">${(yearTotal/HIST_GST_RATE/100000).toFixed(1)}L</td>`;
       tbl += '</tr>';
     });
     tbl += '</tbody></table>';
-    tbl += '<p style="font-size:11px;color:var(--muted);margin-top:8px">* 2026 shows Jan–May only. LD = Lockdown.</p>';
+    tbl += '<p style="font-size:11px;color:var(--muted);margin-top:8px">* 2026 shows Jan–May only. LD = Lockdown. Figures excl. GST.</p>';
     heatWrap.innerHTML = tbl;
   }
   }

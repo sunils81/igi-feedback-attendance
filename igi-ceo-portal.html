@@ -305,6 +305,13 @@ canvas{display:block}
   </div>
 </div>
 
+<!-- Shown only when one or more sections below couldn't load live data and are
+     still displaying their placeholder/example values — previously this
+     happened silently (only logged to the browser console), so a viewer could
+     mistake fabricated sample numbers for real ones. See the Data Integrity &
+     Cross-Portal Audit, Finding 4. -->
+<div id="demoDataBanner" style="display:none;background:rgba(217,119,6,.12);border-bottom:1px solid rgba(217,119,6,.35);color:#8a5a08;font-size:12px;font-weight:600;padding:8px 24px;text-align:center"></div>
+
 <div id="body">
 <!-- SIDEBAR -->
 <div id="sidebar">
@@ -824,6 +831,7 @@ async function loadData(){
     // actually have data), replacing the hardcoded Jan-Jun mock trend.
     const monthsSorted=Array.from(new Set(monthly.map(r=>r.month))).sort();
     const sparkMonths=monthsSorted.slice(-6);
+    let sparklineIsDemo=!sparkMonths.length; // surfaced in the dataStatus text below rather than silently kept
     if(sparkMonths.length){
       const sparkMap={};
       monthly.forEach(r=>{
@@ -861,7 +869,7 @@ async function loadData(){
       Math.round(monthly.filter(r=>r.month===m).reduce((s,r)=>s+r.achieved_course_fee,0)/100000*10)/10
     );
     MONTHLY_REV.bp=[NAT_BP/4,NAT_BP/4,NAT_BP/4].map(v=>Math.round(v*10)/10);
-    document.getElementById('dataStatus').textContent='● Live';
+    document.getElementById('dataStatus').textContent = sparklineIsDemo ? '● Live (sparklines: example data)' : '● Live';
     document.getElementById('dataStatus').style.color='var(--green)';
 
     // Keep the KPI tiles in sync with the same live figures driving the gauge/banner —
@@ -901,9 +909,26 @@ function setKpiValue(id, value, decimals){
   el.textContent=(decimals?Number(value).toFixed(decimals):Math.round(value))+suffix;
 }
 
+// Tracks which sections are currently showing placeholder/example data instead
+// of a live figure, so it can be surfaced on screen (see demoDataBanner above)
+// instead of only in the console. Rebuilt fresh on every loadOpsData() run.
+let DEMO_SECTIONS = new Set();
+function renderDemoBanner(){
+  const el = document.getElementById('demoDataBanner');
+  if (!el) return;
+  if (DEMO_SECTIONS.size) {
+    el.style.display = 'block';
+    el.textContent = '⚠ Showing example data (not live) for: ' + Array.from(DEMO_SECTIONS).join(', ');
+  } else {
+    el.style.display = 'none';
+    el.textContent = '';
+  }
+}
+
 async function loadOpsData(){
   const ok=r=>(r && r.status==='fulfilled' && Array.isArray(r.value))?r.value:null;
   let batches,sessions,att,fees,hod,crm,enroll,diplomas,testResp;
+  DEMO_SECTIONS = new Set();
   try{
     const results=await Promise.allSettled([
       sbFetch('batches','select=batch_code,centre,course,type,batch_slot,start_date,end_date,counselor,instructor'),
@@ -919,6 +944,8 @@ async function loadOpsData(){
     [batches,sessions,att,fees,hod,crm,enroll,diplomas,testResp]=results.map(ok);
   }catch(e){
     console.warn('loadOpsData: fetch stage failed, keeping demo data:',e);
+    DEMO_SECTIONS.add('all operational sections (sync failed)');
+    renderDemoBanner();
     return;
   }
 
@@ -933,7 +960,8 @@ async function loadOpsData(){
       fees.forEach(f=>{const c=f.course||'Other';byCourse[c]=(byCourse[c]||0)+1;});
       const entries=Object.entries(byCourse).sort((a,b)=>b[1]-a[1]).slice(0,8);
       if(entries.length)COURSE_DIST={labels:entries.map(e=>e[0]),data:entries.map(e=>e[1])};
-    }
+      else DEMO_SECTIONS.add('Course Distribution');
+    } else DEMO_SECTIONS.add('Course Distribution');
 
     // ---- Fee collection status (student_fees.fee_status) ----
     if(fees && fees.length){
@@ -941,7 +969,8 @@ async function loadOpsData(){
       fees.forEach(f=>{const s=f.fee_status||'Pending';byStatus[s]=(byStatus[s]||0)+1;});
       const entries=Object.entries(byStatus).sort((a,b)=>b[1]-a[1]).slice(0,5);
       if(entries.length)FEE_DIST={labels:entries.map(e=>e[0]),data:entries.map(e=>e[1])};
-    }
+      else DEMO_SECTIONS.add('Fee Status');
+    } else DEMO_SECTIONS.add('Fee Status');
 
     // ---- Batch grid: real centres/courses, live attendance ring ----
     if(batches && batches.length){
@@ -963,13 +992,13 @@ async function loadOpsData(){
           return{course:b.course||'—',centre:b.centre||'—',timing:b.batch_slot||b.type||'',
             students:studentsPerBatch[b.batch_code]||0,capacity:null,sylPct:null,att:attPct!=null?attPct:0};
         });
-      }
+      } else DEMO_SECTIONS.add('Batch List');
       const activeCount=activeBatches.length||batches.length;
       setKpiValue('kpiActiveBatches',activeCount);
       const courseCount=new Set(batches.map(b=>b.course).filter(Boolean)).size;
       const badge=document.getElementById('kpiCoursesBadge');
       if(badge && courseCount)badge.textContent=courseCount+' Course'+(courseCount===1?'':'s');
-    }
+    } else DEMO_SECTIONS.add('Batch List');
 
     // ---- KPI: active students, avg attendance, diplomas ----
     if(enroll && enroll.length){
@@ -978,7 +1007,8 @@ async function loadOpsData(){
       const months=['2026-04','2026-05','2026-06'];
       const counts=months.map(m=>enroll.filter(e=>(e.enrolled_at||'').slice(0,7)===m).length);
       if(counts.some(v=>v>0))ENROL_MONTHLY={labels:['Apr','May','Jun'],data:counts};
-    }
+      else DEMO_SECTIONS.add('Enrollment Trend');
+    } else DEMO_SECTIONS.add('Enrollment Trend');
     if(att && att.length){
       const present=att.filter(a=>a.attendance==='Present'||a.attendance==='Late').length;
       setKpiValue('kpiAvgAttendance',Math.round(present/att.length*100));
@@ -1003,8 +1033,9 @@ async function loadOpsData(){
         if(p<40)buckets[0]++;else if(p<60)buckets[1]++;else if(p<75)buckets[2]++;else if(p<90)buckets[3]++;else buckets[4]++;
       });
       if(buckets.some(v=>v>0))TEST_BUCKETS={labels:TEST_BUCKETS.labels,data:buckets};
+      else DEMO_SECTIONS.add('Test Performance');
       setKpiValue('kpiTestsDeployed',testResp.length);
-    }
+    } else DEMO_SECTIONS.add('Test Performance');
 
     // ---- Faculty grid + KPIs (instructor tab) ----
     if(sessions && sessions.length){
@@ -1036,8 +1067,8 @@ async function loadOpsData(){
         setKpiValue('kpiSessionsDelivered',FACULTY.reduce((s,f)=>s+f.sessions,0));
         const withFb=FACULTY.filter(f=>fbByInstr[f.name]);
         if(withFb.length)setKpiValue('kpiAvgFeedback',Math.round(withFb.reduce((s,f)=>s+f.fb,0)/withFb.length*10)/10,1);
-      }
-    }
+      } else DEMO_SECTIONS.add('Faculty Grid');
+    } else DEMO_SECTIONS.add('Faculty Grid');
 
     // ---- HOD approval pipeline table ----
     if(hod && hod.length){
@@ -1049,7 +1080,7 @@ async function loadOpsData(){
           batch:batchCode,centre:b.centre||'—',status:h.status||'Pending',
           date:d?d.toLocaleDateString('en-IN',{month:'short',day:'numeric'}):'—'};
       });
-    }
+    } else DEMO_SECTIONS.add('HOD Approvals');
 
     // ---- CRM pipeline funnel (crm_leads.lead_stage, cumulative) ----
     if(crm && crm.length){
@@ -1057,7 +1088,8 @@ async function loadOpsData(){
       const idx=s=>order.indexOf(s);
       const funnel=order.map((_,i)=>crm.filter(c=>idx(c.lead_stage)>=i).length);
       if(funnel[0]>0)CRM_FUNNEL=funnel;
-    }
+      else DEMO_SECTIONS.add('CRM Funnel');
+    } else DEMO_SECTIONS.add('CRM Funnel');
 
     // ---- Re-render sections that just received live data ----
     renderBatchGrid();
@@ -1066,7 +1098,10 @@ async function loadOpsData(){
     if(TAB_INITS[0])buildStudentCharts();
     if(TAB_INITS[1])buildInstructorCharts();
     if(TAB_INITS[2])buildAdminCharts();
+    renderDemoBanner();
   }catch(e){
+    DEMO_SECTIONS.add('one or more sections (render error)');
+    renderDemoBanner();
     console.warn('loadOpsData: render stage failed, some sections kept demo data:',e);
   }
 }
@@ -1105,11 +1140,50 @@ let MONTHLY_REV={
   achieved:[27.1,90.4,67.8], bp:[158.75,158.75,158.75]
 };
 
-// 8-year historical revenue (Cr) — mirroring HIST_REVENUE in hr.html
-const HIST=[
-  {yr:'FY19',val:1.8},{yr:'FY20',val:2.4},{yr:'FY21',val:0.9},{yr:'FY22',val:1.6},
-  {yr:'FY23',val:2.8},{yr:'FY24',val:3.5},{yr:'FY25',val:3.85},{yr:'FY26',val:2.35},
-];
+// 8-year historical revenue (₹ Cr, excl. GST), computed from the same monthly
+// source data used by admin.html's Historical Intelligence tab and hr.html's
+// 8-Year chart. This used to be a separate hardcoded array with invented
+// figures that matched neither of those screens (e.g. old "FY26" here read
+// 2.35 Cr vs. the real ~4.76 Cr) — see the Data Integrity & Cross-Portal
+// Audit, Finding 2. Bucketed by fiscal year (Apr(Y)-Mar(Y+1), matching
+// FY_CUR above) and computed here rather than pasted as a static array, so it
+// can never drift out of sync again as new months of data come in.
+const HIST_REVENUE_MONTHLY = {
+  2018:[3405336,941593,3116043,2609209,4535315,2994895,6373675,5196103,3274120,727163,3650639,860787],
+  2019:[3045350,4713079,3492773,3529289,2758191,2202327,4364942,2283990,2518980,887720,2998288,2185025],
+  2020:[2667858,3477765,1508990,null,null,728240,1529138,1788898,1378510,1656113,771658,1949520],
+  2021:[3311366,2926181,5212955,832831,535937,535572,2298597,2328684,3749010,1937500,3661956,856790],
+  2022:[3305724,2682778,3960663,3665607,6884315,1452658,8735324,2789338,6163965,164134,6289081,2401987],
+  2023:[3380142,6599301,3016249,6526248,5864731,4694395,10926122,2307975,8511142,1918002,3166099,3040456],
+  2024:[6893621,2590758,6802273,4082340,5735371,5053157,5597054,7110170,3364801,292876,3806046,3449708],
+  2025:[4696341,4185220,6199914,3219910,6926117,3532757,8202971,2475524,5209557,646351,5851588,942985],
+  2026:[8340782,7323308,3553858,6939770,7403275,null,null,null,null,null,null,null]
+};
+function computeFiscalYearRevenueCr() {
+  const calYears = Object.keys(HIST_REVENUE_MONTHLY).map(Number).sort((a,b)=>a-b);
+  const minY = calYears[0];
+  // Only fiscal years that have fully finished are shown — the still-in-progress
+  // current FY is left out so it never appears as an artificially low partial
+  // bar next to complete years. "Finished" is computed from today's date, not
+  // from whether any month happens to be null, so a fiscal year that includes
+  // the 2020 COVID lockdown gap (Apr-May 2020, genuinely no data) still shows
+  // using whichever of its months do have data, instead of vanishing entirely.
+  const today = new Date();
+  const curFyEnd = (today.getMonth()+1 >= 4) ? today.getFullYear()+1 : today.getFullYear();
+  const out = [];
+  // FY label 'FYnn' = Apr(20nn-1)-Mar(20nn), e.g. FY19 = Apr2018-Mar2019 —
+  // matches the FY_CUR convention used elsewhere on this page.
+  for (let fyEnd = minY+1; fyEnd < curFyEnd; fyEnd++) {
+    const startMonths = HIST_REVENUE_MONTHLY[fyEnd-1] || [];
+    const endMonths   = HIST_REVENUE_MONTHLY[fyEnd] || [];
+    const months = startMonths.slice(3,12).concat(endMonths.slice(0,3)); // Apr-Dec + Jan-Mar
+    const sumInclGst = months.reduce((s,v)=>s+(v||0), 0); // null (lockdown) months simply contribute 0
+    const cr = Math.round((sumInclGst/1.18)/10000000*100)/100; // excl. GST, ₹ Cr
+    out.push({ yr: 'FY'+String(fyEnd).slice(-2), val: cr });
+  }
+  return out;
+}
+const HIST = computeFiscalYearRevenueCr();
 
 // HOD approvals mock data
 let HOD_DATA=[

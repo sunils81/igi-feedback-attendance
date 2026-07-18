@@ -6733,19 +6733,10 @@ const HIST_STUDENTS = {
   2025: [98,86,159,35,68,57,54,49,31,9,56,45],
   2026: [102,64,38,78,59,null,null,null,null,null,null,null]
 };
-// City performance data (Sheet1 — FY26-27 Cycle reference)
-const HIST_CITIES = [
-  {city:'Mumbai',   proj:168, actual:227, pct:135},
-  {city:'Delhi',    proj:83,  actual:76,  pct:92},
-  {city:'Surat',    proj:90,  actual:30,  pct:33},
-  {city:'Hyderabad',proj:43,  actual:22,  pct:52},
-  {city:'Chennai',  proj:32,  actual:23,  pct:73},
-  {city:'Kolkata',  proj:27,  actual:8,   pct:28},
-  {city:'Ahmedabad',proj:16,  actual:11,  pct:68},
-  {city:'Jaipur',   proj:13,  actual:7,   pct:54},
-  {city:'Indore',   proj:8,   actual:5,   pct:63},
-  {city:'Thrissur', proj:13,  actual:3,   pct:25}
-];
+// (Removed: a hardcoded 10-city HIST_CITIES reference array used to sit here.
+// The City Performance table below now derives its city list live from
+// dashboardData.centreRows instead — see the Data Integrity & Cross-Portal
+// Audit, Finding 5.)
 
 let histCharts = {};
 
@@ -6992,42 +6983,43 @@ function renderHistoricalTab() {
     if (histCharts.city) {
       histCharts.city.destroy();
     }
-    const dynamicCities = HIST_CITIES.map(function(hc) {
-      let target = 0;
-      let actual = 0;
-      if (dashboardData && dashboardData.revenue) {
-        const centreRow = (dashboardData.centreRows || []).find(r => String(r.centre).toLowerCase() === String(hc.city).toLowerCase());
-        if (centreRow) {
-          const showIncl = typeof gstViewIncl !== 'undefined' ? gstViewIncl : true;
-          target = showIncl ? (Number(centreRow.targetGst) || 0) : (Number(centreRow.targetCourse) || 0);
-          
-          let achievedSum = 0;
-          const mapping = adminTargetRows();
-          const rowsToCheck = dashboardData.revenue.monthlyPreviewRows || dashboardData.revenue.monthlyRows || [];
-          
-          mapping.forEach(row => {
-            if (String(row.centre).toLowerCase() === String(hc.city).toLowerCase()) {
-              rowsToCheck.forEach(mr => {
-                if (revCanonical(mr.counsellor) === revCanonical(row.counsellor) && mr.businessCentre === row.centre) {
-                  achievedSum += showIncl ? (Number(mr.achievedGst) || 0) : (Number(mr.achievedCourse) || 0);
-                }
-              });
+    // Live centre list — this used to be capped to a fixed 10-city array
+    // (HIST_CITIES), so a centre opened or renamed after that array was
+    // written simply never appeared here regardless of how much revenue it
+    // generated, and a name that failed to match silently showed ₹0 / 0%,
+    // indistinguishable from a centre that genuinely did no business. Now
+    // derived directly from the live centre roster instead of a hardcoded
+    // list — see the Data Integrity & Cross-Portal Audit, Finding 5.
+    const liveCentreRows = (dashboardData && dashboardData.centreRows) || [];
+    const showInclGst = typeof gstViewIncl !== 'undefined' ? gstViewIncl : true;
+    const cityMapping = adminTargetRows();
+    const cityRowsToCheck = (dashboardData && dashboardData.revenue && (dashboardData.revenue.monthlyPreviewRows || dashboardData.revenue.monthlyRows)) || [];
+
+    const dynamicCities = liveCentreRows.map(function(centreRow) {
+      const target = showInclGst ? (Number(centreRow.targetGst) || 0) : (Number(centreRow.targetCourse) || 0);
+
+      let achievedSum = 0;
+      cityMapping.forEach(row => {
+        if (String(row.centre).toLowerCase() === String(centreRow.centre).toLowerCase()) {
+          cityRowsToCheck.forEach(mr => {
+            if (revCanonical(mr.counsellor) === revCanonical(row.counsellor) && mr.businessCentre === row.centre) {
+              achievedSum += showInclGst ? (Number(mr.achievedGst) || 0) : (Number(mr.achievedCourse) || 0);
             }
           });
-          actual = achievedSum;
         }
-      }
+      });
+
       // ₹ Crores (1 Cr = 100 L), 2 decimals
       const targetCr = Math.round(target / 10000000 * 100) / 100;
-      const actualCr = Math.round(actual / 10000000 * 100) / 100;
+      const actualCr = Math.round(achievedSum / 10000000 * 100) / 100;
       const pct = targetCr ? Math.round(actualCr / targetCr * 100) : (actualCr ? 100 : 0);
       return {
-        city: hc.city,
+        city: centreRow.centre,
         proj: targetCr,
         actual: actualCr,
         pct: pct
       };
-    });
+    }).sort((a, b) => b.proj - a.proj);
 
     const totalProj = dynamicCities.reduce((s, c) => s + c.proj, 0);
     const totalActual = dynamicCities.reduce((s, c) => s + c.actual, 0);
@@ -7073,15 +7065,21 @@ function renderHistoricalTab() {
     // City table
     const cityTable = document.getElementById('hist-city-table');
     if (cityTable) {
-      let th = '<table class="compact-table"><thead><tr><th>City</th><th class="text-right">Projection (₹ Cr)</th><th class="text-right">Actual (₹ Cr)</th><th class="text-right">Achievement</th><th class="text-center">Status</th></tr></thead><tbody>';
-      th += dynamicCities.map(c => {
-        const dot = c.pct>=100?'🟢':c.pct>=70?'🟡':'🔴';
-        return `<tr><td>${c.city}</td><td class="text-right">₹${c.proj.toFixed(2)}Cr</td><td class="text-right">₹${c.actual.toFixed(2)}Cr</td>`+
-          `<td class="text-right"><strong>${c.pct}%</strong></td><td class="text-center">${dot}</td></tr>`;
-      }).join('');
-      th += `<tr style="font-weight:700;border-top:2px solid var(--border)"><td>National</td><td class="text-right">₹${totalProj.toFixed(2)}Cr</td><td class="text-right">₹${totalActual.toFixed(2)}Cr</td><td class="text-right">${totalPct}%</td><td class="text-center">${totalDot}</td></tr>`;
-      th += '</tbody></table>';
-      cityTable.innerHTML = th;
+      if (!dynamicCities.length) {
+        // Explicit "no data" state — distinct from a table full of real ₹0
+        // rows, so this is never mistaken for "every centre did no business."
+        cityTable.innerHTML = '<p class="sub" style="padding:8px 0">No live centre data available yet.</p>';
+      } else {
+        let th = '<table class="compact-table"><thead><tr><th>City</th><th class="text-right">Projection (₹ Cr)</th><th class="text-right">Actual (₹ Cr)</th><th class="text-right">Achievement</th><th class="text-center">Status</th></tr></thead><tbody>';
+        th += dynamicCities.map(c => {
+          const dot = c.pct>=100?'🟢':c.pct>=70?'🟡':'🔴';
+          return `<tr><td>${c.city}</td><td class="text-right">₹${c.proj.toFixed(2)}Cr</td><td class="text-right">₹${c.actual.toFixed(2)}Cr</td>`+
+            `<td class="text-right"><strong>${c.pct}%</strong></td><td class="text-center">${dot}</td></tr>`;
+        }).join('');
+        th += `<tr style="font-weight:700;border-top:2px solid var(--border)"><td>National</td><td class="text-right">₹${totalProj.toFixed(2)}Cr</td><td class="text-right">₹${totalActual.toFixed(2)}Cr</td><td class="text-right">${totalPct}%</td><td class="text-center">${totalDot}</td></tr>`;
+        th += '</tbody></table>';
+        cityTable.innerHTML = th;
+      }
     }
   }
 }
@@ -9727,7 +9725,7 @@ function loadRoutingRules() {
 }
 
 var _editingRoutingId = null;
-var _ALL_COUNSELORS = ['Nadiya','Anuradha','Bianca','Omkar','Arpitta','Preethy','Kripa','Rajini'];
+var _ALL_COUNSELORS = ['Nadiya','Anuradha','Bianca','Omkar','Arpita','Preethy','Kripa','Rajini'];
 
 function _populateRoutingCounselorSelect(selected) {
   var sel = document.getElementById('crm-routing-counselor');

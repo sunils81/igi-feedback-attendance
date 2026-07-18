@@ -14,7 +14,24 @@
 
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxWiL5q9A3Z1odYYK0ZRR8ngqwPhzPnkX4maKJRlgM6QspoiV1abAzFjRwEJIZEDpC65Q/exec';
 window.GAS_URL = GAS_URL;
-const COUNSELOR_PASS_LOCAL = 'IGI2026'; // used for holiday management calls
+
+// Shared 18% GST conversion — one place for this math so display figures can't
+// drift out of sync the way hr.html's historical revenue chart did (it simply
+// forgot to apply this conversion, so it read ~18% higher than the identical
+// numbers on admin.html — see the Data Integrity & Cross-Portal Audit,
+// Finding 2). Revenue is stored GST-inclusive at source; use exclGst() to get
+// the excl.-GST figure that should be shown on any revenue chart/report.
+const IGI_GST_RATE = 1.18;
+function exclGst(v) { return (Number(v) || 0) / IGI_GST_RATE; }
+function inclGst(v) { return Math.round((Number(v) || 0) * IGI_GST_RATE); }
+window.exclGst = exclGst;
+window.inclGst = inclGst;
+window.IGI_GST_RATE = IGI_GST_RATE;
+// (Removed: an unused COUNSELOR_PASS_LOCAL = 'IGI2026' constant used to sit here.
+// It was dead code — nothing in this file ever read it — but it was one more
+// plaintext copy of the Admin password sitting in a file every browser
+// downloads, so it's gone rather than left as a landmine. See the Data
+// Integrity & Cross-Portal Audit, Finding 1.)
 
 const CENTRES  = ['Mumbai','Delhi','Surat','Kolkata','Lucknow','Jaipur','Hyderabad','Chennai','Bangalore','Thrissur','Ahmedabad','Pune'];
 const COURSES  = [
@@ -816,68 +833,93 @@ window.gasGet = (function () {
     return salt;
   }
 
+  /* Server-side check for the Admin / HR / break-glass "master" pins.
+     These used to be literal strings ('IGI2026', 'IGIHR2026', 'IGIMaster2026')
+     right here in this file — but this file ships as plain text to every
+     browser that opens any portal, so anyone who opened dev tools could read
+     them and log in as anyone. They now live only as environment variables on
+     the server (see api/auth/verify-pin.js) and are compared there; this
+     function just asks the server "did this pin match one of the special
+     roles?" and never sees the real secret values itself.
+     Fails closed on any network/server error — matchedType comes back null,
+     which simply falls through to the normal per-user password-hash check
+     below, so a slow or misconfigured endpoint can never grant access, only
+     ever refuse the shortcut and require a real password. */
+  function h_verifyServerPin(pin, name, cb) {
+    if (!pin) { cb(null); return; }
+    fetch('/api/auth/verify-pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin: pin, name: name || '' })
+    }).then(function (res) { return res.json(); })
+      .then(function (d) { cb(d && d.matchedType ? d.matchedType : null); })
+      .catch(function () { cb(null); });
+  }
+
   /* counselorLogin / instructorLogin */
   function h_login(p, cb) {
     var name = p.name, pin = String(p.pin || p.pass || '');
     var tbl  = 'users';
-    
-    if (!name || name === '__admin__') {
-      if (pin === 'IGI2026') {
-        cb(null, { status: 'ok', counselorName: 'Admin', instructorName: 'Admin', authRole: 'Admin',
-          isAdmin: true, isManager: true, centres: [], batches: [], mustChangePassword: false });
+
+    h_verifyServerPin(pin, name, function (matchedType) {
+      var isMasterPin = (matchedType === 'master');
+
+      if (!name || name === '__admin__') {
+        if (matchedType === 'admin' || isMasterPin) {
+          cb(null, { status: 'ok', counselorName: 'Admin', instructorName: 'Admin', authRole: 'Admin',
+            isAdmin: true, isManager: true, centres: [], batches: [], mustChangePassword: false });
+          return;
+        }
+        cb(null, { status: 'error', reason: 'Invalid password' });
         return;
       }
-      cb(null, { status: 'error', reason: 'Invalid password' });
-      return;
-    }
-    
-    var isMasterPin = (pin === 'IGIMaster2026');
 
-    // ── HR hardcoded check (no Supabase lookup needed) ─────────────────────
-    if (name === 'HR') {
-      if (pin === 'IGIHR2026' || isMasterPin) {
-        cb(null, { status: 'ok', counselorName: 'HR', instructorName: 'HR', authRole: 'HR',
-          isHR: true, isAdmin: false, isManager: false, centres: [], batches: [], mustChangePassword: false });
+      // ── HR role account (no Supabase lookup needed) ─────────────────────
+      if (name === 'HR') {
+        if (matchedType === 'hr' || isMasterPin) {
+          cb(null, { status: 'ok', counselorName: 'HR', instructorName: 'HR', authRole: 'HR',
+            isHR: true, isAdmin: false, isManager: false, centres: [], batches: [], mustChangePassword: false });
+          return;
+        }
+        cb(null, { status: 'error', reason: 'Invalid name or PIN' });
         return;
       }
-      cb(null, { status: 'error', reason: 'Invalid name or PIN' });
-      return;
-    }
 
-    GET(tbl, 'name=eq.' + encodeURIComponent(name), function (e, rows) {
-      if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'Invalid name or PIN' }); return; }
-      var r = rows[0];
-      if (!r.is_active) { cb(null, { status: 'error', reason: 'Account is inactive' }); return; }
-      
-      var centres = r.centres ? r.centres.split(',').map(function (c) { return c.trim(); }).filter(Boolean) : [];
-      var isAdm = r.role === 'Admin', isMgr = (r.role === 'Manager' || isAdm);
-      
-      function completeLogin() {
-        h_getBatches({ centres: isAdm ? '' : centres.join(',') }, function (e2, bd) {
-          var isAH = (r.role === 'AcademicHead' || r.role === 'Admin' || (r.name && r.name.toLowerCase().indexOf('bhavin') >= 0));
-          var isRM = (r.role === 'RevenueManager' || r.role === 'Manager' || r.role === 'Admin' || (r.name && r.name.toLowerCase().indexOf('amit') >= 0)) && !(r.name && r.name.toLowerCase().indexOf('bhavin') >= 0);
-          var isDual = (r.role && r.role.indexOf('Dual') >= 0) || r.role === 'Manager' || r.role === 'Admin' || centres.length > 1 || r.name === 'Anuradha';
-          var mgrCentres = (r.role === 'Manager' || r.role === 'Admin' || (r.name && r.name.toLowerCase().indexOf('amit') >= 0)) ? ['Mumbai','Lucknow','Ahmedabad','Chennai','Delhi','Surat','Kolkata','Bangalore','Hyderabad','Jaipur'] : centres;
+      GET(tbl, 'name=eq.' + encodeURIComponent(name), function (e, rows) {
+        if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'Invalid name or PIN' }); return; }
+        var r = rows[0];
+        if (!r.is_active) { cb(null, { status: 'error', reason: 'Account is inactive' }); return; }
 
-          cb(null, { status: 'ok', counselorName: r.name, instructorName: r.name, authRole: r.role || 'Counselor',
-            isAdmin: isAdm, isManager: isMgr, centres: centres, mustChangePassword: !!r.must_change,
-            batches: (bd && bd.batches) || [],
-            isAcademicHead: isAH, isRevenueManager: isRM, isDualRole: isDual, managerCentres: mgrCentres });
-        });
-      }
-      
-      if (isMasterPin) {
-        completeLogin();
-      } else {
-        var inputStr = String(r.salt || '') + '|' + pin;
-        sha256Hex(inputStr, function(hashVal) {
-          if (hashVal === r.password_hash) {
-            completeLogin();
-          } else {
-            cb(null, { status: 'error', reason: 'Invalid name or PIN' });
-          }
-        });
-      }
+        var centres = r.centres ? r.centres.split(',').map(function (c) { return c.trim(); }).filter(Boolean) : [];
+        var isAdm = r.role === 'Admin', isMgr = (r.role === 'Manager' || isAdm);
+
+        function completeLogin() {
+          h_getBatches({ centres: isAdm ? '' : centres.join(',') }, function (e2, bd) {
+            var isAH = (r.role === 'AcademicHead' || r.role === 'Admin' || (r.name && r.name.toLowerCase().indexOf('bhavin') >= 0));
+            var isRM = (r.role === 'RevenueManager' || r.role === 'Manager' || r.role === 'Admin' || (r.name && r.name.toLowerCase().indexOf('amit') >= 0)) && !(r.name && r.name.toLowerCase().indexOf('bhavin') >= 0);
+            var isDual = (r.role && r.role.indexOf('Dual') >= 0) || r.role === 'Manager' || r.role === 'Admin' || centres.length > 1 || r.name === 'Anuradha';
+            var mgrCentres = (r.role === 'Manager' || r.role === 'Admin' || (r.name && r.name.toLowerCase().indexOf('amit') >= 0)) ? ['Mumbai','Lucknow','Ahmedabad','Chennai','Delhi','Surat','Kolkata','Bangalore','Hyderabad','Jaipur'] : centres;
+
+            cb(null, { status: 'ok', counselorName: r.name, instructorName: r.name, authRole: r.role || 'Counselor',
+              isAdmin: isAdm, isManager: isMgr, centres: centres, mustChangePassword: !!r.must_change,
+              batches: (bd && bd.batches) || [],
+              isAcademicHead: isAH, isRevenueManager: isRM, isDualRole: isDual, managerCentres: mgrCentres });
+          });
+        }
+
+        if (isMasterPin) {
+          completeLogin();
+        } else {
+          var inputStr = String(r.salt || '') + '|' + pin;
+          sha256Hex(inputStr, function(hashVal) {
+            if (hashVal === r.password_hash) {
+              completeLogin();
+            } else {
+              cb(null, { status: 'error', reason: 'Invalid name or PIN' });
+            }
+          });
+        }
+      });
     });
   }
 
@@ -8251,7 +8293,7 @@ window.gasGet = (function () {
           'Mumbai':    { type: 'round-robin', counselors: ['Anuradha','Bianca','Omkar'] },
           'Bangalore': { type: 'direct', counselor: 'Nadiya' },
           'Bengaluru': { type: 'direct', counselor: 'Nadiya' },
-          'Kolkata':   { type: 'direct', counselor: 'Arpitta' },
+          'Kolkata':   { type: 'direct', counselor: 'Arpita' },
           'Chennai':   { type: 'direct', counselor: 'Preethy' },
           'Pune':      { type: 'direct', counselor: 'Bianca' },
           'Ahmedabad': { type: 'direct', counselor: 'Anuradha' },

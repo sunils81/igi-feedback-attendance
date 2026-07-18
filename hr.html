@@ -778,6 +778,12 @@ function drawHistChart() {
     var months = HIST_REVENUE[y] || [];
     return months.reduce(function(s,v){ return s + (v||0); }, 0);
   });
+  // HIST_REVENUE is entered GST-inclusive (same source data as admin.html's
+  // Historical Intelligence tab) — apply the same exclGst() conversion here
+  // before display, or this chart reads ~18% higher than admin.html's for the
+  // exact same years despite both being labelled "excl. GST" below. This was
+  // previously missing — see the Data Integrity & Cross-Portal Audit, Finding 2.
+  totals = totals.map(exclGst);
   // Convert to display unit
   var vals = totals.map(function(v) {
     var lakh = v / 100000;

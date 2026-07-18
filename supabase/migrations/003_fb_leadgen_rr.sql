@@ -55,7 +55,7 @@ INSERT INTO public.crm_routing_rules (location, rule_type, counselor, counselors
   ('Mumbai',     'round-robin', NULL,        '["Anuradha","Bianca","Omkar"]', 10),
   ('Bangalore',  'direct',      'Nadiya',    NULL,                           20),
   ('Bengaluru',  'direct',      'Nadiya',    NULL,                           20),
-  ('Kolkata',    'direct',      'Arpitta',   NULL,                           20),
+  ('Kolkata',    'direct',      'Arpita',    NULL,                           20),
   ('Chennai',    'direct',      'Preethy',   NULL,                           20),
   ('Pune',       'direct',      'Bianca',    NULL,                           20),
   ('Ahmedabad',  'direct',      'Anuradha',  NULL,                           20),

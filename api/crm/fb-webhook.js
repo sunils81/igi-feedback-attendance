@@ -27,7 +27,7 @@ const FB_APP_SECRET = process.env.FB_APP_SECRET;
 // NOTE: This mapping can also be managed dynamically via the crm_routing_rules
 // table in Supabase (Admin → CRM → Routing Rules). Hard-coded here as fallback.
 const LOCATION_COUNSELORS = {
-  'Kolkata':    { type: 'direct', counselor: 'Arpitta' },
+  'Kolkata':    { type: 'direct', counselor: 'Arpita' },
   'Chennai':    { type: 'direct', counselor: 'Preethy' },
   'Pune':       { type: 'direct', counselor: 'Bianca' },
   'Ahmedabad':  { type: 'direct', counselor: 'Anuradha' },

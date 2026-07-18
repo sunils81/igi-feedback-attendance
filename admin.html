@@ -3576,6 +3576,13 @@ let currentLeaderboardBranch = 'all';
 let cachedCounsellorsByCentre = null;
 let cachedRevenue = null;
 
+// Live counsellor→centre roster, sourced from Settings → User & Counsellor Management
+// (the "counsellor portal" — action: 'getUsers'). Used to correctly attribute revenue/
+// students to branches for counsellors who aren't in the small hardcoded adminTargetRows()
+// list, instead of silently defaulting them all to Mumbai.
+let counsellorCentreMap = {};   // revCanonical(name) -> { name, centre }
+let counsellorRosterLoaded = false;
+
 // ── Init on DOM Content Loaded ────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
   // Check if session exists in localStorage
@@ -4589,7 +4596,7 @@ function loadDashboardData() {
       showToast('Could not fetch dashboard summary from spreadsheet.', 'error');
       return;
     }
-    
+
     dashboardData = d;
     renderTabContent('t-revenue');
     renderTabContent('t-targets');
@@ -4597,6 +4604,55 @@ function loadDashboardData() {
     renderTabContent('t-fees');
     renderTabContent('t-academic');
   });
+
+  loadCounsellorRoster();
+}
+
+// Pulls the live counsellor→centre roster from Settings → User & Counsellor Management
+// (action: 'getUsers', no admin password required — same list shown in the Settings > Users
+// panel). This lets revenue attribution stay correct for counsellors who aren't in the
+// small hardcoded adminTargetRows() list, instead of silently lumping them into Mumbai.
+// Re-renders the Revenue tab once loaded so branch cards reflect the corrected mapping.
+function loadCounsellorRoster() {
+  gasGet({ action: 'getUsers' }, function(err, res) {
+    if (err || !res || res.status !== 'ok') return; // fail silently — static mapping still applies
+    const users = res.users || [];
+    const map = {};
+    users.forEach(function(u) {
+      const name = u.name || u.username;
+      const rawCentre = u.centre;
+      if (!name || !rawCentre) return;
+      if (u.is_active === false) return;
+      // Match case/whitespace-insensitively against the canonical CENTRES list — an
+      // unrecognized centre string would otherwise create a stray bucket whose revenue
+      // silently drops out of the national totals instead of just being mis-attributed.
+      const canonicalCentre = (CENTRES || []).find(c => c.toLowerCase() === String(rawCentre).trim().toLowerCase());
+      if (!canonicalCentre) return; // unrecognized centre name — leave this counsellor unmapped rather than guess
+      map[revCanonical(name)] = { name: name, centre: canonicalCentre };
+    });
+    counsellorCentreMap = map;
+    counsellorRosterLoaded = true;
+    // If dashboard data already rendered before the roster arrived, re-render with the
+    // now-corrected mapping.
+    if (dashboardData) renderRevenueTab();
+  });
+}
+
+// Merges the hardcoded adminTargetRows() (which also encodes multi-centre counsellors like
+// Anuradha, who sells across Mumbai/Ahmedabad/Lucknow) with the live Settings roster —
+// any counsellor from the roster not already covered by the static list is added so their
+// revenue attributes to their real centre instead of falling through to the Mumbai fallback.
+function buildEffectiveCounsellorMapping() {
+  const staticRows = adminTargetRows();
+  const staticNames = new Set(staticRows.map(r => revCanonical(r.counsellor)));
+  const dynamicRows = [];
+  Object.keys(counsellorCentreMap).forEach(function(key) {
+    if (!staticNames.has(key)) {
+      const entry = counsellorCentreMap[key];
+      dynamicRows.push({ counsellor: entry.name, centre: entry.centre });
+    }
+  });
+  return staticRows.concat(dynamicRows);
 }
 
 function renderTabContent(tabId) {
@@ -4643,17 +4699,20 @@ function renderRevenueTab() {
   const rows = d.centreRows || [];
   const rev = d.revenue || {};
   
-  // 1. Group counselor achievements and targets by designated branch to guarantee perfect tallies
-  const mapping = adminTargetRows();
+  // 1. Group counselor achievements and targets by designated branch to guarantee perfect tallies.
+  // Mapping is the hardcoded adminTargetRows() list merged with the live Settings → User &
+  // Counsellor Management roster (see buildEffectiveCounsellorMapping), so counsellors added
+  // there get attributed to their real centre automatically.
+  const mapping = buildEffectiveCounsellorMapping();
   const counsellorsByCentre = {};
-  
+
   // Initialize counsellorsByCentre for all active branches
   CENTRES.forEach(c => {
     if (c !== 'Pune') {
       counsellorsByCentre[c] = [];
     }
   });
-  
+
   const mappedCounsellors = new Set();
   const rowsToCheck = rev.monthlyPreviewRows || rev.monthlyRows || [];
 
@@ -4718,7 +4777,11 @@ function renderRevenueTab() {
   allSourceCounsellors.forEach(cName => {
     const cKey = revCanonical(cName);
     if (!mappedCounsellors.has(cKey)) {
-      let detectedCentre = 'Mumbai';
+      // Default to a distinct "unmapped" bucket rather than silently crediting a real branch
+      // (this used to default to Mumbai, which inflated Mumbai's student/revenue counts with
+      // whoever wasn't in adminTargetRows() or the live roster). Their totals are still added
+      // back into the national KPIs below — they just aren't attributed to any one branch card.
+      let detectedCentre = '__UNMAPPED__';
       const firstRow = rowsToCheck.find(mr => revCanonical(mr.counsellor) === cKey);
       if (firstRow && firstRow.assignedCentre) {
         detectedCentre = firstRow.assignedCentre;
@@ -4753,18 +4816,18 @@ function renderRevenueTab() {
       });
     }
   });
-  
+
   // Calculate total targets and achieved YTD from the newly grouped structures
   let totalTargetCourse = 0;
   let totalTargetGst = 0;
   let totalAchievedCourse = 0;
   let totalAchievedGst = 0;
   let totalStudentsCount = 0;
-  
+
   rows.forEach(function(r) {
     totalTargetCourse += Number(r.targetCourse) || 0;
     totalTargetGst += Number(r.targetGst) || 0;
-    
+
     const branchCounsellors = counsellorsByCentre[r.centre] || [];
     branchCounsellors.forEach(lc => {
       totalAchievedCourse += lc.achievedCourse;
@@ -4772,7 +4835,15 @@ function renderRevenueTab() {
       totalStudentsCount += lc.studentCount;
     });
   });
-  
+
+  // Fold unmapped counsellors' achieved revenue/students back into the national totals so
+  // they aren't silently dropped from KPIs just because they aren't attributed to a branch card.
+  (counsellorsByCentre['__UNMAPPED__'] || []).forEach(lc => {
+    totalAchievedCourse += lc.achievedCourse;
+    totalAchievedGst += lc.achievedGst;
+    totalStudentsCount += lc.studentCount;
+  });
+
   let targetCourseBaseline = totalTargetCourse;
   let targetGstBaseline = totalTargetGst;
   if (targetBaselineModel === 'corporate') {
@@ -5016,6 +5087,40 @@ function renderBranchHealthGrid(rows, rev, counsellorsByCentre) {
   if (notConfigured.length) {
     html += tierHeader('⚪', 'Not Yet Configured', 'no annual target set', notConfigured.length);
     html += '<div class="centre-health-grid">' + notConfigured.map(b => notConfiguredCardHtml(b)).join('') + '</div>';
+  }
+
+  // Counsellors whose centre couldn't be determined from adminTargetRows(), the live
+  // Settings roster, or their own revenue rows. Their revenue/students are still counted
+  // in the national totals above — they just aren't credited to any one branch card, so a
+  // real branch's numbers never get silently inflated by someone else's activity. Fix by
+  // adding them to Settings → User & Counsellor Management with the correct centre.
+  const unmapped = counsellorsByCentre['__UNMAPPED__'] || [];
+  if (unmapped.length) {
+    const unmappedTotal = unmapped.reduce((s, lc) => s + lc.achievedCourse, 0);
+    const unmappedStudents = unmapped.reduce((s, lc) => s + lc.studentCount, 0);
+    html += '<div style="display:flex;align-items:center;gap:8px;margin:20px 0 10px">' +
+      '<span style="font-size:12px;font-weight:800;color:#8f6d21;text-transform:uppercase;letter-spacing:.05em">⚠️ Needs Centre Assignment</span>' +
+      '<span style="font-size:11px;color:var(--muted);font-weight:600">counted in national totals, not attributed to a branch &middot; ' + unmapped.length + ' counsellor' + (unmapped.length === 1 ? '' : 's') + '</span>' +
+      '<div style="flex:1;height:1px;background:var(--border)"></div>' +
+    '</div>' +
+    '<div style="background:rgba(201,168,76,0.06);border:1.5px dashed var(--gold);border-radius:10px;padding:14px">' +
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">' +
+        'These counsellors have revenue or targets recorded, but no centre could be found for them in the mapping list or Settings → User &amp; Counsellor Management. ' +
+        'Add them there with the correct centre so their ' + moneyShort(unmappedTotal) + ' (' + unmappedStudents + ' students) shows up on the right branch card.' +
+      '</div>' +
+      '<table class="centre-detail-table">' +
+        '<thead><tr><th>Counselor</th><th style="text-align:right">YTD (Excl/Incl)</th><th style="text-align:right">Students</th></tr></thead>' +
+        '<tbody>' +
+          unmapped.map(lc => {
+            return '<tr>' +
+              '<td><strong>' + escC(lc.counsellor) + '</strong></td>' +
+              '<td style="text-align:right;color:var(--green)">' + moneyShort(lc.achievedCourse) + ' / ' + moneyShort(lc.achievedGst) + '</td>' +
+              '<td style="text-align:right">' + lc.studentCount + '</td>' +
+            '</tr>';
+          }).join('') +
+        '</tbody>' +
+      '</table>' +
+    '</div>';
   }
 
   grid.innerHTML = html || '<div style="text-align:center;color:var(--muted);padding:16px">No branch data available.</div>';

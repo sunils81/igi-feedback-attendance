@@ -11191,11 +11191,12 @@ function loadMyBatches() {
     }
 
     renderBatchHealth(batches);
-    el.innerHTML = batches.map(b=>{
+
+    function renderRow(b, isCompleted) {
       const status = getBatchStatus(b);
       let statusBadge = '';
       if (status === 'Completed') {
-        statusBadge = `<span class="badge" style="margin-left:6px;font-size:10px;padding:3px 6px;background:#E8F5EE;color:#168B57;border:1px solid rgba(22,139,87,0.2)">Completed</span>`;
+        statusBadge = `<span class="badge" style="margin-left:6px;font-size:10px;padding:3px 6px;background:#E5E7EB;color:#4B5563;border:1px solid rgba(75,85,99,0.25)">Completed</span>`;
       } else if (status === 'Upcoming') {
         statusBadge = `<span class="badge" style="margin-left:6px;font-size:10px;padding:3px 6px;background:#EFF6FF;color:#1D4ED8;border:1px solid rgba(29,78,216,0.15)">Upcoming</span>`;
       } else {
@@ -11212,19 +11213,43 @@ function loadMyBatches() {
         ? `<span class="badge" style="margin-left:6px;font-size:10px;padding:3px 6px;background:#FEF2F2;color:#DC2626;border:1px solid rgba(220,38,38,0.25)">No Students</span>`
         : '';
 
-      var deleteButtonsHtml = sCount === 0
-        ? `<button class="btn" style="padding:4px 8px; font-size:11px; width:auto; background:#DC2626; color:#fff; border:none" onclick="promptDeleteBatch('${escC(b.batchCode)}', false)">Delete Empty Batch</button>`
-        : `
+      var lockedNote = isCompleted
+        ? `<div style="margin-top:6px;font-size:10px;color:#9CA3AF;font-style:italic">🔒 Batch completed — editing and deletion are locked.</div>`
+        : '';
+
+      var lockedPillStyle = 'font-size:11px;color:#9CA3AF;background:none;border:1px solid #E5E7EB;border-radius:6px;padding:3px 10px;cursor:not-allowed';
+
+      var deleteButtonsHtml = isCompleted
+        ? `<span style="${lockedPillStyle}" title="Locked — batch completed">🔒 Delete</span>`
+        : (sCount === 0
+          ? `<button class="btn" style="padding:4px 8px; font-size:11px; width:auto; background:#DC2626; color:#fff; border:none" onclick="promptDeleteBatch('${escC(b.batchCode)}', false)">Delete Empty Batch</button>`
+          : `
           <button class="btn btn-outline" style="padding:4px 8px; font-size:11px; width:auto; border-color:rgba(201,74,74,0.3); color:var(--red)" onclick="promptDeleteBatch('${escC(b.batchCode)}', true)">Delete Batch (Keep Students)</button>
           <button class="btn" style="padding:4px 8px; font-size:11px; width:auto; background:#DC2626; color:#fff; border:none" onclick="promptDeleteBatch('${escC(b.batchCode)}', false)">Delete Batch &amp; Students</button>
-        `;
+        `);
+
+      var changeInstructorControl = isCompleted
+        ? (b.instructor ? `<span style="${lockedPillStyle}" title="Locked — batch completed">🔒 Change Instructor</span>` : '')
+        : (b.instructor?`<button onclick="document.getElementById('change-instr-panel-${escC(b.batchCode)}').style.display=document.getElementById('change-instr-panel-${escC(b.batchCode)}').style.display==='none'?'block':'none'" style="font-size:11px;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer;color:var(--navy)">✏️ Change Instructor</button>`:'');
+
+      var coInstructorControl = isCompleted
+        ? `<span style="${lockedPillStyle}" title="Locked — batch completed">🔒 Cover instructor</span>`
+        : `<button onclick="toggleCoPanel('${escC(b.batchCode)}')" style="font-size:11px;background:none;border:1px solid #bbf7d0;border-radius:6px;padding:3px 10px;cursor:pointer;color:#166534">↔ Cover instructor <span id="co-arrow-${escC(b.batchCode)}">${b.coInstructor?'▴':'▾'}</span></button>`;
+
+      var editBatchControl = isCompleted
+        ? `<span style="padding:4px 8px;${lockedPillStyle}" title="Locked — batch completed">🔒 Edit Batch</span>`
+        : `<button class="btn btn-outline" style="padding:4px 8px; font-size:11px; width:auto; color:var(--navy);" onclick="openBatchEditDatesModal('${escC(b.batchCode)}','${b.startDate||''}','${b.endDate||''}','${escC(b.batchSlot||'Full Day')}')">📅 Edit Batch</button>`;
+
+      var checkboxHtml = isCompleted
+        ? `<input type="checkbox" class="mb-batch-cb" value="${escC(b.batchCode)}" disabled title="Locked — batch completed" style="margin-top:3px;width:15px;height:15px;opacity:0.35;cursor:not-allowed">`
+        : `<input type="checkbox" class="mb-batch-cb" value="${escC(b.batchCode)}" onchange="onMbCheckChange()" style="margin-top:3px;width:15px;height:15px;cursor:pointer;accent-color:var(--navy)">`;
 
       return `
-      <div class="batch-row" id="mbrow-${escC(b.batchCode)}">
+      <div class="batch-row" id="mbrow-${escC(b.batchCode)}" style="${isCompleted?'background:#F9FAFB;border-color:#E5E7EB;':''}">
         <div style="display:flex;align-items:flex-start;gap:8px">
-          <input type="checkbox" class="mb-batch-cb" value="${escC(b.batchCode)}" onchange="onMbCheckChange()" style="margin-top:3px;width:15px;height:15px;cursor:pointer;accent-color:var(--navy)">
+          ${checkboxHtml}
           <div style="flex:1">
-        <div class="bc">${b.batchCode}</div>
+        <div class="bc" style="${isCompleted?'color:#6B7280;':''}">${b.batchCode}</div>
         <div class="bm">${b.course} &nbsp;·&nbsp; ${b.centre} &nbsp;·&nbsp; ${b.type} &nbsp;·&nbsp; ${b.startDate}${b.endDate?' → '+b.endDate:''} &nbsp;·&nbsp; 👥 ${sCount} Student${sCount !== 1 ? 's' : ''}</div>
         <div style="margin-top:4px">
           <span class="badge badge-blue">${b.counselor}</span>
@@ -11241,25 +11266,57 @@ function loadMyBatches() {
           ${clashBadge}
           ${emptyBadge}
         </div>
-        ${b.instructor?'':renderInlineInstructorAssign(b.batchCode,'')}
+        ${(!isCompleted && !b.instructor)?renderInlineInstructorAssign(b.batchCode,''):''}
         <div id="change-instr-panel-${escC(b.batchCode)}" style="display:none;margin-top:6px">
-          ${renderInlineInstructorAssign(b.batchCode, b.instructor||'')}
+          ${isCompleted?'':renderInlineInstructorAssign(b.batchCode, b.instructor||'')}
         </div>
         <div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          ${b.instructor?`<button onclick="document.getElementById('change-instr-panel-${escC(b.batchCode)}').style.display=document.getElementById('change-instr-panel-${escC(b.batchCode)}').style.display==='none'?'block':'none'" style="font-size:11px;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer;color:var(--navy)">✏️ Change Instructor</button>`:''}
-          <button onclick="toggleCoPanel('${escC(b.batchCode)}')" style="font-size:11px;background:none;border:1px solid #bbf7d0;border-radius:6px;padding:3px 10px;cursor:pointer;color:#166534">↔ Cover instructor <span id="co-arrow-${escC(b.batchCode)}">${b.coInstructor?'▴':'▾'}</span></button>
+          ${changeInstructorControl}
+          ${coInstructorControl}
         </div>
-        <div id="co-panel-${escC(b.batchCode)}" style="display:${b.coInstructor?'block':'none'};margin-top:6px">
-          ${renderInlineCoInstructorAssign(b.batchCode, b.coInstructor||'', b.coInstructorUntil||'', b.endDate||'')}
+        <div id="co-panel-${escC(b.batchCode)}" style="display:${(!isCompleted && b.coInstructor)?'block':'none'};margin-top:6px">
+          ${isCompleted?'':renderInlineCoInstructorAssign(b.batchCode, b.coInstructor||'', b.coInstructorUntil||'', b.endDate||'')}
         </div>
-        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
-          <button class="btn btn-outline" style="padding:4px 8px; font-size:11px; width:auto; color:var(--navy);" onclick="openBatchEditDatesModal('${escC(b.batchCode)}','${b.startDate||''}','${b.endDate||''}','${escC(b.batchSlot||'Full Day')}')">📅 Edit Batch</button>
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+          ${editBatchControl}
           ${deleteButtonsHtml}
         </div>
+        ${lockedNote}
           </div>
         </div>
       </div>`;
-    }).join('');
+    }
+
+    var groupActive = [], groupUpcoming = [], groupCompleted = [];
+    batches.forEach(function(b) {
+      var st = getBatchStatus(b);
+      if (st === 'Upcoming') groupUpcoming.push(b);
+      else if (st === 'Completed') groupCompleted.push(b);
+      else groupActive.push(b);
+    });
+    function toTime(str) { var d = parseDMY(str); return d ? d.getTime() : 0; }
+    groupActive.sort(function(a,b){ return toTime(a.startDate) - toTime(b.startDate); });
+    groupUpcoming.sort(function(a,b){ return toTime(a.startDate) - toTime(b.startDate); });
+    groupCompleted.sort(function(a,b){ return toTime(b.endDate||b.startDate) - toTime(a.endDate||a.startDate); });
+
+    function renderSection(bodyId, label, headerBg, headerText, list, defaultOpen, isCompletedGroup) {
+      if (!list.length) return '';
+      return `
+      <div class="mb-section" style="margin-bottom:16px">
+        <div class="mb-section-header" onclick="mbToggleSection('${bodyId}', this)" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:8px;background:${headerBg};margin-bottom:10px;user-select:none">
+          <span class="mb-chevron" style="font-size:11px;color:${headerText};display:inline-block;transition:transform .15s;transform:rotate(${defaultOpen?'90deg':'0deg'})">▸</span>
+          <span style="font-size:12px;font-weight:700;color:${headerText};text-transform:uppercase;letter-spacing:.05em">${label} (${list.length})</span>
+        </div>
+        <div id="${bodyId}" style="display:${defaultOpen?'block':'none'}">
+          ${list.map(function(b){ return renderRow(b, isCompletedGroup); }).join('')}
+        </div>
+      </div>`;
+    }
+
+    el.innerHTML =
+      renderSection('mb-sec-active', 'Active', 'rgba(201,168,76,0.12)', '#B87A10', groupActive, true, false) +
+      renderSection('mb-sec-upcoming', 'Upcoming', '#EFF6FF', '#1D4ED8', groupUpcoming, true, false) +
+      renderSection('mb-sec-completed', 'Completed', '#F3F4F6', '#6B7280', groupCompleted, false, true);
   }
   // Reuse allBatches if already loaded — avoids a duplicate GAS call at login
   if (allBatches && allBatches.length) {
@@ -11274,6 +11331,15 @@ function loadMyBatches() {
     allBatches = d.batches;
     renderMyBatchList(d.batches);
   });
+}
+
+function mbToggleSection(bodyId, headerEl) {
+  var body = document.getElementById(bodyId);
+  if (!body) return;
+  var isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  var chev = headerEl.querySelector('.mb-chevron');
+  if (chev) chev.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
 }
 
 function promptDeleteBatch(batchCode, keepStudents) {

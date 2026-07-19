@@ -11218,20 +11218,37 @@ function loadMyBatches() {
         ? `<span class="badge" style="margin-left:6px;font-size:10px;padding:3px 6px;background:#FEF2F2;color:#DC2626;border:1px solid rgba(220,38,38,0.25)">No Students</span>`
         : '';
 
+      // Once an Active batch has been running 3+ days, students/sessions are likely
+      // attached to it — lock Delete specifically (not the other edit controls) so it
+      // can't be removed by accident. Upcoming batches (start date in the future) never
+      // trigger this since daysSinceStart is negative for them.
+      var daysSinceStart = null;
+      var startDForAge = parseBatchDate(b.startDate);
+      if (startDForAge) {
+        var todayMid = new Date(); todayMid.setHours(0,0,0,0);
+        var startMid = new Date(startDForAge); startMid.setHours(0,0,0,0);
+        daysSinceStart = Math.floor((todayMid - startMid) / 86400000);
+      }
+      var deleteLockedByAge = !isCompleted && daysSinceStart !== null && daysSinceStart >= 3;
+
       var lockedNote = isCompleted
         ? `<div style="margin-top:6px;font-size:10px;color:#9CA3AF;font-style:italic">🔒 Batch completed — editing and deletion are locked.</div>`
-        : '';
+        : (deleteLockedByAge
+          ? `<div style="margin-top:6px;font-size:10px;color:#9CA3AF;font-style:italic">🔒 Batch started ${daysSinceStart} days ago — deletion is locked to prevent accidental removal.</div>`
+          : '');
 
       var lockedPillStyle = 'font-size:11px;color:#9CA3AF;background:none;border:1px solid #E5E7EB;border-radius:6px;padding:3px 10px;cursor:not-allowed';
 
       var deleteButtonsHtml = isCompleted
         ? `<span style="${lockedPillStyle}" title="Locked — batch completed">🔒 Delete</span>`
+        : (deleteLockedByAge
+        ? `<span style="${lockedPillStyle}" title="Locked — batch started ${daysSinceStart} days ago">🔒 Delete</span>`
         : (sCount === 0
           ? `<button class="btn" style="padding:4px 8px; font-size:11px; width:auto; background:#DC2626; color:#fff; border:none" onclick="promptDeleteBatch('${escC(b.batchCode)}', false)">Delete Empty Batch</button>`
           : `
           <button class="btn btn-outline" style="padding:4px 8px; font-size:11px; width:auto; border-color:rgba(201,74,74,0.3); color:var(--red)" onclick="promptDeleteBatch('${escC(b.batchCode)}', true)">Delete Batch (Keep Students)</button>
           <button class="btn" style="padding:4px 8px; font-size:11px; width:auto; background:#DC2626; color:#fff; border:none" onclick="promptDeleteBatch('${escC(b.batchCode)}', false)">Delete Batch &amp; Students</button>
-        `);
+        `));
 
       var changeInstructorControl = isCompleted
         ? (b.instructor ? `<span style="${lockedPillStyle}" title="Locked — batch completed">🔒 Change Instructor</span>` : '')

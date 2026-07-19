@@ -11123,37 +11123,42 @@ function loadMyBatches() {
       return;
     }
 
+    // Batch dates come back from Supabase as ISO ("YYYY-MM-DD"), but some legacy call
+    // sites still pass DD/MM/YYYY strings — detect and parse either safely.
+    function parseBatchDate(str) {
+      if (!str) return null;
+      var s = String(str).trim();
+      var iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (iso) {
+        var dISO = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+        return isNaN(dISO.getTime()) ? null : dISO;
+      }
+      var parts = s.split('/');
+      if (parts.length === 3) {
+        var dDMY = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+        return isNaN(dDMY.getTime()) ? null : dDMY;
+      }
+      return null;
+    }
+
     function getBatchStatus(b) {
       const today = new Date(); today.setHours(0,0,0,0);
-      if (!b.startDate) return 'Completed';
-      
-      const startParts = String(b.startDate).split('/');
-      if (startParts.length !== 3) return 'Active';
-      const start = new Date(Number(startParts[2]), Number(startParts[1])-1, Number(startParts[0]));
+      const start = parseBatchDate(b.startDate);
+      if (!start) return 'Completed';
       start.setHours(0,0,0,0);
 
       if (today < start) return 'Upcoming';
 
-      if (b.endDate) {
-        const endParts = String(b.endDate).split('/');
-        if (endParts.length === 3) {
-          const end = new Date(Number(endParts[2]), Number(endParts[1])-1, Number(endParts[0]));
-          end.setHours(23,59,59,999);
-          if (today > end) return 'Completed';
-        }
+      const end = parseBatchDate(b.endDate);
+      if (end) {
+        end.setHours(23,59,59,999);
+        if (today > end) return 'Completed';
       }
       return 'Active';
     }
 
     function parseDMY(str) {
-      if (!str) return null;
-      var parts = String(str).split('/');
-      if (parts.length !== 3) return null;
-      var day = parseInt(parts[0], 10);
-      var month = parseInt(parts[1], 10) - 1;
-      var year = parseInt(parts[2], 10);
-      var d = new Date(year, month, day);
-      return isNaN(d.getTime()) ? null : d;
+      return parseBatchDate(str);
     }
 
     function getClashingBatches(b, list) {

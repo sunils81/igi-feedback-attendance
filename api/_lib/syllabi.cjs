@@ -376,34 +376,64 @@ function normalizeTopic(str) {
     .trim();
 }
 
+// Given a syllabus and a topic string, returns the syllabus day number if the
+// topic is an exact (normalized) match for one of the syllabus's predefined
+// topics, or null if it's a custom/off-syllabus topic (factory visit, makeup
+// review, an instructor-typed description, etc.). Used at write time — when a
+// session is created or its topic is set/confirmed — to record which specific
+// day (if any) that session actually covered.
+function findSyllabusDay(syllabus, topic) {
+  const key = normalizeTopic(topic);
+  if (!key) return null;
+  for (let i = 0; i < syllabus.length; i++) {
+    if (normalizeTopic(syllabus[i].topic) === key) return syllabus[i].day || (i + 1);
+  }
+  return null;
+}
+
 // Given a course's syllabus and the batch's past (non-cancelled) sessions
-// (each { topic, session_date }, oldest first), work out which syllabus
-// days have already been taught and what the next one should be.
+// (each { topic, session_date, syllabus_day }, oldest first), work out which
+// syllabus days have already been taught and what the next one should be.
 //
-// Progression is simply "one syllabus day per session held" — the count of past
-// (non-cancelled) sessions determines the next day. This used to instead try to
-// detect which specific days were covered by exact-text-matching each session's
-// topic against the syllabus, and resume right after the furthest matched day.
-// In practice instructors almost always type their own topic wording rather than
-// the exact syllabus text, so that match rarely fires — and when it does (e.g.
-// because a session's topic happens to equal the syllabus text the cron itself
-// pre-filled), it can permanently freeze progression: once a later session's
-// topic stops matching, the "furthest matched day" stops advancing, so every
-// subsequent session gets pre-filled with that same frozen day's topic forever
-// (this is what caused a batch to get stuck re-suggesting "Day 4" every day).
-// Plain session-count progression avoids that trap entirely.
+// Progression is based on the explicit syllabus_day recorded on each session
+// row (set by findSyllabusDay at write time), not on the count of sessions
+// held and not on re-matching topic text after the fact. Two earlier
+// approaches were tried and both had a failure mode:
+//   - Exact-text-matching each past session's topic against the syllabus,
+//     resuming right after the furthest matched day. Instructors rarely type
+//     the exact syllabus wording, so matches would rarely fire — and when a
+//     later session's topic stopped matching, the "furthest matched day"
+//     would stop advancing, permanently freezing progression on the same day
+//     (a batch got stuck re-suggesting "Day 4" every day).
+//   - Plain session-count progression ("session N covers day N" for every
+//     non-cancelled session, regardless of its actual topic). This avoided
+//     the freeze, but any session with a non-syllabus topic (factory visit,
+//     holiday makeup, custom description) still consumed a slot in the
+//     count, silently skipping the real topic for that day ahead and marking
+//     it "already covered" even though nobody covered it.
+// Recording the day explicitly on the row avoids both: a custom-topic
+// session simply doesn't set syllabus_day, so it doesn't consume a slot, and
+// there's no drift from re-matching text after the fact. "Next" is just the
+// lowest-numbered day nobody has recorded yet, so it's correct regardless of
+// order, holidays, or how many custom sessions happen along the way.
 function computeNextSyllabusDay(syllabus, pastSessions) {
-  const pastCount = (pastSessions || []).length;
-  const nextIndex = pastCount;
-  const usedDays = syllabus.slice(0, Math.min(pastCount, syllabus.length))
-    .map((s, i) => s.day || (i + 1));
+  const usedDaySet = new Set();
+  (pastSessions || []).forEach((s) => {
+    const d = s.syllabus_day;
+    if (d !== null && d !== undefined && d !== '') usedDaySet.add(Number(d));
+  });
+  const usedDays = Array.from(usedDaySet).sort((a, b) => a - b);
   const result = { dayNo: '', topic: '', week: '', usedDays };
-  if (syllabus.length && nextIndex < syllabus.length) {
-    result.dayNo = syllabus[nextIndex].day || (nextIndex + 1);
-    result.topic = syllabus[nextIndex].topic;
-    result.week = syllabus[nextIndex].week || '';
+  for (let i = 0; i < syllabus.length; i++) {
+    const day = syllabus[i].day || (i + 1);
+    if (!usedDaySet.has(day)) {
+      result.dayNo = day;
+      result.topic = syllabus[i].topic;
+      result.week = syllabus[i].week || '';
+      break;
+    }
   }
   return result;
 }
 
-module.exports = { SYLLABI, getSyllabusForCourse, computeNextSyllabusDay, normalizeTopic };
+module.exports = { SYLLABI, getSyllabusForCourse, computeNextSyllabusDay, findSyllabusDay, normalizeTopic };

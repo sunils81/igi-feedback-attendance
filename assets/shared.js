@@ -2146,11 +2146,21 @@ window.gasGet = (function () {
       var nonCancelledCount = rows.filter(function (r) { return r.session_type !== 'Cancelled'; }).length;
       var displayNo = nonCancelledCount + 1;
       var sessCode = p.batchCode + '-S' + String(nextNo).padStart(2, '0');
-      POST('sessions', 'on_conflict=session_code', {
-        session_code: sessCode, batch_code: p.batchCode,
-        session_date: p.sessionDate || todayYMD(), sess_no: nextNo,
-        instructor: p.instructor || '', session_type: p.sessionType || 'Scheduled', topic: p.topic || ''
-      }, function (e2) { cb(null, e2 ? { status: 'error' } : { status: 'ok', sessionCode: sessCode, sessNo: nextNo, displaySessNo: displayNo }); });
+      // Work out which syllabus day (if any) this session's topic corresponds to
+      // — null for a custom/off-syllabus topic (factory visit, makeup session
+      // with its own description, etc.) so it doesn't consume a syllabus day.
+      // See computeSyllabusProgress for why this matters.
+      GET('batches', 'batch_code=eq.' + encodeURIComponent(p.batchCode) + '&select=course&limit=1', function (eb, bRows) {
+        var course = bRows && bRows[0] ? bRows[0].course : '';
+        var syllabus = resolveSyllabus(course);
+        var syllabusDay = p.topic ? findSyllabusDay(syllabus, p.topic) : null;
+        POST('sessions', 'on_conflict=session_code', {
+          session_code: sessCode, batch_code: p.batchCode,
+          session_date: p.sessionDate || todayYMD(), sess_no: nextNo,
+          instructor: p.instructor || '', session_type: p.sessionType || 'Scheduled', topic: p.topic || '',
+          syllabus_day: syllabusDay
+        }, function (e2) { cb(null, e2 ? { status: 'error' } : { status: 'ok', sessionCode: sessCode, sessNo: nextNo, displaySessNo: displayNo }); });
+      });
     });
   }
 
@@ -5297,31 +5307,81 @@ window.gasGet = (function () {
       .trim();
   }
 
-  // Given a course's syllabus and that batch's past (non-cancelled) sessions,
-  // works out which syllabus days are already covered and what the next one is.
+  // Course-name aliases (kept in sync with getSyllabusForCourse in instructor-portal.html
+  // and ALIASES in api/_lib/syllabi.cjs).
+  var SYLLABUS_ALIASES = {
+    'JewelPad On-campus': 'JewelPad Design',
+    'JewelPad Online':    'JewelPad Design',
+    'Jewelpad Design':    'JewelPad Design',
+    'jewelpad design':    'JewelPad Design',
+  };
+  function resolveSyllabus(courseName) {
+    var all = window.SYLLABI || {};
+    if (all[courseName]) return all[courseName];
+    var canon = SYLLABUS_ALIASES[courseName];
+    if (canon && all[canon]) return all[canon];
+    return [];
+  }
+
+  // Given a syllabus and a topic string, returns the syllabus day number if the
+  // topic is an exact (normalized) match for one of the syllabus's predefined
+  // topics, or null if it's a custom/off-syllabus topic (factory visit, makeup
+  // review, an instructor-typed description, etc.). Used at write time — when a
+  // session is created or its topic is set/confirmed — to record which specific
+  // day (if any) that session actually covered. See computeSyllabusProgress.
+  function findSyllabusDay(syllabus, topic) {
+    var key = normTopicKey(topic);
+    if (!key) return null;
+    for (var i = 0; i < syllabus.length; i++) {
+      if (normTopicKey(syllabus[i].topic) === key) return syllabus[i].day || (i + 1);
+    }
+    return null;
+  }
+
+  // Given a course's syllabus and that batch's past (non-cancelled) sessions
+  // (each including syllabus_day), works out which syllabus days are already
+  // covered and what the next one is.
   //
-  // Progression is simply "one syllabus day per session held" — the count of past
-  // (non-cancelled) sessions determines the next day. This used to instead try to
-  // detect which specific days were covered by exact-text-matching each session's
-  // topic against the syllabus, and resume right after the furthest matched day.
-  // In practice instructors almost always type their own topic wording rather than
-  // the exact syllabus text, so that match rarely fires — and when it does (e.g.
-  // because a session's topic happens to equal the syllabus text the cron itself
-  // pre-filled), it can permanently freeze progression: once a later session's
-  // topic stops matching, the "furthest matched day" stops advancing, so every
-  // subsequent session gets pre-filled with that same frozen day's topic forever
-  // (this is what caused a batch to get stuck re-suggesting "Day 4" every day).
-  // Plain session-count progression avoids that trap entirely.
+  // Progression is based on the explicit syllabus_day recorded on each session
+  // row (set by findSyllabusDay at write time), not on the count of sessions
+  // held and not on re-matching topic text after the fact. Two earlier
+  // approaches were tried and both had a failure mode:
+  //   - Exact-text-matching each past session's topic against the syllabus,
+  //     resuming right after the furthest matched day. Instructors rarely type
+  //     the exact syllabus wording, so matches would rarely fire — and when a
+  //     later session's topic stopped matching, the "furthest matched day"
+  //     would stop advancing, permanently freezing progression on the same day
+  //     (a batch got stuck re-suggesting "Day 4" every day).
+  //   - Plain session-count progression ("session N covers day N" for every
+  //     non-cancelled session, regardless of its actual topic). This avoided
+  //     the freeze, but any session with a non-syllabus topic (factory visit,
+  //     holiday makeup, custom description) still consumed a slot in the
+  //     count, silently skipping the real topic for that day ahead and marking
+  //     it "already covered" even though nobody covered it.
+  // Recording the day explicitly on the row avoids both: a custom-topic
+  // session simply doesn't set syllabus_day, so it doesn't consume a slot, and
+  // there's no drift from re-matching text after the fact. "Next" is just the
+  // lowest-numbered day nobody has recorded yet, so it's correct regardless of
+  // order, holidays, or how many custom sessions happen along the way.
   function computeSyllabusProgress(syllabus, pastRows) {
-    var pastCount = (pastRows || []).length;
-    var nextIndex = pastCount;
-    var usedDays = syllabus.slice(0, Math.min(pastCount, syllabus.length))
-      .map(function (s, i) { return s.day || (i + 1); });
+    var usedDaySet = {};
+    var usedDays = [];
+    (pastRows || []).forEach(function (r) {
+      var d = r.syllabus_day;
+      if (d === null || d === undefined || d === '') return;
+      d = Number(d);
+      if (!usedDaySet[d]) { usedDaySet[d] = true; usedDays.push(d); }
+    });
+    usedDays.sort(function (a, b) { return a - b; });
     var out = { dayNo: '', scheduledTopic: '', week: '', usedDays: usedDays };
-    if (syllabus.length && nextIndex < syllabus.length) {
-      out.dayNo = syllabus[nextIndex].day || (nextIndex + 1);
-      out.scheduledTopic = syllabus[nextIndex].topic;
-      out.week = syllabus[nextIndex].week || '';
+    for (var i = 0; i < syllabus.length; i++) {
+      var day = syllabus[i].day || (i + 1);
+      if (!usedDaySet[day]) {
+        out.dayNo = day;
+        out.scheduledTopic = syllabus[i].topic;
+        out.week = syllabus[i].week || '';
+        break;
+      }
     }
     return out;
   }
@@ -5359,7 +5419,7 @@ window.gasGet = (function () {
       var codesQs = current.map(function (b) { return encodeURIComponent(b.batch_code); }).join(',');
       // Pull the full session history (not just today) for these batches in one call,
       // so we can both find today's session and work out each batch's syllabus progress.
-      GET('sessions', 'batch_code=in.(' + codesQs + ')&order=session_date.asc,sess_no.asc&select=session_code,batch_code,session_date,sess_no,topic,session_type', function (e2, allSess) {
+      GET('sessions', 'batch_code=in.(' + codesQs + ')&order=session_date.asc,sess_no.asc&select=session_code,batch_code,session_date,sess_no,topic,session_type,syllabus_day', function (e2, allSess) {
         allSess = allSess || [];
         // displaySessNo is a cosmetic per-batch rank among non-cancelled sessions only,
         // so the "Session N" label shown to instructors doesn't drift ahead of the
@@ -5376,7 +5436,7 @@ window.gasGet = (function () {
           var startD = b.start_date || '';
           var endD = b.end_date || '';
           var activeToday = startD && endD && today >= startD && today <= endD;
-          var syllabus = (window.SYLLABI || {})[b.course] || [];
+          var syllabus = resolveSyllabus(b.course);
           var pastRows = allSess.filter(function (s) {
             return s.batch_code === b.batch_code && s.session_date < today && s.session_type !== 'Cancelled';
           });
@@ -5399,8 +5459,20 @@ window.gasGet = (function () {
   }
 
   function h_updateSessionTopic(p, cb) {
-    PATCH('sessions', 'session_code=eq.' + encodeURIComponent(p.sessionCode), { topic: p.topic }, function(e) {
-      cb(null, e ? { status: 'error' } : { status: 'ok' });
+    // Re-resolve which syllabus day (if any) the new topic corresponds to,
+    // same as at creation time — an instructor overriding to a custom topic
+    // clears syllabus_day so it stops counting as covering a day; picking a
+    // real syllabus topic (re)sets it. See computeSyllabusProgress.
+    GET('sessions', 'session_code=eq.' + encodeURIComponent(p.sessionCode) + '&select=batch_code&limit=1', function (e0, sRows) {
+      var batchCode = sRows && sRows[0] ? sRows[0].batch_code : '';
+      GET('batches', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=course&limit=1', function (eb, bRows) {
+        var course = bRows && bRows[0] ? bRows[0].course : '';
+        var syllabus = resolveSyllabus(course);
+        var syllabusDay = p.topic ? findSyllabusDay(syllabus, p.topic) : null;
+        PATCH('sessions', 'session_code=eq.' + encodeURIComponent(p.sessionCode), { topic: p.topic, syllabus_day: syllabusDay }, function(e) {
+          cb(null, e ? { status: 'error' } : { status: 'ok' });
+        });
+      });
     });
   }
 

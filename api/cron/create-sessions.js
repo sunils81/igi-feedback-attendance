@@ -106,15 +106,20 @@ export default async function handler(req, res) {
         // Work out the next syllabus day from this batch's own session history
         // (past non-cancelled sessions, oldest first) rather than a calendar offset —
         // this way skipped/holiday/extra days don't throw off the progression.
+        // Progress is driven by each past session's recorded syllabus_day (set
+        // explicitly when it was created/confirmed), not by counting sessions —
+        // see computeNextSyllabusDay in ../_lib/syllabi.cjs for why.
         const syllabus = getSyllabusForCourse(b.course);
         let topic = '';
+        let syllabusDay = null;
         if (syllabus.length) {
           const pastSessions = await supaGet(
             'sessions',
-            `batch_code=eq.${encodeURIComponent(b.batch_code)}&session_date=lt.${today}&session_type=neq.Cancelled&select=topic,session_date&order=session_date.asc`
+            `batch_code=eq.${encodeURIComponent(b.batch_code)}&session_date=lt.${today}&session_type=neq.Cancelled&select=topic,session_date,syllabus_day&order=session_date.asc`
           );
           const progress = computeNextSyllabusDay(syllabus, pastSessions);
           topic = progress.topic || '';
+          syllabusDay = progress.dayNo || null;
         }
 
         await supaPost('sessions', {
@@ -124,7 +129,8 @@ export default async function handler(req, res) {
           sess_no: nextNo,
           instructor: effectiveInstructor,
           session_type: 'Scheduled',
-          topic
+          topic,
+          syllabus_day: syllabusDay
         });
 
         created.push(sessCode);

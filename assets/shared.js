@@ -5458,19 +5458,40 @@ window.gasGet = (function () {
     });
   }
 
+  // Used both by the live "Confirm Topic" flow (today's session) and by the
+  // topic-correction control on past sessions in the Attendance tab timeline.
+  // Any instructor who owns or is actively covering the batch may correct any
+  // of that batch's sessions, past or present — but every change is logged to
+  // session_topic_corrections (old/new topic, old/new syllabus_day, who, when)
+  // since this now actively drives syllabus progression, not just display.
   function h_updateSessionTopic(p, cb) {
-    // Re-resolve which syllabus day (if any) the new topic corresponds to,
-    // same as at creation time — an instructor overriding to a custom topic
-    // clears syllabus_day so it stops counting as covering a day; picking a
-    // real syllabus topic (re)sets it. See computeSyllabusProgress.
-    GET('sessions', 'session_code=eq.' + encodeURIComponent(p.sessionCode) + '&select=batch_code&limit=1', function (e0, sRows) {
-      var batchCode = sRows && sRows[0] ? sRows[0].batch_code : '';
-      GET('batches', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=course&limit=1', function (eb, bRows) {
-        var course = bRows && bRows[0] ? bRows[0].course : '';
-        var syllabus = resolveSyllabus(course);
+    GET('sessions', 'session_code=eq.' + encodeURIComponent(p.sessionCode) + '&select=batch_code,topic,syllabus_day&limit=1', function (e0, sRows) {
+      var sRow = sRows && sRows[0];
+      if (!sRow) { cb(null, { status: 'error', message: 'Session not found' }); return; }
+      var batchCode = sRow.batch_code;
+      GET('batches', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=course,instructor,co_instructor,co_instructor_until&limit=1', function (eb, bRows) {
+        var bRow = bRows && bRows[0];
+        if (!bRow) { cb(null, { status: 'error', message: 'Batch not found' }); return; }
+        var instr = String(p.instructor || '').trim();
+        var isOwner = sameName(bRow.instructor, instr);
+        var isCover = bRow.co_instructor && sameName(bRow.co_instructor, instr) &&
+          (!bRow.co_instructor_until || bRow.co_instructor_until >= todayYMD());
+        if (!isOwner && !isCover) {
+          cb(null, { status: 'error', message: 'You are not assigned to this batch' });
+          return;
+        }
+        var syllabus = resolveSyllabus(bRow.course);
         var syllabusDay = p.topic ? findSyllabusDay(syllabus, p.topic) : null;
         PATCH('sessions', 'session_code=eq.' + encodeURIComponent(p.sessionCode), { topic: p.topic, syllabus_day: syllabusDay }, function(e) {
-          cb(null, e ? { status: 'error' } : { status: 'ok' });
+          if (e) { cb(null, { status: 'error' }); return; }
+          // Best-effort audit log — never blocks or fails the actual update.
+          POST('session_topic_corrections', '', {
+            session_code: p.sessionCode, batch_code: batchCode,
+            old_topic: sRow.topic || '', new_topic: p.topic || '',
+            old_syllabus_day: (sRow.syllabus_day === undefined ? null : sRow.syllabus_day),
+            new_syllabus_day: syllabusDay, corrected_by: instr
+          }, function () {});
+          cb(null, { status: 'ok', syllabusDay: syllabusDay });
         });
       });
     });

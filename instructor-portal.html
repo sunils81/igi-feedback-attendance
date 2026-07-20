@@ -3531,23 +3531,114 @@ function loadInstructorAttendanceCalendar(anchor) {
   });
 }
 
+// Full session objects for the batch currently shown in the Attendance tab
+// timeline, keyed by sessionCode — used by the topic-correction control so it
+// has the untruncated topic text without another round-trip to the server.
+var sessionTimelineCache = {};
+var sessionTimelineBatch = '';
+
 function loadSessionTimeline(batch) {
   const wrap = document.getElementById('at-timeline');
   wrap.innerHTML = '<div class="spinner-wrap" style="padding:14px"><div class="spinner"></div><p>Preparing session timeline…</p></div>';
+  sessionTimelineBatch = batch;
   gasGet({action:'getSessions', batchCode:batch}, function(e,d) {
     if (e||!d||!d.sessions||!d.sessions.length) { wrap.innerHTML=''; return; }
     wrap.innerHTML = '';
+    sessionTimelineCache = {};
     var sessHtml = '';
     d.sessions.forEach(function(s) {
+      sessionTimelineCache[s.sessionCode] = s;
       var isToday = s.sessionDate === new Date().toLocaleDateString('en-IN');
       var cancelled = s.sessionType === 'Cancelled';
-      sessHtml += '<div class="sess-row" style="' + (isToday?'border-left:3px solid var(--gold);':'') + (cancelled?'background:#FEF2F2;':'') + '">';
+      sessHtml += '<div class="sess-row" id="tl-row-' + escH(s.sessionCode) + '" style="' + (isToday?'border-left:3px solid var(--gold);':'') + (cancelled?'background:#FEF2F2;':'') + '">';
+      sessHtml += '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">';
+      sessHtml += '<div>';
       sessHtml += '<div class="sc">' + s.sessionCode + (cancelled?' <span style="color:#C94A4A;font-size:10px">CANCELLED</span>':'') + '</div>';
       sessHtml += '<div class="sm">' + (s.sessionDate||'') + ' · ' + (s.instructor||'') + (s.topic?' · '+s.topic.substring(0,40):'') + '</div>';
+      sessHtml += '</div>';
+      if (!cancelled) {
+        sessHtml += '<button type="button" class="btn btn-outline" style="width:auto;flex-shrink:0;padding:3px 9px;font-size:10px" onclick="event.stopPropagation();toggleTopicEdit(\'' + escH(s.sessionCode) + '\')">Fix topic</button>';
+      }
+      sessHtml += '</div>';
+      sessHtml += '<div id="tl-edit-' + escH(s.sessionCode) + '" style="display:none;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)"></div>';
       sessHtml += '</div>';
     });
     wrap.innerHTML = sessHtml || emptyState('🗓', 'No sessions recorded yet', 'Once class starts, the session timeline will appear here.');
     });
+}
+
+// Expands an inline "correct this session's topic" form under a timeline row.
+// Any past OR present session for a batch the instructor owns/co-teaches can
+// be corrected this way — useful when a topic was auto-filled wrong, left
+// over from a stuck/frozen suggestion, or just needs updating after the
+// fact. Every save is logged server-side (see h_updateSessionTopic).
+function toggleTopicEdit(sessionCode) {
+  var box = document.getElementById('tl-edit-' + sessionCode);
+  if (!box) return;
+  if (box.style.display === 'block') { box.style.display = 'none'; box.innerHTML = ''; return; }
+
+  var s = sessionTimelineCache[sessionCode];
+  var batch = (typeof instructorBatchesCache !== 'undefined' ? instructorBatchesCache : []).find(function (b) { return b.batchCode === sessionTimelineBatch; });
+  var syllabus = batch ? (batch.syllabus || []) : [];
+  var currentTopic = (s && s.topic) || '';
+  var isPredefined = false;
+  syllabus.forEach(function (item) { if (normalizeTopic(item.topic) === normalizeTopic(currentTopic)) isPredefined = true; });
+
+  var html = '<select id="tl-select-' + sessionCode + '" onchange="handleTimelineTopicSelectChange(\'' + sessionCode + '\')" style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--border);font-family:inherit;font-size:13px;background:#fff;margin-bottom:6px;">';
+  html += '<option value="">-- Select Topic --</option>';
+  syllabus.forEach(function (item) {
+    var selected = (isPredefined && normalizeTopic(item.topic) === normalizeTopic(currentTopic)) ? ' selected' : '';
+    html += '<option value="' + escH(item.topic) + '"' + selected + '>Day ' + item.day + ': ' + escH(item.topic) + '</option>';
+  });
+  var customSelected = (currentTopic && !isPredefined) ? ' selected' : '';
+  html += '<option value="__custom__"' + customSelected + '>Other / Custom Topic</option>';
+  html += '</select>';
+  html += '<input type="text" id="tl-input-' + sessionCode + '" placeholder="Describe what was actually covered…" style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--border);font-family:inherit;font-size:13px;margin-bottom:6px;' + ((currentTopic && !isPredefined) ? '' : 'display:none;') + '" value="' + escH(currentTopic) + '">';
+  html += '<div style="display:flex;gap:8px">';
+  html += '<button type="button" class="btn btn-gold" style="flex:1;font-size:12px;padding:8px 10px" onclick="saveTopicCorrection(\'' + sessionCode + '\')">Save Correction</button>';
+  html += '<button type="button" class="btn btn-outline" style="flex:1;font-size:12px;padding:8px 10px" onclick="toggleTopicEdit(\'' + sessionCode + '\')">Cancel</button>';
+  html += '</div>';
+  html += '<div class="err-box" id="tl-err-' + sessionCode + '"></div>';
+
+  box.innerHTML = html;
+  box.style.display = 'block';
+}
+
+function handleTimelineTopicSelectChange(sessionCode) {
+  var selectEl = document.getElementById('tl-select-' + sessionCode);
+  var inputEl = document.getElementById('tl-input-' + sessionCode);
+  if (!selectEl || !inputEl) return;
+  if (selectEl.value === '__custom__') {
+    inputEl.style.display = 'block';
+    inputEl.value = '';
+    inputEl.focus();
+  } else {
+    inputEl.style.display = 'none';
+    inputEl.value = selectEl.value;
+  }
+}
+
+function saveTopicCorrection(sessionCode) {
+  var selectEl = document.getElementById('tl-select-' + sessionCode);
+  var inputEl = document.getElementById('tl-input-' + sessionCode);
+  var errEl = document.getElementById('tl-err-' + sessionCode);
+  if (!selectEl || !inputEl) return;
+  var topic = (selectEl.value === '__custom__' ? inputEl.value : selectEl.value).trim();
+  if (errEl) { errEl.textContent = ''; errEl.classList.remove('show'); }
+  if (!topic) {
+    if (errEl) { errEl.textContent = 'Please select or type a topic.'; errEl.classList.add('show'); }
+    return;
+  }
+  gasGet({action:'updateSessionTopic', sessionCode:sessionCode, topic:topic, instructor:instructorName}, function(e,d) {
+    if (e||!d||d.status!=='ok') {
+      var msg = (d && d.message) ? d.message : 'Could not save correction.';
+      if (errEl) { errEl.textContent = msg; errEl.classList.add('show'); }
+      return;
+    }
+    showToast('Topic corrected.');
+    toggleTopicEdit(sessionCode);
+    loadSessionTimeline(sessionTimelineBatch);
+  });
 }
 
 function selectTimelineSession(sessionCode) {

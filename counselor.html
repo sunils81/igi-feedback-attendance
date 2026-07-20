@@ -1733,7 +1733,15 @@
       <p class="sub">Fill in the details below. Batch code is generated automatically.</p>
       <div class="grid2">
         <div class="field"><label>Centre *</label>
-          <select id="b-centre" onchange="genBatchCode()"><option value="">Select</option></select>
+          <select id="b-centre" onchange="bCentreChange()"><option value="">Select</option></select>
+          <div id="b-centre-warn" style="display:none;margin-top:8px;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;">
+            <div style="display:flex;align-items:flex-start;gap:8px;">
+              <input type="checkbox" id="b-centre-confirm" style="width:auto;margin-top:2px;cursor:pointer;">
+              <label for="b-centre-confirm" style="margin:0;cursor:pointer;font-size:12.5px;color:#92400e;">
+                You're creating this batch for <b id="b-centre-warn-name"></b>, not your home centre (<span id="b-centre-warn-home"></span>). That centre's team will be notified to confirm and staff it. Check this box to confirm this is intentional.
+              </label>
+            </div>
+          </div>
         </div>
         <div class="field"><label>Course *</label>
           <select id="b-course" onchange="genBatchCode()"><option value="">Select</option></select>
@@ -3520,8 +3528,10 @@
       <div id="mb-health"><div class="spinner-wrap"><div class="spinner"></div><p>Checking setup details…</p></div></div>
     </div>
     <div class="card">
-      <div class="section-tag">All Batches</div>
-      <h2>Batch Overview</h2>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div><div class="section-tag">All Batches</div><h2 style="margin:0">Batch Overview</h2></div>
+        <button class="btn btn-outline" style="padding:6px 12px;font-size:12.5px;width:auto" onclick="mbOpenCrossSellEnroll()">&#43; Enroll Student at Another Centre</button>
+      </div>
       <div id="mb-bulk-bar" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:12px;align-items:center;gap:10px;flex-wrap:wrap">
         <span id="mb-sel-count" style="font-size:13px;font-weight:600;color:#1d4ed8">0 selected</span>
         <button class="btn" style="padding:5px 12px;font-size:12px;width:auto;background:var(--navy);color:#fff" onclick="openBulkExtendModal()">📅 Bulk Extend End Date</button>
@@ -4857,20 +4867,34 @@ function changePassword() {
 
 function applyCentreFilter() {
   const centreEl = document.getElementById('b-centre');
-  // Remove options not in allowedCentres (unless admin)
-  Array.from(centreEl.options).forEach(o=>{
-    if (o.value && !isAdmin && !allowedCentres.includes(o.value)) {
-      o.disabled = true;
-      o.style.display = 'none';
-    }
-  });
-  // Auto-select if only one centre
-  if (!isAdmin && allowedCentres.length === 1) {
+  // Every centre stays selectable — a counsellor can create a batch for another centre
+  // (e.g. cross-sell) the same way the Enroll modal already allows, with the same
+  // "confirm this is intentional" warning below instead of hiding the option outright.
+  // Default-select their own home centre so the common case still needs no extra click.
+  if (!isAdmin && allowedCentres.length > 0) {
     centreEl.value = allowedCentres[0];
     genBatchCode();
-  } else if (!isAdmin && allowedCentres.length > 0) {
-    // Select first allowed centre
-    centreEl.value = allowedCentres[0];
+  }
+  bCentreChange();
+}
+
+// Warn (don't block) when the selected batch centre differs from the counsellor's own
+// home centre — mirrors enrollNBCentreChange's pattern for the Enroll modal's new-batch
+// form, so both paths behave consistently.
+function bCentreChange() {
+  genBatchCode();
+  const centreEl = document.getElementById('b-centre');
+  const warn = document.getElementById('b-centre-warn');
+  const confirmCb = document.getElementById('b-centre-confirm');
+  if (!centreEl || !warn) return;
+  const homeCentre = (!isAdmin && allowedCentres && allowedCentres.length) ? allowedCentres[0] : '';
+  if (homeCentre && centreEl.value && centreEl.value !== homeCentre) {
+    document.getElementById('b-centre-warn-name').textContent = centreEl.value;
+    document.getElementById('b-centre-warn-home').textContent = homeCentre;
+    warn.style.display = 'block';
+  } else {
+    warn.style.display = 'none';
+    if (confirmCb) confirmCb.checked = false;
   }
 }
 
@@ -4927,7 +4951,7 @@ function switchTab(id) {
         });
       } else {
         // Load batches then populate
-        gasGet({action:'getBatches', centres:isAdmin?'':allowedCentres.join(',')}, function(e,d){
+        gasGet({action:'getBatches', centres:isAdmin?'':allowedCentres.join(','), counsellor:counselorName}, function(e,d){
           if(e||!d||!d.batches) return;
           allBatches = d.batches;
           d.batches.forEach(function(b){
@@ -6556,7 +6580,22 @@ function createBatch() {
   if (!instructor) {
     errEl.textContent='Please assign an instructor before creating the batch.'; errEl.classList.add('show'); return;
   }
-  gasGet({action:'createBatch',batchCode,centre,course,type,batchSlot,startDate,endDate,counselorName,instructor,coInstructor,coInstructorUntil},function(e,d){
+  // If this batch is for a centre other than the counsellor's own, require the explicit
+  // confirmation checkbox — same guardrail the Enroll modal's new-batch form already uses —
+  // and tag createdByCentre/createdByCounselor so it goes through the same cross-centre
+  // "pending confirmation" workflow (My Batches banner + HOD oversight) instead of silently
+  // looking like a normal same-centre batch.
+  const homeCentre = (!isAdmin && allowedCentres && allowedCentres.length) ? allowedCentres[0] : centre;
+  const isRemoteBatch = homeCentre && centre && centre !== homeCentre;
+  if (isRemoteBatch) {
+    const confirmCb = document.getElementById('b-centre-confirm');
+    if (!confirmCb || !confirmCb.checked) {
+      errEl.textContent = 'This batch is for ' + centre + ', not your home centre (' + homeCentre + '). Check the confirmation box above Centre to proceed.';
+      errEl.classList.add('show'); return;
+    }
+  }
+  const createdByCentre = isRemoteBatch ? homeCentre : centre;
+  gasGet({action:'createBatch',batchCode,centre,course,type,batchSlot,startDate,endDate,counselorName,instructor,coInstructor,coInstructorUntil,createdByCentre,createdByCounselor:counselorName},function(e,d){
     btn.textContent='Create Batch →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') {
       errEl.textContent=d&&d.reason==='batch_exists'?'Batch code already exists. Try a different start date.':'Error creating batch. Try again.';
@@ -6572,6 +6611,7 @@ function createBatch() {
         const el=document.getElementById(id);
         if(el.tagName==='SELECT') el.selectedIndex=0; else el.value='';
       });
+      applyCentreFilter(); // re-select home centre and hide the cross-centre warning
       document.getElementById('b-code').value='';
       document.getElementById('b-instructor').value='';
       const coEl = document.getElementById('b-co-instructor');
@@ -9896,9 +9936,10 @@ function renderRevenueSavedBreakup(rows, designatedCentre, counsellor) {
 
 function renderRevenueEntryPanel(m, designatedCentre, otherDefault, existingRows, isRevision) {
   existingRows = existingRows || [];
+  var isAuto = isAutoRevenueMonth(m.key);
   var existingOwn = existingRows.filter(function(r){ return !revIsCorporate(r) && r.businessCentre === designatedCentre; })[0] || {};
   var existingOthers = existingRows.filter(function(r){ return !revIsCorporate(r) && r.businessCentre !== designatedCentre; });
-  if (existingOthers.length === 0) {
+  if (!isAuto && existingOthers.length === 0) {
     existingOthers = [{ businessCentre: otherDefault, studentCount: '', achievedCourse: '', achievedGst: 0 }];
   }
   var existingCorp = existingRows.filter(function(r){ return revIsCorporate(r); })[0] || {};
@@ -9911,29 +9952,65 @@ function renderRevenueEntryPanel(m, designatedCentre, otherDefault, existingRows
   })();
 
   var hasAnyOtherValue = existingOthers.some(function(oth){ return oth.achievedCourse || oth.studentCount; });
-  
-  var othersHtml = existingOthers.map(function(oth) {
-    var centreOpts = CENTRES.map(function(cc){
-      var sel = (cc===(oth.businessCentre || otherDefault)) ? ' selected' : '';
-      return '<option value="'+escC(cc)+'"'+sel+'>'+escC(cc)+'</option>';
-    }).join('');
-    
-    var removeBtnStyle = existingOthers.length > 1 ? 'display:flex' : 'display:none';
-    
-    return '<div class="rev-other-centre-item">'+
-      '<div class="rev-compact-row four">'+
-        '<div class="rev-ci"><label>Centre</label><select class="rmc-business" onchange="revUpdateTotal(this)">'+centreOpts+'</select></div>'+
-        '<div class="rev-ci"><label>Students</label><input type="number" class="rmc-xstudents" min="0" placeholder="0" value="'+escC(oth.studentCount||'')+'" oninput="revUpdateTotal(this)"></div>'+
-        '<div class="rev-ci"><label>Course Fee &#8377;</label><input type="number" class="rmc-xcourse" min="0" placeholder="0" value="'+escC(oth.achievedCourse||'')+'" oninput="revCalcGst(this,\'other\');revUpdateTotal(this)"></div>'+
-        '<div class="rev-ci-btn">'+
-          '<button type="button" class="rev-row-remove-btn" style="'+removeBtnStyle+'" onclick="revRemoveOtherCentreRow(this)">&#10005;</button>'+
-        '</div>'+
-      '</div>'+
-      '<div class="rev-gst-inline rmc-xgst-display">GST: <b>'+money(oth.achievedGst||0)+'</b></div>'+
-    '</div>';
-  }).join('');
 
-  var isAuto = isAutoRevenueMonth(m.key);
+  var othersHtml;
+  if (isAuto) {
+    // Jul-26+: Other Centre Revenue is no longer free-typed numbers. Every cross-sell now
+    // goes through "+ Enroll New Student at Another Centre" (real student + batch + fee
+    // record), and syncStudentRevenue auto-derives a row here per other centre the same way
+    // it already does for Own Centre Revenue — so these numbers can never drift from a real
+    // batch again. Rows saved manually before this change still display (read-only, tagged
+    // "Legacy manual entry") so nothing silently disappears, but no new manual rows can be
+    // added going forward.
+    var enrollOtherAttrs = 'data-month="'+escC(m.key)+'" data-centre="'+escC(designatedCentre)+'"';
+    var otherRowsHtml = existingOthers.filter(function(oth){ return oth.achievedCourse || oth.studentCount; }).map(function(oth) {
+      var isAutoDerived = /^auto-derived/.test(oth.notes || '');
+      var fee = Number(oth.achievedCourse || 0);
+      var stu = Number(oth.studentCount || 0);
+      var gst = Number(oth.achievedGst || 0);
+      var tag = isAutoDerived
+        ? '<span style="font-size:10px;background:#1D9E75;color:#fff;border-radius:4px;padding:2px 6px;margin-left:4px;font-weight:700">AUTO</span>'
+        : '<span style="font-size:10px;background:#9CA3AF;color:#fff;border-radius:4px;padding:2px 6px;margin-left:4px;font-weight:700">LEGACY MANUAL</span>';
+      var detail = (isAutoDerived && fee > 0)
+        ? '<div class="rev-detail-toggle" data-month="'+escC(m.key)+'" data-centre="'+escC(oth.businessCentre)+'" data-loaded="N" data-label="View &amp; verify these '+stu+' student'+(stu!==1?'s':'')+'" style="cursor:pointer;font-size:12px;color:var(--accent, #1D9E75);font-weight:700;margin-top:6px;text-decoration:underline" onclick="revToggleDetail(this)">🔍 View &amp; verify these '+stu+' student'+(stu!==1?'s':'')+'</div>'+
+            '<div class="rev-detail-body" style="display:none"></div>'
+        : '';
+      return '<div class="rev-other-centre-item" style="background:#F4FBF7;border-radius:8px;padding:10px 12px;margin-bottom:8px">'+
+        '<div class="rev-own-label">'+escC(oth.businessCentre)+tag+'</div>'+
+        '<div style="font-size:13px;font-weight:700;color:var(--navy)">₹'+Math.round(fee).toLocaleString('en-IN')+' &middot; '+stu+' student'+(stu!==1?'s':'')+' &middot; GST ₹'+Math.round(gst).toLocaleString('en-IN')+'</div>'+
+        detail+
+        '<input type="hidden" class="rmc-business" value="'+escC(oth.businessCentre)+'">'+
+        '<input type="hidden" class="rmc-xstudents" value="'+escC(String(stu))+'">'+
+        '<input type="hidden" class="rmc-xcourse" value="'+escC(String(fee))+'">'+
+        '<input type="hidden" class="rmc-xgst-val" value="'+escC(String(gst))+'">'+
+      '</div>';
+    }).join('');
+    othersHtml = (otherRowsHtml || '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">No cross-centre enrollments yet this month.</div>') +
+      '<button type="button" class="rev-enroll-btn" '+enrollOtherAttrs+' onclick="openEnrollModalOtherCentre(this.dataset.month,this.dataset.centre,counselorName||\'Counselor\')">&#43; Enroll New Student at Another Centre</button>';
+  } else {
+    othersHtml = '<div class="rev-other-centre-list">' + existingOthers.map(function(oth) {
+      var centreOpts = CENTRES.map(function(cc){
+        var sel = (cc===(oth.businessCentre || otherDefault)) ? ' selected' : '';
+        return '<option value="'+escC(cc)+'"'+sel+'>'+escC(cc)+'</option>';
+      }).join('');
+
+      var removeBtnStyle = existingOthers.length > 1 ? 'display:flex' : 'display:none';
+
+      return '<div class="rev-other-centre-item">'+
+        '<div class="rev-compact-row four">'+
+          '<div class="rev-ci"><label>Centre</label><select class="rmc-business" onchange="revUpdateTotal(this)">'+centreOpts+'</select></div>'+
+          '<div class="rev-ci"><label>Students</label><input type="number" class="rmc-xstudents" min="0" placeholder="0" value="'+escC(oth.studentCount||'')+'" oninput="revUpdateTotal(this)"></div>'+
+          '<div class="rev-ci"><label>Course Fee &#8377;</label><input type="number" class="rmc-xcourse" min="0" placeholder="0" value="'+escC(oth.achievedCourse||'')+'" oninput="revCalcGst(this,\'other\');revUpdateTotal(this)"></div>'+
+          '<div class="rev-ci-btn">'+
+            '<button type="button" class="rev-row-remove-btn" style="'+removeBtnStyle+'" onclick="revRemoveOtherCentreRow(this)">&#10005;</button>'+
+          '</div>'+
+        '</div>'+
+        '<div class="rev-gst-inline rmc-xgst-display">GST: <b>'+money(oth.achievedGst||0)+'</b></div>'+
+      '</div>';
+    }).join('') + '</div>' +
+    '<button type="button" class="rev-btn-add-centre" onclick="revAddOtherCentreRow(this)">+ Add Another Centre</button>';
+  }
+
   var reasonText = isRevision ? '<div class="rev-revise-note">Revision requires a reason. Saving will replace the locked month after backend approval.</div>' : '';
 
   // Own-centre section: read-only for Jul-26+ (auto-derived from fee records)
@@ -9985,8 +10062,7 @@ function renderRevenueEntryPanel(m, designatedCentre, otherDefault, existingRows
     ownSection+
     '<div class="rev-expand-row" onclick="revToggleBucket(this)"><span class="rev-expand-chevron'+(hasAnyOtherValue?' open':'')+'">&#9658;</span><span class="rev-expand-label">Other Centre Revenue</span><span class="rev-expand-badge '+(hasAnyOtherValue?'filled':'opt')+'">'+(hasAnyOtherValue?'Filled':'Optional')+'</span></div>'+
     '<div class="rev-bucket-body'+(hasAnyOtherValue?' open':'')+'" data-bucket="other">'+
-      '<div class="rev-other-centre-list">'+othersHtml+'</div>'+
-      (isAuto ? '' : '<button type="button" class="rev-btn-add-centre" onclick="revAddOtherCentreRow(this)">+ Add Another Centre</button>')+
+      othersHtml+
     '</div>'+
     '<div class="rev-expand-row" onclick="revToggleBucket(this)"><span class="rev-expand-chevron'+(existingCorp.achievedCourse||existingCorp.studentCount?' open':'')+'">&#9658;</span><span class="rev-expand-label">Corporate Program Revenue</span><span class="rev-expand-badge '+(existingCorp.achievedCourse||existingCorp.studentCount?'filled':'opt')+'">'+(existingCorp.achievedCourse||existingCorp.studentCount?'Filled':'Optional')+'</span></div>'+
     '<div class="rev-bucket-body'+(existingCorp.achievedCourse||existingCorp.studentCount?' open':'')+'" data-bucket="corp">'+
@@ -10322,8 +10398,13 @@ function revSaveMonthCard(btn) {
     var bizVal = item.querySelector('.rmc-business').value || assignedCentre;
     var stuVal = Number(item.querySelector('.rmc-xstudents').value) || 0;
     var courseVal = Number(item.querySelector('.rmc-xcourse').value) || 0;
-    var gstVal = revenueGst(courseVal);
-    
+    // Auto months carry the real GST-inclusive total straight through via a hidden
+    // .rmc-xgst-val (set from syncStudentRevenue, same reasoning as Own Centre's
+    // .rmc-gst-val) rather than recomputing it — falls back to revenueGst() for the
+    // manual pre-July entry path, which has no such hidden field.
+    var gstEl = item.querySelector('.rmc-xgst-val');
+    var gstVal = gstEl ? (Number(gstEl.value) || revenueGst(courseVal)) : revenueGst(courseVal);
+
     if (courseVal || stuVal) {
       otherFilled = true;
       totalGst2 += gstVal;
@@ -11348,11 +11429,20 @@ function loadMyBatches() {
   el.innerHTML = loadingState('Loading batch overview...');
   if (health) health.innerHTML = loadingState('Checking setup details...');
   const centresParam = isAdmin ? '' : allowedCentres.join(',');
-  gasGet({action:'getBatches', centres:centresParam}, function(e,d) {
+  gasGet({action:'getBatches', centres:centresParam, counsellor:counselorName}, function(e,d) {
     if (e||!d||!d.batches) { renderMyBatchList([]); return; }
     allBatches = d.batches;
     renderMyBatchList(d.batches);
   });
+}
+
+// Cross-sell entry point from the My Batches tab — opens the Enroll modal in
+// "other centre" mode, attributed to the current calendar month.
+function mbOpenCrossSellEnroll() {
+  var today = new Date();
+  var monthKey = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0');
+  var homeCentre = (allowedCentres && allowedCentres.length) ? allowedCentres[0] : '';
+  openEnrollModalOtherCentre(monthKey, homeCentre, counselorName || 'Counselor');
 }
 
 function mbToggleSection(bodyId, headerEl) {
@@ -18159,8 +18249,19 @@ var _enrollState = {
 };
 var _enrollSearchTimer = null;
 
-function openEnrollModal(monthKey, centre, counsellor) {
+function openEnrollModalOtherCentre(monthKey, homeCentre, counsellor) {
+  // Cross-sell entry point — opens the same Enroll New Student modal, but doesn't default
+  // the batch centre to the counsellor's own home centre, and lets them pick an existing
+  // batch from ANY centre (not just their own). homeCentre is still passed through as
+  // _enrollState.centre so the "different from your home centre" warning/confirmation and
+  // revenue attribution stay correct.
+  openEnrollModal(monthKey, homeCentre, counsellor, { preferOtherCentre: true });
+}
+
+function openEnrollModal(monthKey, centre, counsellor, opts) {
+  opts = opts || {};
   _enrollState = { monthKey: monthKey, centre: centre, counsellor: counsellor,
+    preferOtherCentre: !!opts.preferOtherCentre,
     selectedStudent: null, isNewStudent: false, selectedBatch: null, isNewBatch: false, batchList: [] };
 
   // Reset student section
@@ -18184,8 +18285,9 @@ function openEnrollModal(monthKey, centre, counsellor) {
   document.getElementById('enroll-nb-course').innerHTML = '<option value="">— Select Course —</option>' +
     (typeof COURSES !== 'undefined' ? COURSES.map(function(c){ return '<option>'+escC(c)+'</option>'; }).join('') : '');
   document.getElementById('enroll-nb-centre').innerHTML =
+    (opts.preferOtherCentre ? '<option value="">— Select Centre —</option>' : '') +
     (typeof CENTRES !== 'undefined' ? CENTRES : [centre]).map(function(c) {
-      return '<option value="'+escC(c)+'"'+(c === centre ? ' selected' : '')+'>'+escC(c)+'</option>';
+      return '<option value="'+escC(c)+'"'+(c === centre && !opts.preferOtherCentre ? ' selected' : '')+'>'+escC(c)+'</option>';
     }).join('');
   document.getElementById('enroll-nb-centre-warn').style.display = 'none';
   document.getElementById('enroll-nb-centre-confirm').checked = false;
@@ -18210,9 +18312,20 @@ function openEnrollModal(monthKey, centre, counsellor) {
   document.getElementById('enroll-err').textContent = '';
   document.getElementById('enroll-err').classList.remove('show');
   document.getElementById('enroll-modal-month').textContent = monthKey;
+  var subtitleEl = document.getElementById('enroll-modal-subtitle');
+  if (subtitleEl) {
+    if (opts.preferOtherCentre) {
+      subtitleEl.textContent = 'Cross-sell — pick any centre below, not just ' + centre + '.';
+      subtitleEl.style.display = 'block';
+    } else {
+      subtitleEl.style.display = 'none';
+    }
+  }
   document.getElementById('enroll-modal-overlay').style.display = 'flex';
 
-  enrollLoadBatches(centre);
+  // In "other centre" mode, show batches from every centre (labelled with their centre)
+  // instead of just the counsellor's own — they're looking for a batch elsewhere on purpose.
+  enrollLoadBatches(opts.preferOtherCentre ? '' : centre);
   setTimeout(function(){ document.getElementById('enroll-student-search').focus(); }, 120);
 }
 
@@ -18339,7 +18452,9 @@ function enrollLoadBatches(centre) {
     var sel = document.getElementById('enroll-batch-select');
     sel.innerHTML = '<option value="">— Select Batch —</option>' +
       batches.map(function(b) {
-        var label = escC(b.batchCode) + ' · ' + escC(b.course || '') +
+        // Always show the centre — harmless when everything's from one centre, and
+        // essential when this list spans multiple (cross-sell "other centre" mode).
+        var label = escC(b.batchCode) + ' · ' + escC(b.course || '') + ' · ' + escC(b.centre || '') +
           (b.startDate ? ' · from ' + escC(b.startDate) : '');
         return '<option value="' + escC(b.batchCode) + '">' + label + '</option>';
       }).join('');
@@ -18932,6 +19047,7 @@ function enrollSave() {
   <div id="enroll-modal">
     <div id="enroll-modal-head">
       <h3>Enroll New Student &mdash; <span id="enroll-modal-month"></span></h3>
+      <div id="enroll-modal-subtitle" style="display:none;font-size:12px;color:#92400e;font-weight:600;margin-top:2px;"></div>
       <button id="enroll-modal-close" onclick="closeEnrollModal()" title="Close">&times;</button>
     </div>
     <div id="enroll-modal-body">

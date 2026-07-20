@@ -1057,8 +1057,16 @@ window.gasGet = (function () {
       var cs = p.centres.split(',').map(function (c) { return c.trim(); }).filter(Boolean);
       qs += '&centre=in.(' + cs.join(',') + ')';
     }
-    GET('batches', qs, function (e, rows) {
-      if (e) { cb(null, { batches: [] }); return; }
+    // Cross-centre visibility: a counsellor who cross-sold a student into (or created a
+    // batch at) a centre outside their own allowedCentres used to have that batch vanish
+    // from their own "My Batches" the moment it was saved — it only ever showed up for the
+    // destination centre's team. Union in anything this counsellor created remotely
+    // (created_by_counselor) or has a fee record against (student_fees.recorded_by), the
+    // same pattern getAllFeeRecords already uses for the Invoices tab, so "My Batches"
+    // never silently drops a batch just because its centre isn't in the caller's list.
+    var counsellor = (p.counsellor && String(p.counsellor).trim()) || null;
+
+    function finish(rows) {
       getActiveStudentCountsByBatch(function(studentCounts) {
         cb(null, { batches: (rows || []).map(function (r) {
           var bc = (r.batch_code || '').trim().toUpperCase();
@@ -1076,6 +1084,25 @@ window.gasGet = (function () {
             confirmedAt: r.confirmed_at || null,
             remoteCreated: !!(r.created_by_centre && r.created_by_centre !== r.centre) };
         }) });
+      });
+    }
+
+    GET('batches', qs, function (e, rows) {
+      if (e) { cb(null, { batches: [] }); return; }
+      if (!counsellor) { finish(rows); return; }
+      GET('batches', 'created_by_counselor=eq.' + encodeURIComponent(counsellor), function (e2, createdRows) {
+        GET('student_fees', 'recorded_by=eq.' + encodeURIComponent(counsellor) + '&select=batch_code', function (e3, feeRows) {
+          var have = {};
+          (rows || []).forEach(function (r) { have[r.batch_code] = true; });
+          var extra = {};
+          (createdRows || []).forEach(function (r) { if (!have[r.batch_code]) extra[r.batch_code] = true; });
+          (feeRows || []).forEach(function (r) { if (r.batch_code && !have[r.batch_code]) extra[r.batch_code] = true; });
+          var missingCodes = Object.keys(extra);
+          if (!missingCodes.length) { finish(rows); return; }
+          GET('batches', 'batch_code=in.(' + missingCodes.map(encodeURIComponent).join(',') + ')', function (e4, moreRows) {
+            finish((rows || []).concat(moreRows || []));
+          });
+        });
       });
     });
   }

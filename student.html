@@ -2059,7 +2059,30 @@ function openFeedback(batchCode) {
   document.getElementById('qco-comment').value='';
   document.getElementById('anon-chk').checked=false;
   document.getElementById('fb-err').classList.remove('show');
-  // Fill header
+  // Fill header with whatever's cached, so the screen isn't blank while we refresh
+  renderFeedbackHeader(b);
+  // Refresh instructor/cover status live — portalData is cached in memory for the whole
+  // session, so if a counselor assigns or changes a cover instructor after the student's
+  // portal already loaded, the cached data would still show the old (regular) instructor.
+  // Feedback must always reflect whoever is ACTUALLY teaching today, so re-check on every
+  // open and re-render if anything changed.
+  gasGet({action:'getBatchCoverStatus', batchCode:b.batchCode}, function(e,d) {
+    if (!e && d && d.status==='ok' && activeBatch===b) {
+      b.instructor = d.instructor;
+      b.mainInstructor = d.mainInstructor;
+      b.coInstructor = d.coInstructor;
+      b.coInstructorActive = d.coInstructorActive;
+      renderFeedbackHeader(b);
+    }
+  });
+  // Load topic options
+  buildTopicUI(b);
+  showScreen('s-feedback');
+  // Show geo status badge (after a brief delay so location has time to resolve)
+  setTimeout(function() { showGeoStatusBadge(b.centre); }, 500);
+}
+
+function renderFeedbackHeader(b) {
   document.getElementById('fb-course').textContent = b.course + (b.batchSlot!=='Full Day'?' — '+b.batchSlot:'');
   document.getElementById('fb-meta').textContent   = 'Session '+(b.displaySessNo||b.sessNo)+' · '+b.centre+(b.instructor?' · '+b.instructor:'')
     + (b.coInstructorActive && b.mainInstructor ? ' (covering for '+b.mainInstructor+')' : '');
@@ -2074,11 +2097,6 @@ function openFeedback(batchCode) {
   } else {
     coBlock.style.display = 'none';
   }
-  // Load topic options
-  buildTopicUI(b);
-  showScreen('s-feedback');
-  // Show geo status badge (after a brief delay so location has time to resolve)
-  setTimeout(function() { showGeoStatusBadge(b.centre); }, 500);
 }
 
 function showGeoStatusBadge(centreName) {

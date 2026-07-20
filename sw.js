@@ -2,7 +2,7 @@
  * IGI Service Worker — caches the app shell for instant load on return visits
  * Version bump the CACHE_NAME to force refresh when files change
  */
-const CACHE_NAME = 'igi-v36';
+const CACHE_NAME = 'igi-v37';
 const SHELL_FILES = [
   '/assets/shared.js'
 ];

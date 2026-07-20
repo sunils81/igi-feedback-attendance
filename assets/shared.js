@@ -1208,6 +1208,34 @@ window.gasGet = (function () {
     );
   }
 
+  /* getBatchCoverStatus — live, single-batch instructor/cover lookup.
+     The student portal caches the full getStudentPortalData response in memory for the
+     whole session (from login until logout/reload), so if a counselor assigns or changes
+     a cover instructor after a student has already loaded the portal, the feedback screen
+     was showing the stale main instructor instead of whoever is actually covering. This
+     endpoint is called fresh every time the feedback screen opens so it always reflects
+     the current cover state, independent of how long ago the portal was first loaded.
+     Mirrors the same effective-instructor / coInstructorActive computation used in
+     h_getStudentPortalData so the two never drift apart. */
+  function h_getBatchCoverStatus(p, cb) {
+    var batchCode = String(p.batchCode || '').trim();
+    if (!batchCode) { cb(null, { status: 'error', reason: 'missing_batch_code' }); return; }
+    GET('batches', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=instructor,co_instructor,co_instructor_until', function (e, rows) {
+      if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'batch_not_found' }); return; }
+      var b = rows[0];
+      var todayStr = todayYMD();
+      var coInstructorActive = !!(b.co_instructor && (!b.co_instructor_until || b.co_instructor_until >= todayStr));
+      var effectiveInstructor = coInstructorActive ? b.co_instructor : (b.instructor || '');
+      cb(null, {
+        status: 'ok',
+        instructor: effectiveInstructor,
+        mainInstructor: b.instructor || '',
+        coInstructor: b.co_instructor || '',
+        coInstructorActive: coInstructorActive
+      });
+    });
+  }
+
   /* deleteBatch — cascade-deletes child records before removing the batch */
   // Two bugs fixed here:
   // 1. keepStudents was accepted from the client but silently ignored — "Delete Batch (Keep
@@ -7829,6 +7857,7 @@ window.gasGet = (function () {
       case 'verifyOTP':                return h_verifyOTP(params, cb);
       case 'resetPassword':            return h_resetPassword(params, cb);
       case 'getBatches':                return h_getBatches(params, cb);
+      case 'getBatchCoverStatus':       return h_getBatchCoverStatus(params, cb);
       case 'getBatchCode':              return h_getBatchCode(params, cb);
       case 'getEndDate':                return h_getEndDate(params, cb);
       case 'getSchedulePreview':        return h_schedulePreview(params, cb);

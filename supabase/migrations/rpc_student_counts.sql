@@ -10,7 +10,7 @@ SECURITY DEFINER
 AS $$
   SELECT 
     UPPER(b.batch_code) AS batch_code,
-    COUNT(DISTINCT s.student_id) AS student_count
+    COUNT(DISTINCT active_enrollments.student_id) AS student_count
   FROM (
     -- Primary batch mapped directly in students table
     SELECT batch_code, student_id

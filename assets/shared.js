@@ -8449,7 +8449,7 @@ window.gasGet = (function () {
       } else {
         // Fallback hardcoded map if table not available yet
         locationMap = {
-          'Mumbai':    { type: 'round-robin', counselors: ['Anuradha','Bianca','Omkar'] },
+          'Mumbai':    { type: 'round-robin', counselors: ['Anuradha','Bianca','Omkar Kadam'] },
           'Bangalore': { type: 'direct', counselor: 'Nadiya' },
           'Bengaluru': { type: 'direct', counselor: 'Nadiya' },
           'Kolkata':   { type: 'direct', counselor: 'Arpita' },

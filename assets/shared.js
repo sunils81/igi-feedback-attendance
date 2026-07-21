@@ -49,6 +49,16 @@ const INSTRUCTORS = [
   'Preeti Agarwala','Sayan Banerjee','Deepak Nachankar','Sharoon Joy','Seema Athavale'
 ];
 
+// Explicitly expose on window — these are declared with `const` above, which creates a
+// lexical binding but does NOT attach to `window` the way `var` does. Every dropdown across
+// the portal (Batch Setup, CRM Add Lead, etc.) reads window.COURSES / window.CENTRES /
+// window.INSTRUCTORS directly, so without this line those dropdowns render empty even though
+// COURSES/CENTRES/INSTRUCTORS are technically "defined" (which also means the
+// `if (typeof COURSES === 'undefined')` fallback elsewhere never fires to catch this).
+window.CENTRES = CENTRES;
+window.COURSES = COURSES;
+window.INSTRUCTORS = INSTRUCTORS;
+
 // Countries a student can be enrolled from. India is first/default since that's the
 // overwhelming majority of enrollments; "Other" is a deliberate catch-all for any country
 // not explicitly listed (rather than trying to maintain a full 195-country list) — picking

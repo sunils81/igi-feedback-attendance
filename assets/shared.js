@@ -343,7 +343,13 @@ window.gasGet = (function () {
     // student with no fee record at all shouldn't be able to slip through un-gated.
     var feeInfo        = opts.feeInfo || null;
     var feeOutstanding = feeInfo ? Number(feeInfo.outstanding || 0) : null;
-    var feePaid         = !!feeInfo && feeOutstanding <= 0;
+    // <= 1 (not <= 0) to match parseFeeRow's own "trulyPaid" tolerance. Installments are
+    // often entered with paise (e.g. 98712.90 x2) while net_payable gets stored rounded to
+    // the nearest rupee, leaving a phantom 10-20 paise "outstanding" that isn't real unpaid
+    // money. A strict <=0 check was flagging fully-paid students as "Fee Outstanding" (with
+    // a contradictory "₹0 Due" badge, since the amount rounds to 0 for display) and
+    // blocking their diploma eligibility over rounding noise.
+    var feePaid         = !!feeInfo && feeOutstanding <= 1;
 
     function markObtained(markRow) {
       if (!markRow || markRow.marks === null || markRow.marks === undefined || markRow.marks === '') return null;

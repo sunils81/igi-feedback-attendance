@@ -4071,22 +4071,24 @@ window.gasGet = (function () {
       var allFeedback = [];
 
       (feedback || []).forEach(function(r) {
-        var instRaw = r.instructor || batchInstructorMap[String(r.batch_code || '').toUpperCase()] || '';
-        var inst = String(instRaw).trim();
-        if (inst.endsWith('\r')) inst = inst.slice(0, -1);
+        var sObj = sessionMap[String(r.session_code || '').toUpperCase()];
         var rating = Number(r.feedback_score) || 0;
-        
+
         var studentId = r.student_id || '';
-        
+
         var text = String(r.feedback_text || '').trim();
         var q2 = 0, q3 = '', q4 = '', q5 = '', q6 = '';
         var isAnon = false;
         var studentName = '';
+        var parsedInstructor = '';
 
         if (text.indexOf('{') === 0) {
           try {
             var parsed = JSON.parse(text);
             studentName = parsed.studentName || '';
+            // Captured live at submission time — "whoever effectively taught this
+            // session (main, or cover if active)". See h_submitFeedback.
+            parsedInstructor = String(parsed.instructor || '').trim();
             q2 = Number(parsed.q2_clarity || 0);
             q3 = String(parsed.q3 || '').trim();
             q4 = String(parsed.q4 || '').trim();
@@ -4103,7 +4105,23 @@ window.gasGet = (function () {
         if (text.indexOf('{') !== 0) {
           isAnon = r.is_anonymous === true || String(r.is_anonymous).toUpperCase() === 'Y' || String(r.anonymous).toUpperCase() === 'Y';
         }
-        
+
+        // Attribute feedback to whoever actually taught THIS session, not the batch's
+        // permanent instructor. Priority: the instructor captured live in the feedback
+        // submission itself (parsedInstructor) > the session's own instructor field,
+        // which h_saveCoInstructor keeps in sync with active cover assignments (sObj) >
+        // a legacy top-level column (r.instructor, unused by current writers) > the
+        // batch's permanent instructor as a last resort. Falling straight to the batch's
+        // permanent instructor (the old behaviour) silently misattributed every
+        // cover-instructor session's feedback to whoever normally teaches that batch —
+        // making the cover instructor's own ratings/comments invisible everywhere
+        // (admin Academic Insights and every instructor portal's Academic Overview both
+        // read this same function).
+        var instRaw = parsedInstructor || (sObj && sObj.instructor) || r.instructor ||
+          batchInstructorMap[String(r.batch_code || '').toUpperCase()] || '';
+        var inst = String(instRaw).trim();
+        if (inst.endsWith('\r')) inst = inst.slice(0, -1);
+
         var stRow = (students || []).find(function(s) { return s.student_id === studentId; });
         if (!studentName) {
           studentName = isAnon ? '[Anonymous]' : (stRow ? stRow.name : (r.student_name || 'Student ' + studentId));
@@ -4123,7 +4141,6 @@ window.gasGet = (function () {
         }
 
         var bObj = batchMap[String(r.batch_code || '').toUpperCase()];
-        var sObj = sessionMap[String(r.session_code || '').toUpperCase()];
         var course = r.course || (bObj ? bObj.course : '');
         var topic = r.topic || (sObj ? sObj.topic_covered : '');
 

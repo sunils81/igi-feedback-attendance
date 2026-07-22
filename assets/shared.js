@@ -5721,12 +5721,27 @@ window.gasGet = (function () {
     });
   }
 
-  /* ── selfMarkAttendance ── */
+  /* ── selfMarkAttendance ──
+     The only live caller (student.html, right after submitFeedback succeeds) uses this
+     purely to attach geolocation metadata to the just-created attendance_feedback row —
+     it never passes q1_rating/rating/q6_suggestion/suggestion. This upserts on the same
+     (session_code, student_id) key that submitFeedback just wrote, via PostgREST
+     resolution=merge-duplicates, which overwrites any column present in the payload.
+     Previously feedback_score and feedback_text were ALWAYS included here, defaulting
+     to a fake 5 and '' — silently clobbering the real rating, pace, doubts-addressed and
+     comments that submitFeedback had just written, moments earlier, for every single
+     submission. Only include those two columns when this call is actually supplying a
+     real value (no current caller does), so the geo-only case leaves the real feedback
+     data untouched instead of overwriting it with defaults. */
   function h_selfMarkAttendance(p, cb) {
     var row = {
       session_code: p.sessionCode, student_id: p.enrollmentNo || p.studentId, batch_code: p.batchCode,
-      attendance: 'Present', feedback_score: Number(p.q1_rating || p.rating || 5), feedback_text: p.q6_suggestion || p.suggestion || '', marked_at: nowISO()
+      attendance: 'Present', marked_at: nowISO()
     };
+    if (p.q1_rating != null && p.q1_rating !== '') row.feedback_score = Number(p.q1_rating);
+    else if (p.rating != null && p.rating !== '') row.feedback_score = Number(p.rating);
+    if (p.q6_suggestion) row.feedback_text = p.q6_suggestion;
+    else if (p.suggestion) row.feedback_text = p.suggestion;
     // Geo fields (Mumbai pilot) — store if provided
     if (p.geoStatus)     row.geo_status     = p.geoStatus;
     if (p.geoDistanceM != null && p.geoDistanceM !== '') row.geo_distance_m = Number(p.geoDistanceM);

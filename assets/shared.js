@@ -465,6 +465,29 @@ window.gasGet = (function () {
         GET(table, qs, function(err, data) { resolve(err ? [] : (data || [])); });
       });
     }
+    // Fetch an `column=in.(...)` query in chunks instead of one giant IN() list. Diploma
+    // eligibility (getDiplomaEligibilityAll) calls this with EVERY batch code in the whole
+    // school, which can pull in dozens of released online tests and hundreds/thousands of
+    // question_bank ids. A single id=in.(...) built from all of them can exceed the URL/query
+    // length the REST layer (or an intermediate proxy) will accept; that request then fails
+    // silently (getP swallows the error and resolves to []), leaving qMap empty. When that
+    // happens the MCQ auto-grading below can't score anything (hasMCQ stays false) and the
+    // code was falling through to the raw, un-normalised `score` field instead of a real
+    // percentage — which is why the counsellor Diploma Release view could show wildly lower
+    // "weekly test" numbers than the instructor Eligibility view for the exact same student on
+    // the exact same test. Chunking keeps every request small regardless of school size.
+    function getInChunks(table, column, ids, selectQs, chunkSize) {
+      chunkSize = chunkSize || 150;
+      var uniq = ids.filter(function(v, i, a) { return a.indexOf(v) === i; });
+      if (!uniq.length) return Promise.resolve([]);
+      var chunks = [];
+      for (var i = 0; i < uniq.length; i += chunkSize) chunks.push(uniq.slice(i, i + chunkSize));
+      return Promise.all(chunks.map(function(chunk) {
+        return getP(table, column + '=in.(' + chunk.map(encodeURIComponent).join(',') + ')' + (selectQs ? '&' + selectQs : ''));
+      })).then(function(results) {
+        return results.reduce(function(acc, r) { return acc.concat(r); }, []);
+      });
+    }
     var wanted = (batchCodesArr || []).map(function(b) { return String(b).toUpperCase(); }).filter(Boolean);
     var empty = { assessmentsByBatch: {}, marksByStudent: {} };
     if (!wanted.length) return empty;
@@ -482,16 +505,19 @@ window.gasGet = (function () {
     relevant.forEach(function(ot) { psMap[ot.test_id] = parseFloat(ot.passing_score) || 60; });
 
     var testIds = relevant.map(function(t) { return t.test_id; });
+    // percentage is included (in addition to score) so that if MCQ auto-grading can't run for
+    // some reason, the fallback below uses the already-normalised percentage rather than the
+    // raw, differently-scaled `score` value.
     var [responses, questions] = await Promise.all([
-      getP('test_responses', 'test_id=in.(' + testIds.map(encodeURIComponent).join(',') + ')&select=test_id,student_id,score,answers'),
-      getP('test_questions', 'test_id=in.(' + testIds.map(encodeURIComponent).join(',') + ')&select=test_id,question_id')
+      getInChunks('test_responses', 'test_id', testIds, 'select=test_id,student_id,score,percentage,answers'),
+      getInChunks('test_questions', 'test_id', testIds, 'select=test_id,question_id')
     ]);
 
     var qids = questions.map(function(q) { return q.question_id; });
     var uniqueQids = qids.filter(function(v, i, a) { return a.indexOf(v) === i; });
     var qMap = {};
     if (uniqueQids.length) {
-      var qbRows = await getP('question_bank', 'id=in.(' + uniqueQids.map(encodeURIComponent).join(',') + ')&select=id,correct_ans,max_marks,q_type');
+      var qbRows = await getInChunks('question_bank', 'id', uniqueQids, 'select=id,correct_ans,max_marks,q_type');
       qbRows.forEach(function(q) { qMap[String(q.id)] = q; });
     }
     var testQMap = {};
@@ -5975,17 +6001,44 @@ window.gasGet = (function () {
         GET(table, qs, function(err, data) { resolve(err ? [] : (data || [])); });
       });
     }
+    // This handler intentionally reads school-wide (every centre, every batch) rather than
+    // one batch at a time, so several of the tables below (attendance_feedback, students,
+    // assessment_marks, student_fees...) can easily hold more rows than PostgREST's default
+    // page size (1000). A plain unbounded getP() silently truncates at that limit — no error,
+    // just a partial result — which was showing up as students with impossibly-high attendance
+    // (total ends up equal to whatever partial slice of their Present rows survived the cutoff,
+    // e.g. "6/6" instead of the real "10/13") and, in the same way, could silently drop
+    // assessment_marks/fees rows. The instructor Eligibility tab never hit this because it
+    // scopes every query to just the logged-in instructor's own batches and stays well under
+    // the page size. Paginate every unscoped table read here instead of doing one unbounded
+    // fetch, so this view can never silently disagree with the instructor/student ones again.
+    function getAllP(table, qs, pageSize) {
+      pageSize = pageSize || 1000;
+      return new Promise(function(resolve) {
+        var out = [];
+        function fetchPage(offset) {
+          var pageQs = (qs ? qs + '&' : '') + 'limit=' + pageSize + '&offset=' + offset;
+          GET(table, pageQs, function(err, rows) {
+            if (err || !rows || !rows.length) { resolve(out); return; }
+            out = out.concat(rows);
+            if (rows.length < pageSize) { resolve(out); return; }
+            fetchPage(offset + pageSize);
+          });
+        }
+        fetchPage(0);
+      });
+    }
     try {
       var [students, batches, attRows, assessments, marks, diplomas, hods, enrollments, fees] = await Promise.all([
-        getP('students', 'select=student_id,name,batch_code'),
-        getP('batches', 'select=batch_code,centre,course,counselor'),
-        getP('attendance_feedback', 'select=student_id,batch_code,attendance'),
-        getP('assessments', 'select=assessment_id,batch_code,test_name,test_type,max_marks,held_on'),
-        getP('assessment_marks', 'select=assessment_id,student_id,marks,remarks'),
-        getP('diplomas', 'select=student_id,batch_code,released_by,released_at'),
+        getAllP('students', 'select=student_id,name,batch_code'),
+        getAllP('batches', 'select=batch_code,centre,course,counselor'),
+        getAllP('attendance_feedback', 'select=student_id,batch_code,attendance'),
+        getAllP('assessments', 'select=assessment_id,batch_code,test_name,test_type,max_marks,held_on'),
+        getAllP('assessment_marks', 'select=assessment_id,student_id,marks,remarks'),
+        getAllP('diplomas', 'select=student_id,batch_code,released_by,released_at'),
         getP('hod_approvals', 'status=eq.Approved&select=ref_code,status'),
-        getP('enrollments', 'status=eq.Active&select=student_id,batch_code'),
-        getP('student_fees', '')
+        getAllP('enrollments', 'status=eq.Active&select=student_id,batch_code'),
+        getAllP('student_fees', '')
       ]);
 
       // Fee-paid gate — same canonical outstanding-balance computation as the admin Fee

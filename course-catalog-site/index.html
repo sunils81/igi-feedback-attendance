@@ -1334,16 +1334,55 @@ body.modal-open{overflow:hidden;}
 </div>
 
 <div class="modal-overlay" id="quizGateModal">
-  <div class="modal-box" style="max-width:440px;" role="dialog" aria-modal="true">
+  <div class="modal-box" style="max-width:460px;" role="dialog" aria-modal="true">
     <button class="modal-close" id="quizGateClose" aria-label="Close">✕</button>
     <h3 class="modal-title" id="quizGateTitle" style="font-size:22px;"></h3>
-    <p style="font-size:14px; color:var(--muted); margin:-8px 0 20px;">Just your name and number — takes 10 seconds, then straight into the quiz.</p>
-    <form class="quiz-gate-form" id="quizGateForm">
-      <div class="field"><label for="quizFname">First Name *</label><input id="quizFname" required placeholder="Riya"></div>
-      <div class="field"><label for="quizMobile">Mobile *</label><input id="quizMobile" required placeholder="98765 43210" inputmode="tel"></div>
-      <button type="submit" class="submit-btn" id="quizGateSubmit" style="background:var(--teal); color:#fff;">Start the Quiz →</button>
-      <div class="form-msg" id="quizGateMsg"></div>
-    </form>
+
+    <div id="quizGateStep1">
+      <p style="font-size:14px; color:var(--muted); margin:-8px 0 20px;">A couple of details, then we'll email you a code to confirm it's really you.</p>
+      <form class="quiz-gate-form" id="quizGateForm">
+        <div class="field"><label for="quizFname">First Name *</label><input id="quizFname" required placeholder="Riya"></div>
+        <div class="form-row" style="display:grid; grid-template-columns:90px 1fr; gap:10px;">
+          <div class="field"><label for="quizMobileCode">Code</label>
+            <select id="quizMobileCode">
+              <option value="+91">+91</option>
+              <option value="+971">+971</option>
+              <option value="+44">+44</option>
+              <option value="+1">+1</option>
+            </select>
+          </div>
+          <div class="field"><label for="quizMobile">Mobile *</label><input id="quizMobile" required placeholder="98765 43210" inputmode="tel"></div>
+        </div>
+        <div class="field"><label for="quizEmail">Email *</label><input id="quizEmail" type="email" required placeholder="riya@email.com"></div>
+        <div class="form-row" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div class="field"><label for="quizState">State</label><input id="quizState" placeholder="Maharashtra"></div>
+          <div class="field"><label for="quizCity">City</label><input id="quizCity" placeholder="Mumbai"></div>
+        </div>
+        <div class="field"><label for="quizCentre">School of Gemology Location</label>
+          <select id="quizCentre">
+            <option value="">Select a centre</option>
+            <option>Mumbai</option><option>Delhi</option><option>Surat</option>
+            <option>Kolkata</option><option>Lucknow</option><option>Jaipur</option>
+            <option>Hyderabad</option><option>Chennai</option><option>Bangalore</option>
+            <option>Thrissur</option><option>Ahmedabad</option><option>Pune</option>
+          </select>
+        </div>
+        <button type="submit" class="submit-btn" id="quizGateSendBtn" style="background:var(--teal); color:#fff;">Send Verification Code →</button>
+        <div class="form-msg" id="quizGateMsg1"></div>
+      </form>
+    </div>
+
+    <div id="quizGateStep2" style="display:none;">
+      <p style="font-size:14px; color:var(--muted); margin:-8px 0 20px;">Enter the 6-digit code we just emailed to <strong id="quizGateEmailConfirm"></strong>.</p>
+      <form id="quizOtpForm">
+        <div class="field"><label for="quizOtpInput">Verification Code *</label>
+          <input id="quizOtpInput" required maxlength="6" inputmode="numeric" placeholder="123456" style="letter-spacing:4px; font-size:18px; text-align:center;">
+        </div>
+        <button type="submit" class="submit-btn" id="quizGateVerifyBtn" style="background:var(--brass); color:var(--ink);">Verify & Start Quiz →</button>
+        <button type="button" id="quizGateResend" style="background:none; border:none; color:var(--teal); font-size:13px; margin-top:10px; cursor:pointer; width:100%;">Didn't get it? Resend code</button>
+        <div class="form-msg" id="quizGateMsg2"></div>
+      </form>
+    </div>
   </div>
 </div>
 
@@ -1491,24 +1530,45 @@ body.modal-open{overflow:hidden;}
 </script>
 
 <script>
-// ---- Gem Quotient quiz gate ----
+// ---- Gem Quotient quiz gate (with email OTP verification) ----
 (function(){
   var ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF0YmV4dnRyY29wYWFnY2RicHFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzNDI0MDgsImV4cCI6MjA5NjkxODQwOH0.4hl6Hs2ZnDW6vSMiRTOkp9sR-93v5dpTjC0uNuticBM';
-  var API_URL = 'https://atbexvtrcopaagcdbpqi.supabase.co/functions/v1/submit-course-lead';
+  var LEAD_URL = 'https://atbexvtrcopaagcdbpqi.supabase.co/functions/v1/submit-course-lead';
+  var OTP_REQUEST_URL = 'https://atbexvtrcopaagcdbpqi.supabase.co/functions/v1/request-quiz-otp';
+  var OTP_VERIFY_URL = 'https://atbexvtrcopaagcdbpqi.supabase.co/functions/v1/verify-quiz-otp';
+  var EMAILJS_SVC = 'service_jglwfxg';
+  var EMAILJS_TPL = 'template_lbokpec';
+  var EMAILJS_KEY = 'ubOFK0SB5o7vcTANR';
+
+  function ensureEmailJS(cb){
+    if(window.emailjs){ cb(); return; }
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js';
+    s.onload = function(){ emailjs.init({ publicKey: EMAILJS_KEY }); cb(); };
+    document.head.appendChild(s);
+  }
 
   var gateOverlay = document.getElementById('quizGateModal');
   var gateTitle = document.getElementById('quizGateTitle');
-  var gateForm = document.getElementById('quizGateForm');
   var gateClose = document.getElementById('quizGateClose');
-  var gateMsg = document.getElementById('quizGateMsg');
-  var gateSubmit = document.getElementById('quizGateSubmit');
+  var step1 = document.getElementById('quizGateStep1');
+  var step2 = document.getElementById('quizGateStep2');
+  var gateForm = document.getElementById('quizGateForm');
+  var sendBtn = document.getElementById('quizGateSendBtn');
+  var msg1 = document.getElementById('quizGateMsg1');
+  var otpForm = document.getElementById('quizOtpForm');
+  var otpInput = document.getElementById('quizOtpInput');
+  var verifyBtn = document.getElementById('quizGateVerifyBtn');
+  var resendBtn = document.getElementById('quizGateResend');
+  var msg2 = document.getElementById('quizGateMsg2');
+  var emailConfirmEl = document.getElementById('quizGateEmailConfirm');
 
   var iframeSection = document.getElementById('quizIframeSection');
   var iframeEl = document.getElementById('quizIframe');
   var iframeTitle = document.getElementById('quizIframeTitle');
   var iframeCloseBtn = document.getElementById('quizIframeClose');
 
-  var pendingQuizUrl = '', pendingQuizName = '';
+  var pendingQuizUrl = '', pendingQuizName = '', pendingLead = null;
 
   document.addEventListener('click', function(e){
     var card = e.target.closest('.quiz-trigger');
@@ -1517,8 +1577,9 @@ body.modal-open{overflow:hidden;}
     pendingQuizUrl = card.getAttribute('data-quiz');
     pendingQuizName = card.getAttribute('data-quiz-name');
     gateTitle.textContent = pendingQuizName;
-    gateMsg.className = 'form-msg';
-    gateForm.reset();
+    msg1.className = 'form-msg'; msg2.className = 'form-msg';
+    gateForm.reset(); otpForm.reset();
+    step1.style.display = ''; step2.style.display = 'none';
     gateOverlay.classList.add('open');
     document.body.classList.add('modal-open');
   });
@@ -1530,44 +1591,126 @@ body.modal-open{overflow:hidden;}
   gateClose.addEventListener('click', closeGate);
   gateOverlay.addEventListener('click', function(e){ if(e.target === gateOverlay) closeGate(); });
 
+  // Step 1: collect details, request OTP, send via EmailJS
   gateForm.addEventListener('submit', function(e){
     e.preventDefault();
-    gateSubmit.disabled = true;
-    gateSubmit.textContent = 'Starting…';
+    var email = document.getElementById('quizEmail').value.trim().toLowerCase();
+    if(!email || email.indexOf('@') < 0){
+      msg1.className = 'form-msg err'; msg1.textContent = 'Enter a valid email address.'; return;
+    }
+    var fname = document.getElementById('quizFname').value.trim();
+    var mobile = document.getElementById('quizMobile').value.trim();
+    if(!fname || !mobile){
+      msg1.className = 'form-msg err'; msg1.textContent = 'Name and mobile are required.'; return;
+    }
 
-    var payload = {
-      first_name: document.getElementById('quizFname').value.trim(),
-      mobile: document.getElementById('quizMobile').value.trim(),
+    pendingLead = {
+      first_name: fname,
+      mobile: document.getElementById('quizMobileCode').value + ' ' + mobile,
+      email: email,
       course: pendingQuizName,
-      centre: 'Website',
-      web_meta: { page: window.location.pathname, gate: pendingQuizName, submitted_at: new Date().toISOString() }
+      centre: document.getElementById('quizCentre').value || 'Website',
+      web_meta: {
+        page: window.location.pathname, gate: pendingQuizName,
+        state: document.getElementById('quizState').value.trim(),
+        city: document.getElementById('quizCity').value.trim(),
+        mobile_code: document.getElementById('quizMobileCode').value,
+        otp_verified: true,
+        submitted_at: new Date().toISOString()
+      }
     };
 
-    fetch(API_URL, {
+    sendBtn.disabled = true; sendBtn.textContent = 'Sending…'; msg1.className = 'form-msg';
+
+    fetch(OTP_REQUEST_URL, {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + ANON_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({ email: email })
     })
-    .then(function(res){ return res.json(); })
+    .then(function(r){ return r.json(); })
     .then(function(data){
-      gateSubmit.disabled = false;
-      gateSubmit.textContent = 'Start the Quiz →';
-      if(data.status === 'ok'){
+      sendBtn.disabled = false; sendBtn.textContent = 'Send Verification Code →';
+      if(data.status !== 'ok'){
+        msg1.className = 'form-msg err'; msg1.textContent = data.message || 'Could not send code — please try again.'; return;
+      }
+      ensureEmailJS(function(){
+        emailjs.send(EMAILJS_SVC, EMAILJS_TPL, { to_email: email, to_name: fname, otp_code: data.otp })
+          .then(function(){}, function(err){ console.warn('EmailJS:', err); });
+      });
+      emailConfirmEl.textContent = email;
+      step1.style.display = 'none'; step2.style.display = '';
+      otpInput.focus();
+    })
+    .catch(function(){
+      sendBtn.disabled = false; sendBtn.textContent = 'Send Verification Code →';
+      msg1.className = 'form-msg err'; msg1.textContent = 'Network error — please try again.';
+    });
+  });
+
+  // Step 2: verify OTP, then submit the full lead and reveal the quiz
+  otpForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    var code = otpInput.value.trim();
+    if(!code){ return; }
+    verifyBtn.disabled = true; verifyBtn.textContent = 'Verifying…'; msg2.className = 'form-msg';
+
+    fetch(OTP_VERIFY_URL, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + ANON_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: pendingLead.email, otp: code })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if(data.status !== 'ok'){
+        verifyBtn.disabled = false; verifyBtn.textContent = 'Verify & Start Quiz →';
+        msg2.className = 'form-msg err'; msg2.textContent = data.message || 'Incorrect code — please try again.';
+        return;
+      }
+      // Verified — now submit the lead
+      return fetch(LEAD_URL, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + ANON_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify(pendingLead)
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(){
+        verifyBtn.disabled = false; verifyBtn.textContent = 'Verify & Start Quiz →';
         closeGate();
         iframeTitle.textContent = pendingQuizName;
         iframeEl.src = pendingQuizUrl;
         iframeSection.classList.add('open');
         iframeSection.scrollIntoView({behavior:'smooth', block:'start'});
+      });
+    })
+    .catch(function(){
+      verifyBtn.disabled = false; verifyBtn.textContent = 'Verify & Start Quiz →';
+      msg2.className = 'form-msg err'; msg2.textContent = 'Network error — please try again.';
+    });
+  });
+
+  resendBtn.addEventListener('click', function(){
+    if(!pendingLead) return;
+    resendBtn.disabled = true; resendBtn.textContent = 'Sending…';
+    fetch(OTP_REQUEST_URL, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + ANON_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: pendingLead.email })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      resendBtn.disabled = false; resendBtn.textContent = "Didn't get it? Resend code";
+      if(data.status === 'ok'){
+        ensureEmailJS(function(){
+          emailjs.send(EMAILJS_SVC, EMAILJS_TPL, { to_email: pendingLead.email, to_name: pendingLead.first_name, otp_code: data.otp })
+            .then(function(){}, function(err){ console.warn('EmailJS:', err); });
+        });
+        msg2.className = 'form-msg ok'; msg2.textContent = 'New code sent.';
       } else {
-        gateMsg.className = 'form-msg err';
-        gateMsg.textContent = data.message || 'Something went wrong — please try again.';
+        msg2.className = 'form-msg err'; msg2.textContent = data.message || 'Could not resend — please wait a moment.';
       }
     })
     .catch(function(){
-      gateSubmit.disabled = false;
-      gateSubmit.textContent = 'Start the Quiz →';
-      gateMsg.className = 'form-msg err';
-      gateMsg.textContent = 'Network error — please try again.';
+      resendBtn.disabled = false; resendBtn.textContent = "Didn't get it? Resend code";
     });
   });
 

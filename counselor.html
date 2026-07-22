@@ -3894,9 +3894,13 @@
           <input type="text" id="diploma-search-input" oninput="filterDiplomaTable()" placeholder="🔍 Search by Name, Student ID or Batch..."
             style="width:100%;font-size:13px;padding:8px 12px 8px 12px;border-radius:6px;border:1.5px solid var(--border);font-family:inherit;box-sizing:border-box">
         </div>
-        <select id="diploma-centre-filter" onchange="filterDiplomaTable()"
+        <select id="diploma-centre-filter" onchange="onDiplomaCentreChange()"
           style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
           <option value="">All Centres</option>
+        </select>
+        <select id="diploma-batch-filter" onchange="filterDiplomaTable()"
+          style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+          <option value="">All Batches</option>
         </select>
         <select id="diploma-course-filter" onchange="filterDiplomaTable()"
           style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
@@ -11958,9 +11962,38 @@ async function loadDiplomaData() {
       centreFilter.innerHTML = '<option value="">All Centres</option>' +
         centres.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
     }
+    populateDiplomaBatchFilter();
 
     renderDiplomaTable(diplomaList);
   });
+}
+
+// Batch dropdown for the Diploma Release tab — lets a counsellor jump straight to one batch
+// instead of typing its code into the search box. Scoped to whichever centre is currently
+// selected (or every batch this counsellor can see, if "All Centres" is selected) so a Mumbai
+// counsellor only has to scroll through Mumbai's batches, not every batch school-wide.
+function populateDiplomaBatchFilter() {
+  var batchFilter = document.getElementById('diploma-batch-filter');
+  if (!batchFilter) return;
+  var prevSelected = batchFilter.value;
+  var centre = (document.getElementById('diploma-centre-filter') || {}).value || '';
+  var scoped = centre
+    ? (diplomaList || []).filter(function(a) { return a.centre === centre; })
+    : (diplomaList || []);
+  var batches = [];
+  scoped.forEach(function(a) { if (a.batchCode && batches.indexOf(a.batchCode) === -1) batches.push(a.batchCode); });
+  batches.sort();
+  batchFilter.innerHTML = '<option value="">All Batches</option>' +
+    batches.map(function(b) { return '<option value="' + escC(b) + '">' + escC(b) + '</option>'; }).join('');
+  // Keep the previous selection if it's still a valid option for the (possibly new) centre scope
+  if (prevSelected && batches.indexOf(prevSelected) !== -1) batchFilter.value = prevSelected;
+}
+
+// Centre filter changing should narrow the batch dropdown to that centre's batches before
+// re-filtering the table, otherwise the batch list would keep showing every centre's batches.
+function onDiplomaCentreChange() {
+  populateDiplomaBatchFilter();
+  filterDiplomaTable();
 }
 
 function renderDiplomaTable(list) {
@@ -12116,6 +12149,7 @@ function renderDiplomaTable(list) {
 function filterDiplomaTable() {
   var query = document.getElementById('diploma-search-input').value.trim().toLowerCase();
   var centre = document.getElementById('diploma-centre-filter').value;
+  var batch = (document.getElementById('diploma-batch-filter') || {}).value || '';
   var course = document.getElementById('diploma-course-filter').value;
   var status = document.getElementById('diploma-status-filter').value;
 
@@ -12123,6 +12157,10 @@ function filterDiplomaTable() {
 
   if (centre) {
     filtered = filtered.filter(function(a) { return a.centre === centre; });
+  }
+
+  if (batch) {
+    filtered = filtered.filter(function(a) { return a.batchCode === batch; });
   }
 
   if (course) {

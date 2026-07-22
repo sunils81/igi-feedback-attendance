@@ -9266,19 +9266,35 @@ function renderEligibility(batches) {
     return '<span style="' + (pass ? passStyle : failStyle) + '">' + label + '</span>';
   }
 
-  let html = '';
-  batches.forEach(function(batch) {
+  // Every batch the instructor has ever taught used to be dumped into one long, always-open
+  // list — with several batches per instructor that meant a lot of scrolling to find the one
+  // batch you actually wanted. Split into Ongoing / Completed collapsible groups, and make
+  // each batch card its own <details> so only what you expand takes up space.
+  const today = new Date().toISOString().slice(0, 10);
+  function isOngoing(b) {
+    if (b.isActive === false) return false;
+    if (b.endDate && b.endDate < today) return false;
+    return true;
+  }
+  const ongoing = batches.filter(isOngoing);
+  const completed = batches.filter(function(b) { return !isOngoing(b); });
+  // Ongoing: soonest-ending first (most urgent). Completed: most recently ended first.
+  ongoing.sort(function(a, b) { return (a.endDate || '9999-99-99').localeCompare(b.endDate || '9999-99-99'); });
+  completed.sort(function(a, b) { return (b.endDate || '').localeCompare(a.endDate || ''); });
+
+  function renderBatchCard(batch, openByDefault) {
     const pct = batch.totalCount > 0 ? Math.round((batch.eligibleCount / batch.totalCount) * 100) : 0;
     const cardColor = pct === 100 ? '#dcfce7' : pct >= 50 ? '#fefce8' : '#fff';
-    html += '<div style="background:' + cardColor + ';border:1.5px solid #e5e7eb;border-radius:14px;padding:18px 20px;margin-bottom:20px;">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;">';
+    let html = '<details' + (openByDefault ? ' open' : '') + ' style="background:' + cardColor + ';border:1.5px solid #e5e7eb;border-radius:14px;margin-bottom:12px;overflow:hidden;">';
+    html += '<summary style="cursor:pointer;list-style:none;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">';
     html += '<div>';
     html += '<span style="font-weight:700;font-size:15px;color:#0D1B2E;">' + escH(batch.batchCode) + '</span>';
     html += '<span style="font-size:12px;color:#6b7280;margin-left:10px;">' + escH(batch.course) + ' · ' + escH(batch.centre) + '</span>';
     html += '</div>';
     html += '<span style="font-size:13px;font-weight:700;color:' + (batch.eligibleCount === batch.totalCount && batch.totalCount > 0 ? '#166534' : '#b45309') + ';">';
     html += batch.eligibleCount + ' / ' + batch.totalCount + ' eligible</span>';
-    html += '</div>';
+    html += '</summary>';
+    html += '<div style="padding:0 18px 18px 18px;">';
 
     if (batch.students && batch.students.length > 0) {
       html += '<div style="overflow-x:auto;">';
@@ -9396,8 +9412,29 @@ function renderEligibility(batches) {
       });
       html += '</tbody></table></div>';
     }
-    html += '</div>';
-  });
+    html += '</div></details>';
+    return html;
+  }
+
+  function renderGroup(label, icon, groupBatches, openByDefault) {
+    if (!groupBatches.length) return '';
+    let html = '<details' + (openByDefault ? ' open' : '') + ' style="margin-bottom:18px;">';
+    html += '<summary style="cursor:pointer;list-style:none;padding:10px 4px;font-weight:700;font-size:14px;color:#0D1B2E;display:flex;align-items:center;gap:8px;">';
+    html += '<span>' + icon + ' ' + escH(label) + '</span>';
+    html += '<span style="font-size:11px;font-weight:700;background:#f3f4f6;color:#6b7280;padding:2px 8px;border-radius:10px;">' + groupBatches.length + '</span>';
+    html += '</summary>';
+    html += '<div style="padding-left:2px;">';
+    groupBatches.forEach(function(batch, idx) {
+      html += renderBatchCard(batch, openByDefault && idx === 0);
+    });
+    html += '</div></details>';
+    return html;
+  }
+
+  let html = '';
+  html += renderGroup('Ongoing Batches', '🟢', ongoing, true);
+  html += renderGroup('Completed Batches', '⚪', completed, false);
+  if (!html) html = '<p style="color:#6b7280;padding:20px;font-size:14px;">No batches found.</p>';
 
   contentDiv.innerHTML = html;
   contentDiv.style.display = 'block';

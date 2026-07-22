@@ -5946,10 +5946,15 @@ window.gasGet = (function () {
           if (!b) return;
 
           if (!byBatch[bc]) {
+            // endDate/isActive let the UI group batches into Ongoing vs Completed sections
+            // instead of dumping every batch the instructor has ever taught into one long,
+            // uncollapsed list.
             byBatch[bc] = {
               batchCode: b.batch_code,
               centre: b.centre,
               course: b.course,
+              endDate: b.end_date || null,
+              isActive: b.is_active !== false,
               students: [],
               eligibleCount: 0,
               totalCount: 0

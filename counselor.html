@@ -8286,12 +8286,29 @@ function resetFeeRecordFilters() {
 // download" always holds — filters can never silently drift apart between the two.
 function feeRecordFilteredRows() {
   if (!allInvoiceRecords) return [];
-  var effectiveCounsellor = isAdmin ? (document.getElementById('fr-filter-counsellor').value || '') : (counselorName || '');
+  // Admin explicitly picks one counsellor at a time to reconcile (see the "Pick a
+  // counsellor" gate in renderFeeRecordTab) — that path stays scoped by enteredBy/
+  // recorded_by, same as before.
+  //
+  // Non-admins get a CENTRE-scoped ledger, not a counsellor-scoped one: every fee record
+  // for their centre(s), regardless of which counsellor is credited with the revenue
+  // (recorded_by/enteredBy). This used to filter by `r.enteredBy !== counselorName`,
+  // which silently dropped any record reassigned/credited to a different counsellor even
+  // though the student's batch still belonged to this counsellor's centre — e.g. Aishwarya
+  // Santhakumar (Chennai, credited to Anuradha) vanished from Preethy's Fee Record tab even
+  // though Preethy owns that centre. allInvoiceRecords is already fetched scoped to
+  // allowedCentres (see loadFeeRecordTab's getAllFeeRecords call), so filtering again by
+  // r.centre here is just being explicit about the same scope, not a new restriction.
+  var effectiveCounsellor = isAdmin ? (document.getElementById('fr-filter-counsellor').value || '') : '';
   var monthFilter = document.getElementById('fr-filter-month').value;
   var batchFilter = document.getElementById('fr-filter-batch').value;
   var search = (document.getElementById('fr-filter-search').value || '').trim().toLowerCase();
   return allInvoiceRecords.filter(function(r) {
-    if (effectiveCounsellor && r.enteredBy !== effectiveCounsellor) return false;
+    if (isAdmin) {
+      if (effectiveCounsellor && r.enteredBy !== effectiveCounsellor) return false;
+    } else if (allowedCentres && allowedCentres.length && allowedCentres.indexOf(r.centre) === -1) {
+      return false;
+    }
     if (monthFilter && frRecordMonth(r) !== monthFilter) return false;
     if (batchFilter && r.batchCode !== batchFilter) return false;
     if (search) {

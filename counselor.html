@@ -1662,6 +1662,17 @@
 
   <div id="cmp-fact-of-day" class="no-print" style="margin-bottom:14px;"></div>
 
+  <!-- Global quick search — students, batches, prospects. Type-ahead dropdown, click a
+       result to jump straight to it (Fees tab + Update Fee form for students/batches,
+       Prospects tab + detail panel for prospects). -->
+  <div class="no-print" style="position:relative;max-width:420px;margin-bottom:10px">
+    <input type="text" id="global-search-input" placeholder="🔎 Search students, batches, prospects…"
+      autocomplete="off"
+      style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px"
+      oninput="globalSearchInput()" onfocus="globalSearchInput()" onblur="setTimeout(function(){ var d=document.getElementById('global-search-results'); if(d) d.style.display='none'; }, 200)">
+    <div id="global-search-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:500;background:#fff;border:1.5px solid var(--border);border-radius:8px;margin-top:4px;max-height:400px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.12)"></div>
+  </div>
+
   <div class="account-actions">
     <button class="del-btn no-print" style="background:var(--navy);color:var(--white);margin-right:8px" onclick="window.print()">🖨️ Print / Save PDF</button>
     <button class="del-btn no-print" id="change-pass-toggle" onclick="togglePasswordCard()">Change Password</button>
@@ -1731,6 +1742,19 @@
       <button onclick="document.getElementById('rmm-reminder-banner').style.display='none'" style="background:transparent;border:none;color:#92400e;font-size:16px;cursor:pointer;line-height:1;">×</button>
     </div>
     <div id="rmm-reminder-list" style="display:flex;flex-direction:column;gap:4px;"></div>
+  </div>
+
+  <!-- Alumni referral nudge banner (non-blocking). Flags alumni whose course ended 15, 45,
+       or 60 days ago — a warm source of referrals nothing else in the app ever surfaced.
+       See h_getReferralNudges in shared.js. Each listed alumnus has a one-tap WhatsApp
+       button with a pre-filled referral ask. -->
+  <div id="referral-nudge-banner" style="display:none;background:#eff6ff;border:1.5px solid #3b82f6;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#1e3a8a;flex-direction:column;gap:6px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span>🤝</span>
+      <span id="referral-nudge-text" style="flex:1;font-weight:500;"></span>
+      <button onclick="document.getElementById('referral-nudge-banner').style.display='none'" style="background:transparent;border:none;color:#1e3a8a;font-size:16px;cursor:pointer;line-height:1;">×</button>
+    </div>
+    <div id="referral-nudge-list" style="display:flex;flex-direction:column;gap:4px;"></div>
   </div>
 
   <!-- Pending batch-confirmation banner (batches another centre created for us) -->
@@ -4704,6 +4728,7 @@ function initCounselorPortal() {
         setTimeout(loadPendingAttBanner, 1500);
         setTimeout(loadOverdueFeesNotification, 2000);
         setTimeout(loadRevenueMonthMismatchNotification, 2300);
+        setTimeout(loadReferralNudgeNotification, 2500);
         setTimeout(loadDuplicateStudentNotification, 2800);
         if (!isAdmin) setTimeout(cmpLoadProspects, 1000);
       }
@@ -4823,6 +4848,7 @@ function doLogin() {
     setTimeout(loadOverdueFeesNotification, 2000);
     setTimeout(loadPendingBatchConfirmBanner, 2500);
     setTimeout(loadRevenueMonthMismatchNotification, 2650);
+    setTimeout(loadReferralNudgeNotification, 2750);
     setTimeout(loadDuplicateStudentNotification, 2800);
   });
 }
@@ -6379,6 +6405,105 @@ function cmpJumpToDueProspects() {
 function cmpJumpToProspect(id) {
   switchTab('t-prospects');
   cmpFilterProspects('due');
+  cmpOpenProspectDetail(id);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   GLOBAL QUICK SEARCH — header search box. Searches students and batches server-side
+   (h_globalSearch in shared.js) and prospects client-side against the already-loaded
+   cmpProspects array (loaded for this counsellor at login — see cmpLoadProspects), so no
+   extra round trip is needed for that source. Debounced on input; each result jumps
+   straight to the right place instead of just telling you where to look.
+   ══════════════════════════════════════════════════════════════ */
+var _globalSearchTimer = null;
+function globalSearchInput() {
+  var input = document.getElementById('global-search-input');
+  var box = document.getElementById('global-search-results');
+  if (!input || !box) return;
+  var q = input.value.trim();
+  clearTimeout(_globalSearchTimer);
+  if (q.length < 2) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = '<div style="padding:10px 12px;font-size:12px;color:var(--muted)">Searching…</div>';
+  _globalSearchTimer = setTimeout(function() { globalSearchRun(q); }, 250);
+}
+
+function globalSearchRun(q) {
+  var qLower = q.toLowerCase();
+  var prospectMatches = (typeof cmpProspects !== 'undefined' && cmpProspects ? cmpProspects : []).filter(function(p) {
+    return (p.name && p.name.toLowerCase().indexOf(qLower) !== -1) ||
+           (p.phone && String(p.phone).indexOf(q) !== -1);
+  }).slice(0, 6);
+
+  gasGet({ action: 'globalSearch', query: q }, function(e, d) {
+    // If the box was cleared or changed while this request was in flight, drop the
+    // stale response rather than flashing outdated results.
+    var input = document.getElementById('global-search-input');
+    if (!input || input.value.trim() !== q) return;
+    var students = (!e && d && d.status === 'ok') ? (d.students || []) : [];
+    var batches = (!e && d && d.status === 'ok') ? (d.batches || []) : [];
+    globalSearchRender(students, batches, prospectMatches, q);
+  });
+}
+
+function globalSearchRender(students, batches, prospects, q) {
+  var box = document.getElementById('global-search-results');
+  if (!box) return;
+  if (!students.length && !batches.length && !prospects.length) {
+    box.innerHTML = '<div style="padding:10px 12px;font-size:12px;color:var(--muted)">No matches for "' + escC(q) + '".</div>';
+    return;
+  }
+  var rowStyle = 'display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:transparent;cursor:pointer;font-size:13px;border-bottom:1px solid #f3f4f6';
+  var section = function(label, itemsHtml) {
+    return '<div style="padding:6px 12px 2px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">' + label + '</div>' + itemsHtml;
+  };
+  var html = '';
+  if (students.length) {
+    html += section('Students', students.map(function(s) {
+      return '<button style="' + rowStyle + '" onmousedown="globalSearchGoToStudent(\'' + escC(s.studentId) + '\',\'' + escC(s.batchCode) + '\')"><strong>' + escC(s.name) + '</strong> <span style="color:var(--muted)">(' + escC(s.studentId) + ')</span>' + (s.batchCode ? ' — ' + escC(s.batchCode) : '') + '</button>';
+    }).join(''));
+  }
+  if (batches.length) {
+    html += section('Batches', batches.map(function(b) {
+      return '<button style="' + rowStyle + '" onmousedown="globalSearchGoToBatch(\'' + escC(b.batch_code) + '\')"><strong>' + escC(b.batch_code) + '</strong> <span style="color:var(--muted)">' + escC(b.course || '') + ' · ' + escC(b.centre || '') + '</span></button>';
+    }).join(''));
+  }
+  if (prospects.length) {
+    html += section('Prospects', prospects.map(function(p) {
+      return '<button style="' + rowStyle + '" onmousedown="globalSearchGoToProspect(\'' + p.id + '\')"><strong>' + escC(p.name) + '</strong> <span style="color:var(--muted)">' + escC(p.status || '') + '</span></button>';
+    }).join(''));
+  }
+  box.innerHTML = html;
+}
+
+function globalSearchClear() {
+  var input = document.getElementById('global-search-input');
+  var box = document.getElementById('global-search-results');
+  if (input) input.value = '';
+  if (box) box.style.display = 'none';
+}
+
+function globalSearchGoToStudent(studentId, batchCode) {
+  globalSearchClear();
+  if (!batchCode) { showToast('No batch on file for this student.', 'error'); return; }
+  switchTab('t-fees');
+  var sel = document.getElementById('fee-batch');
+  if (sel) sel.value = batchCode;
+  loadFeeOverview(function() { openFeeForm(studentId); });
+}
+
+function globalSearchGoToBatch(batchCode) {
+  globalSearchClear();
+  switchTab('t-fees');
+  var sel = document.getElementById('fee-batch');
+  if (sel) sel.value = batchCode;
+  loadFeeOverview();
+}
+
+function globalSearchGoToProspect(id) {
+  globalSearchClear();
+  switchTab('t-prospects');
+  cmpFilterProspects('all');
   cmpOpenProspectDetail(id);
 }
 
@@ -16481,6 +16606,65 @@ function jumpToFeeMismatch(batchCode, studentId) {
   loadFeeOverview(function() {
     openFeeForm(studentId);
   });
+}
+
+// Alumni referral nudge — flags alumni 15/45/60 days post-completion (h_getReferralNudges
+// in shared.js) as a warm moment to ask for a referral. Dismissal (including "asked via
+// WhatsApp") is tracked in localStorage per counsellor, per (student, milestone) — there's
+// no backend table for this yet, so it's a per-device memory, not synced across devices.
+// That's an acceptable tradeoff for a nudge (worst case: it reappears once on a new device
+// or after clearing browser storage), not worth a schema migration for.
+function _referralNudgeStorageKey() { return 'referralNudgeDismissed_' + (counselorName || 'anon'); }
+function _referralNudgeDismissedSet() {
+  try { return JSON.parse(localStorage.getItem(_referralNudgeStorageKey()) || '[]'); } catch (e) { return []; }
+}
+function _referralNudgeMarkDismissed(key) {
+  var set = _referralNudgeDismissedSet();
+  if (set.indexOf(key) === -1) {
+    set.push(key);
+    try { localStorage.setItem(_referralNudgeStorageKey(), JSON.stringify(set)); } catch (e) {}
+  }
+}
+
+function loadReferralNudgeNotification() {
+  gasGet({ action: 'getReferralNudges', centres: isAdmin ? '' : (allowedCentres || []).join(',') }, function(e, d) {
+    var banner = document.getElementById('referral-nudge-banner');
+    var text = document.getElementById('referral-nudge-text');
+    var list = document.getElementById('referral-nudge-list');
+    if (!banner || !text || !list) return;
+    if (e || !d || d.status !== 'ok' || !d.nudges || !d.nudges.length) { banner.style.display = 'none'; return; }
+    var dismissed = _referralNudgeDismissedSet();
+    var nudges = d.nudges.filter(function(nu) { return dismissed.indexOf(nu.studentId + '_' + nu.milestone) === -1; });
+    if (!nudges.length) { banner.style.display = 'none'; return; }
+    var n = nudges.length;
+    text.textContent = n + ' alumnus' + (n > 1 ? 'es are' : ' is') + ' at a good moment to ask for a referral.';
+    list.innerHTML = nudges.map(function(nu) {
+      var key = nu.studentId + '_' + nu.milestone;
+      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;background:#fff;border:1px solid #bfdbfe;border-radius:6px;padding:6px 10px">' +
+        '<span style="font-size:12px"><strong>' + escC(nu.name) + '</strong> <span style="color:#6b7280">(' + escC(nu.course || '') + ', ' + escC(nu.centre || '') + ')</span> — ' + nu.milestone + '-day mark</span>' +
+        '<span style="display:flex;gap:6px;flex-shrink:0">' +
+          '<button onclick="referralNudgeWhatsApp(\'' + escC(key) + '\',\'' + escC(nu.name) + '\',\'' + escC(nu.mobile || '') + '\')" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer">💬 Ask</button>' +
+          '<button onclick="referralNudgeDismiss(\'' + escC(key) + '\')" style="background:transparent;border:1px solid #93c5fd;color:#1e3a8a;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer">Dismiss</button>' +
+        '</span>' +
+      '</div>';
+    }).join('');
+    banner.style.display = 'flex';
+  });
+}
+
+function referralNudgeDismiss(key) {
+  _referralNudgeMarkDismissed(key);
+  loadReferralNudgeNotification();
+}
+
+function referralNudgeWhatsApp(key, name, mobile) {
+  if (!mobile) { showToast('No mobile number on file for this alumnus.', 'error'); return; }
+  var clean = String(mobile).replace(/[^0-9]/g, '');
+  if (clean.length === 10) clean = '91' + clean;
+  var msg = "Hi " + name + "! 😊 Hope you're doing well since completing your course with us at IGI School of Gemology. If you know anyone who might be interested in our courses, we'd really appreciate an introduction — happy to take good care of them, just like we did with you. Thank you!";
+  window.open('https://wa.me/' + clean + '?text=' + encodeURIComponent(msg), '_blank');
+  _referralNudgeMarkDismissed(key);
+  loadReferralNudgeNotification();
 }
 
 // Duplicate Student ID detection — proactively flags when the same person is sitting

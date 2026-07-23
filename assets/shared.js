@@ -1472,6 +1472,38 @@ window.gasGet = (function () {
      numbers don't have typo variants the way names do (e.g. "Shantanu" vs "Shantanu
      Vaidya" vs a nickname), so matching on mobile catches the same-person-different-ID
      case a name-only search can miss. */
+  /* h_globalSearch — powers the header's global quick-search box (counselor.html). Matches
+     students (by name, student ID, or mobile) and batches (by batch code or course) in
+     parallel, capped small since this is a type-ahead dropdown, not a report. Deliberately
+     does NOT search prospects here — those live in a separate Next.js-backed store
+     (/api/companion/prospects) already loaded client-side into cmpProspects for the logged-
+     in counsellor at login, so the frontend searches that array directly instead of a round
+     trip here; keeps this endpoint fast and free of a second data source's auth/scoping
+     rules to reason about. */
+  function h_globalSearch(p, cb) {
+    var q = String(p.query || '').trim();
+    if (q.length < 2) { cb(null, { status: 'ok', students: [], batches: [] }); return; }
+    var qEnc = encodeURIComponent(q);
+    var n = 0, students = [], batches = [];
+    function finish() { if (++n < 2) return; cb(null, { status: 'ok', students: students, batches: batches }); }
+    GET('students',
+      'or=(name.ilike.*' + qEnc + '*,student_id.ilike.*' + qEnc + '*,mobile.ilike.*' + qEnc + '*)' +
+      '&select=student_id,name,mobile,batch_code&limit=8&order=name.asc',
+      function (e, rows) {
+        students = (rows || []).map(function (r) {
+          return { studentId: r.student_id, name: r.name, mobile: r.mobile || '', batchCode: r.batch_code || '' };
+        });
+        finish();
+      });
+    GET('batches',
+      'or=(batch_code.ilike.*' + qEnc + '*,course.ilike.*' + qEnc + '*)' +
+      '&select=batch_code,centre,course&limit=6&order=batch_code.asc',
+      function (e, rows) {
+        batches = rows || [];
+        finish();
+      });
+  }
+
   function h_searchStudents(p, cb) {
     var q      = String(p.query  || '').trim();
     var mobile = String(p.mobile || '').trim();
@@ -1859,10 +1891,59 @@ window.gasGet = (function () {
             return { enrollmentNo: r.student_id, studentId: r.student_id, name: r.name, batchCode: r.batch_code,
               centre: b.centre, course: isGG ? 'Graduate Gemologist' : b.course, counselor: b.counselor,
               status: calculatedStatus, email: r.email, mobile: r.mobile, orderId: r.order_id || '',
-              combinedCourses: isGG ? allCourses.join(' + ') : '' };
+              combinedCourses: isGG ? allCourses.join(' + ') : '',
+              // endDate — the batch's completion date. Added purely so
+              // h_getReferralNudges (below) can compute "days since completion" without a
+              // second GET batches call; every other existing caller of getStudentAlumni
+              // just ignores this extra field.
+              endDate: b.end_date || '' };
           }) });
         });
       });
+    });
+  }
+
+  /* h_getReferralNudges — proactive alumni referral nudges. Alumni are a warm source of
+     new business (they've already done the course and trust the centre), but nothing here
+     ever prompted a counsellor to actually ask for a referral. Flags alumni whose course
+     ended 15, 45, or 60 days ago — three deliberately spaced touchpoints (right after
+     graduation, a month or so later, two months later) rather than a single one-off nudge,
+     each within a small trailing window (REFERRAL_WINDOW_DAYS) so missing the exact day
+     still catches it a day or two later. Reuses h_alumni's own completion-status logic
+     rather than re-deriving it, so "alumnus" here always means what the Alumni tab already
+     shows. Centre-scoped for non-admins (mirrors the Alumni tab's own client-side centre
+     filter), not counsellor-scoped — any counsellor at that centre can reasonably reach out
+     for a referral, the same reasoning as the Fee Record centre-scoping fix. */
+  var REFERRAL_MILESTONES = [15, 45, 60];
+  var REFERRAL_WINDOW_DAYS = 3;
+  function h_getReferralNudges(p, cb) {
+    h_alumni({}, function (e, d) {
+      if (e || !d || d.status !== 'ok') { cb(null, { status: 'error', reason: 'alumni_lookup_failed' }); return; }
+      var centresFilter = (p && p.centres && String(p.centres).trim())
+        ? String(p.centres).split(',').map(function (c) { return c.trim().toLowerCase(); }).filter(Boolean)
+        : null;
+      var todayMs = new Date(todayYMD()).getTime();
+      var nudges = [];
+      (d.alumni || []).forEach(function (a) {
+        if (a.status !== 'Completed' || !a.endDate) return;
+        if (centresFilter && (!a.centre || centresFilter.indexOf(a.centre.toLowerCase()) === -1)) return;
+        var days = Math.round((todayMs - new Date(a.endDate).getTime()) / 86400000);
+        var milestone = null;
+        for (var i = 0; i < REFERRAL_MILESTONES.length; i++) {
+          var m = REFERRAL_MILESTONES[i];
+          if (days >= m && days < m + REFERRAL_WINDOW_DAYS) { milestone = m; break; }
+        }
+        if (milestone === null) return;
+        nudges.push({
+          studentId: a.studentId, name: a.name, centre: a.centre, course: a.course,
+          batchCode: a.batchCode, mobile: a.mobile, email: a.email,
+          completedOn: a.endDate, daysSinceCompletion: days, milestone: milestone
+        });
+      });
+      // Soonest-completed milestone first (15-day nudges are the most time-sensitive —
+      // right after graduation is when the experience is freshest in an alumnus's mind).
+      nudges.sort(function (x, y) { return x.milestone - y.milestone || x.daysSinceCompletion - y.daysSinceCompletion; });
+      cb(null, { status: 'ok', count: nudges.length, nudges: nudges });
     });
   }
 
@@ -8385,6 +8466,8 @@ window.gasGet = (function () {
       case 'resendStudentWelcomeEmail': return h_resendEmail(params, cb);
       case 'getStudentProfile':         return h_studentProfile(params, cb);
       case 'getStudentAlumni':          return h_alumni(params, cb);
+      case 'getReferralNudges':         return h_getReferralNudges(params, cb);
+      case 'globalSearch':              return h_globalSearch(params, cb);
       case 'getOverdueFeesCount':       return h_getOverdueFeesCount(params, cb);
       case 'getFeeRecords':             return h_getFeeRecords(params, cb);
       case 'getAllFeeRecords':          return h_getAllFeeRecords(params, cb);

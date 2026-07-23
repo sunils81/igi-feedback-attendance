@@ -1727,6 +1727,14 @@
     <div id="remote-batch-list" style="display:flex;flex-direction:column;gap:6px;"></div>
   </div>
 
+  <!-- Duplicate Student ID banner — same person enrolled twice under two different IDs -->
+  <div id="dup-student-banner" style="display:none;background:#fef2f2;border:1.5px solid #dc2626;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#991b1b;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span>👥</span>
+    <span id="dup-student-text" style="flex:1;font-weight:500;"></span>
+    <button onclick="openDuplicateStudentModal()" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;">Review Now</button>
+    <button onclick="document.getElementById('dup-student-banner').style.display='none'" style="background:transparent;border:none;color:#991b1b;font-size:16px;cursor:pointer;line-height:1;">×</button>
+  </div>
+
   <div id="counselor-summary" class="dashboard-summary" style="display:none"></div>
 
   <!-- TAB 1: CREATE BATCH -->
@@ -4680,6 +4688,7 @@ function initCounselorPortal() {
         prefetchRevenue();
         setTimeout(loadPendingAttBanner, 1500);
         setTimeout(loadOverdueFeesNotification, 2000);
+        setTimeout(loadDuplicateStudentNotification, 2800);
         if (!isAdmin) setTimeout(cmpLoadProspects, 1000);
       }
     }
@@ -4797,6 +4806,7 @@ function doLogin() {
     setTimeout(loadPendingAttBanner, 1500);
     setTimeout(loadOverdueFeesNotification, 2000);
     setTimeout(loadPendingBatchConfirmBanner, 2500);
+    setTimeout(loadDuplicateStudentNotification, 2800);
   });
 }
 
@@ -16326,6 +16336,98 @@ function loadOverdueFeesNotification() {
   });
 }
 
+// Duplicate Student ID detection — proactively flags when the same person is sitting
+// under two different Student IDs (matched by mobile or email) instead of relying on
+// a counsellor stumbling onto it, which is how every one of these got found so far
+// (Tejas Kothari, Lakhi Menghani, Koulika Mandal, the Gajender/Elavazhagan ghost rows).
+var _dupStudentGroups = [];
+function loadDuplicateStudentNotification() {
+  gasGet({ action: 'getDuplicateStudentIds' }, function(e, d) {
+    if (e || !d || d.status !== 'ok') return;
+    _dupStudentGroups = d.groups || [];
+    var banner = document.getElementById('dup-student-banner');
+    var text = document.getElementById('dup-student-text');
+    if (!banner || !text) return;
+    if (_dupStudentGroups.length > 0) {
+      text.textContent = _dupStudentGroups.length + ' possible duplicate student' + (_dupStudentGroups.length > 1 ? 's' : '') +
+        ' — same person may be sitting under two different Student IDs.';
+      banner.style.display = 'flex';
+    } else {
+      banner.style.display = 'none';
+    }
+  });
+}
+
+function openDuplicateStudentModal() {
+  renderDuplicateStudentList();
+  var modal = document.getElementById('dup-student-modal');
+  if (modal) modal.style.display = 'flex';
+}
+
+function renderDuplicateStudentList() {
+  var el = document.getElementById('dup-student-list');
+  if (!el) return;
+  if (!_dupStudentGroups.length) {
+    el.innerHTML = '<p style="color:var(--muted);font-size:13px">No duplicates detected right now.</p>';
+    return;
+  }
+  el.innerHTML = _dupStudentGroups.map(function(g, gi) {
+    var rows = g.students.map(function(s, si) {
+      return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;' + (si > 0 ? 'margin-top:6px' : '') + '">' +
+        '<div style="flex:1;font-size:12.5px">' +
+          '<strong>' + escC(s.studentId) + '</strong> — ' + escC(s.name || 'No name') +
+          '<br><span style="color:var(--muted)">' + escC(s.mobile || 'no mobile') + ' · ' + escC(s.email || 'no email') +
+          (s.batchCode ? ' · ' + escC(s.batchCode) : ' · no batch') + ' · ' + escC(s.status || '') + '</span>' +
+        '</div>' +
+        '<button onclick="keepThisDuplicate(' + gi + ',' + JSON.stringify(s.studentId) + ')" ' +
+          'style="font-size:11px;padding:5px 10px;border-radius:5px;border:1px solid #1d4ed8;background:#eff6ff;color:#1d4ed8;cursor:pointer;white-space:nowrap;font-weight:600">Keep this ID</button>' +
+      '</div>';
+    }).join('');
+    return '<div style="margin-bottom:16px">' +
+      '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Matched by ' + escC(g.matchedBy) + '</div>' +
+      rows +
+    '</div>';
+  }).join('');
+}
+
+// Merges every OTHER student in the group into keepId, one at a time (reusing the
+// same mergeStudentRecords action the Edit Student Record modal's collision-recovery
+// flow uses — including its same-batch duplicate-row handling).
+function keepThisDuplicate(groupIdx, keepId) {
+  var group = _dupStudentGroups[groupIdx];
+  if (!group) return;
+  var others = group.students.map(function(s) { return s.studentId; }).filter(function(id) { return id !== keepId; });
+  if (!others.length) return;
+  if (!confirm('Merge ' + others.join(', ') + ' into ' + keepId + '? Every attendance, fee, marks, and CRM record under the other ID(s) will be moved onto ' + keepId + ', then the duplicate row(s) removed. Nothing is lost.')) return;
+
+  var messages = [];
+  var i = 0;
+  function next() {
+    if (i >= others.length) { finish(); return; }
+    var fromId = others[i]; i++;
+    gasGet({ action: 'mergeStudentRecords', fromId: fromId, toId: keepId }, function(e, d) {
+      if (e || !d) { messages.push(fromId + ': merge request failed'); next(); return; }
+      if (d.status === 'ok') { messages.push(fromId + ': merged ✓'); }
+      else { messages.push(fromId + ': ' + (d.message || 'could not fully merge')); }
+      next();
+    });
+  }
+  function finish() {
+    var allOk = messages.every(function(m) { return m.indexOf('merged ✓') !== -1; });
+    showToast(allOk ? ('Merged into ' + keepId + ' ✓') : ('Some merges need attention: ' + messages.join(' | ')), allOk ? 'success' : 'error');
+    loadDuplicateStudentNotification();
+    // Refresh whatever list is currently visible so the merged rows disappear immediately
+    var alumniTab = document.getElementById('t-alumni');
+    if (alumniTab && alumniTab.classList.contains('active')) {
+      alumniList = [];
+      loadAlumniData();
+    }
+    var batch = (document.getElementById('st-edit-batch') || {}).value || '';
+    if (batch) renderStudentList(batch);
+  }
+  next();
+}
+
 // Safeguard 3: surface batches created for OUR centre(s) by a counselor at another
 // centre, so nothing sits un-staffed just because the destination team didn't know
 // it existed. Non-blocking — just visibility + a one-click acknowledge.
@@ -20140,6 +20242,18 @@ function enrollSave() {
     <div style="display:flex;gap:8px">
       <button class="btn" onclick="saveStudentEdit()">Save Changes</button>
       <button class="btn btn-outline" onclick="closeStudentEditModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Duplicate Student ID review modal -->
+<div id="dup-student-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--white);border-radius:12px;padding:24px;width:100%;max-width:640px;max-height:86vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.2)">
+    <h3 style="margin:0 0 6px 0;font-size:16px;color:var(--navy)">Possible Duplicate Students</h3>
+    <p style="margin:0 0 16px 0;font-size:12.5px;color:var(--muted)">Same mobile number or email showing up under more than one Student ID — usually the same person enrolled a second time instead of being added to their existing record. Pick which ID to keep; everything under the other ID(s) gets moved over and the duplicate is removed.</p>
+    <div id="dup-student-list"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px">
+      <button class="btn btn-outline" onclick="document.getElementById('dup-student-modal').style.display='none'">Close</button>
     </div>
   </div>
 </div>

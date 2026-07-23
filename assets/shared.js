@@ -1723,6 +1723,53 @@ window.gasGet = (function () {
     });
   }
 
+  /* getDuplicateStudentIds — proactive detection for the counselor portal's persistent
+     "possible duplicate students" banner. Every one of the merge bugs this session
+     (Tejas Kothari 4184/7209, Lakhi Menghani 7206/6316, Koulika Mandal 7126/7079, the
+     Gajender/Elavazhagan ghost rows) was only ever found because someone happened to
+     scroll past it or a screenshot caught it — nothing proactively told a counsellor
+     "hey, these two IDs are probably the same person." This scans every student and
+     groups by normalized mobile (last 10 digits, so a stray country-code prefix like
+     the Elavazhagan 91-9159006174 case still matches) and by lowercased email; any
+     group with 2+ distinct student_ids is a likely duplicate worth a look. */
+  function h_getDuplicateStudentIds(p, cb) {
+    GET('students', 'select=student_id,name,mobile,email,batch_code,status,created_at&order=created_at.asc', function (e, rows) {
+      if (e || !rows || !rows.length) { cb(null, { status: 'ok', count: 0, groups: [] }); return; }
+      var byMobile = {}, byEmail = {};
+      rows.forEach(function (r) {
+        var m = String(r.mobile || '').replace(/\D/g, '').slice(-10);
+        if (m.length === 10) { (byMobile[m] = byMobile[m] || []).push(r); }
+        var em = String(r.email || '').trim().toLowerCase();
+        if (em) { (byEmail[em] = byEmail[em] || []).push(r); }
+      });
+      var seen = {};
+      var groups = [];
+      function addGroup(list, matchedBy) {
+        var uniqueIds = [];
+        list.forEach(function (r) { if (uniqueIds.indexOf(r.student_id) === -1) uniqueIds.push(r.student_id); });
+        if (uniqueIds.length < 2) return;
+        var key = uniqueIds.slice().sort().join('|');
+        if (seen[key]) return;
+        seen[key] = true;
+        // One row per unique student_id (a student_id could theoretically repeat here
+        // if it somehow matched via both mobile and email in the same list — de-dupe).
+        var byId = {};
+        list.forEach(function (r) { byId[r.student_id] = r; });
+        groups.push({
+          matchedBy: matchedBy,
+          students: uniqueIds.map(function (sid) {
+            var r = byId[sid];
+            return { studentId: r.student_id, name: r.name, mobile: r.mobile, email: r.email,
+              batchCode: r.batch_code, status: r.status };
+          })
+        });
+      }
+      Object.keys(byMobile).forEach(function (m) { if (byMobile[m].length > 1) addGroup(byMobile[m], 'mobile'); });
+      Object.keys(byEmail).forEach(function (em) { if (byEmail[em].length > 1) addGroup(byEmail[em], 'email'); });
+      cb(null, { status: 'ok', count: groups.length, groups: groups.slice(0, 40) });
+    });
+  }
+
   /* resendStudentWelcomeEmail */
   function h_resendEmail(p, cb) {
     PATCH('students', 'student_id=eq.' + encodeURIComponent(p.enrollmentNo),
@@ -8219,6 +8266,7 @@ window.gasGet = (function () {
       case 'checkInvoiceNumber':        return h_checkInvoiceNumber(params, cb);
       case 'checkStudentMobile':        return h_checkStudentMobile(params, cb);
       case 'mergeStudentRecords':       return h_mergeStudentRecords(params, cb);
+      case 'getDuplicateStudentIds':    return h_getDuplicateStudentIds(params, cb);
       case 'getHolidays':               return h_getHolidays(params, cb);
       case 'addHoliday':                return h_addHoliday(params, cb);
       case 'getSessions':               return h_getSessions(params, cb);

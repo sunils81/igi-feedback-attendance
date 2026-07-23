@@ -2028,7 +2028,8 @@ window.gasGet = (function () {
     if (!recordId) { cb(null, { status: 'error', reason: 'missing_record_id' }); return; }
     GET('student_fees', 'id=eq.' + encodeURIComponent(recordId), function (e, rows) {
       if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'not_found' }); return; }
-      var receiptNo = rows[0].receipt_no || '';
+      var row = rows[0];
+      var receiptNo = row.receipt_no || '';
       var meta = {};
       if (receiptNo && receiptNo.trim().indexOf('{') === 0) {
         try { meta = JSON.parse(receiptNo); } catch (ex) { meta = {}; }
@@ -2042,8 +2043,39 @@ window.gasGet = (function () {
       if (p.invoiceAmount !== undefined && p.invoiceAmount !== null && p.invoiceAmount !== '') {
         meta.invoice_amount = Number(p.invoiceAmount);
       }
-      PATCH('student_fees', 'id=eq.' + encodeURIComponent(recordId), { receipt_no: JSON.stringify(meta) }, function (e2) {
-        cb(null, e2 ? { status: 'error', reason: String(e2) } : { status: 'ok' });
+
+      // revenue_month must stay in lockstep with h_saveFee's rule — invoice date always
+      // wins over payment date when one is set (per Sunil, confirmed 2026-07-23: business
+      // must be counted against the invoice date, payment date is irrelevant to WHICH month
+      // it lands in). This endpoint used to only touch the receipt_no JSON blob, so filling
+      // in a missing/wrong invoice date from the Invoices tab's quick modal — the exact
+      // workflow this endpoint exists for — visibly updated the invoice date everywhere it's
+      // displayed while silently leaving revenue_month (and therefore every revenue total
+      // and the Fee Record tab's month grouping) stuck on whatever it was computed from at
+      // the original save, almost always the payment date since no invoice date existed
+      // yet. A student paid in July, invoiced back-dated to June via this modal, kept
+      // counting as July revenue with no visible sign anything was wrong. Recomputing
+      // revenue_month here the same way h_saveFee does, and re-syncing both the old and new
+      // (counsellor, centre, month) buckets, closes that gap.
+      var previousRevenueMonth = row.revenue_month || '';
+      var latestPaidDate = '';
+      for (var i = 1; i <= 3; i++) {
+        if (meta['inst' + i + '_paid'] === 'Y' && meta['inst' + i + '_paid_date']) {
+          latestPaidDate = meta['inst' + i + '_paid_date'];
+        }
+      }
+      var revenueMonth = (meta.invoice_date ? toYMD(meta.invoice_date) : (latestPaidDate || todayYMD())).slice(0, 7);
+
+      var patchBody = { receipt_no: JSON.stringify(meta) };
+      if (revenueMonth !== previousRevenueMonth) patchBody.revenue_month = revenueMonth;
+
+      PATCH('student_fees', 'id=eq.' + encodeURIComponent(recordId), patchBody, function (e2) {
+        if (e2) { cb(null, { status: 'error', reason: String(e2) }); return; }
+        if (revenueMonth !== previousRevenueMonth) {
+          syncStudentRevenue(row.recorded_by, row.centre, revenueMonth, '2026-27');
+          if (previousRevenueMonth) syncStudentRevenue(row.recorded_by, row.centre, previousRevenueMonth, '2026-27');
+        }
+        cb(null, { status: 'ok' });
       });
     });
   }

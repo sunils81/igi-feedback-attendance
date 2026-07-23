@@ -8347,12 +8347,21 @@ function renderFeeRecordTab() {
   // GST-inclusive figure used elsewhere, e.g. leaderboards). Showing netPayable (which nets
   // out the discount and adds GST) here would make this ledger disagree with the Revenue tab
   // it's meant to reconcile against, which defeats the whole point of the tab.
-  var gTotal = { courseFee:0, gst:0, revenue:0, collected:0, balance:0, count:0 };
+  //
+  // ownRevenue — since this tab is now centre-scoped (see feeRecordFilteredRows), `revenue`
+  // below is the WHOLE centre's course fee, which can include sales credited to other
+  // counsellors (e.g. Anuradha's sale inside Preethy's centre). That's correct for the
+  // centre total, but it no longer equals what an individual counsellor's own Revenue-tab
+  // "Achieved" figure shows. ownRevenue re-isolates just the rows credited to the logged-in
+  // counsellor (r.enteredBy === counselorName), still excl. GST, so their personal number
+  // stays visible alongside the centre number instead of being silently absorbed into it.
+  var gTotal = { courseFee:0, gst:0, revenue:0, ownRevenue:0, collected:0, balance:0, count:0 };
   rows.forEach(function(r) {
     var revenue = Number(r.courseFee) || 0;
     gTotal.courseFee += Number(r.courseFee)   || 0;
     gTotal.gst        += Number(r.gstAmount)   || 0;
     gTotal.revenue     += revenue;
+    if (!isAdmin && r.enteredBy === counselorName) gTotal.ownRevenue += revenue;
     gTotal.collected  += Number(r.collected)   || 0;
     gTotal.balance     += Number(r.outstanding) || 0;
     gTotal.count++;
@@ -8360,7 +8369,8 @@ function renderFeeRecordTab() {
   summary.style.display = 'grid';
   summary.innerHTML =
     '<div class="summary-tile"><div class="k">Records</div><div class="v">' + gTotal.count + '</div><div class="s">Matching current filters</div></div>' +
-    '<div class="summary-tile"><div class="k">Revenue</div><div class="v">' + money(gTotal.revenue) + '</div><div class="s">Matches the Revenue tab</div></div>' +
+    '<div class="summary-tile"><div class="k">' + (isAdmin ? 'Revenue' : 'Centre Revenue') + '</div><div class="v">' + money(gTotal.revenue) + '</div><div class="s">Excl. GST' + (isAdmin ? ' · matches the Revenue tab' : ' · everyone\'s sales in this centre') + '</div></div>' +
+    (isAdmin ? '' : '<div class="summary-tile"><div class="k">Your Revenue</div><div class="v">' + money(gTotal.ownRevenue) + '</div><div class="s">Excl. GST · matches the Revenue tab</div></div>') +
     '<div class="summary-tile ok"><div class="k">Collected</div><div class="v">' + money(gTotal.collected) + '</div><div class="s">' + Math.round(gTotal.collected / Math.max(gTotal.revenue,1) * 100) + '% collected</div></div>' +
     '<div class="summary-tile ' + (gTotal.balance ? 'warn' : 'ok') + '"><div class="k">Balance</div><div class="v">' + money(gTotal.balance) + '</div><div class="s">Still outstanding</div></div>';
 

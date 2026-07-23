@@ -2080,6 +2080,77 @@ window.gasGet = (function () {
     });
   }
 
+  /* h_getRevenueMonthMismatches — admin diagnostic for the revenue-month-stuck-on-payment-
+     date bug fixed in h_updateInvoiceDetails above. Finds every EXISTING fee record whose
+     invoice date's month doesn't match its stored revenue_month — i.e. records from before
+     that fix, where an invoice date was filled in or corrected through the Invoices tab's
+     quick "fill in a missing invoice" modal, but revenue_month never got recomputed to
+     match it (so it's still silently bucketed by whatever the payment date was at the
+     time). Read-only: flags candidates for a human to review, never changes anything
+     itself — see h_fixRevenueMonthMismatch for the one-row-at-a-time fix action. */
+  function h_getRevenueMonthMismatches(p, cb) {
+    if (!p || !(p.isAdmin === true || p.isAdmin === 'true')) { cb(null, { status: 'error', message: 'Admin only.' }); return; }
+    var students, batches;
+    var n = 0;
+    function finish() {
+      if (++n < 2) return;
+      GET('student_fees', 'order=created_at.asc', function (e, rows) {
+        if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+        var mismatches = [];
+        (rows || []).forEach(function (r) {
+          var mapped = parseFeeRow(r, students, batches);
+          if (!mapped.invoice_date) return; // nothing to compare a revenue_month against
+          var expectedMonth = String(mapped.invoice_date).slice(0, 7);
+          var actualMonth = mapped.revenue_month || '';
+          if (expectedMonth && actualMonth && expectedMonth !== actualMonth) {
+            mismatches.push({
+              id: mapped.id, studentId: mapped.student_id, studentName: mapped.student_name,
+              batchCode: mapped.batch_code, centre: mapped.centre, counsellor: mapped.entered_by,
+              invoiceNumber: mapped.invoice_number, invoiceDate: mapped.invoice_date,
+              courseFee: mapped.course_fee,
+              currentRevenueMonth: actualMonth, expectedRevenueMonth: expectedMonth
+            });
+          }
+        });
+        cb(null, { status: 'ok', count: mismatches.length, mismatches: mismatches });
+      });
+    }
+    GET('students', 'select=student_id,name', function (e, r) { students = r || []; finish(); });
+    GET('batches', 'select=batch_code,course,centre', function (e, r) { batches = r || []; finish(); });
+  }
+
+  /* h_fixRevenueMonthMismatch — admin action: applies exactly ONE flagged mismatch from
+     h_getRevenueMonthMismatches, moving revenue_month to match the record's invoice date
+     and re-syncing both the old and new (counsellor, centre, month) revenue_monthly_achieved
+     buckets — same pattern h_saveFee/h_updateInvoiceDetails already use. Deliberately one
+     row at a time: this is a human reviewing and applying a flagged correction, not a bulk
+     auto-fix (the record's course fee/discount could also be wrong for reasons unrelated to
+     this bug, worth a look before blindly moving the month). */
+  function h_fixRevenueMonthMismatch(p, cb) {
+    if (!p || !(p.isAdmin === true || p.isAdmin === 'true')) { cb(null, { status: 'error', message: 'Admin only.' }); return; }
+    var recordId = p.recordId;
+    if (!recordId) { cb(null, { status: 'error', reason: 'missing_record_id' }); return; }
+    GET('student_fees', 'id=eq.' + encodeURIComponent(recordId), function (e, rows) {
+      if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'not_found' }); return; }
+      var row = rows[0];
+      var receiptNo = row.receipt_no || '';
+      var meta = {};
+      if (receiptNo && receiptNo.trim().indexOf('{') === 0) {
+        try { meta = JSON.parse(receiptNo); } catch (ex) { meta = {}; }
+      }
+      if (!meta.invoice_date) { cb(null, { status: 'error', reason: 'no_invoice_date' }); return; }
+      var previousRevenueMonth = row.revenue_month || '';
+      var revenueMonth = toYMD(meta.invoice_date).slice(0, 7);
+      if (revenueMonth === previousRevenueMonth) { cb(null, { status: 'ok', unchanged: true }); return; }
+      PATCH('student_fees', 'id=eq.' + encodeURIComponent(recordId), { revenue_month: revenueMonth }, function (e2) {
+        if (e2) { cb(null, { status: 'error', reason: String(e2) }); return; }
+        syncStudentRevenue(row.recorded_by, row.centre, revenueMonth, '2026-27');
+        if (previousRevenueMonth) syncStudentRevenue(row.recorded_by, row.centre, previousRevenueMonth, '2026-27');
+        cb(null, { status: 'ok', newRevenueMonth: revenueMonth });
+      });
+    });
+  }
+
   /* saveFeeRecord */
   function h_saveFee(p, cb) {
     var n   = Number(p.nInst || 1);
@@ -8310,6 +8381,8 @@ window.gasGet = (function () {
       case 'getFeeRecords':             return h_getFeeRecords(params, cb);
       case 'getAllFeeRecords':          return h_getAllFeeRecords(params, cb);
       case 'updateInvoiceDetails':      return h_updateInvoiceDetails(params, cb);
+      case 'getRevenueMonthMismatches': return h_getRevenueMonthMismatches(params, cb);
+      case 'fixRevenueMonthMismatch':   return h_fixRevenueMonthMismatch(params, cb);
       case 'saveFeeRecord':             return h_saveFee(params, cb);
       case 'deleteFeeRecord':           return h_deleteFeeRecord(params, cb);
       case 'getRevenueDetail':          return h_getRevenueDetail(params, cb);

@@ -1640,6 +1640,21 @@
         </div>
       </div>
 
+      <!-- ── INVOICE DATE vs REVENUE MONTH MISMATCHES ──────────────────── -->
+      <div class="card" id="admin-rmm-card" style="margin-top:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:10px">
+          <div>
+            <h2 style="margin:0">🧾 Invoice Date vs Revenue Month Mismatches</h2>
+            <p class="sub" style="margin:4px 0 0">Finds fee records where the invoice date's month disagrees with which month the revenue is actually counted in — the fingerprint of a record that had its invoice date filled in/corrected via the Invoices tab's quick modal before that recomputed revenue_month too. Review each one before applying; a mismatch doesn't necessarily mean the CURRENT month is wrong, just that the two disagree.</p>
+          </div>
+          <button class="btn btn-outline" style="width:auto;padding:6px 14px;font-size:12px;border:1.5px solid var(--gold);color:var(--navy);background:transparent;border-radius:6px;font-weight:600;cursor:pointer" onclick="adminRmmLoad()">🔍 Scan for Mismatches</button>
+        </div>
+        <div id="admin-rmm-summary" style="display:none;margin-bottom:10px"></div>
+        <div id="admin-rmm-list">
+          <div style="padding:16px;text-align:center;color:var(--muted);font-size:12px">Click "Scan for Mismatches" to compare every fee record's invoice date against its recorded revenue month.</div>
+        </div>
+      </div>
+
       <!-- ── FEE RECONCILIATION ────────────────────────────────────────── -->
       <div class="card" id="admin-recon-card" style="margin-top:16px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:10px">
@@ -10490,6 +10505,73 @@ function adminRevAuditLoad() {
         (f.rows && f.rows.length ? '<div style="font-size:11px;color:#6b7280">Rows: ' + f.rows.map(function(r){ return '#' + r.rowIndex + ' (' + (r.month||'') + ')'; }).join(', ') + '</div>' : '') +
         '</div>';
     }).join('');
+  });
+}
+
+// ── INVOICE DATE vs REVENUE MONTH MISMATCHES ──────────────────────────────────
+// Surfaces existing fee records where invoice_date's month disagrees with the stored
+// revenue_month — i.e. records that predate the h_updateInvoiceDetails fix (invoice date
+// added/corrected via the Invoices tab's quick modal never used to recompute revenue_month,
+// so revenue silently stayed on whatever the payment date was). Read-only scan; fixing a
+// row is a separate, deliberate per-row action below.
+function adminRmmLoad() {
+  const list = document.getElementById('admin-rmm-list');
+  const summary = document.getElementById('admin-rmm-summary');
+  if (list) list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted)">Scanning fee records…</div>';
+  if (summary) { summary.style.display = 'none'; summary.innerHTML = ''; }
+  gasGet({ action: 'getRevenueMonthMismatches', isAdmin: true }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      if (list) list.innerHTML = '<div style="padding:16px;text-align:center;color:#dc2626">Scan failed: ' + ((d && (d.message || d.reason)) || 'network error') + '</div>';
+      return;
+    }
+    if (summary) {
+      summary.style.display = 'block';
+      summary.innerHTML = '<span style="padding:5px 12px;border-radius:999px;font-size:12px;font-weight:700;background:' +
+        (d.count ? '#fefce8' : '#f0fdf4') + ';color:' + (d.count ? '#b45309' : '#059669') + '">' +
+        (d.count ? '🟡 ' + d.count + ' record' + (d.count === 1 ? '' : 's') + ' to review' : '✅ Clean — no mismatches found') + '</span>';
+    }
+    if (!d.mismatches || !d.mismatches.length) {
+      if (list) list.innerHTML = '<div style="padding:20px;text-align:center;color:#059669;font-size:13px;font-weight:600">✅ Every fee record with an invoice date agrees with its revenue month.</div>';
+      return;
+    }
+    const monthLabel = function(ym) {
+      if (!ym) return '—';
+      const parts = ym.split('-');
+      const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return (names[Number(parts[1]) - 1] || ym) + ' ' + parts[0];
+    };
+    if (list) list.innerHTML = d.mismatches.map(function(m) {
+      return '<div id="rmm-row-' + m.id + '" style="margin-bottom:10px;padding:12px 14px;border:1.5px solid #fcd34d;border-radius:8px;background:#fffbeb">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
+          '<div>' +
+            '<div style="font-size:13px;font-weight:700;color:#1e293b">' + escC(m.studentName || '') + ' <span style="font-weight:400;color:#6b7280">(' + escC(m.studentId || '') + ')</span></div>' +
+            '<div style="font-size:12px;color:#374151;margin-top:2px">' + escC(m.batchCode || '') + ' · ' + escC(m.centre || '') + ' · Counsellor: ' + escC(m.counsellor || '—') + '</div>' +
+            '<div style="font-size:12px;color:#374151;margin-top:4px">Invoice ' + escC(m.invoiceNumber || '(none)') + ' dated ' + escC(m.invoiceDate || '—') + ' &nbsp;·&nbsp; Course fee ' + arcFmt(m.courseFee || 0) + '</div>' +
+            '<div style="font-size:12px;margin-top:6px">Currently counted in <strong style="color:#dc2626">' + monthLabel(m.currentRevenueMonth) + '</strong> &nbsp;→&nbsp; invoice date says <strong style="color:#059669">' + monthLabel(m.expectedRevenueMonth) + '</strong></div>' +
+          '</div>' +
+          '<button class="btn btn-outline" id="rmm-fix-btn-' + m.id + '" style="width:auto;padding:6px 14px;font-size:12px;border:1.5px solid #059669;color:#059669;background:transparent;border-radius:6px;font-weight:600;cursor:pointer;white-space:nowrap" onclick="adminRmmFix(\'' + m.id + '\')">✅ Move to ' + monthLabel(m.expectedRevenueMonth) + '</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  });
+}
+
+function adminRmmFix(recordId) {
+  const btn = document.getElementById('rmm-fix-btn-' + recordId);
+  if (btn) { btn.disabled = true; btn.textContent = 'Applying…'; }
+  gasGet({ action: 'fixRevenueMonthMismatch', isAdmin: true, recordId: recordId }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      if (btn) { btn.disabled = false; btn.textContent = '⚠ Retry'; }
+      showToast('Could not apply this fix — please try again.', 'error');
+      return;
+    }
+    const row = document.getElementById('rmm-row-' + recordId);
+    if (row) {
+      row.style.border = '1.5px solid #86efac';
+      row.style.background = '#f0fdf4';
+      row.innerHTML = '<div style="font-size:12px;color:#059669;font-weight:700">✅ Fixed — now counted in ' + escC(d.newRevenueMonth || '') + '.</div>';
+    }
+    showToast('Revenue month corrected ✓', 'success');
   });
 }
 

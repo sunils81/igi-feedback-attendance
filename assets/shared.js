@@ -2156,6 +2156,37 @@ window.gasGet = (function () {
     return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0');
   }
 
+  /* getMonthAchieved — the "what's already on record" half of the historical fee backfill
+     tool's tally check (counselor.html's Backfill Historical Fee Records modal). Returns the
+     already-recorded achieved_course_fee (excl. GST — same figure the Fee Record tab's
+     Revenue column now uses) for one counsellor/month/period, summed across every
+     business_type row (Own Centre + Other Centres + Corporate), so a counsellor backfilling
+     April/May/June 2026 can immediately see whether what they just entered matches, falls
+     short of, or exceeds whatever manual total is already sitting on the Revenue tab for
+     that month — without needing to open the Revenue tab separately. Read-only; never
+     writes anything, so it's safe to call as often as needed while backfilling. */
+  function h_getMonthAchieved(p, cb) {
+    var counsellor = String(p.counsellor || '').trim();
+    var month = String(p.month || '').trim();
+    var period = String(p.period || '2026-27').trim();
+    if (!counsellor || !month) { cb(null, { achievedCourseFee: 0, achievedCourseFeeGst: 0, studentCount: 0, rows: [] }); return; }
+    GET('revenue_monthly_achieved',
+      'counsellor=eq.' + encodeURIComponent(counsellor) +
+      '&month=eq.' + encodeURIComponent(month) +
+      '&period=eq.' + encodeURIComponent(period),
+      function (e, rows) {
+        rows = (e ? [] : (rows || []));
+        var achievedCourseFee = 0, achievedCourseFeeGst = 0, studentCount = 0;
+        rows.forEach(function (r) {
+          achievedCourseFee += Number(r.achieved_course_fee) || 0;
+          achievedCourseFeeGst += Number(r.achieved_course_fee_gst) || 0;
+          studentCount += Number(r.student_count) || 0;
+        });
+        cb(null, { achievedCourseFee: achievedCourseFee, achievedCourseFeeGst: achievedCourseFeeGst,
+          studentCount: studentCount, rows: rows });
+      });
+  }
+
   /* syncStudentRevenue — auto-upsert Centre Revenue from student_fees.course_fee.
      Called fire-and-forget after h_saveFee/h_deleteFeeRecord. Only acts on 2026-07
      onwards — pre-July months are never auto-overwritten; correcting them goes through
@@ -8032,6 +8063,7 @@ window.gasGet = (function () {
       case 'saveFeeRecord':             return h_saveFee(params, cb);
       case 'deleteFeeRecord':           return h_deleteFeeRecord(params, cb);
       case 'getRevenueDetail':          return h_getRevenueDetail(params, cb);
+      case 'getMonthAchieved':          return h_getMonthAchieved(params, cb);
       case 'checkInvoiceNumber':        return h_checkInvoiceNumber(params, cb);
       case 'checkStudentMobile':        return h_checkStudentMobile(params, cb);
       case 'getHolidays':               return h_getHolidays(params, cb);

@@ -3728,6 +3728,11 @@
       <h2>Fee Record</h2>
       <p class="sub">Every fee record you've entered, grouped by month, with a running total — built to reconcile against your own tracker, one month at a time.</p>
 
+      <div style="margin-bottom:14px;padding:10px 12px;background:#FFF9E6;border:1px solid rgba(201,168,76,.3);border-radius:8px;font-size:12.5px;color:var(--navy)">
+        📋 Sales from before this portal tracked fees (April, May, and — if anything's missing — June 2026) won't show up here unless backfilled.
+        <a href="javascript:void(0)" onclick="openBackfillModal()" style="font-weight:700;color:#1d4ed8">Backfill a historical fee record →</a>
+      </div>
+
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:14px">
         <div class="field admin-only" style="min-width:200px;margin-bottom:0" id="fr-counsellor-wrap">
           <label>Counsellor</label>
@@ -8344,6 +8349,308 @@ function downloadFeeRecordCsv() {
   document.body.appendChild(a);
   a.click();
   setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   BACKFILL HISTORICAL FEE RECORDS — for April/May/June 2026, the months before this
+   portal's fee-tracking existed. Reuses the same actions the live Enroll/Fees flows use
+   (getBatchCode, createBatch, getNextEnrollment, addStudent, saveFeeRecord) rather than a
+   new bulk backend endpoint — every row created here is a real, ordinary student_fees row,
+   just backdated via invoiceDate. Safe to do: syncStudentRevenue only auto-recalculates
+   2026-07 onward (see shared.js), so nothing entered here can silently overwrite whatever
+   manual total is already on the Revenue tab for these months — it only adds the missing
+   student-level detail the Fee Record tab needs to reconcile against that total.
+   ══════════════════════════════════════════════════════════════ */
+
+var BACKFILL_MONTHS = ['2026-04', '2026-05', '2026-06'];
+var _backfillState = null; // { month, centre, course, counsellor, batchDate, batchCode, rows: [{name, fee, discPct, invNum}] }
+
+function _backfillMonthLabel(mk) {
+  var names = {'2026-04':'April 2026','2026-05':'May 2026','2026-06':'June 2026'};
+  return names[mk] || mk;
+}
+// getBatchCode expects month as e.g. "Apr26" (3-letter abbrev + 2-digit year), not "YYYY-MM".
+function _backfillBatchMonthCode(mk) {
+  var parts = mk.split('-');
+  var names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return (names[Number(parts[1]) - 1] || '') + parts[0].slice(-2);
+}
+
+function openBackfillModal() {
+  _backfillState = { month: '', centre: (allowedCentres && allowedCentres[0]) || '', course: '',
+    counsellor: counselorName || '', batchDate: '', batchCode: '', existingBatchCode: '', rows: [] };
+  var old = document.getElementById('backfill-modal');
+  if (old) old.remove();
+  var counsellorOpts = MUMBAI_COUNSELLORS.concat(['Preethy','Sunita','Rohit','Arpita','Nadiya','Rajini','Kripa'])
+    .map(function(c){ return '<option value="'+escC(c)+'"'+(c===counselorName?' selected':'')+'>'+escC(c)+'</option>'; }).join('');
+  var centreOpts = (typeof CENTRES !== 'undefined' ? CENTRES : allowedCentres || [])
+    .map(function(c){ return '<option value="'+escC(c)+'"'+(c===_backfillState.centre?' selected':'')+'>'+escC(c)+'</option>'; }).join('');
+  var courseOpts = '<option value="">— Select Course —</option>' + (typeof COURSES !== 'undefined' ? COURSES : [])
+    .map(function(c){ return '<option value="'+escC(c)+'">'+escC(c)+'</option>'; }).join('');
+  var monthOpts = BACKFILL_MONTHS.map(function(m){ return '<option value="'+m+'">'+_backfillMonthLabel(m)+'</option>'; }).join('');
+
+  var modal = document.createElement('div');
+  modal.id = 'backfill-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML =
+    '<div style="background:#fff;border-radius:12px;padding:24px 28px;width:640px;max-width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">' +
+      '<h3 style="margin:0 0 4px;font-size:17px;color:#0d1b2e">📋 Backfill Historical Fee Record</h3>' +
+      '<p style="margin:0 0 16px;font-size:12.5px;color:#666">For real sales made before this portal tracked fees. Only April, May, and June 2026 are allowed here.</p>' +
+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px">' +
+        '<div><label style="display:block;font-size:11px;font-weight:700;color:#374151;margin-bottom:4px">Month *</label>' +
+          '<select id="bf-month" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px"><option value="">— Select —</option>' + monthOpts + '</select></div>' +
+        '<div><label style="display:block;font-size:11px;font-weight:700;color:#374151;margin-bottom:4px">Counsellor (revenue credit) *</label>' +
+          '<select id="bf-counsellor" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px">' + counsellorOpts + '</select></div>' +
+        '<div><label style="display:block;font-size:11px;font-weight:700;color:#374151;margin-bottom:4px">Centre *</label>' +
+          '<select id="bf-centre" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px">' + centreOpts + '</select></div>' +
+        '<div><label style="display:block;font-size:11px;font-weight:700;color:#374151;margin-bottom:4px">Course *</label>' +
+          '<select id="bf-course" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px">' + courseOpts + '</select></div>' +
+        '<div style="grid-column:span 2"><label style="display:block;font-size:11px;font-weight:700;color:#374151;margin-bottom:4px">Actual Payment Date (within the selected month) *</label>' +
+          '<input id="bf-batch-date" type="date" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px"></div>' +
+      '</div>' +
+      '<div id="bf-batch-err" style="color:#dc2626;font-size:12px;margin:4px 0;display:none"></div>' +
+      '<button id="bf-find-batch-btn" onclick="_backfillFindBatch()" style="margin:6px 0 4px;padding:8px 14px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:12.5px">Find / Create Batch</button>' +
+      '<div id="bf-batch-status" style="font-size:12.5px;color:#374151;margin-bottom:10px"></div>' +
+
+      '<div id="bf-rows-section" style="display:none;border-top:1px solid #e5e7eb;padding-top:12px;margin-top:6px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+          '<strong style="font-size:13px;color:#0d1b2e">Students</strong>' +
+          '<label style="font-size:11.5px;color:#374151;display:flex;align-items:center;gap:5px"><input type="checkbox" id="bf-mark-paid" checked> Mark all as fully collected</label>' +
+        '</div>' +
+        '<div id="bf-rows-table"></div>' +
+        '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
+          '<button onclick="_backfillAddRow()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">+ Add Student Row</button>' +
+          '<label style="padding:7px 12px;border:1px dashed #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📄 Upload CSV (Student, CourseFee, DiscountPct, InvoiceNumber)' +
+            '<input type="file" accept=".csv" style="display:none" onchange="_backfillUploadCsv(this)"></label>' +
+        '</div>' +
+      '</div>' +
+
+      '<div id="bf-tally" style="display:none;margin-top:14px;padding:10px 12px;border-radius:8px;font-size:13px"></div>' +
+      '<p id="bf-warn" style="color:#B87A10;font-size:12px;margin:8px 0 0;display:none"></p>' +
+      '<div style="display:flex;gap:10px;margin-top:18px">' +
+        '<button id="bf-cancel" style="flex:1;padding:9px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;font-size:13.5px">Close</button>' +
+        '<button id="bf-save" style="flex:2;padding:9px;border:none;border-radius:8px;background:#C8A951;color:#0d1b2e;font-weight:700;cursor:pointer;font-size:13.5px" disabled>Save All & Tally</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(modal);
+  document.getElementById('bf-cancel').onclick = function() { modal.remove(); };
+  document.getElementById('bf-save').onclick = _backfillSaveAll;
+  document.getElementById('bf-month').onchange = function(){ _backfillState.month = this.value; };
+  document.getElementById('bf-centre').onchange = function(){ _backfillState.centre = this.value; };
+  document.getElementById('bf-course').onchange = function(){ _backfillState.course = this.value; };
+  document.getElementById('bf-counsellor').onchange = function(){ _backfillState.counsellor = this.value; };
+  document.getElementById('bf-batch-date').onchange = function(){ _backfillState.batchDate = this.value; };
+  _backfillAddRow();
+}
+
+function _backfillFindBatch() {
+  var errEl = document.getElementById('bf-batch-err');
+  errEl.style.display = 'none';
+  var month = document.getElementById('bf-month').value;
+  var centre = document.getElementById('bf-centre').value;
+  var course = document.getElementById('bf-course').value;
+  var batchDate = document.getElementById('bf-batch-date').value;
+  if (!month || !centre || !course || !batchDate) {
+    errEl.textContent = 'Fill in Month, Centre, Course, and Payment Date first.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (batchDate.slice(0,7) !== month) {
+    errEl.textContent = 'Payment Date must fall within ' + _backfillMonthLabel(month) + '.';
+    errEl.style.display = 'block';
+    return;
+  }
+  _backfillState.month = month; _backfillState.centre = centre; _backfillState.course = course; _backfillState.batchDate = batchDate;
+  var statusEl = document.getElementById('bf-batch-status');
+  statusEl.textContent = 'Checking for an existing batch…';
+
+  // Reuse the same "does a similar batch already exist" check the live Enroll flow uses,
+  // so backfilling doesn't create a near-duplicate batch next to one that's already there.
+  gasGet({ action: 'getBatches', centres: centre }, function(e, d) {
+    var monthPrefix = month;
+    var existing = ((d && d.batches) || []).find(function(b) {
+      return b.course === course && (b.startDate || '').slice(0,7) === monthPrefix;
+    });
+    if (existing) {
+      _backfillState.batchCode = existing.batchCode;
+      statusEl.innerHTML = 'Using existing batch <strong>' + escC(existing.batchCode) + '</strong> (already on file for this centre/course/month).';
+      _backfillShowRowsSection();
+      return;
+    }
+    gasGet({ action: 'getBatchCode', centre: centre, course: course, month: _backfillBatchMonthCode(month) }, function(e2, d2) {
+      if (e2 || !d2 || !d2.batchCode) { statusEl.textContent = ''; errEl.textContent = 'Could not generate a batch code. Try again.'; errEl.style.display = 'block'; return; }
+      var code = d2.batchCode;
+      gasGet({ action: 'createBatch', batchCode: code, centre: centre, course: course, type: 'Weekday',
+        startDate: batchDate, createdByCentre: (allowedCentres && allowedCentres[0]) || centre,
+        createdByCounselor: counselorName, counselorName: counselorName }, function(e3, d3) {
+        if (e3 || !d3 || d3.status !== 'ok') { statusEl.textContent = ''; errEl.textContent = 'Could not create batch. Try again.'; errEl.style.display = 'block'; return; }
+        _backfillState.batchCode = code;
+        statusEl.innerHTML = 'Created new batch <strong>' + escC(code) + '</strong>.';
+        _backfillShowRowsSection();
+      });
+    });
+  });
+}
+
+function _backfillShowRowsSection() {
+  document.getElementById('bf-rows-section').style.display = 'block';
+  document.getElementById('bf-save').disabled = false;
+  document.getElementById('bf-find-batch-btn').disabled = true;
+  ['bf-month','bf-centre','bf-course','bf-batch-date'].forEach(function(id){ document.getElementById(id).disabled = true; });
+}
+
+function _backfillAddRow(prefill) {
+  _backfillState.rows.push(Object.assign({ name: '', fee: '', discPct: '', invNum: '' }, prefill || {}));
+  _backfillRenderRows();
+}
+function _backfillRemoveRow(idx) {
+  _backfillState.rows.splice(idx, 1);
+  _backfillRenderRows();
+}
+function _backfillUpdateRow(idx, field, val) {
+  _backfillState.rows[idx][field] = val;
+}
+function _backfillRenderRows() {
+  var wrap = document.getElementById('bf-rows-table');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+    '<th>S.No</th><th class="text-left">Student Name</th><th>Course Fee</th><th>Discount %</th><th class="text-left">Invoice #</th><th></th>' +
+    '</tr></thead><tbody>' +
+    _backfillState.rows.map(function(r, idx) {
+      return '<tr>' +
+        '<td>' + (idx+1) + '</td>' +
+        '<td><input value="' + escC(r.name) + '" oninput="_backfillUpdateRow(' + idx + ',\'name\',this.value)" style="width:100%;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
+        '<td><input type="number" value="' + escC(r.fee) + '" oninput="_backfillUpdateRow(' + idx + ',\'fee\',this.value)" style="width:90px;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
+        '<td><input type="number" value="' + escC(r.discPct) + '" oninput="_backfillUpdateRow(' + idx + ',\'discPct\',this.value)" style="width:70px;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
+        '<td><input value="' + escC(r.invNum) + '" oninput="_backfillUpdateRow(' + idx + ',\'invNum\',this.value)" style="width:100%;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
+        '<td><button onclick="_backfillRemoveRow(' + idx + ')" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:15px">✕</button></td>' +
+      '</tr>';
+    }).join('') +
+    '</tbody></table></div>';
+}
+
+// Minimal CSV parser (no external library loaded) — handles a simple comma-separated file
+// with a header row: Student, CourseFee, DiscountPct, InvoiceNumber (extra/missing columns
+// tolerated; only these four are read).
+function _backfillUploadCsv(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    var text = String(ev.target.result || '');
+    var lines = text.split(/\r?\n/).filter(function(l){ return l.trim().length; });
+    if (lines.length < 2) { showToast('CSV has no data rows.', 'error'); return; }
+    var headers = lines[0].split(',').map(function(h){ return h.trim().toLowerCase(); });
+    var idxName = headers.indexOf('student'); if (idxName < 0) idxName = headers.indexOf('name');
+    var idxFee = headers.indexOf('coursefee');
+    var idxDisc = headers.indexOf('discountpct');
+    var idxInv = headers.indexOf('invoicenumber');
+    if (idxName < 0 || idxFee < 0) { showToast('CSV needs at least Student and CourseFee columns.', 'error'); return; }
+    // Clear the one blank starter row before importing, so uploading a CSV right after
+    // opening the modal doesn't leave an empty row dangling at the top.
+    if (_backfillState.rows.length === 1 && !_backfillState.rows[0].name && !_backfillState.rows[0].fee) {
+      _backfillState.rows = [];
+    }
+    for (var i = 1; i < lines.length; i++) {
+      var cols = lines[i].split(',').map(function(c){ return c.trim(); });
+      if (!cols[idxName]) continue;
+      _backfillState.rows.push({
+        name: cols[idxName] || '', fee: cols[idxFee] || '',
+        discPct: idxDisc >= 0 ? (cols[idxDisc] || '') : '', invNum: idxInv >= 0 ? (cols[idxInv] || '') : ''
+      });
+    }
+    _backfillRenderRows();
+    showToast((lines.length - 1) + ' rows loaded from CSV — review before saving.');
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+function _backfillSaveAll() {
+  var rows = _backfillState.rows.filter(function(r) { return r.name && r.fee; });
+  if (!rows.length) { showToast('Add at least one student with a name and course fee.', 'error'); return; }
+  var btn = document.getElementById('bf-save');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  var markPaid = document.getElementById('bf-mark-paid').checked;
+  var warnings = [];
+  var enteredTotal = 0;
+  var i = 0;
+
+  function next() {
+    if (i >= rows.length) { _backfillFinish(warnings, enteredTotal); return; }
+    var row = rows[i]; i++;
+    var cf = Number(row.fee) || 0;
+    var dp = Number(row.discPct) || 0;
+    enteredTotal += cf;
+
+    // Same duplicate-student safeguard as the live Enroll New Student form — warns, never
+    // blocks, since this is historical bulk entry and a false match shouldn't halt the batch.
+    gasGet({ action: 'searchStudents', query: row.name }, function(eS, dS) {
+      var matches = (dS && dS.students) || [];
+      if (matches.length) warnings.push(row.name + ' — possible existing match: ' + matches.map(function(m){ return m.name + ' (' + m.studentId + ')'; }).join(', '));
+
+      gasGet({ action: 'getNextEnrollment' }, function(e1, d1) {
+        var studentId = (d1 && d1.enrollmentNo) || '';
+        if (!studentId) { warnings.push(row.name + ' — could not get a Student ID, skipped.'); next(); return; }
+        gasGet({ action: 'addStudent', enrollmentNo: studentId, name: row.name, mobile: '', mobileLast4: '',
+          email: '', country: 'India', stateRegion: '', batchCode: _backfillState.batchCode, batchCodes: _backfillState.batchCode
+        }, function(e2, d2) {
+          if (e2 || (d2 && d2.status === 'error')) { warnings.push(row.name + ' — could not create student record, skipped.'); next(); return; }
+          var net = Math.round(cf * (1 - dp/100) * 1.18);
+          var feeParams = {
+            action: 'saveFeeRecord', studentId: studentId, studentName: row.name,
+            batchCode: _backfillState.batchCode, centre: _backfillState.centre, course: _backfillState.course,
+            courseFee: cf, discountPct: dp, discountReason: 'Historical backfill',
+            invoiceNumber: row.invNum || '', invoiceDate: _backfillState.batchDate,
+            nInst: 1, enteredBy: _backfillState.counsellor
+          };
+          if (markPaid) {
+            feeParams.inst1Amt = net; feeParams.inst1Due = _backfillState.batchDate;
+            feeParams.inst1Paid = 'Y'; feeParams.inst1PaidDate = _backfillState.batchDate; feeParams.inst1Mode = 'Historical';
+          }
+          gasGet(feeParams, function(e3, d3) {
+            if (e3 || !d3 || d3.status !== 'ok') warnings.push(row.name + ' — fee record failed to save.');
+            next();
+          });
+        });
+      });
+    });
+  }
+  next();
+}
+
+function _backfillFinish(warnings, enteredTotal) {
+  var warnEl = document.getElementById('bf-warn');
+  if (warnings.length) {
+    warnEl.innerHTML = '⚠ ' + warnings.map(escC).join('<br>⚠ ');
+    warnEl.style.display = 'block';
+  } else {
+    warnEl.style.display = 'none';
+  }
+
+  gasGet({ action: 'getMonthAchieved', counsellor: _backfillState.counsellor, month: _backfillState.month, period: '2026-27' }, function(e, d) {
+    var recorded = (d && d.achievedCourseFee) || 0;
+    var diff = enteredTotal - recorded;
+    var tallyEl = document.getElementById('bf-tally');
+    tallyEl.style.display = 'block';
+    var verdict = Math.abs(diff) < 1
+      ? '<strong style="color:#1a7a3c">✓ Matches the month\'s recorded revenue.</strong>'
+      : (diff > 0
+        ? '<strong style="color:#B87A10">Exceeds the recorded revenue by ' + money(diff) + '.</strong>'
+        : '<strong style="color:#dc2626">Falls short of the recorded revenue by ' + money(-diff) + '.</strong>');
+    tallyEl.style.background = Math.abs(diff) < 1 ? '#F4FBF7' : '#FFF9E6';
+    tallyEl.innerHTML =
+      'Just entered: <strong>' + money(enteredTotal) + '</strong> &nbsp;|&nbsp; ' +
+      'Already recorded for ' + escC(_backfillMonthLabel(_backfillState.month)) + ' (' + escC(_backfillState.counsellor) + '): <strong>' + money(recorded) + '</strong><br>' +
+      verdict +
+      (recorded === 0 ? '<br><span style="color:#6b7280;font-size:11.5px">No revenue was on record for this month/counsellor yet — this may be the first entry, or the manual total was never entered on the Revenue tab.</span>' : '');
+
+    showToast('Saved ' + (_backfillState.rows.length - warnings.filter(function(w){return /skipped|failed/.test(w);}).length) + ' fee record(s).');
+    allInvoiceRecords = null; // force a refetch so Fee Record/Invoices tabs show the new rows
+    if (document.getElementById('t-fee-record').classList.contains('active')) loadFeeRecordTab(true);
+    document.getElementById('bf-save').textContent = 'Save All & Tally';
+  });
 }
 
 function openFeeForm(studentId) {

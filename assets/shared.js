@@ -1740,7 +1740,19 @@ window.gasGet = (function () {
             var list = coursesBySid[en.student_id] || (coursesBySid[en.student_id] = []);
             if (list.indexOf(b.course) === -1) list.push(b.course);
           });
-          cb(null, { status: 'ok', alumni: (rows || []).map(function (r) {
+          cb(null, { status: 'ok', alumni: (rows || [])
+            // h_removeStudent (see that function) soft-deletes a student_id whose only
+            // batch was just removed and the row couldn't be hard-DELETEd (blocked by
+            // other tables still referencing it) by setting batch_code=null and
+            // status='Inactive', leaving the row behind instead of a real delete. Those
+            // are dead cleanup artifacts, not alumni — e.g. student 7010 and 7080 are
+            // exactly this: a blank, batch-less "Inactive" duplicate sitting next to the
+            // same person's real record (6875 / 7079). A student here with no batch_code
+            // AND no enrollment history at all was never actually enrolled in anything
+            // that could show up as an alumnus, so skip those rather than showing blank
+            // rows with no centre/course/month.
+            .filter(function (r) { return r.batch_code || (coursesBySid[r.student_id] && coursesBySid[r.student_id].length); })
+            .map(function (r) {
             var b = bm[r.batch_code] || {};
             var calculatedStatus = r.status || 'Active';
             if (calculatedStatus === 'Active' && b.end_date && b.end_date < todayStr) {

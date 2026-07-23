@@ -13779,6 +13779,20 @@ function toggleEndDateOverride() {
 
 var alumniList = [];
 
+// Batch codes look like CENTRE-COURSECODE-MONYY (e.g. MUM-DG-JUL26), but batches
+// split into sections carry a trailing letter too (MUM-DG-JUL26-A). The Enrolment
+// Month column used to just grab the LAST dash-separated segment, which meant a
+// sectioned batch showed "A" instead of "JUL26" — the month segment specifically
+// (3 letters + 2 digits) needs to be located, not assumed to be last.
+function alumniMonthFromBatchCode(bc) {
+  if (!bc) return '';
+  var parts = String(bc).split('-');
+  for (var i = parts.length - 1; i >= 0; i--) {
+    if (/^[A-Za-z]{3}\d{2}$/.test(parts[i])) return parts[i].toUpperCase();
+  }
+  return parts[parts.length - 1] || '';
+}
+
 function loadAlumniData() {
   var tbody = document.getElementById('alumni-tbody');
   if (!tbody) return;
@@ -13932,7 +13946,7 @@ function renderAlumniTable(list) {
       '<td class="text-left"><a href="mailto:' + escC(email) + '" style="color:#1d4ed8;text-decoration:underline">' + escC(email) + '</a></td>' +
       '<td class="text-left"' + (a.combinedCourses ? ' title="Combines: ' + escC(a.combinedCourses) + '"' : '') + '>' + escC(a.course) + '</td>' +
       '<td class="text-center"><span style="font-family:monospace;font-weight:600">' + escC(a.batchCode) + '</span></td>' +
-      '<td class="text-center">' + escC(a.enrolmentMonth || (a.batchCode ? a.batchCode.split('-').slice(-1)[0] : '')) + '</td>' +
+      '<td class="text-center">' + escC(a.enrolmentMonth || alumniMonthFromBatchCode(a.batchCode)) + '</td>' +
       '<td class="text-center">' + statusBadge + '</td>' +
       '<td class="text-center">' + actionHtml + '</td>' +
     '</tr>';
@@ -14094,7 +14108,7 @@ function submitAddAlumni() {
       name: name, email: email, mobile: mobile, contact: mobile,
       batchCode: batchCode, course: course, centre: centre,
       status: 'Completed',
-      enrolmentMonth: batchCode ? batchCode.split('-').slice(-1)[0] : ''
+      enrolmentMonth: alumniMonthFromBatchCode(batchCode)
     });
     closeAddAlumniModal();
     renderAlumniTable(alumniList);

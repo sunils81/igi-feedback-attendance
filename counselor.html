@@ -1752,7 +1752,6 @@
     <button class="tab" id="tab-prospects" onclick="switchTab('t-prospects')">🧭 Prospects <span id="prospects-due-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-revenue" onclick="switchTab('t-revenue')">📈 Revenue</button>
     <button class="tab" id="tab-fee-record" onclick="switchTab('t-fee-record')">📑 Fee Record</button>
-    <button class="tab" id="tab-invoices" onclick="switchTab('t-invoices')">🧾 Invoices</button>
     <button class="tab active" id="tab-batches" onclick="switchTab('t-batches')">📋 Batches</button>
     <button class="tab" id="tab-fees" onclick="switchTab('t-fees')">💰 Fees <span id="fees-overdue-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-students" onclick="switchTab('t-students')">👥 Students</button>
@@ -3814,44 +3813,12 @@
   </div>
 
   <!-- TAB 6b: INVOICES (cross-batch, all months) -->
-  <div id="t-invoices" class="tab-content">
-    <div class="card">
-      <div class="section-tag">Fee Collection</div>
-      <h2>All Invoices</h2>
-      <p class="sub">Every fee record across every batch and month in one list — filter by month, course, date range, or search by invoice number / student.</p>
-
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:14px">
-        <div class="field" style="min-width:150px;margin-bottom:0"><label>Month</label>
-          <select id="inv-filter-month" onchange="renderInvoicesTab()"><option value="">All Months</option></select>
-        </div>
-        <div class="field" style="min-width:170px;margin-bottom:0"><label>Course</label>
-          <select id="inv-filter-course" onchange="renderInvoicesTab()"><option value="">All Courses</option></select>
-        </div>
-        <div class="field" style="min-width:140px;margin-bottom:0"><label>Invoice date from</label>
-          <input type="date" id="inv-filter-from" onchange="renderInvoicesTab()">
-        </div>
-        <div class="field" style="min-width:140px;margin-bottom:0"><label>Invoice date to</label>
-          <input type="date" id="inv-filter-to" onchange="renderInvoicesTab()">
-        </div>
-        <div class="field" style="min-width:200px;flex:1;margin-bottom:0"><label>Search (student, ID, or invoice #)</label>
-          <input type="text" id="inv-filter-search" placeholder="e.g. Meet Dholakiya, 7127, STV/26/INV/53489" oninput="renderInvoicesTab()">
-        </div>
-        <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="resetInvoiceFilters()">Reset filters</button>
-        <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="refreshAllInvoices()">🔄 Refresh</button>
-        <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="downloadInvoicesCsv()">📄 Download CSV</button>
-      </div>
-
-      <div id="inv-summary" class="dashboard-summary" style="display:none"></div>
-      <div id="inv-list"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">Loading invoices…</div><div class="empty-copy">Pulling every fee record across every batch — this only fetches once per visit.</div></div></div>
-    </div>
-  </div>
-
-  <!-- TAB 6c: FEE RECORD (reconciliation ledger) -->
+  <!-- TAB 6c: FEE RECORD (reconciliation ledger + invoice management) -->
   <div id="t-fee-record" class="tab-content">
     <div class="card">
       <div class="section-tag">Fee Collection</div>
       <h2>Fee Record</h2>
-      <p class="sub">Every fee record you've entered, grouped by month, with a running total — built to reconcile against your own tracker, one month at a time.</p>
+      <p class="sub">Every fee record you've entered, grouped by month, with a running total and invoice details — built to reconcile against your own tracker, one month at a time. Use "Missing invoices only" below to find records that still need an invoice number.</p>
 
       <div style="margin-bottom:14px;padding:10px 12px;background:#FFF9E6;border:1px solid rgba(201,168,76,.3);border-radius:8px;font-size:12.5px;color:var(--navy)">
         📋 Sales from before this portal tracked fees (April, May, and — if anything's missing — June 2026) won't show up here unless backfilled.
@@ -3871,6 +3838,10 @@
         </div>
         <div class="field" style="min-width:200px;flex:1;margin-bottom:0"><label>Search (student name or ID)</label>
           <input type="text" id="fr-filter-search" placeholder="e.g. Shantanu, 7123" oninput="renderFeeRecordTab()">
+        </div>
+        <div class="field" style="min-width:auto;margin-bottom:0;display:flex;align-items:center;gap:6px;padding-bottom:9px">
+          <input type="checkbox" id="fr-filter-missing-invoice" onchange="renderFeeRecordTab()" style="width:auto;margin:0;cursor:pointer">
+          <label for="fr-filter-missing-invoice" style="margin:0;font-size:12.5px;font-weight:600;color:var(--navy);cursor:pointer;white-space:nowrap">🧾 Missing invoices only</label>
         </div>
         <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="resetFeeRecordFilters()">Reset filters</button>
         <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="loadFeeRecordTab(true)">🔄 Refresh</button>
@@ -5236,9 +5207,6 @@ function switchTab(id) {
   }
   if (id === 't-reports') {
     loadHodBatchOversight();
-  }
-  if (id === 't-invoices') {
-    loadAllInvoices();
   }
   if (id === 't-fee-record') {
     loadFeeRecordTab();
@@ -8172,41 +8140,14 @@ function renderFeeOverview(batch, students, records) {
   list.innerHTML = html;
 }
 
-// ── All Invoices tab: one flat, cross-batch, all-months list ──────────────
+// ── Shared fee-record dataset (Fee Record tab + invoice editing) ──────────
 // Fetched once per visit (via getAllFeeRecords) and cached in allInvoiceRecords; every
-// filter (month, course, date range, search) is then just an in-memory array filter, so
-// changing a filter never re-hits the network.
+// filter is then just an in-memory array filter, so changing a filter never re-hits the
+// network. Formerly also backed a separate "Invoices" tab, which was folded into Fee
+// Record (2026-07-23) — invoice editing now lives there via the "Missing invoices only"
+// filter and the Action column, instead of a separate tab covering the same dataset.
 let allInvoiceRecords = null;
 
-function loadAllInvoices(force) {
-  if (allInvoiceRecords && !force) { renderInvoicesTab(); return; }
-  document.getElementById('inv-list').innerHTML = emptyState('🧾', 'Loading invoices…', 'Pulling every fee record across every batch — this only fetches once per visit.');
-  // Pass counsellor name too — a record now shows up if its batch is in the counsellor's
-  // home centre(s) OR the counsellor personally recorded it (e.g. a sale contributed to a
-  // different centre, like Rohit's Mumbai student or Anuradha's other-centre contributions).
-  // Previously this was centre-only, so a counsellor's own cross-centre business never showed.
-  gasGet({action:'getAllFeeRecords', centres: isAdmin ? '' : allowedCentres.join(','), counsellor: isAdmin ? '' : (counselorName || '')}, function(e, d) {
-    if (e || !d || !d.records) {
-      document.getElementById('inv-list').innerHTML = emptyState('⚠️', 'Could not load invoices', 'Please try Refresh.');
-      return;
-    }
-    allInvoiceRecords = d.records;
-    populateInvoiceFilterOptions();
-    renderInvoicesTab();
-  });
-}
-
-function refreshAllInvoices() {
-  showToast('Refreshing invoices…', 'info');
-  loadAllInvoices(true);
-}
-
-// Effective month for filtering/display — invoice date if one was entered, otherwise falls
-// back to the month the record was created (same convention h_getFeeRecords already uses
-// for the admin Fee Reconciliation report).
-function invRecordMonth(r) {
-  return (r.invoiceDate && r.invoiceDate.length >= 7) ? r.invoiceDate.slice(0, 7) : (r.month || '');
-}
 function invMonthLabel(ym) {
   if (!ym || ym.indexOf('-') < 0) return ym || 'Unknown';
   var parts = ym.split('-');
@@ -8215,140 +8156,8 @@ function invMonthLabel(ym) {
   return (names[mi] || parts[1]) + ' ' + parts[0];
 }
 
-// Rebuilds the Month/Course filter dropdowns from the FULL dataset (not the filtered
-// subset) so picking one filter never makes another option disappear.
-function populateInvoiceFilterOptions() {
-  var monthSel = document.getElementById('inv-filter-month');
-  var courseSel = document.getElementById('inv-filter-course');
-  var curMonth = monthSel.value, curCourse = courseSel.value;
-  var months = Array.from(new Set(allInvoiceRecords.map(invRecordMonth).filter(Boolean))).sort().reverse();
-  var courses = Array.from(new Set(allInvoiceRecords.map(function(r){ return r.course; }).filter(Boolean))).sort();
-  monthSel.innerHTML = '<option value="">All Months</option>' + months.map(function(m){
-    return '<option value="' + m + '"' + (m === curMonth ? ' selected' : '') + '>' + invMonthLabel(m) + '</option>';
-  }).join('');
-  courseSel.innerHTML = '<option value="">All Courses</option>' + courses.map(function(c){
-    return '<option value="' + escC(c) + '"' + (c === curCourse ? ' selected' : '') + '>' + escC(c) + '</option>';
-  }).join('');
-}
-
-function resetInvoiceFilters() {
-  document.getElementById('inv-filter-month').value = '';
-  document.getElementById('inv-filter-course').value = '';
-  document.getElementById('inv-filter-from').value = '';
-  document.getElementById('inv-filter-to').value = '';
-  document.getElementById('inv-filter-search').value = '';
-  renderInvoicesTab();
-}
-
-function currentInvoiceFilterRows() {
-  if (!allInvoiceRecords) return [];
-  var month = document.getElementById('inv-filter-month').value;
-  var course = document.getElementById('inv-filter-course').value;
-  var from = document.getElementById('inv-filter-from').value;
-  var to = document.getElementById('inv-filter-to').value;
-  var search = (document.getElementById('inv-filter-search').value || '').trim().toLowerCase();
-  return allInvoiceRecords.filter(function(r) {
-    if (month && invRecordMonth(r) !== month) return false;
-    if (course && r.course !== course) return false;
-    // Date range filters on invoice date — a record with no invoice date yet is excluded
-    // by a from/to filter (there's nothing to compare), but still shows up unfiltered.
-    if (from && (!r.invoiceDate || r.invoiceDate < from)) return false;
-    if (to && (!r.invoiceDate || r.invoiceDate > to)) return false;
-    if (search) {
-      var hay = (String(r.studentName||'') + ' ' + String(r.studentId||'') + ' ' + String(r.invoiceNumber||'') + ' ' + String(r.batchCode||'')).toLowerCase();
-      if (hay.indexOf(search) === -1) return false;
-    }
-    return true;
-  });
-}
-
-function renderInvoicesTab() {
-  if (!allInvoiceRecords) { loadAllInvoices(); return; }
-  var rows = currentInvoiceFilterRows();
-  var summary = document.getElementById('inv-summary');
-  var list = document.getElementById('inv-list');
-
-  if (!rows.length) {
-    summary.style.display = 'none';
-    list.innerHTML = emptyState('🧾', 'No invoices match these filters', 'Try widening the date range or clearing a filter.');
-    return;
-  }
-
-  var expected = 0, collected = 0, outstanding = 0, discountTotal = 0;
-  rows.forEach(function(r) {
-    expected += Number(r.netPayable) || 0;
-    collected += Number(r.collected) || 0;
-    outstanding += Number(r.outstanding) || 0;
-    discountTotal += Number(r.discountAmt) || 0;
-  });
-  summary.style.display = 'grid';
-  summary.innerHTML =
-    '<div class="summary-tile"><div class="k">Invoices</div><div class="v">' + rows.length + '</div><div class="s">Matching current filters</div></div>' +
-    '<div class="summary-tile"><div class="k">Expected</div><div class="v">' + money(expected) + '</div><div class="s">Net payable total</div></div>' +
-    '<div class="summary-tile ok"><div class="k">Collected</div><div class="v">' + money(collected) + '</div><div class="s">' + Math.round(collected / Math.max(expected, 1) * 100) + '% collected</div></div>' +
-    '<div class="summary-tile ' + (outstanding ? 'warn' : 'ok') + '"><div class="k">Outstanding</div><div class="v">' + money(outstanding) + '</div><div class="s">Balance pending</div></div>' +
-    '<div class="summary-tile"><div class="k">Total Discount</div><div class="v">' + money(discountTotal) + '</div><div class="s">Across matching invoices</div></div>';
-
-  // Newest invoice date first; records with no invoice date yet sort to the bottom.
-  var sorted = rows.slice().sort(function(a, b) { return (b.invoiceDate||'').localeCompare(a.invoiceDate||''); });
-
-  // Group by invoice number (within the current filtered view) so a repeated invoice can be
-  // flagged at a glance — either as an expected same-student split across batches (e.g. a
-  // Graduate Gemologist student's DG + CSG fee records sharing one bundled invoice) or a
-  // shared/sponsored invoice covering different students, which is what invoiceSharedComment
-  // exists for. Neither case is an error; this is purely a "here's why this repeats" hint.
-  var invoiceGroups = {};
-  rows.forEach(function(r) {
-    if (!r.invoiceNumber) return;
-    (invoiceGroups[r.invoiceNumber] = invoiceGroups[r.invoiceNumber] || []).push(r);
-  });
-
-  var html = '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
-    '<th class="text-left">Student</th><th class="text-left">Batch</th><th class="text-left">Course</th>' +
-    '<th class="text-left">Centre</th><th class="text-left">Invoice #</th><th>Invoice Date</th>' +
-    '<th>Course Fee</th><th>Discount</th><th>Net Payable</th><th>Collected</th><th>Outstanding</th><th>Status</th><th>Action</th>' +
-    '</tr></thead><tbody>';
-  html += sorted.map(function(r) {
-    var statusCls = String(r.feeStatus || 'Pending').toLowerCase();
-    var group = r.invoiceNumber ? invoiceGroups[r.invoiceNumber] : null;
-    var dupBadge = '';
-    if (group && group.length > 1) {
-      var sameStudent = group.every(function(g) { return String(g.studentId).toUpperCase() === String(r.studentId).toUpperCase(); });
-      var otherNames = Array.from(new Set(group.filter(function(g){ return String(g.studentId).toUpperCase() !== String(r.studentId).toUpperCase(); }).map(function(g){ return g.studentName; }))).join(', ');
-      dupBadge = sameStudent
-        ? ' <span title="Same invoice also covers this student\'s other batch — normal for a bundled course like Graduate Gemologist (DG + CSG)" style="display:inline-block;background:var(--off);color:var(--muted);border-radius:999px;padding:1px 7px;font-size:10px;font-weight:700">×' + group.length + '</span>'
-        : ' <span title="Shared invoice — also used by: ' + escC(otherNames) + '" style="display:inline-block;background:var(--gold-pale);color:#B87A10;border-radius:999px;padding:1px 7px;font-size:10px;font-weight:700">×' + group.length + ' shared</span>';
-    }
-    return '<tr>' +
-      '<td><strong>' + escC(r.studentName || '') + '</strong><div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--muted)">' + escC(r.studentId || '') + '</div></td>' +
-      '<td>' + escC(r.batchCode || '') + '</td>' +
-      '<td>' + escC(r.course || '') + '</td>' +
-      '<td>' + escC(r.centre || '') + '</td>' +
-      '<td style="font-family:\'JetBrains Mono\',monospace">' + (r.invoiceNumber ? escC(r.invoiceNumber) : '<span style="color:var(--muted)">—</span>') + dupBadge + '</td>' +
-      '<td>' + (r.invoiceDate ? escC(toDMYClient(r.invoiceDate)) : '<span style="color:var(--muted)">—</span>') + '</td>' +
-      '<td style="font-family:\'JetBrains Mono\',monospace">' + money(r.courseFee) + '</td>' +
-      '<td style="font-family:\'JetBrains Mono\',monospace">' + (Number(r.discountPct) ? (parseFloat(Number(r.discountPct).toFixed(2)) + '%') : '—') + '</td>' +
-      '<td style="font-family:\'JetBrains Mono\',monospace">' + money(r.netPayable) + '</td>' +
-      '<td style="font-family:\'JetBrains Mono\',monospace;color:#1a7a3c">' + money(r.collected) + '</td>' +
-      '<td style="font-family:\'JetBrains Mono\',monospace;color:' + (Number(r.outstanding) > 0 ? 'var(--red)' : '#1a7a3c') + '">' + money(r.outstanding) + '</td>' +
-      '<td><span class="fee-status ' + escC(statusCls) + '">' + escC(r.feeStatus || 'Pending') + '</span></td>' +
-      '<td><button class="del-btn" onclick="openInvoiceEditModal(\'' + escC(r.id) + '\')">' + (r.invoiceNumber ? '✏️ Edit' : '🧾 Add') + '</button></td>' +
-    '</tr>';
-  }).join('');
-  html += '</tbody></table></div>';
-  list.innerHTML = html;
-}
-
-// invoiceDate is stored as YYYY-MM-DD (straight from a <input type="date">); display it as
-// DD/MM/YYYY like every other date in this portal, without touching the stored value.
-function toDMYClient(ymd) {
-  if (!ymd) return '';
-  var p = String(ymd).split('-');
-  return p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0]) : ymd;
-}
-
 // Lets a counsellor fill in a missing invoice number/date (or fix a wrong one) straight
-// from the Invoices tab, without reopening the full Update Fee form on the record's own
+// from the Fee Record tab, without reopening the full Update Fee form on the record's own
 // batch — this only ever touches the invoice_number/invoice_date/invoice_amount fields,
 // never the collected amount, installments, discount, or revenue ownership.
 function openInvoiceEditModal(recordId) {
@@ -8402,38 +8211,14 @@ function openInvoiceEditModal(recordId) {
       rec.docComplete = !!(rec.invoiceNumber && rec.invoiceAmount && rec.invoiceDate);
       modal.remove();
       showToast('Invoice details saved.');
-      renderInvoicesTab();
+      renderFeeRecordTab();
     });
   };
 }
 
-function downloadInvoicesCsv() {
-  var rows = currentInvoiceFilterRows();
-  if (!rows.length) { showToast('No invoices to download for these filters.', 'error'); return; }
-  var csvRows = rows.map(function(r) {
-    return {
-      Student: r.studentName || '', StudentID: r.studentId || '', Batch: r.batchCode || '',
-      Course: r.course || '', Centre: r.centre || '', InvoiceNumber: r.invoiceNumber || '',
-      InvoiceDate: r.invoiceDate || '', CourseFee: r.courseFee || 0, Discount: r.discountAmt || 0,
-      NetPayable: r.netPayable || 0, Collected: r.collected || 0, Outstanding: r.outstanding || 0,
-      Status: r.feeStatus || ''
-    };
-  });
-  var csv = extractRowsToCsv(csvRows);
-  var blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  var ymd = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
-  a.download = 'invoices-' + ymd + '.csv';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
-}
-
 /* ══════════════════════════════════════════════════════════════
-   FEE RECORD — month-grouped reconciliation ledger.
-   Reuses the exact same dataset as the Invoices tab (allInvoiceRecords, fetched via
-   getAllFeeRecords) — this is a different VIEW of it, not a new data source: grouped by
+   FEE RECORD — month-grouped reconciliation ledger + invoice management.
+   Reuses a single dataset (allInvoiceRecords, fetched via getAllFeeRecords) grouped by
    revenueMonth (the same field syncStudentRevenue uses for revenue_monthly_achieved) with
    a subtotal row per month and a grand total, so a counsellor can line this up directly
    against their own manual tracker one month at a time. Built after the Bianca July
@@ -8455,17 +8240,14 @@ function loadFeeRecordTab(force) {
     return;
   }
   document.getElementById('fr-list').innerHTML = emptyState('📑', 'Loading fee record…', 'Pulling your fee records, grouped by month.');
-  // Same call the Invoices tab makes — isAdmin gets everything (no centre/counsellor
-  // filter), everyone else gets only what they personally recorded. Shares the
-  // allInvoiceRecords cache with the Invoices tab so opening either tab first still
-  // means the other doesn't need to refetch.
+  // isAdmin gets everything (no centre/counsellor filter), everyone else gets only what
+  // they personally recorded or what's in their centre.
   gasGet({action:'getAllFeeRecords', centres: isAdmin ? '' : allowedCentres.join(','), counsellor: isAdmin ? '' : (counselorName || '')}, function(e, d) {
     if (e || !d || !d.records) {
       document.getElementById('fr-list').innerHTML = emptyState('⚠️', 'Could not load fee record', 'Please try Refresh.');
       return;
     }
     allInvoiceRecords = d.records;
-    populateInvoiceFilterOptions();
     populateFeeRecordFilterOptions();
     renderFeeRecordTab();
   });
@@ -8530,6 +8312,9 @@ function feeRecordFilteredRows() {
   var monthFilter = document.getElementById('fr-filter-month').value;
   var batchFilter = document.getElementById('fr-filter-batch').value;
   var search = (document.getElementById('fr-filter-search').value || '').trim().toLowerCase();
+  // "Missing invoices only" — surfaces exactly the records that used to need the separate
+  // Invoices tab to find (no invoice number entered yet), without leaving Fee Record.
+  var missingInvoiceOnly = !!(document.getElementById('fr-filter-missing-invoice') && document.getElementById('fr-filter-missing-invoice').checked);
   return allInvoiceRecords.filter(function(r) {
     if (isAdmin) {
       if (effectiveCounsellor && r.enteredBy !== effectiveCounsellor) return false;
@@ -8538,6 +8323,7 @@ function feeRecordFilteredRows() {
     }
     if (monthFilter && frRecordMonth(r) !== monthFilter) return false;
     if (batchFilter && r.batchCode !== batchFilter) return false;
+    if (missingInvoiceOnly && r.invoiceNumber) return false;
     if (search) {
       var hay = (String(r.studentName||'') + ' ' + String(r.studentId||'')).toLowerCase();
       if (hay.indexOf(search) < 0) return false;
@@ -8650,6 +8436,7 @@ function renderFeeRecordTab() {
         '<td style="font-family:\'JetBrains Mono\',monospace">' + money(revenue) + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace;color:#1a7a3c">' + money(r.collected) + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace;color:' + (Number(r.outstanding) > 0 ? 'var(--red)' : '#1a7a3c') + '">' + money(r.outstanding) + '</td>' +
+        '<td><button class="del-btn" onclick="openInvoiceEditModal(\'' + escC(r.id) + '\')">' + (r.invoiceNumber ? '✏️ Edit' : '🧾 Add') + '</button></td>' +
       '</tr>';
     }).join('');
     var totalRow = '<tr style="background:var(--off);font-weight:800">' +
@@ -8660,11 +8447,12 @@ function renderFeeRecordTab() {
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(mTotal.revenue) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace;color:#1a7a3c">' + money(mTotal.collected) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace;color:' + (mTotal.balance > 0 ? 'var(--red)' : '#1a7a3c') + '">' + money(mTotal.balance) + '</td>' +
+      '<td></td>' +
     '</tr>';
     html += '<div style="overflow-x:auto;margin-bottom:18px"><table class="compact-table"><thead><tr>' +
       '<th>S.No</th><th class="text-left">Counsellor</th><th class="text-left">Student ID</th><th class="text-left">Student</th>' +
       '<th class="text-left">Batch</th><th class="text-left">Invoice #</th>' +
-      '<th>Course Fee</th><th>GST</th><th>Discount</th><th>Revenue</th><th>Collected</th><th>Balance</th>' +
+      '<th>Course Fee</th><th>GST</th><th>Discount</th><th>Revenue</th><th>Collected</th><th>Balance</th><th>Action</th>' +
       '</tr></thead><tbody>' + bodyRows + totalRow + '</tbody></table></div>';
   });
 
@@ -8681,6 +8469,7 @@ function renderFeeRecordTab() {
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.revenue) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.collected) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.balance) + '</td>' +
+      '<td></td>' +
       '</tr></tbody></table></div>';
   }
 
@@ -8702,7 +8491,7 @@ function downloadFeeRecordCsv() {
   // from. Not netPayable (which nets out discount and adds GST).
   // Discount is shown per-row as a % (not a rupee amount) — Total/Grand Total rows leave it
   // blank since summing percentages across different students isn't a meaningful number.
-  var blank = { SNo:'', Month:'', Counsellor:'', StudentID:'', Student:'', Batch:'', InvoiceNumber:'',
+  var blank = { SNo:'', Month:'', Counsellor:'', StudentID:'', Student:'', Batch:'', InvoiceNumber:'', InvoiceDate:'',
     CourseFee:'', GST:'', DiscountPct:'', Revenue:'', Collected:'', Balance:'' };
   var csvRows = [];
   var g = { courseFee:0, gst:0, revenue:0, collected:0, balance:0 };
@@ -8716,6 +8505,7 @@ function downloadFeeRecordCsv() {
       m.collected += Number(r.collected)||0;   m.balance += Number(r.outstanding)||0;
       csvRows.push(Object.assign({}, blank, { SNo: idx+1, Month: invMonthLabel(mk), Counsellor: r.enteredBy||'',
         StudentID: r.studentId||'', Student: r.studentName||'', Batch: r.batchCode||'', InvoiceNumber: r.invoiceNumber||'',
+        InvoiceDate: r.invoiceDate||'',
         CourseFee: r.courseFee||0, GST: r.gstAmount||0,
         DiscountPct: Number(r.discountPct) ? parseFloat(Number(r.discountPct).toFixed(2)) : 0, Revenue: revenue,
         Collected: r.collected||0, Balance: r.outstanding||0 }));
@@ -13065,8 +12855,8 @@ function renderContextSummary(tabId) {
     return;
   }
 
-  // ── Invoices: has its own inv-summary div — hide KPI ribbon ──
-  if (tabId === 't-invoices') {
+  // ── Fee Record: has its own fr-summary div — hide KPI ribbon ──
+  if (tabId === 't-fee-record') {
     el.style.display = 'none';
     return;
   }

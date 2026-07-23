@@ -1691,6 +1691,7 @@
     <button class="tab" onclick="switchTab('t-reports')">📊 Reports</button>
     <button class="tab" id="tab-fees" onclick="switchTab('t-fees')">💰 Fees <span id="fees-overdue-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-invoices" onclick="switchTab('t-invoices')">🧾 Invoices</button>
+    <button class="tab" id="tab-fee-record" onclick="switchTab('t-fee-record')">📑 Fee Record</button>
     <button class="tab" id="tab-revenue" onclick="switchTab('t-revenue')">📈 Revenue</button>
     <button class="tab" id="tab-holidays" onclick="switchTab('t-holidays')">🗓 Holidays</button>
     <button class="tab" id="tab-diplomas" onclick="switchTab('t-diplomas')" style="display:none">🎓 Diploma Release</button>
@@ -3719,6 +3720,30 @@
     </div>
   </div>
 
+  <!-- TAB 6c: FEE RECORD (reconciliation ledger) -->
+  <div id="t-fee-record" class="tab-content">
+    <div class="card">
+      <div class="section-tag">Fee Collection</div>
+      <h2>Fee Record</h2>
+      <p class="sub">Every fee record you've entered, grouped by month, with a running total — built to reconcile against your own tracker, one month at a time.</p>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:14px">
+        <div class="field admin-only" style="min-width:200px;margin-bottom:0" id="fr-counsellor-wrap">
+          <label>Counsellor</label>
+          <select id="fr-filter-counsellor" onchange="loadFeeRecordTab(true)"><option value="">— Select —</option></select>
+        </div>
+        <div class="field" style="min-width:150px;margin-bottom:0"><label>Month</label>
+          <select id="fr-filter-month" onchange="renderFeeRecordTab()"><option value="">All Months</option></select>
+        </div>
+        <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="loadFeeRecordTab(true)">🔄 Refresh</button>
+        <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="downloadFeeRecordCsv()">📄 Download CSV</button>
+      </div>
+
+      <div id="fr-summary" class="dashboard-summary" style="display:none"></div>
+      <div id="fr-list"><div class="empty-state"><div class="empty-icon">📑</div><div class="empty-title">Loading fee record…</div><div class="empty-copy">Pulling your fee records, grouped by month.</div></div></div>
+    </div>
+  </div>
+
   <!-- TAB 7: REVENUE -->
   <div id="t-revenue" class="tab-content">
     <div class="card admin-only" id="admin-dashboard-card">
@@ -4940,6 +4965,9 @@ function switchTab(id) {
   }
   if (id === 't-invoices') {
     loadAllInvoices();
+  }
+  if (id === 't-fee-record') {
+    loadFeeRecordTab();
   }
   if (id==='t-fees') {
     if (isAdmin && !adminDashboardData) renderAdminDashboardPlaceholders();
@@ -7908,6 +7936,226 @@ function downloadInvoicesCsv() {
   a.href = URL.createObjectURL(blob);
   var ymd = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
   a.download = 'invoices-' + ymd + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FEE RECORD — month-grouped reconciliation ledger.
+   Reuses the exact same dataset as the Invoices tab (allInvoiceRecords, fetched via
+   getAllFeeRecords) — this is a different VIEW of it, not a new data source: grouped by
+   revenueMonth (the same field syncStudentRevenue uses for revenue_monthly_achieved) with
+   a subtotal row per month and a grand total, so a counsellor can line this up directly
+   against their own manual tracker one month at a time. Built after the Bianca July
+   mismatch, where reconstructing "what does the system think I sold in July" required
+   pulling raw SQL exports instead of just looking at a tab in the portal.
+   ══════════════════════════════════════════════════════════════ */
+
+// Effective month for grouping — revenueMonth (authoritative, matches Revenue tab) falls
+// back to `month` (created_at-derived) only for legacy rows saved before revenue_month
+// existed, so nothing silently drops out of the ledger.
+function frRecordMonth(r) {
+  return r.revenueMonth || r.month || '';
+}
+
+function loadFeeRecordTab(force) {
+  if (allInvoiceRecords && !force) {
+    populateFeeRecordFilterOptions();
+    renderFeeRecordTab();
+    return;
+  }
+  document.getElementById('fr-list').innerHTML = emptyState('📑', 'Loading fee record…', 'Pulling your fee records, grouped by month.');
+  // Same call the Invoices tab makes — isAdmin gets everything (no centre/counsellor
+  // filter), everyone else gets only what they personally recorded. Shares the
+  // allInvoiceRecords cache with the Invoices tab so opening either tab first still
+  // means the other doesn't need to refetch.
+  gasGet({action:'getAllFeeRecords', centres: isAdmin ? '' : allowedCentres.join(','), counsellor: isAdmin ? '' : (counselorName || '')}, function(e, d) {
+    if (e || !d || !d.records) {
+      document.getElementById('fr-list').innerHTML = emptyState('⚠️', 'Could not load fee record', 'Please try Refresh.');
+      return;
+    }
+    allInvoiceRecords = d.records;
+    populateInvoiceFilterOptions();
+    populateFeeRecordFilterOptions();
+    renderFeeRecordTab();
+  });
+}
+
+// Admin gets a counsellor picker (built from whoever actually has records, not a
+// hardcoded roster, so it never goes stale); everyone else only ever sees their own
+// records, so the picker stays hidden (.admin-only) and this filter is skipped for them.
+function populateFeeRecordFilterOptions() {
+  var monthSel = document.getElementById('fr-filter-month');
+  var curMonth = monthSel.value;
+  var months = Array.from(new Set((allInvoiceRecords || []).map(frRecordMonth).filter(Boolean))).sort();
+  monthSel.innerHTML = '<option value="">All Months</option>' + months.map(function(m) {
+    return '<option value="' + m + '"' + (m === curMonth ? ' selected' : '') + '>' + invMonthLabel(m) + '</option>';
+  }).join('');
+
+  if (isAdmin) {
+    var cSel = document.getElementById('fr-filter-counsellor');
+    var curC = cSel.value;
+    var names = Array.from(new Set((allInvoiceRecords || []).map(function(r){ return r.enteredBy; }).filter(Boolean))).sort();
+    cSel.innerHTML = '<option value="">— Select —</option>' + names.map(function(n) {
+      return '<option value="' + escC(n) + '"' + (n === curC ? ' selected' : '') + '>' + escC(n) + '</option>';
+    }).join('');
+  }
+}
+
+function renderFeeRecordTab() {
+  var summary = document.getElementById('fr-summary');
+  var list = document.getElementById('fr-list');
+  if (!allInvoiceRecords) { list.innerHTML = emptyState('📑', 'Loading fee record…', 'Pulling your fee records, grouped by month.'); return; }
+
+  var effectiveCounsellor = isAdmin ? (document.getElementById('fr-filter-counsellor').value || '') : (counselorName || '');
+  if (isAdmin && !effectiveCounsellor) {
+    summary.style.display = 'none';
+    list.innerHTML = emptyState('📑', 'Pick a counsellor', 'Select who to reconcile above — this ledger is scoped to one counsellor at a time so totals stay meaningful.');
+    return;
+  }
+  var monthFilter = document.getElementById('fr-filter-month').value;
+
+  var rows = allInvoiceRecords.filter(function(r) {
+    if (effectiveCounsellor && r.enteredBy !== effectiveCounsellor) return false;
+    if (monthFilter && frRecordMonth(r) !== monthFilter) return false;
+    return true;
+  });
+
+  if (!rows.length) {
+    summary.style.display = 'none';
+    list.innerHTML = emptyState('📑', 'No fee records found', 'Try widening the month filter, or check the counsellor selected above.');
+    return;
+  }
+
+  // Grand totals across every row currently in view (all months, if no month filter applied).
+  var gTotal = { courseFee:0, gst:0, discount:0, netFee:0, collected:0, balance:0, count:0 };
+  rows.forEach(function(r) {
+    gTotal.courseFee += Number(r.courseFee)   || 0;
+    gTotal.gst        += Number(r.gstAmount)   || 0;
+    gTotal.discount    += Number(r.discountAmt) || 0;
+    gTotal.netFee      += Number(r.netPayable)  || 0;
+    gTotal.collected  += Number(r.collected)   || 0;
+    gTotal.balance     += Number(r.outstanding) || 0;
+    gTotal.count++;
+  });
+  summary.style.display = 'grid';
+  summary.innerHTML =
+    '<div class="summary-tile"><div class="k">Records</div><div class="v">' + gTotal.count + '</div><div class="s">Matching current filters</div></div>' +
+    '<div class="summary-tile"><div class="k">Net Fee</div><div class="v">' + money(gTotal.netFee) + '</div><div class="s">Total across view</div></div>' +
+    '<div class="summary-tile ok"><div class="k">Collected</div><div class="v">' + money(gTotal.collected) + '</div><div class="s">' + Math.round(gTotal.collected / Math.max(gTotal.netFee,1) * 100) + '% collected</div></div>' +
+    '<div class="summary-tile ' + (gTotal.balance ? 'warn' : 'ok') + '"><div class="k">Balance</div><div class="v">' + money(gTotal.balance) + '</div><div class="s">Still outstanding</div></div>';
+
+  // Group by month, oldest first — matches how a counsellor's own manual tracker
+  // (Jan → Dec) reads, rather than the "newest first" convention the Invoices tab uses.
+  var groups = {};
+  rows.forEach(function(r) {
+    var m = frRecordMonth(r) || 'Unknown';
+    (groups[m] = groups[m] || []).push(r);
+  });
+  var monthKeys = Object.keys(groups).sort();
+
+  var html = '';
+  monthKeys.forEach(function(mk) {
+    var mRows = groups[mk].slice().sort(function(a,b){ return (a.studentName||'').localeCompare(b.studentName||''); });
+    var mTotal = { courseFee:0, gst:0, discount:0, netFee:0, collected:0, balance:0 };
+    var bodyRows = mRows.map(function(r, idx) {
+      mTotal.courseFee += Number(r.courseFee)   || 0;
+      mTotal.gst        += Number(r.gstAmount)   || 0;
+      mTotal.discount    += Number(r.discountAmt) || 0;
+      mTotal.netFee      += Number(r.netPayable)  || 0;
+      mTotal.collected  += Number(r.collected)   || 0;
+      mTotal.balance     += Number(r.outstanding) || 0;
+      return '<tr>' +
+        '<td>' + (idx+1) + '</td>' +
+        '<td>' + escC(r.batchCode || '') + '</td>' +
+        '<td><strong>' + escC(r.studentName || '') + '</strong></td>' +
+        '<td style="font-family:\'JetBrains Mono\',monospace">' + money(r.courseFee) + '</td>' +
+        '<td style="font-family:\'JetBrains Mono\',monospace">' + money(r.gstAmount) + '</td>' +
+        '<td style="font-family:\'JetBrains Mono\',monospace">' + (Number(r.discountAmt) ? money(r.discountAmt) : '—') + '</td>' +
+        '<td style="font-family:\'JetBrains Mono\',monospace">' + money(r.netPayable) + '</td>' +
+        '<td style="font-family:\'JetBrains Mono\',monospace;color:#1a7a3c">' + money(r.collected) + '</td>' +
+        '<td style="font-family:\'JetBrains Mono\',monospace;color:' + (Number(r.outstanding) > 0 ? 'var(--red)' : '#1a7a3c') + '">' + money(r.outstanding) + '</td>' +
+      '</tr>';
+    }).join('');
+    var totalRow = '<tr style="background:var(--off);font-weight:800">' +
+      '<td colspan="3">Total — ' + invMonthLabel(mk) + ' (' + mRows.length + (mRows.length===1?' record':' records') + ')</td>' +
+      '<td style="font-family:\'JetBrains Mono\',monospace">' + money(mTotal.courseFee) + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\',monospace">' + money(mTotal.gst) + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\',monospace">' + money(mTotal.discount) + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\',monospace">' + money(mTotal.netFee) + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\',monospace;color:#1a7a3c">' + money(mTotal.collected) + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\',monospace;color:' + (mTotal.balance > 0 ? 'var(--red)' : '#1a7a3c') + '">' + money(mTotal.balance) + '</td>' +
+    '</tr>';
+    html += '<div style="overflow-x:auto;margin-bottom:18px"><table class="compact-table"><thead><tr>' +
+      '<th>S.No</th><th class="text-left">Batch</th><th class="text-left">Student</th>' +
+      '<th>Course Fee</th><th>GST</th><th>Discount</th><th>Net Fee</th><th>Collected</th><th>Balance</th>' +
+      '</tr></thead><tbody>' + bodyRows + totalRow + '</tbody></table></div>';
+  });
+
+  // Grand total across every month currently in view — only meaningful (and shown) when
+  // more than one month is visible; with a single month selected it would just repeat
+  // that month's own subtotal row above.
+  if (monthKeys.length > 1) {
+    html += '<div style="overflow-x:auto"><table class="compact-table"><tbody>' +
+      '<tr style="background:var(--navy);color:var(--gold);font-weight:800">' +
+      '<td colspan="3">GRAND TOTAL — ' + monthKeys.length + ' months, ' + gTotal.count + ' records</td>' +
+      '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.courseFee) + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.gst) + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.discount) + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.netFee) + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.collected) + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.balance) + '</td>' +
+      '</tr></tbody></table></div>';
+  }
+
+  list.innerHTML = html;
+}
+
+function downloadFeeRecordCsv() {
+  if (!allInvoiceRecords) { showToast('Nothing loaded yet — open the tab first.', 'error'); return; }
+  var effectiveCounsellor = isAdmin ? (document.getElementById('fr-filter-counsellor').value || '') : (counselorName || '');
+  var monthFilter = document.getElementById('fr-filter-month').value;
+  var rows = allInvoiceRecords.filter(function(r) {
+    if (effectiveCounsellor && r.enteredBy !== effectiveCounsellor) return false;
+    if (monthFilter && frRecordMonth(r) !== monthFilter) return false;
+    return true;
+  });
+  if (!rows.length) { showToast('No fee records to download for these filters.', 'error'); return; }
+
+  var groups = {};
+  rows.forEach(function(r) { (groups[frRecordMonth(r) || 'Unknown'] = groups[frRecordMonth(r) || 'Unknown'] || []).push(r); });
+  var monthKeys = Object.keys(groups).sort();
+
+  var csvRows = [];
+  var g = { courseFee:0, gst:0, discount:0, netFee:0, collected:0, balance:0 };
+  monthKeys.forEach(function(mk) {
+    var mRows = groups[mk].slice().sort(function(a,b){ return (a.studentName||'').localeCompare(b.studentName||''); });
+    var m = { courseFee:0, gst:0, discount:0, netFee:0, collected:0, balance:0 };
+    mRows.forEach(function(r, idx) {
+      m.courseFee += Number(r.courseFee)||0;   m.gst += Number(r.gstAmount)||0;
+      m.discount  += Number(r.discountAmt)||0; m.netFee += Number(r.netPayable)||0;
+      m.collected += Number(r.collected)||0;   m.balance += Number(r.outstanding)||0;
+      csvRows.push({ SNo: idx+1, Month: invMonthLabel(mk), Batch: r.batchCode||'', Student: r.studentName||'',
+        CourseFee: r.courseFee||0, GST: r.gstAmount||0, Discount: r.discountAmt||0, NetFee: r.netPayable||0,
+        Collected: r.collected||0, Balance: r.outstanding||0 });
+    });
+    csvRows.push({ SNo:'', Month: 'TOTAL — ' + invMonthLabel(mk), Batch:'', Student:'',
+      CourseFee: m.courseFee, GST: m.gst, Discount: m.discount, NetFee: m.netFee, Collected: m.collected, Balance: m.balance });
+    g.courseFee += m.courseFee; g.gst += m.gst; g.discount += m.discount;
+    g.netFee += m.netFee; g.collected += m.collected; g.balance += m.balance;
+  });
+  if (monthKeys.length > 1) {
+    csvRows.push({ SNo:'', Month:'GRAND TOTAL', Batch:'', Student:'',
+      CourseFee: g.courseFee, GST: g.gst, Discount: g.discount, NetFee: g.netFee, Collected: g.collected, Balance: g.balance });
+  }
+
+  var csv = extractRowsToCsv(csvRows);
+  var blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  var ymd = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+  a.download = 'fee-record-' + (effectiveCounsellor || 'all') + '-' + ymd + '.csv';
   document.body.appendChild(a);
   a.click();
   setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);

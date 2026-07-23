@@ -1744,7 +1744,14 @@ window.gasGet = (function () {
       invoiceDate: mapped.invoice_date, invoiceSharedComment: mapped.invoice_shared_comment,
       invoiceFileUrl: mapped.invoice_file_url,
       docComplete: !!(mapped.invoice_number && mapped.invoice_amount && mapped.invoice_date),
-      feeStatus: mapped.fee_status, enteredBy: mapped.entered_by, month: mapped.month };
+      feeStatus: mapped.fee_status, enteredBy: mapped.entered_by, month: mapped.month,
+      // revenueMonth — the authoritative bucket used by syncStudentRevenue/revenue_monthly_achieved
+      // (see fmtMonthKey / revenue_month comments elsewhere in this file). Exposed separately from
+      // `month` (created_at-derived, used by the Invoices tab filter) so the counsellor-facing Fee
+      // Record ledger can group by the SAME month the Revenue tab attributes the sale to — the
+      // whole point of that ledger is letting a counsellor reconcile against Revenue, so grouping
+      // by a different month field would just recreate the Bianca July mismatch inside this tab.
+      revenueMonth: mapped.revenue_month };
   }
 
   function h_getFeeRecords(p, cb) {

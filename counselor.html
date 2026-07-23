@@ -8444,7 +8444,7 @@ function openBackfillModal() {
         '<div id="bf-rows-table"></div>' +
         '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
           '<button onclick="_backfillAddRow()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">+ Add Student Row</button>' +
-          '<label style="padding:7px 12px;border:1px dashed #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📄 Upload CSV (Student, CourseFee, DiscountPct, InvoiceNumber)' +
+          '<label style="padding:7px 12px;border:1px dashed #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📄 Upload CSV (Student, CourseFee, DiscountPct, InvoiceNumber, HomeState)' +
             '<input type="file" accept=".csv" style="display:none" onchange="_backfillUploadCsv(this)"></label>' +
         '</div>' +
       '</div>' +
@@ -8540,13 +8540,17 @@ function _backfillUpdateRow(idx, field, val) {
 function _backfillRenderRows() {
   var wrap = document.getElementById('bf-rows-table');
   if (!wrap) return;
-  wrap.innerHTML = '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
-    '<th>S.No</th><th class="text-left">Student Name</th><th>Course Fee</th><th>Discount %</th><th class="text-left">Invoice #</th><th class="text-left">Invoice Date</th><th></th>' +
+  wrap.innerHTML =
+    '<div style="font-size:11px;color:#6b7280;margin-bottom:6px">💡 <strong>Centre</strong> above is which batch they attended — every student here shares it. If a student is actually ' +
+    'from a different city (e.g. travelled to Mumbai for this course), note that in their own <strong>Home State/City</strong> column instead — it doesn\'t change which batch or revenue centre they\'re counted under.</div>' +
+    '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+    '<th>S.No</th><th class="text-left">Student Name</th><th class="text-left">Home State/City</th><th>Course Fee</th><th>Discount %</th><th class="text-left">Invoice #</th><th class="text-left">Invoice Date</th><th></th>' +
     '</tr></thead><tbody>' +
     _backfillState.rows.map(function(r, idx) {
       return '<tr>' +
         '<td>' + (idx+1) + '</td>' +
         '<td><input value="' + escC(r.name) + '" oninput="_backfillUpdateRow(' + idx + ',\'name\',this.value)" style="width:100%;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
+        '<td><input value="' + escC(r.homeState || '') + '" placeholder="e.g. Jaipur, Rajasthan" oninput="_backfillUpdateRow(' + idx + ',\'homeState\',this.value)" style="width:130px;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
         '<td><input type="number" value="' + escC(r.fee) + '" oninput="_backfillUpdateRow(' + idx + ',\'fee\',this.value)" style="width:90px;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
         '<td><input type="number" value="' + escC(r.discPct) + '" oninput="_backfillUpdateRow(' + idx + ',\'discPct\',this.value)" style="width:70px;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
         '<td><input value="' + escC(r.invNum) + '" oninput="_backfillUpdateRow(' + idx + ',\'invNum\',this.value)" style="width:100%;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
@@ -8558,9 +8562,11 @@ function _backfillRenderRows() {
 }
 
 // Minimal CSV parser (no external library loaded) — handles a simple comma-separated file
-// with a header row: Student, CourseFee, DiscountPct, InvoiceNumber, InvoiceDate (extra/missing
-// columns tolerated; only these five are read). InvoiceDate should be YYYY-MM-DD; if omitted,
-// each imported row falls back to the header-level Payment Date, same as manually-added rows.
+// with a header row: Student, CourseFee, DiscountPct, InvoiceNumber, InvoiceDate, HomeState
+// (extra/missing columns tolerated; only these six are read). InvoiceDate should be YYYY-MM-DD;
+// if omitted, each imported row falls back to the header-level Payment Date, same as
+// manually-added rows. HomeState/HomeCity is the student's own origin — NOT the batch's
+// delivery centre (that stays fixed for the whole batch, set once above).
 function _backfillUploadCsv(input) {
   var file = input.files && input.files[0];
   if (!file) return;
@@ -8575,6 +8581,7 @@ function _backfillUploadCsv(input) {
     var idxDisc = headers.indexOf('discountpct');
     var idxInv = headers.indexOf('invoicenumber');
     var idxInvDate = headers.indexOf('invoicedate');
+    var idxHomeState = headers.indexOf('homestate'); if (idxHomeState < 0) idxHomeState = headers.indexOf('homecity');
     if (idxName < 0 || idxFee < 0) { showToast('CSV needs at least Student and CourseFee columns.', 'error'); return; }
     // Clear the one blank starter row before importing, so uploading a CSV right after
     // opening the modal doesn't leave an empty row dangling at the top.
@@ -8587,6 +8594,7 @@ function _backfillUploadCsv(input) {
       _backfillState.rows.push({
         name: cols[idxName] || '', fee: cols[idxFee] || '',
         discPct: idxDisc >= 0 ? (cols[idxDisc] || '') : '', invNum: idxInv >= 0 ? (cols[idxInv] || '') : '',
+        homeState: idxHomeState >= 0 ? (cols[idxHomeState] || '') : '',
         invDate: (idxInvDate >= 0 && cols[idxInvDate]) ? cols[idxInvDate] : (_backfillState.batchDate || '')
       });
     }
@@ -8624,7 +8632,7 @@ function _backfillSaveAll() {
         var studentId = (d1 && d1.enrollmentNo) || '';
         if (!studentId) { warnings.push(row.name + ' — could not get a Student ID, skipped.'); next(); return; }
         gasGet({ action: 'addStudent', enrollmentNo: studentId, name: row.name, mobile: '', mobileLast4: '',
-          email: '', country: 'India', stateRegion: '', batchCode: _backfillState.batchCode, batchCodes: _backfillState.batchCode
+          email: '', country: 'India', stateRegion: row.homeState || '', batchCode: _backfillState.batchCode, batchCodes: _backfillState.batchCode
         }, function(e2, d2) {
           if (e2 || (d2 && d2.status === 'error')) { warnings.push(row.name + ' — could not create student record, skipped.'); next(); return; }
           var net = Math.round(cf * (1 - dp/100) * 1.18);

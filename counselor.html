@@ -3781,7 +3781,6 @@
         <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="resetFeeRecordFilters()">Reset filters</button>
         <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="loadFeeRecordTab(true)">🔄 Refresh</button>
         <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="downloadFeeRecordCsv()">📄 Download CSV</button>
-        <button class="btn btn-outline admin-only" id="fr-resync-early-btn" style="width:auto;padding:8px 14px;font-size:12px" onclick="resyncEarlyRevenueMonths()" title="One-time fix: re-derives April/May/June 2026 revenue_monthly_achieved from actual fee records, so the Revenue tab's Total Achieved matches this tab's Your Revenue for those months too">🔧 Resync Apr–Jun Revenue</button>
       </div>
 
       <div id="fr-summary" class="dashboard-summary" style="display:none"></div>
@@ -8497,29 +8496,6 @@ function downloadFeeRecordCsv() {
   document.body.appendChild(a);
   a.click();
   setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
-}
-
-// One-time admin fix for the Revenue tab / Fee Record tab mismatch on April-June 2026:
-// syncStudentRevenue used to skip those months, so backfilled fee records never fed back
-// into revenue_monthly_achieved (the Revenue tab's "Total Achieved" source). Now that it
-// covers them too, this re-derives revenue_monthly_achieved for every counsellor/centre/
-// month combination that actually has fee records in that window, from the real
-// student_fees rows — same thing an ordinary save/delete now does automatically, just run
-// once for data that predates the fix. Safe to click more than once; it's idempotent.
-function resyncEarlyRevenueMonths() {
-  if (!isAdmin) return;
-  if (!confirm('This re-derives April, May, and June 2026 revenue for EVERY counsellor from their actual fee records, overwriting whatever figure is currently on the Revenue tab for those months. Continue?')) return;
-  var btn = document.getElementById('fr-resync-early-btn');
-  var original = btn.textContent;
-  btn.disabled = true; btn.textContent = 'Resyncing…';
-  gasGet({ action: 'resyncEarlyRevenueMonths', isAdmin: true }, function(e, d) {
-    btn.disabled = false; btn.textContent = original;
-    if (e || !d || d.status !== 'ok') {
-      showToast('Resync failed — please try again.', 'error');
-      return;
-    }
-    showToast('Kicked off resync for ' + d.groupsResynced + ' counsellor/centre/month combination(s) across Apr-Jun 2026. Give it a few seconds, then refresh the Revenue tab.', 'success');
-  });
 }
 
 /* ══════════════════════════════════════════════════════════════

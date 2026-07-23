@@ -158,6 +158,8 @@
 .crm-stage-pill[data-s="Enrolled"].active{background:#16a34a;border-color:#16a34a}
 
 /* Column toggling via CSS */
+#crm-leads-table.hide-source .crm-col-source { display: none !important; }
+#crm-leads-table.hide-created .crm-col-created { display: none !important; }
 #crm-leads-table.hide-owner .crm-col-owner { display: none !important; }
 #crm-leads-table.hide-age .crm-col-age { display: none !important; }
 #crm-leads-table.hide-stage .crm-col-stage { display: none !important; }
@@ -1969,6 +1971,7 @@
 
       <!-- ── Advanced Filter Bar ── -->
       <div class="crm-filter-bar">
+        <div id="crm-saved-views" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px"></div>
         <div class="crm-filter-row">
           <div class="crm-filter-group" style="flex:1;min-width:220px">
             <span class="crm-filter-label">Search</span>
@@ -2045,10 +2048,22 @@
               <option value="">All Sources</option>
               <option value="Facebook Lead Ads">Facebook Ads</option>
               <option value="Website">Website</option>
+              <option value="Course Catalog Website">Course Catalog Website</option>
               <option value="WhatsApp">WhatsApp</option>
               <option value="Walk-In">Walk-In</option>
               <option value="Direct">Direct</option>
               <option value="Internal Cross-Sell">Cross-Sell</option>
+              <option value="IIJS Jio World">IIJS Jio World</option>
+              <option value="IIJS NESCO">IIJS NESCO</option>
+              <option value="Event">Event</option>
+              <option value="Google">Google</option>
+              <option value="Google Ads">Google Ads</option>
+              <option value="Seminar">Seminar</option>
+              <option value="Referral">Referral</option>
+              <option value="Social">Social</option>
+              <option value="Offline">Offline</option>
+              <option value="Bulk Upload">Bulk Upload</option>
+              <option value="Other">Other</option>
             </select>
           </div>
           <div class="crm-filter-group">
@@ -2068,6 +2083,8 @@
         <div id="crm-column-picker" class="crm-col-picker" style="display:none">
           <div class="crm-col-picker-title">Visible Columns</div>
           <div class="crm-col-pills">
+            <label class="crm-col-pill active"><input type="checkbox" class="crm-col-toggle" data-col="source" checked onchange="saveCRMColumns()"> Source</label>
+            <label class="crm-col-pill active"><input type="checkbox" class="crm-col-toggle" data-col="created" checked onchange="saveCRMColumns()"> Registered On</label>
             <label class="crm-col-pill active"><input type="checkbox" class="crm-col-toggle" data-col="owner" checked onchange="saveCRMColumns()"> Owner</label>
             <label class="crm-col-pill active"><input type="checkbox" class="crm-col-toggle" data-col="age" checked onchange="saveCRMColumns()"> Age</label>
             <label class="crm-col-pill active"><input type="checkbox" class="crm-col-toggle" data-col="stage" checked onchange="saveCRMColumns()"> Stage</label>
@@ -2108,6 +2125,7 @@
         </div>
 
         <div class="crm-count-bar" style="margin-top:10px;border-radius:7px">Showing <strong id="crm-count-display">0</strong> leads &nbsp;·&nbsp; <span id="crm-total-display" style="color:var(--muted)">0 total assigned</span></div>
+        <div id="crm-source-breakdown" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 14px 0"></div>
       </div>
 
       <!-- Leads Table (Now full width) -->
@@ -2119,9 +2137,11 @@
                 <th style="width:36px;padding:10px 14px"><input type="checkbox" id="crm-check-all" title="Select all" onchange="toggleAllCRMChecks(this.checked)" style="cursor:pointer"></th>
                 <th>Lead / Contact</th>
                 <th id="crm-th-course">Course · Centre</th>
-                <th class="crm-col-owner" id="crm-th-owner">Owner</th>
-                <th style="text-align:center" class="crm-col-age" id="crm-th-age">Age</th>
-                <th style="text-align:center" class="crm-col-stage" id="crm-th-stage">Stage</th>
+                <th class="crm-col-source" id="crm-th-source" onclick="sortCRMBy('source')">Source</th>
+                <th class="crm-col-created" id="crm-th-created" onclick="sortCRMBy('created')">Registered On</th>
+                <th class="crm-col-owner" id="crm-th-owner" onclick="sortCRMBy('owner')">Owner</th>
+                <th style="text-align:center" class="crm-col-age" id="crm-th-age" onclick="sortCRMBy('age')">Age</th>
+                <th style="text-align:center" class="crm-col-stage" id="crm-th-stage" onclick="sortCRMBy('stage')">Stage</th>
                 <th class="crm-col-remark" id="crm-th-remark">Last Remark</th>
                 <th class="crm-col-slot" id="crm-th-slot" style="display:none">Call Slot</th>
                 <th class="crm-col-jointime" id="crm-th-jointime" style="display:none">Join In</th>
@@ -2129,7 +2149,7 @@
               </tr>
             </thead>
             <tbody id="crm-leads-tbody">
-              <tr><td colspan="10" style="text-align:center;padding:32px;color:var(--muted)">Loading leads…</td></tr>
+              <tr><td colspan="12" style="text-align:center;padding:32px;color:var(--muted)">Loading leads…</td></tr>
             </tbody>
           </table>
         </div>
@@ -8404,11 +8424,12 @@ function openBackfillModal() {
           '<select id="bf-month" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px"><option value="">— Select —</option>' + monthOpts + '</select></div>' +
         '<div><label style="display:block;font-size:11px;font-weight:700;color:#374151;margin-bottom:4px">Counsellor (revenue credit) *</label>' +
           '<select id="bf-counsellor" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px">' + counsellorOpts + '</select></div>' +
-        '<div><label style="display:block;font-size:11px;font-weight:700;color:#374151;margin-bottom:4px">Centre *</label>' +
+        '<div><label style="display:block;font-size:11px;font-weight:700;color:#374151;margin-bottom:4px">Centre (where the course was delivered) *</label>' +
           '<select id="bf-centre" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px">' + centreOpts + '</select></div>' +
+        '<div style="grid-column:span 2;font-size:11px;color:#6b7280;margin-top:-4px">💡 Cross-centre sale? Pick the centre where the course was actually delivered and the counsellor who should get credit — if their home centre differs from this Centre, it lands under "Other Centres" for them on the Revenue tab automatically.</div>' +
         '<div><label style="display:block;font-size:11px;font-weight:700;color:#374151;margin-bottom:4px">Course *</label>' +
           '<select id="bf-course" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px">' + courseOpts + '</select></div>' +
-        '<div style="grid-column:span 2"><label style="display:block;font-size:11px;font-weight:700;color:#374151;margin-bottom:4px">Actual Payment Date (within the selected month) *</label>' +
+        '<div><label style="display:block;font-size:11px;font-weight:700;color:#374151;margin-bottom:4px">Batch Start / Payment Date (within the selected month) *</label>' +
           '<input id="bf-batch-date" type="date" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px"></div>' +
       '</div>' +
       '<div id="bf-batch-err" style="color:#dc2626;font-size:12px;margin:4px 0;display:none"></div>' +
@@ -8503,7 +8524,10 @@ function _backfillShowRowsSection() {
 }
 
 function _backfillAddRow(prefill) {
-  _backfillState.rows.push(Object.assign({ name: '', fee: '', discPct: '', invNum: '' }, prefill || {}));
+  // invDate defaults to whatever Payment Date is currently set (usually blank until
+  // Find/Create Batch has run) but is independently editable per row — a row's actual
+  // invoice date doesn't have to match the batch start date used to create/find the batch.
+  _backfillState.rows.push(Object.assign({ name: '', fee: '', discPct: '', invNum: '', invDate: _backfillState.batchDate || '' }, prefill || {}));
   _backfillRenderRows();
 }
 function _backfillRemoveRow(idx) {
@@ -8517,7 +8541,7 @@ function _backfillRenderRows() {
   var wrap = document.getElementById('bf-rows-table');
   if (!wrap) return;
   wrap.innerHTML = '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
-    '<th>S.No</th><th class="text-left">Student Name</th><th>Course Fee</th><th>Discount %</th><th class="text-left">Invoice #</th><th></th>' +
+    '<th>S.No</th><th class="text-left">Student Name</th><th>Course Fee</th><th>Discount %</th><th class="text-left">Invoice #</th><th class="text-left">Invoice Date</th><th></th>' +
     '</tr></thead><tbody>' +
     _backfillState.rows.map(function(r, idx) {
       return '<tr>' +
@@ -8526,6 +8550,7 @@ function _backfillRenderRows() {
         '<td><input type="number" value="' + escC(r.fee) + '" oninput="_backfillUpdateRow(' + idx + ',\'fee\',this.value)" style="width:90px;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
         '<td><input type="number" value="' + escC(r.discPct) + '" oninput="_backfillUpdateRow(' + idx + ',\'discPct\',this.value)" style="width:70px;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
         '<td><input value="' + escC(r.invNum) + '" oninput="_backfillUpdateRow(' + idx + ',\'invNum\',this.value)" style="width:100%;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
+        '<td><input type="date" value="' + escC(r.invDate || '') + '" oninput="_backfillUpdateRow(' + idx + ',\'invDate\',this.value)" style="width:130px;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
         '<td><button onclick="_backfillRemoveRow(' + idx + ')" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:15px">✕</button></td>' +
       '</tr>';
     }).join('') +
@@ -8533,8 +8558,9 @@ function _backfillRenderRows() {
 }
 
 // Minimal CSV parser (no external library loaded) — handles a simple comma-separated file
-// with a header row: Student, CourseFee, DiscountPct, InvoiceNumber (extra/missing columns
-// tolerated; only these four are read).
+// with a header row: Student, CourseFee, DiscountPct, InvoiceNumber, InvoiceDate (extra/missing
+// columns tolerated; only these five are read). InvoiceDate should be YYYY-MM-DD; if omitted,
+// each imported row falls back to the header-level Payment Date, same as manually-added rows.
 function _backfillUploadCsv(input) {
   var file = input.files && input.files[0];
   if (!file) return;
@@ -8548,6 +8574,7 @@ function _backfillUploadCsv(input) {
     var idxFee = headers.indexOf('coursefee');
     var idxDisc = headers.indexOf('discountpct');
     var idxInv = headers.indexOf('invoicenumber');
+    var idxInvDate = headers.indexOf('invoicedate');
     if (idxName < 0 || idxFee < 0) { showToast('CSV needs at least Student and CourseFee columns.', 'error'); return; }
     // Clear the one blank starter row before importing, so uploading a CSV right after
     // opening the modal doesn't leave an empty row dangling at the top.
@@ -8559,7 +8586,8 @@ function _backfillUploadCsv(input) {
       if (!cols[idxName]) continue;
       _backfillState.rows.push({
         name: cols[idxName] || '', fee: cols[idxFee] || '',
-        discPct: idxDisc >= 0 ? (cols[idxDisc] || '') : '', invNum: idxInv >= 0 ? (cols[idxInv] || '') : ''
+        discPct: idxDisc >= 0 ? (cols[idxDisc] || '') : '', invNum: idxInv >= 0 ? (cols[idxInv] || '') : '',
+        invDate: (idxInvDate >= 0 && cols[idxInvDate]) ? cols[idxInvDate] : (_backfillState.batchDate || '')
       });
     }
     _backfillRenderRows();
@@ -8600,16 +8628,20 @@ function _backfillSaveAll() {
         }, function(e2, d2) {
           if (e2 || (d2 && d2.status === 'error')) { warnings.push(row.name + ' — could not create student record, skipped.'); next(); return; }
           var net = Math.round(cf * (1 - dp/100) * 1.18);
+          // Each row's own Invoice Date wins if the user set one; otherwise fall back to the
+          // header-level Payment Date. The two are allowed to differ (e.g. invoice raised a
+          // few days before/after the batch's own start date).
+          var rowInvoiceDate = row.invDate || _backfillState.batchDate;
           var feeParams = {
             action: 'saveFeeRecord', studentId: studentId, studentName: row.name,
             batchCode: _backfillState.batchCode, centre: _backfillState.centre, course: _backfillState.course,
             courseFee: cf, discountPct: dp, discountReason: 'Historical backfill',
-            invoiceNumber: row.invNum || '', invoiceDate: _backfillState.batchDate,
+            invoiceNumber: row.invNum || '', invoiceDate: rowInvoiceDate,
             nInst: 1, enteredBy: _backfillState.counsellor
           };
           if (markPaid) {
-            feeParams.inst1Amt = net; feeParams.inst1Due = _backfillState.batchDate;
-            feeParams.inst1Paid = 'Y'; feeParams.inst1PaidDate = _backfillState.batchDate; feeParams.inst1Mode = 'Historical';
+            feeParams.inst1Amt = net; feeParams.inst1Due = rowInvoiceDate;
+            feeParams.inst1Paid = 'Y'; feeParams.inst1PaidDate = rowInvoiceDate; feeParams.inst1Mode = 'Historical';
           }
           gasGet(feeParams, function(e3, d3) {
             if (e3 || !d3 || d3.status !== 'ok') warnings.push(row.name + ' — fee record failed to save.');
@@ -16698,6 +16730,15 @@ var activeLead = null;
 var crmPageSize = 30;
 var crmPageOffset = 0;
 var crmCurrentSubTab = 'queue';
+var crmSortCol = null;   // null = default (untouched-new-first, then oldest-first)
+var crmSortDir = 'asc';
+var CRM_SRC_ICON = {
+  'Facebook Lead Ads': '📘', 'Facebook': '📘', 'Website': '🌐', 'Course Catalog Website': '🌐',
+  'WhatsApp': '💬', 'Walk-In': '🚶', 'Direct': '📞', 'Internal Cross-Sell': '🔄',
+  'IIJS Jio World': '💎', 'IIJS NESCO': '💎', 'Event': '🎪', 'Seminar': '🎤',
+  'Google': '🔍', 'Google Ads': '🔍', 'Social': '📱', 'Offline': '🗞️',
+  'Referral': '🤝', 'Bulk Upload': '📤', 'Other': '📌'
+};
 
 // ── IGI Cross-sell Matrix ──────────────────────────────────────────────────
 var CRM_CROSSSELL_MAP = {
@@ -16791,6 +16832,8 @@ function loadCRMLeads(force) { loadCRMData(); }
 function loadCRMData() {
   loadCRMColumns();
   populateCRMCourseFilter();
+  updateCRMSortHeaders();
+  renderCRMSavedViews();
   var tbody = document.getElementById('crm-leads-tbody');
   if (!tbody) return;
   tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:48px">' + loadingState('Loading leads…') + '</td></tr>';
@@ -16832,7 +16875,43 @@ function loadCRMData() {
     updateCRMKPIs();
     filterLeads();
     if (typeof populateOwnerFilter === 'function') populateOwnerFilter();
+    checkReassignmentAlerts();
   });
+}
+
+// ── Reassignment alerts ─────────────────────────────────────────────────────
+// When submit-course-lead reassigns an existing lead to a different owner
+// (e.g. an old web lead re-met at an IIJS stall), it stamps
+// web_meta.last_reassigned_at/from/to on the row. Surface that as a one-time
+// toast to the new owner so they don't find out days later scrolling the
+// table — each reassignment is only shown once per browser (tracked in
+// localStorage), and resurfaces if the same lead gets reassigned again.
+function checkReassignmentAlerts() {
+  if (!counselorName) return;
+  var seenKey = 'igi_crm_reassign_seen';
+  var seen = {};
+  try { seen = JSON.parse(localStorage.getItem(seenKey) || '{}'); } catch(e) { seen = {}; }
+
+  var mine = crmLeadsList.filter(function(l) {
+    var wm = l.web_meta || {};
+    if (l.lead_owner !== counselorName || !wm.last_reassigned_at) return false;
+    if (wm.last_reassigned_to && wm.last_reassigned_to !== counselorName) return false;
+    // Only surface reassignments from the last 48h — older ones are stale news.
+    var age = Date.now() - new Date(wm.last_reassigned_at).getTime();
+    if (age > 48 * 60 * 60 * 1000) return false;
+    return seen[l.id] !== wm.last_reassigned_at;
+  });
+
+  mine.forEach(function(l) {
+    var wm = l.web_meta || {};
+    var name = ((l.first_name || '') + ' ' + (l.last_name || '')).trim() || 'A lead';
+    showToast(name + ' was just reassigned to you (from ' + (wm.last_reassigned_from || 'someone else') + ')', 'success');
+    seen[l.id] = wm.last_reassigned_at;
+  });
+
+  if (mine.length) {
+    try { localStorage.setItem(seenKey, JSON.stringify(seen)); } catch(e) {}
+  }
 }
 
 // ── KPI Score Board ────────────────────────────────────────────────────────
@@ -16922,15 +17001,7 @@ function filterLeads() {
     return matchQ && matchStage && matchSubStage && matchSource && matchCourse && matchOwner && matchDate;
   });
 
-  // Sort: untouched new first, then by lead age desc (most urgent first)
-  filtered.sort(function(a, b) {
-    var aNew = a.lead_stage === 'New' ? 0 : 1;
-    var bNew = b.lead_stage === 'New' ? 0 : 1;
-    if (aNew !== bNew) return aNew - bNew;
-    var aAge = leadAgeDays(a);
-    var bAge = leadAgeDays(b);
-    return bAge - aAge; // older leads first (most urgent)
-  });
+  applyCRMSort(filtered);
 
   crmFilteredList = filtered;
   crmPageOffset = 0;
@@ -16942,6 +17013,172 @@ function filterLeads() {
 
   renderCRMLeadsTable(filtered.slice(0, crmPageSize));
   updateLoadMoreBtn(filtered.length);
+  renderCRMSourceBreakdown(filtered);
+}
+
+// ── Source breakdown pills — counts within whatever's currently filtered,
+// so switching to "Today's Calls" or filtering by owner/stage updates it too.
+function renderCRMSourceBreakdown(list) {
+  var wrap = document.getElementById('crm-source-breakdown');
+  if (!wrap) return;
+  var counts = {};
+  list.forEach(function(l) {
+    var s = l.source || 'Direct';
+    counts[s] = (counts[s] || 0) + 1;
+  });
+  var entries = Object.keys(counts).map(function(s) { return [s, counts[s]]; })
+    .sort(function(a, b) { return b[1] - a[1]; });
+  if (!entries.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = entries.map(function(e) {
+    var active = document.getElementById('crm-source-filter') && document.getElementById('crm-source-filter').value === e[0];
+    return '<span class="crm-source-pill" style="cursor:pointer' + (active ? ';border-color:var(--gold);color:var(--gold)' : '') +
+      '" onclick="filterCRMBySourcePill(\'' + escC(e[0]) + '\')" title="Filter to this source">' +
+      (CRM_SRC_ICON[e[0]] || '📌') + ' ' + escC(e[0]) + ' <strong>' + e[1] + '</strong></span>';
+  }).join('');
+}
+
+function filterCRMBySourcePill(source) {
+  var sel = document.getElementById('crm-source-filter');
+  if (!sel) return;
+  if (sel.value === source) { sel.value = ''; filterLeads(); return; } // click again to clear
+  // Defensive: if this source isn't in the static option list yet, add it
+  // on the fly so the pill always works even for a brand-new source value.
+  var hasOption = Array.prototype.some.call(sel.options, function(o) { return o.value === source; });
+  if (!hasOption) {
+    var o = document.createElement('option'); o.value = source; o.textContent = source; sel.appendChild(o);
+  }
+  sel.value = source;
+  filterLeads();
+}
+
+// ── Column sort ─────────────────────────────────────────────────────────────
+var CRM_SORT_LABELS = { source: 'Source', created: 'Registered On', owner: 'Owner', age: 'Age', stage: 'Stage' };
+var CRM_SORT_DEFAULT_TH = {}; // filled lazily with each header's original text
+
+function sortCRMBy(col) {
+  if (crmSortCol === col) {
+    crmSortDir = (crmSortDir === 'asc') ? 'desc' : 'asc';
+  } else {
+    crmSortCol = col;
+    crmSortDir = 'asc';
+  }
+  updateCRMSortHeaders();
+  filterLeads();
+}
+
+function clearCRMSort() {
+  crmSortCol = null;
+  crmSortDir = 'asc';
+  updateCRMSortHeaders();
+  filterLeads();
+}
+
+function updateCRMSortHeaders() {
+  Object.keys(CRM_SORT_LABELS).forEach(function(col) {
+    var th = document.getElementById('crm-th-' + col);
+    if (!th) return;
+    if (!CRM_SORT_DEFAULT_TH[col]) CRM_SORT_DEFAULT_TH[col] = CRM_SORT_LABELS[col];
+    var arrow = crmSortCol === col ? (crmSortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    th.textContent = CRM_SORT_DEFAULT_TH[col] + arrow;
+    th.style.cursor = 'pointer';
+    th.title = 'Click to sort';
+  });
+}
+
+function applyCRMSort(filtered) {
+  if (!crmSortCol) {
+    // Default: untouched new first, then by lead age desc (most urgent first)
+    filtered.sort(function(a, b) {
+      var aNew = a.lead_stage === 'New' ? 0 : 1;
+      var bNew = b.lead_stage === 'New' ? 0 : 1;
+      if (aNew !== bNew) return aNew - bNew;
+      return leadAgeDays(b) - leadAgeDays(a);
+    });
+    return;
+  }
+  var col = crmSortCol, dir = crmSortDir === 'asc' ? 1 : -1;
+  filtered.sort(function(a, b) {
+    var av, bv;
+    if (col === 'source') { av = a.source || ''; bv = b.source || ''; return dir * av.localeCompare(bv); }
+    if (col === 'owner')  { av = a.lead_owner || ''; bv = b.lead_owner || ''; return dir * av.localeCompare(bv); }
+    if (col === 'stage')  { av = a.lead_stage || ''; bv = b.lead_stage || ''; return dir * av.localeCompare(bv); }
+    if (col === 'created') { av = a.created_at ? new Date(a.created_at).getTime() : 0; bv = b.created_at ? new Date(b.created_at).getTime() : 0; return dir * (av - bv); }
+    if (col === 'age') { av = leadAgeDays(a); bv = leadAgeDays(b); return dir * (av - bv); }
+    return 0;
+  });
+}
+
+// ── Saved filter views ──────────────────────────────────────────────────────
+// Lets a counselor save the current Stage/Sub-Stage/Source/Course/Owner/Search
+// combo as a named quick-view pill instead of resetting the filter bar every
+// visit. Stored per-counselor in localStorage (doesn't touch the database).
+function crmSavedViewsKey() {
+  return 'igi_crm_saved_views_' + (counselorName || 'default');
+}
+
+function getCRMSavedViews() {
+  try { return JSON.parse(localStorage.getItem(crmSavedViewsKey()) || '[]'); }
+  catch(e) { return []; }
+}
+
+function saveCurrentCRMView() {
+  var name = prompt('Name this filter view (e.g. "IIJS Jio World — New"):');
+  if (!name) return;
+  name = name.trim();
+  if (!name) return;
+
+  var view = {
+    name: name,
+    searchBy: (document.getElementById('crm-search-by') || {}).value || 'all',
+    search: (document.getElementById('crm-search') || {}).value || '',
+    stage: (document.getElementById('crm-stage-filter') || {}).value || '',
+    substage: (document.getElementById('crm-substage-filter') || {}).value || '',
+    source: (document.getElementById('crm-source-filter') || {}).value || '',
+    course: (document.getElementById('crm-course-filter') || {}).value || '',
+    owner: (document.getElementById('crm-owner-filter') || {}).value || ''
+  };
+
+  var views = getCRMSavedViews().filter(function(v) { return v.name !== name; });
+  views.push(view);
+  try { localStorage.setItem(crmSavedViewsKey(), JSON.stringify(views)); } catch(e) {}
+  renderCRMSavedViews();
+  showToast('Saved view "' + name + '"', 'success');
+}
+
+function applyCRMSavedView(name) {
+  var view = getCRMSavedViews().find(function(v) { return v.name === name; });
+  if (!view) return;
+  var map = {
+    'crm-search-by': view.searchBy, 'crm-search': view.search, 'crm-stage-filter': view.stage,
+    'crm-substage-filter': view.substage, 'crm-source-filter': view.source,
+    'crm-course-filter': view.course, 'crm-owner-filter': view.owner
+  };
+  Object.keys(map).forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.value = map[id] || '';
+  });
+  renderCRMSavedViews(name);
+  filterLeads();
+}
+
+function deleteCRMSavedView(name, evt) {
+  if (evt) evt.stopPropagation();
+  var views = getCRMSavedViews().filter(function(v) { return v.name !== name; });
+  try { localStorage.setItem(crmSavedViewsKey(), JSON.stringify(views)); } catch(e) {}
+  renderCRMSavedViews();
+}
+
+function renderCRMSavedViews(activeName) {
+  var wrap = document.getElementById('crm-saved-views');
+  if (!wrap) return;
+  var views = getCRMSavedViews();
+  var pills = views.map(function(v) {
+    var active = v.name === activeName;
+    return '<span class="crm-source-pill" style="cursor:pointer' + (active ? ';border-color:var(--gold);color:var(--gold)' : '') +
+      '" onclick="applyCRMSavedView(\'' + escC(v.name).replace(/'/g, "\\'") + '\')">⭐ ' + escC(v.name) +
+      ' <span onclick="deleteCRMSavedView(\'' + escC(v.name).replace(/'/g, "\\'") + '\', event)" title="Delete view" style="margin-left:4px;opacity:.6">✕</span></span>';
+  }).join('');
+  wrap.innerHTML = pills + '<span class="crm-source-pill" style="cursor:pointer;background:var(--white)" onclick="saveCurrentCRMView()">💾 Save current filters as view</span>';
 }
 
 function clearCRMFilters() {
@@ -16950,6 +17187,7 @@ function clearCRMFilters() {
     if (el) el.value = '';
   });
   clearDateFilter();
+  crmSortCol = null; crmSortDir = 'asc'; updateCRMSortHeaders();
   filterLeads();
 }
 
@@ -16974,7 +17212,7 @@ function renderCRMLeadsTable(list) {
   if (!tbody) return;
 
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--muted)">No matching leads found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:32px;color:var(--muted)">No matching leads found.</td></tr>';
     return;
   }
 
@@ -16988,10 +17226,7 @@ function renderCRMLeadsTable(list) {
     'Demo': 'st-demo', 'Follow-Up Ongoing': 'st-followup',
     'Application Initiated': 'st-app', 'Enrolled': 'st-enrolled', 'Lost': 'st-lost'
   };
-  var srcIcon = {
-    'Facebook Lead Ads': '📘', 'Website': '🌐', 'WhatsApp': '💬',
-    'Walk-In': '🚶', 'Direct': '📞', 'Internal Cross-Sell': '🔄'
-  };
+  var srcIcon = CRM_SRC_ICON;
 
   tbody.innerHTML = list.map(function(l) {
     var age = leadAgeDays(l);
@@ -17034,6 +17269,8 @@ function renderCRMLeadsTable(list) {
         '<div style="font-size:12px;font-weight:700;color:var(--navy)">' + escC(l.course || '—') + '</div>' +
         '<div style="font-size:11px;color:var(--muted);margin-top:1px">' + icon + ' ' + escC(l.centre || '') + '</div>' +
       '</td>' +
+      '<td class="crm-col-source" style="padding:10px 14px;font-size:11.5px;color:var(--navy);white-space:nowrap">' + icon + ' ' + escC(l.source || 'Direct') + '</td>' +
+      '<td class="crm-col-created" style="padding:10px 14px;font-size:11.5px;color:var(--muted);white-space:nowrap">' + (l.created_at ? new Date(l.created_at).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'}) + '<div style="font-size:10px;opacity:.75">' + new Date(l.created_at).toLocaleTimeString('en-IN', {hour:'numeric', minute:'2-digit'}) + '</div>' : '—') + '</td>' +
       '<td class="crm-col-owner" style="padding:10px 14px;font-size:12px;font-weight:600;color:var(--navy)">' + ownerShort + '</td>' +
       '<td class="crm-col-age" style="padding:10px 14px;text-align:center">' +
         '<strong style="font-size:12px;color:' + ageColor + '">' + leadAgeLabel(age) + '</strong>' +
@@ -18386,9 +18623,9 @@ var CRM_VISIBLE_COLS = null;
 function loadCRMColumns() {
   try {
     var saved = localStorage.getItem('igi_crm_cols');
-    CRM_VISIBLE_COLS = saved ? JSON.parse(saved) : {owner:true,age:true,stage:true,remark:true,actions:true,slot:false,jointime:false};
+    CRM_VISIBLE_COLS = saved ? JSON.parse(saved) : {source:true,created:true,owner:true,age:true,stage:true,remark:true,actions:true,slot:false,jointime:false};
   } catch(e) {
-    CRM_VISIBLE_COLS = {owner:true,age:true,stage:true,remark:true,actions:true,slot:false,jointime:false};
+    CRM_VISIBLE_COLS = {source:true,created:true,owner:true,age:true,stage:true,remark:true,actions:true,slot:false,jointime:false};
   }
   applyCRMColumns();
 }
@@ -18411,7 +18648,7 @@ function applyCRMColumns() {
   });
   var table = document.getElementById('crm-leads-table');
   if (table) {
-    var possibleCols = ['owner', 'age', 'stage', 'remark', 'slot', 'jointime', 'actions'];
+    var possibleCols = ['source', 'created', 'owner', 'age', 'stage', 'remark', 'slot', 'jointime', 'actions'];
     possibleCols.forEach(function(col) {
       if (cols[col] === false) {
         table.classList.add('hide-' + col);
@@ -20026,6 +20263,32 @@ function enrollSave() {
     </div>
   </div>
 </div>
+
+<!-- Toast notifications — showToast() was previously a console.log-only
+     stub with no visible UI. This gives it a real container. -->
+<div id="toast-stack" style="position:fixed; top:16px; right:16px; z-index:9999; display:flex; flex-direction:column; gap:8px; max-width:360px;"></div>
+<style>
+.toast-item{
+  background:var(--white,#fff); border:1.5px solid var(--border,#e5e7eb); border-left:4px solid var(--gold,#b89000);
+  border-radius:8px; padding:11px 14px; font-size:12.5px; font-weight:600; color:var(--navy,#0f1b2e);
+  box-shadow:0 8px 24px -8px rgba(0,0,0,.3); animation:toastIn .2s ease-out; cursor:pointer;
+}
+.toast-item.error{border-left-color:#dc2626;}
+.toast-item.success{border-left-color:#168b57;}
+@keyframes toastIn{ from{opacity:0; transform:translateX(16px);} to{opacity:1; transform:none;} }
+</style>
+<script>
+window.showToast = function(message, type) {
+  var stack = document.getElementById('toast-stack');
+  if (!stack) { console.log('Toast:', message, type); return; }
+  var el = document.createElement('div');
+  el.className = 'toast-item' + (type ? ' ' + type : '');
+  el.textContent = message;
+  el.addEventListener('click', function(){ el.remove(); });
+  stack.appendChild(el);
+  setTimeout(function(){ el.remove(); }, 6000);
+};
+</script>
 
 </body>
 </html>

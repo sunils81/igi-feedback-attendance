@@ -80,35 +80,50 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    const now = new Date();
+
     // Duplicate check — crm_system_settings already has a 'dedup_check' key,
     // implying this system treats a repeat enquiry from the same contact as
     // one lead, not a new row each time. Match on mobile first (more
     // reliable than email, which is optional), then email.
-    let existing: { id: string; lead_owner: string; course: string; centre: string } | null = null;
+    let existing: { id: string; lead_owner: string; course: string; centre: string; notes: string; web_meta: Record<string, unknown> } | null = null;
     if (mobile) {
       const { data: byMobile } = await supabase
-        .from("crm_leads").select("id, lead_owner, course, centre")
+        .from("crm_leads").select("id, lead_owner, course, centre, notes, web_meta")
         .eq("mobile", mobile).limit(1);
       if (byMobile && byMobile.length) existing = byMobile[0];
     }
     if (!existing && email) {
       const { data: byEmail } = await supabase
-        .from("crm_leads").select("id, lead_owner, course, centre")
+        .from("crm_leads").select("id, lead_owner, course, centre, notes, web_meta")
         .eq("email", email).limit(1);
       if (byEmail && byEmail.length) existing = byEmail[0];
     }
 
     if (existing) {
-      // Don't touch lead_stage/lead_sub_stage/lead_owner — a counselor may
-      // already be mid-conversation with this person. Log the repeat
-      // interest on their existing timeline instead, and nudge the lead
-      // score up a little since renewed interest is a positive signal.
+      // Normally: don't touch lead_stage/lead_sub_stage/lead_owner — a
+      // counselor may already be mid-conversation with this person. Log the
+      // repeat interest on their existing timeline instead, and nudge the
+      // lead score up a little since renewed interest is a positive signal.
+      //
+      // Exception: force_owner (event QR intake). If someone scans the
+      // Jio World QR and they already exist as a lead owned by someone else
+      // (e.g. an old web enquiry, or they'd scanned NESCO's QR earlier that
+      // same day), the physical stall contact should win — that's the
+      // person actually talking to them right now. Reassign, and log both
+      // the old and new owner so nothing is silently lost.
+      const reassigning = !!force_owner && force_owner !== existing.lead_owner;
+      const noteBody = reassigning
+        ? "Re-met at " + source_override + " — reassigned from " + existing.lead_owner +
+          " to " + force_owner + ". Interested in " + course + " (" + centre + ")."
+        : "Repeat enquiry via " + (source_override || "Course Catalog Website") +
+          " — interested in " + course + " (" + centre + "). Originally logged for " +
+          existing.course + " (" + existing.centre + ").";
+
       await supabase.from("crm_activities").insert({
         lead_id: existing.id,
         activity_type: "note",
-        body: "Repeat enquiry via " + (source_override || "Course Catalog Website") +
-          " — interested in " + course + " (" + centre + "). Originally logged for " +
-          existing.course + " (" + existing.centre + ").",
+        body: noteBody,
         actor: source_override || "Course Catalog Website",
         metadata: web_meta,
       });
@@ -116,13 +131,42 @@ Deno.serve(async (req: Request) => {
       const { data: scoreRow } = await supabase
         .from("crm_leads").select("lead_score").eq("id", existing.id).single();
       const bumpedScore = Math.min(100, (scoreRow?.lead_score || 0) + 5);
-      await supabase.from("crm_leads").update({ lead_score: bumpedScore }).eq("id", existing.id);
+      const updatePayload: Record<string, unknown> = { lead_score: bumpedScore };
+      if (reassigning) {
+        updatePayload.lead_owner = force_owner;
+        updatePayload.source = source_override || "Course Catalog Website";
+        // Marker the counselor portal reads on load to surface a one-time
+        // "this lead just landed in your queue" alert to the new owner —
+        // see counselor.html's reassignment-toast check in loadCRMData().
+        const reassignedAt = now.toISOString();
+        updatePayload.web_meta = {
+          ...(existing.web_meta || {}),
+          last_reassigned_at: reassignedAt,
+          last_reassigned_from: existing.lead_owner,
+          last_reassigned_to: force_owner,
+        };
+        updatePayload.notes = "[" + now.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) +
+          " IST] Reassigned from " + existing.lead_owner + " to " + force_owner +
+          " — re-met at " + source_override + ".\n\n" + (existing.notes || "");
+      }
+      await supabase.from("crm_leads").update(updatePayload).eq("id", existing.id);
+
+      if (reassigning) {
+        await supabase.from("crm_assignment_log").insert({
+          lead_id: existing.id,
+          assigned_to: force_owner,
+          assigned_by: source_override,
+          method: "direct",
+          location: centre,
+        });
+      }
 
       return jsonResponse({
         status: "ok",
         leadId: existing.id,
-        assignedTo: existing.lead_owner,
+        assignedTo: reassigning ? force_owner : existing.lead_owner,
         duplicate: true,
+        reassigned: reassigning,
       });
     }
 
@@ -131,7 +175,6 @@ Deno.serve(async (req: Request) => {
     const assignedTo = force_owner || (await resolveAssignment(supabase, centre)).assignedTo;
     const leadSource = source_override || "Course Catalog Website";
 
-    const now = new Date();
     const row = {
       first_name,
       last_name,

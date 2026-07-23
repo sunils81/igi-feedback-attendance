@@ -1679,24 +1679,25 @@
     <div class="err-box" id="cp-err"></div>
   </div>
 
-  <div class="tab-bar">
-    <button class="tab active" onclick="switchTab('t-batches')">📋 Batches</button>
-    <button class="tab" onclick="switchTab('t-students')">👥 Students</button>
-    <button class="tab" onclick="switchTab('t-alumni')">🎓 Alumni</button>
+  <div class="tab-bar" id="main-tab-bar">
     <button class="tab" id="tab-crm" onclick="switchTab('t-crm')">🎯 CRM <span id="crm-reminder-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
+    <button class="tab" id="tab-prospects" onclick="switchTab('t-prospects')">🧭 Prospects <span id="prospects-due-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
+    <button class="tab" id="tab-revenue" onclick="switchTab('t-revenue')">📈 Revenue</button>
+    <button class="tab" id="tab-fee-record" onclick="switchTab('t-fee-record')">📑 Fee Record</button>
+    <button class="tab" id="tab-invoices" onclick="switchTab('t-invoices')">🧾 Invoices</button>
+    <button class="tab active" id="tab-batches" onclick="switchTab('t-batches')">📋 Batches</button>
+    <button class="tab" id="tab-fees" onclick="switchTab('t-fees')">💰 Fees <span id="fees-overdue-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
+    <button class="tab" id="tab-students" onclick="switchTab('t-students')">👥 Students</button>
+    <button class="tab" id="tab-alumni" onclick="switchTab('t-alumni')">🎓 Alumni</button>
     <button class="tab" id="tab-notebook" onclick="switchTab('t-notebook')">📓 My Notebook</button>
     <button class="tab" id="tab-glossary" onclick="switchTab('t-glossary')">📖 Glossary</button>
-    <button class="tab" id="tab-prospects" onclick="switchTab('t-prospects')">🧭 Prospects <span id="prospects-due-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
-    <button class="tab" onclick="switchTab('t-mybatches')">🗂 My Batches</button>
-    <button class="tab" onclick="switchTab('t-reports')">📊 Reports</button>
-    <button class="tab" id="tab-fees" onclick="switchTab('t-fees')">💰 Fees <span id="fees-overdue-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
-    <button class="tab" id="tab-invoices" onclick="switchTab('t-invoices')">🧾 Invoices</button>
-    <button class="tab" id="tab-fee-record" onclick="switchTab('t-fee-record')">📑 Fee Record</button>
-    <button class="tab" id="tab-revenue" onclick="switchTab('t-revenue')">📈 Revenue</button>
+    <button class="tab" id="tab-mybatches" onclick="switchTab('t-mybatches')">🗂 My Batches</button>
+    <button class="tab" id="tab-reports" onclick="switchTab('t-reports')">📊 Reports</button>
     <button class="tab" id="tab-holidays" onclick="switchTab('t-holidays')">🗓 Holidays</button>
     <button class="tab" id="tab-diplomas" onclick="switchTab('t-diplomas')" style="display:none">🎓 Diploma Release</button>
     <button class="tab" id="tab-inventory" onclick="switchTab('t-inventory')">📦 Inventory <span id="inv-pending-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-attendance" onclick="switchTab('t-attendance')">✅ Attendance <span id="att-pending-badge" style="display:none;background:#d97706;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
+    <button class="tab" id="tab-customize-order" onclick="openTabOrderModal()" style="margin-left:auto;background:transparent;color:var(--muted);border:1px dashed var(--border)" title="Reorder these tabs to your own preference">⚙️ Reorder Tabs</button>
   </div>
 
   <!-- Persistent attendance reminder banner (non-blocking) -->
@@ -4772,6 +4773,7 @@ function doLogin() {
 }
 
 function applyAdminVisibility() {
+  applyCustomTabOrder();
   document.querySelectorAll('.admin-only').forEach(function(el){ el.style.display = isAdmin ? 'block' : 'none'; });
   var myRev = document.getElementById('rev-my-card');
   if (myRev) myRev.style.display = isAdmin ? 'none' : '';
@@ -4822,6 +4824,135 @@ function applyAdminVisibility() {
   if (analyticsTab) analyticsTab.style.display = isMumbaiAdmin ? '' : 'none';
   const filterWrap = document.getElementById('inv-stock-filter-wrap');
   if (filterWrap) filterWrap.style.display = isMumbaiAdmin ? '' : 'none';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   TAB ORDER CUSTOMIZATION — lets each counsellor rearrange their own tab bar.
+   Stored in localStorage per counsellor (same pattern as igi_crm_cols for CRM column
+   choices) — a personal display preference, not shared data, so it doesn't need a
+   database column or to sync across devices. The HTML order above is just the default
+   for anyone who hasn't customized yet; new tabs added later always still show up
+   (appended at the end) even for someone with a saved custom order, since applyCustomTabOrder
+   only repositions IDs it recognizes and leaves anything unknown where the default put it.
+   ══════════════════════════════════════════════════════════════ */
+
+function _tabOrderStorageKey() {
+  return 'igi_tab_order_' + (counselorName || 'default');
+}
+
+function _mainTabButtons() {
+  var bar = document.getElementById('main-tab-bar');
+  if (!bar) return [];
+  return Array.from(bar.querySelectorAll(':scope > button.tab')).filter(function(b) {
+    return b.id && b.id !== 'tab-customize-order';
+  });
+}
+
+// Visible label without the dynamic badge counts (crm-reminder-badge, fees-overdue-badge,
+// etc.) — those spans start empty/hidden and get filled in by unrelated code elsewhere, so
+// reading textContent live keeps the reorder modal's labels accurate without a second,
+// hand-maintained list of tab names that could drift out of sync (e.g. the Diploma tab's
+// label toggles between "Release" and "Eligibility" depending on who's logged in).
+function _tabButtonLabel(btn) {
+  var clone = btn.cloneNode(true);
+  clone.querySelectorAll('span').forEach(function(s) { s.remove(); });
+  return clone.textContent.trim();
+}
+
+function applyCustomTabOrder() {
+  var bar = document.getElementById('main-tab-bar');
+  if (!bar) return;
+  var raw = null;
+  try { raw = localStorage.getItem(_tabOrderStorageKey()); } catch (e) {}
+  if (!raw) return; // no customization saved — leave the default HTML order as-is
+  var savedIds;
+  try { savedIds = JSON.parse(raw); } catch (e) { return; }
+  if (!Array.isArray(savedIds) || !savedIds.length) return;
+
+  var buttons = _mainTabButtons();
+  var byId = {};
+  buttons.forEach(function(b) { byId[b.id] = b; });
+  var placed = {};
+  var reorderBtn = document.getElementById('tab-customize-order');
+
+  savedIds.forEach(function(id) {
+    if (byId[id] && !placed[id]) {
+      bar.insertBefore(byId[id], reorderBtn);
+      placed[id] = true;
+    }
+  });
+  // Anything not in the saved order (a tab added after the counsellor last customized)
+  // keeps appearing — appended in its default position, right before the reorder button.
+  buttons.forEach(function(b) {
+    if (!placed[b.id]) bar.insertBefore(b, reorderBtn);
+  });
+}
+
+var _tabOrderWorking = null;
+
+function openTabOrderModal() {
+  _tabOrderWorking = _mainTabButtons().map(function(b) { return { id: b.id, label: _tabButtonLabel(b) }; });
+  var old = document.getElementById('tab-order-modal');
+  if (old) old.remove();
+  var modal = document.createElement('div');
+  modal.id = 'tab-order-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML =
+    '<div style="background:#fff;border-radius:12px;padding:24px 28px;width:360px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">' +
+      '<h3 style="margin:0 0 4px;font-size:17px;color:#0d1b2e">⚙️ Reorder Your Tabs</h3>' +
+      '<p style="margin:0 0 14px;font-size:12.5px;color:#666">Use the arrows to move a tab up or down. This only changes your own view.</p>' +
+      '<div id="tab-order-list" style="overflow-y:auto;flex:1;border:1px solid #e5e7eb;border-radius:8px"></div>' +
+      '<p id="tab-order-err" style="color:#dc2626;font-size:12px;margin:8px 0 0;display:none"></p>' +
+      '<div style="display:flex;gap:8px;margin-top:16px">' +
+        '<button id="tab-order-reset" style="flex:1;padding:9px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;font-size:13px">Reset to Default</button>' +
+        '<button id="tab-order-cancel" style="flex:1;padding:9px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;font-size:13px">Cancel</button>' +
+        '<button id="tab-order-save" style="flex:1;padding:9px;border:none;border-radius:8px;background:#C8A951;color:#0d1b2e;font-weight:700;cursor:pointer;font-size:13px">Save</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(modal);
+  document.getElementById('tab-order-cancel').onclick = function() { modal.remove(); };
+  document.getElementById('tab-order-save').onclick = saveTabOrderFromModal;
+  document.getElementById('tab-order-reset').onclick = resetTabOrderFromModal;
+  _renderTabOrderList();
+}
+
+function _renderTabOrderList() {
+  var list = document.getElementById('tab-order-list');
+  if (!list) return;
+  list.innerHTML = _tabOrderWorking.map(function(item, idx) {
+    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #f0f0f0">' +
+      '<span style="flex:1;font-size:13.5px;color:#0d1b2e">' + escC(item.label) + '</span>' +
+      '<button onclick="_moveTabOrderRow(' + idx + ',-1)" ' + (idx===0?'disabled':'') + ' style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:13px' + (idx===0?';opacity:.35;cursor:not-allowed':'') + '">↑</button>' +
+      '<button onclick="_moveTabOrderRow(' + idx + ',1)" ' + (idx===_tabOrderWorking.length-1?'disabled':'') + ' style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:13px' + (idx===_tabOrderWorking.length-1?';opacity:.35;cursor:not-allowed':'') + '">↓</button>' +
+    '</div>';
+  }).join('');
+}
+
+function _moveTabOrderRow(idx, dir) {
+  var target = idx + dir;
+  if (target < 0 || target >= _tabOrderWorking.length) return;
+  var tmp = _tabOrderWorking[idx];
+  _tabOrderWorking[idx] = _tabOrderWorking[target];
+  _tabOrderWorking[target] = tmp;
+  _renderTabOrderList();
+}
+
+function saveTabOrderFromModal() {
+  var ids = _tabOrderWorking.map(function(item) { return item.id; });
+  try { localStorage.setItem(_tabOrderStorageKey(), JSON.stringify(ids)); } catch (e) {
+    var err = document.getElementById('tab-order-err');
+    if (err) { err.textContent = 'Could not save — your browser may be blocking local storage.'; err.style.display = 'block'; }
+    return;
+  }
+  applyCustomTabOrder();
+  var modal = document.getElementById('tab-order-modal');
+  if (modal) modal.remove();
+  showToast('Tab order saved.');
+}
+
+function resetTabOrderFromModal() {
+  try { localStorage.removeItem(_tabOrderStorageKey()); } catch (e) {}
+  location.reload();
 }
 
 function applyPasswordChangeState() {

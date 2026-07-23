@@ -1718,6 +1718,21 @@
     <button onclick="document.getElementById('fees-reminder-banner').style.display='none'" style="background:transparent;border:none;color:#991b1b;font-size:16px;cursor:pointer;line-height:1;">×</button>
   </div>
 
+  <!-- Persistent invoice-date/revenue-month mismatch banner (non-blocking). Flags fee
+       records where the invoice date's month disagrees with which month the revenue is
+       actually counted in — see h_updateInvoiceDetails / h_getRevenueMonthMismatches in
+       shared.js. Each listed student jumps straight to their Update Fee form; simply
+       re-saving there fixes it, since saveFeeRecord already recomputes revenue_month
+       correctly from the invoice date. -->
+  <div id="rmm-reminder-banner" style="display:none;background:#fffbeb;border:1.5px solid #f59e0b;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#92400e;flex-direction:column;gap:6px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span>🧾</span>
+      <span id="rmm-reminder-text" style="flex:1;font-weight:500;"></span>
+      <button onclick="document.getElementById('rmm-reminder-banner').style.display='none'" style="background:transparent;border:none;color:#92400e;font-size:16px;cursor:pointer;line-height:1;">×</button>
+    </div>
+    <div id="rmm-reminder-list" style="display:flex;flex-direction:column;gap:4px;"></div>
+  </div>
+
   <!-- Pending batch-confirmation banner (batches another centre created for us) -->
   <div id="remote-batch-banner" style="display:none;background:#fffbeb;border:1.5px solid #f59e0b;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#92400e;flex-direction:column;gap:6px;">
     <div style="display:flex;align-items:center;gap:10px;">
@@ -4688,6 +4703,7 @@ function initCounselorPortal() {
         prefetchRevenue();
         setTimeout(loadPendingAttBanner, 1500);
         setTimeout(loadOverdueFeesNotification, 2000);
+        setTimeout(loadRevenueMonthMismatchNotification, 2300);
         setTimeout(loadDuplicateStudentNotification, 2800);
         if (!isAdmin) setTimeout(cmpLoadProspects, 1000);
       }
@@ -4806,6 +4822,7 @@ function doLogin() {
     setTimeout(loadPendingAttBanner, 1500);
     setTimeout(loadOverdueFeesNotification, 2000);
     setTimeout(loadPendingBatchConfirmBanner, 2500);
+    setTimeout(loadRevenueMonthMismatchNotification, 2650);
     setTimeout(loadDuplicateStudentNotification, 2800);
   });
 }
@@ -16384,6 +16401,54 @@ function loadOverdueFeesNotification() {
         banner.style.display = 'none';
       }
     }
+  });
+}
+
+// Persistent invoice-date/revenue-month mismatch alert — the counsellor-facing counterpart
+// of the admin "Invoice Date vs Revenue Month Mismatches" card. Rather than a separate tab
+// or card, this surfaces as a dismissible-per-session banner (same pattern as the fee/
+// attendance reminders above) listing just THIS counsellor's own affected students, each
+// one a direct link into their Update Fee form. No separate "fix" button here — simply
+// opening Update Fee and hitting Save Fee Record already recomputes revenue_month
+// correctly from the invoice date (see h_saveFee), so re-saving IS the fix.
+function loadRevenueMonthMismatchNotification() {
+  if (isAdmin || !counselorName) return; // Admin has the dedicated card on admin.html instead
+  gasGet({ action: 'getRevenueMonthMismatches', counsellor: counselorName }, function(e, d) {
+    var banner = document.getElementById('rmm-reminder-banner');
+    var text = document.getElementById('rmm-reminder-text');
+    var list = document.getElementById('rmm-reminder-list');
+    if (!banner || !text || !list) return;
+    if (e || !d || d.status !== 'ok' || !d.mismatches || !d.mismatches.length) {
+      banner.style.display = 'none';
+      return;
+    }
+    var monthLabel = function(ym) {
+      if (!ym) return '—';
+      var parts = ym.split('-');
+      var names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return (names[Number(parts[1]) - 1] || ym) + ' ' + parts[0];
+    };
+    var n = d.mismatches.length;
+    text.textContent = n + ' fee record' + (n > 1 ? 's' : '') + ' where the invoice date doesn\'t match the month the revenue is counted in — click a student to review and re-save.';
+    list.innerHTML = d.mismatches.map(function(m) {
+      return '<button onclick="jumpToFeeMismatch(\'' + escC(m.batchCode) + '\',\'' + escC(m.studentId) + '\')" style="text-align:left;background:#fff;border:1px solid #f5c99a;border-radius:6px;padding:6px 10px;font-size:12px;color:#92400e;cursor:pointer">' +
+        '<strong>' + escC(m.studentName || '') + '</strong> (' + escC(m.studentId || '') + ') — ' + escC(m.batchCode || '') +
+        ' &nbsp;·&nbsp; counted in <strong>' + monthLabel(m.currentRevenueMonth) + '</strong>, invoice dated <strong>' + monthLabel(m.expectedRevenueMonth) + '</strong>' +
+        '</button>';
+    }).join('');
+    banner.style.display = 'flex';
+  });
+}
+
+// Jumps straight to a specific student's Update Fee form from the mismatch banner above —
+// selects their batch on the Fees tab, loads it, then opens the form, same as clicking
+// "Update Fee" on that row manually would.
+function jumpToFeeMismatch(batchCode, studentId) {
+  switchTab('t-fees');
+  var sel = document.getElementById('fee-batch');
+  if (sel) sel.value = batchCode;
+  loadFeeOverview(function() {
+    openFeeForm(studentId);
   });
 }
 

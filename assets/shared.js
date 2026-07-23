@@ -2080,21 +2080,29 @@ window.gasGet = (function () {
     });
   }
 
-  /* h_getRevenueMonthMismatches — admin diagnostic for the revenue-month-stuck-on-payment-
-     date bug fixed in h_updateInvoiceDetails above. Finds every EXISTING fee record whose
+  /* h_getRevenueMonthMismatches — diagnostic for the revenue-month-stuck-on-payment-date
+     bug fixed in h_updateInvoiceDetails above. Finds every EXISTING fee record whose
      invoice date's month doesn't match its stored revenue_month — i.e. records from before
      that fix, where an invoice date was filled in or corrected through the Invoices tab's
      quick "fill in a missing invoice" modal, but revenue_month never got recomputed to
      match it (so it's still silently bucketed by whatever the payment date was at the
      time). Read-only: flags candidates for a human to review, never changes anything
-     itself — see h_fixRevenueMonthMismatch for the one-row-at-a-time fix action. */
+     itself — see h_fixRevenueMonthMismatch for the one-row-at-a-time fix action.
+
+     Two callers: Admin sees every mismatch across every counsellor (isAdmin=true, no
+     counsellor filter). A counsellor's own dashboard notification passes their own name
+     instead — self-service scope, same as every other counsellor-facing endpoint in this
+     file, never someone else's records. */
   function h_getRevenueMonthMismatches(p, cb) {
-    if (!p || !(p.isAdmin === true || p.isAdmin === 'true')) { cb(null, { status: 'error', message: 'Admin only.' }); return; }
+    var isAdm = !!(p && (p.isAdmin === true || p.isAdmin === 'true'));
+    var counsellor = (p && p.counsellor && String(p.counsellor).trim()) || '';
+    if (!isAdm && !counsellor) { cb(null, { status: 'error', message: 'Admin only, or pass counsellor.' }); return; }
     var students, batches;
     var n = 0;
     function finish() {
       if (++n < 2) return;
-      GET('student_fees', 'order=created_at.asc', function (e, rows) {
+      var qs = 'order=created_at.asc' + (isAdm ? '' : '&recorded_by=eq.' + encodeURIComponent(counsellor));
+      GET('student_fees', qs, function (e, rows) {
         if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
         var mismatches = [];
         (rows || []).forEach(function (r) {

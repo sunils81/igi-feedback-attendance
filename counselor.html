@@ -3735,6 +3735,13 @@
         <div class="field" style="min-width:150px;margin-bottom:0"><label>Month</label>
           <select id="fr-filter-month" onchange="renderFeeRecordTab()"><option value="">All Months</option></select>
         </div>
+        <div class="field" style="min-width:170px;margin-bottom:0"><label>Batch</label>
+          <select id="fr-filter-batch" onchange="renderFeeRecordTab()"><option value="">All Batches</option></select>
+        </div>
+        <div class="field" style="min-width:200px;flex:1;margin-bottom:0"><label>Search (student name or ID)</label>
+          <input type="text" id="fr-filter-search" placeholder="e.g. Shantanu, 7123" oninput="renderFeeRecordTab()">
+        </div>
+        <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="resetFeeRecordFilters()">Reset filters</button>
         <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="loadFeeRecordTab(true)">🔄 Refresh</button>
         <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="downloadFeeRecordCsv()">📄 Download CSV</button>
       </div>
@@ -7993,6 +8000,16 @@ function populateFeeRecordFilterOptions() {
     return '<option value="' + m + '"' + (m === curMonth ? ' selected' : '') + '>' + invMonthLabel(m) + '</option>';
   }).join('');
 
+  // Batch options built from the FULL dataset (not the currently-filtered rows), same
+  // convention as the Invoices tab's month/course dropdowns, so picking a batch never
+  // makes the other filters' options disappear.
+  var batchSel = document.getElementById('fr-filter-batch');
+  var curBatch = batchSel.value;
+  var batches = Array.from(new Set((allInvoiceRecords || []).map(function(r){ return r.batchCode; }).filter(Boolean))).sort();
+  batchSel.innerHTML = '<option value="">All Batches</option>' + batches.map(function(b) {
+    return '<option value="' + escC(b) + '"' + (b === curBatch ? ' selected' : '') + '>' + escC(b) + '</option>';
+  }).join('');
+
   if (isAdmin) {
     var cSel = document.getElementById('fr-filter-counsellor');
     var curC = cSel.value;
@@ -8001,6 +8018,33 @@ function populateFeeRecordFilterOptions() {
       return '<option value="' + escC(n) + '"' + (n === curC ? ' selected' : '') + '>' + escC(n) + '</option>';
     }).join('');
   }
+}
+
+function resetFeeRecordFilters() {
+  document.getElementById('fr-filter-month').value = '';
+  document.getElementById('fr-filter-batch').value = '';
+  document.getElementById('fr-filter-search').value = '';
+  renderFeeRecordTab();
+}
+
+// Shared by both the on-screen render and the CSV export, so "what you see is what you
+// download" always holds — filters can never silently drift apart between the two.
+function feeRecordFilteredRows() {
+  if (!allInvoiceRecords) return [];
+  var effectiveCounsellor = isAdmin ? (document.getElementById('fr-filter-counsellor').value || '') : (counselorName || '');
+  var monthFilter = document.getElementById('fr-filter-month').value;
+  var batchFilter = document.getElementById('fr-filter-batch').value;
+  var search = (document.getElementById('fr-filter-search').value || '').trim().toLowerCase();
+  return allInvoiceRecords.filter(function(r) {
+    if (effectiveCounsellor && r.enteredBy !== effectiveCounsellor) return false;
+    if (monthFilter && frRecordMonth(r) !== monthFilter) return false;
+    if (batchFilter && r.batchCode !== batchFilter) return false;
+    if (search) {
+      var hay = (String(r.studentName||'') + ' ' + String(r.studentId||'')).toLowerCase();
+      if (hay.indexOf(search) < 0) return false;
+    }
+    return true;
+  });
 }
 
 function renderFeeRecordTab() {
@@ -8014,13 +8058,8 @@ function renderFeeRecordTab() {
     list.innerHTML = emptyState('📑', 'Pick a counsellor', 'Select who to reconcile above — this ledger is scoped to one counsellor at a time so totals stay meaningful.');
     return;
   }
-  var monthFilter = document.getElementById('fr-filter-month').value;
 
-  var rows = allInvoiceRecords.filter(function(r) {
-    if (effectiveCounsellor && r.enteredBy !== effectiveCounsellor) return false;
-    if (monthFilter && frRecordMonth(r) !== monthFilter) return false;
-    return true;
-  });
+  var rows = feeRecordFilteredRows();
 
   if (!rows.length) {
     summary.style.display = 'none';
@@ -8068,8 +8107,11 @@ function renderFeeRecordTab() {
       mTotal.balance     += Number(r.outstanding) || 0;
       return '<tr>' +
         '<td>' + (idx+1) + '</td>' +
-        '<td>' + escC(r.batchCode || '') + '</td>' +
+        '<td>' + escC(r.enteredBy || '') + '</td>' +
+        '<td style="font-family:\'JetBrains Mono\',monospace">' + escC(r.studentId || '') + '</td>' +
         '<td><strong>' + escC(r.studentName || '') + '</strong></td>' +
+        '<td>' + escC(r.batchCode || '') + '</td>' +
+        '<td style="font-family:\'JetBrains Mono\',monospace">' + (r.invoiceNumber ? escC(r.invoiceNumber) : '<span style="color:var(--muted)">—</span>') + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace">' + money(r.courseFee) + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace">' + money(r.gstAmount) + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace">' + (Number(r.discountAmt) ? money(r.discountAmt) : '—') + '</td>' +
@@ -8079,7 +8121,7 @@ function renderFeeRecordTab() {
       '</tr>';
     }).join('');
     var totalRow = '<tr style="background:var(--off);font-weight:800">' +
-      '<td colspan="3">Total — ' + invMonthLabel(mk) + ' (' + mRows.length + (mRows.length===1?' record':' records') + ')</td>' +
+      '<td colspan="6">Total — ' + invMonthLabel(mk) + ' (' + mRows.length + (mRows.length===1?' record':' records') + ')</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(mTotal.courseFee) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(mTotal.gst) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(mTotal.discount) + '</td>' +
@@ -8088,7 +8130,8 @@ function renderFeeRecordTab() {
       '<td style="font-family:\'JetBrains Mono\',monospace;color:' + (mTotal.balance > 0 ? 'var(--red)' : '#1a7a3c') + '">' + money(mTotal.balance) + '</td>' +
     '</tr>';
     html += '<div style="overflow-x:auto;margin-bottom:18px"><table class="compact-table"><thead><tr>' +
-      '<th>S.No</th><th class="text-left">Batch</th><th class="text-left">Student</th>' +
+      '<th>S.No</th><th class="text-left">Counsellor</th><th class="text-left">Student ID</th><th class="text-left">Student</th>' +
+      '<th class="text-left">Batch</th><th class="text-left">Invoice #</th>' +
       '<th>Course Fee</th><th>GST</th><th>Discount</th><th>Net Fee</th><th>Collected</th><th>Balance</th>' +
       '</tr></thead><tbody>' + bodyRows + totalRow + '</tbody></table></div>';
   });
@@ -8099,7 +8142,7 @@ function renderFeeRecordTab() {
   if (monthKeys.length > 1) {
     html += '<div style="overflow-x:auto"><table class="compact-table"><tbody>' +
       '<tr style="background:var(--navy);color:var(--gold);font-weight:800">' +
-      '<td colspan="3">GRAND TOTAL — ' + monthKeys.length + ' months, ' + gTotal.count + ' records</td>' +
+      '<td colspan="6">GRAND TOTAL — ' + monthKeys.length + ' months, ' + gTotal.count + ' records</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.courseFee) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.gst) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.discount) + '</td>' +
@@ -8115,18 +8158,15 @@ function renderFeeRecordTab() {
 function downloadFeeRecordCsv() {
   if (!allInvoiceRecords) { showToast('Nothing loaded yet — open the tab first.', 'error'); return; }
   var effectiveCounsellor = isAdmin ? (document.getElementById('fr-filter-counsellor').value || '') : (counselorName || '');
-  var monthFilter = document.getElementById('fr-filter-month').value;
-  var rows = allInvoiceRecords.filter(function(r) {
-    if (effectiveCounsellor && r.enteredBy !== effectiveCounsellor) return false;
-    if (monthFilter && frRecordMonth(r) !== monthFilter) return false;
-    return true;
-  });
+  var rows = feeRecordFilteredRows();
   if (!rows.length) { showToast('No fee records to download for these filters.', 'error'); return; }
 
   var groups = {};
   rows.forEach(function(r) { (groups[frRecordMonth(r) || 'Unknown'] = groups[frRecordMonth(r) || 'Unknown'] || []).push(r); });
   var monthKeys = Object.keys(groups).sort();
 
+  var blank = { SNo:'', Month:'', Counsellor:'', StudentID:'', Student:'', Batch:'', InvoiceNumber:'',
+    CourseFee:'', GST:'', Discount:'', NetFee:'', Collected:'', Balance:'' };
   var csvRows = [];
   var g = { courseFee:0, gst:0, discount:0, netFee:0, collected:0, balance:0 };
   monthKeys.forEach(function(mk) {
@@ -8136,18 +8176,19 @@ function downloadFeeRecordCsv() {
       m.courseFee += Number(r.courseFee)||0;   m.gst += Number(r.gstAmount)||0;
       m.discount  += Number(r.discountAmt)||0; m.netFee += Number(r.netPayable)||0;
       m.collected += Number(r.collected)||0;   m.balance += Number(r.outstanding)||0;
-      csvRows.push({ SNo: idx+1, Month: invMonthLabel(mk), Batch: r.batchCode||'', Student: r.studentName||'',
+      csvRows.push(Object.assign({}, blank, { SNo: idx+1, Month: invMonthLabel(mk), Counsellor: r.enteredBy||'',
+        StudentID: r.studentId||'', Student: r.studentName||'', Batch: r.batchCode||'', InvoiceNumber: r.invoiceNumber||'',
         CourseFee: r.courseFee||0, GST: r.gstAmount||0, Discount: r.discountAmt||0, NetFee: r.netPayable||0,
-        Collected: r.collected||0, Balance: r.outstanding||0 });
+        Collected: r.collected||0, Balance: r.outstanding||0 }));
     });
-    csvRows.push({ SNo:'', Month: 'TOTAL — ' + invMonthLabel(mk), Batch:'', Student:'',
-      CourseFee: m.courseFee, GST: m.gst, Discount: m.discount, NetFee: m.netFee, Collected: m.collected, Balance: m.balance });
+    csvRows.push(Object.assign({}, blank, { Month: 'TOTAL — ' + invMonthLabel(mk),
+      CourseFee: m.courseFee, GST: m.gst, Discount: m.discount, NetFee: m.netFee, Collected: m.collected, Balance: m.balance }));
     g.courseFee += m.courseFee; g.gst += m.gst; g.discount += m.discount;
     g.netFee += m.netFee; g.collected += m.collected; g.balance += m.balance;
   });
   if (monthKeys.length > 1) {
-    csvRows.push({ SNo:'', Month:'GRAND TOTAL', Batch:'', Student:'',
-      CourseFee: g.courseFee, GST: g.gst, Discount: g.discount, NetFee: g.netFee, Collected: g.collected, Balance: g.balance });
+    csvRows.push(Object.assign({}, blank, { Month:'GRAND TOTAL',
+      CourseFee: g.courseFee, GST: g.gst, Discount: g.discount, NetFee: g.netFee, Collected: g.collected, Balance: g.balance }));
   }
 
   var csv = extractRowsToCsv(csvRows);

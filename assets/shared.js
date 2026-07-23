@@ -2397,8 +2397,17 @@ window.gasGet = (function () {
      revenue_month is computed once at save time from the first installment's paid date
      (or the full-payment date), so it reflects when the money actually moved. */
   function syncStudentRevenue(counsellor, centre, monthKey, period) {
-    var autoMonths = ['2026-07','2026-08','2026-09','2026-10','2026-11','2026-12','2027-01','2027-02','2027-03'];
-    if (autoMonths.indexOf(monthKey) < 0) return; // Preserve pre-July manual entries untouched
+    // 2026-04/05/06 added: these were previously excluded ("pre-July manual entries
+    // untouched") so that backfilling historical fee records after-the-fact wouldn't
+    // clobber a manually-typed Revenue tab figure. In practice this let the two drift —
+    // e.g. Preethy's Fee Record tab (built straight from student_fees) showed more
+    // revenue than the Revenue tab's "Total Achieved" (built from revenue_monthly_achieved),
+    // because backfilled April/May/June fee records were never reflected back into
+    // revenue_monthly_achieved. Now every month auto-derives from the real student_fees
+    // rows, same rule everywhere, so the two tabs can't disagree. One-time reconciliation
+    // for existing April-June data: see h_resyncEarlyRevenueMonths.
+    var autoMonths = ['2026-04','2026-05','2026-06','2026-07','2026-08','2026-09','2026-10','2026-11','2026-12','2027-01','2027-02','2027-03'];
+    if (autoMonths.indexOf(monthKey) < 0) return; // Outside the tracked fiscal year — leave untouched
 
     var qs = 'recorded_by=eq.' + encodeURIComponent(counsellor) +
              '&centre=eq.'     + encodeURIComponent(centre) +
@@ -2460,6 +2469,39 @@ window.gasGet = (function () {
           [revRow], function() {}); // fire-and-forget
       });
     });
+  }
+
+  /* h_resyncEarlyRevenueMonths — one-time reconciliation for April/May/June 2026, the
+     three months syncStudentRevenue used to skip. Any fee record backfilled into those
+     months after the Revenue tab's monthly figure was typed in never fed back into
+     revenue_monthly_achieved, so "Total Achieved" (Revenue tab) could silently understate
+     what the Fee Record tab shows straight from student_fees. Now that syncStudentRevenue
+     covers these months too (see comment above), this walks every distinct
+     (counsellor, centre, month) combination that actually has fee records in that window
+     and re-derives revenue_monthly_achieved from them — the same call every ordinary
+     save/delete now makes going forward, just run once, retroactively, for existing data.
+     Admin-only: this can overwrite a manually-typed figure for those months, which is only
+     safe to do in bulk with an admin's say-so. */
+  function h_resyncEarlyRevenueMonths(p, cb) {
+    if (!p || !p.isAdmin) { cb(null, { status: 'error', message: 'Admin only.' }); return; }
+    var months = ['2026-04', '2026-05', '2026-06'];
+    GET('student_fees',
+      'revenue_month=in.(' + months.join(',') + ')&select=recorded_by,centre,revenue_month',
+      function (e, rows) {
+        if (e) { cb(null, { status: 'error', message: 'Could not read fee records.' }); return; }
+        var seen = {};
+        (rows || []).forEach(function (r) {
+          if (!r.recorded_by || !r.centre || !r.revenue_month) return;
+          seen[r.recorded_by + '|' + r.centre + '|' + r.revenue_month] =
+            { counsellor: r.recorded_by, centre: r.centre, month: r.revenue_month };
+        });
+        var groups = Object.keys(seen).map(function (k) { return seen[k]; });
+        // Fire-and-forget, same as every other syncStudentRevenue call — each one does its
+        // own GET/POST round trip, so this just kicks off N of them in parallel rather than
+        // waiting on all of them before responding.
+        groups.forEach(function (g) { syncStudentRevenue(g.counsellor, g.centre, g.month, '2026-27'); });
+        cb(null, { status: 'ok', groupsResynced: groups.length, months: months });
+      });
   }
 
   /* getHolidays */
@@ -8282,6 +8324,7 @@ window.gasGet = (function () {
       case 'deleteFeeRecord':           return h_deleteFeeRecord(params, cb);
       case 'getRevenueDetail':          return h_getRevenueDetail(params, cb);
       case 'getMonthAchieved':          return h_getMonthAchieved(params, cb);
+      case 'resyncEarlyRevenueMonths':  return h_resyncEarlyRevenueMonths(params, cb);
       case 'checkInvoiceNumber':        return h_checkInvoiceNumber(params, cb);
       case 'checkStudentMobile':        return h_checkStudentMobile(params, cb);
       case 'mergeStudentRecords':       return h_mergeStudentRecords(params, cb);

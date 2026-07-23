@@ -1712,21 +1712,50 @@ window.gasGet = (function () {
   }
 
   /* getStudentAlumni */
+  // A student can be enrolled in more than one batch under the same
+  // student_id via the `enrollments` table (that's what makes multi-course
+  // students possible in the first place — see h_addStudent's "multi-batch
+  // aware" upsert). Previously this endpoint only ever looked at the single
+  // batch_code sitting on the `students` row, so a student who'd genuinely
+  // done both a Diamond Graduate and a Colored Stone Graduate course under
+  // one ID still only ever showed up under whichever course happened to be
+  // on that row — never as the combined "Graduate Gemologist" designation.
+  // Now every enrollment for each student is pulled and checked: if the set
+  // of courses covers both a DG-type and a CSG-type course, the row is
+  // relabelled "Graduate Gemologist" (both underlying course names are kept
+  // in combinedCourses for a tooltip). Students with only one of the two —
+  // or neither — are shown exactly as before.
+  var GG_DG_COURSES = ['Diamond Graduate', 'Diamond Graduate Integrated'];
+  var GG_CSG_COURSES = ['Colored Stone Graduate', 'Coloured Stone Integrated'];
   function h_alumni(p, cb) {
     GET('batches', 'select=batch_code,centre,course,end_date,counselor', function (e, batches) {
       var bm = {}; (batches || []).forEach(function (b) { bm[b.batch_code] = b; });
       GET('students', 'select=student_id,batch_code,name,mobile,email,order_id,status,created_at&order=created_at.desc', function (e2, rows) {
         var todayStr = todayYMD();
-        cb(null, { status: 'ok', alumni: (rows || []).map(function (r) {
-          var b = bm[r.batch_code] || {};
-          var calculatedStatus = r.status || 'Active';
-          if (calculatedStatus === 'Active' && b.end_date && b.end_date < todayStr) {
-            calculatedStatus = 'Completed';
-          }
-          return { enrollmentNo: r.student_id, studentId: r.student_id, name: r.name, batchCode: r.batch_code,
-            centre: b.centre, course: b.course, counselor: b.counselor,
-            status: calculatedStatus, email: r.email, mobile: r.mobile, orderId: r.order_id || '' };
-        }) });
+        GET('enrollments', 'select=student_id,batch_code', function (e3, enrolls) {
+          var coursesBySid = {};
+          (enrolls || []).forEach(function (en) {
+            var b = bm[en.batch_code];
+            if (!b || !b.course) return;
+            var list = coursesBySid[en.student_id] || (coursesBySid[en.student_id] = []);
+            if (list.indexOf(b.course) === -1) list.push(b.course);
+          });
+          cb(null, { status: 'ok', alumni: (rows || []).map(function (r) {
+            var b = bm[r.batch_code] || {};
+            var calculatedStatus = r.status || 'Active';
+            if (calculatedStatus === 'Active' && b.end_date && b.end_date < todayStr) {
+              calculatedStatus = 'Completed';
+            }
+            var allCourses = coursesBySid[r.student_id] || (b.course ? [b.course] : []);
+            var hasDG = allCourses.some(function (c) { return GG_DG_COURSES.indexOf(c) !== -1; });
+            var hasCSG = allCourses.some(function (c) { return GG_CSG_COURSES.indexOf(c) !== -1; });
+            var isGG = hasDG && hasCSG;
+            return { enrollmentNo: r.student_id, studentId: r.student_id, name: r.name, batchCode: r.batch_code,
+              centre: b.centre, course: isGG ? 'Graduate Gemologist' : b.course, counselor: b.counselor,
+              status: calculatedStatus, email: r.email, mobile: r.mobile, orderId: r.order_id || '',
+              combinedCourses: isGG ? allCourses.join(' + ') : '' };
+          }) });
+        });
       });
     });
   }

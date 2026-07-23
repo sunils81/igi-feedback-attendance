@@ -2208,39 +2208,60 @@ window.gasGet = (function () {
              '&revenue_month=eq.' + encodeURIComponent(monthKey) +
              '&limit=500';
 
-    GET('student_fees', qs, function(e, rows) {
-      // Note: previously bailed out entirely when rows.length === 0, which meant that
-      // deleting the LAST remaining fee record for a (counsellor, centre, month) left the
-      // last-written totals sitting in revenue_monthly_achieved forever, permanently
-      // overstating that month's "Achieved" revenue with no way to self-correct. Now we
-      // still write through with zeroed totals so a fully-emptied month reads as ₹0, not stale.
-      if (e) return;
-      rows = rows || [];
-      var totalFee = 0, totalGst = 0;
-      rows.forEach(function(r) {
-        totalFee += Number(r.course_fee  || 0);
-        totalGst += Number(r.gst_amount  || 0);
+    // Cross-centre attribution fix: assigned_centre must be the COUNSELLOR'S OWN home
+    // centre, not the delivery centre — they're only the same thing for a normal in-territory
+    // sale. This used to always write assigned_centre = centre (the delivery centre), which
+    // meant assigned_centre and business_centre were identical by construction and the
+    // isOtherCentre check downstream (assigned_centre !== business_centre) could never fire.
+    // So when e.g. Bianca (home Mumbai) closed a Pune admission, it silently counted as her
+    // own designated-centre revenue instead of landing in the "Other Centres" bucket the
+    // Revenue tab already has UI for. Look up her real home centre(s) from `users` and only
+    // treat this as in-territory if the delivery centre is actually one of them.
+    GET('users', 'name=eq.' + encodeURIComponent(counsellor) + '&select=centres', function(eUser, userRows) {
+      var homeCentres = (!eUser && userRows && userRows.length && userRows[0].centres)
+        ? userRows[0].centres.split(',').map(function(c) { return c.trim(); }).filter(Boolean)
+        : [];
+      // Same-centre sale (the common case), or we couldn't resolve a home centre (e.g. Admin
+      // entering on someone's behalf, or a name not found in `users`) — fall back to the old,
+      // safe behaviour rather than guessing.
+      var assignedCentre = (!homeCentres.length || homeCentres.indexOf(centre) >= 0)
+        ? centre
+        : homeCentres[0]; // primary home centre — flags this as an Other-Centre sale
+
+      GET('student_fees', qs, function(e, rows) {
+        // Note: previously bailed out entirely when rows.length === 0, which meant that
+        // deleting the LAST remaining fee record for a (counsellor, centre, month) left the
+        // last-written totals sitting in revenue_monthly_achieved forever, permanently
+        // overstating that month's "Achieved" revenue with no way to self-correct. Now we
+        // still write through with zeroed totals so a fully-emptied month reads as ₹0, not stale.
+        if (e) return;
+        rows = rows || [];
+        var totalFee = 0, totalGst = 0;
+        rows.forEach(function(r) {
+          totalFee += Number(r.course_fee  || 0);
+          totalGst += Number(r.gst_amount  || 0);
+        });
+        var revRow = {
+          month: monthKey, period: period || '2026-27',
+          counsellor: counsellor,
+          assigned_centre: assignedCentre,
+          business_centre: centre,
+          business_type: 'Centre Revenue',
+          achieved_course_fee: totalFee,
+          // achieved_course_fee_gst is treated system-wide (leaderboards, HR/admin dashboards,
+          // manual entry via revenueGst()) as the GST-INCLUSIVE total (fee + tax), not the tax
+          // amount alone. student_fees.gst_amount is just the tax portion, so it must be added
+          // to the fee here — writing totalGst alone silently understated "achieved" revenue
+          // for every auto-derived own-centre row (confirmed live: ~74% understated for Jul-26).
+          achieved_course_fee_gst: totalFee + totalGst,
+          student_count: rows.length,
+          notes: rows.length ? 'auto-derived' : 'auto-derived (zeroed — no remaining fee records this month)',
+          updated_at: new Date().toISOString()
+        };
+        POST('revenue_monthly_achieved',
+          'on_conflict=month,period,counsellor,business_centre,business_type',
+          [revRow], function() {}); // fire-and-forget
       });
-      var revRow = {
-        month: monthKey, period: period || '2026-27',
-        counsellor: counsellor,
-        assigned_centre: centre,
-        business_centre: centre,
-        business_type: 'Centre Revenue',
-        achieved_course_fee: totalFee,
-        // achieved_course_fee_gst is treated system-wide (leaderboards, HR/admin dashboards,
-        // manual entry via revenueGst()) as the GST-INCLUSIVE total (fee + tax), not the tax
-        // amount alone. student_fees.gst_amount is just the tax portion, so it must be added
-        // to the fee here — writing totalGst alone silently understated "achieved" revenue
-        // for every auto-derived own-centre row (confirmed live: ~74% understated for Jul-26).
-        achieved_course_fee_gst: totalFee + totalGst,
-        student_count: rows.length,
-        notes: rows.length ? 'auto-derived' : 'auto-derived (zeroed — no remaining fee records this month)',
-        updated_at: new Date().toISOString()
-      };
-      POST('revenue_monthly_achieved',
-        'on_conflict=month,period,counsellor,business_centre,business_type',
-        [revRow], function() {}); // fire-and-forget
     });
   }
 

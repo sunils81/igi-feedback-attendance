@@ -16610,22 +16610,11 @@ function jumpToFeeMismatch(batchCode, studentId) {
 
 // Alumni referral nudge — flags alumni 15/45/60 days post-completion (h_getReferralNudges
 // in shared.js) as a warm moment to ask for a referral. Dismissal (including "asked via
-// WhatsApp") is tracked in localStorage per counsellor, per (student, milestone) — there's
-// no backend table for this yet, so it's a per-device memory, not synced across devices.
-// That's an acceptable tradeoff for a nudge (worst case: it reappears once on a new device
-// or after clearing browser storage), not worth a schema migration for.
-function _referralNudgeStorageKey() { return 'referralNudgeDismissed_' + (counselorName || 'anon'); }
-function _referralNudgeDismissedSet() {
-  try { return JSON.parse(localStorage.getItem(_referralNudgeStorageKey()) || '[]'); } catch (e) { return []; }
-}
-function _referralNudgeMarkDismissed(key) {
-  var set = _referralNudgeDismissedSet();
-  if (set.indexOf(key) === -1) {
-    set.push(key);
-    try { localStorage.setItem(_referralNudgeStorageKey(), JSON.stringify(set)); } catch (e) {}
-  }
-}
-
+// WhatsApp") is persisted server-side in the referral_nudge_actions table (see
+// referral_nudge_actions_migration.sql + h_dismissReferralNudge in shared.js) — NOT
+// localStorage — so it sticks across every device/browser a counsellor uses, not just the
+// one that clicked it. h_getReferralNudges already excludes actioned pairs server-side, so
+// this file just renders whatever it's given and reloads after marking one done.
 function loadReferralNudgeNotification() {
   gasGet({ action: 'getReferralNudges', centres: isAdmin ? '' : (allowedCentres || []).join(',') }, function(e, d) {
     var banner = document.getElementById('referral-nudge-banner');
@@ -16633,18 +16622,15 @@ function loadReferralNudgeNotification() {
     var list = document.getElementById('referral-nudge-list');
     if (!banner || !text || !list) return;
     if (e || !d || d.status !== 'ok' || !d.nudges || !d.nudges.length) { banner.style.display = 'none'; return; }
-    var dismissed = _referralNudgeDismissedSet();
-    var nudges = d.nudges.filter(function(nu) { return dismissed.indexOf(nu.studentId + '_' + nu.milestone) === -1; });
-    if (!nudges.length) { banner.style.display = 'none'; return; }
+    var nudges = d.nudges;
     var n = nudges.length;
     text.textContent = n + ' alumnus' + (n > 1 ? 'es are' : ' is') + ' at a good moment to ask for a referral.';
     list.innerHTML = nudges.map(function(nu) {
-      var key = nu.studentId + '_' + nu.milestone;
       return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;background:#fff;border:1px solid #bfdbfe;border-radius:6px;padding:6px 10px">' +
         '<span style="font-size:12px"><strong>' + escC(nu.name) + '</strong> <span style="color:#6b7280">(' + escC(nu.course || '') + ', ' + escC(nu.centre || '') + ')</span> — ' + nu.milestone + '-day mark</span>' +
         '<span style="display:flex;gap:6px;flex-shrink:0">' +
-          '<button onclick="referralNudgeWhatsApp(\'' + escC(key) + '\',\'' + escC(nu.name) + '\',\'' + escC(nu.mobile || '') + '\')" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer">💬 Ask</button>' +
-          '<button onclick="referralNudgeDismiss(\'' + escC(key) + '\')" style="background:transparent;border:1px solid #93c5fd;color:#1e3a8a;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer">Dismiss</button>' +
+          '<button onclick="referralNudgeWhatsApp(\'' + escC(nu.studentId) + '\',' + nu.milestone + ',\'' + escC(nu.name) + '\',\'' + escC(nu.mobile || '') + '\')" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer">💬 Ask</button>' +
+          '<button onclick="referralNudgeDismiss(\'' + escC(nu.studentId) + '\',' + nu.milestone + ')" style="background:transparent;border:1px solid #93c5fd;color:#1e3a8a;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer">Dismiss</button>' +
         '</span>' +
       '</div>';
     }).join('');
@@ -16652,19 +16638,31 @@ function loadReferralNudgeNotification() {
   });
 }
 
-function referralNudgeDismiss(key) {
-  _referralNudgeMarkDismissed(key);
-  loadReferralNudgeNotification();
+function _referralNudgeSave(studentId, milestone, actionType) {
+  gasGet({
+    action: 'dismissReferralNudge', studentId: studentId, milestone: milestone,
+    actionType: actionType, counsellor: counselorName || ''
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      // Table may not exist yet if referral_nudge_actions_migration.sql hasn't been run —
+      // don't block the UI on that, just let it reappear next load rather than erroring.
+      showToast('Could not save — will reappear next time (run referral_nudge_actions_migration.sql if this keeps happening).', 'error');
+    }
+    loadReferralNudgeNotification();
+  });
 }
 
-function referralNudgeWhatsApp(key, name, mobile) {
+function referralNudgeDismiss(studentId, milestone) {
+  _referralNudgeSave(studentId, milestone, 'dismissed');
+}
+
+function referralNudgeWhatsApp(studentId, milestone, name, mobile) {
   if (!mobile) { showToast('No mobile number on file for this alumnus.', 'error'); return; }
   var clean = String(mobile).replace(/[^0-9]/g, '');
   if (clean.length === 10) clean = '91' + clean;
   var msg = "Hi " + name + "! 😊 Hope you're doing well since completing your course with us at IGI School of Gemology. If you know anyone who might be interested in our courses, we'd really appreciate an introduction — happy to take good care of them, just like we did with you. Thank you!";
   window.open('https://wa.me/' + clean + '?text=' + encodeURIComponent(msg), '_blank');
-  _referralNudgeMarkDismissed(key);
-  loadReferralNudgeNotification();
+  _referralNudgeSave(studentId, milestone, 'whatsapp_sent');
 }
 
 // Duplicate Student ID detection — proactively flags when the same person is sitting

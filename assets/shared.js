@@ -1913,7 +1913,13 @@ window.gasGet = (function () {
      rather than re-deriving it, so "alumnus" here always means what the Alumni tab already
      shows. Centre-scoped for non-admins (mirrors the Alumni tab's own client-side centre
      filter), not counsellor-scoped — any counsellor at that centre can reasonably reach out
-     for a referral, the same reasoning as the Fee Record centre-scoping fix. */
+     for a referral, the same reasoning as the Fee Record centre-scoping fix.
+
+     Already-actioned (student, milestone) pairs are excluded server-side via the
+     referral_nudge_actions table (see referral_nudge_actions_migration.sql and
+     h_dismissReferralNudge below) — NOT via localStorage. A dismissal/"asked" now sticks
+     regardless of which device or browser a counsellor next opens this on, instead of only
+     being remembered in the one browser that clicked it. */
   var REFERRAL_MILESTONES = [15, 45, 60];
   var REFERRAL_WINDOW_DAYS = 3;
   function h_getReferralNudges(p, cb) {
@@ -1923,7 +1929,7 @@ window.gasGet = (function () {
         ? String(p.centres).split(',').map(function (c) { return c.trim().toLowerCase(); }).filter(Boolean)
         : null;
       var todayMs = new Date(todayYMD()).getTime();
-      var nudges = [];
+      var candidates = [];
       (d.alumni || []).forEach(function (a) {
         if (a.status !== 'Completed' || !a.endDate) return;
         if (centresFilter && (!a.centre || centresFilter.indexOf(a.centre.toLowerCase()) === -1)) return;
@@ -1934,16 +1940,45 @@ window.gasGet = (function () {
           if (days >= m && days < m + REFERRAL_WINDOW_DAYS) { milestone = m; break; }
         }
         if (milestone === null) return;
-        nudges.push({
+        candidates.push({
           studentId: a.studentId, name: a.name, centre: a.centre, course: a.course,
           batchCode: a.batchCode, mobile: a.mobile, email: a.email,
           completedOn: a.endDate, daysSinceCompletion: days, milestone: milestone
         });
       });
-      // Soonest-completed milestone first (15-day nudges are the most time-sensitive —
-      // right after graduation is when the experience is freshest in an alumnus's mind).
-      nudges.sort(function (x, y) { return x.milestone - y.milestone || x.daysSinceCompletion - y.daysSinceCompletion; });
-      cb(null, { status: 'ok', count: nudges.length, nudges: nudges });
+      if (!candidates.length) { cb(null, { status: 'ok', count: 0, nudges: [] }); return; }
+      // referral_nudge_actions may not exist yet on a deploy that hasn't run the migration —
+      // treat that as "nothing actioned yet" rather than failing the whole banner, so this
+      // degrades gracefully instead of hard-erroring for anyone who hasn't run the SQL yet.
+      GET('referral_nudge_actions', 'select=student_id,milestone', function (e2, actionRows) {
+        var actioned = {};
+        (actionRows || []).forEach(function (r) { actioned[r.student_id + '_' + r.milestone] = true; });
+        var nudges = candidates.filter(function (n) { return !actioned[n.studentId + '_' + n.milestone]; });
+        // Soonest-completed milestone first (15-day nudges are the most time-sensitive —
+        // right after graduation is when the experience is freshest in an alumnus's mind).
+        nudges.sort(function (x, y) { return x.milestone - y.milestone || x.daysSinceCompletion - y.daysSinceCompletion; });
+        cb(null, { status: 'ok', count: nudges.length, nudges: nudges });
+      });
+    });
+  }
+
+  /* h_dismissReferralNudge — records that a counsellor has acted on (or explicitly
+     dismissed) one alumnus's referral nudge at one milestone, so h_getReferralNudges stops
+     surfacing that exact (student, milestone) pair for everyone going forward — not just in
+     the browser that clicked it. action is 'whatsapp_sent' or 'dismissed', informational
+     only (both have the same filtering effect). Upserts on (student_id, milestone) so a
+     double-click or a second counsellor hitting the same nudge is a no-op, not an error. */
+  function h_dismissReferralNudge(p, cb) {
+    var studentId = String(p && p.studentId || '').trim();
+    var milestone = Number(p && p.milestone);
+    if (!studentId || !milestone) { cb(null, { status: 'error', reason: 'missing_student_or_milestone' }); return; }
+    POST('referral_nudge_actions', 'on_conflict=student_id,milestone', {
+      student_id: studentId,
+      milestone: milestone,
+      counsellor: (p && p.counsellor) || '',
+      action: (p && p.actionType) || 'dismissed'
+    }, function (e) {
+      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
     });
   }
 
@@ -8467,6 +8502,7 @@ window.gasGet = (function () {
       case 'getStudentProfile':         return h_studentProfile(params, cb);
       case 'getStudentAlumni':          return h_alumni(params, cb);
       case 'getReferralNudges':         return h_getReferralNudges(params, cb);
+      case 'dismissReferralNudge':      return h_dismissReferralNudge(params, cb);
       case 'globalSearch':              return h_globalSearch(params, cb);
       case 'getOverdueFeesCount':       return h_getOverdueFeesCount(params, cb);
       case 'getFeeRecords':             return h_getFeeRecords(params, cb);

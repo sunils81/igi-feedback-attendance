@@ -16342,7 +16342,15 @@ function loadOverdueFeesNotification() {
 // (Tejas Kothari, Lakhi Menghani, Koulika Mandal, the Gajender/Elavazhagan ghost rows).
 var _dupStudentGroups = [];
 function loadDuplicateStudentNotification() {
-  gasGet({ action: 'getDuplicateStudentIds' }, function(e, d) {
+  // Admin and Bianca see duplicates across every centre; every other counsellor only
+  // sees groups that touch a centre they're actually allowed to work in.
+  var bypass = isAdmin || counselorName === 'Bianca';
+  var params = { action: 'getDuplicateStudentIds' };
+  if (!bypass) {
+    if (!allowedCentres || !allowedCentres.length) return;
+    params.centres = allowedCentres.join(',');
+  }
+  gasGet(params, function(e, d) {
     if (e || !d || d.status !== 'ok') return;
     _dupStudentGroups = d.groups || [];
     var banner = document.getElementById('dup-student-banner');
@@ -16376,6 +16384,7 @@ function renderDuplicateStudentList() {
       return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;' + (si > 0 ? 'margin-top:6px' : '') + '">' +
         '<div style="flex:1;font-size:12.5px">' +
           '<strong>' + escC(s.studentId) + '</strong> — ' + escC(s.name || 'No name') +
+          (s.centre ? ' <span style="color:var(--muted);font-weight:400">(' + escC(s.centre) + ')</span>' : '') +
           '<br><span style="color:var(--muted)">' + escC(s.mobile || 'no mobile') + ' · ' + escC(s.email || 'no email') +
           (s.batchCode ? ' · ' + escC(s.batchCode) : ' · no batch') + ' · ' + escC(s.status || '') + '</span>' +
         '</div>' +

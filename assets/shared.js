@@ -1735,40 +1735,57 @@ window.gasGet = (function () {
      the Elavazhagan 91-9159006174 case still matches) and by lowercased email; any
      group with 2+ distinct student_ids is a likely duplicate worth a look. */
   function h_getDuplicateStudentIds(p, cb) {
-    GET('students', 'select=student_id,name,mobile,email,batch_code,status,created_at&order=created_at.asc', function (e, rows) {
-      if (e || !rows || !rows.length) { cb(null, { status: 'ok', count: 0, groups: [] }); return; }
-      var byMobile = {}, byEmail = {};
-      rows.forEach(function (r) {
-        var m = String(r.mobile || '').replace(/\D/g, '').slice(-10);
-        if (m.length === 10) { (byMobile[m] = byMobile[m] || []).push(r); }
-        var em = String(r.email || '').trim().toLowerCase();
-        if (em) { (byEmail[em] = byEmail[em] || []).push(r); }
-      });
-      var seen = {};
-      var groups = [];
-      function addGroup(list, matchedBy) {
-        var uniqueIds = [];
-        list.forEach(function (r) { if (uniqueIds.indexOf(r.student_id) === -1) uniqueIds.push(r.student_id); });
-        if (uniqueIds.length < 2) return;
-        var key = uniqueIds.slice().sort().join('|');
-        if (seen[key]) return;
-        seen[key] = true;
-        // One row per unique student_id (a student_id could theoretically repeat here
-        // if it somehow matched via both mobile and email in the same list — de-dupe).
-        var byId = {};
-        list.forEach(function (r) { byId[r.student_id] = r; });
-        groups.push({
-          matchedBy: matchedBy,
-          students: uniqueIds.map(function (sid) {
-            var r = byId[sid];
-            return { studentId: r.student_id, name: r.name, mobile: r.mobile, email: r.email,
-              batchCode: r.batch_code, status: r.status };
-          })
+    // Admin and Bianca see every duplicate across every centre; every other counsellor
+    // only sees groups touching a centre they're allowed to work in. Centre isn't a
+    // column on `students` itself (only batch_code is) — a stale/ghost duplicate with
+    // no batch_code has no centre of its own, so a GROUP is shown to a counsellor if
+    // ANY member of that group belongs to one of their centres (the ghost side of the
+    // pair is still worth surfacing to whoever owns the real, batched side).
+    var centresFilter = String(p.centres || '').split(',')
+      .map(function (c) { return c.trim().toLowerCase(); }).filter(Boolean);
+    GET('batches', 'select=batch_code,centre', function (eB, batches) {
+      var centreByBatch = {};
+      (batches || []).forEach(function (b) { centreByBatch[b.batch_code] = b.centre; });
+      GET('students', 'select=student_id,name,mobile,email,batch_code,status,created_at&order=created_at.asc', function (e, rows) {
+        if (e || !rows || !rows.length) { cb(null, { status: 'ok', count: 0, groups: [] }); return; }
+        var byMobile = {}, byEmail = {};
+        rows.forEach(function (r) {
+          var m = String(r.mobile || '').replace(/\D/g, '').slice(-10);
+          if (m.length === 10) { (byMobile[m] = byMobile[m] || []).push(r); }
+          var em = String(r.email || '').trim().toLowerCase();
+          if (em) { (byEmail[em] = byEmail[em] || []).push(r); }
         });
-      }
-      Object.keys(byMobile).forEach(function (m) { if (byMobile[m].length > 1) addGroup(byMobile[m], 'mobile'); });
-      Object.keys(byEmail).forEach(function (em) { if (byEmail[em].length > 1) addGroup(byEmail[em], 'email'); });
-      cb(null, { status: 'ok', count: groups.length, groups: groups.slice(0, 40) });
+        var seen = {};
+        var groups = [];
+        function addGroup(list, matchedBy) {
+          var uniqueIds = [];
+          list.forEach(function (r) { if (uniqueIds.indexOf(r.student_id) === -1) uniqueIds.push(r.student_id); });
+          if (uniqueIds.length < 2) return;
+          var key = uniqueIds.slice().sort().join('|');
+          if (seen[key]) return;
+          seen[key] = true;
+          // One row per unique student_id (a student_id could theoretically repeat here
+          // if it somehow matched via both mobile and email in the same list — de-dupe).
+          var byId = {};
+          list.forEach(function (r) { byId[r.student_id] = r; });
+          groups.push({
+            matchedBy: matchedBy,
+            students: uniqueIds.map(function (sid) {
+              var r = byId[sid];
+              return { studentId: r.student_id, name: r.name, mobile: r.mobile, email: r.email,
+                batchCode: r.batch_code, centre: centreByBatch[r.batch_code] || '', status: r.status };
+            })
+          });
+        }
+        Object.keys(byMobile).forEach(function (m) { if (byMobile[m].length > 1) addGroup(byMobile[m], 'mobile'); });
+        Object.keys(byEmail).forEach(function (em) { if (byEmail[em].length > 1) addGroup(byEmail[em], 'email'); });
+        var visible = centresFilter.length
+          ? groups.filter(function (g) {
+              return g.students.some(function (s) { return s.centre && centresFilter.indexOf(String(s.centre).toLowerCase()) !== -1; });
+            })
+          : groups;
+        cb(null, { status: 'ok', count: visible.length, groups: visible.slice(0, 40) });
+      });
     });
   }
 

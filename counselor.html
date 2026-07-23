@@ -16408,7 +16408,20 @@ function keepThisDuplicate(groupIdx, keepId) {
     gasGet({ action: 'mergeStudentRecords', fromId: fromId, toId: keepId }, function(e, d) {
       if (e || !d) { messages.push(fromId + ': merge request failed'); next(); return; }
       if (d.status === 'ok') { messages.push(fromId + ': merged ✓'); }
-      else { messages.push(fromId + ': ' + (d.message || 'could not fully merge')); }
+      else {
+        // Surface the actual per-table reason, not just the generic summary sentence —
+        // "(diplomas)" alone doesn't say WHY diplomas failed (genuine different-batch
+        // record vs. some other Postgres error), which is needed to know whether this
+        // is a case the auto-resolver should be able to handle or a real conflict.
+        var failDetail = '';
+        if (d.results) {
+          var failedLines = Object.keys(d.results)
+            .filter(function(t) { return String(d.results[t]).indexOf('failed') === 0; })
+            .map(function(t) { return t + ' — ' + d.results[t]; });
+          if (failedLines.length) failDetail = ' [' + failedLines.join(' | ') + ']';
+        }
+        messages.push(fromId + ': ' + (d.message || 'could not fully merge') + failDetail);
+      }
       next();
     });
   }

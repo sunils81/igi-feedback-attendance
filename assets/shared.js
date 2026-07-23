@@ -1658,20 +1658,22 @@ window.gasGet = (function () {
         var tables = ['enrollments', 'attendance_feedback', 'att_records', 'assessment_marks',
           'student_fees', 'diplomas', 'test_responses', 'manual_grades', 'test_warnings',
           'test_starts', 'crm_leads'];
-        // enrollments and student_fees are both uniquely keyed on (student_id, batch_code).
-        // A PATCH failure there almost always means fromId and toId were BOTH separately
-        // enrolled/invoiced for the exact same batch — e.g. Koulika Mandal's 7126 and 7079,
-        // both real rows for KOL-COL-AUG26 — a true duplicate registration, not two distinct
-        // things worth keeping. In that specific case toId's row is already the authoritative
-        // one, so fromId's colliding row is redundant and safe to drop instead of leaving the
-        // whole merge stuck with no path forward.
-        var DEDUPABLE_TABLES = { enrollments: true, student_fees: true };
+        // Several of these tables (enrollments, student_fees, diplomas, attendance_feedback,
+        // and likely others) are uniquely keyed on (student_id, batch_code). A PATCH failure
+        // there almost always means fromId and toId were BOTH separately given a row for the
+        // exact same batch — e.g. Koulika Mandal's 7126/7079 both invoiced for KOL-COL-AUG26,
+        // or Dhir Gandhi's 26001/6493 both somehow issued a diploma row — a true duplicate,
+        // not two distinct things worth keeping. toId's row is already the authoritative one,
+        // so fromId's colliding row is redundant and safe to drop instead of leaving the whole
+        // merge stuck. This is attempted for EVERY table (not a hardcoded allowlist) — it only
+        // ever succeeds when every one of fromId's rows in that table has a batch_code that
+        // toId already has a row for too, so a table with no batch_code column (or a genuine
+        // batch fromId has that toId doesn't) safely falls through to a reported failure.
         var results = {};
         var i = 0;
         function mergeTable(t, doneT) {
           PATCH(t, 'student_id=eq.' + encodeURIComponent(fromId), { student_id: toId }, function(e) {
             if (!e) { doneT('ok'); return; }
-            if (!DEDUPABLE_TABLES[t]) { doneT('failed: ' + String(e)); return; }
             GET(t, 'student_id=eq.' + encodeURIComponent(fromId), function(e2, fromRows) {
               if (e2 || !fromRows || !fromRows.length) { doneT('failed: ' + String(e)); return; }
               GET(t, 'student_id=eq.' + encodeURIComponent(toId), function(e3, toRowsForTable) {

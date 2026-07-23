@@ -18325,6 +18325,7 @@ function openEnrollModal(monthKey, centre, counsellor, opts) {
   document.getElementById('enroll-ns-mobile-code-other').value = '';
   document.getElementById('enroll-ns-state-other').value = '';
   document.getElementById('enroll-ns-email').value = '';
+  document.getElementById('enroll-ns-dup-warn').style.display = 'none';
   populateCountryMobileFields('enroll-ns');
 
   // Reset batch section
@@ -18490,6 +18491,50 @@ function enrollToggleNewStudent() {
     }
     document.getElementById('enroll-ns-student-id').focus();
   }
+}
+
+// Safeguard 3: warn (don't block) when a student with a matching name or mobile
+// already exists, so a counsellor filling out the New Student form for someone who's
+// actually already in the system (e.g. adding their second course, like a combined
+// GG student's CSG half) doesn't accidentally create a second profile under a new
+// Student ID. Matching on mobile catches name typos/variants that a name-only search
+// would miss — mobile numbers don't have nicknames or spelling differences. Offers a
+// one-click "Use this student instead" escape hatch, same pattern as
+// enrollCheckDuplicateBatch's batch warning. This is exactly the gap that let Shantanu
+// Vaidya end up as two profiles (7123 and 7125) — see merge_shantanu_vaidya_7125_into_7123_2026-07-23.sql.
+var _enrollDupStudentTimer = null;
+function enrollCheckDuplicateStudentDebounce() {
+  clearTimeout(_enrollDupStudentTimer);
+  _enrollDupStudentTimer = setTimeout(enrollCheckDuplicateStudent, 350);
+}
+function enrollCheckDuplicateStudent() {
+  var warnEl = document.getElementById('enroll-ns-dup-warn');
+  var name   = (document.getElementById('enroll-ns-name').value || '').trim();
+  var mobileDigits = (document.getElementById('enroll-ns-mobile').value || '').replace(/\D/g, '');
+  // Require enough signal before querying — a single letter or a 2-digit fragment
+  // would just return noise (or, for mobile, match almost anything via ilike).
+  var nameOk = name.length >= 3;
+  var mobileOk = mobileDigits.length >= 6;
+  if (!nameOk && !mobileOk) { warnEl.style.display = 'none'; return; }
+  var params = { action: 'searchStudents' };
+  if (nameOk) params.query = name;
+  if (mobileOk) params.mobile = mobileDigits;
+  gasGet(params, function(e, d) {
+    var results = (d && d.students) || [];
+    if (e || !results.length) { warnEl.style.display = 'none'; return; }
+    warnEl.innerHTML = '⚠ Found existing student' + (results.length > 1 ? 's' : '') +
+      ' that may be the same person — enrolling them in a second course? Use their existing profile instead of creating a new one:<br>' +
+      results.slice(0, 5).map(function(s) {
+        return '&nbsp;&nbsp;• <b>' + escC(s.name) + '</b> (' + escC(s.studentId) + (s.mobile ? ' · ' + escC(s.mobile) : '') + ') ' +
+          '<a href="javascript:void(0)" onclick="enrollUseExistingStudent(\'' + escC(s.studentId) + '\',\'' + escC(s.name) + '\',\'' + escC(s.mobile || '') + '\')" style="color:#1d4ed8;font-weight:600;">Use this instead</a>';
+      }).join('<br>') +
+      '<br><span style="color:#6b7280;">Or continue below if this is genuinely a different, new student.</span>';
+    warnEl.style.display = 'block';
+  });
+}
+function enrollUseExistingStudent(id, name, mobile) {
+  enrollToggleNewStudent(); // collapses the new-student form, restores the search/pick UI
+  _enrollPickStudent(id, name, mobile);
 }
 
 /* ── Batch section ── */
@@ -19116,7 +19161,7 @@ function enrollSave() {
         <div id="enroll-new-student-form" class="enroll-new-form" style="display:none">
           <div class="enroll-grid3">
             <div class="enroll-field"><label>Student ID *</label><input id="enroll-ns-student-id" type="text" placeholder="e.g. 7130" style="text-transform:uppercase"></div>
-            <div class="enroll-field"><label>Full Name *</label><input id="enroll-ns-name" type="text" placeholder="e.g. Priya Sharma"></div>
+            <div class="enroll-field"><label>Full Name *</label><input id="enroll-ns-name" type="text" placeholder="e.g. Priya Sharma" oninput="enrollCheckDuplicateStudentDebounce()"></div>
             <div class="enroll-field"><label>Country *</label><select id="enroll-ns-country" onchange="onCountryFieldChange('enroll-ns')"></select></div>
             <div class="enroll-field" id="enroll-ns-state-india-wrap"><label>State</label><select id="enroll-ns-state"></select></div>
             <div class="enroll-field" id="enroll-ns-state-other-wrap" style="display:none"><label>State / Region</label><input id="enroll-ns-state-other" type="text" placeholder="e.g. Dubai, California"></div>
@@ -19124,11 +19169,12 @@ function enrollSave() {
               <div style="display:flex;gap:6px">
                 <select id="enroll-ns-mobile-code" style="width:64px;flex-shrink:0;padding-left:4px;padding-right:2px"></select>
                 <input id="enroll-ns-mobile-code-other" type="text" placeholder="code" style="width:48px;flex-shrink:0;display:none">
-                <input id="enroll-ns-mobile" type="tel" placeholder="Mobile number" style="flex:1;min-width:0">
+                <input id="enroll-ns-mobile" type="tel" placeholder="Mobile number" style="flex:1;min-width:0" oninput="enrollCheckDuplicateStudentDebounce()">
               </div>
             </div>
             <div class="enroll-field"><label>Email *</label><input id="enroll-ns-email" type="email" placeholder="student@email.com"></div>
           </div>
+          <div id="enroll-ns-dup-warn" style="display:none;margin-top:10px;padding:10px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:12.5px;color:#1e3a8a;"></div>
         </div>
       </div>
 

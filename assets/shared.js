@@ -1466,11 +1466,21 @@ window.gasGet = (function () {
     });
   }
 
-  /* searchStudents — live search by name (ilike) for the enrollment modal */
+  /* searchStudents — live search by name (ilike) for the enrollment modal.
+     Also accepts an optional mobile param (used by the "duplicate student" check on
+     the New Student form — see enrollCheckDuplicateStudent in counselor.html): mobile
+     numbers don't have typo variants the way names do (e.g. "Shantanu" vs "Shantanu
+     Vaidya" vs a nickname), so matching on mobile catches the same-person-different-ID
+     case a name-only search can miss. */
   function h_searchStudents(p, cb) {
-    var q = String(p.query || '').trim();
-    if (!q) { cb(null, { students: [] }); return; }
-    var qs = 'name=ilike.*' + encodeURIComponent(q) + '*&limit=20&order=name.asc';
+    var q      = String(p.query  || '').trim();
+    var mobile = String(p.mobile || '').trim();
+    if (!q && !mobile) { cb(null, { students: [] }); return; }
+    var filters = [];
+    if (q)      filters.push('name.ilike.*'   + encodeURIComponent(q)      + '*');
+    if (mobile) filters.push('mobile.ilike.*' + encodeURIComponent(mobile) + '*');
+    var qs = (filters.length > 1 ? 'or=(' + filters.join(',') + ')' : filters[0]) +
+             '&limit=20&order=name.asc';
     GET('students', qs, function(e, rows) {
       if (e) { cb(null, { students: [] }); return; }
       cb(null, {

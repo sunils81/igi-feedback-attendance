@@ -13859,13 +13859,17 @@ function updateAlumniKPI() {
       ' — ' + completed + ' Completed · ' + active + ' Active';
   }
 
-  // Update KPI cards
-  var kTotal = document.getElementById('kpi-alumni-total');
-  var kCompleted = document.getElementById('kpi-alumni-completed');
-  var kContacted = document.getElementById('kpi-alumni-contacted');
-  if (kTotal) kTotal.textContent = total;
-  if (kCompleted) kCompleted.textContent = completed;
-  if (kContacted) kContacted.textContent = active;
+  // Update the actual KPI ribbon (Total Alumni / Completed / Active-Ongoing /
+  // Centres Covered). That ribbon is built by renderContextSummary('t-alumni'),
+  // which reads alumniList — but it only ever runs once, synchronously, at the
+  // moment the Alumni tab is clicked (see switchTab -> renderContextSummary),
+  // which is BEFORE this function's caller (loadAlumniData's async gasGet
+  // callback) has actually populated alumniList. That left the ribbon frozen
+  // at all-zero every time, even once the table below it filled in correctly.
+  // This used to instead poke kpi-alumni-total/-completed/-contacted elements
+  // directly, but no such elements exist in the DOM (dead code) — routing
+  // through renderContextSummary is what actually reaches the visible tiles.
+  if (typeof renderContextSummary === 'function') renderContextSummary('t-alumni');
 }
 
 function renderAlumniTable(list) {

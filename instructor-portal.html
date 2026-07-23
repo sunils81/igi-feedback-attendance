@@ -412,11 +412,12 @@
       <h2>Create Extra Session</h2>
       <p class="sub">Use this only for 2nd/4th Saturday makeup sessions or sessions after the batch end date.</p>
       <div class="field"><label>Select Batch *</label>
-        <select id="ex-batch"><option value="">Select a batch</option></select>
+        <select id="ex-batch" onchange="checkExtraSessionDateWarning()"><option value="">Select a batch</option></select>
       </div>
       <div class="field"><label>Session Date *</label>
-        <input type="date" id="ex-date">
+        <input type="date" id="ex-date" onchange="checkExtraSessionDateWarning()">
       </div>
+      <div id="ex-date-warn" style="display:none;margin:0 0 12px;padding:9px 12px;background:#FFF9E6;border:1px solid rgba(201,168,76,.3);border-radius:8px;color:#7A5B00;font-size:12.5px"></div>
       <div class="field" id="ex-topic-field"><label>Topic *</label>
         <select id="ex-topic-select" style="margin-bottom:8px" onchange="handleExtraTopicSelectChange()">
           <option value="">— select batch first —</option>
@@ -3443,6 +3444,46 @@ function showCancelDialog(sessionCode, batchCode) {
     showToast('Session ' + sessionCode + ' cancelled. Students will see the update.');
     loadTodaySessions();
   });
+}
+
+// This card exists ONLY for 2nd/4th-Saturday makeup classes or sessions after a batch's
+// end date — everything else is a normal Mon-Fri session created automatically by the
+// daily scheduler. But nothing here previously enforced that: any date at all (including
+// a regular weekday, or a 1st/3rd/5th Saturday) silently created a fully "live" session,
+// identical to a real class — which is how a batch that's supposed to run strictly Mon-Fri
+// could end up with an active 6th-day (Saturday) session. Per Sunil: warn, don't block —
+// an instructor may have a real reason (a genuine one-off extra class) that doesn't fit
+// the 2nd/4th-Saturday rule, so this stays advisory rather than disabling the button.
+function checkExtraSessionDateWarning() {
+  var warnEl = document.getElementById('ex-date-warn');
+  if (!warnEl) return;
+  var dateVal = document.getElementById('ex-date').value;
+  var batchCode = document.getElementById('ex-batch').value;
+  if (!dateVal) { warnEl.style.display = 'none'; return; }
+
+  var d = new Date(dateVal + 'T00:00:00');
+  var isSaturday = d.getDay() === 6;
+  var nthSaturday = isSaturday ? Math.ceil(d.getDate() / 7) : 0; // 1st..5th Saturday of the month
+  var is2nd4thSaturday = nthSaturday === 2 || nthSaturday === 4;
+
+  var afterBatchEnd = false;
+  if (batchCode) {
+    var batch = (instructorBatchesCache || []).find(function(b) { return b.batchCode === batchCode; });
+    var endIso = batch && (batch.endDateISO || (batch.endDate && batch.endDate.length === 10 && batch.endDate.indexOf('/') < 0 ? batch.endDate : null));
+    // endDate is often DD/MM/YYYY for display — only trust it directly if it's already ISO;
+    // endDateISO (when present) is the reliable one, so prefer that.
+    if (endIso) afterBatchEnd = dateVal > endIso;
+  }
+
+  if (is2nd4thSaturday || afterBatchEnd) {
+    warnEl.style.display = 'none';
+    return;
+  }
+  var reasons = [];
+  if (isSaturday) reasons.push('it\'s the ' + nthSaturday + (nthSaturday===1?'st':nthSaturday===2?'nd':nthSaturday===3?'rd':'th') + ' Saturday, not the 2nd or 4th');
+  else reasons.push('it\'s a ' + d.toLocaleDateString('en-IN',{weekday:'long'}));
+  warnEl.style.display = 'block';
+  warnEl.textContent = '⚠ This card is meant for 2nd/4th Saturday makeup classes or sessions after the batch ends — ' + reasons[0] + ', and doesn\'t look like it\'s after this batch\'s end date. You can still create it, but double-check this is intentional (a real class on this batch\'s regular schedule is created automatically each weekday).';
 }
 
 function createExtraSession() {

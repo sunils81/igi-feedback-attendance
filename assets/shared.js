@@ -1896,7 +1896,12 @@ window.gasGet = (function () {
               // h_getReferralNudges (below) can compute "days since completion" without a
               // second GET batches call; every other existing caller of getStudentAlumni
               // just ignores this extra field.
-              endDate: b.end_date || '' };
+              endDate: b.end_date || '',
+              // allCourses — every course this student has ever enrolled in (not just the
+              // GG-combined label). Added for h_getGemAFoundationCandidates (below), which
+              // needs to check whether Gem-A Foundation is already one of them, without a
+              // third GET call; other callers ignore this extra field same as endDate above.
+              allCourses: allCourses };
           }) });
         });
       });
@@ -1979,6 +1984,76 @@ window.gasGet = (function () {
       action: (p && p.actionType) || 'dismissed'
     }, function (e) {
       cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+    });
+  }
+
+  /* h_getGemAFoundationCandidates — surfaces GG (Graduate Gemologist) students as warm leads
+     for the upcoming Gem-A Foundation cohort. "GG" here means exactly what the Alumni tab
+     already means by it — completed BOTH a DG-type and a CSG-type course — reusing h_alumni's
+     own isGG derivation (the `course === 'Graduate Gemologist'` label it already computes)
+     rather than re-deriving GG status a second time.
+
+     A student qualifies if: they're GG; their qualifying batch is already Completed OR is
+     finishing before the program start date (so a counsellor can catch them in time, not
+     just after); they have at least one recorded test score at/above GEMA_MIN_TEST_PCT (a
+     floor, not a ranking — Sunil asked for this list unranked, so results are returned in
+     whatever order the underlying alumni query gives them); and they don't already have a
+     Gem-A Foundation lead or enrollment (checked via crm_leads + their own course history),
+     so this doesn't nag a counsellor about someone already being worked.
+
+     Centre-scoped for non-admins, same convention as h_getReferralNudges. The course name,
+     start date, lead window, and score floor are constants on purpose — this is a seasonal,
+     cohort-specific nudge; running it again for the next intake should only mean updating
+     these four values, not touching the logic. */
+  var GEMA_FOUNDATION_COURSE = 'Gem-A Foundation';
+  var GEMA_FOUNDATION_START_DATE = '2026-10-16';
+  var GEMA_LEAD_WINDOW_DAYS = 60; // start surfacing candidates this many days before start
+  var GEMA_MIN_TEST_PCT = 60;     // simple "did reasonably well" floor, not a ranking cutoff
+  function h_getGemAFoundationCandidates(p, cb) {
+    var todayStr = todayYMD();
+    if (todayStr > GEMA_FOUNDATION_START_DATE) { cb(null, { status: 'ok', count: 0, candidates: [] }); return; }
+    var windowStartMs = new Date(GEMA_FOUNDATION_START_DATE).getTime() - GEMA_LEAD_WINDOW_DAYS * 86400000;
+    if (new Date(todayStr).getTime() < windowStartMs) { cb(null, { status: 'ok', count: 0, candidates: [] }); return; }
+
+    h_alumni({}, function (e, d) {
+      if (e || !d || d.status !== 'ok') { cb(null, { status: 'error', reason: 'alumni_lookup_failed' }); return; }
+      var centresFilter = (p && p.centres && String(p.centres).trim())
+        ? String(p.centres).split(',').map(function (c) { return c.trim().toLowerCase(); }).filter(Boolean)
+        : null;
+      var startMs = new Date(GEMA_FOUNDATION_START_DATE).getTime();
+
+      var pool = (d.alumni || []).filter(function (a) {
+        if (a.course !== 'Graduate Gemologist') return false; // must be GG (both DG + CSG)
+        if (centresFilter && (!a.centre || centresFilter.indexOf(a.centre.toLowerCase()) === -1)) return false;
+        if ((a.allCourses || []).indexOf(GEMA_FOUNDATION_COURSE) !== -1) return false; // already enrolled
+        if (!a.endDate) return false;
+        var endMs = new Date(a.endDate).getTime();
+        return a.status === 'Completed' || endMs <= startMs; // done, or finishing in time
+      });
+      if (!pool.length) { cb(null, { status: 'ok', count: 0, candidates: [] }); return; }
+
+      var studentIds = pool.map(function (a) { return a.studentId; });
+      GET('test_responses', 'student_id=in.(' + studentIds.map(encodeURIComponent).join(',') + ')&select=student_id,percentage,total_score,total_marks', function (e2, responses) {
+        var bestPct = {};
+        (responses || []).forEach(function (r) {
+          var pct = r.percentage != null ? r.percentage : (r.total_marks ? (r.total_score / r.total_marks * 100) : null);
+          if (pct == null) return;
+          if (bestPct[r.student_id] == null || pct > bestPct[r.student_id]) bestPct[r.student_id] = pct;
+        });
+        GET('crm_leads', 'course=eq.' + encodeURIComponent(GEMA_FOUNDATION_COURSE) + '&select=student_id', function (e3, leadRows) {
+          var alreadyLeads = {};
+          (leadRows || []).forEach(function (l) { if (l.student_id) alreadyLeads[l.student_id] = true; });
+          var candidates = pool.filter(function (a) {
+            if (alreadyLeads[a.studentId]) return false;
+            var pct = bestPct[a.studentId];
+            return pct != null && pct >= GEMA_MIN_TEST_PCT;
+          }).map(function (a) {
+            return { studentId: a.studentId, name: a.name, centre: a.centre, mobile: a.mobile, email: a.email,
+              batchCode: a.batchCode, bestTestPct: Math.round(bestPct[a.studentId]), status: a.status, endDate: a.endDate };
+          });
+          cb(null, { status: 'ok', count: candidates.length, candidates: candidates });
+        });
+      });
     });
   }
 
@@ -8503,6 +8578,7 @@ window.gasGet = (function () {
       case 'getStudentAlumni':          return h_alumni(params, cb);
       case 'getReferralNudges':         return h_getReferralNudges(params, cb);
       case 'dismissReferralNudge':      return h_dismissReferralNudge(params, cb);
+      case 'getGemAFoundationCandidates': return h_getGemAFoundationCandidates(params, cb);
       case 'globalSearch':              return h_globalSearch(params, cb);
       case 'getOverdueFeesCount':       return h_getOverdueFeesCount(params, cb);
       case 'getFeeRecords':             return h_getFeeRecords(params, cb);

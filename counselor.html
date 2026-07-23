@@ -7628,7 +7628,14 @@ function offerStudentMerge(fromId, toId, errEl) {
       return;
     }
     if (d.status === 'partial') {
-      errEl.textContent = d.message || 'Merge partially completed — some records could not be moved.';
+      var detail = '';
+      if (d.results) {
+        var failedLines = Object.keys(d.results)
+          .filter(function(t) { return String(d.results[t]).indexOf('failed') === 0; })
+          .map(function(t) { return t + ': ' + d.results[t]; });
+        if (failedLines.length) detail = '\n\n' + failedLines.join('\n');
+      }
+      errEl.textContent = (d.message || 'Merge partially completed — some records could not be moved.') + detail;
       errEl.style.display = 'block';
       showToast('Merge partially completed — check the details below.', 'error');
       return;

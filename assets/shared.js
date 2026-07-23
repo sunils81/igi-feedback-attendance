@@ -1658,26 +1658,54 @@ window.gasGet = (function () {
         var tables = ['enrollments', 'attendance_feedback', 'att_records', 'assessment_marks',
           'student_fees', 'diplomas', 'test_responses', 'manual_grades', 'test_warnings',
           'test_starts', 'crm_leads'];
+        // enrollments and student_fees are both uniquely keyed on (student_id, batch_code).
+        // A PATCH failure there almost always means fromId and toId were BOTH separately
+        // enrolled/invoiced for the exact same batch — e.g. Koulika Mandal's 7126 and 7079,
+        // both real rows for KOL-COL-AUG26 — a true duplicate registration, not two distinct
+        // things worth keeping. In that specific case toId's row is already the authoritative
+        // one, so fromId's colliding row is redundant and safe to drop instead of leaving the
+        // whole merge stuck with no path forward.
+        var DEDUPABLE_TABLES = { enrollments: true, student_fees: true };
         var results = {};
         var i = 0;
+        function mergeTable(t, doneT) {
+          PATCH(t, 'student_id=eq.' + encodeURIComponent(fromId), { student_id: toId }, function(e) {
+            if (!e) { doneT('ok'); return; }
+            if (!DEDUPABLE_TABLES[t]) { doneT('failed: ' + String(e)); return; }
+            GET(t, 'student_id=eq.' + encodeURIComponent(fromId), function(e2, fromRows) {
+              if (e2 || !fromRows || !fromRows.length) { doneT('failed: ' + String(e)); return; }
+              GET(t, 'student_id=eq.' + encodeURIComponent(toId), function(e3, toRowsForTable) {
+                if (e3) { doneT('failed: ' + String(e)); return; }
+                var toBatchSet = {};
+                (toRowsForTable || []).forEach(function(r) { if (r.batch_code) toBatchSet[r.batch_code] = true; });
+                var resolvable = fromRows.every(function(r) { return r.batch_code && toBatchSet[r.batch_code]; });
+                if (!resolvable) { doneT('failed: ' + String(e)); return; }
+                DEL(t, 'student_id=eq.' + encodeURIComponent(fromId), function(eDel) {
+                  doneT(eDel
+                    ? ('failed: ' + String(e) + ' (cleanup delete also failed: ' + String(eDel) + ')')
+                    : ('ok (' + fromId + ' already had a duplicate row for the same batch(es) as ' + toId + ' — removed rather than moved)'));
+                });
+              });
+            });
+          });
+        }
         function next() {
           if (i >= tables.length) { finish(); return; }
           var t = tables[i]; i++;
-          PATCH(t, 'student_id=eq.' + encodeURIComponent(fromId), { student_id: toId }, function(e) {
-            // A per-table failure (e.g. a genuine UNIQUE(student_id,batch_code) collision —
-            // both IDs somehow had a fee/enrollment row for the very same batch) is recorded
-            // but doesn't stop the rest of the merge; whatever couldn't move stays visible
-            // under fromId for manual follow-up instead of silently vanishing.
-            results[t] = e ? ('failed: ' + String(e)) : 'ok';
+          mergeTable(t, function(resultStr) {
+            results[t] = resultStr;
             next();
           });
         }
         function finish() {
-          var anyFailed = Object.keys(results).some(function(t) { return results[t] !== 'ok'; });
-          if (anyFailed) {
+          // Only a string starting with "failed" is a real failure — the dedup path above
+          // reports success as "ok (...)" (extra detail attached), which must NOT trip this.
+          var failedTables = Object.keys(results).filter(function(t) { return results[t].indexOf('failed') === 0; });
+          if (failedTables.length) {
             cb(null, {
               status: 'partial', results: results,
-              message: 'Some records under ' + fromId + ' could not be moved to ' + toId + ' — nothing was deleted, so no data was lost. Check the failed table(s) and resolve manually.'
+              message: 'Some records under ' + fromId + ' could not be moved to ' + toId + ' (' + failedTables.join(', ') +
+                ') — nothing was deleted, so no data was lost. Check the failed table(s) and resolve manually.'
             });
             return;
           }

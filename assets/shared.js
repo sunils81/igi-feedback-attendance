@@ -1633,6 +1633,68 @@ window.gasGet = (function () {
       function(e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
   }
 
+  /* mergeStudentRecords — for the case updateStudentInfo's rename can't handle: the target
+     Student ID already belongs to a DIFFERENT, real student row (e.g. the same person was
+     accidentally enrolled twice under two IDs — once per course — instead of being added to
+     their existing ID for the second course). Renaming can't fix that (Postgres correctly
+     rejects it as a primary-key collision, which is what surfaced as the raw 23505 error);
+     this does a real merge instead: re-point every one of the 11 tables that reference
+     students.student_id from the duplicate ID onto the real one, then remove the now-empty
+     duplicate row. See migration_student_id_cascade.sql for the full list of referencing
+     tables and why plain ON UPDATE CASCADE alone doesn't cover this case (that migration only
+     handles renaming to a fresh, non-colliding ID — a genuine typo fix, not a merge). */
+  function h_mergeStudentRecords(p, cb) {
+    var fromId = String(p.fromId || '').trim().toUpperCase(); // the duplicate/erroneous ID being retired
+    var toId   = String(p.toId   || '').trim().toUpperCase(); // the real, existing ID being kept
+    if (!fromId || !toId || fromId === toId) {
+      cb(null, { status: 'error', reason: 'Need two different Student IDs to merge.' });
+      return;
+    }
+    GET('students', 'student_id=eq.' + encodeURIComponent(toId), function(eTo, toRows) {
+      if (eTo || !toRows || !toRows.length) { cb(null, { status: 'error', reason: 'Target Student ID ' + toId + ' does not exist.' }); return; }
+      GET('students', 'student_id=eq.' + encodeURIComponent(fromId), function(eFrom, fromRows) {
+        if (eFrom || !fromRows || !fromRows.length) { cb(null, { status: 'error', reason: 'Student ID ' + fromId + ' does not exist.' }); return; }
+
+        var tables = ['enrollments', 'attendance_feedback', 'att_records', 'assessment_marks',
+          'student_fees', 'diplomas', 'test_responses', 'manual_grades', 'test_warnings',
+          'test_starts', 'crm_leads'];
+        var results = {};
+        var i = 0;
+        function next() {
+          if (i >= tables.length) { finish(); return; }
+          var t = tables[i]; i++;
+          PATCH(t, 'student_id=eq.' + encodeURIComponent(fromId), { student_id: toId }, function(e) {
+            // A per-table failure (e.g. a genuine UNIQUE(student_id,batch_code) collision —
+            // both IDs somehow had a fee/enrollment row for the very same batch) is recorded
+            // but doesn't stop the rest of the merge; whatever couldn't move stays visible
+            // under fromId for manual follow-up instead of silently vanishing.
+            results[t] = e ? ('failed: ' + String(e)) : 'ok';
+            next();
+          });
+        }
+        function finish() {
+          var anyFailed = Object.keys(results).some(function(t) { return results[t] !== 'ok'; });
+          if (anyFailed) {
+            cb(null, {
+              status: 'partial', results: results,
+              message: 'Some records under ' + fromId + ' could not be moved to ' + toId + ' — nothing was deleted, so no data was lost. Check the failed table(s) and resolve manually.'
+            });
+            return;
+          }
+          // Only delete the now-empty duplicate row once every referencing table above has
+          // been confirmed re-pointed — deleting first and finding a failure after would
+          // orphan that row's data with no student profile to view it under.
+          DEL('students', 'student_id=eq.' + encodeURIComponent(fromId), function(eDel) {
+            cb(null, eDel
+              ? { status: 'partial', results: results, message: 'All records moved to ' + toId + ', but the old ' + fromId + ' student row itself could not be removed: ' + String(eDel) }
+              : { status: 'ok', results: results, message: 'Merged ' + fromId + ' into ' + toId + ' — all linked records moved, duplicate record removed.' });
+          });
+        }
+        next();
+      });
+    });
+  }
+
   /* resendStudentWelcomeEmail */
   function h_resendEmail(p, cb) {
     PATCH('students', 'student_id=eq.' + encodeURIComponent(p.enrollmentNo),
@@ -8087,6 +8149,7 @@ window.gasGet = (function () {
       case 'getMonthAchieved':          return h_getMonthAchieved(params, cb);
       case 'checkInvoiceNumber':        return h_checkInvoiceNumber(params, cb);
       case 'checkStudentMobile':        return h_checkStudentMobile(params, cb);
+      case 'mergeStudentRecords':       return h_mergeStudentRecords(params, cb);
       case 'getHolidays':               return h_getHolidays(params, cb);
       case 'addHoliday':                return h_addHoliday(params, cb);
       case 'getSessions':               return h_getSessions(params, cb);

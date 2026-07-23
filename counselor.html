@@ -1832,7 +1832,9 @@
           <div class="field"><label>Student ID *</label><input type="text" id="st-enrol" placeholder="e.g. 6008" inputmode="numeric" onblur="lookupStudent()" oninput="checkStudentIdLooksLikeOrderId('st-enrol','st-enrol-warn')">
             <div id="st-enrol-warn" style="display:none;font-size:11px;color:#B87A10;margin-top:4px;font-weight:600">⚠ This looks like an Order ID (5+ digits) — Student ID is normally 4 digits. Put it in the Order ID field below if so.</div>
           </div>
-          <div class="field"><label>Name *</label><input type="text" id="st-name" placeholder="Full name"></div>
+          <div class="field"><label>Name *</label><input type="text" id="st-name" placeholder="Full name" onblur="checkStudentNameDuplicate()">
+            <div id="st-name-dup-warn" style="display:none;font-size:11px;color:#B87A10;margin-top:4px;font-weight:600"></div>
+          </div>
           <div class="field"><label>Country *</label><select id="st-country" onchange="onCountryFieldChange('st')"></select></div>
           <div class="field" id="st-state-india-wrap"><label>State</label><select id="st-state"></select></div>
           <div class="field" id="st-state-other-wrap" style="display:none"><label>State / Region</label><input type="text" id="st-state-other" placeholder="e.g. Dubai, California"></div>
@@ -7314,6 +7316,32 @@ function checkStudentMobileDuplicate() {
   });
 }
 
+// checkStudentNameDuplicate — same safety net as checkStudentMobileDuplicate, but by name.
+// The mobile-based check only fires once mobile is entered — Tejas Kothari's second
+// enrolment (Small Diamond Assortment) was added with mobile left blank, so that check never
+// ran and he ended up as a brand-new Student ID (7209) instead of being added to his existing
+// one (4184) for the new course. This catches that case too, independent of mobile.
+let _stNameDupSeq = 0;
+function checkStudentNameDuplicate() {
+  const warn = document.getElementById('st-name-dup-warn');
+  const name = document.getElementById('st-name').value.trim();
+  const excludeId = document.getElementById('st-enrol').value.trim();
+  if (!warn) return;
+  if (name.length < 3) { warn.style.display = 'none'; return; }
+  const seq = ++_stNameDupSeq;
+  gasGet({action:'searchStudents', query:name}, function(e, d) {
+    if (seq !== _stNameDupSeq) return; // a newer keystroke has since fired a fresher check
+    const matches = ((d && d.students) || []).filter(function(m) { return m.studentId !== excludeId; });
+    if (e || !matches.length) { warn.style.display = 'none'; return; }
+    const m = matches[0];
+    warn.innerHTML = '⚠ A student named <strong>' + escC(m.name) + '</strong> already exists as Student ID <strong>' + escC(m.studentId) + '</strong>' +
+      (matches.length > 1 ? ' (+' + (matches.length - 1) + ' more similar match' + (matches.length > 2 ? 'es' : '') + ')' : '') +
+      ' — if this is the same person, <a href="javascript:void(0)" onclick="useExistingStudentId(\'' + escC(m.studentId) + '\')" style="color:#B87A10;text-decoration:underline">use that ID instead</a> ' +
+      'and select this batch, rather than creating a new profile.';
+    warn.style.display = 'block';
+  });
+}
+
 // useExistingStudentId — one-click fix for the duplicate-mobile warning: swaps the Student
 // ID field to the existing match and re-runs the normal lookup to pull in their name/mobile/
 // existing batches, so this batch can just be added to their one real profile.
@@ -7535,7 +7563,19 @@ function saveStudentEdit() {
     orderId: orderId
   }, function(e, d) {
     if (e || !d || d.status !== 'ok') {
-      errEl.textContent = (d && d.reason) ? d.reason : 'Could not save. Please try again.';
+      var reason = (d && d.reason) ? d.reason : 'Could not save. Please try again.';
+      // This specific failure means newId isn't a typo-fix target — it's already a real,
+      // different student row (classic case: the same person enrolled a second time under a
+      // fresh ID instead of being added to their existing one for the new course). Renaming
+      // can never succeed here; offer the actual fix — merging the two records — instead of
+      // just showing the raw Postgres error and leaving the counsellor stuck.
+      var isDupKeyCollision = newId !== oldId.toUpperCase() &&
+        /23505|duplicate key|students_pkey/i.test(reason);
+      if (isDupKeyCollision) {
+        offerStudentMerge(oldId, newId, errEl);
+        return;
+      }
+      errEl.textContent = reason;
       errEl.style.display = 'block'; return;
     }
     closeStudentEditModal();
@@ -7560,6 +7600,47 @@ function saveStudentEdit() {
       filterAlumniTable();
     } else {
       renderStudentList(batch);
+    }
+  });
+}
+
+// Offered when saveStudentEdit's rename hits a real, existing student under the target ID —
+// the actual fix is merging the two records, not renaming. fromId is the duplicate/erroneous
+// ID being retired (what the counsellor was trying to rename FROM); toId is the real,
+// pre-existing ID being kept.
+function offerStudentMerge(fromId, toId, errEl) {
+  var proceed = confirm(
+    'Student ID ' + toId + ' already belongs to an existing student record — that\'s likely the ' +
+    'same person, enrolled under two different IDs by mistake.\n\n' +
+    'Merge instead? This moves every attendance, fee, marks, and CRM record currently under ' +
+    fromId + ' onto ' + toId + ', then removes the now-empty ' + fromId + ' record. ' +
+    toId + ' is kept as the one true Student ID — nothing is lost.'
+  );
+  if (!proceed) {
+    errEl.textContent = toId + ' already belongs to a different student — merge was cancelled, so nothing changed.';
+    errEl.style.display = 'block';
+    return;
+  }
+  gasGet({ action: 'mergeStudentRecords', fromId: fromId, toId: toId }, function(e, d) {
+    if (e || !d || (d.status !== 'ok' && d.status !== 'partial')) {
+      errEl.textContent = (d && d.message) || 'Merge failed — please try again.';
+      errEl.style.display = 'block';
+      return;
+    }
+    if (d.status === 'partial') {
+      errEl.textContent = d.message || 'Merge partially completed — some records could not be moved.';
+      errEl.style.display = 'block';
+      showToast('Merge partially completed — check the details below.', 'error');
+      return;
+    }
+    closeStudentEditModal();
+    showToast('Merged ' + fromId + ' into ' + toId + ' ✓', 'success');
+    var alumniTab = document.getElementById('t-alumni');
+    if (alumniTab && alumniTab.classList.contains('active')) {
+      loadAlumniData();
+    } else {
+      var batch = (document.getElementById('st-edit-batch') || {}).value || '';
+      if (batch) renderStudentList(batch);
     }
   });
 }

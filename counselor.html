@@ -8415,7 +8415,7 @@ function openBackfillModal() {
   modal.id = 'backfill-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
   modal.innerHTML =
-    '<div style="background:#fff;border-radius:12px;padding:24px 28px;width:640px;max-width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">' +
+    '<div style="background:#fff;border-radius:12px;padding:24px 28px;width:960px;max-width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">' +
       '<h3 style="margin:0 0 4px;font-size:17px;color:#0d1b2e">📋 Backfill Historical Fee Record</h3>' +
       '<p style="margin:0 0 16px;font-size:12.5px;color:#666">For real sales made before this portal tracked fees. Only April, May, and June 2026 are allowed here.</p>' +
 
@@ -8444,7 +8444,7 @@ function openBackfillModal() {
         '<div id="bf-rows-table"></div>' +
         '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
           '<button onclick="_backfillAddRow()" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">+ Add Student Row</button>' +
-          '<label style="padding:7px 12px;border:1px dashed #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📄 Upload CSV (Student, CourseFee, DiscountPct, InvoiceNumber, HomeState)' +
+          '<label style="padding:7px 12px;border:1px dashed #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📄 Upload CSV (Student, StudentID, CourseFee, DiscountPct, InvoiceNumber, HomeCentre)' +
             '<input type="file" accept=".csv" style="display:none" onchange="_backfillUploadCsv(this)"></label>' +
         '</div>' +
       '</div>' +
@@ -8521,13 +8521,28 @@ function _backfillShowRowsSection() {
   document.getElementById('bf-save').disabled = false;
   document.getElementById('bf-find-batch-btn').disabled = true;
   ['bf-month','bf-centre','bf-course','bf-batch-date'].forEach(function(id){ document.getElementById(id).disabled = true; });
+  _backfillFillCatalogFees(); // now that the course is known, default any blank Course Fee rows to catalog price
+}
+
+// Catalog fee for whatever course this backfill batch is for — '' (blank) if the course
+// isn't in COURSE_FEES_JS, so we never silently write a wrong ₹0 default.
+function _backfillCatalogFee() {
+  var course = _backfillState && _backfillState.course;
+  if (!course || typeof COURSE_FEES_JS === 'undefined' || !COURSE_FEES_JS[course]) return '';
+  return COURSE_FEES_JS[course].fee || '';
 }
 
 function _backfillAddRow(prefill) {
   // invDate defaults to whatever Payment Date is currently set (usually blank until
   // Find/Create Batch has run) but is independently editable per row — a row's actual
   // invoice date doesn't have to match the batch start date used to create/find the batch.
-  _backfillState.rows.push(Object.assign({ name: '', fee: '', discPct: '', invNum: '', invDate: _backfillState.batchDate || '' }, prefill || {}));
+  // fee defaults to the course's catalog price (COURSE_FEES_JS) once the course is known —
+  // still fully editable per row for a genuinely different negotiated price, but the common
+  // case (full catalog price) no longer needs re-typing for every single student.
+  _backfillState.rows.push(Object.assign({
+    studentId: '', name: '', homeCentre: '', fee: _backfillCatalogFee(), discPct: '0', invNum: '',
+    invDate: _backfillState.batchDate || ''
+  }, prefill || {}));
   _backfillRenderRows();
 }
 function _backfillRemoveRow(idx) {
@@ -8536,23 +8551,56 @@ function _backfillRemoveRow(idx) {
 }
 function _backfillUpdateRow(idx, field, val) {
   _backfillState.rows[idx][field] = val;
+  if (field === 'fee' || field === 'discPct') _backfillRecalcNet(idx);
+}
+// Fills in the catalog fee for any row that's still blank — called after Find/Create Batch
+// resolves the course, since rows added before that point (the starter row) had no course
+// to default from yet.
+function _backfillFillCatalogFees() {
+  var catalogFee = _backfillCatalogFee();
+  if (!catalogFee) return;
+  _backfillState.rows.forEach(function(r) { if (!r.fee) r.fee = catalogFee; });
+  _backfillRenderRows();
+}
+function _backfillNetPayable(fee, discPct) {
+  var f = Number(fee) || 0, d = Number(discPct) || 0;
+  return Math.round(f * (1 - d / 100) * 1.18);
+}
+function _backfillRecalcNet(idx) {
+  var el = document.getElementById('bf-net-' + idx);
+  if (!el) return;
+  var r = _backfillState.rows[idx];
+  el.textContent = money(_backfillNetPayable(r.fee, r.discPct));
+}
+function _backfillCentreOptionsHtml(selected) {
+  var opts = '<option value=""' + (selected ? '' : ' selected') + '>— Not specified —</option>';
+  (typeof CENTRES !== 'undefined' ? CENTRES : []).forEach(function(c) {
+    opts += '<option value="' + escC(c) + '"' + (c === selected ? ' selected' : '') + '>' + escC(c) + '</option>';
+  });
+  return opts;
 }
 function _backfillRenderRows() {
   var wrap = document.getElementById('bf-rows-table');
   if (!wrap) return;
   wrap.innerHTML =
     '<div style="font-size:11px;color:#6b7280;margin-bottom:6px">💡 <strong>Centre</strong> above is which batch they attended — every student here shares it. If a student is actually ' +
-    'from a different city (e.g. travelled to Mumbai for this course), note that in their own <strong>Home State/City</strong> column instead — it doesn\'t change which batch or revenue centre they\'re counted under.</div>' +
+    'from a different centre (e.g. travelled to Mumbai for this course), pick their own <strong>Home Centre</strong> below instead — it doesn\'t change which batch or revenue centre they\'re counted under. ' +
+    'Course Fee defaults to the catalog price for this course — edit it only if this student genuinely paid a different amount.</div>' +
     '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
-    '<th>S.No</th><th class="text-left">Student Name</th><th class="text-left">Home State/City</th><th>Course Fee</th><th>Discount %</th><th class="text-left">Invoice #</th><th class="text-left">Invoice Date</th><th></th>' +
+    '<th>S.No</th><th class="text-left" style="min-width:70px">Student ID<br><span style="font-weight:400;color:#9ca3af">(optional)</span></th>' +
+    '<th class="text-left" style="min-width:220px">Student Name</th><th class="text-left">Home Centre</th>' +
+    '<th>Course Fee</th><th>Discount %</th><th>Net Payable</th><th class="text-left">Invoice #</th><th class="text-left">Invoice Date</th><th></th>' +
     '</tr></thead><tbody>' +
     _backfillState.rows.map(function(r, idx) {
       return '<tr>' +
         '<td>' + (idx+1) + '</td>' +
-        '<td><input value="' + escC(r.name) + '" oninput="_backfillUpdateRow(' + idx + ',\'name\',this.value)" style="width:100%;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
-        '<td><input value="' + escC(r.homeState || '') + '" placeholder="e.g. Jaipur, Rajasthan" oninput="_backfillUpdateRow(' + idx + ',\'homeState\',this.value)" style="width:130px;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
-        '<td><input type="number" value="' + escC(r.fee) + '" oninput="_backfillUpdateRow(' + idx + ',\'fee\',this.value)" style="width:90px;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
+        '<td><input value="' + escC(r.studentId || '') + '" placeholder="auto" title="Leave blank to auto-generate the next ID. Enter one if the student already has a real enrollment/ID number from when they actually paid." oninput="_backfillUpdateRow(' + idx + ',\'studentId\',this.value)" style="width:70px;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
+        '<td><input value="' + escC(r.name) + '" oninput="_backfillUpdateRow(' + idx + ',\'name\',this.value)" style="width:100%;min-width:200px;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px"></td>' +
+        '<td><select onchange="_backfillUpdateRow(' + idx + ',\'homeCentre\',this.value)" style="width:130px;padding:5px;border:1px solid #d1d5db;border-radius:5px">' +
+          _backfillCentreOptionsHtml(r.homeCentre || '') + '</select></td>' +
+        '<td><input type="number" value="' + escC(r.fee) + '" oninput="_backfillUpdateRow(' + idx + ',\'fee\',this.value)" style="width:100px;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
         '<td><input type="number" value="' + escC(r.discPct) + '" oninput="_backfillUpdateRow(' + idx + ',\'discPct\',this.value)" style="width:70px;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
+        '<td style="text-align:right;font-weight:600;color:#0d1b2e;white-space:nowrap" id="bf-net-' + idx + '">' + money(_backfillNetPayable(r.fee, r.discPct)) + '</td>' +
         '<td><input value="' + escC(r.invNum) + '" oninput="_backfillUpdateRow(' + idx + ',\'invNum\',this.value)" style="width:100%;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
         '<td><input type="date" value="' + escC(r.invDate || '') + '" oninput="_backfillUpdateRow(' + idx + ',\'invDate\',this.value)" style="width:130px;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
         '<td><button onclick="_backfillRemoveRow(' + idx + ')" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:15px">✕</button></td>' +
@@ -8562,11 +8610,14 @@ function _backfillRenderRows() {
 }
 
 // Minimal CSV parser (no external library loaded) — handles a simple comma-separated file
-// with a header row: Student, CourseFee, DiscountPct, InvoiceNumber, InvoiceDate, HomeState
-// (extra/missing columns tolerated; only these six are read). InvoiceDate should be YYYY-MM-DD;
-// if omitted, each imported row falls back to the header-level Payment Date, same as
-// manually-added rows. HomeState/HomeCity is the student's own origin — NOT the batch's
-// delivery centre (that stays fixed for the whole batch, set once above).
+// with a header row: Student, StudentID, CourseFee, DiscountPct, InvoiceNumber, InvoiceDate,
+// HomeCentre (extra/missing columns tolerated; only these seven are read). InvoiceDate should
+// be YYYY-MM-DD; if omitted, each imported row falls back to the header-level Payment Date,
+// same as manually-added rows. CourseFee is optional — if omitted or blank for a row, it
+// defaults to the course's catalog price, same as manually-added rows. StudentID is optional
+// — leave blank to auto-generate; only set it if the student already has a real ID from when
+// they actually paid. HomeCentre is the student's own origin — NOT the batch's delivery
+// centre (that stays fixed for the whole batch, set once above).
 function _backfillUploadCsv(input) {
   var file = input.files && input.files[0];
   if (!file) return;
@@ -8577,24 +8628,29 @@ function _backfillUploadCsv(input) {
     if (lines.length < 2) { showToast('CSV has no data rows.', 'error'); return; }
     var headers = lines[0].split(',').map(function(h){ return h.trim().toLowerCase(); });
     var idxName = headers.indexOf('student'); if (idxName < 0) idxName = headers.indexOf('name');
+    var idxId = headers.indexOf('studentid');
     var idxFee = headers.indexOf('coursefee');
     var idxDisc = headers.indexOf('discountpct');
     var idxInv = headers.indexOf('invoicenumber');
     var idxInvDate = headers.indexOf('invoicedate');
-    var idxHomeState = headers.indexOf('homestate'); if (idxHomeState < 0) idxHomeState = headers.indexOf('homecity');
-    if (idxName < 0 || idxFee < 0) { showToast('CSV needs at least Student and CourseFee columns.', 'error'); return; }
+    var idxHomeCentre = headers.indexOf('homecentre'); if (idxHomeCentre < 0) idxHomeCentre = headers.indexOf('homestate');
+    if (idxName < 0) { showToast('CSV needs at least a Student column.', 'error'); return; }
     // Clear the one blank starter row before importing, so uploading a CSV right after
     // opening the modal doesn't leave an empty row dangling at the top.
-    if (_backfillState.rows.length === 1 && !_backfillState.rows[0].name && !_backfillState.rows[0].fee) {
+    if (_backfillState.rows.length === 1 && !_backfillState.rows[0].name) {
       _backfillState.rows = [];
     }
+    var catalogFee = _backfillCatalogFee();
     for (var i = 1; i < lines.length; i++) {
       var cols = lines[i].split(',').map(function(c){ return c.trim(); });
       if (!cols[idxName]) continue;
       _backfillState.rows.push({
-        name: cols[idxName] || '', fee: cols[idxFee] || '',
-        discPct: idxDisc >= 0 ? (cols[idxDisc] || '') : '', invNum: idxInv >= 0 ? (cols[idxInv] || '') : '',
-        homeState: idxHomeState >= 0 ? (cols[idxHomeState] || '') : '',
+        studentId: idxId >= 0 ? (cols[idxId] || '') : '',
+        name: cols[idxName] || '',
+        fee: (idxFee >= 0 && cols[idxFee]) ? cols[idxFee] : catalogFee,
+        discPct: (idxDisc >= 0 && cols[idxDisc]) ? cols[idxDisc] : '0',
+        invNum: idxInv >= 0 ? (cols[idxInv] || '') : '',
+        homeCentre: idxHomeCentre >= 0 ? (cols[idxHomeCentre] || '') : '',
         invDate: (idxInvDate >= 0 && cols[idxInvDate]) ? cols[idxInvDate] : (_backfillState.batchDate || '')
       });
     }
@@ -8628,11 +8684,20 @@ function _backfillSaveAll() {
       var matches = (dS && dS.students) || [];
       if (matches.length) warnings.push(row.name + ' — possible existing match: ' + matches.map(function(m){ return m.name + ' (' + m.studentId + ')'; }).join(', '));
 
-      gasGet({ action: 'getNextEnrollment' }, function(e1, d1) {
-        var studentId = (d1 && d1.enrollmentNo) || '';
+      // A manually-typed Student ID (the counsellor's real, already-issued enrollment
+      // number from when the student actually paid) always wins over auto-generation —
+      // addStudent's upsert (on_conflict=student_id) safely attaches this fee record to
+      // that existing student instead of minting a fresh, disconnected ID for them.
+      var manualId = String(row.studentId || '').trim();
+      function withStudentId(cbId) {
+        if (manualId) { cbId(manualId); return; }
+        gasGet({ action: 'getNextEnrollment' }, function(e1, d1) { cbId((d1 && d1.enrollmentNo) || ''); });
+      }
+
+      withStudentId(function(studentId) {
         if (!studentId) { warnings.push(row.name + ' — could not get a Student ID, skipped.'); next(); return; }
         gasGet({ action: 'addStudent', enrollmentNo: studentId, name: row.name, mobile: '', mobileLast4: '',
-          email: '', country: 'India', stateRegion: row.homeState || '', batchCode: _backfillState.batchCode, batchCodes: _backfillState.batchCode
+          email: '', country: 'India', stateRegion: row.homeCentre || '', batchCode: _backfillState.batchCode, batchCodes: _backfillState.batchCode
         }, function(e2, d2) {
           if (e2 || (d2 && d2.status === 'error')) { warnings.push(row.name + ' — could not create student record, skipped.'); next(); return; }
           var net = Math.round(cf * (1 - dp/100) * 1.18);

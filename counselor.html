@@ -8211,12 +8211,11 @@ function renderFeeRecordTab() {
   // GST-inclusive figure used elsewhere, e.g. leaderboards). Showing netPayable (which nets
   // out the discount and adds GST) here would make this ledger disagree with the Revenue tab
   // it's meant to reconcile against, which defeats the whole point of the tab.
-  var gTotal = { courseFee:0, gst:0, discount:0, revenue:0, collected:0, balance:0, count:0 };
+  var gTotal = { courseFee:0, gst:0, revenue:0, collected:0, balance:0, count:0 };
   rows.forEach(function(r) {
     var revenue = Number(r.courseFee) || 0;
     gTotal.courseFee += Number(r.courseFee)   || 0;
     gTotal.gst        += Number(r.gstAmount)   || 0;
-    gTotal.discount    += Number(r.discountAmt) || 0;
     gTotal.revenue     += revenue;
     gTotal.collected  += Number(r.collected)   || 0;
     gTotal.balance     += Number(r.outstanding) || 0;
@@ -8241,12 +8240,11 @@ function renderFeeRecordTab() {
   var html = '';
   monthKeys.forEach(function(mk) {
     var mRows = groups[mk].slice().sort(function(a,b){ return (a.studentName||'').localeCompare(b.studentName||''); });
-    var mTotal = { courseFee:0, gst:0, discount:0, revenue:0, collected:0, balance:0 };
+    var mTotal = { courseFee:0, gst:0, revenue:0, collected:0, balance:0 };
     var bodyRows = mRows.map(function(r, idx) {
       var revenue = Number(r.courseFee) || 0;
       mTotal.courseFee += Number(r.courseFee)   || 0;
       mTotal.gst        += Number(r.gstAmount)   || 0;
-      mTotal.discount    += Number(r.discountAmt) || 0;
       mTotal.revenue     += revenue;
       mTotal.collected  += Number(r.collected)   || 0;
       mTotal.balance     += Number(r.outstanding) || 0;
@@ -8259,7 +8257,7 @@ function renderFeeRecordTab() {
         '<td style="font-family:\'JetBrains Mono\',monospace">' + (r.invoiceNumber ? escC(r.invoiceNumber) : '<span style="color:var(--muted)">—</span>') + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace">' + money(r.courseFee) + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace">' + money(r.gstAmount) + '</td>' +
-        '<td style="font-family:\'JetBrains Mono\',monospace">' + (Number(r.discountAmt) ? money(r.discountAmt) : '—') + '</td>' +
+        '<td style="font-family:\'JetBrains Mono\',monospace">' + (Number(r.discountPct) ? (parseFloat(Number(r.discountPct).toFixed(2)) + '%') : '—') + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace">' + money(revenue) + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace;color:#1a7a3c">' + money(r.collected) + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace;color:' + (Number(r.outstanding) > 0 ? 'var(--red)' : '#1a7a3c') + '">' + money(r.outstanding) + '</td>' +
@@ -8269,7 +8267,7 @@ function renderFeeRecordTab() {
       '<td colspan="6">Total — ' + invMonthLabel(mk) + ' (' + mRows.length + (mRows.length===1?' record':' records') + ')</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(mTotal.courseFee) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(mTotal.gst) + '</td>' +
-      '<td style="font-family:\'JetBrains Mono\',monospace">' + money(mTotal.discount) + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\',monospace;color:var(--muted)" title="Discount is shown per-student as a %; summing percentages across students isn\'t meaningful">—</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(mTotal.revenue) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace;color:#1a7a3c">' + money(mTotal.collected) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace;color:' + (mTotal.balance > 0 ? 'var(--red)' : '#1a7a3c') + '">' + money(mTotal.balance) + '</td>' +
@@ -8290,7 +8288,7 @@ function renderFeeRecordTab() {
       '<td colspan="6">GRAND TOTAL — ' + monthKeys.length + ' months, ' + gTotal.count + ' records</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.courseFee) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.gst) + '</td>' +
-      '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.discount) + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\',monospace;color:#9aa5b1">—</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.revenue) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.collected) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.balance) + '</td>' +
@@ -8313,31 +8311,34 @@ function downloadFeeRecordCsv() {
   // Revenue column here = courseFee alone (excl. GST) — matches revenue_monthly_achieved.
   // achieved_course_fee, the figure the Revenue tab's target/achieved % is actually built
   // from. Not netPayable (which nets out discount and adds GST).
+  // Discount is shown per-row as a % (not a rupee amount) — Total/Grand Total rows leave it
+  // blank since summing percentages across different students isn't a meaningful number.
   var blank = { SNo:'', Month:'', Counsellor:'', StudentID:'', Student:'', Batch:'', InvoiceNumber:'',
-    CourseFee:'', GST:'', Discount:'', Revenue:'', Collected:'', Balance:'' };
+    CourseFee:'', GST:'', DiscountPct:'', Revenue:'', Collected:'', Balance:'' };
   var csvRows = [];
-  var g = { courseFee:0, gst:0, discount:0, revenue:0, collected:0, balance:0 };
+  var g = { courseFee:0, gst:0, revenue:0, collected:0, balance:0 };
   monthKeys.forEach(function(mk) {
     var mRows = groups[mk].slice().sort(function(a,b){ return (a.studentName||'').localeCompare(b.studentName||''); });
-    var m = { courseFee:0, gst:0, discount:0, revenue:0, collected:0, balance:0 };
+    var m = { courseFee:0, gst:0, revenue:0, collected:0, balance:0 };
     mRows.forEach(function(r, idx) {
       var revenue = Number(r.courseFee) || 0;
       m.courseFee += Number(r.courseFee)||0;   m.gst += Number(r.gstAmount)||0;
-      m.discount  += Number(r.discountAmt)||0; m.revenue += revenue;
+      m.revenue += revenue;
       m.collected += Number(r.collected)||0;   m.balance += Number(r.outstanding)||0;
       csvRows.push(Object.assign({}, blank, { SNo: idx+1, Month: invMonthLabel(mk), Counsellor: r.enteredBy||'',
         StudentID: r.studentId||'', Student: r.studentName||'', Batch: r.batchCode||'', InvoiceNumber: r.invoiceNumber||'',
-        CourseFee: r.courseFee||0, GST: r.gstAmount||0, Discount: r.discountAmt||0, Revenue: revenue,
+        CourseFee: r.courseFee||0, GST: r.gstAmount||0,
+        DiscountPct: Number(r.discountPct) ? parseFloat(Number(r.discountPct).toFixed(2)) : 0, Revenue: revenue,
         Collected: r.collected||0, Balance: r.outstanding||0 }));
     });
     csvRows.push(Object.assign({}, blank, { Month: 'TOTAL — ' + invMonthLabel(mk),
-      CourseFee: m.courseFee, GST: m.gst, Discount: m.discount, Revenue: m.revenue, Collected: m.collected, Balance: m.balance }));
-    g.courseFee += m.courseFee; g.gst += m.gst; g.discount += m.discount;
+      CourseFee: m.courseFee, GST: m.gst, Revenue: m.revenue, Collected: m.collected, Balance: m.balance }));
+    g.courseFee += m.courseFee; g.gst += m.gst;
     g.revenue += m.revenue; g.collected += m.collected; g.balance += m.balance;
   });
   if (monthKeys.length > 1) {
     csvRows.push(Object.assign({}, blank, { Month:'GRAND TOTAL',
-      CourseFee: g.courseFee, GST: g.gst, Discount: g.discount, Revenue: g.revenue, Collected: g.collected, Balance: g.balance }));
+      CourseFee: g.courseFee, GST: g.gst, Revenue: g.revenue, Collected: g.collected, Balance: g.balance }));
   }
 
   var csv = extractRowsToCsv(csvRows);

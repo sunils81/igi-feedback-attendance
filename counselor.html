@@ -6325,7 +6325,8 @@ function cmpShowDailyWelcome() {
   if (!banner || banner.dataset.shown) return;
   const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
   const reconnectedYesterday = cmpProspects.filter(function(p) { return p.last_contacted === yesterdayStr; }).length;
-  const dueToday = cmpProspects.filter(function(p) { return p.is_due_today; }).length;
+  const dueProspects = cmpProspects.filter(function(p) { return p.is_due_today; });
+  const dueToday = dueProspects.length;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : (hour < 17 ? 'Good afternoon' : 'Good evening');
   const firstName = (counselorName || '').split(' ')[0];
@@ -6335,8 +6336,21 @@ function cmpShowDailyWelcome() {
   const revenueThisMonth = cmpConvertedThisMonth();
 
   let msg;
+  let clickable = false;
   if (dueToday > 0) {
-    msg = greeting + ', ' + firstName + ' — ' + dueToday + ' prospect' + (dueToday > 1 ? 's are' : ' is') + ' due for follow-up today.';
+    // Name who's due, not just how many — each name jumps straight to that prospect
+    // (cmpJumpToProspect), and the rest of the banner jumps to the Prospects tab
+    // pre-filtered to Due Today (cmpJumpToDueProspects), so the banner IS the shortcut,
+    // not just a count you then have to go find yourself.
+    const MAX_NAMES = 3;
+    const shown = dueProspects.slice(0, MAX_NAMES);
+    const namesHtml = shown.map(function(p) {
+      return '<span onclick="event.stopPropagation();cmpJumpToProspect(\'' + p.id + '\')" style="text-decoration:underline;cursor:pointer">' + escC(p.name) + '</span>';
+    }).join(', ');
+    const extra = dueToday - shown.length;
+    const namesPart = namesHtml + (extra > 0 ? ' and ' + extra + ' more' : '');
+    msg = greeting + ', ' + firstName + ' — ' + namesPart + (dueToday > 1 ? ' are' : ' is') + ' due for follow-up today.';
+    clickable = true;
   } else if (reconnectedYesterday > 0) {
     msg = greeting + ', ' + firstName + ' — you reconnected with ' + reconnectedYesterday + ' prospect' + (reconnectedYesterday > 1 ? 's' : '') + ' yesterday. Nothing urgent due today.';
   } else if (revenueThisMonth > 0) {
@@ -6345,10 +6359,27 @@ function cmpShowDailyWelcome() {
     const quote = CMP_INSPIRATIONAL_QUOTES[new Date().getDate() % CMP_INSPIRATIONAL_QUOTES.length];
     msg = greeting + ', ' + firstName + ' — “' + quote.text + '” — ' + quote.author;
   }
-  banner.textContent = '✨ ' + msg;
+  banner.innerHTML = '✨ ' + msg;
+  banner.style.cursor = clickable ? 'pointer' : 'default';
+  banner.onclick = clickable ? cmpJumpToDueProspects : null;
   banner.style.display = 'block';
   banner.dataset.shown = '1';
   requestAnimationFrame(function() { banner.style.opacity = '1'; banner.style.transform = 'translateY(0)'; });
+}
+
+// Clicking the welcome banner itself (anywhere but a named prospect) jumps to the
+// Prospects tab pre-filtered to Due Today, same list the banner's count is drawn from.
+function cmpJumpToDueProspects() {
+  switchTab('t-prospects');
+  cmpFilterProspects('due');
+}
+
+// Clicking a specific prospect's name in the welcome banner jumps to the Prospects tab,
+// Due Today filter, and opens that prospect's own detail panel directly.
+function cmpJumpToProspect(id) {
+  switchTab('t-prospects');
+  cmpFilterProspects('due');
+  cmpOpenProspectDetail(id);
 }
 
 // ── CSV Import / Export ──────────────────────────────────────

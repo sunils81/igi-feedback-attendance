@@ -2716,7 +2716,8 @@
               <option value="">Select Source</option>
               <option>Website</option><option>Facebook</option><option>Google</option>
               <option>Walk-In</option><option>Social</option><option>Offline</option>
-              <option>Event</option><option>Google Ads</option><option>Seminar</option>
+              <option>Event</option><option>IIJS Jio World</option><option>IIJS NESCO</option>
+              <option>Google Ads</option><option>Seminar</option>
               <option>Referral</option><option>WhatsApp</option><option>Direct</option>
               <option>Other</option>
             </select>
@@ -18072,6 +18073,11 @@ function openAddLeadModal() {
   (window.crmLeadsList || []).forEach(function(l) {
     if (l.lead_owner && !counsellors.includes(l.lead_owner)) counsellors.push(l.lead_owner);
   });
+  // IIJS 2026: make sure both exhibition counselors always show up as owner
+  // options even if the currently-loaded lead list hasn't included them yet.
+  ['Omkar Kadam', 'Anuradha'].forEach(function(c) {
+    if (!counsellors.includes(c)) counsellors.push(c);
+  });
   var cSel = document.getElementById('crm-new-counsellor');
   var oSel = document.getElementById('crm-new-owner');
   if (cSel) {
@@ -18085,6 +18091,20 @@ function openAddLeadModal() {
 
   // Pre-select current counsellor's centre
   if (centreSel && window.allowedCentres && window.allowedCentres[0]) centreSel.value = window.allowedCentres[0];
+
+  // IIJS 2026 — auto-fill Source + Owner from who's logged in, since Omkar
+  // is working the Jio World stall and Anuradha is working NESCO. Still
+  // editable — this is just a default to cut typing at a busy counter.
+  var IIJS_AUTO = {
+    'Omkar Kadam': { source: 'IIJS Jio World', owner: 'Omkar Kadam' },
+    'Anuradha':    { source: 'IIJS NESCO',     owner: 'Anuradha' }
+  };
+  var autoCfg = IIJS_AUTO[window.counselorName];
+  var sourceSel = document.getElementById('crm-new-source');
+  if (autoCfg) {
+    if (sourceSel) sourceSel.value = autoCfg.source;
+    if (oSel) oSel.value = autoCfg.owner;
+  }
 
   document.getElementById('crm-new-err').style.display = 'none';
   setLeadUploadVia('email');

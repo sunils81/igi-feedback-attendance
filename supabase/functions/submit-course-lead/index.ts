@@ -52,6 +52,13 @@ Deno.serve(async (req: Request) => {
     const course     = clean(body.course);
     const centre     = clean(body.centre);
     const web_meta   = (body.web_meta && typeof body.web_meta === "object") ? body.web_meta : {};
+    // Exhibition QR intake — course-catalog site sends these when the visitor
+    // scanned an event-specific QR code (see EVENT_MAP in index.html). When
+    // present, they override the default "Course Catalog Website" source and
+    // the round-robin/centre assignment below, so a stall lead goes straight
+    // to the counselor working that stall instead of whoever's next in line.
+    const source_override = clean(body.source);
+    const force_owner     = clean(body.force_owner);
 
     // Minimal required-field validation — reject junk/incomplete submits
     // before they ever touch crm_leads.
@@ -99,10 +106,10 @@ Deno.serve(async (req: Request) => {
       await supabase.from("crm_activities").insert({
         lead_id: existing.id,
         activity_type: "note",
-        body: "Repeat enquiry via Course Catalog Website — interested in " +
-          course + " (" + centre + "). Originally logged for " +
+        body: "Repeat enquiry via " + (source_override || "Course Catalog Website") +
+          " — interested in " + course + " (" + centre + "). Originally logged for " +
           existing.course + " (" + existing.centre + ").",
-        actor: "Course Catalog Website",
+        actor: source_override || "Course Catalog Website",
         metadata: web_meta,
       });
 
@@ -119,7 +126,10 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { assignedTo } = await resolveAssignment(supabase, centre);
+    // force_owner (event QR intake) skips round-robin/centre routing entirely —
+    // the lead goes straight to the counselor working that stall.
+    const assignedTo = force_owner || (await resolveAssignment(supabase, centre)).assignedTo;
+    const leadSource = source_override || "Course Catalog Website";
 
     const now = new Date();
     const row = {
@@ -132,11 +142,12 @@ Deno.serve(async (req: Request) => {
       lead_stage: "New",
       lead_sub_stage: "Untouched",
       lead_owner: assignedTo,
-      source: "Course Catalog Website",
+      source: leadSource,
       lead_score: 10,
       web_meta,
       notes: "[" + now.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) +
-        " IST] Lead submitted via Course Catalog website, auto-assigned to " + assignedTo,
+        " IST] Lead submitted via " + leadSource + ", " +
+        (force_owner ? "assigned direct to " : "auto-assigned to ") + assignedTo,
     };
 
     const { data: inserted, error: eInsert } = await supabase
@@ -154,8 +165,8 @@ Deno.serve(async (req: Request) => {
     await supabase.from("crm_assignment_log").insert({
       lead_id: inserted.id,
       assigned_to: assignedTo,
-      assigned_by: "Course Catalog Website",
-      method: "auto",
+      assigned_by: leadSource,
+      method: force_owner ? "direct" : "auto",
       location: centre,
     });
 

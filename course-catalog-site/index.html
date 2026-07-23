@@ -1318,6 +1318,7 @@ footer a{color:var(--brass-light); text-decoration:none;}
       <p style="color:rgba(243,239,228,0.72); font-size:15.5px; max-width:400px;">Tell us which course you're interested in — a counsellor from your nearest centre will call you back, usually within one working day.</p>
     </div>
     <div class="form-card" id="enquire">
+      <div id="eventBanner" style="display:none;background:#8a6d2f;color:#fff;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;margin-bottom:16px;"></div>
       <form id="enquiryForm">
         <div class="form-row">
           <div class="field"><label for="fname">First Name *</label><input id="fname" name="first_name" required placeholder="Riya"></div>
@@ -2296,9 +2297,27 @@ window.__upcomingBatches = [];
   var SUPABASE_URL = 'https://atbexvtrcopaagcdbpqi.supabase.co';
   var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF0YmV4dnRyY29wYWFnY2RicHFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzNDI0MDgsImV4cCI6MjA5NjkxODQwOH0.4hl6Hs2ZnDW6vSMiRTOkp9sR-93v5dpTjC0uNuticBM';
 
+  // ---- Exhibition QR intake (IIJS) — ?evt=iijs-jio or ?evt=iijs-nesco ----
+  // Each stall gets its own printed QR pointing at this URL with the tag
+  // baked in, so a walk-in scan is auto-attributed to the right event and
+  // the counselor working that stall, no manual tagging needed later.
+  var EVENT_MAP = {
+    'iijs-jio':    { source: 'IIJS Jio World', owner: 'Omkar Kadam', label: "You're enquiring from our IIJS Jio World stall — Omkar will follow up." },
+    'iijs-nesco':  { source: 'IIJS NESCO',     owner: 'Anuradha',    label: "You're enquiring from our IIJS NESCO stall — Anuradha will follow up." }
+  };
+  var evtKey = new URLSearchParams(window.location.search).get('evt') || '';
+  var evtInfo = EVENT_MAP[evtKey] || null;
+
   var form = document.getElementById('enquiryForm');
   var btn = document.getElementById('submitBtn');
   var msg = document.getElementById('formMsg');
+
+  if (evtInfo) {
+    var banner = document.getElementById('eventBanner');
+    if (banner) { banner.textContent = evtInfo.label; banner.style.display = 'block'; }
+    // Both IIJS venues are in Mumbai — default it, still editable.
+    if (form.centre && !form.centre.value) form.centre.value = 'Mumbai';
+  }
 
   form.addEventListener('submit', function(e){
     e.preventDefault();
@@ -2318,9 +2337,15 @@ window.__upcomingBatches = [];
         page: window.location.pathname,
         referrer: document.referrer || 'direct',
         utm_source: new URLSearchParams(window.location.search).get('utm_source') || '',
-        submitted_at: new Date().toISOString()
+        submitted_at: new Date().toISOString(),
+        event: evtKey || ''
       }
     };
+
+    if (evtInfo) {
+      payload.source = evtInfo.source;
+      payload.force_owner = evtInfo.owner;
+    }
 
     fetch(SUPABASE_URL + '/functions/v1/submit-course-lead', {
       method: 'POST',

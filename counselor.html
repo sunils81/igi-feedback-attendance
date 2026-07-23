@@ -8340,13 +8340,23 @@ function renderFeeRecordTab() {
   }
 
   // Grand totals across every row currently in view (all months, if no month filter applied).
-  // Revenue is deliberately courseFee ALONE, excl. GST, NOT netPayable — that matches
-  // revenue_monthly_achieved.achieved_course_fee, which is what the Revenue tab's "Total
-  // Achieved" / target-vs-achieved % is actually computed from (both the target and achieved
-  // figures shown there are stated excl. GST — achieved_course_fee_gst is a separate,
+  // Revenue is deliberately courseFee ALONE, excl. GST, NOT netPayable — same convention as
+  // revenue_monthly_achieved.achieved_course_fee (both the target and achieved figures on
+  // the Revenue tab are stated excl. GST — achieved_course_fee_gst is a separate,
   // GST-inclusive figure used elsewhere, e.g. leaderboards). Showing netPayable (which nets
-  // out the discount and adds GST) here would make this ledger disagree with the Revenue tab
-  // it's meant to reconcile against, which defeats the whole point of the tab.
+  // out the discount and adds GST) here would make comparing the two even more confusing
+  // than it already can be.
+  //
+  // IMPORTANT: this total is NOT guaranteed to equal the Revenue tab's "Total Achieved".
+  // That figure is a counsellor-entered, per-month number that locks after saving (see the
+  // Revenue tab's "Enter monthly revenue below... each month locks after saving") — it's
+  // the officially recognized achievement for target-tracking, not a live derivation from
+  // student_fees. This ledger is a live sum of the fee records currently on file, so it can
+  // legitimately run ahead of (or behind) a month that hasn't been re-entered/locked there
+  // yet — e.g. a fee record backfilled after that month was already locked. Confirmed with
+  // Preethy 2026-07-23: her Revenue tab figure (₹15,55,510) is the correct one; this tab's
+  // total should NOT be force-synced to match it. Use this tile to spot months worth
+  // reconciling by hand, not as an automatic source of truth to overwrite the Revenue tab.
   //
   // ownRevenue — since this tab is now centre-scoped (see feeRecordFilteredRows), `revenue`
   // below is the WHOLE centre's course fee, which can include sales credited to other
@@ -8369,8 +8379,14 @@ function renderFeeRecordTab() {
   summary.style.display = 'grid';
   summary.innerHTML =
     '<div class="summary-tile"><div class="k">Records</div><div class="v">' + gTotal.count + '</div><div class="s">Matching current filters</div></div>' +
-    '<div class="summary-tile"><div class="k">' + (isAdmin ? 'Revenue' : 'Centre Revenue') + '</div><div class="v">' + money(gTotal.revenue) + '</div><div class="s">Excl. GST' + (isAdmin ? ' · matches the Revenue tab' : ' · everyone\'s sales in this centre') + '</div></div>' +
-    (isAdmin ? '' : '<div class="summary-tile"><div class="k">Your Revenue</div><div class="v">' + money(gTotal.ownRevenue) + '</div><div class="s">Excl. GST · matches the Revenue tab</div></div>') +
+    '<div class="summary-tile"><div class="k">' + (isAdmin ? 'Revenue' : 'Centre Revenue') + '</div><div class="v">' + money(gTotal.revenue) + '</div><div class="s">Excl. GST' + (isAdmin ? ' · sum of fee records for this counsellor' : ' · everyone\'s sales in this centre') + '</div></div>' +
+    // "Your Revenue" is a straight sum of this counsellor's own fee records, excl. GST —
+    // useful for reconciling against the Revenue tab, but NOT guaranteed to equal it: the
+    // Revenue tab's own "Total Achieved" is a counsellor-entered, per-month figure that
+    // locks after saving, so it can legitimately differ from the raw fee-record total (a
+    // month not yet updated there, a record backfilled after that month was locked, etc.).
+    // Said "matches the Revenue tab" here previously, which overstated the guarantee.
+    (isAdmin ? '' : '<div class="summary-tile"><div class="k">Your Revenue</div><div class="v">' + money(gTotal.ownRevenue) + '</div><div class="s">Excl. GST · sum of your fee records — reconcile against the Revenue tab, may not match exactly</div></div>') +
     '<div class="summary-tile ok"><div class="k">Collected</div><div class="v">' + money(gTotal.collected) + '</div><div class="s">' + Math.round(gTotal.collected / Math.max(gTotal.revenue,1) * 100) + '% collected</div></div>' +
     '<div class="summary-tile ' + (gTotal.balance ? 'warn' : 'ok') + '"><div class="k">Balance</div><div class="v">' + money(gTotal.balance) + '</div><div class="s">Still outstanding</div></div>';
 

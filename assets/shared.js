@@ -2027,8 +2027,13 @@ window.gasGet = (function () {
       var centresFilter = (p && p.centres && String(p.centres).trim())
         ? String(p.centres).split(',').map(function (c) { return c.trim().toLowerCase(); }).filter(Boolean)
         : null;
+      // Optional single-student filter — lets h_getGemAFoundationStatus (student portal
+      // side, below) reuse this exact same qualification logic for "am I a candidate?"
+      // instead of re-deriving it a second time.
+      var studentIdFilter = (p && p.studentId) ? String(p.studentId).trim() : '';
       var pool = (d.alumni || []).filter(function (a) {
         if (a.course !== 'Graduate Gemologist') return false; // must be GG (both DG + CSG)
+        if (studentIdFilter && String(a.studentId) !== studentIdFilter) return false;
         if (centresFilter && (!a.centre || centresFilter.indexOf(a.centre.toLowerCase()) === -1)) return false;
         if ((a.allCourses || []).indexOf(GEMA_FOUNDATION_COURSE) !== -1) return false; // already enrolled
         // Active (ongoing batch) or Completed both qualify — Inactive/withdrawn does not.
@@ -2057,6 +2062,106 @@ window.gasGet = (function () {
           });
           cb(null, { status: 'ok', count: candidates.length, candidates: candidates });
         });
+      });
+    });
+  }
+
+  // Source values on the crm_leads row distinguish how a Gem-A Foundation lead came to
+  // exist — used purely to pick the right copy on the student portal side (a self-serve
+  // "thanks, your counsellor will reach out" vs. an invite acknowledgement), not for any
+  // different backend handling.
+  var GEMA_SELF_SERVE_SOURCE = 'Student Self-Serve';
+  var GEMA_INVITE_SOURCE = 'Counsellor Invite - Gem-A Foundation';
+
+  /* h_getGemAFoundationStatus — the student-portal counterpart to h_getGemAFoundationCandidates
+     above. For one specific logged-in student, answers "where do they stand on Gem-A
+     Foundation right now?" so the Career Path tab and the Today-tab nudge banner know which
+     of four states to render:
+       - 'invited'    — a counsellor has already invited them (crm_leads row exists, sourced
+                         from h_inviteToGemAFoundation) — show the achievement-based nudge.
+       - 'self_serve' — they already expressed interest themselves (crm_leads row exists,
+                         sourced from h_expressGemAInterest) — show a thank-you, not the button.
+       - 'candidate'  — no lead yet, but h_getGemAFoundationCandidates' own qualification
+                         logic (reused here via its studentId filter, not re-derived) says
+                         they'd qualify — show the nudge banner same as 'invited'.
+       - 'none'       — nothing to show; the Career Path tab still renders for everyone
+                         (it's evergreen career content), just without a personalized banner
+                         or with the plain "I'm interested" self-serve button available. */
+  function h_getGemAFoundationStatus(p, cb) {
+    var sid = String(p && p.studentId || '').trim();
+    if (!sid) { cb(null, { status: 'error', reason: 'missing_student_id' }); return; }
+    GET('crm_leads', 'student_id=eq.' + encodeURIComponent(sid) + '&course=eq.' + encodeURIComponent(GEMA_FOUNDATION_COURSE) + '&select=source&order=created_at.desc&limit=1', function (e, leadRows) {
+      if (leadRows && leadRows.length) {
+        cb(null, { status: 'ok', state: leadRows[0].source === GEMA_SELF_SERVE_SOURCE ? 'self_serve' : 'invited' });
+        return;
+      }
+      h_getGemAFoundationCandidates({ studentId: sid }, function (e2, d2) {
+        var isCandidate = !!(d2 && d2.candidates && d2.candidates.length);
+        cb(null, { status: 'ok', state: isCandidate ? 'candidate' : 'none' });
+      });
+    });
+  }
+
+  /* h_expressGemAInterest — the student's own "I'm interested" click on the Career Path tab.
+     Creates a normal crm_leads row (source GEMA_SELF_SERVE_SOURCE) so it shows up in the
+     counsellor's existing CRM tab exactly like any other lead — no separate notification
+     plumbing needed, the CRM pipeline already does that job. Looks up the student's own
+     mobile/email/centre server-side (from `students`/`batches`) rather than trusting the
+     client to supply them, since the portal session never exposes a student's own full
+     mobile number to the browser (only the last 4 digits, used for login). */
+  function h_expressGemAInterest(p, cb) {
+    var sid = String(p && p.studentId || '').trim();
+    if (!sid) { cb(null, { status: 'error', reason: 'missing_student_id' }); return; }
+    GET('crm_leads', 'student_id=eq.' + encodeURIComponent(sid) + '&course=eq.' + encodeURIComponent(GEMA_FOUNDATION_COURSE) + '&select=id&limit=1', function (eCheck, existing) {
+      if (existing && existing.length) { cb(null, { status: 'ok', alreadyExists: true }); return; }
+      GET('students', 'student_id=eq.' + encodeURIComponent(sid) + '&select=name,mobile,email,batch_code', function (eS, sRows) {
+        if (eS || !sRows || !sRows.length) { cb(null, { status: 'error', reason: 'student_not_found' }); return; }
+        var s = sRows[0];
+        GET('batches', 'batch_code=eq.' + encodeURIComponent(s.batch_code || '') + '&select=centre', function (eB, bRows) {
+          var centre = (bRows && bRows[0] && bRows[0].centre) || '';
+          var nameParts = String(s.name || '').trim().split(/\s+/);
+          var row = {
+            first_name: nameParts[0] || s.name || '', last_name: nameParts.slice(1).join(' '),
+            mobile: s.mobile || '', email: s.email || '',
+            course: GEMA_FOUNDATION_COURSE, centre: centre,
+            lead_stage: 'New', source: GEMA_SELF_SERVE_SOURCE, student_id: sid,
+            notes: 'Self-serve interest via student portal Career Path tab'
+          };
+          h_assignLeadRoundRobin({ centre: centre }, function (eAssign, aRes) {
+            row.lead_owner = (aRes && aRes.assignedTo) || '';
+            POST('crm_leads', '', row, function (eCreate) {
+              cb(null, eCreate ? { status: 'error', reason: String(eCreate) } : { status: 'ok' });
+            });
+          });
+        });
+      });
+    });
+  }
+
+  /* h_inviteToGemAFoundation — the counsellor-side "Invite" action on the Gem-A Foundation
+     candidates banner in counselor.html. Creates the same kind of crm_leads row as
+     h_expressGemAInterest, just sourced differently (GEMA_INVITE_SOURCE, lead_owner is the
+     inviting counsellor rather than a round-robin assignment) — this single row is also
+     exactly what makes the student stop appearing in h_getGemAFoundationCandidates (which
+     already excludes anyone with a Gem-A Foundation lead) and start seeing the personalized
+     nudge on their own portal (h_getGemAFoundationStatus), so no separate "invited" flag or
+     table is needed — the lead row itself is the signal. */
+  function h_inviteToGemAFoundation(p, cb) {
+    var sid = String(p && p.studentId || '').trim();
+    if (!sid) { cb(null, { status: 'error', reason: 'missing_student_id' }); return; }
+    GET('crm_leads', 'student_id=eq.' + encodeURIComponent(sid) + '&course=eq.' + encodeURIComponent(GEMA_FOUNDATION_COURSE) + '&select=id&limit=1', function (eCheck, existing) {
+      if (existing && existing.length) { cb(null, { status: 'ok', alreadyExists: true }); return; }
+      var nameParts = String(p.studentName || '').trim().split(/\s+/);
+      var row = {
+        first_name: nameParts[0] || p.studentName || '', last_name: nameParts.slice(1).join(' '),
+        mobile: p.mobile || '', email: p.email || '',
+        course: GEMA_FOUNDATION_COURSE, centre: p.centre || '',
+        lead_stage: 'Alumni / Upsell', lead_owner: p.counsellor || '',
+        source: GEMA_INVITE_SOURCE, student_id: sid,
+        notes: 'Invited to Gem-A Foundation from candidates banner by ' + (p.counsellor || '')
+      };
+      POST('crm_leads', '', row, function (eCreate) {
+        cb(null, eCreate ? { status: 'error', reason: String(eCreate) } : { status: 'ok' });
       });
     });
   }
@@ -8583,6 +8688,9 @@ window.gasGet = (function () {
       case 'getReferralNudges':         return h_getReferralNudges(params, cb);
       case 'dismissReferralNudge':      return h_dismissReferralNudge(params, cb);
       case 'getGemAFoundationCandidates': return h_getGemAFoundationCandidates(params, cb);
+      case 'getGemAFoundationStatus':    return h_getGemAFoundationStatus(params, cb);
+      case 'expressGemAInterest':        return h_expressGemAInterest(params, cb);
+      case 'inviteToGemAFoundation':     return h_inviteToGemAFoundation(params, cb);
       case 'globalSearch':              return h_globalSearch(params, cb);
       case 'getOverdueFeesCount':       return h_getOverdueFeesCount(params, cb);
       case 'getFeeRecords':             return h_getFeeRecords(params, cb);

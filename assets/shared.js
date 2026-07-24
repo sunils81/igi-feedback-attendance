@@ -5680,7 +5680,7 @@ window.gasGet = (function () {
   function h_recordConsent(p, cb) {
     var studentId = String(p && p.studentId || '').trim();
     var version = String(p && p.version || '').trim();
-    var action = (p && p.action === 'withdrawn') ? 'withdrawn' : 'granted';
+    var action = (p && p.consentAction === 'withdrawn') ? 'withdrawn' : 'granted';
     if (!studentId || !version) { cb(null, { status: 'error', reason: 'missing_student_id_or_version' }); return; }
     POST('student_consents', '', { student_id: studentId, consent_version: version, action: action }, function (e) {
       cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });

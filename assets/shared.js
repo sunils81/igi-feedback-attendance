@@ -5682,7 +5682,13 @@ window.gasGet = (function () {
     var version = String(p && p.version || '').trim();
     var action = (p && p.consentAction === 'withdrawn') ? 'withdrawn' : 'granted';
     if (!studentId || !version) { cb(null, { status: 'error', reason: 'missing_student_id_or_version' }); return; }
-    POST('student_consents', '', { student_id: studentId, consent_version: version, action: action }, function (e) {
+    // Plain insert, NOT the shared POST() helper — POST() always sends
+    // Prefer: resolution=merge-duplicates, which turns this into an upsert
+    // (INSERT ... ON CONFLICT DO UPDATE). student_consents is deliberately
+    // append-only with no UPDATE policy (see migration comments), so Postgres
+    // rejects the UPDATE half of that upsert and the whole request 401s —
+    // even though every consent row here is a brand-new row, never a conflict.
+    xhr('POST', 'student_consents', '', { student_id: studentId, consent_version: version, action: action }, 'return=representation', function (e) {
       cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
     });
   }

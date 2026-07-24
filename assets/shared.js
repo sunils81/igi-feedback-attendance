@@ -1993,13 +1993,20 @@ window.gasGet = (function () {
      own isGG derivation (the `course === 'Graduate Gemologist'` label it already computes)
      rather than re-deriving GG status a second time.
 
-     A student qualifies if: they're GG; their qualifying batch is already Completed OR is
-     finishing before the program start date (so a counsellor can catch them in time, not
-     just after); they have at least one recorded test score at/above GEMA_MIN_TEST_PCT (a
-     floor, not a ranking — Sunil asked for this list unranked, so results are returned in
-     whatever order the underlying alumni query gives them); and they don't already have a
-     Gem-A Foundation lead or enrollment (checked via crm_leads + their own course history),
-     so this doesn't nag a counsellor about someone already being worked.
+     A student qualifies if: they're GG (h_alumni's isGG only requires having enrolled in
+     both a DG-type and a CSG-type course, not that either is finished, so a student still
+     actively studying one of the two already counts — see status handling below); their
+     status is Active (ongoing batch) or Completed — NOT Inactive/withdrawn; they have at
+     least one recorded test score at/above GEMA_MIN_TEST_PCT (a floor, not a ranking — Sunil
+     asked for this list unranked, so results are returned in whatever order the underlying
+     alumni query gives them); and they don't already have a Gem-A Foundation lead or
+     enrollment (checked via crm_leads + their own course history), so this doesn't nag a
+     counsellor about someone already being worked.
+
+     Ongoing-batch students are deliberately included (not just Completed) — Sunil flagged
+     that with only a short lead window before the program starts, waiting for a student to
+     finish their current batch before reaching out leaves too little runway to convert them.
+     Better to start the conversation while they're still mid-course.
 
      Centre-scoped for non-admins, same convention as h_getReferralNudges. The course name,
      start date, lead window, and score floor are constants on purpose — this is a seasonal,
@@ -2007,7 +2014,7 @@ window.gasGet = (function () {
      these four values, not touching the logic. */
   var GEMA_FOUNDATION_COURSE = 'Gem-A Foundation';
   var GEMA_FOUNDATION_START_DATE = '2026-10-16';
-  var GEMA_LEAD_WINDOW_DAYS = 60; // start surfacing candidates this many days before start
+  var GEMA_LEAD_WINDOW_DAYS = 15; // start surfacing candidates this many days before start
   var GEMA_MIN_TEST_PCT = 60;     // simple "did reasonably well" floor, not a ranking cutoff
   function h_getGemAFoundationCandidates(p, cb) {
     var todayStr = todayYMD();
@@ -2020,15 +2027,12 @@ window.gasGet = (function () {
       var centresFilter = (p && p.centres && String(p.centres).trim())
         ? String(p.centres).split(',').map(function (c) { return c.trim().toLowerCase(); }).filter(Boolean)
         : null;
-      var startMs = new Date(GEMA_FOUNDATION_START_DATE).getTime();
-
       var pool = (d.alumni || []).filter(function (a) {
         if (a.course !== 'Graduate Gemologist') return false; // must be GG (both DG + CSG)
         if (centresFilter && (!a.centre || centresFilter.indexOf(a.centre.toLowerCase()) === -1)) return false;
         if ((a.allCourses || []).indexOf(GEMA_FOUNDATION_COURSE) !== -1) return false; // already enrolled
-        if (!a.endDate) return false;
-        var endMs = new Date(a.endDate).getTime();
-        return a.status === 'Completed' || endMs <= startMs; // done, or finishing in time
+        // Active (ongoing batch) or Completed both qualify — Inactive/withdrawn does not.
+        return a.status === 'Active' || a.status === 'Completed';
       });
       if (!pool.length) { cb(null, { status: 'ok', count: 0, candidates: [] }); return; }
 

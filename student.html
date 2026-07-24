@@ -1762,8 +1762,9 @@ function applyAlumniTabVisibility(d) {
     btn.style.display = alumniOnly ? 'none' : '';
   });
 
-  // If we just hid the tab the student was landed on (default is Today),
-  // move them somewhere still visible — Diploma if graduated, else Alumni.
+  // If we just hid the tab the student was landed on, move them somewhere still visible —
+  // Diploma if graduated, else Alumni. (Default landing tab is Career Path, which is always
+  // visible regardless of alumni status, so this only ever fires for Today/Fees/Assignments.)
   if (alumniOnly && wasActiveOperationalTab) {
     var landingBtn = document.getElementById('nav-tab-diploma') || document.getElementById('nav-tab-alumni');
     if (landingBtn) landingBtn.click();
@@ -1800,13 +1801,17 @@ function renderPortal(d) {
   const todayWrap = document.getElementById('portal-batches-today');
   const coursesWrap = document.getElementById('portal-batches-courses');
 
-  // Reset active tab to Today when rendering the portal
+  // Reset active tab to Career Path when rendering the portal (this is the actual default-
+  // tab switch — the static "active" class in the HTML only matters before this function
+  // ever runs; renderPortal fires on every login AND every session-restore/refresh, and was
+  // previously hardcoded back to Today here, which silently undid any change made to the
+  // markup alone).
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-  const todayTabBtn = document.querySelector('.nav-tab[onclick*="tab-today"]');
-  if (todayTabBtn) todayTabBtn.classList.add('active');
+  const careerPathTabBtn = document.getElementById('nav-tab-careerpath');
+  if (careerPathTabBtn) careerPathTabBtn.classList.add('active');
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  const todayTabContent = document.getElementById('tab-today');
-  if (todayTabContent) todayTabContent.classList.add('active');
+  const careerPathTabContent = document.getElementById('tab-careerpath');
+  if (careerPathTabContent) careerPathTabContent.classList.add('active');
 
   // Restrict Portfolio tab to Jewelry Design and JewelPad students
   const portTab = document.getElementById('nav-tab-portfolio');

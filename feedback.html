@@ -174,25 +174,32 @@
         <div style="font-size:11px;color:var(--muted);margin-top:4px" id="q2-label">Tap to rate</div>
       </div>
 
-      <!-- Q3: Pace -->
+      <!-- Q3: Pace — 1-5 rating (was a Too Slow/Just Right/Too Fast button group; converted
+           to match Q1/Q2's star pattern so admin.html can show a genuine X/5 instead of a
+           fabricated 0/50/100% score derived from a 3-option answer). -->
       <div class="field" style="margin-bottom:20px">
-        <label>Q3 — Pace of the lecture *</label>
-        <div class="pace-btns">
-          <button class="sel-btn" data-g="q3" data-v="Too Slow" onclick="selBtn(this,'q3')">🐢 Too Slow</button>
-          <button class="sel-btn" data-g="q3" data-v="Just Right" onclick="selBtn(this,'q3')">✅ Just Right</button>
-          <button class="sel-btn" data-g="q3" data-v="Too Fast" onclick="selBtn(this,'q3')">🚀 Too Fast</button>
+        <label>Q3 — How was the pace of the lecture? *</label>
+        <div class="stars" id="q3-stars">
+          <span class="star" data-v="1" onclick="setStar('q3',1)">⭐</span>
+          <span class="star" data-v="2" onclick="setStar('q3',2)">⭐</span>
+          <span class="star" data-v="3" onclick="setStar('q3',3)">⭐</span>
+          <span class="star" data-v="4" onclick="setStar('q3',4)">⭐</span>
+          <span class="star" data-v="5" onclick="setStar('q3',5)">⭐</span>
         </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px" id="q3-label">Tap to rate</div>
       </div>
 
-      <!-- Q4: Doubts -->
+      <!-- Q4: Doubts addressed — same conversion, was Yes/Partially/No/No doubts. -->
       <div class="field" style="margin-bottom:20px">
         <label>Q4 — Were your doubts addressed? *</label>
-        <div class="doubt-btns">
-          <button class="sel-btn" data-g="q4" data-v="Yes" onclick="selBtn(this,'q4')">✅ Yes</button>
-          <button class="sel-btn" data-g="q4" data-v="Partially" onclick="selBtn(this,'q4')">🔄 Partially</button>
-          <button class="sel-btn" data-g="q4" data-v="No" onclick="selBtn(this,'q4')">❌ No</button>
-          <button class="sel-btn" data-g="q4" data-v="No doubts" onclick="selBtn(this,'q4')">💡 No doubts</button>
+        <div class="stars" id="q4-stars">
+          <span class="star" data-v="1" onclick="setStar('q4',1)">⭐</span>
+          <span class="star" data-v="2" onclick="setStar('q4',2)">⭐</span>
+          <span class="star" data-v="3" onclick="setStar('q4',3)">⭐</span>
+          <span class="star" data-v="4" onclick="setStar('q4',4)">⭐</span>
+          <span class="star" data-v="5" onclick="setStar('q4',5)">⭐</span>
         </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px" id="q4-label">Tap to rate</div>
       </div>
 
       <!-- Anonymous toggle -->
@@ -273,10 +280,19 @@ if (typeof amtL === 'undefined') {
 
 let verifiedData = {};
 let topicData     = null; // from getExpectedTopic
-const ratings     = {q1:0, q2:0};
-const selections  = {q3:'', q4:'', comp:''};
+const ratings     = {q1:0, q2:0, q3:0, q4:0};
+const selections  = {comp:''};
 let selectedTopic = '';
 const starLabels = ['','Poor','Below Average','Average','Good','Excellent'];
+// Q3/Q4 get their own label wording instead of the generic Poor..Excellent scale.
+// Important: both are satisfaction scales where 5 stars always means "best" — Q3 is NOT
+// "how slow or fast" (that would make 5 stars mean "Too Fast," which is bad, breaking the
+// star convention that more stars = better). It's "how good was the pace," so Too Slow and
+// Too Fast both land near the low end, same as any other quality rating.
+const starLabelsByQ = {
+  q3: ['','Poor Pace','Below Average','Okay','Good','Perfect Pace'],
+  q4: ['','Not Addressed','Barely Addressed','Partially Addressed','Mostly Addressed','Fully Addressed']
+};
 
 document.addEventListener('DOMContentLoaded', function() {
   const params = new URLSearchParams(window.location.search);
@@ -434,7 +450,8 @@ function setStar(q, val) {
     s.classList.toggle('active', i < val);
     s.textContent = i < val ? '⭐' : '☆';
   });
-  document.getElementById(q+'-label').textContent = starLabels[val] + ' (' + val + '/5)';
+  const labels = starLabelsByQ[q] || starLabels;
+  document.getElementById(q+'-label').textContent = labels[val] + ' (' + val + '/5)';
 }
 
 function selBtn(el, group) {
@@ -459,8 +476,8 @@ function submitFeedback() {
   if (!selections.comp) { errEl.textContent='Please select how the session went (Q0 — completion status).'; errEl.classList.add('show'); return; }
   if (!ratings.q1) { errEl.textContent='Please rate the overall lecture (Q1).'; errEl.classList.add('show'); return; }
   if (!ratings.q2) { errEl.textContent='Please rate the clarity of explanation (Q2).'; errEl.classList.add('show'); return; }
-  if (!selections.q3) { errEl.textContent='Please select the lecture pace (Q3).'; errEl.classList.add('show'); return; }
-  if (!selections.q4) { errEl.textContent='Please answer whether doubts were addressed (Q4).'; errEl.classList.add('show'); return; }
+  if (!ratings.q3) { errEl.textContent='Please rate the lecture pace (Q3).'; errEl.classList.add('show'); return; }
+  if (!ratings.q4) { errEl.textContent='Please rate whether your doubts were addressed (Q4).'; errEl.classList.add('show'); return; }
   const q5  = document.getElementById('q5').value.trim();
   const q6  = document.getElementById('q6').value.trim();
   const anon = document.getElementById('anon-toggle').checked;
@@ -478,7 +495,7 @@ function submitFeedback() {
     topic:            finalTopic,
     completionStatus: selections.comp,
     q1: ratings.q1, q2: ratings.q2,
-    q3: selections.q3, q4: selections.q4,
+    q3: ratings.q3, q4: ratings.q4,
     q5, q6,
     anonymous: anon ? 'true' : 'false'
   }, function(e,d) {

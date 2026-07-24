@@ -1278,22 +1278,24 @@
           <span class="star" onclick="setStar('q2',5)">☆</span>
         </div>
       </div>
-      <!-- Q3 + Q4 -->
+      <!-- Q3 + Q4 — 1-5 ratings (was Too Slow/Just Right/Too Fast and Yes/Partially/No
+           button groups; converted to match Q1/Q2's star pattern, see feedback.html for
+           the same change and the reasoning about why these are satisfaction scales, not
+           slow-to-fast scales, so 5 stars always means "best"). -->
       <div style="margin-bottom:16px">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">Q3 — Pace *</div>
-        <div class="sel-btns">
-          <button class="sel-btn" data-g="q3" data-v="Too Slow"  onclick="setSel(this,'q3')">🐢 Too Slow</button>
-          <button class="sel-btn" data-g="q3" data-v="Just Right" onclick="setSel(this,'q3')">✅ Just Right</button>
-          <button class="sel-btn" data-g="q3" data-v="Too Fast"  onclick="setSel(this,'q3')">🚀 Too Fast</button>
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">Q3 — How was the pace? *</div>
+        <div class="stars" id="q3-stars">
+          <span class="star" onclick="setStar('q3',1)">☆</span><span class="star" onclick="setStar('q3',2)">☆</span>
+          <span class="star" onclick="setStar('q3',3)">☆</span><span class="star" onclick="setStar('q3',4)">☆</span>
+          <span class="star" onclick="setStar('q3',5)">☆</span>
         </div>
       </div>
       <div style="margin-bottom:16px">
         <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">Q4 — Doubts addressed? *</div>
-        <div class="sel-btns">
-          <button class="sel-btn" data-g="q4" data-v="Yes"        onclick="setSel(this,'q4')">✅ Yes</button>
-          <button class="sel-btn" data-g="q4" data-v="Partially"  onclick="setSel(this,'q4')">🔄 Partially</button>
-          <button class="sel-btn" data-g="q4" data-v="No"         onclick="setSel(this,'q4')">❌ No</button>
-          <button class="sel-btn" data-g="q4" data-v="No doubts"  onclick="setSel(this,'q4')">💡 No doubts</button>
+        <div class="stars" id="q4-stars">
+          <span class="star" onclick="setStar('q4',1)">☆</span><span class="star" onclick="setStar('q4',2)">☆</span>
+          <span class="star" onclick="setStar('q4',3)">☆</span><span class="star" onclick="setStar('q4',4)">☆</span>
+          <span class="star" onclick="setStar('q4',5)">☆</span>
         </div>
       </div>
       <!-- Anonymous toggle -->
@@ -1450,8 +1452,8 @@ function geoBadgeHTML(geoStatus, geoDistanceM) {
 let activeBatch  = null;  // current batch being submitted
 let topicData    = null;  // from getExpectedTopic
 let studentCalendarMonth = new Date();
-const ratings    = {q1:0, q2:0, qco:0};
-const sels       = {comp:'', q3:'', q4:''};
+const ratings    = {q1:0, q2:0, q3:0, q4:0, qco:0};
+const sels       = {comp:''};
 let selectedTopic = '';
 
 // ── Init ──────────────────────────────────────────────────────
@@ -2241,8 +2243,8 @@ function openFeedback(batchCode) {
   if (!b) return;
   activeBatch = b;
   // Reset
-  ratings.q1=0; ratings.q2=0; ratings.qco=0;
-  sels.comp=''; sels.q3=''; sels.q4='';
+  ratings.q1=0; ratings.q2=0; ratings.q3=0; ratings.q4=0; ratings.qco=0;
+  sels.comp='';
   selectedTopic='';
   document.querySelectorAll('.sel-btn').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.star').forEach(x=>{x.textContent='☆';x.classList.remove('active');});
@@ -2381,8 +2383,8 @@ function submitFeedback() {
   if (!sels.comp) { err.textContent='Please select how the session went.'; err.classList.add('show'); return; }
   if (!ratings.q1){ err.textContent='Please rate the overall lecture (Q1).'; err.classList.add('show'); return; }
   if (!ratings.q2){ err.textContent='Please rate the clarity of explanation (Q2).'; err.classList.add('show'); return; }
-  if (!sels.q3)   { err.textContent='Please select the lecture pace (Q3).'; err.classList.add('show'); return; }
-  if (!sels.q4)   { err.textContent='Please answer whether doubts were addressed (Q4).'; err.classList.add('show'); return; }
+  if (!ratings.q3) { err.textContent='Please rate the lecture pace (Q3).'; err.classList.add('show'); return; }
+  if (!ratings.q4) { err.textContent='Please rate whether your doubts were addressed (Q4).'; err.classList.add('show'); return; }
   const coActive = activeBatch.coInstructorActive && activeBatch.mainInstructor;
   if (coActive && !ratings.qco) { err.textContent='Please rate your regular instructor, '+activeBatch.mainInstructor+'.'; err.classList.add('show'); return; }
   const anon = document.getElementById('anon-chk').checked;
@@ -2407,7 +2409,7 @@ function submitFeedback() {
     topic,
     completionStatus: sels.comp,
     q1: ratings.q1, q2: ratings.q2,
-    q3: sels.q3, q4: sels.q4, q5, q6,
+    q3: ratings.q3, q4: ratings.q4, q5, q6,
     anonymous: anon?'true':'false'
   }, function(e,d) {
     btn.textContent='Submit Attendance & Feedback ✓'; btn.disabled=false;

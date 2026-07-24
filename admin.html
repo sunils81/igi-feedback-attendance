@@ -1899,6 +1899,18 @@
           </div>
         </div>
 
+        <!-- ── LOW INSTRUCTOR RATINGS FLAG — any submission rated below a perfect 5 stars.
+             Reads the same window.__academicAllFeedback data as the Feedback Report table
+             below (no separate fetch), see renderLowRatingFlags() in the script. ── -->
+        <div class="chart-card full" style="margin-top:16px" id="low-rating-flags-card">
+          <div class="chart-title">🚩 Low Instructor Ratings</div>
+          <div class="chart-subtitle">Every feedback submission rated below 5 stars — a perfect score is the only one that doesn't show up here.</div>
+          <div id="low-rating-flags-summary" style="margin-top:6px;font-size:12px;color:var(--muted)"></div>
+          <div id="low-rating-flags-list" style="overflow:auto;max-height:360px;margin-top:10px">
+            <div style="text-align:center;color:var(--muted);padding:16px;font-size:12px">Loading…</div>
+          </div>
+        </div>
+
         <div class="chart-card full" style="margin-top:16px">
           <div class="chart-title">💬 Student Voice — Feedback Report</div>
           <div class="chart-subtitle">One row per submission, newest first &middot; anonymous entries masked appropriately</div>
@@ -1958,8 +1970,8 @@
                   <th class="text-left">Instructor</th>
                   <th class="text-left">Centre</th>
                   <th class="text-left">Course / Batch</th>
-                  <th>Pace %</th>
-                  <th>Doubts Addressed %</th>
+                  <th>Pace (/5)</th>
+                  <th>Doubts Addressed (/5)</th>
                   <th class="text-left">Comments</th>
                   <th>Rating</th>
                 </tr>
@@ -6239,28 +6251,76 @@ function formatFeedbackDate(ts) {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-// Q3/Q4 are button selections (text), not numbers — score them so the table reads as
-// numbers at a glance instead of words, while the original wording is still available
-// on hover (title attribute) for anyone who wants the literal answer.
-// Pace: "Just Right" is the only ideal answer; too slow/too fast are both misses.
-function paceScore(q3) {
-  if (q3 === 'Just Right') return 100;
-  if (q3 === 'Too Slow' || q3 === 'Too Fast') return 0;
-  return null;
+// Q3/Q4 used to be button selections (Too Slow/Just Right/Too Fast, Yes/Partially/No/No
+// doubts) forced into a fake 0/50/100% score. The feedback form (feedback.html + the
+// embedded form in student.html) now submits real 1-5 star ratings for both instead, so
+// these are genuine out-of-5 values, not percentages, for any submission made after that
+// change. Both functions still recognize the old category strings (mapped to a reasonable
+// 1-5 equivalent below) so historical submissions keep displaying instead of going blank —
+// that mapping is a display convenience, not a claim those old answers meant exactly that
+// many stars.
+var LEGACY_PACE_SCORES = { 'Just Right': 5, 'Too Slow': 2, 'Too Fast': 2 };
+var LEGACY_DOUBTS_SCORES = { 'Yes': 5, 'No doubts': 5, 'Partially': 3, 'No': 1 };
+function paceOutOf5(q3) {
+  if (q3 === '' || q3 === null || q3 === undefined) return null;
+  if (LEGACY_PACE_SCORES.hasOwnProperty(q3)) return LEGACY_PACE_SCORES[q3];
+  const n = Number(q3);
+  return (!isNaN(n) && n >= 1 && n <= 5) ? n : null;
 }
-// Doubts addressed: Yes / no doubts to begin with = fully resolved, Partially = half
-// credit, No = unresolved.
-function doubtsScore(q4) {
-  if (q4 === 'Yes' || q4 === 'No doubts') return 100;
-  if (q4 === 'Partially') return 50;
-  if (q4 === 'No') return 0;
-  return null;
+function doubtsOutOf5(q4) {
+  if (q4 === '' || q4 === null || q4 === undefined) return null;
+  if (LEGACY_DOUBTS_SCORES.hasOwnProperty(q4)) return LEGACY_DOUBTS_SCORES[q4];
+  const n = Number(q4);
+  return (!isNaN(n) && n >= 1 && n <= 5) ? n : null;
 }
-function scoreCellHtml(score, label) {
+function ratingCellHtml(score, label) {
   if (score === null) return '<span style="color:var(--muted)">—</span>';
-  const color = score >= 100 ? '#1D9E75' : (score >= 50 ? '#C9A84C' : '#C94A4A');
+  const color = score >= 4 ? '#1D9E75' : (score >= 2.5 ? '#C9A84C' : '#C94A4A');
   const title = label ? ' title="' + escC(label) + '"' : '';
-  return '<span' + title + ' style="font-weight:700;color:' + color + '">' + score + '%</span>';
+  return '<span' + title + ' style="font-weight:700;color:' + color + '">' + score + '/5</span>';
+}
+
+// Low Instructor Ratings flag — every submission where the student's overall Q1 rating is
+// below a perfect 5 stars, per Sunil's explicit "literally anything below 5.0" call. Reads
+// straight from window.__academicAllFeedback (already loaded for the Feedback Report table
+// below), so this needs no extra backend call — just a filter + a different render. Unrated
+// (0) submissions are excluded, since there's nothing to flag if nobody rated.
+function renderLowRatingFlags() {
+  const list = document.getElementById('low-rating-flags-list');
+  const summary = document.getElementById('low-rating-flags-summary');
+  if (!list) return;
+  const all = window.__academicAllFeedback || [];
+  const flagged = all.filter(r => Number(r.rating) > 0 && Number(r.rating) < 5)
+    .sort((a, b) => (a.rating - b.rating) || String(b.timestamp || '').localeCompare(String(a.timestamp || '')));
+  if (summary) {
+    summary.textContent = flagged.length + ' of ' + all.length + ' feedback submissions rated below 5 stars.';
+  }
+  if (!flagged.length) {
+    list.innerHTML = '<div style="text-align:center;color:#059669;padding:16px;font-size:13px;font-weight:600">✅ Every rated submission is a perfect 5 stars.</div>';
+    return;
+  }
+  list.innerHTML = '<table class="compact-table"><thead><tr>' +
+    '<th class="text-left">Date</th><th class="text-left">Instructor</th><th class="text-left">Student</th>' +
+    '<th class="text-left">Centre</th><th class="text-left">Course / Batch</th><th>Rating</th><th class="text-left">Comments</th>' +
+    '</tr></thead><tbody>' +
+    flagged.map(function(r) {
+      const rating = Number(r.rating) || 0;
+      const color = rating >= 4 ? '#C9A84C' : '#C94A4A';
+      const parts = [];
+      if (r.q5) parts.push('<strong>What went well:</strong> ' + escC(r.q5));
+      if (r.q6) parts.push('<strong>Suggestion:</strong> ' + escC(r.q6));
+      const comments = parts.length ? parts.join('<br>') : '<span style="color:var(--muted);font-style:italic">—</span>';
+      return '<tr>' +
+        '<td style="font-size:11px;color:var(--muted)">' + escC(formatFeedbackDate(r.timestamp)) + '</td>' +
+        '<td>' + escC(r.instructor || '—') + '</td>' +
+        '<td>' + escC(r.isAnonymous ? '[Anonymous]' : (r.studentName || '')) + '</td>' +
+        '<td>' + escC(r.centre || '—') + '</td>' +
+        '<td><div>' + escC(r.course || '—') + '</div><div style="font-size:11px;color:var(--muted)">' + escC(r.batchCode || '') + '</div></td>' +
+        '<td style="font-weight:700;color:' + color + '">' + rating.toFixed(1) + ' ★</td>' +
+        '<td>' + comments + '</td>' +
+      '</tr>';
+    }).join('') +
+    '</tbody></table>';
 }
 
 function renderAcademicCommentsList(rows) {
@@ -6283,8 +6343,8 @@ function renderAcademicCommentsList(rows) {
         '<td>' + escC(c.instructor || '—') + '</td>' +
         '<td>' + escC(c.centre || '—') + '</td>' +
         '<td><div>' + escC(c.course || '—') + '</div><div style="font-size:11px;color:var(--muted)">' + escC(c.batchCode || '') + '</div></td>' +
-        '<td class="fb-score">' + scoreCellHtml(paceScore(c.q3), c.q3) + '</td>' +
-        '<td class="fb-score">' + scoreCellHtml(doubtsScore(c.q4), c.q4) + '</td>' +
+        '<td class="fb-score">' + ratingCellHtml(paceOutOf5(c.q3), c.q3) + '</td>' +
+        '<td class="fb-score">' + ratingCellHtml(doubtsOutOf5(c.q4), c.q4) + '</td>' +
         '<td class="fb-comments">' + commentsHtml + '</td>' +
         '<td class="fb-rating" style="color:' + ratingColor + '">' + (rating ? rating.toFixed(1) + ' ★' : '—') + '</td>' +
       '</tr>';
@@ -6378,12 +6438,12 @@ function downloadFeedbackCsv() {
   }
   const lines = [[
     'Session Code', 'Student Name', 'Student ID', 'Anonymous', 'Batch Code', 'Centre', 'Course',
-    'Instructor', 'Topic', 'Rating (/5)', 'Pace %', 'Pace (raw)', 'Doubts Addressed %', 'Doubts Addressed (raw)',
+    'Instructor', 'Topic', 'Rating (/5)', 'Pace (/5)', 'Pace (raw)', 'Doubts Addressed (/5)', 'Doubts Addressed (raw)',
     'Q5 (What Went Well)', 'Q6 (Suggestions)', 'Submitted At'
   ]];
   rows.forEach(r => {
-    const pace = paceScore(r.q3);
-    const doubts = doubtsScore(r.q4);
+    const pace = paceOutOf5(r.q3);
+    const doubts = doubtsOutOf5(r.q4);
     lines.push([
       r.sessionCode || '', r.isAnonymous ? '[Anonymous]' : (r.studentName || ''), r.isAnonymous ? '' : (r.studentId || ''),
       r.isAnonymous ? 'Yes' : 'No', r.batchCode || '', r.centre || '', r.course || '',
@@ -6446,6 +6506,7 @@ function renderAcademicTab() {
     window.__academicAllFeedback = d.allFeedback || [];
     populateAcademicFilterOptions(window.__academicAllFeedback);
     renderAcademicCommentsFiltered();
+    renderLowRatingFlags();
 
     // Attendance
     const attCentres = d.attendance ? Object.values(d.attendance.centres || {}) : [];

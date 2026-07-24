@@ -702,6 +702,7 @@
           <img id="id-card-avatar-img" src="" alt=""
                style="display:none;width:100%;height:100%;object-fit:cover;border-radius:50%;">
         </button>
+        <button class="wb-logout" style="margin-right:6px" onclick="openConsentSettings()" title="View or withdraw your data consent">🔒 Privacy</button>
         <button class="wb-logout" onclick="doLogout()">Sign out</button>
       </div>
     </div>
@@ -742,6 +743,58 @@
           <div style="font-size:12.5px;font-weight:700;color:var(--navy)">Curious what comes after Diamond Graduate / Colored Stone Graduate?</div>
           <div style="font-size:11.5px;color:var(--teal);font-weight:700;margin-top:2px">Explore your Career Path →</div>
         </div>
+      </div>
+    </div>
+
+    <!-- ══ DPDP ACT CONSENT GATE — blocking, shown on every login/session-restore until the
+         student has consented to the CURRENT CONSENT_VERSION (see the JS constant above).
+         NOTE FOR IGI: the Grievance Officer name/email placeholder below (marked
+         [PLACEHOLDER]) is required under DPDP Rule 8 and MUST be filled in with a real
+         contact before this goes live — this text has not been reviewed by legal counsel,
+         it's a reasonable starting draft, not a finished compliance document. ══ -->
+    <div id="dpdp-consent-gate" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,.75);z-index:9800;align-items:center;justify-content:center;padding:16px;overflow-y:auto">
+      <div style="background:var(--white);border-radius:var(--r-md);max-width:560px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:var(--shadow-hover);margin:auto">
+        <div style="background:var(--navy);color:#fff;padding:20px 24px;border-radius:var(--r-md) var(--r-md) 0 0">
+          <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gold-light)">Before you continue</div>
+          <div style="font-size:17px;font-weight:700;margin-top:4px">How we use your information</div>
+        </div>
+        <div style="padding:20px 24px;font-size:12.5px;line-height:1.65;color:var(--navy)">
+          <p>This portal, and IGI more broadly, holds personal information about you as an enrolled student — your name, contact details, attendance, fee and payment records, test results, feedback you submit, and diploma records. In line with India's Digital Personal Data Protection Act, 2023, here's what that means and what you can do about it.</p>
+
+          <div style="font-weight:700;margin-top:14px;margin-bottom:4px">What we collect</div>
+          <p style="margin:0">Your name, Student ID, mobile number, and email; attendance and session records; fee and payment history; test scores and diploma/assessment records; written feedback you submit (with an option to submit it anonymously); and, specifically, your <strong>approximate device location</strong> at the moment you mark attendance or submit feedback — used only to confirm you were near your centre when you did so.</p>
+
+          <div style="font-weight:700;margin-top:14px;margin-bottom:4px">Why we collect it</div>
+          <p style="margin:0">To deliver and administer your course — tracking attendance, recording results, processing fees, issuing diplomas, and improving teaching quality from the feedback you give. Location is used solely for attendance verification, not tracked continuously and not used for any other purpose.</p>
+
+          <div style="font-weight:700;margin-top:14px;margin-bottom:4px">Who it's shared with</div>
+          <p style="margin:0">Your counsellor, instructors, and centre/academic administrators at IGI, strictly for delivering your course. We do not sell your personal data. It may be held with our technology service providers (database/hosting) solely to operate this portal on IGI's behalf.</p>
+
+          <div style="font-weight:700;margin-top:14px;margin-bottom:4px">Your rights</div>
+          <p style="margin:0">You can ask to access, correct, or erase your personal data, and you can withdraw this consent at any time (via the 🔒 Privacy link once you're logged in) — as easily as you're giving it now. Withdrawing consent may limit what this portal can show you, but will not affect your enrollment itself. For any request, contact <strong>[PLACEHOLDER — IGI Grievance Officer name, email, and phone required here]</strong>.</p>
+
+          <label style="display:flex;gap:10px;align-items:flex-start;margin-top:18px;padding:12px;background:var(--gold-pale);border-radius:var(--r-sm);cursor:pointer">
+            <input type="checkbox" id="dpdp-consent-checkbox" onchange="dpdpCheckboxChanged()" style="margin-top:3px;flex-shrink:0;width:auto">
+            <span style="font-size:12.5px;color:var(--navy)">I have read and understood this notice, and I consent to IGI collecting and processing my personal data as described above, for the purpose of delivering academic and administrative services through this portal.</span>
+          </label>
+
+          <button id="dpdp-consent-accept-btn" disabled onclick="acceptDpdpConsent()" style="width:100%;margin-top:14px;background:var(--navy);color:var(--gold-light);border:none;border-radius:24px;padding:13px;font-size:13.5px;font-weight:700;cursor:pointer;opacity:.5">I Agree — Continue</button>
+          <p style="font-size:11px;color:var(--muted);text-align:center;margin:10px 0 0">If you'd prefer not to consent through this portal, please contact your centre directly to discuss alternative arrangements.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ CONSENT SETTINGS / WITHDRAW — opened via the 🔒 Privacy header button. Shows
+         current status and lets a student withdraw consent as easily as they gave it,
+         which the DPDP Act requires — this is NOT hidden behind extra steps compared to
+         the gate above. ══ -->
+    <div id="consent-settings-backdrop" onclick="closeConsentSettings()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9600"></div>
+    <div id="consent-settings-modal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9601;background:var(--white);border-radius:var(--r-md);max-width:420px;width:calc(100% - 32px);box-shadow:var(--shadow-hover);padding:22px 24px">
+      <div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:6px">🔒 Your Data Consent</div>
+      <div id="consent-settings-body" style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:16px">Loading…</div>
+      <div style="display:flex;gap:10px">
+        <button onclick="closeConsentSettings()" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--navy);font-size:13px;font-weight:600;cursor:pointer">Close</button>
+        <button id="consent-withdraw-btn" onclick="withdrawDpdpConsent()" style="flex:1;padding:10px;border:none;border-radius:8px;background:#C94A4A;color:#fff;font-size:13px;font-weight:700;cursor:pointer">Withdraw Consent</button>
       </div>
     </div>
 
@@ -1398,6 +1451,13 @@ if (typeof amtL === 'undefined') {
 const SESSION_KEY = 'igi_student_portal';
 const SESSION_TTL = 12 * 60 * 60 * 1000; // 12 hours
 
+// DPDP Act (Digital Personal Data Protection Act, 2023) consent notice version. Bump this
+// string any time the notice text below materially changes — every student who already
+// consented to an older version gets re-prompted on their next login, since a consent given
+// to different wording shouldn't silently carry over. See student_consents_migration.sql
+// and h_getConsentStatus/h_recordConsent in shared.js.
+const CONSENT_VERSION = 'dpdp-v1-2026-07';
+
 let portalData   = null;  // full response from getStudentPortalData
 let _stuLocation = null;  // {lat, lng, accuracy, resolvedAddress, locationStatus}
 
@@ -1576,11 +1636,18 @@ function fetchPortalData(enrol, mobileLast4, btn, err, silent) {
     localStorage.setItem(SESSION_KEY, JSON.stringify({enrollmentNo:enrolUC, studentId:enrolUC, mobileLast4, savedAt:Date.now()}));
     portalData = d;
     renderPortal(d);
+    // DPDP consent gate — checked fresh on every login AND session-restore (this single
+    // call site covers both, see the two callers of fetchPortalData above). Shows a
+    // blocking overlay on top of whatever renderPortal just drew if the student hasn't
+    // consented to CONSENT_VERSION yet. Location capture is now driven from inside this
+    // check (only once consent is confirmed) rather than firing unconditionally here —
+    // a first-time student who hasn't accepted the notice yet shouldn't have their
+    // location captured before they've even seen it.
+    checkConsentGate();
     // A fresh inspiring quote each time the student actually logs in (or their session
     // auto-restores on page load) — not on the periodic silent refreshPortal() calls,
     // so the quote doesn't change mid-session under someone's nose.
     if (!silent) showSuccessQuoteBanner();
-    captureLocationAndShow(); // record student's location in header
     // Diploma banner check
     setTimeout(function() { _checkAndShowDiplomaBanner(d); }, 2000);
     // Gem-A Foundation / Career Path status check
@@ -1711,6 +1778,107 @@ function expressGemAInterestClick() {
     }
     renderGemACta('self_serve');
     renderGemANudgeBanner('none');
+  });
+}
+
+/* ══ DPDP Act consent gate ══
+   checkConsentGate() runs after every successful renderPortal() (login AND session-restore
+   — both funnel through fetchPortalData, see the single call site there) and shows a
+   blocking overlay if the student hasn't consented to the CURRENT CONSENT_VERSION yet.
+   Deliberately checked fresh every time rather than cached client-side, so a withdrawal
+   made from another device/browser (student_consents is server-side, not localStorage)
+   still takes effect here on next load. */
+function checkConsentGate() {
+  if (!portalData || !portalData.enrollmentNo) return;
+  gasGet({action:'getConsentStatus', studentId: portalData.enrollmentNo, version: CONSENT_VERSION}, function(err, d) {
+    var gate = document.getElementById('dpdp-consent-gate');
+    if (!gate) return;
+    var consented = !err && d && d.status === 'ok' && d.consented;
+    gate.style.display = consented ? 'none' : 'flex';
+    document.body.style.overflow = consented ? '' : 'hidden';
+    // Location is one of the things the notice specifically discloses — only capture it
+    // once consent is actually confirmed, not while the gate is still up.
+    if (consented) captureLocationAndShow();
+  });
+}
+
+function dpdpCheckboxChanged() {
+  var chk = document.getElementById('dpdp-consent-checkbox');
+  var btn = document.getElementById('dpdp-consent-accept-btn');
+  if (!chk || !btn) return;
+  btn.disabled = !chk.checked;
+  btn.style.opacity = chk.checked ? '1' : '.5';
+}
+
+function acceptDpdpConsent() {
+  if (!portalData || !portalData.enrollmentNo) return;
+  var btn = document.getElementById('dpdp-consent-accept-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  gasGet({action:'recordConsent', studentId: portalData.enrollmentNo, version: CONSENT_VERSION, action: 'granted'}, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      if (btn) { btn.disabled = false; btn.textContent = 'I Agree — Continue'; }
+      showToast('Could not save your consent — please try again.');
+      return;
+    }
+    var gate = document.getElementById('dpdp-consent-gate');
+    if (gate) gate.style.display = 'none';
+    document.body.style.overflow = '';
+    showToast('Thank you — your consent has been recorded.');
+    captureLocationAndShow();
+  });
+}
+
+// Opened via the header's 🔒 Privacy button — lets a student check their consent status
+// and withdraw it at any time, without needing to hunt for a hidden settings page.
+function openConsentSettings() {
+  if (!portalData || !portalData.enrollmentNo) return;
+  var backdrop = document.getElementById('consent-settings-backdrop');
+  var modal = document.getElementById('consent-settings-modal');
+  var body = document.getElementById('consent-settings-body');
+  if (!backdrop || !modal || !body) return;
+  body.textContent = 'Checking your consent status…';
+  backdrop.style.display = 'block';
+  modal.style.display = 'block';
+  gasGet({action:'getConsentStatus', studentId: portalData.enrollmentNo, version: CONSENT_VERSION}, function(err, d) {
+    var withdrawBtn = document.getElementById('consent-withdraw-btn');
+    if (err || !d || d.status !== 'ok') {
+      body.textContent = 'Could not load your consent status right now — please try again shortly.';
+      if (withdrawBtn) withdrawBtn.style.display = 'none';
+      return;
+    }
+    if (d.consented) {
+      body.innerHTML = '✅ You have consented to IGI\'s data notice (version ' + escHtmlSt(CONSENT_VERSION) + ').' +
+        (d.latestAt ? '<br><span style="font-size:11px">Given on ' + escHtmlSt(new Date(d.latestAt).toLocaleDateString('en-IN')) + '</span>' : '') +
+        '<br><br>You can withdraw this consent below at any time.';
+      if (withdrawBtn) withdrawBtn.style.display = '';
+    } else {
+      body.textContent = 'You have not currently consented (or have withdrawn consent) — you\'ll be asked to review the notice again the next time you log in.';
+      if (withdrawBtn) withdrawBtn.style.display = 'none';
+    }
+  });
+}
+
+function closeConsentSettings() {
+  var backdrop = document.getElementById('consent-settings-backdrop');
+  var modal = document.getElementById('consent-settings-modal');
+  if (backdrop) backdrop.style.display = 'none';
+  if (modal) modal.style.display = 'none';
+}
+
+function withdrawDpdpConsent() {
+  if (!portalData || !portalData.enrollmentNo) return;
+  if (!confirm('Withdraw your data consent? You\'ll need to review and accept the notice again the next time you log in, and some portal features may be unavailable until you do.')) return;
+  var btn = document.getElementById('consent-withdraw-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Withdrawing…'; }
+  gasGet({action:'recordConsent', studentId: portalData.enrollmentNo, version: CONSENT_VERSION, action: 'withdrawn'}, function(err, d) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Withdraw Consent'; }
+    if (err || !d || d.status !== 'ok') {
+      showToast('Could not withdraw consent — please try again.');
+      return;
+    }
+    closeConsentSettings();
+    showToast('Your consent has been withdrawn.');
+    checkConsentGate();
   });
 }
 

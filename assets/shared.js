@@ -5651,6 +5651,42 @@ window.gasGet = (function () {
     });
   }
 
+  /* ══ DPDP Act consent (student_consents table) ══
+     h_getConsentStatus / h_recordConsent back the student portal's consent gate
+     (student.html). Append-only log, not a single overwritable flag — see
+     student_consents_migration.sql for the full reasoning. "Current status" for a student
+     is simply their single most-recent row: if it's a 'granted' row whose consent_version
+     matches what the client is currently asking about, they're consented; anything else
+     (no rows at all, most recent row is 'withdrawn', or the version doesn't match because
+     the notice text changed since they last consented) means the gate should show again.
+     The client owns what "the current version" is (a constant in student.html) — this
+     backend doesn't hardcode or validate version strings, it just stores/compares whatever
+     it's given, so updating the notice text is a client-only change. */
+  function h_getConsentStatus(p, cb) {
+    var studentId = String(p && p.studentId || '').trim();
+    var version = String(p && p.version || '').trim();
+    if (!studentId || !version) { cb(null, { status: 'error', reason: 'missing_student_id_or_version' }); return; }
+    GET('student_consents', 'student_id=eq.' + encodeURIComponent(studentId) + '&select=consent_version,action,created_at&order=created_at.desc&limit=1', function (e, rows) {
+      // If the migration hasn't been run yet, treat that as "not consented" rather than
+      // erroring the whole portal shut — the gate will just keep showing until the table
+      // exists, same graceful-degradation convention as referral_nudge_actions.
+      if (e || !rows || !rows.length) { cb(null, { status: 'ok', consented: false }); return; }
+      var latest = rows[0];
+      var consented = latest.action === 'granted' && latest.consent_version === version;
+      cb(null, { status: 'ok', consented: consented, latestVersion: latest.consent_version, latestAction: latest.action, latestAt: latest.created_at });
+    });
+  }
+
+  function h_recordConsent(p, cb) {
+    var studentId = String(p && p.studentId || '').trim();
+    var version = String(p && p.version || '').trim();
+    var action = (p && p.action === 'withdrawn') ? 'withdrawn' : 'granted';
+    if (!studentId || !version) { cb(null, { status: 'error', reason: 'missing_student_id_or_version' }); return; }
+    POST('student_consents', '', { student_id: studentId, consent_version: version, action: action }, function (e) {
+      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+    });
+  }
+
   function h_submitFeedback(p, cb) {
     var fbText = JSON.stringify({
       studentName: p.studentName || '',
@@ -8691,6 +8727,8 @@ window.gasGet = (function () {
       case 'getGemAFoundationStatus':    return h_getGemAFoundationStatus(params, cb);
       case 'expressGemAInterest':        return h_expressGemAInterest(params, cb);
       case 'inviteToGemAFoundation':     return h_inviteToGemAFoundation(params, cb);
+      case 'getConsentStatus':           return h_getConsentStatus(params, cb);
+      case 'recordConsent':              return h_recordConsent(params, cb);
       case 'globalSearch':              return h_globalSearch(params, cb);
       case 'getOverdueFeesCount':       return h_getOverdueFeesCount(params, cb);
       case 'getFeeRecords':             return h_getFeeRecords(params, cb);

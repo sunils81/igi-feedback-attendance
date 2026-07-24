@@ -60,12 +60,24 @@ Deno.serve(async (req: Request) => {
     const source_override = clean(body.source);
     const force_owner     = clean(body.force_owner);
 
+    // DPDP Act consent — the client-side checkbox's `required` attribute is
+    // only a UX nicety, easily bypassed (devtools, direct API calls), so it
+    // has to be re-checked here to actually mean anything.
+    const consent = body.consent === true;
+    const consent_version = clean(body.consent_version);
+
     // Minimal required-field validation — reject junk/incomplete submits
     // before they ever touch crm_leads.
     if (!first_name || !course || !centre || (!mobile && !email)) {
       return jsonResponse({
         status: "error",
         message: "first_name, course, centre, and either mobile or email are required",
+      }, 400);
+    }
+    if (!consent || !consent_version) {
+      return jsonResponse({
+        status: "error",
+        message: "Please check the consent box before submitting.",
       }, 400);
     }
     if (mobile && !/^\d{7,15}$/.test(mobile.replace(/[\s+-]/g, ""))) {
@@ -86,16 +98,16 @@ Deno.serve(async (req: Request) => {
     // implying this system treats a repeat enquiry from the same contact as
     // one lead, not a new row each time. Match on mobile first (more
     // reliable than email, which is optional), then email.
-    let existing: { id: string; lead_owner: string; course: string; centre: string; notes: string; web_meta: Record<string, unknown> } | null = null;
+    let existing: { id: string; lead_owner: string; course: string; centre: string; notes: string; web_meta: Record<string, unknown>; consent_given: boolean } | null = null;
     if (mobile) {
       const { data: byMobile } = await supabase
-        .from("crm_leads").select("id, lead_owner, course, centre, notes, web_meta")
+        .from("crm_leads").select("id, lead_owner, course, centre, notes, web_meta, consent_given")
         .eq("mobile", mobile).limit(1);
       if (byMobile && byMobile.length) existing = byMobile[0];
     }
     if (!existing && email) {
       const { data: byEmail } = await supabase
-        .from("crm_leads").select("id, lead_owner, course, centre, notes, web_meta")
+        .from("crm_leads").select("id, lead_owner, course, centre, notes, web_meta, consent_given")
         .eq("email", email).limit(1);
       if (byEmail && byEmail.length) existing = byEmail[0];
     }
@@ -132,6 +144,15 @@ Deno.serve(async (req: Request) => {
         .from("crm_leads").select("lead_score").eq("id", existing.id).single();
       const bumpedScore = Math.min(100, (scoreRow?.lead_score || 0) + 5);
       const updatePayload: Record<string, unknown> = { lead_score: bumpedScore };
+      // Every submit re-checks the consent box, so re-record it even for a
+      // repeat enquiry — this keeps consent_at current and lets a later
+      // notice-text change (new consent_version) get re-captured on the next
+      // enquiry without needing a separate withdraw/re-consent flow.
+      if (!existing.consent_given) {
+        updatePayload.consent_given = true;
+        updatePayload.consent_version = consent_version;
+        updatePayload.consent_at = now.toISOString();
+      }
       if (reassigning) {
         updatePayload.lead_owner = force_owner;
         updatePayload.source = source_override || "Course Catalog Website";
@@ -187,6 +208,9 @@ Deno.serve(async (req: Request) => {
       lead_owner: assignedTo,
       source: leadSource,
       lead_score: 10,
+      consent_given: true,
+      consent_version,
+      consent_at: now.toISOString(),
       web_meta,
       notes: "[" + now.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) +
         " IST] Lead submitted via " + leadSource + ", " +

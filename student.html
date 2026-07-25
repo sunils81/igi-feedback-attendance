@@ -4045,24 +4045,37 @@ function loadStudentDiploma() {
       // Status section
       var weeklyAvgVal = row.weeklyAvg ? row.weeklyAvg.value : null;
       var weeklyPass   = row.weeklyAvg ? row.weeklyAvg.pass  : false;
+      // Eligibility is gated on the Combined Score (40% weekly avg + 60% final exam, ≥60%),
+      // with a Practical grace for students who land at 55-59%. Weekly/final/practical are
+      // still shown individually below as informational, but the "why not eligible" reasons
+      // must follow the same combined-score logic the server used, not re-derive their own.
+      var combinedInfo   = row.combinedScore || {};
+      var combinedVal    = combinedInfo.value != null ? combinedInfo.value : null;
+      var combinedPass   = !!combinedInfo.pass;
+      var graceApplied   = !!combinedInfo.graceApplied;
+      var combinedBadge  = combinedVal != null
+        ? (combinedPass
+            ? '<span style="color:'+G+';font-weight:700;">✅ '+combinedVal+'%</span>'
+            : '<span style="color:'+R+';font-weight:700;">✗ '+combinedVal+'%</span>')
+        : '<span style="color:#9ca3af;">—</span>';
       var statusHtml, statusBg;
       if (released) {
         statusHtml = '<span style="color:'+G+';font-weight:800;font-size:13px;">🎓 Diploma Released</span>';
         statusBg   = '#f0fdf4';
       } else if (eligible) {
-        statusHtml = '<span style="color:'+G+';font-weight:800;font-size:13px;">✅ Eligible — awaiting release</span>';
+        statusHtml = '<span style="color:'+G+';font-weight:800;font-size:13px;">✅ Eligible — awaiting release</span>' +
+          (graceApplied ? '<div style="font-size:11px;color:#b45309;margin-top:4px;">Combined score reached 60% via Practical grace</div>' : '');
         statusBg   = '#f0fdf4';
       } else {
         var missing = [];
-        if (!weeklyPass) {
-          var failedTests = weeklyTests.filter(function(t) { return t.mandatory && (!t.pass || t.notTaken); });
-          var failDesc = failedTests.length
-            ? failedTests.map(function(t) { return 'WT'+t.slot+(t.pct!=null?' '+t.pct+'%':''); }).join(', ')
-            : 'weekly tests';
-          missing.push('Need ≥60% in ' + failDesc);
+        if (combinedVal == null) {
+          missing.push('Assessment in progress');
+        } else if (!combinedPass) {
+          var shortfall = 60 - combinedVal;
+          var reason = 'Combined score ' + combinedVal + '% (need ≥60%)';
+          if (pracReq && shortfall <= 5 && !pracPass) reason += ' — Practical ' + pracStr + ' is too low to grant a grace';
+          missing.push(reason);
         }
-        if (pracReq && !pracPass) missing.push('Practical ' + pracStr + ' (need ≥60%)');
-        if (!finalPass) missing.push('Final exam ' + finalStr + ' (need ≥60%)');
         if (!feePaid) missing.push(feeHasRecord ? ('Fee balance of ₹'+Math.round(feeOutstanding||0).toLocaleString('en-IN')+' outstanding') : 'No fee record on file — contact your counsellor');
         if (!missing.length) missing.push('Assessment in progress');
         statusHtml = '<span style="color:#dc2626;font-weight:800;font-size:13px;">⏳ Not yet eligible</span>' +
@@ -4096,6 +4109,10 @@ function loadStudentDiploma() {
           '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
             '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">FINAL EXAM<br><span style="font-size:9px;font-weight:400;opacity:.8">must be ≥60%</span></div>' +
             '<div style="font-size:15px;">' + finalBadge + '</div>' +
+          '</div>' +
+          '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
+            '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">COMBINED SCORE<br><span style="font-size:9px;font-weight:400;opacity:.8">40% weekly + 60% final, must be ≥60%</span></div>' +
+            '<div style="font-size:15px;">' + combinedBadge + '</div>' +
           '</div>' +
           '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
             '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">FEE STATUS<br><span style="font-size:9px;font-weight:400;opacity:.8">must be fully paid</span></div>' +

@@ -8747,13 +8747,24 @@ function getDiplomaReleaseList(ss, p) {
         // name-based fallback
         return n.indexOf('final') !== -1;
       }
+      // Practical tests are their own category — they used to fall through the
+      // isWeeklyTest() fallback (anything not literally "final") and get silently
+      // averaged into the weekly score, diluting it. Pull them out explicitly so
+      // they can be used as their own signal (see practicalAvg / grace logic below).
+      function isPracticalTest(a) {
+        const t = String(a.testType || '').toLowerCase();
+        const n = String(a.testName || '').toLowerCase();
+        return t === 'practical' || t === 'mcq + practical' || n.indexOf('practical') !== -1;
+      }
 
       // ── Collect weekly scores from both Manual + OT sources ──
       const manualWeeklyScores = [];
       const onlineWeeklyScores = [];
+      const manualPracticalScores = [];
+      const onlinePracticalScores = [];
 
-      // Manual assessment weekly scores
-      const weeklyAssessments = batchAssessments.filter(a => isWeeklyTest(a) && assessmentHasGrades[a.assessmentId]);
+      // Manual assessment weekly scores (Practical assessments excluded — tracked separately below)
+      const weeklyAssessments = batchAssessments.filter(a => isWeeklyTest(a) && !isPracticalTest(a) && assessmentHasGrades[a.assessmentId]);
       weeklyAssessments.forEach(a => {
         const markRow = marksByAssAndStudent[studentId + '|' + a.assessmentId];
         if (markRow && markRow.pct !== 'DNA' && markRow.pct !== '' && markRow.pct !== null && markRow.pct !== undefined) {
@@ -8762,16 +8773,30 @@ function getDiplomaReleaseList(ss, p) {
         }
       });
 
+      // Manual assessment practical scores
+      const practicalAssessments = batchAssessments.filter(a => isPracticalTest(a) && assessmentHasGrades[a.assessmentId]);
+      practicalAssessments.forEach(a => {
+        const markRow = marksByAssAndStudent[studentId + '|' + a.assessmentId];
+        if (markRow && markRow.pct !== 'DNA' && markRow.pct !== '' && markRow.pct !== null && markRow.pct !== undefined) {
+          const pctVal = Number(markRow.pct);
+          if (!isNaN(pctVal)) manualPracticalScores.push(pctVal);
+        }
+      });
+      const practicalExistsForBatch = practicalAssessments.length > 0;
+
       // OT system weekly scores
       const otStudentScores = otScoresBySB[studentId + '|' + batchCode] || [];
       otStudentScores.forEach(entry => {
         const tl = String(entry.testType || '').toLowerCase();
         const nl = String(entry.testLabel || '').toLowerCase();
+        const isP = tl === 'practical' || tl === 'mcq + practical' || nl.indexOf('practical') !== -1;
         // Match isWeeklyTest logic: weekly if testType is 'weekly', or if testType is
-        // not 'final'/'re-test' and the label doesn't contain 'final'.
-        const isW = tl === 'weekly' ||
-          (tl !== 'final' && tl !== 're-test' && nl.indexOf('final') === -1);
-        if (isW) onlineWeeklyScores.push(entry.pct);
+        // not 'final'/'re-test' and the label doesn't contain 'final'. Practical is
+        // carved out first so it never lands in either bucket by accident.
+        const isW = !isP && (tl === 'weekly' ||
+          (tl !== 'final' && tl !== 're-test' && nl.indexOf('final') === -1));
+        if (isP) onlinePracticalScores.push(entry.pct);
+        else if (isW) onlineWeeklyScores.push(entry.pct);
       });
 
       // Average all entered manual weekly marks and all conducted online weekly tests.
@@ -8779,6 +8804,14 @@ function getDiplomaReleaseList(ss, p) {
       const weeklyAvg = allWeeklyScores.length > 0
         ? Math.round(allWeeklyScores.reduce((s, v) => s + v, 0) / allWeeklyScores.length)
         : null;
+
+      // Practical average — kept separate from weekly. Used as a "grace" boost toward
+      // eligibility (see combinedScore below), not as its own hard pass/fail gate.
+      const allPracticalScores = manualPracticalScores.concat(onlinePracticalScores);
+      const practicalAvg = allPracticalScores.length > 0
+        ? Math.round(allPracticalScores.reduce((s, v) => s + v, 0) / allPracticalScores.length)
+        : null;
+      const practicalRequired = practicalExistsForBatch || onlinePracticalScores.length > 0;
 
       // ── Final exam — best from both sources ───────────────────────
       let finalExamScore = null;
@@ -8807,9 +8840,34 @@ function getDiplomaReleaseList(ss, p) {
       const weeklyPass = weeklyAvg !== null && weeklyAvg >= 60;
       const finalPass = finalExamScore !== null && finalExamScore >= 60;
       const hodStatus = hodMap[studentId + '|' + batchCode] || '';
+
+      // ── Combined score: weekly avg + final exam, weighted 40/60 ──────────
+      // A student is no longer failed just because one of the two independently
+      // dipped below 60% (e.g. a strong final exam used to be wasted by one weak
+      // weekly test). Instead the two are blended into a single score.
+      const WEEKLY_WEIGHT = 0.4;
+      const FINAL_WEIGHT = 0.6;
+      const combinedScore = (weeklyAvg !== null && finalExamScore !== null)
+        ? Math.round(weeklyAvg * WEEKLY_WEIGHT + finalExamScore * FINAL_WEIGHT)
+        : null;
+
+      // ── Practical grace ───────────────────────────────────────────────
+      // If a student's combined score falls just short of 60% (within 5 points,
+      // i.e. 55–59%) and they scored ≥60% on Practical, that practical strength
+      // is allowed to carry them over the line. Practical is not an independent
+      // gate — it never fails a student who is otherwise passing.
+      const GRACE_MARGIN = 5;
+      const graceApplied = combinedScore !== null &&
+        combinedScore < 60 &&
+        combinedScore >= (60 - GRACE_MARGIN) &&
+        practicalAvg !== null &&
+        practicalAvg >= 60;
+
+      const marksEligible = combinedScore !== null && (combinedScore >= 60 || graceApplied);
       // Attendance is shown as a warning but does NOT gate diploma eligibility.
-      // Only marks (weekly avg ≥60% AND final ≥60%) or HOD approval determine eligible status.
-      const eligible = (weeklyPass && finalPass) || (hodStatus === 'Approved');
+      // Only the combined marks score (with optional practical grace) or HOD
+      // approval determine eligible status.
+      const eligible = marksEligible || (hodStatus === 'Approved');
 
       list.push({
         studentId,
@@ -8832,6 +8890,16 @@ function getDiplomaReleaseList(ss, p) {
         finalExam: {
           value: finalExamScore,
           pass: finalPass
+        },
+        practicalMarks: {
+          value: practicalAvg,
+          pass: practicalAvg !== null ? practicalAvg >= 60 : null,
+          required: practicalRequired
+        },
+        combinedScore: {
+          value: combinedScore,
+          pass: marksEligible,
+          graceApplied
         },
         eligible,
         hodStatus,

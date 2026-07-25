@@ -13105,7 +13105,12 @@ function renderDiplomaTable(list) {
     // Release Diploma / Re-release / Request HOD stay restricted to Bianca & Anuradha.
     // Every other counsellor gets the same eligibility facts, view-only.
     var authorized = isDiplomaReleaseAuthorized();
-    var academicsOk = (weeklyPass && finalPass && pracPass) || a.hodStatus === 'Approved';
+    // Academics now hinge on the server-computed Combined Score (40% weekly + 60% final,
+    // with a Practical grace for 55-59% scores) rather than requiring weekly, final, AND
+    // practical to each independently pass. This used to be permanently false whenever no
+    // Practical test existed for the batch (pracPass had no fallback), hiding the
+    // "Fee Outstanding" branch below for those students.
+    var academicsOk = (a.combinedScore && a.combinedScore.pass) || a.hodStatus === 'Approved';
     var actionCell = '';
     var canRelease = false;
     if (a.diplomaStatus === 'Released') {

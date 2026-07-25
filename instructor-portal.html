@@ -799,7 +799,7 @@
   <div id="t-eligibility" class="tab-content">
     <div class="section-tag">Diploma Eligibility</div>
     <h2>Student Diploma Eligibility</h2>
-    <p class="sub">Shows which students in your batches are on track for their diploma. Eligibility requires: weekly test average ≥60%, Practical marks ≥60% (if a Practical test exists for the batch), and Final exam ≥60%. Attendance (≥75%) is shown for reference only and does not block eligibility.</p>
+    <p class="sub">Shows which students in your batches are on track for their diploma. Eligibility is based on a Combined Score (40% weekly test average + 60% final exam) that must be ≥60%. Students who fall just short (55–59%) are still marked eligible if their Practical marks are ≥60% — practical strength acts as a grace, not a separate hard requirement. Attendance (≥75%) is shown for reference only and does not block eligibility.</p>
     <div id="elig-loading" style="text-align:center;padding:40px;color:#6b7280;font-size:14px;">Loading eligibility data…</div>
     <div id="elig-content" style="display:none;"></div>
   </div>
@@ -9343,9 +9343,10 @@ function renderEligibility(batches) {
       html += '<thead><tr style="background:#0D1B2E;color:#C9A84C;">';
       html += '<th style="padding:7px 10px;text-align:left;border-radius:6px 0 0 0;">Student</th>';
       html += '<th style="padding:7px 10px;text-align:center;">Attendance<br><span style="font-size:9px;font-weight:400;opacity:0.8;">advisory ≥75%</span></th>';
-      html += '<th style="padding:7px 10px;text-align:center;">Weekly Tests<br><span style="font-size:10px;font-weight:400;">average must be ≥60%</span></th>';
-      html += '<th style="padding:7px 10px;text-align:center;">Practical<br><span style="font-size:9px;font-weight:400;opacity:0.8;">must be ≥60%</span></th>';
-      html += '<th style="padding:7px 10px;text-align:center;">Final Exam<br><span style="font-size:9px;font-weight:400;opacity:0.8;">must be ≥60%</span></th>';
+      html += '<th style="padding:7px 10px;text-align:center;">Weekly Tests<br><span style="font-size:10px;font-weight:400;">40% of combined score</span></th>';
+      html += '<th style="padding:7px 10px;text-align:center;">Practical<br><span style="font-size:9px;font-weight:400;opacity:0.8;">grace if ≥60% &amp; score is 55–59%</span></th>';
+      html += '<th style="padding:7px 10px;text-align:center;">Final Exam<br><span style="font-size:9px;font-weight:400;opacity:0.8;">60% of combined score</span></th>';
+      html += '<th style="padding:7px 10px;text-align:center;">Combined<br><span style="font-size:9px;font-weight:400;opacity:0.8;">must be ≥60%</span></th>';
       html += '<th style="padding:7px 10px;text-align:center;">Fee Status<br><span style="font-size:9px;font-weight:400;opacity:0.8;">must be fully paid</span></th>';
       html += '<th style="padding:7px 10px;text-align:center;border-radius:0 6px 0 0;">Status</th>';
       html += '</tr></thead><tbody>';
@@ -9417,6 +9418,19 @@ function renderEligibility(batches) {
         const fVal = s.finalExam && s.finalExam.value !== null ? s.finalExam.value + '%' : null;
         html += '<td style="padding:7px 10px;text-align:center;">' + badge(fVal, s.finalExam && s.finalExam.pass, '') + '</td>';
 
+        // Combined score (40% weekly + 60% final) — this is what actually gates eligibility.
+        const combined = s.combinedScore;
+        html += '<td style="padding:7px 10px;text-align:center;">';
+        if (!combined || combined.value === null) {
+          html += '<span style="' + pendStyle + '">Pending</span>';
+        } else {
+          html += badge(combined.value + '%', combined.pass, '');
+          if (combined.graceApplied) {
+            html += '<div style="font-size:9px;color:#b45309;margin-top:2px;">via Practical grace</div>';
+          }
+        }
+        html += '</td>';
+
         // Fee status — hard gate alongside academics. No HOD override can clear an unpaid
         // balance, so this is shown as its own column rather than folded into "Status".
         const feeInfo = s.feeStatus || {};
@@ -9438,13 +9452,19 @@ function renderEligibility(batches) {
           html += '<td style="padding:7px 10px;text-align:center;"><span style="' + pendStyle + '">In Progress</span></td>';
         } else {
           const missing = [];
-          // Attendance is advisory — only marks criteria shown as blocking
-          if (!s.weeklyAvg || !s.weeklyAvg.pass) {
-            const failedSlots = (s.weeklyTests || []).filter(function(t){ return t.mandatory && (!t.pass || t.notTaken); });
-            missing.push(failedSlots.length ? 'WT' + failedSlots.map(function(t){return t.slot;}).join('/') : 'Weekly');
+          // Attendance is advisory — only marks criteria shown as blocking.
+          // Eligibility is gated on Combined Score (weekly+final, with practical grace),
+          // not on weekly/final independently — so report the combined shortfall.
+          if (!combined || combined.value === null) {
+            missing.push('Marks Pending');
+          } else if (!combined.pass) {
+            const shortfall = 60 - combined.value;
+            let reason = 'Combined ' + combined.value + '%';
+            if (prac && prac.required && prac.value !== null && shortfall <= 5 && !(prac.pass)) {
+              reason += ' (Practical ' + prac.value + '% too low for grace)';
+            }
+            missing.push(reason);
           }
-          if (prac && prac.required && !prac.pass) missing.push('Practical');
-          if (!s.finalExam || !s.finalExam.pass) missing.push('Final');
           if (!feeInfo.paid) missing.push('Fee');
           if (!missing.length) missing.push('Pending');
           html += '<td style="padding:7px 10px;text-align:center;"><span style="' + failStyle + '">✗ ' + missing.join(', ') + '</span></td>';

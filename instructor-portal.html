@@ -3873,9 +3873,14 @@ function loadAssessments() {
         statusBadge = `<span style="font-size:10px;background:#d1fae5;color:#065f46;padding:2px 7px;border-radius:99px;font-weight:600;white-space:nowrap">✓ All marks entered</span>`;
       } else if (noneEntered) {
         statusBadge = `<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:99px;font-weight:600;white-space:nowrap">⚠ No marks entered yet</span>`;
-      } else {
-        const pending = expected > 0 ? (expected - entered) : '?';
+      } else if (expected > 0) {
+        const pending = expected - entered;
         statusBadge = `<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:99px;font-weight:600;white-space:nowrap">⚠ ${pending} marks pending</span>`;
+      } else {
+        // We couldn't determine the batch's expected student count (server returned 0),
+        // so we genuinely don't know if everyone's marked. Don't show a scary "? pending" —
+        // that reads as "your save didn't work" when marks were in fact saved (entered > 0).
+        statusBadge = `<span style="font-size:10px;background:#e0e7ff;color:#3730a3;padding:2px 7px;border-radius:99px;font-weight:600;white-space:nowrap">${entered} mark${entered===1?'':'s'} saved</span>`;
       }
       return `
       <div class="test-card" onclick="openTestMarks('${a.assessmentId}','${escJ(a.testName)}','${a.testDate}',${a.totalMarks},'${a.testType}')">

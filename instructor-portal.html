@@ -500,7 +500,7 @@
         </div>
         <div class="grid2">
           <div class="field"><label>Test Type *</label>
-            <select id="ct-type">
+            <select id="ct-type" onchange="updateTestTypeHint()">
               <option value="Weekly">Weekly Test</option>
               <option value="Final">Final Test</option>
               <option value="MCQ">MCQ</option>
@@ -509,6 +509,7 @@
               <option value="Theory">Theory</option>
               <option value="Re-Test">Re-Test</option>
             </select>
+            <div id="ct-type-hint" style="font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4"></div>
           </div>
           <div class="field"><label>Date Conducted *</label>
             <input type="date" id="ct-date">
@@ -3848,7 +3849,31 @@ function stopAttendanceRefresh() {
 
 // ── ASSESSMENT MARKS ──────────────────────────────────────────
 function showMarksList()   { document.getElementById('m-list-screen').style.display='block'; document.getElementById('m-create-screen').style.display='none'; document.getElementById('m-entry-screen').style.display='none'; }
-function showCreateTest()  { document.getElementById('m-list-screen').style.display='none'; document.getElementById('m-create-screen').style.display='block'; document.getElementById('m-entry-screen').style.display='none'; }
+function showCreateTest()  { document.getElementById('m-list-screen').style.display='none'; document.getElementById('m-create-screen').style.display='block'; document.getElementById('m-entry-screen').style.display='none'; updateTestTypeHint(); }
+
+// Test Type decides scoring — NOT the test's name. Instructors kept naming tests things like
+// "Final Practical Exam" while leaving Type set to "Final", then were confused when it never
+// showed up under Practical/didn't get the practical grace. This mirrors the exact bucketing
+// rules from buildDiplomaRow() in assets/shared.js so what's shown here always matches what
+// the Eligibility tab actually does with it.
+function testTypeCategoryInfo(type) {
+  const t = String(type || '').toLowerCase();
+  if (t.indexOf('practical') !== -1) {
+    return { label: 'Practical', desc: 'Counts toward: <strong>Practical grace</strong> only — helps a borderline student (55–59% combined score) cross 60%. It is not part of the 40/60 Weekly + Final blend itself.' };
+  }
+  if (t.indexOf('final') !== -1 || t.indexOf('portfolio') !== -1) {
+    return { label: 'Final', desc: 'Counts toward: <strong>Final Exam</strong> — 60% of the Combined Score.' };
+  }
+  // Weekly, MCQ, Theory, Re-Test all land in the weekly bucket.
+  return { label: 'Weekly', desc: 'Counts toward: <strong>Weekly Test Average</strong> — 40% of the Combined Score.' };
+}
+function updateTestTypeHint() {
+  const hintEl = document.getElementById('ct-type-hint');
+  if (!hintEl) return;
+  const type = document.getElementById('ct-type').value;
+  const info = testTypeCategoryInfo(type);
+  hintEl.innerHTML = info.desc + ' <span style="color:#9ca3af">(based on Type, not the test name — a test named "Final Practical Exam" but typed "Final" still counts as Final, not Practical.)</span>';
+}
 function showMarksEntry()  { document.getElementById('m-list-screen').style.display='none'; document.getElementById('m-create-screen').style.display='none'; document.getElementById('m-entry-screen').style.display='block'; }
 
 function loadAssessments() {
@@ -3882,12 +3907,14 @@ function loadAssessments() {
         // that reads as "your save didn't work" when marks were in fact saved (entered > 0).
         statusBadge = `<span style="font-size:10px;background:#e0e7ff;color:#3730a3;padding:2px 7px;border-radius:99px;font-weight:600;white-space:nowrap">${entered} mark${entered===1?'':'s'} saved</span>`;
       }
+      const catInfo = testTypeCategoryInfo(a.testType);
       return `
       <div class="test-card" onclick="openTestMarks('${a.assessmentId}','${escJ(a.testName)}','${a.testDate}',${a.totalMarks},'${a.testType}')">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div style="min-width:0">
             <div class="tc-name">${a.testName}</div>
             <div class="tc-meta">${a.testDate} · ${a.testType||''} · Max: ${a.totalMarks} marks</div>
+            <div style="font-size:10px;color:#9ca3af;margin-top:2px">Counts toward: ${catInfo.label}${catInfo.label==='Practical' ? ' grace' : ''}</div>
             <div style="margin-top:5px">${statusBadge}</div>
           </div>
           <div style="display:flex;gap:10px;align-items:center;flex-shrink:0">

@@ -8322,20 +8322,21 @@ function feeRecordFilteredRows() {
   // counsellor" gate in renderFeeRecordTab) — that path stays scoped by enteredBy/
   // recorded_by, same as before.
   //
-  // Non-admins get a CENTRE-scoped ledger by default, not a counsellor-scoped one: every fee
-  // record for their centre(s), regardless of which counsellor is credited with the revenue
-  // (recorded_by/enteredBy). This used to filter by `r.enteredBy !== counselorName`,
-  // which silently dropped any record reassigned/credited to a different counsellor even
-  // though the student's batch still belonged to this counsellor's centre — e.g. Aishwarya
-  // Santhakumar (Chennai, credited to Anuradha) vanished from Preethy's Fee Record tab even
-  // though Preethy owns that centre. allInvoiceRecords is already fetched scoped to
-  // allowedCentres (see loadFeeRecordTab's getAllFeeRecords call), so filtering again by
-  // r.centre here is just being explicit about the same scope, not a new restriction.
+  // Non-admins get a ledger scoped to "my centre(s) OR my own name", not centre alone: every
+  // fee record for their centre(s) regardless of who's credited, PLUS every record credited
+  // to them personally regardless of which centre it's tagged to (e.g. Anuradha, home Mumbai,
+  // closing a Chennai sale). h_getAllFeeRecords on the server already fetches exactly this
+  // union (allowedBatchCodes OR recorded_by === me) — this used to re-filter with just the
+  // centre half of that (`allowedCentres.indexOf(r.centre) === -1`), which silently threw
+  // away a counsellor's own cross-centre records that the server had already sent down,
+  // even though the ORIGINAL bug this comment used to describe (Aishwarya Santhakumar,
+  // Chennai, credited to Anuradha, vanishing from Preethy's centre-scoped view) is a
+  // different, still-fixed case — that one is "my centre, someone else's name", this one is
+  // "someone else's centre, my name". Both need to stay visible.
   //
-  // The Counsellor picker (see populateFeeRecordFilterOptions) now lets non-admins OPTIONALLY
-  // narrow that centre-wide ledger down to one name — e.g. isolate just Anuradha's entries
-  // inside a Chennai-scoped view — without losing the centre-wide view as the default. It
-  // narrows WITHIN the centre scope, it can never be used to see outside allowedCentres.
+  // The Counsellor picker (see populateFeeRecordFilterOptions) lets non-admins OPTIONALLY
+  // narrow this union down to one name — e.g. isolate just Anuradha's entries — without
+  // losing the union as the default. It narrows WITHIN this scope, never outside it.
   var effectiveCounsellor = document.getElementById('fr-filter-counsellor').value || '';
   var monthFilter = document.getElementById('fr-filter-month').value;
   var batchFilter = document.getElementById('fr-filter-batch').value;
@@ -8347,7 +8348,9 @@ function feeRecordFilteredRows() {
     if (isAdmin) {
       if (effectiveCounsellor && r.enteredBy !== effectiveCounsellor) return false;
     } else {
-      if (allowedCentres && allowedCentres.length && allowedCentres.indexOf(r.centre) === -1) return false;
+      var inMyCentre = !!(allowedCentres && allowedCentres.length && allowedCentres.indexOf(r.centre) !== -1);
+      var isMine = !!(counselorName && r.enteredBy === counselorName);
+      if (!inMyCentre && !isMine) return false;
       if (effectiveCounsellor && r.enteredBy !== effectiveCounsellor) return false;
     }
     if (monthFilter && frRecordMonth(r) !== monthFilter) return false;
@@ -8418,14 +8421,21 @@ function renderFeeRecordTab() {
     gTotal.balance     += Number(r.outstanding) || 0;
     gTotal.count++;
   });
-  // When a non-admin has narrowed the centre-wide ledger to one counsellor via the picker,
-  // "Centre Revenue" (which implies everyone's sales) would be misleading — relabel to make
-  // clear the tile is now scoped to just that person's rows within the centre.
+  // Label/subtitle need to describe the actual scope from feeRecordFilteredRows: unfiltered
+  // non-admin = this centre's sales (everyone) PLUS the logged-in counsellor's own sales
+  // anywhere; filtered to yourself = literally all of your sales, any centre (the "my centre
+  // OR my name" union collapses to just "my name" once your own name is the filter); filtered
+  // to someone else = that person's sales specifically within this centre (the other half of
+  // the union — "my centre" — is what still applies to a name that isn't your own).
   var filterCounsellor = document.getElementById('fr-filter-counsellor').value || '';
   var revenueTileLabel = isAdmin ? 'Revenue' : (filterCounsellor ? 'Filtered Revenue' : 'Centre Revenue');
   var revenueTileSub = isAdmin
     ? ' · sum of fee records for this counsellor'
-    : (filterCounsellor ? ' · ' + filterCounsellor + '\'s sales in this centre' : ' · everyone\'s sales in this centre');
+    : (filterCounsellor
+        ? (filterCounsellor === counselorName
+            ? ' · all of your sales, any centre'
+            : ' · ' + filterCounsellor + '\'s sales in this centre')
+        : ' · this centre\'s sales (everyone), plus your own sales anywhere');
   summary.style.display = 'grid';
   summary.innerHTML =
     '<div class="summary-tile"><div class="k">Records</div><div class="v">' + gTotal.count + '</div><div class="s">Matching current filters</div></div>' +

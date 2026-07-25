@@ -3929,11 +3929,25 @@ function openTestMarks(aId, name, date, total, type) {
 
 function buildMarksTable(students, markMap, totalMarks) {
   const tbody = document.getElementById('me-tbody');
+  const totalNum = Number(totalMarks);
+  const hasValidTotal = !isNaN(totalNum) && totalNum > 0;
   tbody.innerHTML = students.map(s => {
     const existing = markMap[String(s.enrollmentNo).toUpperCase()];
     const isDNA = existing && existing.marks === 'DNA';
     const marks = isDNA ? '' : (existing ? existing.marks : '');
-    const pct   = isDNA ? '' : (existing && existing.pct !== null ? existing.pct : '');
+    // Always recompute % from marks ÷ the test's CURRENT total marks rather than trusting
+    // a previously stored percentage. A stored pct can go stale/mismatched (e.g. if it was
+    // saved once and the underlying total marks doesn't line up), which used to silently
+    // show a wrong Pass/Fail — a raw score like 27/40 (67.5%, a Pass) would display "Fail"
+    // if the stale stored percentage was ever computed against a different scale.
+    let pct = '';
+    if (!isDNA && marks !== '' && marks !== null && marks !== undefined) {
+      if (hasValidTotal) {
+        pct = Math.min(Math.round((Number(marks) / totalNum) * 100), 100);
+      } else if (existing && existing.pct !== null && existing.pct !== undefined) {
+        pct = existing.pct; // fallback only if we truly can't compute it ourselves
+      }
+    }
     const remarks = existing ? (existing.remarks||'') : '';
     return `<tr id="tr-${s.enrollmentNo}">
       <td>
@@ -3975,7 +3989,15 @@ function getResultBadge(result) {
 function onMarksInput(enrol, total) {
   const val = parseFloat(document.getElementById('m-'+enrol).value);
   if (isNaN(val)) { document.getElementById('p-'+enrol).value=''; updateResult(enrol,''); return; }
-  const pct = Math.round((val/total)*100);
+  const totalNum = Number(total);
+  if (isNaN(totalNum) || totalNum <= 0) {
+    // Can't safely turn marks into a percentage without a real total — leave % blank
+    // rather than silently computing NaN/Infinity and marking the student Fail.
+    document.getElementById('p-'+enrol).value = '';
+    updateResult(enrol, '');
+    return;
+  }
+  const pct = Math.round((val/totalNum)*100);
   document.getElementById('p-'+enrol).value = Math.min(pct,100);
   updateResult(enrol, pct);
 }

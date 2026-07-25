@@ -3840,7 +3840,7 @@
       </div>
 
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:14px">
-        <div class="field admin-only" style="min-width:200px;margin-bottom:0" id="fr-counsellor-wrap">
+        <div class="field" style="min-width:200px;margin-bottom:0" id="fr-counsellor-wrap">
           <label>Counsellor</label>
           <select id="fr-filter-counsellor" onchange="loadFeeRecordTab(true)"><option value="">— Select —</option></select>
         </div>
@@ -8269,9 +8269,14 @@ function loadFeeRecordTab(force) {
   });
 }
 
-// Admin gets a counsellor picker (built from whoever actually has records, not a
-// hardcoded roster, so it never goes stale); everyone else only ever sees their own
-// records, so the picker stays hidden (.admin-only) and this filter is skipped for them.
+// Counsellor picker — built from whoever actually has records in the currently-loaded
+// dataset, not a hardcoded roster, so it never goes stale. For Admin that dataset is every
+// centre/counsellor; for everyone else allInvoiceRecords is already centre-scoped (see
+// loadFeeRecordTab), so the picker only ever lists names with records in THEIR centre(s) —
+// picking one narrows the ledger to just that person's rows within that scope, it can never
+// reach outside it. Previously this picker was Admin-only, which meant a regular counsellor
+// had no way to isolate e.g. a colleague's cross-centre entries from their own inside the
+// same centre-wide ledger.
 function populateFeeRecordFilterOptions() {
   var monthSel = document.getElementById('fr-filter-month');
   var curMonth = monthSel.value;
@@ -8290,14 +8295,16 @@ function populateFeeRecordFilterOptions() {
     return '<option value="' + escC(b) + '"' + (b === curBatch ? ' selected' : '') + '>' + escC(b) + '</option>';
   }).join('');
 
-  if (isAdmin) {
-    var cSel = document.getElementById('fr-filter-counsellor');
-    var curC = cSel.value;
-    var names = Array.from(new Set((allInvoiceRecords || []).map(function(r){ return r.enteredBy; }).filter(Boolean))).sort();
-    cSel.innerHTML = '<option value="">— Select —</option>' + names.map(function(n) {
-      return '<option value="' + escC(n) + '"' + (n === curC ? ' selected' : '') + '>' + escC(n) + '</option>';
-    }).join('');
-  }
+  var cSel = document.getElementById('fr-filter-counsellor');
+  var curC = cSel.value;
+  var names = Array.from(new Set((allInvoiceRecords || []).map(function(r){ return r.enteredBy; }).filter(Boolean))).sort();
+  // Admin must explicitly pick someone (the ledger is gated on it, see renderFeeRecordTab's
+  // "Pick a counsellor" screen) — everyone else defaults to unfiltered (their whole centre),
+  // so the option label reflects which behaviour picking "blank" actually gives you.
+  var placeholderLabel = isAdmin ? '— Select —' : 'All Counsellors';
+  cSel.innerHTML = '<option value="">' + placeholderLabel + '</option>' + names.map(function(n) {
+    return '<option value="' + escC(n) + '"' + (n === curC ? ' selected' : '') + '>' + escC(n) + '</option>';
+  }).join('');
 }
 
 function resetFeeRecordFilters() {
@@ -8315,8 +8322,8 @@ function feeRecordFilteredRows() {
   // counsellor" gate in renderFeeRecordTab) — that path stays scoped by enteredBy/
   // recorded_by, same as before.
   //
-  // Non-admins get a CENTRE-scoped ledger, not a counsellor-scoped one: every fee record
-  // for their centre(s), regardless of which counsellor is credited with the revenue
+  // Non-admins get a CENTRE-scoped ledger by default, not a counsellor-scoped one: every fee
+  // record for their centre(s), regardless of which counsellor is credited with the revenue
   // (recorded_by/enteredBy). This used to filter by `r.enteredBy !== counselorName`,
   // which silently dropped any record reassigned/credited to a different counsellor even
   // though the student's batch still belonged to this counsellor's centre — e.g. Aishwarya
@@ -8324,7 +8331,12 @@ function feeRecordFilteredRows() {
   // though Preethy owns that centre. allInvoiceRecords is already fetched scoped to
   // allowedCentres (see loadFeeRecordTab's getAllFeeRecords call), so filtering again by
   // r.centre here is just being explicit about the same scope, not a new restriction.
-  var effectiveCounsellor = isAdmin ? (document.getElementById('fr-filter-counsellor').value || '') : '';
+  //
+  // The Counsellor picker (see populateFeeRecordFilterOptions) now lets non-admins OPTIONALLY
+  // narrow that centre-wide ledger down to one name — e.g. isolate just Anuradha's entries
+  // inside a Chennai-scoped view — without losing the centre-wide view as the default. It
+  // narrows WITHIN the centre scope, it can never be used to see outside allowedCentres.
+  var effectiveCounsellor = document.getElementById('fr-filter-counsellor').value || '';
   var monthFilter = document.getElementById('fr-filter-month').value;
   var batchFilter = document.getElementById('fr-filter-batch').value;
   var search = (document.getElementById('fr-filter-search').value || '').trim().toLowerCase();
@@ -8334,8 +8346,9 @@ function feeRecordFilteredRows() {
   return allInvoiceRecords.filter(function(r) {
     if (isAdmin) {
       if (effectiveCounsellor && r.enteredBy !== effectiveCounsellor) return false;
-    } else if (allowedCentres && allowedCentres.length && allowedCentres.indexOf(r.centre) === -1) {
-      return false;
+    } else {
+      if (allowedCentres && allowedCentres.length && allowedCentres.indexOf(r.centre) === -1) return false;
+      if (effectiveCounsellor && r.enteredBy !== effectiveCounsellor) return false;
     }
     if (monthFilter && frRecordMonth(r) !== monthFilter) return false;
     if (batchFilter && r.batchCode !== batchFilter) return false;
@@ -8405,10 +8418,18 @@ function renderFeeRecordTab() {
     gTotal.balance     += Number(r.outstanding) || 0;
     gTotal.count++;
   });
+  // When a non-admin has narrowed the centre-wide ledger to one counsellor via the picker,
+  // "Centre Revenue" (which implies everyone's sales) would be misleading — relabel to make
+  // clear the tile is now scoped to just that person's rows within the centre.
+  var filterCounsellor = document.getElementById('fr-filter-counsellor').value || '';
+  var revenueTileLabel = isAdmin ? 'Revenue' : (filterCounsellor ? 'Filtered Revenue' : 'Centre Revenue');
+  var revenueTileSub = isAdmin
+    ? ' · sum of fee records for this counsellor'
+    : (filterCounsellor ? ' · ' + filterCounsellor + '\'s sales in this centre' : ' · everyone\'s sales in this centre');
   summary.style.display = 'grid';
   summary.innerHTML =
     '<div class="summary-tile"><div class="k">Records</div><div class="v">' + gTotal.count + '</div><div class="s">Matching current filters</div></div>' +
-    '<div class="summary-tile"><div class="k">' + (isAdmin ? 'Revenue' : 'Centre Revenue') + '</div><div class="v">' + money(gTotal.revenue) + '</div><div class="s">Excl. GST' + (isAdmin ? ' · sum of fee records for this counsellor' : ' · everyone\'s sales in this centre') + '</div></div>' +
+    '<div class="summary-tile"><div class="k">' + revenueTileLabel + '</div><div class="v">' + money(gTotal.revenue) + '</div><div class="s">Excl. GST' + revenueTileSub + '</div></div>' +
     // "Your Revenue" is a straight sum of this counsellor's own fee records, excl. GST —
     // useful for reconciling against the Revenue tab, but NOT guaranteed to equal it: the
     // Revenue tab's own "Total Achieved" is a counsellor-entered, per-month figure that

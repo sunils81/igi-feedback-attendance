@@ -40,7 +40,7 @@ const COURSES  = [
   'Rough Diamond Graduate','Identification of RES','Small Diamond Assortment',
   'Diamond Graduate Integrated','Coloured Stone Integrated',
   'Corporate Programs','Seminars','Gem-A Foundation','Gem-A Diploma',
-  'Emerald','Pearl',
+  'Emerald','Pearl','Diamond Essential: The 5C\'s',
   'Navratna Masterclass (10 Half Days)','Navratna Masterclass (5 Full Days)'
 ];
 const INSTRUCTORS = [
@@ -9702,24 +9702,34 @@ const COURSE_FEES_JS = {
   'JewelPad Online':                     {fee:41900, regFee:0,    gst:18},
   'Navratna Masterclass (10 Half Days)': {fee:51900, regFee:0,    gst:18},
   'Navratna Masterclass (5 Full Days)':  {fee:51900, regFee:0,    gst:18},
-  'Gem-A Foundation':                    {fee:285500,regFee:0,    gst:18},
-  'Gem-A Diploma':                       {fee:422500,regFee:0,    gst:18},
-  'Jewelry Design Manual':               {fee:103900,regFee:0,    gst:18},
+  // Revised 2026-07-25 per Sunil: was 285500.
+  'Gem-A Foundation':                    {fee:337000,regFee:0,    gst:18},
+  // Revised 2026-07-25 per Sunil: was 422500.
+  'Gem-A Diploma':                       {fee:499000,regFee:0,    gst:18},
+  // Revised 2026-07-25 per Sunil: was 103900.
+  'Jewelry Design Manual':               {fee:125900,regFee:0,    gst:18},
   'Polished Diamond Grading':            {fee:99900, regFee:0,    gst:18},
   'Small Diamond Assortment':            {fee:14900, regFee:0,    gst:18},
   'Rough Diamond':                       {fee:51900, regFee:0,    gst:18},
   'iRES':                                {fee:35900, regFee:0,    gst:18},
+  // 'Diamond Essential: The 5C's' (below) is the current display name — this old key is
+  // kept only so any batch/fee record already stamped with it still resolves correctly.
   'Diamond Essentials 5Cs':            {fee:25900, regFee:0,    gst:18},
-  'JD-CAD':                              {fee:82900, regFee:0,    gst:18},
+  // Revised 2026-07-25 per Sunil: was 82900. This is "Jewelry Design CAD Rhino" — the CAD
+  // (Rhino software) track of Jewelry Design Graduate, aliased below as 'CAD Design'.
+  'JD-CAD':                              {fee:125900, regFee:0,    gst:18},
   'Smart Learning DG':                   {fee:114900,regFee:0,    gst:18},
   'Smart Learning CSG':                  {fee:114900,regFee:0,    gst:18},
   'Smart Learning GG':                   {fee:229800,regFee:0,    gst:18},
+  // New 2026-07-25 per Sunil — same course as 'Diamond Essentials 5Cs' above under its
+  // current display name; added to COURSES so it's actually selectable in Batch Setup/CRM.
+  'Diamond Essential: The 5C\'s':        {fee:25900, regFee:0,    gst:18},
   // The 5 entries below are current-name aliases for courses above that were renamed in the
   // batch-creation Course dropdown without this catalog being updated to match — confirmed
   // with the counsellor team, same price carries over under the new name. The old-name keys
   // above are kept as-is (not deleted) so any batch/fee record still stamped with the old
   // course string continues to resolve correctly.
-  'CAD Design':                          {fee:82900, regFee:0,    gst:18}, // = 'JD-CAD'
+  'CAD Design':                          {fee:125900, regFee:0,    gst:18}, // = 'JD-CAD'
   'Rough Diamond Graduate':              {fee:51900, regFee:0,    gst:18}, // = 'Rough Diamond'
   'Identification of RES':               {fee:35900, regFee:0,    gst:18}, // = 'iRES'
   // Diamond/Coloured Stone "Integrated" = recorded online lectures + 5/10 full practical

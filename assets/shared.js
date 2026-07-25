@@ -414,7 +414,8 @@ window.gasGet = (function () {
     var finalPct = finalHasMark && finalMax > 0 ? Math.round(100 * finalObt / finalMax) : null;
     var finalPass = finalPct !== null && finalPct >= 60;
 
-    // ── Practical (independent gate; only required if the batch actually has a Practical test) ──
+    // ── Practical — no longer an independent hard gate. Tracked so it can act as a
+    // "grace" toward the Combined Score below (see combinedScore / graceApplied).
     var practicalObt = 0, practicalMax = 0, practicalHasMark = false;
     practicalAssessments.forEach(function(a) {
       var markRow = marksMap[a.assessment_id];
@@ -423,17 +424,40 @@ window.gasGet = (function () {
     });
     var practicalPct = practicalHasMark && practicalMax > 0 ? Math.round(100 * practicalObt / practicalMax) : null;
     var practicalRequired = practicalAssessments.length > 0;
-    var practicalPass = practicalRequired ? (practicalPct !== null && practicalPct >= 60) : true;
+    var practicalPass = practicalPct !== null && practicalPct >= 60;
 
     // ── Attendance (advisory only, never blocks eligibility) ──
     var attPct = attInfo.total > 0 ? Math.round(100 * attInfo.present / attInfo.total) : null;
     var attPass = attPct !== null && attPct >= 75;
 
-    // Fee-paid is a hard gate: neither the academic pass conditions nor an HOD academic
+    // ── Combined Score: weekly avg + final exam, weighted 40/60 ──────────────
+    // A student is no longer failed just because weekly OR final independently dipped
+    // below 60% (e.g. a strong final exam used to be wasted by one weak weekly test).
+    // The two are blended into a single score instead.
+    var WEEKLY_WEIGHT = 0.4, FINAL_WEIGHT = 0.6;
+    var combinedScoreVal = (weeklyAvgVal !== null && finalPct !== null)
+      ? Math.round(weeklyAvgVal * WEEKLY_WEIGHT + finalPct * FINAL_WEIGHT)
+      : null;
+
+    // ── Practical grace ──────────────────────────────────────────────────────
+    // If the combined score falls just short of 60% (within 5 points, i.e. 55-59%) and
+    // the student scored ≥60% on Practical, that practical strength carries them over
+    // the line. Practical is never an independent gate — it can only help, never fail,
+    // a student who is otherwise on the bubble.
+    var GRACE_MARGIN = 5;
+    var graceApplied = combinedScoreVal !== null &&
+      combinedScoreVal < 60 &&
+      combinedScoreVal >= (60 - GRACE_MARGIN) &&
+      practicalPct !== null &&
+      practicalPct >= 60;
+
+    var marksEligible = combinedScoreVal !== null && (combinedScoreVal >= 60 || graceApplied);
+
+    // Fee-paid is a hard gate: neither the combined marks score nor an HOD academic
     // override can substitute for it. An HOD approving weak test scores does not, and
     // should not, also forgive an outstanding fee balance — that requires the fee record
     // itself to be cleared.
-    var eligible = ((weeklyPass && finalPass && practicalPass) || hodStatus === 'Approved') && feePaid;
+    var eligible = (marksEligible || hodStatus === 'Approved') && feePaid;
 
     return {
       studentId: studentId, studentName: studentName, batchCode: batchCode, centre: centre, course: course,
@@ -442,6 +466,7 @@ window.gasGet = (function () {
       weeklyAvg: { value: weeklyAvgVal, pass: weeklyPass },
       practicalMarks: { value: practicalPct, pass: practicalPass, required: practicalRequired },
       finalExam: { value: finalPct, pass: finalPass },
+      combinedScore: { value: combinedScoreVal, pass: marksEligible, graceApplied: graceApplied },
       feeStatus: { paid: feePaid, outstanding: feeOutstanding, hasRecord: !!feeInfo },
       eligible: eligible,
       hodStatus: hodStatus,
@@ -6398,13 +6423,33 @@ window.gasGet = (function () {
   }
 
   function h_getAssessments(p, cb) {
+    var bc = encodeURIComponent(p.batchCode);
     // Use embedded select to get marks count per assessment in one call
-    GET('assessments?select=*,assessment_marks(count)', 'batch_code=eq.' + encodeURIComponent(p.batchCode), function(e, rows) {
-      cb(null, { status: e ? 'error' : 'ok', assessments: (rows || []).map(function(r) {
-        var cnt = r.assessment_marks && r.assessment_marks[0] ? (r.assessment_marks[0].count || 0) : 0;
-        return { assessmentId: r.assessment_id, batchCode: r.batch_code, testName: r.test_name, testType: r.test_type,
-          testDate: toDMY(r.held_on), totalMarks: r.max_marks, marksEntered: Number(cnt) };
-      }) });
+    GET('assessments?select=*,assessment_marks(count)', 'batch_code=eq.' + bc, function(e, rows) {
+      if (e) { cb(null, { status: 'error', assessments: [] }); return; }
+      // Expected (active) student count for this batch — without this the client can't tell
+      // "all marks entered" from "some pending" and used to show a bare, alarming "?" for
+      // every test regardless of how many marks had actually been saved. Mirrors the same
+      // two sources h_getStudents merges: direct students.batch_code rows + enrollments-table
+      // rows, deduped by student_id.
+      var idSet = {}, done = 0;
+      function finishCount() {
+        if (++done < 2) return;
+        var expected = Object.keys(idSet).length;
+        cb(null, { status: 'ok', assessments: (rows || []).map(function(r) {
+          var cnt = r.assessment_marks && r.assessment_marks[0] ? (r.assessment_marks[0].count || 0) : 0;
+          return { assessmentId: r.assessment_id, batchCode: r.batch_code, testName: r.test_name, testType: r.test_type,
+            testDate: toDMY(r.held_on), totalMarks: r.max_marks, marksEntered: Number(cnt), expectedStudents: expected };
+        }) });
+      }
+      GET('students', 'batch_code=eq.' + bc + '&select=student_id', function(e2, rows2) {
+        (rows2 || []).forEach(function(s) { idSet[s.student_id] = true; });
+        finishCount();
+      });
+      GET('enrollments', 'batch_code=eq.' + bc + '&status=eq.Active&select=student_id', function(e3, rows3) {
+        (rows3 || []).forEach(function(s) { idSet[s.student_id] = true; });
+        finishCount();
+      });
     });
   }
 

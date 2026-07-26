@@ -60,8 +60,26 @@ async function buildManifest() {
 
     for (var ci = 0; ci < centreFolders.length; ci++) {
       var centreFolder = centreFolders[ci];
-      var monthFolders = (await listChildren(centreFolder.id)).filter(isFolder).filter(function (f) { return f.name !== 'Testimonials'; });
+      var centreChildren = await listChildren(centreFolder.id);
 
+      // Two folder layouts coexist in this Drive: newer years nest photos one
+      // level deeper under a Month folder (Year > Centre > Month > photos);
+      // older years drop photos straight into the Centre folder (Year > Centre >
+      // photos). Handle both — anything that's an image right here counts, and
+      // anything that's a subfolder (besides "Testimonials") gets treated as a
+      // month and recursed into.
+      var directImages = centreChildren.filter(isImage);
+      for (var di = 0; di < directImages.length; di++) {
+        var df = directImages[di];
+        photos.push({
+          id: df.id,
+          thumb: resize(df.thumbnailLink, 500),
+          full: resize(df.thumbnailLink, 1600),
+          caption: centreFolder.name + ' · ' + yearFolder.name
+        });
+      }
+
+      var monthFolders = centreChildren.filter(isFolder).filter(function (f) { return f.name !== 'Testimonials'; });
       for (var mi = 0; mi < monthFolders.length; mi++) {
         var monthFolder = monthFolders[mi];
         var files = (await listChildren(monthFolder.id)).filter(isImage);

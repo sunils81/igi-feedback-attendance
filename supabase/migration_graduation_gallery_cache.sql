@@ -22,3 +22,9 @@ CREATE TABLE IF NOT EXISTS public.graduation_gallery_cache (
 INSERT INTO public.graduation_gallery_cache (id, manifest)
 VALUES ('main', '{}'::jsonb)
 ON CONFLICT (id) DO NOTHING;
+
+-- This project revokes default table privileges (see enable_rls.sql), so every
+-- new table needs an explicit grant or service_role gets "permission denied"
+-- even though service_role normally bypasses RLS. Both API routes authenticate
+-- as service_role, so this is the only grant needed.
+GRANT SELECT, INSERT, UPDATE ON public.graduation_gallery_cache TO service_role;

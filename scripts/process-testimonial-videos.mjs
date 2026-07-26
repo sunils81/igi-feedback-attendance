@@ -27,7 +27,14 @@ const MUSIC_TRACKS = [
   { name: 'rising-ambitions', file: path.join(process.cwd(), 'course-catalog-site/assets/audio/rising-ambitions.mp3') }
 ];
 const MUSIC_VOLUME = 0.18;       // background music level under the spoken testimonial
-const MAX_DURATION_SECONDS = 600; // 10 min safety cap — longer videos are flagged, not processed, to avoid runaway render time/storage cost
+
+// Supabase free tier caps Storage at 1GB total and 50MB per uploaded file.
+// MAX_DURATION_SECONDS keeps clips short enough to stay watchable at a bitrate
+// that fits TARGET_MAX_BYTES; TARGET_MAX_BYTES leaves headroom under the 50MB
+// hard limit so container overhead never pushes a file over the edge.
+const MAX_DURATION_SECONDS = 240;        // 4 min safety cap — longer videos are flagged, not processed
+const TARGET_MAX_BYTES = 42 * 1024 * 1024; // ~42MB target output size (Supabase free-tier hard cap is 50MB/file)
+const AUDIO_BITRATE_KBPS = 96;
 
 const YEAR_RE = /^\d{4}$/;
 
@@ -108,17 +115,29 @@ function ffprobeDuration(filePath) {
   return parseFloat(out) || 0;
 }
 
-function mixAudio(videoPath, musicPath, outPath) {
+function mixAudio(videoPath, musicPath, outPath, durationSeconds) {
   // Loop the music indefinitely so it covers videos longer than the track;
   // amix duration=first + the video's own audio stream sets the final length,
   // so the output always matches the source video's duration exactly.
+  //
+  // Re-encodes video (rather than '-c:v copy') at a bitrate sized to hit
+  // TARGET_MAX_BYTES for this clip's duration — phone-shot source footage is
+  // often well over Supabase's 50MB/file free-tier cap at its original
+  // bitrate, so stream-copying it through unchanged would get the upload
+  // rejected. -maxrate/-bufsize keep it from spiking above budget on busier
+  // scenes.
+  var totalKbps = Math.floor((TARGET_MAX_BYTES * 8) / 1000 / durationSeconds);
+  var videoKbps = Math.max(300, totalKbps - AUDIO_BITRATE_KBPS); // floor keeps even long clips watchable
   execFileSync('ffmpeg', [
     '-y',
     '-i', videoPath,
     '-stream_loop', '-1', '-i', musicPath,
     '-filter_complex', '[1:a]volume=' + MUSIC_VOLUME + '[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=2[aout]',
     '-map', '0:v', '-map', '[aout]',
-    '-c:v', 'copy', '-shortest',
+    '-c:v', 'libx264', '-preset', 'veryfast',
+    '-b:v', videoKbps + 'k', '-maxrate', videoKbps + 'k', '-bufsize', (videoKbps * 2) + 'k',
+    '-c:a', 'aac', '-b:a', AUDIO_BITRATE_KBPS + 'k',
+    '-shortest',
     outPath
   ], { stdio: 'inherit' });
 }
@@ -170,7 +189,17 @@ async function main() {
 
       const track = MUSIC_TRACKS[i % MUSIC_TRACKS.length];
       const outPath = path.join(tmp, v.id + '-final.mp4');
-      mixAudio(rawPath, track.file, outPath);
+      mixAudio(rawPath, track.file, outPath, duration);
+
+      // Belt-and-suspenders: bitrate targeting should already land under
+      // Supabase's 50MB/file free-tier cap, but verify before uploading so a
+      // rejected upload doesn't surface as a confusing storage-API error.
+      const outSize = statSync(outPath).size;
+      if (outSize > 49 * 1024 * 1024) {
+        await supaUpdate(v.id, { status: 'error', error_message: 'Encoded size ' + Math.round(outSize / 1024 / 1024) + 'MB still exceeds the 50MB Supabase free-tier file cap', processed_at: new Date().toISOString() });
+        console.log('  Skipped — encoded output too large (' + Math.round(outSize / 1024 / 1024) + 'MB).');
+        continue;
+      }
 
       const storagePath = v.year + '/' + v.centre.replace(/[^a-zA-Z0-9_-]/g, '_') + '/' + v.id + '.mp4';
       const publicUrl = await uploadToStorage(outPath, storagePath);

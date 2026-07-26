@@ -2229,8 +2229,9 @@ window.__upcomingBatches = [];
   function renderGrid(year){
     var photos = manifest[year] || [];
     gridEl.innerHTML = photos.map(function(p){
-      return '<div class="grad-thumb" data-id="' + p.id + '" data-caption="' + p.caption.replace(/"/g,'&quot;') + '">' +
-        '<img src="assets/graduation/thumb/' + p.id + '.jpg" alt="' + p.caption.replace(/"/g,'&quot;') + '" loading="lazy"></div>';
+      var cap = (p.caption || '').replace(/"/g,'&quot;');
+      return '<div class="grad-thumb" data-full="' + (p.full || p.thumb) + '" data-caption="' + cap + '">' +
+        '<img src="' + p.thumb + '" alt="' + cap + '" loading="lazy"></div>';
     }).join('');
   }
 
@@ -2254,7 +2255,7 @@ window.__upcomingBatches = [];
   gridEl.addEventListener('click', function(e){
     var thumb = e.target.closest('.grad-thumb');
     if(!thumb) return;
-    lightboxImg.src = 'assets/graduation/full/' + thumb.getAttribute('data-id') + '.jpg';
+    lightboxImg.src = thumb.getAttribute('data-full');
     lightboxCaption.textContent = thumb.getAttribute('data-caption');
     lightbox.classList.add('open');
     document.body.classList.add('modal-open');
@@ -2268,9 +2269,13 @@ window.__upcomingBatches = [];
   lightbox.addEventListener('click', function(e){ if(e.target === lightbox) closeLightbox(); });
   document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && lightbox.classList.contains('open')) closeLightbox(); });
 
-  fetch('assets/graduation/manifest.json')
+  fetch('/api/graduation-manifest')
     .then(function(r){ return r.json(); })
-    .then(function(data){ manifest = data; renderTabs(); })
+    .then(function(data){
+      manifest = data || {};
+      if (!Object.keys(manifest).length) { gridEl.innerHTML = '<p style="color:var(--muted)">Gallery syncing — check back shortly.</p>'; return; }
+      renderTabs();
+    })
     .catch(function(){ gridEl.innerHTML = '<p style="color:var(--muted)">Gallery couldn\'t load right now.</p>'; });
 })();
 </script>

@@ -1332,6 +1332,18 @@ footer a{color:var(--brass-light); text-decoration:none;}
   </div>
 </section>
 
+<section class="section" id="freshTestimonials" style="display:none;">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Fresh From Our Students</span>
+      <h2>Straight from Drive, straight to you</h2>
+      <p>New graduate videos, synced automatically as centres upload them.</p>
+    </div>
+    <div class="t-grid" id="freshTestimonialsGrid"></div>
+    <p class="t-credit">Background Music: <a href="https://www.bluetreeaudio.com" target="_blank" rel="noopener">www.bluetreeaudio.com</a></p>
+  </div>
+</section>
+
 <section class="section section-dark">
   <div class="wrap enquire-grid">
     <div>
@@ -1457,6 +1469,9 @@ body.modal-open{overflow:hidden;}
   border-top:6px solid transparent; border-bottom:6px solid transparent; border-left:9px solid rgba(247,243,234,0.95);
   margin-left:2px;
 }
+.t-grid{display:flex; flex-wrap:wrap; gap:16px;}
+.t-credit{margin-top:18px; font-family:var(--mono); font-size:11px; color:var(--muted); text-align:center;}
+.t-credit a{color:var(--muted);}
 .t-card .t-label{
   position:absolute; bottom:10px; left:10px; right:10px; color:#fff;
   font-family:var(--mono); font-size:11px; letter-spacing:0.04em;
@@ -1817,6 +1832,33 @@ body.modal-open{overflow:hidden;}
     closeModal();
     window.openEnquireModal(currentCourse);
   });
+})();
+</script>
+
+<script>
+// ---- Fresh (auto-synced) testimonial videos ----
+// Populates #freshTestimonialsGrid with .t-card elements identical in markup
+// to the curated marquee above, so the existing document-level '.t-card'
+// click handler (below) opens them in the same video modal — no JS change
+// needed there. Section stays hidden until at least one 'ready' video exists.
+(function(){
+  var section = document.getElementById('freshTestimonials');
+  var grid = document.getElementById('freshTestimonialsGrid');
+  if (!section || !grid) return;
+
+  fetch('/api/testimonial-videos')
+    .then(function(r){ return r.json(); })
+    .then(function(rows){
+      if (!Array.isArray(rows) || !rows.length) return;
+      grid.innerHTML = rows.map(function(v){
+        var label = (v.centre || '') + (v.year ? ' — ' + v.year : '');
+        return '<a class="t-card" href="#" data-video="' + v.video_url + '" data-course="' + (v.centre || '') + '">' +
+          '<video class="t-preview" muted loop playsinline preload="metadata" aria-label="Student testimonial — ' + label + '" src="' + v.video_url + '#t=0.5"></video>' +
+          '<div class="t-play"></div><span class="t-label">' + label + '</span></a>';
+      }).join('');
+      section.style.display = '';
+    })
+    .catch(function(){ /* leave section hidden on any failure */ });
 })();
 </script>
 

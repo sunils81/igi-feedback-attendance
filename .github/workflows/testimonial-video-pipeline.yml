@@ -1,0 +1,30 @@
+name: Testimonial Video Pipeline
+
+# Runs daily, plus can be triggered manually from the Actions tab (useful for
+# an immediate run right after uploading a new testimonial video instead of
+# waiting for the schedule). ffmpeg is pre-installed on GitHub's ubuntu-latest
+# runners, so no extra setup is needed for the actual video/audio mixing.
+on:
+  schedule:
+    - cron: '0 4 * * *'   # 04:00 UTC = ~09:30 IST
+  workflow_dispatch: {}
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Confirm ffmpeg is available
+        run: ffmpeg -version
+
+      - name: Run pipeline
+        env:
+          GDRIVE_API_KEY: ${{ secrets.GDRIVE_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/process-testimonial-videos.mjs

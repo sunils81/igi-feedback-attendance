@@ -1366,6 +1366,11 @@ footer a{color:var(--brass-light); text-decoration:none;}
   </div>
 </footer>
 <style>
+/* ---- Scroll reveal ---- */
+.reveal{opacity:0; transform:translateY(28px); transition:opacity 0.8s cubic-bezier(.16,.84,.44,1), transform 0.8s cubic-bezier(.16,.84,.44,1);}
+.reveal.in-view{opacity:1; transform:none;}
+@media (prefers-reduced-motion: reduce){ .reveal{opacity:1; transform:none; transition:none;} }
+
 /* ---- Course detail sources (hidden — read by JS into the modal) ---- */
 .course-src{display:none;}
 
@@ -1741,6 +1746,57 @@ body.modal-open{overflow:hidden;}
     e.preventDefault();
     window.openEnquireModal();
   });
+})();
+</script>
+
+<script>
+// ---- Scroll reveal: section heads, cards, and key media fade/rise into
+// view once, first time they cross into the viewport. Sibling elements get
+// a small staggered delay so groups (course cards, stat blocks) don't all
+// pop in at the exact same instant. Skips entirely under
+// prefers-reduced-motion, and never touches .t-card — that's already
+// animated by the testimonial marquee and stacking a second animation on
+// top of it would look broken.
+(function(){
+  var selector = '.section-head, .stat, .course-card, .tq-card, .form-card, .leadership-banner, .video-embed, .t-grid';
+  var els = Array.prototype.slice.call(document.querySelectorAll(selector));
+  if (!els.length) return;
+
+  // Reduced motion: leave elements untouched (no .reveal class added at all)
+  // so they're simply visible by default with zero risk of interfering with
+  // other CSS (e.g. .course-card:hover's own transform).
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  var counts = new Map();
+  els.forEach(function(el){
+    el.classList.add('reveal');
+    var parent = el.parentElement;
+    var idx = counts.get(parent) || 0;
+    counts.set(parent, idx + 1);
+    el.style.transitionDelay = (Math.min(idx, 5) * 70) + 'ms';
+  });
+
+  // Once an element has finished revealing, strip the reveal classes and
+  // inline delay entirely — otherwise .reveal.in-view{transform:none} would
+  // permanently fight with unrelated hover effects like
+  // .course-card:hover{transform:translateY(-4px)} on every card afterward.
+  function cleanup(el){
+    el.classList.remove('reveal', 'in-view');
+    el.style.transitionDelay = '';
+  }
+
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){
+      if (entry.isIntersecting) {
+        var el = entry.target;
+        io.unobserve(el);
+        el.classList.add('in-view');
+        el.addEventListener('transitionend', function(){ cleanup(el); }, { once: true });
+      }
+    });
+  }, { root: null, threshold: 0.15, rootMargin: '0px 0px -60px 0px' });
+
+  els.forEach(function(el){ io.observe(el); });
 })();
 </script>
 

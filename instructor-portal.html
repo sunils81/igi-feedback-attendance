@@ -495,9 +495,6 @@
       <div class="card">
         <div class="section-tag">New Test</div>
         <h2>Define Test Details</h2>
-        <div class="field"><label>Test Name *</label>
-          <input type="text" id="ct-name" placeholder="e.g. Weekly Test 1 – Clarity & Color">
-        </div>
         <div class="grid2">
           <div class="field"><label>Test Type *</label>
             <select id="ct-type" onchange="updateTestTypeHint()">
@@ -511,12 +508,28 @@
             </select>
             <div id="ct-type-hint" style="font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4"></div>
           </div>
+          <div class="field"><label>Test Number *</label>
+            <select id="ct-num">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+              <option value="7">7</option>
+              <option value="8">8</option>
+              <option value="9">9</option>
+              <option value="10">10</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid2">
           <div class="field"><label>Date Conducted *</label>
             <input type="date" id="ct-date">
           </div>
-        </div>
-        <div class="field"><label>Total Marks *</label>
-          <input type="number" id="ct-total" placeholder="e.g. 25" min="1" max="1000" style="max-width:140px">
+          <div class="field"><label>Total Marks *</label>
+            <input type="number" id="ct-total" placeholder="e.g. 25" min="1" max="1000">
+          </div>
         </div>
         <div style="display:flex;gap:10px;margin-top:4px">
           <button class="btn btn-gold" id="ct-btn" onclick="createTest()">Create & Enter Marks →</button>
@@ -4085,21 +4098,32 @@ function saveMarks() {
   });
 }
 
+// Test Type value -> display label used when auto-building the test name.
+// Keep these in sync with the <option> labels in #ct-type.
+var CT_TYPE_LABELS = {
+  'Weekly':'Weekly Test', 'Final':'Final Test', 'MCQ':'MCQ', 'Practical':'Practical',
+  'MCQ + Practical':'MCQ + Practical', 'Theory':'Theory', 'Re-Test':'Re-Test'
+};
+
 function createTest() {
-  const name  = document.getElementById('ct-name').value.trim();
   const type  = document.getElementById('ct-type').value;
+  const num   = document.getElementById('ct-num').value;
   const date  = document.getElementById('ct-date').value;
   const total = document.getElementById('ct-total').value;
   const err   = document.getElementById('ct-err');
   const btn   = document.getElementById('ct-btn');
   err.classList.remove('show');
-  if (!name||!date||!total||!currentBatch) { err.textContent='Please fill all fields and select a batch first.'; err.classList.add('show'); return; }
+  if (!type||!num||!date||!total||!currentBatch) { err.textContent='Please fill all fields and select a batch first.'; err.classList.add('show'); return; }
+  // Name is auto-built from Type + Number — no free-text field, so there's no way
+  // for the label and the type to disagree (the source of instructor confusion this
+  // change removes; see the "counts toward" hint below for the same fix on read side).
+  const name = (CT_TYPE_LABELS[type] || type) + ' ' + num;
   btn.textContent='Creating…'; btn.disabled=true;
   gasGet({action:'createAssessment',batchCode:currentBatch,testName:name,testType:type,testDate:date,totalMarks:total,instructor:instructorName}, function(e,d) {
     btn.textContent='Create & Enter Marks →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') { err.textContent='Could not create test.'; err.classList.add('show'); return; }
     openTestMarks(d.assessmentId,name,new Date(date).toLocaleDateString('en-IN'),Number(total),type);
-    document.getElementById('ct-name').value='';
+    document.getElementById('ct-num').value='1';
     document.getElementById('ct-total').value='';
   });
 }

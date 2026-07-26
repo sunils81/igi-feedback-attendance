@@ -48,34 +48,35 @@ async function listChildren(folderId) {
   return out;
 }
 
+// A photo's month bucket is '' (empty string) when its Drive folder doesn't
+// separate by month at all (older years) — the front-end treats that as "no
+// month step, go straight from Centre to photos" rather than showing a fake
+// single month tab.
 async function buildManifest() {
-  var manifest = {}; // { "2026": [ {id, thumb, full, caption}, ... ], ... }
+  var manifest = {}; // { "2026": { "Mumbai": { "April": [ {id,thumb,full}, ... ], ... }, ... }, ... }
 
   var yearFolders = (await listChildren(ROOT_FOLDER_ID)).filter(isFolder).filter(function (f) { return YEAR_RE.test(f.name); });
 
   for (var yi = 0; yi < yearFolders.length; yi++) {
     var yearFolder = yearFolders[yi];
-    var photos = [];
+    var centres = {}; // { "Mumbai": { "April": [...], "": [...] }, ... }
     var centreFolders = (await listChildren(yearFolder.id)).filter(isFolder).filter(function (f) { return f.name !== 'Testimonials'; });
 
     for (var ci = 0; ci < centreFolders.length; ci++) {
       var centreFolder = centreFolders[ci];
       var centreChildren = await listChildren(centreFolder.id);
+      var months = {};
 
       // Two folder layouts coexist in this Drive: newer years nest photos one
       // level deeper under a Month folder (Year > Centre > Month > photos);
       // older years drop photos straight into the Centre folder (Year > Centre >
-      // photos). Handle both — anything that's an image right here counts, and
-      // anything that's a subfolder (besides "Testimonials") gets treated as a
-      // month and recursed into.
+      // photos). Handle both — anything that's an image right here goes in the
+      // '' (no-month) bucket, and anything that's a subfolder (besides
+      // "Testimonials") gets treated as a month and recursed into.
       var directImages = centreChildren.filter(isImage);
-      for (var di = 0; di < directImages.length; di++) {
-        var df = directImages[di];
-        photos.push({
-          id: df.id,
-          thumb: resize(df.thumbnailLink, 500),
-          full: resize(df.thumbnailLink, 1600),
-          caption: centreFolder.name + ' · ' + yearFolder.name
+      if (directImages.length) {
+        months[''] = directImages.map(function (df) {
+          return { id: df.id, thumb: resize(df.thumbnailLink, 500), full: resize(df.thumbnailLink, 1600) };
         });
       }
 
@@ -83,22 +84,29 @@ async function buildManifest() {
       for (var mi = 0; mi < monthFolders.length; mi++) {
         var monthFolder = monthFolders[mi];
         var files = (await listChildren(monthFolder.id)).filter(isImage);
-        for (var fi = 0; fi < files.length; fi++) {
-          var f = files[fi];
-          photos.push({
-            id: f.id,
-            thumb: resize(f.thumbnailLink, 500),
-            full: resize(f.thumbnailLink, 1600),
-            caption: centreFolder.name + ' · ' + monthFolder.name + ' ' + yearFolder.name
-          });
-        }
+        if (!files.length) continue;
+        months[monthFolder.name] = files.map(function (f) {
+          return { id: f.id, thumb: resize(f.thumbnailLink, 500), full: resize(f.thumbnailLink, 1600) };
+        });
       }
+
+      if (Object.keys(months).length) centres[centreFolder.name] = months;
     }
 
-    if (photos.length) manifest[yearFolder.name] = photos;
+    if (Object.keys(centres).length) manifest[yearFolder.name] = centres;
   }
 
   return manifest;
+}
+
+function countPhotos(manifest) {
+  var n = 0;
+  Object.keys(manifest).forEach(function (y) {
+    Object.keys(manifest[y]).forEach(function (c) {
+      Object.keys(manifest[y][c]).forEach(function (m) { n += manifest[y][c][m].length; });
+    });
+  });
+  return n;
 }
 
 async function saveManifest(manifest) {
@@ -120,8 +128,7 @@ export default async function handler(req, res) {
   try {
     var manifest = await buildManifest();
     await saveManifest(manifest);
-    var totalPhotos = Object.keys(manifest).reduce(function (n, y) { return n + manifest[y].length; }, 0);
-    return res.status(200).json({ status: 'ok', years: Object.keys(manifest), totalPhotos: totalPhotos });
+    return res.status(200).json({ status: 'ok', years: Object.keys(manifest), totalPhotos: countPhotos(manifest) });
   } catch (e) {
     console.error('sync-graduation-photos failed:', e);
     return res.status(500).json({ status: 'error', message: String((e && e.message) || e) });

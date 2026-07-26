@@ -240,6 +240,25 @@ h1,h2,h3,h4{font-family:var(--serif); font-weight:600; line-height:1.15; letter-
   border-radius:var(--radius); font-family:var(--mono); font-size:13px; cursor:pointer;
 }
 .grad-tab.active{background:var(--ink); color:#fff; border-color:var(--ink);}
+.grad-breadcrumb{display:flex; align-items:center; gap:8px; margin-bottom:20px; font-family:var(--mono); font-size:12px; color:var(--muted); flex-wrap:wrap; min-height:16px;}
+.grad-breadcrumb button{background:none; border:none; padding:0; color:var(--muted); font-family:var(--mono); font-size:12px; cursor:pointer; text-decoration:underline; text-underline-offset:3px;}
+.grad-breadcrumb button:hover{color:var(--ink);}
+.grad-breadcrumb .sep{color:var(--border);}
+.grad-breadcrumb .current{color:var(--ink); font-weight:600;}
+.grad-centre-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:16px;}
+.grad-centre-card{
+  border-radius:var(--radius); overflow:hidden; cursor:pointer; position:relative; border:1px solid var(--border);
+  aspect-ratio:4/3; background:var(--parchment-2);
+}
+.grad-centre-card img{width:100%; height:100%; object-fit:cover; transition:transform 0.3s;}
+.grad-centre-card:hover img{transform:scale(1.06);}
+.grad-centre-card .grad-centre-label{
+  position:absolute; left:0; right:0; bottom:0; padding:14px 16px 12px;
+  background:linear-gradient(0deg, rgba(15,27,46,0.85), rgba(15,27,46,0));
+  color:#fff;
+}
+.grad-centre-card .grad-centre-name{font-family:var(--serif); font-size:18px; display:block;}
+.grad-centre-card .grad-centre-count{font-family:var(--mono); font-size:11px; opacity:0.8;}
 .grad-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:10px;}
 .grad-thumb{
   aspect-ratio:1; border-radius:var(--radius); overflow:hidden; cursor:pointer; position:relative;
@@ -1102,7 +1121,8 @@ footer a{color:var(--brass-light); text-decoration:none;}
       <p>Every batch that's crossed the finish line, across every centre — browse by year.</p>
     </div>
     <div class="grad-tabs" id="gradTabs"></div>
-    <div class="grad-grid" id="gradGrid"></div>
+    <div class="grad-breadcrumb" id="gradBreadcrumb"></div>
+    <div id="gradBody"></div>
   </div>
 </section>
 
@@ -2214,25 +2234,136 @@ window.__upcomingBatches = [];
 
 <script>
 // ---- Graduation gallery ----
+// Drill-down: Year (tabs, always visible) -> Centre (cards) -> Month (tabs,
+// skipped when a centre has no month-level folders — see the '' bucket note
+// in the sync job) -> photo grid with lightbox.
 (function(){
   var tabsEl = document.getElementById('gradTabs');
-  var gridEl = document.getElementById('gradGrid');
+  var crumbEl = document.getElementById('gradBreadcrumb');
+  var bodyEl = document.getElementById('gradBody');
   var lightbox = document.getElementById('gradLightbox');
   var lightboxImg = document.getElementById('gradLightboxImg');
   var lightboxCaption = document.getElementById('gradLightboxCaption');
   var lightboxClose = document.getElementById('gradLightboxClose');
-  if(!tabsEl || !gridEl) return;
+  if(!tabsEl || !bodyEl) return;
 
-  var manifest = null;
+  var manifest = null;      // { year: { centre: { month: [ {id,thumb,full}, ... ] } } }
   var activeYear = null;
+  var activeCentre = null;
+  var activeMonth = null;
 
-  function renderGrid(year){
-    var photos = manifest[year] || [];
-    gridEl.innerHTML = photos.map(function(p){
-      var cap = (p.caption || '').replace(/"/g,'&quot;');
-      return '<div class="grad-thumb" data-full="' + (p.full || p.thumb) + '" data-caption="' + cap + '">' +
+  var MONTH_ORDER = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  function monthRank(name){
+    var i = MONTH_ORDER.indexOf(String(name || '').slice(0,3).toLowerCase());
+    return i === -1 ? 99 : i;
+  }
+
+  function esc(s){ return String(s || '').replace(/"/g,'&quot;'); }
+
+  function centrePhotoCount(months){
+    return Object.keys(months).reduce(function(n, m){ return n + months[m].length; }, 0);
+  }
+  function centreCover(months){
+    var keys = Object.keys(months);
+    for (var i = 0; i < keys.length; i++) { if (months[keys[i]].length) return months[keys[i]][0].thumb; }
+    return '';
+  }
+
+  // level: 'centre' (showing centre cards) | 'month' (showing month tabs + grid)
+  // | 'grid' (centre has no month data — grid shown directly under the centre)
+  var level = 'centre';
+
+  function photoTiles(photos, caption){
+    return photos.map(function(p){
+      var cap = esc(caption);
+      return '<div class="grad-thumb" data-full="' + p.full + '" data-caption="' + cap + '">' +
         '<img src="' + p.thumb + '" alt="' + cap + '" loading="lazy"></div>';
     }).join('');
+  }
+
+  function renderMonthLevel(){
+    var months = manifest[activeYear][activeCentre];
+    var monthKeys = Object.keys(months);
+    var hasNamedMonths = monthKeys.some(function(m){ return m !== ''; });
+
+    if (!hasNamedMonths) {
+      level = 'grid';
+      bodyEl.innerHTML = '<div class="grad-grid">' + photoTiles(months[''] || [], activeCentre + ' · ' + activeYear) + '</div>';
+      renderBreadcrumb();
+      return;
+    }
+
+    level = 'month';
+    var sorted = monthKeys.slice().sort(function(a,b){ return monthRank(a) - monthRank(b); });
+    if (!activeMonth || monthKeys.indexOf(activeMonth) === -1) activeMonth = sorted[0];
+
+    bodyEl.innerHTML = '<div class="grad-tabs" style="margin-bottom:20px">' + sorted.map(function(m){
+      var label = m === '' ? 'General' : m;
+      return '<button class="grad-tab' + (m === activeMonth ? ' active' : '') + '" data-month="' + esc(m) + '">' + esc(label) + '</button>';
+    }).join('') + '</div><div id="gradMonthGrid"></div>';
+
+    var monthGridEl = document.getElementById('gradMonthGrid');
+    function paintMonthGrid(){
+      var label = activeMonth === '' ? 'General' : activeMonth;
+      monthGridEl.innerHTML = '<div class="grad-grid">' + photoTiles(months[activeMonth] || [], activeCentre + ' · ' + label + ' ' + activeYear) + '</div>';
+    }
+    paintMonthGrid();
+    renderBreadcrumb();
+
+    bodyEl.querySelector('.grad-tabs').addEventListener('click', function(e){
+      var btn = e.target.closest('.grad-tab');
+      if(!btn) return;
+      activeMonth = btn.getAttribute('data-month');
+      bodyEl.querySelectorAll('.grad-tab').forEach(function(t){ t.classList.toggle('active', t === btn); });
+      paintMonthGrid();
+      renderBreadcrumb();
+    });
+  }
+
+  function renderCentreLevel(){
+    level = 'centre';
+    var centres = manifest[activeYear];
+    var names = Object.keys(centres).sort();
+    bodyEl.innerHTML = '<div class="grad-centre-grid">' + names.map(function(c){
+      var months = centres[c];
+      return '<div class="grad-centre-card" data-centre="' + esc(c) + '">' +
+        '<img src="' + centreCover(months) + '" alt="' + esc(c) + '" loading="lazy">' +
+        '<div class="grad-centre-label"><span class="grad-centre-name">' + esc(c) + '</span>' +
+        '<span class="grad-centre-count">' + centrePhotoCount(months) + ' photos</span></div></div>';
+    }).join('') + '</div>';
+    renderBreadcrumb();
+
+    bodyEl.querySelector('.grad-centre-grid').addEventListener('click', function(e){
+      var card = e.target.closest('.grad-centre-card');
+      if(!card) return;
+      activeCentre = card.getAttribute('data-centre');
+      activeMonth = null;
+      renderMonthLevel();
+    });
+  }
+
+  function renderBreadcrumb(){
+    if (level === 'centre') { crumbEl.innerHTML = ''; return; }
+    var html = '<button data-to="centre">' + esc(activeYear) + '</button><span class="sep">›</span>';
+    if (level === 'month') {
+      html += '<button data-to="month-root">' + esc(activeCentre) + '</button><span class="sep">›</span>' +
+        '<span class="current">' + esc(activeMonth === '' ? 'General' : activeMonth) + '</span>';
+    } else {
+      html += '<span class="current">' + esc(activeCentre) + '</span>';
+    }
+    crumbEl.innerHTML = html;
+    crumbEl.querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click', function(){
+        if (b.getAttribute('data-to') === 'centre') { activeCentre = null; activeMonth = null; renderCentreLevel(); }
+        else if (b.getAttribute('data-to') === 'month-root') { renderCentreLevel(); }
+      });
+    });
+  }
+
+  function renderBody(){
+    activeCentre = null;
+    activeMonth = null;
+    renderCentreLevel();
   }
 
   function renderTabs(){
@@ -2241,7 +2372,7 @@ window.__upcomingBatches = [];
     tabsEl.innerHTML = years.map(function(y){
       return '<button class="grad-tab' + (y === activeYear ? ' active' : '') + '" data-year="' + y + '">' + y + '</button>';
     }).join('');
-    renderGrid(activeYear);
+    renderBody();
   }
 
   tabsEl.addEventListener('click', function(e){
@@ -2249,10 +2380,10 @@ window.__upcomingBatches = [];
     if(!btn) return;
     activeYear = btn.getAttribute('data-year');
     tabsEl.querySelectorAll('.grad-tab').forEach(function(t){ t.classList.toggle('active', t === btn); });
-    renderGrid(activeYear);
+    renderBody();
   });
 
-  gridEl.addEventListener('click', function(e){
+  bodyEl.addEventListener('click', function(e){
     var thumb = e.target.closest('.grad-thumb');
     if(!thumb) return;
     lightboxImg.src = thumb.getAttribute('data-full');
@@ -2273,10 +2404,10 @@ window.__upcomingBatches = [];
     .then(function(r){ return r.json(); })
     .then(function(data){
       manifest = data || {};
-      if (!Object.keys(manifest).length) { gridEl.innerHTML = '<p style="color:var(--muted)">Gallery syncing — check back shortly.</p>'; return; }
+      if (!Object.keys(manifest).length) { bodyEl.innerHTML = '<p style="color:var(--muted)">Gallery syncing — check back shortly.</p>'; return; }
       renderTabs();
     })
-    .catch(function(){ gridEl.innerHTML = '<p style="color:var(--muted)">Gallery couldn\'t load right now.</p>'; });
+    .catch(function(){ bodyEl.innerHTML = '<p style="color:var(--muted)">Gallery couldn\'t load right now.</p>'; });
 })();
 </script>
 

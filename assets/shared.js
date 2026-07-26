@@ -9561,11 +9561,17 @@ const CSS_VARS = `
 body{font-family:"Plus Jakarta Sans",sans-serif;background:linear-gradient(180deg,#FBFAF6 0%,var(--off) 42%,#EEE8DC 100%);color:var(--navy);min-height:100vh;font-size:15px;line-height:1.6}
 .wrap{max-width:1040px;margin:0 auto;padding:20px 16px 60px}
 .site-header{background:linear-gradient(135deg,var(--navy),var(--navy2));border-radius:var(--r-lg);margin-bottom:22px;overflow:hidden;box-shadow:0 20px 48px rgba(13,27,46,.20);position:relative}
-.site-header::after{content:'';position:absolute;left:24px;right:24px;bottom:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold) 20%,var(--gold) 80%,transparent)}
-.hdr-logo{padding:22px 24px 14px;display:flex;align-items:center;justify-content:center}
+/* Same faceted diamond-crown motif used behind the public site's hero text —
+   barely visible, drifting almost imperceptibly slowly — so every portal's
+   header carries the same brand texture as the marketing site. */
+.site-header::before{content:'';position:absolute;inset:-15%;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'><g fill='none' stroke='%23C9A84C' stroke-width='1'><path d='M110 10 L210 90 L160 210 L60 210 L10 90 Z'/><path d='M110 10 L110 210'/><path d='M10 90 L210 90'/><path d='M110 10 L60 210'/><path d='M110 10 L160 210'/><path d='M10 90 L110 210'/><path d='M210 90 L110 210'/></g></svg>");background-repeat:repeat;background-size:180px 180px;opacity:0.07;z-index:0;pointer-events:none;animation:facet-drift 120s linear infinite}
+@keyframes facet-drift{from{transform:rotate(0deg)}to{transform:rotate(1turn)}}
+@media (prefers-reduced-motion: reduce){.site-header::before{animation:none}}
+.site-header::after{content:'';position:absolute;left:24px;right:24px;bottom:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold) 20%,var(--gold) 80%,transparent);z-index:1}
+.hdr-logo{padding:22px 24px 14px;display:flex;align-items:center;justify-content:center;position:relative;z-index:1}
 .hdr-logo img{height:36px;width:auto}
-.hdr-divider{height:1px;background:rgba(201,168,76,0.3);margin:0 24px}
-.hdr-band{padding:4px 24px 22px;text-align:center}
+.hdr-divider{height:1px;background:rgba(201,168,76,0.3);margin:0 24px;position:relative;z-index:1}
+.hdr-band{padding:4px 24px 22px;text-align:center;position:relative;z-index:1}
 .hdr-label{font-family:"Playfair Display",serif;font-weight:700;font-size:24px;letter-spacing:.01em;text-transform:none;color:#fff}
 .hdr-sub{font-size:11.5px;color:rgba(255,255,255,0.45);letter-spacing:.04em;text-transform:uppercase;margin-top:6px}
 .card{background:rgba(253,252,249,.96);border-radius:var(--r-md);border:1px solid var(--border);padding:22px;margin-bottom:16px;box-shadow:var(--shadow);transition:box-shadow .35s var(--ease),transform .35s var(--ease)}

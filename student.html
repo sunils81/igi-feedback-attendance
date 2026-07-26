@@ -11,6 +11,39 @@
 <script src="/assets/shared.js?v=68"></script>
 <style id="dyn-css"></style>
 <style>
+/* Diploma eligibility — the one moment on this portal students actually feel
+   something about, so it gets the premium treatment: the shared card/tile
+   language everywhere, and a one-time facet-shimmer "reveal" reserved
+   specifically for eligible/released — never for "not yet eligible", which
+   stays deliberately plain and calm rather than looking like it's mocking
+   an incomplete result. */
+.dip-title{font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:var(--navy);margin:0 0 4px}
+.dip-sub{font-size:11px;color:var(--muted);margin:0 0 14px}
+.dip-card{background:var(--white);border:1px solid var(--border);border-radius:var(--r-md);padding:16px;margin-bottom:14px;box-shadow:var(--shadow)}
+.dip-course-tag{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gold);margin-bottom:10px}
+.dip-tile-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.dip-tile{text-align:center;background:var(--off);border-radius:var(--r-sm);padding:10px}
+.dip-tile .k{font-size:10px;color:var(--muted);font-weight:600;margin-bottom:5px;line-height:1.4}
+.dip-tile .v{font-size:15px}
+.dip-weekly{background:var(--off);border-radius:var(--r-sm);padding:10px 12px;margin-bottom:10px}
+.dip-weekly-label{font-size:10px;color:var(--muted);font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px}
+
+.dip-hero{position:relative;overflow:hidden;border-radius:var(--r-md);margin-top:8px;background:linear-gradient(135deg,var(--navy),var(--navy2));border:1.5px solid var(--gold);padding:16px 18px;color:#fff}
+.dip-hero::before{
+  content:''; position:absolute; inset:-15%;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'><g fill='none' stroke='%23C9A84C' stroke-width='1'><path d='M110 10 L210 90 L160 210 L60 210 L10 90 Z'/><path d='M110 10 L110 210'/><path d='M10 90 L210 90'/><path d='M110 10 L60 210'/><path d='M110 10 L160 210'/><path d='M10 90 L110 210'/><path d='M210 90 L110 210'/></g></svg>");
+  background-repeat:repeat; background-size:150px 150px; opacity:0.1; z-index:0; pointer-events:none;
+  animation:facet-drift 100s linear infinite;
+}
+@keyframes facet-drift{from{transform:rotate(0deg)}to{transform:rotate(1turn)}}
+.dip-hero-sweep{position:absolute;top:0;left:-60%;width:45%;height:100%;background:linear-gradient(115deg,transparent 0%,transparent 35%,rgba(255,255,255,.5) 50%,transparent 65%,transparent 100%);transform:skewX(-20deg);z-index:1;pointer-events:none;animation:dip-sweep 1.8s ease-out .5s 1 both}
+@keyframes dip-sweep{from{left:-60%}to{left:130%}}
+.dip-hero-content{position:relative;z-index:2}
+.dip-hero-title{font-family:'Playfair Display',serif;font-size:16px;font-weight:700;margin-bottom:4px}
+.dip-hero-sub{font-size:12px;color:rgba(255,255,255,.75)}
+.dip-plain{background:var(--white);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px}
+@media (prefers-reduced-motion: reduce){.dip-hero::before{animation:none}.dip-hero-sweep{animation:none;display:none}}
+
 .batch-card{background:var(--white);border-radius:var(--radius);border:1.5px solid var(--border);padding:20px;margin-bottom:14px;box-shadow:var(--shadow);transition:border-color .2s}
 .batch-card.active-card{border-color:var(--gold)}
 .batch-card.done-card{border-color:#1D9E75;background:#F0FAF5}
@@ -3957,8 +3990,8 @@ function loadStudentDiploma() {
     }
 
     var html = '<div style="padding:4px 0 12px;">' +
-      '<h3 style="font-size:15px;font-weight:800;color:#0D1B2E;margin:0 0 4px;">🎓 Diploma Eligibility</h3>' +
-      '<p style="font-size:11px;color:#6b7280;margin:0 0 14px;">Your weekly test average, Practical marks (if applicable), and Final exam must each be ≥ 60%. Attendance (≥75%) is advisory.</p>' +
+      '<h3 class="dip-title">🎓 Diploma Eligibility</h3>' +
+      '<p class="dip-sub">Your weekly test average, Practical marks (if applicable), and Final exam must each be ≥ 60%. Attendance (≥75%) is advisory.</p>' +
     '</div>';
 
     rows.forEach(function(row) {
@@ -4058,14 +4091,23 @@ function loadStudentDiploma() {
             ? '<span style="color:'+G+';font-weight:700;">✅ '+combinedVal+'%</span>'
             : '<span style="color:'+R+';font-weight:700;">✗ '+combinedVal+'%</span>')
         : '<span style="color:#9ca3af;">—</span>';
-      var statusHtml, statusBg;
+      // The celebratory "hero" treatment (facet pattern + one-time light
+      // sweep) is reserved for released/eligible only — an incomplete result
+      // stays in a plain, calm card so the animation never reads as mocking
+      // a student who hasn't gotten there yet.
+      var heroHtml;
       if (released) {
-        statusHtml = '<span style="color:'+G+';font-weight:800;font-size:13px;">🎓 Diploma Released</span>';
-        statusBg   = '#f0fdf4';
+        heroHtml =
+          '<div class="dip-hero"><div class="dip-hero-sweep"></div><div class="dip-hero-content">' +
+            '<div class="dip-hero-title">🎓 Diploma Released</div>' +
+            '<div class="dip-hero-sub">Congratulations — your diploma has been issued.</div>' +
+          '</div></div>';
       } else if (eligible) {
-        statusHtml = '<span style="color:'+G+';font-weight:800;font-size:13px;">✅ Eligible — awaiting release</span>' +
-          (graceApplied ? '<div style="font-size:11px;color:#b45309;margin-top:4px;">Combined score reached 60% via Practical grace</div>' : '');
-        statusBg   = '#f0fdf4';
+        heroHtml =
+          '<div class="dip-hero"><div class="dip-hero-sweep"></div><div class="dip-hero-content">' +
+            '<div class="dip-hero-title">✅ Eligible — awaiting release</div>' +
+            '<div class="dip-hero-sub">' + (graceApplied ? 'Combined score reached 60% via Practical grace.' : 'All requirements met — your diploma will be released shortly.') + '</div>' +
+          '</div></div>';
       } else {
         var missing = [];
         if (combinedVal == null) {
@@ -4078,53 +4120,48 @@ function loadStudentDiploma() {
         }
         if (!feePaid) missing.push(feeHasRecord ? ('Fee balance of ₹'+Math.round(feeOutstanding||0).toLocaleString('en-IN')+' outstanding') : 'No fee record on file — contact your counsellor');
         if (!missing.length) missing.push('Assessment in progress');
-        statusHtml = '<span style="color:#dc2626;font-weight:800;font-size:13px;">⏳ Not yet eligible</span>' +
-          '<div style="font-size:11px;color:#6b7280;margin-top:4px;">' + missing.join(' &nbsp;·&nbsp; ') + '</div>';
-        statusBg = '#fff';
+        heroHtml = '<div class="dip-plain">' +
+          '<span style="color:#dc2626;font-weight:800;font-size:13px;">⏳ Not yet eligible</span>' +
+          '<div style="font-size:11px;color:var(--muted);margin-top:4px;">' + missing.join(' &nbsp;·&nbsp; ') + '</div>' +
+        '</div>';
       }
 
-      html += '<div style="background:'+statusBg+';border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:14px;">' +
-        '<div style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">' +
+      html += '<div class="dip-card">' +
+        '<div class="dip-course-tag">' +
           (row.course || '') + (row.batchCode ? ' &nbsp;·&nbsp; ' + row.batchCode : '') +
         '</div>' +
-        // Top row: Attendance, Weekly Avg, Practical, Final Exam, Fee Status
-        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">' +
-          '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
-            '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">ATTENDANCE<br><span style="font-size:9px;font-weight:400;opacity:.8">advisory ≥75%</span></div>' +
-            '<div style="font-size:15px;">' + attBadge + '</div>' +
+        // Top row: Attendance, Weekly Avg, Practical, Final Exam, Combined Score, Fee Status
+        '<div class="dip-tile-grid">' +
+          '<div class="dip-tile"><div class="k">ATTENDANCE<br><span style="font-weight:400;opacity:.8">advisory ≥75%</span></div>' +
+            '<div class="v">' + attBadge + '</div>' +
             (row.attendance && row.attendance.total > 0
-              ? '<div style="font-size:10px;color:#9ca3af;margin-top:3px;">'+row.attendance.attended+'/'+row.attendance.total+' sessions</div>'
+              ? '<div style="font-size:10px;color:var(--muted);margin-top:3px;">'+row.attendance.attended+'/'+row.attendance.total+' sessions</div>'
               : '') +
           '</div>' +
-          '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
-            '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">WEEKLY AVERAGE<br><span style="font-size:9px;font-weight:400;opacity:.8">must be ≥60%</span></div>' +
-            '<div style="font-size:15px;">' + (weeklyAvgVal != null
+          '<div class="dip-tile"><div class="k">WEEKLY AVERAGE<br><span style="font-weight:400;opacity:.8">must be ≥60%</span></div>' +
+            '<div class="v">' + (weeklyAvgVal != null
               ? (weeklyPass ? '<span style="color:'+G+';font-weight:700;">✅ '+Math.round(weeklyAvgVal)+'%</span>' : '<span style="color:'+R+';font-weight:700;">✗ '+Math.round(weeklyAvgVal)+'%</span>')
-              : '<span style="color:#9ca3af;">—</span>') + '</div>' +
+              : '<span style="color:var(--muted);">—</span>') + '</div>' +
           '</div>' +
-          '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
-            '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">PRACTICAL<br><span style="font-size:9px;font-weight:400;opacity:.8">' + (pracReq ? 'must be ≥60%' : 'not applicable') + '</span></div>' +
-            '<div style="font-size:15px;">' + pracBadge + '</div>' +
+          '<div class="dip-tile"><div class="k">PRACTICAL<br><span style="font-weight:400;opacity:.8">' + (pracReq ? 'must be ≥60%' : 'not applicable') + '</span></div>' +
+            '<div class="v">' + pracBadge + '</div>' +
           '</div>' +
-          '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
-            '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">FINAL EXAM<br><span style="font-size:9px;font-weight:400;opacity:.8">must be ≥60%</span></div>' +
-            '<div style="font-size:15px;">' + finalBadge + '</div>' +
+          '<div class="dip-tile"><div class="k">FINAL EXAM<br><span style="font-weight:400;opacity:.8">must be ≥60%</span></div>' +
+            '<div class="v">' + finalBadge + '</div>' +
           '</div>' +
-          '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
-            '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">COMBINED SCORE<br><span style="font-size:9px;font-weight:400;opacity:.8">40% weekly + 60% final, must be ≥60%</span></div>' +
-            '<div style="font-size:15px;">' + combinedBadge + '</div>' +
+          '<div class="dip-tile"><div class="k">COMBINED SCORE<br><span style="font-weight:400;opacity:.8">40% weekly + 60% final, must be ≥60%</span></div>' +
+            '<div class="v">' + combinedBadge + '</div>' +
           '</div>' +
-          '<div style="text-align:center;background:#f9fafb;border-radius:8px;padding:10px;">' +
-            '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:5px;">FEE STATUS<br><span style="font-size:9px;font-weight:400;opacity:.8">must be fully paid</span></div>' +
-            '<div style="font-size:15px;">' + feeBadge + '</div>' +
+          '<div class="dip-tile"><div class="k">FEE STATUS<br><span style="font-weight:400;opacity:.8">must be fully paid</span></div>' +
+            '<div class="v">' + feeBadge + '</div>' +
           '</div>' +
         '</div>' +
         // Weekly tests section — each test shown individually, not just the average
-        '<div style="background:#f9fafb;border-radius:8px;padding:10px 12px;margin-bottom:10px;">' +
-          '<div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px;">WEEKLY TESTS &nbsp;<span style="font-weight:400;text-transform:none;letter-spacing:0;">(average must be ≥60%)</span></div>' +
+        '<div class="dip-weekly">' +
+          '<div class="dip-weekly-label">WEEKLY TESTS <span style="font-weight:400;text-transform:none;letter-spacing:0;">(average must be ≥60%)</span></div>' +
           weeklyRowsHtml +
         '</div>' +
-        '<div style="border-top:1px solid #e5e7eb;padding-top:10px;">' + statusHtml + '</div>' +
+        heroHtml +
       '</div>';
     });
 

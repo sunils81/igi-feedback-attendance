@@ -114,7 +114,21 @@ h1,h2,h3,h4{font-family:var(--serif); font-weight:600; line-height:1.15; letter-
   background:linear-gradient(180deg, var(--ink) 0%, var(--ink-2) 100%);
   color:var(--ivory-text); padding:72px 0 96px; position:relative; overflow:hidden;
 }
-.hero .wrap{display:grid; grid-template-columns:1.1fr 0.9fr; gap:56px; align-items:center;}
+/* Faceted diamond-crown motif, barely visible, drifting almost
+   imperceptibly slowly — ambient texture, not a focal animation. Oversized
+   (inset:-15%) so the slow rotation never reveals a bare edge; .hero's own
+   overflow:hidden clips anything that strays outside the visible area. */
+.hero::before{
+  content:'';
+  position:absolute; inset:-15%;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'><g fill='none' stroke='%23B8934D' stroke-width='1'><path d='M110 10 L210 90 L160 210 L60 210 L10 90 Z'/><path d='M110 10 L110 210'/><path d='M10 90 L210 90'/><path d='M110 10 L60 210'/><path d='M110 10 L160 210'/><path d='M10 90 L110 210'/><path d='M210 90 L110 210'/></g></svg>");
+  background-repeat:repeat; background-size:220px 220px;
+  opacity:0.07; z-index:0; pointer-events:none;
+  animation:facet-drift 120s linear infinite;
+}
+@keyframes facet-drift{ from{transform:rotate(0deg);} to{transform:rotate(1turn);} }
+@media (prefers-reduced-motion: reduce){ .hero::before{animation:none;} }
+.hero .wrap{position:relative; z-index:1; display:grid; grid-template-columns:1.1fr 0.9fr; gap:56px; align-items:center;}
 @media (max-width:900px){
   .hero .wrap{grid-template-columns:1fr; gap:36px;}
   .hero .loupe-frame{max-height:360px;}
@@ -188,6 +202,16 @@ h1,h2,h3,h4{font-family:var(--serif); font-weight:600; line-height:1.15; letter-
 }
 .course-card:hover{transform:translateY(-4px); box-shadow:0 20px 40px -18px rgba(15,27,46,0.25);}
 .course-card .thumb{aspect-ratio:4/3; overflow:hidden; position:relative; background:var(--ink);}
+/* Facet light-sweep — a soft diagonal band of light crosses the thumbnail on
+   hover, like light catching a stone's facets as it turns. Sits above the
+   image (z-index) but below the badge/other overlays that already exist. */
+.course-card .thumb::after{
+  content:''; position:absolute; top:0; left:-60%; width:45%; height:100%;
+  background:linear-gradient(115deg, transparent 0%, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%, transparent 100%);
+  transform:skewX(-20deg); transition:left 0.75s cubic-bezier(.22,.72,.24,1);
+  pointer-events:none; z-index:1;
+}
+.course-card:hover .thumb::after{left:130%;}
 .course-card .thumb img{width:100%; height:100%; object-fit:cover; transition:transform 0.4s;}
 .course-card:hover .thumb img{transform:scale(1.06);}
 .course-card .thumb .badge{

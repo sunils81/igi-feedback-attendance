@@ -2089,8 +2089,16 @@ window.gasGet = (function () {
             var pct = bestPct[a.studentId];
             return pct != null && pct >= GEMA_MIN_TEST_PCT;
           }).map(function (a) {
+            // ownerCounsellor — the counsellor on the student's batch record (b.counselor via
+            // h_alumni), i.e. whoever actually did their admission. Lets the frontend show this
+            // candidate primarily to the counsellor who owns the relationship instead of to
+            // every counsellor at the centre — a stranger cold-inviting someone else's student
+            // to Gem-A Foundation was the actual complaint this fixes. Left blank when
+            // unresolvable (e.g. the batch's counselor field was never set) so the frontend can
+            // fall back to showing it centre-wide rather than the candidate silently vanishing.
             return { studentId: a.studentId, name: a.name, centre: a.centre, mobile: a.mobile, email: a.email,
-              batchCode: a.batchCode, bestTestPct: Math.round(bestPct[a.studentId]), status: a.status, endDate: a.endDate };
+              batchCode: a.batchCode, bestTestPct: Math.round(bestPct[a.studentId]), status: a.status, endDate: a.endDate,
+              ownerCounsellor: a.counselor || '' };
           });
           cb(null, { status: 'ok', count: candidates.length, candidates: candidates });
         });

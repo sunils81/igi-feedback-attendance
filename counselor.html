@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=69"></script>
+<script src="/assets/shared.js?v=70"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -16537,18 +16537,72 @@ function loadGemaFoundationNotification() {
       banner.style.display = 'none';
       return;
     }
-    var n = d.candidates.length;
-    text.textContent = n + ' Diamond Graduate / Colored Stone Graduate student' + (n > 1 ? 's' : '') + ' at your centre could be a good fit for the Gem-A Foundation batch starting 16 Oct — click a name to view them on the Alumni tab, or Invite to put the Career Path suggestion on their own portal.';
-    list.innerHTML = d.candidates.map(function(c) {
+    // Scope to the counsellor who actually owns the relationship — whoever's batch record
+    // shows them as the counselor for that student, i.e. who did their original admission —
+    // instead of blasting every counsellor at the centre with someone else's student. Admins
+    // still see everyone (already unfiltered via centres:''). When ownership can't be
+    // resolved (ownerCounsellor blank — e.g. an older batch row with no counselor set), fall
+    // back to showing it centre-wide rather than the candidate silently disappearing for
+    // everyone.
+    var mine = isAdmin ? d.candidates : d.candidates.filter(function(c) {
+      var owner = (c.ownerCounsellor || '').trim();
+      return !owner || revSameCounsellor(owner, counselorName);
+    });
+    if (!mine.length) { banner.style.display = 'none'; return; }
+    var n = mine.length;
+    text.textContent = n + ' Diamond Graduate / Colored Stone Graduate student' + (n > 1 ? 's' : '') + ' could be a good fit for the Gem-A Foundation batch starting 16 Oct — click a name to view them on the Alumni tab, Invite to put the Career Path suggestion on their own portal, or add them to Prospects to track follow-up yourself.';
+    list.innerHTML = mine.map(function(c) {
+      var unowned = !(c.ownerCounsellor || '').trim();
       return '<div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #86efac;border-radius:6px;padding:4px 4px 4px 10px">' +
         '<button onclick="jumpToAlumniStudent(\'' + escC(c.studentId) + '\')" style="flex:1;text-align:left;background:none;border:none;padding:2px 0;font-size:12px;color:#14532d;cursor:pointer">' +
           '<strong>' + escC(c.name || '') + '</strong> (' + escC(c.studentId || '') + ') — ' + escC(c.centre || '') +
           ' &nbsp;·&nbsp; best test score <strong>' + (c.bestTestPct != null ? c.bestTestPct + '%' : '—') + '</strong>' +
+          (unowned ? ' &nbsp;·&nbsp; <span style="color:#B87A10">no admission owner on file</span>' : '') +
         '</button>' +
+        '<button id="gema-prospect-btn-' + escC(c.studentId) + '" onclick="addGemACandidateToProspects(\'' + escC(c.studentId) + '\',\'' + escC(c.name || '') + '\',\'' + escC(c.centre || '') + '\',\'' + escC(c.mobile || '') + '\',\'' + escC(c.email || '') + '\')" style="background:#fff;color:#14532d;border:1.5px solid #22c55e;border-radius:5px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">➕ Add to Prospects</button>' +
         '<button id="gema-invite-btn-' + escC(c.studentId) + '" onclick="inviteGemAStudent(\'' + escC(c.studentId) + '\',\'' + escC(c.name || '') + '\',\'' + escC(c.centre || '') + '\',\'' + escC(c.mobile || '') + '\',\'' + escC(c.email || '') + '\')" style="background:#22c55e;color:#fff;border:none;border-radius:5px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✉️ Invite</button>' +
       '</div>';
     }).join('');
     banner.style.display = 'flex';
+  });
+}
+
+// "Add to Prospects" from the Gem-A candidate banner — separate from Invite: Invite creates
+// a crm_leads row (drives the student's own Career Path nudge); this instead creates a row
+// in the counsellor's own Prospects/Companion pipeline (companion_prospects, via
+// /api/companion/prospects — the same store the Prospects tab reads from) so they can track
+// follow-up calls/notes/temperature the same way they would any other prospect. Lets a
+// counsellor claim an "no admission owner on file" candidate as their own even when
+// ownerCounsellor couldn't be resolved server-side.
+function addGemACandidateToProspects(studentId, name, centre, mobile, email) {
+  var btn = document.getElementById('gema-prospect-btn-' + studentId);
+  if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
+  fetch('/api/companion/prospects', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      op: 'save', name: name, phone: mobile || '', email: email || '',
+      centre: centre || '', owner_counselor: counselorName || '',
+      course_interest: ['Gem-A Foundation'], temperature: 'Warm', status: 'Active',
+      concern_note: 'Gem-A Foundation candidate (GG alumnus, student ' + studentId + ') — added from the counsellor portal notification.',
+      source: 'gema_candidate'
+    })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (!d || (d.status !== 'ok' && d.status !== 'conflict')) {
+      if (btn) { btn.disabled = false; btn.textContent = '➕ Add to Prospects'; }
+      showToast('Could not add to Prospects — please try again.', 'error');
+      return;
+    }
+    if (d.status === 'conflict') {
+      if (btn) { btn.disabled = false; btn.textContent = '➕ Add to Prospects'; }
+      showToast(name + ' is already tracked as a prospect by ' + (d.existing && d.existing.owner_counselor || 'another counsellor') + '.', 'error');
+      return;
+    }
+    if (btn) { btn.textContent = '✓ Added'; }
+    showToast('Added ' + name + ' to your Prospects tab.');
+    if (typeof cmpLoadProspects === 'function') cmpLoadProspects();
+  }).catch(function() {
+    if (btn) { btn.disabled = false; btn.textContent = '➕ Add to Prospects'; }
+    showToast('Could not add to Prospects — please try again.', 'error');
   });
 }
 

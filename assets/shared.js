@@ -1536,7 +1536,14 @@ window.gasGet = (function () {
     var filters = [];
     if (q)      filters.push('name.ilike.*'   + encodeURIComponent(q)      + '*');
     if (mobile) filters.push('mobile.ilike.*' + encodeURIComponent(mobile) + '*');
-    var qs = (filters.length > 1 ? 'or=(' + filters.join(',') + ')' : filters[0]) +
+    // With 2+ filters these get OR'd together as "or=(col.op.val,col.op.val)" — PostgREST's
+    // dot-joined syntax is only valid *inside* that or(...) wrapper. With exactly 1 filter,
+    // the old code sent that same dot-joined token ("name.ilike.*disha*") bare, with no "=",
+    // which isn't a real query param — PostgREST silently ignored it, leaving only
+    // limit=20&order=name.asc in effect. That's why searching "disha" (or anything) returned
+    // the first 20 students alphabetically (all "A" names) instead of a filtered match.
+    // A single filter must be a real "column=operator.value" param instead.
+    var qs = (filters.length > 1 ? 'or=(' + filters.join(',') + ')' : filters[0].replace(/^(\w+)\./, '$1=')) +
              '&limit=20&order=name.asc';
     GET('students', qs, function(e, rows) {
       if (e) { cb(null, { students: [] }); return; }
@@ -2854,12 +2861,23 @@ window.gasGet = (function () {
       var homeCentres = (!eUser && userRows && userRows.length && userRows[0].centres)
         ? userRows[0].centres.split(',').map(function(c) { return c.trim(); }).filter(Boolean)
         : [];
-      // Same-centre sale (the common case), or we couldn't resolve a home centre (e.g. Admin
-      // entering on someone's behalf, or a name not found in `users`) — fall back to the old,
-      // safe behaviour rather than guessing.
-      var assignedCentre = (!homeCentres.length || homeCentres.indexOf(centre) >= 0)
-        ? centre
-        : homeCentres[0]; // primary home centre — flags this as an Other-Centre sale
+      // homeCentres[0] (NOT "anywhere in homeCentres") is the counsellor's designated centre
+      // for revenue purposes — the exact same value the Revenue tab uses to build their card
+      // (designatedCentre = allowedCentres[0] in counselor.html). `centres` is an ACCESS list,
+      // not a "home turf" list: it also includes centres granted purely so a counsellor CAN
+      // cross-sell there (e.g. Anuradha's Pune access — see grant_pune_access_2026-07-14.sql).
+      // Checking "homeCentres.indexOf(centre) >= 0" treated any access-granted centre as home
+      // turf, so a real cross-sell (e.g. Anuradha closing a Pune admission) got written with
+      // assigned_centre='Pune' instead of 'Mumbai' — and since the portal only ever renders
+      // ONE own-centre card per counsellor, keyed to their single designated centre, that row
+      // matched neither the Own nor the Other Centre section of her Mumbai card and simply
+      // never appeared anywhere. Comparing against homeCentres[0] alone fixes that: any sale
+      // outside the designated centre is always an Other-Centre row, regardless of what else
+      // is in the access list. If we can't resolve a home centre at all (e.g. Admin entering
+      // on someone's behalf, or a name not found in `users`), fall back to the old, safe
+      // behaviour of treating the delivery centre as home rather than guessing.
+      var designatedCentre = homeCentres.length ? homeCentres[0] : centre;
+      var assignedCentre = designatedCentre;
 
       GET('student_fees', qs, function(e, rows) {
         // Note: previously bailed out entirely when rows.length === 0, which meant that

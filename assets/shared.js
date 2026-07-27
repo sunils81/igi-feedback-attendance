@@ -2266,6 +2266,68 @@ window.gasGet = (function () {
     });
   }
 
+  /* getBatchEndingFeeAlerts — proactive "collect before the course ends" alert. Distinct from
+     h_getOverdueFeesCount (which just lists every fee issue with no time pressure): this only
+     surfaces students with a real outstanding balance whose BATCH end_date is close — within
+     BATCH_END_ALERT_LOOKAHEAD_DAYS from now, or already ended within the trailing
+     BATCH_END_ALERT_GRACE_DAYS — so a counsellor sees it while there's still a real chance to
+     collect, and it doesn't just vanish the instant the course finishes if the balance is
+     still unresolved. Deliberately does NOT depend on fee_status/installment due dates (the
+     mechanism behind the "Total Overdue" undercount flagged 2026-07-27) — it only needs
+     outstanding > 0 and the batch's own end_date, both always populated. Centre-scoped for
+     non-admins, same convention as getOverdueFeesCount/getReferralNudges; Admin (centres='')
+     sees every centre. */
+  var BATCH_END_ALERT_LOOKAHEAD_DAYS = 30; // start warning this many days before end_date
+  var BATCH_END_ALERT_GRACE_DAYS = 14;     // keep warning this many days after end_date too
+  function h_getBatchEndingFeeAlerts(p, cb) {
+    var centres = p.centres || '';
+    var qs = '';
+    if (centres) {
+      var parts = centres.split(',').map(function(c) { return encodeURIComponent(c.trim()); }).join(',');
+      qs = 'centre=in.(' + parts + ')';
+    }
+    var empty = { status: 'ok', count: 0, alerts: [] };
+    GET('batches', (qs ? qs + '&' : '') + 'select=batch_code,centre,course,end_date', function (e, batches) {
+      if (e || !batches || !batches.length) { cb(null, empty); return; }
+      var todayMs = new Date(todayYMD()).getTime();
+      var windowByBatch = {}; // batch_code -> days until end_date (negative if already ended)
+      batches.forEach(function (b) {
+        if (!b.end_date) return;
+        var endMs = new Date(b.end_date).getTime();
+        if (isNaN(endMs)) return;
+        var daysUntilEnd = Math.round((endMs - todayMs) / 86400000);
+        if (daysUntilEnd <= BATCH_END_ALERT_LOOKAHEAD_DAYS && daysUntilEnd >= -BATCH_END_ALERT_GRACE_DAYS) {
+          windowByBatch[b.batch_code] = { daysUntilEnd: daysUntilEnd, centre: b.centre, course: b.course, endDate: b.end_date };
+        }
+      });
+      if (!Object.keys(windowByBatch).length) { cb(null, empty); return; }
+
+      GET('student_fees', qs, function (e2, rows) {
+        if (e2 || !rows || !rows.length) { cb(null, empty); return; }
+        var alerts = [];
+        rows.forEach(function (r) {
+          var w = windowByBatch[r.batch_code];
+          if (!w) return; // this fee record's batch isn't in the ending-soon window
+          var mapped = parseFeeRow(r, null, batches);
+          if (Number(mapped.outstanding || 0) <= 0) return; // paid up (or overpaid) — nothing to chase
+          alerts.push({
+            studentId: mapped.student_id, studentName: mapped.student_name,
+            batchCode: mapped.batch_code, centre: w.centre, course: w.course,
+            endDate: w.endDate, daysUntilEnd: w.daysUntilEnd,
+            outstanding: mapped.outstanding, feeStatus: mapped.fee_status,
+            counsellor: mapped.entered_by || ''
+          });
+        });
+        // Soonest/most-overdue end date first, then largest balance
+        alerts.sort(function(a, b) {
+          var dd = a.daysUntilEnd - b.daysUntilEnd;
+          return dd !== 0 ? dd : (Number(b.outstanding || 0) - Number(a.outstanding || 0));
+        });
+        cb(null, { status: 'ok', count: alerts.length, alerts: alerts.slice(0, 100) });
+      });
+    });
+  }
+
   /* getFeeRecords */
   // Shared client-facing shape for a fee record — used by both h_getFeeRecords (one batch)
   // and h_getAllFeeRecords (every batch, for the cross-batch Invoices tab). Kept in one place
@@ -8814,6 +8876,7 @@ window.gasGet = (function () {
       case 'recordConsent':              return h_recordConsent(params, cb);
       case 'globalSearch':              return h_globalSearch(params, cb);
       case 'getOverdueFeesCount':       return h_getOverdueFeesCount(params, cb);
+      case 'getBatchEndingFeeAlerts':   return h_getBatchEndingFeeAlerts(params, cb);
       case 'getFeeRecords':             return h_getFeeRecords(params, cb);
       case 'getAllFeeRecords':          return h_getAllFeeRecords(params, cb);
       case 'updateInvoiceDetails':      return h_updateInvoiceDetails(params, cb);

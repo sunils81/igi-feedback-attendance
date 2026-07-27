@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=72"></script>
+<script src="/assets/shared.js?v=73"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -1823,6 +1823,19 @@
       <button onclick="document.getElementById('gema-candidates-banner').style.display='none'" style="background:transparent;border:none;color:#14532d;font-size:16px;cursor:pointer;line-height:1;">×</button>
     </div>
     <div id="gema-candidates-list" style="display:flex;flex-direction:column;gap:4px;"></div>
+  </div>
+
+  <!-- Batch-ending-with-balance-due banner (non-blocking). Flags students with a real
+       outstanding fee balance whose batch is ending soon (or just ended) — a "collect before
+       they're gone" nudge, separate from the always-on Fees reminder above since this one is
+       time-pressured. See h_getBatchEndingFeeAlerts in shared.js. -->
+  <div id="batch-ending-fee-banner" style="display:none;background:#fff7ed;border:1.5px solid #ea580c;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#9a3412;flex-direction:column;gap:6px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span>⏰</span>
+      <span id="batch-ending-fee-text" style="flex:1;font-weight:500;"></span>
+      <button onclick="document.getElementById('batch-ending-fee-banner').style.display='none'" style="background:transparent;border:none;color:#9a3412;font-size:16px;cursor:pointer;line-height:1;">×</button>
+    </div>
+    <div id="batch-ending-fee-list" style="display:flex;flex-direction:column;gap:4px;"></div>
   </div>
 
   <!-- Pending batch-confirmation banner (batches another centre created for us) -->
@@ -4771,6 +4784,7 @@ function initCounselorPortal() {
         setTimeout(loadReferralNudgeNotification, 2500);
         setTimeout(loadDuplicateStudentNotification, 2800);
         setTimeout(loadGemaFoundationNotification, 3050);
+        setTimeout(loadBatchEndingFeeNotification, 3300);
         if (!isAdmin) setTimeout(cmpLoadProspects, 1000);
       }
     }
@@ -4892,6 +4906,7 @@ function doLogin() {
     setTimeout(loadReferralNudgeNotification, 2750);
     setTimeout(loadDuplicateStudentNotification, 2800);
     setTimeout(loadGemaFoundationNotification, 3050);
+    setTimeout(loadBatchEndingFeeNotification, 3300);
   });
 }
 
@@ -16516,6 +16531,38 @@ function jumpToFeeMismatch(batchCode, studentId) {
   if (sel) sel.value = batchCode;
   loadFeeOverview(function() {
     openFeeForm(studentId);
+  });
+}
+
+// Batch-ending-with-balance-due banner — "collect before the course finishes" nudge.
+// Distinct from the always-on Fees reminder (loadOverdueFeesNotification): that one lists
+// every fee issue with no urgency signal; this one only surfaces students whose BATCH is
+// ending soon (or just ended) AND still has a real balance, via h_getBatchEndingFeeAlerts in
+// shared.js — deliberately independent of fee_status/installment due dates, which the
+// "Total Overdue" figure on the admin Fee Reconciliation tab depends on and can undercount.
+// Dismiss is session-only, same as the other reminder banners on this page.
+function loadBatchEndingFeeNotification() {
+  gasGet({ action: 'getBatchEndingFeeAlerts', centres: isAdmin ? '' : (allowedCentres || []).join(',') }, function(e, d) {
+    var banner = document.getElementById('batch-ending-fee-banner');
+    var text = document.getElementById('batch-ending-fee-text');
+    var list = document.getElementById('batch-ending-fee-list');
+    if (!banner || !text || !list) return;
+    if (e || !d || d.status !== 'ok' || !d.alerts || !d.alerts.length) {
+      banner.style.display = 'none';
+      return;
+    }
+    var n = d.alerts.length;
+    text.textContent = n + ' student' + (n > 1 ? 's' : '') + ' still owe a balance with their course ending soon — click a name to open their Update Fee form.';
+    list.innerHTML = d.alerts.map(function(a) {
+      var when = a.daysUntilEnd < 0
+        ? ('course ended ' + Math.abs(a.daysUntilEnd) + ' day' + (Math.abs(a.daysUntilEnd) !== 1 ? 's' : '') + ' ago')
+        : (a.daysUntilEnd === 0 ? 'course ends today' : ('course ends in ' + a.daysUntilEnd + ' day' + (a.daysUntilEnd !== 1 ? 's' : '')));
+      return '<button onclick="jumpToFeeMismatch(\'' + escC(a.batchCode) + '\',\'' + escC(a.studentId) + '\')" style="text-align:left;background:#fff;border:1px solid #fdba74;border-radius:6px;padding:6px 10px;font-size:12px;color:#9a3412;cursor:pointer">' +
+        '<strong>' + escC(a.studentName || '') + '</strong> (' + escC(a.studentId || '') + ') — ' + escC(a.batchCode || '') + ' &middot; ' + escC(a.centre || '') +
+        ' &nbsp;·&nbsp; outstanding <strong>' + money(a.outstanding) + '</strong> &nbsp;·&nbsp; ' + when +
+        '</button>';
+    }).join('');
+    banner.style.display = 'flex';
   });
 }
 

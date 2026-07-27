@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=72"></script>
+<script src="assets/shared.js?v=73"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
@@ -1718,6 +1718,30 @@
 
     <!-- TAB 3: FEE RECONCILIATION -->
     <div id="t-fees" class="tab-content">
+      <!-- Batch-ending-with-balance-due alert — "collect before the course finishes",
+           across every centre. Independent of the fee_status/Overdue figure below (which
+           depends on installment due dates being filled in and can undercount) — this only
+           needs outstanding > 0 and the batch's own end_date. See h_getBatchEndingFeeAlerts
+           in shared.js; populated by loadAdminBatchEndingFeeAlerts() below. -->
+      <div id="admin-batch-ending-fee-card" class="card" style="display:none;background:#fff7ed;border:1.5px solid #ea580c">
+        <h2 style="margin-bottom:4px;color:#9a3412">⏰ Batches Ending Soon With Balance Due</h2>
+        <p id="admin-batch-ending-fee-text" class="sub" style="margin-top:0;color:#9a3412"></p>
+        <div style="overflow-x:auto">
+          <table class="compact-table">
+            <thead>
+              <tr>
+                <th class="text-left">Student</th>
+                <th class="text-left">Batch</th>
+                <th class="text-left">Centre</th>
+                <th>Outstanding (₹)</th>
+                <th class="text-left">Course Timeline</th>
+              </tr>
+            </thead>
+            <tbody id="admin-batch-ending-fee-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
           <h2 style="margin-bottom:0">💸 National Fee Summary</h2>
@@ -6022,8 +6046,41 @@ function saveAdminTargets() {
   });
 }
 
+// Batches ending soon with a balance still due — admin-wide (every centre), via
+// h_getBatchEndingFeeAlerts in shared.js. Same data source/window as the counsellor
+// portal's batch-ending-fee-banner (loadBatchEndingFeeNotification in counselor.html); this
+// is the admin-wide, no-centre-filter view of the same alert.
+function loadAdminBatchEndingFeeAlerts() {
+  gasGet({ action: 'getBatchEndingFeeAlerts', centres: '' }, function(e, d) {
+    const card = document.getElementById('admin-batch-ending-fee-card');
+    const text = document.getElementById('admin-batch-ending-fee-text');
+    const tbody = document.getElementById('admin-batch-ending-fee-tbody');
+    if (!card || !text || !tbody) return;
+    if (e || !d || d.status !== 'ok' || !d.alerts || !d.alerts.length) {
+      card.style.display = 'none';
+      return;
+    }
+    const n = d.alerts.length;
+    text.textContent = n + ' student' + (n > 1 ? 's' : '') + ' across every centre still owe a balance with their course ending soon or already ended.';
+    tbody.innerHTML = d.alerts.map(a => {
+      const when = a.daysUntilEnd < 0
+        ? ('ended ' + Math.abs(a.daysUntilEnd) + ' day' + (Math.abs(a.daysUntilEnd) !== 1 ? 's' : '') + ' ago')
+        : (a.daysUntilEnd === 0 ? 'ends today' : ('ends in ' + a.daysUntilEnd + ' day' + (a.daysUntilEnd !== 1 ? 's' : '')));
+      return '<tr>' +
+        '<td class="text-left"><strong>' + escC(a.studentName || '') + '</strong> (' + escC(a.studentId || '') + ')</td>' +
+        '<td class="text-left">' + escC(a.batchCode || '') + '</td>' +
+        '<td class="text-left">' + escC(a.centre || '') + '</td>' +
+        '<td style="text-align:right;color:var(--red);font-weight:600">' + money(a.outstanding) + '</td>' +
+        '<td class="text-left">' + escC(when) + '</td>' +
+      '</tr>';
+    }).join('');
+    card.style.display = 'block';
+  });
+}
+
 // ── Render Tab 3: Fees Summary ────────────────────────────────
 function renderFeesTab() {
+  loadAdminBatchEndingFeeAlerts();
   const d = dashboardData;
   const f = d.fee || {};
   // Full per-student, per-installment records — the single source of truth for the filters,

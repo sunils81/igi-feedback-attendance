@@ -2046,10 +2046,13 @@ window.gasGet = (function () {
      these four values, not touching the logic. */
   var GEMA_FOUNDATION_COURSE = 'Gem-A Foundation';
   var GEMA_FOUNDATION_START_DATE = '2026-10-16';
-  var GEMA_LEAD_WINDOW_DAYS = 30; // start surfacing candidates this many days before start —
+  var GEMA_LEAD_WINDOW_DAYS = 90; // start surfacing candidates this many days before start —
   // widened from 15 on 2026-07-27: 15 days left too little runway for an actual invite →
   // conversation → enroll cycle, especially now that "Add to Prospects" is meant for
-  // longer-term nurture follow-up rather than a same-day ping.
+  // longer-term nurture follow-up rather than a same-day ping. Bumped again same day, 30 -> 90,
+  // so the banner is live immediately (today, 2026-07-27, is within 90 days of the 2026-10-16
+  // cohort start) for previewing the new Add-to-Prospects button — dial back down (e.g. to 30
+  // or 45) once that's confirmed working if 90 feels too far out for real production use.
   var GEMA_MIN_TEST_PCT = 60;     // simple "did reasonably well" floor, not a ranking cutoff
   function h_getGemAFoundationCandidates(p, cb) {
     var todayStr = todayYMD();

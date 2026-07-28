@@ -33,7 +33,7 @@ window.IGI_GST_RATE = IGI_GST_RATE;
 // downloads, so it's gone rather than left as a landmine. See the Data
 // Integrity & Cross-Portal Audit, Finding 1.)
 
-const CENTRES  = ['Mumbai','Delhi','Surat','Kolkata','Lucknow','Jaipur','Hyderabad','Chennai','Bangalore','Thrissur','Ahmedabad','Pune'];
+const CENTRES  = ['Mumbai','Delhi','Surat','Kolkata','Lucknow','Jaipur','Hyderabad','Chennai','Bangalore','Thrissur','Ahmedabad','Pune','Coimbatore'];
 const COURSES  = [
   'Diamond Graduate','Colored Stone Graduate','Jewelry Design','Jewelry Design Manual','CAD Design',
   'JewelPad Design','JewelPad Online','Diploma in Pearls','Polished Diamond Grading',

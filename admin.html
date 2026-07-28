@@ -3897,7 +3897,7 @@ function openPresentationMode() {
   const mapping = adminTargetRows();
   const counsellorsByCentre = {};
   CENTRES.forEach(c => {
-    if (c !== 'Pune') counsellorsByCentre[c] = [];
+    counsellorsByCentre[c] = [];
   });
   
   const mappedCounsellors = new Set();
@@ -4808,7 +4808,7 @@ function renderRevenueTab() {
   // double-counted once under the seller's own claim and again under the destination centre.
   const counsellorsByCentre = {};
   CENTRES.forEach(c => {
-    if (c !== 'Pune') counsellorsByCentre[c] = [];
+    counsellorsByCentre[c] = [];
   });
 
   const allRows = rev.allMonthlyRows || rev.monthlyRows || rev.monthlyPreviewRows || [];
@@ -5176,17 +5176,40 @@ function renderBranchHealthGrid(rows, rev, counsellorsByCentre) {
   }
 
   function notConfiguredCardHtml(b) {
+    const hasRevenue = b.achieved > 0;
     return '<div class="centre-health-card health-grey">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
-        '<h3 style="font-size:13px;font-weight:700;color:var(--muted);margin:0">' + escC(b.centre) + '</h3>' +
+        '<h3 style="font-size:13px;font-weight:700;color:var(--navy);margin:0">' + escC(b.centre) + '</h3>' +
         '<span style="font-size:11px;font-weight:700;color:var(--muted);background:rgba(13,27,46,0.06);border-radius:20px;padding:2px 9px">No target</span>' +
       '</div>' +
       '<div style="font-size:11px;color:var(--muted);line-height:1.6">' +
-        '<div>No annual target configured for this branch yet.</div>' +
-        '<div>🏫 ' + escC(b.batches) + ' batches &middot; 👥 ' + b.studentCount + ' studs</div>' +
+        (hasRevenue
+          ? '<div>💰 YTD <strong style="color:var(--green)">' + moneyShort(b.achieved) + '</strong> Excl &middot; <strong style="color:var(--green)">' + moneyShort(b.achievedGst) + '</strong> Incl <span style="color:var(--muted)">(no target set yet to compare against)</span></div>'
+          : '<div>No revenue recorded for this branch yet.</div>') +
+        '<div>🏫 ' + escC(b.batches) + ' batches &middot; 👥 ' + b.studentCount + ' studs' +
+          (b.corporateStudentCount ? ' <span style="color:var(--muted)">(+' + b.corporateStudentCount + ' corporate)</span>' : '') +
+        '</div>' +
       '</div>' +
+      '<button class="btn btn-outline" style="width:auto;margin-top:8px;padding:5px 12px;font-size:11px;border:1.5px solid var(--gold);color:var(--navy);background:transparent;border-radius:6px;font-weight:600;cursor:pointer" onclick="jumpToSetCentreTarget(\'' + escC(b.centre) + '\')">🎯 Set Annual Target</button>' +
     '</div>';
   }
+
+  // Jumps to the Target Settings tab and highlights the row for this centre, so "Set
+  // Annual Target" on a Not-Yet-Configured card takes you straight to the input instead
+  // of leaving you to hunt for the right row in a 12+ centre list.
+  window.jumpToSetCentreTarget = function(centre) {
+    switchAdminTab('t-targets');
+    setTimeout(function() {
+      const row = document.querySelector('[data-centre-target="' + centre.replace(/"/g, '\\"') + '"]');
+      if (!row) return;
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.style.transition = 'background-color 0.3s';
+      row.style.backgroundColor = 'rgba(201,168,76,0.25)';
+      const input = row.querySelector('.rta-course');
+      if (input) input.focus();
+      setTimeout(function() { row.style.backgroundColor = ''; }, 2500);
+    }, 150);
+  };
 
   function tierHeader(icon, label, sub, count) {
     return '<div style="display:flex;align-items:center;gap:8px;margin:20px 0 10px">' +
@@ -5958,7 +5981,7 @@ function renderTargetsTab() {
   (rev.centreTargetRows || []).forEach(r => cmap[r.centre] = r);
   
   const rowMapping = adminTargetRows();
-  const centreRows = CENTRES.filter(c => c !== 'Pune');
+  const centreRows = CENTRES;
   
   let html = 
     '<div class="rev-target-panel">' +

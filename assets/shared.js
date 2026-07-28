@@ -3274,13 +3274,18 @@ window.gasGet = (function () {
     try { marks = JSON.parse(p.marks || '[]'); } catch(x) {}
     if (!sessionCode || !marks.length) { cb(null, { status: 'error', message: 'missing params' }); return; }
     var rows = marks.map(function(m) {
+      var isAbsent = (m.status === 'absent' || m.status === 'Absent');
       return {
         session_code: sessionCode,
         student_id: String(m.enrollmentNo),
         batch_code: batchCode,
-        attendance: (m.status === 'absent' || m.status === 'Absent') ? 'Absent' : 'Present',
+        attendance: isAbsent ? 'Absent' : 'Present',
         marked_at: nowISO(),
-        marked_by: 'instructor'
+        marked_by: 'instructor',
+        // Present rows added here (e.g. a student who forgot to self check-in but was
+        // actually in class) are instructor-vouched, so mark them verified immediately
+        // instead of sitting in the "Pending Verification" queue meant for self check-ins.
+        instructor_verified: isAbsent ? false : true
       };
     });
     POST('attendance_feedback', 'on_conflict=session_code,student_id', rows, function(e) {

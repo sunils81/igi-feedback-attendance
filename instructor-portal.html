@@ -465,6 +465,7 @@
       <div id="at-live-badge" style="display:none;margin-bottom:12px">
         <span class="live-dot"></span> <span style="font-size:12px;color:#1D9E75;font-weight:600;margin-left:4px">Live — auto-refreshing every 30s</span>
       </div>
+      <div id="at-cancel-wrap" style="margin-bottom:12px"></div>
       <div id="at-calendar"></div>
       <div id="at-timeline"></div>
       <div id="at-wrap"></div>
@@ -989,7 +990,7 @@
     <!-- ── Panel 1: Question Bank ─────────────────────────── -->
     <div id="ot-qbank" class="ot-panel active">
       <div class="ot-setup-banner">
-        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">📚 Question Bank — 385 Questions</div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">📚 Question Bank — 335 Questions</div>
         <div style="font-size:12px;opacity:.85">DG · CSG · JP · PDG · RDG · SDA — First time? Click "Import Questions" to load the bank from the seed data into Google Sheets.</div>
         <button class="ot-btn" style="margin-top:10px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3)" onclick="otImportBank()">⬆ Import / Refresh Question Bank</button>
       </div>
@@ -3441,7 +3442,7 @@ function updateTopic(sessionCode) {
   });
 }
 
-function showCancelDialog(sessionCode, batchCode) {
+function showCancelDialog(sessionCode, batchCode, onDone) {
   var msg = 'Cancel session ' + sessionCode + '?\n\nSelect reason:\n1. Instructor absent - illness\n2. Instructor absent - personal\n3. Institutional holiday\n4. Low attendance\n5. Other\n\nType the number or reason:';
   const reason = prompt(msg);
   if (!reason) return;
@@ -3456,7 +3457,8 @@ function showCancelDialog(sessionCode, batchCode) {
   gasGet({action:'cancelSession', sessionCode, reason:finalReason, cancelledBy:instructorName}, function(e,d) {
     if (e||!d||d.status!=='ok') { showToast('Could not cancel session.', 'error'); return; }
     showToast('Session ' + sessionCode + ' cancelled. Students will see the update.');
-    loadTodaySessions();
+    if (atSessionTypeMap) atSessionTypeMap[sessionCode] = 'Cancelled';
+    (onDone || loadTodaySessions)();
   });
 }
 
@@ -3555,16 +3557,22 @@ function loadSessionsForBatch() {
   loadInstructorAttendanceCalendar(instructorCalendarMonth);
   gasGet({action:'getSessions', batchCode:batch}, function(e,d) {
     if (e||!d||!d.sessions) return;
+    atSessionTypeMap = {};
     d.sessions.forEach(s => {
+      atSessionTypeMap[s.sessionCode] = s.sessionType;
       const o = document.createElement('option');
       o.value = s.sessionCode;
-      o.textContent = 'S'+String(s.displaySessNo || s.sessNo).padStart(2,'0')+' — '+s.sessionDate+(s.topic?' — '+s.topic.substring(0,30):'');
+      o.textContent = 'S'+String(s.displaySessNo || s.sessNo).padStart(2,'0')+' — '+s.sessionDate+(s.topic?' — '+s.topic.substring(0,30):'')+(s.sessionType==='Cancelled'?' (Cancelled)':'');
       sel.appendChild(o);
     });
     if (d.sessions.length) { sel.value = d.sessions[0].sessionCode; loadAttendance(); }
   });
   loadSessionTimeline(batch);
 }
+
+// sessionCode -> sessionType ('Cancelled' or normal), populated by loadSessionsForBatch,
+// used by loadAttendance() to decide whether to show the "Cancel this session" control.
+var atSessionTypeMap = {};
 
 function loadInstructorAttendanceCalendar(anchor) {
   const batch = document.getElementById('at-batch').value;
@@ -3712,14 +3720,29 @@ function loadAttendance() {
   const sess  = document.getElementById('at-session').value;
   const batch = document.getElementById('at-batch').value;
   const wrap  = document.getElementById('at-wrap');
+  const cancelWrap = document.getElementById('at-cancel-wrap');
   stopAttendanceRefresh();
-  if (!sess||!batch) { wrap.innerHTML=''; return; }
+  if (!sess||!batch) { wrap.innerHTML=''; cancelWrap.innerHTML=''; return; }
   markTimelineActive(sess);
   wrap.innerHTML = loadingState('Loading attendance...');
   fetchAttendance(sess, batch);
-  // Auto-refresh
-  document.getElementById('at-live-badge').style.display='block';
-  attendanceRefreshIv = setInterval(()=>fetchAttendance(sess,batch), 30000);
+
+  // ── Cancel-session control ──
+  // Lets an instructor retroactively cancel a past session they forgot to
+  // cancel on the day (e.g. class didn't happen, but students still self-marked
+  // attendance). Cancelling wipes any attendance recorded against it.
+  var sType = atSessionTypeMap[sess];
+  if (sType === 'Cancelled') {
+    cancelWrap.innerHTML = '<span style="font-size:12px;color:var(--muted);font-weight:600">🚫 This session is marked Cancelled — no attendance is recorded against it.</span>';
+  } else {
+    cancelWrap.innerHTML = '<button class="btn" style="font-size:12px;padding:6px 12px;background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;border-radius:6px;cursor:pointer" onclick="showCancelDialog(\'' + sess + '\',\'' + batch + '\', function(){ loadAttendance(); })">🚫 Cancel this session</button>';
+  }
+
+  // Auto-refresh (skip for already-cancelled sessions, nothing live to poll)
+  if (sType !== 'Cancelled') {
+    document.getElementById('at-live-badge').style.display='block';
+    attendanceRefreshIv = setInterval(()=>fetchAttendance(sess,batch), 30000);
+  }
 }
 
 function fetchAttendance(sess, batch) {
@@ -3821,8 +3844,14 @@ function fetchAttendance(sess, batch) {
     // ── Absent / Not submitted ──
     if (d.absent.length) {
       html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--red);margin-bottom:8px">Yet to submit (' + d.absent.length + ')</div>';
-      html += '<div>';
-      d.absent.forEach(function(s){ html += '<span class="att-pill att-absent" style="margin:2px 4px 2px 0">' + escH(s.name) + '</span>'; });
+      html += '<div style="margin-bottom:14px">';
+      d.absent.forEach(function(s){
+        var sid = escH(s.enrollmentNo); var sc = escH(sess); var sb = escH(batch); var sname = escH(s.name);
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #FEE2E2">';
+        html += '<span style="font-size:13px;font-weight:500;color:var(--navy)">' + sname + '</span>';
+        html += '<button onclick="markPresentManually(\'' + sc + '\',\'' + sb + '\',\'' + sid + '\',\'' + sname.replace(/'/g,"\\'") + '\')" style="font-size:11px;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:6px;padding:4px 9px;cursor:pointer;font-weight:600">✓ Mark Present</button>';
+        html += '</div>';
+      });
       html += '</div>';
     }
 
@@ -3836,6 +3865,20 @@ function verifyStudent(sessionCode, studentId, action) {
     // Re-render without full reload
     var batch = document.getElementById('at-batch').value;
     fetchAttendance(sessionCode, batch);
+  });
+}
+
+function markPresentManually(sessionCode, batchCode, studentId, studentName) {
+  if (!confirm('Mark ' + studentName + ' as Present for this session?\n\nUse this only when the student was actually in class but did not (or could not) check in from the student portal.')) return;
+  gasGet({
+    action: 'instructorMarkAttendance',
+    sessionCode: sessionCode,
+    batchCode: batchCode,
+    marks: JSON.stringify([{ enrollmentNo: studentId, status: 'present' }])
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { showToast('Could not mark present. Please try again.', 'error'); return; }
+    showToast(studentName + ' marked present.');
+    fetchAttendance(sessionCode, batchCode);
   });
 }
 
@@ -5273,7 +5316,7 @@ function otLoadQB() {
 }
 
 function otImportBank() {
-  if (!confirm('This will import/refresh all 355 questions from the embedded Excel data into Google Sheets. Continue?')) return;
+  if (!confirm('This will import/refresh all 335 questions from the embedded Excel data into Google Sheets. Continue?')) return;
   gasGet({action:'setupQuestionBank', instructor:instructorName||'admin'}, function(err, d) {
     if (err || !d) return alert('Import failed. Check network.');
     if (d.status === 'ok') { alert('✅ Imported ' + d.imported + ' questions successfully!'); otLoadQB(); }

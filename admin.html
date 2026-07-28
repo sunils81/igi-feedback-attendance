@@ -4917,6 +4917,28 @@ function renderRevenueTab() {
     targetGstBaseline = 64900000;    // 6.49 Crore flat (incl. GST)
   }
 
+  // This-Month / Last-Month revenue — same exclusion rules as the rest of this dashboard
+  // (skip Corporate Programs bulk rows and "Other Centre" duplicate-claim rows) so this
+  // figure reconciles with YTD Collected above rather than looking like a different number.
+  const nowForMonth = new Date();
+  const thisMonthKey = nowForMonth.getFullYear() + '-' + String(nowForMonth.getMonth() + 1).padStart(2, '0');
+  const lastMonthDate = new Date(nowForMonth.getFullYear(), nowForMonth.getMonth() - 1, 1);
+  const lastMonthKey = lastMonthDate.getFullYear() + '-' + String(lastMonthDate.getMonth() + 1).padStart(2, '0');
+  let thisMonthCourse = 0, thisMonthGst = 0, lastMonthCourse = 0, lastMonthGst = 0;
+  allRows.forEach(r => {
+    if (r.month !== thisMonthKey && r.month !== lastMonthKey) return;
+    const isCorporate = isCorporateRevenueRow(r);
+    const isOtherCentre = !isCorporate && r.assignedCentre && r.businessCentre && r.assignedCentre !== r.businessCentre;
+    if (isOtherCentre) return;
+    if (r.month === thisMonthKey) {
+      thisMonthCourse += Number(r.achievedCourse) || 0;
+      thisMonthGst += Number(r.achievedGst) || 0;
+    } else {
+      lastMonthCourse += Number(r.achievedCourse) || 0;
+      lastMonthGst += Number(r.achievedGst) || 0;
+    }
+  });
+
   const pctOverall = targetCourseBaseline ? Math.round(totalAchievedCourse / targetCourseBaseline * 100) : 0;
   totalStudentsCount = fiscalYtdStudentCount(rev);
   // "Students Since: Jan (Calendar)" toggle — add back the Jan–Mar 2026 pre-cycle students
@@ -4951,7 +4973,12 @@ function renderRevenueTab() {
     gapValGst,
     reqMonthlyRunRateCourse,
     reqMonthlyRunRateGst,
-    gstViewIncl
+    gstViewIncl,
+    thisMonthCourse,
+    thisMonthGst,
+    lastMonthCourse,
+    lastMonthGst,
+    thisMonthKey
   );
 
   // Pre-cycle banner (Jan–Mar 2026 — outside appraisal window)
@@ -5186,7 +5213,7 @@ function toggleAdminCentreCard(centreName) {
   }
 }
 
-function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTargetCourse, totalTargetGst, totalStudentsCount, pctOverall, monthsLeft, gapValCourse, gapValGst, reqMonthlyRunRateCourse, reqMonthlyRunRateGst, gstViewIncl) {
+function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTargetCourse, totalTargetGst, totalStudentsCount, pctOverall, monthsLeft, gapValCourse, gapValGst, reqMonthlyRunRateCourse, reqMonthlyRunRateGst, gstViewIncl, thisMonthCourse, thisMonthGst, lastMonthCourse, lastMonthGst, thisMonthKey) {
   const container = document.getElementById('rev-hero-card');
   if (!container) return;
   
@@ -5207,7 +5234,21 @@ function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTarge
 
   const circumference = 2 * Math.PI * 44; // 276.46
   const offset = circumference - Math.min(pctOverall/100, 1) * circumference;
-  
+
+  // This-Month KPI chip — running total of revenue recorded so far in the current
+  // calendar month, so this doesn't require opening the full monthly grid to check.
+  const thisMonthK = gstViewIncl ? thisMonthGst : thisMonthCourse;
+  const lastMonthK = gstViewIncl ? lastMonthGst : lastMonthCourse;
+  const monthNamesFull = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const thisMonthLabel = monthNamesFull[parseInt(thisMonthKey.split('-')[1], 10) - 1] + ' ' + thisMonthKey.split('-')[0];
+  let momMeta;
+  if (lastMonthK > 0) {
+    const momPct = Math.round((thisMonthK - lastMonthK) / lastMonthK * 100);
+    momMeta = (momPct >= 0 ? '▲ +' : '▼ ') + momPct + '% vs ' + money(lastMonthK) + ' last month';
+  } else {
+    momMeta = thisMonthK > 0 ? 'No comparison — last month had no recorded revenue' : 'No revenue recorded yet this month';
+  }
+
   container.innerHTML = 
     '<div class="section-tag">National Performance — Current Year</div>' +
     '<div style="display:flex;align-items:center;gap:28px;flex-wrap:wrap;margin-bottom:20px">' +
@@ -5242,6 +5283,11 @@ function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTarge
           '<div class="kpi-meta">' + (studentCountBasis === 'calendar'
             ? 'Since Jan 2026 (calendar)'
             : monthsLeft + ' months left in FY') + '</div>' +
+        '</div>' +
+        '<div class="kpi-card" style="min-width:140px;flex:1;border-left:2.5px solid var(--gold)">' +
+          '<div class="kpi-label">This Month (' + thisMonthLabel + ')</div>' +
+          '<div class="kpi-value">' + money(thisMonthK) + '</div>' +
+          '<div class="kpi-meta">' + momMeta + '</div>' +
         '</div>' +
       '</div>' +
     '</div>' +

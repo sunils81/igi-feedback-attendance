@@ -6098,7 +6098,16 @@ function renderRevBreakdownTab() {
       '<td style="text-align:right;color:var(--green);font-weight:600">' + money(r.achieved) + '</td>' +
       '<td style="text-align:right;font-weight:700">' + r.pct + '%</td>' +
       '<td style="text-align:right">' + r.studentCount + '</td></tr>'
-    ).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No data available.</td></tr>';
+    ).join('') + (list.length ? (function() {
+      const t = list.reduce((s, r) => { s.target += r.target; s.achieved += r.achieved; s.studentCount += r.studentCount; return s; }, { target: 0, achieved: 0, studentCount: 0 });
+      const tPct = t.target ? Math.round(t.achieved / t.target * 100) : (t.achieved ? 100 : 0);
+      return '<tr style="border-top:1.5px solid var(--border);font-weight:bold;color:var(--gold)">' +
+        '<td colspan="2">YTD Total — ' + list.length + ' counsellors</td>' +
+        '<td style="text-align:right">' + money(t.target) + '</td>' +
+        '<td style="text-align:right">' + money(t.achieved) + '</td>' +
+        '<td style="text-align:right">' + tPct + '%</td>' +
+        '<td style="text-align:right">' + t.studentCount + '</td></tr>';
+    })() : '') : '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No data available.</td></tr>';
   }
 
   // ── Centre-wise ──────────────────────────────────────────────
@@ -6137,7 +6146,18 @@ function renderRevBreakdownTab() {
       '<td style="text-align:right">' + r.batches + '</td>' +
       '<td style="text-align:right">' + r.studentCount +
         (r.corporateStudentCount ? ' <span style="color:var(--muted)">(+' + r.corporateStudentCount + ')</span>' : '') + '</td></tr>'
-    ).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No data available.</td></tr>';
+    ).join('') + (list.length ? (function() {
+      const t = list.reduce((s, r) => { s.target += r.target; s.achieved += r.achieved; s.batches += r.batches; s.studentCount += r.studentCount; s.corporateStudentCount += r.corporateStudentCount; return s; }, { target: 0, achieved: 0, batches: 0, studentCount: 0, corporateStudentCount: 0 });
+      const tPct = t.target ? Math.round(t.achieved / t.target * 100) : (t.achieved ? 100 : 0);
+      return '<tr style="border-top:1.5px solid var(--border);font-weight:bold;color:var(--gold)">' +
+        '<td>YTD Total — ' + list.length + ' centres</td>' +
+        '<td style="text-align:right">' + money(t.target) + '</td>' +
+        '<td style="text-align:right">' + money(t.achieved) + '</td>' +
+        '<td style="text-align:right">' + tPct + '%</td>' +
+        '<td style="text-align:right">' + t.batches + '</td>' +
+        '<td style="text-align:right">' + t.studentCount +
+          (t.corporateStudentCount ? ' (+' + t.corporateStudentCount + ')' : '') + '</td></tr>';
+    })() : '') : '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No data available.</td></tr>';
   }
 
   // ── Month-wise (full FY grid, Apr–Mar) ───────────────────────

@@ -3903,6 +3903,7 @@
         <button class="rev-sub-tab active" id="btn-rev-sub-dashboard" onclick="switchRevSubTab('rev-subtab-dashboard')">📊 My Dashboard & Entry</button>
         <button class="rev-sub-tab" id="btn-rev-sub-counsellors" onclick="switchRevSubTab('rev-subtab-counsellors')">🏆 Counsellor Leaderboard</button>
         <button class="rev-sub-tab" id="btn-rev-sub-centres" onclick="switchRevSubTab('rev-subtab-centres')">🏢 Centre Standings</button>
+        <button class="rev-sub-tab" id="btn-rev-sub-breakdown" onclick="switchRevSubTab('rev-subtab-breakdown')">📑 My Breakdown</button>
       </div>
 
       <!-- SUBTAB 1: My Dashboard & Entry -->
@@ -3964,6 +3965,30 @@
         </div>
         <!-- Centre Standings Card -->
         <div id="rev-centre-rankings-card" class="card" style="margin-top:14px; border:none; box-shadow:none; padding:0"></div>
+      </div>
+
+      <!-- SUBTAB 4: My Breakdown (cross-verify vs the Fee Record ledger) -->
+      <div id="rev-subtab-breakdown" style="display:none">
+        <p class="sub" style="margin-top:0">Your own revenue split by centre, by month, and by course — cross-check any figure here against the Fee Record tab's student-level list (now with a Centre column) if a number looks off.</p>
+
+        <h3 style="font-size:14px;margin:16px 0 8px;color:var(--navy)">🏢 By Centre</h3>
+        <div style="overflow-x:auto"><table class="compact-table">
+          <thead><tr><th class="text-left">Centre</th><th>Target (Excl. GST)</th><th>Achieved (Excl. GST)</th><th>Achieved (Incl. GST)</th><th>% of Target</th><th>Students</th></tr></thead>
+          <tbody id="myrb-centre-tbody"><tr><td colspan="6" style="text-align:center;color:var(--muted)">Loading…</td></tr></tbody>
+        </table></div>
+
+        <h3 style="font-size:14px;margin:20px 0 8px;color:var(--navy)">📅 By Month — FY26-27 (Apr–Mar)</h3>
+        <div style="overflow-x:auto"><table class="compact-table">
+          <thead><tr><th class="text-left">Month</th><th>Achieved (Excl. GST)</th><th>Achieved (Incl. GST)</th><th>Students</th></tr></thead>
+          <tbody id="myrb-month-tbody"><tr><td colspan="4" style="text-align:center;color:var(--muted)">Loading…</td></tr></tbody>
+        </table></div>
+
+        <h3 style="font-size:14px;margin:20px 0 8px;color:var(--navy)">📚 By Course</h3>
+        <p class="sub" style="margin-top:0;font-size:11px">Booked revenue (net payable at enrolment) from your fee records — opens the Fee Record tab's data if not already loaded.</p>
+        <div style="overflow-x:auto"><table class="compact-table">
+          <thead><tr><th class="text-left">Course</th><th>Students</th><th>Booked Revenue</th><th>Collected</th><th>Outstanding</th></tr></thead>
+          <tbody id="myrb-course-tbody"><tr><td colspan="5" style="text-align:center;color:var(--muted)">Loading…</td></tr></tbody>
+        </table></div>
       </div>
 
       <!-- hidden inputs kept for admin filter parity -->
@@ -6734,8 +6759,8 @@ function initRevenueSubTabs() {
 }
 
 function switchRevSubTab(tabId) {
-  var tabs = ['rev-subtab-dashboard', 'rev-subtab-counsellors', 'rev-subtab-centres'];
-  var buttons = ['btn-rev-sub-dashboard', 'btn-rev-sub-counsellors', 'btn-rev-sub-centres'];
+  var tabs = ['rev-subtab-dashboard', 'rev-subtab-counsellors', 'rev-subtab-centres', 'rev-subtab-breakdown'];
+  var buttons = ['btn-rev-sub-dashboard', 'btn-rev-sub-counsellors', 'btn-rev-sub-centres', 'btn-rev-sub-breakdown'];
   
   tabs.forEach(function(t) {
     var el = document.getElementById(t);
@@ -6752,6 +6777,8 @@ function switchRevSubTab(tabId) {
       }
     }
   });
+
+  if (tabId === 'rev-subtab-breakdown') renderMyRevenueBreakdown();
 }
 
 function setRevMonthView(viewType) {
@@ -8264,10 +8291,11 @@ function frRecordMonth(r) {
   return r.revenueMonth || r.month || '';
 }
 
-function loadFeeRecordTab(force) {
+function loadFeeRecordTab(force, onDone) {
   if (allInvoiceRecords && !force) {
     populateFeeRecordFilterOptions();
     renderFeeRecordTab();
+    if (onDone) onDone();
     return;
   }
   document.getElementById('fr-list').innerHTML = emptyState('📑', 'Loading fee record…', 'Pulling your fee records, grouped by month.');
@@ -8281,6 +8309,7 @@ function loadFeeRecordTab(force) {
     allInvoiceRecords = d.records;
     populateFeeRecordFilterOptions();
     renderFeeRecordTab();
+    if (onDone) onDone();
   });
 }
 
@@ -8491,6 +8520,7 @@ function renderFeeRecordTab() {
         '<td style="font-family:\'JetBrains Mono\',monospace">' + escC(r.studentId || '') + '</td>' +
         '<td><strong>' + escC(r.studentName || '') + '</strong></td>' +
         '<td>' + escC(r.batchCode || '') + '</td>' +
+        '<td>' + escC(r.centre || '') + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace">' + (r.invoiceNumber ? escC(r.invoiceNumber) : '<span style="color:var(--muted)">—</span>') + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace">' + money(r.courseFee) + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace">' + money(r.gstAmount) + '</td>' +
@@ -8502,7 +8532,7 @@ function renderFeeRecordTab() {
       '</tr>';
     }).join('');
     var totalRow = '<tr style="background:var(--off);font-weight:800">' +
-      '<td colspan="6">Total — ' + invMonthLabel(mk) + ' (' + mRows.length + (mRows.length===1?' record':' records') + ')</td>' +
+      '<td colspan="7">Total — ' + invMonthLabel(mk) + ' (' + mRows.length + (mRows.length===1?' record':' records') + ')</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(mTotal.courseFee) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(mTotal.gst) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace;color:var(--muted)" title="Discount is shown per-student as a %; summing percentages across students isn\'t meaningful">—</td>' +
@@ -8513,7 +8543,7 @@ function renderFeeRecordTab() {
     '</tr>';
     html += '<div style="overflow-x:auto;margin-bottom:18px"><table class="compact-table"><thead><tr>' +
       '<th>S.No</th><th class="text-left">Counsellor</th><th class="text-left">Student ID</th><th class="text-left">Student</th>' +
-      '<th class="text-left">Batch</th><th class="text-left">Invoice #</th>' +
+      '<th class="text-left">Batch</th><th class="text-left">Centre</th><th class="text-left">Invoice #</th>' +
       '<th>Course Fee</th><th>GST</th><th>Discount</th><th>Revenue</th><th>Collected</th><th>Balance</th><th>Action</th>' +
       '</tr></thead><tbody>' + bodyRows + totalRow + '</tbody></table></div>';
   });
@@ -8524,7 +8554,7 @@ function renderFeeRecordTab() {
   if (monthKeys.length > 1) {
     html += '<div style="overflow-x:auto"><table class="compact-table"><tbody>' +
       '<tr style="background:var(--navy);color:var(--gold);font-weight:800">' +
-      '<td colspan="6">GRAND TOTAL — ' + monthKeys.length + ' months, ' + gTotal.count + ' records</td>' +
+      '<td colspan="7">GRAND TOTAL — ' + monthKeys.length + ' months, ' + gTotal.count + ' records</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.courseFee) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(gTotal.gst) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace;color:#9aa5b1">—</td>' +
@@ -8553,7 +8583,7 @@ function downloadFeeRecordCsv() {
   // from. Not netPayable (which nets out discount and adds GST).
   // Discount is shown per-row as a % (not a rupee amount) — Total/Grand Total rows leave it
   // blank since summing percentages across different students isn't a meaningful number.
-  var blank = { SNo:'', Month:'', Counsellor:'', StudentID:'', Student:'', Batch:'', InvoiceNumber:'', InvoiceDate:'',
+  var blank = { SNo:'', Month:'', Counsellor:'', StudentID:'', Student:'', Batch:'', Centre:'', InvoiceNumber:'', InvoiceDate:'',
     CourseFee:'', GST:'', DiscountPct:'', Revenue:'', Collected:'', Balance:'' };
   var csvRows = [];
   var g = { courseFee:0, gst:0, revenue:0, collected:0, balance:0 };
@@ -8566,7 +8596,7 @@ function downloadFeeRecordCsv() {
       m.revenue += revenue;
       m.collected += Number(r.collected)||0;   m.balance += Number(r.outstanding)||0;
       csvRows.push(Object.assign({}, blank, { SNo: idx+1, Month: invMonthLabel(mk), Counsellor: r.enteredBy||'',
-        StudentID: r.studentId||'', Student: r.studentName||'', Batch: r.batchCode||'', InvoiceNumber: r.invoiceNumber||'',
+        StudentID: r.studentId||'', Student: r.studentName||'', Batch: r.batchCode||'', Centre: r.centre||'', InvoiceNumber: r.invoiceNumber||'',
         InvoiceDate: r.invoiceDate||'',
         CourseFee: r.courseFee||0, GST: r.gstAmount||0,
         DiscountPct: Number(r.discountPct) ? parseFloat(Number(r.discountPct).toFixed(2)) : 0, Revenue: revenue,
@@ -10024,6 +10054,166 @@ function revAchievedForCounsellor(counsellor) {
   });
   return {achieved:achieved, students:students, ownAchieved:ownAchieved, otherAchieved:otherAchieved, corpAchieved:corpAchieved,
           ownStudents:ownStudents, otherStudents:otherStudents, corpStudents:corpStudents};
+}
+
+// ── My Breakdown sub-tab: centre-wise / month-wise / course-wise view of the logged-in
+// counsellor's OWN revenue, so they can cross-verify a figure against the Fee Record tab's
+// student-level ledger (which now has a Centre column) without needing Sunil to pull it up
+// for them. revenueData.monthlyRows is already scoped to just this counsellor server-side
+// for non-admins (see myMonthly in buildRevenueDashboardJSON), so no extra counsellor
+// filtering — or the Other-Centre dedup used on the admin dashboards — is needed here:
+// every row already belongs to this one person, so there's no cross-counsellor double-count
+// risk to guard against.
+function renderMyRevenueBreakdown() {
+  if (!revenueData) return;
+  var me = counselorName || '';
+  var rows = revenueData.monthlyRows || [];
+
+  // ── By Centre ──
+  var centreTbody = document.getElementById('myrb-centre-tbody');
+  if (centreTbody) {
+    var byCentre = {};
+    rows.forEach(function(r) {
+      var c = r.businessCentre || r.assignedCentre;
+      if (!c) return;
+      if (!byCentre[c]) byCentre[c] = { achievedCourse: 0, achievedGst: 0, studentCount: 0 };
+      byCentre[c].achievedCourse += Number(r.achievedCourse) || 0;
+      byCentre[c].achievedGst += Number(r.achievedGst) || 0;
+      byCentre[c].studentCount += Number(r.studentCount) || 0;
+    });
+    var targetByCentre = {};
+    (revenueData.targetRows || []).forEach(function(r) {
+      if (!revSameCounsellor(r.counsellor, me)) return;
+      targetByCentre[r.centre] = { targetCourse: Number(r.targetCourse) || 0, targetGst: Number(r.targetGst) || 0 };
+    });
+    var centres = Object.keys(byCentre).sort();
+    if (centres.length) {
+      var html = centres.map(function(c) {
+        var b = byCentre[c];
+        var t = targetByCentre[c] || { targetCourse: 0 };
+        var pct = t.targetCourse ? Math.round(b.achievedCourse / t.targetCourse * 100) : (b.achievedCourse ? 100 : 0);
+        return '<tr><td><strong>' + escC(c) + '</strong></td>' +
+          '<td style="text-align:right">' + (t.targetCourse ? money(t.targetCourse) : '<span style="color:var(--muted)">Not set</span>') + '</td>' +
+          '<td style="text-align:right;color:#1a7a3c;font-weight:600">' + money(b.achievedCourse) + '</td>' +
+          '<td style="text-align:right;color:#1a7a3c">' + money(b.achievedGst) + '</td>' +
+          '<td style="text-align:right;font-weight:700">' + (t.targetCourse ? pct + '%' : '—') + '</td>' +
+          '<td style="text-align:right">' + b.studentCount + '</td></tr>';
+      }).join('');
+      var tot = centres.reduce(function(s, c) {
+        s.course += byCentre[c].achievedCourse; s.gst += byCentre[c].achievedGst;
+        s.target += (targetByCentre[c] ? targetByCentre[c].targetCourse : 0); s.students += byCentre[c].studentCount;
+        return s;
+      }, { course: 0, gst: 0, target: 0, students: 0 });
+      var totPct = tot.target ? Math.round(tot.course / tot.target * 100) : (tot.course ? 100 : 0);
+      html += '<tr style="border-top:1.5px solid var(--border);font-weight:bold;color:#8f6d21">' +
+        '<td>YTD Total — ' + centres.length + ' centre' + (centres.length === 1 ? '' : 's') + '</td>' +
+        '<td style="text-align:right">' + money(tot.target) + '</td>' +
+        '<td style="text-align:right">' + money(tot.course) + '</td>' +
+        '<td style="text-align:right">' + money(tot.gst) + '</td>' +
+        '<td style="text-align:right">' + (tot.target ? totPct + '%' : '—') + '</td>' +
+        '<td style="text-align:right">' + tot.students + '</td></tr>';
+      centreTbody.innerHTML = html;
+    } else {
+      centreTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No revenue recorded yet.</td></tr>';
+    }
+  }
+
+  // ── By Month (full FY grid, Apr–Mar) ──
+  var monthTbody = document.getElementById('myrb-month-tbody');
+  if (monthTbody) {
+    var byMonth = {};
+    rows.forEach(function(r) {
+      var k = r.month;
+      if (!k) return;
+      if (!byMonth[k]) byMonth[k] = { achievedCourse: 0, achievedGst: 0, studentCount: 0 };
+      byMonth[k].achievedCourse += Number(r.achievedCourse) || 0;
+      byMonth[k].achievedGst += Number(r.achievedGst) || 0;
+      byMonth[k].studentCount += Number(r.studentCount) || 0;
+    });
+    var fyMonths = [];
+    for (var i = 0; i < 12; i++) {
+      var y = i < 9 ? 2026 : 2027;
+      var m = ((i + 3) % 12) + 1;
+      fyMonths.push({ y: y, m: m, key: y + '-' + String(m).padStart(2, '0') });
+    }
+    var now = new Date();
+    var currentKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    var monthNamesFull = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    var html2 = '';
+    var ytdCourse = 0, ytdGst = 0, ytdStudents = 0;
+    fyMonths.forEach(function(fm) {
+      var future = fm.key > currentKey;
+      var row = byMonth[fm.key];
+      var course = row ? row.achievedCourse : 0;
+      var gst = row ? row.achievedGst : 0;
+      var students = row ? row.studentCount : 0;
+      if (!future) { ytdCourse += course; ytdGst += gst; ytdStudents += students; }
+      html2 += '<tr' + (future ? ' style="color:var(--muted)"' : '') + '>' +
+        '<td>' + monthNamesFull[fm.m - 1] + ' ' + fm.y + '</td>' +
+        '<td style="text-align:right">' + (future ? '—' : money(course)) + '</td>' +
+        '<td style="text-align:right">' + (future ? '—' : money(gst)) + '</td>' +
+        '<td style="text-align:right">' + (future ? '—' : students) + '</td></tr>';
+    });
+    html2 += '<tr style="border-top:1.5px solid var(--border);font-weight:bold;color:#8f6d21">' +
+      '<td>YTD Total</td>' +
+      '<td style="text-align:right">' + money(ytdCourse) + '</td>' +
+      '<td style="text-align:right">' + money(ytdGst) + '</td>' +
+      '<td style="text-align:right">' + ytdStudents + '</td></tr>';
+    monthTbody.innerHTML = html2;
+  }
+
+  // ── By Course ──
+  var courseTbody = document.getElementById('myrb-course-tbody');
+  if (courseTbody) {
+    if (!allInvoiceRecords) {
+      courseTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted)">Loading fee records…</td></tr>';
+      loadFeeRecordTab(false, renderMyRevenueBreakdown);
+      return;
+    }
+    // Same default scope as the Fee Record tab for a non-admin (see feeRecordFilteredRows):
+    // every record in my centre(s), plus every record credited to me personally regardless
+    // of centre. Computed directly here rather than calling feeRecordFilteredRows() itself,
+    // since that reads the Fee Record tab's own filter dropdowns (month/counsellor/batch) —
+    // whatever a counsellor happened to leave those set to shouldn't silently change what
+    // this summary shows.
+    var scoped = allInvoiceRecords.filter(function(r) {
+      var inMyCentre = !!(allowedCentres && allowedCentres.length && allowedCentres.indexOf(r.centre) !== -1);
+      var isMine = !!(me && r.enteredBy === me);
+      return inMyCentre || isMine;
+    });
+    var byCourse = {};
+    scoped.forEach(function(r) {
+      var course = (r.course && String(r.course).trim()) || 'Unspecified';
+      if (!byCourse[course]) byCourse[course] = { course: course, students: 0, booked: 0, collected: 0, outstanding: 0 };
+      byCourse[course].students++;
+      byCourse[course].booked += Number(r.netPayable || 0);
+      byCourse[course].collected += Number(r.collected || 0);
+      byCourse[course].outstanding += Number(r.outstanding || 0);
+    });
+    var courseList = Object.values(byCourse).sort(function(a, b) { return b.booked - a.booked; });
+    if (courseList.length) {
+      var html3 = courseList.map(function(c) {
+        return '<tr><td><strong>' + escC(c.course) + '</strong></td>' +
+          '<td style="text-align:right">' + c.students + '</td>' +
+          '<td style="text-align:right;font-weight:700">' + money(c.booked) + '</td>' +
+          '<td style="text-align:right;color:#1a7a3c">' + money(c.collected) + '</td>' +
+          '<td style="text-align:right;color:' + (c.outstanding ? 'var(--red)' : '#1a7a3c') + '">' + money(c.outstanding) + '</td></tr>';
+      }).join('');
+      var t3 = courseList.reduce(function(s, c) {
+        s.students += c.students; s.booked += c.booked; s.collected += c.collected; s.outstanding += c.outstanding;
+        return s;
+      }, { students: 0, booked: 0, collected: 0, outstanding: 0 });
+      html3 += '<tr style="border-top:1.5px solid var(--border);font-weight:bold;color:#8f6d21">' +
+        '<td>Total — ' + courseList.length + ' course' + (courseList.length === 1 ? '' : 's') + '</td>' +
+        '<td style="text-align:right">' + t3.students + '</td>' +
+        '<td style="text-align:right">' + money(t3.booked) + '</td>' +
+        '<td style="text-align:right">' + money(t3.collected) + '</td>' +
+        '<td style="text-align:right">' + money(t3.outstanding) + '</td></tr>';
+      courseTbody.innerHTML = html3;
+    } else {
+      courseTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No fee records found.</td></tr>';
+    }
+  }
 }
 
 // revCentreAchievedAll — Centre Standings rollup for one centre. Splits each contributor's

@@ -1718,7 +1718,7 @@
       <!-- Centre-wise -->
       <div class="chart-card full" style="margin-top:16px">
         <div class="chart-title">🏢 Centre-wise — YTD vs Target</div>
-        <div class="chart-subtitle">Cross-centre sales counted under the destination centre; Other-Centre duplicate claims excluded where a native record exists (see Revenue Overview for details).</div>
+        <div class="chart-subtitle">Cross-centre sales counted in full under the destination centre — verified against student_fees that these are genuinely distinct students, not double-recorded sales.</div>
         <table class="compact-table" style="margin-top:10px">
           <thead>
             <tr>
@@ -4856,12 +4856,10 @@ function isCorporateRevenueRow(r) {
 }
 
 // Centres that have at least one NATIVE record (a home-counsellor selling into their own
-// assigned centre) — the only situation where an "Other Centre" cross-sale claim risks
-// double-counting an already-recorded sale. Centres with no native record at all (e.g.
-// Lucknow — serviced only by Anuradha, whose home centre is Mumbai) have nothing to
-// duplicate against, so their cross-centre claims must count in full. Shared by
-// renderRevenueTab, renderAppraisalCycleTable, and renderRevBreakdownTab so this guard
-// can't drift out of sync between them again (see the 2026-07-28 Lucknow/49.3L bugs).
+// assigned centre). No longer used to exclude anything (see isExcludedOtherCentreRow) —
+// verified 2026-07-28 that "native record exists" doesn't actually mean a cross-centre
+// claim is a duplicate of it (Bangalore has both, and its 14 students are all distinct).
+// Kept only as a building block if a genuine, verified duplicate is ever found.
 function computeCentresWithNativeRevenue(rows) {
   const set = new Set();
   (rows || []).forEach(r => {

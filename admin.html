@@ -4814,19 +4814,34 @@ function renderRevenueTab() {
   const allRows = rev.allMonthlyRows || rev.monthlyRows || rev.monthlyPreviewRows || [];
   const achByCentreCounsellor = {}; // 'centre|counsellorKey' -> aggregate
 
+  // Centres that have at least one NATIVE record (a home-counsellor selling into their own
+  // assigned centre) — this is the only situation where an "Other Centre" claim by a
+  // different counsellor risks double-counting an already-recorded sale. Centres with no
+  // native record at all (e.g. Lucknow — serviced only by Anuradha, whose home centre is
+  // Mumbai, as a cross-centre sale) have nothing to duplicate against: their only real
+  // record IS the "Other Centre" claim, so it must count fully instead of being excluded.
+  // Bug found 2026-07-28: Lucknow (and Ahmedabad, Pune, Thrissur — every centre without its
+  // own dedicated counsellor) were being silently zeroed out of every branch card because
+  // of this.
+  const centresWithNativeRevenue = new Set();
+  allRows.forEach(r => {
+    if (isCorporateRevenueRow(r)) return;
+    if (r.assignedCentre && r.businessCentre && r.assignedCentre === r.businessCentre) {
+      centresWithNativeRevenue.add(r.businessCentre);
+    }
+  });
+
   allRows.forEach(r => {
     if (!r.counsellor) return;
     const isCorporate = isCorporateRevenueRow(r);
     // "Other Centre" rows are a counsellor's personal duplicate-credit claim for a sale
     // fulfilled at a different centre than their own (assignedCentre !== businessCentre) —
-    // e.g. Anuradha, assigned to Mumbai, logging a sale she facilitated in Bangalore. Whether
-    // the destination centre already has its own native record of that same sale is
-    // unreliable in this data (checked directly: Nadiya's own Bangalore entries don't match
-    // Anuradha's Bangalore-tagged months/amounts), so rather than guess and risk double- or
-    // partial-crediting a branch, these rows are excluded from every branch card entirely.
+    // e.g. Anuradha, assigned to Mumbai, logging a sale she facilitated in Bangalore.
+    // Excluded from branch cards ONLY when that destination centre also has its own native
+    // record (see centresWithNativeRevenue above) — that's the actual duplicate-risk case.
     // They still count toward the counsellor's own achievement in the Standings tab.
     const isOtherCentre = !isCorporate && r.assignedCentre && r.businessCentre && r.assignedCentre !== r.businessCentre;
-    if (isOtherCentre) return;
+    if (isOtherCentre && centresWithNativeRevenue.has(r.businessCentre)) return;
     const centre = r.businessCentre || r.assignedCentre;
     if (!centre) return;
 
@@ -4929,7 +4944,7 @@ function renderRevenueTab() {
     if (r.month !== thisMonthKey && r.month !== lastMonthKey) return;
     const isCorporate = isCorporateRevenueRow(r);
     const isOtherCentre = !isCorporate && r.assignedCentre && r.businessCentre && r.assignedCentre !== r.businessCentre;
-    if (isOtherCentre) return;
+    if (isOtherCentre && centresWithNativeRevenue.has(r.businessCentre)) return;
     if (r.month === thisMonthKey) {
       thisMonthCourse += Number(r.achievedCourse) || 0;
       thisMonthGst += Number(r.achievedGst) || 0;

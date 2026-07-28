@@ -1512,14 +1512,14 @@
       <!-- Appraisal Cycle YoY — Apr Onwards -->
       <div class="chart-card full" style="margin-top:16px">
         <div class="chart-title">📊 Appraisal Cycle YoY — Apr Onwards</div>
-        <div class="chart-subtitle">Cycle starts April. Jan–Mar 2026 excluded (pre-cycle). Incl. GST.</div>
+        <div class="chart-subtitle" id="appraisal-cycle-subtitle">Cycle starts April. Jan–Mar 2026 excluded (pre-cycle).</div>
         <table class="compact-table" style="margin-top:10px">
           <thead>
             <tr>
               <th>Month</th>
-              <th>FY24–25 (₹)</th>
-              <th>FY25–26 (₹)</th>
-              <th>FY26–27 (₹)</th>
+              <th>FY24–25 (₹, Incl. GST)</th>
+              <th>FY25–26 (₹, Incl. GST)</th>
+              <th id="appraisal-cycle-fy2627-th">FY26–27 (₹)</th>
               <th>YoY Growth</th>
             </tr>
           </thead>
@@ -5684,16 +5684,53 @@ function renderAppraisalCycleTable() {
     return arr ? (arr[monthNum - 1] || 0) : 0;
   }
 
-  // Live FY26-27 totals per month (incl. GST), plus how many rows for that month are still
-  // unlocked drafts — shown as an informational footnote rather than hidden, since the rest
-  // of the dashboard (HR view, overall YTD) also counts unlocked entries.
-  const liveByMonth = {};
+  const allRowsForCycle = (dashboardData.revenue && dashboardData.revenue.monthlyRows) || [];
+
+  // Centres with a native (home-counsellor) record — same dedup guard used by the hero
+  // card and branch grid (see renderRevenueTab). Without this, a cross-centre sale (e.g.
+  // Anuradha selling into Bangalore, which also has its own native Bangalore counsellor
+  // record) got summed on top of that native record here, double-counting the same real
+  // transaction. Bug found 2026-07-28 — this table's Cycle YTD was reading ₹49.3L higher
+  // than the (correct) hero YTD Collected figure for the exact same Apr–Jul window.
+  const cycleCentresWithNative = new Set();
+  allRowsForCycle.forEach(r => {
+    if (isCorporateRevenueRow(r)) return;
+    if (r.assignedCentre && r.businessCentre && r.assignedCentre === r.businessCentre) {
+      cycleCentresWithNative.add(r.businessCentre);
+    }
+  });
+
+  // Live FY26-27 totals per month — both excl. and incl. GST, so the table can follow the
+  // page's Excl./Incl. GST toggle instead of being hardcoded to one basis — plus how many
+  // rows for that month are still unlocked drafts, shown as an informational footnote
+  // rather than hidden, since the rest of the dashboard (HR view, overall YTD) also counts
+  // unlocked entries.
+  const liveByMonthCourse = {};
+  const liveByMonthGst = {};
   const draftByMonth = {};
-  ((dashboardData.revenue && dashboardData.revenue.monthlyRows) || []).forEach(mr => {
+  allRowsForCycle.forEach(mr => {
+    const isCorp = isCorporateRevenueRow(mr);
+    const isOtherCentreDup = !isCorp && mr.assignedCentre && mr.businessCentre &&
+      mr.assignedCentre !== mr.businessCentre && cycleCentresWithNative.has(mr.businessCentre);
+    if (isOtherCentreDup) return;
     const key = mr.month;
-    liveByMonth[key] = (liveByMonth[key] || 0) + (Number(mr.achievedGst) || 0);
+    liveByMonthCourse[key] = (liveByMonthCourse[key] || 0) + (Number(mr.achievedCourse) || 0);
+    liveByMonthGst[key] = (liveByMonthGst[key] || 0) + (Number(mr.achievedGst) || 0);
     if (!window.isRevenueLocked(mr.locked)) draftByMonth[key] = (draftByMonth[key] || 0) + 1;
   });
+  const liveByMonth = gstViewIncl ? liveByMonthGst : liveByMonthCourse;
+
+  // Keep the subtitle + FY26-27 column header honest about which GST basis is showing.
+  // Historical (FY24-25/FY25-26) columns stay Incl. GST always — that's the only basis
+  // the closed historical books have; there's no excl-GST breakdown to toggle them to.
+  const subtitleEl = document.getElementById('appraisal-cycle-subtitle');
+  if (subtitleEl) {
+    subtitleEl.textContent = 'Cycle starts April. Jan–Mar 2026 excluded (pre-cycle). ' +
+      'FY26–27 shown ' + (gstViewIncl ? 'Incl. GST' : 'Excl. GST') +
+      ' — FY24–25/FY25–26 stay Incl. GST (only basis available in those closed books).';
+  }
+  const fy2627Th = document.getElementById('appraisal-cycle-fy2627-th');
+  if (fy2627Th) fy2627Th.textContent = 'FY26–27 (₹, ' + (gstViewIncl ? 'Incl. GST' : 'Excl. GST') + ')';
 
   const rows = cycleMonths.map(m => {
     const [y, mo] = m.cal;
@@ -5759,6 +5796,17 @@ function renderAppraisalCycleTable() {
       ' = <strong>' + moneyShort(preTotal) + '</strong> collected — not counted above' +
     '</div></div>' +
   '</td></tr>';
+
+  if (!gstViewIncl) {
+    html += '<tr><td colspan="5" style="padding:6px 0;background:transparent;">' +
+      '<div class="info-callout-banner" style="border-left-color:#B45309"><span class="icon">⚠️</span><div>' +
+        'FY26–27 above is <strong>Excl. GST</strong>, but FY24–25/FY25–26 are <strong>Incl. GST</strong> ' +
+        '(no excl-GST breakdown exists for those closed years) — YoY Growth % is comparing ' +
+        'different bases and will read a few points lower than the true like-for-like growth. ' +
+        'Switch the page\'s GST toggle to Incl. GST for an apples-to-apples comparison.' +
+      '</div></div>' +
+    '</td></tr>';
+  }
 
   tbody.innerHTML = html || '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No revenue data yet.</td></tr>';
 }

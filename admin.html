@@ -1372,6 +1372,7 @@
     <div class="tab-bar" id="tab-bar">
       <button class="tab active" onclick="switchAdminTab('t-revenue')">📈 Revenue Overview</button>
       <button class="tab" id="tab-targets" onclick="switchAdminTab('t-targets')">🎯 Target Settings</button>
+      <button class="tab" onclick="switchAdminTab('t-rev-breakdown')">📑 Revenue Breakdown</button>
       <button class="tab" onclick="switchAdminTab('t-standings')">🏆 Championship Standings</button>
       <button class="tab" onclick="switchAdminTab('t-fees')">💸 Fee Reconciliation</button>
       <button class="tab" onclick="switchAdminTab('t-invoices')">🧾 All Invoices</button>
@@ -1682,6 +1683,90 @@
         <p class="sub">Configure fiscal year targets. Saved values require checking 'Revise' and specifying a reason before edits are allowed.</p>
         <div class="admin-target-split" id="target-editor-split">
           <div style="font-size:13px;color:var(--muted)">Loading target panel...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: REVENUE BREAKDOWN -->
+    <div id="t-rev-breakdown" class="tab-content">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
+          <h2 style="margin-bottom:0">📑 Revenue Breakdown</h2>
+          <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="window.print()">🖨️ Print / Save PDF</button>
+        </div>
+        <p class="sub" id="rb-subtitle">Counsellor-wise, centre-wise, month-wise, and course-wise revenue against target — Excl./Incl. GST follows the Revenue Overview tab's GST toggle.</p>
+      </div>
+
+      <!-- Counsellor-wise -->
+      <div class="chart-card full" style="margin-top:16px">
+        <div class="chart-title">👤 Counsellor-wise — YTD vs Target</div>
+        <div class="chart-subtitle">Includes every sale a counsellor personally logged, regardless of which centre it was sold into.</div>
+        <table class="compact-table" style="margin-top:10px">
+          <thead>
+            <tr>
+              <th>Counsellor</th><th>Centre</th>
+              <th style="text-align:right">Target (₹, Excl. GST)</th>
+              <th style="text-align:right">YTD Achieved</th>
+              <th style="text-align:right">% of Target</th>
+              <th style="text-align:right">Students</th>
+            </tr>
+          </thead>
+          <tbody id="rb-counsellor-tbody"><tr><td colspan="6" style="text-align:center;color:var(--muted)">Loading…</td></tr></tbody>
+        </table>
+      </div>
+
+      <!-- Centre-wise -->
+      <div class="chart-card full" style="margin-top:16px">
+        <div class="chart-title">🏢 Centre-wise — YTD vs Target</div>
+        <div class="chart-subtitle">Cross-centre sales counted under the destination centre; Other-Centre duplicate claims excluded where a native record exists (see Revenue Overview for details).</div>
+        <table class="compact-table" style="margin-top:10px">
+          <thead>
+            <tr>
+              <th>Centre</th>
+              <th style="text-align:right">Target (₹, Excl. GST)</th>
+              <th style="text-align:right">YTD Achieved</th>
+              <th style="text-align:right">% of Target</th>
+              <th style="text-align:right">Batches</th>
+              <th style="text-align:right">Students</th>
+            </tr>
+          </thead>
+          <tbody id="rb-centre-tbody"><tr><td colspan="6" style="text-align:center;color:var(--muted)">Loading…</td></tr></tbody>
+        </table>
+      </div>
+
+      <!-- Month-wise -->
+      <div class="chart-card full" style="margin-top:16px">
+        <div class="chart-title">📅 Month-wise — FY26-27 (Apr–Mar)</div>
+        <div class="chart-subtitle">Full fiscal year grid; months ahead of today show blank, not zero.</div>
+        <table class="compact-table" style="margin-top:10px">
+          <thead>
+            <tr>
+              <th>Month</th>
+              <th style="text-align:right">Achieved</th>
+              <th style="text-align:right">Students</th>
+              <th style="text-align:right">% of Annual Target Run-Rate</th>
+            </tr>
+          </thead>
+          <tbody id="rb-month-tbody"><tr><td colspan="4" style="text-align:center;color:var(--muted)">Loading…</td></tr></tbody>
+        </table>
+      </div>
+
+      <!-- Course-wise -->
+      <div class="chart-card full" style="margin-top:16px">
+        <div class="chart-title">📚 Course-wise — Booked Revenue</div>
+        <div class="chart-subtitle">Booked revenue — full course fee recognized at enrolment (net payable), same basis as Revenue Overview.</div>
+        <div style="overflow-x:auto">
+          <table class="compact-table" style="margin-top:10px">
+            <thead>
+              <tr>
+                <th>Course</th><th style="text-align:right">Students</th>
+                <th style="text-align:right">Booked Revenue (₹)</th><th style="text-align:right">Avg / Student</th>
+                <th style="text-align:right">Collected (₹)</th><th style="text-align:right">Collection %</th>
+                <th style="text-align:right">Outstanding (₹)</th><th style="text-align:right">% of Total</th>
+              </tr>
+            </thead>
+            <tbody id="rb-course-tbody"><tr><td colspan="8" style="text-align:center;color:var(--muted)">Loading…</td></tr></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -4727,6 +4812,8 @@ function renderTabContent(tabId) {
     renderRevenueTab();
   } else if (tabId === 't-targets') {
     renderTargetsTab();
+  } else if (tabId === 't-rev-breakdown') {
+    renderRevBreakdownTab();
   } else if (tabId === 't-standings') {
     renderStandingsTab();
   } else if (tabId === 't-fees') {
@@ -4766,6 +4853,32 @@ function isCorporateRevenueRow(r) {
   const businessType = String(r.businessType || '').toLowerCase();
   const businessCentre = String(r.businessCentre || '').toLowerCase();
   return businessType.indexOf('corporate') >= 0 || businessCentre.indexOf('corporate') >= 0;
+}
+
+// Centres that have at least one NATIVE record (a home-counsellor selling into their own
+// assigned centre) — the only situation where an "Other Centre" cross-sale claim risks
+// double-counting an already-recorded sale. Centres with no native record at all (e.g.
+// Lucknow — serviced only by Anuradha, whose home centre is Mumbai) have nothing to
+// duplicate against, so their cross-centre claims must count in full. Shared by
+// renderRevenueTab, renderAppraisalCycleTable, and renderRevBreakdownTab so this guard
+// can't drift out of sync between them again (see the 2026-07-28 Lucknow/49.3L bugs).
+function computeCentresWithNativeRevenue(rows) {
+  const set = new Set();
+  (rows || []).forEach(r => {
+    if (isCorporateRevenueRow(r)) return;
+    if (r.assignedCentre && r.businessCentre && r.assignedCentre === r.businessCentre) {
+      set.add(r.businessCentre);
+    }
+  });
+  return set;
+}
+
+// True if this row should be excluded from a CENTRE-level total (not a counsellor-level
+// total, which always includes every row a counsellor logged regardless of centre).
+function isExcludedOtherCentreRow(r, centresWithNative) {
+  const isCorp = isCorporateRevenueRow(r);
+  const isOtherCentre = !isCorp && r.assignedCentre && r.businessCentre && r.assignedCentre !== r.businessCentre;
+  return isOtherCentre && centresWithNative.has(r.businessCentre);
 }
 
 // Fiscal-year pacing (Apr 2026 → Mar 2027): returns how many percentage points of the full
@@ -4814,22 +4927,10 @@ function renderRevenueTab() {
   const allRows = rev.allMonthlyRows || rev.monthlyRows || rev.monthlyPreviewRows || [];
   const achByCentreCounsellor = {}; // 'centre|counsellorKey' -> aggregate
 
-  // Centres that have at least one NATIVE record (a home-counsellor selling into their own
-  // assigned centre) — this is the only situation where an "Other Centre" claim by a
-  // different counsellor risks double-counting an already-recorded sale. Centres with no
-  // native record at all (e.g. Lucknow — serviced only by Anuradha, whose home centre is
-  // Mumbai, as a cross-centre sale) have nothing to duplicate against: their only real
-  // record IS the "Other Centre" claim, so it must count fully instead of being excluded.
-  // Bug found 2026-07-28: Lucknow (and Ahmedabad, Pune, Thrissur — every centre without its
-  // own dedicated counsellor) were being silently zeroed out of every branch card because
-  // of this.
-  const centresWithNativeRevenue = new Set();
-  allRows.forEach(r => {
-    if (isCorporateRevenueRow(r)) return;
-    if (r.assignedCentre && r.businessCentre && r.assignedCentre === r.businessCentre) {
-      centresWithNativeRevenue.add(r.businessCentre);
-    }
-  });
+  // Centres with a native record — see computeCentresWithNativeRevenue() above. Bug found
+  // 2026-07-28: Lucknow (and Ahmedabad, Pune, Thrissur — every centre without its own
+  // dedicated counsellor) were being silently zeroed out of every branch card without this.
+  const centresWithNativeRevenue = computeCentresWithNativeRevenue(allRows);
 
   allRows.forEach(r => {
     if (!r.counsellor) return;
@@ -5709,19 +5810,10 @@ function renderAppraisalCycleTable() {
 
   const allRowsForCycle = (dashboardData.revenue && dashboardData.revenue.monthlyRows) || [];
 
-  // Centres with a native (home-counsellor) record — same dedup guard used by the hero
-  // card and branch grid (see renderRevenueTab). Without this, a cross-centre sale (e.g.
-  // Anuradha selling into Bangalore, which also has its own native Bangalore counsellor
-  // record) got summed on top of that native record here, double-counting the same real
-  // transaction. Bug found 2026-07-28 — this table's Cycle YTD was reading ₹49.3L higher
-  // than the (correct) hero YTD Collected figure for the exact same Apr–Jul window.
-  const cycleCentresWithNative = new Set();
-  allRowsForCycle.forEach(r => {
-    if (isCorporateRevenueRow(r)) return;
-    if (r.assignedCentre && r.businessCentre && r.assignedCentre === r.businessCentre) {
-      cycleCentresWithNative.add(r.businessCentre);
-    }
-  });
+  // Centres with a native record — see computeCentresWithNativeRevenue() above. Bug found
+  // 2026-07-28 — this table's Cycle YTD was reading ₹49.3L higher than the (correct) hero
+  // YTD Collected figure for the exact same Apr–Jul window without this guard.
+  const cycleCentresWithNative = computeCentresWithNativeRevenue(allRowsForCycle);
 
   // Live FY26-27 totals per month — both excl. and incl. GST, so the table can follow the
   // page's Excl./Incl. GST toggle instead of being hardcoded to one basis — plus how many
@@ -5732,10 +5824,7 @@ function renderAppraisalCycleTable() {
   const liveByMonthGst = {};
   const draftByMonth = {};
   allRowsForCycle.forEach(mr => {
-    const isCorp = isCorporateRevenueRow(mr);
-    const isOtherCentreDup = !isCorp && mr.assignedCentre && mr.businessCentre &&
-      mr.assignedCentre !== mr.businessCentre && cycleCentresWithNative.has(mr.businessCentre);
-    if (isOtherCentreDup) return;
+    if (isExcludedOtherCentreRow(mr, cycleCentresWithNative)) return;
     const key = mr.month;
     liveByMonthCourse[key] = (liveByMonthCourse[key] || 0) + (Number(mr.achievedCourse) || 0);
     liveByMonthGst[key] = (liveByMonthGst[key] || 0) + (Number(mr.achievedGst) || 0);
@@ -5964,6 +6053,191 @@ function renderRevenueByCourse(d) {
           }
         }
       });
+    }
+  }
+}
+
+// ── Render Tab: Revenue Breakdown ──────────────────────────────
+// Counsellor-wise, centre-wise, month-wise, and course-wise revenue against target, in one
+// place — all follow the Revenue Overview tab's Excl./Incl. GST toggle except the course-wise
+// table (booked revenue is always shown Excl. GST there, matching Revenue Overview's original).
+function renderRevBreakdownTab() {
+  const d = dashboardData;
+  const rev = d.revenue || {};
+  const allRows = rev.allMonthlyRows || rev.monthlyRows || rev.monthlyPreviewRows || [];
+  const centresWithNative = computeCentresWithNativeRevenue(allRows);
+
+  const subtitleEl = document.getElementById('rb-subtitle');
+  if (subtitleEl) {
+    subtitleEl.textContent = 'Counsellor-wise, centre-wise, month-wise, and course-wise revenue against target — showing ' +
+      (gstViewIncl ? 'Incl. GST' : 'Excl. GST') + ' (follows the Revenue Overview tab\'s GST toggle; course-wise stays Excl. GST).';
+  }
+
+  // ── Counsellor-wise ──────────────────────────────────────────
+  const counsellorTbody = document.getElementById('rb-counsellor-tbody');
+  if (counsellorTbody) {
+    const counsellorCentreMap = {};
+    adminTargetRows().forEach(r => {
+      if (!counsellorCentreMap[r.counsellor]) counsellorCentreMap[r.counsellor] = [];
+      if (counsellorCentreMap[r.counsellor].indexOf(r.centre) < 0) counsellorCentreMap[r.counsellor].push(r.centre);
+    });
+    const list = (rev.counsellors || []).filter(c => c.counsellor).map(c => {
+      const target = gstViewIncl ? (Number(c.targetGst) || 0) : (Number(c.targetCourse) || 0);
+      const achieved = gstViewIncl ? (Number(c.achievedGst) || 0) : (Number(c.achievedCourse) || 0);
+      const pct = target ? Math.round(achieved / target * 100) : (achieved ? 100 : 0);
+      return {
+        counsellor: c.counsellor,
+        centres: (counsellorCentreMap[c.counsellor] || []).join(', ') || '—',
+        target, achieved, pct, studentCount: Number(c.studentCount) || 0
+      };
+    }).sort((a, b) => b.achieved - a.achieved);
+
+    counsellorTbody.innerHTML = list.length ? list.map(r =>
+      '<tr><td><strong>' + escC(r.counsellor) + '</strong></td><td style="color:var(--muted)">' + escC(r.centres) + '</td>' +
+      '<td style="text-align:right">' + money(r.target) + '</td>' +
+      '<td style="text-align:right;color:var(--green);font-weight:600">' + money(r.achieved) + '</td>' +
+      '<td style="text-align:right;font-weight:700">' + r.pct + '%</td>' +
+      '<td style="text-align:right">' + r.studentCount + '</td></tr>'
+    ).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No data available.</td></tr>';
+  }
+
+  // ── Centre-wise ──────────────────────────────────────────────
+  const centreTbody = document.getElementById('rb-centre-tbody');
+  if (centreTbody) {
+    const achByCentre = {};
+    allRows.forEach(r => {
+      if (isExcludedOtherCentreRow(r, centresWithNative)) return;
+      const centre = r.businessCentre || r.assignedCentre;
+      if (!centre) return;
+      if (!achByCentre[centre]) achByCentre[centre] = { achievedCourse: 0, achievedGst: 0, studentCount: 0, corporateStudentCount: 0 };
+      const b = achByCentre[centre];
+      b.achievedCourse += Number(r.achievedCourse) || 0;
+      b.achievedGst += Number(r.achievedGst) || 0;
+      const students = Number(r.studentCount) || 0;
+      if (isCorporateRevenueRow(r)) b.corporateStudentCount += students; else b.studentCount += students;
+    });
+    const centreRowsSrc = d.centreRows || [];
+    const list = centreRowsSrc.map(cr => {
+      const ach = achByCentre[cr.centre] || { achievedCourse: 0, achievedGst: 0, studentCount: 0, corporateStudentCount: 0 };
+      const target = gstViewIncl ? (Number(cr.targetGst) || 0) : (Number(cr.targetCourse) || 0);
+      const achieved = gstViewIncl ? ach.achievedGst : ach.achievedCourse;
+      const pct = target ? Math.round(achieved / target * 100) : (achieved ? 100 : 0);
+      return {
+        centre: cr.centre, batches: cr.batches || 0, target, achieved, pct,
+        studentCount: ach.studentCount, corporateStudentCount: ach.corporateStudentCount
+      };
+    }).filter(r => r.achieved > 0 || r.target > 0 || r.batches > 0)
+      .sort((a, b) => b.achieved - a.achieved);
+
+    centreTbody.innerHTML = list.length ? list.map(r =>
+      '<tr><td><strong>' + escC(r.centre) + '</strong></td>' +
+      '<td style="text-align:right">' + (r.target ? money(r.target) : '<span style="color:var(--muted)">Not set</span>') + '</td>' +
+      '<td style="text-align:right;color:var(--green);font-weight:600">' + money(r.achieved) + '</td>' +
+      '<td style="text-align:right;font-weight:700">' + (r.target ? r.pct + '%' : '—') + '</td>' +
+      '<td style="text-align:right">' + r.batches + '</td>' +
+      '<td style="text-align:right">' + r.studentCount +
+        (r.corporateStudentCount ? ' <span style="color:var(--muted)">(+' + r.corporateStudentCount + ')</span>' : '') + '</td></tr>'
+    ).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No data available.</td></tr>';
+  }
+
+  // ── Month-wise (full FY grid, Apr–Mar) ───────────────────────
+  const monthTbody = document.getElementById('rb-month-tbody');
+  if (monthTbody) {
+    const byMonth = {};
+    allRows.forEach(r => {
+      if (isExcludedOtherCentreRow(r, centresWithNative)) return;
+      const key = r.month;
+      if (!key) return;
+      if (!byMonth[key]) byMonth[key] = { achievedCourse: 0, achievedGst: 0, studentCount: 0 };
+      byMonth[key].achievedCourse += Number(r.achievedCourse) || 0;
+      byMonth[key].achievedGst += Number(r.achievedGst) || 0;
+      if (!isCorporateRevenueRow(r)) byMonth[key].studentCount += Number(r.studentCount) || 0;
+    });
+    const centreRowsSrc = d.centreRows || [];
+    const nationalTarget = centreRowsSrc.reduce((s, cr) => s + (gstViewIncl ? (Number(cr.targetGst) || 0) : (Number(cr.targetCourse) || 0)), 0);
+    const monthlyRunRate = nationalTarget / 12;
+
+    const fyMonths = [];
+    for (let i = 0; i < 12; i++) {
+      const y = i < 9 ? 2026 : 2027;
+      const m = ((i + 3) % 12) + 1; // Apr(4)..Mar(3): i=0->4, i=8->12, i=9->1
+      fyMonths.push({ y, m, key: y + '-' + String(m).padStart(2, '0') });
+    }
+    const now = new Date();
+    const currentKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    const monthNamesFull = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    let html = '';
+    let ytdAchieved = 0, ytdStudents = 0;
+    fyMonths.forEach(fm => {
+      const future = fm.key > currentKey;
+      const row = byMonth[fm.key];
+      const achieved = gstViewIncl ? (row ? row.achievedGst : 0) : (row ? row.achievedCourse : 0);
+      const students = row ? row.studentCount : 0;
+      const runRatePct = monthlyRunRate ? Math.round(achieved / monthlyRunRate * 100) : 0;
+      if (!future) { ytdAchieved += achieved; ytdStudents += students; }
+      html += '<tr' + (future ? ' style="color:var(--muted)"' : '') + '>' +
+        '<td>' + monthNamesFull[fm.m - 1] + ' ' + fm.y + '</td>' +
+        '<td style="text-align:right">' + (future ? '—' : money(achieved)) + '</td>' +
+        '<td style="text-align:right">' + (future ? '—' : students) + '</td>' +
+        '<td style="text-align:right">' + (future ? '—' : runRatePct + '%') + '</td>' +
+      '</tr>';
+    });
+    html += '<tr style="border-top:1.5px solid var(--border);font-weight:bold;color:var(--gold)">' +
+      '<td>YTD Total</td>' +
+      '<td style="text-align:right">' + money(ytdAchieved) + '</td>' +
+      '<td style="text-align:right">' + ytdStudents + '</td>' +
+      '<td style="text-align:right">' + (nationalTarget ? Math.round(ytdAchieved / nationalTarget * 100) + '%' : '—') + '</td>' +
+    '</tr>';
+    monthTbody.innerHTML = html;
+  }
+
+  // ── Course-wise (duplicate of Revenue Overview's course table) ──
+  const courseTbody = document.getElementById('rb-course-tbody');
+  if (courseTbody) {
+    const feeStudents = (d.fee && d.fee.students) || [];
+    const byCourse = {};
+    let totalBooked = 0, totalCollected = 0;
+    feeStudents.forEach(r => {
+      const course = (r.course && String(r.course).trim()) || 'Unspecified';
+      if (!byCourse[course]) byCourse[course] = { course, students: 0, booked: 0, collected: 0, outstanding: 0 };
+      byCourse[course].students++;
+      byCourse[course].booked += Number(r.net_payable || 0);
+      byCourse[course].collected += Number(r.collected || 0);
+      byCourse[course].outstanding += Number(r.outstanding || 0);
+      totalBooked += Number(r.net_payable || 0);
+      totalCollected += Number(r.collected || 0);
+    });
+    const courseList = Object.values(byCourse).sort((a, b) => b.booked - a.booked);
+
+    if (courseList.length) {
+      courseTbody.innerHTML = courseList.map(c => {
+        const pctOfTotal = totalBooked ? (c.booked / totalBooked * 100) : 0;
+        const avgBookedPerStudent = c.students ? (c.booked / c.students) : 0;
+        const collectionPct = c.booked ? (c.collected / c.booked * 100) : 0;
+        return '<tr>' +
+          '<td><strong>' + escC(c.course) + '</strong></td>' +
+          '<td style="text-align:right">' + c.students + '</td>' +
+          '<td style="text-align:right;color:var(--navy);font-weight:700">' + money(c.booked) + '</td>' +
+          '<td style="text-align:right;font-weight:600">' + money(avgBookedPerStudent) + '</td>' +
+          '<td style="text-align:right;color:var(--green)">' + money(c.collected) + '</td>' +
+          '<td style="text-align:right">' + collectionPct.toFixed(0) + '%</td>' +
+          '<td style="text-align:right;color:var(--red)">' + money(c.outstanding) + '</td>' +
+          '<td style="text-align:right;font-weight:600">' + pctOfTotal.toFixed(1) + '%</td>' +
+        '</tr>';
+      }).join('') +
+      '<tr style="border-top:1.5px solid var(--border);font-weight:bold;color:var(--gold)">' +
+        '<td>Total</td>' +
+        '<td style="text-align:right">' + feeStudents.length + '</td>' +
+        '<td style="text-align:right">' + money(totalBooked) + '</td>' +
+        '<td style="text-align:right">' + money(feeStudents.length ? totalBooked / feeStudents.length : 0) + '</td>' +
+        '<td style="text-align:right">' + money(totalCollected) + '</td>' +
+        '<td style="text-align:right">' + (totalBooked ? (totalCollected / totalBooked * 100).toFixed(0) : '0') + '%</td>' +
+        '<td style="text-align:right">' + money(courseList.reduce((s, c) => s + c.outstanding, 0)) + '</td>' +
+        '<td style="text-align:right">100.0%</td>' +
+      '</tr>';
+    } else {
+      courseTbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted)">No course-wise fee data available yet.</td></tr>';
     }
   }
 }

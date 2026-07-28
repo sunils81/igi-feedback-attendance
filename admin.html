@@ -7357,7 +7357,9 @@ function revCanonical(name) {
 }
 
 function adminTargetRows() {
-  return [
+  // Static seed list — kept as the guaranteed floor so nothing that already worked off this
+  // list regresses (e.g. a counsellor with zero achieved revenue yet still gets their row).
+  const staticPairs = [
     { counsellor: 'Anuradha', centre: 'Mumbai' },
     { counsellor: 'Anuradha', centre: 'Ahmedabad' },
     { counsellor: 'Anuradha', centre: 'Lucknow' },
@@ -7371,6 +7373,39 @@ function adminTargetRows() {
     { counsellor: 'Rajini', centre: 'Hyderabad' },
     { counsellor: 'Kripa', centre: 'Jaipur' }
   ];
+
+  const pairMap = {};
+  staticPairs.forEach(p => { pairMap[p.counsellor + '|' + p.centre] = p; });
+
+  const rev = (dashboardData && dashboardData.revenue) || {};
+
+  // Every counsellor+centre pair that already has a saved annual target — covers a target
+  // set for a pair outside the static list above.
+  (rev.targetRows || []).forEach(r => {
+    if (!r.counsellor || !r.centre) return;
+    const key = r.counsellor + '|' + r.centre;
+    if (!pairMap[key]) pairMap[key] = { counsellor: r.counsellor, centre: r.centre };
+  });
+
+  // Every counsellor+centre pair with real achieved revenue (current period) — the actual
+  // fix for the gap found 2026-07-28: Anuradha's real activity spans 9 centres (Mumbai,
+  // Lucknow, Ahmedabad, Jaipur, Delhi, Hyderabad, Bangalore, Chennai, Thrissur, Pune), but
+  // the static list above only ever mapped her to 3 (Mumbai/Ahmedabad/Lucknow). Every place
+  // reading adminTargetRows() — Target Settings, the Counsellor-wise breakdown's "Centre"
+  // column, and a city-level achieved-revenue lookup — was silently missing her (and
+  // potentially anyone else's) contribution to any centre outside the static list, with no
+  // way to even add a target for one since it never appeared as a row. Rows added here with
+  // no existing target just show "Not set" in Target Settings — nothing is forced.
+  const allRows = rev.allMonthlyRows || rev.monthlyRows || rev.monthlyPreviewRows || [];
+  allRows.forEach(r => {
+    if (!r.counsellor || isCorporateRevenueRow(r)) return;
+    const centre = r.businessCentre || r.assignedCentre;
+    if (!centre) return;
+    const key = r.counsellor + '|' + centre;
+    if (!pairMap[key]) pairMap[key] = { counsellor: r.counsellor, centre: centre };
+  });
+
+  return Object.values(pairMap).sort((a, b) => a.counsellor.localeCompare(b.counsellor) || a.centre.localeCompare(b.centre));
 }
 
 // ── TARGET BASELINE TOGGLE ────────────────────────────────────

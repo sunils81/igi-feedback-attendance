@@ -4873,12 +4873,18 @@ function computeCentresWithNativeRevenue(rows) {
   return set;
 }
 
-// True if this row should be excluded from a CENTRE-level total (not a counsellor-level
-// total, which always includes every row a counsellor logged regardless of centre).
+// Historically excluded an "Other Centre" cross-sell row from a centre's total whenever
+// that centre also had a native counsellor, on the assumption the native record already
+// covered the same sale. Verified 2026-07-28 against the actual student_fees ledger this
+// is false: e.g. Bangalore's Anuradha (11 students) and Nadiya (3 students) entries are 14
+// entirely distinct students, zero overlap — checked company-wide, only 2 students have
+// fee records under different counsellors at all, and both are the same person enrolling
+// in two separate courses/batches, not one sale double-recorded. The exclusion was
+// silently deleting real revenue rather than preventing double-counting. Now a no-op —
+// kept (rather than deleted outright) as the one place to reintroduce a guard if a genuine
+// same-transaction duplicate is ever found and confirmed against student_fees.
 function isExcludedOtherCentreRow(r, centresWithNative) {
-  const isCorp = isCorporateRevenueRow(r);
-  const isOtherCentre = !isCorp && r.assignedCentre && r.businessCentre && r.assignedCentre !== r.businessCentre;
-  return isOtherCentre && centresWithNative.has(r.businessCentre);
+  return false;
 }
 
 // Fiscal-year pacing (Apr 2026 → Mar 2027): returns how many percentage points of the full
@@ -4916,9 +4922,12 @@ function renderRevenueTab() {
   //     batch) were being counted the same as individually-enrolled diploma students,
   //     inflating a branch's "students enrolled" figure (Kolkata showed 73 when only 13
   //     students were actually diploma-enrolled; 60 were corporate workshop attendees).
-  // "Other Centre" duplicate claim-copies are excluded from revenue totals (mirrors the same
-  // guard already used server-side for centreStandings) so the same real transaction isn't
-  // double-counted once under the seller's own claim and again under the destination centre.
+  // "Other Centre" cross-sell rows (a counsellor selling into a centre other than their own
+  // assigned one) count in full toward that destination centre's total below. They used to
+  // be excluded whenever the destination centre also had a native counsellor, on the theory
+  // that the native record already covered the same sale — verified 2026-07-28 against the
+  // student_fees ledger that this was false (see isExcludedOtherCentreRow above): every
+  // cross-sell checked is a genuinely distinct student, not a re-claim of an existing one.
   const counsellorsByCentre = {};
   CENTRES.forEach(c => {
     counsellorsByCentre[c] = [];
@@ -4927,22 +4936,14 @@ function renderRevenueTab() {
   const allRows = rev.allMonthlyRows || rev.monthlyRows || rev.monthlyPreviewRows || [];
   const achByCentreCounsellor = {}; // 'centre|counsellorKey' -> aggregate
 
-  // Centres with a native record — see computeCentresWithNativeRevenue() above. Bug found
-  // 2026-07-28: Lucknow (and Ahmedabad, Pune, Thrissur — every centre without its own
-  // dedicated counsellor) were being silently zeroed out of every branch card without this.
+  // centresWithNativeRevenue is no longer used to exclude anything (see
+  // isExcludedOtherCentreRow above) — kept only in case a genuine, verified duplicate
+  // needs a targeted guard in future. All revenue below counts in full.
   const centresWithNativeRevenue = computeCentresWithNativeRevenue(allRows);
 
   allRows.forEach(r => {
     if (!r.counsellor) return;
     const isCorporate = isCorporateRevenueRow(r);
-    // "Other Centre" rows are a counsellor's personal duplicate-credit claim for a sale
-    // fulfilled at a different centre than their own (assignedCentre !== businessCentre) —
-    // e.g. Anuradha, assigned to Mumbai, logging a sale she facilitated in Bangalore.
-    // Excluded from branch cards ONLY when that destination centre also has its own native
-    // record (see centresWithNativeRevenue above) — that's the actual duplicate-risk case.
-    // They still count toward the counsellor's own achievement in the Standings tab.
-    const isOtherCentre = !isCorporate && r.assignedCentre && r.businessCentre && r.assignedCentre !== r.businessCentre;
-    if (isOtherCentre && centresWithNativeRevenue.has(r.businessCentre)) return;
     const centre = r.businessCentre || r.assignedCentre;
     if (!centre) return;
 
@@ -5033,9 +5034,8 @@ function renderRevenueTab() {
     targetGstBaseline = 64900000;    // 6.49 Crore flat (incl. GST)
   }
 
-  // This-Month / Last-Month revenue — same exclusion rules as the rest of this dashboard
-  // (skip Corporate Programs bulk rows and "Other Centre" duplicate-claim rows) so this
-  // figure reconciles with YTD Collected above rather than looking like a different number.
+  // This-Month / Last-Month revenue — counts every rupee recorded (corporate rows included,
+  // same as YTD Collected above), so this figure reconciles with it.
   const nowForMonth = new Date();
   const thisMonthKey = nowForMonth.getFullYear() + '-' + String(nowForMonth.getMonth() + 1).padStart(2, '0');
   const lastMonthDate = new Date(nowForMonth.getFullYear(), nowForMonth.getMonth() - 1, 1);
@@ -5043,9 +5043,6 @@ function renderRevenueTab() {
   let thisMonthCourse = 0, thisMonthGst = 0, lastMonthCourse = 0, lastMonthGst = 0;
   allRows.forEach(r => {
     if (r.month !== thisMonthKey && r.month !== lastMonthKey) return;
-    const isCorporate = isCorporateRevenueRow(r);
-    const isOtherCentre = !isCorporate && r.assignedCentre && r.businessCentre && r.assignedCentre !== r.businessCentre;
-    if (isOtherCentre && centresWithNativeRevenue.has(r.businessCentre)) return;
     if (r.month === thisMonthKey) {
       thisMonthCourse += Number(r.achievedCourse) || 0;
       thisMonthGst += Number(r.achievedGst) || 0;

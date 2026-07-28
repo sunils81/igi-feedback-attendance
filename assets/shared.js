@@ -3523,16 +3523,13 @@ window.gasGet = (function () {
 
     allMonthly.forEach(function(r) {
       if (r.period === period) {
-        // Skip "Other Centre Revenue" rows here — a counsellor claiming personal credit for
-        // a sale fulfilled at a centre other than their own (assigned_centre !== business_centre)
-        // is a duplicate of that destination centre's own auto-derived Centre Revenue row.
-        // Counting both would double-count the same real transaction in this centre's total.
-        // Other Centre claims still count toward the individual counsellor's own achievement
-        // (see globalCounsellorMap / byCounsellor below) — just not here.
-        var isCorporateRow = String(r.business_type || '').toLowerCase().indexOf('corporate') >= 0 ||
-                             String(r.business_centre || '').toLowerCase().indexOf('corporate') >= 0;
-        var isOtherCentreRow = !isCorporateRow && r.assigned_centre && r.business_centre && r.assigned_centre !== r.business_centre;
-        if (isOtherCentreRow) return;
+        // "Other Centre Revenue" rows (a counsellor claiming personal credit for a sale
+        // fulfilled at a centre other than their own) count in full here. This used to be
+        // excluded on the theory that the destination centre's own auto-derived row already
+        // covered the same sale — verified 2026-07-28 against the actual student_fees
+        // ledger that this was false (e.g. Bangalore: Anuradha's 11 cross-sold students and
+        // Nadiya's 3 native students are 14 entirely distinct people, zero overlap).
+        // Excluding these was silently deleting real revenue, not preventing double-counting.
         var c = r.business_centre || r.centre || r.assigned_centre;
         if (c) {
           if (!globalCentreMap[c]) {
@@ -3670,16 +3667,16 @@ window.gasGet = (function () {
       var gst = Number(r.achieved_course_fee_gst || 0);
       var students = Number(r.student_count || 0);
       [bViewCentre, bBusiness].forEach(function(b) {
-        // achievedCourse/achievedGst is this centre's headline total — must not include
-        // Other Centre claims, since those are a counsellor's personal copy-credit for a
-        // sale that's already counted as real Centre Revenue under the destination centre's
-        // own counsellor. Folding both in here double-counts the same transaction. The
-        // otherCentreCourse/otherCentreGst sub-totals below still capture it separately for
-        // transparency, they just don't feed the headline figure.
-        if (!isOtherCentre) {
-          b.achievedCourse += course;
-          b.achievedGst += gst;
-        }
+        // achievedCourse/achievedGst counts every rupee, including Other Centre claims.
+        // This used to exclude them, on the theory that the destination centre's own
+        // counsellor already had an equivalent record — verified 2026-07-28 against the
+        // actual student_fees ledger that this was false (checked company-wide: only 2
+        // students have fee records under different counsellors at all, and both are the
+        // same person enrolling in two separate courses, not one sale double-recorded).
+        // otherCentreCourse/otherCentreGst below still track the cross-sell portion
+        // separately for transparency/reporting, they just aren't excluded from the total.
+        b.achievedCourse += course;
+        b.achievedGst += gst;
         b.studentCount += students;
         if (isCorporate) { b.corporateCourse += course; b.corporateGst += gst; }
         else if (isOtherCentre) { b.otherCentreCourse += course; b.otherCentreGst += gst; }
@@ -4432,13 +4429,13 @@ window.gasGet = (function () {
       rows.forEach(function(r) {
         if (filterMonths.indexOf(r.month) < 0) return;
         var isCorp = String(r.business_type||'').toLowerCase().indexOf('corporate')>=0;
-        // Other Centre Revenue rows (a counsellor personally crediting themselves for a sale
-        // fulfilled at a different centre) are excluded here — that same sale is already
-        // counted once as real Centre Revenue under the destination centre's own counsellor.
-        // Including both here double-counts it in this centre's (and, via natAch below, the
-        // national) total. The individual counsellor still gets personal credit via sumRows.
-        var isOtherCentre = !isCorp && r.assigned_centre && r.business_centre && r.assigned_centre !== r.business_centre;
-        if (isOtherCentre) return;
+        // Other Centre Revenue rows count in full here. Used to be excluded on the theory
+        // that the destination centre's own counsellor already had an equivalent record —
+        // verified 2026-07-28 against the actual student_fees ledger that this was false
+        // (company-wide, only 2 students have fee records under different counsellors at
+        // all, and both are the same person enrolling in two separate courses/batches, not
+        // one sale double-recorded). Excluding these was deleting real revenue from this
+        // centre's (and, via natAch below, the national) total.
         var c = isCorp ? r.assigned_centre : (r.business_centre||r.assigned_centre);
         if (!c) return;
         m[c] = (m[c]||0)+(Number(r.achieved_course_fee)||0);

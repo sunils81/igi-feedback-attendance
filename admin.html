@@ -1003,10 +1003,18 @@
     }
   }
   @media print {
-    body * {
+    /* Scoped to body.presentation-mode-active — this used to be a bare `body *` rule that
+       blanked out EVERY print job on this page, not just the CEO Presentation overlay it
+       was written for: .ceo-pres-overlay always exists in the DOM (just display:none when
+       closed), so printing from any regular tab (Revenue Overview, etc.) hid the entire
+       page with nothing to make visible in its place — an all-blank PDF. openPresentation-
+       Mode()/closePresentationMode() now toggle this class so the rule only fires when the
+       overlay is genuinely open. */
+    body.presentation-mode-active * {
       visibility: hidden !important;
     }
-    .pres-overlay, .pres-overlay * {
+    body.presentation-mode-active .pres-overlay,
+    body.presentation-mode-active .pres-overlay * {
       visibility: visible !important;
     }
     .pres-overlay {
@@ -3969,6 +3977,7 @@ function openPresentationMode() {
   }
   
   overlay.style.display = 'block';
+  document.body.classList.add('presentation-mode-active');
   
   const now = new Date();
   document.getElementById('pres-timestamp-badge').textContent = 
@@ -4210,6 +4219,7 @@ function openPresentationMode() {
 function closePresentationMode() {
   const overlay = document.getElementById('ceo-pres-overlay');
   if (overlay) overlay.style.display = 'none';
+  document.body.classList.remove('presentation-mode-active');
 }
 
 // ── Activity Feed (Option B) ──────────────────────────────────

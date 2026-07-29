@@ -7141,7 +7141,11 @@ function createBatch() {
 
 // ── Load batch dropdowns (with sessionStorage cache) ─────────
 function _batchCacheKey() {
-  return 'igiBatches_' + (isAdmin ? 'admin' : allowedCentres.join('|'));
+  // v2: bumped 2026-07-29 — loadBatchDropdowns() now also passes counsellor, which changes
+  // the result set (cross-centre batches) even for the same centres/isAdmin combination.
+  // Without bumping this, anyone with a live session from before the fix would keep reading
+  // their stale pre-fix cached list until they closed the tab.
+  return 'igiBatches_v2_' + (isAdmin ? 'admin' : allowedCentres.join('|'));
 }
 
 function _applyBatchData(batches, onDone) {
@@ -7180,7 +7184,15 @@ function loadBatchDropdowns(onDone, forceRefresh) {
       }
     } catch(ex) { /* ignore parse errors */ }
   }
-  gasGet({action:'getBatches', centres:centresParam}, function(e,d) {
+  // counsellor: counselorName — activates the same cross-centre union h_getBatches already
+  // does for a counsellor's "My Batches" (created_by_counselor / student_fees.recorded_by).
+  // Without this, a counsellor's own cross-centre sale (e.g. Bianca selling into Lucknow,
+  // outside her Mumbai/Pune allowedCentres) never appeared in fee-batch/st-batch/rp-batch
+  // at all — which is exactly what broke "Update" on an Other Centre Revenue entry: it
+  // tries to select that batch in this same dropdown, silently fails since the option
+  // doesn't exist, and openFeeForm() then can't find the student in whatever batch was
+  // left selected instead.
+  gasGet({action:'getBatches', centres:centresParam, counsellor:isAdmin?'':(counselorName||'')}, function(e,d) {
     if (e||!d||!d.batches) { if(onDone) onDone(); return; }
     try { sessionStorage.setItem(cacheKey, JSON.stringify(d.batches)); } catch(ex) {}
     _applyBatchData(d.batches, onDone);
@@ -11667,13 +11679,24 @@ function revRenderDetailRows(body, records) {
     var invBadge = r.invoiceNumber
       ? '<span style="font-size:11px;color:var(--muted)">Inv# '+escC(r.invoiceNumber)+'</span>'
       : '<span style="font-size:11px;color:#B00020">No invoice #</span>';
+    // Show the discounted course fee (course fee minus discount, excl. GST) — what the
+    // student's fee actually became after the discount, on the same excl.-GST basis as the
+    // sticker price so a discount visibly reads as a decrease. NOT net_payable, which folds
+    // GST back in and would make a discounted fee look larger than the sticker price —
+    // confusing, not clarifying.
+    var hasDiscount = Number(r.discountAmount || 0) > 0;
+    var discountedFee = Number(r.courseFee || 0) - Number(r.discountAmount || 0);
+    var feeDisplay = hasDiscount
+      ? '<span style="text-decoration:line-through;color:var(--muted);font-size:11px">₹'+Math.round(r.courseFee||0).toLocaleString('en-IN')+'</span> ₹'+Math.round(discountedFee).toLocaleString('en-IN')+
+        '<span style="font-size:10px;color:#1D9E75;margin-left:4px">('+(r.discountPct||0)+'% off)</span>'
+      : '₹'+Math.round(r.courseFee||0).toLocaleString('en-IN');
     return '<div class="rev-detail-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 4px;border-bottom:1px solid #EEE;flex-wrap:wrap">'+
       '<div style="min-width:160px">'+
         '<div style="font-size:13px;font-weight:600">'+escC(r.studentName||('Student #'+r.studentId))+'</div>'+
         '<div style="font-size:11px;color:var(--muted)">'+escC(r.course||'')+' &middot; '+escC(r.batchCode||'')+'</div>'+
       '</div>'+
       '<div style="font-size:12px;color:var(--muted);min-width:150px">Paid: '+escC(r.paymentDate||'—')+' &middot; Entered: '+escC((r.createdAt||'').slice(0,10))+mismatchBadge+'</div>'+
-      '<div style="font-size:12px;min-width:100px">₹'+Math.round(r.courseFee||0).toLocaleString('en-IN')+'</div>'+
+      '<div style="font-size:12px;min-width:100px">'+feeDisplay+'</div>'+
       '<div style="min-width:110px">'+invBadge+'</div>'+
       '<div style="display:flex;gap:6px">'+
         '<button type="button" class="del-btn" onclick="revJumpToFeeRecord(\''+escC(r.batchCode)+'\',\''+escC(r.studentId)+'\')">Update</button>'+

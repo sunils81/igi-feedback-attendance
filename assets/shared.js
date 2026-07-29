@@ -2838,7 +2838,14 @@ window.gasGet = (function () {
           return {
             id: mapped.id, studentId: mapped.student_id, studentName: mapped.student_name,
             batchCode: mapped.batch_code, course: mapped.course,
+            // courseFee is the full sticker price before any discount — netPayable (course
+            // fee minus discount, plus GST) is what the student actually owes/paid and what
+            // this view should lead with. Missing this here (courseFee-only) was the "still
+            // shows the course fee, not the discounted amount" bug: the discount was saved
+            // correctly all along, this view just never surfaced it.
             courseFee: mapped.course_fee, gstAmount: mapped.gst_amount,
+            discountPct: mapped.discount_pct, discountAmount: mapped.discount_amount,
+            netPayable: mapped.net_payable,
             paymentDate: r.payment_date || '', createdAt: r.created_at || '',
             invoiceNumber: mapped.invoice_number, invoiceAmount: mapped.invoice_amount,
             invoiceDate: mapped.invoice_date, invoiceFileUrl: mapped.invoice_file_url,

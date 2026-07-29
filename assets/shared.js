@@ -2985,8 +2985,23 @@ window.gasGet = (function () {
         rows = rows || [];
         var totalFee = 0, totalGst = 0;
         rows.forEach(function(r) {
-          totalFee += Number(r.course_fee  || 0);
-          totalGst += Number(r.gst_amount  || 0);
+          // Reuse parseFeeRow's existing discount-parsing (it already reads discount_amount
+          // out of the receipt_no JSON blob correctly — see feeRecordDTO/getRevenueDetail) so
+          // this can't drift out of sync with it again. Root cause of the "achieved revenue
+          // doesn't reflect the discount" bug found 2026-07-29: this loop summed the RAW,
+          // pre-discount course_fee — confirmed live on Vedant Gupta/Lucknow, where a 5%
+          // discount (course_fee 165900, discount_amount 8295, real net 157605) was fully
+          // saved and correctly shown on the student-level row, but this monthly rollup
+          // still counted the undiscounted 165900 toward "Achieved" — overstating every
+          // auto-derived Own/Other Centre total (and everything downstream: Revenue
+          // Overview, Revenue Breakdown, Centre/Counsellor Standings, targets) by the full
+          // discount amount whenever one was ever given, not just for this one record.
+          // gst_amount is untouched — it's already computed on the discounted base at save
+          // time (verified: 157605 * 18% ≈ 28369, matching the stored value exactly).
+          var mapped = parseFeeRow(r);
+          var netCourseFee = Number(mapped.course_fee || 0) - Number(mapped.discount_amount || 0);
+          totalFee += netCourseFee;
+          totalGst += Number(mapped.gst_amount || 0);
         });
         var revRow = {
           month: monthKey, period: period || '2026-27',

@@ -933,8 +933,17 @@ window.gasGet = (function () {
 
       if (!name || name === '__admin__') {
         if (matchedType === 'admin' || isMasterPin) {
+          // isManager MUST be false here — this is the true Super Admin/HOD login, and
+          // isManager is read elsewhere (renderTargetsTab, the Target Settings tab button,
+          // the header/footer role label) as "restricted Manager, not full Admin". Setting
+          // it true here made every one of those silently treat the Super Admin as a
+          // Manager: the footer showed 'Operations Manager' instead of 'Head of Education —
+          // National', the Target Settings tab button hid itself, and renderTargetsTab()'s
+          // `if (adminUser.isManager) return;` guard no-op'd immediately — which is exactly
+          // why 'Annual Target Configurations' got stuck forever on 'Loading target
+          // configurator...': the function returned before ever touching that div's HTML.
           cb(null, { status: 'ok', counselorName: 'Admin', instructorName: 'Admin', authRole: 'Admin',
-            isAdmin: true, isManager: true, centres: [], batches: [], mustChangePassword: false });
+            isAdmin: true, isManager: false, centres: [], batches: [], mustChangePassword: false });
           return;
         }
         cb(null, { status: 'error', reason: 'Invalid password' });
@@ -958,7 +967,11 @@ window.gasGet = (function () {
         if (!r.is_active) { cb(null, { status: 'error', reason: 'Account is inactive' }); return; }
 
         var centres = r.centres ? r.centres.split(',').map(function (c) { return c.trim(); }).filter(Boolean) : [];
-        var isAdm = r.role === 'Admin', isMgr = (r.role === 'Manager' || isAdm);
+        // isManager must NOT also be true for an Admin-role account — see the identical
+        // fix and full explanation just above for the master __admin__ login path. A named
+        // user with role='Admin' (e.g. the 'Admin' row in users) hit the exact same bug via
+        // this branch instead of the master-password branch.
+        var isAdm = r.role === 'Admin', isMgr = (r.role === 'Manager');
 
         function completeLogin() {
           h_getBatches({ centres: isAdm ? '' : centres.join(',') }, function (e2, bd) {

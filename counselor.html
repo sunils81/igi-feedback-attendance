@@ -13357,11 +13357,16 @@ function renderContextSummary(tabId) {
     el.style.display = 'grid';
     var rd = revenueData;
     var sm = (rd && rd.summary) || {};
-    var target = Number(sm.targetGst || sm.annualTargetGst || 0);
-    var achieved = Number(sm.achievedGst || 0);
+    // Excl. GST throughout — matches the basis used everywhere else in the dashboards
+    // (Target, YTD Collected, etc). For a company-wide view (real Admin, or Anuradha via
+    // her MIS access) targetCourse is the fixed 5.5 Cr Annual Business Plan figure Sunil
+    // reports to management — see h_revDash in shared.js — not a sum of individual
+    // counsellor targets, so this number is safe to put directly into her MIS report.
+    var target = Number(sm.targetCourse || sm.annualTarget || 0);
+    var achieved = Number(sm.achievedCourse || 0);
     var remaining = target - achieved;
     el.innerHTML =
-      tile('', 'Target', target ? moneyShort(target) : '—', 'Annual (incl. GST)') +
+      tile('', 'Target', target ? moneyShort(target) : '—', 'Annual (excl. GST)') +
       tile('ok', 'Achieved', achieved ? moneyShort(achieved) : '—', 'Collected so far') +
       tile(remaining > 0 ? 'warn' : 'ok', 'Remaining', remaining > 0 ? moneyShort(remaining) : '✓ Hit', 'Balance to target') +
       tile('', 'Centres', (rd && rd.centres && rd.centres.length) ? rd.centres.length : '—', 'Contributing');

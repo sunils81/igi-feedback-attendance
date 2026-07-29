@@ -3976,14 +3976,29 @@ window.gasGet = (function () {
       var months = [];
       for (var i = 4; i <= 12; i++) months.push('2026-' + String(i).padStart(2, '0'));
       for (var i = 1; i <= 3; i++)  months.push('2027-' + String(i).padStart(2, '0'));
-      var tGst = 0, aGst = 0, stu = 0;
+      var tGst = 0, tCourse = 0, aGst = 0, aCourse = 0, stu = 0;
       var me = p.counsellor || '', isAdm = p.isAdmin === 'true';
-      (annual || []).forEach(function (r) { if (!me || isAdm || r.counsellor === me) tGst += Number(r.annual_course_fee_gst_target || 0); });
+      // Company-wide target (isAdm — a real Admin, or a named MIS viewer like Anuradha via
+      // canViewAllIndiaMIS on the frontend) is the fixed Annual Business Plan figure Sunil
+      // reports to management (5.5 Cr excl. GST / 6.49 Cr incl.), NOT the sum of individual
+      // counsellor annual targets — those are internal quota-setting numbers (6.35 Cr as of
+      // 2026-07-28) that don't match the official company target and shouldn't be presented
+      // to management as if they did. A personal (non-admin) view still sums just that one
+      // counsellor's own target row(s), which is correct for their personal KPI tile.
+      if (isAdm) {
+        tCourse = 55000000;
+        tGst = 64900000;
+      } else {
+        (annual || []).forEach(function (r) {
+          if (!me || r.counsellor === me) { tGst += Number(r.annual_course_fee_gst_target || 0); tCourse += Number(r.annual_course_fee_target || 0); }
+        });
+      }
       // Month filter aligns with h_hrDash: FY 2026-27 = Apr-26 to Mar-27 only.
       // Excludes pre-cycle Jan–Mar 2026 rows (period=2026-27 but month < 2026-04).
       (monthly || []).forEach(function (r) {
         if ((!me || isAdm || r.counsellor === me) && r.month >= '2026-04' && r.month <= '2027-03') {
           aGst += Number(r.achieved_course_fee_gst || 0);
+          aCourse += Number(r.achieved_course_fee || 0);
           stu  += Number(r.student_count || 0);
         }
       });
@@ -3991,7 +4006,9 @@ window.gasGet = (function () {
       dash.months = months;
       dash.summary = {
         targetGst: tGst,
+        targetCourse: tCourse,
         achievedGst: aGst,
+        achievedCourse: aCourse,
         studentCount: stu,
         monthlyTargetGst: months.length ? Math.round(tGst / months.length) : 0
       };

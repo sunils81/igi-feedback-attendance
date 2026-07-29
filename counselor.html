@@ -3904,6 +3904,7 @@
         <button class="rev-sub-tab" id="btn-rev-sub-counsellors" onclick="switchRevSubTab('rev-subtab-counsellors')">🏆 Counsellor Leaderboard</button>
         <button class="rev-sub-tab" id="btn-rev-sub-centres" onclick="switchRevSubTab('rev-subtab-centres')">🏢 Centre Standings</button>
         <button class="rev-sub-tab" id="btn-rev-sub-breakdown" onclick="switchRevSubTab('rev-subtab-breakdown')">📑 My Breakdown</button>
+        <button class="rev-sub-tab" id="btn-rev-sub-allindia" onclick="switchRevSubTab('rev-subtab-allindia')" style="display:none">🌍 All India — MIS</button>
       </div>
 
       <!-- SUBTAB 1: My Dashboard & Entry -->
@@ -3988,6 +3989,36 @@
         <div style="overflow-x:auto"><table class="compact-table">
           <thead><tr><th class="text-left">Course</th><th>Students</th><th>Booked Revenue</th><th>Collected</th><th>Outstanding</th></tr></thead>
           <tbody id="myrb-course-tbody"><tr><td colspan="5" style="text-align:center;color:var(--muted)">Loading…</td></tr></tbody>
+        </table></div>
+      </div>
+
+      <!-- SUBTAB 5: All India — MIS (Anuradha only, see canViewAllIndiaMIS) -->
+      <div id="rev-subtab-allindia" style="display:none">
+        <p class="sub" style="margin-top:0">Company-wide revenue — every counsellor, every centre, full FY — for your MIS report. Same tables as the admin Revenue Breakdown tab.</p>
+
+        <h3 style="font-size:14px;margin:16px 0 8px;color:var(--navy)">👤 By Counsellor</h3>
+        <div style="overflow-x:auto"><table class="compact-table">
+          <thead><tr><th class="text-left">Counsellor</th><th class="text-left">Centre(s)</th><th>Target (Excl. GST)</th><th>YTD Achieved</th><th>% of Target</th><th>Students</th></tr></thead>
+          <tbody id="aimis-counsellor-tbody"><tr><td colspan="6" style="text-align:center;color:var(--muted)">Loading…</td></tr></tbody>
+        </table></div>
+
+        <h3 style="font-size:14px;margin:20px 0 8px;color:var(--navy)">🏢 By Centre</h3>
+        <div style="overflow-x:auto"><table class="compact-table">
+          <thead><tr><th class="text-left">Centre</th><th>Target (Excl. GST)</th><th>YTD Achieved</th><th>% of Target</th><th>Students</th></tr></thead>
+          <tbody id="aimis-centre-tbody"><tr><td colspan="5" style="text-align:center;color:var(--muted)">Loading…</td></tr></tbody>
+        </table></div>
+
+        <h3 style="font-size:14px;margin:20px 0 8px;color:var(--navy)">📅 By Month — FY26-27 (Apr–Mar)</h3>
+        <div style="overflow-x:auto"><table class="compact-table">
+          <thead><tr><th class="text-left">Month</th><th>Achieved (Excl. GST)</th><th>Achieved (Incl. GST)</th><th>Students</th></tr></thead>
+          <tbody id="aimis-month-tbody"><tr><td colspan="4" style="text-align:center;color:var(--muted)">Loading…</td></tr></tbody>
+        </table></div>
+
+        <h3 style="font-size:14px;margin:20px 0 8px;color:var(--navy)">📚 By Course</h3>
+        <p class="sub" style="margin-top:0;font-size:11px">Booked revenue (net payable at enrolment), company-wide.</p>
+        <div style="overflow-x:auto"><table class="compact-table">
+          <thead><tr><th class="text-left">Course</th><th>Students</th><th>Booked Revenue</th><th>Collected</th><th>Outstanding</th></tr></thead>
+          <tbody id="aimis-course-tbody"><tr><td colspan="5" style="text-align:center;color:var(--muted)">Loading…</td></tr></tbody>
         </table></div>
       </div>
 
@@ -4832,6 +4863,16 @@ let isAdmin         = false;
 let isManager       = false;
 let allBatches      = [];
 let counselorReportRequestId = 0;
+
+// Anuradha prepares the all-India MIS report, so she needs to SEE company-wide revenue
+// data (every counsellor, every centre) — not just her own — even though she's a regular
+// Counselor otherwise. This is deliberately narrower than isAdmin: it only widens what the
+// revenue/fee-record data FETCHES return, it does not grant her any admin UI, edit rights,
+// or target-setting access elsewhere in the portal (those all still gate on the real
+// isAdmin/isManager flags above, untouched by this).
+function canViewAllIndiaMIS() {
+  return counselorName === 'Anuradha';
+}
 
 // Diploma release (the actual "release" action) stays restricted to Bianca/Anuradha,
 // but every counsellor should be able to SEE their own centre's test records and
@@ -6756,11 +6797,13 @@ function initRevenueSubTabs() {
     nav.style.display = 'none';
     if (selWrap) selWrap.style.display = 'none';
   }
+  var allIndiaBtn = document.getElementById('btn-rev-sub-allindia');
+  if (allIndiaBtn) allIndiaBtn.style.display = canViewAllIndiaMIS() ? '' : 'none';
 }
 
 function switchRevSubTab(tabId) {
-  var tabs = ['rev-subtab-dashboard', 'rev-subtab-counsellors', 'rev-subtab-centres', 'rev-subtab-breakdown'];
-  var buttons = ['btn-rev-sub-dashboard', 'btn-rev-sub-counsellors', 'btn-rev-sub-centres', 'btn-rev-sub-breakdown'];
+  var tabs = ['rev-subtab-dashboard', 'rev-subtab-counsellors', 'rev-subtab-centres', 'rev-subtab-breakdown', 'rev-subtab-allindia'];
+  var buttons = ['btn-rev-sub-dashboard', 'btn-rev-sub-counsellors', 'btn-rev-sub-centres', 'btn-rev-sub-breakdown', 'btn-rev-sub-allindia'];
   
   tabs.forEach(function(t) {
     var el = document.getElementById(t);
@@ -6779,6 +6822,7 @@ function switchRevSubTab(tabId) {
   });
 
   if (tabId === 'rev-subtab-breakdown') renderMyRevenueBreakdown();
+  if (tabId === 'rev-subtab-allindia') renderAllIndiaBreakdown();
 }
 
 function setRevMonthView(viewType) {
@@ -8299,9 +8343,11 @@ function loadFeeRecordTab(force, onDone) {
     return;
   }
   document.getElementById('fr-list').innerHTML = emptyState('📑', 'Loading fee record…', 'Pulling your fee records, grouped by month.');
-  // isAdmin gets everything (no centre/counsellor filter), everyone else gets only what
-  // they personally recorded or what's in their centre.
-  gasGet({action:'getAllFeeRecords', centres: isAdmin ? '' : allowedCentres.join(','), counsellor: isAdmin ? '' : (counselorName || '')}, function(e, d) {
+  // isAdmin (or Anuradha, for her all-India MIS reporting — see canViewAllIndiaMIS) gets
+  // everything, no centre/counsellor filter; everyone else gets only what they personally
+  // recorded or what's in their centre.
+  var wantsAllIndiaFees = isAdmin || canViewAllIndiaMIS();
+  gasGet({action:'getAllFeeRecords', centres: wantsAllIndiaFees ? '' : allowedCentres.join(','), counsellor: wantsAllIndiaFees ? '' : (counselorName || '')}, function(e, d) {
     if (e || !d || !d.records) {
       document.getElementById('fr-list').innerHTML = emptyState('⚠️', 'Could not load fee record', 'Please try Refresh.');
       return;
@@ -10216,6 +10262,198 @@ function renderMyRevenueBreakdown() {
   }
 }
 
+// ── All India — MIS sub-tab (Anuradha only, see canViewAllIndiaMIS) ──
+// Same four tables as admin.html's Revenue Breakdown tab, built the same way — grouped
+// live from revenueData.monthlyRows/targetRows rather than any hardcoded counsellor-centre
+// roster, so it can't go stale the way adminTargetRows() did. Only reachable if
+// revenueRequestParams()/loadFeeRecordTab() actually fetched company-wide data for her
+// (wantsAllIndia), so these tables render whatever came back — company-wide for her,
+// nothing extra needed here.
+function renderAllIndiaBreakdown() {
+  if (!revenueData) return;
+  var rows = revenueData.monthlyRows || [];
+
+  // ── By Counsellor ──
+  var cTbody = document.getElementById('aimis-counsellor-tbody');
+  if (cTbody) {
+    var byCounsellor = {};
+    rows.forEach(function(r) {
+      if (!r.counsellor) return;
+      if (!byCounsellor[r.counsellor]) byCounsellor[r.counsellor] = { achievedCourse: 0, achievedGst: 0, studentCount: 0, centres: {} };
+      byCounsellor[r.counsellor].achievedCourse += Number(r.achievedCourse) || 0;
+      byCounsellor[r.counsellor].achievedGst += Number(r.achievedGst) || 0;
+      byCounsellor[r.counsellor].studentCount += Number(r.studentCount) || 0;
+      var centre = r.businessCentre || r.assignedCentre;
+      if (centre) byCounsellor[r.counsellor].centres[centre] = true;
+    });
+    var targetByCounsellor = {};
+    (revenueData.targetRows || []).forEach(function(r) {
+      if (!r.counsellor) return;
+      targetByCounsellor[r.counsellor] = (targetByCounsellor[r.counsellor] || 0) + (Number(r.targetCourse) || 0);
+    });
+    var counsellorList = Object.keys(byCounsellor).filter(function(c) { return c !== 'Mrinal'; }).sort(function(a, b) {
+      return byCounsellor[b].achievedCourse - byCounsellor[a].achievedCourse;
+    });
+    if (counsellorList.length) {
+      var chtml = counsellorList.map(function(name) {
+        var b = byCounsellor[name];
+        var t = targetByCounsellor[name] || 0;
+        var pct = t ? Math.round(b.achievedCourse / t * 100) : (b.achievedCourse ? 100 : 0);
+        var centreNames = Object.keys(b.centres).sort().join(', ') || '—';
+        return '<tr><td><strong>' + escC(name) + '</strong></td><td style="color:var(--muted)">' + escC(centreNames) + '</td>' +
+          '<td style="text-align:right">' + (t ? money(t) : '<span style="color:var(--muted)">Not set</span>') + '</td>' +
+          '<td style="text-align:right;color:#1a7a3c;font-weight:600">' + money(b.achievedCourse) + '</td>' +
+          '<td style="text-align:right;font-weight:700">' + (t ? pct + '%' : '—') + '</td>' +
+          '<td style="text-align:right">' + b.studentCount + '</td></tr>';
+      }).join('');
+      var ct = counsellorList.reduce(function(s, name) {
+        s.target += (targetByCounsellor[name] || 0); s.achieved += byCounsellor[name].achievedCourse; s.students += byCounsellor[name].studentCount;
+        return s;
+      }, { target: 0, achieved: 0, students: 0 });
+      var ctPct = ct.target ? Math.round(ct.achieved / ct.target * 100) : (ct.achieved ? 100 : 0);
+      chtml += '<tr style="border-top:1.5px solid var(--border);font-weight:bold;color:#8f6d21">' +
+        '<td colspan="2">YTD Total — ' + counsellorList.length + ' counsellors</td>' +
+        '<td style="text-align:right">' + money(ct.target) + '</td>' +
+        '<td style="text-align:right">' + money(ct.achieved) + '</td>' +
+        '<td style="text-align:right">' + ctPct + '%</td>' +
+        '<td style="text-align:right">' + ct.students + '</td></tr>';
+      cTbody.innerHTML = chtml;
+    } else {
+      cTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No data available.</td></tr>';
+    }
+  }
+
+  // ── By Centre ──
+  var centreTbody = document.getElementById('aimis-centre-tbody');
+  if (centreTbody) {
+    var byCentre = {};
+    rows.forEach(function(r) {
+      var c = r.businessCentre || r.assignedCentre;
+      if (!c) return;
+      if (!byCentre[c]) byCentre[c] = { achievedCourse: 0, studentCount: 0 };
+      byCentre[c].achievedCourse += Number(r.achievedCourse) || 0;
+      byCentre[c].studentCount += Number(r.studentCount) || 0;
+    });
+    var targetByCentre = {};
+    (revenueData.centreTargetRows || []).forEach(function(r) {
+      targetByCentre[r.centre] = Number(r.targetCourse) || 0;
+    });
+    var centreList = Object.keys(byCentre).sort(function(a, b) { return byCentre[b].achievedCourse - byCentre[a].achievedCourse; });
+    if (centreList.length) {
+      var cehtml = centreList.map(function(c) {
+        var b = byCentre[c];
+        var t = targetByCentre[c] || 0;
+        var pct = t ? Math.round(b.achievedCourse / t * 100) : (b.achievedCourse ? 100 : 0);
+        return '<tr><td><strong>' + escC(c) + '</strong></td>' +
+          '<td style="text-align:right">' + (t ? money(t) : '<span style="color:var(--muted)">Not set</span>') + '</td>' +
+          '<td style="text-align:right;color:#1a7a3c;font-weight:600">' + money(b.achievedCourse) + '</td>' +
+          '<td style="text-align:right;font-weight:700">' + (t ? pct + '%' : '—') + '</td>' +
+          '<td style="text-align:right">' + b.studentCount + '</td></tr>';
+      }).join('');
+      var cet = centreList.reduce(function(s, c) {
+        s.target += (targetByCentre[c] || 0); s.achieved += byCentre[c].achievedCourse; s.students += byCentre[c].studentCount;
+        return s;
+      }, { target: 0, achieved: 0, students: 0 });
+      var cetPct = cet.target ? Math.round(cet.achieved / cet.target * 100) : (cet.achieved ? 100 : 0);
+      cehtml += '<tr style="border-top:1.5px solid var(--border);font-weight:bold;color:#8f6d21">' +
+        '<td>YTD Total — ' + centreList.length + ' centres</td>' +
+        '<td style="text-align:right">' + money(cet.target) + '</td>' +
+        '<td style="text-align:right">' + money(cet.achieved) + '</td>' +
+        '<td style="text-align:right">' + cetPct + '%</td>' +
+        '<td style="text-align:right">' + cet.students + '</td></tr>';
+      centreTbody.innerHTML = cehtml;
+    } else {
+      centreTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No data available.</td></tr>';
+    }
+  }
+
+  // ── By Month (full FY grid) ──
+  var monthTbody = document.getElementById('aimis-month-tbody');
+  if (monthTbody) {
+    var byMonth = {};
+    rows.forEach(function(r) {
+      var k = r.month;
+      if (!k) return;
+      if (!byMonth[k]) byMonth[k] = { achievedCourse: 0, achievedGst: 0, studentCount: 0 };
+      byMonth[k].achievedCourse += Number(r.achievedCourse) || 0;
+      byMonth[k].achievedGst += Number(r.achievedGst) || 0;
+      byMonth[k].studentCount += Number(r.studentCount) || 0;
+    });
+    var fyMonths = [];
+    for (var i = 0; i < 12; i++) {
+      var y = i < 9 ? 2026 : 2027;
+      var m = ((i + 3) % 12) + 1;
+      fyMonths.push({ y: y, m: m, key: y + '-' + String(m).padStart(2, '0') });
+    }
+    var now = new Date();
+    var currentKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    var monthNamesFull = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    var mhtml = '';
+    var ytdCourse = 0, ytdGst = 0, ytdStudents = 0;
+    fyMonths.forEach(function(fm) {
+      var future = fm.key > currentKey;
+      var row = byMonth[fm.key];
+      var course = row ? row.achievedCourse : 0;
+      var gst = row ? row.achievedGst : 0;
+      var students = row ? row.studentCount : 0;
+      if (!future) { ytdCourse += course; ytdGst += gst; ytdStudents += students; }
+      mhtml += '<tr' + (future ? ' style="color:var(--muted)"' : '') + '>' +
+        '<td>' + monthNamesFull[fm.m - 1] + ' ' + fm.y + '</td>' +
+        '<td style="text-align:right">' + (future ? '—' : money(course)) + '</td>' +
+        '<td style="text-align:right">' + (future ? '—' : money(gst)) + '</td>' +
+        '<td style="text-align:right">' + (future ? '—' : students) + '</td></tr>';
+    });
+    mhtml += '<tr style="border-top:1.5px solid var(--border);font-weight:bold;color:#8f6d21">' +
+      '<td>YTD Total</td>' +
+      '<td style="text-align:right">' + money(ytdCourse) + '</td>' +
+      '<td style="text-align:right">' + money(ytdGst) + '</td>' +
+      '<td style="text-align:right">' + ytdStudents + '</td></tr>';
+    monthTbody.innerHTML = mhtml;
+  }
+
+  // ── By Course (company-wide) ──
+  var courseTbody = document.getElementById('aimis-course-tbody');
+  if (courseTbody) {
+    if (!allInvoiceRecords) {
+      courseTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted)">Loading fee records…</td></tr>';
+      loadFeeRecordTab(false, renderAllIndiaBreakdown);
+      return;
+    }
+    var byCourse = {};
+    allInvoiceRecords.forEach(function(r) {
+      var course = (r.course && String(r.course).trim()) || 'Unspecified';
+      if (!byCourse[course]) byCourse[course] = { course: course, students: 0, booked: 0, collected: 0, outstanding: 0 };
+      byCourse[course].students++;
+      byCourse[course].booked += Number(r.netPayable || 0);
+      byCourse[course].collected += Number(r.collected || 0);
+      byCourse[course].outstanding += Number(r.outstanding || 0);
+    });
+    var courseList = Object.values(byCourse).sort(function(a, b) { return b.booked - a.booked; });
+    if (courseList.length) {
+      var cohtml = courseList.map(function(c) {
+        return '<tr><td><strong>' + escC(c.course) + '</strong></td>' +
+          '<td style="text-align:right">' + c.students + '</td>' +
+          '<td style="text-align:right;font-weight:700">' + money(c.booked) + '</td>' +
+          '<td style="text-align:right;color:#1a7a3c">' + money(c.collected) + '</td>' +
+          '<td style="text-align:right;color:' + (c.outstanding ? 'var(--red)' : '#1a7a3c') + '">' + money(c.outstanding) + '</td></tr>';
+      }).join('');
+      var cot = courseList.reduce(function(s, c) {
+        s.students += c.students; s.booked += c.booked; s.collected += c.collected; s.outstanding += c.outstanding;
+        return s;
+      }, { students: 0, booked: 0, collected: 0, outstanding: 0 });
+      cohtml += '<tr style="border-top:1.5px solid var(--border);font-weight:bold;color:#8f6d21">' +
+        '<td>Total — ' + courseList.length + ' courses</td>' +
+        '<td style="text-align:right">' + cot.students + '</td>' +
+        '<td style="text-align:right">' + money(cot.booked) + '</td>' +
+        '<td style="text-align:right">' + money(cot.collected) + '</td>' +
+        '<td style="text-align:right">' + money(cot.outstanding) + '</td></tr>';
+      courseTbody.innerHTML = cohtml;
+    } else {
+      courseTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No fee records found.</td></tr>';
+    }
+  }
+}
+
 // revCentreAchievedAll — Centre Standings rollup for one centre. Splits each contributor's
 // totals into "regular" (Centre Revenue — own + other-centre rows) and "corporate" (Corporate
 // Programs / branch tie-up rows, per revIsCorporate) so a counsellor's corporate-program
@@ -10286,14 +10524,15 @@ function fillRevenueSelects() {
 }
 
 function revenueRequestParams() {
+  var wantsAllIndia = isAdmin || canViewAllIndiaMIS();
   return {
     action:'getRevenueDashboard',
     period:'2026-27',
-    centres:isAdmin ? '' : (allowedCentres && allowedCentres.length ? allowedCentres.join(',') : ''),
+    centres:wantsAllIndia ? '' : (allowedCentres && allowedCentres.length ? allowedCentres.join(',') : ''),
     centre:'',
-    counsellor:isAdmin ? '' : (counselorName || ''),
-    viewerCounsellor:isAdmin ? '' : (counselorName || ''),
-    isAdmin:isAdmin ? 'true' : 'false',
+    counsellor:wantsAllIndia ? '' : (counselorName || ''),
+    viewerCounsellor:wantsAllIndia ? '' : (counselorName || ''),
+    isAdmin:wantsAllIndia ? 'true' : 'false',
     isManager:isManager ? 'true' : 'false',
     viewMode:'assigned',
     fromMonth:'2026-04',

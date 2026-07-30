@@ -13229,6 +13229,9 @@ function loadMyBatches() {
         <div id="co-panel-${escC(b.batchCode)}" style="display:${(!isCompleted && b.coInstructor)?'block':'none'};margin-top:6px">
           ${isCompleted?'':renderInlineCoInstructorAssign(b.batchCode, b.coInstructor||'', b.coInstructorUntil||'', b.endDate||'')}
         </div>
+        <div style="margin-top:8px">
+          ${isCompleted ? '' : `<button class="btn btn-gold" style="padding:5px 12px;font-size:11px;width:auto" onclick="openEnrollModalForBatch('${escC(b.batchCode)}','${escC(b.centre||'')}')">&#43; Add Student</button>`}
+        </div>
         <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center">
           ${editBatchControl}
           ${deleteButtonsHtml}
@@ -20765,6 +20768,15 @@ function openEnrollModalOtherCentre(monthKey, homeCentre, counsellor) {
   openEnrollModal(monthKey, homeCentre, counsellor, { preferOtherCentre: true });
 }
 
+// "+ Add Student" on a specific batch card (Batches tab) — same search-existing-or-
+// create-new flow as the Revenue tab's Enroll New Student, but with the batch already
+// fixed instead of asking the counsellor to pick one from a dropdown.
+function openEnrollModalForBatch(batchCode, centre) {
+  var today = new Date();
+  var monthKey = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
+  openEnrollModal(monthKey, centre, counselorName || 'Counselor', { preSelectedBatch: batchCode });
+}
+
 function openEnrollModal(monthKey, centre, counsellor, opts) {
   opts = opts || {};
   _enrollState = { monthKey: monthKey, centre: centre, counsellor: counsellor,
@@ -20789,6 +20801,9 @@ function openEnrollModal(monthKey, centre, counsellor, opts) {
 
   // Reset batch section
   document.getElementById('enroll-batch-select').innerHTML = '<option value="">Loading…</option>';
+  document.getElementById('enroll-batch-select').style.display = '';
+  document.getElementById('enroll-new-batch-toggle').style.display = '';
+  document.getElementById('enroll-batch-locked-label').style.display = 'none';
   document.getElementById('enroll-new-batch-form').style.display = 'none';
   document.getElementById('enroll-nb-course').innerHTML = '<option value="">— Select Course —</option>' +
     (typeof COURSES !== 'undefined' ? COURSES.map(function(c){ return '<option>'+escC(c)+'</option>'; }).join('') : '');
@@ -20833,7 +20848,7 @@ function openEnrollModal(monthKey, centre, counsellor, opts) {
 
   // In "other centre" mode, show batches from every centre (labelled with their centre)
   // instead of just the counsellor's own — they're looking for a batch elsewhere on purpose.
-  enrollLoadBatches(opts.preferOtherCentre ? '' : centre);
+  enrollLoadBatches(opts.preferOtherCentre ? '' : centre, opts.preSelectedBatch || '');
   setTimeout(function(){ document.getElementById('enroll-student-search').focus(); }, 120);
 }
 
@@ -20997,7 +21012,7 @@ function enrollUseExistingStudent(id, name, mobile) {
 }
 
 /* ── Batch section ── */
-function enrollLoadBatches(centre) {
+function enrollLoadBatches(centre, preSelectedBatch) {
   gasGet({ action: 'getBatches', centres: centre }, function(e, d) {
     var batches = (d && d.batches) || [];
     _enrollState.batchList = batches;
@@ -21010,6 +21025,22 @@ function enrollLoadBatches(centre) {
           (b.startDate ? ' · from ' + escC(b.startDate) : '');
         return '<option value="' + escC(b.batchCode) + '">' + label + '</option>';
       }).join('');
+
+    // "+ Add Student" on a specific batch card — lock the batch in and hide the
+    // dropdown/"create new batch" option entirely, since the counsellor already told us
+    // exactly which batch by clicking that card's button.
+    if (preSelectedBatch) {
+      var match = batches.find(function(b) { return b.batchCode === preSelectedBatch; });
+      var label = match
+        ? (escC(match.batchCode) + ' — ' + escC(match.course || '') + ' (' + escC(match.centre || '') + ')')
+        : escC(preSelectedBatch);
+      document.getElementById('enroll-batch-locked-label').innerHTML = '🔒 ' + label;
+      document.getElementById('enroll-batch-locked-label').style.display = 'block';
+      sel.style.display = 'none';
+      document.getElementById('enroll-new-batch-toggle').style.display = 'none';
+      sel.value = preSelectedBatch;
+      enrollBatchSelected();
+    }
   });
 }
 
@@ -21652,6 +21683,7 @@ function enrollSave() {
       <!-- STEP 2: BATCH -->
       <div class="enroll-step">
         <div class="enroll-step-title"><span class="enroll-step-num">2</span> Batch</div>
+        <div id="enroll-batch-locked-label" style="display:none;font-weight:700;padding:8px 10px;background:var(--off);border:1.5px solid var(--gold);border-radius:7px;margin-bottom:8px"></div>
         <div class="enroll-batch-row">
           <select id="enroll-batch-select" onchange="enrollBatchSelected()">
             <option value="">— Select Batch —</option>

@@ -4315,10 +4315,11 @@ window.gasGet = (function () {
 
         var flags = [];
 
-        // ── Build counsellor averages for spike detection ──────────────────
-        var counsellorTotals = {}; // counsellor → {sum, count}
+        // ── Build per-(counsellor, business centre) averages for spike detection ──
+        // Keyed by centre, not just counsellor — see the spike check below for why.
+        var counsellorTotals = {}; // "counsellor|businessCentre" → {sum, count}
         rows.forEach(function(r) {
-          var key = r.counsellor;
+          var key = r.counsellor + '|' + (r.business_centre || '').trim();
           if (!counsellorTotals[key]) counsellorTotals[key] = { sum: 0, count: 0 };
           if (r.achieved_course_fee > 0) {
             counsellorTotals[key].sum += Number(r.achieved_course_fee);
@@ -4332,19 +4333,24 @@ window.gasGet = (function () {
           var assignedCentre = (r.assigned_centre || '').trim();
           var bizCentre = (r.business_centre || '').trim();
 
-          // 1. Centre mismatch — counsellor's assigned centre ≠ business centre recorded
-          if (assignedCentre && bizCentre && assignedCentre !== bizCentre) {
-            flags.push({
-              type: 'centre_mismatch',
-              severity: 'red',
-              message: r.counsellor + ' — centre mismatch',
-              detail: 'Assigned to ' + assignedCentre + ' but revenue logged under ' + bizCentre + ' · ' + r.month + ' · ' + (r.business_type || ''),
-              rows: [{ rowIndex: idx + 1, month: r.month }]
-            });
-          }
+          // 1. Centre mismatch — REMOVED 2026-07-30. This used to flag every row where
+          // assigned_centre != business_centre as a red/critical error. That's exactly
+          // the "Other Centre" cross-sell pattern this whole project spent a long session
+          // verifying is real, legitimate, correctly-attributed revenue (e.g. Anuradha,
+          // Bianca, Arpita, Kripa, Nadiya, Omkar Kadam all routinely and correctly sell
+          // into centres other than their own — checked against actual distinct student
+          // records, zero overlap, not duplicates). It's normal business, not a mismatch.
+          // This single rule alone was producing most of a 66-flag, 25-critical audit
+          // result out of routine, correct activity. Not replaced with a softer version —
+          // there's nothing here worth flagging at all once you know this is expected.
 
-          // 2. Fee spike — this entry is > 3× counsellor's own average
-          var ct = counsellorTotals[r.counsellor];
+          // 2. Fee spike — this entry is > 3× counsellor's own average FOR THAT SAME
+          // BUSINESS CENTRE (not counsellor overall — a counsellor's real per-centre
+          // average was being diluted by mixing their large home-centre totals with many
+          // small 1-3-student cross-sell entries into other centres, making the home-
+          // centre total look like a false "spike" against its own skewed average).
+          var ctKey = r.counsellor + '|' + bizCentre;
+          var ct = counsellorTotals[ctKey];
           if (ct && ct.count >= 2 && fee > 0) {
             var avg = ct.sum / ct.count;
             if (fee > avg * 3) {
@@ -4378,8 +4384,13 @@ window.gasGet = (function () {
             });
           }
 
-          // 4. Suspiciously high per-student fee (>₹1,50,000 per student)
-          if (students > 0 && fee > 0 && (fee / students) > 150000) {
+          // 4. Suspiciously high per-student fee. Threshold raised 2026-07-30 from
+          // ₹1,50,000 to ₹3,00,000: checked the actual live distribution first — median
+          // per-student fee across all rows is ₹1,59,753 (normal course pricing routinely
+          // runs ₹1.5-2.2L/student), so the old threshold was firing on 39 of 55 rows,
+          // i.e. flagging the typical case as suspicious. Only 1 row in the entire
+          // dataset exceeds ₹3,00,000 — that's the actual rare-outlier line.
+          if (students > 0 && fee > 0 && (fee / students) > 300000) {
             flags.push({
               type: 'high_per_student',
               severity: 'amber',

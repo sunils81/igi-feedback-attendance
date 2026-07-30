@@ -1415,13 +1415,13 @@
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:12px;font-weight:600;color:var(--muted)">Target Baseline:</span>
           <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:12px;font-weight:600;color:var(--navy)">
-            <span id="target-label-buffer" style="color:var(--navy)">Counselor Buffer</span>
+            <span id="target-label-buffer" style="color:var(--muted)">Counselor Buffer</span>
             <div id="target-toggle-track" onclick="toggleTargetBaseline()"
-              style="width:42px;height:22px;background:var(--gold);border-radius:11px;position:relative;cursor:pointer;transition:background .2s;display:inline-block">
+              style="width:42px;height:22px;background:#185FA5;border-radius:11px;position:relative;cursor:pointer;transition:background .2s;display:inline-block">
               <div id="target-toggle-thumb"
-                style="width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px;transition:left .2s;box-shadow:0 1px 4px rgba(0,0,0,.2)"></div>
+                style="width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:2px;left:22px;transition:left .2s;box-shadow:0 1px 4px rgba(0,0,0,.2)"></div>
             </div>
-            <span id="target-label-corporate" style="color:var(--muted)">Corporate (5.5 Cr)</span>
+            <span id="target-label-corporate" style="color:var(--navy)">Corporate (5.5 Cr)</span>
           </label>
         </div>
 
@@ -1526,9 +1526,9 @@
           <thead>
             <tr>
               <th>Month</th>
-              <th>FY24–25 (₹, Incl. GST)</th>
-              <th>FY25–26 (₹, Incl. GST)</th>
-              <th id="appraisal-cycle-fy2627-th">FY26–27 (₹)</th>
+              <th>FY24–25 (₹, Excl. GST)</th>
+              <th>FY25–26 (₹, Excl. GST)</th>
+              <th>FY26–27 (₹, Excl. GST)</th>
               <th>YoY Growth</th>
             </tr>
           </thead>
@@ -5810,7 +5810,11 @@ function renderAppraisalCycleTable() {
 
   function hist(year, monthNum) {
     const arr = HIST_REVENUE[year];
-    return arr ? (arr[monthNum - 1] || 0) : 0;
+    // HIST_REVENUE only has Incl.-GST figures for closed historical years (no excl-GST
+    // breakdown was ever kept). Converted to Excl. GST here (÷1.18) so this table can
+    // compare all three years on one consistent basis — see 2026-07-29 note below.
+    const inclGst = arr ? (arr[monthNum - 1] || 0) : 0;
+    return inclGst / IGI_GST_RATE;
   }
 
   const allRowsForCycle = (dashboardData.revenue && dashboardData.revenue.monthlyRows) || [];
@@ -5820,34 +5824,30 @@ function renderAppraisalCycleTable() {
   // YTD Collected figure for the exact same Apr–Jul window without this guard.
   const cycleCentresWithNative = computeCentresWithNativeRevenue(allRowsForCycle);
 
-  // Live FY26-27 totals per month — both excl. and incl. GST, so the table can follow the
-  // page's Excl./Incl. GST toggle instead of being hardcoded to one basis — plus how many
-  // rows for that month are still unlocked drafts, shown as an informational footnote
-  // rather than hidden, since the rest of the dashboard (HR view, overall YTD) also counts
-  // unlocked entries.
+  // Live FY26-27 totals per month, Excl. GST (see liveByMonth below — always Excl. GST now,
+  // doesn't follow the page's GST toggle) — plus how many rows for that month are still
+  // unlocked drafts, shown as an informational footnote rather than hidden, since the rest
+  // of the dashboard (HR view, overall YTD) also counts unlocked entries.
   const liveByMonthCourse = {};
-  const liveByMonthGst = {};
   const draftByMonth = {};
   allRowsForCycle.forEach(mr => {
     if (isExcludedOtherCentreRow(mr, cycleCentresWithNative)) return;
     const key = mr.month;
     liveByMonthCourse[key] = (liveByMonthCourse[key] || 0) + (Number(mr.achievedCourse) || 0);
-    liveByMonthGst[key] = (liveByMonthGst[key] || 0) + (Number(mr.achievedGst) || 0);
     if (!window.isRevenueLocked(mr.locked)) draftByMonth[key] = (draftByMonth[key] || 0) + 1;
   });
-  const liveByMonth = gstViewIncl ? liveByMonthGst : liveByMonthCourse;
+  // Always Excl. GST for all three years — no longer follows the page's GST toggle. A
+  // year-over-year comparison mixing GST bases isn't a real comparison, and FY24-25/FY25-26
+  // only ever had Incl.-GST figures on record, so making FY26-27 match them (rather than
+  // converting the other direction) would have meant re-adding GST to a value that's
+  // supposed to represent the discounted course fee — this way is the one unambiguous
+  // basis all three years can genuinely share.
+  const liveByMonth = liveByMonthCourse;
 
-  // Keep the subtitle + FY26-27 column header honest about which GST basis is showing.
-  // Historical (FY24-25/FY25-26) columns stay Incl. GST always — that's the only basis
-  // the closed historical books have; there's no excl-GST breakdown to toggle them to.
   const subtitleEl = document.getElementById('appraisal-cycle-subtitle');
   if (subtitleEl) {
-    subtitleEl.textContent = 'Cycle starts April. Jan–Mar 2026 excluded (pre-cycle). ' +
-      'FY26–27 shown ' + (gstViewIncl ? 'Incl. GST' : 'Excl. GST') +
-      ' — FY24–25/FY25–26 stay Incl. GST (only basis available in those closed books).';
+    subtitleEl.textContent = 'Cycle starts April. Jan–Mar 2026 excluded (pre-cycle). All figures Excl. GST — FY24-25/FY25-26 converted from the Incl.-GST closed-book totals at 18%.';
   }
-  const fy2627Th = document.getElementById('appraisal-cycle-fy2627-th');
-  if (fy2627Th) fy2627Th.textContent = 'FY26–27 (₹, ' + (gstViewIncl ? 'Incl. GST' : 'Excl. GST') + ')';
 
   const rows = cycleMonths.map(m => {
     const [y, mo] = m.cal;
@@ -5913,17 +5913,6 @@ function renderAppraisalCycleTable() {
       ' = <strong>' + moneyShort(preTotal) + '</strong> collected — not counted above' +
     '</div></div>' +
   '</td></tr>';
-
-  if (!gstViewIncl) {
-    html += '<tr><td colspan="5" style="padding:6px 0;background:transparent;">' +
-      '<div class="info-callout-banner" style="border-left-color:#B45309"><span class="icon">⚠️</span><div>' +
-        'FY26–27 above is <strong>Excl. GST</strong>, but FY24–25/FY25–26 are <strong>Incl. GST</strong> ' +
-        '(no excl-GST breakdown exists for those closed years) — YoY Growth % is comparing ' +
-        'different bases and will read a few points lower than the true like-for-like growth. ' +
-        'Switch the page\'s GST toggle to Incl. GST for an apples-to-apples comparison.' +
-      '</div></div>' +
-    '</td></tr>';
-  }
 
   tbody.innerHTML = html || '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No revenue data yet.</td></tr>';
 }
@@ -6178,8 +6167,10 @@ function renderRevBreakdownTab() {
       byMonth[key].achievedGst += Number(r.achievedGst) || 0;
       if (!isCorporateRevenueRow(r)) byMonth[key].studentCount += Number(r.studentCount) || 0;
     });
-    const centreRowsSrc = d.centreRows || [];
-    const nationalTarget = centreRowsSrc.reduce((s, cr) => s + (gstViewIncl ? (Number(cr.targetGst) || 0) : (Number(cr.targetCourse) || 0)), 0);
+    // National target here is the real ₹5.5 Cr Annual Business Plan figure (matching
+    // targetBaselineModel='corporate', the dashboard-wide default) — NOT a sum of centre
+    // targets, which don't represent the actual company target Sunil reports to management.
+    const nationalTarget = gstViewIncl ? 64900000 : 55000000;
     const monthlyRunRate = nationalTarget / 12;
 
     const fyMonths = [];
@@ -7414,7 +7405,12 @@ function adminTargetRows() {
 }
 
 // ── TARGET BASELINE TOGGLE ────────────────────────────────────
-let targetBaselineModel = 'buffer';
+// Defaults to 'corporate' (the real ₹5.5 Cr Annual Business Plan figure Sunil reports to
+// management) rather than 'buffer' (sum of individual counsellor targets, ₹6.35 Cr as of
+// 2026-07 — an internal quota-setting number, not the official company target). Every
+// national-level % shown across the admin dashboard should read against the real target
+// by default; 'buffer' remains available via the toggle for internal reference only.
+let targetBaselineModel = 'corporate';
 function toggleTargetBaseline() {
   targetBaselineModel = targetBaselineModel === 'buffer' ? 'corporate' : 'buffer';
   const thumb = document.getElementById('target-toggle-thumb');

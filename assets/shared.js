@@ -2548,6 +2548,42 @@ window.gasGet = (function () {
     GET('batches', 'select=batch_code,course,centre', function (e, r) { batches = r || []; finish(); });
   }
 
+  /* h_getMissingInvoiceDates — counsellor-facing nudge (see loadMissingInvoiceDateNotification
+     in counselor.html): lists this counsellor's own fee records that have no invoice date at
+     all, by student name, so they can add one. Not the same check as
+     h_getRevenueMonthMismatches above (that one needs an invoice date to already exist, to
+     compare it against revenue_month) — this one is for records missing an invoice date
+     entirely, which currently fall back to payment date for revenue_month. Same
+     self-service scope as every other counsellor-facing endpoint: a counsellor only ever
+     sees their own records; only Admin can see everyone's. */
+  function h_getMissingInvoiceDates(p, cb) {
+    var isAdm = !!(p && (p.isAdmin === true || p.isAdmin === 'true'));
+    var counsellor = (p && p.counsellor && String(p.counsellor).trim()) || '';
+    if (!isAdm && !counsellor) { cb(null, { status: 'error', message: 'Admin only, or pass counsellor.' }); return; }
+    var students, batches;
+    var n = 0;
+    function finish() {
+      if (++n < 2) return;
+      var qs = 'order=created_at.desc' + (isAdm ? '' : '&recorded_by=eq.' + encodeURIComponent(counsellor));
+      GET('student_fees', qs, function (e, rows) {
+        if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+        var missing = [];
+        (rows || []).forEach(function (r) {
+          var mapped = parseFeeRow(r, students, batches);
+          if (mapped.invoice_date) return; // has one — not this list's concern
+          missing.push({
+            id: mapped.id, studentId: mapped.student_id, studentName: mapped.student_name,
+            batchCode: mapped.batch_code, centre: mapped.centre, counsellor: mapped.entered_by,
+            courseFee: mapped.course_fee, paymentDate: r.payment_date, revenueMonth: mapped.revenue_month
+          });
+        });
+        cb(null, { status: 'ok', count: missing.length, missing: missing });
+      });
+    }
+    GET('students', 'select=student_id,name', function (e, r) { students = r || []; finish(); });
+    GET('batches', 'select=batch_code,course,centre', function (e, r) { batches = r || []; finish(); });
+  }
+
   /* h_fixRevenueMonthMismatch — admin action: applies exactly ONE flagged mismatch from
      h_getRevenueMonthMismatches, moving revenue_month to match the record's invoice date
      and re-syncing both the old and new (counsellor, centre, month) revenue_monthly_achieved
@@ -9044,6 +9080,7 @@ window.gasGet = (function () {
       case 'getAllFeeRecords':          return h_getAllFeeRecords(params, cb);
       case 'updateInvoiceDetails':      return h_updateInvoiceDetails(params, cb);
       case 'getRevenueMonthMismatches': return h_getRevenueMonthMismatches(params, cb);
+      case 'getMissingInvoiceDates':    return h_getMissingInvoiceDates(params, cb);
       case 'fixRevenueMonthMismatch':   return h_fixRevenueMonthMismatch(params, cb);
       case 'saveFeeRecord':             return h_saveFee(params, cb);
       case 'deleteFeeRecord':           return h_deleteFeeRecord(params, cb);

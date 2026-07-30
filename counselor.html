@@ -1799,6 +1799,21 @@
     <div id="rmm-reminder-list" style="display:flex;flex-direction:column;gap:4px;"></div>
   </div>
 
+  <!-- Missing invoice date banner — distinct from the mismatch banner above (that one
+       needs an invoice date to already exist, to compare it against the counted month).
+       This one is for records with NO invoice date at all, which fall back to payment
+       date instead — see h_getMissingInvoiceDates in shared.js and the 2026-07-30
+       invoice-date audit that prompted this. Each listed student links straight to their
+       Update Fee form to add the missing date. -->
+  <div id="missing-invoice-banner" style="display:none;background:#f5f3ff;border:1.5px solid #8b5cf6;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#4c1d95;flex-direction:column;gap:6px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span>📅</span>
+      <span id="missing-invoice-text" style="flex:1;font-weight:500;"></span>
+      <button onclick="document.getElementById('missing-invoice-banner').style.display='none'" style="background:transparent;border:none;color:#4c1d95;font-size:16px;cursor:pointer;line-height:1;">×</button>
+    </div>
+    <div id="missing-invoice-list" style="display:flex;flex-direction:column;gap:4px;"></div>
+  </div>
+
   <!-- Alumni referral nudge banner (non-blocking). Flags alumni whose course ended 15, 45,
        or 60 days ago — a warm source of referrals nothing else in the app ever surfaced.
        See h_getReferralNudges in shared.js. Each listed alumnus has a one-tap WhatsApp
@@ -4913,6 +4928,7 @@ function initCounselorPortal() {
         setTimeout(loadPendingAttBanner, 1500);
         setTimeout(loadOverdueFeesNotification, 2000);
         setTimeout(loadRevenueMonthMismatchNotification, 2300);
+        setTimeout(loadMissingInvoiceDateNotification, 2450);
         setTimeout(loadReferralNudgeNotification, 2500);
         setTimeout(loadDuplicateStudentNotification, 2800);
         setTimeout(loadGemaFoundationNotification, 3050);
@@ -5271,6 +5287,7 @@ function doLogin() {
     setTimeout(loadOverdueFeesNotification, 2000);
     setTimeout(loadPendingBatchConfirmBanner, 2500);
     setTimeout(loadRevenueMonthMismatchNotification, 2650);
+    setTimeout(loadMissingInvoiceDateNotification, 2700);
     setTimeout(loadReferralNudgeNotification, 2750);
     setTimeout(loadDuplicateStudentNotification, 2800);
     setTimeout(loadGemaFoundationNotification, 3050);
@@ -17299,6 +17316,35 @@ function jumpToFeeMismatch(batchCode, studentId) {
   if (sel) sel.value = batchCode;
   loadFeeOverview(function() {
     openFeeForm(studentId);
+  });
+}
+
+// Missing-invoice-date nudge — distinct from loadRevenueMonthMismatchNotification above.
+// That one needs an invoice date to already exist to compare it against the counted
+// month; this one is for records with no invoice date at ALL, which currently fall back
+// to payment date for revenue_month (see h_getMissingInvoiceDates in shared.js and the
+// 2026-07-30 invoice-date audit this came out of). Reuses jumpToFeeMismatch — same
+// Update Fee jump, since adding the invoice date there is exactly the fix.
+function loadMissingInvoiceDateNotification() {
+  if (isAdmin || !counselorName) return; // counsellor-only, self-service — same as the mismatch banner
+  gasGet({ action: 'getMissingInvoiceDates', counsellor: counselorName }, function(e, d) {
+    var banner = document.getElementById('missing-invoice-banner');
+    var text = document.getElementById('missing-invoice-text');
+    var list = document.getElementById('missing-invoice-list');
+    if (!banner || !text || !list) return;
+    if (e || !d || d.status !== 'ok' || !d.missing || !d.missing.length) {
+      banner.style.display = 'none';
+      return;
+    }
+    var n = d.missing.length;
+    text.textContent = n + ' fee record' + (n > 1 ? 's' : '') + ' with no invoice date on file — click a student to add one.';
+    list.innerHTML = d.missing.map(function(m) {
+      return '<button onclick="jumpToFeeMismatch(\'' + escC(m.batchCode) + '\',\'' + escC(m.studentId) + '\')" style="text-align:left;background:#fff;border:1px solid #ddd6fe;border-radius:6px;padding:6px 10px;font-size:12px;color:#4c1d95;cursor:pointer">' +
+        '<strong>' + escC(m.studentName || '') + '</strong> (' + escC(m.studentId || '') + ') — ' + escC(m.batchCode || '') + ' &middot; ' + escC(m.centre || '') +
+        ' &nbsp;·&nbsp; currently counted using payment date <strong>' + escC(m.paymentDate || '—') + '</strong>' +
+        '</button>';
+    }).join('');
+    banner.style.display = 'flex';
   });
 }
 

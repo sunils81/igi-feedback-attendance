@@ -4388,9 +4388,23 @@ window.gasGet = (function () {
           // ₹1,50,000 to ₹3,00,000: checked the actual live distribution first — median
           // per-student fee across all rows is ₹1,59,753 (normal course pricing routinely
           // runs ₹1.5-2.2L/student), so the old threshold was firing on 39 of 55 rows,
-          // i.e. flagging the typical case as suspicious. Only 1 row in the entire
-          // dataset exceeds ₹3,00,000 — that's the actual rare-outlier line.
-          if (students > 0 && fee > 0 && (fee / students) > 300000) {
+          // i.e. flagging the typical case as suspicious.
+          //
+          // Refined same day, per Sunil: "Graduate Gemologist" isn't a separate batch —
+          // it's one student enrolled in BOTH a DG and a CSG batch under the same student
+          // ID, and DG (₹1,65,900) + CSG (₹1,85,900) = exactly ₹3,51,800, matching
+          // COURSE_FEES_JS's GG catalog price exactly. Verified company-wide: 23 real
+          // students currently have this same-ID DG+CSG pattern — a common, legitimate
+          // case, not an anomaly. A genuine duplicate-ID problem (the same real person
+          // enrolled in DG and CSG under two DIFFERENT student IDs) was checked for
+          // separately by name+mobile matching and found zero live cases — but that check
+          // isn't run here per-row, so anything in the GG combo's own range is treated as
+          // benign rather than flagged, and only a per-student fee ABOVE what a full-price
+          // GG combo could ever be still counts as worth a look.
+          var GG_COMBO_FEE = 351800; // Diamond Graduate + Colored Stone Graduate, full price
+          var perStudentFee = students > 0 ? fee / students : 0;
+          var looksLikeGGCombo = perStudentFee >= 300000 && perStudentFee <= (GG_COMBO_FEE + 20000);
+          if (students > 0 && fee > 0 && perStudentFee > 300000 && !looksLikeGGCombo) {
             flags.push({
               type: 'high_per_student',
               severity: 'amber',

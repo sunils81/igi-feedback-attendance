@@ -2580,6 +2580,81 @@ window.gasGet = (function () {
     });
   }
 
+  /* ══════════════════════════════════════════════════════════════
+     OPERATIONAL INVOICES & RECEIPTS — day-to-day spend log (inventory, manuals, other),
+     with the receipt/invoice file attached. Standalone from inv_requests (which tracks
+     item quantities, not money/documents) and from student fee records entirely.
+     Currently gated to Anuradha & Bianca on the frontend (canLogOperationalInvoices()) —
+     the backend itself doesn't restrict who can call this, same trust model as the rest
+     of this app's counsellor-facing actions.
+     ══════════════════════════════════════════════════════════════ */
+  function h_saveOperationalInvoice(p, cb) {
+    if (!p.entryDate || !p.centre || !p.enteredBy) {
+      cb(null, { status: 'error', reason: 'Date, centre, and entered-by are required.' });
+      return;
+    }
+    var row = {
+      entry_date: p.entryDate,
+      category: p.category || 'Other',
+      vendor: p.vendor || '',
+      description: p.description || '',
+      amount: Number(p.amount) || 0,
+      invoice_number: p.invoiceNumber || '',
+      centre: p.centre,
+      entered_by: p.enteredBy,
+      file_url: p.fileUrl || '',
+      updated_at: nowISO()
+    };
+    if (p.id) {
+      PATCH('operational_invoices', 'id=eq.' + encodeURIComponent(p.id), row, function (e, r) {
+        if (e) { cb(null, { status: 'error', reason: 'Could not update.' }); return; }
+        cb(null, { status: 'ok', record: (r || [])[0] });
+      });
+    } else {
+      POST('operational_invoices', '', row, function (e, r) {
+        if (e) { cb(null, { status: 'error', reason: 'Could not save.' }); return; }
+        cb(null, { status: 'ok', record: (r || [])[0] });
+      });
+    }
+  }
+
+  function h_getOperationalInvoices(p, cb) {
+    // enteredBy filter: pass a name to see just that person's entries (the counsellor tab
+    // does this); omit it (admin view) to see everyone's.
+    var qs = 'order=entry_date.desc,created_at.desc&limit=1000';
+    if (p.enteredBy) qs += '&entered_by=eq.' + encodeURIComponent(p.enteredBy);
+    GET('operational_invoices', qs, function (e, rows) {
+      if (e) { cb(null, { status: 'error', reason: 'Could not load.' }); return; }
+      var records = (rows || []).map(function (r) {
+        return {
+          id: r.id, entryDate: r.entry_date, category: r.category, vendor: r.vendor,
+          description: r.description, amount: Number(r.amount) || 0,
+          invoiceNumber: r.invoice_number, centre: r.centre, enteredBy: r.entered_by,
+          fileUrl: r.file_url, createdAt: r.created_at
+        };
+      });
+      cb(null, { status: 'ok', records: records });
+    });
+  }
+
+  function h_deleteOperationalInvoice(p, cb) {
+    if (!p.id) { cb(null, { status: 'error', reason: 'Missing id.' }); return; }
+    // Only the person who entered it (or an admin) can delete it — checked by requiring
+    // enteredBy to match before the delete fires, same spirit as other self-service
+    // corrections in this app.
+    GET('operational_invoices', 'id=eq.' + encodeURIComponent(p.id) + '&select=entered_by', function (e, rows) {
+      if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'Not found.' }); return; }
+      if (p.isAdmin !== 'true' && rows[0].entered_by !== p.enteredBy) {
+        cb(null, { status: 'error', reason: 'You can only delete your own entries.' });
+        return;
+      }
+      DEL('operational_invoices', 'id=eq.' + encodeURIComponent(p.id), function (e2) {
+        if (e2) { cb(null, { status: 'error', reason: 'Could not delete.' }); return; }
+        cb(null, { status: 'ok' });
+      });
+    });
+  }
+
   /* saveFeeRecord */
   function h_saveFee(p, cb) {
     var n   = Number(p.nInst || 1);
@@ -8938,6 +9013,9 @@ window.gasGet = (function () {
       case 'fixRevenueMonthMismatch':   return h_fixRevenueMonthMismatch(params, cb);
       case 'saveFeeRecord':             return h_saveFee(params, cb);
       case 'deleteFeeRecord':           return h_deleteFeeRecord(params, cb);
+      case 'saveOperationalInvoice':    return h_saveOperationalInvoice(params, cb);
+      case 'getOperationalInvoices':    return h_getOperationalInvoices(params, cb);
+      case 'deleteOperationalInvoice':  return h_deleteOperationalInvoice(params, cb);
       case 'getRevenueDetail':          return h_getRevenueDetail(params, cb);
       case 'getMonthAchieved':          return h_getMonthAchieved(params, cb);
       case 'checkInvoiceNumber':        return h_checkInvoiceNumber(params, cb);

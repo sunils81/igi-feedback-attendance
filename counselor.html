@@ -1752,6 +1752,7 @@
     <button class="tab" id="tab-prospects" onclick="switchTab('t-prospects')">🧭 Prospects <span id="prospects-due-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-revenue" onclick="switchTab('t-revenue')">📈 Revenue</button>
     <button class="tab" id="tab-fee-record" onclick="switchTab('t-fee-record')">📑 Fee Record</button>
+    <button class="tab" id="tab-op-invoices" onclick="switchTab('t-op-invoices')" style="display:none">🧾 Invoices &amp; Receipts</button>
     <button class="tab active" id="tab-batches" onclick="switchTab('t-batches')">📋 Batches</button>
     <button class="tab" id="tab-fees" onclick="switchTab('t-fees')">💰 Fees <span id="fees-overdue-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-students" onclick="switchTab('t-students')">👥 Students</button>
@@ -3880,6 +3881,66 @@
     </div>
   </div>
 
+  <!-- TAB: OPERATIONAL INVOICES & RECEIPTS (Anuradha & Bianca only — canLogOperationalInvoices) -->
+  <div id="t-op-invoices" class="tab-content">
+    <div class="card">
+      <div class="section-tag">Operational Spend</div>
+      <h2>🧾 Invoices &amp; Receipts</h2>
+      <p class="sub">Log day-to-day invoices or receipts you've raised or received — inventory, course manuals, or any other centre spend — with the document attached. This is separate from student fee records.</p>
+
+      <div style="background:var(--off);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:18px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:12px">
+          <div class="field" style="margin-bottom:0">
+            <label>Date *</label>
+            <input type="date" id="opinv-date">
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label>Category *</label>
+            <select id="opinv-category">
+              <option value="Inventory">Inventory</option>
+              <option value="Manuals">Manuals</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label>Amount (₹) *</label>
+            <input type="number" id="opinv-amount" placeholder="0" min="0" step="0.01">
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label>Invoice / Receipt #</label>
+            <input type="text" id="opinv-invoice-number" placeholder="Optional">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px">
+          <div class="field" style="margin-bottom:0">
+            <label>Vendor / Paid To</label>
+            <input type="text" id="opinv-vendor" placeholder="e.g. XYZ Stationers">
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label>Description</label>
+            <input type="text" id="opinv-description" placeholder="What was this for?">
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:12px">
+          <label>Attach invoice / receipt (photo or PDF, 10MB max)</label>
+          <input type="file" id="opinv-file-input" accept="image/*,.pdf" onchange="uploadOperationalInvoiceFile(this)">
+          <div id="opinv-file-status" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+        </div>
+        <button class="btn btn-gold" style="width:auto;padding:10px 20px" onclick="saveOperationalInvoiceEntry()">Save Entry</button>
+        <span id="opinv-form-err" style="color:#B00020;font-size:12px;margin-left:10px"></span>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0;font-size:15px">My Entries</h3>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="opinv-filter-month" onchange="renderOperationalInvoicesList()" style="font-size:12px;padding:6px 8px"></select>
+          <button class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:12px" onclick="loadOperationalInvoices()">🔄 Refresh</button>
+        </div>
+      </div>
+      <div id="opinv-list"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">Loading…</div></div></div>
+    </div>
+  </div>
+
   <!-- TAB 7: REVENUE -->
   <div id="t-revenue" class="tab-content">
     <div class="card admin-only" id="admin-dashboard-card">
@@ -4874,6 +4935,157 @@ function canViewAllIndiaMIS() {
   return counselorName === 'Anuradha';
 }
 
+// Operational Invoices & Receipts tab — day-to-day spend log (inventory, manuals, other),
+// piloted with Anuradha and Bianca first. One-line change here if/when it should open up
+// to every counsellor.
+function canLogOperationalInvoices() {
+  return counselorName === 'Anuradha' || counselorName === 'Bianca';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   OPERATIONAL INVOICES & RECEIPTS — day-to-day spend log (inventory, manuals, other),
+   with the receipt/invoice file attached. Reuses the existing fee-receipts storage
+   bucket (already public-read, already proven working for student fee receipts) under
+   an 'operational/' path prefix, instead of needing a brand new bucket set up.
+   ══════════════════════════════════════════════════════════════ */
+var opInvoiceRecords = [];
+var currentOpInvoiceFileUrl = '';
+
+function uploadOperationalInvoiceFile(input) {
+  const file = input.files && input.files[0];
+  const status = document.getElementById('opinv-file-status');
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) {
+    showToast('File too large — 10MB max.', 'error');
+    input.value = '';
+    return;
+  }
+  status.textContent = 'Uploading…';
+  const path = 'operational/' + encodeURIComponent(counselorName || 'unknown') + '-' + Date.now() + '-' + encodeURIComponent(file.name);
+  const SB_URL = 'https://atbexvtrcopaagcdbpqi.supabase.co';
+  const SB_KEY = 'sb_publishable_TpzxX5a3M7lnFeND8xLfhQ_YJOxOkhb';
+  fetch(SB_URL + '/storage/v1/object/fee-receipts/' + path, {
+    method: 'POST',
+    headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Content-Type': file.type || 'application/octet-stream' },
+    body: file
+  }).then(r => {
+    if (!r.ok) throw new Error('Upload failed (' + r.status + ')');
+    currentOpInvoiceFileUrl = SB_URL + '/storage/v1/object/public/fee-receipts/' + path;
+    status.textContent = '✅ Uploaded — will be saved with this entry.';
+  }).catch(err => {
+    status.textContent = '';
+    showToast('Could not upload file. Please try again.', 'error');
+    input.value = '';
+  });
+}
+
+function saveOperationalInvoiceEntry() {
+  const date = document.getElementById('opinv-date').value;
+  const category = document.getElementById('opinv-category').value;
+  const amount = document.getElementById('opinv-amount').value;
+  const errEl = document.getElementById('opinv-form-err');
+  errEl.textContent = '';
+  if (!date) { errEl.textContent = 'Date is required.'; return; }
+  if (!amount || Number(amount) <= 0) { errEl.textContent = 'Enter a valid amount.'; return; }
+
+  const centre = (allowedCentres && allowedCentres.length) ? allowedCentres[0] : '';
+  gasGet({
+    action: 'saveOperationalInvoice',
+    entryDate: date,
+    category: category,
+    vendor: document.getElementById('opinv-vendor').value.trim(),
+    description: document.getElementById('opinv-description').value.trim(),
+    amount: amount,
+    invoiceNumber: document.getElementById('opinv-invoice-number').value.trim(),
+    centre: centre,
+    enteredBy: counselorName,
+    fileUrl: currentOpInvoiceFileUrl
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      errEl.textContent = (d && d.reason) || 'Could not save. Please try again.';
+      return;
+    }
+    showToast('Entry saved.');
+    ['opinv-date','opinv-vendor','opinv-description','opinv-amount','opinv-invoice-number'].forEach(function(id) {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('opinv-category').value = 'Inventory';
+    document.getElementById('opinv-file-input').value = '';
+    document.getElementById('opinv-file-status').textContent = '';
+    currentOpInvoiceFileUrl = '';
+    loadOperationalInvoices();
+  });
+}
+
+function loadOperationalInvoices() {
+  const dateEl = document.getElementById('opinv-date');
+  if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
+  const listEl = document.getElementById('opinv-list');
+  if (listEl) listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">Loading…</div></div>';
+  gasGet({ action: 'getOperationalInvoices', enteredBy: counselorName }, function(e, d) {
+    if (e || !d || !d.records) {
+      if (listEl) listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load. Try Refresh.</div></div>';
+      return;
+    }
+    opInvoiceRecords = d.records;
+    const monthSel = document.getElementById('opinv-filter-month');
+    if (monthSel) {
+      const months = Array.from(new Set(opInvoiceRecords.map(r => (r.entryDate || '').slice(0, 7)))).filter(Boolean).sort().reverse();
+      const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const cur = monthSel.value;
+      monthSel.innerHTML = '<option value="">All months</option>' + months.map(m => {
+        const [y, mo] = m.split('-');
+        return '<option value="' + m + '">' + monthNames[Number(mo) - 1] + ' ' + y + '</option>';
+      }).join('');
+      if (months.includes(cur)) monthSel.value = cur;
+    }
+    renderOperationalInvoicesList();
+  });
+}
+
+function renderOperationalInvoicesList() {
+  const listEl = document.getElementById('opinv-list');
+  if (!listEl) return;
+  const monthFilter = (document.getElementById('opinv-filter-month') || {}).value || '';
+  const rows = opInvoiceRecords.filter(r => !monthFilter || (r.entryDate || '').slice(0, 7) === monthFilter);
+  if (!rows.length) {
+    listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No entries yet.</div><div class="empty-copy">Add your first invoice or receipt above.</div></div>';
+    return;
+  }
+  const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  let html = '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">' + rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies') + ' &middot; Total ' + money(total) + '</div>';
+  html += '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+    '<th class="text-left">Date</th><th class="text-left">Category</th><th class="text-left">Vendor</th>' +
+    '<th class="text-left">Description</th><th>Amount</th><th class="text-left">Invoice #</th><th>Receipt</th><th></th>' +
+    '</tr></thead><tbody>';
+  rows.forEach(r => {
+    html += '<tr>' +
+      '<td>' + escC(r.entryDate || '') + '</td>' +
+      '<td>' + escC(r.category || '') + '</td>' +
+      '<td>' + escC(r.vendor || '—') + '</td>' +
+      '<td>' + escC(r.description || '—') + '</td>' +
+      '<td style="text-align:right;font-weight:600">' + money(r.amount) + '</td>' +
+      '<td>' + escC(r.invoiceNumber || '—') + '</td>' +
+      '<td style="text-align:center">' + (r.fileUrl ? '<a href="' + escC(r.fileUrl) + '" target="_blank" rel="noopener">📎 View</a>' : '<span style="color:var(--muted)">—</span>') + '</td>' +
+      '<td><button class="del-btn" onclick="deleteOperationalInvoiceEntry(\'' + escC(r.id) + '\')">Remove</button></td>' +
+      '</tr>';
+  });
+  html += '</tbody></table></div>';
+  listEl.innerHTML = html;
+}
+
+function deleteOperationalInvoiceEntry(id) {
+  if (!confirm('Remove this entry? This cannot be undone.')) return;
+  gasGet({ action: 'deleteOperationalInvoice', id: id, enteredBy: counselorName, isAdmin: isAdmin ? 'true' : 'false' }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      showToast((d && d.reason) || 'Could not remove.', 'error');
+      return;
+    }
+    showToast('Entry removed.');
+    loadOperationalInvoices();
+  });
+}
+
 // Diploma release (the actual "release" action) stays restricted to Bianca/Anuradha,
 // but every counsellor should be able to SEE their own centre's test records and
 // eligibility on the Diploma Eligibility tab (view-only for everyone else).
@@ -5002,6 +5214,9 @@ function applyAdminVisibility() {
     dTab.style.display = '';
     dTab.textContent = dAuthorized ? '🎓 Diploma Release' : '🎓 Diploma Eligibility';
   }
+
+  const opInvTab = document.getElementById('tab-op-invoices');
+  if (opInvTab) opInvTab.style.display = canLogOperationalInvoices() ? '' : 'none';
   const dTitle = document.getElementById('diploma-tab-title');
   if (dTitle) dTitle.textContent = dAuthorized ? '🎓 Diploma Release' : '🎓 Diploma Eligibility';
   const dSub = document.getElementById('diploma-tab-sub');
@@ -5307,6 +5522,9 @@ function switchTab(id) {
   }
   if (id === 't-fee-record') {
     loadFeeRecordTab();
+  }
+  if (id === 't-op-invoices') {
+    loadOperationalInvoices();
   }
   if (id==='t-fees') {
     if (isAdmin && !adminDashboardData) renderAdminDashboardPlaceholders();

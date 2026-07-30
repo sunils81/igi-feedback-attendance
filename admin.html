@@ -1384,6 +1384,7 @@
       <button class="tab" onclick="switchAdminTab('t-standings')">🏆 Championship Standings</button>
       <button class="tab" onclick="switchAdminTab('t-fees')">💸 Fee Reconciliation</button>
       <button class="tab" onclick="switchAdminTab('t-invoices')">🧾 All Invoices</button>
+      <button class="tab" onclick="switchAdminTab('t-op-invoices')">🧾 Operational Invoices</button>
       <button class="tab" onclick="switchAdminTab('t-academic')">📊 Academic Insights</button>
       <button class="tab" onclick="switchAdminTab('t-alumni')">🎓 Student Alumni</button>
       <button class="tab" id="tab-crm-admin" onclick="switchAdminTab('t-crm-admin')">🎯 CRM Analytics</button>
@@ -1994,6 +1995,34 @@
         </div>
 
         <div id="inv-list" style="margin-top:16px"><div style="text-align:center;color:var(--muted);padding:24px">Loading invoices…</div></div>
+      </div>
+    </div>
+
+    <!-- TAB: OPERATIONAL INVOICES (inventory/manuals/other spend, currently Anuradha & Bianca) -->
+    <div id="t-op-invoices" class="tab-content">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
+          <h2 style="margin-bottom:0">🧾 Operational Invoices</h2>
+          <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="loadOpInvoicesAdmin()">🔄 Refresh</button>
+        </div>
+        <p class="sub">Day-to-day invoices/receipts counsellors have logged for inventory, manuals, or other centre spend — currently Anuradha and Bianca. Self-reported, no approval step.</p>
+
+        <div style="display:flex;gap:12px;align-items:center;margin-top:12px;margin-bottom:6px;flex-wrap:wrap">
+          <select id="opinv-adm-filter-person" onchange="renderOpInvoicesAdmin()" style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+            <option value="">Everyone</option>
+          </select>
+          <select id="opinv-adm-filter-category" onchange="renderOpInvoicesAdmin()" style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+            <option value="">All Categories</option>
+            <option value="Inventory">Inventory</option>
+            <option value="Manuals">Manuals</option>
+            <option value="Other">Other</option>
+          </select>
+          <select id="opinv-adm-filter-month" onchange="renderOpInvoicesAdmin()" style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+            <option value="">All Months</option>
+          </select>
+        </div>
+
+        <div id="opinv-adm-list" style="margin-top:16px"><div style="text-align:center;color:var(--muted);padding:24px">Loading…</div></div>
       </div>
     </div>
 
@@ -4433,6 +4462,10 @@ function switchAdminTab(tabId) {
   }
   if (tabId === 't-invoices') {
     loadAllInvoices();
+    return;
+  }
+  if (tabId === 't-op-invoices') {
+    loadOpInvoicesAdmin();
     return;
   }
   // Fetch dashboard data if we don't have it yet
@@ -7082,6 +7115,82 @@ function triggerOverdueEmailNotifications() {
 // dashboardData/getAdminDashboard (the heavy path backing the Fee Reconciliation tab) so
 // this tab loads fast on its own.
 let allInvoiceRecords = null;
+
+// ── Operational Invoices (admin view) ──────────────────────────
+// Every operational invoice/receipt logged across counsellors (currently Anuradha &
+// Bianca) — self-reported, no approval workflow, see supabase/migration_operational_invoices.sql.
+let opInvoicesAdminRecords = null;
+
+function loadOpInvoicesAdmin(force) {
+  if (opInvoicesAdminRecords && !force) { renderOpInvoicesAdmin(); return; }
+  const list = document.getElementById('opinv-adm-list');
+  if (list) list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:24px">Loading…</div>';
+  gasGet({ action: 'getOperationalInvoices' }, function (e, d) {
+    if (e || !d || !d.records) {
+      if (list) list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:24px">Could not load. Try Refresh.</div>';
+      return;
+    }
+    opInvoicesAdminRecords = d.records;
+    const personSel = document.getElementById('opinv-adm-filter-person');
+    if (personSel) {
+      const people = Array.from(new Set(opInvoicesAdminRecords.map(r => r.enteredBy))).filter(Boolean).sort();
+      const cur = personSel.value;
+      personSel.innerHTML = '<option value="">Everyone</option>' + people.map(p => '<option value="' + escC(p) + '">' + escC(p) + '</option>').join('');
+      if (people.includes(cur)) personSel.value = cur;
+    }
+    const monthSel = document.getElementById('opinv-adm-filter-month');
+    if (monthSel) {
+      const months = Array.from(new Set(opInvoicesAdminRecords.map(r => (r.entryDate || '').slice(0, 7)))).filter(Boolean).sort().reverse();
+      const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const curM = monthSel.value;
+      monthSel.innerHTML = '<option value="">All Months</option>' + months.map(m => {
+        const [y, mo] = m.split('-');
+        return '<option value="' + m + '">' + monthNames[Number(mo) - 1] + ' ' + y + '</option>';
+      }).join('');
+      if (months.includes(curM)) monthSel.value = curM;
+    }
+    renderOpInvoicesAdmin();
+  });
+}
+
+function renderOpInvoicesAdmin() {
+  const list = document.getElementById('opinv-adm-list');
+  if (!list || !opInvoicesAdminRecords) return;
+  const person = (document.getElementById('opinv-adm-filter-person') || {}).value || '';
+  const category = (document.getElementById('opinv-adm-filter-category') || {}).value || '';
+  const month = (document.getElementById('opinv-adm-filter-month') || {}).value || '';
+  const rows = opInvoicesAdminRecords.filter(r =>
+    (!person || r.enteredBy === person) &&
+    (!category || r.category === category) &&
+    (!month || (r.entryDate || '').slice(0, 7) === month)
+  );
+  if (!rows.length) {
+    list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:24px">No entries match these filters.</div>';
+    return;
+  }
+  const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  let html = '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">' + rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies') + ' &middot; Total ' + money(total) + '</div>';
+  html += '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+    '<th class="text-left">Date</th><th class="text-left">Entered By</th><th class="text-left">Centre</th>' +
+    '<th class="text-left">Category</th><th class="text-left">Vendor</th><th class="text-left">Description</th>' +
+    '<th style="text-align:right">Amount</th><th class="text-left">Invoice #</th><th>Receipt</th>' +
+    '</tr></thead><tbody>';
+  rows.forEach(r => {
+    html += '<tr>' +
+      '<td>' + escC(r.entryDate || '') + '</td>' +
+      '<td><strong>' + escC(r.enteredBy || '') + '</strong></td>' +
+      '<td>' + escC(r.centre || '') + '</td>' +
+      '<td>' + escC(r.category || '') + '</td>' +
+      '<td>' + escC(r.vendor || '—') + '</td>' +
+      '<td>' + escC(r.description || '—') + '</td>' +
+      '<td style="text-align:right;font-weight:600">' + money(r.amount) + '</td>' +
+      '<td>' + escC(r.invoiceNumber || '—') + '</td>' +
+      '<td style="text-align:center">' + (r.fileUrl ? '<a href="' + escC(r.fileUrl) + '" target="_blank" rel="noopener">📎 View</a>' : '<span style="color:var(--muted)">—</span>') + '</td>' +
+      '</tr>';
+  });
+  html += '</tbody></table></div>';
+  list.innerHTML = html;
+}
 
 function loadAllInvoices(force) {
   if (allInvoiceRecords && !force) { renderInvoicesTab(); return; }

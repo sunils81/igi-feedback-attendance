@@ -3701,7 +3701,13 @@ window.gasGet = (function () {
       }
     });
 
-    var counsellorStandings = Object.keys(globalCounsellorMap).map(function(k) {
+    // Excludes Arjun Mistry (2026-07-30) — not an active counsellor with real standings-
+    // worthy activity, same treatment as the existing Mrinal exclusion used elsewhere
+    // (mappedCounsellors). Feeds both admin.html's Championship Standings and
+    // counselor.html's Counsellor Leaderboard, since both read this same field.
+    var counsellorStandings = Object.keys(globalCounsellorMap).filter(function(k) {
+      return k !== 'Arjun Mistry';
+    }).map(function(k) {
       var item = globalCounsellorMap[k];
       item.qtdTarget = item.annualTarget / 4;
       return item;

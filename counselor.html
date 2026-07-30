@@ -3896,9 +3896,13 @@
           </div>
           <div class="field" style="margin-bottom:0">
             <label>Category *</label>
-            <select id="opinv-category">
-              <option value="Inventory">Inventory</option>
-              <option value="Manuals">Manuals</option>
+            <select id="opinv-category" onchange="onOpInvCategoryChange()">
+              <option value="Course Collateral">Course Collateral (manuals, worksheets, kits)</option>
+              <option value="Classroom Equipment">Classroom Equipment</option>
+              <option value="Promotion Collateral">Promotion Collateral (marketing)</option>
+              <option value="Misc / Diploma">Misc / Diploma</option>
+              <option value="Corporate Batch">Corporate Batch</option>
+              <option value="Office / Daily Use">Office / Daily Use</option>
               <option value="Other">Other</option>
             </select>
           </div>
@@ -3911,13 +3915,24 @@
             <input type="text" id="opinv-invoice-number" placeholder="Optional">
           </div>
         </div>
+        <div id="opinv-item-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:12px">
+          <div class="field" style="margin-bottom:0">
+            <label id="opinv-item-label">Item</label>
+            <select id="opinv-item-select" style="margin-bottom:6px"></select>
+            <input type="text" id="opinv-item-custom" placeholder="Type item name">
+          </div>
+          <div class="field" style="margin-bottom:0" id="opinv-qty-wrap">
+            <label>Quantity</label>
+            <input type="number" id="opinv-quantity" placeholder="0" min="0" step="1">
+          </div>
+        </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px">
           <div class="field" style="margin-bottom:0">
             <label>Vendor / Paid To</label>
             <input type="text" id="opinv-vendor" placeholder="e.g. XYZ Stationers">
           </div>
           <div class="field" style="margin-bottom:0">
-            <label>Description</label>
+            <label id="opinv-description-label">Description</label>
             <input type="text" id="opinv-description" placeholder="What was this for?">
           </div>
         </div>
@@ -4951,6 +4966,61 @@ function canLogOperationalInvoices() {
 var opInvoiceRecords = [];
 var currentOpInvoiceFileUrl = '';
 
+// Categories that map to the existing inv_items master list — these get a live item
+// dropdown; everything else (Office/Daily Use, Other) gets free text only, since there's
+// no master list for them to draw from.
+var OP_INV_LINKED_CATEGORIES = ['Course Collateral', 'Classroom Equipment', 'Promotion Collateral', 'Misc / Diploma', 'Corporate Batch'];
+var opInvItemsCache = null; // { category: [itemName, ...] }, lazy-loaded once from getInventoryStock
+
+function loadOpInvItemsCache(onDone) {
+  if (opInvItemsCache) { onDone(); return; }
+  gasGet({ action: 'getInventoryStock', centre: '' }, function(e, d) {
+    opInvItemsCache = {};
+    if (!e && d && d.list) {
+      d.list.forEach(function(it) {
+        if (!it.category || !it.itemName) return;
+        if (!opInvItemsCache[it.category]) opInvItemsCache[it.category] = [];
+        if (opInvItemsCache[it.category].indexOf(it.itemName) < 0) opInvItemsCache[it.category].push(it.itemName);
+      });
+      Object.keys(opInvItemsCache).forEach(function(c) { opInvItemsCache[c].sort(); });
+    }
+    onDone();
+  });
+}
+
+function onOpInvCategoryChange() {
+  const category = document.getElementById('opinv-category').value;
+  const isLinked = OP_INV_LINKED_CATEGORIES.indexOf(category) >= 0;
+  const selectEl = document.getElementById('opinv-item-select');
+  const customEl = document.getElementById('opinv-item-custom');
+  const labelEl = document.getElementById('opinv-item-label');
+  const descLabelEl = document.getElementById('opinv-description-label');
+
+  if (isLinked) {
+    labelEl.textContent = 'Item';
+    customEl.placeholder = 'Or type a name not in the list';
+    descLabelEl.textContent = 'Description';
+    selectEl.style.display = '';
+    selectEl.innerHTML = '<option value="">Loading items…</option>';
+    loadOpInvItemsCache(function() {
+      const names = (opInvItemsCache[category] || []);
+      selectEl.innerHTML = '<option value="">— Select (or type below) —</option>' +
+        names.map(function(n) { return '<option value="' + escC(n) + '">' + escC(n) + '</option>'; }).join('');
+    });
+  } else {
+    selectEl.style.display = 'none';
+    selectEl.innerHTML = '';
+    if (category === 'Other') {
+      labelEl.textContent = 'Specify *';
+      customEl.placeholder = 'What was this for?';
+    } else { // Office / Daily Use
+      labelEl.textContent = 'Item';
+      customEl.placeholder = 'e.g. Tea, stationery, cleaning supplies';
+    }
+    descLabelEl.textContent = 'Description (optional)';
+  }
+}
+
 function uploadOperationalInvoiceFile(input) {
   const file = input.files && input.files[0];
   const status = document.getElementById('opinv-file-status');
@@ -4988,6 +5058,17 @@ function saveOperationalInvoiceEntry() {
   if (!date) { errEl.textContent = 'Date is required.'; return; }
   if (!amount || Number(amount) <= 0) { errEl.textContent = 'Enter a valid amount.'; return; }
 
+  // Custom text always takes priority over the dropdown — lets someone type a name that
+  // isn't in the inventory master list yet, per instruction, rather than being blocked.
+  const itemCustom = document.getElementById('opinv-item-custom').value.trim();
+  const itemSelect = document.getElementById('opinv-item-select').value;
+  const itemName = itemCustom || itemSelect;
+  if (category === 'Other' && !itemName) {
+    errEl.textContent = 'Please specify what this "Other" entry was for.';
+    return;
+  }
+  const quantity = document.getElementById('opinv-quantity').value;
+
   const centre = (allowedCentres && allowedCentres.length) ? allowedCentres[0] : '';
   gasGet({
     action: 'saveOperationalInvoice',
@@ -4999,17 +5080,20 @@ function saveOperationalInvoiceEntry() {
     invoiceNumber: document.getElementById('opinv-invoice-number').value.trim(),
     centre: centre,
     enteredBy: counselorName,
-    fileUrl: currentOpInvoiceFileUrl
+    fileUrl: currentOpInvoiceFileUrl,
+    itemName: itemName,
+    quantity: quantity
   }, function(e, d) {
     if (e || !d || d.status !== 'ok') {
       errEl.textContent = (d && d.reason) || 'Could not save. Please try again.';
       return;
     }
     showToast('Entry saved.');
-    ['opinv-date','opinv-vendor','opinv-description','opinv-amount','opinv-invoice-number'].forEach(function(id) {
+    ['opinv-date','opinv-vendor','opinv-description','opinv-amount','opinv-invoice-number','opinv-item-custom','opinv-quantity'].forEach(function(id) {
       document.getElementById(id).value = '';
     });
-    document.getElementById('opinv-category').value = 'Inventory';
+    document.getElementById('opinv-category').value = 'Course Collateral';
+    onOpInvCategoryChange();
     document.getElementById('opinv-file-input').value = '';
     document.getElementById('opinv-file-status').textContent = '';
     currentOpInvoiceFileUrl = '';
@@ -5020,6 +5104,10 @@ function saveOperationalInvoiceEntry() {
 function loadOperationalInvoices() {
   const dateEl = document.getElementById('opinv-date');
   if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
+  if (document.getElementById('opinv-item-select') && !document.getElementById('opinv-item-select').dataset.inited) {
+    document.getElementById('opinv-item-select').dataset.inited = '1';
+    onOpInvCategoryChange();
+  }
   const listEl = document.getElementById('opinv-list');
   if (listEl) listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">Loading…</div></div>';
   gasGet({ action: 'getOperationalInvoices', enteredBy: counselorName }, function(e, d) {
@@ -5055,13 +5143,15 @@ function renderOperationalInvoicesList() {
   const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
   let html = '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">' + rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies') + ' &middot; Total ' + money(total) + '</div>';
   html += '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
-    '<th class="text-left">Date</th><th class="text-left">Category</th><th class="text-left">Vendor</th>' +
+    '<th class="text-left">Date</th><th class="text-left">Category</th><th class="text-left">Item</th><th>Qty</th><th class="text-left">Vendor</th>' +
     '<th class="text-left">Description</th><th>Amount</th><th class="text-left">Invoice #</th><th>Receipt</th><th></th>' +
     '</tr></thead><tbody>';
   rows.forEach(r => {
     html += '<tr>' +
       '<td>' + escC(r.entryDate || '') + '</td>' +
       '<td>' + escC(r.category || '') + '</td>' +
+      '<td>' + escC(r.itemName || '—') + '</td>' +
+      '<td style="text-align:right">' + (r.quantity != null ? r.quantity : '—') + '</td>' +
       '<td>' + escC(r.vendor || '—') + '</td>' +
       '<td>' + escC(r.description || '—') + '</td>' +
       '<td style="text-align:right;font-weight:600">' + money(r.amount) + '</td>' +

@@ -2603,6 +2603,8 @@ window.gasGet = (function () {
       centre: p.centre,
       entered_by: p.enteredBy,
       file_url: p.fileUrl || '',
+      item_name: p.itemName || '',
+      quantity: (p.quantity !== undefined && p.quantity !== '') ? Number(p.quantity) : null,
       updated_at: nowISO()
     };
     if (p.id) {
@@ -2630,7 +2632,8 @@ window.gasGet = (function () {
           id: r.id, entryDate: r.entry_date, category: r.category, vendor: r.vendor,
           description: r.description, amount: Number(r.amount) || 0,
           invoiceNumber: r.invoice_number, centre: r.centre, enteredBy: r.entered_by,
-          fileUrl: r.file_url, createdAt: r.created_at
+          fileUrl: r.file_url, itemName: r.item_name, quantity: r.quantity != null ? Number(r.quantity) : null,
+          createdAt: r.created_at
         };
       });
       cb(null, { status: 'ok', records: records });

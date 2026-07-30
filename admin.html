@@ -1468,14 +1468,14 @@
       <div class="charts-grid">
         <div class="chart-card">
           <div class="chart-title">YTD Historical Comparison</div>
-          <div class="chart-subtitle">Revenue from Apr 1 through today's month, same window every year, vs. last 3 years (₹ Crores, incl. GST)</div>
+          <div class="chart-subtitle">Revenue from Apr 1 through today's month, same window every year, vs. last 3 years (₹ Crores, excl. GST)</div>
           <div class="chart-wrap">
             <canvas id="ytdComparisonChart"></canvas>
           </div>
         </div>
         <div class="chart-card">
           <div class="chart-title">Monthly Collections Trajectory</div>
-          <div class="chart-subtitle">Appraisal cycle Apr→Mar · FY 26–27 (gold) vs FY 25–26 (grey) · ₹ Crores · Incl. GST</div>
+          <div class="chart-subtitle">Appraisal cycle Apr→Mar · FY 26–27 (gold) vs FY 25–26 (grey) · ₹ Crores · Excl. GST</div>
           <div class="chart-wrap">
             <canvas id="monthlyTrendChart"></canvas>
           </div>
@@ -5160,8 +5160,8 @@ function renderRevenueTab() {
   // Branch Health Dials Grid
   renderBranchHealthGrid(rows, rev, counsellorsByCentre);
 
-  // Render Chart.js (YTD Comparison uses GST YTD to match historical GST YoY reference)
-  renderRevenueCharts(totalAchievedGst, rows);
+  // Render Chart.js (YTD Comparison — Excl. GST throughout, see renderRevenueCharts)
+  renderRevenueCharts(totalAchievedCourse, rows);
 
   // Revenue by Course breakdown (from the per-student fee ledger)
   renderRevenueByCourse(d);
@@ -5632,7 +5632,11 @@ function renderRevenueCharts(totalAchieved, rows) {
       const arr = HIST_REVENUE[calYear];
       if (arr && arr[calMonthIdx] != null) sum += arr[calMonthIdx];
     }
-    return sum;
+    // HIST_REVENUE only has Incl.-GST figures for closed historical years — converted to
+    // Excl. GST here (÷1.18) so all four bars sit on one consistent basis (2026-07-30 fix,
+    // same treatment as the Appraisal Cycle YoY table). totalAchieved (the FY26-27 bar) is
+    // now passed in as totalAchievedCourse (Excl. GST) too — see the call site.
+    return sum / IGI_GST_RATE;
   }
   const _ytdToday = new Date();
   const _ytdCalMonth = _ytdToday.getMonth() + 1; // 1-12
@@ -5693,11 +5697,14 @@ function renderRevenueCharts(totalAchieved, rows) {
   if (trendCtx) {
     // Cycle months: Apr(M1)→Mar(M12)
     const cycleMonths = ['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar'];
-    // FY25-26 baseline: Apr2025→Mar2026 (₹ Lakhs, converted to Crores below)
+    // FY25-26 baseline: Apr2025→Mar2026 (₹ Lakhs, Incl. GST as recorded — converted to
+    // Excl. GST below to match the FY26-27 line, 2026-07-30 fix, same as the YTD
+    // Historical Comparison chart above and the Appraisal Cycle YoY table)
     const baseline_fy2526_L = [32.19, 57.35, 35.33, 82.03, 24.76, 52.10, 6.46, 58.52, 9.43, 83.41, 73.23, 35.54];
-    const baseline_fy2526 = baseline_fy2526_L.map(v => v / 100);
-    // FY26-27 actuals: Apr2026=69.40L, May2026=74.03L; rest from live data (all in ₹ Crores)
-    const liveData_fy2627 = [69.40 / 100, 74.03 / 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    const baseline_fy2526 = baseline_fy2526_L.map(v => (v / 100) / IGI_GST_RATE);
+    // FY26-27 actuals: Apr2026=69.40L, May2026=74.03L (Incl. GST as recorded) — converted
+    // to Excl. GST below; rest computed live from achievedCourse (already Excl. GST)
+    const liveData_fy2627 = [(69.40 / 100) / IGI_GST_RATE, (74.03 / 100) / IGI_GST_RATE, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
     // Fill Jun 2026 onwards (cycle months 3–9 = calendar months 6–12)
     const dynamicMonthly = {};
@@ -5710,7 +5717,7 @@ function renderRevenueCharts(totalAchieved, rows) {
         if (yr === 2026 && mo >= 4)  cycleIdx = mo - 4;       // Apr=0..Dec=8
         if (yr === 2027 && mo <= 3)  cycleIdx = mo + 8;       // Jan=9, Feb=10, Mar=11
         if (cycleIdx >= 2 && cycleIdx < 12) {
-          dynamicMonthly[cycleIdx] = (dynamicMonthly[cycleIdx] || 0) + (Number(mr.achievedGst) || 0) / 10000000;
+          dynamicMonthly[cycleIdx] = (dynamicMonthly[cycleIdx] || 0) + (Number(mr.achievedCourse) || 0) / 10000000;
         }
       });
     }

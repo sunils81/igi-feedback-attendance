@@ -3883,6 +3883,9 @@
         <div class="field" style="min-width:150px;margin-bottom:0"><label>Month</label>
           <select id="fr-filter-month" onchange="renderFeeRecordTab()"><option value="">All Months</option></select>
         </div>
+        <div class="field" style="min-width:150px;margin-bottom:0"><label>Centre</label>
+          <select id="fr-filter-centre" onchange="renderFeeRecordTab()"><option value="">All Centres</option></select>
+        </div>
         <div class="field" style="min-width:170px;margin-bottom:0"><label>Batch</label>
           <select id="fr-filter-batch" onchange="renderFeeRecordTab()"><option value="">All Batches</option></select>
         </div>
@@ -8960,6 +8963,16 @@ function populateFeeRecordFilterOptions() {
     return '<option value="' + escC(b) + '"' + (b === curBatch ? ' selected' : '') + '>' + escC(b) + '</option>';
   }).join('');
 
+  // Centre — same full-dataset convention as Batch above. Matters most for someone with
+  // access to several centres (e.g. Anuradha), where the unfiltered list otherwise mixes
+  // every centre's records together with no quick way to isolate just one.
+  var centreSel = document.getElementById('fr-filter-centre');
+  var curCentre = centreSel.value;
+  var centres = Array.from(new Set((allInvoiceRecords || []).map(function(r){ return r.centre; }).filter(Boolean))).sort();
+  centreSel.innerHTML = '<option value="">All Centres</option>' + centres.map(function(c) {
+    return '<option value="' + escC(c) + '"' + (c === curCentre ? ' selected' : '') + '>' + escC(c) + '</option>';
+  }).join('');
+
   var cSel = document.getElementById('fr-filter-counsellor');
   var curC = cSel.value;
   var names = Array.from(new Set((allInvoiceRecords || []).map(function(r){ return r.enteredBy; }).filter(Boolean))).sort();
@@ -8974,6 +8987,7 @@ function populateFeeRecordFilterOptions() {
 
 function resetFeeRecordFilters() {
   document.getElementById('fr-filter-month').value = '';
+  document.getElementById('fr-filter-centre').value = '';
   document.getElementById('fr-filter-batch').value = '';
   document.getElementById('fr-filter-search').value = '';
   renderFeeRecordTab();
@@ -9004,6 +9018,7 @@ function feeRecordFilteredRows() {
   // losing the union as the default. It narrows WITHIN this scope, never outside it.
   var effectiveCounsellor = document.getElementById('fr-filter-counsellor').value || '';
   var monthFilter = document.getElementById('fr-filter-month').value;
+  var centreFilter = document.getElementById('fr-filter-centre').value;
   var batchFilter = document.getElementById('fr-filter-batch').value;
   var search = (document.getElementById('fr-filter-search').value || '').trim().toLowerCase();
   // "Missing invoices only" — surfaces exactly the records that used to need the separate
@@ -9019,6 +9034,7 @@ function feeRecordFilteredRows() {
       if (effectiveCounsellor && r.enteredBy !== effectiveCounsellor) return false;
     }
     if (monthFilter && frRecordMonth(r) !== monthFilter) return false;
+    if (centreFilter && r.centre !== centreFilter) return false;
     if (batchFilter && r.batchCode !== batchFilter) return false;
     if (missingInvoiceOnly && r.invoiceNumber) return false;
     if (search) {
@@ -9041,6 +9057,7 @@ function corpBatchesAsFeeRows() {
   if (!corpBatchRecords || !corpBatchRecords.length) return [];
   var effectiveCounsellor = document.getElementById('fr-filter-counsellor').value || '';
   var monthFilter = document.getElementById('fr-filter-month').value;
+  var centreFilter = document.getElementById('fr-filter-centre').value;
   var batchFilter = document.getElementById('fr-filter-batch').value;
   if (batchFilter) return []; // corporate batches have no student batch to match against
   var search = (document.getElementById('fr-filter-search').value || '').trim().toLowerCase();
@@ -9056,6 +9073,7 @@ function corpBatchesAsFeeRows() {
       if (effectiveCounsellor && r.recordedBy !== effectiveCounsellor) return false;
     }
     if (monthFilter && r.revenueMonth !== monthFilter) return false;
+    if (centreFilter && r.centre !== centreFilter) return false;
     if (missingInvoiceOnly && r.invoiceNumber) return false;
     if (search) {
       var hay = (String(r.companyName||'') + ' ' + String(r.description||'')).toLowerCase();

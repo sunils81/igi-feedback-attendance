@@ -3010,7 +3010,7 @@ window.gasGet = (function () {
             // correctly all along, this view just never surfaced it.
             courseFee: mapped.course_fee, gstAmount: mapped.gst_amount,
             discountPct: mapped.discount_pct, discountAmount: mapped.discount_amount,
-            netPayable: mapped.net_payable,
+            netPayable: mapped.net_payable, collected: mapped.collected,
             paymentDate: r.payment_date || '', createdAt: r.created_at || '',
             invoiceNumber: mapped.invoice_number, invoiceAmount: mapped.invoice_amount,
             invoiceDate: mapped.invoice_date, invoiceFileUrl: mapped.invoice_file_url,

@@ -3815,7 +3815,9 @@
         ⚠ <strong>No fee catalog entry for this course</strong> — Course Fee shows ₹0 because this course isn't in the system's price list, not because the fee is actually zero. Saving right now would overwrite this record's Net Payable/Outstanding with ₹0, discarding whatever was correctly recorded before. Saving is disabled until this course is added to the catalog — contact whoever maintains it before making any changes here.
       </div>
       <div class="grid2">
-        <div class="field"><label>Course Fee <span style="font-weight:400;color:var(--muted)">(fixed by course, excl. GST — not editable)</span></label><input type="number" id="fee-course-fee" readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed" title="Locked to the standard fee for this course. To offer a lower amount, use the Discount field below."><div id="fee-course-fee-gst-hint" style="font-size:11px;color:var(--muted);margin-top:4px"></div></div>
+        <div class="field"><label>Course Fee <span style="font-weight:400;color:var(--muted)">(fixed by course, excl. GST — not editable)</span></label><input type="number" id="fee-course-fee" readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed" title="Locked to the standard fee for this course. To offer a lower amount, use the Discount field below."><div id="fee-course-fee-gst-hint" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+          <div id="fee-course-fee-unlock-link" style="display:none;margin-top:4px"><a href="javascript:void(0)" style="font-size:11px" onclick="unlockFeeCourseField()">Fee looks wrong on this record? Correct it</a></div>
+        </div>
         <div class="field"><label>Down Payment <span style="font-weight:400;color:var(--muted)">(booking amount — included in course fee, paid upfront)</span></label><input type="number" id="fee-reg-fee" oninput="recalcFeeForm()"></div>
         <div class="field"><label>Discount</label>
           <select id="fee-disc-pct" onchange="toggleCustomDiscount();recalcFeeForm()">
@@ -3898,6 +3900,45 @@
 
       <div id="fr-summary" class="dashboard-summary" style="display:none"></div>
       <div id="fr-list"><div class="empty-state"><div class="empty-icon">📑</div><div class="empty-title">Loading fee record…</div><div class="empty-copy">Pulling your fee records, grouped by month.</div></div></div>
+
+      <div style="margin-top:28px;padding-top:20px;border-top:1.5px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:4px">
+          <h3 style="margin:0;font-size:16px">🏢 Corporate Batches</h3>
+          <button class="btn btn-gold" style="width:auto;padding:8px 16px;font-size:12px" onclick="openCorporateBatchForm()">+ Add Corporate Batch</button>
+        </div>
+        <p class="sub" style="margin-top:2px">Company training batches — a flat fee for the whole batch, not per associate. Separate from student fee records above.</p>
+        <div id="corp-batch-list"><div class="empty-state"><div class="empty-icon">🏢</div><div class="empty-title">Loading…</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Corporate Batch entry modal — opened from both the Fee Record tab and the Revenue
+       tab's Corporate Program Revenue section (openCorporateBatchForm). -->
+  <div id="corp-batch-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,.5);z-index:9000;align-items:center;justify-content:center;padding:16px">
+    <div style="background:var(--white);border-radius:14px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto;padding:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <h3 id="corp-batch-modal-title" style="margin:0">Add Corporate Batch</h3>
+        <button onclick="closeCorporateBatchForm()" style="background:transparent;border:none;font-size:20px;cursor:pointer;color:var(--muted)">×</button>
+      </div>
+      <p class="sub" style="margin-top:2px">The Course Fee is the flat total for the whole batch — it is never multiplied by the number of associates trained.</p>
+      <div class="field"><label>Company / Client Name *</label><input type="text" id="corp-company-name" placeholder="e.g. Riyaana Creations Pvt Ltd"></div>
+      <div class="grid2">
+        <div class="field"><label>Invoice Date</label><input type="date" id="corp-invoice-date"></div>
+        <div class="field"><label>Invoice Number</label><input type="text" id="corp-invoice-number" placeholder="Optional"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Course Fee (₹, flat total, excl. GST) *</label><input type="number" id="corp-course-fee" placeholder="0" min="0" oninput="recalcCorpBatchForm()"></div>
+        <div class="field"><label>Associates Trained</label><input type="number" id="corp-associates" placeholder="0" min="0"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Discount %</label><input type="number" id="corp-discount-pct" placeholder="0" min="0" max="100" oninput="recalcCorpBatchForm()"></div>
+        <div class="field"><label>Centre</label><select id="corp-centre"></select></div>
+      </div>
+      <div class="field"><label>Location / Client Note (optional)</label><input type="text" id="corp-location-client" placeholder="e.g. Kolkata"></div>
+      <div class="field"><label>Description</label><input type="text" id="corp-description" placeholder="e.g. Corporate training"></div>
+      <div id="corp-batch-gst-hint" style="font-size:12px;color:var(--muted);margin:-8px 0 14px"></div>
+      <button class="btn btn-gold" style="width:auto;padding:10px 20px" onclick="saveCorporateBatchEntry()">Save Corporate Batch</button>
+      <span id="corp-batch-form-err" style="color:#B00020;font-size:12px;margin-left:10px"></span>
     </div>
   </div>
 
@@ -5634,6 +5675,7 @@ function switchTab(id) {
   }
   if (id === 't-fee-record') {
     loadFeeRecordTab();
+    loadCorporateBatches();
   }
   if (id === 't-op-invoices') {
     loadOperationalInvoices();
@@ -8677,6 +8719,153 @@ function frRecordMonth(r) {
   return r.revenueMonth || r.month || '';
 }
 
+/* ══════════════════════════════════════════════════════════════
+   CORPORATE BATCHES — full per-transaction record for corporate training revenue
+   (company, invoice #, date, associates trained), replacing the old single flat monthly
+   number with nothing behind it. Accessible from both the Fee Record tab and the Revenue
+   tab's Corporate Program Revenue section (both call openCorporateBatchForm). Course Fee
+   is always a flat total for the batch — never multiplied by associates trained.
+   ══════════════════════════════════════════════════════════════ */
+var corpBatchRecords = [];
+var editingCorpBatchId = null;
+
+function openCorporateBatchForm(id, presetCentre) {
+  editingCorpBatchId = id || null;
+  document.getElementById('corp-batch-modal-title').textContent = id ? 'Edit Corporate Batch' : 'Add Corporate Batch';
+  document.getElementById('corp-batch-form-err').textContent = '';
+  var centreSel = document.getElementById('corp-centre');
+  var centres = (allowedCentres && allowedCentres.length) ? allowedCentres : (CENTRES || []);
+  centreSel.innerHTML = centres.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
+
+  if (id) {
+    var rec = corpBatchRecords.find(function(r) { return r.id === id; });
+    if (rec) {
+      document.getElementById('corp-company-name').value = rec.companyName || '';
+      document.getElementById('corp-invoice-date').value = rec.invoiceDate || '';
+      document.getElementById('corp-invoice-number').value = rec.invoiceNumber || '';
+      document.getElementById('corp-course-fee').value = rec.courseFee || '';
+      document.getElementById('corp-associates').value = rec.associatesTrained || '';
+      document.getElementById('corp-discount-pct').value = rec.discountPct || '';
+      document.getElementById('corp-centre').value = rec.centre || centres[0];
+      document.getElementById('corp-location-client').value = rec.locationClient || '';
+      document.getElementById('corp-description').value = rec.description || '';
+    }
+  } else {
+    ['corp-company-name','corp-invoice-number','corp-course-fee','corp-associates','corp-discount-pct','corp-location-client','corp-description'].forEach(function(id2) {
+      document.getElementById(id2).value = '';
+    });
+    document.getElementById('corp-invoice-date').value = new Date().toISOString().slice(0,10);
+    if (presetCentre) document.getElementById('corp-centre').value = presetCentre;
+  }
+  recalcCorpBatchForm();
+  document.getElementById('corp-batch-modal-overlay').style.display = 'flex';
+}
+
+function closeCorporateBatchForm() {
+  document.getElementById('corp-batch-modal-overlay').style.display = 'none';
+  editingCorpBatchId = null;
+}
+
+function recalcCorpBatchForm() {
+  var fee = Number(document.getElementById('corp-course-fee').value) || 0;
+  var dp = Number(document.getElementById('corp-discount-pct').value) || 0;
+  var disc = Math.round(fee * dp / 100);
+  var net = fee - disc;
+  var gst = Math.round(net * 0.18);
+  document.getElementById('corp-batch-gst-hint').textContent =
+    fee ? ('Net after discount: ' + money(net) + '  ·  GST (18%): ' + money(gst) + '  ·  Total: ' + money(net + gst)) : '';
+}
+
+function saveCorporateBatchEntry() {
+  var companyName = document.getElementById('corp-company-name').value.trim();
+  var courseFee = document.getElementById('corp-course-fee').value;
+  var errEl = document.getElementById('corp-batch-form-err');
+  errEl.textContent = '';
+  if (!companyName) { errEl.textContent = 'Company / client name is required.'; return; }
+  if (!courseFee || Number(courseFee) <= 0) { errEl.textContent = 'Enter a valid course fee.'; return; }
+
+  gasGet({
+    action: 'saveCorporateBatch',
+    id: editingCorpBatchId || '',
+    companyName: companyName,
+    invoiceDate: document.getElementById('corp-invoice-date').value,
+    invoiceNumber: document.getElementById('corp-invoice-number').value.trim(),
+    courseFee: courseFee,
+    discountPct: document.getElementById('corp-discount-pct').value,
+    associatesTrained: document.getElementById('corp-associates').value,
+    centre: document.getElementById('corp-centre').value,
+    locationClient: document.getElementById('corp-location-client').value.trim(),
+    description: document.getElementById('corp-description').value.trim(),
+    recordedBy: counselorName
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      errEl.textContent = (d && d.reason) || 'Could not save. Please try again.';
+      return;
+    }
+    showToast('Corporate batch saved.');
+    closeCorporateBatchForm();
+    loadCorporateBatches(true);
+  });
+}
+
+function loadCorporateBatches(force) {
+  if (corpBatchRecords.length && !force) { renderCorporateBatchList(); return; }
+  var list = document.getElementById('corp-batch-list');
+  if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">🏢</div><div class="empty-title">Loading…</div></div>';
+  gasGet({ action: 'getCorporateBatches', recordedBy: counselorName, isAdmin: isAdmin ? 'true' : 'false' }, function(e, d) {
+    if (e || !d || !d.records) {
+      if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load. Try again.</div></div>';
+      return;
+    }
+    corpBatchRecords = d.records;
+    renderCorporateBatchList();
+  });
+}
+
+function renderCorporateBatchList() {
+  var list = document.getElementById('corp-batch-list');
+  if (!list) return;
+  if (!corpBatchRecords.length) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">🏢</div><div class="empty-title">No corporate batches yet.</div><div class="empty-copy">Add one above.</div></div>';
+    return;
+  }
+  var total = corpBatchRecords.reduce(function(s, r) { return s + (r.courseFee - r.discountAmount); }, 0);
+  var totalAssoc = corpBatchRecords.reduce(function(s, r) { return s + (r.associatesTrained || 0); }, 0);
+  var html = '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">' + corpBatchRecords.length + ' batch' + (corpBatchRecords.length===1?'':'es') + ' &middot; ' + totalAssoc + ' associates trained &middot; Total ' + money(total) + '</div>';
+  html += '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+    '<th class="text-left">Company</th><th class="text-left">Invoice Date</th><th class="text-left">Invoice #</th>' +
+    '<th class="text-left">Centre</th><th>Associates</th><th>Fee</th><th>Discount</th><th></th>' +
+    '</tr></thead><tbody>';
+  corpBatchRecords.forEach(function(r) {
+    var net = r.courseFee - r.discountAmount;
+    html += '<tr>' +
+      '<td><strong>' + escC(r.companyName) + '</strong>' + (r.description ? '<div style="font-size:11px;color:var(--muted)">' + escC(r.description) + '</div>' : '') + '</td>' +
+      '<td>' + escC(r.invoiceDate || '—') + '</td>' +
+      '<td>' + escC(r.invoiceNumber || '—') + '</td>' +
+      '<td>' + escC(r.centre || '') + '</td>' +
+      '<td style="text-align:right">' + (r.associatesTrained || 0) + '</td>' +
+      '<td style="text-align:right;font-weight:600">' + money(net) + '</td>' +
+      '<td style="text-align:right">' + (r.discountPct ? r.discountPct + '%' : '—') + '</td>' +
+      '<td><button class="del-btn" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer" onclick="openCorporateBatchForm(\'' + escC(r.id) + '\')">Edit</button> ' +
+        '<button class="del-btn" onclick="deleteCorporateBatchEntry(\'' + escC(r.id) + '\')">Remove</button></td>' +
+      '</tr>';
+  });
+  html += '</tbody></table></div>';
+  list.innerHTML = html;
+}
+
+function deleteCorporateBatchEntry(id) {
+  if (!confirm('Remove this corporate batch? This cannot be undone.')) return;
+  gasGet({ action: 'deleteCorporateBatch', id: id, recordedBy: counselorName, isAdmin: isAdmin ? 'true' : 'false' }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      showToast((d && d.reason) || 'Could not remove.', 'error');
+      return;
+    }
+    showToast('Corporate batch removed.');
+    loadCorporateBatches(true);
+  });
+}
+
 function loadFeeRecordTab(force, onDone) {
   if (allInvoiceRecords && !force) {
     populateFeeRecordFilterOptions();
@@ -9242,7 +9431,18 @@ function _backfillRenderRows() {
         '<td><input value="' + escC(r.invNum) + '" oninput="_backfillUpdateRow(' + idx + ',\'invNum\',this.value)" style="width:100%;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
         '<td><input type="date" value="' + escC(r.invDate || '') + '" oninput="_backfillUpdateRow(' + idx + ',\'invDate\',this.value)" style="width:130px;padding:5px;border:1px solid #d1d5db;border-radius:5px"></td>' +
         '<td><button onclick="_backfillRemoveRow(' + idx + ')" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:15px">✕</button></td>' +
-      '</tr>';
+      '</tr>' +
+      // Warning row: Course Fee was edited away from the catalog price AND a discount % is
+      // also set — the combination that double-discounted Aryan Gupta's DG record
+      // (2026-07-31): someone typed what he actually paid (already net of 5%) into Course
+      // Fee, then ALSO set Discount % to 5, so the system subtracted 5% a second time.
+      // Course Fee here must be the price BEFORE any discount — Discount % does the
+      // reducing. If this student genuinely has a different negotiated catalog price with
+      // no separate discount, set Discount % back to 0.
+      ((Number(r.fee) !== _backfillCatalogFee() && Number(r.discPct) > 0) ?
+        '<tr><td></td><td colspan="9" style="padding:2px 8px 8px;color:#B45309;font-size:11px;background:#FFFBEB">' +
+        '⚠ Course Fee (' + money(r.fee) + ') differs from the catalog price (' + money(_backfillCatalogFee()) + ') AND a discount % is set — Course Fee must be the price BEFORE the discount, not what the student actually paid, or the discount gets applied twice.</td></tr>'
+        : '');
     }).join('') +
     '</tbody></table></div>';
 }
@@ -9444,6 +9644,16 @@ function openFeeForm(studentId) {
   if (batchMoveSel) batchMoveSel.style.display = 'none';
   currentFeeStudent.newBatchCode = null;
   currentFeeStudent.newBatchCentre = null;
+  // Course Fee stays locked by default even on an existing record — this link is the
+  // deliberate escape hatch for when the STORED value itself is genuinely wrong (e.g.
+  // someone typed an already-discounted amount into it instead of the catalog price — see
+  // unlockFeeCourseField and the 2026-07-31 Aryan Gupta fix). Without this, a wrong Course
+  // Fee on a saved record was permanently unfixable through the UI: the field always
+  // redisplays whatever's stored, locked, with no way to correct it.
+  const courseFeeUnlockLink = document.getElementById('fee-course-fee-unlock-link');
+  if (courseFeeUnlockLink) courseFeeUnlockLink.style.display = existing ? 'block' : 'none';
+  const courseFeeInput = document.getElementById('fee-course-fee');
+  if (courseFeeInput) { courseFeeInput.readOnly = true; courseFeeInput.style.background = '#f3f4f6'; courseFeeInput.style.color = '#6b7280'; courseFeeInput.style.cursor = 'not-allowed'; }
   // Course fee is always the fixed system price for this course (COURSE_FEES_JS), never a
   // per-student value — even when editing an existing record. Adjustments for an individual
   // student go through the Discount % field, not by typing a different course fee (that was
@@ -9551,6 +9761,27 @@ function onFeeBatchMoveChange() {
   currentFeeStudent.newBatchCode = newBatchCode;
   currentFeeStudent.newBatchCentre = newCentre;
   document.getElementById('fee-ro-batch').textContent = newBatchCode + ' · ' + newCentre + ' (moving on save)';
+}
+
+// Unlocks Course Fee for direct editing on an EXISTING record — the deliberate escape
+// hatch for when the stored value itself is wrong (e.g. Aryan Gupta's DG record, 2026-07-31:
+// someone typed his already-5%-discounted price into Course Fee, then ALSO set Discount %
+// to 5%, so the system subtracted 5% a second time — 157605 * 0.95 ≈ 149725 instead of the
+// intended 157605). Without this, a wrong stored Course Fee had no path to correction: the
+// field always redisplays whatever's saved, permanently locked. Same collapsed-by-default,
+// deliberate-click pattern as "Change batch"/"Change counsellor" — this doesn't unlock
+// itself as a side effect of anything else.
+function unlockFeeCourseField() {
+  const input = document.getElementById('fee-course-fee');
+  const link = document.getElementById('fee-course-fee-unlock-link');
+  if (input) {
+    input.readOnly = false;
+    input.style.background = '#fff';
+    input.style.color = 'inherit';
+    input.style.cursor = 'text';
+    input.title = 'Editing directly — make sure this is the price BEFORE any discount, not what the student actually paid. Use the Discount field for reductions, not this field.';
+  }
+  if (link) link.style.display = 'none';
 }
 
 function deleteFeeRecordUI(recordId, enteredBy, studentName, collected, onDone) {
@@ -11973,6 +12204,10 @@ function renderRevenueEntryPanel(m, designatedCentre, otherDefault, existingRows
     '</div>'+
     '<div class="rev-expand-row" onclick="revToggleBucket(this)"><span class="rev-expand-chevron'+(existingCorp.achievedCourse||existingCorp.studentCount?' open':'')+'">&#9658;</span><span class="rev-expand-label">Corporate Program Revenue</span><span class="rev-expand-badge '+(existingCorp.achievedCourse||existingCorp.studentCount?'filled':'opt')+'">'+(existingCorp.achievedCourse||existingCorp.studentCount?'Filled':'Optional')+'</span></div>'+
     '<div class="rev-bucket-body'+(existingCorp.achievedCourse||existingCorp.studentCount?' open':'')+'" data-bucket="corp">'+
+      '<div style="background:#FFF8E8;border:1px solid var(--gold);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--navy)">'+
+        '💡 For a proper record with company name, invoice #, and date instead of just a number, use '+
+        '<a href="javascript:void(0)" onclick="openCorporateBatchForm(null,\''+escC(designatedCentre)+'\')" style="font-weight:600">+ Add Corporate Batch</a> — it fills in the fields below automatically.'+
+      '</div>'+
       '<div class="rev-compact-row">'+
         '<div class="rev-ci"><label>Sales Associates Trained</label><input type="number" class="rmc-cstudents" min="0" placeholder="0" value="'+escC(existingCorp.studentCount||'')+'" oninput="revUpdateTotal(this)"></div>'+
         '<div class="rev-ci"><label>Course Fee &#8377;</label><input type="number" class="rmc-ccourse" min="0" placeholder="0" value="'+escC(existingCorp.achievedCourse||'')+'" oninput="revCalcGst(this,\'corp\');revUpdateTotal(this)"></div>'+

@@ -3797,7 +3797,12 @@
       <div class="fee-form-head">
         <div class="fee-readonly"><div class="k">Student ID</div><div class="v" id="fee-ro-student">—</div></div>
         <div class="fee-readonly"><div class="k">Student</div><div class="v" id="fee-ro-name">—</div></div>
-        <div class="fee-readonly"><div class="k">Batch</div><div class="v" id="fee-ro-batch">—</div></div>
+        <div class="fee-readonly">
+          <div class="k">Batch</div>
+          <div class="v" id="fee-ro-batch">—</div>
+          <select id="fee-batch-move" style="display:none;margin-top:4px;font-size:12px" onchange="onFeeBatchMoveChange()"></select>
+          <div id="fee-batch-move-link" style="display:none;margin-top:4px"><a href="javascript:void(0)" style="font-size:11px" onclick="showFeeBatchMovePicker()">Student moved batches? Change batch</a></div>
+        </div>
         <div class="fee-readonly"><div class="k">Course</div><div class="v" id="fee-ro-course">—</div></div>
         <div class="fee-readonly">
           <div class="k">Counsellor <span style="font-weight:400" title="Whose revenue this fee record counts toward. Saving a correction (e.g. adding an invoice number) never changes this on its own — it only moves if you deliberately pick someone else below.">(revenue credit)</span></div>
@@ -9433,6 +9438,12 @@ function openFeeForm(studentId) {
   // owner is just whoever is creating it, nothing to reassign yet.
   const changeLink = document.getElementById('fee-counsellor-change-link');
   if (changeLink) changeLink.style.display = existing ? 'block' : 'none';
+  const batchMoveLink = document.getElementById('fee-batch-move-link');
+  if (batchMoveLink) batchMoveLink.style.display = existing ? 'block' : 'none';
+  const batchMoveSel = document.getElementById('fee-batch-move');
+  if (batchMoveSel) batchMoveSel.style.display = 'none';
+  currentFeeStudent.newBatchCode = null;
+  currentFeeStudent.newBatchCentre = null;
   // Course fee is always the fixed system price for this course (COURSE_FEES_JS), never a
   // per-student value — even when editing an existing record. Adjustments for an individual
   // student go through the Discount % field, not by typing a different course fee (that was
@@ -9505,6 +9516,41 @@ function onFeeCounsellorAdminChange() {
   currentFeeStudent.recordOwner = newOwner;
   currentFeeStudent.ownerReassigned = true;
   document.getElementById('fee-ro-counsellor').textContent = newOwner + ' (reassigning on save)';
+}
+
+// Moving a student to a different batch (e.g. she decided to join August instead of July)
+// used to mean creating a brand new fee record under the new batch, since the old one had
+// no way to change which batch it belonged to — leaving the OLD record behind untouched.
+// Same real invoice, same real payment, counted twice in revenue (found and fixed for
+// Koulika Mandal, 2026-07-31: KOL/26/INV/08638 existed as two separate rows, one for
+// KOL-COL-JUL26 and one for KOL-COL-AUG26, doubling her contribution to that month's
+// achieved revenue). This updates the batch_code on the SAME record instead — invoice
+// number, payment history, and everything else stays exactly as it was; only which batch
+// it belongs to changes. Same collapsed-by-default pattern as "Wrong credit? Change
+// counsellor" above: the picker is hidden until deliberately opened, so it's a visible,
+// intentional action, not a side effect of an unrelated save.
+function showFeeBatchMovePicker() {
+  const sel = document.getElementById('fee-batch-move');
+  const link = document.getElementById('fee-batch-move-link');
+  if (sel) {
+    sel.innerHTML = '<option value="">— Select the new batch —</option>' +
+      (allBatches || []).map(function(b) {
+        return '<option value="' + escC(b.batchCode) + '" data-centre="' + escC(b.centre || '') + '">' + escC(b.batchCode) + ' — ' + escC(b.course || '') + ' (' + escC(b.centre || '') + ')</option>';
+      }).join('');
+    sel.style.display = 'block';
+  }
+  if (link) link.style.display = 'none';
+}
+
+function onFeeBatchMoveChange() {
+  if (!currentFeeStudent) return;
+  const sel = document.getElementById('fee-batch-move');
+  const newBatchCode = sel && sel.value;
+  if (!newBatchCode) return;
+  const newCentre = sel.options[sel.selectedIndex].getAttribute('data-centre') || currentFeeStudent.batch.centre;
+  currentFeeStudent.newBatchCode = newBatchCode;
+  currentFeeStudent.newBatchCentre = newCentre;
+  document.getElementById('fee-ro-batch').textContent = newBatchCode + ' · ' + newCentre + ' (moving on save)';
 }
 
 function deleteFeeRecordUI(recordId, enteredBy, studentName, collected, onDone) {
@@ -9823,12 +9869,18 @@ function saveFeeRecord() {
   }
   const calc = feeCalc();
   const n = Number(document.getElementById('fee-n-inst').value) || 1;
+  // Batch move (see showFeeBatchMovePicker) — send the NEW batch/centre when one was
+  // explicitly picked, otherwise the original. existingRecordId tells the backend this is
+  // a move on the SAME record, not a new enrollment in the new batch — see h_saveFee.
+  const targetBatchCode = currentFeeStudent.newBatchCode || currentFeeStudent.batch.batchCode;
+  const targetCentre = currentFeeStudent.newBatchCentre || currentFeeStudent.batch.centre;
   const payload = {
     action:'saveFeeRecord',
     studentId:currentFeeStudent.student.enrollmentNo,
     studentName:currentFeeStudent.student.name,
-    batchCode:currentFeeStudent.batch.batchCode,
-    centre:currentFeeStudent.batch.centre,
+    batchCode:targetBatchCode,
+    centre:targetCentre,
+    existingRecordId: (currentFeeStudent.existing && currentFeeStudent.existing.id) || '',
     course:currentFeeStudent.batch.course,
     courseFee:calc.courseFee,
     regFee:calc.regFee,

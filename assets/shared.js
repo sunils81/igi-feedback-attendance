@@ -2838,6 +2838,43 @@ window.gasGet = (function () {
       });
     }
 
+    // Batch move (existingRecordId set — see showFeeBatchMovePicker in counselor.html): the
+    // normal lookup just below is keyed on (student_id, batch_code), so if batch_code has
+    // actually changed it would find nothing under the NEW batch and upsert a brand new row
+    // — leaving the OLD row (and its real invoice number, payment history) behind untouched.
+    // Exactly how Koulika Mandal ended up counted twice, 2026-07-31: KOL/26/INV/08638
+    // existed as two separate rows, one per batch, doubling her contribution to that
+    // month's achieved revenue. Handled here as an explicit UPDATE-by-id instead, before
+    // the normal lookup ever runs, so the same real record just gets a new batch_code —
+    // invoice number and payment history carry over unchanged.
+    if (p.existingRecordId) {
+      GET('student_fees', 'id=eq.' + encodeURIComponent(p.existingRecordId) + '&select=id,batch_code,centre,recorded_by,revenue_month', function (errLookup, existingRows) {
+        var existingRow = (existingRows && existingRows[0]) || null;
+        if (errLookup || !existingRow || existingRow.batch_code === dbRow.batch_code) {
+          // No real move (existingRecordId missing/stale, or target batch is unchanged) —
+          // fall through to the normal upsert-by-(student_id,batch_code) flow below.
+          proceedNormalSave();
+          return;
+        }
+        PATCH('student_fees', 'id=eq.' + encodeURIComponent(p.existingRecordId), dbRow, function (errPatch) {
+          if (errPatch) { cb(null, { status: 'error', reason: String(errPatch) }); return; }
+          syncStudentRevenue(dbRow.recorded_by, dbRow.centre, revenueMonth, '2026-27');
+          // Old bucket only needs a separate resync if the move actually changed which
+          // (counsellor, centre, month) it counts toward — same batch's centre and an
+          // invoice-date-derived revenue_month usually means this is a no-op, correctly.
+          if (existingRow.centre !== dbRow.centre || existingRow.revenue_month !== revenueMonth || existingRow.recorded_by !== dbRow.recorded_by) {
+            syncStudentRevenue(existingRow.recorded_by || dbRow.recorded_by, existingRow.centre || dbRow.centre, existingRow.revenue_month || revenueMonth, '2026-27');
+          }
+          checkDuplicateInvoice(function (dupWith) {
+            cb(null, dupWith ? { status: 'ok', duplicateInvoice: true, duplicateWith: dupWith, batchMoved: true } : { status: 'ok', batchMoved: true });
+          });
+        });
+      });
+      return;
+    }
+    proceedNormalSave();
+
+    function proceedNormalSave() {
     // order=created_at.desc — when duplicate rows exist for this (student_id, batch_code)
     // (the exact condition the unique constraint + upsert below is meant to prevent going
     // forward), always treat the newest one as canonical for the ownership/reassignment logic.
@@ -2903,6 +2940,7 @@ window.gasGet = (function () {
         });
       });
     });
+    } // end proceedNormalSave
   }
 
   /* deleteFeeRecord — lets a counsellor remove a fee record they entered (e.g. a duplicate

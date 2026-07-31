@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=75"></script>
+<script src="/assets/shared.js?v=76"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -12062,6 +12062,7 @@ function renderRevenueMonthCards(counsellor) {
           '<div>Variance<strong>'+money(Math.abs(variance))+'</strong></div>'+
           '<div>Status<strong>'+escC(status)+'</strong></div>'+
         '</div>'+
+        '<div class="rev-centre-total" id="rmc-centre-total-'+escC(m.key)+'" data-centre="'+escC(designatedCentre)+'" data-month="'+escC(m.key)+'" style="font-size:11.5px;color:var(--muted);margin-top:2px">🏢 '+escC(designatedCentre)+' centre total this month: <span>—</span></div>'+
         revAchievementChips(open, rows, pct, streak)+
         ((saved || rows.length > 0) ? renderRevenueSavedBreakup(rows, designatedCentre, counsellor) : '')+
         (open && saved ? '<div class="rev-run-actions"><button type="button" class="rev-run-toggle" onclick="revToggleEntry(this)">Revise '+escC(m.label)+'</button></div>'+renderRevenueEntryPanel(m, designatedCentre, otherDefault, rows, true) : '')+
@@ -12071,7 +12072,28 @@ function renderRevenueMonthCards(counsellor) {
   html += '</div>';
   grid.innerHTML = html;
   applyRevenueMonthVisibility();
+  loadCentreMonthTotals();
 }
+
+// Fetches and fills in the "🏢 [Centre] centre total this month" line on every rendered
+// month card — everyone's revenue delivered at that centre, not just the logged-in
+// counsellor's own portion (which "Achieved" above already shows). Separate, async call
+// per card rather than blocking the whole render, since it's a secondary/contextual
+// figure, not the counsellor's own number.
+function loadCentreMonthTotals() {
+  document.querySelectorAll('.rev-centre-total').forEach(function(el) {
+    var centre = el.getAttribute('data-centre');
+    var month = el.getAttribute('data-month');
+    if (!centre || !month) return;
+    gasGet({ action: 'getCentreMonthTotal', centre: centre, month: month, period: '2026-27' }, function(e, d) {
+      var span = el.querySelector('span');
+      if (!span) return;
+      if (e || !d) { span.textContent = '—'; return; }
+      span.textContent = money(d.achievedCourseFeeGst) + (d.studentCount ? (' (' + d.studentCount + ' stu, everyone)') : '');
+    });
+  });
+}
+
 
 function revRowsForMonth(monthKey, counsellor, assignedCentre) {
   return ((revenueData && revenueData.monthlyRows)||[]).filter(function(r){

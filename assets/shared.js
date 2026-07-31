@@ -3075,6 +3075,36 @@ window.gasGet = (function () {
       });
   }
 
+  /* h_getCentreMonthTotal — the WHOLE centre's achieved revenue for one month, every
+     counsellor who sold into it combined (not just the logged-in counsellor's own
+     figure). Per instruction 2026-07-31: "the counsellors own revenue is reflected but
+     monthly revenue of the centre is not reflecting" — the Revenue tab's monthly card only
+     ever showed the individual's own Achieved figure, with no visible centre-wide number
+     alongside it, even though Fee Record (a different tab) already computes one. Same
+     centre-scoping as Fee Record's total: matches on business_centre alone, no counsellor
+     or business_type filter, so a cross-centre sale (e.g. Anuradha selling into Delhi)
+     counts toward Delhi's total here exactly like it does there. */
+  function h_getCentreMonthTotal(p, cb) {
+    var centre = String(p.centre || '').trim();
+    var month = String(p.month || '').trim();
+    var period = String(p.period || '2026-27').trim();
+    if (!centre || !month) { cb(null, { achievedCourseFee: 0, achievedCourseFeeGst: 0, studentCount: 0 }); return; }
+    GET('revenue_monthly_achieved',
+      'business_centre=eq.' + encodeURIComponent(centre) +
+      '&month=eq.' + encodeURIComponent(month) +
+      '&period=eq.' + encodeURIComponent(period),
+      function (e, rows) {
+        rows = (e ? [] : (rows || []));
+        var achievedCourseFee = 0, achievedCourseFeeGst = 0, studentCount = 0;
+        rows.forEach(function (r) {
+          achievedCourseFee += Number(r.achieved_course_fee) || 0;
+          achievedCourseFeeGst += Number(r.achieved_course_fee_gst) || 0;
+          studentCount += Number(r.student_count) || 0;
+        });
+        cb(null, { achievedCourseFee: achievedCourseFee, achievedCourseFeeGst: achievedCourseFeeGst, studentCount: studentCount });
+      });
+  }
+
   /* syncStudentRevenue — auto-upsert Centre Revenue from student_fees.course_fee.
      Called fire-and-forget after h_saveFee/h_deleteFeeRecord. Only acts on 2026-07
      onwards — pre-July months are never auto-overwritten; correcting them goes through
@@ -9255,6 +9285,7 @@ window.gasGet = (function () {
       case 'deleteCorporateBatch':      return h_deleteCorporateBatch(params, cb);
       case 'getRevenueDetail':          return h_getRevenueDetail(params, cb);
       case 'getMonthAchieved':          return h_getMonthAchieved(params, cb);
+      case 'getCentreMonthTotal':       return h_getCentreMonthTotal(params, cb);
       case 'checkInvoiceNumber':        return h_checkInvoiceNumber(params, cb);
       case 'checkStudentMobile':        return h_checkStudentMobile(params, cb);
       case 'mergeStudentRecords':       return h_mergeStudentRecords(params, cb);

@@ -7520,10 +7520,27 @@ function _batchCacheKey() {
   return 'igiBatches_v2_' + (isAdmin ? 'admin' : allowedCentres.join('|'));
 }
 
+// Extracts a sortable {key, label} month from a batch code's trailing MONYY segment
+// (optionally followed by a -A/-B suffix, e.g. "MUM-COL-AUG26-B" -> Aug 2026) — used to
+// group the Fees tab's batch dropdown by month instead of one long flat list (2026-07-31:
+// Anuradha alone has access to enough centres that the list ran to dozens of batches with
+// no way to narrow it down). Falls back to an "Other" group for any code that doesn't
+// match the pattern, rather than silently dropping it from the dropdown.
+var MONTH_ABBR_MAP = {JAN:0,FEB:1,MAR:2,APR:3,MAY:4,JUN:5,JUL:6,AUG:7,SEP:8,OCT:9,NOV:10,DEC:11};
+function _batchMonthGroup(batchCode) {
+  var m = /([A-Z]{3})(\d{2})(?:-[A-Z])?$/.exec(String(batchCode||'').toUpperCase());
+  if (!m || !(m[1] in MONTH_ABBR_MAP)) return { key: 'zzz', label: 'Other' };
+  var monIdx = MONTH_ABBR_MAP[m[1]];
+  var year = 2000 + Number(m[2]);
+  var label = ['January','February','March','April','May','June','July','August','September','October','November','December'][monIdx] + ' ' + year;
+  var key = year + '-' + String(monIdx+1).padStart(2,'0');
+  return { key: key, label: label };
+}
+
 function _applyBatchData(batches, onDone) {
   allBatches = batches;
   updateCounselorSummary(allBatches);
-  ['st-batch','rp-batch','fee-batch'].forEach(function(id) {
+  ['st-batch','rp-batch'].forEach(function(id) {
     const sel = document.getElementById(id);
     if (!sel) return;
     const cur = sel.value;
@@ -7536,6 +7553,29 @@ function _applyBatchData(batches, onDone) {
     });
     if (cur) sel.value = cur;
   });
+  // fee-batch specifically grouped by month (<optgroup>), per instruction 2026-07-31 —
+  // sorted soonest-first within reach group, groups sorted chronologically.
+  const feeSel = document.getElementById('fee-batch');
+  if (feeSel) {
+    const cur = feeSel.value;
+    var byMonth = {};
+    batches.forEach(function(b) {
+      var g = _batchMonthGroup(b.batchCode);
+      (byMonth[g.key] = byMonth[g.key] || { label: g.label, items: [] }).items.push(b);
+    });
+    var monthKeys = Object.keys(byMonth).sort();
+    var html = '<option value="">Select a batch</option>';
+    monthKeys.forEach(function(mk) {
+      var grp = byMonth[mk];
+      html += '<optgroup label="' + escC(grp.label) + '">';
+      grp.items.sort(function(a,b){ return a.batchCode.localeCompare(b.batchCode); }).forEach(function(b) {
+        html += '<option value="' + escC(b.batchCode) + '">' + escC(b.batchCode + ' — ' + b.course + ' (' + b.centre + ')') + '</option>';
+      });
+      html += '</optgroup>';
+    });
+    feeSel.innerHTML = html;
+    if (cur) feeSel.value = cur;
+  }
   renderStudentBatchChoices();
   if (onDone) onDone();
 }
@@ -9029,7 +9069,7 @@ function corpBatchesAsFeeRows() {
       enteredBy: r.recordedBy, studentId: '', studentName: '🏢 ' + r.companyName,
       batchCode: r.description || 'Corporate', centre: r.centre,
       invoiceNumber: r.invoiceNumber, courseFee: r.courseFee, gstAmount: r.gstAmount,
-      discountPct: r.discountPct, collected: net + (Number(r.gstAmount)||0), outstanding: 0,
+      discountPct: r.discountPct, discountAmt: r.discountAmount, collected: net + (Number(r.gstAmount)||0), outstanding: 0,
       revenueMonth: r.revenueMonth, month: r.revenueMonth
     };
   });
@@ -9083,7 +9123,14 @@ function renderFeeRecordTab() {
   // stays visible alongside the centre number instead of being silently absorbed into it.
   var gTotal = { courseFee:0, gst:0, revenue:0, ownRevenue:0, collected:0, balance:0, count:0 };
   rows.forEach(function(r) {
-    var revenue = Number(r.courseFee) || 0;
+    // Revenue = Course Fee NET of discount (r.discountAmt), not the raw course fee. Found
+    // 2026-07-31: every discounted record's Revenue figure (and every total built from it —
+    // this tile, each month's subtotal, the grand total) was showing the undiscounted price,
+    // overstating revenue by exactly the discount amount whenever one was given. GST and
+    // Collected were already computed correctly off the discounted base — only this
+    // display/summary layer had the bug; revenue_monthly_achieved (syncStudentRevenue) was
+    // never affected, since that already subtracted discount_amount independently.
+    var revenue = (Number(r.courseFee) || 0) - (Number(r.discountAmt) || 0);
     gTotal.courseFee += Number(r.courseFee)   || 0;
     gTotal.gst        += Number(r.gstAmount)   || 0;
     gTotal.revenue     += revenue;
@@ -9135,7 +9182,7 @@ function renderFeeRecordTab() {
     var mRows = groups[mk].slice().sort(function(a,b){ return (a.studentName||'').localeCompare(b.studentName||''); });
     var mTotal = { courseFee:0, gst:0, revenue:0, collected:0, balance:0 };
     var bodyRows = mRows.map(function(r, idx) {
-      var revenue = Number(r.courseFee) || 0;
+      var revenue = (Number(r.courseFee) || 0) - (Number(r.discountAmt) || 0); // net of discount — see note above
       mTotal.courseFee += Number(r.courseFee)   || 0;
       mTotal.gst        += Number(r.gstAmount)   || 0;
       mTotal.revenue     += revenue;
@@ -9209,7 +9256,9 @@ function downloadFeeRecordCsv() {
 
   // Revenue column here = courseFee alone (excl. GST) — matches revenue_monthly_achieved.
   // achieved_course_fee, the figure the Revenue tab's target/achieved % is actually built
-  // from. Not netPayable (which nets out discount and adds GST).
+  // from. Not netPayable (which additionally adds GST) — but IS net of discount (r.discountAmt),
+  // same fix as renderFeeRecordTab's Revenue column (2026-07-31): this used to export the raw,
+  // undiscounted course fee, overstating every discounted row and every subtotal built from it.
   // Discount is shown per-row as a % (not a rupee amount) — Total/Grand Total rows leave it
   // blank since summing percentages across different students isn't a meaningful number.
   var blank = { SNo:'', Month:'', Counsellor:'', StudentID:'', Student:'', Batch:'', Centre:'', InvoiceNumber:'', InvoiceDate:'',
@@ -9220,7 +9269,7 @@ function downloadFeeRecordCsv() {
     var mRows = groups[mk].slice().sort(function(a,b){ return (a.studentName||'').localeCompare(b.studentName||''); });
     var m = { courseFee:0, gst:0, revenue:0, collected:0, balance:0 };
     mRows.forEach(function(r, idx) {
-      var revenue = Number(r.courseFee) || 0;
+      var revenue = (Number(r.courseFee) || 0) - (Number(r.discountAmt) || 0);
       m.courseFee += Number(r.courseFee)||0;   m.gst += Number(r.gstAmount)||0;
       m.revenue += revenue;
       m.collected += Number(r.collected)||0;   m.balance += Number(r.outstanding)||0;

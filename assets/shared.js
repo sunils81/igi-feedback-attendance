@@ -3179,6 +3179,131 @@ window.gasGet = (function () {
     });
   }
 
+  /* syncCorporateRevenue — same purpose as syncStudentRevenue just above, but for the new
+     corporate_batches table (2026-07-31, per Sunil: corporate training revenue needs a full
+     record per batch — company, invoice #, date, associates trained — instead of a single
+     flat monthly number with nothing behind it). Recomputes the 'Corporate Programs'
+     revenue_monthly_achieved row for a (counsellor, centre, month) from the ACTUAL detailed
+     records, the same way student fees drive 'Centre Revenue'. No month restriction (unlike
+     syncStudentRevenue's autoMonths guard) — this table has no pre-existing manual entries
+     from before auto-sync existed to worry about overwriting; every corporate_batches row
+     is new data entered under this feature from the start. */
+  function syncCorporateRevenue(counsellor, centre, monthKey, period) {
+    var qs = 'recorded_by=eq.' + encodeURIComponent(counsellor) +
+             '&centre=eq.'     + encodeURIComponent(centre) +
+             '&revenue_month=eq.' + encodeURIComponent(monthKey) +
+             '&limit=500';
+    GET('corporate_batches', qs, function(e, rows) {
+      if (e) return;
+      rows = rows || [];
+      var totalFee = 0, totalGst = 0, totalAssociates = 0;
+      rows.forEach(function(r) {
+        totalFee += Number(r.course_fee || 0) - Number(r.discount_amount || 0);
+        totalGst += Number(r.gst_amount || 0);
+        totalAssociates += Number(r.associates_trained || 0);
+      });
+      var revRow = {
+        month: monthKey, period: period || '2026-27',
+        counsellor: counsellor,
+        assigned_centre: centre,
+        business_centre: centre,
+        business_type: 'Corporate Programs',
+        achieved_course_fee: totalFee,
+        achieved_course_fee_gst: totalFee + totalGst,
+        student_count: totalAssociates, // headcount trained, not a "student" in the enrollment sense
+        notes: rows.length ? 'auto-derived from corporate_batches' : 'auto-derived (zeroed — no remaining corporate batches this month)',
+        updated_at: new Date().toISOString()
+      };
+      POST('revenue_monthly_achieved',
+        'on_conflict=month,period,counsellor,business_centre,business_type',
+        [revRow], function() {}); // fire-and-forget
+    });
+  }
+
+  function h_saveCorporateBatch(p, cb) {
+    if (!p.companyName || !p.centre || !p.recordedBy) {
+      cb(null, { status: 'error', reason: 'Company name, centre, and recorded-by are required.' });
+      return;
+    }
+    var cf = Number(p.courseFee || 0);
+    var dp = Number(p.discountPct || 0);
+    var da = dp ? Math.round(cf * dp / 100) : Number(p.discountAmt || 0);
+    var gst = Math.round((cf - da) * 0.18);
+    // Same invoice-date-priority rule as student_fees (see h_saveFee) — falls back to
+    // today only when no invoice date is given at all.
+    var revenueMonth = (p.invoiceDate ? toYMD(p.invoiceDate) : todayYMD()).slice(0, 7);
+    var dbRow = {
+      company_name: p.companyName,
+      invoice_number: p.invoiceNumber || '',
+      invoice_date: p.invoiceDate ? toYMD(p.invoiceDate) : null,
+      centre: p.centre,
+      recorded_by: p.recordedBy,
+      course_fee: cf,
+      gst_amount: gst,
+      discount_pct: dp,
+      discount_amount: da,
+      associates_trained: Number(p.associatesTrained || 0),
+      location_client: p.locationClient || '',
+      description: p.description || '',
+      revenue_month: revenueMonth,
+      updated_at: nowISO()
+    };
+    function afterSave(err, oldRow) {
+      if (err) { cb(null, { status: 'error', reason: String(err) }); return; }
+      syncCorporateRevenue(dbRow.recorded_by, dbRow.centre, revenueMonth, '2026-27');
+      if (oldRow && (oldRow.centre !== dbRow.centre || oldRow.revenue_month !== revenueMonth || oldRow.recorded_by !== dbRow.recorded_by)) {
+        syncCorporateRevenue(oldRow.recorded_by || dbRow.recorded_by, oldRow.centre || dbRow.centre, oldRow.revenue_month || revenueMonth, '2026-27');
+      }
+      cb(null, { status: 'ok' });
+    }
+    if (p.id) {
+      GET('corporate_batches', 'id=eq.' + encodeURIComponent(p.id) + '&select=centre,revenue_month,recorded_by', function(eGet, rows) {
+        var oldRow = (rows && rows[0]) || null;
+        PATCH('corporate_batches', 'id=eq.' + encodeURIComponent(p.id), dbRow, function(ePatch) { afterSave(ePatch, oldRow); });
+      });
+    } else {
+      POST('corporate_batches', '', dbRow, function(ePost) { afterSave(ePost, null); });
+    }
+  }
+
+  function h_getCorporateBatches(p, cb) {
+    var isAdm = !!(p && (p.isAdmin === true || p.isAdmin === 'true'));
+    var qs = 'order=invoice_date.desc.nullslast,created_at.desc&limit=1000';
+    if (!isAdm && p.recordedBy) qs += '&recorded_by=eq.' + encodeURIComponent(p.recordedBy);
+    else if (!isAdm && p.centre) qs += '&centre=eq.' + encodeURIComponent(p.centre);
+    GET('corporate_batches', qs, function(e, rows) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      var records = (rows || []).map(function(r) {
+        return {
+          id: r.id, companyName: r.company_name, invoiceNumber: r.invoice_number,
+          invoiceDate: r.invoice_date, centre: r.centre, recordedBy: r.recorded_by,
+          courseFee: Number(r.course_fee) || 0, gstAmount: Number(r.gst_amount) || 0,
+          discountPct: Number(r.discount_pct) || 0, discountAmount: Number(r.discount_amount) || 0,
+          associatesTrained: Number(r.associates_trained) || 0, locationClient: r.location_client,
+          description: r.description, revenueMonth: r.revenue_month, createdAt: r.created_at
+        };
+      });
+      cb(null, { status: 'ok', records: records });
+    });
+  }
+
+  function h_deleteCorporateBatch(p, cb) {
+    if (!p.id) { cb(null, { status: 'error', reason: 'Missing id.' }); return; }
+    GET('corporate_batches', 'id=eq.' + encodeURIComponent(p.id) + '&select=centre,revenue_month,recorded_by', function(e, rows) {
+      if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'Not found.' }); return; }
+      var row = rows[0];
+      if (p.isAdmin !== 'true' && row.recorded_by !== p.recordedBy) {
+        cb(null, { status: 'error', reason: 'You can only delete your own entries.' });
+        return;
+      }
+      DEL('corporate_batches', 'id=eq.' + encodeURIComponent(p.id), function(e2) {
+        if (e2) { cb(null, { status: 'error', reason: 'Could not delete.' }); return; }
+        syncCorporateRevenue(row.recorded_by, row.centre, row.revenue_month, '2026-27');
+        cb(null, { status: 'ok' });
+      });
+    });
+  }
+
   /* getHolidays */
   function h_getHolidays(p, cb) {
     GET('holidays', 'order=holiday_date.asc', function (e, rows) {
@@ -9125,6 +9250,9 @@ window.gasGet = (function () {
       case 'saveOperationalInvoice':    return h_saveOperationalInvoice(params, cb);
       case 'getOperationalInvoices':    return h_getOperationalInvoices(params, cb);
       case 'deleteOperationalInvoice':  return h_deleteOperationalInvoice(params, cb);
+      case 'saveCorporateBatch':        return h_saveCorporateBatch(params, cb);
+      case 'getCorporateBatches':       return h_getCorporateBatches(params, cb);
+      case 'deleteCorporateBatch':      return h_deleteCorporateBatch(params, cb);
       case 'getRevenueDetail':          return h_getRevenueDetail(params, cb);
       case 'getMonthAchieved':          return h_getMonthAchieved(params, cb);
       case 'checkInvoiceNumber':        return h_checkInvoiceNumber(params, cb);

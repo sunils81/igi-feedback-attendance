@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=77"></script>
+<script src="/assets/shared.js?v=78"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -4043,6 +4043,7 @@
         <button class="rev-sub-tab active" id="btn-rev-sub-dashboard" onclick="switchRevSubTab('rev-subtab-dashboard')">📊 My Dashboard & Entry</button>
         <button class="rev-sub-tab" id="btn-rev-sub-counsellors" onclick="switchRevSubTab('rev-subtab-counsellors')">🏆 Counsellor Leaderboard</button>
         <button class="rev-sub-tab" id="btn-rev-sub-centres" onclick="switchRevSubTab('rev-subtab-centres')">🏢 Centre Standings</button>
+        <button class="rev-sub-tab" id="btn-rev-sub-centreperf" onclick="switchRevSubTab('rev-subtab-centreperf')">📅 Centre Performance</button>
         <button class="rev-sub-tab" id="btn-rev-sub-breakdown" onclick="switchRevSubTab('rev-subtab-breakdown')">📑 My Breakdown</button>
         <button class="rev-sub-tab" id="btn-rev-sub-allindia" onclick="switchRevSubTab('rev-subtab-allindia')" style="display:none">🌍 All India — MIS</button>
       </div>
@@ -4106,6 +4107,18 @@
         </div>
         <!-- Centre Standings Card -->
         <div id="rev-centre-rankings-card" class="card" style="margin-top:14px; border:none; box-shadow:none; padding:0"></div>
+      </div>
+
+      <!-- SUBTAB: Centre Performance (month-wise, every counsellor's contribution combined) -->
+      <div id="rev-subtab-centreperf" style="display:none">
+        <p class="sub" style="margin-top:0">One centre, every month, everyone who sold into it — combined. Click a month to see each counsellor's share.</p>
+        <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:14px">
+          <div class="field" style="min-width:200px;margin-bottom:0" id="cp-centre-wrap">
+            <label>Centre</label>
+            <select id="cp-centre-select" onchange="loadCentrePerformance()"></select>
+          </div>
+        </div>
+        <div id="cp-table-wrap"><div class="empty-state"><div class="empty-icon">📅</div><div class="empty-title">Loading…</div></div></div>
       </div>
 
       <!-- SUBTAB 4: My Breakdown (cross-verify vs the Fee Record ledger) -->
@@ -7177,8 +7190,8 @@ function initRevenueSubTabs() {
 }
 
 function switchRevSubTab(tabId) {
-  var tabs = ['rev-subtab-dashboard', 'rev-subtab-counsellors', 'rev-subtab-centres', 'rev-subtab-breakdown', 'rev-subtab-allindia'];
-  var buttons = ['btn-rev-sub-dashboard', 'btn-rev-sub-counsellors', 'btn-rev-sub-centres', 'btn-rev-sub-breakdown', 'btn-rev-sub-allindia'];
+  var tabs = ['rev-subtab-dashboard', 'rev-subtab-counsellors', 'rev-subtab-centres', 'rev-subtab-centreperf', 'rev-subtab-breakdown', 'rev-subtab-allindia'];
+  var buttons = ['btn-rev-sub-dashboard', 'btn-rev-sub-counsellors', 'btn-rev-sub-centres', 'btn-rev-sub-centreperf', 'btn-rev-sub-breakdown', 'btn-rev-sub-allindia'];
   
   tabs.forEach(function(t) {
     var el = document.getElementById(t);
@@ -7198,6 +7211,7 @@ function switchRevSubTab(tabId) {
 
   if (tabId === 'rev-subtab-breakdown') renderMyRevenueBreakdown();
   if (tabId === 'rev-subtab-allindia') renderAllIndiaBreakdown();
+  if (tabId === 'rev-subtab-centreperf') loadCentrePerformance();
 }
 
 function setRevMonthView(viewType) {
@@ -12159,6 +12173,109 @@ function loadCentreMonthTotals() {
       span.textContent = money(d.achievedCourseFeeGst) + (d.studentCount ? (' (' + d.studentCount + ' stu, everyone)') : '');
     });
   });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CENTRE PERFORMANCE — full-year, month-by-month view for one centre, every
+   counsellor who sold into it combined (2026-07-31, per instruction: "Centre
+   Performance which shows month wise... includes revenue of all the counsellors for
+   that center... like an Excel"). Distinct from the single-month "🏢 centre total"
+   line on an individual's own card — this is the dedicated table view, one row per
+   month across the full FY, each expandable to show every counsellor's share.
+   ══════════════════════════════════════════════════════════════ */
+var cpCentrePopulated = false;
+var cpExpandedMonths = {};
+
+function loadCentrePerformance() {
+  var sel = document.getElementById('cp-centre-select');
+  if (!sel) return;
+  if (!cpCentrePopulated) {
+    var centres = isAdmin ? (CENTRES || []) : ((allowedCentres && allowedCentres.length) ? allowedCentres : (CENTRES || []));
+    sel.innerHTML = centres.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
+    // Default to the counsellor's own designated centre when they have one, rather than
+    // whichever centre happens to sort first.
+    var defaultCentre = (allowedCentres && allowedCentres[0]) || centres[0];
+    if (defaultCentre) sel.value = defaultCentre;
+    cpCentrePopulated = true;
+  }
+  var centre = sel.value;
+  if (!centre) return;
+  var wrap = document.getElementById('cp-table-wrap');
+  wrap.innerHTML = '<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-title">Loading ' + escC(centre) + '\'s performance…</div></div>';
+  gasGet({ action: 'getCentrePerformance', centre: centre, period: '2026-27' }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      wrap.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load. Try again.</div></div>';
+      return;
+    }
+    renderCentrePerformanceTable(d);
+  });
+}
+
+function renderCentrePerformanceTable(d) {
+  var wrap = document.getElementById('cp-table-wrap');
+  var monthList = revenueMonths(); // full FY, Apr-Mar, even months with no data yet
+  var byMonth = {};
+  (d.months || []).forEach(function(m) { byMonth[m.month] = m; });
+  var runRate = d.annualTarget ? Math.round(revenueGst(d.annualTarget) / 12) : 0;
+  var currentMonth = revenueCurrentMonthKey();
+
+  var gTotal = { achieved: 0, own: 0, other: 0, corp: 0, students: 0 };
+  var rowsHtml = monthList.map(function(mo) {
+    var m = byMonth[mo.key] || { achievedCourseFeeGst: 0, own: 0, other: 0, corporate: 0, studentCount: 0, byCounsellor: [] };
+    var achieved = Number(m.achievedCourseFeeGst) || 0;
+    var isFuture = mo.key > currentMonth;
+    var variance = achieved - runRate;
+    var pct = runRate ? Math.round((achieved / runRate) * 100) : (achieved ? 100 : 0);
+    var status = isFuture ? 'Future' : (variance >= 0 ? 'Ahead' : 'Behind');
+    var statusColor = isFuture ? 'var(--muted)' : (variance >= 0 ? '#1a7a3c' : 'var(--red)');
+    gTotal.achieved += achieved; gTotal.own += Number(m.own)||0; gTotal.other += Number(m.other)||0;
+    gTotal.corp += Number(m.corporate)||0; gTotal.students += Number(m.studentCount)||0;
+
+    var expanded = !!cpExpandedMonths[mo.key];
+    var breakdownRows = (m.byCounsellor || []).map(function(c) {
+      var catLabel = c.category === 'own' ? 'Home' : (c.category === 'other' ? 'Cross-sell' : 'Corporate');
+      return '<tr style="background:var(--off)"><td></td><td colspan="2" style="padding-left:24px">' + escC(c.counsellor) +
+        ' <span style="font-size:11px;color:var(--muted)">(' + catLabel + ')</span></td>' +
+        '<td style="text-align:right">' + money(c.achievedCourseFeeGst) + '</td>' +
+        '<td colspan="4"></td></tr>';
+    }).join('');
+
+    return '<tr style="cursor:pointer" onclick="cpToggleMonth(\'' + mo.key + '\')">' +
+      '<td>' + (m.byCounsellor && m.byCounsellor.length ? (expanded ? '▾' : '▸') : '') + '</td>' +
+      '<td class="text-left"><strong>' + escC(mo.label) + '</strong></td>' +
+      '<td style="text-align:right">' + (runRate ? money(runRate) : '—') + '</td>' +
+      '<td style="text-align:right;font-weight:600">' + money(achieved) + '</td>' +
+      '<td style="text-align:right;font-size:11px;color:var(--muted)">' +
+        'Home ' + money(m.own) + ' &middot; Cross ' + money(m.other) + ' &middot; Corp ' + money(m.corporate) + '</td>' +
+      '<td style="text-align:right;color:' + statusColor + '">' + (isFuture ? '—' : money(Math.abs(variance))) + '</td>' +
+      '<td style="text-align:right;color:' + statusColor + '">' + (isFuture ? '—' : pct + '%') + '</td>' +
+      '<td style="text-align:center;color:' + statusColor + '">' + status + '</td>' +
+      '<td style="text-align:right">' + (m.studentCount || 0) + '</td>' +
+    '</tr>' + (expanded ? breakdownRows : '');
+  }).join('');
+
+  var gRunRateFull = runRate * 12;
+  var gPct = gRunRateFull ? Math.round((gTotal.achieved / gRunRateFull) * 100) : 0;
+
+  wrap.innerHTML =
+    '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+      '<th></th><th class="text-left">Month</th><th>Run Rate</th><th>Achieved (Incl. GST)</th>' +
+      '<th>Home / Cross / Corp</th><th>Variance</th><th>%</th><th>Status</th><th>Students</th>' +
+      '</tr></thead><tbody>' + rowsHtml +
+      '<tr style="background:var(--navy);color:var(--gold);font-weight:800">' +
+        '<td></td><td class="text-left">FY TOTAL</td><td style="text-align:right">' + money(gRunRateFull) + '</td>' +
+        '<td style="text-align:right">' + money(gTotal.achieved) + '</td>' +
+        '<td style="text-align:right;font-size:11px">Home ' + money(gTotal.own) + ' &middot; Cross ' + money(gTotal.other) + ' &middot; Corp ' + money(gTotal.corp) + '</td>' +
+        '<td></td><td style="text-align:right">' + gPct + '%</td><td></td>' +
+        '<td style="text-align:right">' + gTotal.students + '</td>' +
+      '</tr>' +
+      '</tbody></table></div>' +
+    (d.annualTarget ? '' : '<p class="sub" style="margin-top:8px">No annual target found for ' + escC(d.centre) + ' — Run Rate/Variance/% left blank until one is set.</p>');
+}
+
+function cpToggleMonth(monthKey) {
+  cpExpandedMonths[monthKey] = !cpExpandedMonths[monthKey];
+  loadCentrePerformance();
 }
 
 

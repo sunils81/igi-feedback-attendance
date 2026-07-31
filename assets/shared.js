@@ -3105,6 +3105,76 @@ window.gasGet = (function () {
       });
   }
 
+  /* h_getCentrePerformance — the full-year, month-by-month view for ONE centre, every
+     counsellor who sold into it combined, broken into Own/Other/Corporate the same way an
+     individual counsellor's own monthly card does. Per instruction 2026-07-31: "Centre
+     Performance which shows month wise... includes revenue of all the counsellors for
+     that center... like an Excel." Distinct from getCentreMonthTotal (one month, a single
+     total) — this returns all 12 months in one call, each with a per-counsellor
+     breakdown, for a table-style view rather than a single card.
+
+     Own/Other/Corporate classification: a revenue_monthly_achieved row's business_centre
+     is fixed to the centre being viewed (that's the query filter) — what varies is
+     assigned_centre (the counsellor's OWN home centre) and business_type:
+       - business_type='Corporate Programs'                        -> 'corporate'
+       - business_type anything else AND assigned_centre===centre  -> 'own'   (home counsellor)
+       - business_type anything else AND assigned_centre!==centre  -> 'other' (cross-sell in)
+     Same convention revTotalsFromRows already uses for a single counsellor's own card,
+     just applied across everyone selling into this one centre instead. */
+  function h_getCentrePerformance(p, cb) {
+    var centre = String(p.centre || '').trim();
+    var period = String(p.period || '2026-27').trim();
+    if (!centre) { cb(null, { status: 'error', reason: 'Missing centre.' }); return; }
+
+    GET('revenue_centre_targets', 'centre=eq.' + encodeURIComponent(centre) + '&period=eq.' + encodeURIComponent(period), function (eT, targetRows) {
+      var annualTarget = (targetRows && targetRows[0]) ? Number(targetRows[0].annual_course_fee_target || 0) : 0;
+
+      GET('revenue_monthly_achieved', 'business_centre=eq.' + encodeURIComponent(centre) + '&period=eq.' + encodeURIComponent(period), function (e, rows) {
+        if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+        rows = rows || [];
+
+        var byMonth = {};
+        rows.forEach(function (r) {
+          var month = r.month;
+          if (!month) return;
+          var bucket = (byMonth[month] = byMonth[month] || {
+            month: month, achievedCourseFee: 0, achievedCourseFeeGst: 0, studentCount: 0,
+            own: 0, other: 0, corporate: 0, byCounsellor: {}
+          });
+          var isCorp = String(r.business_type || '').toLowerCase().indexOf('corporate') >= 0;
+          var category = isCorp ? 'corporate' : ((r.assigned_centre === centre) ? 'own' : 'other');
+          var fee = Number(r.achieved_course_fee) || 0;
+          var feeGst = Number(r.achieved_course_fee_gst) || 0;
+          var students = Number(r.student_count) || 0;
+
+          bucket.achievedCourseFee += fee;
+          bucket.achievedCourseFeeGst += feeGst;
+          bucket.studentCount += students;
+          bucket[category] += fee;
+
+          var cKey = r.counsellor || 'Unknown';
+          var cRow = (bucket.byCounsellor[cKey] = bucket.byCounsellor[cKey] || {
+            counsellor: cKey, category: category, achievedCourseFee: 0, achievedCourseFeeGst: 0, studentCount: 0
+          });
+          // A counsellor could in principle have BOTH a Centre Revenue row and a Corporate
+          // Programs row in the same month here — category on first-seen wins for display
+          // purposes (rare in practice; corporate is almost always its own separate line).
+          cRow.achievedCourseFee += fee;
+          cRow.achievedCourseFeeGst += feeGst;
+          cRow.studentCount += students;
+        });
+
+        var months = Object.keys(byMonth).sort().map(function (m) {
+          var b = byMonth[m];
+          b.byCounsellor = Object.values(b.byCounsellor).sort(function (a, c) { return c.achievedCourseFee - a.achievedCourseFee; });
+          return b;
+        });
+
+        cb(null, { status: 'ok', centre: centre, period: period, annualTarget: annualTarget, months: months });
+      });
+    });
+  }
+
   /* syncStudentRevenue — auto-upsert Centre Revenue from student_fees.course_fee.
      Called fire-and-forget after h_saveFee/h_deleteFeeRecord. Only acts on 2026-07
      onwards — pre-July months are never auto-overwritten; correcting them goes through
@@ -9286,6 +9356,7 @@ window.gasGet = (function () {
       case 'getRevenueDetail':          return h_getRevenueDetail(params, cb);
       case 'getMonthAchieved':          return h_getMonthAchieved(params, cb);
       case 'getCentreMonthTotal':       return h_getCentreMonthTotal(params, cb);
+      case 'getCentrePerformance':      return h_getCentrePerformance(params, cb);
       case 'checkInvoiceNumber':        return h_checkInvoiceNumber(params, cb);
       case 'checkStudentMobile':        return h_checkStudentMobile(params, cb);
       case 'mergeStudentRecords':       return h_mergeStudentRecords(params, cb);

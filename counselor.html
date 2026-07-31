@@ -3906,7 +3906,7 @@
           <h3 style="margin:0;font-size:16px">🏢 Corporate Batches</h3>
           <button class="btn btn-gold" style="width:auto;padding:8px 16px;font-size:12px" onclick="openCorporateBatchForm()">+ Add Corporate Batch</button>
         </div>
-        <p class="sub" style="margin-top:2px">Company training batches — a flat fee for the whole batch, not per associate. Separate from student fee records above.</p>
+        <p class="sub" style="margin-top:2px">Company training batches — a flat fee for the whole batch, not per associate. Managed separately here, but counted together with student fees in each month's total above.</p>
         <div id="corp-batch-list"><div class="empty-state"><div class="empty-icon">🏢</div><div class="empty-title">Loading…</div></div></div>
       </div>
     </div>
@@ -8825,6 +8825,10 @@ function loadCorporateBatches(force) {
 function renderCorporateBatchList() {
   var list = document.getElementById('corp-batch-list');
   if (!list) return;
+  // Corporate batches load async, separately from student fee records — if the Fee Record
+  // list already rendered before this arrived, refresh it now so corporate rows merge into
+  // the right month's totals instead of only showing up after some unrelated re-render.
+  if (allInvoiceRecords) renderFeeRecordTab();
   if (!corpBatchRecords.length) {
     list.innerHTML = '<div class="empty-state"><div class="empty-icon">🏢</div><div class="empty-title">No corporate batches yet.</div><div class="empty-copy">Add one above.</div></div>';
     return;
@@ -8985,6 +8989,52 @@ function feeRecordFilteredRows() {
   });
 }
 
+// Corporate batches shaped as fee-record-like rows so they can merge into the SAME
+// month-grouped Fee Record list and totals, rather than sitting in a separate, uncounted
+// section — per instruction 2026-07-31: "it should reflect in same month and the total
+// should be total of corporate and student fees." Skipped entirely when a specific batch
+// is filtered (corporate batches don't belong to any student batch). Treated as fully
+// collected — corporate_batches doesn't track partial/installment payments the way student
+// fees do, matching how the old manual Corporate Program Revenue entry always worked (one
+// achieved figure, no partial-payment tracking).
+function corpBatchesAsFeeRows() {
+  if (!corpBatchRecords || !corpBatchRecords.length) return [];
+  var effectiveCounsellor = document.getElementById('fr-filter-counsellor').value || '';
+  var monthFilter = document.getElementById('fr-filter-month').value;
+  var batchFilter = document.getElementById('fr-filter-batch').value;
+  if (batchFilter) return []; // corporate batches have no student batch to match against
+  var search = (document.getElementById('fr-filter-search').value || '').trim().toLowerCase();
+  var missingInvoiceOnly = !!(document.getElementById('fr-filter-missing-invoice') && document.getElementById('fr-filter-missing-invoice').checked);
+
+  return corpBatchRecords.filter(function(r) {
+    if (isAdmin) {
+      if (effectiveCounsellor && r.recordedBy !== effectiveCounsellor) return false;
+    } else {
+      var inMyCentre = !!(allowedCentres && allowedCentres.length && allowedCentres.indexOf(r.centre) !== -1);
+      var isMine = !!(counselorName && r.recordedBy === counselorName);
+      if (!inMyCentre && !isMine) return false;
+      if (effectiveCounsellor && r.recordedBy !== effectiveCounsellor) return false;
+    }
+    if (monthFilter && r.revenueMonth !== monthFilter) return false;
+    if (missingInvoiceOnly && r.invoiceNumber) return false;
+    if (search) {
+      var hay = (String(r.companyName||'') + ' ' + String(r.description||'')).toLowerCase();
+      if (hay.indexOf(search) < 0) return false;
+    }
+    return true;
+  }).map(function(r) {
+    var net = (Number(r.courseFee)||0) - (Number(r.discountAmount)||0);
+    return {
+      isCorporate: true, id: r.id,
+      enteredBy: r.recordedBy, studentId: '', studentName: '🏢 ' + r.companyName,
+      batchCode: r.description || 'Corporate', centre: r.centre,
+      invoiceNumber: r.invoiceNumber, courseFee: r.courseFee, gstAmount: r.gstAmount,
+      discountPct: r.discountPct, collected: net + (Number(r.gstAmount)||0), outstanding: 0,
+      revenueMonth: r.revenueMonth, month: r.revenueMonth
+    };
+  });
+}
+
 function renderFeeRecordTab() {
   var summary = document.getElementById('fr-summary');
   var list = document.getElementById('fr-list');
@@ -8997,7 +9047,7 @@ function renderFeeRecordTab() {
     return;
   }
 
-  var rows = feeRecordFilteredRows();
+  var rows = feeRecordFilteredRows().concat(corpBatchesAsFeeRows());
 
   if (!rows.length) {
     summary.style.display = 'none';
@@ -9105,7 +9155,9 @@ function renderFeeRecordTab() {
         '<td style="font-family:\'JetBrains Mono\',monospace">' + money(revenue) + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace;color:#1a7a3c">' + money(r.collected) + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace;color:' + (Number(r.outstanding) > 0 ? 'var(--red)' : '#1a7a3c') + '">' + money(r.outstanding) + '</td>' +
-        '<td><button class="del-btn" onclick="openInvoiceEditModal(\'' + escC(r.id) + '\')">' + (r.invoiceNumber ? '✏️ Edit' : '🧾 Add') + '</button></td>' +
+        '<td>' + (r.isCorporate
+          ? '<button class="del-btn" onclick="openCorporateBatchForm(\'' + escC(r.id) + '\')">✏️ Edit</button>'
+          : '<button class="del-btn" onclick="openInvoiceEditModal(\'' + escC(r.id) + '\')">' + (r.invoiceNumber ? '✏️ Edit' : '🧾 Add') + '</button>') + '</td>' +
       '</tr>';
     }).join('');
     var totalRow = '<tr style="background:var(--off);font-weight:800">' +

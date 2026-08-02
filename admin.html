@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=78"></script>
+<script src="assets/shared.js?v=79"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
@@ -1464,6 +1464,13 @@
         <div class="section-tag">National Performance — Current Year</div>
         <div id="rev-loading-hero" style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Loading revenue data…</div>
       </div>
+
+      <!-- Monthly Business Summary — pick any past month (dropdown lives inside the "This
+           Month" KPI card above, via renderMonthlyBusinessSummary) and get a full
+           centre + counsellor + corporate breakdown for it, since the hero card above
+           only ever reflects "right now" and there was no way to look back once a month
+           had ended (2026-08-02). -->
+      <div class="card" id="mbs-summary-wrap" style="display:none"></div>
 
       <!-- Visual Charts (Chart.js) -->
       <div class="charts-grid">
@@ -5394,6 +5401,139 @@ function toggleAdminCentreCard(centreName) {
   }
 }
 
+/* ══════════════════════════════════════════════════════════════
+   MONTHLY BUSINESS SUMMARY — pick any past month, get a full centre + counsellor +
+   corporate breakdown for it (2026-08-02, per instruction: "if i have to send last
+   month's business summary to boss... that option is not available as month has
+   changed"). The hero card above only ever reflects "right now" (openPresentationMode
+   and the This Month tile are both built on live dashboardData with no month
+   parameter) — this is a separate, focused view specifically for looking back.
+   ══════════════════════════════════════════════════════════════ */
+function mbsMonthPeriod(monthKey) {
+  // FY runs Apr-Mar — period label is 'startYear-endYearShort', e.g. Apr2026-Mar2027 = '2026-27'
+  var y = Number(monthKey.slice(0,4)), m = Number(monthKey.slice(5,7));
+  var fyStartYear = (m >= 4) ? y : y - 1;
+  return fyStartYear + '-' + String((fyStartYear + 1) % 100).padStart(2, '0');
+}
+function mbsPrevMonth(monthKey) {
+  var y = Number(monthKey.slice(0,4)), m = Number(monthKey.slice(5,7));
+  m -= 1; if (m === 0) { m = 12; y -= 1; }
+  return y + '-' + String(m).padStart(2, '0');
+}
+function mbsSameMonthLastYear(monthKey) {
+  return (Number(monthKey.slice(0,4)) - 1) + '-' + monthKey.slice(5,7);
+}
+function mbsMonthLabel(monthKey) {
+  var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var y = monthKey.slice(0,4), m = Number(monthKey.slice(5,7));
+  return months[m-1] + ' ' + y;
+}
+
+function populateMbsMonthDropdown() {
+  var sel = document.getElementById('mbs-month-select');
+  if (!sel || !dashboardData || !dashboardData.revenue) return;
+  var cur = sel.value;
+  var rows = dashboardData.revenue.monthlyRows || [];
+  var months = Array.from(new Set(rows.map(function(r) { return r.month; }).filter(Boolean))).sort().reverse();
+  sel.innerHTML = '<option value="">📋 View another month\'s summary…</option>' +
+    months.map(function(m) { return '<option value="' + m + '"' + (m === cur ? ' selected' : '') + '>' + mbsMonthLabel(m) + '</option>'; }).join('');
+}
+
+function renderMonthlyBusinessSummary(monthKey) {
+  var wrap = document.getElementById('mbs-summary-wrap');
+  if (!wrap) return;
+  if (!monthKey) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+
+  var allRows = (dashboardData && dashboardData.revenue && dashboardData.revenue.monthlyRows) || [];
+  var rows = allRows.filter(function(r) { return r.month === monthKey; });
+
+  var national = { achievedCourse: 0, achievedGst: 0, students: 0, own: 0, other: 0, corporate: 0 };
+  var byCentre = {};
+  rows.forEach(function(r) {
+    var fee = Number(r.achievedCourse) || 0, feeGst = Number(r.achievedGst) || 0, stu = Number(r.studentCount) || 0;
+    var isCorp = String(r.businessType || '').toLowerCase().indexOf('corporate') >= 0;
+    var category = isCorp ? 'corporate' : ((r.assignedCentre === r.businessCentre) ? 'own' : 'other');
+    national.achievedCourse += fee; national.achievedGst += feeGst; national.students += stu;
+    national[category] += fee;
+
+    var cKey = r.businessCentre || 'Unknown';
+    var cBucket = (byCentre[cKey] = byCentre[cKey] || { centre: cKey, achievedCourse: 0, achievedGst: 0, students: 0, own: 0, other: 0, corporate: 0, byCounsellor: {} });
+    cBucket.achievedCourse += fee; cBucket.achievedGst += feeGst; cBucket.students += stu;
+    cBucket[category] += fee;
+
+    var counKey = r.counsellor || 'Unknown';
+    var counRow = (cBucket.byCounsellor[counKey] = cBucket.byCounsellor[counKey] || { counsellor: counKey, category: category, achievedCourse: 0, achievedGst: 0, students: 0 });
+    counRow.achievedCourse += fee; counRow.achievedGst += feeGst; counRow.students += stu;
+  });
+
+  var centreList = Object.values(byCentre).sort(function(a,b) { return b.achievedGst - a.achievedGst; });
+  centreList.forEach(function(c) { c.byCounsellor = Object.values(c.byCounsellor).sort(function(a,b) { return b.achievedGst - a.achievedGst; }); });
+
+  wrap.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">' +
+      '<div class="section-tag" style="margin:0">📋 Monthly Business Summary — ' + mbsMonthLabel(monthKey) + '</div>' +
+      '<button class="btn btn-outline" style="width:auto;padding:6px 14px;font-size:11px" onclick="window.print()">🖨️ Print / Save PDF</button>' +
+    '</div>' +
+    '<div class="kpi-row" style="margin-bottom:14px">' +
+      '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">National Total (Incl. GST)</div><div class="kpi-value">' + money(national.achievedGst) + '</div><div class="kpi-meta" id="mbs-mom-note">vs last month: —</div></div>' +
+      '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">vs Same Month Last Year</div><div class="kpi-value" id="mbs-yoy-value">—</div><div class="kpi-meta" id="mbs-yoy-note">loading…</div></div>' +
+      '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">Students Enrolled</div><div class="kpi-value">' + national.students + '</div></div>' +
+      '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">Home / Cross-sell / Corporate</div><div class="kpi-value" style="font-size:13px">' + money(national.own) + ' / ' + money(national.other) + ' / ' + money(national.corporate) + '</div></div>' +
+    '</div>' +
+    '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+      '<th></th><th class="text-left">Centre</th><th>Achieved (Incl. GST)</th><th>Home / Cross / Corp</th><th>Students</th>' +
+      '</tr></thead><tbody>' +
+      centreList.map(function(c) {
+        var expanded = !!mbsExpandedCentres[c.centre];
+        var counRows = c.byCounsellor.map(function(cn) {
+          var catLabel = cn.category === 'own' ? 'Home' : (cn.category === 'other' ? 'Cross-sell' : 'Corporate');
+          return '<tr style="background:var(--off)"><td></td><td colspan="1" style="padding-left:24px">' + cn.counsellor + ' <span style="font-size:11px;color:var(--muted)">(' + catLabel + ')</span></td>' +
+            '<td style="text-align:right">' + money(cn.achievedGst) + '</td><td></td><td style="text-align:right">' + cn.students + '</td></tr>';
+        }).join('');
+        return '<tr style="cursor:pointer" onclick="mbsToggleCentre(\'' + c.centre.replace(/'/g,"\\'") + '\',\'' + monthKey + '\')">' +
+          '<td>' + (c.byCounsellor.length ? (expanded ? '▾' : '▸') : '') + '</td>' +
+          '<td class="text-left"><strong>' + c.centre + '</strong></td>' +
+          '<td style="text-align:right;font-weight:600">' + money(c.achievedGst) + '</td>' +
+          '<td style="text-align:right;font-size:11px;color:var(--muted)">' + money(c.own) + ' / ' + money(c.other) + ' / ' + money(c.corporate) + '</td>' +
+          '<td style="text-align:right">' + c.students + '</td>' +
+        '</tr>' + (expanded ? counRows : '');
+      }).join('') +
+      '<tr style="background:var(--navy);color:var(--gold);font-weight:800">' +
+        '<td></td><td class="text-left">NATIONAL TOTAL</td><td style="text-align:right">' + money(national.achievedGst) + '</td>' +
+        '<td style="text-align:right;font-size:11px">' + money(national.own) + ' / ' + money(national.other) + ' / ' + money(national.corporate) + '</td>' +
+        '<td style="text-align:right">' + national.students + '</td>' +
+      '</tr>' +
+      '</tbody></table></div>';
+
+  // MoM and YoY need their own small fetch — MoM because April's "previous month" (March)
+  // falls in the prior FY, outside the currently-loaded monthlyRows entirely; YoY always
+  // does, since monthlyRows is scoped to the current FY only.
+  gasGet({ action: 'getNationalMonthTotal', month: mbsPrevMonth(monthKey), period: mbsMonthPeriod(mbsPrevMonth(monthKey)) }, function(e, d) {
+    var el = document.getElementById('mbs-mom-note');
+    if (!el) return;
+    if (e || !d || !d.achievedCourseFeeGst) { el.textContent = 'vs ' + mbsMonthLabel(mbsPrevMonth(monthKey)) + ': no prior data'; return; }
+    var diff = national.achievedGst - d.achievedCourseFeeGst;
+    var pct = Math.round((diff / d.achievedCourseFeeGst) * 100);
+    el.innerHTML = 'vs ' + mbsMonthLabel(mbsPrevMonth(monthKey)) + ': <span style="color:' + (diff >= 0 ? '#1a7a3c' : 'var(--red)') + '">' + (diff >= 0 ? '▲' : '▼') + ' ' + Math.abs(pct) + '%</span>';
+  });
+  gasGet({ action: 'getNationalMonthTotal', month: mbsSameMonthLastYear(monthKey), period: mbsMonthPeriod(mbsSameMonthLastYear(monthKey)) }, function(e, d) {
+    var valEl = document.getElementById('mbs-yoy-value'), noteEl = document.getElementById('mbs-yoy-note');
+    if (!valEl || !noteEl) return;
+    if (e || !d || !d.achievedCourseFeeGst) { valEl.textContent = '—'; noteEl.textContent = 'No data for ' + mbsMonthLabel(mbsSameMonthLastYear(monthKey)); return; }
+    var diff = national.achievedGst - d.achievedCourseFeeGst;
+    var pct = Math.round((diff / d.achievedCourseFeeGst) * 100);
+    valEl.textContent = money(d.achievedCourseFeeGst);
+    noteEl.innerHTML = '<span style="color:' + (diff >= 0 ? '#1a7a3c' : 'var(--red)') + '">' + (diff >= 0 ? '▲' : '▼') + ' ' + Math.abs(pct) + '%</span> vs ' + mbsMonthLabel(mbsSameMonthLastYear(monthKey));
+  });
+}
+
+var mbsExpandedCentres = {};
+function mbsToggleCentre(centre, monthKey) {
+  mbsExpandedCentres[centre] = !mbsExpandedCentres[centre];
+  renderMonthlyBusinessSummary(monthKey);
+}
+
 function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTargetCourse, totalTargetGst, totalStudentsCount, pctOverall, monthsLeft, gapValCourse, gapValGst, reqMonthlyRunRateCourse, reqMonthlyRunRateGst, gstViewIncl, thisMonthCourse, thisMonthGst, lastMonthCourse, lastMonthGst, thisMonthKey) {
   const container = document.getElementById('rev-hero-card');
   if (!container) return;
@@ -5469,6 +5609,7 @@ function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTarge
           '<div class="kpi-label">This Month (' + thisMonthLabel + ')</div>' +
           '<div class="kpi-value">' + money(thisMonthK) + '</div>' +
           '<div class="kpi-meta">' + momMeta + '</div>' +
+          '<select id="mbs-month-select" onchange="renderMonthlyBusinessSummary(this.value)" style="width:100%;margin-top:6px;font-size:11px;padding:3px 4px;border:1px solid var(--border);border-radius:5px;color:var(--muted)"><option value="">📋 View another month\'s summary…</option></select>' +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -5477,6 +5618,7 @@ function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTarge
       '<div id="rev-progress-bar" style="height:8px;border-radius:8px;background:' + ringColor + ';width:0%;transition:width 1s ease"></div>' +
     '</div>' +
     '<div id="rev-pacing-note" style="font-size:12px;color:var(--muted);margin-top:4px"></div>';
+  populateMbsMonthDropdown();
 
   // Trigger animations in next frame
   setTimeout(function() {

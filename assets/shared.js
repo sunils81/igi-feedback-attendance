@@ -3105,6 +3105,31 @@ window.gasGet = (function () {
       });
   }
 
+  /* h_getNationalMonthTotal — like h_getCentreMonthTotal just above, but with no centre
+     filter at all: the WHOLE company's achieved revenue for one month. Built for the
+     Monthly Business Summary's year-over-year comparison (2026-08-02) — everything else
+     that summary needs (this month's centre/counsellor/corporate breakdown) is already
+     sitting in dashboardData.revenue.monthlyRows client-side, but that's scoped to the
+     current FY only (period=eq.[current]), so comparing against the SAME month a year
+     earlier needs its own small fetch. */
+  function h_getNationalMonthTotal(p, cb) {
+    var month = String(p.month || '').trim();
+    var period = String(p.period || '2026-27').trim();
+    if (!month) { cb(null, { achievedCourseFee: 0, achievedCourseFeeGst: 0, studentCount: 0 }); return; }
+    GET('revenue_monthly_achieved',
+      'month=eq.' + encodeURIComponent(month) + '&period=eq.' + encodeURIComponent(period),
+      function (e, rows) {
+        rows = (e ? [] : (rows || []));
+        var achievedCourseFee = 0, achievedCourseFeeGst = 0, studentCount = 0;
+        rows.forEach(function (r) {
+          achievedCourseFee += Number(r.achieved_course_fee) || 0;
+          achievedCourseFeeGst += Number(r.achieved_course_fee_gst) || 0;
+          studentCount += Number(r.student_count) || 0;
+        });
+        cb(null, { achievedCourseFee: achievedCourseFee, achievedCourseFeeGst: achievedCourseFeeGst, studentCount: studentCount });
+      });
+  }
+
   /* h_getCentrePerformance — the full-year, month-by-month view for ONE centre, every
      counsellor who sold into it combined, broken into Own/Other/Corporate the same way an
      individual counsellor's own monthly card does. Per instruction 2026-07-31: "Centre
@@ -9356,6 +9381,7 @@ window.gasGet = (function () {
       case 'getRevenueDetail':          return h_getRevenueDetail(params, cb);
       case 'getMonthAchieved':          return h_getMonthAchieved(params, cb);
       case 'getCentreMonthTotal':       return h_getCentreMonthTotal(params, cb);
+      case 'getNationalMonthTotal':     return h_getNationalMonthTotal(params, cb);
       case 'getCentrePerformance':      return h_getCentrePerformance(params, cb);
       case 'checkInvoiceNumber':        return h_checkInvoiceNumber(params, cb);
       case 'checkStudentMobile':        return h_checkStudentMobile(params, cb);

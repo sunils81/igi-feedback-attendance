@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=79"></script>
+<script src="/assets/shared.js?v=80"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -1812,6 +1812,20 @@
       <button onclick="document.getElementById('missing-invoice-banner').style.display='none'" style="background:transparent;border:none;color:#4c1d95;font-size:16px;cursor:pointer;line-height:1;">×</button>
     </div>
     <div id="missing-invoice-list" style="display:flex;flex-direction:column;gap:4px;"></div>
+  </div>
+
+  <!-- Suspense Entries red-flag banner — real money sitting unclassified, needs a human
+       to review and confirm what it actually is (see suspense_entries table, added
+       2026-08-02 per instruction: "enter in Suspense entry and give a red flag
+       notification to check and confirm"). Shown to admin AND whoever the entry's centre
+       belongs to — unlike the other nudge banners, this doesn't auto-dismiss quietly;
+       it's meant to stay visible until someone actually resolves the underlying entry. -->
+  <div id="suspense-banner" style="display:none;background:#FEF2F2;border:2px solid #DC2626;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#7F1D1D;flex-direction:column;gap:6px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span>🚩</span>
+      <span id="suspense-banner-text" style="flex:1;font-weight:700;"></span>
+      <a href="javascript:void(0)" onclick="switchTab('t-fee-record');document.getElementById('suspense-entry-list').scrollIntoView({behavior:'smooth'})" style="font-size:12px;font-weight:600;color:#DC2626;text-decoration:underline">Review now →</a>
+    </div>
   </div>
 
   <!-- Alumni referral nudge banner (non-blocking). Flags alumni whose course ended 15, 45,
@@ -3912,6 +3926,26 @@
         <p class="sub" style="margin-top:2px">Company training batches — a flat fee for the whole batch, not per associate. Managed separately here, but counted together with student fees in each month's total above.</p>
         <div id="corp-batch-list"><div class="empty-state"><div class="empty-icon">🏢</div><div class="empty-title">Loading…</div></div></div>
       </div>
+
+      <div style="margin-top:28px;padding-top:20px;border-top:1.5px solid var(--border)">
+        <h3 style="margin:0 0 4px;font-size:16px">🚩 Suspense Entries</h3>
+        <p class="sub" style="margin-top:2px">Real money that can't yet be classified as normal course-fee revenue — held here, flagged, and NOT counted toward any total until someone reviews and resolves it.</p>
+        <div id="suspense-entry-list"><div class="empty-state"><div class="empty-icon">🚩</div><div class="empty-title">Loading…</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Suspense Entry resolve modal — opened from the Suspense Entries list. -->
+  <div id="suspense-resolve-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,.5);z-index:9000;align-items:center;justify-content:center;padding:16px">
+    <div style="background:var(--white);border-radius:14px;max-width:480px;width:100%;padding:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <h3 style="margin:0">Resolve Suspense Entry</h3>
+        <button onclick="closeSuspenseResolveModal()" style="background:transparent;border:none;font-size:20px;cursor:pointer;color:var(--muted)">×</button>
+      </div>
+      <p class="sub" id="suspense-resolve-summary" style="margin-top:2px"></p>
+      <div class="field"><label>What was decided? *</label><textarea id="suspense-resolution-note" rows="3" placeholder="e.g. Confirmed with Accounts — separate registration fee, not course-fee revenue. Logged as-is, no fee record needed."></textarea></div>
+      <button class="btn btn-gold" style="width:auto;padding:10px 20px" onclick="submitSuspenseResolve()">Mark Resolved</button>
+      <span id="suspense-resolve-err" style="color:#B00020;font-size:12px;margin-left:10px"></span>
     </div>
   </div>
 
@@ -4991,6 +5025,7 @@ function initCounselorPortal() {
         setTimeout(loadOverdueFeesNotification, 2000);
         setTimeout(loadRevenueMonthMismatchNotification, 2300);
         setTimeout(loadMissingInvoiceDateNotification, 2450);
+        setTimeout(loadSuspenseEntryNotification, 2500);
         setTimeout(loadReferralNudgeNotification, 2500);
         setTimeout(loadDuplicateStudentNotification, 2800);
         setTimeout(loadGemaFoundationNotification, 3050);
@@ -5350,6 +5385,7 @@ function doLogin() {
     setTimeout(loadPendingBatchConfirmBanner, 2500);
     setTimeout(loadRevenueMonthMismatchNotification, 2650);
     setTimeout(loadMissingInvoiceDateNotification, 2700);
+    setTimeout(loadSuspenseEntryNotification, 2720);
     setTimeout(loadReferralNudgeNotification, 2750);
     setTimeout(loadDuplicateStudentNotification, 2800);
     setTimeout(loadGemaFoundationNotification, 3050);
@@ -5692,6 +5728,7 @@ function switchTab(id) {
   if (id === 't-fee-record') {
     loadFeeRecordTab();
     loadCorporateBatches();
+    loadSuspenseEntries();
   }
   if (id === 't-op-invoices') {
     loadOperationalInvoices();
@@ -8913,6 +8950,97 @@ function renderCorporateBatchList() {
   });
   html += '</tbody></table></div>';
   list.innerHTML = html;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SUSPENSE ENTRIES — real money that can't yet be classified as normal course-fee
+   revenue (2026-08-02, per instruction: "enter in Suspense entry and give a red flag
+   notification to check and confirm"). Deliberately NOT counted toward any revenue
+   total — see h_saveSuspenseEntry/syncStudentRevenue in shared.js. Stays red-flagged
+   until someone resolves it with a note.
+   ══════════════════════════════════════════════════════════════ */
+var suspenseEntries = [];
+
+function loadSuspenseEntryNotification() {
+  gasGet({ action: 'getSuspenseEntries', status: 'pending', centre: (allowedCentres && allowedCentres[0]) || '', isAdmin: isAdmin ? 'true' : 'false' }, function(e, d) {
+    var banner = document.getElementById('suspense-banner');
+    var text = document.getElementById('suspense-banner-text');
+    if (!banner || !text) return;
+    if (e || !d || !d.count) { banner.style.display = 'none'; return; }
+    var total = (d.records || []).filter(function(r){return r.status==='pending';}).reduce(function(s,r){return s+r.amount+r.gstAmount;}, 0);
+    text.textContent = d.count + ' suspense ' + (d.count === 1 ? 'entry needs' : 'entries need') + ' review (' + money(total) + ' unclassified) — check and confirm.';
+    banner.style.display = 'flex';
+  });
+}
+
+function loadSuspenseEntries(force) {
+  if (suspenseEntries.length && !force) { renderSuspenseEntryList(); return; }
+  var list = document.getElementById('suspense-entry-list');
+  if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">🚩</div><div class="empty-title">Loading…</div></div>';
+  gasGet({ action: 'getSuspenseEntries', centre: (allowedCentres && allowedCentres[0]) || '', isAdmin: isAdmin ? 'true' : 'false' }, function(e, d) {
+    if (e || !d || !d.records) {
+      if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load. Try again.</div></div>';
+      return;
+    }
+    suspenseEntries = d.records;
+    renderSuspenseEntryList();
+  });
+}
+
+function renderSuspenseEntryList() {
+  var list = document.getElementById('suspense-entry-list');
+  if (!list) return;
+  if (!suspenseEntries.length) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">🚩</div><div class="empty-title">No suspense entries.</div><div class="empty-copy">Nothing currently held pending review.</div></div>';
+    return;
+  }
+  var pending = suspenseEntries.filter(function(r){return r.status==='pending';});
+  var resolved = suspenseEntries.filter(function(r){return r.status==='resolved';});
+  var html = '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+    '<th class="text-left">Description</th><th class="text-left">Related to</th><th class="text-left">Invoice</th>' +
+    '<th>Amount</th><th class="text-left">Why flagged</th><th class="text-left">Status</th><th></th>' +
+    '</tr></thead><tbody>';
+  pending.concat(resolved).forEach(function(r) {
+    var isPending = r.status === 'pending';
+    html += '<tr style="' + (isPending ? 'background:#FEF2F2' : 'opacity:0.6') + '">' +
+      '<td>' + escC(r.description) + '</td>' +
+      '<td>' + escC(r.relatedStudentName || '—') + (r.relatedStudentId ? ' (' + escC(r.relatedStudentId) + ')' : '') + '</td>' +
+      '<td>' + escC(r.invoiceNumber || '—') + '<div style="font-size:11px;color:var(--muted)">' + escC(r.invoiceDate || '') + '</div></td>' +
+      '<td style="text-align:right;font-weight:600">' + money(r.amount + r.gstAmount) + '</td>' +
+      '<td style="font-size:11px;color:var(--muted)">' + escC(r.flaggedReason) + '</td>' +
+      '<td>' + (isPending ? '<span style="color:#DC2626;font-weight:700">🚩 Pending</span>' : '<span style="color:#1a7a3c">✓ Resolved</span><div style="font-size:11px;color:var(--muted)">' + escC(r.resolutionNote || '') + '</div>') + '</td>' +
+      '<td>' + (isPending ? '<button class="del-btn" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer" onclick="openSuspenseResolveModal(\'' + escC(r.id) + '\')">Resolve</button>' : '') + '</td>' +
+      '</tr>';
+  });
+  html += '</tbody></table></div>';
+  list.innerHTML = html;
+}
+
+var suspenseResolveTargetId = null;
+function openSuspenseResolveModal(id) {
+  var rec = suspenseEntries.find(function(r) { return r.id === id; });
+  if (!rec) return;
+  suspenseResolveTargetId = id;
+  document.getElementById('suspense-resolve-summary').textContent = rec.description + ' — ' + money(rec.amount + rec.gstAmount) + (rec.relatedStudentName ? (' (' + rec.relatedStudentName + ')') : '');
+  document.getElementById('suspense-resolution-note').value = '';
+  document.getElementById('suspense-resolve-err').textContent = '';
+  document.getElementById('suspense-resolve-modal-overlay').style.display = 'flex';
+}
+function closeSuspenseResolveModal() {
+  document.getElementById('suspense-resolve-modal-overlay').style.display = 'none';
+  suspenseResolveTargetId = null;
+}
+function submitSuspenseResolve() {
+  var note = document.getElementById('suspense-resolution-note').value.trim();
+  var errEl = document.getElementById('suspense-resolve-err');
+  if (!note) { errEl.textContent = 'Please explain what was decided.'; return; }
+  gasGet({ action: 'resolveSuspenseEntry', id: suspenseResolveTargetId, resolutionNote: note, resolvedBy: counselorName }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { errEl.textContent = (d && d.reason) || 'Could not save. Try again.'; return; }
+    showToast('Suspense entry resolved.');
+    closeSuspenseResolveModal();
+    loadSuspenseEntries(true);
+    loadSuspenseEntryNotification();
+  });
 }
 
 function deleteCorporateBatchEntry(id) {

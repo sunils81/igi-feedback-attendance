@@ -3429,6 +3429,75 @@ window.gasGet = (function () {
     });
   }
 
+  /* SUSPENSE ENTRIES — a holding area for real money that can't yet be classified as
+     normal course-fee revenue (2026-08-02, per instruction: "for issue 2, as of now
+     enter in Suspense entry and give a red flag notification to check and confirm" —
+     Kavya Mehta's Rs 16,590 invoice, unclear whether it's a separate registration fee or
+     a course-fee installment). Deliberately NOT counted in revenue_monthly_achieved at
+     all — the whole point of a suspense entry is that it shouldn't silently inflate
+     revenue while its classification is still in question. Stays flagged red until
+     someone resolves it with a note explaining what was decided. */
+  function h_saveSuspenseEntry(p, cb) {
+    if (!p.description || !p.centre || !p.flaggedReason || !p.recordedBy) {
+      cb(null, { status: 'error', reason: 'Description, centre, reason, and recorded-by are required.' });
+      return;
+    }
+    var dbRow = {
+      description: p.description,
+      amount: Number(p.amount || 0),
+      gst_amount: Number(p.gstAmount || 0),
+      related_student_id: p.relatedStudentId || '',
+      related_student_name: p.relatedStudentName || '',
+      centre: p.centre,
+      invoice_number: p.invoiceNumber || '',
+      invoice_date: p.invoiceDate || null,
+      flagged_reason: p.flaggedReason,
+      recorded_by: p.recordedBy,
+      status: 'pending',
+      updated_at: nowISO()
+    };
+    if (p.id) {
+      PATCH('suspense_entries', 'id=eq.' + encodeURIComponent(p.id), dbRow, function(e) {
+        cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+      });
+    } else {
+      POST('suspense_entries', '', dbRow, function(e) {
+        cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+      });
+    }
+  }
+
+  function h_getSuspenseEntries(p, cb) {
+    var isAdm = !!(p && (p.isAdmin === true || p.isAdmin === 'true'));
+    var qs = 'order=created_at.desc&limit=500';
+    if (p.status) qs += '&status=eq.' + encodeURIComponent(p.status);
+    if (!isAdm && p.centre) qs += '&centre=eq.' + encodeURIComponent(p.centre);
+    GET('suspense_entries', qs, function(e, rows) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      var records = (rows || []).map(function(r) {
+        return {
+          id: r.id, description: r.description, amount: Number(r.amount) || 0, gstAmount: Number(r.gst_amount) || 0,
+          relatedStudentId: r.related_student_id, relatedStudentName: r.related_student_name,
+          centre: r.centre, invoiceNumber: r.invoice_number, invoiceDate: r.invoice_date,
+          flaggedReason: r.flagged_reason, recordedBy: r.recorded_by, status: r.status,
+          resolutionNote: r.resolution_note, resolvedBy: r.resolved_by, resolvedAt: r.resolved_at,
+          createdAt: r.created_at
+        };
+      });
+      cb(null, { status: 'ok', count: records.filter(function(r){return r.status==='pending';}).length, records: records });
+    });
+  }
+
+  function h_resolveSuspenseEntry(p, cb) {
+    if (!p.id || !p.resolutionNote) { cb(null, { status: 'error', reason: 'Missing id or resolution note.' }); return; }
+    PATCH('suspense_entries', 'id=eq.' + encodeURIComponent(p.id), {
+      status: 'resolved', resolution_note: p.resolutionNote, resolved_by: p.resolvedBy || '',
+      resolved_at: nowISO(), updated_at: nowISO()
+    }, function(e) {
+      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+    });
+  }
+
   /* getHolidays */
   function h_getHolidays(p, cb) {
     GET('holidays', 'order=holiday_date.asc', function (e, rows) {
@@ -9378,6 +9447,9 @@ window.gasGet = (function () {
       case 'saveCorporateBatch':        return h_saveCorporateBatch(params, cb);
       case 'getCorporateBatches':       return h_getCorporateBatches(params, cb);
       case 'deleteCorporateBatch':      return h_deleteCorporateBatch(params, cb);
+      case 'saveSuspenseEntry':         return h_saveSuspenseEntry(params, cb);
+      case 'getSuspenseEntries':        return h_getSuspenseEntries(params, cb);
+      case 'resolveSuspenseEntry':      return h_resolveSuspenseEntry(params, cb);
       case 'getRevenueDetail':          return h_getRevenueDetail(params, cb);
       case 'getMonthAchieved':          return h_getMonthAchieved(params, cb);
       case 'getCentreMonthTotal':       return h_getCentreMonthTotal(params, cb);

@@ -5467,8 +5467,8 @@ function renderMonthlyBusinessSummary(monthKey) {
     counRow.achievedCourse += fee; counRow.achievedGst += feeGst; counRow.students += stu;
   });
 
-  var centreList = Object.values(byCentre).sort(function(a,b) { return b.achievedGst - a.achievedGst; });
-  centreList.forEach(function(c) { c.byCounsellor = Object.values(c.byCounsellor).sort(function(a,b) { return b.achievedGst - a.achievedGst; }); });
+  var centreList = Object.values(byCentre).sort(function(a,b) { return b.achievedCourse - a.achievedCourse; });
+  centreList.forEach(function(c) { c.byCounsellor = Object.values(c.byCounsellor).sort(function(a,b) { return b.achievedCourse - a.achievedCourse; }); });
 
   wrap.innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">' +
@@ -5476,31 +5476,31 @@ function renderMonthlyBusinessSummary(monthKey) {
       '<button class="btn btn-outline" style="width:auto;padding:6px 14px;font-size:11px" onclick="window.print()">🖨️ Print / Save PDF</button>' +
     '</div>' +
     '<div class="kpi-row" style="margin-bottom:14px">' +
-      '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">National Total (Incl. GST)</div><div class="kpi-value">' + money(national.achievedGst) + '</div><div class="kpi-meta" id="mbs-mom-note">vs last month: —</div></div>' +
+      '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">National Total (Excl. GST)</div><div class="kpi-value">' + money(national.achievedCourse) + '</div><div class="kpi-meta" id="mbs-mom-note">vs last month: —</div></div>' +
       '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">vs Same Month Last Year</div><div class="kpi-value" id="mbs-yoy-value">—</div><div class="kpi-meta" id="mbs-yoy-note">loading…</div></div>' +
       '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">Students Enrolled</div><div class="kpi-value">' + national.students + '</div></div>' +
       '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">Home / Cross-sell / Corporate</div><div class="kpi-value" style="font-size:13px">' + money(national.own) + ' / ' + money(national.other) + ' / ' + money(national.corporate) + '</div></div>' +
     '</div>' +
     '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
-      '<th></th><th class="text-left">Centre</th><th>Achieved (Incl. GST)</th><th>Home / Cross / Corp</th><th>Students</th>' +
+      '<th></th><th class="text-left">Centre</th><th>Achieved (Excl. GST)</th><th>Home / Cross / Corp</th><th>Students</th>' +
       '</tr></thead><tbody>' +
       centreList.map(function(c) {
         var expanded = !!mbsExpandedCentres[c.centre];
         var counRows = c.byCounsellor.map(function(cn) {
           var catLabel = cn.category === 'own' ? 'Home' : (cn.category === 'other' ? 'Cross-sell' : 'Corporate');
           return '<tr style="background:var(--off)"><td></td><td colspan="1" style="padding-left:24px">' + cn.counsellor + ' <span style="font-size:11px;color:var(--muted)">(' + catLabel + ')</span></td>' +
-            '<td style="text-align:right">' + money(cn.achievedGst) + '</td><td></td><td style="text-align:right">' + cn.students + '</td></tr>';
+            '<td style="text-align:right">' + money(cn.achievedCourse) + '</td><td></td><td style="text-align:right">' + cn.students + '</td></tr>';
         }).join('');
         return '<tr style="cursor:pointer" onclick="mbsToggleCentre(\'' + c.centre.replace(/'/g,"\\'") + '\',\'' + monthKey + '\')">' +
           '<td>' + (c.byCounsellor.length ? (expanded ? '▾' : '▸') : '') + '</td>' +
           '<td class="text-left"><strong>' + c.centre + '</strong></td>' +
-          '<td style="text-align:right;font-weight:600">' + money(c.achievedGst) + '</td>' +
+          '<td style="text-align:right;font-weight:600">' + money(c.achievedCourse) + '</td>' +
           '<td style="text-align:right;font-size:11px;color:var(--muted)">' + money(c.own) + ' / ' + money(c.other) + ' / ' + money(c.corporate) + '</td>' +
           '<td style="text-align:right">' + c.students + '</td>' +
         '</tr>' + (expanded ? counRows : '');
       }).join('') +
       '<tr style="background:var(--navy);color:var(--gold);font-weight:800">' +
-        '<td></td><td class="text-left">NATIONAL TOTAL</td><td style="text-align:right">' + money(national.achievedGst) + '</td>' +
+        '<td></td><td class="text-left">NATIONAL TOTAL</td><td style="text-align:right">' + money(national.achievedCourse) + '</td>' +
         '<td style="text-align:right;font-size:11px">' + money(national.own) + ' / ' + money(national.other) + ' / ' + money(national.corporate) + '</td>' +
         '<td style="text-align:right">' + national.students + '</td>' +
       '</tr>' +
@@ -5508,22 +5508,23 @@ function renderMonthlyBusinessSummary(monthKey) {
 
   // MoM and YoY need their own small fetch — MoM because April's "previous month" (March)
   // falls in the prior FY, outside the currently-loaded monthlyRows entirely; YoY always
-  // does, since monthlyRows is scoped to the current FY only.
+  // does, since monthlyRows is scoped to the current FY only. Excl. GST throughout — see
+  // instruction 2026-08-02.
   gasGet({ action: 'getNationalMonthTotal', month: mbsPrevMonth(monthKey), period: mbsMonthPeriod(mbsPrevMonth(monthKey)) }, function(e, d) {
     var el = document.getElementById('mbs-mom-note');
     if (!el) return;
-    if (e || !d || !d.achievedCourseFeeGst) { el.textContent = 'vs ' + mbsMonthLabel(mbsPrevMonth(monthKey)) + ': no prior data'; return; }
-    var diff = national.achievedGst - d.achievedCourseFeeGst;
-    var pct = Math.round((diff / d.achievedCourseFeeGst) * 100);
+    if (e || !d || !d.achievedCourseFee) { el.textContent = 'vs ' + mbsMonthLabel(mbsPrevMonth(monthKey)) + ': no prior data'; return; }
+    var diff = national.achievedCourse - d.achievedCourseFee;
+    var pct = Math.round((diff / d.achievedCourseFee) * 100);
     el.innerHTML = 'vs ' + mbsMonthLabel(mbsPrevMonth(monthKey)) + ': <span style="color:' + (diff >= 0 ? '#1a7a3c' : 'var(--red)') + '">' + (diff >= 0 ? '▲' : '▼') + ' ' + Math.abs(pct) + '%</span>';
   });
   gasGet({ action: 'getNationalMonthTotal', month: mbsSameMonthLastYear(monthKey), period: mbsMonthPeriod(mbsSameMonthLastYear(monthKey)) }, function(e, d) {
     var valEl = document.getElementById('mbs-yoy-value'), noteEl = document.getElementById('mbs-yoy-note');
     if (!valEl || !noteEl) return;
-    if (e || !d || !d.achievedCourseFeeGst) { valEl.textContent = '—'; noteEl.textContent = 'No data for ' + mbsMonthLabel(mbsSameMonthLastYear(monthKey)); return; }
-    var diff = national.achievedGst - d.achievedCourseFeeGst;
-    var pct = Math.round((diff / d.achievedCourseFeeGst) * 100);
-    valEl.textContent = money(d.achievedCourseFeeGst);
+    if (e || !d || !d.achievedCourseFee) { valEl.textContent = '—'; noteEl.textContent = 'No data for ' + mbsMonthLabel(mbsSameMonthLastYear(monthKey)); return; }
+    var diff = national.achievedCourse - d.achievedCourseFee;
+    var pct = Math.round((diff / d.achievedCourseFee) * 100);
+    valEl.textContent = money(d.achievedCourseFee);
     noteEl.innerHTML = '<span style="color:' + (diff >= 0 ? '#1a7a3c' : 'var(--red)') + '">' + (diff >= 0 ? '▲' : '▼') + ' ' + Math.abs(pct) + '%</span> vs ' + mbsMonthLabel(mbsSameMonthLastYear(monthKey));
   });
 }

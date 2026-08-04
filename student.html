@@ -9,6 +9,7 @@
 <title>IGI — Student Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="/assets/shared.js?v=73"></script>
+<script src="/assets/push-subscribe.js"></script>
 <style id="dyn-css"></style>
 <style>
 /* Diploma eligibility — the one moment on this portal students actually feel
@@ -365,6 +366,84 @@
 }
 
 /* Portal Tab Switcher System */
+/* ══ MOBILE BOTTOM NAV — Phase 1 (2026-08-04). Hidden by default (desktop keeps the
+   existing .portal-nav horizontal row); shown below 768px instead of it. Fixed to the
+   viewport bottom like every mobile app's tab bar — body gets matching bottom padding
+   below that breakpoint so the nav never overlaps the last card of whichever tab is open. ══ */
+.mobile-bottom-nav {
+  display: none;
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  background: var(--white);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 16px rgba(13,27,46,.08);
+  z-index: 500;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.mnav-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: transparent;
+  border: none;
+  padding: 8px 4px 6px;
+  cursor: pointer;
+  color: var(--muted);
+  font-family: inherit;
+}
+.mnav-icon { font-size: 19px; line-height: 1; }
+.mnav-label { font-size: 10px; font-weight: 600; }
+.mnav-btn.active { color: var(--navy); }
+.mnav-btn.active .mnav-icon { filter: none; }
+
+#more-sheet-overlay {
+  position: fixed; inset: 0;
+  background: rgba(13,27,46,.45);
+  z-index: 600;
+  display: flex;
+  align-items: flex-end;
+}
+#more-sheet-panel {
+  background: var(--white);
+  width: 100%;
+  border-radius: 16px 16px 0 0;
+  padding: 8px 0 max(12px, env(safe-area-inset-bottom, 12px));
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.more-sheet-handle {
+  width: 40px; height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin: 8px auto 6px;
+}
+.more-sheet-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  background: none;
+  border: none;
+  border-bottom: 1px solid rgba(13,27,46,.05);
+  padding: 14px 20px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--navy);
+  cursor: pointer;
+  text-align: left;
+}
+.more-sheet-item:last-child { border-bottom: none; }
+.more-sheet-chev { color: var(--muted); font-size: 16px; }
+
+@media (max-width: 768px) {
+  .portal-nav { display: none; }
+  .mobile-bottom-nav { display: flex; }
+  body { padding-bottom: 64px; }
+}
+
 .portal-nav {
   display: flex;
   background: var(--off);
@@ -853,35 +932,35 @@
 
     <!-- Segmented Tab Navigation -->
     <div class="portal-nav">
-      <button class="nav-tab" onclick="switchTab('tab-today', this)">
+      <button class="nav-tab active" id="nav-tab-today" onclick="switchTab('tab-today', this)">
         <span class="tab-icon">📅</span>
         <span class="tab-label">Attendance</span>
       </button>
-      <button class="nav-tab" onclick="switchTab('tab-courses', this)">
+      <button class="nav-tab" id="nav-tab-courses" onclick="switchTab('tab-courses', this)">
         <span class="tab-icon">📚</span>
         <span class="tab-label">Courses</span>
       </button>
-      <button class="nav-tab" onclick="switchTab('tab-calendar', this)">
+      <button class="nav-tab" id="nav-tab-calendar" onclick="switchTab('tab-calendar', this)">
         <span class="tab-icon">🗓️</span>
         <span class="tab-label">Calendar</span>
       </button>
-      <button class="nav-tab" onclick="switchTab('tab-marks', this)">
+      <button class="nav-tab" id="nav-tab-marks" onclick="switchTab('tab-marks', this)">
         <span class="tab-icon">📝</span>
         <span class="tab-label">Marks</span>
       </button>
-      <button class="nav-tab" onclick="switchTab('tab-resources', this); loadStudentResources();">
+      <button class="nav-tab" id="nav-tab-resources" onclick="switchTab('tab-resources', this); loadStudentResources();">
         <span class="tab-icon">📎</span>
         <span class="tab-label">Resources</span>
       </button>
-      <button class="nav-tab" onclick="switchTab('tab-fees', this)">
+      <button class="nav-tab" id="nav-tab-fees" onclick="switchTab('tab-fees', this)">
         <span class="tab-icon">💰</span>
         <span class="tab-label">Fees</span>
       </button>
-      <button class="nav-tab" onclick="switchTab('tab-diamondcalc', this); mountStudentDiamondCalc();">
+      <button class="nav-tab" id="nav-tab-diamondcalc" onclick="switchTab('tab-diamondcalc', this); mountStudentDiamondCalc();">
         <span class="tab-icon">🧮</span>
         <span class="tab-label">Calculator</span>
       </button>
-      <button class="nav-tab" onclick="switchTab('tab-glossary', this); mountStudentGlossary();">
+      <button class="nav-tab" id="nav-tab-glossary" onclick="switchTab('tab-glossary', this); mountStudentGlossary();">
         <span class="tab-icon">📖</span>
         <span class="tab-label">Glossary</span>
       </button>
@@ -908,10 +987,50 @@
         <span class="tab-icon">✨</span>
         <span class="tab-label">Alumni</span>
       </button>
-      <button class="nav-tab active" id="nav-tab-careerpath" onclick="switchTab('tab-careerpath', this);">
+      <button class="nav-tab" id="nav-tab-careerpath" onclick="switchTab('tab-careerpath', this);">
         <span class="tab-icon">💎</span>
         <span class="tab-label">Career Path</span>
       </button>
+    </div>
+
+    <!-- ══ MOBILE BOTTOM NAV — Phase 1 of the mobile redesign (2026-08-04). The 14 tabs
+         above stay exactly as they are (full functionality, desktop still uses that
+         horizontal row) — this is purely a navigation SHELL on top, hidden above
+         --mobile-bp and shown below it via CSS. switchTab() itself now also syncs these
+         buttons' active state (see MOBILE_NAV_MAP below it), so clicking anywhere —
+         top row, bottom nav, or the More sheet — keeps everything consistent. ══ -->
+    <div class="mobile-bottom-nav">
+      <button class="mnav-btn active" id="mnav-home" onclick="switchTab('tab-today', document.getElementById('nav-tab-today'))">
+        <span class="mnav-icon">🏠</span><span class="mnav-label">Home</span>
+      </button>
+      <button class="mnav-btn" id="mnav-timetable" onclick="switchTab('tab-calendar', document.getElementById('nav-tab-calendar'))">
+        <span class="mnav-icon">🗓️</span><span class="mnav-label">Timetable</span>
+      </button>
+      <button class="mnav-btn" id="mnav-marks" onclick="switchTab('tab-marks', document.getElementById('nav-tab-marks'))">
+        <span class="mnav-icon">📝</span><span class="mnav-label">Marks</span>
+      </button>
+      <button class="mnav-btn" id="mnav-notes" onclick="switchTab('tab-resources', document.getElementById('nav-tab-resources')); loadStudentResources();">
+        <span class="mnav-icon">📎</span><span class="mnav-label">Notes</span>
+      </button>
+      <button class="mnav-btn" id="mnav-more" onclick="toggleMoreSheet()">
+        <span class="mnav-icon">☰</span><span class="mnav-label">More</span>
+      </button>
+    </div>
+
+    <div id="more-sheet-overlay" style="display:none" onclick="if(event.target===this) toggleMoreSheet()">
+      <div id="more-sheet-panel">
+        <div class="more-sheet-handle"></div>
+        <button class="more-sheet-item" onclick="moreSheetGoTo('tab-courses','nav-tab-courses')"><span>📚 Courses</span><span class="more-sheet-chev">›</span></button>
+        <button class="more-sheet-item" onclick="moreSheetGoTo('tab-fees','nav-tab-fees')"><span>💰 Fees</span><span class="more-sheet-chev">›</span></button>
+        <button class="more-sheet-item" onclick="moreSheetGoTo('tab-results','nav-tab-tests'); otLoadMyResults();"><span>🧪 My Tests</span><span class="more-sheet-chev">›</span></button>
+        <button class="more-sheet-item" onclick="moreSheetGoTo('tab-assignments','nav-tab-assignments'); loadMyAssignments();"><span>📁 Assignments</span><span class="more-sheet-chev">›</span></button>
+        <button class="more-sheet-item" onclick="moreSheetGoTo('tab-portfolio','nav-tab-portfolio'); loadMyPortfolio();"><span>🎨 Portfolio</span><span class="more-sheet-chev">›</span></button>
+        <button class="more-sheet-item" onclick="moreSheetGoTo('tab-diploma','nav-tab-diploma'); loadStudentDiploma();"><span>🎓 Diploma</span><span class="more-sheet-chev">›</span></button>
+        <button class="more-sheet-item" onclick="moreSheetGoTo('tab-diamondcalc','nav-tab-diamondcalc'); mountStudentDiamondCalc();"><span>🧮 Calculator</span><span class="more-sheet-chev">›</span></button>
+        <button class="more-sheet-item" onclick="moreSheetGoTo('tab-glossary','nav-tab-glossary'); mountStudentGlossary();"><span>📖 Glossary</span><span class="more-sheet-chev">›</span></button>
+        <button class="more-sheet-item" onclick="moreSheetGoTo('tab-alumni','nav-tab-alumni'); renderAlumniTab();"><span>✨ Alumni</span><span class="more-sheet-chev">›</span></button>
+        <button class="more-sheet-item" onclick="moreSheetGoTo('tab-careerpath','nav-tab-careerpath')"><span>💎 Career Path</span><span class="more-sheet-chev">›</span></button>
+      </div>
     </div>
 
     <!-- Option D: Sticky test alert bar (all tabs) -->
@@ -964,7 +1083,7 @@
     </div>
 
     <!-- Today Tab Content -->
-    <div id="tab-today" class="tab-content">
+    <div id="tab-today" class="tab-content active">
       <!-- Assignments / Portfolio Alert Banner -->
       <div id="ot-assignments-pending-alert" style="display:none;background:linear-gradient(135deg,#7f1d1d 0%,#991b1b 100%);color:#fff;padding:18px 20px;border-radius:12px;margin-bottom:14px;border:1.5px solid #fca5a5;position:relative;box-shadow:var(--shadow);">
         <div style="font-size:15px;font-weight:700;color:#fca5a5;margin-bottom:4px;display:flex;align-items:center;gap:6px;">📝 Pending Assignment / Portfolio</div>
@@ -1071,7 +1190,7 @@
          candidate algorithm). Content sourced from IGI's own Gem-A/FGA counsellor pitch
          guide. The dynamic CTA block at the bottom (#gema-cta-wrap) is the only
          personalized part — see loadGemAStatus() in the script below. ══ -->
-    <div id="tab-careerpath" class="tab-content active">
+    <div id="tab-careerpath" class="tab-content">
       <div class="card">
         <div class="section-tag">Your Next Step</div>
         <h2>Beyond Graduate Gemologist</h2>
@@ -1601,6 +1720,15 @@ function switchTab(tabId, el) {
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   if (el) el.classList.add('active');
 
+  // Keep the mobile bottom nav's active state in sync no matter which of the three
+  // entry points (top row, bottom nav, More sheet) triggered this switch — see
+  // MOBILE_NAV_MAP just below this function. Tabs not in the map (Fees, Courses, etc.)
+  // fall back to highlighting "More", since that's where they actually live on mobile.
+  document.querySelectorAll('.mnav-btn').forEach(b => b.classList.remove('active'));
+  const mnavId = (typeof MOBILE_NAV_MAP !== 'undefined' && MOBILE_NAV_MAP[tabId]) || 'mnav-more';
+  const mnavEl = document.getElementById(mnavId);
+  if (mnavEl) mnavEl.classList.add('active');
+
   if (tabId === 'tab-today' && portalData) {
     renderStudentSummary(portalData);
   }
@@ -1612,6 +1740,30 @@ function switchTab(tabId, el) {
       if (!document.hidden) otLoadMyResults();
     }, 90000);
   }
+}
+
+// Maps a tab-content id to the mobile bottom nav button that should show as active while
+// it's open. Only the 4 tabs that got their own bottom-nav slot are listed — everything
+// else (Fees, Courses, My Tests, etc.) correctly falls through to "More" in switchTab()
+// above, since that's genuinely where a mobile user would have navigated from.
+const MOBILE_NAV_MAP = {
+  'tab-today': 'mnav-home',
+  'tab-calendar': 'mnav-timetable',
+  'tab-marks': 'mnav-marks',
+  'tab-resources': 'mnav-notes'
+};
+
+function toggleMoreSheet() {
+  const overlay = document.getElementById('more-sheet-overlay');
+  const isOpen = overlay.style.display !== 'none';
+  overlay.style.display = isOpen ? 'none' : 'flex';
+}
+
+// Used by every item inside the More sheet — switches to the tab, then closes the sheet
+// so the user lands on the content instead of staring at an open sheet over it.
+function moreSheetGoTo(tabId, topNavId) {
+  switchTab(tabId, document.getElementById(topNavId));
+  document.getElementById('more-sheet-overlay').style.display = 'none';
 }
 
 function mountStudentDiamondCalc() {
@@ -1667,6 +1819,7 @@ function fetchPortalData(enrol, mobileLast4, btn, err, silent) {
     // Always uppercase so it matches students.student_id in the DB
     const enrolUC = String(enrol).trim().toUpperCase();
     localStorage.setItem(SESSION_KEY, JSON.stringify({enrollmentNo:enrolUC, studentId:enrolUC, mobileLast4, savedAt:Date.now()}));
+    if (window.IGIPush) window.IGIPush.subscribe('student', enrolUC);
     portalData = d;
     renderPortal(d);
     // DPDP consent gate — checked fresh on every login AND session-restore (this single
@@ -3957,6 +4110,13 @@ if ('serviceWorker' in navigator) {
     }
   });
 }
+// If a session already exists (page refresh), re-subscribe to push silently
+(function() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+    if (s && s.studentId && window.IGIPush) window.IGIPush.subscribe('student', s.studentId);
+  } catch (e) {}
+})();
 
 /* ══════════════════════════════════════════
    DIPLOMA ELIGIBILITY TAB (student view)

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=80"></script>
+<script src="assets/shared.js?v=82"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
@@ -1382,6 +1382,8 @@
       <button class="tab" id="tab-targets" onclick="switchAdminTab('t-targets')">🎯 Target Settings</button>
       <button class="tab" onclick="switchAdminTab('t-rev-breakdown')">📑 Revenue Breakdown</button>
       <button class="tab" onclick="switchAdminTab('t-standings')">🏆 Championship Standings</button>
+      <button class="tab" onclick="switchAdminTab('t-corp-revenue')">💼 Corporate Revenue</button>
+      <button class="tab" onclick="switchAdminTab('t-course-revenue')">📚 Course-Wise Revenue</button>
       <button class="tab" onclick="switchAdminTab('t-fees')">💸 Fee Reconciliation</button>
       <button class="tab" onclick="switchAdminTab('t-invoices')">🧾 All Invoices</button>
       <button class="tab" onclick="switchAdminTab('t-op-invoices')">🧾 Operational Invoices</button>
@@ -1814,6 +1816,37 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- TAB: CORPORATE REVENUE — per instruction 2026-08-04: "how much corporate
+         revenue was done till date from April till YTD or for any month". -->
+    <div id="t-corp-revenue" class="tab-content">
+      <div class="card">
+        <h2 style="margin-bottom:4px">💼 Corporate Revenue Report</h2>
+        <p class="sub">Every rupee of corporate training revenue, nationally — pick a date range, or leave it at Year-to-Date.</p>
+        <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin:14px 0">
+          <div class="field" style="min-width:150px;margin-bottom:0"><label>From</label><select id="cr-from-month" onchange="loadCorporateRevenueReport()"></select></div>
+          <div class="field" style="min-width:150px;margin-bottom:0"><label>To</label><select id="cr-to-month" onchange="loadCorporateRevenueReport()"></select></div>
+          <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="setCorpRevenueYTD()">Reset to YTD</button>
+        </div>
+        <div id="cr-report-wrap"><div class="empty-state"><div class="empty-icon">💼</div><div class="empty-title">Loading…</div></div></div>
+      </div>
+    </div>
+
+    <!-- TAB: COURSE-WISE REVENUE — per instruction 2026-08-04: "how much is the course
+         wise fees, national or centre wise". -->
+    <div id="t-course-revenue" class="tab-content">
+      <div class="card">
+        <h2 style="margin-bottom:4px">📚 Course-Wise Revenue Report</h2>
+        <p class="sub">Revenue by course — Diamond Graduate, Colored Stone Graduate, and so on — nationally or for one centre. Click a course to see its centre split.</p>
+        <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin:14px 0">
+          <div class="field" style="min-width:150px;margin-bottom:0"><label>From</label><select id="cw-from-month" onchange="loadCourseWiseRevenueReport()"></select></div>
+          <div class="field" style="min-width:150px;margin-bottom:0"><label>To</label><select id="cw-to-month" onchange="loadCourseWiseRevenueReport()"></select></div>
+          <div class="field" style="min-width:170px;margin-bottom:0"><label>Centre</label><select id="cw-centre" onchange="loadCourseWiseRevenueReport()"><option value="">All Centres (National)</option></select></div>
+          <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="setCourseRevenueYTD()">Reset to YTD</button>
+        </div>
+        <div id="cw-report-wrap"><div class="empty-state"><div class="empty-icon">📚</div><div class="empty-title">Loading…</div></div></div>
       </div>
     </div>
 
@@ -4463,6 +4496,14 @@ function switchAdminTab(tabId) {
     loadActivityFeed();
     return;
   }
+  if (tabId === 't-corp-revenue') {
+    initCorporateRevenueTab();
+    return;
+  }
+  if (tabId === 't-course-revenue') {
+    initCourseWiseRevenueTab();
+    return;
+  }
   if (tabId === 't-crm-admin') {
     loadCRMAdminData();
     return;
@@ -4485,6 +4526,152 @@ function switchAdminTab(tabId) {
   } else {
     renderTabContent(tabId);
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+// CORPORATE REVENUE REPORT & COURSE-WISE REVENUE REPORT
+// Per instruction 2026-08-04: "how much corporate revenue was done till date from April
+// till YTD or for any month... how much is the course wise fees, national or centre wise."
+// Both default to YTD (Apr 2026 -> current month) with a custom range always available.
+// ══════════════════════════════════════════════════════════════
+function _revReportMonthList() {
+  // Apr 2026 through Mar 2027 — matches the FY convention used everywhere else in this
+  // file (revenueMonths()-equivalent for the admin side).
+  var months = [];
+  var y = 2026, m = 4;
+  for (var i = 0; i < 12; i++) {
+    months.push(y + '-' + String(m).padStart(2, '0'));
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  return months;
+}
+function _revReportCurrentMonthKey() {
+  var d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function _populateMonthRangeSelects(fromId, toId, fromDefault, toDefault) {
+  var months = _revReportMonthList();
+  var optsHtml = months.map(function(m) { return '<option value="' + m + '">' + mbsMonthLabel(m) + '</option>'; }).join('');
+  var fromSel = document.getElementById(fromId), toSel = document.getElementById(toId);
+  fromSel.innerHTML = optsHtml; toSel.innerHTML = optsHtml;
+  fromSel.value = fromDefault; toSel.value = toDefault;
+}
+
+var _corpRevenueInit = false;
+function initCorporateRevenueTab() {
+  if (!_corpRevenueInit) {
+    _populateMonthRangeSelects('cr-from-month', 'cr-to-month', '2026-04', _revReportCurrentMonthKey());
+    _corpRevenueInit = true;
+  }
+  loadCorporateRevenueReport();
+}
+function setCorpRevenueYTD() {
+  document.getElementById('cr-from-month').value = '2026-04';
+  document.getElementById('cr-to-month').value = _revReportCurrentMonthKey();
+  loadCorporateRevenueReport();
+}
+function loadCorporateRevenueReport() {
+  var from = document.getElementById('cr-from-month').value;
+  var to = document.getElementById('cr-to-month').value;
+  var wrap = document.getElementById('cr-report-wrap');
+  wrap.innerHTML = '<div class="empty-state"><div class="empty-icon">💼</div><div class="empty-title">Loading…</div></div>';
+  gasGet({ action: 'getCorporateRevenueReport', fromMonth: from, toMonth: to }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      wrap.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load. Try again.</div></div>';
+      return;
+    }
+    renderCorporateRevenueReport(d);
+  });
+}
+function renderCorporateRevenueReport(d) {
+  var wrap = document.getElementById('cr-report-wrap');
+  if (!d.totalAchievedCourseFee) {
+    wrap.innerHTML = '<div class="empty-state"><div class="empty-icon">💼</div><div class="empty-title">No corporate revenue in this range.</div></div>';
+    return;
+  }
+  var html = '<div class="kpi-row" style="margin-bottom:16px">' +
+    '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">Total (Excl. GST)</div><div class="kpi-value">' + money(d.totalAchievedCourseFee) + '</div></div>' +
+    '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">Total (Incl. GST)</div><div class="kpi-value">' + money(d.totalAchievedCourseFeeGst) + '</div></div>' +
+    '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">Associates Trained</div><div class="kpi-value">' + d.totalStudents + '</div></div>' +
+    '</div>';
+
+  html += '<h3 style="font-size:13px;margin:16px 0 6px">By Month</h3><div style="overflow-x:auto"><table class="compact-table"><thead><tr><th class="text-left">Month</th><th>Achieved (Excl. GST)</th><th>Associates</th></tr></thead><tbody>' +
+    d.byMonth.map(function(m) { return '<tr><td class="text-left">' + mbsMonthLabel(m.month) + '</td><td style="text-align:right">' + money(m.achievedCourseFee) + '</td><td style="text-align:right">' + m.studentCount + '</td></tr>'; }).join('') +
+    '</tbody></table></div>';
+
+  html += '<h3 style="font-size:13px;margin:16px 0 6px">By Centre</h3><div style="overflow-x:auto"><table class="compact-table"><thead><tr><th class="text-left">Centre</th><th>Achieved (Excl. GST)</th><th>Associates</th></tr></thead><tbody>' +
+    d.byCentre.map(function(c) { return '<tr><td class="text-left">' + escC(c.centre) + '</td><td style="text-align:right">' + money(c.achievedCourseFee) + '</td><td style="text-align:right">' + c.studentCount + '</td></tr>'; }).join('') +
+    '</tbody></table></div>';
+
+  if (d.detailBatches && d.detailBatches.length) {
+    html += '<h3 style="font-size:13px;margin:16px 0 6px">Company-Level Detail <span style="font-weight:400;color:var(--muted)">(only shown for entries logged through the detailed Corporate Batches system — most historical months only have a monthly total, no company breakdown)</span></h3>' +
+      '<div style="overflow-x:auto"><table class="compact-table"><thead><tr><th class="text-left">Company</th><th class="text-left">Centre</th><th class="text-left">Invoice</th><th>Fee</th><th>Associates</th></tr></thead><tbody>' +
+      d.detailBatches.map(function(b) {
+        return '<tr><td class="text-left">' + escC(b.companyName) + '</td><td class="text-left">' + escC(b.centre) + '</td><td class="text-left">' + escC(b.invoiceNumber||'—') + '</td><td style="text-align:right">' + money(b.courseFee - b.discountAmount) + '</td><td style="text-align:right">' + b.associatesTrained + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  wrap.innerHTML = html;
+}
+
+var _courseRevenueInit = false;
+function initCourseWiseRevenueTab() {
+  if (!_courseRevenueInit) {
+    _populateMonthRangeSelects('cw-from-month', 'cw-to-month', '2026-04', _revReportCurrentMonthKey());
+    var centreSel = document.getElementById('cw-centre');
+    (window.CENTRES || []).forEach(function(c) {
+      var o = document.createElement('option'); o.value = c; o.textContent = c; centreSel.appendChild(o);
+    });
+    _courseRevenueInit = true;
+  }
+  loadCourseWiseRevenueReport();
+}
+function setCourseRevenueYTD() {
+  document.getElementById('cw-from-month').value = '2026-04';
+  document.getElementById('cw-to-month').value = _revReportCurrentMonthKey();
+  loadCourseWiseRevenueReport();
+}
+var _cwExpandedCourses = {};
+function loadCourseWiseRevenueReport() {
+  var from = document.getElementById('cw-from-month').value;
+  var to = document.getElementById('cw-to-month').value;
+  var centre = document.getElementById('cw-centre').value;
+  var wrap = document.getElementById('cw-report-wrap');
+  wrap.innerHTML = '<div class="empty-state"><div class="empty-icon">📚</div><div class="empty-title">Loading…</div></div>';
+  gasGet({ action: 'getCourseWiseRevenueReport', fromMonth: from, toMonth: to, centre: centre }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      wrap.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load. Try again.</div></div>';
+      return;
+    }
+    renderCourseWiseRevenueReport(d);
+  });
+}
+function _cwToggleCourse(course) {
+  _cwExpandedCourses[course] = !_cwExpandedCourses[course];
+  loadCourseWiseRevenueReport();
+}
+function renderCourseWiseRevenueReport(d) {
+  var wrap = document.getElementById('cw-report-wrap');
+  if (!d.byCourse.length) {
+    wrap.innerHTML = '<div class="empty-state"><div class="empty-icon">📚</div><div class="empty-title">No revenue in this range.</div></div>';
+    return;
+  }
+  var html = '<div class="kpi-row" style="margin-bottom:16px">' +
+    '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">Total (Excl. GST)' + (d.centre ? (' — ' + escC(d.centre)) : ' — National') + '</div><div class="kpi-value">' + money(d.totalAchievedCourseFee) + '</div></div>' +
+    '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">Students</div><div class="kpi-value">' + d.totalStudents + '</div></div>' +
+    '</div>';
+
+  html += '<div style="overflow-x:auto"><table class="compact-table"><thead><tr><th></th><th class="text-left">Course</th><th>Achieved (Excl. GST)</th><th>Students</th></tr></thead><tbody>';
+  d.byCourse.forEach(function(c) {
+    var expanded = !!_cwExpandedCourses[c.course];
+    html += '<tr style="cursor:pointer" onclick="_cwToggleCourse(\'' + c.course.replace(/'/g,"\\'") + '\')"><td>' + (c.byCentre.length ? (expanded ? '▾' : '▸') : '') + '</td><td class="text-left"><strong>' + escC(c.course) + '</strong></td><td style="text-align:right;font-weight:600">' + money(c.achievedCourseFee) + '</td><td style="text-align:right">' + c.studentCount + '</td></tr>';
+    if (expanded) {
+      c.byCentre.forEach(function(cc) {
+        html += '<tr style="background:var(--off)"><td></td><td class="text-left" style="padding-left:24px">' + escC(cc.centre) + '</td><td style="text-align:right">' + money(cc.achievedCourseFee) + '</td><td style="text-align:right">' + cc.studentCount + '</td></tr>';
+      });
+    }
+  });
+  html += '</tbody></table></div>';
+  wrap.innerHTML = html;
 }
 
 // ══════════════════════════════════════════════════════════════

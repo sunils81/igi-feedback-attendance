@@ -3200,6 +3200,114 @@ window.gasGet = (function () {
     });
   }
 
+  /* h_getCorporateRevenueReport — national Corporate Programs revenue for a date range
+     (2026-08-04, per instruction: "how much corporate revenue was done till date from
+     April till YTD or for any month"). Defaults the caller doesn't have to supply
+     (YTD) are applied on the frontend by picking fromMonth='2026-04'; this handler just
+     takes whatever [fromMonth, toMonth] it's given, so a custom range works identically.
+     Reads revenue_monthly_achieved (business_type='Corporate Programs') for the
+     month/centre totals — that's the one place ALL corporate revenue lives, whether it
+     came from the old flat manual entry or the new corporate_batches detail table (only
+     one entry exists there so far, Riyaana Creations — most historical corporate revenue
+     has no company-level detail behind it yet, only a monthly total). corporate_batches
+     is queried separately for whatever company-level detail DOES exist, keyed by
+     revenue_month, so the report can show it where available without depending on it. */
+  function h_getCorporateRevenueReport(p, cb) {
+    var fromMonth = String(p.fromMonth || '2026-04').trim();
+    var toMonth = String(p.toMonth || '2026-03').trim();
+    GET('revenue_monthly_achieved',
+      'business_type=eq.Corporate Programs&month=gte.' + encodeURIComponent(fromMonth) + '&month=lte.' + encodeURIComponent(toMonth),
+      function (e, rows) {
+        rows = (e ? [] : (rows || []));
+        var byMonth = {}, byCentre = {};
+        var totalFee = 0, totalGst = 0, totalStudents = 0;
+        rows.forEach(function (r) {
+          // achieved_course_fee_gst is already the GST-INCLUSIVE total (fee+tax), not
+          // just the tax portion — used directly below, not added to achievedCourseFee
+          // again (that would double the fee component).
+          var fee = Number(r.achieved_course_fee) || 0, feeGst = Number(r.achieved_course_fee_gst) || 0, stu = Number(r.student_count) || 0;
+          totalFee += fee; totalGst += feeGst; totalStudents += stu;
+          var m = (byMonth[r.month] = byMonth[r.month] || { month: r.month, achievedCourseFee: 0, achievedCourseFeeGst: 0, studentCount: 0 });
+          m.achievedCourseFee += fee; m.achievedCourseFeeGst += feeGst; m.studentCount += stu;
+          var c = (byCentre[r.business_centre] = byCentre[r.business_centre] || { centre: r.business_centre, achievedCourseFee: 0, achievedCourseFeeGst: 0, studentCount: 0 });
+          c.achievedCourseFee += fee; c.achievedCourseFeeGst += feeGst; c.studentCount += stu;
+        });
+        GET('corporate_batches', 'revenue_month=gte.' + encodeURIComponent(fromMonth) + '&revenue_month=lte.' + encodeURIComponent(toMonth), function (e2, cbRows) {
+          var detail = (e2 ? [] : (cbRows || [])).map(function (r) {
+            return {
+              companyName: r.company_name, centre: r.centre, invoiceNumber: r.invoice_number,
+              invoiceDate: r.invoice_date, courseFee: Number(r.course_fee) || 0,
+              discountAmount: Number(r.discount_amount) || 0, associatesTrained: Number(r.associates_trained) || 0,
+              revenueMonth: r.revenue_month, recordedBy: r.recorded_by
+            };
+          });
+          cb(null, {
+            status: 'ok', fromMonth: fromMonth, toMonth: toMonth,
+            totalAchievedCourseFee: totalFee, totalAchievedCourseFeeGst: totalGst, totalStudents: totalStudents,
+            byMonth: Object.values(byMonth).sort(function (a, b) { return a.month.localeCompare(b.month); }),
+            byCentre: Object.values(byCentre).sort(function (a, b) { return b.achievedCourseFee - a.achievedCourseFee; }),
+            detailBatches: detail
+          });
+        });
+      });
+  }
+
+  /* h_getCourseWiseRevenueReport — revenue broken down by COURSE (Diamond Graduate,
+     Colored Stone Graduate, GG, etc.) for a date range, nationally or per centre
+     (2026-08-04, per instruction: "how much is the course wise fees, national or centre
+     wise"). Nothing else in the app tracks revenue at this granularity —
+     revenue_monthly_achieved only knows business_type (Centre Revenue vs Corporate
+     Programs), not the specific course — so this reads the raw student_fees ledger
+     directly and joins each row to its batch's course, the same net-of-discount
+     computation used everywhere else in this file (course_fee - discount_amount, GST
+     from gst_amount). Corporate Programs revenue is deliberately excluded — it isn't
+     tied to a course in the same sense (a flat fee for training some number of
+     associates), and would double-count against the Corporate Revenue Report above. */
+  function h_getCourseWiseRevenueReport(p, cb) {
+    var fromMonth = String(p.fromMonth || '2026-04').trim();
+    var toMonth = String(p.toMonth || '2026-03').trim();
+    var centreFilter = p.centre ? String(p.centre).trim() : '';
+    GET('batches', 'select=batch_code,course', function (eB, batchRows) {
+      var courseByBatch = {};
+      (batchRows || []).forEach(function (b) { courseByBatch[b.batch_code] = b.course || 'Unknown'; });
+      var qs = 'revenue_month=gte.' + encodeURIComponent(fromMonth) + '&revenue_month=lte.' + encodeURIComponent(toMonth) + '&limit=5000';
+      if (centreFilter) qs += '&centre=eq.' + encodeURIComponent(centreFilter);
+      GET('student_fees', qs, function (e, rows) {
+        rows = (e ? [] : (rows || []));
+        var byCourse = {};
+        var totalFee = 0, totalGst = 0, totalStudents = 0;
+        rows.forEach(function (r) {
+          var discAmt = 0;
+          if (r.receipt_no && r.receipt_no.trim().indexOf('{') === 0) {
+            try { discAmt = Number(JSON.parse(r.receipt_no).discount_amount || 0); } catch (ex) {}
+          }
+          var course = courseByBatch[r.batch_code] || 'Unknown';
+          // Actually apply the exclusion the comment above promised — a batch whose own
+          // course happens to be literally named "Corporate Programs" (a separate path
+          // from the corporate_batches table) would otherwise double-count against the
+          // Corporate Revenue Report, which already covers all corporate revenue.
+          if (course === 'Corporate Programs') return;
+          var fee = (Number(r.course_fee) || 0) - discAmt;
+          var gst = Number(r.gst_amount) || 0;
+          totalFee += fee; totalGst += gst; totalStudents += 1;
+          var c = (byCourse[course] = byCourse[course] || { course: course, achievedCourseFee: 0, achievedCourseFeeGst: 0, studentCount: 0, byCentre: {} });
+          c.achievedCourseFee += fee; c.achievedCourseFeeGst += fee + gst; c.studentCount += 1;
+          var cc = (c.byCentre[r.centre] = c.byCentre[r.centre] || { centre: r.centre, achievedCourseFee: 0, achievedCourseFeeGst: 0, studentCount: 0 });
+          cc.achievedCourseFee += fee; cc.achievedCourseFeeGst += fee + gst; cc.studentCount += 1;
+        });
+        var byCourseList = Object.values(byCourse).map(function (c) {
+          c.byCentre = Object.values(c.byCentre).sort(function (a, b) { return b.achievedCourseFee - a.achievedCourseFee; });
+          return c;
+        }).sort(function (a, b) { return b.achievedCourseFee - a.achievedCourseFee; });
+        cb(null, {
+          status: 'ok', fromMonth: fromMonth, toMonth: toMonth, centre: centreFilter || null,
+          totalAchievedCourseFee: totalFee, totalAchievedCourseFeeGst: totalFee + totalGst, totalStudents: totalStudents,
+          byCourse: byCourseList
+        });
+      });
+    });
+  }
+
   /* syncStudentRevenue — auto-upsert Centre Revenue from student_fees.course_fee.
      Called fire-and-forget after h_saveFee/h_deleteFeeRecord. Only acts on 2026-07
      onwards — pre-July months are never auto-overwritten; correcting them goes through
@@ -9455,6 +9563,8 @@ window.gasGet = (function () {
       case 'getCentreMonthTotal':       return h_getCentreMonthTotal(params, cb);
       case 'getNationalMonthTotal':     return h_getNationalMonthTotal(params, cb);
       case 'getCentrePerformance':      return h_getCentrePerformance(params, cb);
+      case 'getCorporateRevenueReport': return h_getCorporateRevenueReport(params, cb);
+      case 'getCourseWiseRevenueReport':return h_getCourseWiseRevenueReport(params, cb);
       case 'checkInvoiceNumber':        return h_checkInvoiceNumber(params, cb);
       case 'checkStudentMobile':        return h_checkStudentMobile(params, cb);
       case 'mergeStudentRecords':       return h_mergeStudentRecords(params, cb);

@@ -4,7 +4,8 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=80"></script>
+<script src="/assets/shared.js?v=81"></script>
+<script src="/assets/push-subscribe.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -3832,7 +3833,7 @@
         <div class="field"><label>Course Fee <span style="font-weight:400;color:var(--muted)">(fixed by course, excl. GST — not editable)</span></label><input type="number" id="fee-course-fee" readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed" title="Locked to the standard fee for this course. To offer a lower amount, use the Discount field below."><div id="fee-course-fee-gst-hint" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
           <div id="fee-course-fee-unlock-link" style="display:none;margin-top:4px"><a href="javascript:void(0)" style="font-size:11px" onclick="unlockFeeCourseField()">Fee looks wrong on this record? Correct it</a></div>
         </div>
-        <div class="field"><label>Down Payment <span style="font-weight:400;color:var(--muted)">(booking amount — included in course fee, paid upfront)</span></label><input type="number" id="fee-reg-fee" oninput="recalcFeeForm()"></div>
+        <input type="hidden" id="fee-reg-fee" value="0">
         <div class="field"><label>Discount</label>
           <select id="fee-disc-pct" onchange="toggleCustomDiscount();recalcFeeForm()">
             <option value="0">No discount</option>
@@ -5351,6 +5352,7 @@ function doLogin() {
         batches: d.batches || []
       }));
     } catch(ex) {}
+    if (window.IGIPush) window.IGIPush.subscribe('counselor', counselorName);
     // Update header
     document.getElementById('counselor-name-badge').textContent = counselorName;
     document.getElementById('counselor-name-badge').style.display = 'inline-block';
@@ -9936,11 +9938,23 @@ function openFeeForm(studentId) {
   // silently re-price it to whatever the course costs TODAY the moment it was saved
   // again. New records still correctly default to today's catalog price.
   document.getElementById('fee-course-fee').value = existing ? existing.courseFee : defaults.fee;
-  document.getElementById('fee-reg-fee').value = existing ? existing.regFee : defaults.regFee;
-  const disc = existing ? Number(existing.discPct || 0) : 0;
+  // Down Payment removed as a concept entirely (2026-08-04, per instruction: "remove
+  // Down payment option, rather it should be installment 1") — this hidden field now
+  // always stays 0, which naturally makes installments split the full Net Payable with
+  // no separate upfront-collected step.
+  document.getElementById('fee-reg-fee').value = '0';
+  // Bug found 2026-08-04: this read existing.discPct/existing.discReason, but neither
+  // field exists on the object feeRecordDTO actually sends (it's discountPct/
+  // discountReason) — so existing.discPct was always undefined, Number(undefined||0)
+  // always evaluated to 0, and a SAVED discount always displayed as "No discount" the
+  // next time the record was opened to edit. Anyone updating any OTHER field on that
+  // record without noticing would silently wipe out a real, already-agreed discount on
+  // save. Same bug, same fix, as the discountAmt naming mismatch found and fixed
+  // yesterday in a different part of the codebase (Fee Record's Revenue column).
+  const disc = existing ? Number(existing.discountPct || 0) : 0;
   document.getElementById('fee-disc-pct').value = ['0','5','7','10'].includes(String(disc)) ? String(disc) : 'custom';
   document.getElementById('fee-custom-disc').value = ['0','5','7','10'].includes(String(disc)) ? '' : disc;
-  document.getElementById('fee-disc-reason').value = existing ? (existing.discReason || '') : '';
+  document.getElementById('fee-disc-reason').value = existing ? (existing.discountReason || '') : '';
   document.getElementById('fee-invoice-number').value = existing ? (existing.invoiceNumber || '') : '';
   document.getElementById('fee-invoice-date').value = existing ? (existing.invoiceDate || '') : '';
   document.getElementById('fee-invoice-shared-comment').value = existing ? (existing.invoiceSharedComment || '') : '';
@@ -18719,6 +18733,13 @@ if ('serviceWorker' in navigator) {
     }
   });
 }
+// If a session already exists (page refresh), re-subscribe to push silently
+(function() {
+  try {
+    const s = JSON.parse(localStorage.getItem('igi_counselor_session') || 'null');
+    if (s && s.counselorName && window.IGIPush) window.IGIPush.subscribe('counselor', s.counselorName);
+  } catch (e) {}
+})();
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════
@@ -22450,7 +22471,7 @@ function enrollSave() {
         <div class="enroll-step-title"><span class="enroll-step-num">3</span> Fee Details</div>
         <div class="enroll-grid2">
           <div class="enroll-field"><label>Course Fee &#8377; (excl. GST) <span style="font-weight:400;color:var(--muted)">(fixed by course — not editable)</span></label><input id="enroll-course-fee" type="number" min="0" placeholder="e.g. 165900" readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed" title="Locked to the standard fee for this course. To offer a lower amount, use the Discount field below."></div>
-          <div class="enroll-field"><label>Registration Fee &#8377; (base) <span style="font-weight:400;color:var(--muted)">(included in Course Fee — not charged extra)</span></label><input id="enroll-reg-fee" type="number" min="0" value="0" oninput="enrollCalcFee()"></div>
+          <input type="hidden" id="enroll-reg-fee" value="0">
           <div class="enroll-field" style="display:flex;align-items:center;gap:8px;padding-top:22px;">
             <input type="checkbox" id="enroll-reg-gst" onchange="enrollCalcFee()" style="width:auto;margin:0;cursor:pointer;">
             <label for="enroll-reg-gst" style="margin:0;cursor:pointer;font-weight:500;">Apply 18% GST to Registration Fee</label>

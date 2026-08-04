@@ -10355,9 +10355,9 @@ body{font-family:"Plus Jakarta Sans",sans-serif;background:linear-gradient(180de
 `;
 
 const COURSE_FEES_JS = {
-  'Diamond Graduate':                    {fee:165900,regFee:25000,gst:18},
-  'Colored Stone Graduate':              {fee:185900,regFee:25000,gst:18},
-  'Graduate Gemologist':                 {fee:351800,regFee:50000,gst:18},
+  'Diamond Graduate':                    {fee:165900,regFee:0,gst:18},
+  'Colored Stone Graduate':              {fee:185900,regFee:0,gst:18},
+  'Graduate Gemologist':                 {fee:351800,regFee:0,gst:18},
   // JewelPad Design = offline/on-campus delivery. Price updated — was ₹41,900 (that old
   // rate still shows correctly on every already-saved record from before this change,
   // since Update Fee now always keeps an existing record's own saved course fee rather

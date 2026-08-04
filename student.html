@@ -67,8 +67,8 @@
 .welcome-bar{background:var(--navy);border-radius:var(--radius);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
 .wb-name{font-size:14px;font-weight:600;color:var(--white)}
 .wb-sub{font-size:11px;color:rgba(255,255,255,.4);margin-top:2px}
-.success-quote-banner{display:none;margin:-8px 16px 16px;background:linear-gradient(90deg,rgba(200,169,81,.10),rgba(200,169,81,.02));border:1.5px solid rgba(200,169,81,.35);border-left:4px solid var(--gold);border-radius:0 10px 10px 0;padding:10px 14px;font-size:12px;line-height:1.5;color:var(--navy);font-style:italic;opacity:0;transform:translateY(-4px);transition:opacity .4s ease,transform .4s ease}
-.success-quote-banner b{font-style:normal;font-weight:700;color:var(--muted);font-size:11px;display:block;margin-top:3px}
+.success-quote-banner{display:none;margin:6px 0 0;padding:0;background:none;border:none;font-size:11px;line-height:1.45;color:rgba(255,255,255,.55);font-style:italic;max-width:340px;opacity:0;transform:translateY(-4px);transition:opacity .4s ease,transform .4s ease}
+.success-quote-banner b{font-style:normal;font-weight:600;color:rgba(255,255,255,.4);font-size:10px;display:block;margin-top:1px}
 .wb-logout{background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif}
 .wb-logout:hover{background:rgba(255,255,255,.1);color:var(--white)}
 /* Feedback inline */
@@ -439,8 +439,16 @@
 .more-sheet-chev { color: var(--muted); font-size: 16px; }
 
 @media (max-width: 768px) {
-  .portal-nav { display: none; }
-  .mobile-bottom-nav { display: flex; }
+  /* !important on both: this media query sits BEFORE .portal-nav's own unconditional
+     rule in source order (both target the same selector at equal specificity, and CSS
+     cascade rules mean the one that comes LATER in the file wins for a tie — so without
+     this, .portal-nav's later "display: flex" silently overrode "display: none" here even
+     when the media condition was true). Confirmed on a real phone screenshot 2026-08-04:
+     both navs were showing at once. !important is the narrow, low-risk fix — moving this
+     whole block after .portal-nav's definition would work too but touches more code for
+     no real benefit here. */
+  .portal-nav { display: none !important; }
+  .mobile-bottom-nav { display: flex !important; }
   body { padding-bottom: 64px; }
 }
 
@@ -802,6 +810,12 @@
         <div class="wb-id-link" onclick="openIdCard()" style="font-size: 11px; color: var(--gold-light); cursor: pointer; margin-top: 4px; display: inline-flex; align-items: center; gap: 4px; font-weight: 600; text-decoration: underline; text-decoration-style: dashed; text-underline-offset: 2px;">
           🪪 View Digital ID Card
         </div>
+        <!-- ══ SUCCESS QUOTE — moved inside the header itself and shrunk to a single quiet
+             line (2026-08-04, per instruction: quote stays, but as a subtle one-liner, not
+             a competing card). Was a full bordered card between the header and everything
+             else; now just a small italic aside under the greeting, on the header's own
+             navy background. ══ -->
+        <div id="success-quote-banner" class="success-quote-banner"></div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
         <button id="id-card-avatar-btn" onclick="openIdCard()"
@@ -819,9 +833,6 @@
       </div>
     </div>
 
-    <!-- ══ SUCCESS QUOTE ══ -->
-    <div id="success-quote-banner" class="success-quote-banner"></div>
-
     <!-- ══ DIPLOMA BANNER ══ -->
     <div id="diploma-congrats-banner" style="display:none;margin:10px 16px 0;background:linear-gradient(135deg,#0d1b2e 0%,#1a3a5c 100%);border:1.5px solid #C8A951;border-radius:12px;padding:14px 16px;color:#fff;position:relative;overflow:hidden">
       <div style="position:absolute;top:-20px;right:-10px;font-size:80px;opacity:.08">🎓</div>
@@ -830,33 +841,10 @@
       <div id="diploma-banner-links" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px"></div>
     </div>
 
-    <!-- ══ GEM-A / CAREER PATH NUDGE (achievement-based, not "you were selected" — see
-         h_getGemAFoundationStatus in shared.js for the state this reflects) ══ -->
-    <div id="gema-nudge-banner" style="display:none;margin:10px 16px 0;background:var(--white);border:1.5px solid var(--gold);border-radius:var(--r-md);padding:14px 16px;box-shadow:var(--shadow);position:relative;overflow:hidden;cursor:pointer" onclick="switchTab('tab-careerpath', document.getElementById('nav-tab-careerpath'))">
-      <div style="position:absolute;top:-18px;right:-8px;font-size:70px;opacity:.06">💎</div>
-      <div style="font-size:12px;font-weight:700;color:var(--gold);letter-spacing:.04em;text-transform:uppercase;margin-bottom:4px">Your Next Step</div>
-      <div id="gema-nudge-text" style="font-size:12.5px;line-height:1.55;color:var(--navy);max-width:90%"></div>
-      <div style="margin-top:8px;font-size:11px;font-weight:700;color:var(--blue)">View your Career Path →</div>
-    </div>
-
-    <!-- ══ CAREER PATH — GENERIC CURIOSITY BANNER. Unlike gema-nudge-banner above (which is
-         personalized and only shows for algorithmically-flagged/invited students), this one
-         is shown to EVERY student, every login, no conditions — it makes no claim about the
-         student specifically, just points at content that already exists for everyone.
-         Dismiss is session-only (no storage at all — a fresh login/page load always shows it
-         again, on purpose, per Sunil: "reappear each login since it costs nothing to show").
-         Teal accent, not gold, so it reads visually distinct from the achievement-based nudge
-         when both happen to be visible at once. ══ -->
-    <div id="gema-curious-banner" style="display:none;margin:10px 16px 0;background:var(--white);border:1.5px solid var(--teal);border-radius:var(--r-md);padding:12px 16px;box-shadow:var(--shadow);position:relative;overflow:hidden">
-      <button onclick="document.getElementById('gema-curious-banner').style.display='none'" style="position:absolute;top:8px;right:10px;background:transparent;border:none;color:var(--muted);font-size:16px;cursor:pointer;line-height:1;padding:2px">×</button>
-      <div style="display:flex;align-items:center;gap:10px;cursor:pointer;padding-right:20px" onclick="switchTab('tab-careerpath', document.getElementById('nav-tab-careerpath'))">
-        <span style="font-size:20px">💎</span>
-        <div style="flex:1">
-          <div style="font-size:12.5px;font-weight:700;color:var(--navy)">Curious what comes after Diamond Graduate / Colored Stone Graduate?</div>
-          <div style="font-size:11.5px;color:var(--teal);font-weight:700;margin-top:2px">Explore your Career Path →</div>
-        </div>
-      </div>
-    </div>
+    <!-- gema-nudge-banner and gema-curious-banner moved to the Career Path tab itself
+         (2026-08-04, per instruction: "move career path and quote to some other page" —
+         they no longer sit on Home; see tab-careerpath below for both, now positioned as
+         that tab's own intro instead of competing for space on the dashboard). -->
 
     <!-- ══ DPDP ACT CONSENT GATE — blocking, shown on every login/session-restore until the
          student has consented to the CURRENT CONSENT_VERSION (see the JS constant above).
@@ -1103,7 +1091,11 @@
         <div id="ot-released-alert-names" style="font-size:12px;opacity:0.9;margin-bottom:12px;line-height:1.4;">The results for your recent online test have been released.</div>
         <button onclick="switchTab('tab-results', document.getElementById('nav-tab-tests'));" style="background:var(--gold);color:var(--navy);border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:800;cursor:pointer;transition:background .2s;">View My Results →</button>
       </div>
-      <div id="student-fact-of-day" style="margin-bottom:14px;"></div>
+      <!-- Fact of the Day removed from Home entirely 2026-08-04, per instruction. The
+           element FactOfDay.mount() targets no longer exists here — that call further
+           down (see mountStudentFactOfDay/loadPortal) safely no-ops when its target is
+           missing, matching the same guarded pattern mountStudentDiamondCalc/
+           mountStudentGlossary already use elsewhere in this file. -->
       <div id="student-summary" style="margin-top: 14px;"></div>
       <div id="portal-batches-today"></div>
     </div>
@@ -1191,6 +1183,32 @@
          guide. The dynamic CTA block at the bottom (#gema-cta-wrap) is the only
          personalized part — see loadGemAStatus() in the script below. ══ -->
     <div id="tab-careerpath" class="tab-content">
+      <!-- ══ GEM-A / CAREER PATH NUDGE (achievement-based, not "you were selected" — see
+           h_getGemAFoundationStatus in shared.js for the state this reflects). Moved here
+           from Home 2026-08-04 — this tab is a much more natural home for its own intro
+           banner than competing for space on the dashboard. ══ -->
+      <div id="gema-nudge-banner" style="display:none;margin:0 0 12px;background:var(--white);border:1.5px solid var(--gold);border-radius:var(--r-md);padding:14px 16px;box-shadow:var(--shadow);position:relative;overflow:hidden;cursor:pointer" onclick="switchTab('tab-careerpath', document.getElementById('nav-tab-careerpath'))">
+        <div style="position:absolute;top:-18px;right:-8px;font-size:70px;opacity:.06">💎</div>
+        <div style="font-size:12px;font-weight:700;color:var(--gold);letter-spacing:.04em;text-transform:uppercase;margin-bottom:4px">Your Next Step</div>
+        <div id="gema-nudge-text" style="font-size:12.5px;line-height:1.55;color:var(--navy);max-width:90%"></div>
+        <div style="margin-top:8px;font-size:11px;font-weight:700;color:var(--blue)">View your Career Path →</div>
+      </div>
+
+      <!-- ══ CAREER PATH — GENERIC CURIOSITY BANNER. Unlike gema-nudge-banner above (which
+           is personalized and only shows for algorithmically-flagged/invited students),
+           this one is shown to EVERY student, every login, no conditions. Dismiss is
+           session-only (no storage — a fresh login/page load always shows it again, on
+           purpose, per Sunil: "reappear each login since it costs nothing to show"). Teal
+           accent, not gold, so it reads visually distinct from the achievement-based nudge
+           when both happen to be visible at once. ══ -->
+      <div id="gema-curious-banner" style="display:none;margin:0 0 16px;background:var(--white);border:1.5px solid var(--teal);border-radius:var(--r-md);padding:12px 16px;box-shadow:var(--shadow);position:relative;overflow:hidden">
+        <button onclick="document.getElementById('gema-curious-banner').style.display='none'" style="position:absolute;top:8px;right:10px;background:transparent;border:none;color:var(--muted);font-size:16px;cursor:pointer;line-height:1;padding:2px">×</button>
+        <div style="display:flex;align-items:center;gap:10px;padding-right:20px">
+          <span style="font-size:20px">💎</span>
+          <div style="font-size:12.5px;font-weight:700;color:var(--navy)">Curious what comes after Diamond Graduate / Colored Stone Graduate? You're in the right place.</div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="section-tag">Your Next Step</div>
         <h2>Beyond Graduate Gemologist</h2>

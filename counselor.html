@@ -486,6 +486,31 @@
 .qr-wrap{text-align:center;padding:16px;background:var(--white);border-radius:8px;border:1px solid var(--border);margin-top:12px}
 .qr-wrap img{width:160px;height:160px}
 .qr-link{font-size:11px;font-family:"JetBrains Mono",monospace;color:var(--muted);margin-top:6px;word-break:break-all}
+
+/* ══ MOBILE BOTTOM NAV — counsellor/admin portal (2026-08-05). Same pattern as the
+   student and instructor portals: hidden above 768px (.tab-bar and its "Reorder Tabs"
+   customization keep working exactly as they do today for desktop), shown below it
+   instead. 4 fixed slots (Revenue/Batches/Fees/Ledger) confirmed with Sunil; everything
+   else — including admin-only tabs — lives under More, checked LIVE against each real
+   top-nav button's current visibility rather than hardcoded, same reasoning as the
+   instructor portal build: stays correct automatically if role logic changes, and a
+   regular counsellor never sees an admin-only item that doesn't apply to them. ══ */
+.mobile-bottom-nav{display:none;position:fixed;left:0;right:0;bottom:0;background:var(--white);border-top:1px solid var(--border);box-shadow:0 -4px 16px rgba(13,27,46,.08);z-index:500;padding-bottom:env(safe-area-inset-bottom,0)}
+.mnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:transparent;border:none;padding:8px 4px 6px;cursor:pointer;color:var(--muted);font-family:inherit}
+.mnav-icon{font-size:19px;line-height:1}
+.mnav-label{font-size:10px;font-weight:600}
+.mnav-btn.active{color:var(--navy)}
+#c-more-sheet-overlay{position:fixed;inset:0;background:rgba(13,27,46,.45);z-index:600;display:flex;align-items:flex-end}
+#c-more-sheet-panel{background:var(--white);width:100%;border-radius:16px 16px 0 0;padding:8px 0 max(12px,env(safe-area-inset-bottom,12px));max-height:75vh;overflow-y:auto}
+.c-more-sheet-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:8px auto 6px}
+.c-more-sheet-item{display:flex;justify-content:space-between;align-items:center;width:100%;background:none;border:none;border-bottom:1px solid rgba(13,27,46,.05);padding:14px 20px;font-family:inherit;font-size:14px;font-weight:600;color:var(--navy);cursor:pointer;text-align:left}
+.c-more-sheet-item:last-child{border-bottom:none}
+.c-more-sheet-chev{color:var(--muted);font-size:16px}
+@media(max-width:768px){
+  .tab-bar{display:none !important}
+  .mobile-bottom-nav{display:flex !important}
+  body{padding-bottom:64px}
+}
 .student-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
 .del-btn{background:var(--white);border:1px solid var(--border);border-radius:7px;cursor:pointer;color:var(--navy);font-size:11px;font-weight:700;padding:6px 9px}
 .del-btn.danger{color:var(--red);border-color:rgba(201,74,74,.28)}
@@ -1752,7 +1777,7 @@
     <button class="tab" id="tab-crm" onclick="switchTab('t-crm')">🎯 CRM <span id="crm-reminder-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-prospects" onclick="switchTab('t-prospects')">🧭 Prospects <span id="prospects-due-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-revenue" onclick="switchTab('t-revenue')">📈 Revenue</button>
-    <button class="tab" id="tab-fee-record" onclick="switchTab('t-fee-record')">📑 Fee Record</button>
+    <button class="tab" id="tab-fee-record" onclick="switchTab('t-fee-record')">📑 Ledger</button>
     <button class="tab" id="tab-op-invoices" onclick="switchTab('t-op-invoices')" style="display:none">🧾 Invoices &amp; Receipts</button>
     <button class="tab active" id="tab-batches" onclick="switchTab('t-batches')">📋 Batches</button>
     <button class="tab" id="tab-fees" onclick="switchTab('t-fees')">💰 Fees <span id="fees-overdue-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
@@ -1767,6 +1792,37 @@
     <button class="tab" id="tab-inventory" onclick="switchTab('t-inventory')">📦 Inventory <span id="inv-pending-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-attendance" onclick="switchTab('t-attendance')">✅ Attendance <span id="att-pending-badge" style="display:none;background:#d97706;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-customize-order" onclick="openTabOrderModal()" style="margin-left:auto;background:transparent;color:var(--muted);border:1px dashed var(--border)" title="Reorder these tabs to your own preference">⚙️ Reorder Tabs</button>
+  </div>
+
+  <!-- ══ MOBILE BOTTOM NAV — counsellor/admin portal (2026-08-05). 4 fixed slots
+       confirmed with Sunil: Revenue/Batches/Fees/Ledger (renamed from "Fee Record" in
+       this label — the underlying tab id t-fee-record and internal references are
+       unchanged, only the user-facing label). Fully independent of the "Reorder Tabs"
+       customization above — that only reorders the desktop top row; these 4 slots stay
+       fixed regardless of how a counsellor has reordered their own top nav. ══ -->
+  <div class="mobile-bottom-nav">
+    <button class="mnav-btn active" id="c-mnav-revenue" onclick="switchTab('t-revenue')">
+      <span class="mnav-icon">📈</span><span class="mnav-label">Revenue</span>
+    </button>
+    <button class="mnav-btn" id="c-mnav-batches" onclick="switchTab('t-batches')">
+      <span class="mnav-icon">📋</span><span class="mnav-label">Batches</span>
+    </button>
+    <button class="mnav-btn" id="c-mnav-fees" onclick="switchTab('t-fees')">
+      <span class="mnav-icon">💰</span><span class="mnav-label">Fees</span>
+    </button>
+    <button class="mnav-btn" id="c-mnav-fee-record" onclick="switchTab('t-fee-record')">
+      <span class="mnav-icon">📑</span><span class="mnav-label">Ledger</span>
+    </button>
+    <button class="mnav-btn" id="c-mnav-more" onclick="toggleCounselorMoreSheet()">
+      <span class="mnav-icon">☰</span><span class="mnav-label">More</span>
+    </button>
+  </div>
+
+  <div id="c-more-sheet-overlay" style="display:none" onclick="if(event.target===this) toggleCounselorMoreSheet()">
+    <div id="c-more-sheet-panel">
+      <div class="c-more-sheet-handle"></div>
+      <div id="c-more-sheet-items"></div>
+    </div>
   </div>
 
   <!-- Persistent attendance reminder banner (non-blocking) -->
@@ -5729,7 +5785,17 @@ function switchTab(id) {
   
   const btn = Array.from(document.querySelectorAll('.tab')).find(t => t.getAttribute('onclick') === `switchTab('${id}')`);
   if (btn) btn.classList.add('active');
-  
+
+  // Keep the mobile bottom nav's active state in sync no matter which entry point
+  // triggered this switch (top row, bottom nav, or the More sheet) — same pattern as
+  // the student and instructor portals. The 4 fixed slots map directly; anything else
+  // (CRM, Attendance, Students, role-gated tabs, etc.) correctly falls back to
+  // highlighting "More", since that's genuinely where a mobile user navigated from.
+  var C_MOBILE_NAV_MAP = { 't-revenue': 'c-mnav-revenue', 't-batches': 'c-mnav-batches', 't-fees': 'c-mnav-fees', 't-fee-record': 'c-mnav-fee-record' };
+  document.querySelectorAll('.mnav-btn').forEach(function(b) { b.classList.remove('active'); });
+  var cMnavEl = document.getElementById(C_MOBILE_NAV_MAP[id] || 'c-mnav-more');
+  if (cMnavEl) cMnavEl.classList.add('active');
+
   renderContextSummary(id);
   if (id === 't-glossary') {
     var glossRoot = document.getElementById('cmp-glossary-mount');
@@ -5827,6 +5893,71 @@ function switchTab(id) {
   if (id === 't-notebook') {
     cmpLoadNotes();
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+// MORE SHEET — counsellor/admin portal mobile nav (2026-08-05). Built dynamically each
+// time it opens, same reasoning as the instructor portal: several items (Invoices &
+// Receipts, and potentially others as role logic evolves) are conditionally shown —
+// checking each one's real top-nav button's live style.display keeps this permanently
+// in sync with whatever the existing permission checks (canLogOperationalInvoices(),
+// etc.) decide, without duplicating that logic here. Badge counts (CRM reminders,
+// Prospects due, Fees overdue, Inventory pending, Attendance pending) are mirrored in
+// from their real top-nav counterparts too, so nothing gets visually "lost" by being
+// tucked into More.
+// ══════════════════════════════════════════════════════════════
+function toggleCounselorMoreSheet() {
+  var overlay = document.getElementById('c-more-sheet-overlay');
+  var isOpen = overlay.style.display !== 'none';
+  if (!isOpen) renderCounselorMoreSheet();
+  overlay.style.display = isOpen ? 'none' : 'flex';
+}
+
+function _cMoreSheetGoTo(tabId) {
+  switchTab(tabId);
+  document.getElementById('c-more-sheet-overlay').style.display = 'none';
+}
+
+function renderCounselorMoreSheet() {
+  var wrap = document.getElementById('c-more-sheet-items');
+  if (!wrap) return;
+  // [label, icon, tabId, gateButtonId or null if always visible, badgeElId or null]
+  var items = [
+    ['CRM', '🎯', 't-crm', null, 'crm-reminder-badge'],
+    ['Prospects', '🧭', 't-prospects', null, 'prospects-due-badge'],
+    ['Attendance', '✅', 't-attendance', null, 'att-pending-badge'],
+    ['Students', '👥', 't-students', null, null],
+    ['Invoices & Receipts', '🧾', 't-op-invoices', 'tab-op-invoices', null],
+    ['Inventory', '📦', 't-inventory', null, 'inv-pending-badge'],
+    ['My Batches', '🗂', 't-mybatches', null, null],
+    ['Diploma', '🎓', 't-diplomas', null, null],
+    ['Reports', '📊', 't-reports', null, null],
+    ['Alumni', '🎓', 't-alumni', null, null],
+    ['My Notebook', '📓', 't-notebook', null, null],
+    ['Glossary', '📖', 't-glossary', null, null],
+    ['Holidays', '🗓️', 't-holidays', null, null]
+  ];
+  wrap.innerHTML = items.filter(function(it) {
+    if (!it[3]) return true; // always visible
+    var gateBtn = document.getElementById(it[3]);
+    return gateBtn && gateBtn.style.display !== 'none';
+  }).map(function(it) {
+    var badgeHtml = '';
+    if (it[4]) {
+      var badgeEl = document.getElementById(it[4]);
+      if (badgeEl && badgeEl.style.display !== 'none' && badgeEl.textContent) {
+        badgeHtml = '<span style="background:#dc2626;color:#fff;font-size:10px;padding:1px 7px;border-radius:10px;font-weight:700;margin-right:8px">' + badgeEl.textContent + '</span>';
+      }
+    }
+    // Diploma's label is dynamic (Release vs Eligibility) depending on who's logged in —
+    // read it straight from the real top-nav button rather than hardcoding either one.
+    var label = it[0];
+    if (it[2] === 't-diplomas') {
+      var diplomaBtn = document.getElementById('tab-diplomas');
+      if (diplomaBtn && diplomaBtn.textContent.trim()) label = diplomaBtn.textContent.trim().replace(/^🎓\s*/, '');
+    }
+    return '<button class="c-more-sheet-item" onclick="_cMoreSheetGoTo(\'' + it[2] + '\')"><span>' + it[1] + ' ' + label + '</span><span style="display:flex;align-items:center">' + badgeHtml + '<span class="c-more-sheet-chev">›</span></span></button>';
+  }).join('');
 }
 
 // ══════════════════════════════════════════════════════════════

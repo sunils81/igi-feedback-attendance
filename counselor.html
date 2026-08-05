@@ -506,6 +506,38 @@
 .c-more-sheet-item{display:flex;justify-content:space-between;align-items:center;width:100%;background:none;border:none;border-bottom:1px solid rgba(13,27,46,.05);padding:14px 20px;font-family:inherit;font-size:14px;font-weight:600;color:var(--navy);cursor:pointer;text-align:left}
 .c-more-sheet-item:last-child{border-bottom:none}
 .c-more-sheet-chev{color:var(--muted);font-size:16px}
+
+/* .compact-table and .summary-tile were used in 31+ places across this file (Ledger,
+   Revenue reports, Course-Wise breakdowns, etc.) with NO dedicated CSS at all — worked
+   fine on desktop where there's enough width for the browser's default table layout to
+   look reasonable, but on a narrow phone a many-column table like the Ledger's (14
+   columns) would shrink to fit the viewport and wrap text inside every cell onto its own
+   line, which is exactly the "stacked, unaligned" look reported 2026-08-05. Fixed at the
+   class level (not just the Ledger) since every other .compact-table usage had the same
+   latent problem, just not yet noticed on a narrow screen. white-space:nowrap on cells
+   is the key fix — it stops cells from wrapping internally, so the table naturally grows
+   wider than the viewport and the existing overflow-x:auto wrapper (already present on
+   every usage) correctly takes over with a horizontal swipe instead of squishing. */
+.compact-table{width:100%;border-collapse:collapse;font-size:12px}
+.compact-table th{padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);white-space:nowrap;border-bottom:1.5px solid var(--border)}
+.compact-table td{padding:8px 10px;border-bottom:1px solid rgba(0,0,0,.05);white-space:nowrap;vertical-align:middle}
+.compact-table tbody tr:last-child td{border-bottom:none}
+.compact-table .text-left{text-align:left}
+.compact-table th:not(.text-left){text-align:right}
+.compact-table td:not(.text-left){text-align:right}
+
+/* .summary-tile (KPI cards, e.g. the Ledger's Records/Revenue/Collected/Balance row) had
+   the same gap — a large currency value like ₹1,48,48,565 had no font-size limit or wrap
+   handling, so it silently overflowed its card's right edge on a narrow screen instead of
+   shrinking or wrapping to fit. */
+.summary-tile{background:var(--white);border:1.5px solid var(--border);border-radius:10px;padding:14px 16px}
+.summary-tile.ok{border-color:rgba(29,158,117,.3);background:rgba(29,158,117,.04)}
+.summary-tile.warn{border-color:rgba(201,74,74,.3);background:rgba(201,74,74,.04)}
+.summary-tile .k{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px}
+.summary-tile .v{font-size:22px;font-weight:800;color:var(--navy);word-break:break-word;overflow-wrap:break-word;line-height:1.15}
+.summary-tile .s{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4}
+@media(max-width:420px){.summary-tile .v{font-size:18px}}
+
 @media(max-width:768px){
   .tab-bar{display:none !important}
   .mobile-bottom-nav{display:flex !important}

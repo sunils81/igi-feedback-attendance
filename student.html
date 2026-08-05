@@ -67,8 +67,8 @@
 .welcome-bar{background:var(--navy);border-radius:var(--radius);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
 .wb-name{font-size:14px;font-weight:600;color:var(--white)}
 .wb-sub{font-size:11px;color:rgba(255,255,255,.4);margin-top:2px}
-.success-quote-banner{display:none;margin:6px 0 0;padding:0;background:none;border:none;font-size:11px;line-height:1.45;color:rgba(255,255,255,.55);font-style:italic;max-width:340px;opacity:0;transform:translateY(-4px);transition:opacity .4s ease,transform .4s ease}
-.success-quote-banner b{font-style:normal;font-weight:600;color:rgba(255,255,255,.4);font-size:10px;display:block;margin-top:1px}
+.success-quote-banner{display:none;margin:6px 0 0;padding:0;background:none;border:none;font-size:11px;line-height:1.45;color:rgba(255,255,255,.55);font-style:italic;max-width:340px;opacity:0;transform:translateY(-4px);transition:opacity .4s ease,transform .4s ease;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.success-quote-banner b{font-style:normal;font-weight:600;color:rgba(255,255,255,.4);font-size:10px}
 .wb-logout{background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif}
 .wb-logout:hover{background:rgba(255,255,255,.1);color:var(--white)}
 /* Feedback inline */
@@ -828,8 +828,7 @@
           <img id="id-card-avatar-img" src="" alt=""
                style="display:none;width:100%;height:100%;object-fit:cover;border-radius:50%;">
         </button>
-        <button class="wb-logout" style="margin-right:6px" onclick="openConsentSettings()" title="View or withdraw your data consent">🔒 Privacy</button>
-        <button class="wb-logout" onclick="doLogout()">Sign out</button>
+        <button class="wb-logout" style="white-space:nowrap;padding:6px 14px" onclick="doLogout()">Sign out</button>
       </div>
     </div>
 
@@ -1018,6 +1017,7 @@
         <button class="more-sheet-item" onclick="moreSheetGoTo('tab-glossary','nav-tab-glossary'); mountStudentGlossary();"><span>📖 Glossary</span><span class="more-sheet-chev">›</span></button>
         <button class="more-sheet-item" onclick="moreSheetGoTo('tab-alumni','nav-tab-alumni'); renderAlumniTab();"><span>✨ Alumni</span><span class="more-sheet-chev">›</span></button>
         <button class="more-sheet-item" onclick="moreSheetGoTo('tab-careerpath','nav-tab-careerpath')"><span>💎 Career Path</span><span class="more-sheet-chev">›</span></button>
+        <button class="more-sheet-item" onclick="toggleMoreSheet();openConsentSettings()"><span>🔒 Privacy</span><span class="more-sheet-chev">›</span></button>
       </div>
     </div>
 
@@ -2572,11 +2572,12 @@ function renderAttendanceExtras(d) {
   const b = batches.find(function(x) { return x.historySummary && x.historySummary.total; });
   if (!b) { wrap.innerHTML = ''; return; }
 
+  // Best Case projection card removed from Home 2026-08-04, per instruction ("doesn't
+  // make any sense over there") — renderBestCaseCard() itself is left in place further
+  // down, just no longer called or given a container, in case it finds a better home
+  // later (e.g. inside the Attend tab once that becomes its own dedicated view).
   wrap.innerHTML =
-    '<div id="reg-best-case-card"></div>' +
     '<div id="reg-session-history-card"></div>';
-
-  renderBestCaseCard(b);
 
   const sid = d.enrollmentNo || d.studentId || '';
   gasGet({ action: 'getRegularisationRequests', studentId: sid }, function(e, res) {
@@ -2753,7 +2754,7 @@ async function showSuccessQuoteBanner() {
   if (!banner) return;
   const quote = await fetchLoginQuote('success', SUCCESS_QUOTE_FALLBACK);
   banner.textContent = ''; // clear before rebuilding with text nodes (no raw HTML from the API)
-  banner.appendChild(document.createTextNode('“' + quote.q + '”'));
+  banner.appendChild(document.createTextNode('“' + quote.q + '” '));
   const attr = document.createElement('b');
   attr.textContent = '— ' + quote.a;
   banner.appendChild(attr);

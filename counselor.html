@@ -603,6 +603,15 @@
 /* ── Revenue redesign v3 ── */
 .rev-sub-tabs{display:flex;gap:12px;margin:10px 0 20px;border-bottom:2px solid rgba(13,27,46,.08);padding-bottom:2px}
 .rev-sub-tab{background:none;border:none;font-family:"Plus Jakarta Sans",sans-serif;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;padding:8px 12px;border-bottom:3px solid transparent;transition:all .2s ease;outline:none}
+@media(max-width:768px){
+  /* Revenue's own sub-navigation (My Dashboard & Entry / Leaderboard / Centre Standings /
+     etc.) was overflowing off the right edge of the screen on mobile — 6 tabs, some with
+     long labels, in a single non-wrapping row (2026-08-05, confirmed via screenshot).
+     Wraps to multiple rows instead of scrolling horizontally, so every option stays
+     visible without needing to discover a hidden scroll. */
+  .rev-sub-tabs{flex-wrap:wrap;gap:4px 10px}
+  .rev-sub-tab{padding:6px 4px;font-size:12.5px}
+}
 .rev-sub-tab:hover{color:var(--navy)}
 .rev-sub-tab.active{color:var(--navy);border-bottom-color:var(--gold)}
 .rev-kpi-bar{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
@@ -1642,29 +1651,15 @@
 ═══════════════════════════════════════════════════════════ */
 .premium-greeting{
   display:none;position:relative;
-  background:linear-gradient(135deg,#FFFDF8 0%,var(--gold-pale) 130%);
-  border:1px solid var(--border);border-radius:var(--r-md,12px);
-  padding:16px 22px 16px 64px;margin-bottom:16px;
-  font-family:"Plus Jakarta Sans",sans-serif;font-size:14px;font-weight:600;
-  color:var(--navy);line-height:1.55;
-  box-shadow:0 6px 20px rgba(13,27,46,.05);
+  margin:6px 0 0;padding:0;background:none;border:none;box-shadow:none;
+  font-family:"Plus Jakarta Sans",sans-serif;font-size:11px;font-weight:500;font-style:italic;
+  color:rgba(255,255,255,.6);line-height:1.5;max-width:520px;
   opacity:0;transform:translateY(-4px);
-  transition:opacity .4s ease,transform .4s ease,box-shadow .25s ease;
-}
-.premium-greeting::before{
-  content:'✨';position:absolute;left:18px;top:50%;transform:translateY(-50%);
-  width:34px;height:34px;display:flex;align-items:center;justify-content:center;
-  font-size:15px;border-radius:50%;
-  background:linear-gradient(135deg,var(--gold),var(--gold-light));
-  box-shadow:0 4px 12px rgba(201,168,76,.4);
-}
-.premium-greeting::after{
-  content:'';position:absolute;left:22px;right:22px;top:0;height:1px;
-  background:linear-gradient(90deg,transparent,var(--gold) 50%,transparent);
+  transition:opacity .4s ease,transform .4s ease;
 }
 .premium-greeting.is-clickable{cursor:pointer}
-.premium-greeting.is-clickable:hover{box-shadow:0 12px 28px rgba(13,27,46,.10);transform:translateY(-2px)}
-.premium-greeting .pg-name-link{text-decoration:underline;text-decoration-color:var(--gold);text-underline-offset:2px;cursor:pointer;font-weight:800;color:var(--navy)}
+.premium-greeting.is-clickable:hover{color:rgba(255,255,255,.85)}
+.premium-greeting .pg-name-link{text-decoration:underline;text-decoration-color:var(--gold);text-underline-offset:2px;cursor:pointer;font-weight:700;font-style:normal;color:var(--gold-light)}
 
 .premium-search-wrap{margin-bottom:18px}
 .premium-search-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:7px}
@@ -1733,12 +1728,20 @@
     <div class="hdr-band">
       <div class="hdr-label">Counsellor Portal &nbsp;<span id="counselor-name-badge" style="display:none;font-size:10px;background:var(--gold);color:var(--navy);padding:2px 8px;border-radius:8px;font-weight:700;letter-spacing:.03em"></span></div>
       <div class="hdr-sub">IGI Counsellor Revenue & Operations Dashboard</div>
+      <!-- Moved inside the navy header itself and shrunk 2026-08-05, per instruction:
+           "make the quote line small and in the blue part like student portal". Was a
+           large standalone gold-bordered card on the plain page background (see the old
+           .premium-greeting rule this replaced) — this can carry a real, clickable
+           reminder (named prospects due today, not just a decorative quote), so unlike
+           the student portal's pure quote it isn't line-clamped to a fixed line count;
+           it just wraps naturally now within a small, subtle footprint. -->
+      <div id="daily-welcome-banner" class="no-print premium-greeting"></div>
     </div>
   </div>
 
-  <div id="daily-welcome-banner" class="no-print premium-greeting"></div>
-
-  <div id="cmp-fact-of-day" class="no-print" style="margin-bottom:16px;"></div>
+  <!-- Fact of the Day removed 2026-08-05, per instruction. FactOfDay.mount()'s target
+       element no longer exists here — that call safely no-ops on a missing target
+       (if (!root) return;), same as the equivalent removal on the student portal. -->
 
   <!-- Global quick search — students, batches, prospects. Type-ahead dropdown, click a
        result to jump straight to it (Fees tab + Update Fee form for students/batches,
@@ -1851,9 +1854,10 @@
     <div style="display:flex;align-items:center;gap:10px;">
       <span>🧾</span>
       <span id="rmm-reminder-text" style="flex:1;font-weight:500;"></span>
+      <span onclick="toggleBannerList('rmm-reminder-list', this)" style="cursor:pointer;color:#92400e;font-size:14px;padding:0 4px">▸</span>
       <button onclick="document.getElementById('rmm-reminder-banner').style.display='none'" style="background:transparent;border:none;color:#92400e;font-size:16px;cursor:pointer;line-height:1;">×</button>
     </div>
-    <div id="rmm-reminder-list" style="display:flex;flex-direction:column;gap:4px;"></div>
+    <div id="rmm-reminder-list" style="display:none;flex-direction:column;gap:4px;"></div>
   </div>
 
   <!-- Missing invoice date banner — distinct from the mismatch banner above (that one
@@ -1866,9 +1870,10 @@
     <div style="display:flex;align-items:center;gap:10px;">
       <span>🗓️</span>
       <span id="missing-invoice-text" style="flex:1;font-weight:500;"></span>
+      <span onclick="toggleBannerList('missing-invoice-list', this)" style="cursor:pointer;color:#4c1d95;font-size:14px;padding:0 4px">▸</span>
       <button onclick="document.getElementById('missing-invoice-banner').style.display='none'" style="background:transparent;border:none;color:#4c1d95;font-size:16px;cursor:pointer;line-height:1;">×</button>
     </div>
-    <div id="missing-invoice-list" style="display:flex;flex-direction:column;gap:4px;"></div>
+    <div id="missing-invoice-list" style="display:none;flex-direction:column;gap:4px;"></div>
   </div>
 
   <!-- Suspense Entries red-flag banner — real money sitting unclassified, needs a human
@@ -1893,9 +1898,10 @@
     <div style="display:flex;align-items:center;gap:10px;">
       <span>🤝</span>
       <span id="referral-nudge-text" style="flex:1;font-weight:500;"></span>
+      <span onclick="toggleBannerList('referral-nudge-list', this)" style="cursor:pointer;color:#1e3a8a;font-size:14px;padding:0 4px">▸</span>
       <button onclick="document.getElementById('referral-nudge-banner').style.display='none'" style="background:transparent;border:none;color:#1e3a8a;font-size:16px;cursor:pointer;line-height:1;">×</button>
     </div>
-    <div id="referral-nudge-list" style="display:flex;flex-direction:column;gap:4px;"></div>
+    <div id="referral-nudge-list" style="display:none;flex-direction:column;gap:4px;"></div>
   </div>
 
   <!-- Gem-A Foundation candidates banner (non-blocking). Flags GG (Graduate Gemologist)
@@ -1907,9 +1913,10 @@
     <div style="display:flex;align-items:center;gap:10px;">
       <span>💎</span>
       <span id="gema-candidates-text" style="flex:1;font-weight:500;"></span>
+      <span onclick="toggleBannerList('gema-candidates-list', this)" style="cursor:pointer;color:#14532d;font-size:14px;padding:0 4px">▸</span>
       <button onclick="document.getElementById('gema-candidates-banner').style.display='none'" style="background:transparent;border:none;color:#14532d;font-size:16px;cursor:pointer;line-height:1;">×</button>
     </div>
-    <div id="gema-candidates-list" style="display:flex;flex-direction:column;gap:4px;"></div>
+    <div id="gema-candidates-list" style="display:none;flex-direction:column;gap:4px;"></div>
   </div>
 
   <!-- Batch-ending-with-balance-due banner (non-blocking). Flags students with a real
@@ -1920,9 +1927,10 @@
     <div style="display:flex;align-items:center;gap:10px;">
       <span>⏰</span>
       <span id="batch-ending-fee-text" style="flex:1;font-weight:500;"></span>
+      <span onclick="toggleBannerList('batch-ending-fee-list', this)" style="cursor:pointer;color:#9a3412;font-size:14px;padding:0 4px">▸</span>
       <button onclick="document.getElementById('batch-ending-fee-banner').style.display='none'" style="background:transparent;border:none;color:#9a3412;font-size:16px;cursor:pointer;line-height:1;">×</button>
     </div>
-    <div id="batch-ending-fee-list" style="display:flex;flex-direction:column;gap:4px;"></div>
+    <div id="batch-ending-fee-list" style="display:none;flex-direction:column;gap:4px;"></div>
   </div>
 
   <!-- Pending batch-confirmation banner (batches another centre created for us) -->
@@ -1930,8 +1938,9 @@
     <div style="display:flex;align-items:center;gap:10px;">
       <span>📋</span>
       <span id="remote-batch-text" style="flex:1;font-weight:500;"></span>
+      <span onclick="toggleBannerList('remote-batch-list', this)" style="cursor:pointer;color:#92400e;font-size:14px;padding:0 4px">▸</span>
     </div>
-    <div id="remote-batch-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+    <div id="remote-batch-list" style="display:none;flex-direction:column;gap:6px;"></div>
   </div>
 
   <!-- Duplicate Student ID banner — same person enrolled twice under two different IDs -->
@@ -5776,6 +5785,22 @@ function bCentreChange() {
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+}
+
+// ══════════════════════════════════════════════════════════════
+// COLLAPSIBLE NOTIFICATION BANNERS (2026-08-05, per instruction: "make notifications
+// collapsible"). Reused across all 5 banners that carry a detail list (rmm-reminder,
+// missing-invoice, referral-nudge, gema-candidates, batch-ending-fee) — the summary line
+// always stays visible so nothing goes quiet, only the itemized list underneath starts
+// collapsed. fees-reminder and suspense-banner are already single-line and don't need
+// this — nothing to collapse there.
+// ══════════════════════════════════════════════════════════════
+function toggleBannerList(listId, chevEl) {
+  var list = document.getElementById(listId);
+  if (!list) return;
+  var isHidden = list.style.display === 'none';
+  list.style.display = isHidden ? 'flex' : 'none';
+  if (chevEl) chevEl.textContent = isHidden ? '▾' : '▸';
 }
 
 function switchTab(id) {

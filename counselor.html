@@ -10466,7 +10466,17 @@ function renderInstallments(existing) {
       mode: rec['inst' + i + 'Mode'],
       ref: rec['inst' + i + 'Ref']
     };
-    const hasExisting = inst.amt !== undefined && inst.amt !== '' && inst.amt !== null;
+    // A saved amount of exactly 0 is treated the SAME as "never really set" here, not as
+    // a deliberate manual entry (2026-08-05, confirmed with real data — a record saved
+    // with inst1_amount:0, e.g. from a Full Payment where Amount 1 was left blank and
+    // defaulted to 0 on save). Without this, hasExisting was true for 0 (0 !== undefined/
+    // ''/null), which permanently marked the field data-manual="1" and made recalcFeeForm
+    // skip auto-filling it on every future edit — while the field's DISPLAYED value was
+    // simultaneously blanked by `inst.amt || ''` treating 0 as falsy, so it just looked
+    // empty forever regardless of Course Fee/Discount changes. If Net Payable is
+    // genuinely 0 (e.g. a full-discount case), auto-fill computes 0 anyway, so this is
+    // safe in that edge case too.
+    const hasExisting = inst.amt !== undefined && inst.amt !== '' && inst.amt !== null && Number(inst.amt) !== 0;
     // A paid installment starts LOCKED (all its fields disabled) so it can't be changed
     // by an accidental click/keystroke — the counsellor has to deliberately hit "Revise"
     // first. This is evaluated fresh every time the form is opened, so a fresh save where

@@ -11999,13 +11999,21 @@ function revEvaluateMilestones(counsellor, annualTarget) {
   
   var isHalfway = annualTarget ? (achieved >= (annualTarget * 0.5)) : false;
   var isCrusher = annualTarget ? (achieved >= annualTarget) : false;
-  
+
+  // "applicable" (2026-08-05, per instruction: "only which is applicable should be
+  // visible" — keep the section, but only show milestones that genuinely make sense for
+  // this person, rather than greying out ones they can structurally never reach). A
+  // milestone tied to runRate or annualTarget is meaningless — not just "not yet
+  // achieved," but literally impossible to ever earn — for anyone without one set (e.g.
+  // an admin with no personal quota): a 0 target makes "50% of target" trivially true
+  // and a 0 run-rate makes any real streak/200%-month comparison meaningless too.
+  // Launchpad alone needs neither, so it's the one milestone that's always applicable.
   return [
-    { id: 'launchpad', name: '🚀 Launchpad', desc: 'Logged first revenue of the year', active: hasLoggedAny },
-    { id: 'consistent', name: '👑 Consistent Crown', desc: 'Maintained a 3+ month target streak', active: isConsistent },
-    { id: 'centurion', name: '⚡ Centurion', desc: 'Exceeded a monthly run-rate target by 200%+', active: hasCenturionMonth },
-    { id: 'halfway', name: '🌟 Halfway Hero', desc: 'Reached 50% of your annual target', active: isHalfway },
-    { id: 'crusher', name: '🏆 Target Crusher', desc: 'Reached 100% of your annual target', active: isCrusher }
+    { id: 'launchpad', name: '🚀 Launchpad', desc: 'Logged first revenue of the year', active: hasLoggedAny, applicable: true },
+    { id: 'consistent', name: '👑 Consistent Crown', desc: 'Maintained a 3+ month target streak', active: isConsistent, applicable: runRate > 0 },
+    { id: 'centurion', name: '⚡ Centurion', desc: 'Exceeded a monthly run-rate target by 200%+', active: hasCenturionMonth, applicable: runRate > 0 },
+    { id: 'halfway', name: '🌟 Halfway Hero', desc: 'Reached 50% of your annual target', active: isHalfway, applicable: annualTarget > 0 },
+    { id: 'crusher', name: '🏆 Target Crusher', desc: 'Reached 100% of your annual target', active: isCrusher, applicable: annualTarget > 0 }
   ];
 }
 
@@ -12056,7 +12064,7 @@ function renderMyRevenue() {
       var ms = revEvaluateMilestones(me, target);
       var msHtml = '<div class="rev-milestone-drawer">' +
         '<div class="rev-milestone-title">🏆 Milestone Trophies</div>' +
-        ms.map(function(m){
+        ms.filter(function(m){ return m.applicable; }).map(function(m){
           var activeClass = m.active ? 'active' : 'locked';
           var statusLabel = m.active ? 'Unlocked ✓' : 'Locked 🔒';
           return '<div class="rev-milestone-card ' + activeClass + '" title="' + escC(m.desc) + '">' +

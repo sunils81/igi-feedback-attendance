@@ -8,7 +8,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Student Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=73"></script>
+<script src="/assets/shared.js?v=83"></script>
 <script src="/assets/push-subscribe.js"></script>
 <style id="dyn-css"></style>
 <style>
@@ -1021,6 +1021,22 @@
       </div>
     </div>
 
+    <!-- ══ REGULARISATION REQUEST MODAL — opened from a "Regularise" button next to any
+         missed session in the Session History list (2026-08-04, per instruction). ══ -->
+    <div id="reg-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,.5);z-index:9000;align-items:center;justify-content:center;padding:16px">
+      <div style="background:var(--white);border-radius:14px;max-width:420px;width:100%;padding:22px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+          <h3 style="margin:0;font-size:16px">Request Regularisation</h3>
+          <button onclick="closeRegModal()" style="background:transparent;border:none;font-size:20px;cursor:pointer;color:var(--muted)">×</button>
+        </div>
+        <p id="reg-modal-session-label" style="font-size:12.5px;color:var(--muted);margin:4px 0 14px"></p>
+        <div class="field"><label>Why did you miss this session? *</label><textarea id="reg-modal-reason" rows="3" placeholder="e.g. Was unwell, have a doctor's note if needed."></textarea></div>
+        <p style="font-size:11px;color:var(--muted);margin:2px 0 14px">Your counsellor reviews requests within 2 working days.</p>
+        <button class="btn btn-gold" style="width:100%" onclick="submitRegularisationRequest()">Submit Request</button>
+        <span id="reg-modal-err" style="display:block;color:#B00020;font-size:12px;margin-top:8px"></span>
+      </div>
+    </div>
+
     <!-- Option D: Sticky test alert bar (all tabs) -->
     <div id="ot-sticky-bar" style="display:none;background:linear-gradient(90deg,#7f1d1d,#991b1b);
       color:#fff;padding:10px 16px;display:none;align-items:center;justify-content:space-between;
@@ -1097,6 +1113,13 @@
            missing, matching the same guarded pattern mountStudentDiamondCalc/
            mountStudentGlossary already use elsewhere in this file. -->
       <div id="student-summary" style="margin-top: 14px;"></div>
+
+      <!-- ══ ATTENDANCE EXTRAS — Best Case projection, Session History, and
+           Regularisation requests, all rendered by renderAttendanceExtras() below
+           (2026-08-04, matching the igi-student.zeroes.in mockup, per instruction).
+           Sits right after the attendance ring since all three are about the same
+           underlying attendance data. ══ -->
+      <div id="attendance-extras-wrap"></div>
       <div id="portal-batches-today"></div>
     </div>
 
@@ -1749,6 +1772,7 @@ function switchTab(tabId, el) {
 
   if (tabId === 'tab-today' && portalData) {
     renderStudentSummary(portalData);
+    renderAttendanceExtras(portalData);
   }
   // Auto-refresh My Tests every 90s when on that tab; stop when leaving
   if (stResultsRefreshTimer) { clearInterval(stResultsRefreshTimer); stResultsRefreshTimer = null; }
@@ -2240,6 +2264,7 @@ function renderPortal(d) {
   });
 
   renderStudentSummary(d);
+  renderAttendanceExtras(d);
   loadStudentFees();
   loadStudentAttendanceCalendar(studentCalendarMonth);
   renderStudentMarks(d.assessments || []);
@@ -2531,6 +2556,138 @@ function renderStudentSummary(d) {
       }
     }, 100);
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+// ATTENDANCE EXTRAS — Best Case projection, Session History, Regularisation requests
+// (2026-08-04, matching the igi-student.zeroes.in mockup, per instruction).
+// ══════════════════════════════════════════════════════════════
+var regularisationRequestsCache = null; // by sessionCode -> latest request record
+
+function renderAttendanceExtras(d) {
+  const wrap = document.getElementById('attendance-extras-wrap');
+  if (!wrap) return;
+  const batches = d.batches || [];
+  // Same batch-picking rule as renderStudentSummary — the first one with real history.
+  const b = batches.find(function(x) { return x.historySummary && x.historySummary.total; });
+  if (!b) { wrap.innerHTML = ''; return; }
+
+  wrap.innerHTML =
+    '<div id="reg-best-case-card"></div>' +
+    '<div id="reg-session-history-card"></div>';
+
+  renderBestCaseCard(b);
+
+  const sid = d.enrollmentNo || d.studentId || '';
+  gasGet({ action: 'getRegularisationRequests', studentId: sid }, function(e, res) {
+    regularisationRequestsCache = {};
+    if (!e && res && res.records) {
+      res.records.forEach(function(r) {
+        // Keep the most recent request per session (a rejected one can be resubmitted)
+        const existing = regularisationRequestsCache[r.sessionCode];
+        if (!existing || new Date(r.submittedAt) > new Date(existing.submittedAt)) {
+          regularisationRequestsCache[r.sessionCode] = r;
+        }
+      });
+    }
+    renderSessionHistoryCard(b);
+  });
+}
+
+// Estimated, not exact — we don't track a fixed "total sessions" per course anywhere, so
+// this projects from the student's own pace so far (sessions-so-far ÷ days-elapsed ×
+// days-remaining) rather than claiming a precision we don't actually have. Labelled
+// "Estimated" in the UI for the same reason.
+function renderBestCaseCard(b) {
+  const el = document.getElementById('reg-best-case-card');
+  if (!el) return;
+  const hs = b.historySummary;
+  const startD = new Date(b.startDateISO), endD = new Date(b.endDateISO), today = new Date();
+  const daysElapsed = Math.max(1, Math.round((today - startD) / 86400000));
+  const daysRemaining = Math.max(0, Math.round((endD - today) / 86400000));
+  if (daysRemaining === 0 || hs.total === 0) { el.innerHTML = ''; return; }
+  const paceSessPerDay = hs.total / daysElapsed;
+  const estRemaining = Math.round(paceSessPerDay * daysRemaining);
+  const bestCaseTotal = hs.total + estRemaining;
+  const bestCasePct = bestCaseTotal ? Math.round(((hs.attended + estRemaining) / bestCaseTotal) * 100) : hs.pct;
+  const advisory = 75;
+  const belowAdvisory = bestCasePct < advisory;
+  const missedCount = hs.total - hs.attended;
+
+  el.innerHTML =
+    '<div style="background:' + (belowAdvisory ? '#FEF2F2' : '#F0FDF4') + ';border:1.5px solid ' + (belowAdvisory ? 'rgba(220,38,38,.25)' : 'rgba(29,158,117,.25)') + ';border-radius:12px;padding:14px 16px;margin-top:10px">' +
+      '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:' + (belowAdvisory ? '#B91C1C' : '#15803D') + '">Best case from here <span style="font-weight:500;text-transform:none;letter-spacing:0">(estimated)</span></div>' +
+      '<div style="font-size:22px;font-weight:800;color:var(--navy);margin:4px 0">~' + bestCasePct + '%</div>' +
+      '<div style="font-size:12px;color:var(--navy);line-height:1.5">' +
+        'About ' + estRemaining + ' sessions remain at your current pace. Attending every one gets you to roughly ' + (hs.attended + estRemaining) + ' of ' + bestCaseTotal + '' +
+        (belowAdvisory ? ' — still under the ' + advisory + '% advisory.' : ', clearing the ' + advisory + '% advisory.') +
+        (missedCount > 0 ? ' Regularising past missed sessions can close the gap faster — see your session history below.' : '') +
+      '</div>' +
+    '</div>';
+}
+
+function renderSessionHistoryCard(b) {
+  const el = document.getElementById('reg-session-history-card');
+  if (!el) return;
+  const history = (b.history || []).slice().reverse(); // most recent first
+  if (!history.length) { el.innerHTML = ''; return; }
+
+  const rows = history.map(function(s) {
+    const req = regularisationRequestsCache ? regularisationRequestsCache[s.sessionCode] : null;
+    let rightSide;
+    if (s.attended) {
+      rightSide = '<span style="font-size:11px;font-weight:700;color:#15803D;background:#F0FDF4;border-radius:20px;padding:3px 10px">Present</span>';
+    } else if (req && req.status === 'pending') {
+      rightSide = '<span style="font-size:11px;font-weight:700;color:#B45309;background:#FFFBEB;border-radius:20px;padding:3px 10px">Regularisation pending</span>';
+    } else if (req && req.status === 'approved') {
+      rightSide = '<span style="font-size:11px;font-weight:700;color:#15803D;background:#F0FDF4;border-radius:20px;padding:3px 10px">Regularised</span>';
+    } else {
+      const label = (req && req.status === 'rejected') ? 'Request again' : 'Regularise';
+      const args = ["'" + escJ(s.sessionCode) + "'", "'" + escJ(b.batchCode) + "'", "'" + escJ(b.centre) + "'", "'" + escJ(s.sessionDate) + "'", "'" + escJ(s.topic || '') + "'", (s.displaySessNo || s.sessNo || 0)].join(',');
+      rightSide = '<button onclick="openRegModal(' + args + ')" style="font-size:11px;font-weight:700;color:#fff;background:var(--navy);border:none;border-radius:20px;padding:5px 12px;cursor:pointer">' + label + '</button>';
+    }
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(13,27,46,.06)">' +
+      '<div style="min-width:0"><div style="font-size:12.5px;font-weight:700;color:var(--navy)">Session ' + (s.displaySessNo || s.sessNo) + ' · ' + escHtmlSt(s.sessionDate) + '</div>' +
+      '<div style="font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtmlSt(s.topic || '—') + '</div></div>' +
+      '<div style="flex-shrink:0;margin-left:10px">' + rightSide + '</div>' +
+    '</div>';
+  }).join('');
+
+  el.innerHTML =
+    '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-top:10px">' +
+      '<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:2px">Session History</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Last ' + history.length + ' sessions. Missed one for a real reason? Request regularisation.</div>' +
+      rows +
+    '</div>';
+}
+
+var regModalCtx = null;
+function openRegModal(sessionCode, batchCode, centre, sessionDate, topic, displaySessNo) {
+  regModalCtx = { sessionCode: sessionCode, batchCode: batchCode, centre: centre, sessionDate: sessionDate, topic: topic };
+  document.getElementById('reg-modal-session-label').textContent = 'Session ' + displaySessNo + ' · ' + sessionDate + (topic ? (' — ' + topic) : '');
+  document.getElementById('reg-modal-reason').value = '';
+  document.getElementById('reg-modal-err').textContent = '';
+  document.getElementById('reg-modal-overlay').style.display = 'flex';
+}
+function closeRegModal() {
+  document.getElementById('reg-modal-overlay').style.display = 'none';
+  regModalCtx = null;
+}
+function submitRegularisationRequest() {
+  const reason = document.getElementById('reg-modal-reason').value.trim();
+  const errEl = document.getElementById('reg-modal-err');
+  if (!reason) { errEl.textContent = 'Please explain why you missed this session.'; return; }
+  if (!regModalCtx) { errEl.textContent = 'Something went wrong — please close and try again.'; return; }
+  gasGet({
+    action: 'saveRegularisationRequest', studentId: portalData.enrollmentNo || portalData.studentId,
+    studentName: portalData.studentName || '', batchCode: regModalCtx.batchCode, centre: regModalCtx.centre,
+    sessionCode: regModalCtx.sessionCode, sessionDate: regModalCtx.sessionDate, sessionTopic: regModalCtx.topic,
+    reason: reason
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { errEl.textContent = (d && d.reason) || 'Could not submit. Try again.'; return; }
+    closeRegModal();
+    renderAttendanceExtras(portalData);
+  });
 }
 
 function startRefreshCountdowns(batches) {
@@ -4308,7 +4465,37 @@ function loadStudentDiploma() {
         '</div>';
       }
 
-      html += '<div class="dip-card">' +
+      // ══ CLEAN SUMMARY CHECKLIST — matching the igi-student.zeroes.in mockup's "X of 5"
+      // glanceable strip (2026-08-04, per instruction). Sits above the existing detailed
+      // tile grid/weekly breakdown, which stay exactly as they are — this reuses the same
+      // pass/fail values already computed above rather than re-deriving anything, so it
+      // can never disagree with the detailed section below it. ══
+      var checklistItems = [
+        { label: 'Attendance', sub: 'advisory ≥75%', val: attStr, met: attPct != null ? attPass : null },
+        { label: 'Weekly average', sub: 'must be ≥60%', val: weeklyAvgVal != null ? Math.round(weeklyAvgVal) + '%' : '—', met: weeklyAvgVal != null ? weeklyPass : null },
+        { label: 'Practical', sub: pracReq ? 'must be ≥60%' : 'not applicable', val: pracReq ? pracStr : 'N/A', met: !pracReq ? null : (pracVal != null ? pracPass : null) },
+        { label: 'Final exam', sub: finalVal != null ? 'must be ≥60%' : 'not yet conducted', val: finalStr, met: finalVal != null ? finalPass : null },
+        { label: 'Fees cleared', sub: feeHasRecord ? (feePaid ? '' : ('₹' + Math.round(feeOutstanding || 0).toLocaleString('en-IN') + ' due')) : 'no record on file', val: feeHasRecord ? (feePaid ? 'Yes' : 'No') : '—', met: feeHasRecord ? feePaid : null }
+      ];
+      var metCount = checklistItems.filter(function(it) { return it.met === true; }).length;
+      var checklistHtml = '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:12px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+          '<div style="font-size:14px;font-weight:700;color:var(--navy)">Diploma track</div>' +
+          '<span style="font-size:11px;font-weight:700;background:var(--gold-pale);color:#98710E;border-radius:20px;padding:3px 10px">' + metCount + ' of ' + checklistItems.length + '</span>' +
+        '</div>' +
+        checklistItems.map(function(it) {
+          var dotColor = it.met === true ? '#1D9E75' : it.met === false ? '#C94A4A' : '#D6CFC0';
+          var valColor = it.met === true ? '#1D9E75' : it.met === false ? '#C94A4A' : 'var(--muted)';
+          return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(13,27,46,.05)">' +
+            '<span style="width:8px;height:8px;border-radius:50%;background:' + dotColor + ';flex-shrink:0"></span>' +
+            '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--navy)">' + it.label + '</div>' +
+              (it.sub ? '<div style="font-size:10.5px;color:var(--muted)">' + escHtmlSt(it.sub) + '</div>' : '') + '</div>' +
+            '<div style="font-size:13px;font-weight:700;color:' + valColor + '">' + it.val + '</div>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+
+      html += checklistHtml + '<div class="dip-card">' +
         '<div class="dip-course-tag">' +
           (row.course || '') + (row.batchCode ? ' &nbsp;·&nbsp; ' + row.batchCode : '') +
         '</div>' +

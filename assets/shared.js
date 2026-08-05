@@ -3606,6 +3606,86 @@ window.gasGet = (function () {
     });
   }
 
+  /* REGULARISATION REQUESTS — a student explains why they missed a session and asks for
+     it to count as attended; counsellor reviews (2026-08-04, matching the
+     igi-student.zeroes.in mockup, per instruction). On approval, updates the underlying
+     attendance_feedback row from Absent to Present directly (see
+     h_reviewRegularisationRequest below) rather than tracking a separate "regularised"
+     status only here — every existing attendance-% calculation across student portal,
+     counsellor portal, and admin dashboard is then automatically correct with zero
+     changes needed elsewhere, and this table is the audit trail of why/who approved it. */
+  function h_saveRegularisationRequest(p, cb) {
+    if (!p.studentId || !p.batchCode || !p.sessionCode || !p.reason || !p.centre) {
+      cb(null, { status: 'error', reason: 'Missing required fields.' });
+      return;
+    }
+    // Block a second PENDING request for the same session — resubmitting after a
+    // rejection is fine (that's a different status value), but not while one's already
+    // awaiting review.
+    GET('regularisation_requests', 'student_id=eq.' + encodeURIComponent(p.studentId) + '&session_code=eq.' + encodeURIComponent(p.sessionCode) + '&status=eq.pending', function(e, existing) {
+      if (existing && existing.length) {
+        cb(null, { status: 'error', reason: 'You already have a pending request for this session.' });
+        return;
+      }
+      POST('regularisation_requests', '', {
+        student_id: p.studentId, student_name: p.studentName || '', batch_code: p.batchCode,
+        centre: p.centre, session_code: p.sessionCode, session_date: p.sessionDate || null,
+        session_topic: p.sessionTopic || '', reason: p.reason, status: 'pending', updated_at: nowISO()
+      }, function(e2) {
+        cb(null, e2 ? { status: 'error', reason: String(e2) } : { status: 'ok' });
+      });
+    });
+  }
+
+  function h_getRegularisationRequests(p, cb) {
+    var isAdm = !!(p && (p.isAdmin === true || p.isAdmin === 'true'));
+    var qs = 'order=submitted_at.desc&limit=500';
+    if (p.studentId) qs += '&student_id=eq.' + encodeURIComponent(p.studentId);
+    if (p.status) qs += '&status=eq.' + encodeURIComponent(p.status);
+    if (!isAdm && !p.studentId && p.centre) qs += '&centre=eq.' + encodeURIComponent(p.centre);
+    GET('regularisation_requests', qs, function(e, rows) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      var records = (rows || []).map(function(r) {
+        return {
+          id: r.id, studentId: r.student_id, studentName: r.student_name, batchCode: r.batch_code,
+          centre: r.centre, sessionCode: r.session_code, sessionDate: r.session_date,
+          sessionTopic: r.session_topic, reason: r.reason, status: r.status,
+          submittedAt: r.submitted_at, reviewedBy: r.reviewed_by, reviewedAt: r.reviewed_at,
+          reviewNote: r.review_note
+        };
+      });
+      cb(null, { status: 'ok', count: records.filter(function(r){return r.status==='pending';}).length, records: records });
+    });
+  }
+
+  function h_reviewRegularisationRequest(p, cb) {
+    if (!p.id || !p.decision || (p.decision !== 'approved' && p.decision !== 'rejected')) {
+      cb(null, { status: 'error', reason: 'Missing id or invalid decision.' });
+      return;
+    }
+    GET('regularisation_requests', 'id=eq.' + encodeURIComponent(p.id), function(e, rows) {
+      if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'Not found.' }); return; }
+      var req = rows[0];
+      PATCH('regularisation_requests', 'id=eq.' + encodeURIComponent(p.id), {
+        status: p.decision, reviewed_by: p.reviewedBy || '', reviewed_at: nowISO(),
+        review_note: p.reviewNote || '', updated_at: nowISO()
+      }, function(e2) {
+        if (e2) { cb(null, { status: 'error', reason: String(e2) }); return; }
+        if (p.decision !== 'approved') { cb(null, { status: 'ok' }); return; }
+        // The actual effect: flip the real attendance record, not just this table's status.
+        GET('attendance_feedback', 'student_id=eq.' + encodeURIComponent(req.student_id) + '&session_code=eq.' + encodeURIComponent(req.session_code), function(e3, attRows) {
+          if (e3 || !attRows || !attRows.length) {
+            cb(null, { status: 'ok', warning: 'Approved, but no matching attendance record was found to update.' });
+            return;
+          }
+          PATCH('attendance_feedback', 'id=eq.' + encodeURIComponent(attRows[0].id), { attendance: 'Present' }, function(e4) {
+            cb(null, e4 ? { status: 'error', reason: 'Approved, but failed to update the attendance record: ' + String(e4) } : { status: 'ok' });
+          });
+        });
+      });
+    });
+  }
+
   /* getHolidays */
   function h_getHolidays(p, cb) {
     GET('holidays', 'order=holiday_date.asc', function (e, rows) {
@@ -9558,6 +9638,9 @@ window.gasGet = (function () {
       case 'saveSuspenseEntry':         return h_saveSuspenseEntry(params, cb);
       case 'getSuspenseEntries':        return h_getSuspenseEntries(params, cb);
       case 'resolveSuspenseEntry':      return h_resolveSuspenseEntry(params, cb);
+      case 'saveRegularisationRequest': return h_saveRegularisationRequest(params, cb);
+      case 'getRegularisationRequests': return h_getRegularisationRequests(params, cb);
+      case 'reviewRegularisationRequest': return h_reviewRegularisationRequest(params, cb);
       case 'getRevenueDetail':          return h_getRevenueDetail(params, cb);
       case 'getMonthAchieved':          return h_getMonthAchieved(params, cb);
       case 'getCentreMonthTotal':       return h_getCentreMonthTotal(params, cb);

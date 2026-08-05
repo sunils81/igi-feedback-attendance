@@ -11975,6 +11975,14 @@ function revGetTargetProjection(counsellor, annualTarget) {
   };
 }
 
+function toggleLockedMilestones(btn, count) {
+  var d = document.getElementById('rev-milestones-locked');
+  if (!d) return;
+  var willOpen = d.style.display === 'none';
+  d.style.display = willOpen ? 'flex' : 'none';
+  btn.textContent = willOpen ? 'Hide locked milestones ▾' : ('🔒 ' + count + ' more to unlock ▸');
+}
+
 function revEvaluateMilestones(counsellor, annualTarget) {
   var stats = revAchievedForCounsellor(counsellor);
   var achieved = stats.achieved;
@@ -12061,18 +12069,31 @@ function renderMyRevenue() {
   var milestonesEl = document.getElementById('rev-milestones');
   if (milestonesEl) {
     if (target && !isAdmin) {
-      var ms = revEvaluateMilestones(me, target);
+      var ms = revEvaluateMilestones(me, target).filter(function(m){ return m.applicable; });
+      var unlocked = ms.filter(function(m){ return m.active; });
+      var locked = ms.filter(function(m){ return !m.active; });
+      function msCard(m) {
+        var activeClass = m.active ? 'active' : 'locked';
+        var statusLabel = m.active ? 'Unlocked ✓' : 'Locked 🔒';
+        return '<div class="rev-milestone-card ' + activeClass + '" title="' + escC(m.desc) + '">' +
+          '<span class="badge-icon">' + m.name.split(' ')[0] + '</span>' +
+          '<span>' + escC(m.name.substring(m.name.indexOf(' ') + 1)) + '</span>' +
+          '<span class="lock-status">' + statusLabel + '</span>' +
+        '</div>';
+      }
+      // Collapsible (2026-08-05, per instruction: "still seeing greyed out milestone..
+      // either make this collapsible or show only relevant ones" — confirmed all 5 ARE
+      // genuinely relevant for someone with a real target/run-rate, just not all
+      // unlocked yet, so hiding them outright would lose real goals to work toward.
+      // Unlocked trophies show plainly; locked ones sit behind a closed-by-default
+      // toggle instead of always taking up the same visual space.)
       var msHtml = '<div class="rev-milestone-drawer">' +
         '<div class="rev-milestone-title">🏆 Milestone Trophies</div>' +
-        ms.filter(function(m){ return m.applicable; }).map(function(m){
-          var activeClass = m.active ? 'active' : 'locked';
-          var statusLabel = m.active ? 'Unlocked ✓' : 'Locked 🔒';
-          return '<div class="rev-milestone-card ' + activeClass + '" title="' + escC(m.desc) + '">' +
-            '<span class="badge-icon">' + m.name.split(' ')[0] + '</span>' +
-            '<span>' + escC(m.name.substring(m.name.indexOf(' ') + 1)) + '</span>' +
-            '<span class="lock-status">' + statusLabel + '</span>' +
-          '</div>';
-        }).join('') +
+        (unlocked.length ? unlocked.map(msCard).join('') : '<div style="font-size:12px;color:var(--muted);width:100%">No trophies unlocked yet — they\'ll show up here as you hit them.</div>') +
+        (locked.length ?
+          '<button onclick="toggleLockedMilestones(this,' + locked.length + ')" style="background:none;border:1px dashed var(--border);border-radius:20px;padding:6px 14px;font-size:11px;font-weight:700;color:var(--muted);cursor:pointer">🔒 ' + locked.length + ' more to unlock ▸</button>' +
+          '<div id="rev-milestones-locked" style="display:none;gap:10px;flex-wrap:wrap;width:100%;margin-top:10px">' + locked.map(msCard).join('') + '</div>'
+          : '') +
       '</div>';
       milestonesEl.innerHTML = msHtml;
       milestonesEl.style.display = 'flex';

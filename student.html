@@ -67,7 +67,7 @@
 .welcome-bar{background:var(--navy);border-radius:var(--radius);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
 .wb-name{font-size:14px;font-weight:600;color:var(--white)}
 .wb-sub{font-size:11px;color:rgba(255,255,255,.4);margin-top:2px}
-.success-quote-banner{display:none;margin:6px 0 0;padding:0;background:none;border:none;font-size:11px;line-height:1.45;color:rgba(255,255,255,.55);font-style:italic;max-width:100%;opacity:0;transform:translateY(-4px);transition:opacity .4s ease,transform .4s ease;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.success-quote-banner{display:none;margin:6px 0 0;padding:0;background:none;border:none;font-size:11px;line-height:1.5;color:rgba(255,255,255,.55);font-style:italic;max-width:100%;opacity:0;transform:translateY(-4px);transition:opacity .4s ease,transform .4s ease;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .success-quote-banner b{font-style:normal;font-weight:600;color:rgba(255,255,255,.4);font-size:10px}
 .wb-logout{background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif}
 .wb-logout:hover{background:rgba(255,255,255,.1);color:var(--white)}
@@ -978,6 +978,10 @@
         <span class="tab-icon">💎</span>
         <span class="tab-label">Career Path</span>
       </button>
+      <button class="nav-tab" id="nav-tab-regularisation" onclick="switchTab('tab-regularisation', this); renderAttendanceExtras(portalData);">
+        <span class="tab-icon">📝</span>
+        <span class="tab-label">Regularisation</span>
+      </button>
     </div>
 
     <!-- ══ MOBILE BOTTOM NAV — Phase 1 of the mobile redesign (2026-08-04). The 14 tabs
@@ -1007,6 +1011,7 @@
     <div id="more-sheet-overlay" style="display:none" onclick="if(event.target===this) toggleMoreSheet()">
       <div id="more-sheet-panel">
         <div class="more-sheet-handle"></div>
+        <button class="more-sheet-item" onclick="moreSheetGoTo('tab-regularisation','nav-tab-regularisation'); renderAttendanceExtras(portalData);"><span>📝 Regularisation</span><span class="more-sheet-chev">›</span></button>
         <button class="more-sheet-item" onclick="moreSheetGoTo('tab-courses','nav-tab-courses')"><span>📚 Courses</span><span class="more-sheet-chev">›</span></button>
         <button class="more-sheet-item" onclick="moreSheetGoTo('tab-fees','nav-tab-fees')"><span>💰 Fees</span><span class="more-sheet-chev">›</span></button>
         <button class="more-sheet-item" onclick="moreSheetGoTo('tab-results','nav-tab-tests'); otLoadMyResults();"><span>🧪 My Tests</span><span class="more-sheet-chev">›</span></button>
@@ -1114,13 +1119,22 @@
            mountStudentGlossary already use elsewhere in this file. -->
       <div id="student-summary" style="margin-top: 14px;"></div>
 
-      <!-- ══ ATTENDANCE EXTRAS — Best Case projection, Session History, and
-           Regularisation requests, all rendered by renderAttendanceExtras() below
-           (2026-08-04, matching the igi-student.zeroes.in mockup, per instruction).
-           Sits right after the attendance ring since all three are about the same
-           underlying attendance data. ══ -->
-      <div id="attendance-extras-wrap"></div>
+      <!-- Session History / Regularisation moved to its own tab (tab-regularisation)
+           2026-08-05, per instruction: "make the session history separate as a separate
+           regularisation tab" — was here on Home, now reachable from the More sheet. -->
       <div id="portal-batches-today"></div>
+    </div>
+
+    <!-- ══ REGULARISATION TAB — Session History + Regularise requests, split out from
+         Home into its own tab 2026-08-05, per instruction. Rendered by
+         renderAttendanceExtras() (renamed in spirit, not in code, from when it lived on
+         Home) whenever this tab is opened, via moreSheetGoTo below. ══ -->
+    <div id="tab-regularisation" class="tab-content">
+      <div class="card">
+        <h2 style="margin-bottom:4px">📝 Regularisation</h2>
+        <p class="sub" style="margin-top:2px">Your recent session history. Missed one for a real reason? Request regularisation and your counsellor will review it.</p>
+        <div id="attendance-extras-wrap"></div>
+      </div>
     </div>
 
     <!-- Courses Tab Content -->
@@ -1772,6 +1786,11 @@ function switchTab(tabId, el) {
 
   if (tabId === 'tab-today' && portalData) {
     renderStudentSummary(portalData);
+  }
+  // Session History/Regularisation split into its own tab 2026-08-05 — render on entry
+  // here too (in addition to the explicit calls on the nav buttons themselves), so
+  // switchTab() alone is always enough regardless of which entry point was used.
+  if (tabId === 'tab-regularisation' && portalData) {
     renderAttendanceExtras(portalData);
   }
   // Auto-refresh My Tests every 90s when on that tab; stop when leaving
@@ -2264,7 +2283,6 @@ function renderPortal(d) {
   });
 
   renderStudentSummary(d);
-  renderAttendanceExtras(d);
   loadStudentFees();
   loadStudentAttendanceCalendar(studentCalendarMonth);
   renderStudentMarks(d.assessments || []);
@@ -2758,7 +2776,7 @@ async function showSuccessQuoteBanner() {
   const attr = document.createElement('b');
   attr.textContent = '— ' + quote.a;
   banner.appendChild(attr);
-  banner.style.display = 'block';
+  banner.style.display = '-webkit-box'; // needed for -webkit-line-clamp (2-line wrap) to take effect — 'block' would ignore the clamp entirely
   requestAnimationFrame(function() { banner.style.opacity = '1'; banner.style.transform = 'translateY(0)'; });
 }
 

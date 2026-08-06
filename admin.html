@@ -1385,7 +1385,7 @@
       <button class="tab" onclick="switchAdminTab('t-corp-revenue')">💼 Corporate Revenue</button>
       <button class="tab" onclick="switchAdminTab('t-course-revenue')">📚 Course-Wise Revenue</button>
       <button class="tab" onclick="switchAdminTab('t-fees')">💸 Fee Reconciliation</button>
-      <button class="tab" onclick="switchAdminTab('t-invoices')">🧾 All Invoices</button>
+      <button class="tab" onclick="switchAdminTab('t-invoices')">🧾 Ledger</button>
       <button class="tab" onclick="switchAdminTab('t-op-invoices')">🧾 Operational Invoices</button>
       <button class="tab" onclick="switchAdminTab('t-academic')">📊 Academic Insights</button>
       <button class="tab" onclick="switchAdminTab('t-alumni')">🎓 Student Alumni</button>
@@ -1989,7 +1989,7 @@
     <div id="t-invoices" class="tab-content">
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
-          <h2 style="margin-bottom:0">🧾 All Invoices</h2>
+          <h2 style="margin-bottom:0">🧾 Ledger</h2>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="refreshAllInvoices()">🔄 Refresh</button>
             <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="downloadInvoicesCsv()">📄 Download CSV</button>
@@ -2029,7 +2029,7 @@
         <div class="kpi-row" id="inv-kpis" style="display:none">
           <div class="kpi-card"><div class="kpi-label">Invoices</div><div class="kpi-value" id="inv-kpi-count">—</div></div>
           <div class="kpi-card"><div class="kpi-label">Expected</div><div class="kpi-value" id="inv-kpi-expected">—</div></div>
-          <div class="kpi-card"><div class="kpi-label">Collected</div><div class="kpi-value" id="inv-kpi-collected">—</div></div>
+          <div class="kpi-card"><div class="kpi-label">Fees with GST</div><div class="kpi-value" id="inv-kpi-collected">—</div></div>
           <div class="kpi-card"><div class="kpi-label">Outstanding</div><div class="kpi-value" id="inv-kpi-outstanding">—</div></div>
           <div class="kpi-card"><div class="kpi-label">Total Discount</div><div class="kpi-value" id="inv-kpi-discount">—</div></div>
         </div>
@@ -7664,7 +7664,7 @@ function renderInvoicesTab() {
   let html = '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
     '<th class="text-left">Student</th><th class="text-left">Batch</th><th class="text-left">Course</th>' +
     '<th class="text-left">Centre</th><th class="text-left">Counsellor</th><th class="text-left">Invoice #</th><th>Invoice Date</th>' +
-    '<th>Course Fee</th><th>Discount</th><th>Net Payable</th><th>Collected</th><th>Outstanding</th><th>Status</th><th>Action</th>' +
+    '<th>Course Fee</th><th>Discount</th><th>Revenue</th><th>Fees with GST</th><th>Outstanding</th><th>Status</th><th>Action</th>' +
     '</tr></thead><tbody>';
   html += sorted.map(r => {
     const statusCls = String(r.feeStatus || 'Pending').toLowerCase();
@@ -7687,7 +7687,7 @@ function renderInvoicesTab() {
       '<td>' + (r.invoiceDate ? escC(toDMYClient(r.invoiceDate)) : '<span style="color:var(--muted)">—</span>') + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + money(r.courseFee) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace">' + (Number(r.discountPct) ? (parseFloat(Number(r.discountPct).toFixed(2)) + '%') : '—') + '</td>' +
-      '<td style="font-family:\'JetBrains Mono\',monospace">' + money(r.netPayable) + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\',monospace">' + money((Number(r.courseFee)||0) - (Number(r.discountAmt)||0)) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace;color:#1a7a3c">' + money(r.collected) + '</td>' +
       '<td style="font-family:\'JetBrains Mono\',monospace;color:' + (Number(r.outstanding) > 0 ? '#C0362C' : '#1a7a3c') + '">' + money(r.outstanding) + '</td>' +
       '<td><span class="fee-status ' + escC(statusCls) + '">' + escC(r.feeStatus || 'Pending') + '</span></td>' +
@@ -7767,15 +7767,15 @@ function openInvoiceEditModal(recordId) {
 function downloadInvoicesCsv() {
   const rows = currentInvoiceFilterRows();
   if (!rows.length) { showToast('No invoices to download for these filters.', 'error'); return; }
-  const lines = [['Student', 'Student ID', 'Batch', 'Course', 'Centre', 'Counsellor', 'Invoice Number', 'Invoice Date', 'Course Fee', 'Discount', 'Net Payable', 'Collected', 'Outstanding', 'Status']];
+  const lines = [['Student', 'Student ID', 'Batch', 'Course', 'Centre', 'Counsellor', 'Invoice Number', 'Invoice Date', 'Course Fee', 'Discount', 'Revenue', 'Fees with GST', 'Outstanding', 'Status']];
   rows.forEach(r => {
     lines.push([
       r.studentName || '', r.studentId || '', r.batchCode || '', r.course || '', r.centre || '', r.enteredBy || '',
       r.invoiceNumber || '', r.invoiceDate || '', r.courseFee || 0, r.discountAmt || 0,
-      r.netPayable || 0, r.collected || 0, r.outstanding || 0, r.feeStatus || ''
+      (Number(r.courseFee)||0) - (Number(r.discountAmt)||0), r.collected || 0, r.outstanding || 0, r.feeStatus || ''
     ]);
   });
-  triggerCsvDownload(lines, 'All-Invoices-' + todayStamp() + '.csv');
+  triggerCsvDownload(lines, 'Ledger-' + todayStamp() + '.csv');
 }
 
 function triggerCsvDownload(lines, filename) {

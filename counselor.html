@@ -5263,6 +5263,23 @@ function canViewAllIndiaMIS() {
   return counselorName === 'Anuradha';
 }
 
+// canSeeAllFeeRecords — the Fee Record/Ledger tab's rendering pipeline (
+// feeRecordFilteredRows/corpBatchesAsFeeRows/renderFeeRecordTab) checks "isAdmin" alone
+// in several places to decide whether the Counsellor filter dropdown means "this
+// person's records anywhere" vs "this person's records within MY centre" -- but
+// loadFeeRecordTab's initial FETCH already grants Anuradha the full, unrestricted
+// dataset via canViewAllIndiaMIS() (see wantsAllIndiaFees there). Those checks being
+// isAdmin-only meant Anuradha's fetch was correctly unrestricted, but every downstream
+// FILTER still silently re-narrowed it back down to her own centre -- confirmed live
+// 2026-08-06: picking "Sunita" from the dropdown showed only Sunita's 2 Mumbai records,
+// silently dropping her 22 real Delhi ones, and the same for every other counsellor
+// picked. True non-admins (without canViewAllIndiaMIS) keep the original, intentionally
+// privacy-scoped behaviour -- this only widens the check for the one role it was always
+// meant to cover.
+function canSeeAllFeeRecords() {
+  return isAdmin || canViewAllIndiaMIS();
+}
+
 // Operational Invoices & Receipts tab — day-to-day spend log (inventory, manuals, other),
 // piloted with Anuradha and Bianca first. One-line change here if/when it should open up
 // to every counsellor.
@@ -9757,7 +9774,7 @@ function feeRecordFilteredRows() {
   // Invoices tab to find (no invoice number entered yet), without leaving Fee Record.
   var missingInvoiceOnly = !!(document.getElementById('fr-filter-missing-invoice') && document.getElementById('fr-filter-missing-invoice').checked);
   return allInvoiceRecords.filter(function(r) {
-    if (isAdmin) {
+    if (canSeeAllFeeRecords()) {
       if (effectiveCounsellor && r.enteredBy !== effectiveCounsellor) return false;
     } else {
       var inMyCentre = !!(allowedCentres && allowedCentres.length && allowedCentres.indexOf(r.centre) !== -1);
@@ -9796,7 +9813,7 @@ function corpBatchesAsFeeRows() {
   var missingInvoiceOnly = !!(document.getElementById('fr-filter-missing-invoice') && document.getElementById('fr-filter-missing-invoice').checked);
 
   return corpBatchRecords.filter(function(r) {
-    if (isAdmin) {
+    if (canSeeAllFeeRecords()) {
       if (effectiveCounsellor && r.recordedBy !== effectiveCounsellor) return false;
     } else {
       var inMyCentre = !!(allowedCentres && allowedCentres.length && allowedCentres.indexOf(r.centre) !== -1);
@@ -9830,6 +9847,11 @@ function renderFeeRecordTab() {
   var list = document.getElementById('fr-list');
   if (!allInvoiceRecords) { list.innerHTML = emptyState('📑', 'Loading fee record…', 'Pulling your fee records, grouped by month.'); return; }
 
+  // Deliberately isAdmin-only, NOT canSeeAllFeeRecords() — this gate controls whether
+  // Anuradha sees a mandatory "pick a counsellor" prompt by default, which is a separate
+  // UX question from the bug being fixed here (the filter silently narrowing to her own
+  // centre once she DOES pick someone). Widening this too would force her into a
+  // "must pick first" flow she didn't have before and wasn't part of what was reported.
   var effectiveCounsellor = isAdmin ? (document.getElementById('fr-filter-counsellor').value || '') : (counselorName || '');
   if (isAdmin && !effectiveCounsellor) {
     summary.style.display = 'none';
@@ -9896,9 +9918,12 @@ function renderFeeRecordTab() {
   // to someone else = that person's sales specifically within this centre (the other half of
   // the union — "my centre" — is what still applies to a name that isn't your own).
   var filterCounsellor = document.getElementById('fr-filter-counsellor').value || '';
-  var revenueTileLabel = isAdmin ? 'Revenue' : (filterCounsellor ? 'Filtered Revenue' : 'Centre Revenue');
-  var revenueTileSub = isAdmin
-    ? ' · sum of fee records for this counsellor'
+  var seesAll = canSeeAllFeeRecords();
+  var revenueTileLabel = seesAll ? (isAdmin ? 'Revenue' : (filterCounsellor ? 'Filtered Revenue' : 'Centre Revenue')) : (filterCounsellor ? 'Filtered Revenue' : 'Centre Revenue');
+  var revenueTileSub = seesAll
+    ? (isAdmin
+        ? ' · sum of fee records for this counsellor'
+        : (filterCounsellor ? ' · ' + filterCounsellor + '\'s sales, all centres' : ' · this centre\'s sales (everyone), plus your own sales anywhere'))
     : (filterCounsellor
         ? (filterCounsellor === counselorName
             ? ' · all of your sales, any centre'

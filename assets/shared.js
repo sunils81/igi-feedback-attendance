@@ -3388,26 +3388,47 @@ window.gasGet = (function () {
           totalFee += netCourseFee;
           totalGst += Number(mapped.gst_amount || 0);
         });
-        var revRow = {
-          month: monthKey, period: period || '2026-27',
-          counsellor: counsellor,
-          assigned_centre: assignedCentre,
-          business_centre: centre,
-          business_type: 'Centre Revenue',
-          achieved_course_fee: totalFee,
-          // achieved_course_fee_gst is treated system-wide (leaderboards, HR/admin dashboards,
-          // manual entry via revenueGst()) as the GST-INCLUSIVE total (fee + tax), not the tax
-          // amount alone. student_fees.gst_amount is just the tax portion, so it must be added
-          // to the fee here — writing totalGst alone silently understated "achieved" revenue
-          // for every auto-derived own-centre row (confirmed live: ~74% understated for Jul-26).
-          achieved_course_fee_gst: totalFee + totalGst,
-          student_count: rows.length,
-          notes: rows.length ? 'auto-derived' : 'auto-derived (zeroed — no remaining fee records this month)',
-          updated_at: new Date().toISOString()
-        };
-        POST('revenue_monthly_achieved',
-          'on_conflict=month,period,counsellor,business_centre,business_type',
-          [revRow], function() {}); // fire-and-forget
+        // Misc Charges (manual/diploma replacement costs) and Credit Notes (refunds/
+        // overpayment corrections) both blend into this SAME Centre Revenue total rather
+        // than being tracked as a separate business_type (2026-08-05, confirmed with
+        // Sunil). Folded in here, at the single point every auto-sync AND any future
+        // manual resync of this (counsellor, centre, month) combo goes through — not as
+        // a separate incremental add/subtract elsewhere — specifically so a future full
+        // resync (recomputing from student_fees alone, the same kind of script used
+        // repeatedly to fix stale totals throughout this project) can never silently
+        // drop these contributions by only reading student_fees.
+        GET('misc_charges', qs, function(e2, mcRows) {
+          mcRows = mcRows || [];
+          var mcFee = 0, mcGst = 0;
+          if (!e2) { mcRows.forEach(function(r) { mcFee += Number(r.amount) || 0; mcGst += Number(r.gst_amount) || 0; }); }
+          GET('credit_notes', qs, function(e3, cnRows) {
+            cnRows = cnRows || [];
+            var cnAmt = 0;
+            if (!e3) { cnRows.forEach(function(r) { cnAmt += Number(r.amount) || 0; }); }
+            var finalFee = totalFee + mcFee - cnAmt;
+            var finalGst = totalFee + totalGst + mcFee + mcGst - cnAmt;
+            var revRow = {
+              month: monthKey, period: period || '2026-27',
+              counsellor: counsellor,
+              assigned_centre: assignedCentre,
+              business_centre: centre,
+              business_type: 'Centre Revenue',
+              achieved_course_fee: finalFee,
+              // achieved_course_fee_gst is treated system-wide (leaderboards, HR/admin dashboards,
+              // manual entry via revenueGst()) as the GST-INCLUSIVE total (fee + tax), not the tax
+              // amount alone. student_fees.gst_amount is just the tax portion, so it must be added
+              // to the fee here — writing totalGst alone silently understated "achieved" revenue
+              // for every auto-derived own-centre row (confirmed live: ~74% understated for Jul-26).
+              achieved_course_fee_gst: finalGst,
+              student_count: rows.length,
+              notes: rows.length || mcRows.length || cnRows.length ? 'auto-derived' : 'auto-derived (zeroed — no remaining fee records this month)',
+              updated_at: new Date().toISOString()
+            };
+            POST('revenue_monthly_achieved',
+              'on_conflict=month,period,counsellor,business_centre,business_type',
+              [revRow], function() {}); // fire-and-forget
+          });
+        });
       });
     });
   }
@@ -3532,6 +3553,168 @@ window.gasGet = (function () {
       DEL('corporate_batches', 'id=eq.' + encodeURIComponent(p.id), function(e2) {
         if (e2) { cb(null, { status: 'error', reason: 'Could not delete.' }); return; }
         syncCorporateRevenue(row.recorded_by, row.centre, row.revenue_month, '2026-27');
+        cb(null, { status: 'ok' });
+      });
+    });
+  }
+
+  /* MISC CHARGES — manual/diploma replacement costs charged to students (2026-08-05, per
+     instruction: "counsellor charge manual cost to students or diploma cost in case they
+     lose their manuals or diploma... these need to exist as their invoice is raised and
+     counted as revenue"). Blends into the SAME 'Centre Revenue' total as normal course
+     fees (confirmed with Sunil) via syncStudentRevenue, which now also reads this table —
+     see the comment there for why it's folded in centrally rather than incrementally
+     adjusted here. */
+  /* h_lookupStudentBasic — tiny helper for the Misc Charge / Credit Note forms, which
+     need to resolve a typed Student ID to a real name before submitting (2026-08-05). No
+     existing client-side student cache or backend lookup covered this, so this is
+     intentionally minimal — just id -> name, not the full student record. */
+  function h_lookupStudentBasic(p, cb) {
+    if (!p.studentId) { cb(null, { status: 'error', reason: 'Missing student id.' }); return; }
+    GET('students', 'student_id=eq.' + encodeURIComponent(p.studentId) + '&select=student_id,name', function(e, rows) {
+      if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'Student not found.' }); return; }
+      cb(null, { status: 'ok', studentId: rows[0].student_id, name: rows[0].name });
+    });
+  }
+
+  function h_saveMiscCharge(p, cb) {
+    if (!p.studentId || !p.chargeType || !p.centre || !p.recordedBy || !p.amount) {
+      cb(null, { status: 'error', reason: 'Student, charge type, centre, amount, and recorded-by are required.' });
+      return;
+    }
+    var amt = Number(p.amount || 0);
+    var gst = Math.round(amt * 0.18);
+    var revenueMonth = (p.invoiceDate ? toYMD(p.invoiceDate) : todayYMD()).slice(0, 7);
+    var dbRow = {
+      student_id: p.studentId, student_name: p.studentName || '', charge_type: p.chargeType,
+      description: p.description || '', amount: amt, gst_amount: gst,
+      invoice_number: p.invoiceNumber || '', invoice_date: p.invoiceDate ? toYMD(p.invoiceDate) : null,
+      centre: p.centre, recorded_by: p.recordedBy, revenue_month: revenueMonth, updated_at: nowISO()
+    };
+    function afterSave(err, oldRow) {
+      if (err) { cb(null, { status: 'error', reason: String(err) }); return; }
+      syncStudentRevenue(dbRow.recorded_by, dbRow.centre, revenueMonth, '2026-27');
+      if (oldRow && (oldRow.centre !== dbRow.centre || oldRow.revenue_month !== revenueMonth || oldRow.recorded_by !== dbRow.recorded_by)) {
+        syncStudentRevenue(oldRow.recorded_by || dbRow.recorded_by, oldRow.centre || dbRow.centre, oldRow.revenue_month || revenueMonth, '2026-27');
+      }
+      cb(null, { status: 'ok' });
+    }
+    if (p.id) {
+      GET('misc_charges', 'id=eq.' + encodeURIComponent(p.id) + '&select=centre,revenue_month,recorded_by', function(eGet, rows) {
+        var oldRow = (rows && rows[0]) || null;
+        PATCH('misc_charges', 'id=eq.' + encodeURIComponent(p.id), dbRow, function(ePatch) { afterSave(ePatch, oldRow); });
+      });
+    } else {
+      POST('misc_charges', '', dbRow, function(ePost) { afterSave(ePost, null); });
+    }
+  }
+
+  function h_getMiscCharges(p, cb) {
+    var isAdm = !!(p && (p.isAdmin === true || p.isAdmin === 'true'));
+    var qs = 'order=invoice_date.desc.nullslast,created_at.desc&limit=1000';
+    if (!isAdm && p.recordedBy) qs += '&recorded_by=eq.' + encodeURIComponent(p.recordedBy);
+    else if (!isAdm && p.centre) qs += '&centre=eq.' + encodeURIComponent(p.centre);
+    GET('misc_charges', qs, function(e, rows) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      var records = (rows || []).map(function(r) {
+        return {
+          id: r.id, studentId: r.student_id, studentName: r.student_name, chargeType: r.charge_type,
+          description: r.description, amount: Number(r.amount) || 0, gstAmount: Number(r.gst_amount) || 0,
+          invoiceNumber: r.invoice_number, invoiceDate: r.invoice_date, centre: r.centre,
+          recordedBy: r.recorded_by, revenueMonth: r.revenue_month, createdAt: r.created_at
+        };
+      });
+      cb(null, { status: 'ok', records: records });
+    });
+  }
+
+  function h_deleteMiscCharge(p, cb) {
+    if (!p.id) { cb(null, { status: 'error', reason: 'Missing id.' }); return; }
+    GET('misc_charges', 'id=eq.' + encodeURIComponent(p.id) + '&select=centre,revenue_month,recorded_by', function(e, rows) {
+      if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'Not found.' }); return; }
+      var row = rows[0];
+      if (p.isAdmin !== 'true' && row.recorded_by !== p.recordedBy) {
+        cb(null, { status: 'error', reason: 'You can only delete your own entries.' });
+        return;
+      }
+      DEL('misc_charges', 'id=eq.' + encodeURIComponent(p.id), function(e2) {
+        if (e2) { cb(null, { status: 'error', reason: 'Could not delete.' }); return; }
+        syncStudentRevenue(row.recorded_by, row.centre, row.revenue_month, '2026-27');
+        cb(null, { status: 'ok' });
+      });
+    });
+  }
+
+  /* CREDIT NOTES — refunds or overpayment corrections that reduce revenue (2026-08-05,
+     per instruction: "credit note is issued in case there is a refund or extra amount
+     paid by student"). Counsellor logs directly, no approval step (confirmed with Sunil,
+     matching Misc Charges/Corporate Batches) — SUBTRACTED from the same 'Centre Revenue'
+     total via syncStudentRevenue, the same centralised-fold-in reasoning as Misc Charges
+     above. amount is always stored positive; the subtraction happens at sync time, not
+     by storing a negative number here. */
+  function h_saveCreditNote(p, cb) {
+    if (!p.studentId || !p.reason || !p.centre || !p.recordedBy || !p.amount) {
+      cb(null, { status: 'error', reason: 'Student, reason, centre, amount, and recorded-by are required.' });
+      return;
+    }
+    var revenueMonth = (p.issuedDate ? toYMD(p.issuedDate) : todayYMD()).slice(0, 7);
+    var dbRow = {
+      student_id: p.studentId, student_name: p.studentName || '',
+      original_invoice_number: p.originalInvoiceNumber || '', amount: Number(p.amount || 0),
+      reason: p.reason, reason_detail: p.reasonDetail || '', centre: p.centre,
+      recorded_by: p.recordedBy, revenue_month: revenueMonth,
+      issued_date: p.issuedDate ? toYMD(p.issuedDate) : null, updated_at: nowISO()
+    };
+    function afterSave(err, oldRow) {
+      if (err) { cb(null, { status: 'error', reason: String(err) }); return; }
+      syncStudentRevenue(dbRow.recorded_by, dbRow.centre, revenueMonth, '2026-27');
+      if (oldRow && (oldRow.centre !== dbRow.centre || oldRow.revenue_month !== revenueMonth || oldRow.recorded_by !== dbRow.recorded_by)) {
+        syncStudentRevenue(oldRow.recorded_by || dbRow.recorded_by, oldRow.centre || dbRow.centre, oldRow.revenue_month || revenueMonth, '2026-27');
+      }
+      cb(null, { status: 'ok' });
+    }
+    if (p.id) {
+      GET('credit_notes', 'id=eq.' + encodeURIComponent(p.id) + '&select=centre,revenue_month,recorded_by', function(eGet, rows) {
+        var oldRow = (rows && rows[0]) || null;
+        PATCH('credit_notes', 'id=eq.' + encodeURIComponent(p.id), dbRow, function(ePatch) { afterSave(ePatch, oldRow); });
+      });
+    } else {
+      POST('credit_notes', '', dbRow, function(ePost) { afterSave(ePost, null); });
+    }
+  }
+
+  function h_getCreditNotes(p, cb) {
+    var isAdm = !!(p && (p.isAdmin === true || p.isAdmin === 'true'));
+    var qs = 'order=issued_date.desc.nullslast,created_at.desc&limit=1000';
+    if (!isAdm && p.recordedBy) qs += '&recorded_by=eq.' + encodeURIComponent(p.recordedBy);
+    else if (!isAdm && p.centre) qs += '&centre=eq.' + encodeURIComponent(p.centre);
+    GET('credit_notes', qs, function(e, rows) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      var records = (rows || []).map(function(r) {
+        return {
+          id: r.id, studentId: r.student_id, studentName: r.student_name,
+          originalInvoiceNumber: r.original_invoice_number, amount: Number(r.amount) || 0,
+          reason: r.reason, reasonDetail: r.reason_detail, centre: r.centre,
+          recordedBy: r.recorded_by, revenueMonth: r.revenue_month, issuedDate: r.issued_date,
+          createdAt: r.created_at
+        };
+      });
+      cb(null, { status: 'ok', records: records });
+    });
+  }
+
+  function h_deleteCreditNote(p, cb) {
+    if (!p.id) { cb(null, { status: 'error', reason: 'Missing id.' }); return; }
+    GET('credit_notes', 'id=eq.' + encodeURIComponent(p.id) + '&select=centre,revenue_month,recorded_by', function(e, rows) {
+      if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'Not found.' }); return; }
+      var row = rows[0];
+      if (p.isAdmin !== 'true' && row.recorded_by !== p.recordedBy) {
+        cb(null, { status: 'error', reason: 'You can only delete your own entries.' });
+        return;
+      }
+      DEL('credit_notes', 'id=eq.' + encodeURIComponent(p.id), function(e2) {
+        if (e2) { cb(null, { status: 'error', reason: 'Could not delete.' }); return; }
+        syncStudentRevenue(row.recorded_by, row.centre, row.revenue_month, '2026-27');
         cb(null, { status: 'ok' });
       });
     });
@@ -9635,6 +9818,13 @@ window.gasGet = (function () {
       case 'saveCorporateBatch':        return h_saveCorporateBatch(params, cb);
       case 'getCorporateBatches':       return h_getCorporateBatches(params, cb);
       case 'deleteCorporateBatch':      return h_deleteCorporateBatch(params, cb);
+      case 'saveMiscCharge':            return h_saveMiscCharge(params, cb);
+      case 'getMiscCharges':            return h_getMiscCharges(params, cb);
+      case 'deleteMiscCharge':          return h_deleteMiscCharge(params, cb);
+      case 'lookupStudentBasic':        return h_lookupStudentBasic(params, cb);
+      case 'saveCreditNote':            return h_saveCreditNote(params, cb);
+      case 'getCreditNotes':            return h_getCreditNotes(params, cb);
+      case 'deleteCreditNote':          return h_deleteCreditNote(params, cb);
       case 'saveSuspenseEntry':         return h_saveSuspenseEntry(params, cb);
       case 'getSuspenseEntries':        return h_getSuspenseEntries(params, cb);
       case 'resolveSuspenseEntry':      return h_resolveSuspenseEntry(params, cb);

@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=83"></script>
+<script src="/assets/shared.js?v=84"></script>
 <script src="/assets/push-subscribe.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
@@ -4036,6 +4036,82 @@
         <p class="sub" style="margin-top:2px">Students explaining why they missed a session, asking for it to count as attended. Approving flips the real attendance record — every attendance % across the app updates automatically.</p>
         <div id="regularisation-request-list"><div class="empty-state"><div class="empty-icon">📝</div><div class="empty-title">Loading…</div></div></div>
       </div>
+
+      <div style="margin-top:28px;padding-top:20px;border-top:1.5px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <div>
+            <h3 style="margin:0 0 4px;font-size:16px">📗 Misc Charges</h3>
+            <p class="sub" style="margin-top:2px">Manual or diploma replacement costs charged to a student — counted toward normal Centre Revenue, same as a course fee.</p>
+          </div>
+          <button class="btn btn-gold" style="width:auto;padding:8px 16px" onclick="openMiscChargeForm()">+ Add Misc Charge</button>
+        </div>
+        <div id="misc-charge-list" style="margin-top:12px"><div class="empty-state"><div class="empty-icon">📗</div><div class="empty-title">Loading…</div></div></div>
+      </div>
+
+      <div style="margin-top:28px;padding-top:20px;border-top:1.5px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <div>
+            <h3 style="margin:0 0 4px;font-size:16px">🧾 Credit Notes</h3>
+            <p class="sub" style="margin-top:2px">Refunds or overpayment corrections — reduces the student's month/centre revenue, the same way a discount does.</p>
+          </div>
+          <button class="btn btn-outline" style="width:auto;padding:8px 16px" onclick="openCreditNoteForm()">+ Add Credit Note</button>
+        </div>
+        <div id="credit-note-list" style="margin-top:12px"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">Loading…</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Misc Charge entry modal -->
+  <div id="misc-charge-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,.5);z-index:9000;align-items:center;justify-content:center;padding:16px">
+    <div style="background:var(--white);border-radius:14px;max-width:480px;width:100%;padding:24px;max-height:90vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <h3 style="margin:0" id="misc-charge-modal-title">Add Misc Charge</h3>
+        <button onclick="closeMiscChargeForm()" style="background:transparent;border:none;font-size:20px;cursor:pointer;color:var(--muted)">×</button>
+      </div>
+      <p class="sub" style="margin-top:2px">Manual/diploma replacement cost — this counts as normal Centre Revenue.</p>
+      <div class="field"><label>Student ID *</label><input type="text" id="mc-student-id" placeholder="e.g. 7213" oninput="mcLookupStudent()"></div>
+      <div class="field"><label>Student Name</label><input type="text" id="mc-student-name" readonly style="background:var(--off)"></div>
+      <div class="field"><label>Charge Type *</label>
+        <select id="mc-charge-type" onchange="document.getElementById('mc-desc-wrap').style.display = this.value==='Other' ? 'block' : 'none'">
+          <option value="Manual Replacement">Manual Replacement</option>
+          <option value="Diploma Replacement">Diploma Replacement</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="field" id="mc-desc-wrap" style="display:none"><label>Description *</label><input type="text" id="mc-description" placeholder="What is this charge for?"></div>
+      <div class="field"><label>Amount (₹, excl. GST) *</label><input type="number" id="mc-amount" min="0" step="0.01"></div>
+      <div class="field"><label>Centre *</label><select id="mc-centre"></select></div>
+      <div class="field"><label>Invoice Number</label><input type="text" id="mc-invoice-number" placeholder="Optional"></div>
+      <div class="field"><label>Invoice Date</label><input type="date" id="mc-invoice-date"></div>
+      <button class="btn btn-gold" style="width:100%" onclick="submitMiscCharge()">Save Misc Charge</button>
+      <span id="misc-charge-err" style="display:block;color:#B00020;font-size:12px;margin-top:8px"></span>
+    </div>
+  </div>
+
+  <!-- Credit Note entry modal -->
+  <div id="credit-note-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,.5);z-index:9000;align-items:center;justify-content:center;padding:16px">
+    <div style="background:var(--white);border-radius:14px;max-width:480px;width:100%;padding:24px;max-height:90vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <h3 style="margin:0" id="credit-note-modal-title">Add Credit Note</h3>
+        <button onclick="closeCreditNoteForm()" style="background:transparent;border:none;font-size:20px;cursor:pointer;color:var(--muted)">×</button>
+      </div>
+      <p class="sub" style="margin-top:2px">Refund or overpayment correction — this reduces Centre Revenue for the month it's logged against.</p>
+      <div class="field"><label>Student ID *</label><input type="text" id="cn-student-id" placeholder="e.g. 7213" oninput="cnLookupStudent()"></div>
+      <div class="field"><label>Student Name</label><input type="text" id="cn-student-name" readonly style="background:var(--off)"></div>
+      <div class="field"><label>Original Invoice Number</label><input type="text" id="cn-invoice-number" placeholder="Which invoice does this relate to?"></div>
+      <div class="field"><label>Amount (₹) *</label><input type="number" id="cn-amount" min="0" step="0.01"></div>
+      <div class="field"><label>Reason *</label>
+        <select id="cn-reason" onchange="document.getElementById('cn-reason-detail-wrap').style.display = this.value==='Other' ? 'block' : 'none'">
+          <option value="Refund">Refund</option>
+          <option value="Overpayment">Overpayment</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="field" id="cn-reason-detail-wrap" style="display:none"><label>Reason Detail *</label><input type="text" id="cn-reason-detail" placeholder="Explain the reason"></div>
+      <div class="field"><label>Centre *</label><select id="cn-centre"></select></div>
+      <div class="field"><label>Issued Date</label><input type="date" id="cn-issued-date"></div>
+      <button class="btn btn-outline" style="width:100%" onclick="submitCreditNote()">Save Credit Note</button>
+      <span id="credit-note-err" style="display:block;color:#B00020;font-size:12px;margin-top:8px"></span>
     </div>
   </div>
 
@@ -5881,6 +5957,8 @@ function switchTab(id) {
     loadCorporateBatches();
     loadSuspenseEntries();
     loadRegularisationRequests();
+    loadMiscCharges();
+    loadCreditNotes();
   }
   if (id === 't-op-invoices') {
     loadOperationalInvoices();
@@ -9336,6 +9414,222 @@ function submitRegReview(decision) {
     showToast(decision === 'approved' ? 'Approved — attendance updated.' : 'Rejected.');
     closeRegReviewModal();
     loadRegularisationRequests(true);
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MISC CHARGES & CREDIT NOTES — Ledger tab (2026-08-05, per instruction: "counsellor
+   charge manual cost to students or diploma cost... credit note is issued in case there
+   is a refund or extra amount paid by student"). Both blend into normal Centre Revenue
+   via syncStudentRevenue in shared.js — see the comment there. No approval step for
+   either, matching Corporate Batches: the counsellor who logs it owns it.
+   ══════════════════════════════════════════════════════════════ */
+var miscCharges = [], creditNotes = [];
+
+function _populateCentreSelect(id) {
+  var sel = document.getElementById(id);
+  if (!sel) return;
+  sel.innerHTML = '';
+  CENTRES.forEach(function(c) {
+    var o = document.createElement('option'); o.value = c; o.textContent = c;
+    if (allowedCentres && allowedCentres[0] === c) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+// --- Misc Charges ---
+var mcEditId = null;
+function openMiscChargeForm(id) {
+  mcEditId = id || null;
+  _populateCentreSelect('mc-centre');
+  document.getElementById('misc-charge-modal-title').textContent = id ? 'Edit Misc Charge' : 'Add Misc Charge';
+  document.getElementById('misc-charge-err').textContent = '';
+  if (id) {
+    var rec = miscCharges.find(function(r) { return r.id === id; });
+    if (!rec) return;
+    document.getElementById('mc-student-id').value = rec.studentId;
+    document.getElementById('mc-student-name').value = rec.studentName;
+    document.getElementById('mc-charge-type').value = rec.chargeType;
+    document.getElementById('mc-desc-wrap').style.display = rec.chargeType === 'Other' ? 'block' : 'none';
+    document.getElementById('mc-description').value = rec.description || '';
+    document.getElementById('mc-amount').value = rec.amount;
+    document.getElementById('mc-centre').value = rec.centre;
+    document.getElementById('mc-invoice-number').value = rec.invoiceNumber || '';
+    document.getElementById('mc-invoice-date').value = rec.invoiceDate || '';
+  } else {
+    ['mc-student-id','mc-student-name','mc-description','mc-amount','mc-invoice-number','mc-invoice-date'].forEach(function(id2) { document.getElementById(id2).value = ''; });
+    document.getElementById('mc-charge-type').value = 'Manual Replacement';
+    document.getElementById('mc-desc-wrap').style.display = 'none';
+  }
+  document.getElementById('misc-charge-modal-overlay').style.display = 'flex';
+}
+function closeMiscChargeForm() { document.getElementById('misc-charge-modal-overlay').style.display = 'none'; mcEditId = null; }
+function mcLookupStudent() {
+  var sid = document.getElementById('mc-student-id').value.trim();
+  var nameEl = document.getElementById('mc-student-name');
+  if (!sid) { nameEl.value = ''; return; }
+  gasGet({ action: 'lookupStudentBasic', studentId: sid }, function(e, d) {
+    nameEl.value = (!e && d && d.status === 'ok') ? d.name : '(not found)';
+  });
+}
+function submitMiscCharge() {
+  var errEl = document.getElementById('misc-charge-err');
+  var studentId = document.getElementById('mc-student-id').value.trim();
+  var studentName = document.getElementById('mc-student-name').value.trim();
+  var chargeType = document.getElementById('mc-charge-type').value;
+  var description = document.getElementById('mc-description').value.trim();
+  var amount = Number(document.getElementById('mc-amount').value);
+  if (!studentId || !studentName || studentName === '(not found)') { errEl.textContent = 'Enter a valid Student ID.'; return; }
+  if (chargeType === 'Other' && !description) { errEl.textContent = 'Please describe the charge.'; return; }
+  if (!amount || amount <= 0) { errEl.textContent = 'Enter a valid amount.'; return; }
+  gasGet({
+    action: 'saveMiscCharge', id: mcEditId, studentId: studentId, studentName: studentName,
+    chargeType: chargeType, description: description, amount: amount,
+    centre: document.getElementById('mc-centre').value,
+    invoiceNumber: document.getElementById('mc-invoice-number').value.trim(),
+    invoiceDate: document.getElementById('mc-invoice-date').value, recordedBy: counselorName
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { errEl.textContent = (d && d.reason) || 'Could not save. Try again.'; return; }
+    showToast('Misc charge saved.');
+    closeMiscChargeForm();
+    loadMiscCharges(true);
+  });
+}
+function loadMiscCharges(force) {
+  if (miscCharges.length && !force) { renderMiscChargeList(); return; }
+  var list = document.getElementById('misc-charge-list');
+  if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">📗</div><div class="empty-title">Loading…</div></div>';
+  gasGet({ action: 'getMiscCharges', recordedBy: counselorName, centre: (allowedCentres && allowedCentres[0]) || '', isAdmin: isAdmin ? 'true' : 'false' }, function(e, d) {
+    if (e || !d || !d.records) { if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load.</div></div>'; return; }
+    miscCharges = d.records;
+    renderMiscChargeList();
+  });
+}
+function renderMiscChargeList() {
+  var list = document.getElementById('misc-charge-list');
+  if (!list) return;
+  if (!miscCharges.length) { list.innerHTML = '<div class="empty-state"><div class="empty-icon">📗</div><div class="empty-title">No misc charges logged yet.</div></div>'; return; }
+  var html = '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+    '<th class="text-left">Student</th><th class="text-left">Type</th><th class="text-left">Centre</th><th>Amount</th><th class="text-left">Invoice</th><th></th>' +
+    '</tr></thead><tbody>';
+  miscCharges.forEach(function(r) {
+    html += '<tr>' +
+      '<td class="text-left">' + escC(r.studentName) + ' <span style="font-size:11px;color:var(--muted)">(' + escC(r.studentId) + ')</span></td>' +
+      '<td class="text-left">' + escC(r.chargeType === 'Other' ? r.description : r.chargeType) + '</td>' +
+      '<td class="text-left">' + escC(r.centre) + '</td>' +
+      '<td style="text-align:right;font-weight:600">' + money(r.amount) + '</td>' +
+      '<td class="text-left">' + escC(r.invoiceNumber || '—') + '<div style="font-size:11px;color:var(--muted)">' + escC(r.invoiceDate || '') + '</div></td>' +
+      '<td><button class="del-btn" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer" onclick="openMiscChargeForm(\'' + escC(r.id) + '\')">Edit</button> ' +
+        '<button class="del-btn" onclick="deleteMiscChargeEntry(\'' + escC(r.id) + '\')">Remove</button></td>' +
+      '</tr>';
+  });
+  html += '</tbody></table></div>';
+  list.innerHTML = html;
+}
+function deleteMiscChargeEntry(id) {
+  if (!confirm('Remove this misc charge? This cannot be undone.')) return;
+  gasGet({ action: 'deleteMiscCharge', id: id, recordedBy: counselorName, isAdmin: isAdmin ? 'true' : 'false' }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { showToast((d && d.reason) || 'Could not remove.'); return; }
+    showToast('Removed.');
+    loadMiscCharges(true);
+  });
+}
+
+// --- Credit Notes ---
+var cnEditId = null;
+function openCreditNoteForm(id) {
+  cnEditId = id || null;
+  _populateCentreSelect('cn-centre');
+  document.getElementById('credit-note-modal-title').textContent = id ? 'Edit Credit Note' : 'Add Credit Note';
+  document.getElementById('credit-note-err').textContent = '';
+  if (id) {
+    var rec = creditNotes.find(function(r) { return r.id === id; });
+    if (!rec) return;
+    document.getElementById('cn-student-id').value = rec.studentId;
+    document.getElementById('cn-student-name').value = rec.studentName;
+    document.getElementById('cn-invoice-number').value = rec.originalInvoiceNumber || '';
+    document.getElementById('cn-amount').value = rec.amount;
+    document.getElementById('cn-reason').value = rec.reason;
+    document.getElementById('cn-reason-detail-wrap').style.display = rec.reason === 'Other' ? 'block' : 'none';
+    document.getElementById('cn-reason-detail').value = rec.reasonDetail || '';
+    document.getElementById('cn-centre').value = rec.centre;
+    document.getElementById('cn-issued-date').value = rec.issuedDate || '';
+  } else {
+    ['cn-student-id','cn-student-name','cn-invoice-number','cn-amount','cn-reason-detail','cn-issued-date'].forEach(function(id2) { document.getElementById(id2).value = ''; });
+    document.getElementById('cn-reason').value = 'Refund';
+    document.getElementById('cn-reason-detail-wrap').style.display = 'none';
+  }
+  document.getElementById('credit-note-modal-overlay').style.display = 'flex';
+}
+function closeCreditNoteForm() { document.getElementById('credit-note-modal-overlay').style.display = 'none'; cnEditId = null; }
+function cnLookupStudent() {
+  var sid = document.getElementById('cn-student-id').value.trim();
+  var nameEl = document.getElementById('cn-student-name');
+  if (!sid) { nameEl.value = ''; return; }
+  gasGet({ action: 'lookupStudentBasic', studentId: sid }, function(e, d) {
+    nameEl.value = (!e && d && d.status === 'ok') ? d.name : '(not found)';
+  });
+}
+function submitCreditNote() {
+  var errEl = document.getElementById('credit-note-err');
+  var studentId = document.getElementById('cn-student-id').value.trim();
+  var studentName = document.getElementById('cn-student-name').value.trim();
+  var reason = document.getElementById('cn-reason').value;
+  var reasonDetail = document.getElementById('cn-reason-detail').value.trim();
+  var amount = Number(document.getElementById('cn-amount').value);
+  if (!studentId || !studentName || studentName === '(not found)') { errEl.textContent = 'Enter a valid Student ID.'; return; }
+  if (reason === 'Other' && !reasonDetail) { errEl.textContent = 'Please explain the reason.'; return; }
+  if (!amount || amount <= 0) { errEl.textContent = 'Enter a valid amount.'; return; }
+  gasGet({
+    action: 'saveCreditNote', id: cnEditId, studentId: studentId, studentName: studentName,
+    originalInvoiceNumber: document.getElementById('cn-invoice-number').value.trim(),
+    amount: amount, reason: reason, reasonDetail: reasonDetail,
+    centre: document.getElementById('cn-centre').value,
+    issuedDate: document.getElementById('cn-issued-date').value, recordedBy: counselorName
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { errEl.textContent = (d && d.reason) || 'Could not save. Try again.'; return; }
+    showToast('Credit note saved.');
+    closeCreditNoteForm();
+    loadCreditNotes(true);
+  });
+}
+function loadCreditNotes(force) {
+  if (creditNotes.length && !force) { renderCreditNoteList(); return; }
+  var list = document.getElementById('credit-note-list');
+  if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">Loading…</div></div>';
+  gasGet({ action: 'getCreditNotes', recordedBy: counselorName, centre: (allowedCentres && allowedCentres[0]) || '', isAdmin: isAdmin ? 'true' : 'false' }, function(e, d) {
+    if (e || !d || !d.records) { if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load.</div></div>'; return; }
+    creditNotes = d.records;
+    renderCreditNoteList();
+  });
+}
+function renderCreditNoteList() {
+  var list = document.getElementById('credit-note-list');
+  if (!list) return;
+  if (!creditNotes.length) { list.innerHTML = '<div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No credit notes logged yet.</div></div>'; return; }
+  var html = '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+    '<th class="text-left">Student</th><th class="text-left">Reason</th><th class="text-left">Centre</th><th>Amount</th><th class="text-left">Original Invoice</th><th></th>' +
+    '</tr></thead><tbody>';
+  creditNotes.forEach(function(r) {
+    html += '<tr>' +
+      '<td class="text-left">' + escC(r.studentName) + ' <span style="font-size:11px;color:var(--muted)">(' + escC(r.studentId) + ')</span></td>' +
+      '<td class="text-left">' + escC(r.reason === 'Other' ? r.reasonDetail : r.reason) + '</td>' +
+      '<td class="text-left">' + escC(r.centre) + '</td>' +
+      '<td style="text-align:right;font-weight:600;color:#B00020">-' + money(r.amount) + '</td>' +
+      '<td class="text-left">' + escC(r.originalInvoiceNumber || '—') + '<div style="font-size:11px;color:var(--muted)">' + escC(r.issuedDate || '') + '</div></td>' +
+      '<td><button class="del-btn" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer" onclick="openCreditNoteForm(\'' + escC(r.id) + '\')">Edit</button> ' +
+        '<button class="del-btn" onclick="deleteCreditNoteEntry(\'' + escC(r.id) + '\')">Remove</button></td>' +
+      '</tr>';
+  });
+  html += '</tbody></table></div>';
+  list.innerHTML = html;
+}
+function deleteCreditNoteEntry(id) {
+  if (!confirm('Remove this credit note? This cannot be undone.')) return;
+  gasGet({ action: 'deleteCreditNote', id: id, recordedBy: counselorName, isAdmin: isAdmin ? 'true' : 'false' }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { showToast((d && d.reason) || 'Could not remove.'); return; }
+    showToast('Removed.');
+    loadCreditNotes(true);
   });
 }
 

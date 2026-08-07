@@ -1324,6 +1324,14 @@
 /* Settings sub-tabs */
 #t-settings .crm-subtab-btn { font-size:12px; padding:7px 14px }
 
+/* Ledger multi-select filters (Centre/Month/Counsellor) — 2026-08-07 */
+.inv-multiselect-wrap{position:relative}
+.inv-multiselect-btn{font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy);cursor:pointer;display:flex;align-items:center;gap:8px;min-width:150px;justify-content:space-between;font-family:inherit}
+.inv-multiselect-panel{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:50;background:var(--white);border:1.5px solid var(--border);border-radius:8px;box-shadow:var(--shadow);min-width:220px;max-height:280px;overflow-y:auto;padding:6px 0}
+.inv-multiselect-panel label{display:flex;align-items:center;gap:8px;padding:7px 14px;font-size:13px;color:var(--navy);cursor:pointer;white-space:nowrap}
+.inv-multiselect-panel label:hover{background:var(--off)}
+.inv-multiselect-panel input[type=checkbox]{cursor:pointer}
+
 </style>
 </head>
 <body>
@@ -1999,22 +2007,34 @@
 
         <!-- Filter bar -->
         <div style="display:flex;gap:12px;align-items:center;margin-top:12px;margin-bottom:6px;flex-wrap:wrap" class="no-print">
-          <select id="inv-filter-centre" onchange="renderInvoicesTab()"
-            style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
-            <option value="">All Centres</option>
-          </select>
+          <!-- Centre/Month/Counsellor are checkbox multi-selects (2026-08-07, per
+               instruction: "Ledger should have an option of selecting multiple centers,
+               multiple counselors, multiple months"). Course stays a single <select> —
+               only three were explicitly asked for. Built as one reusable component
+               (invMultiToggle/invMultiPopulate/invMultiLabel below) parameterised by key
+               rather than three hand-rolled copies of the same widget. -->
+          <div class="inv-multiselect-wrap" id="inv-multiselect-wrap-centre">
+            <button type="button" class="inv-multiselect-btn" onclick="invMultiToggle('centre')">
+              <span id="inv-multiselect-label-centre">All Centres</span><span style="color:var(--muted)">▾</span>
+            </button>
+            <div class="inv-multiselect-panel" id="inv-multiselect-panel-centre"></div>
+          </div>
           <select id="inv-filter-course" onchange="renderInvoicesTab()"
             style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
             <option value="">All Courses</option>
           </select>
-          <select id="inv-filter-month" onchange="renderInvoicesTab()"
-            style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
-            <option value="">All Months</option>
-          </select>
-          <select id="inv-filter-counsellor" onchange="renderInvoicesTab()"
-            style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
-            <option value="">All Counsellors</option>
-          </select>
+          <div class="inv-multiselect-wrap" id="inv-multiselect-wrap-month">
+            <button type="button" class="inv-multiselect-btn" onclick="invMultiToggle('month')">
+              <span id="inv-multiselect-label-month">All Months</span><span style="color:var(--muted)">▾</span>
+            </button>
+            <div class="inv-multiselect-panel" id="inv-multiselect-panel-month"></div>
+          </div>
+          <div class="inv-multiselect-wrap" id="inv-multiselect-wrap-counsellor">
+            <button type="button" class="inv-multiselect-btn" onclick="invMultiToggle('counsellor')">
+              <span id="inv-multiselect-label-counsellor">All Counsellors</span><span style="color:var(--muted)">▾</span>
+            </button>
+            <div class="inv-multiselect-panel" id="inv-multiselect-panel-counsellor"></div>
+          </div>
           <label style="font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:2px">Invoice date from
             <input type="date" id="inv-filter-from" onchange="renderInvoicesTab()" style="font-size:13px;padding:7px 10px;border-radius:6px;border:1.5px solid var(--border)">
           </label>
@@ -7563,33 +7583,72 @@ function invMonthLabel(ym) {
 
 // Rebuilds the Centre/Course/Month/Counsellor filter dropdowns from the FULL dataset (not
 // the filtered subset) so picking one filter never makes another option disappear.
+// Centre/Month/Counsellor are checkbox multi-selects (invMulti*, see below); Course stays
+// a single <select>.
+var invMultiSelections = { centre: [], month: [], counsellor: [] };
 function populateInvoiceFilterOptions() {
-  const centreSel = document.getElementById('inv-filter-centre');
   const courseSel = document.getElementById('inv-filter-course');
-  const monthSel = document.getElementById('inv-filter-month');
-  const counsellorSel = document.getElementById('inv-filter-counsellor');
-  const curCentre = centreSel.value, curCourse = courseSel.value, curMonth = monthSel.value, curCounsellor = counsellorSel.value;
+  const curCourse = courseSel.value;
 
   const centres = Array.from(new Set(allInvoiceRecords.map(r => r.centre).filter(Boolean))).sort();
   const courses = Array.from(new Set(allInvoiceRecords.map(r => r.course).filter(Boolean))).sort();
   const months = Array.from(new Set(allInvoiceRecords.map(invRecordMonth).filter(Boolean))).sort().reverse();
   const counsellors = Array.from(new Set(allInvoiceRecords.map(r => r.enteredBy).filter(Boolean))).sort();
 
-  centreSel.innerHTML = '<option value="">All Centres</option>' + centres.map(c =>
-    '<option value="' + escC(c) + '"' + (c === curCentre ? ' selected' : '') + '>' + escC(c) + '</option>').join('');
   courseSel.innerHTML = '<option value="">All Courses</option>' + courses.map(c =>
     '<option value="' + escC(c) + '"' + (c === curCourse ? ' selected' : '') + '>' + escC(c) + '</option>').join('');
-  monthSel.innerHTML = '<option value="">All Months</option>' + months.map(m =>
-    '<option value="' + m + '"' + (m === curMonth ? ' selected' : '') + '>' + invMonthLabel(m) + '</option>').join('');
-  counsellorSel.innerHTML = '<option value="">All Counsellors</option>' + counsellors.map(c =>
-    '<option value="' + escC(c) + '"' + (c === curCounsellor ? ' selected' : '') + '>' + escC(c) + '</option>').join('');
+
+  invMultiPopulate('centre', centres, function(v){ return v; });
+  invMultiPopulate('month', months, invMonthLabel);
+  invMultiPopulate('counsellor', counsellors, function(v){ return v; });
+}
+
+// Generic checkbox multi-select — one implementation shared by Centre/Month/Counsellor
+// rather than three hand-rolled copies. `labelFn` formats each raw value for display
+// (invMonthLabel for months, identity for centre/counsellor names).
+function invMultiPopulate(key, values, labelFn) {
+  invMultiSelections[key] = invMultiSelections[key].filter(function(v) { return values.indexOf(v) !== -1; });
+  const panel = document.getElementById('inv-multiselect-panel-' + key);
+  if (panel) {
+    panel.innerHTML = values.map(function(v) {
+      const checked = invMultiSelections[key].indexOf(v) !== -1;
+      return '<label><input type="checkbox" value="' + escC(v) + '"' + (checked ? ' checked' : '') + ' onchange="invMultiOptionChanged(\'' + key + '\',\'' + escC(v).replace(/'/g,"\\'") + '\', this.checked)">' + escC(labelFn(v)) + '</label>';
+    }).join('');
+  }
+  invMultiUpdateLabel(key);
+}
+function invMultiToggle(key) {
+  const panel = document.getElementById('inv-multiselect-panel-' + key);
+  panel.style.display = panel.style.display === 'none' || !panel.style.display ? 'block' : 'none';
+}
+document.addEventListener('click', function(e) {
+  ['centre', 'month', 'counsellor'].forEach(function(key) {
+    const wrap = document.getElementById('inv-multiselect-wrap-' + key);
+    const panel = document.getElementById('inv-multiselect-panel-' + key);
+    if (wrap && panel && panel.style.display === 'block' && !wrap.contains(e.target)) panel.style.display = 'none';
+  });
+});
+function invMultiOptionChanged(key, value, checked) {
+  const idx = invMultiSelections[key].indexOf(value);
+  if (checked && idx === -1) invMultiSelections[key].push(value);
+  if (!checked && idx !== -1) invMultiSelections[key].splice(idx, 1);
+  invMultiUpdateLabel(key);
+  renderInvoicesTab();
+}
+function invMultiUpdateLabel(key) {
+  const label = document.getElementById('inv-multiselect-label-' + key);
+  if (!label) return;
+  const sel = invMultiSelections[key];
+  const allWord = key === 'centre' ? 'All Centres' : key === 'month' ? 'All Months' : 'All Counsellors';
+  if (!sel.length) { label.textContent = allWord; return; }
+  if (sel.length === 1) { label.textContent = key === 'month' ? invMonthLabel(sel[0]) : sel[0]; return; }
+  label.textContent = sel.length + ' selected';
 }
 
 function resetInvoiceFilters() {
-  document.getElementById('inv-filter-centre').value = '';
+  invMultiSelections = { centre: [], month: [], counsellor: [] };
+  populateInvoiceFilterOptions();
   document.getElementById('inv-filter-course').value = '';
-  document.getElementById('inv-filter-month').value = '';
-  document.getElementById('inv-filter-counsellor').value = '';
   document.getElementById('inv-filter-from').value = '';
   document.getElementById('inv-filter-to').value = '';
   document.getElementById('inv-filter-search').value = '';
@@ -7598,18 +7657,15 @@ function resetInvoiceFilters() {
 
 function currentInvoiceFilterRows() {
   if (!allInvoiceRecords) return [];
-  const centre = document.getElementById('inv-filter-centre').value;
   const course = document.getElementById('inv-filter-course').value;
-  const month = document.getElementById('inv-filter-month').value;
-  const counsellor = document.getElementById('inv-filter-counsellor').value;
   const from = document.getElementById('inv-filter-from').value;
   const to = document.getElementById('inv-filter-to').value;
   const search = (document.getElementById('inv-filter-search').value || '').trim().toLowerCase();
   return allInvoiceRecords.filter(r => {
-    if (centre && r.centre !== centre) return false;
+    if (invMultiSelections.centre.length && invMultiSelections.centre.indexOf(r.centre) === -1) return false;
     if (course && r.course !== course) return false;
-    if (month && invRecordMonth(r) !== month) return false;
-    if (counsellor && r.enteredBy !== counsellor) return false;
+    if (invMultiSelections.month.length && invMultiSelections.month.indexOf(invRecordMonth(r)) === -1) return false;
+    if (invMultiSelections.counsellor.length && invMultiSelections.counsellor.indexOf(r.enteredBy) === -1) return false;
     // Date range filters on invoice date — a record with no invoice date yet is excluded by
     // a from/to filter (nothing to compare), but still shows up unfiltered.
     if (from && (!r.invoiceDate || r.invoiceDate < from)) return false;

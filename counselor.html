@@ -9227,7 +9227,14 @@ function loadCorporateBatches(force) {
   if (corpBatchRecords.length && !force) { renderCorporateBatchList(); return; }
   var list = document.getElementById('corp-batch-list');
   if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">🏢</div><div class="empty-title">Loading…</div></div>';
-  gasGet({ action: 'getCorporateBatches', recordedBy: counselorName, isAdmin: isAdmin ? 'true' : 'false' }, function(e, d) {
+  // Same bug class as the Ledger's own filtering, found and fixed 2026-08-06: this used
+  // to send the bare isAdmin flag, which meant Anuradha (canViewAllIndiaMIS but not a
+  // real admin) only ever got HER OWN corporate batches back from the backend, never
+  // anyone else's — confirmed live, Arpita's real Riyaana Creations entry (Kolkata, Rs
+  // 25,000, June 2026) was silently missing from the Ledger regardless of how correctly
+  // the client-side filter in corpBatchesAsFeeRows() was written, because it never even
+  // reached corpBatchRecords in the first place.
+  gasGet({ action: 'getCorporateBatches', recordedBy: counselorName, isAdmin: canSeeAllFeeRecords() ? 'true' : 'false' }, function(e, d) {
     if (e || !d || !d.records) {
       if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load. Try again.</div></div>';
       return;
@@ -9283,7 +9290,7 @@ function renderCorporateBatchList() {
 var suspenseEntries = [];
 
 function loadSuspenseEntryNotification() {
-  gasGet({ action: 'getSuspenseEntries', status: 'pending', centre: (allowedCentres && allowedCentres[0]) || '', isAdmin: isAdmin ? 'true' : 'false' }, function(e, d) {
+  gasGet({ action: 'getSuspenseEntries', status: 'pending', centre: (allowedCentres && allowedCentres[0]) || '', isAdmin: canSeeAllFeeRecords() ? 'true' : 'false' }, function(e, d) {
     var banner = document.getElementById('suspense-banner');
     var text = document.getElementById('suspense-banner-text');
     if (!banner || !text) return;
@@ -9298,7 +9305,7 @@ function loadSuspenseEntries(force) {
   if (suspenseEntries.length && !force) { renderSuspenseEntryList(); return; }
   var list = document.getElementById('suspense-entry-list');
   if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">🚩</div><div class="empty-title">Loading…</div></div>';
-  gasGet({ action: 'getSuspenseEntries', centre: (allowedCentres && allowedCentres[0]) || '', isAdmin: isAdmin ? 'true' : 'false' }, function(e, d) {
+  gasGet({ action: 'getSuspenseEntries', centre: (allowedCentres && allowedCentres[0]) || '', isAdmin: canSeeAllFeeRecords() ? 'true' : 'false' }, function(e, d) {
     if (e || !d || !d.records) {
       if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load. Try again.</div></div>';
       return;
@@ -9378,7 +9385,7 @@ function loadRegularisationRequests(force) {
   if (regularisationRequests.length && !force) { renderRegularisationRequestList(); return; }
   var list = document.getElementById('regularisation-request-list');
   if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">📝</div><div class="empty-title">Loading…</div></div>';
-  gasGet({ action: 'getRegularisationRequests', centre: (allowedCentres && allowedCentres[0]) || '', isAdmin: isAdmin ? 'true' : 'false' }, function(e, d) {
+  gasGet({ action: 'getRegularisationRequests', centre: (allowedCentres && allowedCentres[0]) || '', isAdmin: canSeeAllFeeRecords() ? 'true' : 'false' }, function(e, d) {
     if (e || !d || !d.records) {
       if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load. Try again.</div></div>';
       return;
@@ -9525,7 +9532,7 @@ function loadMiscCharges(force) {
   if (miscCharges.length && !force) { renderMiscChargeList(); return; }
   var list = document.getElementById('misc-charge-list');
   if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">📗</div><div class="empty-title">Loading…</div></div>';
-  gasGet({ action: 'getMiscCharges', recordedBy: counselorName, centre: (allowedCentres && allowedCentres[0]) || '', isAdmin: isAdmin ? 'true' : 'false' }, function(e, d) {
+  gasGet({ action: 'getMiscCharges', recordedBy: counselorName, centre: (allowedCentres && allowedCentres[0]) || '', isAdmin: canSeeAllFeeRecords() ? 'true' : 'false' }, function(e, d) {
     if (e || !d || !d.records) { if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load.</div></div>'; return; }
     miscCharges = d.records;
     renderMiscChargeList();
@@ -9623,7 +9630,7 @@ function loadCreditNotes(force) {
   if (creditNotes.length && !force) { renderCreditNoteList(); return; }
   var list = document.getElementById('credit-note-list');
   if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">Loading…</div></div>';
-  gasGet({ action: 'getCreditNotes', recordedBy: counselorName, centre: (allowedCentres && allowedCentres[0]) || '', isAdmin: isAdmin ? 'true' : 'false' }, function(e, d) {
+  gasGet({ action: 'getCreditNotes', recordedBy: counselorName, centre: (allowedCentres && allowedCentres[0]) || '', isAdmin: canSeeAllFeeRecords() ? 'true' : 'false' }, function(e, d) {
     if (e || !d || !d.records) { if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load.</div></div>'; return; }
     creditNotes = d.records;
     renderCreditNoteList();

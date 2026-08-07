@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=85"></script>
+<script src="/assets/shared.js?v=86"></script>
 <script src="/assets/push-subscribe.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
@@ -4067,6 +4067,17 @@
         </div>
         <div id="credit-note-list" style="margin-top:12px"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">Loading…</div></div></div>
       </div>
+
+      <div style="margin-top:28px;padding-top:20px;border-top:1.5px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <div>
+            <h3 style="margin:0 0 4px;font-size:16px">💷 Discount Requests</h3>
+            <p class="sub" style="margin-top:2px">Every nonzero discount needs admin approval before it can be saved on a fee record. Submit here, or from the block message when saving a Fee Record.</p>
+          </div>
+          <button class="btn btn-outline" style="width:auto;padding:8px 16px" onclick="openDiscountRequestForm()">+ Request Approval</button>
+        </div>
+        <div id="discount-req-list" style="margin-top:12px"><div class="empty-state"><div class="empty-icon">💷</div><div class="empty-title">Loading…</div></div></div>
+      </div>
     </div>
   </div>
 
@@ -4094,6 +4105,29 @@
       <div class="field"><label>Invoice Date</label><input type="date" id="mc-invoice-date"></div>
       <button class="btn btn-gold" style="width:100%" onclick="submitMiscCharge()">Save Misc Charge</button>
       <span id="misc-charge-err" style="display:block;color:#B00020;font-size:12px;margin-top:8px"></span>
+    </div>
+  </div>
+
+  <!-- Discount Approval Request modal — opened either from the Fee form's hard-block
+       error (pre-filled from the record already open there) or standalone from the
+       Ledger's "Discount Requests" section (2026-08-07). -->
+  <div id="discount-req-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,.5);z-index:9500;align-items:center;justify-content:center;padding:16px">
+    <div style="background:var(--white);border-radius:14px;max-width:480px;width:100%;padding:24px;max-height:90vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <h3 style="margin:0">Request Discount Approval</h3>
+        <button onclick="closeDiscountRequestForm()" style="background:transparent;border:none;font-size:20px;cursor:pointer;color:var(--muted)">×</button>
+      </div>
+      <p class="sub" style="margin-top:2px">Every discount needs admin approval before it can be saved on a fee record. Submit here, then wait for approval — you'll see it change to "Approved" once it's reviewed.</p>
+      <div class="field"><label>Student ID *</label><input type="text" id="dreq-student-id" placeholder="e.g. 7213" oninput="dreqLookupStudent()"></div>
+      <div class="field"><label>Student Name</label><input type="text" id="dreq-student-name" readonly style="background:var(--off)"></div>
+      <div class="field"><label>Batch Code *</label><input type="text" id="dreq-batch-code" placeholder="e.g. MUM-DG-JUL26"></div>
+      <div class="field"><label>Course</label><input type="text" id="dreq-course" placeholder="Optional, for the admin's context"></div>
+      <div class="field"><label>Course Fee (₹, excl. GST)</label><input type="number" id="dreq-course-fee" min="0" placeholder="Optional, for the admin's context"></div>
+      <div class="field"><label>Discount % *</label><input type="number" id="dreq-discount-pct" min="0" max="100" step="0.01"></div>
+      <div class="field"><label>Centre *</label><select id="dreq-centre"></select></div>
+      <div class="field"><label>Reason *</label><textarea id="dreq-reason" rows="3" placeholder="Why does this student need this discount?"></textarea></div>
+      <button class="btn btn-gold" style="width:100%" onclick="submitDiscountRequest()">Submit Request</button>
+      <span id="discount-req-err" style="display:block;color:#B00020;font-size:12px;margin-top:8px"></span>
     </div>
   </div>
 
@@ -5986,6 +6020,7 @@ function switchTab(id) {
     loadRegularisationRequests();
     loadMiscCharges();
     loadCreditNotes();
+    loadDiscountRequests();
   }
   if (id === 't-op-invoices') {
     loadOperationalInvoices();
@@ -9670,6 +9705,100 @@ function deleteCreditNoteEntry(id) {
   });
 }
 
+/* ══════════════════════════════════════════════════════════════
+   DISCOUNT APPROVAL REQUESTS — 2026-08-07, per instruction: "counselor request for the
+   discount approval, and it comes in admin portal for the approval. And post that the
+   counselor can give the discount." Every nonzero discount is hard-blocked at save time
+   server-side (h_saveFee in shared.js) — this is the counsellor's own request/status view,
+   plus the modal opened either from here or from the Fee form's block error.
+   ══════════════════════════════════════════════════════════════ */
+var discountRequests = [];
+
+function openDiscountRequestForm(prefill) {
+  _populateCentreSelect('dreq-centre');
+  document.getElementById('discount-req-err').textContent = '';
+  document.getElementById('dreq-reason').value = '';
+  if (prefill) {
+    // Called from the Fee form's block error — everything already on screen carries
+    // straight over, nothing to re-type except the reason.
+    document.getElementById('dreq-student-id').value = prefill.studentId || '';
+    document.getElementById('dreq-student-name').value = prefill.studentName || '';
+    document.getElementById('dreq-batch-code').value = prefill.batchCode || '';
+    document.getElementById('dreq-course').value = prefill.course || '';
+    document.getElementById('dreq-course-fee').value = prefill.courseFee || '';
+    document.getElementById('dreq-discount-pct').value = prefill.discountPct || '';
+    document.getElementById('dreq-centre').value = prefill.centre || '';
+  } else {
+    ['dreq-student-id','dreq-student-name','dreq-batch-code','dreq-course','dreq-course-fee','dreq-discount-pct'].forEach(function(id) { document.getElementById(id).value = ''; });
+  }
+  document.getElementById('discount-req-modal-overlay').style.display = 'flex';
+}
+function closeDiscountRequestForm() { document.getElementById('discount-req-modal-overlay').style.display = 'none'; }
+function dreqLookupStudent() {
+  var sid = document.getElementById('dreq-student-id').value.trim();
+  var nameEl = document.getElementById('dreq-student-name');
+  if (!sid) { nameEl.value = ''; return; }
+  gasGet({ action: 'lookupStudentBasic', studentId: sid }, function(e, d) {
+    nameEl.value = (!e && d && d.status === 'ok') ? d.name : '(not found)';
+  });
+}
+function submitDiscountRequest() {
+  var errEl = document.getElementById('discount-req-err');
+  var studentId = document.getElementById('dreq-student-id').value.trim();
+  var studentName = document.getElementById('dreq-student-name').value.trim();
+  var batchCode = document.getElementById('dreq-batch-code').value.trim();
+  var discountPct = Number(document.getElementById('dreq-discount-pct').value);
+  var reason = document.getElementById('dreq-reason').value.trim();
+  var centre = document.getElementById('dreq-centre').value;
+  if (!studentId || !studentName || studentName === '(not found)') { errEl.textContent = 'Enter a valid Student ID.'; return; }
+  if (!batchCode) { errEl.textContent = 'Enter the batch code.'; return; }
+  if (!discountPct || discountPct <= 0) { errEl.textContent = 'Enter a discount % greater than 0.'; return; }
+  if (!reason) { errEl.textContent = 'Please explain why this discount is needed.'; return; }
+  gasGet({
+    action: 'saveDiscountRequest', studentId: studentId, studentName: studentName, batchCode: batchCode,
+    centre: centre, course: document.getElementById('dreq-course').value.trim(),
+    courseFee: Number(document.getElementById('dreq-course-fee').value) || 0,
+    discountPct: discountPct, discountReason: reason, requestedBy: counselorName
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { errEl.textContent = (d && d.reason) || 'Could not submit. Try again.'; return; }
+    showToast('Discount request submitted — waiting on admin approval.');
+    closeDiscountRequestForm();
+    loadDiscountRequests(true);
+  });
+}
+function loadDiscountRequests(force) {
+  if (discountRequests.length && !force) { renderDiscountRequestList(); return; }
+  var list = document.getElementById('discount-req-list');
+  if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">💷</div><div class="empty-title">Loading…</div></div>';
+  gasGet({ action: 'getDiscountRequests', requestedBy: counselorName, isAdmin: canSeeAllFeeRecords() ? 'true' : 'false' }, function(e, d) {
+    if (e || !d || !d.records) { if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load.</div></div>'; return; }
+    discountRequests = d.records;
+    renderDiscountRequestList();
+  });
+}
+function renderDiscountRequestList() {
+  var list = document.getElementById('discount-req-list');
+  if (!list) return;
+  if (!discountRequests.length) { list.innerHTML = '<div class="empty-state"><div class="empty-icon">💷</div><div class="empty-title">No discount requests yet.</div></div>'; return; }
+  var html = '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+    '<th class="text-left">Student</th><th class="text-left">Batch</th><th>Discount</th><th class="text-left">Reason</th><th class="text-left">Status</th>' +
+    '</tr></thead><tbody>';
+  discountRequests.forEach(function(r) {
+    var statusHtml = r.status === 'pending' ? '<span style="color:#B45309;font-weight:700">Pending</span>'
+      : r.status === 'approved' ? (r.used ? '<span style="color:#1a7a3c;font-weight:700">✓ Approved · used</span>' : '<span style="color:#1a7a3c;font-weight:700">✓ Approved — ready to apply</span>')
+      : '<span style="color:#B00020;font-weight:700">✗ Rejected</span>';
+    html += '<tr style="' + (r.status === 'approved' && !r.used ? 'background:#F0FDF4' : '') + '">' +
+      '<td class="text-left">' + escC(r.studentName) + ' <span style="font-size:11px;color:var(--muted)">(' + escC(r.studentId) + ')</span></td>' +
+      '<td class="text-left">' + escC(r.batchCode) + '</td>' +
+      '<td style="text-align:right;font-weight:600">' + r.discountPct + '%</td>' +
+      '<td class="text-left" style="font-size:12px;max-width:220px">' + escC(r.discountReason) + (r.reviewNote ? '<div style="font-size:11px;color:var(--muted)">Admin: ' + escC(r.reviewNote) + '</div>' : '') + '</td>' +
+      '<td class="text-left">' + statusHtml + '</td>' +
+      '</tr>';
+  });
+  html += '</tbody></table></div>';
+  list.innerHTML = html;
+}
+
 function deleteCorporateBatchEntry(id) {
   if (!confirm('Remove this corporate batch? This cannot be undone.')) return;
   gasGet({ action: 'deleteCorporateBatch', id: id, recordedBy: counselorName, isAdmin: isAdmin ? 'true' : 'false' }, function(e, d) {
@@ -11038,6 +11167,26 @@ function recalcFeeForm() {
   }
 }
 
+// Reads the SAME live context saveFeeRecord() itself uses (currentFeeStudent, feeCalc())
+// rather than trying to serialize it through an onclick attribute string — avoids the
+// escaping fragility of embedding an object literal in inline HTML, and can't drift out
+// of sync with what's actually on screen since it's the same source saveFeeRecord() reads.
+function openDiscountRequestFromFeeForm() {
+  if (!currentFeeStudent) return;
+  const calc = feeCalc();
+  const targetBatchCode = currentFeeStudent.newBatchCode || currentFeeStudent.batch.batchCode;
+  const targetCentre = currentFeeStudent.newBatchCentre || currentFeeStudent.batch.centre;
+  openDiscountRequestForm({
+    studentId: currentFeeStudent.student.enrollmentNo,
+    studentName: currentFeeStudent.student.name,
+    batchCode: targetBatchCode,
+    course: currentFeeStudent.batch.course,
+    courseFee: calc.courseFee,
+    discountPct: calc.discPct,
+    centre: targetCentre
+  });
+}
+
 function saveFeeRecord() {
   if (!currentFeeStudent) return;
   const err = document.getElementById('fee-err');
@@ -11105,6 +11254,17 @@ function saveFeeRecord() {
     btn.textContent = 'Save Fee Record';
     btn.disabled = false;
     if (e || !d || d.status !== 'ok') {
+      // Discount approval hard-block (2026-08-07) — a distinct, actionable error rather
+      // than the generic "could not save" message, since the fix here isn't "try again",
+      // it's "submit a request first." Pre-fills the request modal with everything already
+      // on screen so there's nothing to re-type.
+      if (d && d.reason === 'DISCOUNT_NEEDS_APPROVAL') {
+        err.innerHTML = (d.message || 'This discount needs admin approval before it can be saved.') +
+          ' <button type="button" onclick="openDiscountRequestFromFeeForm()" style="margin-left:6px;background:var(--navy);color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer">Request Approval</button>';
+        err.classList.add('show');
+        showToast('This discount needs admin approval first.', 'error');
+        return;
+      }
       err.textContent = 'Could not save fee record. Please try again.';
       err.classList.add('show');
       showToast('Could not save fee record.', 'error');

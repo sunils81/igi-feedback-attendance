@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=83"></script>
+<script src="assets/shared.js?v=86"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
@@ -1395,6 +1395,7 @@
       <button class="tab" onclick="switchAdminTab('t-fees')">💸 Fee Reconciliation</button>
       <button class="tab" onclick="switchAdminTab('t-invoices')">🧾 Ledger</button>
       <button class="tab" onclick="switchAdminTab('t-op-invoices')">🧾 Operational Invoices</button>
+      <button class="tab" onclick="switchAdminTab('t-discount-approvals')">💷 Discount Approvals<span id="discount-approvals-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:4px"></span></button>
       <button class="tab" onclick="switchAdminTab('t-academic')">📊 Academic Insights</button>
       <button class="tab" onclick="switchAdminTab('t-alumni')">🎓 Student Alumni</button>
       <button class="tab" id="tab-crm-admin" onclick="switchAdminTab('t-crm-admin')">🎯 CRM Analytics</button>
@@ -3448,6 +3449,36 @@
       </div>
     </div>
 
+    <!-- Discount Approvals — 2026-08-07, per instruction: "counselor request for the
+         discount approval, and it comes in admin portal for the approval." Every nonzero
+         discount is hard-blocked at fee-save time server-side until approved here. -->
+    <div id="t-discount-approvals" class="tab-content">
+      <div class="card">
+        <div class="section-tag">Fee Discounts</div>
+        <h2>💷 Discount Approval Requests</h2>
+        <p class="sub">Every discount a counsellor wants to give — however small — is blocked from being saved until approved here.</p>
+        <div id="discount-approvals-list" style="margin-top:16px"><div class="empty-state"><div class="empty-icon">💷</div><div class="empty-title">Loading…</div></div></div>
+      </div>
+    </div>
+
+    <!-- Discount Approval review modal -->
+    <div id="discount-approval-review-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,.5);z-index:9000;align-items:center;justify-content:center;padding:16px">
+      <div style="background:var(--white);border-radius:14px;max-width:480px;width:100%;padding:24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <h3 style="margin:0">Review Discount Request</h3>
+          <button onclick="closeDiscountApprovalReview()" style="background:transparent;border:none;font-size:20px;cursor:pointer;color:var(--muted)">×</button>
+        </div>
+        <p class="sub" id="discount-approval-review-summary" style="margin-top:2px"></p>
+        <div style="background:var(--off);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--navy);margin:8px 0 14px" id="discount-approval-review-reason"></div>
+        <div class="field"><label>Note (optional)</label><textarea id="discount-approval-review-note" rows="2" placeholder="e.g. Approved — parent hardship case."></textarea></div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-outline" style="flex:1;border-color:#B00020;color:#B00020" onclick="submitDiscountApprovalReview('rejected')">Reject</button>
+          <button class="btn btn-gold" style="flex:1" onclick="submitDiscountApprovalReview('approved')">Approve</button>
+        </div>
+        <span id="discount-approval-review-err" style="display:block;color:#B00020;font-size:12px;margin-top:8px"></span>
+      </div>
+    </div>
+
     <!-- TAB: INVENTORY (Admin Master View) -->
     <div id="t-inventory" class="tab-content">
 
@@ -4540,12 +4571,101 @@ function switchAdminTab(tabId) {
     loadOpInvoicesAdmin();
     return;
   }
+  if (tabId === 't-discount-approvals') {
+    loadDiscountApprovals();
+    return;
+  }
   // Fetch dashboard data if we don't have it yet
   if (!dashboardData) {
     loadDashboardData();
   } else {
     renderTabContent(tabId);
   }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DISCOUNT APPROVALS — admin review side (2026-08-07, per instruction: "counselor
+   request for the discount approval, and it comes in admin portal for the approval").
+   No approve/reject workflow like this existed anywhere in admin.html before, so this
+   follows the closest existing pattern in the file (HOD Approvals, just above) for
+   visual consistency rather than inventing a new one.
+   ══════════════════════════════════════════════════════════════ */
+var discountApprovalRequests = [];
+
+function loadDiscountApprovals() {
+  var list = document.getElementById('discount-approvals-list');
+  if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">💷</div><div class="empty-title">Loading…</div></div>';
+  gasGet({ action: 'getDiscountRequests', isAdmin: 'true' }, function (e, d) {
+    if (e || !d || !d.records) {
+      if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load. Try again.</div></div>';
+      return;
+    }
+    discountApprovalRequests = d.records;
+    var badge = document.getElementById('discount-approvals-badge');
+    var pendingCount = discountApprovalRequests.filter(function (r) { return r.status === 'pending'; }).length;
+    if (badge) { badge.textContent = pendingCount || ''; badge.style.display = pendingCount ? 'inline-block' : 'none'; }
+    renderDiscountApprovalsList();
+  });
+}
+
+function renderDiscountApprovalsList() {
+  var list = document.getElementById('discount-approvals-list');
+  if (!list) return;
+  if (!discountApprovalRequests.length) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">💷</div><div class="empty-title">No discount requests yet.</div></div>';
+    return;
+  }
+  var pending = discountApprovalRequests.filter(function (r) { return r.status === 'pending'; });
+  var decided = discountApprovalRequests.filter(function (r) { return r.status !== 'pending'; });
+  var html = '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+    '<th class="text-left">Requested By</th><th class="text-left">Student</th><th class="text-left">Batch / Centre</th>' +
+    '<th>Course Fee</th><th>Discount</th><th class="text-left">Reason</th><th class="text-left">Status</th><th></th>' +
+    '</tr></thead><tbody>';
+  pending.concat(decided).forEach(function (r) {
+    var isPending = r.status === 'pending';
+    var statusHtml = isPending ? '<span style="color:#B45309;font-weight:700">Pending</span>'
+      : r.status === 'approved' ? '<span style="color:#1a7a3c;font-weight:700">✓ Approved' + (r.used ? ' · used' : '') + '</span>'
+      : '<span style="color:#B00020;font-weight:700">✗ Rejected</span>';
+    html += '<tr style="' + (isPending ? 'background:#FFFBEB' : 'opacity:0.7') + '">' +
+      '<td class="text-left">' + escC(r.requestedBy) + '</td>' +
+      '<td class="text-left">' + escC(r.studentName) + ' <span style="font-size:11px;color:var(--muted)">(' + escC(r.studentId) + ')</span></td>' +
+      '<td class="text-left">' + escC(r.batchCode) + '<div style="font-size:11px;color:var(--muted)">' + escC(r.centre) + '</div></td>' +
+      '<td style="text-align:right">' + (r.courseFee ? money(r.courseFee) : '—') + '</td>' +
+      '<td style="text-align:right;font-weight:700">' + r.discountPct + '%</td>' +
+      '<td class="text-left" style="font-size:12px;max-width:200px">' + escC(r.discountReason) + '</td>' +
+      '<td class="text-left">' + statusHtml + (r.reviewNote ? '<div style="font-size:11px;color:var(--muted)">' + escC(r.reviewNote) + '</div>' : '') + '</td>' +
+      '<td>' + (isPending ? '<button class="del-btn" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer" onclick="openDiscountApprovalReview(\'' + escC(r.id) + '\')">Review</button>' : '') + '</td>' +
+      '</tr>';
+  });
+  html += '</tbody></table></div>';
+  list.innerHTML = html;
+}
+
+var discountApprovalReviewTargetId = null;
+function openDiscountApprovalReview(id) {
+  var rec = discountApprovalRequests.find(function (r) { return r.id === id; });
+  if (!rec) return;
+  discountApprovalReviewTargetId = id;
+  document.getElementById('discount-approval-review-summary').textContent =
+    rec.studentName + ' · ' + rec.batchCode + ' (' + rec.centre + ') · requested by ' + rec.requestedBy + ' · ' + rec.discountPct + '% discount';
+  document.getElementById('discount-approval-review-reason').textContent = rec.discountReason;
+  document.getElementById('discount-approval-review-note').value = '';
+  document.getElementById('discount-approval-review-err').textContent = '';
+  document.getElementById('discount-approval-review-overlay').style.display = 'flex';
+}
+function closeDiscountApprovalReview() {
+  document.getElementById('discount-approval-review-overlay').style.display = 'none';
+  discountApprovalReviewTargetId = null;
+}
+function submitDiscountApprovalReview(decision) {
+  var note = document.getElementById('discount-approval-review-note').value.trim();
+  var errEl = document.getElementById('discount-approval-review-err');
+  gasGet({ action: 'reviewDiscountRequest', id: discountApprovalReviewTargetId, decision: decision, reviewedBy: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin'), reviewNote: note }, function (e, d) {
+    if (e || !d || d.status !== 'ok') { errEl.textContent = (d && d.reason) || 'Could not save. Try again.'; return; }
+    showToast(decision === 'approved' ? 'Approved — counsellor can now save this discount.' : 'Rejected.');
+    closeDiscountApprovalReview();
+    loadDiscountApprovals();
+  });
 }
 
 // ══════════════════════════════════════════════════════════════

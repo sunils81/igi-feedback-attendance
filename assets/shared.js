@@ -2695,7 +2695,10 @@ window.gasGet = (function () {
   }
 
   /* saveFeeRecord */
-  function h_saveFee(p, cb) {
+  // Renamed from h_saveFee 2026-08-07 — this is now the inner implementation, called by
+  // the new h_saveFee wrapper below AFTER discount-approval validation passes. Body is
+  // completely unchanged from before the rename.
+  function h_saveFeeInner(p, cb) {
     var n   = Number(p.nInst || 1);
     var cf  = Number(p.courseFee || 0);
     var dp  = Number(p.discountPct || 0);
@@ -2943,6 +2946,72 @@ window.gasGet = (function () {
     } // end proceedNormalSave
   }
 
+  /* h_saveFee — DISCOUNT APPROVAL hard gate (2026-08-07, per instruction: "counselor
+     request for discount approval... comes in admin portal for approval... post that the
+     counselor can give the discount" — confirmed with Sunil: ALL nonzero discounts need
+     approval, hard-blocked at save time, not just guided).
+
+     Sits in front of h_saveFeeInner (the actual save, completely unchanged — see the
+     rename comment there) rather than being woven into it, specifically to keep this
+     high-stakes validation isolated and easy to verify on its own, without touching the
+     246-line save implementation it's guarding.
+
+     The core question this answers before allowing a save through: is a NEW discount
+     decision being made here, or is this record simply being re-saved (a different field
+     edited — invoice number, installment, etc.) with a discount that was ALREADY there
+     before this approval system existed? Only the former needs a fresh approval — fetches
+     whatever's currently saved for this exact record (by existingRecordId if given, else
+     by student_id+batch_code, matching h_saveFeeInner's own lookup key) and compares its
+     discount_pct to the incoming one. Unchanged → proceeds untouched. New or changed (and
+     nonzero) → requires a matching approved+unused discount_requests row for this exact
+     (student, batch, discount_pct), which gets marked used=true only after the save
+     itself actually succeeds — never before, so a failed save doesn't burn a real
+     approval for nothing. */
+  function h_saveFee(p, cb) {
+    var dp = Number(p.discountPct || 0);
+    if (!dp) { h_saveFeeInner(p, cb); return; } // 0% needs no approval — nothing being discounted
+
+    var lookupQs = p.existingRecordId
+      ? 'id=eq.' + encodeURIComponent(p.existingRecordId) + '&select=receipt_no'
+      : 'student_id=eq.' + encodeURIComponent(p.studentId) + '&batch_code=eq.' + encodeURIComponent(p.batchCode) + '&select=receipt_no&order=created_at.desc,id.desc&limit=1';
+    GET('student_fees', lookupQs, function (eLookup, existingRows) {
+      var existingDiscPct = null;
+      if (!eLookup && existingRows && existingRows[0] && existingRows[0].receipt_no) {
+        try { existingDiscPct = Number(JSON.parse(existingRows[0].receipt_no).discount_pct); } catch (ex) {}
+      }
+      if (existingDiscPct !== null && Math.abs(existingDiscPct - dp) < 0.01) {
+        // Same discount that's already on this record — not a new decision, no fresh
+        // approval needed. Lets a counsellor fix an invoice number or mark an installment
+        // paid without being blocked by a discount someone already approved before this
+        // system existed, or that was already spent on this exact save earlier.
+        h_saveFeeInner(p, cb);
+        return;
+      }
+      GET('discount_requests',
+        'student_id=eq.' + encodeURIComponent(p.studentId) + '&batch_code=eq.' + encodeURIComponent(p.batchCode) +
+        '&status=eq.approved&used=eq.false&order=reviewed_at.desc',
+        function (eReq, reqRows) {
+          var matching = (reqRows || []).filter(function (r) { return Math.abs(Number(r.discount_pct) - dp) < 0.01; })[0];
+          if (!matching) {
+            cb(null, {
+              status: 'error', reason: 'DISCOUNT_NEEDS_APPROVAL',
+              message: 'A ' + dp + '% discount needs admin approval before it can be saved. Submit a Discount Approval Request first.'
+            });
+            return;
+          }
+          h_saveFeeInner(p, function (errInner, resultInner) {
+            if (!errInner && resultInner && resultInner.status === 'ok') {
+              // Only consumed on an actual successful save — a rejected/failed save
+              // (e.g. a duplicate-invoice error path, or a network failure) leaves the
+              // approval intact to try again with.
+              PATCH('discount_requests', 'id=eq.' + encodeURIComponent(matching.id), { used: true, used_at: nowISO(), updated_at: nowISO() }, function () {});
+            }
+            cb(errInner, resultInner);
+          });
+        });
+    });
+  }
+
   /* deleteFeeRecord — lets a counsellor remove a fee record they entered (e.g. a duplicate
      left behind by a mis-entry, same class of issue h_removeStudent's cascade delete now
      prevents going forward, for records that predate that fix or were never linked to a
@@ -2966,6 +3035,62 @@ window.gasGet = (function () {
           row.revenue_month || fmtMonthKey(new Date(row.created_at || Date.now())), '2026-27');
         cb(null, { status: 'ok' });
       });
+    });
+  }
+
+  /* DISCOUNT APPROVAL REQUESTS — 2026-08-07, per instruction: "counselor request for
+     the discount approval, and it comes in admin portal for the approval. And post that
+     the counselor can give the discount." Every nonzero discount is hard-blocked at save
+     time (see h_saveFee above) until a matching approved+unused row exists here. */
+  function h_saveDiscountRequest(p, cb) {
+    if (!p.studentId || !p.batchCode || !p.centre || !p.discountPct || !p.discountReason || !p.requestedBy) {
+      cb(null, { status: 'error', reason: 'Student, batch, centre, discount %, reason, and requested-by are required.' });
+      return;
+    }
+    var cf = Number(p.courseFee || 0);
+    var dp = Number(p.discountPct);
+    var dbRow = {
+      student_id: p.studentId, student_name: p.studentName || '', batch_code: p.batchCode,
+      centre: p.centre, course: p.course || '', course_fee: cf, discount_pct: dp,
+      discount_amount: Math.round(cf * dp / 100), discount_reason: p.discountReason,
+      status: 'pending', requested_by: p.requestedBy, updated_at: nowISO()
+    };
+    POST('discount_requests', '', dbRow, function (e) {
+      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+    });
+  }
+
+  function h_getDiscountRequests(p, cb) {
+    var isAdm = !!(p && (p.isAdmin === true || p.isAdmin === 'true'));
+    var qs = 'order=requested_at.desc&limit=1000';
+    if (p.status) qs += '&status=eq.' + encodeURIComponent(p.status);
+    if (!isAdm && p.requestedBy) qs += '&requested_by=eq.' + encodeURIComponent(p.requestedBy);
+    GET('discount_requests', qs, function (e, rows) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      var records = (rows || []).map(function (r) {
+        return {
+          id: r.id, studentId: r.student_id, studentName: r.student_name, batchCode: r.batch_code,
+          centre: r.centre, course: r.course, courseFee: Number(r.course_fee) || 0,
+          discountPct: Number(r.discount_pct) || 0, discountAmount: Number(r.discount_amount) || 0,
+          discountReason: r.discount_reason, status: r.status, requestedBy: r.requested_by,
+          requestedAt: r.requested_at, reviewedBy: r.reviewed_by, reviewedAt: r.reviewed_at,
+          reviewNote: r.review_note, used: !!r.used, usedAt: r.used_at
+        };
+      });
+      cb(null, { status: 'ok', count: records.filter(function (r) { return r.status === 'pending'; }).length, records: records });
+    });
+  }
+
+  function h_reviewDiscountRequest(p, cb) {
+    if (!p.id || !p.decision || (p.decision !== 'approved' && p.decision !== 'rejected')) {
+      cb(null, { status: 'error', reason: 'Missing id or invalid decision.' });
+      return;
+    }
+    PATCH('discount_requests', 'id=eq.' + encodeURIComponent(p.id), {
+      status: p.decision, reviewed_by: p.reviewedBy || '', reviewed_at: nowISO(),
+      review_note: p.reviewNote || '', updated_at: nowISO()
+    }, function (e) {
+      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
     });
   }
 
@@ -9813,6 +9938,9 @@ window.gasGet = (function () {
       case 'getMissingInvoiceDates':    return h_getMissingInvoiceDates(params, cb);
       case 'fixRevenueMonthMismatch':   return h_fixRevenueMonthMismatch(params, cb);
       case 'saveFeeRecord':             return h_saveFee(params, cb);
+      case 'saveDiscountRequest':       return h_saveDiscountRequest(params, cb);
+      case 'getDiscountRequests':       return h_getDiscountRequests(params, cb);
+      case 'reviewDiscountRequest':     return h_reviewDiscountRequest(params, cb);
       case 'deleteFeeRecord':           return h_deleteFeeRecord(params, cb);
       case 'saveOperationalInvoice':    return h_saveOperationalInvoice(params, cb);
       case 'getOperationalInvoices':    return h_getOperationalInvoices(params, cb);

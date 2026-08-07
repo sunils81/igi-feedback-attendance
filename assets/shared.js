@@ -3660,7 +3660,8 @@ window.gasGet = (function () {
     var revenueMonth = (p.issuedDate ? toYMD(p.issuedDate) : todayYMD()).slice(0, 7);
     var dbRow = {
       student_id: p.studentId, student_name: p.studentName || '',
-      original_invoice_number: p.originalInvoiceNumber || '', amount: Number(p.amount || 0),
+      original_invoice_number: p.originalInvoiceNumber || '',
+      credit_note_number: p.creditNoteNumber || '', amount: Number(p.amount || 0),
       reason: p.reason, reason_detail: p.reasonDetail || '', centre: p.centre,
       recorded_by: p.recordedBy, revenue_month: revenueMonth,
       issued_date: p.issuedDate ? toYMD(p.issuedDate) : null, updated_at: nowISO()
@@ -3693,7 +3694,8 @@ window.gasGet = (function () {
       var records = (rows || []).map(function(r) {
         return {
           id: r.id, studentId: r.student_id, studentName: r.student_name,
-          originalInvoiceNumber: r.original_invoice_number, amount: Number(r.amount) || 0,
+          originalInvoiceNumber: r.original_invoice_number, creditNoteNumber: r.credit_note_number,
+          amount: Number(r.amount) || 0,
           reason: r.reason, reasonDetail: r.reason_detail, centre: r.centre,
           recordedBy: r.recorded_by, revenueMonth: r.revenue_month, issuedDate: r.issued_date,
           createdAt: r.created_at

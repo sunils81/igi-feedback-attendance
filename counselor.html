@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=84"></script>
+<script src="/assets/shared.js?v=85"></script>
 <script src="/assets/push-subscribe.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
@@ -4108,6 +4108,7 @@
       <div class="field"><label>Student ID *</label><input type="text" id="cn-student-id" placeholder="e.g. 7213" oninput="cnLookupStudent()"></div>
       <div class="field"><label>Student Name</label><input type="text" id="cn-student-name" readonly style="background:var(--off)"></div>
       <div class="field"><label>Original Invoice Number</label><input type="text" id="cn-invoice-number" placeholder="Which invoice does this relate to?"></div>
+      <div class="field"><label>Credit Note Number</label><input type="text" id="cn-credit-note-number" placeholder="e.g. CN/26/0042"></div>
       <div class="field"><label>Amount (₹) *</label><input type="number" id="cn-amount" min="0" step="0.01"></div>
       <div class="field"><label>Reason *</label>
         <select id="cn-reason" onchange="document.getElementById('cn-reason-detail-wrap').style.display = this.value==='Other' ? 'block' : 'none'">
@@ -9581,6 +9582,7 @@ function openCreditNoteForm(id) {
     document.getElementById('cn-student-id').value = rec.studentId;
     document.getElementById('cn-student-name').value = rec.studentName;
     document.getElementById('cn-invoice-number').value = rec.originalInvoiceNumber || '';
+    document.getElementById('cn-credit-note-number').value = rec.creditNoteNumber || '';
     document.getElementById('cn-amount').value = rec.amount;
     document.getElementById('cn-reason').value = rec.reason;
     document.getElementById('cn-reason-detail-wrap').style.display = rec.reason === 'Other' ? 'block' : 'none';
@@ -9588,7 +9590,7 @@ function openCreditNoteForm(id) {
     document.getElementById('cn-centre').value = rec.centre;
     document.getElementById('cn-issued-date').value = rec.issuedDate || '';
   } else {
-    ['cn-student-id','cn-student-name','cn-invoice-number','cn-amount','cn-reason-detail','cn-issued-date'].forEach(function(id2) { document.getElementById(id2).value = ''; });
+    ['cn-student-id','cn-student-name','cn-invoice-number','cn-credit-note-number','cn-amount','cn-reason-detail','cn-issued-date'].forEach(function(id2) { document.getElementById(id2).value = ''; });
     document.getElementById('cn-reason').value = 'Refund';
     document.getElementById('cn-reason-detail-wrap').style.display = 'none';
   }
@@ -9616,6 +9618,7 @@ function submitCreditNote() {
   gasGet({
     action: 'saveCreditNote', id: cnEditId, studentId: studentId, studentName: studentName,
     originalInvoiceNumber: document.getElementById('cn-invoice-number').value.trim(),
+    creditNoteNumber: document.getElementById('cn-credit-note-number').value.trim(),
     amount: amount, reason: reason, reasonDetail: reasonDetail,
     centre: document.getElementById('cn-centre').value,
     issuedDate: document.getElementById('cn-issued-date').value, recordedBy: counselorName
@@ -9641,7 +9644,7 @@ function renderCreditNoteList() {
   if (!list) return;
   if (!creditNotes.length) { list.innerHTML = '<div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No credit notes logged yet.</div></div>'; return; }
   var html = '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
-    '<th class="text-left">Student</th><th class="text-left">Reason</th><th class="text-left">Centre</th><th>Amount</th><th class="text-left">Original Invoice</th><th></th>' +
+    '<th class="text-left">Student</th><th class="text-left">Reason</th><th class="text-left">Centre</th><th>Amount</th><th class="text-left">Credit Note #</th><th class="text-left">Original Invoice</th><th></th>' +
     '</tr></thead><tbody>';
   creditNotes.forEach(function(r) {
     html += '<tr>' +
@@ -9649,6 +9652,7 @@ function renderCreditNoteList() {
       '<td class="text-left">' + escC(r.reason === 'Other' ? r.reasonDetail : r.reason) + '</td>' +
       '<td class="text-left">' + escC(r.centre) + '</td>' +
       '<td style="text-align:right;font-weight:600;color:#B00020">-' + money(r.amount) + '</td>' +
+      '<td class="text-left">' + escC(r.creditNoteNumber || '—') + '</td>' +
       '<td class="text-left">' + escC(r.originalInvoiceNumber || '—') + '<div style="font-size:11px;color:var(--muted)">' + escC(r.issuedDate || '') + '</div></td>' +
       '<td><button class="del-btn" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer" onclick="openCreditNoteForm(\'' + escC(r.id) + '\')">Edit</button> ' +
         '<button class="del-btn" onclick="deleteCreditNoteEntry(\'' + escC(r.id) + '\')">Remove</button></td>' +

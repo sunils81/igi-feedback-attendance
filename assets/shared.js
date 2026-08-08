@@ -5104,10 +5104,10 @@ window.gasGet = (function () {
   function h_getRecentActivity(p, cb) {
     var days = parseInt(p.days || 7, 10);
     var cutoff = new Date(Date.now() - days * 86400000).toISOString();
-    var done = 0, revenueRows = [], studentRows = [], auditRows = [];
+    var done = 0, revenueRows = [], studentRows = [], auditRows = [], discountReqRows = [];
 
     function finish() {
-      if (++done < 3) return;
+      if (++done < 4) return;
       var feed = [];
 
       // Revenue activity from revenue_monthly_achieved
@@ -5158,6 +5158,27 @@ window.gasGet = (function () {
         });
       });
 
+      // Discount approval requests — 2026-08-08, per instruction: "admin/HOD should get
+      // a notification of discount approval." Reuses this existing feed/badge mechanism
+      // rather than a separate notification system, same as it already does for new
+      // students — timestamp is requested_at for pending ones (something needs review)
+      // and reviewed_at for already-decided ones (so a just-approved/rejected request
+      // still shows up as recent activity, not just pending ones).
+      (discountReqRows || []).forEach(function(r) {
+        feed.push({
+          type: 'discount_request',
+          id: r.id,
+          studentName: r.student_name || '',
+          studentId: r.student_id || '',
+          batchCode: r.batch_code || '',
+          centre: r.centre || '',
+          discountPct: r.discount_pct || 0,
+          requestedBy: r.requested_by || '',
+          status: r.status || 'pending',
+          timestamp: r.status === 'pending' ? (r.requested_at || '') : (r.reviewed_at || r.requested_at || '')
+        });
+      });
+
       // Sort newest first
       feed.sort(function(a, b) { return new Date(b.timestamp) - new Date(a.timestamp); });
 
@@ -5193,6 +5214,13 @@ window.gasGet = (function () {
     GET('revenue_audit_log',
       'changed_at=gt.' + encodeURIComponent(cutoff) + '&order=changed_at.desc&limit=200',
       function(e, rows) { auditRows = e ? [] : (rows || []); finish(); });
+
+    // Pending requests always included regardless of cutoff (something needing review
+    // doesn't stop needing it just because it's older than the activity window), plus
+    // anything requested OR reviewed within the window for the informational feed.
+    GET('discount_requests',
+      'or=(status.eq.pending,requested_at.gt.' + encodeURIComponent(cutoff) + ',reviewed_at.gt.' + encodeURIComponent(cutoff) + ')&order=requested_at.desc&limit=200',
+      function(e, rows) { discountReqRows = e ? [] : (rows || []); finish(); });
   }
 
   /* getRevenueAuditFlags — client-side scan of revenue_monthly_achieved for anomalies */

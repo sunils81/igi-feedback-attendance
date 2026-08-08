@@ -3101,6 +3101,22 @@ window.gasGet = (function () {
     });
   }
 
+  /* h_deleteDiscountRequest — admin-only, 2026-08-08. Same security model as every other
+     table built this session (misc_charges/credit_notes/corporate_batches all grant
+     DELETE at the DB level, gated by isAdmin at the application level here) — added
+     after a leftover test request had no cleanup path except manual SQL, which was an
+     inconsistency with the rest of this project, not a meaningfully stronger protection. */
+  function h_deleteDiscountRequest(p, cb) {
+    if (p.isAdmin !== 'true' && p.isAdmin !== true) {
+      cb(null, { status: 'error', reason: 'Only an admin can remove a discount request.' });
+      return;
+    }
+    if (!p.id) { cb(null, { status: 'error', reason: 'Missing id.' }); return; }
+    DEL('discount_requests', 'id=eq.' + encodeURIComponent(p.id), function (e) {
+      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+    });
+  }
+
   /* getRevenueDetail — the "cross-check and verify" drill-down. Given a counsellor +
      centre + month, returns the exact list of student_fees rows whose revenue_month
      matches, so a counsellor can see the student-level detail behind a total instead of
@@ -9976,6 +9992,7 @@ window.gasGet = (function () {
       case 'saveDiscountRequest':       return h_saveDiscountRequest(params, cb);
       case 'getDiscountRequests':       return h_getDiscountRequests(params, cb);
       case 'reviewDiscountRequest':     return h_reviewDiscountRequest(params, cb);
+      case 'deleteDiscountRequest':     return h_deleteDiscountRequest(params, cb);
       case 'deleteFeeRecord':           return h_deleteFeeRecord(params, cb);
       case 'saveOperationalInvoice':    return h_saveOperationalInvoice(params, cb);
       case 'getOperationalInvoices':    return h_getOperationalInvoices(params, cb);

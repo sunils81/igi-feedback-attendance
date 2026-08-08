@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=87"></script>
+<script src="/assets/shared.js?v=88"></script>
 <script src="/assets/push-subscribe.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
@@ -9713,11 +9713,19 @@ function deleteCreditNoteEntry(id) {
    plus the modal opened either from here or from the Fee form's block error.
    ══════════════════════════════════════════════════════════════ */
 var discountRequests = [];
+var dreqStashedPayload = null;
 
 function openDiscountRequestForm(prefill) {
   _populateCentreSelect('dreq-centre');
   document.getElementById('discount-req-err').textContent = '';
   document.getElementById('dreq-reason').value = '';
+  // Stashed so submitDiscountRequest() can send it along — the full intended
+  // saveFeeRecord payload (installments, invoice, mode, everything), so nothing is lost
+  // if this discount ends up needing approval. Only present when opened FROM the Fee
+  // form's block error; a standalone request (e.g. someone just wants to check in
+  // advance) has nothing to resume, which is fine — the counsellor fills the Fee form
+  // normally once approved in that case.
+  dreqStashedPayload = (prefill && prefill.payload) || null;
   if (prefill) {
     // Called from the Fee form's block error — everything already on screen carries
     // straight over, nothing to re-type except the reason.
@@ -9758,7 +9766,8 @@ function submitDiscountRequest() {
     action: 'saveDiscountRequest', studentId: studentId, studentName: studentName, batchCode: batchCode,
     centre: centre, course: document.getElementById('dreq-course').value.trim(),
     courseFee: Number(document.getElementById('dreq-course-fee').value) || 0,
-    discountPct: discountPct, discountReason: reason, requestedBy: counselorName
+    discountPct: discountPct, discountReason: reason, requestedBy: counselorName,
+    payload: dreqStashedPayload
   }, function(e, d) {
     if (e || !d || d.status !== 'ok') { errEl.textContent = (d && d.reason) || 'Could not submit. Try again.'; return; }
     showToast('Discount request submitted — waiting on admin approval.');
@@ -9786,13 +9795,20 @@ function renderDiscountRequestList() {
   // labelled HOD (matching the wider Admin -> HOD portal rename) rather than Admin.
   function fmtWhen(iso) { return iso ? new Date(iso).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : ''; }
   var html = '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
-    '<th class="text-left">Student</th><th class="text-left">Batch</th><th>Discount</th><th class="text-left">Reason</th><th class="text-left">Requested</th><th class="text-left">Status</th>' +
+    '<th class="text-left">Student</th><th class="text-left">Batch</th><th>Discount</th><th class="text-left">Reason</th><th class="text-left">Requested</th><th class="text-left">Status</th><th></th>' +
     '</tr></thead><tbody>';
   discountRequests.forEach(function(r) {
     var statusHtml = r.status === 'pending' ? '<span style="color:#B45309;font-weight:700">Pending</span>'
       : r.status === 'approved' ? (r.used ? '<span style="color:#1a7a3c;font-weight:700">✓ Approved · used</span>' : '<span style="color:#1a7a3c;font-weight:700">✓ Approved — ready to apply</span>')
       : '<span style="color:#B00020;font-weight:700">✗ Rejected</span>';
     var reviewLine = r.status !== 'pending' ? '<div style="font-size:11px;color:var(--muted);margin-top:2px">By HOD' + (r.reviewedBy ? ' (' + escC(r.reviewedBy) + ')' : '') + (r.reviewedAt ? ' · ' + fmtWhen(r.reviewedAt) : '') + '</div>' : '';
+    // "Apply Now" — 2026-08-08, per instruction: "make it seamless." Only shown when
+    // there's a stashed payload to resume (i.e. this came from the Fee form's block
+    // error, not a standalone advance request) — submits the exact same save that was
+    // blocked earlier, with the now-approved discount, in one click instead of
+    // re-entering everything.
+    var applyBtn = (r.status === 'approved' && !r.used && r.payload)
+      ? '<button class="btn btn-gold" style="padding:5px 12px;font-size:12px" onclick="applyApprovedDiscountRequest(\'' + escC(r.id) + '\')">Apply Now</button>' : '';
     html += '<tr style="' + (r.status === 'approved' && !r.used ? 'background:#F0FDF4' : '') + '">' +
       '<td class="text-left">' + escC(r.studentName) + ' <span style="font-size:11px;color:var(--muted)">(' + escC(r.studentId) + ')</span></td>' +
       '<td class="text-left">' + escC(r.batchCode) + '</td>' +
@@ -9800,10 +9816,25 @@ function renderDiscountRequestList() {
       '<td class="text-left" style="font-size:12px;max-width:220px">' + escC(r.discountReason) + (r.reviewNote ? '<div style="font-size:11px;color:var(--muted)">HOD note: ' + escC(r.reviewNote) + '</div>' : '') + '</td>' +
       '<td class="text-left" style="font-size:11px;color:var(--muted)">' + fmtWhen(r.requestedAt) + '</td>' +
       '<td class="text-left">' + statusHtml + reviewLine + '</td>' +
+      '<td>' + applyBtn + '</td>' +
       '</tr>';
   });
   html += '</tbody></table></div>';
   list.innerHTML = html;
+}
+function applyApprovedDiscountRequest(id) {
+  var rec = discountRequests.find(function(r) { return r.id === id; });
+  if (!rec || !rec.payload) { showToast('Nothing to apply — no saved details for this request.', 'error'); return; }
+  if (!confirm('Apply this now? This will save ' + rec.studentName + '\'s fee record with the approved ' + rec.discountPct + '% discount, exactly as originally entered.')) return;
+  gasGet(rec.payload, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      showToast((d && d.message) || (d && d.reason) || 'Could not save. Try again or use the Fee form directly.', 'error');
+      return;
+    }
+    showToast(rec.studentName + '\'s fee record saved.');
+    loadDiscountRequests(true);
+    loadFeeOverview();
+  });
 }
 
 function deleteCorporateBatchEntry(id) {
@@ -11178,41 +11209,18 @@ function recalcFeeForm() {
 // rather than trying to serialize it through an onclick attribute string — avoids the
 // escaping fragility of embedding an object literal in inline HTML, and can't drift out
 // of sync with what's actually on screen since it's the same source saveFeeRecord() reads.
-function openDiscountRequestFromFeeForm() {
-  if (!currentFeeStudent) return;
-  const calc = feeCalc();
-  const targetBatchCode = currentFeeStudent.newBatchCode || currentFeeStudent.batch.batchCode;
-  const targetCentre = currentFeeStudent.newBatchCentre || currentFeeStudent.batch.centre;
-  openDiscountRequestForm({
-    studentId: currentFeeStudent.student.enrollmentNo,
-    studentName: currentFeeStudent.student.name,
-    batchCode: targetBatchCode,
-    course: currentFeeStudent.batch.course,
-    courseFee: calc.courseFee,
-    discountPct: calc.discPct,
-    centre: targetCentre
-  });
-}
-
-function saveFeeRecord() {
-  if (!currentFeeStudent) return;
-  const err = document.getElementById('fee-err');
-  const btn = document.getElementById('fee-save-btn');
-  err.classList.remove('show');
-  // Defensive re-check (belt and braces alongside the disabled Save button in openFeeForm):
-  // never send a courseFee of 0 for a course that simply has no catalog entry — that's how
-  // Naini Paraswani's record got its Net Payable silently zeroed out.
-  const courseKey = currentFeeStudent.batch.course;
-  if (typeof COURSE_FEES_JS !== 'undefined' && !Object.prototype.hasOwnProperty.call(COURSE_FEES_JS, courseKey)) {
-    err.textContent = 'This course ("' + courseKey + '") has no fee catalog entry — saving is blocked to avoid overwriting the correct fee with ₹0. Add it to the course fee list first.';
-    err.classList.add('show');
-    return;
-  }
+//
+// buildFeeSavePayload — extracted from saveFeeRecord() 2026-08-08 so it can also be used
+// to STASH the full intended save when a discount request is submitted (see
+// openDiscountRequestFromFeeForm below). Root cause found live on Rita Debnath (student
+// 7306): the hard block in h_saveFee rejects the whole save before persisting anything,
+// so every installment/invoice/mode detail a counsellor entered was being silently lost,
+// not just the discount — she had a real students+enrollments record (Step B succeeded)
+// but zero fee records, with no way to resume without re-typing everything from scratch.
+function buildFeeSavePayload() {
+  if (!currentFeeStudent) return null;
   const calc = feeCalc();
   const n = Number(document.getElementById('fee-n-inst').value) || 1;
-  // Batch move (see showFeeBatchMovePicker) — send the NEW batch/centre when one was
-  // explicitly picked, otherwise the original. existingRecordId tells the backend this is
-  // a move on the SAME record, not a new enrollment in the new batch — see h_saveFee.
   const targetBatchCode = currentFeeStudent.newBatchCode || currentFeeStudent.batch.batchCode;
   const targetCentre = currentFeeStudent.newBatchCentre || currentFeeStudent.batch.centre;
   const payload = {
@@ -11229,14 +11237,6 @@ function saveFeeRecord() {
     discountAmt:calc.discAmt,
     discountReason:document.getElementById('fee-disc-reason').value.trim(),
     nInst:n,
-    // enteredBy is the revenue-credit owner, not "whoever clicked Save". For a brand-new
-    // record it's whoever is creating it (currentFeeStudent.recordOwner defaults to
-    // counselorName in that case — see openFeeForm). For an existing record it's whatever
-    // it was already credited to, UNLESS someone explicitly picked a different counsellor
-    // via "Wrong credit? Change counsellor" (ownerReassigned) — that's the only path
-    // allowed to move credit from one counsellor to another; every other save leaves it
-    // untouched. requestedBy tells the backend (and the audit log) who actually made that
-    // change, since ownerReassigned alone doesn't say who clicked it.
     enteredBy: (currentFeeStudent.recordOwner || counselorName || 'Counselor'),
     ownerReassigned: !!currentFeeStudent.ownerReassigned,
     requestedBy: counselorName || 'Counselor',
@@ -11255,6 +11255,48 @@ function saveFeeRecord() {
     payload['inst' + i + 'Mode'] = i <= n ? (document.getElementById('fee-inst' + i + '-mode').value || '') : '';
     payload['inst' + i + 'Ref'] = i <= n ? (document.getElementById('fee-inst' + i + '-ref').value || '') : '';
   }
+  return payload;
+}
+
+function openDiscountRequestFromFeeForm() {
+  if (!currentFeeStudent) return;
+  const calc = feeCalc();
+  const targetBatchCode = currentFeeStudent.newBatchCode || currentFeeStudent.batch.batchCode;
+  const targetCentre = currentFeeStudent.newBatchCentre || currentFeeStudent.batch.centre;
+  openDiscountRequestForm({
+    studentId: currentFeeStudent.student.enrollmentNo,
+    studentName: currentFeeStudent.student.name,
+    batchCode: targetBatchCode,
+    course: currentFeeStudent.batch.course,
+    courseFee: calc.courseFee,
+    discountPct: calc.discPct,
+    centre: targetCentre,
+    payload: buildFeeSavePayload()
+  });
+}
+
+function saveFeeRecord() {
+  if (!currentFeeStudent) return;
+  const err = document.getElementById('fee-err');
+  const btn = document.getElementById('fee-save-btn');
+  err.classList.remove('show');
+  // Defensive re-check (belt and braces alongside the disabled Save button in openFeeForm):
+  // never send a courseFee of 0 for a course that simply has no catalog entry — that's how
+  // Naini Paraswani's record got its Net Payable silently zeroed out.
+  const courseKey = currentFeeStudent.batch.course;
+  if (typeof COURSE_FEES_JS !== 'undefined' && !Object.prototype.hasOwnProperty.call(COURSE_FEES_JS, courseKey)) {
+    err.textContent = 'This course ("' + courseKey + '") has no fee catalog entry — saving is blocked to avoid overwriting the correct fee with ₹0. Add it to the course fee list first.';
+    err.classList.add('show');
+    return;
+  }
+  const calc = feeCalc();
+  // Batch move (see showFeeBatchMovePicker) — send the NEW batch/centre when one was
+  // explicitly picked, otherwise the original. existingRecordId tells the backend this is
+  // a move on the SAME record, not a new enrollment in the new batch — see h_saveFee.
+  // Payload building itself lives in buildFeeSavePayload() (2026-08-08) so it can also be
+  // reused to stash the full intended save when a discount request is submitted — see
+  // openDiscountRequestFromFeeForm.
+  const payload = buildFeeSavePayload();
   btn.textContent = 'Saving...';
   btn.disabled = true;
   gasGet(payload, function(e,d) {

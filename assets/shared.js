@@ -3053,7 +3053,14 @@ window.gasGet = (function () {
       student_id: p.studentId, student_name: p.studentName || '', batch_code: p.batchCode,
       centre: p.centre, course: p.course || '', course_fee: cf, discount_pct: dp,
       discount_amount: Math.round(cf * dp / 100), discount_reason: p.discountReason,
-      status: 'pending', requested_by: p.requestedBy, updated_at: nowISO()
+      status: 'pending', requested_by: p.requestedBy, updated_at: nowISO(),
+      // Full intended saveFeeRecord payload (installments, invoice, mode, everything) --
+      // 2026-08-08, confirmed live that the hard block rejects the WHOLE save before
+      // persisting anything, so all of this was being lost, not just the discount.
+      // Lets the counsellor resume with one click once approved, instead of re-entering
+      // everything (and risking a duplicate-student-ID error since the student record
+      // was already created in Step B, before this discount block even fires).
+      payload: p.payload || null
     };
     POST('discount_requests', '', dbRow, function (e) {
       cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
@@ -3074,7 +3081,7 @@ window.gasGet = (function () {
           discountPct: Number(r.discount_pct) || 0, discountAmount: Number(r.discount_amount) || 0,
           discountReason: r.discount_reason, status: r.status, requestedBy: r.requested_by,
           requestedAt: r.requested_at, reviewedBy: r.reviewed_by, reviewedAt: r.reviewed_at,
-          reviewNote: r.review_note, used: !!r.used, usedAt: r.used_at
+          reviewNote: r.review_note, used: !!r.used, usedAt: r.used_at, payload: r.payload || null
         };
       });
       cb(null, { status: 'ok', count: records.filter(function (r) { return r.status === 'pending'; }).length, records: records });

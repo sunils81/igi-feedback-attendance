@@ -7473,6 +7473,15 @@ window.gasGet = (function () {
             batchSlot: b.batch_slot || 'Full Day', startDate: toDMY(b.start_date) };
         });
       if (!current.length) { cb(null, { status: 'ok', date: toDMY(today), batches: [], upcoming: upcoming }); return; }
+      // Today's actual day-of-week in IST, used below to gate the "Create Today's
+      // Session" button to real class days. Regular batches run Mon–Fri; batches
+      // explicitly marked type='Weekend' run Sat/Sun instead. Saturday makeups for
+      // Regular batches go through the separate "Create Extra Session" flow, which
+      // requires picking the date deliberately — this button should never be
+      // clickable for a non-class day, or an instructor can auto-create a session
+      // (and a phantom attendance record) on a day class was never scheduled.
+      var todayDow = new Date(today + 'T00:00:00+05:30').getDay(); // 0=Sun..6=Sat
+      var todayIsWeekendDay = (todayDow === 0 || todayDow === 6);
       var codesQs = current.map(function (b) { return encodeURIComponent(b.batch_code); }).join(',');
       // Pull the full session history (not just today) for these batches in one call,
       // so we can both find today's session and work out each batch's syllabus progress.
@@ -7498,9 +7507,14 @@ window.gasGet = (function () {
             return s.batch_code === b.batch_code && s.session_date < today && s.session_type !== 'Cancelled';
           });
           var prog = computeSyllabusProgress(syllabus, pastRows);
+          // Weekend-type batches meet on Sat/Sun; every other batch (Regular, or
+          // type left blank) meets Mon–Fri — mirrors the same Mon–Fri assumption
+          // the nightly auto-create cron uses (api/cron/create-sessions.js).
+          var isWeekendBatch = String(b.type || '').toLowerCase() === 'weekend';
+          var workingDay = isWeekendBatch ? todayIsWeekendDay : !todayIsWeekendDay;
           return {
             batchCode: b.batch_code, centre: b.centre, course: b.course, type: b.type, batchSlot: b.batch_slot || 'Full Day',
-            startDate: toDMY(startD), endDate: toDMY(endD), activeToday: !!activeToday, workingDay: true,
+            startDate: toDMY(startD), endDate: toDMY(endD), activeToday: !!activeToday, workingDay: workingDay,
             sessionCode: todaySess ? todaySess.session_code : '', sessNo: todaySess ? todaySess.sess_no : '',
             displaySessNo: todaySess ? (displayNoByCode[todaySess.session_code] || todaySess.sess_no) : '',
             sessionType: todaySess ? (todaySess.session_type || 'Scheduled') : '', topic: todaySess ? (todaySess.topic || '') : '',

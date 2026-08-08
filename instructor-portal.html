@@ -3360,7 +3360,8 @@ function renderTodaySessions(sessions) {
       html += '<div class="day-batch-card" style="background:#FEF2F2;border-color:#C94A4A">';
       html += '<div class="dbc-title">' + escH(s.batchCode) + ' <span style="font-size:11px;color:#C94A4A;font-weight:700">CANCELLED</span></div>';
       html += '<div class="dbc-meta"><span class="day-badge ' + slotBadge + '">' + escH(s.batchSlot) + '</span> ' + escH(s.course) + ' &middot; ' + escH(s.centre) + '</div>';
-      html += '<div style="font-size:12px;color:#C94A4A">' + escH(s.cancelledReason || 'Session cancelled') + '</div>';
+      html += '<div style="font-size:12px;color:#C94A4A;margin-bottom:8px">' + escH(s.cancelledReason || 'Session cancelled') + '</div>';
+      html += '<button style="width:100%;padding:8px 12px;border:1.5px solid var(--gold);color:#7A5B00;border-radius:8px;background:#FFF9E6;font-size:12px;font-weight:600;cursor:pointer" data-batch="' + escH(s.batchCode) + '" onclick="rescheduleSession(this.dataset.batch)">🔁 Reschedule this class</button>';
       html += '</div>';
       continue;
     }
@@ -3566,6 +3567,29 @@ function updateTopic(sessionCode) {
   });
 }
 
+// Jumps straight to the "Create Extra Session" form with the batch pre-selected,
+// so rescheduling a cancelled class is one click from wherever the cancellation
+// is showing (the today-card on the Session tab, or a past row in the Attendance
+// timeline) instead of the instructor having to remember that card exists and
+// manually re-pick the batch. Doesn't auto-fill a date/topic — the instructor
+// still deliberately chooses the makeup date, same as any other extra session.
+function rescheduleSession(batchCode) {
+  iTab('t-session');
+  setTimeout(function() {
+    var exBatch = document.getElementById('ex-batch');
+    if (exBatch) {
+      exBatch.value = batchCode;
+      exBatch.dispatchEvent(new Event('change'));
+    }
+    var exDateField = document.getElementById('ex-date');
+    if (exDateField) {
+      exDateField.scrollIntoView({behavior:'smooth', block:'center'});
+      exDateField.focus();
+    }
+    showToast('Pick a date below to reschedule this class.');
+  }, 60);
+}
+
 function showCancelDialog(sessionCode, batchCode, onDone) {
   var msg = 'Cancel session ' + sessionCode + '?\n\nSelect reason:\n1. Instructor absent - illness\n2. Instructor absent - personal\n3. Institutional holiday\n4. Low attendance\n5. Other\n\nType the number or reason:';
   const reason = prompt(msg);
@@ -3744,7 +3768,16 @@ function loadSessionTimeline(batch) {
       sessHtml += '<div class="sm">' + (s.sessionDate||'') + ' · ' + (s.instructor||'') + (s.topic?' · '+s.topic.substring(0,40):'') + '</div>';
       sessHtml += '</div>';
       if (!cancelled) {
-        sessHtml += '<button type="button" class="btn btn-outline" style="width:auto;flex-shrink:0;padding:3px 9px;font-size:10px" onclick="event.stopPropagation();toggleTopicEdit(\'' + escH(s.sessionCode) + '\')">Fix topic</button>';
+        // Cancel is right here on every row now (not just the currently-selected
+        // session lower down the page) — this is what a backdated cancel like
+        // "class didn't happen Thursday/Friday, mark it after the fact" needs:
+        // find the day in this list and cancel it in one click, no dropdown hunting.
+        sessHtml += '<div style="display:flex;gap:6px;flex-shrink:0">';
+        sessHtml += '<button type="button" class="btn btn-outline" style="width:auto;padding:3px 9px;font-size:10px" onclick="event.stopPropagation();toggleTopicEdit(\'' + escH(s.sessionCode) + '\')">Fix topic</button>';
+        sessHtml += '<button type="button" style="width:auto;padding:3px 9px;font-size:10px;border:1px solid #FCA5A5;color:#991B1B;background:#FEE2E2;border-radius:6px;cursor:pointer" data-sess="' + escH(s.sessionCode) + '" data-batch="' + escH(s.batchCode) + '" onclick="event.stopPropagation();showCancelDialog(this.dataset.sess,this.dataset.batch,function(){loadSessionTimeline(sessionTimelineBatch);loadAttendance();})">🚫 Cancel</button>';
+        sessHtml += '</div>';
+      } else {
+        sessHtml += '<button type="button" style="width:auto;flex-shrink:0;padding:3px 9px;font-size:10px;border:1px solid rgba(201,168,76,.4);color:#7A5B00;background:#FFF9E6;border-radius:6px;cursor:pointer" data-batch="' + escH(s.batchCode) + '" onclick="event.stopPropagation();rescheduleSession(this.dataset.batch)">🔁 Reschedule</button>';
       }
       sessHtml += '</div>';
       sessHtml += '<div id="tl-edit-' + escH(s.sessionCode) + '" style="display:none;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)"></div>';

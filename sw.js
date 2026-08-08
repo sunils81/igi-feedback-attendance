@@ -73,3 +73,41 @@ self.addEventListener('fetch', function(e) {
     );
   }
 });
+
+// Push: show a native notification for whatever /api/push/send sent us.
+// Payload shape: { title, body, url, tag } — see api/push/send.js
+self.addEventListener('push', function(e) {
+  var data = {};
+  try { data = e.data ? e.data.json() : {}; } catch (err) { data = {}; }
+
+  var title = data.title || 'IGI School of Gemology';
+  var options = {
+    body: data.body || '',
+    icon: '/assets/icons/icon-192.png',
+    badge: '/assets/icons/icon-192.png',
+    tag: data.tag || 'igi-notification',
+    data: { url: data.url || '/app' }
+  };
+
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Notification tap: focus an existing app window on that URL, or open a new one.
+self.addEventListener('notificationclick', function(e) {
+  e.notification.close();
+  var targetUrl = (e.notification.data && e.notification.data.url) || '/app';
+
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clients) {
+      for (var i = 0; i < clients.length; i++) {
+        var client = clients[i];
+        if (client.url.indexOf(targetUrl) >= 0 && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+    })
+  );
+});

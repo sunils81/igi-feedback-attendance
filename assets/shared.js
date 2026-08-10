@@ -3169,8 +3169,19 @@ window.gasGet = (function () {
         });
         cb(null, { records: records });
       }
+      // Use resolveStudentsForBatchesPromise (not a plain students.batch_code=in.(...) GET)
+      // so multi-batch students resolve correctly. A student's PRIMARY row in `students` only
+      // has one batch_code; being enrolled in a second batch (e.g. a combined course like
+      // GG = DG + CSG) shows up only in the `enrollments` table. A fee record tagged to that
+      // second batch_code would never match the plain students query — the student's row
+      // lives under their primary batch_code, which may not even be one of the batchCodes
+      // seen in this month's rows — so the name silently fell back to "Student #<id>" even
+      // though the exact same student resolves fine on the Fees tab (which already merges
+      // direct + enrollments via this same helper). This is what caused Abhishek Malgi
+      // (student_id 7318, enrolled in both a Diamond Graduate and a Colored Stone Graduate
+      // batch) to show correctly under Fees but as "Student #7318" under Revenue.
       var bcFilter = '&batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')';
-      GET('students', 'select=student_id,batch_code,name' + bcFilter, function (e1, r1) { students = r1 || []; finish(); });
+      resolveStudentsForBatchesPromise(batchCodes).then(function (r1) { students = r1 || []; finish(); });
       GET('batches', 'select=batch_code,course' + bcFilter, function (e2, r2) { batches = r2 || []; finish(); });
     });
   }

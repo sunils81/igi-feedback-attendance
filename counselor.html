@@ -9466,7 +9466,10 @@ function renderRegularisationRequestList() {
     html += '<tr style="' + (isPending ? 'background:#FFFBEB' : 'opacity:0.65') + '">' +
       '<td>' + escC(r.studentName) + ' <span style="font-size:11px;color:var(--muted)">(' + escC(r.studentId) + ')</span></td>' +
       '<td>' + escC(r.sessionDate || '') + '<div style="font-size:11px;color:var(--muted)">' + escC(r.sessionTopic || r.batchCode) + '</div></td>' +
-      '<td style="font-size:12px;max-width:220px">' + escC(r.reason) + '</td>' +
+      // white-space:normal + word-break override .compact-table td's nowrap (see admin.html's
+      // identical fix) — without it, a reason longer than 220px had no way to wrap and instead
+      // overflowed past its own cell into the Status column right next to it.
+      '<td style="font-size:12px;max-width:220px;white-space:normal;word-break:break-word">' + escC(r.reason) + '</td>' +
       '<td>' + statusHtml + (r.reviewNote ? '<div style="font-size:11px;color:var(--muted)">' + escC(r.reviewNote) + '</div>' : '') + '</td>' +
       '<td>' + (isPending ? '<button class="del-btn" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer" onclick="openRegReviewModal(\'' + escC(r.id) + '\')">Review</button>' : '') + '</td>' +
       '</tr>';
@@ -9828,7 +9831,9 @@ function renderDiscountRequestList() {
       '<td class="text-left">' + escC(r.studentName) + ' <span style="font-size:11px;color:var(--muted)">(' + escC(r.studentId) + ')</span></td>' +
       '<td class="text-left">' + escC(r.batchCode) + '</td>' +
       '<td style="text-align:right;font-weight:600">' + r.discountPct + '%</td>' +
-      '<td class="text-left" style="font-size:12px;max-width:220px">' + escC(r.discountReason) + (r.reviewNote ? '<div style="font-size:11px;color:var(--muted)">HOD note: ' + escC(r.reviewNote) + '</div>' : '') + '</td>' +
+      // white-space:normal + word-break override .compact-table td's nowrap (see admin.html's
+      // identical fix) — otherwise a long reason overflows past its own cell into Requested/Status.
+      '<td class="text-left" style="font-size:12px;max-width:220px;white-space:normal;word-break:break-word">' + escC(r.discountReason) + (r.reviewNote ? '<div style="font-size:11px;color:var(--muted)">HOD note: ' + escC(r.reviewNote) + '</div>' : '') + '</td>' +
       '<td class="text-left" style="font-size:11px;color:var(--muted)">' + fmtWhen(r.requestedAt) + '</td>' +
       '<td class="text-left">' + statusHtml + reviewLine + '</td>' +
       '<td>' + applyBtn + '</td>' +
@@ -18010,7 +18015,7 @@ function loadInventoryDispatchQueue() {
           <td class="text-center"><span class="badge" style="background:${req.urgency==='High'?'#FEF2F2':'#FFFBEB'};color:${req.urgency==='High'?'#DC2626':'#D97706'}">${escC(req.urgency)}</span></td>
           <td><b>${escC(req.requestedBy)}</b></td>
           <td>${new Date(req.requestedAt).toLocaleString()}</td>
-          <td><div style="max-width:200px;font-size:11px;color:var(--muted)">${escC(req.note || '—')}</div></td>
+          <td><div style="max-width:200px;font-size:11px;color:var(--muted);white-space:normal;word-break:break-word">${escC(req.note || '—')}</div></td>
           <td>
             <button class="btn btn-xs" onclick="dispatchInventoryItem('${escC(req.requestId)}', ${req.quantityRequested}, '${escC(req.itemName.replace(/'/g, "\\'"))}', this)">Dispatch</button>
           </td>

@@ -4745,7 +4745,15 @@ function renderDiscountApprovalsList() {
       '<td class="text-left">' + escC(r.batchCode) + '<div style="font-size:11px;color:var(--muted)">' + escC(r.centre) + '</div></td>' +
       '<td style="text-align:right">' + (r.courseFee ? money(r.courseFee) : '—') + '</td>' +
       '<td style="text-align:right;font-weight:700">' + r.discountPct + '%</td>' +
-      '<td class="text-left" style="font-size:12px;max-width:200px">' + escC(r.discountReason) + '</td>' +
+      // white-space:normal + word-break override .compact-table td's table-wide
+      // white-space:nowrap (see the .compact-table rule ~line 1346, shared by 42+ tables so
+      // it can't just be changed globally). Without this override, a reason long enough to
+      // exceed max-width:200px had nothing forcing it onto a second line — nowrap kept it on
+      // one line and it visually overflowed past its own cell, rendering on top of the Status
+      // column's "Pending"/"Approved" badge right next to it (reported as the reason and
+      // status text "getting intermingled"). Wrapping within the 200px box instead keeps the
+      // full reason readable without bleeding into the next column.
+      '<td class="text-left" style="font-size:12px;max-width:200px;white-space:normal;word-break:break-word">' + escC(r.discountReason) + '</td>' +
       '<td class="text-left">' + statusHtml + reviewLine + (r.reviewNote ? '<div style="font-size:11px;color:var(--muted)">' + escC(r.reviewNote) + '</div>' : '') + '</td>' +
       '<td>' + (isPending
         ? '<button class="del-btn" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer" onclick="openDiscountApprovalReview(\'' + escC(r.id) + '\')">Review</button>'

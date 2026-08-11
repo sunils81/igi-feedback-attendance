@@ -9817,16 +9817,20 @@ function renderDiscountRequestList() {
     '</tr></thead><tbody>';
   discountRequests.forEach(function(r) {
     var statusHtml = r.status === 'pending' ? '<span style="color:#B45309;font-weight:700">Pending</span>'
-      : r.status === 'approved' ? (r.used ? '<span style="color:#1a7a3c;font-weight:700">✓ Approved · used</span>' : '<span style="color:#1a7a3c;font-weight:700">✓ Approved — ready to apply</span>')
+      : r.status === 'approved' ? (r.used ? '<span style="color:#1a7a3c;font-weight:700">✓ Approved · used</span>' : '<span style="color:#1a7a3c;font-weight:700">✓ Approved — save the fee now</span>')
       : '<span style="color:#B00020;font-weight:700">✗ Rejected</span>';
     var reviewLine = r.status !== 'pending' ? '<div style="font-size:11px;color:var(--muted);margin-top:2px">By HOD' + (r.reviewedBy ? ' (' + escC(r.reviewedBy) + ')' : '') + (r.reviewedAt ? ' · ' + fmtWhen(r.reviewedAt) : '') + '</div>' : '';
-    // "Apply Now" — 2026-08-08, per instruction: "make it seamless." Only shown when
-    // there's a stashed payload to resume (i.e. this came from the Fee form's block
-    // error, not a standalone advance request) — submits the exact same save that was
-    // blocked earlier, with the now-approved discount, in one click instead of
-    // re-entering everything.
+    // "Save Fee Now" — was "Apply Now" until 2026-08-11: read as "apply for approval"
+    // (i.e. resubmit a request) rather than what it actually does, which is save the fee
+    // record with the discount that's ALREADY approved — confusing given the discount
+    // request itself is also submitted via an "Apply"-style flow. Renamed the button and
+    // its matching status line together so "apply" isn't reused for two different
+    // meanings on the same screen. Behavior unchanged: only shown when there's a stashed
+    // payload to resume (i.e. this came from the Fee form's block error, not a standalone
+    // advance request) — submits the exact same save that was blocked earlier, with the
+    // now-approved discount, in one click instead of re-entering everything.
     var applyBtn = (r.status === 'approved' && !r.used && r.payload)
-      ? '<button class="btn btn-gold" style="padding:5px 12px;font-size:12px" onclick="applyApprovedDiscountRequest(\'' + escC(r.id) + '\')">Apply Now</button>' : '';
+      ? '<button class="btn btn-gold" style="padding:5px 12px;font-size:12px" onclick="applyApprovedDiscountRequest(\'' + escC(r.id) + '\')">Save Fee Now</button>' : '';
     html += '<tr style="' + (r.status === 'approved' && !r.used ? 'background:#F0FDF4' : '') + '">' +
       '<td class="text-left">' + escC(r.studentName) + ' <span style="font-size:11px;color:var(--muted)">(' + escC(r.studentId) + ')</span></td>' +
       '<td class="text-left">' + escC(r.batchCode) + '</td>' +
@@ -9845,7 +9849,7 @@ function renderDiscountRequestList() {
 function applyApprovedDiscountRequest(id) {
   var rec = discountRequests.find(function(r) { return r.id === id; });
   if (!rec || !rec.payload) { showToast('Nothing to apply — no saved details for this request.', 'error'); return; }
-  if (!confirm('Apply this now? This will save ' + rec.studentName + '\'s fee record with the approved ' + rec.discountPct + '% discount, exactly as originally entered.')) return;
+  if (!confirm('Save this fee record now? This will save ' + rec.studentName + '\'s fee record with the approved ' + rec.discountPct + '% discount, exactly as originally entered.')) return;
   gasGet(rec.payload, function(e, d) {
     if (e || !d || d.status !== 'ok') {
       showToast((d && d.message) || (d && d.reason) || 'Could not save. Try again or use the Fee form directly.', 'error');

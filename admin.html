@@ -8094,7 +8094,16 @@ function revenueGst(v) {
 }
 
 function escC(v) {
-  return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // Strip invisible zero-width/bidi-control characters (U+200B-200F, U+202A-202E,
+  // U+2060-2064, U+2066-2069, BOM) before escaping. Free-text fields like a discount
+  // reason are often copy-pasted from WhatsApp/mobile keyboards, which can carry these
+  // silently — a stray bidi-override or zero-width joiner renders as garbled/overlapping
+  // text in the browser even though the underlying string looks fine in the database (e.g.
+  // a discount request's reason showing corrupted mid-sentence with no visible cause).
+  var INVISIBLE_CHARS_RE = new RegExp('[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]', 'g');
+  return String(v == null ? '' : v)
+    .replace(INVISIBLE_CHARS_RE, '')
+    .replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 function revCanonical(name) {

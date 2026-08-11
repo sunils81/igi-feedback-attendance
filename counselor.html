@@ -5579,7 +5579,15 @@ let adminDashboardLoading = false;
 // REVENUE_FRONTEND_VERSION defined in revenue section below
 
 function escC(v) {
-  return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  // Strip invisible zero-width/bidi-control characters (U+200B-200F, U+202A-202E,
+  // U+2060-2064, U+2066-2069, BOM) before escaping — see admin.html's escC for why:
+  // free-text fields copy-pasted from WhatsApp/mobile keyboards can carry these silently,
+  // and a stray bidi-override or zero-width joiner renders as garbled/overlapping text in
+  // the browser even though the string looks completely normal in the database.
+  var INVISIBLE_CHARS_RE = new RegExp('[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]', 'g');
+  return String(v == null ? '' : v)
+    .replace(INVISIBLE_CHARS_RE, '')
+    .replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 function doLogin() {

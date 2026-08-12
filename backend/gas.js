@@ -2570,17 +2570,25 @@ function doGet(e) {
       var nInst=Number(p.nInst)||1;
       var insts=[];
       var existingPaidDates=['','',''];
+      var existingAdmissionSource='',existingAdmissionSourceDetail='';
       var rowIdx=-1;
       if(sh.getLastRow()>1){
-        var ex=sh.getRange(2,1,sh.getLastRow()-1,34).getValues();
+        var ex=sh.getRange(2,1,sh.getLastRow()-1,43).getValues();
         for(var ki=0;ki<ex.length;ki++){
           if(String(ex[ki][0]).trim()===sid&&String(ex[ki][2]).trim().toUpperCase()===bc){
             rowIdx=ki+2;
             existingPaidDates=[ex[ki][21],ex[ki][27],ex[ki][33]];
+            existingAdmissionSource=ex[ki][41]||'';
+            existingAdmissionSourceDetail=ex[ki][42]||'';
             break;
           }
         }
       }
+      // Admission source is captured once at enrollment time. Fee-record edits
+      // made later (e.g. from the payment/instalment screens) don't resend it —
+      // fall back to whatever's already on the row instead of blanking it out.
+      var admissionSource       = p.admissionSource != null && p.admissionSource !== '' ? p.admissionSource : existingAdmissionSource;
+      var admissionSourceDetail = p.admissionSourceDetail != null && p.admissionSourceDetail !== '' ? p.admissionSourceDetail : existingAdmissionSourceDetail;
       for (var ii=1;ii<=3;ii++) {
         var paid=p['inst'+ii+'Paid']==='Y'?'Y':'N';
         var paidDate=paid==='Y'
@@ -2606,7 +2614,8 @@ function doGet(e) {
         insts[0][0],insts[0][1],insts[0][2],insts[0][3],insts[0][4],insts[0][5],
         insts[1][0],insts[1][1],insts[1][2],insts[1][3],insts[1][4],insts[1][5],
         insts[2][0],insts[2][1],insts[2][2],insts[2][3],insts[2][4],insts[2][5],
-        collected,outstanding,feeStatus,p.enteredBy||'Counselor',new Date().toISOString()];
+        collected,outstanding,feeStatus,p.enteredBy||'Counselor',new Date().toISOString(),
+        admissionSource,admissionSourceDetail];
       if(rowIdx>0) sh.getRange(rowIdx,1,1,row.length).setValues([row]);
       else{sh.appendRow(row);rowIdx=sh.getLastRow();}
       var bgM={Paid:'#E8F5EE',Partial:'#FFF9E6',Pending:'#F4F1EB',Overdue:'#FEF2F2'};
@@ -2619,7 +2628,7 @@ function doGet(e) {
     if (act==='getFeeRecords') {
       var shf=ss.getSheetByName(SH_FEES);
       if(!shf||shf.getLastRow()<2) return respond({status:'ok',records:[]});
-      var fdata=shf.getRange(2,1,shf.getLastRow()-1,41).getValues();
+      var fdata=shf.getRange(2,1,shf.getLastRow()-1,43).getValues();
       var fbc=(p.batchCode||'').toUpperCase();
       var fcentres=(p.centres||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
       return respond({status:'ok',records:fdata.filter(function(r){
@@ -2636,7 +2645,8 @@ function doGet(e) {
           inst1:{amt:r[18],due:r[19]?new Date(r[19]).toLocaleDateString('en-IN'):'',paid:r[20],paidDate:r[21]?new Date(r[21]).toLocaleDateString('en-IN'):'',mode:r[22],ref:r[23]},
           inst2:{amt:r[24],due:r[25]?new Date(r[25]).toLocaleDateString('en-IN'):'',paid:r[26],paidDate:r[27]?new Date(r[27]).toLocaleDateString('en-IN'):'',mode:r[28],ref:r[29]},
           inst3:{amt:r[30],due:r[31]?new Date(r[31]).toLocaleDateString('en-IN'):'',paid:r[32],paidDate:r[33]?new Date(r[33]).toLocaleDateString('en-IN'):'',mode:r[34],ref:r[35]},
-          collected:ft.collected,outstanding:ft.outstanding,feeStatus:ft.feeStatus,enteredBy:r[39]};
+          collected:ft.collected,outstanding:ft.outstanding,feeStatus:ft.feeStatus,enteredBy:r[39],
+          admissionSource:r[41]||'',admissionSourceDetail:r[42]||''};
       })});
     }
 
@@ -3373,7 +3383,8 @@ function ensureSheets(ss) {
                     'Inst 1 Amount','Inst 1 Due','Inst 1 Paid','Inst 1 Paid Date','Inst 1 Mode','Inst 1 Reference',
                     'Inst 2 Amount','Inst 2 Due','Inst 2 Paid','Inst 2 Paid Date','Inst 2 Mode','Inst 2 Reference',
                     'Inst 3 Amount','Inst 3 Due','Inst 3 Paid','Inst 3 Paid Date','Inst 3 Mode','Inst 3 Reference',
-                    'Collected','Outstanding','Fee Status','Entered By','Updated At'],
+                    'Collected','Outstanding','Fee Status','Entered By','Updated At',
+                    'Admission Source','Admission Source Detail'],
     [SH_REVENUE_TARGETS]: ['Month','Counsellor','Centre','Target Course Fee','Target Course Fee + GST','Notes','Updated By','Updated At'],
     [SH_REVENUE_CENTRE_TARGETS]: ['Period','Centre','Annual Course Fee Target','Annual Course Fee + GST Target','Notes','Updated By','Updated At'],
     [SH_REVENUE_ANNUAL_TARGETS]: ['Period','Counsellor','Assigned Centre','Annual Course Fee Target','Annual Course Fee + GST Target','Notes','Updated By','Updated At'],
@@ -4864,14 +4875,15 @@ function ensureFeeHeaders(sh) {
     'Inst 1 Amount','Inst 1 Due','Inst 1 Paid','Inst 1 Paid Date','Inst 1 Mode','Inst 1 Reference',
     'Inst 2 Amount','Inst 2 Due','Inst 2 Paid','Inst 2 Paid Date','Inst 2 Mode','Inst 2 Reference',
     'Inst 3 Amount','Inst 3 Due','Inst 3 Paid','Inst 3 Paid Date','Inst 3 Mode','Inst 3 Reference',
-    'Collected','Outstanding','Fee Status','Entered By','Updated At'];
+    'Collected','Outstanding','Fee Status','Entered By','Updated At',
+    'Admission Source','Admission Source Detail'];
   if (sh.getLastRow()===0 || sh.getRange(1,1).getValue()==='') {
     sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
     sh.setFrozenRows(1);
     return;
   }
   const current=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),h.length)).getValues()[0].map(String);
-  if (current[0]!==h[0] || current[40]!==h[40]) {
+  if (current[0]!==h[0] || current[40]!==h[40] || current[41]!==h[41] || current[42]!==h[42]) {
     sh.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground(NAVY).setFontColor(GOLD).setFontFamily('Arial');
     sh.setFrozenRows(1);
   }

@@ -20166,19 +20166,28 @@ function filterLeads() {
 function renderCRMSourceBreakdown(list) {
   var wrap = document.getElementById('crm-source-breakdown');
   if (!wrap) return;
-  var counts = {};
+  // Tracks both inflow (total leads) and conversions (Enrolled) per source, so a
+  // counsellor can see straight away how many of their Facebook/Website/Walk-In etc.
+  // leads actually turned into admissions, not just how many came in.
+  var stats = {};
   list.forEach(function(l) {
     var s = l.source || 'Direct';
-    counts[s] = (counts[s] || 0) + 1;
+    if (!stats[s]) stats[s] = { total: 0, converted: 0 };
+    stats[s].total++;
+    if (l.lead_stage === 'Enrolled') stats[s].converted++;
   });
-  var entries = Object.keys(counts).map(function(s) { return [s, counts[s]]; })
-    .sort(function(a, b) { return b[1] - a[1]; });
+  var entries = Object.keys(stats).map(function(s) { return [s, stats[s]]; })
+    .sort(function(a, b) { return b[1].total - a[1].total; });
   if (!entries.length) { wrap.innerHTML = ''; return; }
   wrap.innerHTML = entries.map(function(e) {
-    var active = document.getElementById('crm-source-filter') && document.getElementById('crm-source-filter').value === e[0];
+    var src = e[0], st = e[1];
+    var active = document.getElementById('crm-source-filter') && document.getElementById('crm-source-filter').value === src;
+    var pct = st.total ? Math.round(st.converted / st.total * 100) : 0;
     return '<span class="crm-source-pill" style="cursor:pointer' + (active ? ';border-color:var(--gold);color:var(--gold)' : '') +
-      '" onclick="filterCRMBySourcePill(\'' + escC(e[0]) + '\')" title="Filter to this source">' +
-      (CRM_SRC_ICON[e[0]] || '📌') + ' ' + escC(e[0]) + ' <strong>' + e[1] + '</strong></span>';
+      '" onclick="filterCRMBySourcePill(\'' + escC(src) + '\')" title="' + st.converted + ' of ' + st.total + ' converted (' + pct + '%) — click to filter to this source">' +
+      (CRM_SRC_ICON[src] || '📌') + ' ' + escC(src) + ' <strong>' + st.total + '</strong>' +
+      (st.converted ? ' <span style="color:#168b57">· ' + st.converted + ' converted (' + pct + '%)</span>' : '') +
+      '</span>';
   }).join('');
 }
 
@@ -22464,6 +22473,11 @@ function openEnrollModal(monthKey, centre, counsellor, opts) {
     preferOtherCentre: !!opts.preferOtherCentre,
     selectedStudent: null, isNewStudent: false, selectedBatch: null, isNewBatch: false, batchList: [] };
 
+  // Reset admission source
+  document.getElementById('enroll-lead-source').value = '';
+  document.getElementById('enroll-lead-source-other').value = '';
+  document.getElementById('enroll-lead-source-other-wrap').style.display = 'none';
+
   // Reset student section
   document.getElementById('enroll-student-search').value = '';
   document.getElementById('enroll-dd').innerHTML = '';
@@ -22864,11 +22878,29 @@ function enrollCalcFee() {
 }
 
 /* ── Save orchestration ── */
+function enrollLeadSourceChange() {
+  var v = document.getElementById('enroll-lead-source').value;
+  document.getElementById('enroll-lead-source-other-wrap').style.display = (v === 'Others') ? 'block' : 'none';
+}
+
 function enrollSave() {
   var st  = _enrollState;
   var err = document.getElementById('enroll-err');
   err.textContent = '';
   err.classList.remove('show');
+
+  // Resolve admission source — required for every admission so we can track
+  // which channel (walk-in, website, paid ad, IIJS, etc.) converted.
+  var leadSourceSel   = document.getElementById('enroll-lead-source').value;
+  var leadSourceOther = document.getElementById('enroll-lead-source-other').value.trim();
+  if (!leadSourceSel) {
+    err.textContent = 'Select the Source of Admission (how this student found us).';
+    err.classList.add('show'); return;
+  }
+  if (leadSourceSel === 'Others' && !leadSourceOther) {
+    err.textContent = 'Enter a value for the admission source since you selected "Others".';
+    err.classList.add('show'); return;
+  }
 
   // Resolve student
   var studentId = null, studentName = null, studentMobile = '';
@@ -23010,7 +23042,9 @@ function enrollSave() {
       discountPct:    dp,
       discountReason: document.getElementById('enroll-disc-reason').value.trim(),
       nInst:          Number(document.getElementById('enroll-n-inst').value)  || 1,
-      enteredBy:      st.counsellor || 'Counselor'
+      enteredBy:      st.counsellor || 'Counselor',
+      admissionSource:       leadSourceSel,
+      admissionSourceDetail: leadSourceOther
     }, function(e, d) {
       next((e || !d || d.status !== 'ok') ? 'Could not save fee record. Try again.' : null);
     });
@@ -23331,6 +23365,22 @@ function enrollSave() {
       <!-- STEP 1: STUDENT -->
       <div class="enroll-step">
         <div class="enroll-step-title"><span class="enroll-step-num">1</span> Student</div>
+        <div class="enroll-field" style="margin-bottom:10px">
+          <label>Source of Admission *</label>
+          <select id="enroll-lead-source" onchange="enrollLeadSourceChange()">
+            <option value="">— Select Source —</option>
+            <option value="Walk-In">Walk-In</option>
+            <option value="Website">Website</option>
+            <option value="Paid Ad (FB Leads)">Paid Ad (FB Leads)</option>
+            <option value="Lead Generated">Lead Generated</option>
+            <option value="IIJS">IIJS</option>
+            <option value="Others">Others</option>
+          </select>
+        </div>
+        <div class="enroll-field" id="enroll-lead-source-other-wrap" style="display:none;margin-bottom:10px">
+          <label>Please Specify *</label>
+          <input id="enroll-lead-source-other" type="text" placeholder="e.g. Referral, Newspaper Ad, Instagram">
+        </div>
         <div id="enroll-search-wrap" class="enroll-search-wrap">
           <input id="enroll-student-search" type="text" placeholder="Search by name or mobile…" autocomplete="off" oninput="enrollSearchDebounce()">
           <div id="enroll-dd" class="enroll-dd"></div>

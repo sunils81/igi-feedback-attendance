@@ -2778,7 +2778,13 @@ window.gasGet = (function () {
       // (e.g. a parent or company paying for 2-3 students on one invoice) — surfaced by the
       // duplicate-invoice-number flag below rather than required up front.
       invoice_shared_comment: p.invoiceSharedComment || '',
-      invoice_file_url: p.invoiceFileUrl || ''
+      invoice_file_url: p.invoiceFileUrl || '',
+      // Source of Admission — captured once at enrollment time (Enroll New Student flow).
+      // Later fee-record saves (installments, invoice corrections, etc.) don't resend it;
+      // see the "carry forward" merge below both save paths, which preserves whatever was
+      // already on the record instead of blanking it out.
+      admission_source: p.admissionSource || '',
+      admission_source_detail: p.admissionSourceDetail || ''
     };
     
     for (var i = 1; i <= 3; i++) {
@@ -2851,13 +2857,23 @@ window.gasGet = (function () {
     // the normal lookup ever runs, so the same real record just gets a new batch_code —
     // invoice number and payment history carry over unchanged.
     if (p.existingRecordId) {
-      GET('student_fees', 'id=eq.' + encodeURIComponent(p.existingRecordId) + '&select=id,batch_code,centre,recorded_by,revenue_month', function (errLookup, existingRows) {
+      GET('student_fees', 'id=eq.' + encodeURIComponent(p.existingRecordId) + '&select=id,batch_code,centre,recorded_by,revenue_month,receipt_no', function (errLookup, existingRows) {
         var existingRow = (existingRows && existingRows[0]) || null;
         if (errLookup || !existingRow || existingRow.batch_code === dbRow.batch_code) {
           // No real move (existingRecordId missing/stale, or target batch is unchanged) —
           // fall through to the normal upsert-by-(student_id,batch_code) flow below.
           proceedNormalSave();
           return;
+        }
+        if (!p.admissionSource && existingRow.receipt_no) {
+          try {
+            var prevMeta1 = JSON.parse(existingRow.receipt_no);
+            if (prevMeta1.admission_source) {
+              meta.admission_source = prevMeta1.admission_source;
+              meta.admission_source_detail = prevMeta1.admission_source_detail || '';
+              dbRow.receipt_no = JSON.stringify(meta);
+            }
+          } catch (exAS1) {}
         }
         PATCH('student_fees', 'id=eq.' + encodeURIComponent(p.existingRecordId), dbRow, function (errPatch) {
           if (errPatch) { cb(null, { status: 'error', reason: String(errPatch) }); return; }
@@ -2887,6 +2903,16 @@ window.gasGet = (function () {
       var previousRevenueMonth = existing ? (existing.revenue_month || '') : '';
       var previousCentre = existing ? existing.centre : null;
       var previousRecordedBy = existing ? existing.recorded_by : null;
+      if (!p.admissionSource && existing && existing.receipt_no) {
+        try {
+          var prevMeta2 = JSON.parse(existing.receipt_no);
+          if (prevMeta2.admission_source) {
+            meta.admission_source = prevMeta2.admission_source;
+            meta.admission_source_detail = prevMeta2.admission_source_detail || '';
+            dbRow.receipt_no = JSON.stringify(meta);
+          }
+        } catch (exAS2) {}
+      }
       // Revenue-credit ownership must never move just because someone other than the
       // current owner saved a correction (invoice number, discount, etc.) — that's the
       // whole bug this exists to close. It's ALLOWED to move, by any counsellor (not just

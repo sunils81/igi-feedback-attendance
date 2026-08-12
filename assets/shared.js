@@ -9114,6 +9114,102 @@ window.gasGet = (function () {
     }
   }
 
+  /* h_getTestQuestionAnalysis — 2026-08-12, per instruction: "instructor is not able to
+     see which question of the student went wrong for the entire batch... one tab where
+     they can see which question went wrong in one go like an Excel [grid]".
+
+     Reuses exactly the same data h_getTestResultsSummary already fetches (test_questions
+     joined to question_bank for correct_ans, test_responses for each student's raw
+     {questionId: answer} map) — this is a pure reporting view, no new data capture. Ships
+     RAW answers + correct_ans to the instructor frontend (rather than pre-computing
+     correct/incorrect server-side) so the grid, the per-question % correct footer, and the
+     distractor breakdown (which wrong option students actually picked) can all be derived
+     client-side from one payload without extra round-trips. Descriptive/Portfolio
+     questions are excluded — they have no machine-checkable right answer. */
+  async function h_getTestQuestionAnalysis(p, cb) {
+    function getP(table, qs) {
+      return new Promise(function(resolve) {
+        GET(table, qs, function(err, data) { resolve(err ? [] : data); });
+      });
+    }
+    try {
+      var tid = p.testId;
+      if (!tid) { cb(null, { status: 'error', reason: 'missing_testId' }); return; }
+      var testRows = await getP('online_tests', 'test_id=eq.' + encodeURIComponent(tid));
+      if (!testRows || !testRows.length) { cb(null, { status: 'error', reason: 'test_not_found' }); return; }
+      var test = testRows[0];
+
+      var allBatchCodes = (test.batch_codes || test.batch_code || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+      var students = await resolveStudentsForBatchesPromise(allBatchCodes);
+
+      var tqs = await getP('test_questions', 'test_id=eq.' + encodeURIComponent(tid) + '&order=order_no.asc');
+      var qids = (tqs || []).map(function(tq) { return tq.question_id; });
+      var qbRows = qids.length ? await getP('question_bank', 'id=in.(' + qids.map(encodeURIComponent).join(',') + ')') : [];
+      var qMap = {};
+      (qbRows || []).forEach(function(q) { qMap[String(q.id)] = q; });
+
+      // MCQ only, in the order they appear on the test — Descriptive/Portfolio questions
+      // have no correct_ans to grade against, so they don't belong in a right/wrong grid.
+      var questions = (tqs || [])
+        .map(function(tq, i) {
+          var q = qMap[String(tq.question_id)];
+          if (!q || (q.q_type && q.q_type !== 'MCQ')) return null;
+          return {
+            questionId: String(tq.question_id),
+            orderNo:    tq.order_no || (i + 1),
+            question:   q.question || '',
+            topic:      q.topic || '',
+            optionA:    q.option_a || '', optionB: q.option_b || '',
+            optionC:    q.option_c || '', optionD: q.option_d || '',
+            correctAns: String(q.correct_ans || '').trim(),
+            maxMarks:   parseFloat(q.max_marks || 1)
+          };
+        })
+        .filter(Boolean)
+        .sort(function(a, b) { return a.orderNo - b.orderNo; });
+
+      var skippedNonMCQ = (tqs || []).length - questions.length;
+
+      var rawResponses = await getP('test_responses', 'test_id=eq.' + encodeURIComponent(tid));
+      var studentMap = {};
+      students.forEach(function(s) { studentMap[s.student_id] = s; });
+
+      var respondedIds = new Set((rawResponses || []).map(function(r) { return String(r.student_id); }));
+      var targetStudents = String(test.target_students || 'ALL').trim();
+      var allowedList = null;
+      if (targetStudents !== 'ALL' && targetStudents !== '') {
+        allowedList = targetStudents.replace(/[\[\]"']/g, '').split(',').map(function(x) { return x.trim().toUpperCase(); });
+      }
+
+      var studentRows = (rawResponses || []).map(function(r) {
+        var s = studentMap[r.student_id] || {};
+        return {
+          studentId:   r.student_id,
+          studentName: s.name || r.student_id,
+          submitted:   true,
+          submittedAt: r.submitted_at,
+          answers:     r.answers || {}
+        };
+      });
+      students.forEach(function(s) {
+        var sid = String(s.student_id || '');
+        if (respondedIds.has(sid)) return;
+        if (allowedList && allowedList.indexOf(sid.toUpperCase()) === -1) return;
+        studentRows.push({ studentId: sid, studentName: s.name || sid, submitted: false, submittedAt: null, answers: {} });
+      });
+      studentRows.sort(function(a, b) { return (a.studentName || '').localeCompare(b.studentName || ''); });
+
+      cb(null, {
+        status: 'ok',
+        test: { testId: tid, title: test.title || tid, batchCodes: allBatchCodes, skippedNonMCQ: skippedNonMCQ },
+        questions: questions,
+        students: studentRows
+      });
+    } catch (err) {
+      cb(err, null);
+    }
+  }
+
   /* ══════════════════════════════════════════════════════════════
      TRAY HUB — Supabase-backed (migrated off Google Sheets/Apps Script).
      Tables: tray_registry, tray_bookings, tray_notifications,
@@ -10192,6 +10288,7 @@ window.gasGet = (function () {
       case 'getTestQuestionsInstructor':return h_getTestQuestionsInstructor(params, cb);
       case 'getProctorRoom':            return h_getProctorRoom(params, cb);
       case 'getTestResultsSummary':     return h_getTestResultsSummary(params, cb);
+      case 'getTestQuestionAnalysis':   return h_getTestQuestionAnalysis(params, cb);
       case 'resetStudentAttempt':       return h_resetStudentAttempt(params, cb);
       case 'otSubmitPortfolio':         return h_otSubmitPortfolio(params, cb);
       case 'otGetPortfolioSubmissions': return h_otGetPortfolioSubmissions(params, cb);

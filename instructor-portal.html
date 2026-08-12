@@ -937,6 +937,18 @@
       .ot-subbtn.proctor.active { background: #FFF7ED; color: #EA580C; border-color: #FDBA74; box-shadow: 0 4px 12px rgba(234,88,12,0.15); }
       .ot-subbtn.grading.active { background: #F0FDFA; color: #0D9488; border-color: #2DD4BF; box-shadow: 0 4px 12px rgba(13,148,136,0.15); }
       .ot-subbtn.results.active { background: #FFF1F2; color: #E11D48; border-color: #FDA4AF; box-shadow: 0 4px 12px rgba(225,29,72,0.15); }
+      .ot-subbtn.qanalysis.active { background: #ECFEFF; color: #0E7490; border-color: #67E8F9; box-shadow: 0 4px 12px rgba(14,116,144,0.15); }
+      .qa-table th, .qa-table td { border: 1px solid #e5e7eb; }
+      .qa-table th { background:#0D1B2E; color:#fff; font-size:11px; font-weight:700; padding:6px 4px; text-align:center; vertical-align:bottom; }
+      .qa-table td { padding:6px; text-align:center; font-size:13px; }
+      .qa-qhead { cursor:pointer; }
+      .qa-qhead:hover { background:#1e3a5f; }
+      .qa-cell-correct { background:#dcfce7; color:#15803d; font-weight:700; }
+      .qa-cell-wrong { background:#fee2e2; color:#991b1b; font-weight:700; }
+      .qa-cell-blank { background:#f1f5f9; color:#94a3b8; }
+      .qa-pct-good { background:#dcfce7; color:#15803d; }
+      .qa-pct-mid { background:#fef9c3; color:#92400e; }
+      .qa-pct-bad { background:#fee2e2; color:#991b1b; }
       .ot-panel { display:none; } .ot-panel.active { display:block; }
       .ot-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; margin-top:14px; }
       .ot-card { background:#fff; border:1.5px solid var(--border,#e5e7eb); border-radius:12px;
@@ -1043,6 +1055,7 @@
       <button class="ot-subbtn grading" onclick="otSubTab('grading')">✏️ Grade Theory</button>
       <button class="ot-subbtn results" onclick="otSubTab('results')">📊 Results</button>
       <button class="ot-subbtn batchreport" onclick="otSubTab('batchreport')">📈 Batch Report</button>
+      <button class="ot-subbtn qanalysis" onclick="otSubTab('qanalysis')">🧩 Question Analysis</button>
     </div>
 
     <!-- ── Panel 1: Question Bank ─────────────────────────── -->
@@ -1525,6 +1538,65 @@
           <thead id="br-thead"></thead>
           <tbody id="br-tbody"></tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- ── Panel 8: Question Analysis ─────────────────────────
+         "Which question went wrong for the entire batch" — an Excel-style
+         grid: one row per student, one column per MCQ question, colored
+         correct/wrong/unanswered, with a % correct footer per question so
+         the weakest question is visible at a glance instead of having to
+         eyeball individual student results one at a time. -->
+    <div id="ot-qanalysis" class="ot-panel">
+      <div class="ot-form-row" style="margin-bottom:14px;">
+        <div><label>Select Test</label>
+          <select id="ot-qanalysis-test"><option value="">— select test —</option></select>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:8px;">
+          <button class="ot-btn primary" onclick="qaLoad()">🧩 Load Analysis</button>
+          <button class="ot-btn" style="background:#f1f5f9;color:#334155" onclick="qaExportCSV()">⬇ Export CSV</button>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:8px;">
+          <div>
+            <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">Sort columns by</label>
+            <select id="qa-sort" onchange="qaRender()" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;">
+              <option value="order">Question Order</option>
+              <option value="hardest">Hardest First (lowest % correct)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div id="qa-summary" style="display:none;background:linear-gradient(135deg,#0D1B2E,#1a2f4e);color:#fff;border-radius:12px;padding:14px 20px;margin-bottom:16px;display:flex;gap:32px;flex-wrap:wrap;">
+        <div><span style="font-size:11px;opacity:.7;display:block">Test</span><span id="qa-s-test" style="font-size:16px;font-weight:700">—</span></div>
+        <div><span style="font-size:11px;opacity:.7;display:block">Questions (MCQ)</span><span id="qa-s-questions" style="font-size:16px;font-weight:700">—</span></div>
+        <div><span style="font-size:11px;opacity:.7;display:block">Submitted</span><span id="qa-s-submitted" style="font-size:16px;font-weight:700">—</span></div>
+        <div><span style="font-size:11px;opacity:.7;display:block">Weakest Question</span><span id="qa-s-weakest" style="font-size:16px;font-weight:700">—</span></div>
+      </div>
+      <div id="qa-skipped-note" style="display:none;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:9px 14px;margin-bottom:12px;font-size:12px;color:#92400e;"></div>
+
+      <div style="display:flex;gap:16px;margin-bottom:10px;font-size:11px;color:#555;flex-wrap:wrap;">
+        <span><span style="display:inline-block;width:12px;height:12px;background:#dcfce7;border:1px solid #86efac;border-radius:3px;margin-right:4px;vertical-align:middle"></span>Correct</span>
+        <span><span style="display:inline-block;width:12px;height:12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:3px;margin-right:4px;vertical-align:middle"></span>Wrong</span>
+        <span><span style="display:inline-block;width:12px;height:12px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:3px;margin-right:4px;vertical-align:middle"></span>Unanswered</span>
+        <span style="color:#94a3b8;">Click a question column header for the full question + which wrong answers students picked</span>
+      </div>
+
+      <div id="qa-table-wrap" style="overflow-x:auto;">
+        <div id="qa-empty" style="text-align:center;padding:48px;color:#94a3b8;font-size:14px;">Select a test and click "Load Analysis"</div>
+        <table id="qa-table" class="qa-table" style="display:none;min-width:600px;border-collapse:collapse;">
+          <thead id="qa-thead"></thead>
+          <tbody id="qa-tbody"></tbody>
+          <tfoot id="qa-tfoot"></tfoot>
+        </table>
+      </div>
+
+      <!-- Question detail / distractor breakdown modal -->
+      <div id="qa-detail-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+        <div style="background:#fff;border-radius:12px;padding:24px;width:100%;max-width:560px;box-shadow:0 8px 40px rgba(0,0,0,.2);max-height:85vh;overflow-y:auto">
+          <div id="qa-detail-body"></div>
+          <button class="ot-btn" style="margin-top:16px" onclick="document.getElementById('qa-detail-modal').style.display='none'">Close</button>
+        </div>
       </div>
     </div>
 
@@ -6823,11 +6895,12 @@ function otRenderTests(tests) {
 }
 
 function otPopulateTestDropdowns(tests) {
-  ['ot-proctor-test','ot-grade-test','ot-results-test'].forEach(function(id) {
+  ['ot-proctor-test','ot-grade-test','ot-results-test','ot-qanalysis-test'].forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
     var filter = id === 'ot-proctor-test' ? ['Active'] :
-                 id === 'ot-grade-test'   ? ['Closed','Active'] : null;
+                 id === 'ot-grade-test'   ? ['Closed','Active'] :
+                 id === 'ot-qanalysis-test' ? ['Closed','Active'] : null;
     el.innerHTML = '<option value="">— select test —</option>';
     tests.forEach(function(t) {
       if (filter && !filter.includes(t.status)) return;
@@ -11475,6 +11548,238 @@ function brExportCSV() {
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = bc + '_batch_report.csv';
+  a.click();
+}
+
+// ── Question Analysis — per-question, whole-batch grid ─────────────────────
+// "Instructor can't see which question the batch got wrong" — this reads
+// getTestQuestionAnalysis (raw per-student answers + each question's correct_ans)
+// and renders an Excel-style Student x Question grid, client-side, so the
+// correctness check, the % correct footer, sorting, and the distractor
+// breakdown can all be derived from one payload without extra round-trips.
+var _qaData = null;
+var QA_OPT_LETTERS = ['A','B','C','D'];
+
+// Mirrors the exact same answer-matching logic used server-side in
+// h_getTestResultsSummary's deriveScore() and elsewhere in this file's Grade
+// Theory / Question Bank screens — kept in sync deliberately so this grid
+// never disagrees with the score a student actually received. Returns
+// true/false, or null for unanswered.
+function qaIsCorrect(q, rawAns) {
+  var ans = String(rawAns == null ? '' : rawAns).trim();
+  var ca = String(q.correctAns || '').trim();
+  if (!ans || !ca) return null;
+  var optIdx = parseInt(ans, 10) - 1;
+  return ca === ans
+    || (optIdx >= 0 && QA_OPT_LETTERS[optIdx] && ca.toUpperCase() === QA_OPT_LETTERS[optIdx])
+    || (optIdx >= 0 && String(optIdx + 1) === ca)
+    || ca.toUpperCase() === ans.toUpperCase();
+}
+
+// Resolves a raw stored answer (which may be "A"/"1"/etc.) to a display
+// letter for the distractor breakdown. Returns null if it can't be mapped
+// (e.g. a legacy free-text answer) rather than guessing.
+function qaAnswerLetter(rawAns) {
+  var ans = String(rawAns == null ? '' : rawAns).trim();
+  if (!ans) return null;
+  var idx = parseInt(ans, 10) - 1;
+  if (idx >= 0 && QA_OPT_LETTERS[idx]) return QA_OPT_LETTERS[idx];
+  if (/^[A-Da-d]$/.test(ans)) return ans.toUpperCase();
+  return null;
+}
+
+function qaLoad() {
+  var testId = (document.getElementById('ot-qanalysis-test')||{}).value || '';
+  if (!testId) { alert('Please select a test.'); return; }
+  var emptyEl = document.getElementById('qa-empty');
+  emptyEl.textContent = 'Loading…';
+  emptyEl.style.display = '';
+  document.getElementById('qa-table').style.display = 'none';
+  gasGet({action:'getTestQuestionAnalysis', instructor:instructorName, testId:testId}, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      emptyEl.textContent = 'Failed to load — ' + ((d&&d.reason)||'try again.');
+      return;
+    }
+    if (!d.questions || !d.questions.length) {
+      emptyEl.textContent = 'This test has no auto-gradable (MCQ) questions to analyze.';
+      return;
+    }
+    _qaData = d;
+    qaRender();
+  });
+}
+
+function qaRender() {
+  if (!_qaData) return;
+  var data = _qaData;
+  var questions = data.questions.slice();
+  var students = data.students;
+
+  // Per-question stats across the whole batch — this is the actual answer to
+  // "which question went wrong for the entire batch", computed once here and
+  // reused for the footer row, the sort, and the click-through detail view.
+  questions.forEach(function(q) {
+    var correct = 0, wrong = 0, blank = 0;
+    var dist = {A:0,B:0,C:0,D:0};
+    students.forEach(function(st) {
+      var raw = st.answers ? st.answers[q.questionId] : undefined;
+      var res = qaIsCorrect(q, raw);
+      if (res === null) { blank++; return; }
+      if (res) correct++; else wrong++;
+      var letter = qaAnswerLetter(raw);
+      if (letter && dist[letter] !== undefined) dist[letter]++;
+    });
+    var attempted = correct + wrong;
+    q._stats = { correct: correct, wrong: wrong, blank: blank, attempted: attempted,
+      pct: attempted ? Math.round(correct/attempted*100) : null, dist: dist };
+  });
+
+  var submittedCount = students.filter(function(s){ return s.submitted; }).length;
+  document.getElementById('qa-summary').style.display = 'flex';
+  document.getElementById('qa-s-test').textContent = data.test.title;
+  document.getElementById('qa-s-questions').textContent = questions.length;
+  document.getElementById('qa-s-submitted').textContent = submittedCount + ' / ' + students.length;
+  var weakest = questions.filter(function(q){ return q._stats.pct !== null; })
+    .sort(function(a,b){ return a._stats.pct - b._stats.pct; })[0];
+  document.getElementById('qa-s-weakest').textContent = weakest
+    ? 'Q' + weakest.orderNo + ' (' + weakest._stats.pct + '% correct)' : '—';
+
+  var skippedNote = document.getElementById('qa-skipped-note');
+  if (data.test.skippedNonMCQ > 0) {
+    skippedNote.style.display = 'block';
+    skippedNote.textContent = '⚠️ ' + data.test.skippedNonMCQ + ' descriptive/manually-graded question' +
+      (data.test.skippedNonMCQ > 1 ? 's' : '') + ' on this test excluded — no auto-checkable right answer.';
+  } else {
+    skippedNote.style.display = 'none';
+  }
+
+  var sortMode = (document.getElementById('qa-sort')||{}).value || 'order';
+  if (sortMode === 'hardest') {
+    questions.sort(function(a,b) {
+      var ap = a._stats.pct === null ? 101 : a._stats.pct, bp = b._stats.pct === null ? 101 : b._stats.pct;
+      return ap - bp;
+    });
+  } else {
+    questions.sort(function(a,b){ return a.orderNo - b.orderNo; });
+  }
+
+  var thead = document.getElementById('qa-thead');
+  var headerCells = '<th style="position:sticky;left:0;background:#0D1B2E;z-index:2;min-width:160px;text-align:left;padding:6px 10px;">Student</th>';
+  questions.forEach(function(q) {
+    headerCells += '<th class="qa-qhead" style="min-width:56px;" onclick="qaShowDetail(\''+q.questionId+'\')" title="'+escHtml(q.question)+'">Q'+q.orderNo+'</th>';
+  });
+  headerCells += '<th style="min-width:70px;background:#1e3a5f;">Score</th>';
+  thead.innerHTML = '<tr>' + headerCells + '</tr>';
+
+  var tbody = document.getElementById('qa-tbody');
+  var rows = '';
+  students.forEach(function(st) {
+    var cells = '<td style="position:sticky;left:0;background:#fff;z-index:1;text-align:left;padding:6px 10px;font-weight:500;">'
+      + escHtml(st.studentName) + (!st.submitted ? '<div style="font-size:10px;color:#94a3b8;">Not submitted</div>' : '') + '</td>';
+    var correctCount = 0;
+    questions.forEach(function(q) {
+      var raw = st.answers ? st.answers[q.questionId] : undefined;
+      var res = qaIsCorrect(q, raw);
+      if (res === null) {
+        cells += '<td class="qa-cell-blank">—</td>';
+      } else if (res) {
+        cells += '<td class="qa-cell-correct">✓</td>'; correctCount++;
+      } else {
+        cells += '<td class="qa-cell-wrong">✗</td>';
+      }
+    });
+    cells += '<td style="font-weight:700;">' + (st.submitted ? correctCount + '/' + questions.length : '—') + '</td>';
+    rows += '<tr>' + cells + '</tr>';
+  });
+  tbody.innerHTML = rows;
+
+  var tfoot = document.getElementById('qa-tfoot');
+  var footCells = '<td style="position:sticky;left:0;background:#f8fafc;z-index:1;text-align:left;padding:6px 10px;font-weight:700;">% Correct</td>';
+  questions.forEach(function(q) {
+    var pct = q._stats.pct;
+    var cls = pct === null ? '' : pct >= 80 ? 'qa-pct-good' : pct >= 60 ? 'qa-pct-mid' : 'qa-pct-bad';
+    footCells += '<td class="'+cls+'" style="font-weight:700;">' + (pct === null ? '—' : pct+'%') + '</td>';
+  });
+  footCells += '<td></td>';
+  tfoot.innerHTML = '<tr>' + footCells + '</tr>';
+
+  document.getElementById('qa-table').style.display = '';
+  document.getElementById('qa-empty').style.display = 'none';
+}
+
+function qaShowDetail(questionId) {
+  if (!_qaData) return;
+  var q = _qaData.questions.find(function(x){ return x.questionId === questionId; });
+  if (!q) return;
+  var stats = q._stats || {};
+  var dist = stats.dist || {A:0,B:0,C:0,D:0};
+  var opts = [['A', q.optionA], ['B', q.optionB], ['C', q.optionC], ['D', q.optionD]].filter(function(o){ return o[1]; });
+  var maxCount = Math.max(1, stats.attempted || 1);
+
+  var html = '<div style="font-size:11px;color:#94a3b8;text-transform:uppercase;font-weight:700;letter-spacing:.04em;">Question '+q.orderNo+(q.topic?' · '+escHtml(q.topic):'')+'</div>'
+    + '<div style="font-size:15px;font-weight:600;color:#0D1B2E;margin:6px 0 14px;">'+escHtml(q.question)+'</div>'
+    + '<div style="font-size:12px;color:#64748b;margin-bottom:10px;">'
+    + stats.correct+' correct · '+stats.wrong+' wrong · '+stats.blank+' unanswered'
+    + (stats.pct !== null ? ' — <b style="color:'+(stats.pct>=80?'#15803d':stats.pct>=60?'#92400e':'#991b1b')+'">'+stats.pct+'% of the batch got this right</b>' : '')
+    + '</div>';
+
+  html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+  opts.forEach(function(o) {
+    var letter = o[0], text = o[1];
+    var isCorrectOpt = q.correctAns && (q.correctAns.toUpperCase() === letter
+      || String(QA_OPT_LETTERS.indexOf(letter)+1) === String(q.correctAns).trim());
+    var count = dist[letter] || 0;
+    var pctWidth = Math.round(count / maxCount * 100);
+    html += '<div>'
+      + '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">'
+      + '<span style="font-weight:'+(isCorrectOpt?'700':'400')+';color:'+(isCorrectOpt?'#15803d':'#374151')+';">'+letter+'. '+escHtml(text)+(isCorrectOpt?' ✓':'')+'</span>'
+      + '<span style="color:#64748b;">'+count+' student'+(count===1?'':'s')+'</span>'
+      + '</div>'
+      + '<div style="background:#f1f5f9;border-radius:6px;height:8px;overflow:hidden;">'
+      + '<div style="width:'+pctWidth+'%;height:100%;background:'+(isCorrectOpt?'#22c55e':'#f87171')+';"></div>'
+      + '</div></div>';
+  });
+  html += '</div>';
+
+  document.getElementById('qa-detail-body').innerHTML = html;
+  document.getElementById('qa-detail-modal').style.display = 'flex';
+}
+
+function qaExportCSV() {
+  if (!_qaData) { alert('Load a test analysis first.'); return; }
+  var questions = _qaData.questions.slice().sort(function(a,b){ return a.orderNo - b.orderNo; });
+  var students = _qaData.students;
+  var headers = ['Student'].concat(questions.map(function(q){ return 'Q'+q.orderNo; })).concat(['Score']);
+  var lines = [headers.join(',')];
+  students.forEach(function(st) {
+    var row = ['"'+(st.studentName||st.studentId)+'"'];
+    var correctCount = 0;
+    questions.forEach(function(q) {
+      var raw = st.answers ? st.answers[q.questionId] : undefined;
+      var res = qaIsCorrect(q, raw);
+      row.push(res === null ? '' : (res ? 'Correct' : 'Wrong'));
+      if (res) correctCount++;
+    });
+    row.push(st.submitted ? (correctCount+'/'+questions.length) : 'Not submitted');
+    lines.push(row.join(','));
+  });
+  var footRow = ['% Correct'];
+  questions.forEach(function(q) {
+    var correct = 0, attempted = 0;
+    students.forEach(function(st) {
+      var raw = st.answers ? st.answers[q.questionId] : undefined;
+      var res = qaIsCorrect(q, raw);
+      if (res !== null) { attempted++; if (res) correct++; }
+    });
+    footRow.push(attempted ? Math.round(correct/attempted*100)+'%' : '');
+  });
+  footRow.push('');
+  lines.push(footRow.join(','));
+
+  var blob = new Blob([lines.join('\n')], {type:'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (_qaData.test.testId||'test') + '_question_analysis.csv';
   a.click();
 }
 </script>

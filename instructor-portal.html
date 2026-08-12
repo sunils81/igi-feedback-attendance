@@ -1591,6 +1591,15 @@
         </table>
       </div>
 
+      <!-- Question Key — the grid only has room for "Q4" in a column header, so this
+           spells out what Q4 actually asked, right below the grid, without making the
+           instructor click through each column one at a time. Sorted weakest-first by
+           default so the questions worth reviewing are right at the top. -->
+      <div id="qa-key-wrap" style="display:none;margin-top:20px;">
+        <div style="font-weight:700;font-size:14px;color:#0D1B2E;margin-bottom:8px;">📋 Question Key — sorted weakest first</div>
+        <div id="qa-key-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+      </div>
+
       <!-- Question detail / distractor breakdown modal -->
       <div id="qa-detail-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
         <div style="background:#fff;border-radius:12px;padding:24px;width:100%;max-width:560px;box-shadow:0 8px 40px rgba(0,0,0,.2);max-height:85vh;overflow-y:auto">
@@ -11666,7 +11675,7 @@ function qaRender() {
   var thead = document.getElementById('qa-thead');
   var headerCells = '<th style="position:sticky;left:0;background:#0D1B2E;z-index:2;min-width:160px;text-align:left;padding:6px 10px;">Student</th>';
   questions.forEach(function(q) {
-    headerCells += '<th class="qa-qhead" style="min-width:56px;" onclick="qaShowDetail(\''+q.questionId+'\')" title="'+escHtml(q.question)+'">Q'+q.orderNo+'</th>';
+    headerCells += '<th class="qa-qhead" style="min-width:56px;" onclick="qaShowDetail(\''+q.questionId+'\')" title="'+escHtml(q.question)+' (click for details)">Q'+q.orderNo+'<div style="font-size:9px;font-weight:400;opacity:.65;">🔍 view</div></th>';
   });
   headerCells += '<th style="min-width:70px;background:#1e3a5f;">Score</th>';
   thead.innerHTML = '<tr>' + headerCells + '</tr>';
@@ -11705,6 +11714,49 @@ function qaRender() {
 
   document.getElementById('qa-table').style.display = '';
   document.getElementById('qa-empty').style.display = 'none';
+
+  qaRenderKey(questions);
+}
+
+// Resolves a question's stored correct_ans (which may be "A"/"1"/etc.) to a display
+// letter, same normalization as qaAnswerLetter but applied to the answer key itself.
+function qaCorrectLetter(q) {
+  var ca = String(q.correctAns || '').trim();
+  if (!ca) return '';
+  var idx = parseInt(ca, 10) - 1;
+  if (idx >= 0 && QA_OPT_LETTERS[idx]) return QA_OPT_LETTERS[idx];
+  if (/^[A-Da-d]$/.test(ca)) return ca.toUpperCase();
+  return ca; // fall back to showing whatever's stored verbatim
+}
+
+// The grid can only fit "Q4" in a header — this spells out what each question actually
+// asked, right underneath, so the instructor doesn't have to click through every column
+// to find out what Q4 was. Always sorted weakest-first regardless of the grid's own sort
+// control, since the whole point is surfacing what needs attention without scrolling.
+function qaRenderKey(questions) {
+  var wrap = document.getElementById('qa-key-wrap');
+  var list = document.getElementById('qa-key-list');
+  if (!wrap || !list) return;
+  var sorted = questions.slice().sort(function(a, b) {
+    var ap = a._stats.pct === null ? 101 : a._stats.pct, bp = b._stats.pct === null ? 101 : b._stats.pct;
+    return ap - bp;
+  });
+  list.innerHTML = sorted.map(function(q) {
+    var pct = q._stats.pct;
+    var pctColor = pct === null ? '#94a3b8' : pct >= 80 ? '#15803d' : pct >= 60 ? '#92400e' : '#991b1b';
+    var pctBg = pct === null ? '#f1f5f9' : pct >= 80 ? '#dcfce7' : pct >= 60 ? '#fef9c3' : '#fee2e2';
+    var correctLetter = qaCorrectLetter(q);
+    return '<div style="display:flex;gap:12px;align-items:flex-start;padding:10px 14px;background:#fff;border:1.5px solid #e5e7eb;border-radius:10px;cursor:pointer;" onclick="qaShowDetail(\''+q.questionId+'\')">'
+      + '<div style="flex-shrink:0;min-width:44px;text-align:center;background:'+pctBg+';color:'+pctColor+';border-radius:8px;padding:4px 6px;font-weight:700;font-size:12px;">Q'+q.orderNo+'<div style="font-size:10px;font-weight:600;">'+(pct===null?'—':pct+'%')+'</div></div>'
+      + '<div style="flex:1;min-width:0;">'
+      + '<div style="font-size:13px;color:#0D1B2E;">'+escHtml(q.question)+'</div>'
+      + '<div style="font-size:11px;color:#94a3b8;margin-top:3px;">'+(q.topic?escHtml(q.topic)+' · ':'')+'Correct answer: <b style="color:#15803d;">'+escHtml(correctLetter)+'</b>'
+      + ' · '+q._stats.correct+' correct, '+q._stats.wrong+' wrong, '+q._stats.blank+' unanswered</div>'
+      + '</div>'
+      + '<div style="flex-shrink:0;color:#94a3b8;font-size:11px;align-self:center;">Details →</div>'
+      + '</div>';
+  }).join('');
+  wrap.style.display = 'block';
 }
 
 function qaShowDetail(questionId) {

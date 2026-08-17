@@ -11095,18 +11095,20 @@ const COURSE_FEES_JS = {
   'Small Diamond Assortment':            {fee:14900, regFee:0,    gst:18},
   'Rough Diamond':                       {fee:51900, regFee:0,    gst:18},
   'iRES':                                {fee:35900, regFee:0,    gst:18},
+  // Revised 2026-08-17 per Sunil: was 25900, now 29900 + GST.
   // 'Diamond Essential: The 5C's' (below) is the current display name — this old key is
   // kept only so any batch/fee record already stamped with it still resolves correctly.
-  'Diamond Essentials 5Cs':            {fee:25900, regFee:0,    gst:18},
+  'Diamond Essentials 5Cs':            {fee:29900, regFee:0,    gst:18},
   // Revised 2026-07-25 per Sunil: was 82900. This is "Jewelry Design CAD Rhino" — the CAD
   // (Rhino software) track of Jewelry Design Graduate, aliased below as 'CAD Design'.
   'JD-CAD':                              {fee:125900, regFee:0,    gst:18},
   'Smart Learning DG':                   {fee:114900,regFee:0,    gst:18},
   'Smart Learning CSG':                  {fee:114900,regFee:0,    gst:18},
   'Smart Learning GG':                   {fee:229800,regFee:0,    gst:18},
+  // Revised 2026-08-17 per Sunil: was 25900, now 29900 + GST.
   // New 2026-07-25 per Sunil — same course as 'Diamond Essentials 5Cs' above under its
   // current display name; added to COURSES so it's actually selectable in Batch Setup/CRM.
-  'Diamond Essential: The 5C\'s':        {fee:25900, regFee:0,    gst:18},
+  'Diamond Essential: The 5C\'s':        {fee:29900, regFee:0,    gst:18},
   // The 5 entries below are current-name aliases for courses above that were renamed in the
   // batch-creation Course dropdown without this catalog being updated to match — confirmed
   // with the counsellor team, same price carries over under the new name. The old-name keys

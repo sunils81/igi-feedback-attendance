@@ -3236,6 +3236,43 @@ function changePassword() {
   });
 }
 
+// Extracts a sortable {key, label} month from a batch code's trailing MONYY segment
+// (optionally followed by a -A/-B suffix, e.g. "MUM-COL-AUG26-B" -> Aug 2026) — used to
+// group batch dropdowns by month instead of one long flat list (2026-08-20: instructors
+// with several courses had dozens of batches with no way to narrow the list down). Falls
+// back to an "Other" group for any code that doesn't match the pattern, rather than
+// silently dropping it from the dropdown. Mirrors counselor.html's _batchMonthGroup.
+var MONTH_ABBR_MAP = {JAN:0,FEB:1,MAR:2,APR:3,MAY:4,JUN:5,JUL:6,AUG:7,SEP:8,OCT:9,NOV:10,DEC:11};
+function _batchMonthGroup(batchCode) {
+  var m = /([A-Z]{3})(\d{2})(?:-[A-Z])?$/.exec(String(batchCode||'').toUpperCase());
+  if (!m || !(m[1] in MONTH_ABBR_MAP)) return { key: 'zzz', label: 'Other' };
+  var monIdx = MONTH_ABBR_MAP[m[1]];
+  var year = 2000 + Number(m[2]);
+  var label = ['January','February','March','April','May','June','July','August','September','October','November','December'][monIdx] + ' ' + year;
+  var key = year + '-' + String(monIdx+1).padStart(2,'0');
+  return { key: key, label: label };
+}
+
+// Builds <option>/<optgroup> HTML for a batch <select>, grouped by month.
+function _buildGroupedBatchOptionsHtml(batches, placeholder) {
+  var byMonth = {};
+  (batches || []).forEach(function(b) {
+    var g = _batchMonthGroup(b.batchCode);
+    (byMonth[g.key] = byMonth[g.key] || { label: g.label, items: [] }).items.push(b);
+  });
+  var monthKeys = Object.keys(byMonth).sort();
+  var html = '<option value="">' + escHtml(placeholder) + '</option>';
+  monthKeys.forEach(function(mk) {
+    var grp = byMonth[mk];
+    html += '<optgroup label="' + escHtml(grp.label) + '">';
+    grp.items.sort(function(a,b){ return a.batchCode.localeCompare(b.batchCode); }).forEach(function(b) {
+      html += '<option value="' + escHtml(b.batchCode) + '">' + escHtml(b.batchCode + ' — ' + b.course + ' (' + b.centre + ')') + '</option>';
+    });
+    html += '</optgroup>';
+  });
+  return html;
+}
+
 function loadInstructorBatches() {
   gasGet({action:'getInstructorBatches', instructor:instructorName}, function(e,d) {
     if (e||!d||!d.batches) {
@@ -3260,13 +3297,7 @@ function loadInstructorBatches() {
     renderInstructorSummary();
     ['at-batch','mk-batch','ex-batch','res-batch'].forEach(id => {
       const sel = document.getElementById(id);
-      sel.innerHTML = '<option value="">Select a batch</option>';
-      batches.forEach(b => {
-        const o = document.createElement('option');
-        o.value = b.batchCode;
-        o.textContent = b.batchCode + ' — ' + b.course + ' (' + b.centre + ')';
-        sel.appendChild(o);
-      });
+      sel.innerHTML = _buildGroupedBatchOptionsHtml(batches, 'Select a batch');
     });
   });
 }

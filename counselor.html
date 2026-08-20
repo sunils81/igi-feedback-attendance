@@ -7963,6 +7963,29 @@ function _batchMonthGroup(batchCode) {
   return { key: key, label: label };
 }
 
+// Builds <option>/<optgroup> HTML for a batch <select>, grouped by month (via
+// _batchMonthGroup) so long batch lists are easy to scan instead of one flat list —
+// used across every batch dropdown in the Counsellor Portal (2026-08-20: batch counts
+// had grown to the point where finding a course in a flat list was slow).
+function _buildGroupedBatchOptionsHtml(batches, placeholder) {
+  var byMonth = {};
+  (batches || []).forEach(function(b) {
+    var g = _batchMonthGroup(b.batchCode);
+    (byMonth[g.key] = byMonth[g.key] || { label: g.label, items: [] }).items.push(b);
+  });
+  var monthKeys = Object.keys(byMonth).sort();
+  var html = '<option value="">' + escC(placeholder) + '</option>';
+  monthKeys.forEach(function(mk) {
+    var grp = byMonth[mk];
+    html += '<optgroup label="' + escC(grp.label) + '">';
+    grp.items.sort(function(a,b){ return a.batchCode.localeCompare(b.batchCode); }).forEach(function(b) {
+      html += '<option value="' + escC(b.batchCode) + '">' + escC(b.batchCode + ' — ' + b.course + ' (' + b.centre + ')') + '</option>';
+    });
+    html += '</optgroup>';
+  });
+  return html;
+}
+
 function _applyBatchData(batches, onDone) {
   allBatches = batches;
   updateCounselorSummary(allBatches);
@@ -7970,13 +7993,7 @@ function _applyBatchData(batches, onDone) {
     const sel = document.getElementById(id);
     if (!sel) return;
     const cur = sel.value;
-    sel.innerHTML = '<option value="">Select a batch</option>';
-    batches.forEach(function(b) {
-      const o = document.createElement('option');
-      o.value = b.batchCode;
-      o.textContent = b.batchCode + ' — ' + b.course + ' (' + b.centre + ')';
-      sel.appendChild(o);
-    });
+    sel.innerHTML = _buildGroupedBatchOptionsHtml(batches, 'Select a batch');
     if (cur) sel.value = cur;
   });
   // fee-batch specifically grouped by month (<optgroup>), per instruction 2026-07-31 —
@@ -7984,22 +8001,7 @@ function _applyBatchData(batches, onDone) {
   const feeSel = document.getElementById('fee-batch');
   if (feeSel) {
     const cur = feeSel.value;
-    var byMonth = {};
-    batches.forEach(function(b) {
-      var g = _batchMonthGroup(b.batchCode);
-      (byMonth[g.key] = byMonth[g.key] || { label: g.label, items: [] }).items.push(b);
-    });
-    var monthKeys = Object.keys(byMonth).sort();
-    var html = '<option value="">Select a batch</option>';
-    monthKeys.forEach(function(mk) {
-      var grp = byMonth[mk];
-      html += '<optgroup label="' + escC(grp.label) + '">';
-      grp.items.sort(function(a,b){ return a.batchCode.localeCompare(b.batchCode); }).forEach(function(b) {
-        html += '<option value="' + escC(b.batchCode) + '">' + escC(b.batchCode + ' — ' + b.course + ' (' + b.centre + ')') + '</option>';
-      });
-      html += '</optgroup>';
-    });
-    feeSel.innerHTML = html;
+    feeSel.innerHTML = _buildGroupedBatchOptionsHtml(batches, 'Select a batch');
     if (cur) feeSel.value = cur;
   }
   renderStudentBatchChoices();
@@ -15468,13 +15470,28 @@ function populateDiplomaBatchFilter() {
   var scoped = centre
     ? (diplomaList || []).filter(function(a) { return a.centre === centre; })
     : (diplomaList || []);
-  var batches = [];
-  scoped.forEach(function(a) { if (a.batchCode && batches.indexOf(a.batchCode) === -1) batches.push(a.batchCode); });
-  batches.sort();
-  batchFilter.innerHTML = '<option value="">All Batches</option>' +
-    batches.map(function(b) { return '<option value="' + escC(b) + '">' + escC(b) + '</option>'; }).join('');
+  var batchCodes = [];
+  scoped.forEach(function(a) { if (a.batchCode && batchCodes.indexOf(a.batchCode) === -1) batchCodes.push(a.batchCode); });
+  // Grouped by month (<optgroup>) so this dropdown stays scannable as the number of
+  // batches grows, matching the other batch dropdowns in this portal (2026-08-20).
+  var byMonth = {};
+  batchCodes.forEach(function(code) {
+    var g = _batchMonthGroup(code);
+    (byMonth[g.key] = byMonth[g.key] || { label: g.label, items: [] }).items.push(code);
+  });
+  var monthKeys = Object.keys(byMonth).sort();
+  var html = '<option value="">All Batches</option>';
+  monthKeys.forEach(function(mk) {
+    var grp = byMonth[mk];
+    html += '<optgroup label="' + escC(grp.label) + '">';
+    grp.items.sort().forEach(function(code) {
+      html += '<option value="' + escC(code) + '">' + escC(code) + '</option>';
+    });
+    html += '</optgroup>';
+  });
+  batchFilter.innerHTML = html;
   // Keep the previous selection if it's still a valid option for the (possibly new) centre scope
-  if (prevSelected && batches.indexOf(prevSelected) !== -1) batchFilter.value = prevSelected;
+  if (prevSelected && batchCodes.indexOf(prevSelected) !== -1) batchFilter.value = prevSelected;
 }
 
 // Centre filter changing should narrow the batch dropdown to that centre's batches before
@@ -19439,19 +19456,28 @@ function _attPopulateBatchDropdown(pending) {
   gasGet({action:'getBatches', centres:centresParam}, function(e, d) {
     if (e || !d || !d.batches) return;
     var batches = d.batches.filter(function(b){ return b.status === 'Active'; });
-    // Put pending batches at top
+    // Put batches with a pending session at the top of the group they'd otherwise sort
+    // into isn't practical once grouped by month, so instead flag them inline (⚠️, bold)
+    // within their month group rather than reordering across groups.
     var pendingCodes = pending.map(function(s){ return s.batchCode; });
-    batches.sort(function(a,b){
-      var ai = pendingCodes.indexOf(a.batchCode) > -1 ? 0 : 1;
-      var bi = pendingCodes.indexOf(b.batchCode) > -1 ? 0 : 1;
-      return ai - bi;
+    var byMonth = {};
+    batches.forEach(function(b) {
+      var g = _batchMonthGroup(b.batchCode);
+      (byMonth[g.key] = byMonth[g.key] || { label: g.label, items: [] }).items.push(b);
     });
-    sel.innerHTML = '<option value="">— Select Batch —</option>' +
-      batches.map(function(b){
+    var monthKeys = Object.keys(byMonth).sort();
+    var html = '<option value="">— Select Batch —</option>';
+    monthKeys.forEach(function(mk) {
+      var grp = byMonth[mk];
+      html += '<optgroup label="' + escC(grp.label) + '">';
+      grp.items.sort(function(a,b){ return a.batchCode.localeCompare(b.batchCode); }).forEach(function(b) {
         var hasPending = pendingCodes.indexOf(b.batchCode) > -1;
-        return '<option value="' + escC(b.batchCode) + '"' + (hasPending ? ' style="font-weight:700;color:#d97706"' : '') + '>' +
-          b.batchCode + (hasPending ? ' ⚠️' : '') + '</option>';
-      }).join('');
+        html += '<option value="' + escC(b.batchCode) + '"' + (hasPending ? ' style="font-weight:700;color:#d97706"' : '') + '>' +
+          escC(b.batchCode) + (hasPending ? ' ⚠️' : '') + '</option>';
+      });
+      html += '</optgroup>';
+    });
+    sel.innerHTML = html;
   });
 }
 

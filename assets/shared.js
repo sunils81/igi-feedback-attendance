@@ -11223,7 +11223,16 @@ const CSS_VARS = `
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:"Plus Jakarta Sans",sans-serif;background:linear-gradient(180deg,#FBFAF6 0%,var(--off) 42%,#EEE8DC 100%);color:var(--navy);min-height:100vh;font-size:15px;line-height:1.6}
-.wrap{max-width:1040px;margin:0 auto;padding:20px 16px 60px}
+/* Widened 2026-08-21, per instruction: the fixed 1040px cap left large empty gutters on
+   any normal laptop/desktop screen, on every portal (this rule is shared via CSS_VARS,
+   loaded by counselor/instructor/admin/student/etc. alike) — most visible on data-heavy
+   tables like Cashfree Reconciliation, which had to horizontal-scroll well before the
+   window ran out of room. 1800px lets the page use almost the full width of a normal
+   monitor while still capping on ultra-wide/4K displays so paragraph text and cards don't
+   stretch to an uncomfortable, hard-to-read width. Every grid/card layout in this file
+   uses fr/auto-fit units rather than fixed pixel columns, so widening the outer wrap just
+   gives them more room — nothing was hard-coded to the old 1040px. */
+.wrap{max-width:1800px;margin:0 auto;padding:20px 16px 60px}
 .site-header{background:linear-gradient(135deg,var(--navy),var(--navy2));border-radius:var(--r-lg);margin-bottom:22px;overflow:hidden;box-shadow:0 20px 48px rgba(13,27,46,.20);position:relative}
 /* Same faceted diamond-crown motif used behind the public site's hero text —
    barely visible, drifting almost imperceptibly slowly — so every portal's

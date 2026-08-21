@@ -4002,6 +4002,25 @@
         <button class="btn btn-outline cf-pill" data-status="applied" onclick="cfSetFilter('applied')" style="width:auto;padding:6px 12px;font-size:12px">📗 Applied</button>
         <button class="btn btn-outline cf-pill" data-status="dismissed" onclick="cfSetFilter('dismissed')" style="width:auto;padding:6px 12px;font-size:12px">🗂 Dismissed</button>
       </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:14px">
+        <div class="field" style="min-width:220px;flex:1;margin-bottom:0"><label>Search (name, phone, UTR/ref)</label>
+          <input type="text" id="cf-search" placeholder="e.g. Tanay, 9198..., UTR..." oninput="cfRender()">
+        </div>
+        <div class="field" style="min-width:150px;margin-bottom:0"><label>Settlement</label>
+          <select id="cf-settle-filter" onchange="cfRender()">
+            <option value="">All</option>
+            <option value="settled">Settled</option>
+            <option value="not_settled">Not Settled</option>
+          </select>
+        </div>
+        <div class="field" style="min-width:140px;margin-bottom:0"><label>Settled From</label>
+          <input type="date" id="cf-date-from" onchange="cfRender()">
+        </div>
+        <div class="field" style="min-width:140px;margin-bottom:0"><label>Settled To</label>
+          <input type="date" id="cf-date-to" onchange="cfRender()">
+        </div>
+        <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="cfResetFilters()">Reset filters</button>
+      </div>
       <div id="cf-list"><div class="empty-state"><div class="empty-icon">💳</div><div class="empty-title">Loading…</div></div></div>
     </div>
   </div>
@@ -10908,10 +10927,45 @@ function cfBadgeColor(conf) {
   return '#9ca3af';
 }
 
+// Client-side only — cfRows already holds everything for the current status pill
+// (Needs Review / Ready to Apply / Applied / Dismissed); these just narrow that same
+// set by text/date, so typing in Search doesn't need a round trip to Supabase.
+function cfFilteredRows() {
+  const q = (document.getElementById('cf-search').value || '').trim().toLowerCase();
+  const settleFilter = document.getElementById('cf-settle-filter').value;
+  const dateFrom = document.getElementById('cf-date-from').value;
+  const dateTo = document.getElementById('cf-date-to').value;
+  return cfRows.filter(function(r) {
+    if (q) {
+      const hay = [r.customer_name, r.customer_phone, r.utr_no, r.reference_id, r.matched_student_name, r.matched_student_id, r.matched_batch_code]
+        .map(function(v) { return String(v || '').toLowerCase(); }).join(' ');
+      if (hay.indexOf(q) === -1) return false;
+    }
+    if (settleFilter === 'settled' && String(r.settlement_status || '').toUpperCase() !== 'SETTLED') return false;
+    if (settleFilter === 'not_settled' && String(r.settlement_status || '').toUpperCase() === 'SETTLED') return false;
+    if (dateFrom && (!r.settled_on || r.settled_on < dateFrom)) return false;
+    if (dateTo && (!r.settled_on || r.settled_on > dateTo)) return false;
+    return true;
+  });
+}
+
+function cfResetFilters() {
+  document.getElementById('cf-search').value = '';
+  document.getElementById('cf-settle-filter').value = '';
+  document.getElementById('cf-date-from').value = '';
+  document.getElementById('cf-date-to').value = '';
+  cfRender();
+}
+
 function cfRender() {
   const list = document.getElementById('cf-list');
+  const rows = cfFilteredRows();
   if (!cfRows.length) {
     list.innerHTML = emptyState('💳', 'Nothing here', 'No settlement rows in this view. Try "Sync from Cashfree Sheet" above, or check another filter.');
+    return;
+  }
+  if (!rows.length) {
+    list.innerHTML = emptyState('🔍', 'No matches', 'Nothing matches your search/date filters in this view. Try "Reset filters".');
     return;
   }
   let html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
@@ -10920,7 +10974,7 @@ function cfRender() {
     '<th style="padding:6px 8px">Amount</th><th style="padding:6px 8px">Mode</th>' +
     '<th style="padding:6px 8px">UTR / Ref</th><th style="padding:6px 8px">Settled On</th>' +
     '<th style="padding:6px 8px">Match</th><th style="padding:6px 8px">Actions</th></tr></thead><tbody>';
-  cfRows.forEach(function(r) {
+  rows.forEach(function(r) {
     const amt = r.settlement_amount || r.amount || 0;
     const matchLabel = r.matched_student_name
       ? (escC(r.matched_student_name) + ' (' + escC(r.matched_student_id) + ')' + (r.matched_batch_code ? '<br><span style="color:var(--muted)">' + escC(r.matched_batch_code) + (r.matched_installment ? ' · Inst ' + r.matched_installment : '') + '</span>' : ''))

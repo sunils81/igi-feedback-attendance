@@ -1823,6 +1823,7 @@
     <button class="tab" id="tab-op-invoices" onclick="switchTab('t-op-invoices')" style="display:none">🧾 Invoices &amp; Receipts</button>
     <button class="tab active" id="tab-batches" onclick="switchTab('t-batches')">📋 Batches</button>
     <button class="tab" id="tab-fees" onclick="switchTab('t-fees')">💰 Fees <span id="fees-overdue-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
+    <button class="tab" id="tab-cashfree" onclick="switchTab('t-cashfree')">💳 Cashfree Recon <span id="cashfree-review-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-students" onclick="switchTab('t-students')">👥 Students</button>
     <button class="tab" id="tab-alumni" onclick="switchTab('t-alumni')">🎓 Alumni</button>
     <button class="tab" id="tab-notebook" onclick="switchTab('t-notebook')">📓 My Notebook</button>
@@ -3981,6 +3982,30 @@
     </div>
   </div>
 
+  <!-- TAB 6a-2: CASHFREE RECONCILIATION — 2026-08-21, per instruction: match the Cashfree
+       settlement Google Sheet (already downloaded by whoever runs collections) against open
+       fee installments, so a counsellor can jump into that student's Fee Update form
+       pre-filled instead of manually cross-checking the sheet by eye. Open to every
+       counsellor, same as Fees itself. -->
+  <div id="t-cashfree" class="tab-content">
+    <div class="card">
+      <div class="section-tag">Fee Collection</div>
+      <h2>Cashfree Reconciliation</h2>
+      <p class="sub">Pulls the Cashfree settlement sheet, matches each payment to a student by phone number + amount, and lets you open that student's Fee Update form pre-filled with the payment mode, reference and date. Always review the pre-filled installment and click Save yourself — nothing here saves a fee record on its own.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <button class="btn btn-gold" id="cf-sync-btn" style="width:auto;padding:8px 16px;font-size:12px" onclick="cfSync()">🔄 Sync from Cashfree Sheet</button>
+        <div id="cf-sync-status" style="font-size:12px;color:var(--muted)"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px" id="cf-filter-pills">
+        <button class="btn btn-outline cf-pill active" data-status="needs_review" onclick="cfSetFilter('needs_review')" style="width:auto;padding:6px 12px;font-size:12px">⚠️ Needs Review</button>
+        <button class="btn btn-outline cf-pill" data-status="matched" onclick="cfSetFilter('matched')" style="width:auto;padding:6px 12px;font-size:12px">✅ Ready to Apply</button>
+        <button class="btn btn-outline cf-pill" data-status="applied" onclick="cfSetFilter('applied')" style="width:auto;padding:6px 12px;font-size:12px">📗 Applied</button>
+        <button class="btn btn-outline cf-pill" data-status="dismissed" onclick="cfSetFilter('dismissed')" style="width:auto;padding:6px 12px;font-size:12px">🗂 Dismissed</button>
+      </div>
+      <div id="cf-list"><div class="empty-state"><div class="empty-icon">💳</div><div class="empty-title">Loading…</div></div></div>
+    </div>
+  </div>
+
   <!-- TAB 6b: INVOICES (cross-batch, all months) -->
   <!-- TAB 6c: FEE RECORD (reconciliation ledger + invoice management) -->
   <div id="t-fee-record" class="tab-content">
@@ -6024,6 +6049,9 @@ function switchTab(id) {
   }
   if (id === 't-inventory') {
     initInventoryTab();
+  }
+  if (id === 't-cashfree') {
+    cfLoad();
   }
   if (id === 't-reports') {
     loadHodBatchOversight();
@@ -10838,6 +10866,183 @@ function openFeeForm(studentId) {
 function hideFeeForm() {
   document.getElementById('fee-form-card').style.display = 'none';
   currentFeeStudent = null;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CASHFREE RECONCILIATION TAB — 2026-08-21. See h_cashfree* in shared.js for
+   the sync/matching logic; this is just the UI: sync button, filtered list,
+   and "Open in Fee Update" which pre-fills the existing Fee form's fields
+   (never saves anything itself — the counsellor still reviews and clicks
+   Save Fee Record, exactly as if they'd typed it in by hand).
+══════════════════════════════════════════════════════════════════════════ */
+var cfCurrentFilter = 'needs_review';
+var cfRows = [];
+
+function cfSetFilter(status) {
+  cfCurrentFilter = status;
+  document.querySelectorAll('#cf-filter-pills .cf-pill').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-status') === status);
+    b.style.background = b.getAttribute('data-status') === status ? 'var(--navy)' : '';
+    b.style.color = b.getAttribute('data-status') === status ? '#fff' : '';
+  });
+  cfLoad();
+}
+
+function cfLoad() {
+  const list = document.getElementById('cf-list');
+  list.innerHTML = loadingState('Loading settlement rows...');
+  gasGet({ action: 'cashfreeList', status: cfCurrentFilter }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      list.innerHTML = emptyState('⚠️', 'Could not load', (d && d.reason) || String(e || 'Unknown error'));
+      return;
+    }
+    cfRows = d.rows || [];
+    cfRender();
+  });
+}
+
+function cfBadgeColor(conf) {
+  if (conf === 'high') return '#1D9E75';
+  if (conf === 'medium') return '#d97706';
+  if (conf === 'low') return '#dc2626';
+  return '#9ca3af';
+}
+
+function cfRender() {
+  const list = document.getElementById('cf-list');
+  if (!cfRows.length) {
+    list.innerHTML = emptyState('💳', 'Nothing here', 'No settlement rows in this view. Try "Sync from Cashfree Sheet" above, or check another filter.');
+    return;
+  }
+  let html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+    '<thead><tr style="text-align:left;border-bottom:1.5px solid var(--border)">' +
+    '<th style="padding:6px 8px">Customer</th><th style="padding:6px 8px">Phone</th>' +
+    '<th style="padding:6px 8px">Amount</th><th style="padding:6px 8px">Mode</th>' +
+    '<th style="padding:6px 8px">UTR / Ref</th><th style="padding:6px 8px">Settled On</th>' +
+    '<th style="padding:6px 8px">Match</th><th style="padding:6px 8px">Actions</th></tr></thead><tbody>';
+  cfRows.forEach(function(r) {
+    const amt = r.settlement_amount || r.amount || 0;
+    const matchLabel = r.matched_student_name
+      ? (escC(r.matched_student_name) + ' (' + escC(r.matched_student_id) + ')' + (r.matched_batch_code ? '<br><span style="color:var(--muted)">' + escC(r.matched_batch_code) + (r.matched_installment ? ' · Inst ' + r.matched_installment : '') + '</span>' : ''))
+      : '<span style="color:var(--muted)">No match</span>';
+    html += '<tr style="border-bottom:1px solid var(--border)">' +
+      '<td style="padding:6px 8px">' + escC(r.customer_name || '') + '</td>' +
+      '<td style="padding:6px 8px">' + escC(r.customer_phone || '') + '</td>' +
+      '<td style="padding:6px 8px">₹' + Number(amt).toLocaleString('en-IN') + '</td>' +
+      '<td style="padding:6px 8px">' + escC(r.payment_mode || '') + '</td>' +
+      '<td style="padding:6px 8px">' + escC(r.utr_no || r.reference_id || '') + '</td>' +
+      '<td style="padding:6px 8px">' + escC(r.settled_on || '') + '</td>' +
+      '<td style="padding:6px 8px"><span style="display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;font-weight:700;color:#fff;background:' + cfBadgeColor(r.match_confidence) + '">' + escC((r.match_confidence || 'none').toUpperCase()) + '</span><br>' + matchLabel +
+      (r.match_note ? '<div style="color:var(--muted);font-size:11px;margin-top:2px">' + escC(r.match_note) + '</div>' : '') + '</td>' +
+      '<td style="padding:6px 8px;white-space:nowrap">' + cfActionsHtml(r) + '</td>' +
+    '</tr>';
+  });
+  html += '</tbody></table></div>';
+  list.innerHTML = html;
+}
+
+function cfActionsHtml(r) {
+  var btns = [];
+  if (r.applied) {
+    btns.push('<button class="btn btn-outline" style="width:auto;padding:4px 8px;font-size:11px" onclick="cfMarkApplied(\'' + r.id + '\', false)">Undo</button>');
+  } else if (r.dismissed) {
+    btns.push('<button class="btn btn-outline" style="width:auto;padding:4px 8px;font-size:11px" onclick="cfDismiss(\'' + r.id + '\', false)">Restore</button>');
+  } else {
+    if (r.matched_student_id) {
+      btns.push('<button class="btn btn-gold" style="width:auto;padding:4px 8px;font-size:11px" onclick="cfOpenInFeeUpdate(\'' + r.id + '\')">Open in Fee Update</button>');
+      btns.push('<button class="btn btn-outline" style="width:auto;padding:4px 8px;font-size:11px" onclick="cfMarkApplied(\'' + r.id + '\', true)">Mark Applied</button>');
+    }
+    btns.push('<button class="btn btn-outline" style="width:auto;padding:4px 8px;font-size:11px" onclick="cfManualMatch(\'' + r.id + '\')">' + (r.matched_student_id ? 'Change Match' : 'Match Manually') + '</button>');
+    btns.push('<button class="btn btn-outline" style="width:auto;padding:4px 8px;font-size:11px" onclick="cfDismiss(\'' + r.id + '\', true)">Dismiss</button>');
+  }
+  return btns.join(' ');
+}
+
+function cfSync() {
+  const btn = document.getElementById('cf-sync-btn');
+  const status = document.getElementById('cf-sync-status');
+  btn.disabled = true;
+  status.textContent = 'Syncing from the Cashfree sheet…';
+  gasGet({ action: 'cashfreeSync' }, function(e, d) {
+    btn.disabled = false;
+    if (e || !d || d.status !== 'ok') {
+      status.textContent = '';
+      showToast((d && d.reason) || String(e || 'Sync failed'), 'error');
+      return;
+    }
+    const m = d.matching || {};
+    status.textContent = d.imported + ' new row(s) imported · ' + m.high + ' ready to apply, ' + m.medium + ' need review, ' + m.low + ' need manual match, ' + m.none + ' no student found.';
+    showToast('Synced — ' + d.imported + ' new settlement row(s).', 'success');
+    cfLoad();
+  });
+}
+
+function cfOpenInFeeUpdate(id) {
+  const row = cfRows.find(function(r) { return r.id === id; });
+  if (!row || !row.matched_student_id || !row.matched_batch_code) {
+    showToast('No batch matched yet — use "Match Manually" first.', 'error');
+    return;
+  }
+  switchTab('t-fees');
+  const feeBatchSel = document.getElementById('fee-batch');
+  feeBatchSel.value = row.matched_batch_code;
+  if (feeBatchSel.value !== row.matched_batch_code) {
+    showToast('Batch ' + row.matched_batch_code + ' isn\'t in the Fees batch list (likely ended) — open it manually from Fee Record instead.', 'error');
+    return;
+  }
+  loadFeeOverview(function() {
+    openFeeForm(row.matched_student_id);
+    const i = row.matched_installment || 1;
+    const paidSel = document.getElementById('fee-inst' + i + '-paid');
+    if (!paidSel) { showToast('This record doesn\'t have Installment ' + i + ' set up — check manually.', 'error'); return; }
+    if (paidSel.disabled) { showToast('Installment ' + i + ' is already marked paid and locked — use "Revise" on that row if this looks wrong.', 'error'); return; }
+    paidSel.value = 'Y';
+    onFeePaidChange(i);
+    const mode = cfMapPaymentMode(row.payment_mode);
+    const modeSel = document.getElementById('fee-inst' + i + '-mode');
+    if (modeSel && mode) modeSel.value = mode;
+    const refEl = document.getElementById('fee-inst' + i + '-ref');
+    if (refEl) refEl.value = row.utr_no || row.reference_id || '';
+    const dateEl = document.getElementById('fee-inst' + i + '-paid-date');
+    if (dateEl && row.settled_on) dateEl.value = row.settled_on;
+    recalcFeeForm();
+    showToast('Pre-filled Installment ' + i + ' from Cashfree — review it, then click Save Fee Record.', 'info');
+  });
+}
+
+function cfMapPaymentMode(m) {
+  const s = String(m || '').toUpperCase();
+  if (s.indexOf('UPI') >= 0) return 'UPI';
+  if (s.indexOf('CARD') >= 0) return 'Card';
+  if (s.indexOf('NET_BANKING') >= 0 || s.indexOf('NETBANKING') >= 0) return 'RTGS';
+  return '';
+}
+
+function cfManualMatch(id) {
+  const sid = window.prompt('Student ID (enrollment number) this payment belongs to:');
+  if (!sid) return;
+  const batchCode = window.prompt('Batch code (e.g. MUM-COL-AUG26) — leave blank if unsure:') || '';
+  const inst = window.prompt('Installment number this payment covers (1, 2 or 3) — leave blank if unsure:') || '';
+  gasGet({ action: 'cashfreeSetMatch', id: id, studentId: sid.trim(), batchCode: batchCode.trim(), installment: inst.trim(), actorName: counselorName }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { showToast((d && d.reason) || 'Could not match.', 'error'); return; }
+    showToast('Matched. Review it under "Ready to Apply".', 'success');
+    cfLoad();
+  });
+}
+
+function cfDismiss(id, flag) {
+  gasGet({ action: 'cashfreeDismiss', id: id, dismissed: flag }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { showToast((d && d.reason) || 'Could not update.', 'error'); return; }
+    cfLoad();
+  });
+}
+
+function cfMarkApplied(id, flag) {
+  gasGet({ action: 'cashfreeMarkApplied', id: id, applied: flag, actorName: counselorName }, function(e, d) {
+    if (e || !d || d.status !== 'ok') { showToast((d && d.reason) || 'Could not update.', 'error'); return; }
+    showToast(flag ? 'Marked as applied.' : 'Un-applied.', 'success');
+    cfLoad();
+  });
 }
 
 // Reveals the counsellor picker after an explicit "Wrong credit? Change counsellor" click —

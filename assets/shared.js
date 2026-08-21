@@ -10111,6 +10111,256 @@ window.gasGet = (function () {
   }
 
   /* ══════════════════════════════════════════════════════════════
+     CASHFREE RECONCILIATION — 2026-08-21, per instruction: counsellors were manually
+     cross-checking a Cashfree settlement Google Sheet (downloaded after every payment
+     cycle) against the Fee Update form by eye. This imports that sheet (via a tiny
+     same-origin proxy at /api/cashfree-csv, since Google's CSV export endpoint refuses
+     cross-origin browser fetches) into cashfree_settlements, matches each row to a
+     student + open installment by phone number + amount, and surfaces the result in a
+     Cashfree Reconciliation tab so a counsellor can jump straight into that student's
+     Fee Update form pre-filled, instead of re-typing what's already on the sheet.
+     Nothing here writes to student_fees directly — it only prefills the existing Fee
+     Update form's fields; the counsellor still reviews and clicks Save themselves.
+  ══════════════════════════════════════════════════════════════ */
+
+  function _cfNormPhone(v) { if (!v) return ''; return String(v).replace(/\D/g, '').slice(-10); }
+  function _cfNormMoney(v) {
+    if (v === undefined || v === null) return 0;
+    var n = parseFloat(String(v).replace(/,/g, '').trim());
+    return isNaN(n) ? 0 : n;
+  }
+  // Best-effort date normaliser — the sheet's "Settled On" column has been seen in a few
+  // different formats depending on how Cashfree/Excel/Sheets rendered it on export.
+  function _cfNormDate(v) {
+    if (!v) return null;
+    var s = String(v).trim();
+    var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[1] + '-' + m[2] + '-' + m[3];
+    m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (m) return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+    var d = new Date(s);
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    return null;
+  }
+  // Minimal RFC4180 CSV parser — handles quoted fields containing commas/quotes/newlines,
+  // which plain split(',') would break on (customer names routinely contain commas).
+  function _cfParseCsv(text) {
+    var rows = [], row = [], field = '', inQuotes = false;
+    for (var i = 0; i < text.length; i++) {
+      var c = text[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; } else { inQuotes = false; }
+        } else { field += c; }
+      } else {
+        if (c === '"') inQuotes = true;
+        else if (c === ',') { row.push(field); field = ''; }
+        else if (c === '\n' || c === '\r') {
+          if (c === '\r' && text[i + 1] === '\n') i++;
+          row.push(field); field = '';
+          if (row.length > 1 || row[0] !== '') rows.push(row);
+          row = [];
+        } else { field += c; }
+      }
+    }
+    if (field !== '' || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+  function _cfRowsToObjects(csvText) {
+    var grid = _cfParseCsv(csvText);
+    if (!grid.length) return [];
+    var header = grid[0].map(function (h) { return h.trim(); });
+    var idx = {};
+    header.forEach(function (h, i) { idx[h] = i; });
+    function col(r, name) { return idx[name] !== undefined ? (r[idx[name]] || '').trim() : ''; }
+    return grid.slice(1).filter(function (r) { return r.length > 1 && col(r, 'Order Id'); }).map(function (r) {
+      return {
+        order_id: col(r, 'Order Id'),
+        reference_id: col(r, 'Reference Id'),
+        customer_name: col(r, 'Customer Name'),
+        customer_phone: col(r, 'Customer Phone'),
+        customer_email: col(r, 'Customer Email'),
+        centre: col(r, 'Centre'),
+        amount: _cfNormMoney(col(r, 'Amount')),
+        service_charge: _cfNormMoney(col(r, 'Service Charge')),
+        gst: _cfNormMoney(col(r, 'ST/GST')),
+        settlement_amount: _cfNormMoney(col(r, 'Settlement Amount')),
+        payment_mode: col(r, 'Payment Mode'),
+        txn_status: col(r, 'Transaction Status'),
+        settlement_status: col(r, 'Settlement'),
+        utr_no: col(r, 'UTR No.'),
+        settled_on: _cfNormDate(col(r, 'Settled On')),
+        raw: (function () { var o = {}; header.forEach(function (h, i) { o[h] = r[i]; }); return o; })()
+      };
+    });
+  }
+  // Cashfree's Payment Mode strings mapped onto the Fee form's existing Mode dropdown
+  // (['Cash','Card','UPI','RTGS','Collexo','Cheque','DD']) — left blank (counsellor picks)
+  // rather than guessed when there's no clean match, so nothing wrong gets silently pre-filled.
+  function _cfMapPaymentMode(m) {
+    var s = String(m || '').toUpperCase();
+    if (s.indexOf('UPI') >= 0) return 'UPI';
+    if (s.indexOf('CARD') >= 0) return 'Card';
+    if (s.indexOf('NET_BANKING') >= 0 || s.indexOf('NETBANKING') >= 0) return 'RTGS';
+    return '';
+  }
+
+  function h_cashfreeSync(p, cb) {
+    fetch('/api/cashfree-csv').then(function (r) {
+      if (!r.ok) throw new Error('Sheet fetch failed: ' + r.status);
+      return r.text();
+    }).then(function (csvText) {
+      var rows = _cfRowsToObjects(csvText);
+      GET('cashfree_settlements', 'select=order_id', function (eEx, existing) {
+        var have = {};
+        (existing || []).forEach(function (r) { have[r.order_id] = true; });
+        var toInsert = rows.filter(function (r) { return r.order_id && !have[r.order_id]; });
+        function afterInsert() {
+          _cfRunMatching(function (summary) {
+            cb(null, { status: 'ok', imported: toInsert.length, totalRows: rows.length, matching: summary });
+          });
+        }
+        if (!toInsert.length) { afterInsert(); return; }
+        POST('cashfree_settlements', 'on_conflict=order_id', toInsert, function (eIns) {
+          if (eIns) { cb(null, { status: 'error', reason: 'Could not import: ' + String(eIns) }); return; }
+          afterInsert();
+        });
+      });
+    }).catch(function (e) {
+      cb(null, { status: 'error', reason: String(e) });
+    });
+  }
+
+  // Re-evaluates every settlement row that isn't dismissed, applied, or manually matched —
+  // cheap at this data volume, and lets a row that failed to match on an earlier sync
+  // (e.g. the student wasn't in the system yet) resolve automatically on a later one.
+  function _cfRunMatching(cb) {
+    GET('cashfree_settlements', 'applied=eq.false&dismissed=eq.false&matched_manually=eq.false&select=*', function (e, unresolved) {
+      unresolved = unresolved || [];
+      if (!unresolved.length) { cb({ resolved: 0, high: 0, medium: 0, low: 0, none: 0 }); return; }
+      GET('students', 'select=student_id,name,mobile', function (e2, students) {
+        var phoneMap = {};
+        (students || []).forEach(function (s) {
+          var ph = _cfNormPhone(s.mobile);
+          if (!ph) return;
+          (phoneMap[ph] = phoneMap[ph] || []).push(s);
+        });
+        var allCandidateIds = {};
+        unresolved.forEach(function (row) {
+          (phoneMap[_cfNormPhone(row.customer_phone)] || []).forEach(function (s) { allCandidateIds[s.student_id] = true; });
+        });
+        var idList = Object.keys(allCandidateIds);
+        function withFees(feesByStudent) {
+          var summary = { resolved: 0, high: 0, medium: 0, low: 0, none: 0 };
+          var patches = [];
+          unresolved.forEach(function (row) {
+            var candidates = phoneMap[_cfNormPhone(row.customer_phone)] || [];
+            var target = row.settlement_amount || row.amount;
+            var openInsts = [];
+            candidates.forEach(function (s) {
+              (feesByStudent[s.student_id] || []).forEach(function (fee) {
+                var meta; try { meta = JSON.parse(fee.receipt_no || '{}'); } catch (e3) { meta = {}; }
+                var n = Number(meta.n_installments || 1);
+                for (var i = 1; i <= n; i++) {
+                  var amt = Number(meta['inst' + i + '_amount'] || 0);
+                  if (meta['inst' + i + '_paid'] !== 'Y' && amt > 0) {
+                    openInsts.push({ studentId: s.student_id, name: s.name, batchCode: fee.batch_code, inst: i, amt: amt });
+                  }
+                }
+              });
+            });
+            var amtMatches = openInsts.filter(function (o) { return Math.abs(o.amt - target) <= 2; });
+            var patch = { id: row.id };
+            if (!candidates.length) {
+              patch.match_confidence = 'none'; patch.match_note = 'No student found with this phone number.';
+              summary.none++;
+            } else if (candidates.length === 1 && amtMatches.length === 1) {
+              patch.matched_student_id = amtMatches[0].studentId; patch.matched_student_name = amtMatches[0].name;
+              patch.matched_batch_code = amtMatches[0].batchCode; patch.matched_installment = amtMatches[0].inst;
+              patch.match_confidence = 'high'; patch.match_note = ''; summary.high++; summary.resolved++;
+            } else if (amtMatches.length >= 1) {
+              patch.matched_student_id = amtMatches[0].studentId; patch.matched_student_name = amtMatches[0].name;
+              patch.matched_batch_code = amtMatches[0].batchCode; patch.matched_installment = amtMatches[0].inst;
+              patch.match_confidence = 'medium';
+              patch.match_note = amtMatches.length > 1 ? 'Multiple open installments match this amount — confirm before applying.' : 'Phone matched more than one student — confirm before applying.';
+              summary.medium++; summary.resolved++;
+            } else if (candidates.length === 1) {
+              patch.matched_student_id = candidates[0].student_id; patch.matched_student_name = candidates[0].name;
+              patch.matched_batch_code = (openInsts[0] && openInsts[0].batchCode) || '';
+              patch.matched_installment = (openInsts[0] && openInsts[0].inst) || null;
+              patch.match_confidence = 'medium';
+              patch.match_note = 'Phone matched this student, but no open installment matched the amount exactly — verify before applying.';
+              summary.medium++; summary.resolved++;
+            } else {
+              patch.match_confidence = 'low';
+              patch.match_note = 'Phone matched ' + candidates.length + ' students (' + candidates.map(function (c) { return c.name; }).join(', ') + ') and amount didn\'t narrow it down — pick manually.';
+              summary.low++;
+            }
+            patches.push(patch);
+          });
+          var i2 = 0;
+          function next() {
+            if (i2 >= patches.length) { cb(summary); return; }
+            var patch = patches[i2++];
+            var id = patch.id; delete patch.id;
+            patch.updated_at = new Date().toISOString();
+            PATCH('cashfree_settlements', 'id=eq.' + encodeURIComponent(id), patch, function () { next(); });
+          }
+          next();
+        }
+        if (!idList.length) { withFees({}); return; }
+        GET('student_fees', 'student_id=in.(' + idList.map(encodeURIComponent).join(',') + ')&select=student_id,batch_code,receipt_no', function (e4, fees) {
+          var byStudent = {};
+          (fees || []).forEach(function (f) { (byStudent[f.student_id] = byStudent[f.student_id] || []).push(f); });
+          withFees(byStudent);
+        });
+      });
+    });
+  }
+
+  function h_cashfreeList(p, cb) {
+    var status = p.status || 'needs_review';
+    var qs = 'select=*&order=created_at.desc&limit=500';
+    if (status === 'needs_review') qs += '&applied=eq.false&dismissed=eq.false&match_confidence=in.(none,low,medium)';
+    else if (status === 'matched') qs += '&applied=eq.false&dismissed=eq.false&match_confidence=eq.high';
+    else if (status === 'applied') qs += '&applied=eq.true';
+    else if (status === 'dismissed') qs += '&dismissed=eq.true';
+    GET('cashfree_settlements', qs, function (e, rows) {
+      cb(null, { status: 'ok', rows: rows || [] });
+    });
+  }
+
+  function h_cashfreeSetMatch(p, cb) {
+    if (!p.id || !p.studentId) { cb(null, { status: 'error', reason: 'Missing id/studentId' }); return; }
+    GET('students', 'student_id=eq.' + encodeURIComponent(p.studentId) + '&select=student_id,name', function (e, srows) {
+      var s = (srows || [])[0];
+      PATCH('cashfree_settlements', 'id=eq.' + encodeURIComponent(p.id), {
+        matched_student_id: p.studentId, matched_student_name: s ? s.name : (p.studentName || ''),
+        matched_batch_code: p.batchCode || '', matched_installment: p.installment ? Number(p.installment) : null,
+        match_confidence: 'high', matched_manually: true, match_note: 'Manually matched by ' + (p.actorName || 'counsellor') + '.',
+        updated_at: new Date().toISOString()
+      }, function (e2) {
+        cb(null, e2 ? { status: 'error', reason: String(e2) } : { status: 'ok' });
+      });
+    });
+  }
+
+  function h_cashfreeDismiss(p, cb) {
+    if (!p.id) { cb(null, { status: 'error', reason: 'Missing id' }); return; }
+    PATCH('cashfree_settlements', 'id=eq.' + encodeURIComponent(p.id), {
+      dismissed: !!p.dismissed, dismissed_reason: p.reason || '', updated_at: new Date().toISOString()
+    }, function (e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
+  }
+
+  function h_cashfreeMarkApplied(p, cb) {
+    if (!p.id) { cb(null, { status: 'error', reason: 'Missing id' }); return; }
+    PATCH('cashfree_settlements', 'id=eq.' + encodeURIComponent(p.id), {
+      applied: !!p.applied, applied_at: p.applied ? new Date().toISOString() : null,
+      applied_by: p.applied ? (p.actorName || '') : '', updated_at: new Date().toISOString()
+    }, function (e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
+  }
+
+  /* ══════════════════════════════════════════════════════════════
      MAIN DISPATCHER — replaces gasGet() transparently
   ══════════════════════════════════════════════════════════════ */
   return function gasGet(params, cb) {
@@ -10159,6 +10409,11 @@ window.gasGet = (function () {
       case 'getMissingInvoiceDates':    return h_getMissingInvoiceDates(params, cb);
       case 'fixRevenueMonthMismatch':   return h_fixRevenueMonthMismatch(params, cb);
       case 'saveFeeRecord':             return h_saveFee(params, cb);
+      case 'cashfreeSync':               return h_cashfreeSync(params, cb);
+      case 'cashfreeList':               return h_cashfreeList(params, cb);
+      case 'cashfreeSetMatch':           return h_cashfreeSetMatch(params, cb);
+      case 'cashfreeDismiss':            return h_cashfreeDismiss(params, cb);
+      case 'cashfreeMarkApplied':        return h_cashfreeMarkApplied(params, cb);
       case 'saveDiscountRequest':       return h_saveDiscountRequest(params, cb);
       case 'getDiscountRequests':       return h_getDiscountRequests(params, cb);
       case 'reviewDiscountRequest':     return h_reviewDiscountRequest(params, cb);

@@ -10265,20 +10265,22 @@ window.gasGet = (function () {
           unresolved.forEach(function (row) {
             var candidates = phoneMap[_cfNormPhone(row.customer_phone)] || [];
             var target = row.settlement_amount || row.amount;
-            var openInsts = [];
+            var openInsts = [], paidInsts = [], anyBatchForCandidate = null;
             candidates.forEach(function (s) {
               (feesByStudent[s.student_id] || []).forEach(function (fee) {
+                if (!anyBatchForCandidate) anyBatchForCandidate = { studentId: s.student_id, name: s.name, batchCode: fee.batch_code };
                 var meta; try { meta = JSON.parse(fee.receipt_no || '{}'); } catch (e3) { meta = {}; }
                 var n = Number(meta.n_installments || 1);
                 for (var i = 1; i <= n; i++) {
                   var amt = Number(meta['inst' + i + '_amount'] || 0);
-                  if (meta['inst' + i + '_paid'] !== 'Y' && amt > 0) {
-                    openInsts.push({ studentId: s.student_id, name: s.name, batchCode: fee.batch_code, inst: i, amt: amt });
-                  }
+                  if (amt <= 0) continue;
+                  var rec = { studentId: s.student_id, name: s.name, batchCode: fee.batch_code, inst: i, amt: amt };
+                  if (meta['inst' + i + '_paid'] === 'Y') paidInsts.push(rec); else openInsts.push(rec);
                 }
               });
             });
             var amtMatches = openInsts.filter(function (o) { return Math.abs(o.amt - target) <= 2; });
+            var paidAmtMatches = paidInsts.filter(function (o) { return Math.abs(o.amt - target) <= 2; });
             var patch = { id: row.id };
             if (!candidates.length) {
               patch.match_confidence = 'none'; patch.match_note = 'No student found with this phone number.';
@@ -10293,12 +10295,30 @@ window.gasGet = (function () {
               patch.match_confidence = 'medium';
               patch.match_note = amtMatches.length > 1 ? 'Multiple open installments match this amount — confirm before applying.' : 'Phone matched more than one student — confirm before applying.';
               summary.medium++; summary.resolved++;
+            } else if (candidates.length === 1 && paidAmtMatches.length >= 1) {
+              // This exact amount is already sitting on the student's record marked PAID —
+              // almost certainly this settlement row was already reconciled manually before
+              // this feature existed (seen live: historical-backfill records with mode
+              // "Historical" matching a settlement row exactly). Distinct from 'medium' so
+              // the counsellor sees "already recorded" instead of a dead-end "no installment
+              // matched" — the right action here is usually Dismiss, not Open in Fee Update.
+              patch.matched_student_id = paidAmtMatches[0].studentId; patch.matched_student_name = paidAmtMatches[0].name;
+              patch.matched_batch_code = paidAmtMatches[0].batchCode; patch.matched_installment = paidAmtMatches[0].inst;
+              patch.match_confidence = 'already_paid';
+              patch.match_note = 'This amount already appears recorded as PAID (Installment ' + paidAmtMatches[0].inst + ') on ' + paidAmtMatches[0].batchCode + ' — looks already reconciled. Dismiss if confirmed, or Change Match if this is actually a different payment.';
+              summary.resolved++;
             } else if (candidates.length === 1) {
+              // No installment (paid or unpaid) matches this amount at all. Still point
+              // "Open in Fee Update" somewhere useful — the candidate's own fee record —
+              // rather than leaving matched_batch_code blank, which used to make the button
+              // a dead end with no explanation of why.
               patch.matched_student_id = candidates[0].student_id; patch.matched_student_name = candidates[0].name;
-              patch.matched_batch_code = (openInsts[0] && openInsts[0].batchCode) || '';
-              patch.matched_installment = (openInsts[0] && openInsts[0].inst) || null;
+              patch.matched_batch_code = (anyBatchForCandidate && anyBatchForCandidate.batchCode) || '';
+              patch.matched_installment = null;
               patch.match_confidence = 'medium';
-              patch.match_note = 'Phone matched this student, but no open installment matched the amount exactly — verify before applying.';
+              patch.match_note = anyBatchForCandidate
+                ? 'Phone matched this student, but no installment (paid or unpaid) matched this amount — verify manually which installment this belongs to.'
+                : 'Phone matched this student, but they have no fee record yet — create one first, then re-sync.';
               summary.medium++; summary.resolved++;
             } else {
               patch.match_confidence = 'low';
@@ -10330,7 +10350,7 @@ window.gasGet = (function () {
   function h_cashfreeList(p, cb) {
     var status = p.status || 'needs_review';
     var qs = 'select=*&order=created_at.desc&limit=500';
-    if (status === 'needs_review') qs += '&applied=eq.false&dismissed=eq.false&match_confidence=in.(none,low,medium)';
+    if (status === 'needs_review') qs += '&applied=eq.false&dismissed=eq.false&match_confidence=in.(none,low,medium,already_paid)';
     else if (status === 'matched') qs += '&applied=eq.false&dismissed=eq.false&match_confidence=eq.high';
     else if (status === 'applied') qs += '&applied=eq.true';
     else if (status === 'dismissed') qs += '&dismissed=eq.true';

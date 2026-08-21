@@ -10939,6 +10939,7 @@ function cfPopulateCentreFilter() {
 function cfBadgeColor(conf) {
   if (conf === 'high') return '#1D9E75';
   if (conf === 'medium') return '#d97706';
+  if (conf === 'already_paid') return '#6b7280';
   if (conf === 'low') return '#dc2626';
   return '#9ca3af';
 }
@@ -11030,6 +11031,12 @@ function cfActionsHtml(r) {
     btns.push('<button class="btn btn-outline" style="width:auto;padding:4px 8px;font-size:11px" onclick="cfMarkApplied(\'' + r.id + '\', false)">Undo</button>');
   } else if (r.dismissed) {
     btns.push('<button class="btn btn-outline" style="width:auto;padding:4px 8px;font-size:11px" onclick="cfDismiss(\'' + r.id + '\', false)">Restore</button>');
+  } else if (r.match_confidence === 'already_paid') {
+    // This exact amount is already on the record as paid — the likely next step is
+    // Dismiss (already reconciled), not opening the Fee form, so lead with that.
+    btns.push('<button class="btn btn-gold" style="width:auto;padding:4px 8px;font-size:11px" onclick="cfDismiss(\'' + r.id + '\', true)">Dismiss (already recorded)</button>');
+    btns.push('<button class="btn btn-outline" style="width:auto;padding:4px 8px;font-size:11px" onclick="cfOpenInFeeUpdate(\'' + r.id + '\')">View Record</button>');
+    btns.push('<button class="btn btn-outline" style="width:auto;padding:4px 8px;font-size:11px" onclick="cfManualMatch(\'' + r.id + '\')">Change Match</button>');
   } else {
     if (r.matched_student_id) {
       btns.push('<button class="btn btn-gold" style="width:auto;padding:4px 8px;font-size:11px" onclick="cfOpenInFeeUpdate(\'' + r.id + '\')">Open in Fee Update</button>');

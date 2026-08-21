@@ -983,7 +983,8 @@ window.gasGet = (function () {
             cb(null, { status: 'ok', counselorName: r.name, instructorName: r.name, authRole: r.role || 'Counselor',
               isAdmin: isAdm, isManager: isMgr, centres: centres, mustChangePassword: !!r.must_change,
               batches: (bd && bd.batches) || [],
-              isAcademicHead: isAH, isRevenueManager: isRM, isDualRole: isDual, managerCentres: mgrCentres });
+              isAcademicHead: isAH, isRevenueManager: isRM, isDualRole: isDual, managerCentres: mgrCentres,
+              permissions: r.permissions || {} });
           });
         }
 
@@ -1466,6 +1467,38 @@ window.gasGet = (function () {
     if (!Object.keys(payload).length) { cb(null, { status: 'error', reason: 'no_fields_provided' }); return; }
     PATCH('batches', 'batch_code=eq.' + bc, payload, function(e) {
       cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+    });
+  }
+
+  /* ── User & permissions management (Admin Settings → Users tab) ──────────
+     getUsers / updateUserPermissions back the "what access can a counsellor
+     have" settings page. Previously counselor.html gated a handful of special
+     capabilities (all-India MIS, operational invoices, diploma release,
+     alumni cross-centre view) purely via hardcoded name checks — granting a
+     new person the same access meant editing and redeploying code. These two
+     actions plus the `permissions` JSONB column on `users` (added 2026-08-21)
+     let an admin toggle those same flags from the UI instead. */
+  function h_getUsers(p, cb) {
+    GET('users', 'select=id,name,role,centres,is_active,permissions,updated_at&order=name.asc', function (e, rows) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      cb(null, { status: 'ok', users: (rows || []).map(function (r) {
+        return { id: r.id, name: r.name, role: r.role, centre: r.centres, centres: r.centres,
+          is_active: r.is_active, permissions: r.permissions || {}, updatedAt: r.updated_at };
+      }) });
+    });
+  }
+
+  function h_updateUserPermissions(p, cb) {
+    var name = p.name;
+    if (!name) { cb(null, { status: 'error', reason: 'name_required' }); return; }
+    var perms = {
+      all_india_mis:        !!p.all_india_mis,
+      operational_invoices: !!p.operational_invoices,
+      diploma_release:      !!p.diploma_release,
+      alumni_all_centres:   !!p.alumni_all_centres
+    };
+    PATCH('users', 'name=eq.' + encodeURIComponent(name), { permissions: perms }, function (e) {
+      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', permissions: perms });
     });
   }
 
@@ -10412,6 +10445,8 @@ window.gasGet = (function () {
       case 'saveCoInstructor':          return h_saveCoInstructor(params, cb);
       case 'deleteBatch':               return h_deleteBatch(params, cb);
       case 'updateBatchDates':          return h_updateBatchDates(params, cb);
+      case 'getUsers':                  return h_getUsers(params, cb);
+      case 'updateUserPermissions':     return h_updateUserPermissions(params, cb);
       case 'getStudents':               return h_getStudents(params, cb);
       case 'searchStudents':            return h_searchStudents(params, cb);
       case 'getNextEnrollment':         return h_getNextEnroll(params, cb);

@@ -9496,9 +9496,14 @@ function snapshotRender(d) {
       if ((b.status === 'starting_soon' || b.status === 'upcoming') && b.startDateISO) info += ' · Starts ' + escHtml(b.startDateISO);
       var cnt = b.enrolledCount != null ? b.enrolledCount : (b.studentCount||null);
       if (cnt != null) info += ' · ' + cnt + ' student' + (cnt !== 1 ? 's' : '');
+      // Edit Dates — admins previously had no way to correct a batch's start/end date
+      // anywhere in the Admin Portal at all (counsellors had this in "My Batches", admin
+      // didn't). Reuses the same updateBatchDates action. 2026-08-21, per instruction.
+      var editBtn = '<button onclick="adminOpenBatchEditDatesModal(\'' + escHtml(b.batchCode) + '\',\'' + escHtml(b.startDate||'') + '\',\'' + escHtml(b.endDate||'') + '\',\'' + escHtml(b.type||'Full Day') + '\')" style="margin-left:8px;font-size:10px;background:none;border:1px solid #d1d5db;border-radius:6px;padding:1px 8px;cursor:pointer;color:#374151">🗓️ Edit Dates</button>';
       return '<div class="snap-batch-line" style="margin-bottom:4px;">'
         + '<span class="snap-badge ' + bsc + '" style="margin-right:6px;">' + bsl + '</span>'
         + '<span style="font-size:13px;color:#374151;">' + info + '</span>'
+        + editBtn
         + '</div>';
     }).join('');
 
@@ -9512,6 +9517,57 @@ function snapshotRender(d) {
       + '</div>';
   });
   body.innerHTML = html;
+}
+
+// ── Batch Edit Dates (Admin Portal — mirrors the same feature in "My Batches") ──
+function dmyToISO(dmy) {
+  if (!dmy) return '';
+  var s = String(dmy).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  var p = s.split('/');
+  if (p.length !== 3) return '';
+  return p[2] + '-' + p[1].padStart(2,'0') + '-' + p[0].padStart(2,'0');
+}
+function isoToDMY(iso) {
+  if (!iso) return '';
+  var s = String(iso).trim();
+  if (s.indexOf('T') !== -1) s = s.split('T')[0];
+  var p = s.split('-');
+  if (p.length !== 3) return iso;
+  return p[2] + '/' + p[1] + '/' + p[0];
+}
+function adminOpenBatchEditDatesModal(batchCode, startDMY, endDMY, batchSlot) {
+  document.getElementById('adm-bedit-code').value = batchCode;
+  document.getElementById('adm-bedit-title').textContent = 'Edit Batch — ' + batchCode;
+  document.getElementById('adm-bedit-start').value = dmyToISO(startDMY);
+  document.getElementById('adm-bedit-end').value = dmyToISO(endDMY);
+  var slotEl = document.getElementById('adm-bedit-slot');
+  if (slotEl) slotEl.value = batchSlot || 'Full Day';
+  document.getElementById('adm-batch-edit-dates-modal').style.display = 'flex';
+}
+function adminCloseBatchEditDatesModal() {
+  document.getElementById('adm-batch-edit-dates-modal').style.display = 'none';
+}
+function adminSaveBatchDates() {
+  var bc = document.getElementById('adm-bedit-code').value;
+  var startISO = document.getElementById('adm-bedit-start').value;
+  var endISO   = document.getElementById('adm-bedit-end').value;
+  var batchSlot = (document.getElementById('adm-bedit-slot') || {}).value || '';
+  if (!bc) return;
+  if (!startISO && !endISO && !batchSlot) { alert('Please set at least one field.'); return; }
+  var btn = document.getElementById('adm-bedit-save-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  var p = { action:'updateBatchDates', batchCode:bc };
+  if (startISO)  p.startDate  = startISO;
+  if (endISO)    p.endDate    = endISO;
+  if (batchSlot) p.batchSlot  = batchSlot;
+  gasGet(p, function(e,d) {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save'; }
+    if (e || !d || d.status !== 'ok') { alert('Failed: ' + (d&&d.reason ? d.reason : String(e||'Unknown'))); return; }
+    adminCloseBatchEditDatesModal();
+    showToast('Batch dates updated.');
+    loadSnapshot();
+  });
 }
 
 // Per-centre notes — survive page session via sessionStorage
@@ -11450,6 +11506,8 @@ function switchSettingsTab(tab) {
 }
 
 // ── Users ────────────────────────────────────────────────────────────────────
+var _settingsUsersData = [];
+
 function loadSettingsUsers() {
   var tbody = document.getElementById('settings-users-tbody');
   if (!tbody) return;
@@ -11460,6 +11518,7 @@ function loadSettingsUsers() {
       return;
     }
     var users = res.users || [];
+    _settingsUsersData = users;
     if (!users.length) {
       tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">No users found.</td></tr>';
       return;
@@ -11469,13 +11528,19 @@ function loadSettingsUsers() {
       var statusHtml = u.is_active !== false
         ? '<span style="color:#16a34a;font-weight:700">● Active</span>'
         : '<span style="color:#dc2626;font-weight:600">○ Inactive</span>';
+      var perms = u.permissions || {};
+      var permCount = ['all_india_mis','operational_invoices','diploma_release','alumni_all_centres'].filter(function(k){ return !!perms[k]; }).length;
+      var permBadge = permCount
+        ? '<span style="background:#eef2ff;color:#4338ca;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px">' + permCount + ' special</span>'
+        : '';
       return '<tr>'
-        + '<td style="padding:8px 10px;font-weight:600">' + (u.name || u.username || '—') + '</td>'
+        + '<td style="padding:8px 10px;font-weight:600">' + (u.name || u.username || '—') + permBadge + '</td>'
         + '<td style="padding:8px 10px"><span style="background:' + roleColor + '18;color:' + roleColor + ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">' + (u.role || 'Counselor') + '</span></td>'
         + '<td style="padding:8px 10px;color:var(--muted)">' + (u.centre || '—') + '</td>'
         + '<td style="padding:8px 10px;text-align:center">' + statusHtml + '</td>'
-        + '<td style="padding:8px 10px;text-align:center" class="no-print">'
-        +   '<button class="btn btn-xs" onclick="settingsEditUser(\'' + (u.id||u.name) + '\')" style="padding:4px 8px;font-size:11px">✏️</button>'
+        + '<td style="padding:8px 10px;text-align:center;white-space:nowrap" class="no-print">'
+        +   '<button class="btn btn-xs" onclick="settingsEditUser(\'' + (u.id||u.name) + '\')" style="padding:4px 8px;font-size:11px;margin-right:4px" title="Edit">✏️</button>'
+        +   '<button class="btn btn-xs" onclick="openPermEditModal(\'' + (u.id||u.name) + '\')" style="padding:4px 8px;font-size:11px" title="Counsellor access">🔑 Access</button>'
         + '</td>'
         + '</tr>';
     }).join('');
@@ -11484,6 +11549,55 @@ function loadSettingsUsers() {
 
 function settingsAddUser()          { showToast('Open your existing Settings → Add User form', 'info'); }
 function settingsEditUser(id)       { showToast('Edit user: ' + id, 'info'); }
+
+// ── Counsellor Access (permissions) modal ─────────────────────────────────────
+// What access a counsellor has (all-India MIS, operational invoices, diploma
+// release, cross-centre alumni view) used to be hardcoded by name in
+// counselor.html — this lets an admin toggle it per person instead, backed by
+// the users.permissions JSONB column + the getUsers/updateUserPermissions
+// actions in shared.js. 2026-08-21, per instruction.
+function openPermEditModal(id) {
+  var u = _settingsUsersData.find(function(x) { return String(x.id) === String(id) || x.name === id; });
+  if (!u) { showToast('User not found — reload the list and try again.', 'error'); return; }
+  var perms = u.permissions || {};
+  document.getElementById('perm-edit-name').value = u.name;
+  document.getElementById('perm-edit-title').textContent = u.name;
+  document.getElementById('perm-all-india-mis').checked   = !!perms.all_india_mis;
+  document.getElementById('perm-op-invoices').checked     = !!perms.operational_invoices;
+  document.getElementById('perm-diploma-release').checked = !!perms.diploma_release;
+  document.getElementById('perm-alumni-all').checked      = !!perms.alumni_all_centres;
+  document.getElementById('perm-edit-err').style.display = 'none';
+  document.getElementById('perm-edit-modal').style.display = 'flex';
+}
+function closePermEditModal() {
+  document.getElementById('perm-edit-modal').style.display = 'none';
+}
+function savePermEdit() {
+  var name = document.getElementById('perm-edit-name').value;
+  var errEl = document.getElementById('perm-edit-err');
+  errEl.style.display = 'none';
+  if (!name) return;
+  var btn = document.getElementById('perm-edit-save-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  gasGet({
+    action: 'updateUserPermissions',
+    name: name,
+    all_india_mis:        document.getElementById('perm-all-india-mis').checked,
+    operational_invoices:  document.getElementById('perm-op-invoices').checked,
+    diploma_release:       document.getElementById('perm-diploma-release').checked,
+    alumni_all_centres:    document.getElementById('perm-alumni-all').checked
+  }, function(err, d) {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save'; }
+    if (err || !d || d.status !== 'ok') {
+      errEl.textContent = (d && d.reason) || String(err || 'Failed to save.');
+      errEl.style.display = 'block';
+      return;
+    }
+    closePermEditModal();
+    showToast('Access updated for ' + name + '. Takes effect on their next login.');
+    loadSettingsUsers();
+  });
+}
 
 // ── FB Leads ─────────────────────────────────────────────────────────────────
 function loadRecentFBLeads() {
@@ -12030,6 +12144,80 @@ switchAdminTab = function(tabId) {
     <div style="display:flex;gap:8px">
       <button class="btn" onclick="saveStudentEdit()">Save Changes</button>
       <button class="btn btn-outline" onclick="closeStudentEditModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Batch Edit Dates Modal (Admin Portal) -->
+<div id="adm-batch-edit-dates-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
+    <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600">Edit Batch</div>
+        <h3 id="adm-bedit-title" style="margin:2px 0 0;font-size:16px;font-weight:700">Change Dates</h3>
+      </div>
+      <button onclick="adminCloseBatchEditDatesModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">&#10005;</button>
+    </div>
+    <div style="padding:20px">
+      <input type="hidden" id="adm-bedit-code">
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">START DATE</label>
+        <input type="date" id="adm-bedit-start" style="width:100%;box-sizing:border-box;padding:7px 9px;font-size:13px;border:1.5px solid var(--border);border-radius:6px">
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">END DATE</label>
+        <input type="date" id="adm-bedit-end" style="width:100%;box-sizing:border-box;padding:7px 9px;font-size:13px;border:1.5px solid var(--border);border-radius:6px">
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">BATCH SLOT</label>
+        <select id="adm-bedit-slot" style="width:100%;box-sizing:border-box;padding:7px 9px;font-size:13px;border:1.5px solid var(--border);border-radius:6px">
+          <option value="Full Day">☀️ Full Day</option>
+          <option value="First Half">🌅 First Half</option>
+          <option value="Second Half">🌆 Second Half</option>
+        </select>
+      </div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="adminCloseBatchEditDatesModal()" class="btn btn-outline" style="width:auto;padding:8px 18px;font-size:13px">Cancel</button>
+      <button id="adm-bedit-save-btn" onclick="adminSaveBatchDates()" class="btn" style="width:auto;padding:8px 18px;font-size:13px;background:var(--navy);color:#fff">&#128190; Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Counsellor Permissions Modal (Admin Settings → Users) -->
+<div id="perm-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
+    <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600">Counsellor Access</div>
+        <h3 id="perm-edit-title" style="margin:2px 0 0;font-size:16px;font-weight:700">Edit Permissions</h3>
+      </div>
+      <button onclick="closePermEditModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">&#10005;</button>
+    </div>
+    <div style="padding:20px">
+      <input type="hidden" id="perm-edit-name">
+      <p class="sub" style="margin:0 0 14px">These special capabilities used to be hardcoded to specific names in the Counsellor Portal. Toggle them per person here instead — changes apply the next time they log in.</p>
+      <label style="display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;cursor:pointer">
+        <input type="checkbox" id="perm-all-india-mis" style="margin-top:2px;width:16px;height:16px">
+        <span><strong style="font-size:13px;color:var(--navy)">All-India MIS View</strong><br><span style="font-size:11px;color:var(--muted)">See company-wide revenue &amp; fee data across every centre, not just their own.</span></span>
+      </label>
+      <label style="display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;cursor:pointer">
+        <input type="checkbox" id="perm-op-invoices" style="margin-top:2px;width:16px;height:16px">
+        <span><strong style="font-size:13px;color:var(--navy)">Operational Invoices &amp; Receipts</strong><br><span style="font-size:11px;color:var(--muted)">Log day-to-day spend (inventory, manuals, other) in the Counsellor Portal.</span></span>
+      </label>
+      <label style="display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;cursor:pointer">
+        <input type="checkbox" id="perm-diploma-release" style="margin-top:2px;width:16px;height:16px">
+        <span><strong style="font-size:13px;color:var(--navy)">Diploma Release Authority</strong><br><span style="font-size:11px;color:var(--muted)">Can actually release/re-release diplomas (everyone can still view eligibility).</span></span>
+      </label>
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
+        <input type="checkbox" id="perm-alumni-all" style="margin-top:2px;width:16px;height:16px">
+        <span><strong style="font-size:13px;color:var(--navy)">Alumni — All Centres</strong><br><span style="font-size:11px;color:var(--muted)">See alumni records across every centre instead of just their own.</span></span>
+      </label>
+      <div id="perm-edit-err" class="err-box" style="display:none;margin-top:14px"></div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closePermEditModal()" class="btn btn-outline" style="width:auto;padding:8px 18px;font-size:13px">Cancel</button>
+      <button id="perm-edit-save-btn" onclick="savePermEdit()" class="btn" style="width:auto;padding:8px 18px;font-size:13px;background:var(--navy);color:#fff">&#128190; Save</button>
     </div>
   </div>
 </div>

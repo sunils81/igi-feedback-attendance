@@ -5309,6 +5309,7 @@ function initCounselorPortal() {
         allowedCentres           = sess.allowedCentres || [];
         isAdmin                  = !!sess.isAdmin;
         isManager                = !!sess.isManager;
+        counselorPermissions     = sess.permissions || {};
         document.getElementById('counselor-name-badge').textContent    = counselorName;
         document.getElementById('counselor-name-badge').style.display  = 'inline-block';
         document.getElementById('logout-btn').style.display = 'inline-block';
@@ -5351,6 +5352,11 @@ let isAdmin         = false;
 let isManager       = false;
 let allBatches      = [];
 let counselorReportRequestId = 0;
+// Admin-configurable per-counsellor capability flags (Admin Settings → Users), backing
+// canViewAllIndiaMIS/canLogOperationalInvoices/isDiplomaReleaseAuthorized/the alumni
+// bypassFilter below. Populated from the users.permissions column at login — see doLogin
+// and the session-restore block above. 2026-08-21.
+let counselorPermissions = {};
 
 // Anuradha prepares the all-India MIS report, so she needs to SEE company-wide revenue
 // data (every counsellor, every centre) — not just her own — even though she's a regular
@@ -5359,9 +5365,10 @@ let counselorReportRequestId = 0;
 // or target-setting access elsewhere in the portal (those all still gate on the real
 // isAdmin/isManager flags above, untouched by this).
 function canViewAllIndiaMIS() {
-  // Omkar Kadam granted the same access as Anuradha, 2026-08-21, per instruction.
-  // Bianca granted the same access as Anuradha, 2026-08-21, per instruction.
-  return counselorName === 'Anuradha' || counselorName === 'Omkar Kadam' || counselorName === 'Bianca';
+  // Now driven by the admin-configurable users.permissions column (Admin Settings →
+  // Users → per-counsellor access) instead of a hardcoded name list — see
+  // counselorPermissions, populated at login. 2026-08-21.
+  return !!(counselorPermissions && counselorPermissions.all_india_mis);
 }
 
 // canSeeAllFeeRecords — the Fee Record/Ledger tab's rendering pipeline (
@@ -5385,8 +5392,9 @@ function canSeeAllFeeRecords() {
 // piloted with Anuradha and Bianca first. One-line change here if/when it should open up
 // to every counsellor.
 function canLogOperationalInvoices() {
-  // Omkar Kadam granted the same access as Anuradha, 2026-08-21, per instruction.
-  return counselorName === 'Anuradha' || counselorName === 'Bianca' || counselorName === 'Omkar Kadam';
+  // Now driven by users.permissions (Admin Settings → Users) instead of a hardcoded
+  // name list. 2026-08-21.
+  return !!(counselorPermissions && counselorPermissions.operational_invoices);
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -5612,8 +5620,9 @@ function deleteOperationalInvoiceEntry(id) {
 // but every counsellor should be able to SEE their own centre's test records and
 // eligibility on the Diploma Eligibility tab (view-only for everyone else).
 function isDiplomaReleaseAuthorized() {
-  // Omkar Kadam granted the same access as Anuradha, 2026-08-21, per instruction.
-  return !!counselorName && (counselorName.toLowerCase() === 'bianca' || counselorName.toLowerCase() === 'anuradha' || counselorName.toLowerCase() === 'omkar kadam');
+  // Now driven by users.permissions (Admin Settings → Users) instead of a hardcoded
+  // name list. 2026-08-21.
+  return !!(counselorPermissions && counselorPermissions.diploma_release);
 }
 let counselorCalendarMonth = new Date();
 let counselorReportData = null;
@@ -5667,6 +5676,7 @@ function doLogin() {
     allowedCentres  = d.centres || [];
     isAdmin         = !!d.isAdmin;
     isManager       = !!d.isManager;
+    counselorPermissions = d.permissions || {};
     // Persist session so page refresh doesn't log out
     try {
       localStorage.setItem('igi_counselor_session', JSON.stringify({
@@ -5676,6 +5686,7 @@ function doLogin() {
         allowedCentres: allowedCentres,
         isAdmin: isAdmin,
         isManager: isManager,
+        permissions: counselorPermissions,
         batches: d.batches || []
       }));
     } catch(ex) {}
@@ -15108,7 +15119,7 @@ function loadMyBatches() {
       var deleteLockedByAge = !isCompleted && daysSinceStart !== null && daysSinceStart >= 3;
 
       var lockedNote = isCompleted
-        ? `<div style="margin-top:6px;font-size:10px;color:#9CA3AF;font-style:italic">🔒 Batch completed — editing and deletion are locked.</div>`
+        ? `<div style="margin-top:6px;font-size:10px;color:#9CA3AF;font-style:italic">🔒 Batch completed — deletion and instructor changes are locked. Dates can still be edited.</div>`
         : (deleteLockedByAge
           ? `<div style="margin-top:6px;font-size:10px;color:#9CA3AF;font-style:italic">🔒 Batch started ${daysSinceStart} days ago — deletion is locked to prevent accidental removal.</div>`
           : '');
@@ -15134,9 +15145,11 @@ function loadMyBatches() {
         ? `<span style="${lockedPillStyle}" title="Locked — batch completed">🔒 Cover instructor</span>`
         : `<button onclick="toggleCoPanel('${escC(b.batchCode)}')" style="font-size:11px;background:none;border:1px solid #bbf7d0;border-radius:6px;padding:3px 10px;cursor:pointer;color:#166534">↔ Cover instructor <span id="co-arrow-${escC(b.batchCode)}">${b.coInstructor?'▴':'▾'}</span></button>`;
 
-      var editBatchControl = isCompleted
-        ? `<span style="padding:4px 8px;${lockedPillStyle}" title="Locked — batch completed">🔒 Edit Batch</span>`
-        : `<button class="btn btn-outline" style="padding:4px 8px; font-size:11px; width:auto; color:var(--navy);" onclick="openBatchEditDatesModal('${escC(b.batchCode)}','${b.startDate||''}','${b.endDate||''}','${escC(b.batchSlot||'Full Day')}')">🗓️ Edit Batch</button>`;
+      // Dates remain editable even after a batch is marked Completed — counsellors have
+      // repeatedly needed to correct a wrong/estimated end date on an already-completed
+      // batch, and there's no data-integrity reason date edits need the same lock as
+      // deletion or instructor changes. 2026-08-21, per instruction.
+      var editBatchControl = `<button class="btn btn-outline" style="padding:4px 8px; font-size:11px; width:auto; color:var(--navy);" onclick="openBatchEditDatesModal('${escC(b.batchCode)}','${b.startDate||''}','${b.endDate||''}','${escC(b.batchSlot||'Full Day')}')">🗓️ Edit Batch</button>`;
 
       var checkboxHtml = isCompleted
         ? `<input type="checkbox" class="mb-batch-cb" value="${escC(b.batchCode)}" disabled title="Locked — batch completed" style="margin-top:3px;width:15px;height:15px;opacity:0.35;cursor:not-allowed">`
@@ -16700,9 +16713,9 @@ function loadAlumniData(cb) {
     
     var allAlumni = d.alumni || [];
     
-    // Filter by allowedCentres if not admin (Anuradha and Bianca bypass this to see all centres)
-    // Omkar Kadam granted the same access as Anuradha, 2026-08-21, per instruction.
-    var bypassFilter = (counselorName === 'Anuradha' || counselorName === 'Bianca' || counselorName === 'Omkar Kadam');
+    // Filter by allowedCentres if not admin — driven by users.permissions (Admin
+    // Settings → Users) instead of a hardcoded name list. 2026-08-21.
+    var bypassFilter = !!(counselorPermissions && counselorPermissions.alumni_all_centres);
     if (!isAdmin && !bypassFilter && allowedCentres && allowedCentres.length > 0) {
       var allowedLower = allowedCentres.map(function(c) { return c.toLowerCase(); });
       alumniList = allAlumni.filter(function(a) {

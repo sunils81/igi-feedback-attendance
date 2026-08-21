@@ -4006,6 +4006,9 @@
         <div class="field" style="min-width:220px;flex:1;margin-bottom:0"><label>Search (name, phone, UTR/ref)</label>
           <input type="text" id="cf-search" placeholder="e.g. Tanay, 9198..., UTR..." oninput="cfRender()">
         </div>
+        <div class="field" style="min-width:150px;margin-bottom:0"><label>Centre</label>
+          <select id="cf-centre-filter" onchange="cfRender()"><option value="">All Centres</option></select>
+        </div>
         <div class="field" style="min-width:150px;margin-bottom:0"><label>Settlement</label>
           <select id="cf-settle-filter" onchange="cfRender()">
             <option value="">All</option>
@@ -4021,6 +4024,7 @@
         </div>
         <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="cfResetFilters()">Reset filters</button>
       </div>
+      <div id="cf-totals" style="display:none;margin-bottom:12px;padding:10px 14px;background:var(--gold-pale);border-radius:8px;font-size:12.5px;color:var(--navy);font-weight:600"></div>
       <div id="cf-list"><div class="empty-state"><div class="empty-icon">💳</div><div class="empty-title">Loading…</div></div></div>
     </div>
   </div>
@@ -10916,8 +10920,20 @@ function cfLoad() {
       return;
     }
     cfRows = d.rows || [];
+    cfPopulateCentreFilter();
     cfRender();
   });
+}
+
+// Rebuilds the Centre dropdown from whatever centres actually appear in the currently
+// loaded status pill (rather than the fixed CENTRES list), so it never offers a centre
+// with nothing in it, and preserves the counsellor's current selection across a reload.
+function cfPopulateCentreFilter() {
+  const sel = document.getElementById('cf-centre-filter');
+  const prev = sel.value;
+  const centres = Array.from(new Set(cfRows.map(function(r) { return (r.centre || '').trim(); }).filter(Boolean))).sort();
+  sel.innerHTML = '<option value="">All Centres</option>' + centres.map(function(c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
+  if (centres.indexOf(prev) >= 0) sel.value = prev;
 }
 
 function cfBadgeColor(conf) {
@@ -10932,6 +10948,7 @@ function cfBadgeColor(conf) {
 // set by text/date, so typing in Search doesn't need a round trip to Supabase.
 function cfFilteredRows() {
   const q = (document.getElementById('cf-search').value || '').trim().toLowerCase();
+  const centreFilter = document.getElementById('cf-centre-filter').value;
   const settleFilter = document.getElementById('cf-settle-filter').value;
   const dateFrom = document.getElementById('cf-date-from').value;
   const dateTo = document.getElementById('cf-date-to').value;
@@ -10941,6 +10958,7 @@ function cfFilteredRows() {
         .map(function(v) { return String(v || '').toLowerCase(); }).join(' ');
       if (hay.indexOf(q) === -1) return false;
     }
+    if (centreFilter && (r.centre || '').trim() !== centreFilter) return false;
     if (settleFilter === 'settled' && String(r.settlement_status || '').toUpperCase() !== 'SETTLED') return false;
     if (settleFilter === 'not_settled' && String(r.settlement_status || '').toUpperCase() === 'SETTLED') return false;
     if (dateFrom && (!r.settled_on || r.settled_on < dateFrom)) return false;
@@ -10951,6 +10969,7 @@ function cfFilteredRows() {
 
 function cfResetFilters() {
   document.getElementById('cf-search').value = '';
+  document.getElementById('cf-centre-filter').value = '';
   document.getElementById('cf-settle-filter').value = '';
   document.getElementById('cf-date-from').value = '';
   document.getElementById('cf-date-to').value = '';
@@ -10959,15 +10978,24 @@ function cfResetFilters() {
 
 function cfRender() {
   const list = document.getElementById('cf-list');
+  const totalsEl = document.getElementById('cf-totals');
   const rows = cfFilteredRows();
   if (!cfRows.length) {
+    totalsEl.style.display = 'none';
     list.innerHTML = emptyState('💳', 'Nothing here', 'No settlement rows in this view. Try "Sync from Cashfree Sheet" above, or check another filter.');
     return;
   }
   if (!rows.length) {
+    totalsEl.style.display = 'none';
     list.innerHTML = emptyState('🔍', 'No matches', 'Nothing matches your search/date filters in this view. Try "Reset filters".');
     return;
   }
+  // Sum whichever amount is actually there — settlement_amount (net of Cashfree's own
+  // charges) is what really lands with the school, so it takes priority over the gross
+  // Amount when both are present.
+  const totalAmt = rows.reduce(function(s, r) { return s + Number(r.settlement_amount || r.amount || 0); }, 0);
+  totalsEl.style.display = 'block';
+  totalsEl.textContent = rows.length + ' row(s) · Total ₹' + Math.round(totalAmt).toLocaleString('en-IN');
   let html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
     '<thead><tr style="text-align:left;border-bottom:1.5px solid var(--border)">' +
     '<th style="padding:6px 8px">Customer</th><th style="padding:6px 8px">Centre</th><th style="padding:6px 8px">Phone</th>' +

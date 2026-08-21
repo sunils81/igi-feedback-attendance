@@ -10211,10 +10211,19 @@ window.gasGet = (function () {
       return r.text();
     }).then(function (csvText) {
       var rows = _cfRowsToObjects(csvText);
+      // The sheet itself can carry more than one line for the same Order Id (seen live —
+      // Cashfree/Excel export sometimes repeats a row). A single upsert statement can't
+      // apply ON CONFLICT twice against the same key in one batch (Postgres error 21000:
+      // "ON CONFLICT DO UPDATE command cannot affect row a second time"), so dedupe by
+      // order_id here first — keeping the LAST occurrence, since that's the most complete/
+      // final version of that row in an export that repeats one.
+      var byOrderId = {};
+      rows.forEach(function (r) { if (r.order_id) byOrderId[r.order_id] = r; });
+      var dedupedRows = Object.keys(byOrderId).map(function (k) { return byOrderId[k]; });
       GET('cashfree_settlements', 'select=order_id', function (eEx, existing) {
         var have = {};
         (existing || []).forEach(function (r) { have[r.order_id] = true; });
-        var toInsert = rows.filter(function (r) { return r.order_id && !have[r.order_id]; });
+        var toInsert = dedupedRows.filter(function (r) { return r.order_id && !have[r.order_id]; });
         function afterInsert() {
           _cfRunMatching(function (summary) {
             cb(null, { status: 'ok', imported: toInsert.length, totalRows: rows.length, matching: summary });

@@ -3075,22 +3075,45 @@ window.gasGet = (function () {
     }
     var cf = Number(p.courseFee || 0);
     var dp = Number(p.discountPct);
-    var dbRow = {
-      student_id: p.studentId, student_name: p.studentName || '', batch_code: p.batchCode,
-      centre: p.centre, course: p.course || '', course_fee: cf, discount_pct: dp,
-      discount_amount: Math.round(cf * dp / 100), discount_reason: p.discountReason,
-      status: 'pending', requested_by: p.requestedBy, updated_at: nowISO(),
-      // Full intended saveFeeRecord payload (installments, invoice, mode, everything) --
-      // 2026-08-08, confirmed live that the hard block rejects the WHOLE save before
-      // persisting anything, so all of this was being lost, not just the discount.
-      // Lets the counsellor resume with one click once approved, instead of re-entering
-      // everything (and risking a duplicate-student-ID error since the student record
-      // was already created in Step B, before this discount block even fires).
-      payload: p.payload || null
-    };
-    POST('discount_requests', '', dbRow, function (e) {
-      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
-    });
+    // Duplicate-request guard — 2026-08-21, per bug report: the same student/batch could
+    // be submitted for approval twice (e.g. an accidental double-click, or a counsellor
+    // re-submitting because they forgot they already had one in flight), producing two
+    // rows in the admin's queue for what's really one ask. Block a new request whenever
+    // this student+batch already has one that's still "live" — pending review, or already
+    // approved but not yet spent on a fee save (h_saveFee's used=true is what retires it).
+    // A rejected request, or an approved-and-used one, no longer blocks — those are settled
+    // and a fresh ask for the same student/batch later is legitimate.
+    GET('discount_requests',
+      'student_id=eq.' + encodeURIComponent(p.studentId) + '&batch_code=eq.' + encodeURIComponent(p.batchCode) +
+      '&or=(status.eq.pending,and(status.eq.approved,used.eq.false))&order=requested_at.desc&limit=1',
+      function (eDup, dupRows) {
+        var existing = (dupRows || [])[0];
+        if (existing) {
+          cb(null, {
+            status: 'error',
+            reason: existing.status === 'pending'
+              ? 'A discount request for this student is already pending approval (requested by ' + (existing.requested_by || '') + ' on ' + (existing.requested_at || '') + '). Wait for it to be reviewed instead of submitting another.'
+              : 'This student already has an approved ' + Number(existing.discount_pct) + '% discount waiting to be used — apply it on the fee record instead of requesting a new one.'
+          });
+          return;
+        }
+        var dbRow = {
+          student_id: p.studentId, student_name: p.studentName || '', batch_code: p.batchCode,
+          centre: p.centre, course: p.course || '', course_fee: cf, discount_pct: dp,
+          discount_amount: Math.round(cf * dp / 100), discount_reason: p.discountReason,
+          status: 'pending', requested_by: p.requestedBy, updated_at: nowISO(),
+          // Full intended saveFeeRecord payload (installments, invoice, mode, everything) --
+          // 2026-08-08, confirmed live that the hard block rejects the WHOLE save before
+          // persisting anything, so all of this was being lost, not just the discount.
+          // Lets the counsellor resume with one click once approved, instead of re-entering
+          // everything (and risking a duplicate-student-ID error since the student record
+          // was already created in Step B, before this discount block even fires).
+          payload: p.payload || null
+        };
+        POST('discount_requests', '', dbRow, function (e) {
+          cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+        });
+      });
   }
 
   function h_getDiscountRequests(p, cb) {

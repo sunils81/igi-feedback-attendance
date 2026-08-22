@@ -4764,7 +4764,11 @@ function renderDiscountApprovalsList() {
   var decided = discountApprovalRequests.filter(function (r) { return r.status !== 'pending'; });
   var html = '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
     '<th class="text-left">Requested By</th><th class="text-left">Requested</th><th class="text-left">Student</th><th class="text-left">Batch / Centre</th>' +
-    '<th>Course Fee</th><th>Discount</th><th class="text-left">Reason</th><th class="text-left">Status</th><th></th>' +
+    // Reason gets an explicit width (not just the td's max-width) — a plain max-width
+    // on the td alone still let the browser's table auto-layout shrink the column down
+    // to a sliver based on the other columns, which is why widening the td previously
+    // didn't visibly help. 2026-08-22.
+    '<th>Course Fee</th><th>Discount</th><th class="text-left" style="width:380px">Reason</th><th class="text-left">Status</th><th></th>' +
     '</tr></thead><tbody>';
   pending.concat(decided).forEach(function (r) {
     var isPending = r.status === 'pending';
@@ -4785,7 +4789,7 @@ function renderDiscountApprovalsList() {
       // reasons are one short sentence and read fine collapsed; a longer one (like
       // Sunita's multi-sentence Sneha Kalra note) expands in place on click rather than
       // permanently blowing out every row's height.
-      '<td class="text-left" style="font-size:12px;max-width:320px;white-space:normal">' +
+      '<td class="text-left" style="font-size:12px;width:380px;max-width:380px;white-space:normal">' +
         '<span class="clamp-text">' + escC(r.discountReason) + '</span>' +
         (r.discountReason && r.discountReason.length > 90
           ? '<button type="button" class="clamp-toggle-btn" onclick="toggleClampText(this)">Show more</button>'

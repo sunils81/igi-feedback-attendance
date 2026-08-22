@@ -5111,7 +5111,17 @@ window.gasGet = (function () {
       // 2026-07-28) that don't match the official company target and shouldn't be presented
       // to management as if they did. A personal (non-admin) view still sums just that one
       // counsellor's own target row(s), which is correct for their personal KPI tile.
-      if (isAdm) {
+      // Bug fix 2026-08-22: this used to trigger on isAdm alone, so a counsellor with
+      // all-India MIS viewing rights (e.g. Anuradha/Bianca/Omkar Kadam — isAdmin gets sent
+      // as 'true' for them too, to widen the ACHIEVED-figures fetch across every centre)
+      // also got the fixed company-wide annual target substituted in place of their own
+      // personal one. That silently overwrote their personal "Monthly Submissions" Run
+      // Rate with a company-wide constant (₹64,900,000 / 12 = ₹54,08,333 every month,
+      // identical regardless of their real target) — reported live for Bianca, whose own
+      // annual target is ₹65,00,000, not the ~6.5 Cr company figure. A true blank-counsellor
+      // Admin call (me === '') still gets the real company figure; anyone with a real name
+      // attached gets their own target summed below, same as a non-MIS counsellor always did.
+      if (isAdm && !me) {
         tCourse = 55000000;
         tGst = 64900000;
       } else {

@@ -12644,13 +12644,21 @@ function fillRevenueSelects() {
 
 function revenueRequestParams() {
   var wantsAllIndia = isAdmin || canViewAllIndiaMIS();
+  // Bug fix 2026-08-22: `counsellor` used to be blanked for anyone with all-India MIS
+  // viewing rights, not just a real Admin — the backend (h_revDash) then substituted the
+  // fixed company-wide annual target for that person's OWN Run Rate/target figures,
+  // since a blank counsellor plus isAdmin:'true' looked identical to a true Admin call.
+  // Only a real Admin (isAdmin, the actual role — not the MIS-view permission) should get
+  // the blank/company-wide treatment; an MIS-privileged counsellor still needs their own
+  // name sent through so their personal target isn't overwritten, while `centres` and
+  // `isAdmin:'true'` below still widen the ACHIEVED-figures fetch across every centre.
   return {
     action:'getRevenueDashboard',
     period:'2026-27',
     centres:wantsAllIndia ? '' : (allowedCentres && allowedCentres.length ? allowedCentres.join(',') : ''),
     centre:'',
-    counsellor:wantsAllIndia ? '' : (counselorName || ''),
-    viewerCounsellor:wantsAllIndia ? '' : (counselorName || ''),
+    counsellor:isAdmin ? '' : (counselorName || ''),
+    viewerCounsellor:isAdmin ? '' : (counselorName || ''),
     isAdmin:wantsAllIndia ? 'true' : 'false',
     isManager:isManager ? 'true' : 'false',
     viewMode:'assigned',

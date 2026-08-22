@@ -779,6 +779,37 @@
 
   .compact-table tr:hover td { background: var(--gold-pale); }
 
+  /* Long free-text cells (e.g. Discount Approvals' "Reason") — clamped to 2 lines by
+     default instead of wrapping every word onto its own line in a too-narrow fixed box
+     (which made rows for long reasons absurdly tall and hard to scan). "Show more"
+     expands the full text in place. 2026-08-22. */
+  .clamp-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.45;
+    word-break: break-word;
+  }
+  .clamp-text.expanded {
+    display: block;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+    overflow: visible;
+  }
+  .clamp-toggle-btn {
+    display: inline-block;
+    background: none;
+    border: none;
+    color: var(--navy);
+    font-weight: 700;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 3px 0 0;
+    text-decoration: underline;
+  }
+
   /* Feedback report table — same compact-table look, but with a sticky header (many
      rows expected) and left-aligned, wrapping text cells since most columns hold
      names/comments rather than numbers. */
@@ -4748,15 +4779,18 @@ function renderDiscountApprovalsList() {
       '<td class="text-left">' + escC(r.batchCode) + '<div style="font-size:11px;color:var(--muted)">' + escC(r.centre) + '</div></td>' +
       '<td style="text-align:right">' + (r.courseFee ? money(r.courseFee) : '—') + '</td>' +
       '<td style="text-align:right;font-weight:700">' + r.discountPct + '%</td>' +
-      // white-space:normal + word-break override .compact-table td's table-wide
-      // white-space:nowrap (see the .compact-table rule ~line 1346, shared by 42+ tables so
-      // it can't just be changed globally). Without this override, a reason long enough to
-      // exceed max-width:200px had nothing forcing it onto a second line — nowrap kept it on
-      // one line and it visually overflowed past its own cell, rendering on top of the Status
-      // column's "Pending"/"Approved" badge right next to it (reported as the reason and
-      // status text "getting intermingled"). Wrapping within the 200px box instead keeps the
-      // full reason readable without bleeding into the next column.
-      '<td class="text-left" style="font-size:12px;max-width:200px;white-space:normal;word-break:break-word">' + escC(r.discountReason) + '</td>' +
+      // 2026-08-22: a 200px box with word-break:break-word forced every long reason onto
+      // its own single-word lines (rows several screens tall, hard to scan). Widened the
+      // box and switched to a 2-line clamp with a "Show more" toggle instead — most
+      // reasons are one short sentence and read fine collapsed; a longer one (like
+      // Sunita's multi-sentence Sneha Kalra note) expands in place on click rather than
+      // permanently blowing out every row's height.
+      '<td class="text-left" style="font-size:12px;max-width:320px;white-space:normal">' +
+        '<span class="clamp-text">' + escC(r.discountReason) + '</span>' +
+        (r.discountReason && r.discountReason.length > 90
+          ? '<button type="button" class="clamp-toggle-btn" onclick="toggleClampText(this)">Show more</button>'
+          : '') +
+      '</td>' +
       '<td class="text-left">' + statusHtml + reviewLine + (r.reviewNote ? '<div style="font-size:11px;color:var(--muted)">' + escC(r.reviewNote) + '</div>' : '') + '</td>' +
       '<td>' + (isPending
         ? '<button class="del-btn" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer" onclick="openDiscountApprovalReview(\'' + escC(r.id) + '\')">Review</button>'
@@ -4766,6 +4800,15 @@ function renderDiscountApprovalsList() {
   html += '</tbody></table></div>';
   list.innerHTML = html;
 }
+// Generic "Show more"/"Show less" toggle for any .clamp-text cell (2026-08-22) — the
+// button is expected to sit immediately after the .clamp-text span it controls.
+function toggleClampText(btn) {
+  var span = btn.previousElementSibling;
+  if (!span) return;
+  var expanded = span.classList.toggle('expanded');
+  btn.textContent = expanded ? 'Show less' : 'Show more';
+}
+
 function deleteDiscountApprovalEntry(id) {
   if (!confirm('Remove this discount request? This cannot be undone.')) return;
   gasGet({ action: 'deleteDiscountRequest', id: id, isAdmin: 'true' }, function (e, d) {

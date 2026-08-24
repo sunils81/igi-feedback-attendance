@@ -12336,3 +12336,91 @@ window.FactOfDay = (function () {
 
   return { mount: mount };
 })();
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LIVE USD → INR RATE TICKER — 2026-08-24, per instruction: "in instructor
+   and admin portal there should be live dollar rate section". A live-rate
+   fetch already existed inside DiamondCalc (shared.js, ~line 11758) but was
+   private to that module and only mounted inside the Diamond Calculator tab
+   of instructor-portal.html — nowhere visible at a glance, and not on
+   admin.html at all. This is a small standalone widget (same two-source
+   fetch pattern: open.er-api.com primary, jsdelivr currency-api fallback,
+   plus a last-known-good hardcoded fallback if both are unreachable) meant
+   to sit in each portal's shared header so it's visible on every tab, with
+   an auto-refresh so it stays current across a long session without the
+   person needing to reload the page. ══════════════════════════════════════ */
+window.IGI_LiveRate = (function () {
+  var rate = null;
+  var isFallback = false;
+  var lastFetchedAt = null;
+  var promise = null;
+  var FALLBACK = 87.0; // last-known approximate — only used if every live source fails
+  var mountedContainers = [];
+
+  function fetchRate(force) {
+    if (promise && !force) return promise;
+    var sources = [
+      { url: 'https://open.er-api.com/v6/latest/USD', pick: function (d) { return d && d.rates && d.rates.INR; } },
+      { url: 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json', pick: function (d) { return d && d.usd && d.usd.inr; } }
+    ];
+    promise = (async function () {
+      for (var i = 0; i < sources.length; i++) {
+        var src = sources[i];
+        try {
+          var controller = new AbortController();
+          var timeout = setTimeout(function () { controller.abort(); }, 4000);
+          var r = await fetch(src.url, { signal: controller.signal });
+          clearTimeout(timeout);
+          if (!r.ok) continue;
+          var d = await r.json();
+          var v = src.pick(d);
+          if (v && isFinite(v)) { rate = v; isFallback = false; lastFetchedAt = new Date(); return rate; }
+        } catch (err) { /* try next source */ }
+      }
+      // Only fall back to the hardcoded value if we've never gotten a real
+      // rate this session — a stale-but-real rate is more useful than the
+      // hardcoded approximation if a refresh briefly fails mid-session.
+      if (rate == null) { rate = FALLBACK; isFallback = true; }
+      lastFetchedAt = new Date();
+      return rate;
+    })();
+    return promise;
+  }
+
+  function renderInto(containerId) {
+    var el = document.getElementById(containerId + '-txt');
+    if (!el) return;
+    if (rate == null) { el.textContent = '💵 Fetching live rate…'; return; }
+    var timeStr = lastFetchedAt ? lastFetchedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
+    el.textContent = '💵 1 USD = ₹' + rate.toFixed(2) + (isFallback ? ' (approx.)' : ' (live') + (isFallback ? '' : ', ' + timeStr + ')');
+    el.style.color = isFallback ? '#b45309' : '';
+    el.title = isFallback
+      ? 'Could not reach a live rate source — showing last known approximate rate.'
+      : 'USD → INR, refreshes automatically every 5 minutes. Click to refresh now.';
+  }
+
+  function renderAll() { mountedContainers.forEach(renderInto); }
+
+  function refreshNow(containerId) {
+    var el = document.getElementById(containerId + '-txt');
+    if (el && rate != null) el.textContent = '💵 Refreshing…';
+    fetchRate(true).then(renderAll);
+  }
+
+  function mount(containerId, opts) {
+    opts = opts || {};
+    var root = document.getElementById(containerId);
+    if (!root) return;
+    if (mountedContainers.indexOf(containerId) === -1) mountedContainers.push(containerId);
+    root.innerHTML = '<span class="live-rate-ticker" id="' + containerId + '-txt" onclick="IGI_LiveRate.refresh(\'' + containerId + '\')" style="cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap" title="Fetching…">💵 Fetching live rate…</span>';
+    fetchRate(false).then(renderAll);
+    if (!mount._intervalStarted) {
+      mount._intervalStarted = true;
+      // Auto-refresh every 5 minutes so it stays live across a long session
+      // without anyone needing to reload the page.
+      setInterval(function () { fetchRate(true).then(renderAll); }, opts.refreshMs || 300000);
+    }
+  }
+
+  return { mount: mount, refresh: refreshNow, get: function () { return { rate: rate, isFallback: isFallback, lastFetchedAt: lastFetchedAt }; } };
+})();

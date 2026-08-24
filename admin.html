@@ -2923,6 +2923,24 @@
         </div>
         <button class="btn btn-gold" style="width:auto;padding:8px 16px;font-size:12px;font-weight:700" onclick="settingsAddUser()">➕ Add User</button>
       </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <input type="text" id="settings-users-search" placeholder="🔍 Search by name…" oninput="renderSettingsUsersTable()" style="flex:1;min-width:180px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px">
+        <select id="settings-users-role-filter" onchange="renderSettingsUsersTable()" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px">
+          <option value="">All Roles</option>
+          <option value="Admin">Admin</option>
+          <option value="AcademicHead">Academic Head</option>
+          <option value="Counselor">Counselor</option>
+          <option value="Instructor">Instructor</option>
+        </select>
+        <select id="settings-users-status-filter" onchange="renderSettingsUsersTable()" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px">
+          <option value="">All Status</option>
+          <option value="active">Active only</option>
+          <option value="inactive">Inactive only</option>
+        </select>
+        <select id="settings-users-centre-filter" onchange="renderSettingsUsersTable()" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px">
+          <option value="">All Centres</option>
+        </select>
+      </div>
       <div id="settings-users-list" style="overflow-x:auto">
         <table class="compact-table" style="width:100%">
           <thead><tr>
@@ -9302,183 +9320,16 @@ function filterAlumniTable() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  SETTINGS TAB — User Management
+//  SETTINGS TAB — User Management (legacy, dead — DELETED 2026-08-24)
+//  This entire block referenced #settings-table-wrap / #settings-add-modal /
+//  #settings-del-modal HTML that no longer existed anywhere in this file (or
+//  possibly never did — unclear), and called 'listUsers'/'resetUserPassword'
+//  actions the backend dispatcher never implemented. The live, working panel
+//  is further down this file (loadSettingsUsers / renderSettingsUsersTable /
+//  settingsAddUser / settingsShowDelModal / settingsConfirmDelete etc.),
+//  wired to real getUsers/addUser/setUserActive/deleteUser actions. Removed
+//  to stop the name collisions with those real functions.
 // ═══════════════════════════════════════════════════════════════════
-var _settingsDeleteTarget = null; // {role, name}
-
-function settingsGetAdminPass() {
-  return (document.getElementById('settings-admin-pass') || {}).value || '';
-}
-
-function settingsShowErr(msg) {
-  var el = document.getElementById('settings-err');
-  if (el) { el.textContent = msg; el.style.display = msg ? 'block' : 'none'; }
-}
-
-function settingsShowOk(msg) {
-  var el = document.getElementById('settings-ok');
-  if (el) { el.textContent = msg; el.style.display = msg ? 'block' : 'none'; }
-  if (msg) setTimeout(function() { settingsShowOk(''); }, 6000);
-}
-
-function settingsLoadUsers() {
-  settingsShowErr('');
-  settingsShowOk('');
-  var adminPass = settingsGetAdminPass();
-  if (!adminPass) { settingsShowErr('Enter admin password first.'); return; }
-  document.getElementById('settings-table-wrap').innerHTML = '<p style="opacity:.5;font-size:13px;text-align:center;padding:20px 0">Loading…</p>';
-  gasGet({ action: 'listUsers', adminPass: adminPass }, function(err, d) {
-    if (err || !d || d.status !== 'ok') {
-      settingsShowErr(err || (d && d.reason) || 'Failed to load users.');
-      document.getElementById('settings-table-wrap').innerHTML = '';
-      return;
-    }
-    settingsRenderTable(d.users || []);
-  });
-}
-
-function settingsRenderTable(users) {
-  var wrap = document.getElementById('settings-table-wrap');
-  if (!users.length) {
-    wrap.innerHTML = '<p style="opacity:.5;font-size:13px;text-align:center;padding:20px 0">No users found.</p>';
-    return;
-  }
-  var rows = users.map(function(u) {
-    var statusBadge = u.active
-      ? '<span style="background:#E8F5EE;color:#168B57;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">Active</span>'
-      : '<span style="background:#fdecea;color:#c0392b;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">Inactive</span>';
-    var toggleLabel = u.active ? 'Deactivate' : 'Reactivate';
-    var toggleStyle = u.active ? 'background:#f39c12;color:#fff' : 'background:#168B57;color:#fff';
-    return '<tr>' +
-      '<td>' + u.role + '</td>' +
-      '<td>' + u.name + '</td>' +
-      '<td>' + (u.centres || '—') + '</td>' +
-      '<td>' + statusBadge + '</td>' +
-      '<td style="font-size:11px;opacity:.6">' + (u.updatedAt ? u.updatedAt.substring(0,10) : '—') + '</td>' +
-      '<td style="white-space:nowrap">' +
-        '<button class="btn" style="width:auto;padding:4px 10px;font-size:11px;margin-right:4px;' + toggleStyle + '" onclick="settingsToggleActive(' + JSON.stringify(u.role) + ',' + JSON.stringify(u.name) + ',' + JSON.stringify(!u.active) + ')">' + toggleLabel + '</button>' +
-        '<button class="btn" style="width:auto;padding:4px 10px;font-size:11px;margin-right:4px;background:#3498db;color:#fff" onclick="settingsResetPw(' + JSON.stringify(u.role) + ',' + JSON.stringify(u.name) + ')">Reset PW</button>' +
-        '<button class="btn" style="width:auto;padding:4px 10px;font-size:11px;background:#c0392b;color:#fff" onclick="settingsShowDelModal(' + JSON.stringify(u.role) + ',' + JSON.stringify(u.name) + ')">Delete</button>' +
-      '</td>' +
-    '</tr>';
-  }).join('');
-  wrap.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
-    '<thead><tr style="border-bottom:2px solid rgba(0,0,0,.1)">' +
-    '<th style="text-align:left;padding:6px 8px">Role</th>' +
-    '<th style="text-align:left;padding:6px 8px">Name</th>' +
-    '<th style="text-align:left;padding:6px 8px">Centres</th>' +
-    '<th style="text-align:left;padding:6px 8px">Status</th>' +
-    '<th style="text-align:left;padding:6px 8px">Updated</th>' +
-    '<th style="text-align:left;padding:6px 8px">Actions</th>' +
-    '</tr></thead><tbody>' + rows + '</tbody></table>';
-}
-
-function settingsToggleActive(role, name, makeActive) {
-  settingsShowErr('');
-  var adminPass = settingsGetAdminPass();
-  if (!adminPass) { settingsShowErr('Enter admin password first.'); return; }
-  gasGet({ action: 'setUserActive', adminPass: adminPass, role: role, name: name, active: makeActive ? 'Y' : 'N' }, function(err, d) {
-    if (err || !d || d.status !== 'ok') {
-      settingsShowErr(err || (d && d.reason) || 'Failed to update user.');
-      return;
-    }
-    settingsShowOk(name + ' has been ' + (makeActive ? 'reactivated' : 'deactivated') + '.');
-    settingsLoadUsers();
-  });
-}
-
-function settingsResetPw(role, name) {
-  settingsShowErr('');
-  var adminPass = settingsGetAdminPass();
-  if (!adminPass) { settingsShowErr('Enter admin password first.'); return; }
-  var newPass = 'IGI' + Math.floor(10000 + Math.random() * 90000);
-  if (!confirm('Reset password for ' + name + '?\n\nNew password will be: ' + newPass + '\n\nThey will be required to change it on next login.')) return;
-  gasGet({ action: 'resetUserPassword', adminPass: adminPass, role: role, name: name, tempPassword: newPass }, function(err, d) {
-    if (err || !d || d.status !== 'ok') {
-      settingsShowErr(err || (d && d.reason) || 'Failed to reset password.');
-      return;
-    }
-    settingsShowOk('✅ Password for ' + name + ' reset to: ' + newPass + ' — Please note it down now.');
-  });
-}
-
-function settingsShowAddForm() {
-  document.getElementById('add-role').value = 'Counselor';
-  document.getElementById('add-name').value = '';
-  document.getElementById('add-centres').value = '';
-  document.getElementById('add-temp-pass').value = '';
-  document.getElementById('add-err').style.display = 'none';
-  var m = document.getElementById('settings-add-modal');
-  m.style.display = 'flex';
-}
-
-function settingsHideAddForm() {
-  document.getElementById('settings-add-modal').style.display = 'none';
-}
-
-function settingsSubmitAdd() {
-  var adminPass = settingsGetAdminPass();
-  var role = document.getElementById('add-role').value;
-  var name = document.getElementById('add-name').value.trim();
-  var centres = document.getElementById('add-centres').value.trim();
-  var tempPass = document.getElementById('add-temp-pass').value.trim();
-  var errEl = document.getElementById('add-err');
-  errEl.style.display = 'none';
-  if (!adminPass) { errEl.textContent = 'Admin password not entered (go back and enter it).'; errEl.style.display = 'block'; return; }
-  if (!name) { errEl.textContent = 'Name is required.'; errEl.style.display = 'block'; return; }
-  if (!tempPass || tempPass.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
-  document.getElementById('add-submit-btn').disabled = true;
-  gasGet({ action: 'addUser', adminPass: adminPass, role: role, name: name, centres: centres, tempPassword: tempPass }, function(err, d) {
-    document.getElementById('add-submit-btn').disabled = false;
-    if (err || !d || d.status !== 'ok') {
-      var reason = (d && d.reason) || err || 'Failed to add user.';
-      if (reason === 'already_exists') reason = 'A user with this role and name already exists.';
-      errEl.textContent = reason;
-      errEl.style.display = 'block';
-      return;
-    }
-    settingsHideAddForm();
-    settingsShowOk('✅ User ' + name + ' (' + role + ') created. Initial password: ' + tempPass + ' — Please note it down now.');
-    settingsLoadUsers();
-  });
-}
-
-function settingsShowDelModal(role, name) {
-  _settingsDeleteTarget = { role: role, name: name };
-  document.getElementById('del-confirm-name-label').textContent = name;
-  document.getElementById('del-confirm-input').value = '';
-  document.getElementById('del-err').style.display = 'none';
-  document.getElementById('settings-del-modal').style.display = 'flex';
-}
-
-function settingsHideDelModal() {
-  _settingsDeleteTarget = null;
-  document.getElementById('settings-del-modal').style.display = 'none';
-}
-
-function settingsConfirmDelete() {
-  if (!_settingsDeleteTarget) return;
-  var adminPass = settingsGetAdminPass();
-  var typed = (document.getElementById('del-confirm-input').value || '').trim();
-  var errEl = document.getElementById('del-err');
-  errEl.style.display = 'none';
-  if (!adminPass) { errEl.textContent = 'Admin password not entered (go back and enter it).'; errEl.style.display = 'block'; return; }
-  if (typed !== _settingsDeleteTarget.name) { errEl.textContent = 'Name does not match. Type exactly: ' + _settingsDeleteTarget.name; errEl.style.display = 'block'; return; }
-  document.getElementById('del-confirm-btn').disabled = true;
-  gasGet({ action: 'deleteUser', adminPass: adminPass, role: _settingsDeleteTarget.role, name: _settingsDeleteTarget.name }, function(err, d) {
-    document.getElementById('del-confirm-btn').disabled = false;
-    if (err || !d || d.status !== 'ok') {
-      errEl.textContent = (d && d.reason) || err || 'Failed to delete user.';
-      errEl.style.display = 'block';
-      return;
-    }
-    var deleted = _settingsDeleteTarget.name;
-    settingsHideDelModal();
-    settingsShowOk('🗑️ ' + deleted + ' has been deleted from credentials. All historical data is preserved.');
-    settingsLoadUsers();
-  });
-}
-
 // ── BATCH SNAPSHOT ────────────────────────────────────────────────────────────
 var _snapData = null;
 var _snapFilter = 'active';
@@ -11585,38 +11436,175 @@ function loadSettingsUsers() {
       tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:#dc2626">Failed to load users.</td></tr>';
       return;
     }
-    var users = res.users || [];
-    _settingsUsersData = users;
-    if (!users.length) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">No users found.</td></tr>';
-      return;
+    _settingsUsersData = res.users || [];
+    // Populate the centre filter dropdown from whatever centres actually appear.
+    var centreSel = document.getElementById('settings-users-centre-filter');
+    if (centreSel) {
+      var seen = {}, opts = ['<option value="">All Centres</option>'];
+      _settingsUsersData.forEach(function(u) {
+        (u.centre || '').split(',').map(function(c){ return c.trim(); }).filter(Boolean).forEach(function(c) {
+          if (!seen[c]) { seen[c] = true; opts.push('<option value="' + c + '">' + c + '</option>'); }
+        });
+      });
+      var prevVal = centreSel.value;
+      centreSel.innerHTML = opts.join('');
+      centreSel.value = prevVal;
     }
-    tbody.innerHTML = users.map(function(u) {
-      var roleColor = u.role === 'Admin' ? '#1e40af' : '#166534';
-      var statusHtml = u.is_active !== false
-        ? '<span style="color:#16a34a;font-weight:700">● Active</span>'
-        : '<span style="color:#dc2626;font-weight:600">○ Inactive</span>';
-      var perms = u.permissions || {};
-      var permCount = ['all_india_mis','operational_invoices','diploma_release','alumni_all_centres'].filter(function(k){ return !!perms[k]; }).length;
-      var permBadge = permCount
-        ? '<span style="background:#eef2ff;color:#4338ca;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px">' + permCount + ' special</span>'
-        : '';
-      return '<tr>'
-        + '<td style="padding:8px 10px;font-weight:600">' + (u.name || u.username || '—') + permBadge + '</td>'
-        + '<td style="padding:8px 10px"><span style="background:' + roleColor + '18;color:' + roleColor + ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">' + (u.role || 'Counselor') + '</span></td>'
-        + '<td style="padding:8px 10px;color:var(--muted)">' + (u.centre || '—') + '</td>'
-        + '<td style="padding:8px 10px;text-align:center">' + statusHtml + '</td>'
-        + '<td style="padding:8px 10px;text-align:center;white-space:nowrap" class="no-print">'
-        +   '<button class="btn btn-xs" onclick="settingsEditUser(\'' + (u.id||u.name) + '\')" style="padding:4px 8px;font-size:11px;margin-right:4px" title="Edit">✏️</button>'
-        +   '<button class="btn btn-xs" onclick="openPermEditModal(\'' + (u.id||u.name) + '\')" style="padding:4px 8px;font-size:11px" title="Counsellor access">🔑 Access</button>'
-        + '</td>'
-        + '</tr>';
-    }).join('');
+    renderSettingsUsersTable();
   });
 }
 
-function settingsAddUser()          { showToast('Open your existing Settings → Add User form', 'info'); }
-function settingsEditUser(id)       { showToast('Edit user: ' + id, 'info'); }
+function renderSettingsUsersTable() {
+  var tbody = document.getElementById('settings-users-tbody');
+  if (!tbody) return;
+  var q = (document.getElementById('settings-users-search') || {}).value || '';
+  q = q.trim().toLowerCase();
+  var roleFilter = (document.getElementById('settings-users-role-filter') || {}).value || '';
+  var statusFilter = (document.getElementById('settings-users-status-filter') || {}).value || '';
+  var centreFilter = (document.getElementById('settings-users-centre-filter') || {}).value || '';
+
+  var users = _settingsUsersData.filter(function(u) {
+    if (q && (u.name || '').toLowerCase().indexOf(q) === -1) return false;
+    if (roleFilter && u.role !== roleFilter) return false;
+    if (statusFilter === 'active' && u.is_active === false) return false;
+    if (statusFilter === 'inactive' && u.is_active !== false) return false;
+    if (centreFilter && (u.centre || '').split(',').map(function(c){ return c.trim(); }).indexOf(centreFilter) === -1) return false;
+    return true;
+  });
+
+  if (!users.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">No users match this filter.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = users.map(function(u) {
+    var roleColor = u.role === 'Admin' ? '#1e40af' : '#166534';
+    var isActive = u.is_active !== false;
+    var statusHtml = isActive
+      ? '<span style="color:#16a34a;font-weight:700">● Active</span>'
+      : '<span style="color:#dc2626;font-weight:600">○ Inactive</span>';
+    var perms = u.permissions || {};
+    var permCount = ['all_india_mis','operational_invoices','diploma_release','alumni_all_centres'].filter(function(k){ return !!perms[k]; }).length;
+    var permBadge = permCount
+      ? '<span style="background:#eef2ff;color:#4338ca;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px">' + permCount + ' special</span>'
+      : '';
+    var toggleBtn = isActive
+      ? '<button class="btn btn-xs" onclick="settingsToggleUserActive(\'' + u.id + '\', false)" style="padding:4px 8px;font-size:11px;margin-right:4px" title="Deactivate — lead data is preserved">🚫 Disable</button>'
+      : '<button class="btn btn-xs" onclick="settingsToggleUserActive(\'' + u.id + '\', true)" style="padding:4px 8px;font-size:11px;margin-right:4px;color:#16a34a" title="Reactivate">✅ Enable</button>';
+    return '<tr>'
+      + '<td style="padding:8px 10px;font-weight:600">' + (u.name || u.username || '—') + permBadge + '</td>'
+      + '<td style="padding:8px 10px"><span style="background:' + roleColor + '18;color:' + roleColor + ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">' + (u.role || 'Counselor') + '</span></td>'
+      + '<td style="padding:8px 10px;color:var(--muted)">' + (u.centre || '—') + '</td>'
+      + '<td style="padding:8px 10px;text-align:center">' + statusHtml + '</td>'
+      + '<td style="padding:8px 10px;text-align:center;white-space:nowrap" class="no-print">'
+      +   toggleBtn
+      +   '<button class="btn btn-xs" onclick="openPermEditModal(\'' + u.id + '\')" style="padding:4px 8px;font-size:11px;margin-right:4px" title="Access permissions">🔑 Access</button>'
+      +   '<button class="btn btn-xs" onclick="settingsShowDelModal(\'' + u.id + '\')" style="padding:4px 8px;font-size:11px;color:#dc2626" title="Delete login">🗑️</button>'
+      + '</td>'
+      + '</tr>';
+  }).join('');
+}
+
+function settingsToggleUserActive(id, makeActive) {
+  var u = _settingsUsersData.find(function(x) { return String(x.id) === String(id); });
+  if (!u) { showToast('User not found — reload the list and try again.', 'error'); return; }
+  gasGet({ action: 'setUserActive', id: u.id, name: u.name, isActive: makeActive }, function(err, d) {
+    if (err || !d || d.status !== 'ok') {
+      showToast((d && d.reason) || String(err || 'Failed to update user.'), 'error');
+      return;
+    }
+    showToast((makeActive ? 'Reactivated ' : 'Deactivated ') + u.name + '.');
+    loadSettingsUsers();
+  });
+}
+
+// ── Add User ─────────────────────────────────────────────────────────────────
+function settingsAddUser() {
+  document.getElementById('add-user-name').value = '';
+  document.getElementById('add-user-role').value = 'Counselor';
+  document.getElementById('add-user-email').value = '';
+  document.getElementById('add-user-temp-pass').value = '';
+  var centreWrap = document.getElementById('add-user-centres-wrap');
+  if (centreWrap && !centreWrap.dataset.built) {
+    centreWrap.innerHTML = (typeof _IGI_CENTRES !== 'undefined' ? _IGI_CENTRES : []).map(function(c) {
+      return '<label style="display:inline-flex;align-items:center;gap:5px;margin:0 12px 8px 0;font-size:12px;cursor:pointer">'
+        + '<input type="checkbox" class="add-user-centre-cb" value="' + c + '"> ' + c + '</label>';
+    }).join('');
+    centreWrap.dataset.built = '1';
+  }
+  document.querySelectorAll('.add-user-centre-cb').forEach(function(cb) { cb.checked = false; });
+  document.getElementById('add-user-err').style.display = 'none';
+  document.getElementById('add-user-modal').style.display = 'flex';
+}
+function closeAddUserModal() {
+  document.getElementById('add-user-modal').style.display = 'none';
+}
+function submitAddUser() {
+  var name = document.getElementById('add-user-name').value.trim();
+  var role = document.getElementById('add-user-role').value;
+  var email = document.getElementById('add-user-email').value.trim();
+  var tempPass = document.getElementById('add-user-temp-pass').value;
+  var centres = Array.prototype.slice.call(document.querySelectorAll('.add-user-centre-cb:checked')).map(function(cb){ return cb.value; }).join(',');
+  var errEl = document.getElementById('add-user-err');
+  errEl.style.display = 'none';
+  if (!name) { errEl.textContent = 'Name is required.'; errEl.style.display = 'block'; return; }
+  if (!tempPass || tempPass.length < 4) { errEl.textContent = 'Temporary password must be at least 4 characters.'; errEl.style.display = 'block'; return; }
+  var btn = document.getElementById('add-user-save-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
+  gasGet({ action: 'addUser', name: name, role: role, email: email, centres: centres, tempPassword: tempPass }, function(err, d) {
+    if (btn) { btn.disabled = false; btn.textContent = '➕ Add User'; }
+    if (err || !d || d.status !== 'ok') {
+      errEl.textContent = (d && d.reason === 'name_already_exists') ? 'A user with this name already exists.' : ((d && d.reason) || String(err || 'Failed to add user.'));
+      errEl.style.display = 'block';
+      return;
+    }
+    closeAddUserModal();
+    showToast(name + ' added. They must set their own password on first login.');
+    loadSettingsUsers();
+  });
+}
+
+// ── Delete User ──────────────────────────────────────────────────────────────
+var _delUserTarget = null;
+function settingsShowDelModal(id) {
+  var u = _settingsUsersData.find(function(x) { return String(x.id) === String(id); });
+  if (!u) { showToast('User not found — reload the list and try again.', 'error'); return; }
+  _delUserTarget = u;
+  document.getElementById('del-confirm-name-label').textContent = u.name;
+  document.getElementById('del-confirm-input').value = '';
+  document.getElementById('del-user-err').style.display = 'none';
+  document.getElementById('settings-del-modal').style.display = 'flex';
+}
+function closeDelUserModal() {
+  document.getElementById('settings-del-modal').style.display = 'none';
+  _delUserTarget = null;
+}
+function settingsConfirmDelete() {
+  var errEl = document.getElementById('del-user-err');
+  errEl.style.display = 'none';
+  if (!_delUserTarget) return;
+  var typed = document.getElementById('del-confirm-input').value.trim();
+  if (typed !== _delUserTarget.name) {
+    errEl.textContent = 'Type the name exactly to confirm deletion.';
+    errEl.style.display = 'block';
+    return;
+  }
+  var btn = document.getElementById('del-confirm-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Deleting…'; }
+  gasGet({ action: 'deleteUser', id: _delUserTarget.id, name: _delUserTarget.name }, function(err, d) {
+    if (btn) { btn.disabled = false; btn.textContent = '🗑️ Delete Login'; }
+    if (err || !d || d.status !== 'ok') {
+      errEl.textContent = (d && d.reason) || String(err || 'Failed to delete user.');
+      errEl.style.display = 'block';
+      return;
+    }
+    var name = _delUserTarget.name;
+    closeDelUserModal();
+    showToast(name + '\'s login has been deleted. All their historical data is preserved.');
+    loadSettingsUsers();
+  });
+}
+
+function settingsEditUser(id) { openPermEditModal(id); }
 
 // ── Counsellor Access (permissions) modal ─────────────────────────────────────
 // What access a counsellor has (all-India MIS, operational invoices, diploma
@@ -12286,6 +12274,75 @@ switchAdminTab = function(tabId) {
     <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
       <button onclick="closePermEditModal()" class="btn btn-outline" style="width:auto;padding:8px 18px;font-size:13px">Cancel</button>
       <button id="perm-edit-save-btn" onclick="savePermEdit()" class="btn" style="width:auto;padding:8px 18px;font-size:13px;background:var(--navy);color:#fff">&#128190; Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add User modal — built 2026-08-24; the panel had a working list but Add
+     User was still a stub toast pointing at a legacy form whose HTML no
+     longer exists. This is a real, working replacement. -->
+<div id="add-user-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;width:460px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
+    <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600">User & Counsellor Management</div>
+        <h3 style="margin:2px 0 0;font-size:16px;font-weight:700">➕ Add User</h3>
+      </div>
+      <button onclick="closeAddUserModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">&#10005;</button>
+    </div>
+    <div style="padding:20px">
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:5px">Full Name</label>
+      <input type="text" id="add-user-name" placeholder="e.g. Priya Sharma" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin-bottom:14px;box-sizing:border-box">
+
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:5px">Role</label>
+      <select id="add-user-role" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin-bottom:14px;box-sizing:border-box">
+        <option value="Counselor">Counselor</option>
+        <option value="Instructor">Instructor</option>
+        <option value="AcademicHead">Academic Head</option>
+        <option value="Admin">Admin</option>
+      </select>
+
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:5px">Email (optional)</label>
+      <input type="email" id="add-user-email" placeholder="name@igi.example" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin-bottom:14px;box-sizing:border-box">
+
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:5px">Centres</label>
+      <div id="add-user-centres-wrap" style="margin-bottom:14px"></div>
+
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:5px">Temporary Password</label>
+      <input type="text" id="add-user-temp-pass" placeholder="At least 4 characters" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;box-sizing:border-box">
+      <p class="sub" style="margin:6px 0 0">They'll be required to set their own password the first time they log in.</p>
+
+      <div id="add-user-err" class="err-box" style="display:none;margin-top:14px"></div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeAddUserModal()" class="btn btn-outline" style="width:auto;padding:8px 18px;font-size:13px">Cancel</button>
+      <button id="add-user-save-btn" onclick="submitAddUser()" class="btn btn-gold" style="width:auto;padding:8px 18px;font-size:13px">➕ Add User</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete User confirmation modal — type-the-name-to-confirm, matching the
+     pattern from the old dead-code version. Deletes the login row only;
+     every other table references people by name, so historical data
+     (leads, batches, feedback, attendance) is untouched. -->
+<div id="settings-del-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
+    <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#dc2626;font-weight:600">Danger Zone</div>
+        <h3 style="margin:2px 0 0;font-size:16px;font-weight:700">🗑️ Delete Login</h3>
+      </div>
+      <button onclick="closeDelUserModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">&#10005;</button>
+    </div>
+    <div style="padding:20px">
+      <p class="sub" style="margin:0 0 12px">This removes <strong id="del-confirm-name-label" style="color:var(--navy)"></strong>'s login credentials. They will no longer be able to sign in. All their historical data (leads, batches, feedback, attendance) is preserved.</p>
+      <p class="sub" style="margin:0 0 6px">Type their name to confirm:</p>
+      <input type="text" id="del-confirm-input" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;box-sizing:border-box">
+      <div id="del-user-err" class="err-box" style="display:none;margin-top:14px"></div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeDelUserModal()" class="btn btn-outline" style="width:auto;padding:8px 18px;font-size:13px">Cancel</button>
+      <button id="del-confirm-btn" onclick="settingsConfirmDelete()" class="btn" style="width:auto;padding:8px 18px;font-size:13px;background:#dc2626;color:#fff">🗑️ Delete Login</button>
     </div>
   </div>
 </div>

@@ -1502,6 +1502,63 @@ window.gasGet = (function () {
     });
   }
 
+  /* addUser — create a new staff login. Generates a fresh salt and hashes the
+     temp password the same way h_login checks it (sha256Hex(salt+'|'+pin)),
+     and sets must_change so the person is forced to pick their own password
+     on first login instead of the admin-set temp one lingering. 2026-08-24. */
+  function h_addUser(p, cb) {
+    var name = (p.name || '').trim();
+    var role = (p.role || '').trim();
+    var centres = (p.centres || '').trim();
+    var email = (p.email || '').trim();
+    var tempPass = String(p.tempPassword || p.pin || '');
+    if (!name || !role) { cb(null, { status: 'error', reason: 'name_and_role_required' }); return; }
+    if (!tempPass || tempPass.length < 4) { cb(null, { status: 'error', reason: 'temp_password_too_short' }); return; }
+    GET('users', 'select=id&name=eq.' + encodeURIComponent(name), function (e, rows) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      if (rows && rows.length) { cb(null, { status: 'error', reason: 'name_already_exists' }); return; }
+      var salt = generateSalt();
+      sha256Hex(salt + '|' + tempPass, function (hashVal) {
+        if (!hashVal) { cb(null, { status: 'error', reason: 'hash_failed' }); return; }
+        POST('users', '', {
+          name: name, role: role, centres: centres, email: email,
+          password_hash: hashVal, salt: salt, must_change: true, is_active: true,
+          permissions: {}
+        }, function (e2, rows2) {
+          if (e2) { cb(null, { status: 'error', reason: String(e2) }); return; }
+          var newRow = (rows2 && rows2[0]) || null;
+          cb(null, { status: 'ok', id: newRow && newRow.id, name: name });
+        });
+      });
+    });
+  }
+
+  /* setUserActive — enable/disable a login without touching any of their
+     historical data (leads, batches, feedback, attendance all stay put;
+     only whether they can log in changes). 2026-08-24. */
+  function h_setUserActive(p, cb) {
+    var id = p.id, name = p.name;
+    if (!id && !name) { cb(null, { status: 'error', reason: 'id_or_name_required' }); return; }
+    var qs = id ? ('id=eq.' + encodeURIComponent(id)) : ('name=eq.' + encodeURIComponent(name));
+    PATCH('users', qs, { is_active: !!p.isActive }, function (e) {
+      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', is_active: !!p.isActive });
+    });
+  }
+
+  /* deleteUser — removes the login row only (id/name/password_hash/salt).
+     Every other table (leads, batches, feedback, attendance, discount
+     approvals, etc.) references people by name/string, not a foreign key to
+     this row, so their historical data is preserved exactly as the old
+     dead-code comment promised — this just makes it real. 2026-08-24. */
+  function h_deleteUser(p, cb) {
+    var id = p.id, name = p.name;
+    if (!id && !name) { cb(null, { status: 'error', reason: 'id_or_name_required' }); return; }
+    var qs = id ? ('id=eq.' + encodeURIComponent(id)) : ('name=eq.' + encodeURIComponent(name));
+    DEL('users', qs, function (e) {
+      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+    });
+  }
+
   /* getStudents */
   function h_getStudents(p, cb) {
     var bc = encodeURIComponent(p.batchCode);
@@ -10457,6 +10514,9 @@ window.gasGet = (function () {
       case 'updateBatchDates':          return h_updateBatchDates(params, cb);
       case 'getUsers':                  return h_getUsers(params, cb);
       case 'updateUserPermissions':     return h_updateUserPermissions(params, cb);
+      case 'addUser':                   return h_addUser(params, cb);
+      case 'setUserActive':             return h_setUserActive(params, cb);
+      case 'deleteUser':                return h_deleteUser(params, cb);
       case 'getStudents':               return h_getStudents(params, cb);
       case 'searchStudents':            return h_searchStudents(params, cb);
       case 'getNextEnrollment':         return h_getNextEnroll(params, cb);

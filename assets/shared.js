@@ -1482,13 +1482,44 @@ window.gasGet = (function () {
      actions plus the `permissions` JSONB column on `users` (added 2026-08-21)
      let an admin toggle those same flags from the UI instead. */
   function h_getUsers(p, cb) {
-    GET('users', 'select=id,name,role,centres,is_active,permissions,updated_at,last_login_at,reports_to&order=name.asc', function (e, rows) {
+    GET('users', 'select=id,name,role,roles,centres,is_active,permissions,updated_at,last_login_at,reports_to&order=name.asc', function (e, rows) {
       if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
       cb(null, { status: 'ok', users: (rows || []).map(function (r) {
-        return { id: r.id, name: r.name, role: r.role, centre: r.centres, centres: r.centres,
+        return { id: r.id, name: r.name, role: r.role,
+          roles: (r.roles && r.roles.length) ? r.roles : (r.role ? [r.role] : []),
+          centre: r.centres, centres: r.centres,
           is_active: r.is_active, permissions: r.permissions || {}, updatedAt: r.updated_at,
           lastLoginAt: r.last_login_at, reportsTo: r.reports_to || '' };
       }) });
+    });
+  }
+
+  /* Multi-role support — a person can hold more than one role (e.g. both
+     Counselor and Instructor). `role` stays the single "primary" role driving
+     every existing isAdmin/isManager/isAcademicHead check unchanged (picked
+     by priority so Admin/AcademicHead access never regresses); `roles` is the
+     full list shown in the UI. ROLE_PRIORITY intentionally does not include
+     Coordinator — by explicit instruction it behaves identically to Counselor
+     (nothing in this codebase positively gates on role==='Counselor', so no
+     special-casing is needed for parity). 2026-08-24. */
+  var ROLE_PRIORITY = ['Admin', 'AcademicHead', 'Instructor', 'Counselor', 'Coordinator'];
+  function pickPrimaryRole(rolesArr) {
+    for (var i = 0; i < ROLE_PRIORITY.length; i++) {
+      if (rolesArr.indexOf(ROLE_PRIORITY[i]) !== -1) return ROLE_PRIORITY[i];
+    }
+    return rolesArr[0] || 'Counselor';
+  }
+  function h_updateUserRoles(p, cb) {
+    var id = p.id, name = p.name;
+    if (!id && !name) { cb(null, { status: 'error', reason: 'id_or_name_required' }); return; }
+    var rolesArr = Array.isArray(p.roles) ? p.roles.filter(Boolean) : [];
+    if (!rolesArr.length) { cb(null, { status: 'error', reason: 'at_least_one_role_required' }); return; }
+    var primary = pickPrimaryRole(rolesArr);
+    var qs = id ? ('id=eq.' + encodeURIComponent(id)) : ('name=eq.' + encodeURIComponent(name));
+    PATCH('users', qs, { role: primary, roles: rolesArr }, function (e) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      writeAuditLog('roles_updated', p.actorName, name || id, { roles: rolesArr, primary: primary });
+      cb(null, { status: 'ok', role: primary, roles: rolesArr });
     });
   }
 
@@ -1593,7 +1624,8 @@ window.gasGet = (function () {
      on first login instead of the admin-set temp one lingering. 2026-08-24. */
   function h_addUser(p, cb) {
     var name = (p.name || '').trim();
-    var role = (p.role || '').trim();
+    var rolesArr = Array.isArray(p.roles) ? p.roles.filter(Boolean) : (p.role ? [String(p.role).trim()] : []);
+    var role = rolesArr.length ? pickPrimaryRole(rolesArr) : (p.role || '').trim();
     var centres = (p.centres || '').trim();
     var email = (p.email || '').trim();
     var reportsTo = (p.reportsTo || '').trim();
@@ -1607,13 +1639,14 @@ window.gasGet = (function () {
       sha256Hex(salt + '|' + tempPass, function (hashVal) {
         if (!hashVal) { cb(null, { status: 'error', reason: 'hash_failed' }); return; }
         POST('users', '', {
-          name: name, role: role, centres: centres, email: email, reports_to: reportsTo,
+          name: name, role: role, roles: rolesArr.length ? rolesArr : [role],
+          centres: centres, email: email, reports_to: reportsTo,
           password_hash: hashVal, salt: salt, must_change: true, is_active: true,
           permissions: {}
         }, function (e2, rows2) {
           if (e2) { cb(null, { status: 'error', reason: String(e2) }); return; }
           var newRow = (rows2 && rows2[0]) || null;
-          writeAuditLog('user_added', p.actorName, name, { role: role, centres: centres });
+          writeAuditLog('user_added', p.actorName, name, { role: role, roles: rolesArr, centres: centres });
           cb(null, { status: 'ok', id: newRow && newRow.id, name: name });
         });
       });
@@ -10627,6 +10660,7 @@ window.gasGet = (function () {
       case 'updateBatchDates':          return h_updateBatchDates(params, cb);
       case 'getUsers':                  return h_getUsers(params, cb);
       case 'updateUserPermissions':     return h_updateUserPermissions(params, cb);
+      case 'updateUserRoles':           return h_updateUserRoles(params, cb);
       case 'addUser':                   return h_addUser(params, cb);
       case 'setUserActive':             return h_setUserActive(params, cb);
       case 'deleteUser':                return h_deleteUser(params, cb);

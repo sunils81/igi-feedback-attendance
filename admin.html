@@ -2936,6 +2936,7 @@
           <option value="AcademicHead">Academic Head</option>
           <option value="Counselor">Counselor</option>
           <option value="Instructor">Instructor</option>
+          <option value="Coordinator">Coordinator</option>
         </select>
         <select id="settings-users-status-filter" onchange="renderSettingsUsersTable()" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px">
           <option value="">All Status</option>
@@ -11534,7 +11535,7 @@ function renderSettingsUsersTable() {
 
   var users = _settingsUsersData.filter(function(u) {
     if (q && (u.name || '').toLowerCase().indexOf(q) === -1) return false;
-    if (roleFilter && u.role !== roleFilter) return false;
+    if (roleFilter && (u.roles || [u.role]).indexOf(roleFilter) === -1) return false;
     if (statusFilter === 'active' && u.is_active === false) return false;
     if (statusFilter === 'inactive' && u.is_active !== false) return false;
     if (centreFilter && (u.centre || '').split(',').map(function(c){ return c.trim(); }).indexOf(centreFilter) === -1) return false;
@@ -11548,7 +11549,6 @@ function renderSettingsUsersTable() {
   }
   var STALE_DAYS = 90;
   tbody.innerHTML = users.map(function(u) {
-    var roleColor = u.role === 'Admin' ? '#1e40af' : '#166534';
     var isActive = u.is_active !== false;
     var statusHtml = isActive
       ? '<span style="color:#16a34a;font-weight:700">● Active</span>'
@@ -11575,14 +11575,21 @@ function renderSettingsUsersTable() {
     var toggleBtn = isActive
       ? '<button class="btn btn-xs" onclick="settingsToggleUserActive(\'' + u.id + '\', false)" style="padding:4px 8px;font-size:11px;margin-right:4px" title="Deactivate — lead data is preserved">🚫 Disable</button>'
       : '<button class="btn btn-xs" onclick="settingsToggleUserActive(\'' + u.id + '\', true)" style="padding:4px 8px;font-size:11px;margin-right:4px;color:#16a34a" title="Reactivate">✅ Enable</button>';
+    var ROLE_COLORS = { Admin: '#1e40af', AcademicHead: '#7c3aed', Instructor: '#b45309', Coordinator: '#0f766e', Counselor: '#166534' };
+    var rolesList = (u.roles && u.roles.length) ? u.roles : [u.role || 'Counselor'];
+    var roleBadges = rolesList.map(function(r) {
+      var c = ROLE_COLORS[r] || '#166534';
+      return '<span style="background:' + c + '18;color:' + c + ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;margin:1px 3px 1px 0;display:inline-block">' + r + '</span>';
+    }).join('');
     return '<tr>'
       + '<td style="padding:8px 10px" class="no-print"><input type="checkbox" class="settings-user-select-cb" value="' + u.id + '" onchange="updateBulkUserToolbar()"></td>'
       + '<td style="padding:8px 10px;font-weight:600">' + (u.name || u.username || '—') + permBadge + revokedBadge + reportsToHtml + '</td>'
-      + '<td style="padding:8px 10px"><span style="background:' + roleColor + '18;color:' + roleColor + ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">' + (u.role || 'Counselor') + '</span></td>'
+      + '<td style="padding:8px 10px">' + roleBadges + '</td>'
       + '<td style="padding:8px 10px;color:var(--muted)">' + (u.centre || '—') + '</td>'
       + '<td style="padding:8px 10px;text-align:center">' + statusHtml + '<br>' + lastLoginHtml + '</td>'
       + '<td style="padding:8px 10px;text-align:center;white-space:nowrap" class="no-print">'
       +   toggleBtn
+      +   '<button class="btn btn-xs" onclick="openRolesEditModal(\'' + u.id + '\')" style="padding:4px 8px;font-size:11px;margin-right:4px" title="Edit roles">🎭 Roles</button>'
       +   '<button class="btn btn-xs" onclick="openPermEditModal(\'' + u.id + '\')" style="padding:4px 8px;font-size:11px;margin-right:4px" title="Access permissions">🔑 Access</button>'
       +   '<button class="btn btn-xs" onclick="settingsShowResetPwModal(\'' + u.id + '\')" style="padding:4px 8px;font-size:11px;margin-right:4px" title="Reset password">🔁 Reset PW</button>'
       +   '<button class="btn btn-xs" onclick="settingsShowDelModal(\'' + u.id + '\')" style="padding:4px 8px;font-size:11px;color:#dc2626" title="Delete login">🗑️</button>'
@@ -11637,12 +11644,13 @@ function bulkReassignCentreSelected() {
 }
 function exportUsersCSV() {
   var users = _settingsUsersData;
-  var rows = [['Name','Role','Centre','Status','Reports To','Last Login','Special Permissions']];
+  var rows = [['Name','Roles','Centre','Status','Reports To','Last Login','Special Permissions']];
   users.forEach(function(u) {
     var perms = u.permissions || {};
     var specials = Object.keys(perms).filter(function(k){ return perms[k] === true; }).join('; ');
+    var rolesStr = (u.roles && u.roles.length) ? u.roles.join('; ') : (u.role || '');
     rows.push([
-      u.name || '', u.role || '', u.centre || '', (u.is_active !== false ? 'Active' : 'Inactive'),
+      u.name || '', rolesStr, u.centre || '', (u.is_active !== false ? 'Active' : 'Inactive'),
       u.reportsTo || '', (u.lastLoginAt ? new Date(u.lastLoginAt).toISOString() : 'never'), specials
     ]);
   });
@@ -11676,7 +11684,7 @@ function settingsToggleUserActive(id, makeActive) {
 // ── Add User ─────────────────────────────────────────────────────────────────
 function settingsAddUser() {
   document.getElementById('add-user-name').value = '';
-  document.getElementById('add-user-role').value = 'Counselor';
+  document.querySelectorAll('.add-user-role-cb').forEach(function(cb) { cb.checked = (cb.value === 'Counselor'); });
   document.getElementById('add-user-email').value = '';
   document.getElementById('add-user-temp-pass').value = '';
   var centreWrap = document.getElementById('add-user-centres-wrap');
@@ -11702,7 +11710,7 @@ function closeAddUserModal() {
 }
 function submitAddUser() {
   var name = document.getElementById('add-user-name').value.trim();
-  var role = document.getElementById('add-user-role').value;
+  var roles = Array.prototype.slice.call(document.querySelectorAll('.add-user-role-cb:checked')).map(function(cb){ return cb.value; });
   var email = document.getElementById('add-user-email').value.trim();
   var reportsTo = (document.getElementById('add-user-reports-to') || {}).value || '';
   var tempPass = document.getElementById('add-user-temp-pass').value;
@@ -11710,10 +11718,11 @@ function submitAddUser() {
   var errEl = document.getElementById('add-user-err');
   errEl.style.display = 'none';
   if (!name) { errEl.textContent = 'Name is required.'; errEl.style.display = 'block'; return; }
+  if (!roles.length) { errEl.textContent = 'Select at least one role.'; errEl.style.display = 'block'; return; }
   if (!tempPass || tempPass.length < 4) { errEl.textContent = 'Temporary password must be at least 4 characters.'; errEl.style.display = 'block'; return; }
   var btn = document.getElementById('add-user-save-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
-  gasGet({ action: 'addUser', name: name, role: role, email: email, centres: centres, reportsTo: reportsTo, tempPassword: tempPass, actorName: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin') }, function(err, d) {
+  gasGet({ action: 'addUser', name: name, roles: roles, email: email, centres: centres, reportsTo: reportsTo, tempPassword: tempPass, actorName: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin') }, function(err, d) {
     if (btn) { btn.disabled = false; btn.textContent = '➕ Add User'; }
     if (err || !d || d.status !== 'ok') {
       errEl.textContent = (d && d.reason === 'name_already_exists') ? 'A user with this name already exists.' : ((d && d.reason) || String(err || 'Failed to add user.'));
@@ -11768,6 +11777,48 @@ function settingsConfirmDelete() {
 }
 
 function settingsEditUser(id) { openPermEditModal(id); }
+
+// ── Edit Roles (multi-role) ───────────────────────────────────────────────────
+// A person can hold more than one role at once (e.g. Counselor + Instructor).
+// `role` stays a single "primary" value on the backend (still drives the
+// existing Admin/AcademicHead gates) — `roles` is the full list. 2026-08-24.
+var _rolesEditTarget = null;
+function openRolesEditModal(id) {
+  var u = _settingsUsersData.find(function(x) { return String(x.id) === String(id); });
+  if (!u) { showToast('User not found — reload the list and try again.', 'error'); return; }
+  _rolesEditTarget = u;
+  document.getElementById('roles-edit-title').textContent = u.name;
+  var current = (u.roles && u.roles.length) ? u.roles : [u.role || 'Counselor'];
+  document.querySelectorAll('.roles-edit-cb').forEach(function(cb) { cb.checked = current.indexOf(cb.value) !== -1; });
+  document.getElementById('roles-edit-err').style.display = 'none';
+  document.getElementById('roles-edit-modal').style.display = 'flex';
+}
+function closeRolesEditModal() {
+  document.getElementById('roles-edit-modal').style.display = 'none';
+  _rolesEditTarget = null;
+}
+function saveRolesEdit() {
+  var errEl = document.getElementById('roles-edit-err');
+  errEl.style.display = 'none';
+  if (!_rolesEditTarget) return;
+  var roles = Array.prototype.slice.call(document.querySelectorAll('.roles-edit-cb:checked')).map(function(cb){ return cb.value; });
+  if (!roles.length) { errEl.textContent = 'Select at least one role.'; errEl.style.display = 'block'; return; }
+  var btn = document.getElementById('roles-edit-save-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  gasGet({ action: 'updateUserRoles', id: _rolesEditTarget.id, name: _rolesEditTarget.name, roles: roles,
+    actorName: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin') }, function(err, d) {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save'; }
+    if (err || !d || d.status !== 'ok') {
+      errEl.textContent = (d && d.reason) || String(err || 'Failed to save.');
+      errEl.style.display = 'block';
+      return;
+    }
+    var name = _rolesEditTarget.name;
+    closeRolesEditModal();
+    showToast('Roles updated for ' + name + ': ' + roles.join(', ') + '.');
+    loadSettingsUsers();
+  });
+}
 
 // ── Reset Password (per-row) ──────────────────────────────────────────────────
 var _resetPwTarget = null;
@@ -12599,13 +12650,15 @@ switchAdminTab = function(tabId) {
       <label style="display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:5px">Full Name</label>
       <input type="text" id="add-user-name" placeholder="e.g. Priya Sharma" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin-bottom:14px;box-sizing:border-box">
 
-      <label style="display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:5px">Role</label>
-      <select id="add-user-role" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin-bottom:14px;box-sizing:border-box">
-        <option value="Counselor">Counselor</option>
-        <option value="Instructor">Instructor</option>
-        <option value="AcademicHead">Academic Head</option>
-        <option value="Admin">Admin</option>
-      </select>
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:5px">Role(s) — select all that apply</label>
+      <div style="display:flex;flex-wrap:wrap;gap:4px 14px;margin-bottom:14px">
+        <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" class="add-user-role-cb" value="Counselor" checked> Counselor</label>
+        <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" class="add-user-role-cb" value="Instructor"> Instructor</label>
+        <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" class="add-user-role-cb" value="Coordinator"> Coordinator</label>
+        <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" class="add-user-role-cb" value="AcademicHead"> Academic Head</label>
+        <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" class="add-user-role-cb" value="Admin"> Admin</label>
+      </div>
+      <p class="sub" style="margin:-10px 0 14px">A person can hold more than one role at once (e.g. Counselor + Instructor).</p>
 
       <label style="display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:5px">Email (optional)</label>
       <input type="email" id="add-user-email" placeholder="name@igi.example" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin-bottom:14px;box-sizing:border-box">
@@ -12678,6 +12731,37 @@ switchAdminTab = function(tabId) {
     <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
       <button onclick="closeResetPwModal()" class="btn btn-outline" style="width:auto;padding:8px 18px;font-size:13px">Cancel</button>
       <button id="reset-pw-confirm-btn" onclick="settingsSubmitResetPw()" class="btn" style="width:auto;padding:8px 18px;font-size:13px;background:var(--navy);color:#fff">🔁 Reset Password</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Roles modal — multi-role support, 2026-08-24. A person can hold more
+     than one role (e.g. Counselor + Instructor); `role` stays a single
+     "primary" value driving the existing Admin/AcademicHead gates, `roles`
+     is the full list shown as badges in the table. -->
+<div id="roles-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
+    <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600">User & Counsellor Management</div>
+        <h3 id="roles-edit-title" style="margin:2px 0 0;font-size:16px;font-weight:700">Edit Roles</h3>
+      </div>
+      <button onclick="closeRolesEditModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">&#10005;</button>
+    </div>
+    <div style="padding:20px">
+      <p class="sub" style="margin:0 0 14px">Select every role this person holds. A Coordinator has the same access as a Counsellor.</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" class="roles-edit-cb" value="Counselor" style="width:16px;height:16px"> Counselor</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" class="roles-edit-cb" value="Instructor" style="width:16px;height:16px"> Instructor</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" class="roles-edit-cb" value="Coordinator" style="width:16px;height:16px"> Coordinator</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" class="roles-edit-cb" value="AcademicHead" style="width:16px;height:16px"> Academic Head</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" class="roles-edit-cb" value="Admin" style="width:16px;height:16px"> Admin</label>
+      </div>
+      <div id="roles-edit-err" class="err-box" style="display:none;margin-top:14px"></div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeRolesEditModal()" class="btn btn-outline" style="width:auto;padding:8px 18px;font-size:13px">Cancel</button>
+      <button id="roles-edit-save-btn" onclick="saveRolesEdit()" class="btn" style="width:auto;padding:8px 18px;font-size:13px;background:var(--navy);color:#fff">💾 Save</button>
     </div>
   </div>
 </div>

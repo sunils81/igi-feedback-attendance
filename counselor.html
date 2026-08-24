@@ -7928,6 +7928,14 @@ function createBatch() {
   const reportPass= document.getElementById('b-rpass').value.trim();
   const errEl     = document.getElementById('b-err');
   errEl.classList.remove('show');
+  // Batch Admin authority — opt-out, not opt-in: every counsellor could
+  // already create batches before this permission existed, so only an
+  // explicit batch_admin:false in their permissions row blocks it. 2026-08-24.
+  if (!isAdmin && counselorPermissions && counselorPermissions.batch_admin === false) {
+    errEl.textContent = 'Your account does not have batch admin authority — ask an admin to grant it in Settings → Users.';
+    errEl.classList.add('show');
+    return;
+  }
   if (!batchCode||!centre||!course||!startDate) {
     errEl.textContent='Please fill Centre, Course, Type and Start Date.'; errEl.classList.add('show'); return;
   }
@@ -15274,6 +15282,11 @@ function mbToggleSection(bodyId, headerEl) {
 }
 
 function promptDeleteBatch(batchCode, keepStudents) {
+  // Batch Admin authority — same opt-out semantics as createBatch() above.
+  if (!isAdmin && counselorPermissions && counselorPermissions.batch_admin === false) {
+    alert('Your account does not have batch admin authority — ask an admin to grant it in Settings → Users.');
+    return;
+  }
   var msg = keepStudents 
     ? 'Are you sure you want to delete the batch ' + batchCode + '? This will delete all batch details, sessions, feedback, and marks but will KEEP the student profiles.'
     : 'WARNING: Are you sure you want to delete the batch ' + batchCode + ' AND ALL OF ITS STUDENTS? This will permanently delete everything associated with this batch, including student profiles.';

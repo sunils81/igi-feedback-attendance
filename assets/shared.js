@@ -974,6 +974,9 @@ window.gasGet = (function () {
         var isAdm = r.role === 'Admin', isMgr = (r.role === 'Manager');
 
         function completeLogin() {
+          // Fire-and-forget — stamps last_login_at for the "stale account" view in
+          // Settings → Users. Never blocks or fails the actual login on this. 2026-08-24.
+          try { PATCH(tbl, 'name=eq.' + encodeURIComponent(name), { last_login_at: nowISO() }, function(){}); } catch(ex) {}
           h_getBatches({ centres: isAdm ? '' : centres.join(',') }, function (e2, bd) {
             var isAH = (r.role === 'AcademicHead' || r.role === 'Admin' || (r.name && r.name.toLowerCase().indexOf('bhavin') >= 0));
             var isRM = (r.role === 'RevenueManager' || r.role === 'Manager' || r.role === 'Admin' || (r.name && r.name.toLowerCase().indexOf('amit') >= 0)) && !(r.name && r.name.toLowerCase().indexOf('bhavin') >= 0);
@@ -1479,12 +1482,90 @@ window.gasGet = (function () {
      actions plus the `permissions` JSONB column on `users` (added 2026-08-21)
      let an admin toggle those same flags from the UI instead. */
   function h_getUsers(p, cb) {
-    GET('users', 'select=id,name,role,centres,is_active,permissions,updated_at&order=name.asc', function (e, rows) {
+    GET('users', 'select=id,name,role,centres,is_active,permissions,updated_at,last_login_at,reports_to&order=name.asc', function (e, rows) {
       if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
       cb(null, { status: 'ok', users: (rows || []).map(function (r) {
         return { id: r.id, name: r.name, role: r.role, centre: r.centres, centres: r.centres,
-          is_active: r.is_active, permissions: r.permissions || {}, updatedAt: r.updated_at };
+          is_active: r.is_active, permissions: r.permissions || {}, updatedAt: r.updated_at,
+          lastLoginAt: r.last_login_at, reportsTo: r.reports_to || '' };
       }) });
+    });
+  }
+
+  /* writeAuditLog — fire-and-forget insert into admin_audit_log. Never blocks
+     or fails the action it's logging: if the insert itself errors, that's
+     swallowed (logged to console) rather than surfaced to the admin, because
+     losing the audit trail for one action is much better than blocking a
+     real Add/Disable/Delete/permission change on a logging bug. 2026-08-24. */
+  function writeAuditLog(action, actorName, targetName, detail) {
+    try {
+      POST('admin_audit_log', '', {
+        action: action, actor_name: actorName || 'Admin', target_name: targetName || '',
+        detail: detail || {}
+      }, function (e) { if (e && typeof console !== 'undefined') console.warn('audit log failed:', e); });
+    } catch (ex) {}
+  }
+
+  function h_getAuditLog(p, cb) {
+    var limit = Math.min(Number(p.limit) || 100, 500);
+    GET('admin_audit_log', 'select=id,action,actor_name,target_name,detail,created_at&order=created_at.desc&limit=' + limit, function (e, rows) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      cb(null, { status: 'ok', entries: (rows || []).map(function (r) {
+        return { id: r.id, action: r.action, actorName: r.actor_name, targetName: r.target_name,
+          detail: r.detail || {}, createdAt: r.created_at };
+      }) });
+    });
+  }
+
+  /* resetUserPassword — admin-triggered reset. Same salt+hash pattern as
+     addUser/h_login, and sets must_change so the temp password the admin
+     sees on screen doesn't linger as their real password. 2026-08-24. */
+  function h_resetUserPassword(p, cb) {
+    var id = p.id, name = p.name;
+    var tempPass = String(p.tempPassword || '');
+    if (!id && !name) { cb(null, { status: 'error', reason: 'id_or_name_required' }); return; }
+    if (!tempPass || tempPass.length < 4) { cb(null, { status: 'error', reason: 'temp_password_too_short' }); return; }
+    var salt = generateSalt();
+    sha256Hex(salt + '|' + tempPass, function (hashVal) {
+      if (!hashVal) { cb(null, { status: 'error', reason: 'hash_failed' }); return; }
+      var qs = id ? ('id=eq.' + encodeURIComponent(id)) : ('name=eq.' + encodeURIComponent(name));
+      PATCH('users', qs, { password_hash: hashVal, salt: salt, must_change: true }, function (e) {
+        if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+        writeAuditLog('password_reset', p.actorName, name || id, {});
+        cb(null, { status: 'ok' });
+      });
+    });
+  }
+
+  /* Centre Responsibility — one designated "head" per centre, backed by its
+     own small table (not the users row) since a centre can go unassigned or
+     be reassigned independently of any one person's account. 2026-08-24. */
+  function h_getCentreResponsibilities(p, cb) {
+    GET('centre_responsibilities', 'select=centre,user_id,user_name,updated_at&order=centre.asc', function (e, rows) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      cb(null, { status: 'ok', centreHeads: (rows || []).map(function (r) {
+        return { centre: r.centre, userId: r.user_id, userName: r.user_name, updatedAt: r.updated_at };
+      }) });
+    });
+  }
+  function h_setCentreResponsibility(p, cb) {
+    var centre = (p.centre || '').trim();
+    if (!centre) { cb(null, { status: 'error', reason: 'centre_required' }); return; }
+    var userName = (p.userName || '').trim();
+    if (!userName) {
+      DEL('centre_responsibilities', 'centre=eq.' + encodeURIComponent(centre), function (e) {
+        if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+        writeAuditLog('centre_responsibility_set', p.actorName, centre, { userName: '' });
+        cb(null, { status: 'ok' });
+      });
+      return;
+    }
+    POST('centre_responsibilities', 'on_conflict=centre', {
+      centre: centre, user_id: p.userId || null, user_name: userName, updated_by: p.actorName || 'Admin'
+    }, function (e) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      writeAuditLog('centre_responsibility_set', p.actorName, centre, { userName: userName });
+      cb(null, { status: 'ok' });
     });
   }
 
@@ -1492,13 +1573,17 @@ window.gasGet = (function () {
     var name = p.name;
     if (!name) { cb(null, { status: 'error', reason: 'name_required' }); return; }
     var perms = {
-      all_india_mis:        !!p.all_india_mis,
-      operational_invoices: !!p.operational_invoices,
-      diploma_release:      !!p.diploma_release,
-      alumni_all_centres:   !!p.alumni_all_centres
+      all_india_mis:            !!p.all_india_mis,
+      operational_invoices:     !!p.operational_invoices,
+      diploma_release:          !!p.diploma_release,
+      alumni_all_centres:       !!p.alumni_all_centres,
+      discount_approval_authority: !!p.discount_approval_authority,
+      batch_admin:              !!p.batch_admin
     };
     PATCH('users', 'name=eq.' + encodeURIComponent(name), { permissions: perms }, function (e) {
-      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', permissions: perms });
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      writeAuditLog('permissions_updated', p.actorName, name, perms);
+      cb(null, { status: 'ok', permissions: perms });
     });
   }
 
@@ -1511,6 +1596,7 @@ window.gasGet = (function () {
     var role = (p.role || '').trim();
     var centres = (p.centres || '').trim();
     var email = (p.email || '').trim();
+    var reportsTo = (p.reportsTo || '').trim();
     var tempPass = String(p.tempPassword || p.pin || '');
     if (!name || !role) { cb(null, { status: 'error', reason: 'name_and_role_required' }); return; }
     if (!tempPass || tempPass.length < 4) { cb(null, { status: 'error', reason: 'temp_password_too_short' }); return; }
@@ -1521,15 +1607,29 @@ window.gasGet = (function () {
       sha256Hex(salt + '|' + tempPass, function (hashVal) {
         if (!hashVal) { cb(null, { status: 'error', reason: 'hash_failed' }); return; }
         POST('users', '', {
-          name: name, role: role, centres: centres, email: email,
+          name: name, role: role, centres: centres, email: email, reports_to: reportsTo,
           password_hash: hashVal, salt: salt, must_change: true, is_active: true,
           permissions: {}
         }, function (e2, rows2) {
           if (e2) { cb(null, { status: 'error', reason: String(e2) }); return; }
           var newRow = (rows2 && rows2[0]) || null;
+          writeAuditLog('user_added', p.actorName, name, { role: role, centres: centres });
           cb(null, { status: 'ok', id: newRow && newRow.id, name: name });
         });
       });
+    });
+  }
+
+  /* setUserCentres — bulk/inline centre reassignment from the Users panel.
+     2026-08-24. */
+  function h_setUserCentres(p, cb) {
+    var id = p.id, name = p.name;
+    if (!id && !name) { cb(null, { status: 'error', reason: 'id_or_name_required' }); return; }
+    var qs = id ? ('id=eq.' + encodeURIComponent(id)) : ('name=eq.' + encodeURIComponent(name));
+    PATCH('users', qs, { centres: p.centres || '' }, function (e) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      writeAuditLog('centres_reassigned', p.actorName, name || id, { centres: p.centres || '' });
+      cb(null, { status: 'ok' });
     });
   }
 
@@ -1540,8 +1640,11 @@ window.gasGet = (function () {
     var id = p.id, name = p.name;
     if (!id && !name) { cb(null, { status: 'error', reason: 'id_or_name_required' }); return; }
     var qs = id ? ('id=eq.' + encodeURIComponent(id)) : ('name=eq.' + encodeURIComponent(name));
-    PATCH('users', qs, { is_active: !!p.isActive }, function (e) {
-      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', is_active: !!p.isActive });
+    var makeActive = !!p.isActive;
+    PATCH('users', qs, { is_active: makeActive }, function (e) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      writeAuditLog(makeActive ? 'user_enabled' : 'user_disabled', p.actorName, name || id, {});
+      cb(null, { status: 'ok', is_active: makeActive });
     });
   }
 
@@ -1555,7 +1658,9 @@ window.gasGet = (function () {
     if (!id && !name) { cb(null, { status: 'error', reason: 'id_or_name_required' }); return; }
     var qs = id ? ('id=eq.' + encodeURIComponent(id)) : ('name=eq.' + encodeURIComponent(name));
     DEL('users', qs, function (e) {
-      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      writeAuditLog('user_deleted', p.actorName, name || id, {});
+      cb(null, { status: 'ok' });
     });
   }
 
@@ -3230,6 +3335,14 @@ window.gasGet = (function () {
   function h_reviewDiscountRequest(p, cb) {
     if (!p.id || !p.decision || (p.decision !== 'approved' && p.decision !== 'rejected')) {
       cb(null, { status: 'error', reason: 'Missing id or invalid decision.' });
+      return;
+    }
+    // Backend parity with h_deleteDiscountRequest below — the per-person
+    // "Discount Approval Authority" toggle (users.permissions.discount_approval_authority)
+    // is still enforced at the UI level only, same as this project's other permission
+    // flags, but any admin.html login at all is required at minimum. 2026-08-24.
+    if (p.isAdmin !== 'true' && p.isAdmin !== true) {
+      cb(null, { status: 'error', reason: 'Only an admin can review a discount request.' });
       return;
     }
     PATCH('discount_requests', 'id=eq.' + encodeURIComponent(p.id), {
@@ -10517,6 +10630,11 @@ window.gasGet = (function () {
       case 'addUser':                   return h_addUser(params, cb);
       case 'setUserActive':             return h_setUserActive(params, cb);
       case 'deleteUser':                return h_deleteUser(params, cb);
+      case 'resetUserPassword':         return h_resetUserPassword(params, cb);
+      case 'setUserCentres':            return h_setUserCentres(params, cb);
+      case 'getCentreResponsibilities': return h_getCentreResponsibilities(params, cb);
+      case 'setCentreResponsibility':   return h_setCentreResponsibility(params, cb);
+      case 'getAuditLog':               return h_getAuditLog(params, cb);
       case 'getStudents':               return h_getStudents(params, cb);
       case 'searchStudents':            return h_searchStudents(params, cb);
       case 'getNextEnrollment':         return h_getNextEnroll(params, cb);

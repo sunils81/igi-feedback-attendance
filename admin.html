@@ -2907,6 +2907,8 @@
   <!-- ══ Settings sub-nav ══════════════════════════════════════════════ -->
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px">
     <button class="crm-subtab-btn active" id="stab-users"   onclick="switchSettingsTab('users')"   style="font-size:12px;padding:7px 14px">👥 Users</button>
+    <button class="crm-subtab-btn"        id="stab-centres" onclick="switchSettingsTab('centres')" style="font-size:12px;padding:7px 14px">🏢 Centre Responsibility</button>
+    <button class="crm-subtab-btn"        id="stab-audit"   onclick="switchSettingsTab('audit')"   style="font-size:12px;padding:7px 14px">📜 Audit Log</button>
     <button class="crm-subtab-btn"        id="stab-fb"      onclick="switchSettingsTab('fb')"      style="font-size:12px;padding:7px 14px">📘 FB Lead Ads</button>
     <button class="crm-subtab-btn"        id="stab-auto"    onclick="switchSettingsTab('auto')"    style="font-size:12px;padding:7px 14px">⚡ Automation</button>
     <button class="crm-subtab-btn"        id="stab-routing" onclick="switchSettingsTab('routing')" style="font-size:12px;padding:7px 14px">🗺️ Routing Rules</button>
@@ -2921,7 +2923,10 @@
           <h3 style="margin:0;color:var(--navy)">👥 User & Counsellor Management</h3>
           <p class="sub" style="margin:4px 0 0">Add, edit, or deactivate staff accounts. Lead data is preserved on deactivation.</p>
         </div>
-        <button class="btn btn-gold" style="width:auto;padding:8px 16px;font-size:12px;font-weight:700" onclick="settingsAddUser()">➕ Add User</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px;font-weight:700" onclick="exportUsersCSV()">⬇️ Export CSV</button>
+          <button class="btn btn-gold" style="width:auto;padding:8px 16px;font-size:12px;font-weight:700" onclick="settingsAddUser()">➕ Add User</button>
+        </div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
         <input type="text" id="settings-users-search" placeholder="🔍 Search by name…" oninput="renderSettingsUsersTable()" style="flex:1;min-width:180px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px">
@@ -2941,17 +2946,65 @@
           <option value="">All Centres</option>
         </select>
       </div>
+      <div id="settings-users-bulk-bar" style="display:none;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:#eef2ff;margin-bottom:12px">
+        <strong id="settings-users-bulk-count" style="font-size:12px;color:#4338ca">0 selected</strong>
+        <button class="btn btn-xs" style="padding:4px 10px;font-size:11px" onclick="bulkDisableSelected()">🚫 Disable Selected</button>
+        <button class="btn btn-xs" style="padding:4px 10px;font-size:11px" onclick="bulkReassignCentreSelected()">🏢 Reassign Centre</button>
+      </div>
       <div id="settings-users-list" style="overflow-x:auto">
         <table class="compact-table" style="width:100%">
           <thead><tr>
+            <th class="no-print"><input type="checkbox" onchange="toggleSelectAllUsers(this)" title="Select all"></th>
             <th class="text-left">Name</th>
             <th class="text-left">Role</th>
             <th class="text-left">Centre</th>
-            <th class="text-center">Status</th>
+            <th class="text-center">Status / Last Login</th>
             <th class="text-center no-print">Actions</th>
           </tr></thead>
           <tbody id="settings-users-tbody">
-            <tr><td colspan="5" style="text-align:center;padding:16px;color:var(--muted)">Loading users…</td></tr>
+            <tr><td colspan="6" style="text-align:center;padding:16px;color:var(--muted)">Loading users…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Centre Responsibility panel ──────────────────────────────────── -->
+  <div id="spanel-centres" style="display:none">
+    <div class="card" style="padding:20px;margin-bottom:16px">
+      <h3 style="margin:0 0 4px;color:var(--navy)">🏢 Centre Responsibility</h3>
+      <p class="sub" style="margin:0 0 16px">Designate the person accountable for each centre. This is separate from which centres someone works across — it's who owns the outcome there.</p>
+      <div id="centre-resp-list" style="overflow-x:auto">
+        <table class="compact-table" style="width:100%">
+          <thead><tr>
+            <th class="text-left">Centre</th>
+            <th class="text-left">Responsible Person</th>
+            <th class="text-left no-print">Action</th>
+          </tr></thead>
+          <tbody id="centre-resp-tbody">
+            <tr><td colspan="3" style="text-align:center;padding:16px;color:var(--muted)">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Audit Log panel ──────────────────────────────────────────────── -->
+  <div id="spanel-audit" style="display:none">
+    <div class="card" style="padding:20px;margin-bottom:16px">
+      <h3 style="margin:0 0 4px;color:var(--navy)">📜 Audit Log</h3>
+      <p class="sub" style="margin:0 0 16px">Who added, disabled, deleted, or changed access for a user — and when. Last 100 actions.</p>
+      <div id="audit-log-list" style="overflow-x:auto">
+        <table class="compact-table" style="width:100%">
+          <thead><tr>
+            <th class="text-left">When</th>
+            <th class="text-left">Action</th>
+            <th class="text-left">By</th>
+            <th class="text-left">Target</th>
+            <th class="text-left">Detail</th>
+          </tr></thead>
+          <tbody id="audit-log-tbody">
+            <tr><td colspan="5" style="text-align:center;padding:16px;color:var(--muted)">Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -3527,8 +3580,8 @@
         <div style="background:var(--off);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--navy);margin:8px 0 14px" id="discount-approval-review-reason"></div>
         <div class="field"><label>Note (optional)</label><textarea id="discount-approval-review-note" rows="2" placeholder="e.g. Approved — parent hardship case."></textarea></div>
         <div style="display:flex;gap:10px">
-          <button class="btn btn-outline" style="flex:1;border-color:#B00020;color:#B00020" onclick="submitDiscountApprovalReview('rejected')">Reject</button>
-          <button class="btn btn-gold" style="flex:1" onclick="submitDiscountApprovalReview('approved')">Approve</button>
+          <button class="btn btn-outline discount-approval-decide-btn" style="flex:1;border-color:#B00020;color:#B00020" onclick="submitDiscountApprovalReview('rejected')">Reject</button>
+          <button class="btn btn-gold discount-approval-decide-btn" style="flex:1" onclick="submitDiscountApprovalReview('approved')">Approve</button>
         </div>
         <span id="discount-approval-review-err" style="display:block;color:#B00020;font-size:12px;margin-top:8px"></span>
       </div>
@@ -4044,7 +4097,8 @@ function doAdminLogin() {
       isManager: !!d.isManager,
       isAdmin: true,
       authRole: d.authRole || (nameVal === '__admin__' ? 'Super Admin' : 'Manager'),
-      centres: d.centres || []
+      centres: d.centres || [],
+      permissions: d.permissions || {}
     };
     
     try {
@@ -4859,6 +4913,16 @@ function deleteDiscountApprovalEntry(id) {
 }
 
 var discountApprovalReviewTargetId = null;
+// Discount Approval Authority — an existing Admin login's ability to
+// approve/reject was previously unrestricted (any admin.html login could).
+// This is now a real per-person permission, but defaults to allowed (opt-out,
+// not opt-in) so nobody's access silently breaks on this deploy — only an
+// explicit `discount_approval_authority: false` in their permissions row
+// revokes it. 2026-08-24.
+function adminCanApproveDiscounts() {
+  var perms = (typeof adminUser !== 'undefined' && adminUser && adminUser.permissions) || {};
+  return perms.discount_approval_authority !== false;
+}
 function openDiscountApprovalReview(id) {
   var rec = discountApprovalRequests.find(function (r) { return r.id === id; });
   if (!rec) return;
@@ -4867,7 +4931,10 @@ function openDiscountApprovalReview(id) {
     rec.studentName + ' · ' + rec.batchCode + ' (' + rec.centre + ') · requested by ' + rec.requestedBy + ' · ' + rec.discountPct + '% discount';
   document.getElementById('discount-approval-review-reason').textContent = rec.discountReason;
   document.getElementById('discount-approval-review-note').value = '';
-  document.getElementById('discount-approval-review-err').textContent = '';
+  var errEl = document.getElementById('discount-approval-review-err');
+  var canApprove = adminCanApproveDiscounts();
+  errEl.textContent = canApprove ? '' : 'Your account does not have discount approval authority — ask an admin to grant it in Settings → Users.';
+  document.querySelectorAll('#discount-approval-review-overlay .discount-approval-decide-btn').forEach(function(b) { b.disabled = !canApprove; });
   document.getElementById('discount-approval-review-overlay').style.display = 'flex';
 }
 function closeDiscountApprovalReview() {
@@ -4877,7 +4944,7 @@ function closeDiscountApprovalReview() {
 function submitDiscountApprovalReview(decision) {
   var note = document.getElementById('discount-approval-review-note').value.trim();
   var errEl = document.getElementById('discount-approval-review-err');
-  gasGet({ action: 'reviewDiscountRequest', id: discountApprovalReviewTargetId, decision: decision, reviewedBy: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin'), reviewNote: note }, function (e, d) {
+  gasGet({ action: 'reviewDiscountRequest', id: discountApprovalReviewTargetId, decision: decision, isAdmin: 'true', reviewedBy: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin'), reviewNote: note }, function (e, d) {
     if (e || !d || d.status !== 'ok') { errEl.textContent = (d && d.reason) || 'Could not save. Try again.'; return; }
     showToast(decision === 'approved' ? 'Approved — counsellor can now save this discount.' : 'Rejected.');
     closeDiscountApprovalReview();
@@ -11411,7 +11478,7 @@ function editCRMRule(cName, centre, weight, isActive) {
 // ══ SETTINGS PAGE ═══════════════════════════════════════════════════════════
 
 function switchSettingsTab(tab) {
-  var panels = ['users','fb','auto','routing','android'];
+  var panels = ['users','centres','audit','fb','auto','routing','android'];
   panels.forEach(function(p) {
     var el = document.getElementById('spanel-' + p);
     var btn = document.getElementById('stab-' + p);
@@ -11419,6 +11486,8 @@ function switchSettingsTab(tab) {
     if (btn) btn.classList.toggle('active', p === tab);
   });
   if (tab === 'users')   loadSettingsUsers();
+  if (tab === 'centres') loadCentreResponsibilities();
+  if (tab === 'audit')   loadAuditLog();
   if (tab === 'routing') { loadRoutingRules2(); }
   if (tab === 'auto')    loadAutomationStats();
   if (tab === 'fb')      loadRecentFBLeads();
@@ -11430,10 +11499,10 @@ var _settingsUsersData = [];
 function loadSettingsUsers() {
   var tbody = document.getElementById('settings-users-tbody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">Loading…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:12px;color:var(--muted)">Loading…</td></tr>';
   gasGet({ action: 'getUsers' }, function(err, res) {
     if (err || !res || res.status !== 'ok') {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:#dc2626">Failed to load users.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:12px;color:#dc2626">Failed to load users.</td></tr>';
       return;
     }
     _settingsUsersData = res.users || [];
@@ -11473,9 +11542,11 @@ function renderSettingsUsersTable() {
   });
 
   if (!users.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">No users match this filter.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:12px;color:var(--muted)">No users match this filter.</td></tr>';
+    updateBulkUserToolbar();
     return;
   }
+  var STALE_DAYS = 90;
   tbody.innerHTML = users.map(function(u) {
     var roleColor = u.role === 'Admin' ? '#1e40af' : '#166534';
     var isActive = u.is_active !== false;
@@ -11484,30 +11555,115 @@ function renderSettingsUsersTable() {
       : '<span style="color:#dc2626;font-weight:600">○ Inactive</span>';
     var perms = u.permissions || {};
     var permCount = ['all_india_mis','operational_invoices','diploma_release','alumni_all_centres'].filter(function(k){ return !!perms[k]; }).length;
+    var revoked = ['discount_approval_authority','batch_admin'].filter(function(k){ return perms[k] === false; }).length;
     var permBadge = permCount
       ? '<span style="background:#eef2ff;color:#4338ca;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px">' + permCount + ' special</span>'
       : '';
+    var revokedBadge = revoked
+      ? '<span style="background:#fef2f2;color:#b91c1c;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px" title="Discount/Batch access revoked">' + revoked + ' revoked</span>'
+      : '';
+    var lastLoginHtml = '<span style="color:var(--muted);font-size:10px">never logged in</span>';
+    if (u.lastLoginAt) {
+      var d = new Date(u.lastLoginAt);
+      var daysAgo = Math.floor((Date.now() - d.getTime()) / 86400000);
+      var dateStr = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      lastLoginHtml = daysAgo > STALE_DAYS
+        ? '<span style="color:#b45309;font-size:10px" title="Inactive ' + daysAgo + ' days — consider disabling">⚠ ' + dateStr + '</span>'
+        : '<span style="color:var(--muted);font-size:10px">' + dateStr + '</span>';
+    }
+    var reportsToHtml = u.reportsTo ? '<div style="font-size:10px;color:var(--muted)">↳ reports to ' + u.reportsTo + '</div>' : '';
     var toggleBtn = isActive
       ? '<button class="btn btn-xs" onclick="settingsToggleUserActive(\'' + u.id + '\', false)" style="padding:4px 8px;font-size:11px;margin-right:4px" title="Deactivate — lead data is preserved">🚫 Disable</button>'
       : '<button class="btn btn-xs" onclick="settingsToggleUserActive(\'' + u.id + '\', true)" style="padding:4px 8px;font-size:11px;margin-right:4px;color:#16a34a" title="Reactivate">✅ Enable</button>';
     return '<tr>'
-      + '<td style="padding:8px 10px;font-weight:600">' + (u.name || u.username || '—') + permBadge + '</td>'
+      + '<td style="padding:8px 10px" class="no-print"><input type="checkbox" class="settings-user-select-cb" value="' + u.id + '" onchange="updateBulkUserToolbar()"></td>'
+      + '<td style="padding:8px 10px;font-weight:600">' + (u.name || u.username || '—') + permBadge + revokedBadge + reportsToHtml + '</td>'
       + '<td style="padding:8px 10px"><span style="background:' + roleColor + '18;color:' + roleColor + ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">' + (u.role || 'Counselor') + '</span></td>'
       + '<td style="padding:8px 10px;color:var(--muted)">' + (u.centre || '—') + '</td>'
-      + '<td style="padding:8px 10px;text-align:center">' + statusHtml + '</td>'
+      + '<td style="padding:8px 10px;text-align:center">' + statusHtml + '<br>' + lastLoginHtml + '</td>'
       + '<td style="padding:8px 10px;text-align:center;white-space:nowrap" class="no-print">'
       +   toggleBtn
       +   '<button class="btn btn-xs" onclick="openPermEditModal(\'' + u.id + '\')" style="padding:4px 8px;font-size:11px;margin-right:4px" title="Access permissions">🔑 Access</button>'
+      +   '<button class="btn btn-xs" onclick="settingsShowResetPwModal(\'' + u.id + '\')" style="padding:4px 8px;font-size:11px;margin-right:4px" title="Reset password">🔁 Reset PW</button>'
       +   '<button class="btn btn-xs" onclick="settingsShowDelModal(\'' + u.id + '\')" style="padding:4px 8px;font-size:11px;color:#dc2626" title="Delete login">🗑️</button>'
       + '</td>'
       + '</tr>';
   }).join('');
+  updateBulkUserToolbar();
+}
+
+// ── Bulk actions ─────────────────────────────────────────────────────────────
+function toggleSelectAllUsers(cb) {
+  document.querySelectorAll('.settings-user-select-cb').forEach(function(x) { x.checked = cb.checked; });
+  updateBulkUserToolbar();
+}
+function getSelectedUserRows() {
+  var ids = Array.prototype.slice.call(document.querySelectorAll('.settings-user-select-cb:checked')).map(function(cb){ return cb.value; });
+  return _settingsUsersData.filter(function(u) { return ids.indexOf(String(u.id)) !== -1; });
+}
+function updateBulkUserToolbar() {
+  var bar = document.getElementById('settings-users-bulk-bar');
+  if (!bar) return;
+  var n = document.querySelectorAll('.settings-user-select-cb:checked').length;
+  bar.style.display = n ? 'flex' : 'none';
+  var countEl = document.getElementById('settings-users-bulk-count');
+  if (countEl) countEl.textContent = n + ' selected';
+}
+function bulkDisableSelected() {
+  var rows = getSelectedUserRows();
+  if (!rows.length) return;
+  if (!confirm('Disable ' + rows.length + ' selected user(s)? Their historical data is preserved and this can be undone.')) return;
+  var done = 0;
+  rows.forEach(function(u) {
+    gasGet({ action: 'setUserActive', id: u.id, name: u.name, isActive: false, actorName: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin') }, function() {
+      done++;
+      if (done === rows.length) { showToast(rows.length + ' user(s) disabled.'); loadSettingsUsers(); }
+    });
+  });
+}
+function bulkReassignCentreSelected() {
+  var rows = getSelectedUserRows();
+  if (!rows.length) return;
+  var centre = prompt('Set centre for ' + rows.length + ' selected user(s) (comma-separate for multiple centres):');
+  if (centre === null || !centre.trim()) return;
+  var done = 0;
+  rows.forEach(function(u) {
+    gasGet({ action: 'setUserCentres', id: u.id, name: u.name, centres: centre.trim(),
+      actorName: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin') }, function() {
+      done++;
+      if (done === rows.length) { showToast(rows.length + ' user(s) reassigned to: ' + centre.trim() + '.'); loadSettingsUsers(); }
+    });
+  });
+}
+function exportUsersCSV() {
+  var users = _settingsUsersData;
+  var rows = [['Name','Role','Centre','Status','Reports To','Last Login','Special Permissions']];
+  users.forEach(function(u) {
+    var perms = u.permissions || {};
+    var specials = Object.keys(perms).filter(function(k){ return perms[k] === true; }).join('; ');
+    rows.push([
+      u.name || '', u.role || '', u.centre || '', (u.is_active !== false ? 'Active' : 'Inactive'),
+      u.reportsTo || '', (u.lastLoginAt ? new Date(u.lastLoginAt).toISOString() : 'never'), specials
+    ]);
+  });
+  var csv = rows.map(function(r) {
+    return r.map(function(cell) { return '"' + String(cell).replace(/"/g, '""') + '"'; }).join(',');
+  }).join('\n');
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'igi-users-' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function settingsToggleUserActive(id, makeActive) {
   var u = _settingsUsersData.find(function(x) { return String(x.id) === String(id); });
   if (!u) { showToast('User not found — reload the list and try again.', 'error'); return; }
-  gasGet({ action: 'setUserActive', id: u.id, name: u.name, isActive: makeActive }, function(err, d) {
+  gasGet({ action: 'setUserActive', id: u.id, name: u.name, isActive: makeActive, actorName: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin') }, function(err, d) {
     if (err || !d || d.status !== 'ok') {
       showToast((d && d.reason) || String(err || 'Failed to update user.'), 'error');
       return;
@@ -11532,6 +11688,12 @@ function settingsAddUser() {
     centreWrap.dataset.built = '1';
   }
   document.querySelectorAll('.add-user-centre-cb').forEach(function(cb) { cb.checked = false; });
+  var reportsToSel = document.getElementById('add-user-reports-to');
+  if (reportsToSel) {
+    reportsToSel.innerHTML = '<option value="">— None —</option>' + _settingsUsersData.map(function(u) {
+      return '<option value="' + u.name + '">' + u.name + ' (' + (u.role || '') + ')</option>';
+    }).join('');
+  }
   document.getElementById('add-user-err').style.display = 'none';
   document.getElementById('add-user-modal').style.display = 'flex';
 }
@@ -11542,6 +11704,7 @@ function submitAddUser() {
   var name = document.getElementById('add-user-name').value.trim();
   var role = document.getElementById('add-user-role').value;
   var email = document.getElementById('add-user-email').value.trim();
+  var reportsTo = (document.getElementById('add-user-reports-to') || {}).value || '';
   var tempPass = document.getElementById('add-user-temp-pass').value;
   var centres = Array.prototype.slice.call(document.querySelectorAll('.add-user-centre-cb:checked')).map(function(cb){ return cb.value; }).join(',');
   var errEl = document.getElementById('add-user-err');
@@ -11550,7 +11713,7 @@ function submitAddUser() {
   if (!tempPass || tempPass.length < 4) { errEl.textContent = 'Temporary password must be at least 4 characters.'; errEl.style.display = 'block'; return; }
   var btn = document.getElementById('add-user-save-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
-  gasGet({ action: 'addUser', name: name, role: role, email: email, centres: centres, tempPassword: tempPass }, function(err, d) {
+  gasGet({ action: 'addUser', name: name, role: role, email: email, centres: centres, reportsTo: reportsTo, tempPassword: tempPass, actorName: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin') }, function(err, d) {
     if (btn) { btn.disabled = false; btn.textContent = '➕ Add User'; }
     if (err || !d || d.status !== 'ok') {
       errEl.textContent = (d && d.reason === 'name_already_exists') ? 'A user with this name already exists.' : ((d && d.reason) || String(err || 'Failed to add user.'));
@@ -11590,7 +11753,7 @@ function settingsConfirmDelete() {
   }
   var btn = document.getElementById('del-confirm-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Deleting…'; }
-  gasGet({ action: 'deleteUser', id: _delUserTarget.id, name: _delUserTarget.name }, function(err, d) {
+  gasGet({ action: 'deleteUser', id: _delUserTarget.id, name: _delUserTarget.name, actorName: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin') }, function(err, d) {
     if (btn) { btn.disabled = false; btn.textContent = '🗑️ Delete Login'; }
     if (err || !d || d.status !== 'ok') {
       errEl.textContent = (d && d.reason) || String(err || 'Failed to delete user.');
@@ -11605,6 +11768,131 @@ function settingsConfirmDelete() {
 }
 
 function settingsEditUser(id) { openPermEditModal(id); }
+
+// ── Reset Password (per-row) ──────────────────────────────────────────────────
+var _resetPwTarget = null;
+function settingsShowResetPwModal(id) {
+  var u = _settingsUsersData.find(function(x) { return String(x.id) === String(id); });
+  if (!u) { showToast('User not found — reload the list and try again.', 'error'); return; }
+  _resetPwTarget = u;
+  document.getElementById('reset-pw-name-label').textContent = u.name;
+  var generated = 'IGI' + Math.floor(10000 + Math.random() * 90000);
+  document.getElementById('reset-pw-temp').value = generated;
+  document.getElementById('reset-pw-err').style.display = 'none';
+  document.getElementById('settings-reset-pw-modal').style.display = 'flex';
+}
+function closeResetPwModal() {
+  document.getElementById('settings-reset-pw-modal').style.display = 'none';
+  _resetPwTarget = null;
+}
+function settingsSubmitResetPw() {
+  var errEl = document.getElementById('reset-pw-err');
+  errEl.style.display = 'none';
+  if (!_resetPwTarget) return;
+  var tempPass = document.getElementById('reset-pw-temp').value.trim();
+  if (!tempPass || tempPass.length < 4) { errEl.textContent = 'Temporary password must be at least 4 characters.'; errEl.style.display = 'block'; return; }
+  var btn = document.getElementById('reset-pw-confirm-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Resetting…'; }
+  gasGet({ action: 'resetUserPassword', id: _resetPwTarget.id, name: _resetPwTarget.name, tempPassword: tempPass,
+    actorName: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin') }, function(err, d) {
+    if (btn) { btn.disabled = false; btn.textContent = '🔁 Reset Password'; }
+    if (err || !d || d.status !== 'ok') {
+      errEl.textContent = (d && d.reason) || String(err || 'Failed to reset password.');
+      errEl.style.display = 'block';
+      return;
+    }
+    var name = _resetPwTarget.name;
+    closeResetPwModal();
+    showToast('Password for ' + name + ' reset to: ' + tempPass + ' — share it with them now, they must change it on first login.');
+    loadSettingsUsers();
+  });
+}
+
+// ── Centre Responsibility ─────────────────────────────────────────────────────
+var _centreRespData = [];
+function loadCentreResponsibilities() {
+  var tbody = document.getElementById('centre-resp-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:12px;color:var(--muted)">Loading…</td></tr>';
+  gasGet({ action: 'getCentreResponsibilities' }, function(err, res) {
+    if (err || !res || res.status !== 'ok') {
+      tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:12px;color:#dc2626">Failed to load.</td></tr>';
+      return;
+    }
+    _centreRespData = res.centreHeads || [];
+    // Ensure every user list is loaded so the dropdown has names to pick from.
+    if (!_settingsUsersData.length) {
+      gasGet({ action: 'getUsers' }, function(e2, r2) {
+        if (r2 && r2.status === 'ok') _settingsUsersData = r2.users || [];
+        renderCentreRespTable();
+      });
+    } else {
+      renderCentreRespTable();
+    }
+  });
+}
+function renderCentreRespTable() {
+  var tbody = document.getElementById('centre-resp-tbody');
+  if (!tbody) return;
+  var centres = (typeof _IGI_CENTRES !== 'undefined' ? _IGI_CENTRES : []);
+  var byCentre = {};
+  _centreRespData.forEach(function(r) { byCentre[r.centre] = r; });
+  tbody.innerHTML = centres.map(function(c) {
+    var current = byCentre[c];
+    var options = ['<option value="">— Unassigned —</option>'].concat(_settingsUsersData.map(function(u) {
+      var sel = current && current.userName === u.name ? ' selected' : '';
+      return '<option value="' + u.name + '"' + sel + '>' + u.name + ' (' + (u.role || '') + ')</option>';
+    }));
+    return '<tr>'
+      + '<td style="padding:8px 10px;font-weight:600">' + c + '</td>'
+      + '<td style="padding:8px 10px">' + (current ? current.userName : '<span style="color:var(--muted)">— Unassigned —</span>') + '</td>'
+      + '<td style="padding:8px 10px" class="no-print"><select onchange="setCentreResp(\'' + c + '\', this.value)" style="padding:5px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">' + options.join('') + '</select></td>'
+      + '</tr>';
+  }).join('');
+}
+function setCentreResp(centre, userName) {
+  var u = _settingsUsersData.find(function(x) { return x.name === userName; });
+  gasGet({ action: 'setCentreResponsibility', centre: centre, userName: userName || '', userId: u ? u.id : null,
+    actorName: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin') }, function(err, d) {
+    if (err || !d || d.status !== 'ok') { showToast((d && d.reason) || 'Failed to save.', 'error'); return; }
+    showToast(userName ? (userName + ' is now responsible for ' + centre + '.') : ('Cleared responsibility for ' + centre + '.'));
+    loadCentreResponsibilities();
+  });
+}
+
+// ── Audit Log ──────────────────────────────────────────────────────────────────
+var AUDIT_ACTION_LABELS = {
+  user_added: 'Added user', user_enabled: 'Enabled user', user_disabled: 'Disabled user',
+  user_deleted: 'Deleted user', permissions_updated: 'Updated permissions', password_reset: 'Reset password',
+  centres_reassigned: 'Reassigned centres', centre_responsibility_set: 'Set centre head'
+};
+function loadAuditLog() {
+  var tbody = document.getElementById('audit-log-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">Loading…</td></tr>';
+  gasGet({ action: 'getAuditLog', limit: 100 }, function(err, res) {
+    if (err || !res || res.status !== 'ok') {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:#dc2626">Failed to load audit log.</td></tr>';
+      return;
+    }
+    var entries = res.entries || [];
+    if (!entries.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">No actions logged yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = entries.map(function(e) {
+      var when = e.createdAt ? new Date(e.createdAt).toLocaleString('en-IN', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+      var detailStr = e.detail && Object.keys(e.detail).length ? Object.keys(e.detail).map(function(k){ return k + ': ' + e.detail[k]; }).join(', ') : '—';
+      return '<tr>'
+        + '<td style="padding:8px 10px;font-size:11px;color:var(--muted);white-space:nowrap">' + when + '</td>'
+        + '<td style="padding:8px 10px;font-weight:600">' + (AUDIT_ACTION_LABELS[e.action] || e.action) + '</td>'
+        + '<td style="padding:8px 10px">' + (e.actorName || '—') + '</td>'
+        + '<td style="padding:8px 10px">' + (e.targetName || '—') + '</td>'
+        + '<td style="padding:8px 10px;font-size:11px;color:var(--muted)">' + detailStr + '</td>'
+        + '</tr>';
+    }).join('');
+  });
+}
 
 // ── Counsellor Access (permissions) modal ─────────────────────────────────────
 // What access a counsellor has (all-India MIS, operational invoices, diploma
@@ -11622,6 +11910,9 @@ function openPermEditModal(id) {
   document.getElementById('perm-op-invoices').checked     = !!perms.operational_invoices;
   document.getElementById('perm-diploma-release').checked = !!perms.diploma_release;
   document.getElementById('perm-alumni-all').checked      = !!perms.alumni_all_centres;
+  // Opt-out flags: checked (i.e. allowed) unless explicitly set to false.
+  document.getElementById('perm-discount-approval').checked = perms.discount_approval_authority !== false;
+  document.getElementById('perm-batch-admin').checked        = perms.batch_admin !== false;
   document.getElementById('perm-edit-err').style.display = 'none';
   document.getElementById('perm-edit-modal').style.display = 'flex';
 }
@@ -11638,10 +11929,13 @@ function savePermEdit() {
   gasGet({
     action: 'updateUserPermissions',
     name: name,
+    actorName: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin'),
     all_india_mis:        document.getElementById('perm-all-india-mis').checked,
     operational_invoices:  document.getElementById('perm-op-invoices').checked,
     diploma_release:       document.getElementById('perm-diploma-release').checked,
-    alumni_all_centres:    document.getElementById('perm-alumni-all').checked
+    alumni_all_centres:    document.getElementById('perm-alumni-all').checked,
+    discount_approval_authority: document.getElementById('perm-discount-approval').checked,
+    batch_admin:                 document.getElementById('perm-batch-admin').checked
   }, function(err, d) {
     if (btn) { btn.disabled = false; btn.textContent = '💾 Save'; }
     if (err || !d || d.status !== 'ok') {
@@ -12265,10 +12559,21 @@ switchAdminTab = function(tabId) {
         <input type="checkbox" id="perm-diploma-release" style="margin-top:2px;width:16px;height:16px">
         <span><strong style="font-size:13px;color:var(--navy)">Diploma Release Authority</strong><br><span style="font-size:11px;color:var(--muted)">Can actually release/re-release diplomas (everyone can still view eligibility).</span></span>
       </label>
-      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
+      <label style="display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;cursor:pointer">
         <input type="checkbox" id="perm-alumni-all" style="margin-top:2px;width:16px;height:16px">
         <span><strong style="font-size:13px;color:var(--navy)">Alumni — All Centres</strong><br><span style="font-size:11px;color:var(--muted)">See alumni records across every centre instead of just their own.</span></span>
       </label>
+      <div style="border-top:1px dashed var(--border);margin:4px 0 14px;padding-top:14px">
+        <p class="sub" style="margin:0 0 10px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:600">Enabled for everyone by default — untick to revoke</p>
+        <label style="display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;cursor:pointer">
+          <input type="checkbox" id="perm-discount-approval" style="margin-top:2px;width:16px;height:16px">
+          <span><strong style="font-size:13px;color:var(--navy)">Discount Approval Authority</strong><br><span style="font-size:11px;color:var(--muted)">Can approve/reject discount requests in the Admin Portal.</span></span>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
+          <input type="checkbox" id="perm-batch-admin" style="margin-top:2px;width:16px;height:16px">
+          <span><strong style="font-size:13px;color:var(--navy)">Batch Admin</strong><br><span style="font-size:11px;color:var(--muted)">Can create and delete batches in the Counsellor Portal.</span></span>
+        </label>
+      </div>
       <div id="perm-edit-err" class="err-box" style="display:none;margin-top:14px"></div>
     </div>
     <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
@@ -12308,6 +12613,11 @@ switchAdminTab = function(tabId) {
       <label style="display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:5px">Centres</label>
       <div id="add-user-centres-wrap" style="margin-bottom:14px"></div>
 
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:5px">Reports To (optional)</label>
+      <select id="add-user-reports-to" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin-bottom:14px;box-sizing:border-box">
+        <option value="">— None —</option>
+      </select>
+
       <label style="display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:5px">Temporary Password</label>
       <input type="text" id="add-user-temp-pass" placeholder="At least 4 characters" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;box-sizing:border-box">
       <p class="sub" style="margin:6px 0 0">They'll be required to set their own password the first time they log in.</p>
@@ -12343,6 +12653,31 @@ switchAdminTab = function(tabId) {
     <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
       <button onclick="closeDelUserModal()" class="btn btn-outline" style="width:auto;padding:8px 18px;font-size:13px">Cancel</button>
       <button id="del-confirm-btn" onclick="settingsConfirmDelete()" class="btn" style="width:auto;padding:8px 18px;font-size:13px;background:#dc2626;color:#fff">🗑️ Delete Login</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reset Password modal (per-row) — 2026-08-24. Generates a random temp
+     password the admin can share; same salt+hash pathway as Add User, sets
+     must_change so it doesn't linger as the person's real password. -->
+<div id="settings-reset-pw-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.25)">
+    <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600">User & Counsellor Management</div>
+        <h3 style="margin:2px 0 0;font-size:16px;font-weight:700">🔁 Reset Password</h3>
+      </div>
+      <button onclick="closeResetPwModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">&#10005;</button>
+    </div>
+    <div style="padding:20px">
+      <p class="sub" style="margin:0 0 12px">Reset the password for <strong id="reset-pw-name-label" style="color:var(--navy)"></strong>. Share this temporary password with them — they'll be required to set their own on next login.</p>
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:5px">Temporary Password</label>
+      <input type="text" id="reset-pw-temp" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;box-sizing:border-box;font-family:monospace">
+      <div id="reset-pw-err" class="err-box" style="display:none;margin-top:14px"></div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeResetPwModal()" class="btn btn-outline" style="width:auto;padding:8px 18px;font-size:13px">Cancel</button>
+      <button id="reset-pw-confirm-btn" onclick="settingsSubmitResetPw()" class="btn" style="width:auto;padding:8px 18px;font-size:13px;background:var(--navy);color:#fff">🔁 Reset Password</button>
     </div>
   </div>
 </div>

@@ -1916,6 +1916,22 @@
     <div id="missing-invoice-list" style="display:none;flex-direction:column;gap:4px;"></div>
   </div>
 
+  <!-- Student risk banner — "a student is failing or their attendance has dropped below
+       75%" nudge, added 2026-08-25 so the counsellor hears about it while there's still
+       time to talk to the instructor, instead of finding out at diploma time. Covers
+       BOTH batches this counsellor personally owns AND any centre they've been made
+       responsible for (Settings → Centre Responsibility) — see h_getCounsellorRiskAlerts
+       in shared.js. Same dismissible-per-session list pattern as the fee banners above. -->
+  <div id="risk-alert-banner" style="display:none;background:#FEF2F2;border:1.5px solid #DC2626;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#7F1D1D;flex-direction:column;gap:6px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span>📉</span>
+      <span id="risk-alert-text" style="flex:1;font-weight:500;"></span>
+      <span onclick="toggleBannerList('risk-alert-list', this)" style="cursor:pointer;color:#7F1D1D;font-size:14px;padding:0 4px">▸</span>
+      <button onclick="document.getElementById('risk-alert-banner').style.display='none'" style="background:transparent;border:none;color:#7F1D1D;font-size:16px;cursor:pointer;line-height:1;">×</button>
+    </div>
+    <div id="risk-alert-list" style="display:none;flex-direction:column;gap:4px;"></div>
+  </div>
+
   <!-- Suspense Entries red-flag banner — real money sitting unclassified, needs a human
        to review and confirm what it actually is (see suspense_entries table, added
        2026-08-02 per instruction: "enter in Suspense entry and give a red flag
@@ -5330,6 +5346,7 @@ function initCounselorPortal() {
         setTimeout(loadDuplicateStudentNotification, 2800);
         setTimeout(loadGemaFoundationNotification, 3050);
         setTimeout(loadBatchEndingFeeNotification, 3300);
+        setTimeout(loadCounsellorRiskAlert, 3500);
         if (!isAdmin) setTimeout(cmpLoadProspects, 1000);
       }
     }
@@ -5730,6 +5747,7 @@ function doLogin() {
     setTimeout(loadDuplicateStudentNotification, 2800);
     setTimeout(loadGemaFoundationNotification, 3050);
     setTimeout(loadBatchEndingFeeNotification, 3300);
+    setTimeout(loadCounsellorRiskAlert, 3500);
   });
 }
 
@@ -19295,6 +19313,40 @@ function jumpToFeeMismatch(batchCode, studentId) {
   if (sel) sel.value = batchCode;
   loadFeeOverview(function() {
     openFeeForm(studentId);
+  });
+}
+
+// Student risk nudge — flags students who are trending below the 60% weekly-average
+// pass threshold or whose attendance has dropped under 75%, so the counsellor can talk
+// to the instructor before it becomes a diploma-eligibility problem. Reuses the SAME
+// scoring math the Diploma Eligibility screen uses (see buildDiplomaRow /
+// h_getCounsellorRiskAlerts in shared.js) — this is an early-warning view of the exact
+// same numbers, not a second set of rules. Covers batches this counsellor owns AND any
+// centre they're the Settings → Centre Responsibility owner for.
+function loadCounsellorRiskAlert() {
+  if (isAdmin || !counselorName) return; // Admin sees this school-wide via its own Academic view instead
+  gasGet({ action: 'getCounsellorRiskAlerts', counsellorName: counselorName }, function(e, d) {
+    var banner = document.getElementById('risk-alert-banner');
+    var text = document.getElementById('risk-alert-text');
+    var list = document.getElementById('risk-alert-list');
+    if (!banner || !text || !list) return;
+    if (e || !d || d.status !== 'ok' || !d.alerts || !d.alerts.length) {
+      banner.style.display = 'none';
+      return;
+    }
+    var n = d.alerts.length;
+    text.textContent = n + ' student' + (n > 1 ? 's' : '') + ' need attention — failing or low attendance. Reach out to the instructor.';
+    list.innerHTML = d.alerts.map(function(a) {
+      var reasonBits = [];
+      if (a.reasons.indexOf('academic') !== -1) reasonBits.push('Weekly avg ' + (a.weeklyAvgPct === null ? '—' : a.weeklyAvgPct + '%') + ' (below 60%)');
+      if (a.reasons.indexOf('attendance') !== -1) reasonBits.push('Attendance ' + (a.attendancePct === null ? '—' : a.attendancePct + '%') + ' (below 75%)');
+      return '<div style="background:#fff;border:1px solid #fecaca;border-radius:6px;padding:6px 10px;font-size:12px;color:#7F1D1D">' +
+        '<strong>' + escC(a.studentName || '') + '</strong> (' + escC(a.studentId || '') + ') — ' + escC(a.batchCode || '') + ' &middot; ' + escC(a.centre || '') +
+        '<br><span style="color:#b91c1c">' + reasonBits.join(' &nbsp;·&nbsp; ') + '</span>' +
+        (a.instructor ? ' &nbsp;·&nbsp; Instructor: <strong>' + escC(a.instructor) + '</strong>' : '') +
+        '</div>';
+    }).join('');
+    banner.style.display = 'flex';
   });
 }
 

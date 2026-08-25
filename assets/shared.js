@@ -7173,6 +7173,170 @@ window.gasGet = (function () {
     }
   }
 
+  /* h_getCounsellorRiskAlerts — "the counsellor should know before it's too late" (added
+     2026-08-25, per instruction: instructors were forgetting to conduct tests, and even
+     when tests happened a failing/low-attendance student could go unnoticed until the
+     final exam). Scoped to ONE counsellor's own world: batches where they are the
+     assigned batch counsellor (batches.counselor) PLUS any centre they've been made
+     responsible for via Settings → Centre Responsibility (centre_responsibilities table,
+     added earlier this project for exactly this "who owns this centre" question) — so
+     both a batch's own counsellor and a centre's overseeing counsellor get the same
+     visibility. For each student in those batches, reuses buildDiplomaRow() (the SAME
+     combined-score/attendance math the Diploma Eligibility screen already uses, so a
+     student flagged "at risk" here and a student blocked from diploma release later are
+     using one consistent definition of "failing" — no second, drifting threshold).
+     Two independent triggers, either one is enough to flag a student:
+       - attendance.pct < 75 (once at least one attendance record exists)
+       - weeklyAvg.value < 60 — deliberately the WEEKLY average, not the blended
+         combinedScore (which needs a Final Exam mark to exist at all). Waiting for
+         combinedScore would mean nobody hears about a struggling student until after
+         their final — by then it's too late to help. weeklyAvg is available the moment
+         a couple of weekly/practical tests are marked, which is the actual "catch it
+         early" point.
+     Fee status and HOD-approval are intentionally NOT fetched here — this endpoint only
+     answers "is this student on track," not "are they diploma-eligible," so the heavier
+     fee/HOD lookups h_getStudentDiplomaStatus needs are skipped to keep this fast. */
+  async function h_getCounsellorRiskAlerts(p, cb) {
+    function getP(table, qs) {
+      return new Promise(function(resolve) {
+        GET(table, qs, function(err, data) { resolve(err ? [] : (data || [])); });
+      });
+    }
+    try {
+      var name = String((p && p.counsellorName) || '').trim();
+      if (!name) { cb(null, { status: 'ok', alerts: [] }); return; }
+
+      // 1. Which centres has this person been made responsible for (Settings → Centre
+      //    Responsibility)? A centre can be unassigned at any time, so this may be empty —
+      //    that's fine, their own batches (step 2) still work independently.
+      var respRows = await getP('centre_responsibilities', 'user_name=eq.' + encodeURIComponent(name) + '&select=centre');
+      var myCentres = respRows.map(function(r) { return r.centre; }).filter(Boolean);
+
+      // 2. Batches they personally own, plus batches in any centre they're responsible
+      //    for. is_active=eq.true keeps this to live batches only — a finished batch's
+      //    students aren't "at risk" of anything anymore.
+      var pOwn = getP('batches', 'counselor=eq.' + encodeURIComponent(name) + '&is_active=eq.true&select=batch_code,centre,course,instructor,counselor');
+      var pCentre = myCentres.length
+        ? getP('batches', 'centre=in.(' + myCentres.map(encodeURIComponent).join(',') + ')&is_active=eq.true&select=batch_code,centre,course,instructor,counselor')
+        : Promise.resolve([]);
+      var [ownBatches, centreBatches] = await Promise.all([pOwn, pCentre]);
+
+      var batchMap = {};
+      ownBatches.concat(centreBatches).forEach(function(b) { batchMap[b.batch_code] = b; });
+      var batchCodes = Object.keys(batchMap);
+      if (!batchCodes.length) { cb(null, { status: 'ok', alerts: [] }); return; }
+
+      // 3. Resolve (student, batch) pairs the same way the rest of the app does: a
+      //    student can be tied to a batch either directly (students.batch_code) or via an
+      //    Active enrollment row — check both so nobody is missed.
+      var pDirect = getP('students', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')&select=student_id,name,batch_code');
+      var pEnroll = getP('enrollments', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')&status=eq.Active&select=student_id,batch_code');
+      var [directStudents, enrollRows] = await Promise.all([pDirect, pEnroll]);
+
+      var pairs = [];
+      var seenPair = {};
+      directStudents.forEach(function(s) {
+        var key = s.student_id + '|' + s.batch_code;
+        if (seenPair[key]) return;
+        seenPair[key] = true;
+        pairs.push({ studentId: s.student_id, studentName: s.name, batchCode: s.batch_code });
+      });
+      var enrollIds = enrollRows.map(function(e) { return e.student_id; })
+        .filter(function(v, i, a) { return a.indexOf(v) === i; });
+      var enrollNameMap = {};
+      if (enrollIds.length) {
+        var enrollStudentRows = await getP('students', 'student_id=in.(' + enrollIds.map(encodeURIComponent).join(',') + ')&select=student_id,name');
+        enrollStudentRows.forEach(function(s) { enrollNameMap[s.student_id] = s.name; });
+      }
+      enrollRows.forEach(function(e) {
+        var key = e.student_id + '|' + e.batch_code;
+        if (seenPair[key]) return;
+        seenPair[key] = true;
+        pairs.push({ studentId: e.student_id, studentName: enrollNameMap[e.student_id] || e.student_id, batchCode: e.batch_code });
+      });
+      if (!pairs.length) { cb(null, { status: 'ok', alerts: [] }); return; }
+
+      var allStudentIds = pairs.map(function(pr) { return pr.studentId; })
+        .filter(function(v, i, a) { return a.indexOf(v) === i; });
+
+      // 4. Attendance, manually-entered assessments/marks, and auto-graded online tests —
+      //    the same three sources buildDiplomaRow() is fed elsewhere.
+      var pAtt = getP('attendance_feedback', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')&select=student_id,batch_code,attendance');
+      var pAssess = getP('assessments', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')');
+      var pMarks = getP('assessment_marks', 'student_id=in.(' + allStudentIds.map(encodeURIComponent).join(',') + ')');
+      var [attRows, assessments, marks] = await Promise.all([pAtt, pAssess, pMarks]);
+
+      var attByPair = {};
+      attRows.forEach(function(a) {
+        if (!a.batch_code) return;
+        var key = a.student_id + '|' + a.batch_code.toUpperCase();
+        if (!attByPair[key]) attByPair[key] = { total: 0, present: 0 };
+        attByPair[key].total++;
+        if (a.attendance === 'Present' || a.attendance === 'Late') attByPair[key].present++;
+      });
+
+      var assessmentsByBatch = {};
+      assessments.forEach(function(a) {
+        var bc = (a.batch_code || '').toUpperCase();
+        if (!assessmentsByBatch[bc]) assessmentsByBatch[bc] = [];
+        assessmentsByBatch[bc].push(a);
+      });
+
+      // marksMap needs to be PER STUDENT (assessment_id -> mark row), since the same
+      // assessment_id can carry a different mark row per student.
+      var marksByStudent = {};
+      marks.forEach(function(m) {
+        if (!marksByStudent[m.student_id]) marksByStudent[m.student_id] = {};
+        marksByStudent[m.student_id][m.assessment_id] = m;
+      });
+
+      // Merge in auto-graded Online Tests — most Weekly/Final scores actually live here,
+      // not in the manual assessment_marks table (see fetchOnlineTestPseudoData's own
+      // comment, and h_getStudentDiplomaStatus above which does the same merge).
+      var otData = await fetchOnlineTestPseudoData(batchCodes);
+      Object.keys(otData.assessmentsByBatch).forEach(function(bc) {
+        if (!assessmentsByBatch[bc]) assessmentsByBatch[bc] = [];
+        assessmentsByBatch[bc] = assessmentsByBatch[bc].concat(otData.assessmentsByBatch[bc]);
+      });
+      Object.keys(otData.marksByStudent).forEach(function(sid) {
+        if (!marksByStudent[sid]) marksByStudent[sid] = {};
+        var otMarks = otData.marksByStudent[sid];
+        Object.keys(otMarks).forEach(function(tid) { marksByStudent[sid][tid] = otMarks[tid]; });
+      });
+
+      // 5. Score every pair and keep only the ones actually at risk.
+      var alerts = [];
+      pairs.forEach(function(pr) {
+        var b = batchMap[pr.batchCode] || {};
+        var bc = pr.batchCode.toUpperCase();
+        var att = attByPair[pr.studentId + '|' + bc] || { total: 0, present: 0 };
+        var row = buildDiplomaRow({
+          studentId: pr.studentId, studentName: pr.studentName, batchCode: pr.batchCode,
+          course: b.course || '', centre: b.centre || '',
+          batchAssessments: assessmentsByBatch[bc] || [],
+          marksMap: marksByStudent[pr.studentId] || {},
+          attInfo: att
+        });
+        var reasons = [];
+        if (row.attendance.total > 0 && row.attendance.pct !== null && row.attendance.pct < 75) reasons.push('attendance');
+        if (row.weeklyAvg.value !== null && row.weeklyAvg.value < 60) reasons.push('academic');
+        if (!reasons.length) return;
+        alerts.push({
+          studentId: pr.studentId, studentName: pr.studentName, batchCode: pr.batchCode,
+          centre: b.centre || '', course: b.course || '', instructor: b.instructor || '',
+          reasons: reasons,
+          attendancePct: row.attendance.pct, attendanceTotal: row.attendance.total,
+          weeklyAvgPct: row.weeklyAvg.value, finalPct: row.finalExam.value
+        });
+      });
+
+      alerts.sort(function(a, b) { return (a.centre + a.batchCode).localeCompare(b.centre + b.batchCode); });
+      cb(null, { status: 'ok', alerts: alerts });
+    } catch (err) {
+      cb(err, null);
+    }
+  }
+
   function h_updateStudentPhoto(p, cb) {
     var studentId = String(p.studentId || p.enrollmentNo || '').trim().toUpperCase();
     var url = String(p.photoUrl || '').trim();
@@ -10691,6 +10855,7 @@ window.gasGet = (function () {
       case 'getFeeRecords':             return h_getFeeRecords(params, cb);
       case 'getAllFeeRecords':          return h_getAllFeeRecords(params, cb);
       case 'updateInvoiceDetails':      return h_updateInvoiceDetails(params, cb);
+      case 'getCounsellorRiskAlerts':   return h_getCounsellorRiskAlerts(params, cb);
       case 'getRevenueMonthMismatches': return h_getRevenueMonthMismatches(params, cb);
       case 'getMissingInvoiceDates':    return h_getMissingInvoiceDates(params, cb);
       case 'fixRevenueMonthMismatch':   return h_fixRevenueMonthMismatch(params, cb);

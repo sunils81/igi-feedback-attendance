@@ -570,6 +570,7 @@
               <option value="Re-Test">Re-Test</option>
             </select>
             <div id="ct-type-hint" style="font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4"></div>
+            <div id="mk-retest-hint" style="display:none;font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:6px 10px;margin-top:6px;line-height:1.4"></div>
           </div>
           <div class="field"><label>Test Number *</label>
             <select id="ct-num">
@@ -4179,7 +4180,12 @@ function stopAttendanceRefresh() {
 
 // ── ASSESSMENT MARKS ──────────────────────────────────────────
 function showMarksList()   { document.getElementById('m-list-screen').style.display='block'; document.getElementById('m-create-screen').style.display='none'; document.getElementById('m-entry-screen').style.display='none'; }
-function showCreateTest()  { document.getElementById('m-list-screen').style.display='none'; document.getElementById('m-create-screen').style.display='block'; document.getElementById('m-entry-screen').style.display='none'; updateTestTypeHint(); }
+function showCreateTest()  {
+  document.getElementById('m-list-screen').style.display='none'; document.getElementById('m-create-screen').style.display='block'; document.getElementById('m-entry-screen').style.display='none';
+  var rh = document.getElementById('mk-retest-hint');
+  if (rh) rh.style.display = 'none'; // only shown when opened via scheduleRetest() below
+  updateTestTypeHint();
+}
 
 // Test Type decides scoring — NOT the test's name. Instructors kept naming tests things like
 // "Final Practical Exam" while leaving Type set to "Final", then were confused when it never
@@ -4194,7 +4200,10 @@ function testTypeCategoryInfo(type) {
   if (t.indexOf('final') !== -1 || t.indexOf('portfolio') !== -1) {
     return { label: 'Final', desc: 'Counts toward: <strong>Final Exam</strong> — 60% of the Combined Score.' };
   }
-  // Weekly, MCQ, Theory, Re-Test all land in the weekly bucket.
+  if (t === 're-test') {
+    return { label: 'Re-Test', desc: 'Automatically replaces this student\'s <strong>worst missed or failed weekly slot</strong> if it scores higher — it does not add a new slot to the average, and it can never lower a slot that already scored better. Only enter marks for the student(s) actually retaking a test; leave everyone else blank.' };
+  }
+  // Weekly, MCQ, Theory all land in the ordinary weekly bucket.
   return { label: 'Weekly', desc: 'Counts toward: <strong>Weekly Test Average</strong> — 40% of the Combined Score.' };
 }
 function updateTestTypeHint() {
@@ -4205,6 +4214,30 @@ function updateTestTypeHint() {
   hintEl.innerHTML = info.desc + ' <span style="color:#9ca3af">(based on Type, not the test name — a test named "Final Practical Exam" but typed "Final" still counts as Final, not Practical.)</span>';
 }
 function showMarksEntry()  { document.getElementById('m-list-screen').style.display='none'; document.getElementById('m-create-screen').style.display='none'; document.getElementById('m-entry-screen').style.display='block'; }
+
+// Jumps from a failing student's row on the Eligibility tab straight into "New Test" on
+// the Marks tab, pre-selected to that batch and pre-set to Type = Re-Test — added
+// 2026-08-25 as part of the re-test/reschedule workflow (see buildDiplomaRow's "Apply
+// Re-Test overrides" pass in shared.js for how the resulting score actually gets used).
+// Assessments are created per-BATCH (not per-student), so this can't fully pre-fill a
+// single-student form — instead it drops a reminder banner naming the student, since the
+// instructor still needs to remember to leave every other student's marks blank.
+function scheduleRetest(studentId, studentName, batchCode) {
+  iTab('t-marks');
+  const batchSel = document.getElementById('mk-batch');
+  if (batchSel && batchSel.querySelector('option[value="' + CSS.escape(batchCode) + '"]')) {
+    batchSel.value = batchCode;
+    loadAssessments();
+  }
+  showCreateTest();
+  const typeSel = document.getElementById('ct-type');
+  if (typeSel) { typeSel.value = 'Re-Test'; updateTestTypeHint(); }
+  const rh = document.getElementById('mk-retest-hint');
+  if (rh) {
+    rh.textContent = '🔁 Scheduling a re-test for ' + studentName + ' (' + studentId + '). After saving, enter marks for ' + studentName + ' only — leave every other student blank so their existing scores aren\'t touched.';
+    rh.style.display = 'block';
+  }
+}
 
 function loadAssessments() {
   const batch = document.getElementById('mk-batch').value;
@@ -9780,6 +9813,10 @@ function renderEligibility(batches) {
         if (wTests.length) {
           wTests.forEach(function(t) {
             var label = 'WT' + t.slot + (t.mandatory ? '' : '<span style="color:#9ca3af;font-size:9px;"> opt</span>');
+            if (t.retestApplied) {
+              var origLabel = t.originalNotTaken ? 'DNA' : (t.originalPct + '%');
+              label += ' <span title="Replaced by a re-test — original was ' + origLabel + '" style="color:#92400e;font-size:9px;font-weight:700;">🔁</span>';
+            }
             var scoreSpan;
             if (!t.conducted) {
               scoreSpan = '<span style="color:#9ca3af;font-size:10px;">—</span>';
@@ -9870,7 +9907,17 @@ function renderEligibility(batches) {
           }
           if (!feeInfo.paid) missing.push('Fee');
           if (!missing.length) missing.push('Pending');
-          html += '<td style="padding:7px 10px;text-align:center;"><span style="' + failStyle + '">✗ ' + missing.join(', ') + '</span></td>';
+          html += '<td style="padding:7px 10px;text-align:center;"><span style="' + failStyle + '">✗ ' + missing.join(', ') + '</span>';
+          // Re-test shortcut — only offered when there's actually a mandatory weekly slot
+          // a re-test could improve (missed or scored below 60%); mirrors the exact
+          // eligibility check buildDiplomaRow() uses server-side to apply the override.
+          const retestCandidate = (s.weeklyTests || []).some(function(t) { return t.mandatory && (t.notTaken || t.pct < 60); });
+          if (retestCandidate) {
+            html += '<button style="display:block;margin:4px auto 0;font-size:10px;font-weight:700;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:2px 8px;cursor:pointer"'
+              + ' data-sid="' + escH(s.studentId) + '" data-sname="' + escH(s.studentName) + '" data-bc="' + escH(batch.batchCode) + '"'
+              + ' onclick="scheduleRetest(this.dataset.sid,this.dataset.sname,this.dataset.bc)">🔁 Schedule Re-Test</button>';
+          }
+          html += '</td>';
         }
         html += '</tr>';
       });

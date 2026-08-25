@@ -314,9 +314,12 @@ window.gasGet = (function () {
      All marks are normalised to a percentage (marks / max_marks * 100)
      before any pass/fail comparison — never compare raw marks to 60.
 
-     Weekly bucket   : test_type Weekly | MCQ | Theory | Re-Test
+     Weekly bucket   : test_type Weekly | MCQ | Theory
      Practical bucket: test_type Practical | MCQ + Practical
      Final bucket    : test_type Final
+     Re-Test         : NOT a slot of its own — replaces this student's worst missed/
+                        failed mandatory weekly slot if it scores higher (see "Apply
+                        Re-Test overrides" below). Added 2026-08-25.
 
      opts = {
        studentId, studentName, batchCode, course, centre,
@@ -370,8 +373,21 @@ window.gasGet = (function () {
     var weeklyAssessments = batchAssessments
       .filter(function(a) {
         var t = typeOf(a);
-        return t === 'weekly' || t === 'mcq' || t === 'theory' || t === 're-test' || t.indexOf('weekly') !== -1;
+        return t === 'weekly' || t === 'mcq' || t === 'theory' || t.indexOf('weekly') !== -1;
       })
+      .sort(function(a, b) { return new Date(a.held_on || 0) - new Date(b.held_on || 0); });
+
+    // Re-Test is scored separately from the ordinary weekly slots (added 2026-08-25, part
+    // of the re-test/reschedule workflow). It used to be lumped into weeklyAssessments and
+    // slotted by date order alongside everything else — which meant a re-test taken AFTER
+    // the mandatoryCount slots were already filled by earlier tests landed in a
+    // non-mandatory slot and silently never affected weeklyAvgVal at all, defeating the
+    // entire point of retaking a failed test. Now a Re-Test EXPLICITLY replaces this
+    // student's worst mandatory weekly slot (only if it actually improves that slot's
+    // score, and only ever helps — never lowers a slot that already scored higher) — see
+    // the "apply retest overrides" pass below, after weeklyTests is built.
+    var retestAssessments = batchAssessments
+      .filter(function(a) { return typeOf(a) === 're-test'; })
       .sort(function(a, b) { return new Date(a.held_on || 0) - new Date(b.held_on || 0); });
 
     var practicalAssessments = batchAssessments.filter(function(a) { return typeOf(a).indexOf('practical') !== -1; });
@@ -397,6 +413,32 @@ window.gasGet = (function () {
       weeklyTests.push({ slot: slot, testName: 'Weekly Test ' + slot, heldOn: null, conducted: false,
         mandatory: true, marksObt: null, maxMarks: 100, pct: null, pass: false, notTaken: true });
     }
+
+    // ── Apply Re-Test overrides ── each re-test (in date order) is matched against
+    // whichever mandatory slot is currently worst for THIS student (missed slots first,
+    // treated as worse than any attempted score; then lowest-scoring attempted slot). The
+    // override only happens if it actually raises that slot's score — a weak re-test
+    // attempt can never make a slot's recorded score worse than what was already there.
+    retestAssessments.forEach(function(rt) {
+      var markRow = marksMap[rt.assessment_id];
+      var retestPct = pctOf(markRow, rt.max_marks || 100);
+      if (retestPct === null) return; // this student didn't take/wasn't marked for this re-test
+      var candidates = weeklyTests.filter(function(t) { return t.mandatory && !t.retestApplied && (t.notTaken || t.pct < 60); });
+      if (!candidates.length) return; // nothing left to improve
+      candidates.sort(function(a, b) { var av = a.pct === null ? -1 : a.pct, bv = b.pct === null ? -1 : b.pct; return av - bv; });
+      var worst = candidates[0];
+      var worstVal = worst.pct === null ? -1 : worst.pct;
+      if (retestPct <= worstVal) return; // doesn't improve on the worst slot, skip this re-test
+      worst.retestApplied = true;
+      worst.originalPct = worst.pct;
+      worst.originalNotTaken = worst.notTaken;
+      worst.retestTestName = rt.test_name || 'Re-Test';
+      worst.marksObt = markObtained(markRow);
+      worst.maxMarks = parseFloat(rt.max_marks || 100);
+      worst.pct = retestPct;
+      worst.pass = retestPct >= 60;
+      worst.notTaken = false;
+    });
 
     var scoredMandatory = weeklyTests.filter(function(t) { return t.mandatory && t.pct !== null; });
     var weeklyAvgVal = scoredMandatory.length

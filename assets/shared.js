@@ -7337,6 +7337,96 @@ window.gasGet = (function () {
     }
   }
 
+  /* h_getOverdueTests — "instructors were forgetting to conduct tests" (added 2026-08-25).
+     There is no explicit test-schedule/syllabus table anywhere in this schema (confirmed
+     before writing this — assessments are just created ad hoc, whenever an instructor
+     gets around to it), so "overdue" can't be a lookup against a plan; it's a heuristic
+     built from what IS on record: a batch's start_date/end_date, and how many of each
+     test type have actually been entered so far, versus how many SHOULD exist by now if
+     the mandatory weekly tests were paced evenly across the batch's duration. This is
+     deliberately conservative (elapsed time is clamped to the batch's own total duration,
+     so a batch that runs long doesn't rack up an ever-growing "missing" count) — the goal
+     is to catch the "it's been weeks and nothing's been entered" case, not to nag over
+     exact scheduling.
+     Three independent checks per active batch:
+       - Weekly: mandatoryCount (2 for JewelPad, else 3 — same rule buildDiplomaRow uses)
+         paced proportionally across the batch's duration; flagged if fewer weekly-type
+         tests exist than that pacing implies by today.
+       - Practical: flagged once the batch is at/past its halfway point and zero
+         Practical-type tests have been recorded (practical has no fixed count elsewhere
+         in this app, so "at least one, by the halfway mark" is the bar).
+       - Final: flagged once the batch is within 7 days of its end_date (or already past
+         it) and zero Final/Portfolio-type test has been recorded — this is the most
+         important one to catch, since a missed Final blocks diploma eligibility outright.
+     Only returns batches where this instructor is the assigned instructor (batches.
+     instructor) — co-instructor coverage isn't included yet, a known scope limit. */
+  async function h_getOverdueTests(p, cb) {
+    function getP(table, qs) {
+      return new Promise(function(resolve) {
+        GET(table, qs, function(err, data) { resolve(err ? [] : (data || [])); });
+      });
+    }
+    try {
+      var name = String((p && p.instructor) || '').trim();
+      if (!name) { cb(null, { status: 'ok', overdue: [] }); return; }
+
+      var batches = await getP('batches', 'instructor=eq.' + encodeURIComponent(name) + '&is_active=eq.true&select=batch_code,centre,course,start_date,end_date');
+      if (!batches.length) { cb(null, { status: 'ok', overdue: [] }); return; }
+
+      var batchCodes = batches.map(function(b) { return b.batch_code; });
+      var assessments = await getP('assessments', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')&select=batch_code,test_type');
+
+      var countsByBatch = {};
+      assessments.forEach(function(a) {
+        var bc = (a.batch_code || '').toUpperCase();
+        if (!countsByBatch[bc]) countsByBatch[bc] = { weekly: 0, practical: 0, final: 0 };
+        var t = String(a.test_type || '').toLowerCase();
+        if (t.indexOf('practical') !== -1) countsByBatch[bc].practical++;
+        else if (t.indexOf('final') !== -1 || t.indexOf('portfolio') !== -1) countsByBatch[bc].final++;
+        else if (t === 'weekly' || t === 'mcq' || t === 'theory' || t === 're-test' || t.indexOf('weekly') !== -1) countsByBatch[bc].weekly++;
+      });
+
+      var today = new Date();
+      var MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
+      var MS_PER_DAY = 24 * 60 * 60 * 1000;
+      var overdue = [];
+
+      batches.forEach(function(b) {
+        if (!b.start_date || !b.end_date) return; // can't pace without both dates
+        var bc = b.batch_code.toUpperCase();
+        var counts = countsByBatch[bc] || { weekly: 0, practical: 0, final: 0 };
+        var start = new Date(b.start_date);
+        var end = new Date(b.end_date);
+        var totalWeeks = (end - start) / MS_PER_WEEK;
+        if (!(totalWeeks > 0)) return; // malformed date range, skip rather than guess
+
+        var elapsedWeeks = Math.max(0, Math.min(totalWeeks, (today - start) / MS_PER_WEEK));
+        var isJewelPad = (b.course || '').toLowerCase().indexOf('jewelpad') !== -1;
+        var mandatoryCount = isJewelPad ? 2 : 3;
+
+        var expectedWeeklyByNow = Math.floor(mandatoryCount * elapsedWeeks / totalWeeks);
+        var missingWeekly = Math.max(0, expectedWeeklyByNow - counts.weekly);
+
+        var practicalDue = elapsedWeeks >= totalWeeks / 2 && counts.practical === 0;
+
+        var daysToEnd = Math.round((end - today) / MS_PER_DAY);
+        var finalDue = daysToEnd <= 7 && counts.final === 0;
+
+        if (!missingWeekly && !practicalDue && !finalDue) return;
+        overdue.push({
+          batchCode: b.batch_code, centre: b.centre || '', course: b.course || '',
+          missingWeekly: missingWeekly, practicalDue: practicalDue, finalDue: finalDue,
+          daysToEnd: daysToEnd
+        });
+      });
+
+      overdue.sort(function(a, b) { return a.daysToEnd - b.daysToEnd; });
+      cb(null, { status: 'ok', overdue: overdue });
+    } catch (err) {
+      cb(err, null);
+    }
+  }
+
   function h_updateStudentPhoto(p, cb) {
     var studentId = String(p.studentId || p.enrollmentNo || '').trim().toUpperCase();
     var url = String(p.photoUrl || '').trim();
@@ -10856,6 +10946,7 @@ window.gasGet = (function () {
       case 'getAllFeeRecords':          return h_getAllFeeRecords(params, cb);
       case 'updateInvoiceDetails':      return h_updateInvoiceDetails(params, cb);
       case 'getCounsellorRiskAlerts':   return h_getCounsellorRiskAlerts(params, cb);
+      case 'getOverdueTests':           return h_getOverdueTests(params, cb);
       case 'getRevenueMonthMismatches': return h_getRevenueMonthMismatches(params, cb);
       case 'getMissingInvoiceDates':    return h_getMissingInvoiceDates(params, cb);
       case 'fixRevenueMonthMismatch':   return h_fixRevenueMonthMismatch(params, cb);

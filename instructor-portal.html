@@ -10003,86 +10003,125 @@ function otHandleTestTypeChange() {
     if (!instructorName) return;
     
     gasGet({ action: 'getUpcomingBatches', instructor: instructorName }, function(e, d) {
-      const listContainer = document.getElementById('notif-items-list');
-      const badge = document.getElementById('notif-badge');
-      const countText = document.getElementById('notif-count-text');
-      
       const batches = (d && d.status === 'ok') ? (d.batches || []) : [];
-      
-      // Update badge count
-      if (badge) {
-        if (batches.length > 0) {
-          badge.textContent = batches.length;
-          badge.style.display = 'flex';
+
+      // Overdue-test check runs alongside — see h_getOverdueTests in shared.js. Folded
+      // into the SAME bell/badge/dashboard-banner UI as "upcoming batches" rather than a
+      // separate notification system, since instructors already check this one spot.
+      gasGet({ action: 'getOverdueTests', instructor: instructorName }, function(e2, d2) {
+        const overdue = (d2 && d2.status === 'ok') ? (d2.overdue || []) : [];
+        renderNotifBell(batches, overdue);
+
+        // Async fetch Tray Board to render both Batch Banners and Tray Banners
+        // JD instructors (no Tray Hub access) skip tray board fetch entirely
+        var NO_TRAY_HUB = ['sneha garodia'];
+        var hasTrayHub = !NO_TRAY_HUB.some(function(n){ return n === (instructorName||'').trim().toLowerCase(); });
+        var myCentre = getInstructorCentre(instructorName) || instructorName;
+        if (!hasTrayHub) {
+          renderDashboardBanners(batches, [], myCentre, overdue);
         } else {
-          badge.style.display = 'none';
-        }
-      }
-      
-      // Update header count text
-      if (countText) {
-        countText.textContent = batches.length + ' starting soon';
-      }
-      
-      // Populate dropdown list
-      if (listContainer) {
-        if (batches.length === 0) {
-          listContainer.innerHTML = '<div style="text-align:center;padding:12px;color:var(--muted);font-size:12px">No upcoming batches starting in the next 30 days.</div>';
-        } else {
-          listContainer.innerHTML = batches.map(b => {
-            let urgencyStyle = '';
-            if (b.startingSoon) {
-              urgencyStyle = 'border-left:3px solid #DC2626;background:#FEF2F2';
-            } else {
-              urgencyStyle = 'border-left:3px solid #FCD34D';
-            }
-            return `
-              <div style="padding:8px 10px;border-radius:6px;font-size:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05);text-align:left;margin-bottom:6px;${urgencyStyle}">
-                <div style="font-weight:700;color:var(--navy);display:flex;justify-content:space-between">
-                  <span>${escH(b.batchCode)}</span>
-                  <span style="font-size:10px;color:var(--muted)">In ${b.daysToStart} days</span>
-                </div>
-                <div style="margin-top:2px;color:var(--navy);font-weight:600">${escH(b.course)}</div>
-                <div style="margin-top:2px;font-size:11px;color:var(--muted)">
-                  Centre: <b>${escH(b.centre)}</b> | Starts: <b>${b.startDate}</b>
-                </div>
-              </div>
-            `;
-          }).join('');
-        }
-      }
-      
-      // Async fetch Tray Board to render both Batch Banners and Tray Banners
-      // JD instructors (no Tray Hub access) skip tray board fetch entirely
-      var NO_TRAY_HUB = ['sneha garodia'];
-      var hasTrayHub = !NO_TRAY_HUB.some(function(n){ return n === (instructorName||'').trim().toLowerCase(); });
-      var myCentre = getInstructorCentre(instructorName) || instructorName;
-      if (!hasTrayHub) {
-        renderDashboardBanners(batches, [], myCentre);
-      } else {
-        gasGet({ action: 'trayGetBoard' }, function(err, tb) {
-          var trays = [];
-          if (!err && tb && tb.status === 'ok') {
-            (tb.centres || []).forEach(function(c) {
-              ['diamond','coloredStone','organics'].forEach(function(tk) {
-                ((c[tk]||{}).trays || []).forEach(function(t) {
-                  trays.push({ tray: t, centre: c.centre, typeKey: tk });
+          gasGet({ action: 'trayGetBoard' }, function(err, tb) {
+            var trays = [];
+            if (!err && tb && tb.status === 'ok') {
+              (tb.centres || []).forEach(function(c) {
+                ['diamond','coloredStone','organics'].forEach(function(tk) {
+                  ((c[tk]||{}).trays || []).forEach(function(t) {
+                    trays.push({ tray: t, centre: c.centre, typeKey: tk });
+                  });
                 });
               });
-            });
-          }
-          renderDashboardBanners(batches, trays, myCentre);
-        });
-      }
+            }
+            renderDashboardBanners(batches, trays, myCentre, overdue);
+          });
+        }
+      });
     });
   }
 
-  function renderDashboardBanners(batches, trays, myCentre) {
+  // Renders the 🔔 bell badge/count + dropdown list, combining "upcoming batches" and
+  // "tests overdue" into one feed (split out of loadUpcomingBatchNotifications above so
+  // both notification sources can share it without duplicating the badge/list logic).
+  function renderNotifBell(batches, overdue) {
+    const listContainer = document.getElementById('notif-items-list');
+    const badge = document.getElementById('notif-badge');
+    const countText = document.getElementById('notif-count-text');
+    const totalCount = batches.length + overdue.length;
+
+    if (badge) {
+      if (totalCount > 0) { badge.textContent = totalCount; badge.style.display = 'flex'; }
+      else { badge.style.display = 'none'; }
+    }
+    if (countText) {
+      var parts = [];
+      if (batches.length) parts.push(batches.length + ' starting soon');
+      if (overdue.length) parts.push(overdue.length + ' test' + (overdue.length > 1 ? 's' : '') + ' overdue');
+      countText.textContent = parts.length ? parts.join(', ') : '0 starting soon';
+    }
+    if (!listContainer) return;
+    if (totalCount === 0) {
+      listContainer.innerHTML = '<div style="text-align:center;padding:12px;color:var(--muted);font-size:12px">No upcoming batches or overdue tests right now.</div>';
+      return;
+    }
+    var overdueHtml = overdue.map(o => {
+      var bits = [];
+      if (o.missingWeekly) bits.push(o.missingWeekly + ' weekly test' + (o.missingWeekly > 1 ? 's' : '') + ' not yet entered');
+      if (o.practicalDue) bits.push('Practical test not yet entered');
+      if (o.finalDue) bits.push(o.daysToEnd < 0 ? 'Final exam overdue' : 'Final exam due soon');
+      return `
+        <div style="padding:8px 10px;border-radius:6px;font-size:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05);text-align:left;margin-bottom:6px;border-left:3px solid #DC2626;background:#FEF2F2">
+          <div style="font-weight:700;color:var(--navy);display:flex;justify-content:space-between">
+            <span>🧪 ${escH(o.batchCode)}</span>
+            <span style="font-size:10px;color:var(--muted)">${escH(o.centre)}</span>
+          </div>
+          <div style="margin-top:2px;font-size:11px;color:#991B1B">${bits.join(' · ')}</div>
+        </div>
+      `;
+    }).join('');
+    var batchesHtml = batches.map(b => {
+      let urgencyStyle = b.startingSoon ? 'border-left:3px solid #DC2626;background:#FEF2F2' : 'border-left:3px solid #FCD34D';
+      return `
+        <div style="padding:8px 10px;border-radius:6px;font-size:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05);text-align:left;margin-bottom:6px;${urgencyStyle}">
+          <div style="font-weight:700;color:var(--navy);display:flex;justify-content:space-between">
+            <span>${escH(b.batchCode)}</span>
+            <span style="font-size:10px;color:var(--muted)">In ${b.daysToStart} days</span>
+          </div>
+          <div style="margin-top:2px;color:var(--navy);font-weight:600">${escH(b.course)}</div>
+          <div style="margin-top:2px;font-size:11px;color:var(--muted)">
+            Centre: <b>${escH(b.centre)}</b> | Starts: <b>${b.startDate}</b>
+          </div>
+        </div>
+      `;
+    }).join('');
+    listContainer.innerHTML = overdueHtml + batchesHtml;
+  }
+
+  function renderDashboardBanners(batches, trays, myCentre, overdue) {
     const bannerContainer = document.getElementById('upcoming-batches-banner-container');
     if (!bannerContainer) return;
     
     var bannerHtmls = [];
-    
+
+    // 0. Overdue-test alerts — the most actionable one, shown first. One card per
+    //    batch rather than per missing test, so a batch with multiple gaps doesn't
+    //    spam three separate cards.
+    (overdue || []).forEach(o => {
+      var bits = [];
+      if (o.missingWeekly) bits.push(o.missingWeekly + ' weekly test' + (o.missingWeekly > 1 ? 's' : '') + ' not yet entered');
+      if (o.practicalDue) bits.push('Practical test not yet entered');
+      if (o.finalDue) bits.push(o.daysToEnd < 0 ? 'Final exam is overdue (batch ended ' + Math.abs(o.daysToEnd) + ' days ago)' : 'Final exam due within ' + o.daysToEnd + ' days');
+      bannerHtmls.push(`
+        <div class="card" style="background:linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%);border:1px solid #FCA5A5;color:#7F1D1D;display:flex;align-items:center;gap:15px;padding:14px 18px;border-radius:12px;box-shadow:0 4px 12px rgba(220,38,38,0.08);margin-bottom:16px;position:relative;overflow:hidden;">
+          <div style="position:absolute;left:0;top:0;bottom:0;width:5px;background:#DC2626;"></div>
+          <span style="font-size:24px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.1));">🧪</span>
+          <div style="flex:1;text-align:left;margin-left:5px;">
+            <h4 style="margin:0 0 4px;font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:0.03em;color:#7F1D1D">Tests Not Yet Conducted — ${escH(o.batchCode)}</h4>
+            <p style="margin:0;font-size:12px;line-height:1.4">${bits.join(' &nbsp;·&nbsp; ')}. Please conduct and enter marks on the Marks tab.</p>
+          </div>
+          <button class="btn btn-gold" style="padding:6px 12px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 4px rgba(0,0,0,0.05);" onclick="iTab('t-marks')">Go to Marks</button>
+        </div>
+      `);
+    });
+
     // 1. Render urgent batch alerts (starting in <= 7 days)
     var urgentBatches = batches.filter(b => b.startingSoon);
     urgentBatches.forEach(b => {

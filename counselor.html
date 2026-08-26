@@ -15202,10 +15202,14 @@ function loadMyBatches() {
           ${b.coInstructor?(()=>{
             const today=(function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
             const expired=b.coInstructorUntil&&b.coInstructorUntil<today;
+            const notStarted=b.coInstructorFrom&&b.coInstructorFrom>today;
+            const fromTxt=b.coInstructorFrom?` from ${b.coInstructorFrom}`:'';
             const untilTxt=b.coInstructorUntil?` until ${b.coInstructorUntil}`:'';
             return expired
               ? `<span class="badge" style="margin-left:6px;background:#fef2f2;color:#dc2626;border:1px solid #fca5a5">⚠ ${b.coInstructor} cover expired</span>`
-              : `<span class="badge" style="margin-left:6px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0">↔ ${b.coInstructor}${untilTxt}</span>`;
+              : notStarted
+              ? `<span class="badge" style="margin-left:6px;background:#fffbeb;color:#92400e;border:1px solid #fde68a">⏳ ${b.coInstructor} cover${fromTxt} (not started)</span>`
+              : `<span class="badge" style="margin-left:6px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0">↔ ${b.coInstructor}${fromTxt}${untilTxt}</span>`;
           })():''}
           ${statusBadge}
           ${clashBadge}
@@ -15220,7 +15224,7 @@ function loadMyBatches() {
           ${coInstructorControl}
         </div>
         <div id="co-panel-${escC(b.batchCode)}" style="display:${(!isCompleted && b.coInstructor)?'block':'none'};margin-top:6px">
-          ${isCompleted?'':renderInlineCoInstructorAssign(b.batchCode, b.coInstructor||'', b.coInstructorUntil||'', b.endDate||'')}
+          ${isCompleted?'':renderInlineCoInstructorAssign(b.batchCode, b.coInstructor||'', b.coInstructorUntil||'', b.endDate||'', b.coInstructorFrom||'')}
         </div>
         <div style="margin-top:8px">
           ${isCompleted ? '' : `<button class="btn btn-gold" style="padding:5px 12px;font-size:11px;width:auto" onclick="openEnrollModalForBatch('${escC(b.batchCode)}','${escC(b.centre||'')}')">&#43; Add Student</button>`}
@@ -15365,7 +15369,7 @@ function dmyToISO(d) {
   return d;
 }
 
-function renderInlineCoInstructorAssign(batchCode, currentCoInstr, currentUntil, batchEndDate) {
+function renderInlineCoInstructorAssign(batchCode, currentCoInstr, currentUntil, batchEndDate, currentFrom) {
   const instList = [
     'Amit Sidpura','Asmita Saroday','Arjun Mistry','Bhavin Patel',
     'Sneha Garodia','Khorehmand Kasad','Nishchay Kapoor','Piyush Ahuja',
@@ -15375,6 +15379,12 @@ function renderInlineCoInstructorAssign(batchCode, currentCoInstr, currentUntil,
   const today = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
   const isExpired = currentCoInstr && currentUntil && currentUntil < today;
   const batchEndISO = dmyToISO(batchEndDate);
+  // Cover START date — defaults to today for a brand-new cover, but stays editable so a
+  // counsellor can also log a cover period that already happened (e.g. entering "17 Aug"
+  // after the fact for a week someone already covered). Without this, a cover's instructor
+  // used to get stamped onto every not-yet-taught session in the whole batch regardless of
+  // date — see h_saveCoInstructor's comment for the bug this closes.
+  const fromVal = currentFrom || today;
 
   // Detect current mode
   const isTillEnd = !!(currentUntil && batchEndISO && currentUntil === batchEndISO);
@@ -15391,7 +15401,16 @@ function renderInlineCoInstructorAssign(batchCode, currentCoInstr, currentUntil,
     <select id="co-assign-${batchCode}" style="width:100%;font-size:12px;border-color:#bbf7d0;margin-bottom:10px">
       <option value=""${!currentCoInstr?' selected':''}>No co-instructor</option>${opts}
     </select>
-    <div style="font-size:11px;font-weight:600;color:#166534;margin-bottom:6px">Cover duration:</div>
+    <label style="display:block;font-size:11px;font-weight:600;color:#166534;margin-bottom:6px">
+      Cover starts:
+      <input type="date" id="co-from-${batchCode}" value="${fromVal}" max="${batchEndISO||''}"
+        title="First date this cover instructor actually takes over — sessions before this date keep the original instructor"
+        style="margin-left:6px;font-size:11px;padding:4px 7px;border:1px solid #bbf7d0;border-radius:6px;color:var(--navy);font-weight:400">
+      <span style="font-weight:400;color:var(--muted);font-size:10px;display:block;margin-top:2px">
+        Defaults to today — change this if the cover already started earlier (or already happened).
+      </span>
+    </label>
+    <div style="font-size:11px;font-weight:600;color:#166534;margin-bottom:6px">Cover ends:</div>
     <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--navy)">
       <label style="display:flex;align-items:center;gap:7px;cursor:pointer;text-transform:none;font-weight:400;font-size:12px">
         <input type="radio" name="co-mode-${batchCode}" value="permanent" ${modeP} onchange="toggleCoUntil('${batchCode}','permanent','${batchEndISO}')">
@@ -15441,6 +15460,10 @@ function saveInlineCoInstructor(batchCode, batchEndISO) {
   const sel = document.getElementById('co-assign-'+batchCode);
   const coInstructor = sel ? sel.value : '';
 
+  const fromEl = document.getElementById('co-from-'+batchCode);
+  const coInstructorFrom = fromEl ? fromEl.value : '';
+  if (coInstructor && !coInstructorFrom) { showToast('Please set when the cover starts.', 'error'); return; }
+
   // Read selected mode
   const radios = document.querySelectorAll('input[name="co-mode-'+batchCode+'"]');
   let mode = 'permanent';
@@ -15452,16 +15475,19 @@ function saveInlineCoInstructor(batchCode, batchEndISO) {
   } else if (mode === 'date') {
     const untilEl = document.getElementById('co-until-'+batchCode);
     coInstructorUntil = untilEl ? untilEl.value : '';
-    if (!coInstructorUntil) { showToast('Please pick a specific date.', 'error'); return; }
+    if (!coInstructorUntil) { showToast('Please pick a specific end date.', 'error'); return; }
     if (batchEndISO && coInstructorUntil > batchEndISO) {
       showToast('Cover date cannot be after the batch end date (' + batchEndISO + ').', 'error'); return;
     }
   }
+  if (coInstructor && coInstructorUntil && coInstructorFrom > coInstructorUntil) {
+    showToast('Cover start date must be on or before the cover end date.', 'error'); return;
+  }
 
-  gasGet({action:'saveCoInstructor', batchCode, coInstructor, coInstructorUntil}, function(e,d) {
+  gasGet({action:'saveCoInstructor', batchCode, coInstructor, coInstructorFrom, coInstructorUntil}, function(e,d) {
     if (e||!d||d.status!=='ok') { showToast('Could not save co-instructor. Please try again.', 'error'); return; }
     const label = coInstructor
-      ? 'Cover assigned: ' + coInstructor + (coInstructorUntil ? ' until ' + coInstructorUntil : ' (permanent)')
+      ? 'Cover assigned: ' + coInstructor + ' from ' + coInstructorFrom + (coInstructorUntil ? ' until ' + coInstructorUntil : ' (permanent)')
       : 'Co-instructor removed.';
     showToast(label);
     allBatches = null; // force re-fetch so updated co-instructor is shown

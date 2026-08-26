@@ -1201,6 +1201,7 @@ window.gasGet = (function () {
             batchSlot: r.batch_slot, startDate: r.start_date, endDate: r.end_date,
             counselor: r.counselor, counselorName: r.counselor, instructor: r.instructor,
             coInstructor: r.co_instructor || '', coInstructorUntil: r.co_instructor_until || '',
+            coInstructorFrom: r.co_instructor_from || '',
             createdAt: r.created_at,
             status: r.is_active !== false ? 'Active' : 'Completed',
             studentCount: sCount,
@@ -1324,16 +1325,29 @@ window.gasGet = (function () {
     });
   }
 
-  /* saveCoInstructor — assign or clear the co-instructor (with optional cover-until date).
-     Also keeps sessions.instructor in sync for anything not yet taught, so attendance/
-     feedback always reflect whoever is ACTUALLY covering as of each session's own date —
-     and automatically reverts once the cover period ends, without needing a separate step. */
+  /* saveCoInstructor — assign or clear the co-instructor, with an optional cover START date
+     (co_instructor_from) in addition to the existing cover-until date. Also keeps
+     sessions.instructor in sync for anything not yet taught, so attendance/feedback always
+     reflect whoever is ACTUALLY covering as of each session's own date.
+
+     FIXED 2026-08-26: this used to have no start-date concept at all — a cover with an
+     "until" date (or none) was stamped onto every not-yet-Completed session in the batch,
+     with no lower bound. That meant covering just the LAST week of a batch (e.g. Bhavin
+     Patel filling in 17–21 Aug for MUM-COL-JUL26-A, while Asmita Saroday taught everything
+     before that) retroactively overwrote every earlier not-yet-Completed session's
+     instructor too — sessions from early August that Asmita actually taught got stamped
+     with Bhavin's name the moment the cover was saved, because the old logic only ever
+     checked "is this session's date <= until", never "is it >= from". Now a cover's start
+     date is stored and used as a real lower bound, so it can also be entered
+     RETROACTIVELY for a period that already happened (like Bhavin's) without touching
+     sessions before it. */
   function h_saveCoInstructor(p, cb) {
     var batchCode = p.batchCode;
     var newCo = p.coInstructor || null;
+    var newFrom = p.coInstructorFrom || null;
     var newUntil = p.coInstructorUntil || null;
     PATCH('batches', 'batch_code=eq.' + encodeURIComponent(batchCode),
-      { co_instructor: newCo, co_instructor_until: newUntil },
+      { co_instructor: newCo, co_instructor_from: newCo ? newFrom : null, co_instructor_until: newUntil },
       function (e) {
         if (e) { cb(null, { status: 'error' }); return; }
         GET('batches', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=instructor', function (e2, rows) {
@@ -1344,18 +1358,29 @@ window.gasGet = (function () {
           if (!newCo) {
             // Cover cleared entirely — every unresolved session reverts to the main instructor.
             PATCH('sessions', filterBase, { instructor: mainInstructor }, function () { done(); });
-          } else if (!newUntil) {
-            // Permanent cover — every unresolved session (any date) gets the cover instructor.
-            PATCH('sessions', filterBase, { instructor: newCo }, function () { done(); });
-          } else {
-            // Cover ends on a specific date — sessions on/before it get the cover instructor;
-            // anything already scheduled past that date reverts to the main instructor.
-            PATCH('sessions', filterBase + '&session_date=lte.' + encodeURIComponent(newUntil),
-              { instructor: newCo }, function () {
-                PATCH('sessions', filterBase + '&session_date=gt.' + encodeURIComponent(newUntil),
-                  { instructor: mainInstructor }, function () { done(); });
-              });
+            return;
           }
+          // Build the "this session falls inside the cover window" filter and its inverse.
+          // Both bounds are optional: no `from` means the window is open-ended in the past
+          // (matches old behaviour), no `until` means open-ended into the future (permanent).
+          var insideExtra = '';
+          if (newFrom) insideExtra += '&session_date=gte.' + encodeURIComponent(newFrom);
+          if (newUntil) insideExtra += '&session_date=lte.' + encodeURIComponent(newUntil);
+          function revertOutside(nextCb) {
+            var outsideParts = [];
+            if (newFrom) outsideParts.push(filterBase + '&session_date=lt.' + encodeURIComponent(newFrom));
+            if (newUntil) outsideParts.push(filterBase + '&session_date=gt.' + encodeURIComponent(newUntil));
+            if (!outsideParts.length) { nextCb(); return; }
+            var i = 0;
+            (function next() {
+              if (i >= outsideParts.length) { nextCb(); return; }
+              var f = outsideParts[i++];
+              PATCH('sessions', f, { instructor: mainInstructor }, function () { next(); });
+            })();
+          }
+          PATCH('sessions', filterBase + insideExtra, { instructor: newCo }, function () {
+            revertOutside(done);
+          });
         });
       }
     );
@@ -1373,11 +1398,13 @@ window.gasGet = (function () {
   function h_getBatchCoverStatus(p, cb) {
     var batchCode = String(p.batchCode || '').trim();
     if (!batchCode) { cb(null, { status: 'error', reason: 'missing_batch_code' }); return; }
-    GET('batches', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=instructor,co_instructor,co_instructor_until', function (e, rows) {
+    GET('batches', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=instructor,co_instructor,co_instructor_from,co_instructor_until', function (e, rows) {
       if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'batch_not_found' }); return; }
       var b = rows[0];
       var todayStr = todayYMD();
-      var coInstructorActive = !!(b.co_instructor && (!b.co_instructor_until || b.co_instructor_until >= todayStr));
+      var coInstructorActive = !!(b.co_instructor
+        && (!b.co_instructor_from || b.co_instructor_from <= todayStr)
+        && (!b.co_instructor_until || b.co_instructor_until >= todayStr));
       var effectiveInstructor = coInstructorActive ? b.co_instructor : (b.instructor || '');
       cb(null, {
         status: 'ok',
@@ -4576,8 +4603,13 @@ window.gasGet = (function () {
       }
       var batches = await getP('batches', bFilter);
       if (instructorName) {
+        var _todayYMD_pend = todayYMD();
         batches = batches.filter(function(b) {
-          return sameName(b.instructor, instructorName) || sameName(b.co_instructor, instructorName);
+          if (sameName(b.instructor, instructorName)) return true;
+          if (!sameName(b.co_instructor, instructorName)) return false;
+          if (b.co_instructor_from && b.co_instructor_from > _todayYMD_pend) return false;
+          if (b.co_instructor_until && b.co_instructor_until < _todayYMD_pend) return false;
+          return true;
         });
       }
       var allowedBatchCodes = new Set(batches.map(function(b) { return String(b.batch_code).toUpperCase(); }));
@@ -6995,10 +7027,14 @@ window.gasGet = (function () {
                 // Effective instructor: co_instructor takes precedence if active
                 var todayStr = todayYMD();
                 var effectiveInstructor = b.instructor || '';
-                if (b.co_instructor && (!b.co_instructor_until || b.co_instructor_until >= todayStr)) {
+                if (b.co_instructor
+                    && (!b.co_instructor_from || b.co_instructor_from <= todayStr)
+                    && (!b.co_instructor_until || b.co_instructor_until >= todayStr)) {
                   effectiveInstructor = b.co_instructor;
                 }
-                var coInstructorActive = !!(b.co_instructor && (!b.co_instructor_until || b.co_instructor_until >= todayStr));
+                var coInstructorActive = !!(b.co_instructor
+                  && (!b.co_instructor_from || b.co_instructor_from <= todayStr)
+                  && (!b.co_instructor_until || b.co_instructor_until >= todayStr));
                 var card = {
                   batchCode: batchCode, course: b.course, centre: b.centre, type: b.type, batchSlot: slot,
                   instructor: effectiveInstructor,
@@ -7977,11 +8013,14 @@ window.gasGet = (function () {
     if (!instr) { cb(null, { status: 'ok', batches: [] }); return; }
     GET('batches', 'order=created_at.desc', function (e, rows) {
       if (e) { cb(null, { status: 'ok', batches: [] }); return; }
-      // Match primary instructor OR active co_instructor (respects cover-until date)
+      // Match primary instructor OR active co_instructor (respects both the cover's start
+      // AND end date — a cover that hasn't started yet, or has already ended, shouldn't
+      // surface the batch under the cover instructor's own "My Batches" list).
       var today0 = todayYMD();
       var matched = (rows || []).filter(function (r) {
         if (sameName(r.instructor, instr)) return true;
         if (!r.co_instructor || !sameName(r.co_instructor, instr)) return false;
+        if (r.co_instructor_from && r.co_instructor_from > today0) return false;
         // co_instructor_until null = permanent; otherwise must be >= today
         return !r.co_instructor_until || r.co_instructor_until >= today0;
       });
@@ -7990,7 +8029,7 @@ window.gasGet = (function () {
           batchSlot: r.batch_slot || 'Full Day', startDate: toDMY(r.start_date), startDateISO: r.start_date ? new Date(r.start_date).toISOString() : '',
           endDate: toDMY(r.end_date), endDateISO: r.end_date ? new Date(r.end_date).toISOString() : '',
           active: r.is_active !== false, instructor: r.instructor || '', coInstructor: r.co_instructor || '',
-          coInstructorUntil: r.co_instructor_until || '',
+          coInstructorFrom: r.co_instructor_from || '', coInstructorUntil: r.co_instructor_until || '',
           syllabus: (window.SYLLABI || {})[r.course] || [] };
       }) });
     });
@@ -8093,6 +8132,7 @@ window.gasGet = (function () {
       var matched = bRows.filter(function (b) {
         if (sameName(b.instructor, instr)) return true;
         if (!b.co_instructor || !sameName(b.co_instructor, instr)) return false;
+        if (b.co_instructor_from && b.co_instructor_from > today) return false;
         return !b.co_instructor_until || b.co_instructor_until >= today;
       });
       // Batches that ended a while ago clutter the daily view with no benefit — keep
@@ -8181,13 +8221,15 @@ window.gasGet = (function () {
       var sRow = sRows && sRows[0];
       if (!sRow) { cb(null, { status: 'error', message: 'Session not found' }); return; }
       var batchCode = sRow.batch_code;
-      GET('batches', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=course,instructor,co_instructor,co_instructor_until&limit=1', function (eb, bRows) {
+      GET('batches', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=course,instructor,co_instructor,co_instructor_from,co_instructor_until&limit=1', function (eb, bRows) {
         var bRow = bRows && bRows[0];
         if (!bRow) { cb(null, { status: 'error', message: 'Batch not found' }); return; }
         var instr = String(p.instructor || '').trim();
         var isOwner = sameName(bRow.instructor, instr);
+        var _todayYMD = todayYMD();
         var isCover = bRow.co_instructor && sameName(bRow.co_instructor, instr) &&
-          (!bRow.co_instructor_until || bRow.co_instructor_until >= todayYMD());
+          (!bRow.co_instructor_from || bRow.co_instructor_from <= _todayYMD) &&
+          (!bRow.co_instructor_until || bRow.co_instructor_until >= _todayYMD);
         if (!isOwner && !isCover) {
           cb(null, { status: 'error', message: 'You are not assigned to this batch' });
           return;
@@ -8382,6 +8424,7 @@ window.gasGet = (function () {
       var matched = (rows || []).filter(function(b) {
         if (sameName(b.instructor, instr)) return true;
         if (!b.co_instructor || !sameName(b.co_instructor, instr)) return false;
+        if (b.co_instructor_from && b.co_instructor_from > today) return false;
         return !b.co_instructor_until || b.co_instructor_until >= today;
       });
       cb(null, { status: 'ok', batches: matched.map(function(b) {
@@ -8485,6 +8528,7 @@ window.gasGet = (function () {
       var allBatches = (allBatchesRaw || []).filter(function(b) {
         if (sameName(b.instructor, instr)) return true;
         if (!b.co_instructor || !sameName(b.co_instructor, instr)) return false;
+        if (b.co_instructor_from && b.co_instructor_from > today0e) return false;
         return !b.co_instructor_until || b.co_instructor_until >= today0e;
       });
       if (!allBatches || !allBatches.length) { cb(null, { status: 'ok', batches: [] }); return; }

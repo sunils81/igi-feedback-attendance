@@ -7400,6 +7400,14 @@ window.gasGet = (function () {
        - Final: flagged once the batch is within 7 days of its end_date (or already past
          it) and zero Final/Portfolio-type test has been recorded — this is the most
          important one to catch, since a missed Final blocks diploma eligibility outright.
+     Test counts merge two sources: the manual 'assessments' table AND the 'online_tests'
+     table (any non-Draft status) — most Weekly/Final tests are actually created via the
+     Online Tests tab, not the Marks tab, so counting 'assessments' alone was flagging
+     batches as "not conducted" even when a test had genuinely been run online (fixed
+     2026-08-26).
+     Only ever considers ONGOING batches — start_date <= today <= end_date. A batch that
+     hasn't started has nothing to be overdue on yet, and one that already ended is done;
+     the old version kept nagging about finished batches indefinitely (fixed 2026-08-26).
      Only returns batches where this instructor is the assigned instructor (batches.
      instructor) — co-instructor coverage isn't included yet, a known scope limit. */
   async function h_getOverdueTests(p, cb) {
@@ -7428,6 +7436,31 @@ window.gasGet = (function () {
         else if (t === 'weekly' || t === 'mcq' || t === 'theory' || t === 're-test' || t.indexOf('weekly') !== -1) countsByBatch[bc].weekly++;
       });
 
+      // Merge in Online Tests (online_tests table) — most weekly/final tests are actually
+      // created here via the Online Tests tab, not in the manual 'assessments' table (see
+      // fetchOnlineTestPseudoData's own comment elsewhere in this file). Missing this merge
+      // was making the heuristic below flag a batch as "not conducted" even when the
+      // instructor had already created and run an online test for that slot — e.g.
+      // MUM-COL-JUL26-A had a Live "Weekly" online test with zero rows in 'assessments'.
+      // Draft tests (never published to students) don't count as conducted; Active/Live/
+      // Closed all do. Mock/Practice test types are deliberately excluded, same as
+      // buildDiplomaRow's online-test bridge treats them as non-mandatory extras rather
+      // than a real Weekly/Final slot.
+      var wantedUpper = batchCodes.map(function(b) { return String(b).toUpperCase(); });
+      var onlineTests = await getP('online_tests', 'status=neq.Draft&select=batch_codes,batch_code,test_type');
+      onlineTests.forEach(function(ot) {
+        var raw = ot.batch_codes || ot.batch_code || '';
+        var codes = String(raw).split(',').map(function(s) { return s.trim().toUpperCase(); }).filter(Boolean);
+        var t = String(ot.test_type || '').toLowerCase();
+        codes.forEach(function(bc) {
+          if (wantedUpper.indexOf(bc) === -1) return;
+          if (!countsByBatch[bc]) countsByBatch[bc] = { weekly: 0, practical: 0, final: 0 };
+          if (t.indexOf('final') !== -1 || t.indexOf('portfolio') !== -1) countsByBatch[bc].final++;
+          else if (t === 'weekly') countsByBatch[bc].weekly++;
+          // 'mock' / 'practice' intentionally not counted toward any mandatory slot.
+        });
+      });
+
       var today = new Date();
       var MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
       var MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -7441,6 +7474,12 @@ window.gasGet = (function () {
         var end = new Date(b.end_date);
         var totalWeeks = (end - start) / MS_PER_WEEK;
         if (!(totalWeeks > 0)) return; // malformed date range, skip rather than guess
+
+        // Only ongoing batches — a batch that hasn't started yet has nothing to be "overdue"
+        // on, and a batch that already ended is done; nagging about it forever (which is what
+        // happened before this check existed — see e.g. a batch that ended 47 days ago still
+        // showing "3 weekly tests not yet entered") isn't actionable for the instructor.
+        if (today < start || today > end) return;
 
         var elapsedWeeks = Math.max(0, Math.min(totalWeeks, (today - start) / MS_PER_WEEK));
         var isJewelPad = (b.course || '').toLowerCase().indexOf('jewelpad') !== -1;

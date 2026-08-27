@@ -4422,8 +4422,23 @@ window.gasGet = (function () {
   /* createSession */
   function h_createSession(p, cb) {
     GET('sessions', 'batch_code=eq.' + encodeURIComponent(p.batchCode) +
-      '&select=sess_no,session_type&order=sess_no.desc', function (e, rows) {
+      '&select=sess_no,session_type,session_date&order=sess_no.desc', function (e, rows) {
       rows = rows || [];
+      // FIXED 2026-08-27: the front end (createExtraSession in instructor-portal.html)
+      // has always had error handling for a 'session_exists_today' reason, but this
+      // function never actually checked for or returned it — so instructors could
+      // (and routinely did, across multiple centres) create two or more real sessions
+      // for the same batch on the same date with zero warning. That's exactly what
+      // happens after a cancel-then-recreate: cancel the regular slot, then create an
+      // "Extra" session for what was meant to be a replacement, but land on the same
+      // date by mistake — the app silently allows it, and the extra session becomes
+      // invisible to anyone relying on a single "today's session" lookup (see the
+      // h_getStudentPortalData / h_getInstructorTodaySessions fixes from the same date).
+      // A cancelled row on that date doesn't block a new one — cancelling and then
+      // deliberately adding a real replacement for the same day is a legitimate flow.
+      var targetDate = p.sessionDate || todayYMD();
+      var dupeExists = rows.some(function (r) { return r.session_date === targetDate && r.session_type !== 'Cancelled'; });
+      if (dupeExists) { cb(null, { status: 'error', reason: 'session_exists_today' }); return; }
       var nextNo   = rows.length ? (Number(rows[0].sess_no || 0) + 1) : 1;
       // displaySessNo is a cosmetic count of non-cancelled sessions only, so the
       // "Session N" label students/instructors see doesn't drift ahead of the

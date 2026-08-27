@@ -2332,7 +2332,11 @@ function renderPortal(d) {
         </div>`;
       }
 
-      if (!b.windowActive) {
+      // pendingFeedbackOnly: instructor already marked this student present but no
+      // feedback was ever captured — let them catch up even past the normal window,
+      // since the window only guards against a bogus self-attendance claim, which
+      // doesn't apply once attendance is already verified by the instructor.
+      if (!b.windowActive && !b.pendingFeedbackOnly) {
         const timeMsg = !b.windowOpen
           ? `Session opens at ${b.windowOpenHr}:00`
           : `Session window closed at ${b.windowCloseHr}:00`;
@@ -2347,13 +2351,18 @@ function renderPortal(d) {
 
       // Active — can submit
       const topicLine = b.topic ? `<div class="bc-topic">📖 ${b.topic}</div>` : '';
+      const catchupNote = (b.pendingFeedbackOnly && !b.windowActive)
+        ? `<div class="bc-inactive" style="margin-top:4px"><span class="time-badge">📝 Attendance already marked — please submit your feedback for today's session</span></div>`
+        : '';
+      const btnLabel = b.pendingFeedbackOnly ? 'Submit Feedback →' : 'Mark Attendance &amp; Submit Feedback →';
       return `<div class="batch-card active-card">
         <span class="slot-badge ${slotBadgeClass}" style="display:inline-flex; align-items:center;"><span class="pulse-dot"></span>${slotLabel}</span>
         <div class="bc-course">${b.course}</div>
         <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''} · Session ${b.displaySessNo || b.sessNo}</div>
         ${topicLine}
         ${renderSyllabusProgress(b)}
-        <button class="btn btn-gold" onclick="openFeedback('${b.batchCode}')">Mark Attendance &amp; Submit Feedback →</button>
+        ${catchupNote}
+        <button class="btn btn-gold" onclick="openFeedback('${b.batchCode}')">${btnLabel}</button>
       </div>`;
     }).join('');
   }
@@ -2389,7 +2398,7 @@ function renderPortal(d) {
           ${renderSyllabusProgress(b)}
           <div class="bc-waiting">⏳ Session not yet started by instructor. Please check back later.</div>
         </div>`;
-      } else if (!b.windowActive) {
+      } else if (!b.windowActive && !b.pendingFeedbackOnly) {
         const timeMsg = !b.windowOpen
           ? `Session opens at ${b.windowOpenHr}:00`
           : `Session window closed at ${b.windowCloseHr}:00`;
@@ -2402,13 +2411,18 @@ function renderPortal(d) {
         </div>`;
       } else {
         const topicLine = b.topic ? `<div class="bc-topic">📖 ${b.topic}</div>` : '';
+        const catchupNote = (b.pendingFeedbackOnly && !b.windowActive)
+          ? `<div class="bc-inactive" style="margin-top:4px"><span class="time-badge">📝 Attendance already marked — please submit your feedback for today's session</span></div>`
+          : '';
+        const btnLabel = b.pendingFeedbackOnly ? 'Submit Feedback →' : 'Mark Attendance &amp; Submit Feedback →';
         innerCard = `<div class="batch-card active-card" style="margin-bottom:0px; border-bottom-left-radius:0; border-bottom-right-radius:0; border-bottom:none;">
           <span class="slot-badge ${slotBadgeClass}" style="display:inline-flex; align-items:center;"><span class="pulse-dot"></span>${slotLabel}</span>
           <div class="bc-course">${b.course}</div>
           <div class="bc-meta">${b.batchCode} · ${b.centre}${b.instructor?' · '+b.instructor:''} · Session ${b.displaySessNo || b.sessNo}</div>
           ${topicLine}
           ${renderSyllabusProgress(b)}
-          <button class="btn btn-gold" onclick="openFeedback('${b.batchCode}')">Mark Attendance &amp; Submit Feedback →</button>
+          ${catchupNote}
+          <button class="btn btn-gold" onclick="openFeedback('${b.batchCode}')">${btnLabel}</button>
         </div>`;
       }
       
@@ -2494,7 +2508,7 @@ function renderStudentSummary(d) {
   const el = document.getElementById('student-summary');
   if (!el) return;
   const batches = d.batches || [];
-  const active = batches.find(b => b.sessionExists && b.windowActive && !b.alreadySubmitted);
+  const active = batches.find(b => b.sessionExists && (b.windowActive || b.pendingFeedbackOnly) && !b.alreadySubmitted);
   const submitted = batches.filter(b => b.alreadySubmitted).length;
   const next = active || batches.find(b => b.sessionExists) || batches[0];
   

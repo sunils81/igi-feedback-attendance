@@ -6994,11 +6994,23 @@ window.gasGet = (function () {
                 var windowClosed = nowHr >= win.close;
                 var isActive = windowOpen && !windowClosed;
                 var alreadySubmitted = false;
+                var attendanceOnlyRow = null; // instructor marked present but no real feedback captured yet
                 if (todaySess) {
-                  alreadySubmitted = (atts || []).some(function (af) {
+                  attendanceOnlyRow = (atts || []).find(function (af) {
                     return af.session_code === todaySess.session_code && af.attendance !== 'Absent';
                   });
+                  // FIXED 2026-08-27: only count as "done" once real feedback content exists.
+                  // h_instructorMarkAttendance's bulk mark-present writes an attendance_feedback
+                  // row with no feedback_text/feedback_score — that used to be mistaken for a
+                  // completed submission and silently hid the feedback form from the student.
+                  alreadySubmitted = !!(attendanceOnlyRow && attendanceOnlyRow.feedback_text);
                 }
+                // Attendance already recorded (by instructor or self) but feedback still
+                // missing — let the student catch up even after today's normal feedback
+                // window has closed. The window exists to stop a bogus self-check-in claim;
+                // that concern doesn't apply once attendance is already verified, so only the
+                // feedback content should still be collectible.
+                var pendingFeedbackOnly = !!(attendanceOnlyRow && !alreadySubmitted);
                 // Cancelled sessions never happened, so they're excluded entirely — not
                 // counted as attended, and not counted against the student as a miss either.
                 var bSess = (sessions || []).filter(function (s) { return s.batch_code === batchCode && s.session_type !== 'Cancelled'; })
@@ -7044,7 +7056,7 @@ window.gasGet = (function () {
                   sessionCode: todaySess ? todaySess.session_code : null, sessNo: todaySess ? todaySess.sess_no : null,
                   displaySessNo: todaySess ? (displaySessNoByCode[todaySess.session_code] || todaySess.sess_no) : null,
                   topic: todaySess ? (todaySess.topic || '') : null, sessionExists: !!todaySess,
-                  alreadySubmitted: alreadySubmitted, windowActive: isActive, windowOpen: windowOpen, windowClosed: windowClosed,
+                  alreadySubmitted: alreadySubmitted, pendingFeedbackOnly: pendingFeedbackOnly, windowActive: isActive, windowOpen: windowOpen, windowClosed: windowClosed,
                   windowOpenHr: win.open, windowCloseHr: win.close, history: history,
                   sessionCancelledToday: !!cancelledTodaySess,
                   cancelledReason: cancelledTodaySess ? String(cancelledTodaySess.topic || '').replace(/^CANCELLED:\s*/, '') : '',

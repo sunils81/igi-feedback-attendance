@@ -6985,6 +6985,13 @@ window.gasGet = (function () {
                 var cancelledTodaySess = (sessions || []).find(function (s) {
                   return s.batch_code === batchCode && s.session_date === todayYMDStr && s.session_type === 'Cancelled';
                 });
+                // FIXED 2026-08-27: a batch can have BOTH a cancelled session and a real one
+                // for the same date — e.g. the regular slot was cancelled and the instructor
+                // then created a custom extra/workshop session for that same day. That real
+                // session (todaySess) is what actually happened, so it must win — otherwise
+                // the student only ever sees "class cancelled" and the instructor's custom
+                // topic never shows up anywhere, even though a genuine session exists.
+                if (todaySess) cancelledTodaySess = null;
                 var slot = b.batch_slot || 'Full Day';
                 var win = { open: 8, close: 24 };
                 if (slot === 'First Half') win = { open: 8, close: 14 };
@@ -8192,6 +8199,12 @@ window.gasGet = (function () {
         var batches = current.map(function (b) {
           var todaySess = allSess.find(function (s) { return s.batch_code === b.batch_code && s.session_date === today && s.session_type !== 'Cancelled'; });
           var cancelledTodaySess = allSess.find(function (s) { return s.batch_code === b.batch_code && s.session_date === today && s.session_type === 'Cancelled'; });
+          // FIXED 2026-08-27: same fix as the student portal side — a real session
+          // created for today (e.g. a custom-topic extra session added after the regular
+          // slot was cancelled) must win over a stale cancellation for the same date,
+          // otherwise the instructor's own dashboard shows "CANCELLED" and hides the
+          // very session they just created.
+          if (todaySess) cancelledTodaySess = null;
           var startD = b.start_date || '';
           var endD = b.end_date || '';
           var activeToday = startD && endD && today >= startD && today <= endD;

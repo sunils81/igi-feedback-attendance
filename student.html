@@ -2362,7 +2362,7 @@ function renderPortal(d) {
         ${topicLine}
         ${renderSyllabusProgress(b)}
         ${catchupNote}
-        <button class="btn btn-gold" onclick="openFeedback('${b.batchCode}')">${btnLabel}</button>
+        <button class="btn btn-gold" onclick="openFeedback('${b.batchCode}', '${b.sessionCode||''}')">${btnLabel}</button>
       </div>`;
     }).join('');
   }
@@ -2422,7 +2422,7 @@ function renderPortal(d) {
           ${topicLine}
           ${renderSyllabusProgress(b)}
           ${catchupNote}
-          <button class="btn btn-gold" onclick="openFeedback('${b.batchCode}')">${btnLabel}</button>
+          <button class="btn btn-gold" onclick="openFeedback('${b.batchCode}', '${b.sessionCode||''}')">${btnLabel}</button>
         </div>`;
       }
       
@@ -2804,8 +2804,14 @@ function doLogout() {
 }
 
 // ── Open Feedback ─────────────────────────────────────────────
-function openFeedback(batchCode) {
-  const b = portalData.batches.find(x=>x.batchCode===batchCode);
+function openFeedback(batchCode, sessionCode) {
+  // A batch can have more than one real session today (e.g. a regular class plus a
+  // same-day Extra workshop) — each renders its own card/button, so match by the
+  // specific sessionCode when one is given, not just the batch, or the wrong card's
+  // session would always open.
+  const b = sessionCode
+    ? portalData.batches.find(x=>x.batchCode===batchCode && x.sessionCode===sessionCode)
+    : portalData.batches.find(x=>x.batchCode===batchCode);
   if (!b) return;
   activeBatch = b;
   // Reset

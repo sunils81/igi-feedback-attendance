@@ -6976,22 +6976,30 @@ window.gasGet = (function () {
                 var startD = new Date(b.start_date);
                 var endD = new Date(b.end_date);
                 var isExpired = new Date() > endD;
-                var todaySess = (sessions || []).find(function (s) {
+                // FIXED 2026-08-27: a batch can have MORE than one real session on the same
+                // date — e.g. the regular scheduled class plus a same-day "Extra" workshop
+                // or makeup session (a routine instructor workflow, not an edge case — this
+                // shows up across dozens of batch/date combinations in production). Grabbing
+                // just one via .find() silently dropped whichever session the query happened
+                // to return second, making it invisible to the student (and the instructor's
+                // own dashboard) with no error or explanation. Collect ALL of them so every
+                // real session for today gets its own card below.
+                var todaySessArr = (sessions || []).filter(function (s) {
                   return s.batch_code === batchCode && s.session_date === todayYMDStr && s.session_type !== 'Cancelled';
-                });
+                }).sort(function (a, c) { return (Number(a.sess_no) || 0) - (Number(c.sess_no) || 0); });
                 // Separately surface a cancelled-today session so the portal can tell the
                 // student their class was called off, instead of just silently reverting
                 // to the generic "session not yet started" waiting message.
                 var cancelledTodaySess = (sessions || []).find(function (s) {
                   return s.batch_code === batchCode && s.session_date === todayYMDStr && s.session_type === 'Cancelled';
                 });
-                // FIXED 2026-08-27: a batch can have BOTH a cancelled session and a real one
-                // for the same date — e.g. the regular slot was cancelled and the instructor
-                // then created a custom extra/workshop session for that same day. That real
-                // session (todaySess) is what actually happened, so it must win — otherwise
-                // the student only ever sees "class cancelled" and the instructor's custom
+                // A batch can have BOTH a cancelled session and a real one for the same
+                // date — e.g. the regular slot was cancelled and the instructor then
+                // created a custom extra/workshop session for that same day. That real
+                // session is what actually happened, so it must win — otherwise the
+                // student only ever sees "class cancelled" and the instructor's custom
                 // topic never shows up anywhere, even though a genuine session exists.
-                if (todaySess) cancelledTodaySess = null;
+                if (todaySessArr.length) cancelledTodaySess = null;
                 var slot = b.batch_slot || 'Full Day';
                 var win = { open: 8, close: 24 };
                 if (slot === 'First Half') win = { open: 8, close: 14 };
@@ -7000,24 +7008,6 @@ window.gasGet = (function () {
                 var windowOpen = nowHr >= win.open;
                 var windowClosed = nowHr >= win.close;
                 var isActive = windowOpen && !windowClosed;
-                var alreadySubmitted = false;
-                var attendanceOnlyRow = null; // instructor marked present but no real feedback captured yet
-                if (todaySess) {
-                  attendanceOnlyRow = (atts || []).find(function (af) {
-                    return af.session_code === todaySess.session_code && af.attendance !== 'Absent';
-                  });
-                  // FIXED 2026-08-27: only count as "done" once real feedback content exists.
-                  // h_instructorMarkAttendance's bulk mark-present writes an attendance_feedback
-                  // row with no feedback_text/feedback_score — that used to be mistaken for a
-                  // completed submission and silently hid the feedback form from the student.
-                  alreadySubmitted = !!(attendanceOnlyRow && attendanceOnlyRow.feedback_text);
-                }
-                // Attendance already recorded (by instructor or self) but feedback still
-                // missing — let the student catch up even after today's normal feedback
-                // window has closed. The window exists to stop a bogus self-check-in claim;
-                // that concern doesn't apply once attendance is already verified, so only the
-                // feedback content should still be collectible.
-                var pendingFeedbackOnly = !!(attendanceOnlyRow && !alreadySubmitted);
                 // Cancelled sessions never happened, so they're excluded entirely — not
                 // counted as attended, and not counted against the student as a miss either.
                 var bSess = (sessions || []).filter(function (s) { return s.batch_code === batchCode && s.session_type !== 'Cancelled'; })
@@ -7054,23 +7044,55 @@ window.gasGet = (function () {
                 var coInstructorActive = !!(b.co_instructor
                   && (!b.co_instructor_from || b.co_instructor_from <= todayStr)
                   && (!b.co_instructor_until || b.co_instructor_until >= todayStr));
-                var card = {
-                  batchCode: batchCode, course: b.course, centre: b.centre, type: b.type, batchSlot: slot,
-                  instructor: effectiveInstructor,
-                  mainInstructor: b.instructor || '', coInstructor: b.co_instructor || '', coInstructorActive: coInstructorActive,
-                  startDateISO: startD.toISOString(), endDateISO: endD.toISOString(),
-                  startDateDisplay: toDMY(b.start_date), endDateDisplay: toDMY(b.end_date),
-                  sessionCode: todaySess ? todaySess.session_code : null, sessNo: todaySess ? todaySess.sess_no : null,
-                  displaySessNo: todaySess ? (displaySessNoByCode[todaySess.session_code] || todaySess.sess_no) : null,
-                  topic: todaySess ? (todaySess.topic || '') : null, sessionExists: !!todaySess,
-                  alreadySubmitted: alreadySubmitted, pendingFeedbackOnly: pendingFeedbackOnly, windowActive: isActive, windowOpen: windowOpen, windowClosed: windowClosed,
-                  windowOpenHr: win.open, windowCloseHr: win.close, history: history,
-                  sessionCancelledToday: !!cancelledTodaySess,
-                  cancelledReason: cancelledTodaySess ? String(cancelledTodaySess.topic || '').replace(/^CANCELLED:\s*/, '') : '',
-                  historySummary: { attended: attendedCount, total: bSess.length, pct: bSess.length ? Math.round((attendedCount / bSess.length) * 100) : 0 }
-                };
-                batchCards.push(card);
-                allEnrolledBatches.push(Object.assign({}, card, { expired: isExpired }));
+                // FIXED 2026-08-27: build one card per real today-session instead of a single
+                // card for the whole batch, so a batch with two sessions today (e.g. a
+                // regular class plus a same-day Extra workshop) surfaces both — see the
+                // todaySessArr comment above for why this can't just take the first one.
+                function buildCard(todaySess) {
+                  var attendanceOnlyRow = null; // instructor marked present but no real feedback captured yet
+                  var alreadySubmitted = false;
+                  if (todaySess) {
+                    attendanceOnlyRow = (atts || []).find(function (af) {
+                      return af.session_code === todaySess.session_code && af.attendance !== 'Absent';
+                    });
+                    // Only count as "done" once real feedback content exists.
+                    // h_instructorMarkAttendance's bulk mark-present writes an attendance_feedback
+                    // row with no feedback_text/feedback_score — that used to be mistaken for a
+                    // completed submission and silently hid the feedback form from the student.
+                    alreadySubmitted = !!(attendanceOnlyRow && attendanceOnlyRow.feedback_text);
+                  }
+                  // Attendance already recorded (by instructor or self) but feedback still
+                  // missing — let the student catch up even after today's normal feedback
+                  // window has closed. The window exists to stop a bogus self-check-in claim;
+                  // that concern doesn't apply once attendance is already verified, so only the
+                  // feedback content should still be collectible.
+                  var pendingFeedbackOnly = !!(attendanceOnlyRow && !alreadySubmitted);
+                  return {
+                    batchCode: batchCode, course: b.course, centre: b.centre, type: b.type, batchSlot: slot,
+                    instructor: effectiveInstructor,
+                    mainInstructor: b.instructor || '', coInstructor: b.co_instructor || '', coInstructorActive: coInstructorActive,
+                    startDateISO: startD.toISOString(), endDateISO: endD.toISOString(),
+                    startDateDisplay: toDMY(b.start_date), endDateDisplay: toDMY(b.end_date),
+                    sessionCode: todaySess ? todaySess.session_code : null, sessNo: todaySess ? todaySess.sess_no : null,
+                    displaySessNo: todaySess ? (displaySessNoByCode[todaySess.session_code] || todaySess.sess_no) : null,
+                    topic: todaySess ? (todaySess.topic || '') : null, sessionExists: !!todaySess,
+                    alreadySubmitted: alreadySubmitted, pendingFeedbackOnly: pendingFeedbackOnly, windowActive: isActive, windowOpen: windowOpen, windowClosed: windowClosed,
+                    windowOpenHr: win.open, windowCloseHr: win.close, history: history,
+                    sessionCancelledToday: !!cancelledTodaySess,
+                    cancelledReason: cancelledTodaySess ? String(cancelledTodaySess.topic || '').replace(/^CANCELLED:\s*/, '') : '',
+                    historySummary: { attended: attendedCount, total: bSess.length, pct: bSess.length ? Math.round((attendedCount / bSess.length) * 100) : 0 }
+                  };
+                }
+                if (todaySessArr.length > 1) {
+                  todaySessArr.forEach(function (ts) { batchCards.push(buildCard(ts)); });
+                } else {
+                  batchCards.push(buildCard(todaySessArr[0] || null));
+                }
+                // allEnrolledBatches keeps exactly ONE entry per batch regardless of how many
+                // today-sessions it has — it's used for course-level rollups (Alumni tab
+                // visibility, Fact-of-the-day categories, etc.) that only care about the
+                // batch itself, not which specific session is happening today.
+                allEnrolledBatches.push(Object.assign({}, buildCard(todaySessArr[0] || null), { expired: isExpired }));
               });
               GET('assessments', 'batch_code=in.(' + bCodes.join(',') + ')', function (e6, assessments) {
                 GET('assessment_marks', 'student_id=eq.' + encodeURIComponent(enrollNo), function (e7, marks) {
@@ -8196,15 +8218,23 @@ window.gasGet = (function () {
             .sort(function (a, c) { return new Date(a.session_date) - new Date(c.session_date); })
             .forEach(function (s, idx) { displayNoByCode[s.session_code] = idx + 1; });
         });
-        var batches = current.map(function (b) {
-          var todaySess = allSess.find(function (s) { return s.batch_code === b.batch_code && s.session_date === today && s.session_type !== 'Cancelled'; });
+        // FIXED 2026-08-27: a batch can have more than one real session on the same
+        // date — e.g. a regular scheduled class plus a same-day "Extra" workshop or
+        // makeup session (a routine instructor workflow, confirmed across dozens of
+        // batch/date combinations in production, not a rare edge case). The old
+        // single .find() silently returned only one of them, so the other never
+        // appeared anywhere on the instructor's own dashboard — no error, it just
+        // didn't exist as far as this screen was concerned. Build one entry per real
+        // session instead of one per batch.
+        var batches = [];
+        current.forEach(function (b) {
+          var todaySessArr = allSess.filter(function (s) { return s.batch_code === b.batch_code && s.session_date === today && s.session_type !== 'Cancelled'; })
+            .sort(function (a, c) { return (Number(a.sess_no) || 0) - (Number(c.sess_no) || 0); });
           var cancelledTodaySess = allSess.find(function (s) { return s.batch_code === b.batch_code && s.session_date === today && s.session_type === 'Cancelled'; });
-          // FIXED 2026-08-27: same fix as the student portal side — a real session
-          // created for today (e.g. a custom-topic extra session added after the regular
-          // slot was cancelled) must win over a stale cancellation for the same date,
-          // otherwise the instructor's own dashboard shows "CANCELLED" and hides the
-          // very session they just created.
-          if (todaySess) cancelledTodaySess = null;
+          // A real session for today always wins over a stale cancellation on the same
+          // date — e.g. the regular slot was cancelled and the instructor then created a
+          // custom extra/workshop session for that same day.
+          if (todaySessArr.length) cancelledTodaySess = null;
           var startD = b.start_date || '';
           var endD = b.end_date || '';
           var activeToday = startD && endD && today >= startD && today <= endD;
@@ -8218,17 +8248,24 @@ window.gasGet = (function () {
           // the nightly auto-create cron uses (api/cron/create-sessions.js).
           var isWeekendBatch = String(b.type || '').toLowerCase() === 'weekend';
           var workingDay = isWeekendBatch ? todayIsWeekendDay : !todayIsWeekendDay;
-          return {
-            batchCode: b.batch_code, centre: b.centre, course: b.course, type: b.type, batchSlot: b.batch_slot || 'Full Day',
-            startDate: toDMY(startD), endDate: toDMY(endD), activeToday: !!activeToday, workingDay: workingDay,
-            sessionCode: todaySess ? todaySess.session_code : '', sessNo: todaySess ? todaySess.sess_no : '',
-            displaySessNo: todaySess ? (displayNoByCode[todaySess.session_code] || todaySess.sess_no) : '',
-            sessionType: todaySess ? (todaySess.session_type || 'Scheduled') : '', topic: todaySess ? (todaySess.topic || '') : '',
-            autoCreated: !!todaySess,
-            cancelled: !!cancelledTodaySess,
-            cancelledReason: cancelledTodaySess ? String(cancelledTodaySess.topic || '').replace(/^CANCELLED:\s*/, '') : '',
-            syllabus: syllabus, scheduledTopic: prog.scheduledTopic, dayNo: prog.dayNo, week: prog.week, usedDays: prog.usedDays
-          };
+          function buildEntry(todaySess) {
+            return {
+              batchCode: b.batch_code, centre: b.centre, course: b.course, type: b.type, batchSlot: b.batch_slot || 'Full Day',
+              startDate: toDMY(startD), endDate: toDMY(endD), activeToday: !!activeToday, workingDay: workingDay,
+              sessionCode: todaySess ? todaySess.session_code : '', sessNo: todaySess ? todaySess.sess_no : '',
+              displaySessNo: todaySess ? (displayNoByCode[todaySess.session_code] || todaySess.sess_no) : '',
+              sessionType: todaySess ? (todaySess.session_type || 'Scheduled') : '', topic: todaySess ? (todaySess.topic || '') : '',
+              autoCreated: !!todaySess,
+              cancelled: !!cancelledTodaySess,
+              cancelledReason: cancelledTodaySess ? String(cancelledTodaySess.topic || '').replace(/^CANCELLED:\s*/, '') : '',
+              syllabus: syllabus, scheduledTopic: prog.scheduledTopic, dayNo: prog.dayNo, week: prog.week, usedDays: prog.usedDays
+            };
+          }
+          if (todaySessArr.length > 1) {
+            todaySessArr.forEach(function (ts) { batches.push(buildEntry(ts)); });
+          } else {
+            batches.push(buildEntry(todaySessArr[0] || null));
+          }
         });
         cb(null, { status: 'ok', date: toDMY(today), todayISO: today, batches: batches, upcoming: upcoming });
       });

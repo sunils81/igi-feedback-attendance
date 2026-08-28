@@ -7724,6 +7724,11 @@ window.gasGet = (function () {
       if (e) { cb(null, { status: 'ok', activeTest: null, activeTests: [] }); return; }
       // Filter: test must list this student's batch in batch_codes OR batch_code AND student must be in target list if specified
       var tests = (allTests || []).filter(function(t) {
+        // Assignments and Portfolio Uploads have their own dedicated tabs/UI and must not
+        // trigger the generic MCQ-test countdown/banner (see student.html's testType exclusion).
+        var tType = String(t.test_type || t.testType || '').trim();
+        if (tType === 'Assignment' || tType === 'Portfolio Upload') return false;
+
         var codes = (t.batch_codes || t.batch_code || '').toUpperCase().split(',').map(function(s){ return s.trim(); });
         if (codes.indexOf(batch) === -1) return false;
 

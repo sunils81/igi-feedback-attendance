@@ -7724,11 +7724,6 @@ window.gasGet = (function () {
       if (e) { cb(null, { status: 'ok', activeTest: null, activeTests: [] }); return; }
       // Filter: test must list this student's batch in batch_codes OR batch_code AND student must be in target list if specified
       var tests = (allTests || []).filter(function(t) {
-        // Assignments and Portfolio Uploads have their own dedicated tabs/UI and must not
-        // trigger the generic MCQ-test countdown/banner (see student.html's testType exclusion).
-        var tType = String(t.test_type || t.testType || '').trim();
-        if (tType === 'Assignment' || tType === 'Portfolio Upload') return false;
-
         var codes = (t.batch_codes || t.batch_code || '').toUpperCase().split(',').map(function(s){ return s.trim(); });
         if (codes.indexOf(batch) === -1) return false;
 
@@ -7745,9 +7740,16 @@ window.gasGet = (function () {
         var activeTestsList = tests.map(function(t) {
           var sub = (responses || []).find(function(r) { return r.test_id === t.test_id; });
           return { testId: t.test_id, batchCode: t.batch_code, title: t.title, durationMins: t.duration_mins,
-            status: t.status, startsAt: t.starts_at, endsAt: t.ends_at, alreadySubmitted: !!sub, score: sub ? sub.score : null };
+            status: t.status, startsAt: t.starts_at, endsAt: t.ends_at, alreadySubmitted: !!sub, score: sub ? sub.score : null,
+            testType: t.test_type, instructions: t.instructions, expiryAt: t.expiry_at };
         });
-        var activeTest = activeTestsList.find(function(t) { return !t.alreadySubmitted; }) || null;
+        // Assignments and Portfolio Uploads have their own dedicated tabs/UI (see renderStudentAssignments/
+        // renderStudentPortfolio in student.html, which consume activeTests) and must not trigger the
+        // generic MCQ-test countdown/banner driven by the singular activeTest below (see student.html's
+        // own testType exclusion at ~line 6923, mirrored here for consistency).
+        var activeTest = activeTestsList.find(function(t) {
+          return !t.alreadySubmitted && t.testType !== 'Assignment' && t.testType !== 'Portfolio Upload';
+        }) || null;
         cb(null, { status: 'ok', activeTest: activeTest, activeTests: activeTestsList });
       });
     });
@@ -9140,6 +9142,37 @@ window.gasGet = (function () {
     });
   }
 
+  /* updateAssignmentContent — edit the content of an Assignment/Portfolio Upload row
+     (title, instructions, duration). Unlike updateTestSettings this is intentionally NOT
+     restricted to Draft — Assignments go Live immediately on creation, so instructors need
+     to be able to fix a typo or extend a deadline on one that's already active. Fields that
+     only make sense for real MCQ tests (passing score, negative marking, batches) are left
+     alone here; use updateTestTargeting to change which students it's assigned to. */
+  function h_updateAssignmentContent(p, cb) {
+    if (!p.testId) { cb(null, { status: 'error', reason: 'missing_params' }); return; }
+    var patch = {};
+    if (p.testLabel !== undefined)    { patch.title = String(p.testLabel).trim(); }
+    if (p.instructions !== undefined) { patch.instructions = p.instructions; }
+    if (p.duration !== undefined)     { patch.duration_mins = parseInt(p.duration) || 1; }
+    if (!Object.keys(patch).length) { cb(null, { status: 'error', reason: 'nothing_to_update' }); return; }
+    GET('online_tests', 'test_id=eq.' + encodeURIComponent(p.testId), function(e0, rows) {
+      if (e0 || !rows || !rows.length) { cb(null, { status: 'error', reason: 'test_not_found' }); return; }
+      var row = rows[0];
+      // If duration changed on an already-Live assignment/portfolio, recompute its
+      // expiry so extending/shortening the window actually takes effect for students.
+      // (Activated Assignment/Portfolio rows carry status 'Live', not 'Active' — see
+      // h_activateTest, which sets 'Live' for every test type including these.)
+      if (patch.duration_mins && row.status === 'Live' && row.starts_at) {
+        var newExpiry = new Date(new Date(row.starts_at).getTime() + patch.duration_mins * 24 * 60 * 60 * 1000);
+        patch.expiry_at = newExpiry.toISOString();
+      }
+      PATCH('online_tests', 'test_id=eq.' + encodeURIComponent(p.testId), patch, function(e) {
+        if (e) { cb(null, { status: 'error', reason: 'patch_failed' }); return; }
+        cb(null, { status: 'ok' });
+      });
+    });
+  }
+
   /* updateTestTargeting — change which students a test (of any status) is assigned to.
      Unlike updateTestSettings this is intentionally NOT restricted to Draft tests, since
      its main purpose is letting an instructor correct/narrow the assignment on a test
@@ -9155,10 +9188,20 @@ window.gasGet = (function () {
 
   /* activateTest */
   function h_activateTest(p, cb) {
-    PATCH('online_tests', 'test_id=eq.' + encodeURIComponent(p.testId), {
-      status: 'Live', starts_at: nowISO()
-    }, function(e) {
-      cb(null, e ? { status: 'error' } : { status: 'ok' });
+    var now = nowISO();
+    var patch = { status: 'Live', starts_at: now };
+    GET('online_tests', 'test_id=eq.' + encodeURIComponent(p.testId), function(e0, rows) {
+      var row = (rows || [])[0];
+      // Assignments/Portfolio Uploads express their window as a duration in days rather than
+      // an exam duration in minutes — compute the actual due date now, at activation time,
+      // so the "Due in Xd Xh" countdown and Due Status badge have something real to show.
+      if (row && (row.test_type === 'Assignment' || row.test_type === 'Portfolio Upload')) {
+        var days = parseFloat(row.duration_mins) || 1;
+        patch.expiry_at = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+      }
+      PATCH('online_tests', 'test_id=eq.' + encodeURIComponent(p.testId), patch, function(e) {
+        cb(null, e ? { status: 'error' } : { status: 'ok' });
+      });
     });
   }
 
@@ -11299,6 +11342,7 @@ window.gasGet = (function () {
       case 'setupQuestionBank':         return h_setupQuestionBank(params, cb);
       case 'createOnlineTest':          return h_createOnlineTest(params, cb);
       case 'updateTestSettings':        return h_updateTestSettings(params, cb);
+      case 'updateAssignmentContent':   return h_updateAssignmentContent(params, cb);
       case 'updateTestTargeting':       return h_updateTestTargeting(params, cb);
       case 'activateTest':              return h_activateTest(params, cb);
       case 'closeTest':                 return h_closeTest(params, cb);

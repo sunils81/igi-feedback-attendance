@@ -10970,14 +10970,39 @@ window.gasGet = (function () {
       var byOrderId = {};
       rows.forEach(function (r) { if (r.order_id) byOrderId[r.order_id] = r; });
       var dedupedRows = Object.keys(byOrderId).map(function (k) { return byOrderId[k]; });
-      GET('cashfree_settlements', 'select=order_id', function (eEx, existing) {
+      // select applied/dismissed/matched_manually too (not just order_id) so a re-sync can
+      // refresh informational fields (centre, amount, etc.) on a row it's seen before —
+      // e.g. the sheet's Centre cell was blank when a row first synced and got filled in
+      // later — WITHOUT ever touching a row a counsellor has already resolved.
+      GET('cashfree_settlements', 'select=order_id,applied,dismissed,matched_manually', function (eEx, existing) {
         var have = {};
-        (existing || []).forEach(function (r) { have[r.order_id] = true; });
+        (existing || []).forEach(function (r) { have[r.order_id] = r; });
         var toInsert = dedupedRows.filter(function (r) { return r.order_id && !have[r.order_id]; });
+        var toRefresh = dedupedRows.filter(function (r) {
+          var ex = r.order_id && have[r.order_id];
+          return ex && !ex.applied && !ex.dismissed && !ex.matched_manually;
+        });
         function afterInsert() {
-          _cfRunMatching(function (summary) {
-            cb(null, { status: 'ok', imported: toInsert.length, totalRows: rows.length, matching: summary });
+          refreshExisting(function () {
+            _cfRunMatching(function (summary) {
+              cb(null, { status: 'ok', imported: toInsert.length, refreshed: toRefresh.length, totalRows: rows.length, matching: summary });
+            });
           });
+        }
+        function refreshExisting(done) {
+          var i = 0;
+          function next() {
+            if (i >= toRefresh.length) { done(); return; }
+            var r = toRefresh[i++];
+            var patch = {
+              customer_name: r.customer_name, customer_phone: r.customer_phone, customer_email: r.customer_email,
+              centre: r.centre, amount: r.amount, service_charge: r.service_charge, gst: r.gst,
+              settlement_amount: r.settlement_amount, payment_mode: r.payment_mode, txn_status: r.txn_status,
+              settlement_status: r.settlement_status, settled_on: r.settled_on, raw: r.raw
+            };
+            PATCH('cashfree_settlements', 'order_id=eq.' + encodeURIComponent(r.order_id), patch, function () { next(); });
+          }
+          next();
         }
         if (!toInsert.length) { afterInsert(); return; }
         POST('cashfree_settlements', 'on_conflict=order_id', toInsert, function (eIns) {

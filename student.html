@@ -8,7 +8,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Student Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=83"></script>
+<script src="/assets/shared.js?v=84"></script>
 <script src="/assets/push-subscribe.js"></script>
 <style id="dyn-css"></style>
 <style>
@@ -1558,6 +1558,33 @@
           <span class="star" onclick="setStar('q4',5)">☆</span>
         </div>
       </div>
+      <!-- Q7, Q8, Q9 — added so the survey covers punctuality, presentation, and regular
+           testing, not just clarity/pace/doubts. Same 1-5 star pattern as Q1-Q4, 5 always
+           meaning "best". -->
+      <div style="margin-bottom:16px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">Q7 — How was the presentation &amp; delivery? *</div>
+        <div class="stars" id="q7-stars">
+          <span class="star" onclick="setStar('q7',1)">☆</span><span class="star" onclick="setStar('q7',2)">☆</span>
+          <span class="star" onclick="setStar('q7',3)">☆</span><span class="star" onclick="setStar('q7',4)">☆</span>
+          <span class="star" onclick="setStar('q7',5)">☆</span>
+        </div>
+      </div>
+      <div style="margin-bottom:16px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">Q8 — Did the instructor start &amp; end on time? *</div>
+        <div class="stars" id="q8-stars">
+          <span class="star" onclick="setStar('q8',1)">☆</span><span class="star" onclick="setStar('q8',2)">☆</span>
+          <span class="star" onclick="setStar('q8',3)">☆</span><span class="star" onclick="setStar('q8',4)">☆</span>
+          <span class="star" onclick="setStar('q8',5)">☆</span>
+        </div>
+      </div>
+      <div style="margin-bottom:16px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">Q9 — Are practice tests/quizzes happening regularly enough? *</div>
+        <div class="stars" id="q9-stars">
+          <span class="star" onclick="setStar('q9',1)">☆</span><span class="star" onclick="setStar('q9',2)">☆</span>
+          <span class="star" onclick="setStar('q9',3)">☆</span><span class="star" onclick="setStar('q9',4)">☆</span>
+          <span class="star" onclick="setStar('q9',5)">☆</span>
+        </div>
+      </div>
       <!-- Anonymous toggle -->
       <label class="anon-row">
         <input type="checkbox" id="anon-chk">
@@ -1719,7 +1746,7 @@ function geoBadgeHTML(geoStatus, geoDistanceM) {
 let activeBatch  = null;  // current batch being submitted
 let topicData    = null;  // from getExpectedTopic
 let studentCalendarMonth = new Date();
-const ratings    = {q1:0, q2:0, q3:0, q4:0, qco:0};
+const ratings    = {q1:0, q2:0, q3:0, q4:0, q7:0, q8:0, q9:0, qco:0};
 const sels       = {comp:''};
 let selectedTopic = '';
 
@@ -2957,6 +2984,9 @@ function submitFeedback() {
   if (!ratings.q2){ err.textContent='Please rate the clarity of explanation (Q2).'; err.classList.add('show'); return; }
   if (!ratings.q3) { err.textContent='Please rate the lecture pace (Q3).'; err.classList.add('show'); return; }
   if (!ratings.q4) { err.textContent='Please rate whether your doubts were addressed (Q4).'; err.classList.add('show'); return; }
+  if (!ratings.q7) { err.textContent='Please rate the presentation & delivery (Q7).'; err.classList.add('show'); return; }
+  if (!ratings.q8) { err.textContent='Please rate whether the session started/ended on time (Q8).'; err.classList.add('show'); return; }
+  if (!ratings.q9) { err.textContent='Please rate whether practice tests happen regularly enough (Q9).'; err.classList.add('show'); return; }
   const coActive = activeBatch.coInstructorActive && activeBatch.mainInstructor;
   if (coActive && !ratings.qco) { err.textContent='Please rate your regular instructor, '+activeBatch.mainInstructor+'.'; err.classList.add('show'); return; }
   const anon = document.getElementById('anon-chk').checked;
@@ -2982,6 +3012,7 @@ function submitFeedback() {
     completionStatus: sels.comp,
     q1: ratings.q1, q2: ratings.q2,
     q3: ratings.q3, q4: ratings.q4, q5, q6,
+    q7: ratings.q7, q8: ratings.q8, q9: ratings.q9,
     anonymous: anon?'true':'false'
   }, function(e,d) {
     btn.textContent='Submit Attendance & Feedback ✓'; btn.disabled=false;

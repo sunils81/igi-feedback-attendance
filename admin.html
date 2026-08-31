@@ -5,10 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=88"></script>
+<script src="assets/shared.js?v=89"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root {
     --navy: #0D1B2E;
@@ -2189,7 +2190,12 @@
           <div id="acad-rating-cards-wrap" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:12px">
             <div style="text-align:center;color:var(--muted);padding:12px">Loading instructor ratings...</div>
           </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:10px">Click any instructor's card to open their full dossier — category breakdown and comment feed.</div>
         </div>
+
+        <!-- ── INSTRUCTOR DOSSIER — opens when a grade card above is clicked. See
+             openInstructorDossier() / closeInstructorDossier() in the script. ── -->
+        <div class="chart-card full" id="instructor-dossier-panel" style="margin-top:16px;display:none"></div>
 
         <!-- ── LOW INSTRUCTOR RATINGS FLAG — any submission rated below a perfect 5 stars.
              Reads the same window.__academicAllFeedback data as the Feedback Report table
@@ -2250,7 +2256,10 @@
               <span style="color:var(--navy)"><strong id="acad-total-count">0</strong> total feedback received</span>
               <span id="acad-filter-summary" style="color:var(--muted)"></span>
             </div>
-            <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="downloadFeedbackCsv()">📄 Download CSV</button>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--border);background:transparent;color:var(--muted);border-radius:6px;font-weight:600;cursor:pointer" onclick="downloadFeedbackCsv()">📄 Quick CSV</button>
+              <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="openFeedbackExportBuilder()">📦 Export…</button>
+            </div>
           </div>
 
           <div style="overflow:auto;max-height:480px;margin-top:10px">
@@ -2272,6 +2281,78 @@
                 <tr><td colspan="9" style="text-align:center;color:var(--muted)">Loading comment feeds...</td></tr>
               </tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- ── EXPORT BUILDER — scoped multi-sheet .xlsx export. See openFeedbackExportBuilder()
+             / generateFeedbackExport() in the script. ── -->
+        <div id="feedback-export-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,.5);z-index:9000;align-items:center;justify-content:center;padding:16px">
+          <div style="background:var(--white);border-radius:12px;max-width:560px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 24px 60px -20px rgba(0,0,0,.45)">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1.5px solid var(--border)">
+              <div style="font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:var(--navy)">📦 Export Instructor Feedback</div>
+              <button onclick="closeFeedbackExportBuilder()" style="border:none;background:none;color:var(--muted);font-size:15px;cursor:pointer">✕</button>
+            </div>
+            <div style="padding:20px">
+              <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold);font-weight:700;margin-bottom:8px">Scope</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+                <select id="exp-filter-instructor" style="font-size:13px;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)"><option value="">All Instructors</option></select>
+                <select id="exp-filter-centre" style="font-size:13px;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)"><option value="">All Centres</option></select>
+                <select id="exp-filter-batch" style="font-size:13px;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)"><option value="">All Batches</option></select>
+                <select id="exp-scope-period" onchange="onExportPeriodScopeChange()" style="font-size:13px;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+                  <option value="all">All time</option>
+                  <option value="month">Specific month</option>
+                  <option value="ay">Academic Year (Apr–Mar)</option>
+                </select>
+              </div>
+              <div id="exp-period-month-wrap" style="display:none;margin-bottom:16px">
+                <input type="month" id="exp-period-month" style="font-size:13px;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy);width:100%">
+              </div>
+              <div id="exp-period-ay-wrap" style="display:none;margin-bottom:16px">
+                <select id="exp-period-ay" style="font-size:13px;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy);width:100%"></select>
+              </div>
+              <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold);font-weight:700;margin-bottom:8px">What's in the file</div>
+              <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px">
+                <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:12.5px">
+                  <span style="width:22px;height:22px;border-radius:5px;background:#E4F1EC;color:#1D9E75;display:flex;align-items:center;justify-content:center;font-size:11px;font-family:'JetBrains Mono',monospace">1</span>
+                  <span style="font-weight:600;flex:1">Summary</span><span style="color:var(--muted)">Per-instructor category averages for this scope</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:12.5px">
+                  <span style="width:22px;height:22px;border-radius:5px;background:#E4F1EC;color:#1D9E75;display:flex;align-items:center;justify-content:center;font-size:11px;font-family:'JetBrains Mono',monospace">2</span>
+                  <span style="font-weight:600;flex:1">Raw responses</span><span style="color:var(--muted)">Every submission — anonymous rows stay anonymous, same as on screen</span>
+                </div>
+              </div>
+              <div id="exp-err" style="display:none;color:#C94A4A;font-size:12px;margin-bottom:10px"></div>
+              <div style="display:flex;justify-content:flex-end">
+                <button id="exp-generate-btn" onclick="generateFeedbackExport()" class="btn btn-outline" style="width:auto;padding:9px 20px;font-size:12.5px;background:var(--navy);color:var(--white);border:none;border-radius:7px;font-weight:600;cursor:pointer">Generate workbook (.xlsx)</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── REVEAL IDENTITY — governed reveal of an anonymous comment's author. See
+             requestRevealIdentity() / confirmRevealIdentity() in the script. ── -->
+        <div id="reveal-identity-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,27,46,.5);z-index:9001;align-items:center;justify-content:center;padding:16px">
+          <div style="background:var(--white);border-radius:12px;max-width:420px;width:100%;box-shadow:0 24px 60px -20px rgba(0,0,0,.45)">
+            <div style="padding:20px 20px 0">
+              <div style="font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:var(--navy);margin-bottom:6px">🔒 Reveal identity</div>
+              <p style="font-size:12.5px;color:var(--muted);margin:0 0 16px">This looks up who submitted this comment and permanently logs the reveal — who, when, and why. Use only for a genuine reason.</p>
+            </div>
+            <div style="padding:0 20px 20px">
+              <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold);font-weight:700;margin-bottom:6px">Reason *</div>
+              <select id="reveal-identity-reason" style="font-size:13px;padding:9px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy);width:100%;margin-bottom:14px">
+                <option value="">Choose a reason…</option>
+                <option>Conduct concern</option>
+                <option>Safety concern</option>
+                <option>Verifying a specific claim</option>
+                <option>Repeated/pattern complaint</option>
+                <option>Other</option>
+              </select>
+              <div id="reveal-identity-err" style="display:none;color:#C94A4A;font-size:12px;margin-bottom:10px"></div>
+              <div style="display:flex;justify-content:flex-end;gap:8px">
+                <button onclick="closeRevealIdentityOverlay()" class="btn btn-outline" style="width:auto;padding:9px 16px;font-size:12.5px;border:1.5px solid var(--border);background:transparent;color:var(--muted);border-radius:7px;font-weight:600;cursor:pointer">Cancel</button>
+                <button id="reveal-identity-confirm-btn" onclick="confirmRevealIdentity()" class="btn btn-outline" style="width:auto;padding:9px 16px;font-size:12.5px;background:#8C2F39;color:#fff;border:none;border-radius:7px;font-weight:600;cursor:pointer">Reveal</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -7606,6 +7687,210 @@ function ratingCellHtml(score, label) {
   return '<span' + title + ' style="font-weight:700;color:' + color + '">' + score + '/5</span>';
 }
 
+// Shared "who submitted this" cell for the Low Ratings and Feedback Report tables —
+// anonymous rows get a governed Reveal button (see requestRevealIdentity) instead of a
+// permanently masked name.
+function studentCellHtml(r) {
+  if (!r.isAnonymous) return escC(r.studentName || '');
+  return '<span data-fb-name="' + escC(r.id) + '">[Anonymous]</span> ' +
+    '<button data-fb-reveal-btn="' + escC(r.id) + '" onclick="requestRevealIdentity(\'' + escC(r.id) + '\', this)" ' +
+    'style="border:none;background:none;color:var(--gold);font-size:10.5px;font-weight:700;cursor:pointer;text-decoration:underline;padding:0;margin-left:4px">Reveal</button>';
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// INSTRUCTOR GRADE CARDS + DOSSIER DRILL-DOWN
+// Replaces the old plain star-average cards. Grade bands mirror how a gemological
+// certificate reads a stone — Exceptional / Solid / Watch / Critical — set on the
+// trailing average already computed server-side (instructorStats), so one bad
+// session can't tank a grade and one good day can't hide a real slide.
+// ══════════════════════════════════════════════════════════════════════════
+function gradeBandFor(avg) {
+  const n = Number(avg) || 0;
+  if (n >= 4.5) return { label: 'Exceptional', bg: '#E4F1EC', fg: '#1D9E75' };
+  if (n >= 3.5) return { label: 'Solid', bg: '#F9F3E3', fg: '#A6822F' };
+  if (n >= 2.5) return { label: 'Watch', bg: '#FBF0DD', fg: '#B4791F' };
+  return { label: 'Critical', bg: '#F6E4E5', fg: '#8C2F39' };
+}
+
+// Rating distribution (5★..1★, plus unrated) for one instructor, used for both the
+// grade card's mini bar and the dossier's fuller breakdown.
+function instructorRatingDistribution(instructor, allFeedback) {
+  const rows = (allFeedback || []).filter(r => r.instructor === instructor);
+  const buckets = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0, unrated: 0 };
+  rows.forEach(r => {
+    const n = Math.round(Number(r.rating) || 0);
+    if (n >= 1 && n <= 5) buckets[n]++; else buckets.unrated++;
+  });
+  const total = rows.length || 1;
+  return { buckets, total, pct: k => Math.round((buckets[k] / total) * 100) };
+}
+
+// Category averages for one instructor — the same four fields that drive the Feedback
+// Report table, plus the three Phase 3 additions (Presentation, Punctuality, Regular
+// tests) when present. A category with zero responses is simply omitted rather than
+// shown as a false zero.
+function instructorCategoryAverages(instructor, allFeedback) {
+  const rows = (allFeedback || []).filter(r => r.instructor === instructor);
+  const defs = [
+    { key: 'rating', label: 'Overall' },
+    { key: 'q2', label: 'Explanation' },
+    { key: 'q3', label: 'Pace' },
+    { key: 'q4', label: 'Doubts addressed' },
+    { key: 'q7Presentation', label: 'Presentation' },
+    { key: 'q8Punctuality', label: 'Punctuality' },
+    { key: 'q9RegularTests', label: 'Regular tests' }
+  ];
+  return defs.map(def => {
+    const vals = rows.map(r => Number(r[def.key]) || 0).filter(v => v > 0);
+    if (!vals.length) return null;
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    return { label: def.label, avg: Math.round(avg * 10) / 10, count: vals.length };
+  }).filter(Boolean);
+}
+
+function renderInstructorGradeCards(ratings) {
+  const rWrap = document.getElementById('acad-rating-cards-wrap');
+  if (!rWrap) return;
+  const all = window.__academicAllFeedback || [];
+  if (!ratings.length) {
+    rWrap.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--muted)">No instructor ratings logs yet.</div>';
+    return;
+  }
+  const sorted = ratings.slice().sort((a, b) => b.avgRating - a.avgRating || b.ratingsCount - a.ratingsCount || a.instructor.localeCompare(b.instructor));
+  rWrap.innerHTML = sorted.map(inst => {
+    const band = gradeBandFor(inst.avgRating);
+    const dist = instructorRatingDistribution(inst.instructor, all);
+    const barSegs = [5, 4, 3, 2, 1].map(k => {
+      const segColor = k >= 4 ? '#1D9E75' : (k === 3 ? '#C9A84C' : '#C94A4A');
+      return '<span style="display:block;height:100%;width:' + dist.pct(k) + '%;background:' + segColor + '"></span>';
+    }).join('');
+    return '<div class="grade-card" onclick="openInstructorDossier(\'' + escC(inst.instructor).replace(/'/g, "\\'") + '\')" ' +
+      'style="cursor:pointer;background:var(--off);border:1.5px solid var(--border);border-radius:10px;padding:14px;box-shadow:var(--shadow-sm);transition:transform .15s,box-shadow .15s" ' +
+      'onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 8px 18px -8px rgba(13,27,46,.25)\'" ' +
+      'onmouseout="this.style.transform=\'\';this.style.boxShadow=\'var(--shadow-sm)\'">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">' +
+        '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + escC(inst.instructor) + '</div>' +
+        '<span style="font-family:\'JetBrains Mono\',monospace;font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:' + band.bg + ';color:' + band.fg + ';white-space:nowrap">' + band.label + '</span>' +
+      '</div>' +
+      '<div style="display:flex;align-items:baseline;gap:5px;margin-bottom:8px">' +
+        '<span style="font-size:20px;font-weight:700;color:var(--navy)">' + (inst.ratingsCount ? Number(inst.avgRating).toFixed(1) : '0.0') + '</span>' +
+        '<span style="font-size:11px;color:var(--muted)">/ 5 avg</span>' +
+      '</div>' +
+      '<div style="display:flex;height:7px;border-radius:4px;overflow:hidden;background:rgba(0,0,0,.06)">' + barSegs + '</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-top:8px">' + inst.ratingsCount + ' reviews &middot; ' + inst.sessionsCount + ' sessions &middot; <span style="color:var(--gold);font-weight:600">view dossier →</span></div>' +
+    '</div>';
+  }).join('');
+}
+
+// Dossier drawer — opens under the grade cards with a category breakdown (radar-style
+// bars) and that instructor's own comment feed, each entry offering the governed
+// "Reveal" action (see requestRevealIdentity) when it's anonymous.
+function openInstructorDossier(instructor) {
+  const panel = document.getElementById('instructor-dossier-panel');
+  if (!panel) return;
+  const all = window.__academicAllFeedback || [];
+  const cats = instructorCategoryAverages(instructor, all);
+  const own = all.filter(r => r.instructor === instructor).sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)));
+  const commentRows = own.filter(r => r.q5 || r.q6).slice(0, 40);
+
+  const catBarsHtml = cats.length ? cats.map(c => {
+    const pct = Math.round((c.avg / 5) * 100);
+    return '<div style="display:grid;grid-template-columns:130px 1fr 40px;align-items:center;gap:10px;font-size:12px;color:var(--muted);margin-bottom:8px">' +
+      '<span>' + escC(c.label) + '</span>' +
+      '<div style="height:7px;background:var(--gold-pale);border-radius:4px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:linear-gradient(90deg,var(--gold),var(--gold-light));border-radius:4px"></div></div>' +
+      '<strong style="font-family:\'JetBrains Mono\',monospace;color:var(--navy);text-align:right">' + c.avg.toFixed(1) + '</strong>' +
+    '</div>';
+  }).join('') : '<div style="color:var(--muted);font-size:12px">No category data yet.</div>';
+
+  const commentsHtml = commentRows.length ? commentRows.map(r => {
+    const isAnon = !!r.isAnonymous;
+    const initials = isAnon ? 'A' : (r.studentName || '?').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
+    const nameHtml = isAnon
+      ? ('<span data-fb-name="' + escC(r.id) + '">Anonymous</span> ' +
+         '<button onclick="requestRevealIdentity(\'' + escC(r.id) + '\', this)" style="border:none;background:none;color:var(--gold);font-size:10.5px;font-weight:700;cursor:pointer;text-decoration:underline;padding:0;margin-left:4px">Reveal</button>')
+      : escC(r.studentName || 'Student');
+    const parts = [];
+    if (r.q5) parts.push('<strong>What went well:</strong> ' + escC(r.q5));
+    if (r.q6) parts.push('<strong>Suggestion:</strong> ' + escC(r.q6));
+    return '<div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">' +
+      '<div style="width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;font-family:\'JetBrains Mono\',monospace;background:' + (isAnon ? 'var(--navy)' : 'var(--gold-pale)') + ';color:' + (isAnon ? 'var(--gold-light)' : 'var(--gold)') + '">' + initials + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:2px">' + nameHtml + ' &middot; ' + escC(r.batchCode || '') + ' &middot; ' + escC(formatFeedbackDate(r.timestamp)) + '</div>' +
+        '<div style="font-size:12.5px;color:var(--navy)">' + parts.join('<br>') + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('') : '<div style="color:var(--muted);font-size:12px">No written comments yet.</div>';
+
+  panel.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+      '<div style="font-family:\'Playfair Display\',serif;font-size:17px;font-weight:700;color:var(--navy)">' + escC(instructor) + ' — Dossier</div>' +
+      '<button onclick="closeInstructorDossier()" style="border:none;background:none;color:var(--muted);font-size:13px;cursor:pointer">✕ Close</button>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start">' +
+      '<div><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold);font-weight:700;margin-bottom:10px">Category breakdown</div>' + catBarsHtml + '</div>' +
+      '<div><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold);font-weight:700;margin-bottom:10px">Recent comments</div><div style="max-height:340px;overflow:auto">' + commentsHtml + '</div></div>' +
+    '</div>';
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closeInstructorDossier() {
+  const panel = document.getElementById('instructor-dossier-panel');
+  if (panel) panel.style.display = 'none';
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// GOVERNED ANONYMOUS-COMMENT REVEAL
+// Anonymous rows never carry a student_id to the browser (see h_getAcademicHeadDashboard
+// in shared.js) — this asks the backend to look the student up, requires a reason, and
+// writes a permanent audit row (feedback_reveal_audit) before returning the identity.
+// Reveals are session-only: they update the DOM in place, never window.__academicAllFeedback
+// itself, so a bulk export never accidentally picks one up.
+// ══════════════════════════════════════════════════════════════════════════
+var REVEAL_REASONS = ['Conduct concern', 'Safety concern', 'Verifying a specific claim', 'Repeated/pattern complaint', 'Other'];
+
+function requestRevealIdentity(feedbackId, btnEl) {
+  const overlay = document.getElementById('reveal-identity-overlay');
+  if (!overlay) return;
+  overlay.dataset.feedbackId = feedbackId;
+  document.getElementById('reveal-identity-reason').value = '';
+  document.getElementById('reveal-identity-err').style.display = 'none';
+  overlay.style.display = 'flex';
+}
+
+function closeRevealIdentityOverlay() {
+  const overlay = document.getElementById('reveal-identity-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function confirmRevealIdentity() {
+  const overlay = document.getElementById('reveal-identity-overlay');
+  const feedbackId = overlay.dataset.feedbackId;
+  const reason = document.getElementById('reveal-identity-reason').value;
+  const errEl = document.getElementById('reveal-identity-err');
+  if (!reason) { errEl.textContent = 'Please choose a reason.'; errEl.style.display = 'block'; return; }
+  const revealedBy = (typeof adminUser !== 'undefined' && adminUser && adminUser.name) ? adminUser.name : 'Admin';
+  const btn = document.getElementById('reveal-identity-confirm-btn');
+  btn.textContent = 'Revealing…'; btn.disabled = true;
+  gasGet({ action: 'revealFeedbackIdentity', feedbackId: feedbackId, reason: reason, revealedBy: revealedBy }, function(e, d) {
+    btn.textContent = 'Reveal'; btn.disabled = false;
+    if (e || !d || d.status !== 'ok') {
+      errEl.textContent = (d && d.reason) || 'Could not reveal — please try again.';
+      errEl.style.display = 'block';
+      return;
+    }
+    // Update every on-screen reference to this feedback row (dossier feed, low-rating
+    // flags table, feedback report table) without touching the cached data itself.
+    document.querySelectorAll('[data-fb-name="' + feedbackId + '"]').forEach(el => {
+      el.textContent = d.studentName + ' 🔓';
+      el.title = 'Revealed by ' + revealedBy + ' — ' + reason;
+    });
+    document.querySelectorAll('[data-fb-reveal-btn="' + feedbackId + '"]').forEach(el => el.remove());
+    closeRevealIdentityOverlay();
+    showToast('Identity revealed and logged.', 'success');
+  });
+}
+
 // Low Instructor Ratings flag — every submission where the student's overall Q1 rating is
 // below a perfect 5 stars, per Sunil's explicit "literally anything below 5.0" call. Reads
 // straight from window.__academicAllFeedback (already loaded for the Feedback Report table
@@ -7639,7 +7924,7 @@ function renderLowRatingFlags() {
       return '<tr>' +
         '<td style="font-size:11px;color:var(--muted)">' + escC(formatFeedbackDate(r.timestamp)) + '</td>' +
         '<td>' + escC(r.instructor || '—') + '</td>' +
-        '<td>' + escC(r.isAnonymous ? '[Anonymous]' : (r.studentName || '')) + '</td>' +
+        '<td>' + studentCellHtml(r) + '</td>' +
         '<td>' + escC(r.centre || '—') + '</td>' +
         '<td><div>' + escC(r.course || '—') + '</div><div style="font-size:11px;color:var(--muted)">' + escC(r.batchCode || '') + '</div></td>' +
         '<td style="font-weight:700;color:' + color + '">' + rating.toFixed(1) + ' ★</td>' +
@@ -7665,7 +7950,7 @@ function renderAcademicCommentsList(rows) {
 
       return '<tr>' +
         '<td style="font-size:11px;color:var(--muted)">' + escC(formatFeedbackDate(c.timestamp)) + '</td>' +
-        '<td>' + escC(c.studentName || '[Anonymous]') + '</td>' +
+        '<td>' + studentCellHtml(c) + '</td>' +
         '<td>' + escC(c.instructor || '—') + '</td>' +
         '<td>' + escC(c.centre || '—') + '</td>' +
         '<td><div>' + escC(c.course || '—') + '</div><div style="font-size:11px;color:var(--muted)">' + escC(c.batchCode || '') + '</div></td>' +
@@ -7781,6 +8066,157 @@ function downloadFeedbackCsv() {
   triggerCsvDownload(lines, 'Feedback-Report-' + todayStamp() + '.csv');
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// EXPORT BUILDER — replaces the single "Download CSV" with a scoped, multi-sheet
+// .xlsx (Summary + Raw responses) filterable by Instructor/Centre/Batch and by
+// Month or Academic Year (Apr–Mar), matching how the school already plans terms
+// and revenue targets. Uses the SheetJS UMD build loaded in <head>.
+// ══════════════════════════════════════════════════════════════════════════
+function academicYearBounds(ayLabel) {
+  // ayLabel like "2026-27" → Apr 2026 through Mar 2027 inclusive.
+  const startYear = Number(String(ayLabel).slice(0, 4));
+  return { from: startYear + '-04-01', to: (startYear + 1) + '-03-31' };
+}
+
+function populateExportFilterOptions() {
+  const all = window.__academicAllFeedback || [];
+  const fill = (id, values) => {
+    const el = document.getElementById(id);
+    if (!el || el.dataset.populated === '1') return;
+    Array.from(new Set(values)).filter(Boolean).sort().forEach(v => {
+      const o = document.createElement('option'); o.value = v; o.textContent = v; el.appendChild(o);
+    });
+    el.dataset.populated = '1';
+  };
+  fill('exp-filter-instructor', all.map(r => r.instructor));
+  fill('exp-filter-centre', all.map(r => r.centre));
+  fill('exp-filter-batch', all.map(r => r.batchCode));
+
+  const aySel = document.getElementById('exp-period-ay');
+  if (aySel && aySel.dataset.populated !== '1') {
+    // Academic Years derived from the actual data range, April-start, so the list
+    // always matches what's really in the feedback log rather than a hardcoded range.
+    const years = all.map(r => (r.timestamp ? new Date(r.timestamp) : null)).filter(Boolean);
+    const ayLabels = new Set();
+    years.forEach(d => {
+      const y = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1; // Apr(3)+ → this AY starts this calendar year
+      ayLabels.add(y + '-' + String((y + 1) % 100).padStart(2, '0'));
+    });
+    Array.from(ayLabels).sort().reverse().forEach(label => {
+      const o = document.createElement('option'); o.value = label; o.textContent = 'AY ' + label; aySel.appendChild(o);
+    });
+    aySel.dataset.populated = '1';
+  }
+}
+
+function onExportPeriodScopeChange() {
+  const scope = document.getElementById('exp-scope-period').value;
+  document.getElementById('exp-period-month-wrap').style.display = scope === 'month' ? 'block' : 'none';
+  document.getElementById('exp-period-ay-wrap').style.display = scope === 'ay' ? 'block' : 'none';
+}
+
+function openFeedbackExportBuilder() {
+  populateExportFilterOptions();
+  document.getElementById('exp-err').style.display = 'none';
+  document.getElementById('feedback-export-overlay').style.display = 'flex';
+}
+function closeFeedbackExportBuilder() {
+  document.getElementById('feedback-export-overlay').style.display = 'none';
+}
+
+function getExportScopedRows() {
+  const instructor = document.getElementById('exp-filter-instructor').value;
+  const centre = document.getElementById('exp-filter-centre').value;
+  const batch = document.getElementById('exp-filter-batch').value;
+  const periodScope = document.getElementById('exp-scope-period').value;
+  let from = null, to = null;
+  if (periodScope === 'month') {
+    const m = document.getElementById('exp-period-month').value; // YYYY-MM
+    if (m) { from = m + '-01'; const [y, mo] = m.split('-').map(Number); to = new Date(y, mo, 0).toISOString().slice(0, 10); }
+  } else if (periodScope === 'ay') {
+    const ay = document.getElementById('exp-period-ay').value;
+    if (ay) { const b = academicYearBounds(ay); from = b.from; to = b.to; }
+  }
+  return (window.__academicAllFeedback || []).filter(r => {
+    if (instructor && r.instructor !== instructor) return false;
+    if (centre && r.centre !== centre) return false;
+    if (batch && r.batchCode !== batch) return false;
+    if (from || to) {
+      const d = r.timestamp ? String(r.timestamp).slice(0, 10) : '';
+      if (!d) return false;
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+    }
+    return true;
+  });
+}
+
+function generateFeedbackExport() {
+  const errEl = document.getElementById('exp-err');
+  errEl.style.display = 'none';
+  if (typeof XLSX === 'undefined') {
+    errEl.textContent = 'Export library did not load — check your connection and try again.';
+    errEl.style.display = 'block';
+    return;
+  }
+  const rows = getExportScopedRows();
+  if (!rows.length) {
+    errEl.textContent = 'No feedback records match this scope — nothing to export.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  // Sheet 1 — Summary: per-instructor category averages within this scope.
+  const byInstructor = {};
+  rows.forEach(r => { (byInstructor[r.instructor || 'Unattributed'] = byInstructor[r.instructor || 'Unattributed'] || []).push(r); });
+  // Average directly over each instructor's own bucket (not by re-filtering allFeedback
+  // by name) so the "Unattributed" bucket — rows with no instructor on record — still
+  // gets real averages instead of an instructor-name mismatch producing blanks.
+  function avgField(bucket, key) {
+    const vals = bucket.map(r => Number(r[key]) || 0).filter(v => v > 0);
+    return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : '';
+  }
+  function avgMapped(bucket, mapper) {
+    const vals = bucket.map(mapper).filter(v => v !== null);
+    return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : '';
+  }
+  const summaryRows = [['Instructor', 'Reviews', 'Overall', 'Explanation', 'Pace', 'Doubts Addressed', 'Presentation', 'Punctuality', 'Regular Tests']];
+  Object.keys(byInstructor).sort().forEach(inst => {
+    const bucket = byInstructor[inst];
+    summaryRows.push([
+      inst, bucket.length,
+      avgField(bucket, 'rating'), avgField(bucket, 'q2'),
+      avgMapped(bucket, r => paceOutOf5(r.q3)), avgMapped(bucket, r => doubtsOutOf5(r.q4)),
+      avgField(bucket, 'q7Presentation'), avgField(bucket, 'q8Punctuality'), avgField(bucket, 'q9RegularTests')
+    ]);
+  });
+
+  // Sheet 2 — Raw responses. Anonymous rows stay anonymous here too — a bulk export is
+  // exactly the place identity must never leak; the governed Reveal action (on-screen,
+  // one row at a time, audit-logged) is the only path to a name behind an anon comment.
+  const rawRows = [[
+    'Date', 'Instructor', 'Student', 'Anonymous', 'Centre', 'Course', 'Batch',
+    'Overall (/5)', 'Explanation (/5)', 'Pace (/5)', 'Doubts Addressed (/5)',
+    'Presentation (/5)', 'Punctuality (/5)', 'Regular Tests (/5)',
+    'What Went Well', 'Suggestion'
+  ]];
+  rows.forEach(r => {
+    rawRows.push([
+      formatFeedbackDate(r.timestamp), r.instructor || '', r.isAnonymous ? '[Anonymous]' : (r.studentName || ''),
+      r.isAnonymous ? 'Yes' : 'No', r.centre || '', r.course || '', r.batchCode || '',
+      r.rating || '', r.q2 || '', paceOutOf5(r.q3) ?? '', doubtsOutOf5(r.q4) ?? '',
+      r.q7Presentation || '', r.q8Punctuality || '', r.q9RegularTests || '',
+      r.q5 || '', r.q6 || ''
+    ]);
+  });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), 'Summary');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rawRows), 'Raw Responses');
+  XLSX.writeFile(wb, 'Instructor-Feedback-Export-' + todayStamp() + '.xlsx');
+  closeFeedbackExportBuilder();
+}
+
 // ── Render Tab 4: Academic Summary ────────────────────────────
 function renderAcademicTab() {
   const params = {
@@ -7795,44 +8231,18 @@ function renderAcademicTab() {
       return;
     }
     
-    // Ratings
-    const ratings = d.instructorStats || [];
-    const rWrap = document.getElementById('acad-rating-cards-wrap');
-    if (rWrap) {
-      if (ratings.length) {
-        ratings.sort((a, b) => b.avgRating - a.avgRating || b.ratingsCount - a.ratingsCount || a.instructor.localeCompare(b.instructor));
-        rWrap.innerHTML = ratings.map(inst => {
-          const avg = inst.ratingsCount ? Number(inst.avgRating).toFixed(1) : '0.0';
-          const pct = Math.round((Number(inst.avgRating) / 5) * 100);
-          const col = pct >= 80 ? '#1D9E75' : (pct >= 60 ? '#C9A84C' : '#C94A4A');
-          let stars = '';
-          for (let k = 1; k <= 5; k++) {
-            stars += '<span style="color:' + (k <= Math.round(Number(inst.avgRating)) ? '#C9A84C' : 'rgba(138,128,112,0.3)') + ';font-size:14px">★</span>';
-          }
-          return '<div style="background:var(--off);border:1.5px solid var(--border);border-radius:10px;padding:14px;box-shadow:var(--shadow-sm);transition:transform 0.2s">' +
-            '<div style="font-size:13px;font-weight:700;margin-bottom:4px;color:var(--navy)">' + escC(inst.instructor) + '</div>' +
-            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
-              stars +
-              '<span style="font-size:16px;font-weight:700;color:' + col + '">' + avg + '</span>' +
-              '<span style="font-size:11px;color:var(--muted)">/ 5</span>' +
-            '</div>' +
-            '<div style="background:rgba(0,0,0,0.07);border-radius:4px;height:5px;margin-bottom:6px">' +
-              '<div style="width:' + pct + '%;height:5px;border-radius:4px;background:' + col + '"></div>' +
-            '</div>' +
-            '<div style="font-size:11px;color:var(--muted)">' + inst.ratingsCount + ' reviews &middot; ' + inst.sessionsCount + ' sessions</div>' +
-          '</div>';
-        }).join('');
-      } else {
-        rWrap.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--muted)">No instructor ratings logs yet.</div>';
-      }
-    }
-    
-    // Feedback report table — cache raw data (every submission) for filtering/export,
-    // then render via the shared helper.
+    // Feedback report table — cache raw data (every submission) BEFORE building the
+    // grade cards below, since the cards' distribution bars and click-through dossier
+    // both read straight from this cache instead of a second fetch.
     window.__academicAllFeedback = d.allFeedback || [];
     populateAcademicFilterOptions(window.__academicAllFeedback);
     renderAcademicCommentsFiltered();
     renderLowRatingFlags();
+
+    // Ratings — grade cards (see renderInstructorGradeCards) replacing the old plain
+    // star-average cards. Each card is clickable and opens the dossier drawer below it.
+    const ratings = d.instructorStats || [];
+    renderInstructorGradeCards(ratings);
 
     // Attendance
     const attCentres = d.attendance ? Object.values(d.attendance.centres || {}) : [];

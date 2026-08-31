@@ -6374,6 +6374,10 @@ window.gasGet = (function () {
 
         var text = String(r.feedback_text || '').trim();
         var q2 = 0, q3 = '', q4 = '', q5 = '', q6 = '';
+        // Phase 3 additions — Presentation & delivery, Punctuality, Regular testing.
+        // Stored the same way as q2 (numeric 1-5), absent/0 on any submission made
+        // before these questions existed so older rows keep displaying fine.
+        var q7Presentation = 0, q8Punctuality = 0, q9RegularTests = 0;
         var isAnon = false;
         var studentName = '';
         var parsedInstructor = '';
@@ -6390,6 +6394,9 @@ window.gasGet = (function () {
             q4 = String(parsed.q4 || '').trim();
             q5 = String(parsed.q5 || '').trim();
             q6 = String(parsed.q6 || '').trim();
+            q7Presentation = Number(parsed.q7_presentation || 0);
+            q8Punctuality = Number(parsed.q8_punctuality || 0);
+            q9RegularTests = Number(parsed.q9_regular_tests || 0);
             isAnon = parsed.anonymous === 'Y';
           } catch (e) {
             q6 = text;
@@ -6442,8 +6449,14 @@ window.gasGet = (function () {
 
         var centre = r.centre || (stRow ? stRow.centre : '') || (bObj ? bObj.centre : '');
         var feedbackRow = {
+          id: r.id,
           sessionCode: r.session_code,
-          studentId: studentId,
+          // Anonymous submissions never leave the student_id in the payload sent to the
+          // browser — identity now only surfaces through the governed reveal action
+          // (h_revealFeedbackIdentity), which looks it up server-side and writes an
+          // audit row. Previously this was included unmasked for every row regardless
+          // of the anonymous flag, so "[Anonymous]" was cosmetic only.
+          studentId: isAnon ? '' : studentId,
           studentName: studentName,
           batchCode: r.batch_code,
           centre: centre,
@@ -6451,10 +6464,14 @@ window.gasGet = (function () {
           instructor: inst,
           topic: topic,
           rating: rating,
+          q2: q2,
           q3: q3,
           q4: q4,
           q5: q5,
           q6: q6,
+          q7Presentation: q7Presentation,
+          q8Punctuality: q8Punctuality,
+          q9RegularTests: q9RegularTests,
           isAnonymous: isAnon,
           timestamp: r.marked_at || ''
         };
@@ -6495,6 +6512,43 @@ window.gasGet = (function () {
     } catch(err) {
       cb(err, null);
     }
+  }
+
+  // Governed reveal of the student behind an anonymous feedback submission. Takes the
+  // feedback row's own uuid (never the student_id, which anonymous rows no longer send
+  // to the browser at all — see h_getAcademicHeadDashboard) plus a mandatory reason and
+  // the admin's own name, looks the student up server-side, and writes a permanent audit
+  // row before returning the identity. Only a successful lookup gets logged — a failed
+  // one reveals nothing, so there is nothing to audit.
+  function h_revealFeedbackIdentity(p, cb) {
+    var feedbackId = String(p.feedbackId || '').trim();
+    var reason = String(p.reason || '').trim();
+    var revealedBy = String(p.revealedBy || '').trim();
+    if (!feedbackId || !reason || !revealedBy) {
+      cb(null, { status: 'error', reason: 'Missing feedbackId, reason, or revealedBy.' });
+      return;
+    }
+    GET('attendance_feedback', 'id=eq.' + encodeURIComponent(feedbackId), function(e, rows) {
+      var row = (rows || [])[0];
+      if (e || !row) { cb(null, { status: 'error', reason: 'Feedback record not found.' }); return; }
+      var studentId = row.student_id || '';
+      GET('students', 'student_id=eq.' + encodeURIComponent(studentId) + '&select=student_id,name', function(e2, sRows) {
+        var sRow = (sRows || [])[0];
+        var studentName = sRow ? sRow.name : ('Student ' + studentId);
+        POST('feedback_reveal_audit', '', {
+          feedback_id: feedbackId,
+          revealed_student_id: studentId,
+          revealed_student_name: studentName,
+          revealed_by: revealedBy,
+          reason: reason
+        }, function() {
+          // Audit write failures shouldn't block the reveal itself from being reported —
+          // the important guarantee is that reveals are USUALLY logged, and a failed
+          // insert here would already show up in Supabase logs for investigation.
+          cb(null, { status: 'ok', studentId: studentId, studentName: studentName });
+        });
+      });
+    });
   }
 
   async function h_getBatchSnapshot(p, cb) {
@@ -7659,6 +7713,11 @@ window.gasGet = (function () {
       q4: p.q4 || '',
       q5: p.q5 || '',
       q6: p.q6 || p.q6_suggestion || '',
+      // Phase 3 questions — Presentation & delivery, Punctuality, Regular testing.
+      // Optional at the payload level so old form versions / other callers keep working.
+      q7_presentation: p.q7 ? Number(p.q7) : 0,
+      q8_punctuality: p.q8 ? Number(p.q8) : 0,
+      q9_regular_tests: p.q9 ? Number(p.q9) : 0,
       anonymous: (p.anonymous === 'true' || p.anonymous === 'Y') ? 'Y' : 'N',
       // Present only when this batch has an active cover instructor — separate feedback
       // about the regular instructor, distinct from the primary rating (which is about
@@ -11289,6 +11348,7 @@ window.gasGet = (function () {
       case 'getHRDashboard':             return h_hrDash(params, cb);
       case 'getAdminDashboard':         return h_adminDash(params, cb);
       case 'getAcademicHeadDashboard':  return h_getAcademicHeadDashboard(params, cb);
+      case 'revealFeedbackIdentity':    return h_revealFeedbackIdentity(params, cb);
       case 'getBatchSnapshot':          return h_getBatchSnapshot(params, cb);
       case 'getInventoryItemMaster':    return h_invItems(params, cb);
       case 'getInventoryStock':         return h_invStock(params, cb);

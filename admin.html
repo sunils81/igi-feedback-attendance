@@ -1539,11 +1539,29 @@
         <div id="rev-loading-hero" style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Loading revenue data…</div>
       </div>
 
-      <!-- Monthly Business Summary — pick any past month (dropdown lives inside the "This
-           Month" KPI card above, via renderMonthlyBusinessSummary) and get a full
-           centre + counsellor + corporate breakdown for it, since the hero card above
-           only ever reflects "right now" and there was no way to look back once a month
-           had ended (2026-08-02). -->
+      <!-- Branch-wise Monthly Revenue — a prominent, clearly-labeled entry point into the
+           Monthly Business Summary below. Previously the ONLY way to reach it was a small
+           unlabeled dropdown ("View another month's summary…") tucked inside the "This
+           Month" KPI chip on the hero card — easy to miss entirely, per instruction
+           2026-08-31 ("can't see branch-wise revenue for Aug / previous months"). The data
+           and breakdown logic already existed (renderMonthlyBusinessSummary, built
+           2026-08-02); this just surfaces it properly and auto-loads the latest month on
+           first load so the breakdown is visible without hunting for the control. -->
+      <div class="card" style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div>
+            <div class="section-tag" style="margin:0">🏢 Branch-wise Monthly Revenue</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px">Every centre's contribution for one month — home / cross-sell / corporate split, plus a national total. Pick any month below.</div>
+          </div>
+          <select id="mbs-month-select-top" class="mbs-month-select-el" onchange="renderMonthlyBusinessSummary(this.value)" style="min-width:220px;padding:7px 10px;font-size:12px;border:1.5px solid var(--gold);border-radius:6px;font-weight:700;color:var(--navy);background:#fff">
+            <option value="">Select a month…</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Monthly Business Summary — renders here once a month is picked above (or via the
+           small dropdown inside the "This Month" KPI card, kept for backward compatibility)
+           via renderMonthlyBusinessSummary. -->
       <div class="card" id="mbs-summary-wrap" style="display:none"></div>
 
       <!-- Visual Charts (Chart.js) -->
@@ -6056,14 +6074,26 @@ function mbsMonthLabel(monthKey) {
   return months[m-1] + ' ' + y;
 }
 
+var mbsAutoLoaded = false; // only auto-pick a month once — a toggle re-rendering the hero
+// card (GST/target baseline switches) shouldn't yank the admin back to the latest month
+// if they'd already picked a different one to look at.
 function populateMbsMonthDropdown() {
-  var sel = document.getElementById('mbs-month-select');
-  if (!sel || !dashboardData || !dashboardData.revenue) return;
-  var cur = sel.value;
+  var sels = document.querySelectorAll('.mbs-month-select-el');
+  if (!sels.length || !dashboardData || !dashboardData.revenue) return;
   var rows = dashboardData.revenue.monthlyRows || [];
   var months = Array.from(new Set(rows.map(function(r) { return r.month; }).filter(Boolean))).sort().reverse();
-  sel.innerHTML = '<option value="">📋 View another month\'s summary…</option>' +
-    months.map(function(m) { return '<option value="' + m + '"' + (m === cur ? ' selected' : '') + '>' + mbsMonthLabel(m) + '</option>'; }).join('');
+  sels.forEach(function(sel) {
+    var cur = sel.value;
+    var placeholder = sel.id === 'mbs-month-select-top' ? 'Select a month…' : '📋 View another month\'s summary…';
+    sel.innerHTML = '<option value="">' + placeholder + '</option>' +
+      months.map(function(m) { return '<option value="' + m + '"' + (m === cur ? ' selected' : '') + '>' + mbsMonthLabel(m) + '</option>'; }).join('');
+  });
+  // Surface the branch-wise breakdown immediately on first load, using the most recent
+  // month with data, instead of leaving it hidden until someone notices a dropdown.
+  if (!mbsAutoLoaded && months.length) {
+    mbsAutoLoaded = true;
+    renderMonthlyBusinessSummary(months[0]);
+  }
 }
 
 function renderMonthlyBusinessSummary(monthKey) {
@@ -6071,6 +6101,9 @@ function renderMonthlyBusinessSummary(monthKey) {
   if (!wrap) return;
   if (!monthKey) { wrap.style.display = 'none'; return; }
   wrap.style.display = 'block';
+  // Keep both entry points (the prominent card and the small KPI-chip dropdown) showing
+  // the same selection, whichever one triggered this render.
+  document.querySelectorAll('.mbs-month-select-el').forEach(function(sel) { sel.value = monthKey; });
 
   var allRows = (dashboardData && dashboardData.revenue && dashboardData.revenue.monthlyRows) || [];
   var rows = allRows.filter(function(r) { return r.month === monthKey; });
@@ -6237,7 +6270,7 @@ function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTarge
           '<div class="kpi-label">This Month (' + thisMonthLabel + ')</div>' +
           '<div class="kpi-value">' + money(thisMonthK) + '</div>' +
           '<div class="kpi-meta">' + momMeta + '</div>' +
-          '<select id="mbs-month-select" onchange="renderMonthlyBusinessSummary(this.value)" style="width:100%;margin-top:6px;font-size:11px;padding:3px 4px;border:1px solid var(--border);border-radius:5px;color:var(--muted)"><option value="">📋 View another month\'s summary…</option></select>' +
+          '<select id="mbs-month-select" class="mbs-month-select-el" onchange="renderMonthlyBusinessSummary(this.value)" style="width:100%;margin-top:6px;font-size:11px;padding:3px 4px;border:1px solid var(--border);border-radius:5px;color:var(--muted)"><option value="">📋 View another month\'s summary…</option></select>' +
         '</div>' +
       '</div>' +
     '</div>' +

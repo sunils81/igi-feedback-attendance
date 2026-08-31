@@ -15251,8 +15251,57 @@ function loadMyBatches() {
     groupUpcoming.sort(function(a,b){ return toTime(a.startDate) - toTime(b.startDate); });
     groupCompleted.sort(function(a,b){ return toTime(b.endDate||b.startDate) - toTime(a.endDate||a.startDate); });
 
+    // Month-wise sub-grouping within each status section — added so a section with many
+    // batches (a growing "Completed" list especially) is easier to scan/search than one
+    // long flat list. Grouped by start date for Upcoming/Active, by end date (falling back
+    // to start date) for Completed — matching the date each group is already sorted by, so
+    // months come out in the same chronological order as the existing sort.
+    function monthKeyFor(b, isCompletedGroup) {
+      var d = isCompletedGroup ? (parseDMY(b.endDate) || parseDMY(b.startDate)) : parseDMY(b.startDate);
+      if (!d) return 'unknown';
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    }
+    function monthLabelFor(key) {
+      if (key === 'unknown') return 'Date unknown';
+      var parts = key.split('-');
+      var d = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
+      return d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+    }
+    var currentMonthKey = (function () { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); })();
+
     function renderSection(bodyId, label, headerBg, headerText, list, defaultOpen, isCompletedGroup) {
       if (!list.length) return '';
+
+      var byMonth = {}, monthOrder = [];
+      list.forEach(function (b) {
+        var k = monthKeyFor(b, isCompletedGroup);
+        if (!byMonth[k]) { byMonth[k] = []; monthOrder.push(k); }
+        byMonth[k].push(b);
+      });
+      // list was already sorted chronologically before grouping, so monthOrder falls out
+      // in the right order too — just dedupe while keeping first-seen order.
+      var seenMonth = {};
+      var monthKeys = monthOrder.filter(function (k) { if (seenMonth[k]) return false; seenMonth[k] = true; return true; });
+
+      var monthsHtml = monthKeys.map(function (mk, idx) {
+        var mList = byMonth[mk];
+        var mBodyId = bodyId + '-m' + idx;
+        // Open the current month (or the first month, if none matches "now") by default in
+        // Upcoming/Active; keep every month collapsed by default in Completed, since that
+        // list only grows and a counsellor is usually looking for one specific past batch.
+        var mOpen = !isCompletedGroup && (mk === currentMonthKey || (idx === 0 && monthKeys.indexOf(currentMonthKey) === -1));
+        return `
+        <div class="mb-month-section" style="margin-bottom:10px;margin-left:6px">
+          <div class="mb-month-header" onclick="mbToggleSection('${mBodyId}', this)" style="cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:6px;background:rgba(0,0,0,0.035);margin-bottom:6px;user-select:none">
+            <span class="mb-chevron" style="font-size:10px;color:#6B7280;display:inline-block;transition:transform .15s;transform:rotate(${mOpen ? '90deg' : '0deg'})">▸</span>
+            <span style="font-size:11px;font-weight:700;color:#374151">${monthLabelFor(mk)} (${mList.length})</span>
+          </div>
+          <div id="${mBodyId}" style="display:${mOpen ? 'block' : 'none'}">
+            ${mList.map(function (b) { return renderRow(b, isCompletedGroup); }).join('')}
+          </div>
+        </div>`;
+      }).join('');
+
       return `
       <div class="mb-section" style="margin-bottom:16px">
         <div class="mb-section-header" onclick="mbToggleSection('${bodyId}', this)" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:8px;background:${headerBg};margin-bottom:10px;user-select:none">
@@ -15260,7 +15309,7 @@ function loadMyBatches() {
           <span style="font-size:12px;font-weight:700;color:${headerText};text-transform:uppercase;letter-spacing:.05em">${label} (${list.length})</span>
         </div>
         <div id="${bodyId}" style="display:${defaultOpen?'block':'none'}">
-          ${list.map(function(b){ return renderRow(b, isCompletedGroup); }).join('')}
+          ${monthsHtml}
         </div>
       </div>`;
     }

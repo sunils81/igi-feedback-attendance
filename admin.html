@@ -6154,6 +6154,17 @@ function mbsMonthLabel(monthKey) {
   var y = monthKey.slice(0,4), m = Number(monthKey.slice(5,7));
   return months[m-1] + ' ' + y;
 }
+// The live revenue_monthly_achieved table only starts 2026-01 — any month before that
+// has no DB rows at all, which used to render as "No data" even though real historical
+// figures already exist in HIST_REVENUE (the same reconciled dataset the YTD Historical
+// Comparison chart uses, going back to 2018). Returns Excl.-GST, or null if genuinely
+// unavailable (HIST_REVENUE itself has a few null months, e.g. 2020's COVID gap).
+function histRevenueExclGstForMonth(monthKey) {
+  var y = Number(monthKey.slice(0, 4)), m = Number(monthKey.slice(5, 7));
+  var arr = (typeof HIST_REVENUE !== 'undefined') ? HIST_REVENUE[y] : null;
+  if (!arr || arr[m - 1] == null) return null;
+  return arr[m - 1] / IGI_GST_RATE;
+}
 
 var mbsAutoLoaded = false; // only auto-pick a month once — a toggle re-rendering the hero
 // card (GST/target baseline switches) shouldn't yank the admin back to the latest month
@@ -6223,29 +6234,36 @@ function renderMonthlyBusinessSummary(monthKey) {
       '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">Home / Cross-sell / Corporate</div><div class="kpi-value" style="font-size:13px">' + money(national.own) + ' / ' + money(national.other) + ' / ' + money(national.corporate) + '</div></div>' +
     '</div>' +
     '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
-      '<th></th><th class="text-left">Centre</th><th>Achieved (Excl. GST)</th><th>Home / Cross / Corp</th><th>Students</th>' +
+      '<th></th><th class="text-left">Centre</th><th>Achieved (Excl. GST)</th><th>vs Last Month</th><th>vs Last Year</th><th>Home / Cross / Corp</th><th>Students</th>' +
       '</tr></thead><tbody>' +
       centreList.map(function(c) {
         var expanded = !!mbsExpandedCentres[c.centre];
         var counRows = c.byCounsellor.map(function(cn) {
           var catLabel = cn.category === 'own' ? 'Home' : (cn.category === 'other' ? 'Cross-sell' : 'Corporate');
           return '<tr style="background:var(--off)"><td></td><td colspan="1" style="padding-left:24px">' + cn.counsellor + ' <span style="font-size:11px;color:var(--muted)">(' + catLabel + ')</span></td>' +
-            '<td style="text-align:right">' + money(cn.achievedCourse) + '</td><td></td><td style="text-align:right">' + cn.students + '</td></tr>';
+            '<td style="text-align:right">' + money(cn.achievedCourse) + '</td><td></td><td></td><td></td><td style="text-align:right">' + cn.students + '</td></tr>';
         }).join('');
+        var safeCentre = c.centre.replace(/'/g,"\\'").replace(/"/g,'&quot;');
         return '<tr style="cursor:pointer" onclick="mbsToggleCentre(\'' + c.centre.replace(/'/g,"\\'") + '\',\'' + monthKey + '\')">' +
           '<td>' + (c.byCounsellor.length ? (expanded ? '▾' : '▸') : '') + '</td>' +
           '<td class="text-left"><strong>' + c.centre + '</strong></td>' +
           '<td style="text-align:right;font-weight:600">' + money(c.achievedCourse) + '</td>' +
+          '<td style="text-align:right;font-size:11px" class="mbs-centre-mom" data-centre="' + safeCentre + '" data-achieved="' + c.achievedCourse + '">…</td>' +
+          '<td style="text-align:right;font-size:11px" class="mbs-centre-yoy" data-centre="' + safeCentre + '" data-achieved="' + c.achievedCourse + '">…</td>' +
           '<td style="text-align:right;font-size:11px;color:var(--muted)">' + money(c.own) + ' / ' + money(c.other) + ' / ' + money(c.corporate) + '</td>' +
           '<td style="text-align:right">' + c.students + '</td>' +
         '</tr>' + (expanded ? counRows : '');
       }).join('') +
       '<tr style="background:var(--navy);color:var(--gold);font-weight:800">' +
         '<td></td><td class="text-left">NATIONAL TOTAL</td><td style="text-align:right">' + money(national.achievedCourse) + '</td>' +
+        '<td></td><td></td>' +
         '<td style="text-align:right;font-size:11px">' + money(national.own) + ' / ' + money(national.other) + ' / ' + money(national.corporate) + '</td>' +
         '<td style="text-align:right">' + national.students + '</td>' +
       '</tr>' +
-      '</tbody></table></div>';
+      '</tbody></table></div>' +
+    '<div style="font-size:10.5px;color:var(--muted);margin-top:6px">vs Last Year uses live figures from ' + mbsMonthPeriod('2026-01') + ' onward; centre-wise breakdowns before that don\'t exist in the historical dataset, so those cells read "no data" — only the National Total\'s YoY card above can reach further back.</div>';
+
+  mbsLoadCentreComparisons(centreList, monthKey);
 
   // MoM and YoY need their own small fetch — MoM because April's "previous month" (March)
   // falls in the prior FY, outside the currently-loaded monthlyRows entirely; YoY always
@@ -6259,21 +6277,62 @@ function renderMonthlyBusinessSummary(monthKey) {
     var pct = Math.round((diff / d.achievedCourseFee) * 100);
     el.innerHTML = 'vs ' + mbsMonthLabel(mbsPrevMonth(monthKey)) + ': <span style="color:' + (diff >= 0 ? '#1a7a3c' : 'var(--red)') + '">' + (diff >= 0 ? '▲' : '▼') + ' ' + Math.abs(pct) + '%</span>';
   });
-  gasGet({ action: 'getNationalMonthTotal', month: mbsSameMonthLastYear(monthKey), period: mbsMonthPeriod(mbsSameMonthLastYear(monthKey)) }, function(e, d) {
+  (function() {
+    var lyKey = mbsSameMonthLastYear(monthKey);
     var valEl = document.getElementById('mbs-yoy-value'), noteEl = document.getElementById('mbs-yoy-note');
-    if (!valEl || !noteEl) return;
-    if (e || !d || !d.achievedCourseFee) { valEl.textContent = '—'; noteEl.textContent = 'No data for ' + mbsMonthLabel(mbsSameMonthLastYear(monthKey)); return; }
-    var diff = national.achievedCourse - d.achievedCourseFee;
-    var pct = Math.round((diff / d.achievedCourseFee) * 100);
-    valEl.textContent = money(d.achievedCourseFee);
-    noteEl.innerHTML = '<span style="color:' + (diff >= 0 ? '#1a7a3c' : 'var(--red)') + '">' + (diff >= 0 ? '▲' : '▼') + ' ' + Math.abs(pct) + '%</span> vs ' + mbsMonthLabel(mbsSameMonthLastYear(monthKey));
-  });
+    function renderYoy(lastYearExclGst) {
+      if (!valEl || !noteEl) return;
+      if (!lastYearExclGst) { valEl.textContent = '—'; noteEl.textContent = 'No data for ' + mbsMonthLabel(lyKey); return; }
+      var diff = national.achievedCourse - lastYearExclGst;
+      var pct = Math.round((diff / lastYearExclGst) * 100);
+      valEl.textContent = money(lastYearExclGst);
+      noteEl.innerHTML = '<span style="color:' + (diff >= 0 ? '#1a7a3c' : 'var(--red)') + '">' + (diff >= 0 ? '▲' : '▼') + ' ' + Math.abs(pct) + '%</span> vs ' + mbsMonthLabel(lyKey);
+    }
+    // revenue_monthly_achieved only goes back to 2026-01 — anything before that has no
+    // live rows at all, so it used to show "No data" even where a real historical figure
+    // exists in HIST_REVENUE (see histRevenueExclGstForMonth above).
+    if (lyKey < '2026-01') { renderYoy(histRevenueExclGstForMonth(lyKey)); return; }
+    gasGet({ action: 'getNationalMonthTotal', month: lyKey, period: mbsMonthPeriod(lyKey) }, function(e, d) {
+      renderYoy((!e && d) ? d.achievedCourseFee : 0);
+    });
+  })();
 }
 
 var mbsExpandedCentres = {};
 function mbsToggleCentre(centre, monthKey) {
   mbsExpandedCentres[centre] = !mbsExpandedCentres[centre];
   renderMonthlyBusinessSummary(monthKey);
+}
+
+function mbsRenderCompareCell(cellClass, centre, achievedCourse, compareExclGst, noDataLabel) {
+  document.querySelectorAll(cellClass + '[data-centre="' + CSS.escape(centre) + '"]').forEach(function(el) {
+    if (!compareExclGst) { el.innerHTML = '<span style="color:var(--muted)">' + noDataLabel + '</span>'; return; }
+    var diff = achievedCourse - compareExclGst;
+    var pct = Math.round((diff / compareExclGst) * 100);
+    el.innerHTML = '<span style="color:' + (diff >= 0 ? '#1a7a3c' : 'var(--red)') + '">' + (diff >= 0 ? '▲' : '▼') + ' ' + Math.abs(pct) + '%</span>';
+  });
+}
+
+// Per-centre MoM/YoY for the Branch-wise Monthly Revenue table — mirrors the national
+// MoM/YoY cards above (§08-02) but scoped per centre via h_getCentreMonthTotal, which
+// already existed for the counsellor portal's own "centre total this month" line.
+function mbsLoadCentreComparisons(centreList, monthKey) {
+  var prevKey = mbsPrevMonth(monthKey);
+  var lyKey = mbsSameMonthLastYear(monthKey);
+  centreList.forEach(function(c) {
+    gasGet({ action: 'getCentreMonthTotal', centre: c.centre, month: prevKey, period: mbsMonthPeriod(prevKey) }, function(e, d) {
+      mbsRenderCompareCell('.mbs-centre-mom', c.centre, c.achievedCourse, (!e && d) ? exclGst(d.achievedCourseFeeGst) : 0, 'no prior data');
+    });
+    if (lyKey < '2026-01') {
+      // No centre-wise historical breakdown exists before the live table starts — see the
+      // note under the table. This will start resolving on its own once FY27-28 data lands.
+      mbsRenderCompareCell('.mbs-centre-yoy', c.centre, c.achievedCourse, 0, 'no data');
+      return;
+    }
+    gasGet({ action: 'getCentreMonthTotal', centre: c.centre, month: lyKey, period: mbsMonthPeriod(lyKey) }, function(e, d) {
+      mbsRenderCompareCell('.mbs-centre-yoy', c.centre, c.achievedCourse, (!e && d) ? exclGst(d.achievedCourseFeeGst) : 0, 'no data');
+    });
+  });
 }
 
 function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTargetCourse, totalTargetGst, totalStudentsCount, pctOverall, monthsLeft, gapValCourse, gapValGst, reqMonthlyRunRateCourse, reqMonthlyRunRateGst, gstViewIncl, thisMonthCourse, thisMonthGst, lastMonthCourse, lastMonthGst, thisMonthKey) {

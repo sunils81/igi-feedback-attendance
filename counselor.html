@@ -4433,6 +4433,9 @@
           </div>
         </div>
 
+        <!-- YTD comparison (own + centre, vs last year) -->
+        <div id="rev-ytd-compare" style="margin-top:14px"></div>
+
         <!-- Month cards -->
         <div id="rev-month-grid" style="margin-top:14px"></div>
       </div>
@@ -12187,6 +12190,23 @@ function revenueCurrentMonthKey() {
 function revenueMonthOpen(key) { return key <= revenueCurrentMonthKey(); }
 function revenueGst(v) { return Math.round((Number(v)||0)*1.18); }
 
+// FY runs Apr-Mar — same convention as admin.html's mbsMonthPeriod, needed here so MoM/YoY
+// comparisons that cross a fiscal-year boundary (April's "last month" is March, the prior
+// FY) still ask the backend for the right period label instead of silently coming back empty.
+function revPeriodForMonth(monthKey) {
+  var y = Number(monthKey.slice(0,4)), m = Number(monthKey.slice(5,7));
+  var fyStartYear = (m >= 4) ? y : y - 1;
+  return fyStartYear + '-' + String((fyStartYear + 1) % 100).padStart(2, '0');
+}
+function revPrevMonthKey(monthKey) {
+  var y = Number(monthKey.slice(0,4)), m = Number(monthKey.slice(5,7));
+  m -= 1; if (m === 0) { m = 12; y -= 1; }
+  return y + '-' + String(m).padStart(2, '0');
+}
+function revSameMonthLastYearKey(monthKey) {
+  return (Number(monthKey.slice(0,4)) - 1) + '-' + monthKey.slice(5,7);
+}
+
 function revMonthlyMap() {
   var out = {};
   ((revenueData && revenueData.monthlyRows)||[]).forEach(function(r) {
@@ -13153,6 +13173,9 @@ function renderMyRevenue() {
   renderMumbaiCentreBar(me);
   renderRevenueMotivation(me, target);
 
+  // YTD comparison (own + centre, vs last year's YTD)
+  renderOwnYtdComparison(me);
+
   // Month cards
   renderRevenueMonthCards(me);
 }
@@ -13572,7 +13595,8 @@ function renderRevenueMonthCards(counsellor) {
           '<div>Variance<strong>'+money(Math.abs(variance))+'</strong></div>'+
           '<div>Status<strong>'+escC(status)+'</strong></div>'+
         '</div>'+
-        '<div class="rev-centre-total" id="rmc-centre-total-'+escC(m.key)+'" data-centre="'+escC(designatedCentre)+'" data-month="'+escC(m.key)+'" style="font-size:11.5px;color:var(--muted);margin-top:2px">🏢 '+escC(designatedCentre)+' centre total this month: <span>—</span></div>'+
+        '<div class="rev-centre-total" id="rmc-centre-total-'+escC(m.key)+'" data-centre="'+escC(designatedCentre)+'" data-month="'+escC(m.key)+'" style="font-size:11.5px;color:var(--muted);margin-top:2px">🏢 '+escC(designatedCentre)+' centre total this month: <span>—</span> <span class="rmc-centre-mom"></span></div>'+
+        '<div class="rmc-own-compare" id="rmc-own-compare-'+escC(m.key)+'" data-counsellor="'+escC(counsellor)+'" data-month="'+escC(m.key)+'" data-achieved="'+totals.totalGst+'" style="font-size:11px;color:var(--muted);margin-top:2px">📊 Me vs last month: <span class="rmc-own-mom">…</span> &middot; vs last year: <span class="rmc-own-yoy">…</span></div>'+
         revAchievementChips(open, rows, pct, streak)+
         ((saved || rows.length > 0) ? renderRevenueSavedBreakup(rows, designatedCentre, counsellor) : '')+
         (open && saved ? '<div class="rev-run-actions"><button type="button" class="rev-run-toggle" onclick="revToggleEntry(this)">Revise '+escC(m.label)+'</button></div>'+renderRevenueEntryPanel(m, designatedCentre, otherDefault, rows, true) : '')+
@@ -13583,23 +13607,162 @@ function renderRevenueMonthCards(counsellor) {
   grid.innerHTML = html;
   applyRevenueMonthVisibility();
   loadCentreMonthTotals();
+  loadOwnMonthComparisons();
+}
+
+// Shared formatter for a "vs last month" / "vs last year" comparison span: shows an
+// up/down arrow and % change against the compare-period figure, or "no data" when the
+// compare period has nothing recorded (expected for pre-2026 months / first FY month).
+function revFmtCompare(current, compareVal) {
+  if (compareVal == null || isNaN(compareVal)) return 'no data';
+  current = Number(current) || 0;
+  compareVal = Number(compareVal) || 0;
+  if (compareVal === 0) {
+    return current > 0 ? ('▲ new (' + money(current) + ')') : 'flat';
+  }
+  var diff = current - compareVal;
+  var pct = Math.round((diff / compareVal) * 100);
+  var arrow = diff >= 0 ? '▲' : '▼';
+  return arrow + ' ' + Math.abs(pct) + '% (was ' + money(compareVal) + ')';
 }
 
 // Fetches and fills in the "🏢 [Centre] centre total this month" line on every rendered
 // month card — everyone's revenue delivered at that centre, not just the logged-in
 // counsellor's own portion (which "Achieved" above already shows). Separate, async call
 // per card rather than blocking the whole render, since it's a secondary/contextual
-// figure, not the counsellor's own number.
+// figure, not the counsellor's own number. Also fetches the same centre's PREVIOUS month
+// total so the card can show a "vs last month" comparison for the centre as a whole.
 function loadCentreMonthTotals() {
   document.querySelectorAll('.rev-centre-total').forEach(function(el) {
     var centre = el.getAttribute('data-centre');
     var month = el.getAttribute('data-month');
     if (!centre || !month) return;
-    gasGet({ action: 'getCentreMonthTotal', centre: centre, month: month, period: '2026-27' }, function(e, d) {
+    gasGet({ action: 'getCentreMonthTotal', centre: centre, month: month, period: revPeriodForMonth(month) }, function(e, d) {
       var span = el.querySelector('span');
       if (!span) return;
       if (e || !d) { span.textContent = '—'; return; }
       span.textContent = money(d.achievedCourseFeeGst) + (d.studentCount ? (' (' + d.studentCount + ' stu, everyone)') : '');
+      var momEl = el.querySelector('.rmc-centre-mom');
+      if (!momEl) return;
+      var prevMonth = revPrevMonthKey(month);
+      gasGet({ action: 'getCentreMonthTotal', centre: centre, month: prevMonth, period: revPeriodForMonth(prevMonth) }, function(e2, d2) {
+        var prevVal = (!e2 && d2) ? d2.achievedCourseFeeGst : null;
+        momEl.textContent = '(vs last mo: ' + revFmtCompare(d.achievedCourseFeeGst, prevVal) + ')';
+      });
+    });
+  });
+}
+
+// Fetches and renders the counsellor's OWN month-over-month and year-over-year revenue
+// comparison ("📊 Me vs last month / vs last year") on every rendered month card, using
+// the same h_getMonthAchieved primitive the Backfill Historical Fee Records tally already
+// relies on. Runs independently of loadCentreMonthTotals() since it's a per-counsellor,
+// not per-centre, figure.
+function loadOwnMonthComparisons() {
+  document.querySelectorAll('.rmc-own-compare').forEach(function(el) {
+    var counsellor = el.getAttribute('data-counsellor');
+    var month = el.getAttribute('data-month');
+    var achieved = Number(el.getAttribute('data-achieved')) || 0;
+    if (!counsellor || !month) return;
+    var momEl = el.querySelector('.rmc-own-mom');
+    var yoyEl = el.querySelector('.rmc-own-yoy');
+    var prevMonth = revPrevMonthKey(month);
+    var lastYearMonth = revSameMonthLastYearKey(month);
+    if (momEl) {
+      gasGet({ action: 'getMonthAchieved', counsellor: counsellor, month: prevMonth, period: revPeriodForMonth(prevMonth) }, function(e, d) {
+        var prevVal = (!e && d) ? d.achievedCourseFeeGst : null;
+        momEl.textContent = revFmtCompare(achieved, prevVal);
+      });
+    }
+    if (yoyEl) {
+      gasGet({ action: 'getMonthAchieved', counsellor: counsellor, month: lastYearMonth, period: revPeriodForMonth(lastYearMonth) }, function(e, d) {
+        var lastYearVal = (!e && d) ? d.achievedCourseFeeGst : null;
+        yoyEl.textContent = revFmtCompare(achieved, lastYearVal);
+      });
+    }
+  });
+}
+
+// The FY2026-27 months from April through whichever month is "current" (open) — the
+// window a YTD figure should sum across.
+function revYtdMonthsElapsed() {
+  var cur = revenueCurrentMonthKey();
+  return revenueMonths().filter(function(m) { return m.key <= cur; }).map(function(m) { return m.key; });
+}
+
+// Sums one figure across a list of month keys via an async per-month fetcher, then calls
+// done(total, anyDataFound) once every month has responded. anyDataFound distinguishes a
+// genuine zero YTD from "the compare period has no records at all" (e.g. FY2025-26 months
+// before the live revenue_monthly_achieved table existed), so the caller can show "no data"
+// instead of a misleading 0.
+function revSumMonthsAsync(monthKeys, fetchOne, done) {
+  var total = 0, remaining = monthKeys.length, anyData = false;
+  if (!remaining) { done(0, false); return; }
+  monthKeys.forEach(function(mk) {
+    fetchOne(mk, function(val, hasData) {
+      total += (Number(val) || 0);
+      if (hasData) anyData = true;
+      remaining--;
+      if (remaining === 0) done(total, anyData);
+    });
+  });
+}
+
+// Renders the "📈 YTD Comparison" card above the month grid: the counsellor's own
+// Apr-to-date achieved this FY vs the same Apr-to-date window last FY, and the same pair
+// for their designated centre as a whole (everyone who sold into it). This is the direct
+// "YTD vs last year's YTD" trend the Annual YTD Standing leaderboard doesn't show — that
+// leaderboard ranks counsellors/centres by % of THIS year's target, it doesn't compare
+// this year's YTD rupee figure against last year's.
+function renderOwnYtdComparison(counsellor) {
+  var el = document.getElementById('rev-ytd-compare');
+  if (!el) return;
+  var designatedCentre = (allowedCentres && allowedCentres.length) ? allowedCentres[0] : (CENTRES[0]||'');
+  var thisYearMonths = revYtdMonthsElapsed();
+  var lastYearMonths = thisYearMonths.map(revSameMonthLastYearKey);
+  var asOfLabel = revenueMonths().filter(function(m){ return thisYearMonths.indexOf(m.key) !== -1; }).pop();
+
+  el.innerHTML =
+    '<div class="card" style="margin-bottom:0;padding:12px 14px">' +
+      '<div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px">📈 YTD Comparison — Apr 2026 to '+escC(asOfLabel ? asOfLabel.label : '')+' vs same window last FY</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">' +
+        '<div style="font-size:12px;color:var(--muted)">Me (YTD): <strong id="rev-ytd-own-value" style="color:var(--navy)">…</strong><br><span id="rev-ytd-own-compare">…</span></div>' +
+        '<div style="font-size:12px;color:var(--muted)">🏢 '+escC(designatedCentre)+' (YTD, everyone): <strong id="rev-ytd-centre-value" style="color:var(--navy)">…</strong><br><span id="rev-ytd-centre-compare">…</span></div>' +
+      '</div>' +
+    '</div>';
+
+  revSumMonthsAsync(thisYearMonths, function(mk, cb) {
+    gasGet({ action: 'getMonthAchieved', counsellor: counsellor, month: mk, period: revPeriodForMonth(mk) }, function(e, d) {
+      cb((!e && d) ? d.achievedCourseFeeGst : 0, !!(!e && d && d.rows && d.rows.length));
+    });
+  }, function(ownThisYearTotal) {
+    var ownValEl = document.getElementById('rev-ytd-own-value');
+    if (ownValEl) ownValEl.textContent = money(ownThisYearTotal);
+    revSumMonthsAsync(lastYearMonths, function(mk, cb) {
+      gasGet({ action: 'getMonthAchieved', counsellor: counsellor, month: mk, period: revPeriodForMonth(mk) }, function(e, d) {
+        cb((!e && d) ? d.achievedCourseFeeGst : 0, !!(!e && d && d.rows && d.rows.length));
+      });
+    }, function(ownLastYearTotal, hadData) {
+      var cmpEl = document.getElementById('rev-ytd-own-compare');
+      if (cmpEl) cmpEl.textContent = revFmtCompare(ownThisYearTotal, hadData ? ownLastYearTotal : null);
+    });
+  });
+
+  if (!designatedCentre) return;
+  revSumMonthsAsync(thisYearMonths, function(mk, cb) {
+    gasGet({ action: 'getCentreMonthTotal', centre: designatedCentre, month: mk, period: revPeriodForMonth(mk) }, function(e, d) {
+      cb((!e && d) ? d.achievedCourseFeeGst : 0, !!(!e && d && (d.achievedCourseFeeGst || d.studentCount)));
+    });
+  }, function(centreThisYearTotal) {
+    var centreValEl = document.getElementById('rev-ytd-centre-value');
+    if (centreValEl) centreValEl.textContent = money(centreThisYearTotal);
+    revSumMonthsAsync(lastYearMonths, function(mk, cb) {
+      gasGet({ action: 'getCentreMonthTotal', centre: designatedCentre, month: mk, period: revPeriodForMonth(mk) }, function(e, d) {
+        cb((!e && d) ? d.achievedCourseFeeGst : 0, !!(!e && d && (d.achievedCourseFeeGst || d.studentCount)));
+      });
+    }, function(centreLastYearTotal, hadData) {
+      var cmpEl2 = document.getElementById('rev-ytd-centre-compare');
+      if (cmpEl2) cmpEl2.textContent = revFmtCompare(centreThisYearTotal, hadData ? centreLastYearTotal : null);
     });
   });
 }

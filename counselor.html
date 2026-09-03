@@ -4650,12 +4650,13 @@
               <th class="text-center">Weekly Tests <span style="font-weight:400;font-size:10px;opacity:0.75">(WT1, WT2, WT3&hellip; + average, &ge;60%)</span></th>
               <th class="text-center">Practical <span style="font-weight:400;font-size:10px;opacity:0.75">(&ge;60%, if applicable)</span></th>
               <th class="text-center">Final Exam (&ge;60%)</th>
+              <th class="text-center">Combined Score <span style="font-weight:400;font-size:10px;opacity:0.75">(40% Weekly + 60% Final, &ge;60% — this is what eligibility actually checks)</span></th>
               <th class="text-center">Fee Status <span style="font-weight:400;font-size:10px;opacity:0.75">(must be fully paid)</span></th>
               <th class="text-center">Status / Actions</th>
             </tr>
           </thead>
           <tbody id="diploma-tbody">
-            <tr><td colspan="9" style="text-align:center;padding:16px;color:var(--muted)">Loading diploma eligibility records...</td></tr>
+            <tr><td colspan="10" style="text-align:center;padding:16px;color:var(--muted)">Loading diploma eligibility records...</td></tr>
           </tbody>
         </table>
       </div>
@@ -15999,7 +16000,7 @@ async function loadDiplomaData() {
   var tbody = document.getElementById('diploma-tbody');
   if (!tbody) return;
 
-  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading diploma eligibility records...</p></div></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:16px"><div class="spinner-wrap"><div class="spinner"></div><p>Loading diploma eligibility records...</p></div></td></tr>';
 
   // Uses the SAME scoring engine as the instructor + student portals (h_getDiplomaEligibilityAll
   // in shared.js -> buildDiplomaRow()), so this table can never disagree with what instructors
@@ -16008,7 +16009,7 @@ async function loadDiplomaData() {
     if (err || !d || d.status !== 'ok') {
       console.error('[Diploma] loadDiplomaData error:', err);
       var tbody2 = document.getElementById('diploma-tbody');
-      if (tbody2) tbody2.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--red);padding:16px">Failed to load diploma eligibility records.</td></tr>';
+      if (tbody2) tbody2.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--red);padding:16px">Failed to load diploma eligibility records.</td></tr>';
       return;
     }
 
@@ -16095,7 +16096,7 @@ function renderDiplomaTable(list) {
   if (!tbody) return;
   
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:16px">No student records found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:16px">No student records found.</td></tr>';
     return;
   }
 
@@ -16153,6 +16154,23 @@ function renderDiplomaTable(list) {
       ? (finalPass ? '<span style="color:#168B57;font-weight:700">✅ ' + finalStr + '</span>' : '<span style="color:#C94A4A;font-weight:700">❌ ' + finalStr + '</span>')
       : '<span style="color:var(--muted)">N/A</span>';
 
+    // Combined Score is the actual number eligibility is checked against (40% weekly avg +
+    // 60% final, with a 55-59% "Practical grace" window — see buildDiplomaRow() in shared.js).
+    // Neither the Weekly Avg nor Final Exam column alone shows this blended figure, so a
+    // student can clear the bar (or get graced over it) while every individually-shown number
+    // still reads as a fail — which used to leave counsellors unable to tell why "Release
+    // Diploma" appeared. This column surfaces the real number and flags when grace applied.
+    var combInfo    = a.combinedScore || {};
+    var combVal     = combInfo.value != null ? combInfo.value : null;
+    var combPass    = !!combInfo.pass;
+    var combGrace   = !!combInfo.graceApplied;
+    var combinedBadge = combVal == null
+      ? '<span style="color:var(--muted)">N/A</span>'
+      : '<div style="text-align:center">' +
+          '<span style="color:' + (combPass ? '#168B57' : '#C94A4A') + ';font-weight:700">' + (combPass ? '✅ ' : '❌ ') + combVal + '%</span>' +
+          (combGrace ? '<div style="font-size:10px;color:#B45309;font-weight:700;margin-top:2px">🎯 Practical Grace</div>' : '') +
+        '</div>';
+
     // Fee-paid gate — computed server-side by buildDiplomaRow() and baked into a.eligible,
     // but shown here as its own column so the REASON a student is blocked is visible
     // (rather than a generic "Ineligible") since fees, unlike academics, can't be waived
@@ -16195,7 +16213,14 @@ function renderDiplomaTable(list) {
     } else if (a.hodStatus === 'Rejected') {
       actionCell = '<span class="badge" style="background:#FEF2F2;color:#DC2626;border:1px solid #FCA5A5;padding:3px 8px;font-size:11px">❌ HOD Rejected</span>';
     } else if (a.eligible) {
-      var approvedBadge = a.hodStatus === 'Approved' ? '<div style="color:#168B57;font-size:10px;font-weight:700;margin-top:4px">👑 HOD Approved</div>' : '';
+      // Two independent reasons a student can be "eligible" despite not cleanly passing every
+      // column: an HOD override, or the Practical-grace rule inside the Combined Score. Both
+      // need to be visible right next to the release action — a bare gold button gave no hint
+      // that the release wasn't a clean on-merit pass.
+      var badgeParts = [];
+      if (a.hodStatus === 'Approved') badgeParts.push('<div style="color:#168B57;font-size:10px;font-weight:700;margin-top:4px">👑 HOD Approved</div>');
+      if (a.combinedScore && a.combinedScore.graceApplied) badgeParts.push('<div style="color:#B45309;font-size:10px;font-weight:700;margin-top:4px">🎯 Practical Grace (Combined ' + a.combinedScore.value + '%)</div>');
+      var approvedBadge = badgeParts.join('');
       if (authorized) {
         canRelease = true;
         actionCell = '<button class="btn btn-gold btn-xs" onclick="releaseDiploma(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', this)" style="padding:5px 10px;font-size:11px;margin:0 auto;display:block">Release Diploma</button>' + approvedBadge;
@@ -16237,6 +16262,7 @@ function renderDiplomaTable(list) {
       '<td class="text-center">' + weeklyBadge + '</td>' +
       '<td class="text-center">' + pracBadge + '</td>' +
       '<td class="text-center">' + finalBadge + '</td>' +
+      '<td class="text-center">' + combinedBadge + '</td>' +
       '<td class="text-center">' + feeBadge + '</td>' +
       '<td class="text-center">' + actionCell + '</td>' +
     '</tr>';

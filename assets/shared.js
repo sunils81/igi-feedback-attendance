@@ -8463,8 +8463,18 @@ window.gasGet = (function () {
 
   function h_getAssessments(p, cb) {
     var bc = encodeURIComponent(p.batchCode);
-    // Use embedded select to get marks count per assessment in one call
-    GET('assessments?select=*,assessment_marks(count)', 'batch_code=eq.' + bc, function(e, rows) {
+    // Use embedded select to get marks count per assessment in one call.
+    // IMPORTANT: the table argument must NOT contain its own '?' — xhr() builds the URL as
+    // SB + '/rest/v1/' + table + '?' + qs, so a table string like 'assessments?select=...'
+    // produced a URL with TWO '?' characters (.../assessments?select=...?batch_code=eq.X).
+    // A URL only has one query-string delimiter: everything after the first '?' — including
+    // the literal second '?' — is parsed as part of the value of a single 'select' param, so
+    // 'batch_code=eq.X' was never actually sent to PostgREST. Every call to this endpoint was
+    // silently returning EVERY assessment in the entire database (all centres, all
+    // instructors) instead of just this batch's — this was the real root cause of instructors
+    // seeing other centres' tests/students in the Marks tab. Fixed 2026-09-03 by moving
+    // select into the qs string, joined with '&' like every other filter here.
+    GET('assessments', 'select=*,assessment_marks(count)&batch_code=eq.' + bc, function(e, rows) {
       if (e) { cb(null, { status: 'error', assessments: [] }); return; }
       // Expected (active) student count for this batch — without this the client can't tell
       // "all marks entered" from "some pending" and used to show a bare, alarming "?" for

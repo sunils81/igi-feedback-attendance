@@ -4189,22 +4189,24 @@ function showCreateTest()  {
 
 // Test Type decides scoring — NOT the test's name. Instructors kept naming tests things like
 // "Final Practical Exam" while leaving Type set to "Final", then were confused when it never
-// showed up under Practical/didn't get the practical grace. This mirrors the exact bucketing
-// rules from buildDiplomaRow() in assets/shared.js so what's shown here always matches what
-// the Eligibility tab actually does with it.
+// counted as Practical. This mirrors the exact bucketing rules from buildDiplomaRow() in
+// assets/shared.js so what's shown here always matches what the Eligibility tab actually
+// does with it. Updated 2026-09-03: Combined Score is now 50% academic average
+// (mean of Weekly + Final) + 50% Practical — Practical is a full, always-weighted
+// component, not a rescue-only "grace" for borderline scores.
 function testTypeCategoryInfo(type) {
   const t = String(type || '').toLowerCase();
   if (t.indexOf('practical') !== -1) {
-    return { label: 'Practical', desc: 'Counts toward: <strong>Practical grace</strong> only — helps a borderline student (55–59% combined score) cross 60%. It is not part of the 40/60 Weekly + Final blend itself.' };
+    return { label: 'Practical', desc: 'Counts toward: <strong>Practical</strong> — 50% of the Combined Score.' };
   }
   if (t.indexOf('final') !== -1 || t.indexOf('portfolio') !== -1) {
-    return { label: 'Final', desc: 'Counts toward: <strong>Final Exam</strong> — 60% of the Combined Score.' };
+    return { label: 'Final', desc: 'Counts toward: <strong>Final Exam</strong> — averaged with Weekly to make up the other 50% of the Combined Score.' };
   }
   if (t === 're-test') {
-    return { label: 'Re-Test', desc: 'Automatically replaces this student\'s <strong>worst missed or failed weekly slot</strong> if it scores higher — it does not add a new slot to the average, and it can never lower a slot that already scored better. Only enter marks for the student(s) actually retaking a test; leave everyone else blank.' };
+    return { label: 'Re-Test', desc: 'Counts as <strong>another weekly attempt</strong> — it joins the same pool as every other weekly test and competes on its own score for a place in this student\'s best-of average (see the "Weekly" row below). It no longer targets a specific slot. Only enter marks for the student(s) actually retaking a test; leave everyone else blank.' };
   }
   // Weekly, MCQ, Theory all land in the ordinary weekly bucket.
-  return { label: 'Weekly', desc: 'Counts toward: <strong>Weekly Test Average</strong> — 40% of the Combined Score.' };
+  return { label: 'Weekly', desc: 'Counts toward: <strong>Weekly Test Average</strong> — this student\'s best-scoring tests are averaged and blended with Final to make up 50% of the Combined Score.' };
 }
 function updateTestTypeHint() {
   const hintEl = document.getElementById('ct-type-hint');
@@ -4217,8 +4219,10 @@ function showMarksEntry()  { document.getElementById('m-list-screen').style.disp
 
 // Jumps from a failing student's row on the Eligibility tab straight into "New Test" on
 // the Marks tab, pre-selected to that batch and pre-set to Type = Re-Test — added
-// 2026-08-25 as part of the re-test/reschedule workflow (see buildDiplomaRow's "Apply
-// Re-Test overrides" pass in shared.js for how the resulting score actually gets used).
+// 2026-08-25 as part of the re-test/reschedule workflow. As of 2026-09-03, a Re-Test score
+// no longer overrides a specific mandatory weekly slot — it simply joins the same pool as
+// every other weekly attempt and competes on its own score for a place in the student's
+// best-of average (see buildDiplomaRow's weeklyPool logic in shared.js).
 // Assessments are created per-BATCH (not per-student), so this can't fully pre-fill a
 // single-student form — instead it drops a reminder banner naming the student, since the
 // instructor still needs to remember to leave every other student's marks blank.
@@ -9947,16 +9951,14 @@ function renderEligibility(batches) {
         const fVal = s.finalExam && s.finalExam.value !== null ? s.finalExam.value + '%' : null;
         html += '<td style="padding:7px 10px;text-align:center;">' + badge(fVal, s.finalExam && s.finalExam.pass, '') + '</td>';
 
-        // Combined score (40% weekly + 60% final) — this is what actually gates eligibility.
+        // Combined score (50% avg[weekly,final] + 50% practical) — this is what actually
+        // gates eligibility.
         const combined = s.combinedScore;
         html += '<td style="padding:7px 10px;text-align:center;">';
         if (!combined || combined.value === null) {
           html += '<span style="' + pendStyle + '">Pending</span>';
         } else {
           html += badge(combined.value + '%', combined.pass, '');
-          if (combined.graceApplied) {
-            html += '<div style="font-size:9px;color:#b45309;margin-top:2px;">via Practical grace</div>';
-          }
         }
         html += '</td>';
 

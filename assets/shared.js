@@ -378,14 +378,12 @@ window.gasGet = (function () {
       .sort(function(a, b) { return new Date(a.held_on || 0) - new Date(b.held_on || 0); });
 
     // Re-Test is scored separately from the ordinary weekly slots (added 2026-08-25, part
-    // of the re-test/reschedule workflow). It used to be lumped into weeklyAssessments and
-    // slotted by date order alongside everything else — which meant a re-test taken AFTER
-    // the mandatoryCount slots were already filled by earlier tests landed in a
-    // non-mandatory slot and silently never affected weeklyAvgVal at all, defeating the
-    // entire point of retaking a failed test. Now a Re-Test EXPLICITLY replaces this
-    // student's worst mandatory weekly slot (only if it actually improves that slot's
-    // score, and only ever helps — never lowers a slot that already scored higher) — see
-    // the "apply retest overrides" pass below, after weeklyTests is built.
+    // of the re-test/reschedule workflow). It used to explicitly replace this student's
+    // worst mandatory weekly slot via a dedicated override pass. Retired 2026-09-03: weekly
+    // scoring is now "best of N across everything taken" (see weeklyPool below), which
+    // already lets a strong Re-Test attempt compete for a place in the average on its own
+    // merit — a separate slot-replacement mechanic is redundant on top of that, so a
+    // Re-Test's score now simply joins the same pool as every other weekly attempt.
     var retestAssessments = batchAssessments
       .filter(function(a) { return typeOf(a) === 're-test'; })
       .sort(function(a, b) { return new Date(a.held_on || 0) - new Date(b.held_on || 0); });
@@ -414,35 +412,28 @@ window.gasGet = (function () {
         mandatory: true, marksObt: null, maxMarks: 100, pct: null, pass: false, notTaken: true });
     }
 
-    // ── Apply Re-Test overrides ── each re-test (in date order) is matched against
-    // whichever mandatory slot is currently worst for THIS student (missed slots first,
-    // treated as worse than any attempted score; then lowest-scoring attempted slot). The
-    // override only happens if it actually raises that slot's score — a weak re-test
-    // attempt can never make a slot's recorded score worse than what was already there.
-    retestAssessments.forEach(function(rt) {
+    // ── Weekly score: best of N across every weekly test actually taken ──────
+    // N = mandatoryCount (2 for JewelPad, 3 otherwise) — the number of weekly tests a batch
+    // is expected to run. Pool together every attempt with a recorded score: mandatory
+    // slots, optional/bonus slots (WT4-6 etc.), and any Re-Test — then average this
+    // student's best N of them. Retired 2026-09-03 (previously averaged only the fixed
+    // mandatory slots, so a missed mandatory test was simply excluded rather than counted,
+    // and a strong optional test or Re-Test never helped unless it explicitly overrode a
+    // mandatory slot). A student who takes more than N weekly tests is now rewarded for
+    // their strongest attempts rather than being tied to whichever slots happened to be
+    // flagged mandatory.
+    var retestPool = retestAssessments.map(function(rt) {
       var markRow = marksMap[rt.assessment_id];
-      var retestPct = pctOf(markRow, rt.max_marks || 100);
-      if (retestPct === null) return; // this student didn't take/wasn't marked for this re-test
-      var candidates = weeklyTests.filter(function(t) { return t.mandatory && !t.retestApplied && (t.notTaken || t.pct < 60); });
-      if (!candidates.length) return; // nothing left to improve
-      candidates.sort(function(a, b) { var av = a.pct === null ? -1 : a.pct, bv = b.pct === null ? -1 : b.pct; return av - bv; });
-      var worst = candidates[0];
-      var worstVal = worst.pct === null ? -1 : worst.pct;
-      if (retestPct <= worstVal) return; // doesn't improve on the worst slot, skip this re-test
-      worst.retestApplied = true;
-      worst.originalPct = worst.pct;
-      worst.originalNotTaken = worst.notTaken;
-      worst.retestTestName = rt.test_name || 'Re-Test';
-      worst.marksObt = markObtained(markRow);
-      worst.maxMarks = parseFloat(rt.max_marks || 100);
-      worst.pct = retestPct;
-      worst.pass = retestPct >= 60;
-      worst.notTaken = false;
-    });
-
-    var scoredMandatory = weeklyTests.filter(function(t) { return t.mandatory && t.pct !== null; });
-    var weeklyAvgVal = scoredMandatory.length
-      ? Math.round(scoredMandatory.reduce(function(s, t) { return s + t.pct; }, 0) / scoredMandatory.length)
+      return { pct: pctOf(markRow, rt.max_marks || 100) };
+    }).filter(function(t) { return t.pct !== null; });
+    var weeklyPool = weeklyTests
+      .filter(function(t) { return t.conducted && t.pct !== null; })
+      .map(function(t) { return { pct: t.pct }; })
+      .concat(retestPool)
+      .sort(function(a, b) { return b.pct - a.pct; })
+      .slice(0, mandatoryCount);
+    var weeklyAvgVal = weeklyPool.length
+      ? Math.round(weeklyPool.reduce(function(s, t) { return s + t.pct; }, 0) / weeklyPool.length)
       : null;
     var weeklyPass = weeklyAvgVal !== null && weeklyAvgVal >= 60;
 
@@ -456,8 +447,8 @@ window.gasGet = (function () {
     var finalPct = finalHasMark && finalMax > 0 ? Math.round(100 * finalObt / finalMax) : null;
     var finalPass = finalPct !== null && finalPct >= 60;
 
-    // ── Practical — no longer an independent hard gate. Tracked so it can act as a
-    // "grace" toward the Combined Score below (see combinedScore / graceApplied).
+    // ── Practical ── a required, always-weighted component of the Combined Score below
+    // (no longer just a grace/rescue mechanism for borderline cases — see 2026-09-03 note).
     var practicalObt = 0, practicalMax = 0, practicalHasMark = false;
     practicalAssessments.forEach(function(a) {
       var markRow = marksMap[a.assessment_id];
@@ -472,28 +463,27 @@ window.gasGet = (function () {
     var attPct = attInfo.total > 0 ? Math.round(100 * attInfo.present / attInfo.total) : null;
     var attPass = attPct !== null && attPct >= 75;
 
-    // ── Combined Score: weekly avg + final exam, weighted 40/60 ──────────────
-    // A student is no longer failed just because weekly OR final independently dipped
-    // below 60% (e.g. a strong final exam used to be wasted by one weak weekly test).
-    // The two are blended into a single score instead.
-    var WEEKLY_WEIGHT = 0.4, FINAL_WEIGHT = 0.6;
-    var combinedScoreVal = (weeklyAvgVal !== null && finalPct !== null)
-      ? Math.round(weeklyAvgVal * WEEKLY_WEIGHT + finalPct * FINAL_WEIGHT)
+    // ── Combined Score: 50% academic average (mean of Weekly + Final) + 50% Practical ──
+    // Retired 2026-09-03: replaced the old 40/60 weekly/final blend plus a bolt-on
+    // "Practical grace" window (55-59% got rescued to eligible if Practical was strong,
+    // but the displayed score itself never actually reached 60%, which read as a bug to
+    // anyone looking at the table). Practical is now a full, always-applied 50% of the
+    // score instead of a special case — no more grace, no more "eligible" with a
+    // below-60% number showing.
+    //   - If the batch has no Practical assessments at all, the score is just the academic
+    //     average alone (nothing to weight 50% against).
+    //   - If the batch DOES have Practical assessments but this student hasn't been marked
+    //     yet, the score stays null ("pending") rather than either passing or failing them
+    //     on an incomplete picture — same treatment as a missing Weekly or Final mark.
+    var HALF = 0.5;
+    var academicAvg = (weeklyAvgVal !== null && finalPct !== null)
+      ? Math.round((weeklyAvgVal + finalPct) / 2)
       : null;
+    var combinedScoreVal = academicAvg === null ? null :
+      (!practicalRequired ? academicAvg :
+        (practicalPct === null ? null : Math.round(academicAvg * HALF + practicalPct * HALF)));
 
-    // ── Practical grace ──────────────────────────────────────────────────────
-    // If the combined score falls just short of 60% (within 5 points, i.e. 55-59%) and
-    // the student scored ≥60% on Practical, that practical strength carries them over
-    // the line. Practical is never an independent gate — it can only help, never fail,
-    // a student who is otherwise on the bubble.
-    var GRACE_MARGIN = 5;
-    var graceApplied = combinedScoreVal !== null &&
-      combinedScoreVal < 60 &&
-      combinedScoreVal >= (60 - GRACE_MARGIN) &&
-      practicalPct !== null &&
-      practicalPct >= 60;
-
-    var marksEligible = combinedScoreVal !== null && (combinedScoreVal >= 60 || graceApplied);
+    var marksEligible = combinedScoreVal !== null && combinedScoreVal >= 60;
 
     // Fee-paid is a hard gate: neither the combined marks score nor an HOD academic
     // override can substitute for it. An HOD approving weak test scores does not, and
@@ -508,7 +498,7 @@ window.gasGet = (function () {
       weeklyAvg: { value: weeklyAvgVal, pass: weeklyPass },
       practicalMarks: { value: practicalPct, pass: practicalPass, required: practicalRequired },
       finalExam: { value: finalPct, pass: finalPass },
-      combinedScore: { value: combinedScoreVal, pass: marksEligible, graceApplied: graceApplied },
+      combinedScore: { value: combinedScoreVal, pass: marksEligible },
       feeStatus: { paid: feePaid, outstanding: feeOutstanding, hasRecord: !!feeInfo },
       eligible: eligible,
       hodStatus: hodStatus,

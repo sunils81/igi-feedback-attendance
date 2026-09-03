@@ -4647,10 +4647,10 @@
               <th class="text-left">Student</th>
               <th class="text-left">Batch &amp; Centre</th>
               <th class="text-center">Attendance <span style="font-weight:400;font-size:10px;opacity:0.75">(advisory, &ge;75%)</span></th>
-              <th class="text-center">Weekly Tests <span style="font-weight:400;font-size:10px;opacity:0.75">(WT1, WT2, WT3&hellip; + average, &ge;60%)</span></th>
+              <th class="text-center">Weekly Tests <span style="font-weight:400;font-size:10px;opacity:0.75">(WT1, WT2, WT3&hellip; — best-of average of tests taken)</span></th>
               <th class="text-center">Practical <span style="font-weight:400;font-size:10px;opacity:0.75">(&ge;60%, if applicable)</span></th>
               <th class="text-center">Final Exam (&ge;60%)</th>
-              <th class="text-center">Combined Score <span style="font-weight:400;font-size:10px;opacity:0.75">(40% Weekly + 60% Final, &ge;60% — this is what eligibility actually checks)</span></th>
+              <th class="text-center">Combined Score <span style="font-weight:400;font-size:10px;opacity:0.75">(50% avg[Weekly,Final] + 50% Practical, &ge;60% — this is what eligibility actually checks)</span></th>
               <th class="text-center">Fee Status <span style="font-weight:400;font-size:10px;opacity:0.75">(must be fully paid)</span></th>
               <th class="text-center">Status / Actions</th>
             </tr>
@@ -16154,22 +16154,16 @@ function renderDiplomaTable(list) {
       ? (finalPass ? '<span style="color:#168B57;font-weight:700">✅ ' + finalStr + '</span>' : '<span style="color:#C94A4A;font-weight:700">❌ ' + finalStr + '</span>')
       : '<span style="color:var(--muted)">N/A</span>';
 
-    // Combined Score is the actual number eligibility is checked against (40% weekly avg +
-    // 60% final, with a 55-59% "Practical grace" window — see buildDiplomaRow() in shared.js).
-    // Neither the Weekly Avg nor Final Exam column alone shows this blended figure, so a
-    // student can clear the bar (or get graced over it) while every individually-shown number
-    // still reads as a fail — which used to leave counsellors unable to tell why "Release
-    // Diploma" appeared. This column surfaces the real number and flags when grace applied.
+    // Combined Score is the actual number eligibility is checked against: 50% academic
+    // average (mean of Weekly + Final) + 50% Practical (see buildDiplomaRow() in
+    // shared.js). Neither the Weekly Avg nor Final Exam column alone shows this blended
+    // figure, so this column surfaces the real number the release decision is based on.
     var combInfo    = a.combinedScore || {};
     var combVal     = combInfo.value != null ? combInfo.value : null;
     var combPass    = !!combInfo.pass;
-    var combGrace   = !!combInfo.graceApplied;
     var combinedBadge = combVal == null
       ? '<span style="color:var(--muted)">N/A</span>'
-      : '<div style="text-align:center">' +
-          '<span style="color:' + (combPass ? '#168B57' : '#C94A4A') + ';font-weight:700">' + (combPass ? '✅ ' : '❌ ') + combVal + '%</span>' +
-          (combGrace ? '<div style="font-size:10px;color:#B45309;font-weight:700;margin-top:2px">🎯 Practical Grace</div>' : '') +
-        '</div>';
+      : '<span style="color:' + (combPass ? '#168B57' : '#C94A4A') + ';font-weight:700">' + (combPass ? '✅ ' : '❌ ') + combVal + '%</span>';
 
     // Fee-paid gate — computed server-side by buildDiplomaRow() and baked into a.eligible,
     // but shown here as its own column so the REASON a student is blocked is visible
@@ -16188,8 +16182,9 @@ function renderDiplomaTable(list) {
     // Release Diploma / Re-release / Request HOD stay restricted to Bianca & Anuradha.
     // Every other counsellor gets the same eligibility facts, view-only.
     var authorized = isDiplomaReleaseAuthorized();
-    // Academics now hinge on the server-computed Combined Score (40% weekly + 60% final,
-    // with a Practical grace for 55-59% scores) rather than requiring weekly, final, AND
+    // Academics now hinge on the server-computed Combined Score (50% academic average —
+    // mean of best-of-N Weekly + Final — + 50% Practical, retired 2026-09-03's old 40/60
+    // blend and its Practical-grace window) rather than requiring weekly, final, AND
     // practical to each independently pass. This used to be permanently false whenever no
     // Practical test existed for the batch (pracPass had no fallback), hiding the
     // "Fee Outstanding" branch below for those students.
@@ -16213,14 +16208,10 @@ function renderDiplomaTable(list) {
     } else if (a.hodStatus === 'Rejected') {
       actionCell = '<span class="badge" style="background:#FEF2F2;color:#DC2626;border:1px solid #FCA5A5;padding:3px 8px;font-size:11px">❌ HOD Rejected</span>';
     } else if (a.eligible) {
-      // Two independent reasons a student can be "eligible" despite not cleanly passing every
-      // column: an HOD override, or the Practical-grace rule inside the Combined Score. Both
-      // need to be visible right next to the release action — a bare gold button gave no hint
-      // that the release wasn't a clean on-merit pass.
-      var badgeParts = [];
-      if (a.hodStatus === 'Approved') badgeParts.push('<div style="color:#168B57;font-size:10px;font-weight:700;margin-top:4px">👑 HOD Approved</div>');
-      if (a.combinedScore && a.combinedScore.graceApplied) badgeParts.push('<div style="color:#B45309;font-size:10px;font-weight:700;margin-top:4px">🎯 Practical Grace (Combined ' + a.combinedScore.value + '%)</div>');
-      var approvedBadge = badgeParts.join('');
+      // An HOD override is the only remaining way a student can be "eligible" without the
+      // Combined Score column itself already reading ≥60% — surfaced here so it's visible
+      // right next to the release action.
+      var approvedBadge = a.hodStatus === 'Approved' ? '<div style="color:#168B57;font-size:10px;font-weight:700;margin-top:4px">👑 HOD Approved</div>' : '';
       if (authorized) {
         canRelease = true;
         actionCell = '<button class="btn btn-gold btn-xs" onclick="releaseDiploma(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', this)" style="padding:5px 10px;font-size:11px;margin:0 auto;display:block">Release Diploma</button>' + approvedBadge;

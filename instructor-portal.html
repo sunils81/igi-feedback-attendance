@@ -4272,7 +4272,7 @@ function loadAssessments() {
       }
       const catInfo = testTypeCategoryInfo(a.testType);
       return `
-      <div class="test-card" onclick="openTestMarks('${a.assessmentId}','${escJ(a.testName)}','${a.testDate}',${a.totalMarks},'${a.testType}')">
+      <div class="test-card" onclick="openTestMarks('${a.assessmentId}','${escJ(a.testName)}','${a.testDate}',${a.totalMarks},'${a.testType}','${escJ(a.batchCode||currentBatch)}')">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div style="min-width:0">
             <div class="tc-name">${a.testName}</div>
@@ -4305,15 +4305,25 @@ function deleteAssessmentCard(assessmentId, testName) {
   });
 }
 
-function openTestMarks(aId, name, date, total, type) {
+function openTestMarks(aId, name, date, total, type, batchCode) {
   currentAssessmentId = aId;
   currentTotalMarks   = total;
+  // Roster MUST come from the test's own batch, not the (mutable) currentBatch global.
+  // currentBatch can change under us — e.g. the instructor switches the Marks-tab batch
+  // dropdown, or a create-test request is still in flight when they do — and previously
+  // this always read currentBatch at the moment the marks screen opened. If that had
+  // already moved on to a different batch than the one this assessment actually belongs
+  // to, the roster shown (and the marks saved) belonged to the WRONG batch entirely,
+  // silently orphaning those marks from the batch the Eligibility/Diploma Release views
+  // actually query for this assessment_id. Root-caused 2026-09-03 after a Practical test
+  // created for one batch ended up with marks entered for several other batches' students.
+  var rosterBatch = batchCode || currentBatch;
   document.getElementById('me-test-name').textContent = name;
   document.getElementById('me-test-meta').textContent = date + ' · ' + (type||'') + ' · Max: ' + total + ' marks';
   showMarksEntry();
   // Load students + existing marks
   Promise.all([
-    new Promise(res => gasGet({action:'getStudents', batchCode:currentBatch}, (e,d) => res(d&&d.students?d.students:[]))),
+    new Promise(res => gasGet({action:'getStudents', batchCode:rosterBatch}, (e,d) => res(d&&d.students?d.students:[]))),
     new Promise(res => gasGet({action:'getAssessmentMarks', assessmentId:aId}, (e,d) => res(d&&d.marks?d.marks:[])))
   ]).then(([students, marks]) => {
     const markMap = {};
@@ -4468,11 +4478,17 @@ function createTest() {
   // for the label and the type to disagree (the source of instructor confusion this
   // change removes; see the "counts toward" hint below for the same fix on read side).
   const name = (CT_TYPE_LABELS[type] || type) + ' ' + num;
+  // Capture the batch NOW, synchronously — currentBatch is a mutable global that can
+  // change while createAssessment's network request is still in flight (e.g. the
+  // instructor switches the batch dropdown before "Creating…" resolves). Using a
+  // snapshot here instead of re-reading currentBatch in the callback keeps the roster
+  // openTestMarks loads next in sync with the batch this test was actually created for.
+  const batchAtCreate = currentBatch;
   btn.textContent='Creating…'; btn.disabled=true;
-  gasGet({action:'createAssessment',batchCode:currentBatch,testName:name,testType:type,testDate:date,totalMarks:total,instructor:instructorName}, function(e,d) {
+  gasGet({action:'createAssessment',batchCode:batchAtCreate,testName:name,testType:type,testDate:date,totalMarks:total,instructor:instructorName}, function(e,d) {
     btn.textContent='Create & Enter Marks →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') { err.textContent='Could not create test.'; err.classList.add('show'); return; }
-    openTestMarks(d.assessmentId,name,new Date(date).toLocaleDateString('en-IN'),Number(total),type);
+    openTestMarks(d.assessmentId,name,new Date(date).toLocaleDateString('en-IN'),Number(total),type,batchAtCreate);
     document.getElementById('ct-num').value='1';
     document.getElementById('ct-total').value='';
   });

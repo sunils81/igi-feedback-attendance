@@ -4712,13 +4712,37 @@ function loadBatchMgmtTab() {
     if (e||!d||!d.batches||!d.batches.length) {
       list.innerHTML = emptyState('🏫','No batches found','No active batches for your centre.'); return;
     }
-    list.innerHTML = d.batches.map(function(b){
-      return '<div style="background:var(--off);border-radius:8px;padding:12px 14px;margin-bottom:10px">'
-        +'<div style="font-weight:700;font-family:\'JetBrains Mono\',monospace;font-size:13px;color:var(--navy)">'+b.batchCode+'</div>'
-        +'<div style="font-size:12px;color:var(--muted);margin-top:3px">'+b.course+' · '+b.centre+(b.type?' · '+b.type:'')+'</div>'
-        +'<div style="font-size:11px;color:var(--muted);margin-top:2px">'+b.instructor+' · '+(b.startDate||'')+(b.endDate?' → '+b.endDate:'')+'</div>'
-        +'</div>';
-    }).join('');
+    var batches = d.batches;
+    function renderRows(namesByBatch) {
+      namesByBatch = namesByBatch || {};
+      list.innerHTML = batches.map(function(b){
+        var key = (b.batchCode||'').toUpperCase();
+        var names = namesByBatch[key];
+        var namesLine = (names && names.length)
+          ? '<div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.6"><strong style="color:var(--navy)">Students:</strong> '+names.map(function(n){return escH(n);}).join(', ')+'</div>'
+          : '';
+        return '<div style="background:var(--off);border-radius:8px;padding:12px 14px;margin-bottom:10px">'
+          +'<div style="font-weight:700;font-family:\'JetBrains Mono\',monospace;font-size:13px;color:var(--navy)">'+b.batchCode+'</div>'
+          +'<div style="font-size:12px;color:var(--muted);margin-top:3px">'+b.course+' · '+b.centre+(b.type?' · '+b.type:'')+'</div>'
+          +'<div style="font-size:11px;color:var(--muted);margin-top:2px">'+b.instructor+' · '+(b.startDate||'')+(b.endDate?' → '+b.endDate:'')+'</div>'
+          +namesLine
+          +'</div>';
+      }).join('');
+    }
+    // Render immediately without names, then fill in once fetched — same pattern as
+    // loadMyBatches below, so the tab doesn't sit on a spinner waiting for a second call.
+    renderRows(null);
+    var codes = batches.map(function(b){ return b.batchCode; }).join(',');
+    gasGet({action:'getStudentsForBatches', batchCodes: codes}, function(e2, sd) {
+      if (e2 || !sd || !sd.students) return;
+      var namesByBatch = {};
+      sd.students.forEach(function(s) {
+        var bc = (s.batchCode||'').toUpperCase();
+        if (!namesByBatch[bc]) namesByBatch[bc] = [];
+        namesByBatch[bc].push(s.name||s.enrollmentNo||'Student');
+      });
+      renderRows(namesByBatch);
+    });
   });
 }
 

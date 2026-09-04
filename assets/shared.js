@@ -709,6 +709,42 @@ window.gasGet = (function () {
     });
   }
 
+  // Names alongside the counts above (added 2026-09-04, per instruction: counsellor/
+  // instructor/admin batch overview cards showed a student COUNT but not who they
+  // actually were). Mirrors getActiveStudentCountsByBatch's fallback logic — students
+  // directly assigned to a batch, plus anyone Active in `enrollments` for it — but
+  // collects names instead of just incrementing a counter. Runs students-then-enrollments
+  // in sequence (not in parallel like the counter above) because enrollments rows don't
+  // carry a name column; the name lookup built from the students pass has to exist before
+  // enrollment rows can be labelled.
+  function getActiveStudentNamesByBatch(cb) {
+    var namesByBatch = {};
+    var seen = {};
+    function addStudent(batchCode, studentId, name) {
+      var bc = String(batchCode || '').trim().toUpperCase();
+      var sid = String(studentId || '').trim();
+      if (!bc || !sid) return;
+      var key = bc + '|' + sid;
+      if (seen[key]) return;
+      seen[key] = true;
+      (namesByBatch[bc] = namesByBatch[bc] || []).push(name || sid);
+    }
+
+    GET('students', 'select=student_id,name,batch_code,status&batch_code=not.is.null', function(e1, students) {
+      var byId = {};
+      (students || []).forEach(function(s) {
+        byId[String(s.student_id).trim()] = s.name;
+        if (!s.status || String(s.status).toLowerCase() === 'active') addStudent(s.batch_code, s.student_id, s.name);
+      });
+      GET('enrollments', 'select=student_id,batch_code,status&status=eq.Active', function(e2, enrollments) {
+        (enrollments || []).forEach(function(en) {
+          addStudent(en.batch_code, en.student_id, byId[String(en.student_id).trim()]);
+        });
+        cb(namesByBatch);
+      });
+    });
+  }
+
   function parseFeeRow(r, studentsList, batchesList) {
     var studentId = r.student_id;
     var batchCode = r.batch_code;
@@ -1184,23 +1220,29 @@ window.gasGet = (function () {
 
     function finish(rows) {
       getActiveStudentCountsByBatch(function(studentCounts) {
-        cb(null, { batches: (rows || []).map(function (r) {
-          var bc = (r.batch_code || '').trim().toUpperCase();
-          var sCount = studentCounts[bc] || 0;
-          return { batchCode: r.batch_code, centre: r.centre, course: r.course, type: r.type,
-            batchSlot: r.batch_slot, startDate: r.start_date, endDate: r.end_date,
-            counselor: r.counselor, counselorName: r.counselor, instructor: r.instructor,
-            coInstructor: r.co_instructor || '', coInstructorUntil: r.co_instructor_until || '',
-            coInstructorFrom: r.co_instructor_from || '',
-            createdAt: r.created_at,
-            status: r.is_active !== false ? 'Active' : 'Completed',
-            studentCount: sCount,
-            createdByCentre: r.created_by_centre || '',
-            createdByCounselor: r.created_by_counselor || '',
-            confirmedBy: r.confirmed_by || '',
-            confirmedAt: r.confirmed_at || null,
-            remoteCreated: !!(r.created_by_centre && r.created_by_centre !== r.centre) };
-        }) });
+        // Names run alongside the counts (not instead of) so every portal's batch card can
+        // show who's actually in the batch, not just how many — added 2026-09-04, per
+        // instruction, for the counsellor/instructor/admin Batch Overview cards.
+        getActiveStudentNamesByBatch(function(studentNames) {
+          cb(null, { batches: (rows || []).map(function (r) {
+            var bc = (r.batch_code || '').trim().toUpperCase();
+            var sCount = studentCounts[bc] || 0;
+            return { batchCode: r.batch_code, centre: r.centre, course: r.course, type: r.type,
+              batchSlot: r.batch_slot, startDate: r.start_date, endDate: r.end_date,
+              counselor: r.counselor, counselorName: r.counselor, instructor: r.instructor,
+              coInstructor: r.co_instructor || '', coInstructorUntil: r.co_instructor_until || '',
+              coInstructorFrom: r.co_instructor_from || '',
+              createdAt: r.created_at,
+              status: r.is_active !== false ? 'Active' : 'Completed',
+              studentCount: sCount,
+              studentNames: studentNames[bc] || [],
+              createdByCentre: r.created_by_centre || '',
+              createdByCounselor: r.created_by_counselor || '',
+              confirmedBy: r.confirmed_by || '',
+              confirmedAt: r.confirmed_at || null,
+              remoteCreated: !!(r.created_by_centre && r.created_by_centre !== r.centre) };
+          }) });
+        });
       });
     }
 
@@ -6556,8 +6598,13 @@ window.gasGet = (function () {
       var pCounts = new Promise(function(resolve) {
         getActiveStudentCountsByBatch(resolve);
       });
+      // Names alongside counts (2026-09-04, per instruction: the admin Batch Snapshot
+      // should show who's in a batch, not just a count, matching counsellor/instructor).
+      var pNames = new Promise(function(resolve) {
+        getActiveStudentNamesByBatch(resolve);
+      });
 
-      var [batches, countByBatch] = await Promise.all([pBatches, pCounts]);
+      var [batches, countByBatch, namesByBatch] = await Promise.all([pBatches, pCounts, pNames]);
 
       var today = new Date();
       today.setHours(12, 0, 0, 0);
@@ -6593,7 +6640,8 @@ window.gasGet = (function () {
           active: isActive,
           status: batchStatus,
           weeksRunning: weeksRunning,
-          studentCount: countByBatch[String(b.batch_code).trim().toUpperCase()] || 0
+          studentCount: countByBatch[String(b.batch_code).trim().toUpperCase()] || 0,
+          studentNames: namesByBatch[String(b.batch_code).trim().toUpperCase()] || []
         };
       });
 

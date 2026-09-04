@@ -2014,6 +2014,83 @@ window.gasGet = (function () {
     });
   }
 
+  /* moveStudentToBatch — re-point a student's enrollment from one batch to another (e.g. he
+     missed the batch he was in entirely and needs to join the next intake of the same
+     course instead). Added 2026-09-04, per instruction (the "Abhinn Juneja didn't attend
+     his batch" case, but written generically for any student).
+
+     Deliberately narrow in scope: it updates the actual class-membership records
+     (enrollments + the student's primary batch_code) IN PLACE — no delete-then-recreate,
+     so a student's history/relationships aren't disturbed — but it does NOT touch
+     student_fees. Re-pointing a paid invoice's batch is a financially-sensitive save
+     that already goes through h_saveFee (revenue-month recalculation, installment
+     handling, existingRecordId update-in-place) — duplicating that logic here risks the
+     exact double-counting bug already found and fixed once for Koulika Mandal (see the
+     "Change batch" comment on the fee form in counselor.html). Instead this just reports
+     back whether a fee record under the old batch exists, so the counsellor can use the
+     fee form's own "Change batch" picker to move it — same underlying fix, right tool. */
+  function h_moveStudentToBatch(p, cb) {
+    var sid = String(p.studentId || p.enrollmentNo || '').trim();
+    var fromBatch = String(p.fromBatch || '').trim();
+    var toBatch = String(p.toBatch || '').trim();
+    if (!sid || !fromBatch || !toBatch) { cb(null, { status: 'error', reason: 'Missing student, source batch, or target batch.' }); return; }
+    if (fromBatch.toUpperCase() === toBatch.toUpperCase()) { cb(null, { status: 'error', reason: 'Source and target batch are the same.' }); return; }
+    var sidFilter = 'student_id=eq.' + encodeURIComponent(sid);
+
+    GET('batches', 'batch_code=eq.' + encodeURIComponent(toBatch) + '&limit=1', function(eB, toBatchRows) {
+      if (eB || !toBatchRows || !toBatchRows.length) { cb(null, { status: 'error', reason: 'Target batch ' + toBatch + ' was not found.' }); return; }
+      var toBatchInfo = toBatchRows[0];
+
+      // Move (or create) the enrollment row for this batch pair.
+      GET('enrollments', sidFilter + '&batch_code=eq.' + encodeURIComponent(fromBatch), function(eE, fromRows) {
+        function afterEnrollment(eEnroll) {
+          if (eEnroll) { cb(null, { status: 'error', reason: 'Could not update enrollment: ' + String(eEnroll) }); return; }
+
+          // Keep students.batch_code (the "primary" batch shown across the app) in sync —
+          // only when it currently points at the batch being moved, so a student enrolled
+          // in more than one batch at once doesn't have an unrelated primary batch clobbered.
+          GET('students', sidFilter + '&limit=1', function(eS, sRows) {
+            var student = sRows && sRows[0];
+            var primaryBatch = String((student && student.batch_code) || '').trim().toUpperCase();
+            function afterPrimary() {
+              // Informational checks — never block the move, just tell the counsellor what
+              // else may need attention.
+              GET('attendance_feedback', sidFilter + '&batch_code=eq.' + encodeURIComponent(fromBatch) + '&select=id&limit=1', function(eA, attRows) {
+                var hadAttendance = !!(attRows && attRows.length);
+                GET('student_fees', sidFilter + '&batch_code=eq.' + encodeURIComponent(fromBatch) + '&select=id&limit=1', function(eF, feeRows) {
+                  var hasFeeRecord = !!(feeRows && feeRows.length);
+                  cb(null, {
+                    status: 'ok',
+                    hadAttendance: hadAttendance,
+                    hasFeeRecord: hasFeeRecord,
+                    toBatchCentre: toBatchInfo.centre || '',
+                    toBatchCourse: toBatchInfo.course || ''
+                  });
+                });
+              });
+            }
+            if (student && primaryBatch === fromBatch.toUpperCase()) {
+              PATCH('students', sidFilter, { batch_code: toBatch }, function(eP) {
+                if (eP) { cb(null, { status: 'error', reason: 'Enrollment moved, but could not update the student\'s primary batch: ' + String(eP) }); return; }
+                afterPrimary();
+              });
+            } else {
+              afterPrimary();
+            }
+          });
+        }
+
+        if (fromRows && fromRows.length) {
+          PATCH('enrollments', sidFilter + '&batch_code=eq.' + encodeURIComponent(fromBatch), { batch_code: toBatch, status: 'Active' }, afterEnrollment);
+        } else {
+          // No enrollment row existed for the "from" batch (e.g. an older student only ever
+          // linked via students.batch_code directly) — create the new one instead.
+          POST('enrollments', 'on_conflict=student_id,batch_code', { student_id: sid, batch_code: toBatch, status: 'Active' }, afterEnrollment);
+        }
+      });
+    });
+  }
+
   /* updateStudentInfo — edit name, student_id (old→new), mobile, mobile_last4, email */
   function h_updateStudentInfo(p, cb) {
     var oldId = String(p.oldEnrollmentNo || p.enrollmentNo || '').trim().toUpperCase();
@@ -11310,6 +11387,7 @@ window.gasGet = (function () {
       case 'getNextEnrollment':         return h_getNextEnroll(params, cb);
       case 'addStudent':                return h_addStudent(params, cb);
       case 'removeStudent':             return h_removeStudent(params, cb);
+      case 'moveStudentToBatch':        return h_moveStudentToBatch(params, cb);
       case 'resendStudentWelcomeEmail': return h_resendEmail(params, cb);
       case 'getStudentProfile':         return h_studentProfile(params, cb);
       case 'getStudentAlumni':          return h_alumni(params, cb);

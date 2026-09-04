@@ -8513,7 +8513,7 @@ function renderStudentTable(batch, query) {
       '<td><strong>' + escC(s.name) + '</strong><div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--muted)">' + escC(s.enrollmentNo) + idFlag + '</div></td>' +
       '<td><span class="badge badge-amber">Last 4: ' + escC(s.mobileLast4 || s.dob || '') + '</span></td>' +
       '<td><span class="badge ' + (String(emailLabel).indexOf('failed') >= 0 ? 'badge-red' : 'badge-green') + '">' + escC(emailLabel) + '</span></td>' +
-      '<td><div class="student-actions"><button class="del-btn" title="Edit student info" onclick="openStudentEditModal(\'' + escC(s.enrollmentNo) + '\',\'' + escC(s.name) + '\',\'' + escC(s.mobileLast4 || s.dob || '') + '\',\'' + escC(batch) + '\')">✏️ Edit</button><button class="del-btn" title="Resend welcome email" onclick="resendWelcomeEmail(\'' + escC(s.enrollmentNo) + '\',\'' + escC(batch) + '\')">Email</button><button class="del-btn" title="Move to a different batch (e.g. didn\'t attend this one, joining the next intake instead)" onclick="openMoveStudentModal(\'' + escC(s.enrollmentNo) + '\',\'' + escC(s.name) + '\',\'' + escC(batch) + '\')">🔀 Move</button><button class="del-btn danger" onclick="removeStudent(\'' + escC(s.enrollmentNo) + '\',\'' + escC(batch) + '\')">Remove</button></div></td>' +
+      '<td><div class="student-actions"><button class="del-btn" title="Edit student info" onclick="openStudentEditModal(\'' + escC(s.enrollmentNo) + '\',\'' + escC(s.name) + '\',\'' + escC(s.mobileLast4 || s.dob || '') + '\',\'' + escC(batch) + '\')">✏️ Edit</button><button class="del-btn" title="Resend welcome email" onclick="resendWelcomeEmail(\'' + escC(s.enrollmentNo) + '\',\'' + escC(batch) + '\')">Email</button><button class="del-btn" title="Request to move to a different batch — needs a reason and HOD approval" onclick="openMoveStudentModal(\'' + escC(s.enrollmentNo) + '\',\'' + escC(s.name) + '\',\'' + escC(batch) + '\')">🔀 Move</button><button class="del-btn danger" onclick="removeStudent(\'' + escC(s.enrollmentNo) + '\',\'' + escC(batch) + '\')">Remove</button></div></td>' +
     '</tr>';
   }).join('');
   html += '</tbody></table>';
@@ -8776,15 +8776,20 @@ function closeStudentEditModal() {
 
 // ── Move Student to Another Batch ───────────────────────────────────────────
 // Handles the "didn't attend this batch, joining the next one instead" case (and any
-// other reason a student needs to move) — updates their enrollment + primary batch in
-// place via moveStudentToBatch. Deliberately does NOT touch fee records; see the comment
-// on h_moveStudentToBatch in shared.js for why that's a separate, deliberate step.
+// other reason a student needs to move). This submits a REQUEST, not an immediate move —
+// added 2026-09-04 after the Abhinn Juneja case showed an instant self-service move was
+// too loose (he'd actually attended 13 sessions and paid in full — not the no-show the
+// request assumed). An HOD now reviews every move (with a reason attached) on the same
+// Pending Approvals queue diploma overrides use, via submitBatchMoveRequest; the actual
+// enrollment change only happens if/when they approve it.
 function openMoveStudentModal(enrollmentNo, name, fromBatch) {
   document.getElementById('mv-enrollment-no').value = enrollmentNo;
   document.getElementById('mv-from-batch-code').value = fromBatch;
   document.getElementById('mv-student-name').textContent = name || enrollmentNo;
   document.getElementById('mv-student-id').textContent = enrollmentNo;
   document.getElementById('mv-from-batch').textContent = fromBatch;
+  var reasonEl = document.getElementById('mv-reason');
+  if (reasonEl) reasonEl.value = '';
   var errEl = document.getElementById('mv-err');
   if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
   var noteEl = document.getElementById('mv-note');
@@ -8818,38 +8823,38 @@ function closeMoveStudentModal() {
 
 function saveMoveStudent() {
   var enrollmentNo = document.getElementById('mv-enrollment-no').value;
+  var studentName = document.getElementById('mv-student-name').textContent || enrollmentNo;
   var fromBatch = document.getElementById('mv-from-batch-code').value;
   var toBatch = document.getElementById('mv-to-batch').value;
+  var reason = (document.getElementById('mv-reason').value || '').trim();
   var errEl = document.getElementById('mv-err');
   if (!toBatch) { errEl.textContent = 'Pick the batch to move to.'; errEl.style.display = 'block'; return; }
+  if (!reason) { errEl.textContent = 'Please give a reason for the move — the HOD reviewing it will need context.'; errEl.style.display = 'block'; return; }
   errEl.style.display = 'none';
 
   var btn = document.getElementById('mv-save-btn');
-  btn.disabled = true; btn.textContent = 'Moving…';
+  btn.disabled = true; btn.textContent = 'Submitting…';
 
-  gasGet({ action: 'moveStudentToBatch', studentId: enrollmentNo, fromBatch: fromBatch, toBatch: toBatch }, function(e, d) {
-    btn.disabled = false; btn.textContent = 'Move Student';
+  var toBatchInfo = allBatches && allBatches.find(function(b) { return b.batchCode === toBatch; });
+
+  gasGet({
+    action: 'submitBatchMoveRequest',
+    studentId: enrollmentNo,
+    studentName: studentName,
+    fromBatch: fromBatch,
+    toBatch: toBatch,
+    reason: reason,
+    counselorName: counselorName || 'Counselor',
+    centre: (toBatchInfo && toBatchInfo.centre) || ''
+  }, function(e, d) {
+    btn.disabled = false; btn.textContent = 'Submit for HOD Approval';
     if (e || !d || d.status !== 'ok') {
-      errEl.textContent = (d && d.reason) || 'Could not move student. Please try again.';
+      errEl.textContent = (d && d.reason) || 'Could not submit the request. Please try again.';
       errEl.style.display = 'block';
       return;
     }
-    var notes = [];
-    if (d.hasFeeRecord) notes.push('This student has a fee/invoice record under ' + fromBatch + ' — open their fee record and use "Change batch" to point it to ' + toBatch + ' too, so revenue and invoicing stay correct.');
-    if (d.hadAttendance) notes.push('Heads up: attendance was already recorded for them in ' + fromBatch + ' — that history stays under ' + fromBatch + ' and won\'t follow them to ' + toBatch + '.');
-    if (notes.length) {
-      var noteEl = document.getElementById('mv-note');
-      noteEl.textContent = notes.join(' ');
-      noteEl.style.display = 'block';
-      showToast('Moved to ' + toBatch + '. Please review the note below before closing.', 'success');
-      // Refresh the (old) batch's roster in the background so it reflects the move, but
-      // leave the modal open so the counsellor sees the fee/attendance note first.
-      if (typeof counselorStudentsByBatch !== 'undefined') delete counselorStudentsByBatch[fromBatch];
-      return;
-    }
-    showToast('Moved ' + (document.getElementById('mv-student-name').textContent || enrollmentNo) + ' to ' + toBatch + '.', 'success');
+    showToast('Move request for ' + studentName + ' (→ ' + toBatch + ') submitted for HOD approval.', 'success');
     closeMoveStudentModal();
-    renderStudentList(fromBatch);
   });
 }
 
@@ -23932,13 +23937,17 @@ function enrollSave() {
       <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Move to</label>
       <select id="mv-to-batch" style="width:100%"><option value="">Loading batches…</option></select>
     </div>
+    <div class="field" style="margin-bottom:14px">
+      <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Reason for the move</label>
+      <textarea id="mv-reason" rows="2" style="width:100%;resize:vertical" placeholder="e.g. Missed this batch entirely, joining the next intake instead"></textarea>
+    </div>
     <div style="font-size:11.5px;color:var(--muted);margin-bottom:14px;line-height:1.5">
-      This updates their enrollment and primary batch in place — same student record, no duplicate created. It does not touch any existing fee/invoice record; if they have one under the old batch, you'll be reminded to re-point it separately using the "Change batch" option on that fee record.
+      This submits a request to move them — it doesn't happen immediately. An HOD reviews it (along with their actual attendance and fee status) and approves or rejects before anything changes, the same way diploma eligibility overrides work.
     </div>
     <div id="mv-err" class="err-box" style="display:none;margin-bottom:10px"></div>
     <div id="mv-note" style="display:none;font-size:12px;background:var(--gold-pale);border:1px solid var(--gold);border-radius:8px;padding:10px 12px;margin-bottom:12px;color:#8A6600"></div>
     <div style="display:flex;gap:8px">
-      <button class="btn" id="mv-save-btn" onclick="saveMoveStudent()">Move Student</button>
+      <button class="btn" id="mv-save-btn" onclick="saveMoveStudent()">Submit for HOD Approval</button>
       <button class="btn btn-outline" onclick="closeMoveStudentModal()">Cancel</button>
     </div>
   </div>

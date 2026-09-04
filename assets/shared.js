@@ -2029,22 +2029,28 @@ window.gasGet = (function () {
      "Change batch" comment on the fee form in counselor.html). Instead this just reports
      back whether a fee record under the old batch exists, so the counsellor can use the
      fee form's own "Change batch" picker to move it — same underlying fix, right tool. */
-  function h_moveStudentToBatch(p, cb) {
-    var sid = String(p.studentId || p.enrollmentNo || '').trim();
-    var fromBatch = String(p.fromBatch || '').trim();
-    var toBatch = String(p.toBatch || '').trim();
-    if (!sid || !fromBatch || !toBatch) { cb(null, { status: 'error', reason: 'Missing student, source batch, or target batch.' }); return; }
-    if (fromBatch.toUpperCase() === toBatch.toUpperCase()) { cb(null, { status: 'error', reason: 'Source and target batch are the same.' }); return; }
+  // The actual data mutation, factored out so it can run from two different triggers:
+  // h_moveStudentToBatch (a direct call, kept for internal/admin use) and
+  // h_reviewHODApproval (the real front door — see 2026-09-04 note on
+  // h_submitBatchMoveRequest below: moves now require a reason + HOD approval, so this
+  // only actually runs once an HOD approves the request, never on the counsellor's
+  // original submission).
+  function doMoveStudentToBatch(sid, fromBatch, toBatch, cb) {
+    sid = String(sid || '').trim();
+    fromBatch = String(fromBatch || '').trim();
+    toBatch = String(toBatch || '').trim();
+    if (!sid || !fromBatch || !toBatch) { cb({ status: 'error', reason: 'Missing student, source batch, or target batch.' }); return; }
+    if (fromBatch.toUpperCase() === toBatch.toUpperCase()) { cb({ status: 'error', reason: 'Source and target batch are the same.' }); return; }
     var sidFilter = 'student_id=eq.' + encodeURIComponent(sid);
 
     GET('batches', 'batch_code=eq.' + encodeURIComponent(toBatch) + '&limit=1', function(eB, toBatchRows) {
-      if (eB || !toBatchRows || !toBatchRows.length) { cb(null, { status: 'error', reason: 'Target batch ' + toBatch + ' was not found.' }); return; }
+      if (eB || !toBatchRows || !toBatchRows.length) { cb({ status: 'error', reason: 'Target batch ' + toBatch + ' was not found.' }); return; }
       var toBatchInfo = toBatchRows[0];
 
       // Move (or create) the enrollment row for this batch pair.
       GET('enrollments', sidFilter + '&batch_code=eq.' + encodeURIComponent(fromBatch), function(eE, fromRows) {
         function afterEnrollment(eEnroll) {
-          if (eEnroll) { cb(null, { status: 'error', reason: 'Could not update enrollment: ' + String(eEnroll) }); return; }
+          if (eEnroll) { cb({ status: 'error', reason: 'Could not update enrollment: ' + String(eEnroll) }); return; }
 
           // Keep students.batch_code (the "primary" batch shown across the app) in sync —
           // only when it currently points at the batch being moved, so a student enrolled
@@ -2059,7 +2065,7 @@ window.gasGet = (function () {
                 var hadAttendance = !!(attRows && attRows.length);
                 GET('student_fees', sidFilter + '&batch_code=eq.' + encodeURIComponent(fromBatch) + '&select=id&limit=1', function(eF, feeRows) {
                   var hasFeeRecord = !!(feeRows && feeRows.length);
-                  cb(null, {
+                  cb({
                     status: 'ok',
                     hadAttendance: hadAttendance,
                     hasFeeRecord: hasFeeRecord,
@@ -2071,7 +2077,7 @@ window.gasGet = (function () {
             }
             if (student && primaryBatch === fromBatch.toUpperCase()) {
               PATCH('students', sidFilter, { batch_code: toBatch }, function(eP) {
-                if (eP) { cb(null, { status: 'error', reason: 'Enrollment moved, but could not update the student\'s primary batch: ' + String(eP) }); return; }
+                if (eP) { cb({ status: 'error', reason: 'Enrollment moved, but could not update the student\'s primary batch: ' + String(eP) }); return; }
                 afterPrimary();
               });
             } else {
@@ -2088,6 +2094,59 @@ window.gasGet = (function () {
           POST('enrollments', 'on_conflict=student_id,batch_code', { student_id: sid, batch_code: toBatch, status: 'Active' }, afterEnrollment);
         }
       });
+    });
+  }
+
+  function h_moveStudentToBatch(p, cb) {
+    doMoveStudentToBatch(p.studentId || p.enrollmentNo, p.fromBatch, p.toBatch, function(result) {
+      cb(null, result);
+    });
+  }
+
+  /* submitBatchMoveRequest — the counsellor-facing front door for moving a student
+     between batches. Added 2026-09-04, per instruction: an earlier version of this
+     feature let a counsellor move a student immediately, no questions asked — the
+     Abhinn Juneja case showed why that's too loose (he actually attended 13 sessions
+     and had a fully-paid invoice, not a no-show, so an instant self-service move would
+     have silently pulled a substantially-completed student out of his batch). This
+     version requires a reason and routes through the same hod_approvals queue/review UI
+     Diploma overrides already use — the move itself only actually happens in
+     h_reviewHODApproval, once an HOD approves it. */
+  function h_submitBatchMoveRequest(p, cb) {
+    var sid = String(p.studentId || '').trim();
+    var fromBatch = String(p.fromBatch || '').trim();
+    var toBatch = String(p.toBatch || '').trim();
+    var reason = String(p.reason || '').trim();
+    if (!sid || !fromBatch || !toBatch) { cb(null, { status: 'error', reason: 'Missing student, source batch, or target batch.' }); return; }
+    if (fromBatch.toUpperCase() === toBatch.toUpperCase()) { cb(null, { status: 'error', reason: 'Source and target batch are the same.' }); return; }
+    if (!reason) { cb(null, { status: 'error', reason: 'Please give a reason for the move.' }); return; }
+
+    var refCode = fromBatch + '-MOVE-' + sid;
+    var notesVal = JSON.stringify({
+      student_id: sid,
+      student_name: p.studentName || '',
+      from_batch: fromBatch,
+      to_batch: toBatch,
+      reason: reason
+    });
+    GET('hod_approvals', 'ref_code=eq.' + encodeURIComponent(refCode) + '&status=eq.Pending', function(err, rows) {
+      if (!err && rows && rows.length) {
+        PATCH('hod_approvals', 'id=eq.' + encodeURIComponent(rows[0].id), {
+          centre: p.centre || '',
+          requested_by: p.counselorName || '',
+          created_at: nowISO(),
+          notes: notesVal
+        }, function(e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
+      } else {
+        POST('hod_approvals', null, {
+          type: 'BatchMove',
+          ref_code: refCode,
+          centre: p.centre || '',
+          requested_by: p.counselorName || '',
+          status: 'Pending',
+          notes: notesVal
+        }, function(e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
+      }
     });
   }
 
@@ -4932,38 +4991,53 @@ window.gasGet = (function () {
     GET('hod_approvals', 'order=created_at.desc', function(e, rows) {
       if (e) { cb(null, { status: 'error', list: [] }); return; }
       var list = (rows || []).map(function(r) {
+        var type = r.type || 'Diploma';
         var studentId = '';
         var batchCode = '';
         var studentName = '';
         var weeklyAvg = '';
         var finalExam = '';
-        
+        var fromBatch = '';
+        var toBatch = '';
+        var reason = '';
+
         if (r.notes) {
           try {
             var n = JSON.parse(r.notes);
             studentId = n.student_id || '';
-            batchCode = n.batch_code || '';
             studentName = n.student_name || '';
-            weeklyAvg = n.weekly_avg || '';
-            finalExam = n.final_exam || '';
+            if (type === 'BatchMove') {
+              fromBatch = n.from_batch || '';
+              toBatch = n.to_batch || '';
+              reason = n.reason || '';
+              batchCode = fromBatch; // so anything still reading the generic batchCode field gets something sensible
+            } else {
+              batchCode = n.batch_code || '';
+              weeklyAvg = n.weekly_avg || '';
+              finalExam = n.final_exam || '';
+            }
           } catch(err) {}
         }
-        
-        if (!studentId && r.ref_code) {
+
+        if (!studentId && type !== 'BatchMove' && r.ref_code) {
           var parts = r.ref_code.split('-HOD-');
           if (parts.length === 2) {
             batchCode = parts[0];
             studentId = parts[1];
           }
         }
-        
+
         return {
           approvalId: r.id,
+          type: type,
           studentId: studentId,
           batchCode: batchCode,
           studentName: studentName || ('Student ' + studentId),
           weeklyAvg: weeklyAvg,
           finalExam: finalExam,
+          fromBatch: fromBatch,
+          toBatch: toBatch,
+          reason: reason,
           requestedBy: r.requested_by,
           requestedAt: r.created_at,
           status: r.status,
@@ -4984,24 +5058,52 @@ window.gasGet = (function () {
     GET('hod_approvals', 'id=eq.' + encodeURIComponent(appId), function(err, rows) {
       if (err || !rows || !rows.length) { cb(null, { status: 'error', reason: 'request_not_found' }); return; }
       var row = rows[0];
-      var notesVal = row.notes || '';
-      try {
-        var n = JSON.parse(notesVal);
-        n.review_note = p.note || '';
-        n.actioned_by = p.adminName || 'Admin';
-        notesVal = JSON.stringify(n);
-      } catch(e) {
-        notesVal = (notesVal ? notesVal + ' | ' : '') + (p.note || '');
+      var parsedNotes = {};
+      try { parsedNotes = JSON.parse(row.notes || '{}'); } catch(e) { parsedNotes = {}; }
+
+      function finalizeApproval(moveResult) {
+        parsedNotes.review_note = p.note || '';
+        parsedNotes.actioned_by = p.adminName || 'Admin';
+        if (moveResult) parsedNotes.move_result = moveResult;
+        var notesVal;
+        try { notesVal = JSON.stringify(parsedNotes); } catch(e2) { notesVal = row.notes || ''; }
+
+        PATCH('hod_approvals', 'id=eq.' + encodeURIComponent(appId), {
+          status: status,
+          actioned_by: p.adminName || 'Admin',
+          actioned_at: nowISO(),
+          notes: notesVal
+        }, function(e) {
+          if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+          var out = { status: 'ok' };
+          if (moveResult) {
+            out.hadAttendance = moveResult.hadAttendance;
+            out.hasFeeRecord = moveResult.hasFeeRecord;
+          }
+          cb(null, out);
+        });
       }
-      
-      PATCH('hod_approvals', 'id=eq.' + encodeURIComponent(appId), {
-        status: status,
-        actioned_by: p.adminName || 'Admin',
-        actioned_at: nowISO(),
-        notes: notesVal
-      }, function(e) {
-        cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
-      });
+
+      // A "BatchMove" request is the one type where approving it has a real side effect
+      // beyond the approval record itself — the student's enrollment only actually moves
+      // HERE, on approval, never when the counsellor first submitted the request (see
+      // h_submitBatchMoveRequest). Run the move first and only mark the request Approved
+      // if it actually succeeds, so a failed move never leaves a false "approved" trail —
+      // the request stays Pending and the HOD can retry.
+      if (status === 'Approved' && row.type === 'BatchMove') {
+        var sid = parsedNotes.student_id, fromBatch = parsedNotes.from_batch, toBatch = parsedNotes.to_batch;
+        if (!sid || !fromBatch || !toBatch) { cb(null, { status: 'error', reason: 'This request is missing student/batch details and can\'t be applied.' }); return; }
+        doMoveStudentToBatch(sid, fromBatch, toBatch, function(moveResult) {
+          if (!moveResult || moveResult.status !== 'ok') {
+            cb(null, { status: 'error', reason: (moveResult && moveResult.reason) || 'Could not move the student.' });
+            return;
+          }
+          finalizeApproval(moveResult);
+        });
+        return;
+      }
+
+      finalizeApproval(null);
     });
   }
 
@@ -11388,6 +11490,7 @@ window.gasGet = (function () {
       case 'addStudent':                return h_addStudent(params, cb);
       case 'removeStudent':             return h_removeStudent(params, cb);
       case 'moveStudentToBatch':        return h_moveStudentToBatch(params, cb);
+      case 'submitBatchMoveRequest':    return h_submitBatchMoveRequest(params, cb);
       case 'resendStudentWelcomeEmail': return h_resendEmail(params, cb);
       case 'getStudentProfile':         return h_studentProfile(params, cb);
       case 'getStudentAlumni':          return h_alumni(params, cb);

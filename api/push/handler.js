@@ -24,7 +24,9 @@ const PORTAL_URLS = {
   student: '/student',
   counselor: '/counselor',
   instructor: '/instructor-portal',
+  admin: '/admin.html',   // added 2026-09-08 so managers get Work-dashboard pushes on the admin portal
 };
+const PORTALS = ['student', 'counselor', 'instructor', 'admin'];
 
 function configureWebPush() {
   const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT } = process.env;
@@ -44,6 +46,19 @@ async function fetchSubscriptions(portal, userKey) {
   return r.json();
 }
 
+// All of one person's subscriptions regardless of which portal registered them
+// (a manager may have the admin portal on the laptop and the counselor PWA on the phone).
+// De-duplicated by endpoint so one device never gets the same notification twice.
+async function fetchSubscriptionsAllPortals(userKey) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/push_subscriptions?user_key=eq.${encodeURIComponent(userKey)}&select=*`, {
+    headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` },
+  });
+  if (!r.ok) throw new Error(`fetch subs ${r.status}`);
+  const rows = await r.json();
+  const seen = new Set();
+  return rows.filter((s) => (seen.has(s.endpoint) ? false : (seen.add(s.endpoint), true)));
+}
+
 async function deleteSubscriptionByEndpoint(endpoint) {
   return fetch(`${SUPA_URL}/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(endpoint)}`, {
     method: 'DELETE',
@@ -55,8 +70,8 @@ async function deleteSubscriptionByEndpoint(endpoint) {
 
 // ── Shared fan-out: send one payload to every subscription for (portal, userKey) ──
 // Returns { targeted, sent, pruned, errors }. Used by handleSend and handleTaskNotify.
-async function pushTo(portal, userKey, payloadObj) {
-  const subs = await fetchSubscriptions(portal, userKey);
+async function pushTo(portal, userKey, payloadObj, subsOverride) {
+  const subs = subsOverride || await fetchSubscriptions(portal, userKey);
   const payload = JSON.stringify(payloadObj);
   let sent = 0, pruned = 0;
   const errors = [];
@@ -93,7 +108,7 @@ async function handleSend(req, res) {
   }
 
   const { portal, userKey, title, body, url, tag } = req.body || {};
-  if (!['student', 'counselor', 'instructor'].includes(portal)) {
+  if (!PORTALS.includes(portal)) {
     return res.status(400).json({ status: 'error', reason: 'Invalid portal' });
   }
   if (!title || !body) {
@@ -126,7 +141,7 @@ async function handleSubscribe(req, res) {
 
   const { portal, userKey, subscription } = req.body || {};
 
-  if (!['student', 'counselor', 'instructor'].includes(portal)) {
+  if (!PORTALS.includes(portal)) {
     return res.status(400).json({ status: 'error', reason: 'Invalid portal' });
   }
   if (!userKey || typeof userKey !== 'string') {
@@ -207,7 +222,7 @@ async function handleUnsubscribe(req, res) {
 //   body: { taskId, kind: 'assigned' | 'status' | 'comment', actor, note? }
 // Recipients: 'assigned' -> the assignee; 'status'/'comment' -> assignee + assigner,
 // minus whoever performed the action.
-const WORK_PORTAL_BY_ROLE = { Instructor: 'instructor', AcademicHead: 'instructor' };
+const WORK_PORTAL_BY_ROLE = { Instructor: 'instructor', AcademicHead: 'instructor', Admin: 'admin', Manager: 'admin', RevenueManager: 'admin' };
 
 async function supaGet(path) {
   const r = await fetch(`${SUPA_URL}/rest/v1/${path}`, {
@@ -272,15 +287,18 @@ async function handleTaskNotify(req, res) {
     users.forEach((u) => { roleByName[u.name] = u.role; });
   } catch (_e) { /* fall back to counselor portal */ }
 
+  // Deliver to every device the person has registered on ANY portal; the click-through
+  // URL is picked from their primary role (managers land on the admin portal's Work tab).
   const results = [];
   for (const name of recipients) {
     const portal = WORK_PORTAL_BY_ROLE[roleByName[name]] || 'counselor';
     try {
+      const subs = await fetchSubscriptionsAllPortals(name);
       const out = await pushTo(portal, name, {
         title, body,
         url: `${PORTAL_URLS[portal]}?work=${task.id}`,
         tag: `work-${task.id}`,
-      });
+      }, subs);
       results.push({ name, portal, ...out });
     } catch (e) {
       results.push({ name, portal, error: e.message });

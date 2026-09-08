@@ -6,6 +6,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="/assets/shared.js?v=75"></script>
 <script src="/assets/push-subscribe.js"></script>
+<script src="/assets/work.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style id="dyn-css"></style>
 <style>
@@ -410,6 +411,7 @@
     <button class="tab" id="t-onlinetests-tab" style="display:none" onclick="iTab('t-onlinetests')">🧪 Online Tests</button>
     <button class="tab" id="t-assignments-tab" style="display:none" onclick="iTab('t-assignments')">📁 Assignments<span id="assignments-notif-badge" style="display:none;background:#dc2626;color:#fff;font-size:9px;padding:1px 5px;border-radius:10px;margin-left:5px;font-weight:700;"></span></button>
     <button class="tab" id="t-portfolios-tab" style="display:none" onclick="iTab('t-portfolios')">🎨 Portfolios<span id="portfolios-notif-badge" style="display:none;background:#dc2626;color:#fff;font-size:9px;padding:1px 5px;border-radius:10px;margin-left:5px;font-weight:700;"></span></button>
+    <button class="tab" id="t-work-tab" onclick="iTab('t-work')">🧩 Work <span id="work-badge" style="display:none;background:#2563eb;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="t-trayhub-tab" onclick="iTab('t-trayhub'); trayHubInit();">🔮 Tray Hub<span id="tray-notif-badge" style="display:none;background:#dc2626;color:#fff;font-size:9px;padding:1px 5px;border-radius:10px;margin-left:5px;font-weight:700;"></span></button>
   </div>
 
@@ -1931,6 +1933,14 @@
   <!-- ══════════════════════════════════════════════════════════════ -->
   <!-- TAB: TRAY HUB                                                  -->
   <!-- ══════════════════════════════════════════════════════════════ -->
+
+  <!-- ═══ WORK ASSIGNMENT DASHBOARD (Slack-style teams + tasks + live feed) ═══
+       Shared UI mounted via IGIWork.mount, see assets/work.js. Data lives in
+       work_teams / work_team_members / work_tasks / work_task_events
+       (supabase/migrations/migration_work_assignments.sql). 2026-09-08. -->
+  <div id="t-work" class="tab-content">
+    <div id="work-mount"></div>
+  </div>
   <div id="t-trayhub" class="tab-content">
   <style>
     /* ── Tray Hub Styles ── */
@@ -2902,6 +2912,8 @@ function saveSession() {
     }));
   } catch(e) {}
   if (window.IGIPush) window.IGIPush.subscribe('instructor', instructorName);
+  refreshWorkBadge();
+  if (/[?&]work=/.test(location.search)) setTimeout(function(){ iTab('t-work'); }, 300);
 }
 function clearSession() {
   try { localStorage.removeItem('igi_instr_session'); } catch(e) {}
@@ -2941,6 +2953,20 @@ function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
 }
+/* ── Work Assignment Dashboard (assets/work.js) ───────────────────────────── */
+function mountWorkTab() {
+  if (!window.IGIWork || !instructorName) return;
+  var canManage = !!(isAcademicHead || isRevenueManager || instructorAuthRole === 'Admin' || instructorAuthRole === 'Manager');
+  var centres = (managerCentres && managerCentres.length) ? managerCentres : (dualCentres || []);
+  window.IGIWork.mount('work-mount', { me: instructorName, portal: 'instructor', canManage: canManage, centres: centres });
+}
+function refreshWorkBadge() {
+  if (!window.IGIWork || !instructorName) return;
+  window.IGIWork.openCount(instructorName, function (n, overdue) {
+    var b = document.getElementById('work-badge'); if (!b) return;
+    b.textContent = n; b.style.display = n ? '' : 'none'; b.style.background = overdue ? '#dc2626' : '#2563eb';
+  });
+}
 function iTab(id) {
   if (id === 't-portfolios') {
     if (!instructorName || !instructorName.toLowerCase().includes('sneha')) {
@@ -2973,6 +2999,7 @@ function iTab(id) {
   if (id==='t-attendance') { stopAttendanceRefresh(); if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-marks')      { if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-resources')  { syncResourcesBatchSelect(); }
+  if (id==='t-work')       { mountWorkTab(); }
   if (id==='t-diamondcalc') {
     var dcRoot = document.getElementById('instr-diamond-calc');
     if (dcRoot && !dcRoot.dataset.mounted && typeof DiamondCalc !== 'undefined') {
@@ -3021,6 +3048,7 @@ function renderInstructorMoreSheet() {
   if (!wrap) return;
   // [label, icon, tabId, gateTabButtonId or null if always visible, badgeElId or null]
   var items = [
+    ['Work', '🧩', 't-work', null, 'work-badge'],
     ['Resources', '📚', 't-resources', null, null],
     ['Diamond Calculator', '🧮', 't-diamondcalc', null, null],
     ['Glossary', '📖', 't-glossary', null, null],

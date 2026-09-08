@@ -6,6 +6,7 @@
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="assets/shared.js?v=89"></script>
+<script src="assets/work.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
@@ -1472,6 +1473,7 @@
       <button class="tab" onclick="switchAdminTab('t-trayhub-admin'); adminTrayHubInit();">🔮 Tray Hub</button>
       <button class="tab" id="tab-hod-approvals" onclick="switchAdminTab('t-hod-approvals');">👑 HOD Approvals</button>
       <button class="tab" onclick="switchAdminTab('t-inventory'); adminInitInventory();">📦 Inventory</button>
+      <button class="tab" id="tab-work" onclick="switchAdminTab('t-work')">🧩 Work <span id="work-badge" style="display:none;background:#2563eb;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
       <button class="tab" id="tab-activity" onclick="switchAdminTab('t-activity')">🔔 Activity <span id="activity-badge" style="display:none;background:#e53935;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;vertical-align:middle">0</span></button>
     </div>
 
@@ -4053,6 +4055,14 @@
     </div>
 
     <!-- TAB: ACTIVITY FEED -->
+
+    <!-- ═══ WORK ASSIGNMENT DASHBOARD (Slack-style teams + tasks + live feed) ═══
+         Shared UI mounted via IGIWork.mount, see assets/work.js. Data lives in
+         work_teams / work_team_members / work_tasks / work_task_events
+         (supabase/migrations/migration_work_assignments.sql). 2026-09-08. -->
+    <div id="t-work" class="tab-content">
+      <div id="work-mount"></div>
+    </div>
     <div id="t-activity" class="tab-content">
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">
@@ -4847,6 +4857,14 @@ function switchAdminTab(tabId) {
   
   const targetTab = document.getElementById(tabId);
   if (targetTab) targetTab.classList.add('active');
+
+  // Work Assignment Dashboard (assets/work.js) — admins/managers always get full team management
+  if (tabId === 't-work') {
+    if (window.IGIWork && adminUser) {
+      window.IGIWork.mount('work-mount', { me: adminUser.name, portal: 'admin', canManage: true, centres: adminUser.centres || [] });
+    }
+    return;
+  }
   
   // Historical tab uses only static data — no GAS fetch needed
   if (tabId === 't-history') {

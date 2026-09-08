@@ -6,6 +6,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="/assets/shared.js?v=88"></script>
 <script src="/assets/push-subscribe.js"></script>
+<script src="/assets/work.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -1833,6 +1834,7 @@
     <button class="tab" id="tab-holidays" onclick="switchTab('t-holidays')">🗓 Holidays</button>
     <button class="tab" id="tab-diplomas" onclick="switchTab('t-diplomas')" style="display:none">🎓 Diploma Release</button>
     <button class="tab" id="tab-inventory" onclick="switchTab('t-inventory')">📦 Inventory <span id="inv-pending-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
+    <button class="tab" id="tab-work" onclick="switchTab('t-work')">🧩 Work <span id="work-badge" style="display:none;background:#2563eb;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-attendance" onclick="switchTab('t-attendance')">✅ Attendance <span id="att-pending-badge" style="display:none;background:#d97706;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-customize-order" onclick="openTabOrderModal()" style="margin-left:auto;background:transparent;color:var(--muted);border:1px dashed var(--border)" title="Reorder these tabs to your own preference">⚙️ Reorder Tabs</button>
   </div>
@@ -5135,6 +5137,14 @@
     </div>
 
   <!-- TAB: ATTENDANCE -->
+
+  <!-- ═══ WORK ASSIGNMENT DASHBOARD (Slack-style teams + tasks + live feed) ═══
+       Shared UI mounted via IGIWork.mount, see assets/work.js. Data lives in
+       work_teams / work_team_members / work_tasks / work_task_events
+       (supabase/migrations/migration_work_assignments.sql). 2026-09-08. -->
+  <div id="t-work" class="tab-content">
+    <div id="work-mount"></div>
+  </div>
   <div id="t-attendance" class="tab-content">
     <div class="card">
       <div class="section-tag">Attendance Management</div>
@@ -5712,6 +5722,8 @@ function doLogin() {
       }));
     } catch(ex) {}
     if (window.IGIPush) window.IGIPush.subscribe('counselor', counselorName);
+    refreshWorkBadge();
+    if (/[?&]work=/.test(location.search)) setTimeout(function(){ switchTab('t-work'); }, 300);
     // Update header
     document.getElementById('counselor-name-badge').textContent = counselorName;
     document.getElementById('counselor-name-badge').style.display = 'inline-block';
@@ -6072,6 +6084,21 @@ function toggleBannerList(listId, chevEl) {
   if (chevEl) chevEl.textContent = isHidden ? '▾' : '▸';
 }
 
+/* ── Work Assignment Dashboard (assets/work.js) ─────────────────────────────
+   Mounted lazily the first time the Work tab opens; the badge on the tab is
+   refreshed on login so counselors see pending work without opening the tab. */
+function mountWorkTab() {
+  if (!window.IGIWork || !counselorName) return;
+  var canManage = !!(isAdmin || isManager || counselorAuthRole === 'Admin' || counselorAuthRole === 'Manager' || counselorAuthRole === 'RevenueManager' || counselorAuthRole === 'AcademicHead');
+  window.IGIWork.mount('work-mount', { me: counselorName, portal: 'counselor', canManage: canManage, centres: allowedCentres || [] });
+}
+function refreshWorkBadge() {
+  if (!window.IGIWork || !counselorName) return;
+  window.IGIWork.openCount(counselorName, function (n, overdue) {
+    var b = document.getElementById('work-badge'); if (!b) return;
+    b.textContent = n; b.style.display = n ? '' : 'none'; b.style.background = overdue ? '#dc2626' : '#2563eb';
+  });
+}
 function switchTab(id) {
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -6100,6 +6127,9 @@ function switchTab(id) {
   }
   if (id === 't-alumni') {
     loadAlumniData();
+  }
+  if (id === 't-work') {
+    mountWorkTab();
   }
   if (id === 't-crm') {
     loadCRMData();
@@ -6223,6 +6253,7 @@ function renderCounselorMoreSheet() {
   if (!wrap) return;
   // [label, icon, tabId, gateButtonId or null if always visible, badgeElId or null]
   var items = [
+    ['Work', '🧩', 't-work', null, 'work-badge'],
     ['CRM', '🎯', 't-crm', null, 'crm-reminder-badge'],
     ['Prospects', '🧭', 't-prospects', null, 'prospects-due-badge'],
     ['Attendance', '✅', 't-attendance', null, 'att-pending-badge'],

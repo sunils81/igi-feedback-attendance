@@ -52,6 +52,33 @@ async function deleteSubscriptionByEndpoint(endpoint) {
 }
 
 // ── /api/push/send — internal, protected by x-push-secret ──────────────────
+
+// ── Shared fan-out: send one payload to every subscription for (portal, userKey) ──
+// Returns { targeted, sent, pruned, errors }. Used by handleSend and handleTaskNotify.
+async function pushTo(portal, userKey, payloadObj) {
+  const subs = await fetchSubscriptions(portal, userKey);
+  const payload = JSON.stringify(payloadObj);
+  let sent = 0, pruned = 0;
+  const errors = [];
+  await Promise.all(
+    subs.map(async (s) => {
+      const pushSub = { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } };
+      try {
+        await webpush.sendNotification(pushSub, payload);
+        sent++;
+      } catch (e) {
+        if (e.statusCode === 404 || e.statusCode === 410) {
+          try { await deleteSubscriptionByEndpoint(s.endpoint); } catch (_e) {}
+          pruned++;
+        } else {
+          errors.push({ endpoint: s.endpoint, error: e.message });
+        }
+      }
+    })
+  );
+  return { targeted: subs.length, sent, pruned, errors };
+}
+
 async function handleSend(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ status: 'error', reason: 'Method not allowed' });
@@ -79,43 +106,13 @@ async function handleSend(req, res) {
     return res.status(500).json({ status: 'error', reason: e.message });
   }
 
-  let subs;
   try {
-    subs = await fetchSubscriptions(portal, userKey);
+    const out = await pushTo(portal, userKey, { title, body, url: url || PORTAL_URLS[portal], tag: tag || portal });
+    return res.status(200).json({ status: 'ok', ...out });
   } catch (e) {
     console.error('push send fetch subs error', e);
     return res.status(500).json({ status: 'error', reason: 'Could not load subscriptions' });
   }
-
-  const payload = JSON.stringify({
-    title,
-    body,
-    url: url || PORTAL_URLS[portal],
-    tag: tag || portal,
-  });
-
-  let sent = 0;
-  let pruned = 0;
-  const errors = [];
-
-  await Promise.all(
-    subs.map(async (s) => {
-      const pushSub = { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } };
-      try {
-        await webpush.sendNotification(pushSub, payload);
-        sent++;
-      } catch (e) {
-        if (e.statusCode === 404 || e.statusCode === 410) {
-          try { await deleteSubscriptionByEndpoint(s.endpoint); } catch (_e) {}
-          pruned++;
-        } else {
-          errors.push({ endpoint: s.endpoint, error: e.message });
-        }
-      }
-    })
-  );
-
-  return res.status(200).json({ status: 'ok', targeted: subs.length, sent, pruned, errors });
 }
 
 // ── /api/push/subscribe — called from the browser after login ──────────────
@@ -202,10 +199,101 @@ async function handleUnsubscribe(req, res) {
   }
 }
 
+// ── /api/push/task-notify — Work Assignment dashboard (assets/work.js) ─────────
+// Called from the browser (no shared secret — the browser can't hold one). Instead of
+// trusting the request body for the message, the server re-reads the task by id with
+// the service key and composes the notification itself, so the worst a caller can do
+// is re-send a notification about a task that really exists.
+//   body: { taskId, kind: 'assigned' | 'status' | 'comment', actor, note? }
+// Recipients: 'assigned' -> the assignee; 'status'/'comment' -> assignee + assigner,
+// minus whoever performed the action.
+const WORK_PORTAL_BY_ROLE = { Instructor: 'instructor', AcademicHead: 'instructor' };
+
+async function supaGet(path) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/${path}`, {
+    headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` },
+  });
+  if (!r.ok) throw new Error(`supabase ${r.status}`);
+  return r.json();
+}
+
+async function handleTaskNotify(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ status: 'error', reason: 'Method not allowed' });
+  }
+  if (!SUPA_URL || !SUPA_KEY) {
+    return res.status(500).json({ status: 'error', reason: 'Server not configured' });
+  }
+  const { taskId, kind, actor, note } = req.body || {};
+  if (!taskId || !/^[0-9a-f-]{36}$/i.test(String(taskId))) {
+    return res.status(400).json({ status: 'error', reason: 'Invalid taskId' });
+  }
+  try { configureWebPush(); } catch (e) {
+    return res.status(500).json({ status: 'error', reason: e.message });
+  }
+
+  let task;
+  try {
+    const rows = await supaGet(`work_tasks?id=eq.${encodeURIComponent(taskId)}&select=id,title,assigned_to,assigned_by,status,priority,due_at`);
+    task = rows[0];
+  } catch (e) {
+    return res.status(500).json({ status: 'error', reason: 'Could not load task' });
+  }
+  if (!task) return res.status(404).json({ status: 'error', reason: 'Task not found' });
+
+  const who = String(actor || '').trim();
+  let recipients = [];
+  let title, body;
+  if (kind === 'assigned') {
+    recipients = [task.assigned_to];
+    title = `New task from ${task.assigned_by || 'your manager'}`;
+    body = task.title + (task.priority === 'urgent' || task.priority === 'high' ? ` (${task.priority})` : '');
+  } else if (kind === 'status') {
+    recipients = [task.assigned_to, task.assigned_by];
+    const label = { todo: 'To do', in_progress: 'In progress', blocked: 'Blocked', done: 'Done ✅' }[task.status] || task.status;
+    title = `${who || task.assigned_to} · ${label}`;
+    body = task.title;
+  } else if (kind === 'comment') {
+    recipients = [task.assigned_to, task.assigned_by];
+    title = `${who || 'Comment'} on: ${task.title}`;
+    body = String(note || '').slice(0, 140) || 'New comment';
+  } else {
+    return res.status(400).json({ status: 'error', reason: 'Invalid kind' });
+  }
+  recipients = [...new Set(recipients.filter((n) => n && n !== who))];
+  if (!recipients.length) return res.status(200).json({ status: 'ok', sent: 0, targeted: 0 });
+
+  // Pick each recipient's portal from their primary role (Instructor -> instructor portal,
+  // everyone else -> counselor portal). The admin portal has no push subscription.
+  let roleByName = {};
+  try {
+    const q = recipients.map((n) => `"${n.replace(/"/g, '')}"`).join(',');
+    const users = await supaGet(`users?name=in.(${encodeURIComponent(q)})&select=name,role`);
+    users.forEach((u) => { roleByName[u.name] = u.role; });
+  } catch (_e) { /* fall back to counselor portal */ }
+
+  const results = [];
+  for (const name of recipients) {
+    const portal = WORK_PORTAL_BY_ROLE[roleByName[name]] || 'counselor';
+    try {
+      const out = await pushTo(portal, name, {
+        title, body,
+        url: `${PORTAL_URLS[portal]}?work=${task.id}`,
+        tag: `work-${task.id}`,
+      });
+      results.push({ name, portal, ...out });
+    } catch (e) {
+      results.push({ name, portal, error: e.message });
+    }
+  }
+  return res.status(200).json({ status: 'ok', results });
+}
+
 export default async function handler(req, res) {
   const action = (req.query && req.query.action) || '';
   if (action === 'send') return handleSend(req, res);
   if (action === 'subscribe') return handleSubscribe(req, res);
   if (action === 'unsubscribe') return handleUnsubscribe(req, res);
+  if (action === 'task-notify') return handleTaskNotify(req, res);
   return res.status(400).json({ status: 'error', reason: 'Unknown or missing action' });
 }

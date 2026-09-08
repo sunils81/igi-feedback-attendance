@@ -740,11 +740,10 @@
   // Independent of mount(): the portals call IGIWork.banner({...}) right after login so
   // a counselor sees "Sunil Sharma assigned you: …" the moment the page loads, even if
   // they never open the Work tab. Re-rendered after every realtime/poll refresh.
-  var B = { el: null, me: '', onOpen: null, dismissed: {}, timer: null };
+  var B = { el: null, me: '', onOpen: null, timer: null };
   function banner(opts) {
     B.el = document.getElementById(opts.id); B.me = opts.me; B.onOpen = opts.onOpen;
     if (!B.el || !B.me) return;
-    try { B.dismissed = JSON.parse(sessionStorage.getItem('igi_work_banner_dismissed') || '{}'); } catch (e) { B.dismissed = {}; }
     renderBanner();
     clearInterval(B.timer);
     B.timer = setInterval(function () { if (!document.hidden && !S.rtOk) renderBanner(); }, 60000);
@@ -752,7 +751,7 @@
   function renderBanner() {
     if (!B.el || !B.me) return;
     GET('work_tasks', 'select=id,title,assigned_by,priority,due_at,status,created_at&assigned_to=eq.' + qsEnc(B.me) + '&assigned_by=neq.' + qsEnc(B.me) + '&status=neq.done&order=created_at.desc&limit=20').then(function (rows) {
-      rows = rows.filter(function (t) { return !B.dismissed[t.id]; });
+      // Persistent by design (2026-09-08): no dismiss — the banner only clears when the task is marked Done.
       if (!rows.length) { B.el.style.display = 'none'; return; }
       var by = {}; rows.forEach(function (t) { by[t.assigned_by] = (by[t.assigned_by] || 0) + 1; });
       var who = Object.keys(by).map(function (n) { return '<b>' + esc(dn(n)) + '</b>' + (Object.keys(by).length > 1 ? ' (' + by[n] + ')' : ''); }).join(', ');
@@ -763,7 +762,6 @@
           '<span style="flex:1;font-weight:600;">' + who + ' assigned you ' + rows.length + ' task' + (rows.length > 1 ? 's' : '') +
             (overdue ? ' — <span style="color:#dc2626">' + overdue + ' overdue</span>' : '') + '</span>' +
           '<button id="wk-banner-open" style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;">Open Work →</button>' +
-          '<button id="wk-banner-x" title="Hide until next login" style="background:transparent;border:none;color:#1e3a8a;font-size:16px;cursor:pointer;line-height:1;">×</button>' +
         '</div>' +
         '<div style="display:flex;flex-direction:column;gap:4px;padding-left:26px;">' + rows.slice(0, 5).map(function (t) {
           var dc = dueClass(t);
@@ -777,11 +775,6 @@
       var open = function (id) { if (B.onOpen) B.onOpen(); if (id) setTimeout(function () { if (taskById(id)) openDrawer(id); else setTimeout(function () { if (taskById(id)) openDrawer(id); }, 1200); }, 600); };
       B.el.querySelector('#wk-banner-open').onclick = function () { open(null); };
       B.el.querySelectorAll('.wk-banner-row').forEach(function (r) { r.onclick = function () { open(r.dataset.id); }; });
-      B.el.querySelector('#wk-banner-x').onclick = function () {
-        rows.forEach(function (t) { B.dismissed[t.id] = 1; });
-        try { sessionStorage.setItem('igi_work_banner_dismissed', JSON.stringify(B.dismissed)); } catch (e) {}
-        B.el.style.display = 'none';
-      };
     }).catch(function () {});
   }
 

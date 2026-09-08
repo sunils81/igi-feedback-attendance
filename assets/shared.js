@@ -4445,7 +4445,14 @@ window.gasGet = (function () {
     var isAdm = !!(p && (p.isAdmin === true || p.isAdmin === 'true'));
     var qs = 'order=created_at.desc&limit=500';
     if (p.status) qs += '&status=eq.' + encodeURIComponent(p.status);
-    if (!isAdm && p.centre) qs += '&centre=eq.' + encodeURIComponent(p.centre);
+    // Non-admins only ever see their own centre(s). `centres` (array, all of the login's
+    // centres) is preferred; `centre` (single) kept for older callers. 2026-09-08 fix:
+    // a Mumbai counsellor was seeing a Delhi suspense entry.
+    var cl = Array.isArray(p.centres) ? p.centres.filter(Boolean) : (p.centre ? [p.centre] : []);
+    if (!isAdm) {
+      if (!cl.length) { cb(null, { status: 'ok', count: 0, records: [] }); return; }
+      qs += '&centre=in.(' + cl.map(function(c){ return '"' + encodeURIComponent(c) + '"'; }).join(',') + ')';
+    }
     GET('suspense_entries', qs, function(e, rows) {
       if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
       var records = (rows || []).map(function(r) {

@@ -6,7 +6,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="/assets/shared.js?v=75"></script>
 <script src="/assets/push-subscribe.js"></script>
-<script src="/assets/work.js?v=1"></script>
+<script src="/assets/work.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style id="dyn-css"></style>
 <style>
@@ -385,6 +385,10 @@
   <div id="upcoming-batches-banner-container" style="margin-top:16px;margin-bottom:0"></div>
 
   <!-- ── Co-instructor cover banner — shown on every tab until batch starts or dismissed ── -->
+  <!-- Work-assignment banner: "<manager> assigned you N tasks". Rendered by
+       IGIWork.banner() in assets/work.js right after login; hides itself when nothing
+       is open. Sits above the fee banners so new work is the first thing seen. -->
+  <div id="work-assigned-banner" style="display:none;background:#eff6ff;border:1.5px solid #2563eb;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#1e3a8a;flex-direction:column;gap:6px;"></div>
   <div id="co-cover-banner" style="display:none;margin-top:12px;margin-bottom:4px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:13px 16px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
       <div style="flex:1">
@@ -404,6 +408,7 @@
     <button class="tab" onclick="iTab('t-diamondcalc')">🧮 Diamond Calculator</button>
     <button class="tab" onclick="iTab('t-glossary')">📖 Glossary</button>
     <button class="tab" onclick="iTab('t-mybatches')">🗂 My Batches</button>
+    <button class="tab" id="t-work-tab" onclick="iTab('t-work')">🧩 Work <span id="work-badge" style="display:none;background:#2563eb;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="t-batchmgmt-tab" style="display:none" onclick="iTab('t-batchmgmt')">🏫 Batches</button>
     <button class="tab" id="t-academic-tab" style="display:none" onclick="iTab('t-academic')">🎓 Academic Overview</button>
     <button class="tab" id="t-revenue-tab" style="display:none" onclick="iTab('t-revenue')">📈 Revenue & Team</button>
@@ -411,7 +416,6 @@
     <button class="tab" id="t-onlinetests-tab" style="display:none" onclick="iTab('t-onlinetests')">🧪 Online Tests</button>
     <button class="tab" id="t-assignments-tab" style="display:none" onclick="iTab('t-assignments')">📁 Assignments<span id="assignments-notif-badge" style="display:none;background:#dc2626;color:#fff;font-size:9px;padding:1px 5px;border-radius:10px;margin-left:5px;font-weight:700;"></span></button>
     <button class="tab" id="t-portfolios-tab" style="display:none" onclick="iTab('t-portfolios')">🎨 Portfolios<span id="portfolios-notif-badge" style="display:none;background:#dc2626;color:#fff;font-size:9px;padding:1px 5px;border-radius:10px;margin-left:5px;font-weight:700;"></span></button>
-    <button class="tab" id="t-work-tab" onclick="iTab('t-work')">🧩 Work <span id="work-badge" style="display:none;background:#2563eb;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="t-trayhub-tab" onclick="iTab('t-trayhub'); trayHubInit();">🔮 Tray Hub<span id="tray-notif-badge" style="display:none;background:#dc2626;color:#fff;font-size:9px;padding:1px 5px;border-radius:10px;margin-left:5px;font-weight:700;"></span></button>
   </div>
 
@@ -2913,6 +2917,7 @@ function saveSession() {
   } catch(e) {}
   if (window.IGIPush) window.IGIPush.subscribe('instructor', instructorName);
   refreshWorkBadge();
+  if (window.IGIWork) window.IGIWork.banner({ id: 'work-assigned-banner', me: instructorName, onOpen: function(){ iTab('t-work'); } });
   if (/[?&]work=/.test(location.search)) setTimeout(function(){ iTab('t-work'); }, 300);
 }
 function clearSession() {

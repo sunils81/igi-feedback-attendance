@@ -6,7 +6,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="/assets/shared.js?v=88"></script>
 <script src="/assets/push-subscribe.js"></script>
-<script src="/assets/work.js?v=1"></script>
+<script src="/assets/work.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -1818,6 +1818,7 @@
 
   <div class="tab-bar" id="main-tab-bar">
     <button class="tab" id="tab-crm" onclick="switchTab('t-crm')">🎯 CRM <span id="crm-reminder-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
+    <button class="tab" id="tab-work" onclick="switchTab('t-work')">🧩 Work <span id="work-badge" style="display:none;background:#2563eb;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-prospects" onclick="switchTab('t-prospects')">🧭 Prospects <span id="prospects-due-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-revenue" onclick="switchTab('t-revenue')">📈 Revenue</button>
     <button class="tab" id="tab-fee-record" onclick="switchTab('t-fee-record')">📑 Ledger</button>
@@ -1834,7 +1835,6 @@
     <button class="tab" id="tab-holidays" onclick="switchTab('t-holidays')">🗓 Holidays</button>
     <button class="tab" id="tab-diplomas" onclick="switchTab('t-diplomas')" style="display:none">🎓 Diploma Release</button>
     <button class="tab" id="tab-inventory" onclick="switchTab('t-inventory')">📦 Inventory <span id="inv-pending-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
-    <button class="tab" id="tab-work" onclick="switchTab('t-work')">🧩 Work <span id="work-badge" style="display:none;background:#2563eb;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-attendance" onclick="switchTab('t-attendance')">✅ Attendance <span id="att-pending-badge" style="display:none;background:#d97706;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-customize-order" onclick="openTabOrderModal()" style="margin-left:auto;background:transparent;color:var(--muted);border:1px dashed var(--border)" title="Reorder these tabs to your own preference">⚙️ Reorder Tabs</button>
   </div>
@@ -1879,6 +1879,10 @@
   </div>
 
   <!-- Persistent fee reminder banner (non-blocking) -->
+  <!-- Work-assignment banner: "<manager> assigned you N tasks". Rendered by
+       IGIWork.banner() in assets/work.js right after login; hides itself when nothing
+       is open. Sits above the fee banners so new work is the first thing seen. -->
+  <div id="work-assigned-banner" style="display:none;background:#eff6ff;border:1.5px solid #2563eb;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#1e3a8a;flex-direction:column;gap:6px;"></div>
   <div id="fees-reminder-banner" style="display:none;background:#fef2f2;border:1.5px solid #dc2626;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#991b1b;align-items:center;gap:10px;flex-wrap:wrap;">
     <span>⚠️</span>
     <span id="fees-reminder-text" style="flex:1;font-weight:500;"></span>
@@ -5723,6 +5727,7 @@ function doLogin() {
     } catch(ex) {}
     if (window.IGIPush) window.IGIPush.subscribe('counselor', counselorName);
     refreshWorkBadge();
+    if (window.IGIWork) window.IGIWork.banner({ id: 'work-assigned-banner', me: counselorName, onOpen: function(){ switchTab('t-work'); } });
     if (/[?&]work=/.test(location.search)) setTimeout(function(){ switchTab('t-work'); }, 300);
     // Update header
     document.getElementById('counselor-name-badge').textContent = counselorName;
@@ -5882,7 +5887,11 @@ function applyCustomTabOrder() {
   // Anything not in the saved order (a tab added after the counsellor last customized)
   // keeps appearing — appended in its default position, right before the reorder button.
   buttons.forEach(function(b) {
-    if (!placed[b.id]) bar.insertBefore(b, reorderBtn);
+    if (placed[b.id]) return;
+    // Work tab (2026-09-08) is pinned near the front even for counsellors with a saved
+    // order, so assigned tasks are never buried off-screen; other new tabs go to the end.
+    if (b.id === 'tab-work') { var first = bar.querySelector('.tab'); bar.insertBefore(b, first ? first.nextSibling : reorderBtn); }
+    else bar.insertBefore(b, reorderBtn);
   });
 }
 

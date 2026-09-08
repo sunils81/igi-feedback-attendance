@@ -195,6 +195,7 @@
     clearTimeout(_rtDebounce);
     _rtDebounce = setTimeout(function () {
       Promise.all([loadTasks(), loadEvents()]).then(render).catch(function () {});
+      renderBanner();
     }, 250);
   }
   function startRealtime() {
@@ -404,6 +405,7 @@
   }
 
   function updateBadge() {
+    if (B.el) { /* keep the home banner in step with the tab */ }
     var mine = S.tasks.filter(function (t) { return t.assigned_to === S.ctx.me && t.status !== 'done'; });
     var over = mine.filter(function (t) { return dueClass(t) === 'wk-overdue'; }).length;
     var c = document.getElementById('wk-cnt-mine'); if (c) c.textContent = mine.length ? mine.length : '';
@@ -728,6 +730,56 @@
     var s = document.createElement('style'); s.id = 'wk-css'; s.textContent = CSS; document.head.appendChild(s);
   }
 
+
+  // ── "Assigned to you" banner (portal home, above the tab content) ─────────
+  // Independent of mount(): the portals call IGIWork.banner({...}) right after login so
+  // a counselor sees "Sunil Sharma assigned you: …" the moment the page loads, even if
+  // they never open the Work tab. Re-rendered after every realtime/poll refresh.
+  var B = { el: null, me: '', onOpen: null, dismissed: {}, timer: null };
+  function banner(opts) {
+    B.el = document.getElementById(opts.id); B.me = opts.me; B.onOpen = opts.onOpen;
+    if (!B.el || !B.me) return;
+    try { B.dismissed = JSON.parse(sessionStorage.getItem('igi_work_banner_dismissed') || '{}'); } catch (e) { B.dismissed = {}; }
+    renderBanner();
+    clearInterval(B.timer);
+    B.timer = setInterval(function () { if (!document.hidden && !S.rtOk) renderBanner(); }, 60000);
+  }
+  function renderBanner() {
+    if (!B.el || !B.me) return;
+    GET('work_tasks', 'select=id,title,assigned_by,priority,due_at,status,created_at&assigned_to=eq.' + qsEnc(B.me) + '&assigned_by=neq.' + qsEnc(B.me) + '&status=neq.done&order=created_at.desc&limit=20').then(function (rows) {
+      rows = rows.filter(function (t) { return !B.dismissed[t.id]; });
+      if (!rows.length) { B.el.style.display = 'none'; return; }
+      var by = {}; rows.forEach(function (t) { by[t.assigned_by] = (by[t.assigned_by] || 0) + 1; });
+      var who = Object.keys(by).map(function (n) { return '<b>' + esc(n) + '</b>' + (Object.keys(by).length > 1 ? ' (' + by[n] + ')' : ''); }).join(', ');
+      var overdue = rows.filter(function (t) { return dueClass(t) === 'wk-overdue'; }).length;
+      B.el.innerHTML =
+        '<div style="display:flex;align-items:center;gap:10px;">' +
+          '<span>🧩</span>' +
+          '<span style="flex:1;font-weight:600;">' + who + ' assigned you ' + rows.length + ' task' + (rows.length > 1 ? 's' : '') +
+            (overdue ? ' — <span style="color:#dc2626">' + overdue + ' overdue</span>' : '') + '</span>' +
+          '<button id="wk-banner-open" style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;">Open Work →</button>' +
+          '<button id="wk-banner-x" title="Hide until next login" style="background:transparent;border:none;color:#1e3a8a;font-size:16px;cursor:pointer;line-height:1;">×</button>' +
+        '</div>' +
+        '<div style="display:flex;flex-direction:column;gap:4px;padding-left:26px;">' + rows.slice(0, 5).map(function (t) {
+          var dc = dueClass(t);
+          return '<div class="wk-banner-row" data-id="' + t.id + '" style="cursor:pointer;display:flex;gap:8px;align-items:center;">' +
+            '<i style="width:8px;height:8px;border-radius:50%;background:' + PRIORITY[t.priority] + ';flex:none"></i>' +
+            '<span style="flex:1">' + esc(t.title) + '</span>' +
+            (t.due_at ? '<span style="font-size:11px;' + (dc === 'wk-overdue' ? 'color:#dc2626;font-weight:700' : dc === 'wk-today' ? 'color:#d97706;font-weight:700' : 'color:#64748b') + '">📅 ' + fmtDue(t.due_at) + '</span>' : '') +
+            '<span style="font-size:11px;color:#64748b">' + rel(t.created_at) + '</span></div>';
+        }).join('') + (rows.length > 5 ? '<div style="font-size:11px;color:#64748b">+' + (rows.length - 5) + ' more in the Work tab</div>' : '') + '</div>';
+      B.el.style.display = 'flex';
+      var open = function (id) { if (B.onOpen) B.onOpen(); if (id) setTimeout(function () { if (taskById(id)) openDrawer(id); else setTimeout(function () { if (taskById(id)) openDrawer(id); }, 1200); }, 600); };
+      B.el.querySelector('#wk-banner-open').onclick = function () { open(null); };
+      B.el.querySelectorAll('.wk-banner-row').forEach(function (r) { r.onclick = function () { open(r.dataset.id); }; });
+      B.el.querySelector('#wk-banner-x').onclick = function () {
+        rows.forEach(function (t) { B.dismissed[t.id] = 1; });
+        try { sessionStorage.setItem('igi_work_banner_dismissed', JSON.stringify(B.dismissed)); } catch (e) {}
+        B.el.style.display = 'none';
+      };
+    }).catch(function () {});
+  }
+
   // ── public ───────────────────────────────────────────────────────────────
   var mounted = false;
   function mount(mountId, ctx) {
@@ -752,5 +804,5 @@
     GET('work_tasks', 'select=id,due_at&assigned_to=eq.' + qsEnc(me) + '&status=neq.done').then(function (rows) { cb(rows.length, rows.filter(function (t) { return t.due_at && new Date(t.due_at) < new Date(); }).length); }).catch(function () { cb(0, 0); });
   }
 
-  window.IGIWork = { mount: mount, openCount: openCount, openTask: openDrawer, refresh: reloadAll };
+  window.IGIWork = { mount: mount, openCount: openCount, openTask: openDrawer, refresh: reloadAll, banner: banner, refreshBanner: renderBanner };
 })();

@@ -78,6 +78,10 @@
   var PATCH = function (t, q, b) { return api('PATCH', t, q, b); };
   var DEL = function (t, q) { return api('DELETE', t, q, null, 'return=minimal'); };
 
+  // Display names: the Super Admin login is stored as 'Admin' (users row / push key);
+  // show it as the HOD everywhere a person is named. Keys stay untouched.
+  var DISPLAY = { 'Admin': 'HOD – Sunil Sharma' };
+  function dn(n) { return DISPLAY[n] || n; }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function qsEnc(v) { return encodeURIComponent(v); }
   function initials(n) { return String(n || '?').split(/\s+/).map(function (p) { return p[0]; }).join('').slice(0, 2).toUpperCase(); }
@@ -85,7 +89,8 @@
   function avatar(name, size) {
     size = size || 26;
     var on = !!S.online[name];
-    return '<span class="wk-av" title="' + esc(name) + (on ? ' · online' : '') + '" style="width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size * 0.4) + 'px;background:hsl(' + hue(name || '') + ',45%,40%)">' + esc(initials(name)) + (on ? '<i class="wk-dot"></i>' : '') + '</span>';
+    var shown = DISPLAY[name] ? DISPLAY[name].replace(/^HOD\s*[–-]\s*/, '') : name;
+    return '<span class="wk-av" title="' + esc(dn(name)) + (on ? ' · online' : '') + '" style="width:' + size + 'px;height:' + size + 'px;font-size:' + Math.round(size * 0.4) + 'px;background:hsl(' + hue(name || '') + ',45%,40%)">' + esc(initials(shown)) + (on ? '<i class="wk-dot"></i>' : '') + '</span>';
   }
   function rel(ts) {
     if (!ts) return '';
@@ -243,7 +248,7 @@
   }
   function flashFeed(ev) {
     var t = taskById(ev.task_id);
-    toast((EVENT_ICON[ev.type] || '•') + ' ' + ev.actor + ': ' + (ev.type === 'comment' ? ev.body : (t ? t.title : ev.body)));
+    toast((EVENT_ICON[ev.type] || '•') + ' ' + dn(ev.actor) + ': ' + (ev.type === 'comment' ? ev.body : (t ? t.title : ev.body)));
   }
 
   // ── writes ───────────────────────────────────────────────────────────────
@@ -303,7 +308,7 @@
     return POST('work_tasks', body).then(function (rows) {
       var t = rows[0];
       if (t && t.assigned_to !== S.ctx.me) notify(t.id, 'assigned');
-      closeModal(); toast('Task assigned to ' + f.assigned_to); scheduleRefresh();
+      closeModal(); toast('Task assigned to ' + dn(f.assigned_to)); scheduleRefresh();
     }).catch(function (e) { toast('Could not create: ' + e.message, true); });
   }
 
@@ -401,7 +406,7 @@
     var el = document.getElementById('wk-online'); if (!el) return;
     var names = Object.keys(S.online).filter(function (n) { return n !== S.ctx.me; }).sort();
     el.innerHTML = names.length ? names.slice(0, 8).map(function (n) { return avatar(n, 22); }).join('') + (names.length > 8 ? '<span class="wk-more">+' + (names.length - 8) + '</span>' : '') : '';
-    el.title = names.length ? 'Online: ' + names.join(', ') : 'Nobody else online';
+    el.title = names.length ? 'Online: ' + names.map(dn).join(', ') : 'Nobody else online';
   }
 
   function updateBadge() {
@@ -435,7 +440,7 @@
     return '<div class="wk-card' + (t.status === 'done' ? ' done' : '') + '" draggable="' + (canAssign(t.team_id) || t.assigned_to === S.ctx.me ? 'true' : 'false') + '" data-id="' + t.id + '">' +
       '<div class="wk-card-top"><i class="wk-pri" style="background:' + PRIORITY[t.priority] + '" title="' + esc(t.priority) + '"></i>' +
       '<span class="wk-title">' + esc(t.title) + '</span></div>' +
-      '<div class="wk-meta">' + avatar(t.assigned_to, 20) + '<span>' + esc(t.assigned_to) + '</span>' +
+      '<div class="wk-meta">' + avatar(t.assigned_to, 20) + '<span>' + esc(dn(t.assigned_to)) + '</span>' +
       (compact ? '' : '<span class="wk-chip">' + esc(team ? team.name : '') + '</span>') +
       (t.category && t.category !== 'general' ? '<span class="wk-chip">' + esc(t.category) + '</span>' : '') +
       (t.due_at ? '<span class="wk-due ' + dc + '">📅 ' + fmtDue(t.due_at) + '</span>' : '') +
@@ -492,7 +497,7 @@
     var h = '<div class="wk-boardbar">' +
       '<div class="wk-people">' + mem.map(function (n) {
         var open = S.tasks.filter(function (t) { return t.team_id === S.teamId && t.assigned_to === n && t.status !== 'done'; }).length;
-        return '<button class="wk-person' + (S.filterAssignee === n ? ' active' : '') + '" data-person="' + esc(n) + '">' + avatar(n, 24) + '<span>' + esc(n) + (n === team.lead_name ? ' ★' : '') + '</span>' + (open ? '<b>' + open + '</b>' : '') + '</button>';
+        return '<button class="wk-person' + (S.filterAssignee === n ? ' active' : '') + '" data-person="' + esc(n) + '">' + avatar(n, 24) + '<span>' + esc(dn(n)) + (n === team.lead_name ? ' ★' : '') + '</span>' + (open ? '<b>' + open + '</b>' : '') + '</button>';
       }).join('') + '</div>' +
       '<label class="wk-toggle"><input type="checkbox" id="wk-showdone"' + (S.showDone ? ' checked' : '') + '> Show all done</label></div>';
     h += '<div class="wk-board">' + STATUS.map(function (s) {
@@ -515,7 +520,7 @@
       var lbl = d === new Date().toDateString() ? 'Today' : (d === new Date(Date.now() - 86400000).toDateString() ? 'Yesterday' : new Date(d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }));
       return '<h4 class="wk-h">' + lbl + '</h4><div class="wk-feed">' + byDay[d].map(function (e) {
         var t = taskById(e.task_id);
-        return '<div class="wk-ev" data-open="' + e.task_id + '">' + avatar(e.actor, 28) + '<div class="wk-evbody"><div><b>' + esc(e.actor) + '</b> ' +
+        return '<div class="wk-ev" data-open="' + e.task_id + '">' + avatar(e.actor, 28) + '<div class="wk-evbody"><div><b>' + esc(dn(e.actor)) + '</b> ' +
           (e.type === 'comment' ? 'commented on' : e.type === 'created' ? 'assigned' : e.type === 'status_change' ? 'moved' : e.type === 'reassigned' ? 'reassigned' : e.type === 'due_changed' ? 'rescheduled' : 'edited') +
           ' <span class="wk-evtitle">' + esc(t ? t.title : '(deleted task)') + '</span></div>' +
           '<div class="wk-evline">' + (EVENT_ICON[e.type] || '') + ' ' + esc(e.body) + '</div></div><span class="wk-time">' + rel(e.created_at) + '</span></div>';
@@ -548,7 +553,7 @@
   function peopleOptions(teamId, selected) {
     var mem = (S.members[teamId] || []).map(function (m) { return m.user_name; });
     if (selected && mem.indexOf(selected) < 0) mem.push(selected);
-    return mem.map(function (n) { return '<option value="' + esc(n) + '"' + (n === selected ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('');
+    return mem.map(function (n) { return '<option value="' + esc(n) + '"' + (n === selected ? ' selected' : '') + '>' + esc(dn(n)) + '</option>'; }).join('');
   }
   function renderDrawer() {
     var t = taskById(S.openTaskId), d = document.getElementById('wk-drawer'); if (!d) return;
@@ -570,10 +575,10 @@
         '<label class="wk-span2">Reference (student ID / batch code)<input id="wk-f-ref" value="' + esc(t.linked_ref) + '"' + (can || mine ? '' : ' disabled') + '></label>' +
         '<label class="wk-span2">Description<textarea id="wk-f-desc" rows="3"' + (can || mine ? '' : ' disabled') + '>' + esc(t.description) + '</textarea></label>' +
       '</div>' +
-      ((can || mine) ? '<div class="wk-drow"><button class="wk-btn gold" id="wk-save">Save changes</button>' + (can ? '<button class="wk-btn ghost danger" id="wk-del">Delete</button>' : '') + '<span class="wk-muted">Assigned by ' + esc(t.assigned_by) + ' · ' + rel(t.created_at) + '</span></div>' : '') +
+      ((can || mine) ? '<div class="wk-drow"><button class="wk-btn gold" id="wk-save">Save changes</button>' + (can ? '<button class="wk-btn ghost danger" id="wk-del">Delete</button>' : '') + '<span class="wk-muted">Assigned by ' + esc(dn(t.assigned_by)) + ' · ' + rel(t.created_at) + '</span></div>' : '') +
       '<h4 class="wk-h">Activity &amp; comments</h4>' +
       '<div class="wk-thread">' + (evs.length ? evs.map(function (e) {
-        return '<div class="wk-ev' + (e.type === 'comment' ? ' comment' : '') + '">' + avatar(e.actor, 26) + '<div class="wk-evbody"><div><b>' + esc(e.actor) + '</b> <span class="wk-time">' + rel(e.created_at) + '</span></div><div class="wk-evline">' + (e.type === 'comment' ? esc(e.body) : (EVENT_ICON[e.type] || '') + ' ' + esc(e.body)) + '</div></div></div>';
+        return '<div class="wk-ev' + (e.type === 'comment' ? ' comment' : '') + '">' + avatar(e.actor, 26) + '<div class="wk-evbody"><div><b>' + esc(dn(e.actor)) + '</b> <span class="wk-time">' + rel(e.created_at) + '</span></div><div class="wk-evline">' + (e.type === 'comment' ? esc(e.body) : (EVENT_ICON[e.type] || '') + ' ' + esc(e.body)) + '</div></div></div>';
       }).join('') : '<div class="wk-muted">No activity yet.</div>') + '</div>' +
       '<div class="wk-commentbox"><textarea id="wk-comment" rows="2" placeholder="Write an update… (Enter to send, Shift+Enter for a new line)">' + esc(draft) + '</textarea><button class="wk-btn gold" id="wk-send">Send</button></div>';
 
@@ -617,7 +622,7 @@
     var fillAssignees = function () {
       var teamId = m.querySelector('#wk-n-team').value;
       var sel = m.querySelector('#wk-n-assignee');
-      sel.innerHTML = canAssign(teamId) ? peopleOptions(teamId, S.ctx.me) : '<option value="' + esc(S.ctx.me) + '">' + esc(S.ctx.me) + ' (me)</option>';
+      sel.innerHTML = canAssign(teamId) ? peopleOptions(teamId, S.ctx.me) : '<option value="' + esc(S.ctx.me) + '">' + esc(dn(S.ctx.me)) + ' (me)</option>';
     };
     fillAssignees();
     m.querySelector('#wk-n-team').onchange = fillAssignees;
@@ -640,7 +645,7 @@
       '<div class="wk-grid">' +
       '<label>Team name<input id="wk-t-name" value="' + esc(team ? team.name : '') + '" placeholder="e.g. Surat Counselors"></label>' +
       '<label>Centre<select id="wk-t-centre"><option value="">Pan-India</option>' + centres.map(function (c) { return '<option' + (team && team.centre === c ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select></label>' +
-      '<label>Team lead (can assign work)<select id="wk-t-lead">' + staff.map(function (u) { return '<option value="' + esc(u.name) + '"' + ((team ? team.lead_name : S.ctx.me) === u.name ? ' selected' : '') + '>' + esc(u.name) + ' · ' + esc(u.roles.join('/')) + '</option>'; }).join('') + '</select></label>' +
+      '<label>Team lead (can assign work)<select id="wk-t-lead">' + staff.map(function (u) { return '<option value="' + esc(u.name) + '"' + ((team ? team.lead_name : S.ctx.me) === u.name ? ' selected' : '') + '>' + esc(dn(u.name)) + ' · ' + esc(u.roles.join('/')) + '</option>'; }).join('') + '</select></label>' +
       '<label>Filter people<input id="wk-t-filter" placeholder="Type a name, role or centre…"></label>' +
       '<div class="wk-span2"><div class="wk-muted" style="margin-bottom:6px">Members <span id="wk-t-count"></span></div><div class="wk-members" id="wk-t-members"></div></div>' +
       '</div><div class="wk-drow"><button class="wk-btn gold" id="wk-t-save">' + (team ? 'Save team' : 'Create team') + '</button><button class="wk-btn ghost" id="wk-t-cancel">Cancel</button>' +
@@ -651,7 +656,7 @@
       var q = m.querySelector('#wk-t-filter').value.toLowerCase();
       var list = staff.filter(function (u) { return !q || (u.name + ' ' + u.roles.join(' ') + ' ' + u.centres.join(' ')).toLowerCase().indexOf(q) >= 0; });
       m.querySelector('#wk-t-members').innerHTML = list.map(function (u) {
-        return '<label class="wk-mem' + (checked[u.name] ? ' on' : '') + '"><input type="checkbox" data-n="' + esc(u.name) + '"' + (checked[u.name] ? ' checked' : '') + '>' + avatar(u.name, 22) + '<span>' + esc(u.name) + '</span><small>' + esc(u.roles.join('/')) + (u.centres.length ? ' · ' + esc(u.centres.join(', ')) : '') + '</small></label>';
+        return '<label class="wk-mem' + (checked[u.name] ? ' on' : '') + '"><input type="checkbox" data-n="' + esc(u.name) + '"' + (checked[u.name] ? ' checked' : '') + '>' + avatar(u.name, 22) + '<span>' + esc(dn(u.name)) + '</span><small>' + esc(u.roles.join('/')) + (u.centres.length ? ' · ' + esc(u.centres.join(', ')) : '') + '</small></label>';
       }).join('') || '<div class="wk-muted">No one matches.</div>';
       m.querySelector('#wk-t-count').textContent = '(' + Object.keys(checked).filter(function (k) { return checked[k]; }).length + ' selected)';
       m.querySelectorAll('#wk-t-members input').forEach(function (cb) { cb.onchange = function () { checked[cb.dataset.n] = cb.checked; cb.closest('label').classList.toggle('on', cb.checked); m.querySelector('#wk-t-count').textContent = '(' + Object.keys(checked).filter(function (k) { return checked[k]; }).length + ' selected)'; }; });
@@ -750,7 +755,7 @@
       rows = rows.filter(function (t) { return !B.dismissed[t.id]; });
       if (!rows.length) { B.el.style.display = 'none'; return; }
       var by = {}; rows.forEach(function (t) { by[t.assigned_by] = (by[t.assigned_by] || 0) + 1; });
-      var who = Object.keys(by).map(function (n) { return '<b>' + esc(n) + '</b>' + (Object.keys(by).length > 1 ? ' (' + by[n] + ')' : ''); }).join(', ');
+      var who = Object.keys(by).map(function (n) { return '<b>' + esc(dn(n)) + '</b>' + (Object.keys(by).length > 1 ? ' (' + by[n] + ')' : ''); }).join(', ');
       var overdue = rows.filter(function (t) { return dueClass(t) === 'wk-overdue'; }).length;
       B.el.innerHTML =
         '<div style="display:flex;align-items:center;gap:10px;">' +

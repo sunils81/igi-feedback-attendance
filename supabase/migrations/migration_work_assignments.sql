@@ -72,11 +72,16 @@ CREATE INDEX IF NOT EXISTS idx_work_task_events_team ON work_task_events(team_id
 -- so it can also stamp updated_at / completed_at on the row itself.
 -- (Applied to Supabase via MCP on 2026-09-08 as work_assignments_dashboard +
 --  work_assignments_trigger_split; this file is the canonical reference copy.)
+-- Display name for feed text: the Super Admin login is stored as 'Admin'; show the HOD.
+CREATE OR REPLACE FUNCTION work_dn(n TEXT) RETURNS TEXT AS $$
+  SELECT CASE WHEN n = 'Admin' THEN 'HOD – Sunil Sharma' ELSE n END;
+$$ LANGUAGE sql IMMUTABLE;
+
 CREATE OR REPLACE FUNCTION work_tasks_after_insert() RETURNS TRIGGER AS $$
 BEGIN
   INSERT INTO work_task_events(task_id, team_id, actor, type, body)
   VALUES (NEW.id, NEW.team_id, NEW.assigned_by, 'created',
-          'Assigned to ' || NEW.assigned_to || ' · ' || NEW.priority || ' priority');
+          'Assigned to ' || work_dn(NEW.assigned_to) || ' · ' || NEW.priority || ' priority');
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -98,7 +103,7 @@ BEGIN
 
   IF NEW.assigned_to IS DISTINCT FROM OLD.assigned_to THEN
     INSERT INTO work_task_events(task_id, team_id, actor, type, body)
-    VALUES (NEW.id, NEW.team_id, who, 'reassigned', OLD.assigned_to || ' → ' || NEW.assigned_to);
+    VALUES (NEW.id, NEW.team_id, who, 'reassigned', work_dn(OLD.assigned_to) || ' → ' || work_dn(NEW.assigned_to));
   END IF;
 
   IF NEW.due_at IS DISTINCT FROM OLD.due_at THEN

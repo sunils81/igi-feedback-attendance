@@ -222,6 +222,8 @@ async function handleUnsubscribe(req, res) {
 //   body: { taskId, kind: 'assigned' | 'status' | 'comment', actor, note? }
 // Recipients: 'assigned' -> the assignee; 'status'/'comment' -> assignee + assigner,
 // minus whoever performed the action.
+const WORK_DISPLAY = { Admin: 'HOD – Sunil Sharma' };
+const wdn = (n) => WORK_DISPLAY[n] || n;
 const WORK_PORTAL_BY_ROLE = { Instructor: 'instructor', AcademicHead: 'instructor', Admin: 'admin', Manager: 'admin', RevenueManager: 'admin' };
 
 async function supaGet(path) {
@@ -261,16 +263,16 @@ async function handleTaskNotify(req, res) {
   let title, body;
   if (kind === 'assigned') {
     recipients = [task.assigned_to];
-    title = `New task from ${task.assigned_by || 'your manager'}`;
+    title = `New task from ${wdn(task.assigned_by) || 'your manager'}`;
     body = task.title + (task.priority === 'urgent' || task.priority === 'high' ? ` (${task.priority})` : '');
   } else if (kind === 'status') {
     recipients = [task.assigned_to, task.assigned_by];
     const label = { todo: 'To do', in_progress: 'In progress', blocked: 'Blocked', done: 'Done ✅' }[task.status] || task.status;
-    title = `${who || task.assigned_to} · ${label}`;
+    title = `${wdn(who || task.assigned_to)} · ${label}`;
     body = task.title;
   } else if (kind === 'comment') {
     recipients = [task.assigned_to, task.assigned_by];
-    title = `${who || 'Comment'} on: ${task.title}`;
+    title = `${wdn(who) || 'Comment'} on: ${task.title}`;
     body = String(note || '').slice(0, 140) || 'New comment';
   } else {
     return res.status(400).json({ status: 'error', reason: 'Invalid kind' });

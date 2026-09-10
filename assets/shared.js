@@ -7463,6 +7463,51 @@ window.gasGet = (function () {
     });
   }
 
+
+  /* ── Attendance % = sessions attended ÷ sessions HELD ───────────────────────────
+     2026-09-10 fix: h_getStudentDiplomaStatus and h_getDiplomaEligibilityAll used to
+     divide by the number of attendance_feedback ROWS. A student only gets a row when
+     they (or the instructor) mark them present, so present ÷ rows was always 100% —
+     every Aug-26 student showed full attendance on the student and counsellor portals.
+     h_getStudentPortalData (student home) and h_getInstructorEligibility already used
+     the sessions table; this brings the other two in line with them.
+     - denominator: non-cancelled sessions with session_date <= today
+     - numerator:   distinct held sessions with a Present/Late row whose
+                    instructor_override is not 'absent'
+     Returns { 'STUDENT|BATCH': { total, present } } (batch codes upper-cased).  */
+  function attendanceFromSessions(sessions, attRows) {
+    var today = new Date(); today.setHours(23, 59, 59, 999);
+    var heldByBatch = {}, heldCodes = {};
+    (sessions || []).forEach(function(sn) {
+      if (!sn || !sn.batch_code || !sn.session_code) return;
+      if (sn.is_cancelled === true) return;
+      if (String(sn.session_type || '').toLowerCase() === 'cancelled') return;
+      if (String(sn.topic || '').indexOf('CANCELLED:') === 0) return;
+      if (sn.session_date && new Date(sn.session_date) > today) return;
+      var bc = String(sn.batch_code).toUpperCase();
+      if (!heldByBatch[bc]) heldByBatch[bc] = 0;
+      if (!heldCodes[sn.session_code]) { heldCodes[sn.session_code] = bc; heldByBatch[bc]++; }
+    });
+    var presentSess = {};   // 'STUDENT|BATCH' -> { session_code: true }
+    (attRows || []).forEach(function(a) {
+      if (!a || !a.student_id || !a.batch_code) return;
+      if (!(a.attendance === 'Present' || a.attendance === 'Late')) return;
+      if (String(a.instructor_override || '').toLowerCase() === 'absent') return;
+      if (a.session_code && !heldCodes[a.session_code]) return;   // row for a cancelled / future / deleted session
+      var key = a.student_id + '|' + String(a.batch_code).toUpperCase();
+      if (!presentSess[key]) presentSess[key] = {};
+      presentSess[key][a.session_code || ('row-' + a.id)] = true;
+    });
+    var out = {};
+    Object.keys(presentSess).forEach(function(key) {
+      var bc = key.split('|')[1];
+      out[key] = { total: heldByBatch[bc] || 0, present: Object.keys(presentSess[key]).length };
+    });
+    out.__heldByBatch = heldByBatch;
+    return out;
+  }
+  window.attendanceFromSessions = attendanceFromSessions;
+
   async function h_getStudentDiplomaStatus(p, cb) {
     function getP(table, qs) {
       return new Promise(function(resolve) {
@@ -7498,15 +7543,16 @@ window.gasGet = (function () {
 
       // 2. Fetch in parallel
       var pBatches = getP('batches', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')');
-      var pAtt = getP('attendance_feedback', 'student_id=eq.' + encodeURIComponent(studentId));
+      var pAtt = getP('attendance_feedback', 'student_id=eq.' + encodeURIComponent(studentId) + '&select=id,student_id,batch_code,session_code,attendance,instructor_override');
+      var pSess = getP('sessions', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')&select=session_code,batch_code,session_date,is_cancelled,topic');
       var pAssess = getP('assessments', 'batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')');
       var pMarks = getP('assessment_marks', 'student_id=eq.' + encodeURIComponent(studentId));
       var pHod = getP('hod_approvals', 'ref_code=in.(' + batchCodes.map(function(bc) { return encodeURIComponent(bc + '-HOD-' + studentId); }).join(',') + ')');
       var pDips = getP('diplomas', 'student_id=eq.' + encodeURIComponent(studentId));
       var pFees = getP('student_fees', 'student_id=eq.' + encodeURIComponent(studentId) + '&batch_code=in.(' + batchCodes.map(encodeURIComponent).join(',') + ')');
 
-      var [batches, attRows, assessments, marks, hods, diplomas, fees] = await Promise.all([
-        pBatches, pAtt, pAssess, pMarks, pHod, pDips, pFees
+      var [batches, attRows, sessionRows, assessments, marks, hods, diplomas, fees] = await Promise.all([
+        pBatches, pAtt, pSess, pAssess, pMarks, pHod, pDips, pFees
       ]);
 
       var batchMap = {};
@@ -7530,13 +7576,12 @@ window.gasGet = (function () {
         hodMap[bc] = h.status;
       });
 
+      // Attendance = attended ÷ sessions HELD (see attendanceFromSessions; 2026-09-10 fix)
+      var attFromSess = attendanceFromSessions(sessionRows, attRows);
       var attByBatch = {};
-      attRows.forEach(function(a) {
-        if (!a.batch_code) return;
-        var bc = a.batch_code.toUpperCase();
-        if (!attByBatch[bc]) attByBatch[bc] = { total: 0, present: 0 };
-        attByBatch[bc].total++;
-        if (a.attendance === 'Present' || a.attendance === 'Late') attByBatch[bc].present++;
+      batchCodes.forEach(function(code) {
+        var bc = String(code).toUpperCase();
+        attByBatch[bc] = attFromSess[studentId + '|' + bc] || { total: (attFromSess.__heldByBatch[bc] || 0), present: 0 };
       });
 
       // Build a marks lookup: assessment_id → mark row (manual "Marks" tab entries)
@@ -8960,22 +9005,10 @@ window.gasGet = (function () {
         }
       });
 
-      var sessionsByBatch = {};
-      sessions.forEach(function(s) {
-        var bc = s.batch_code.toUpperCase();
-        var type = String(s.session_type || '').toLowerCase();
-        if (type !== 'cancelled') {
-          if (!sessionsByBatch[bc]) sessionsByBatch[bc] = [];
-          sessionsByBatch[bc].push(s.session_code);
-        }
-      });
-
-      var attMap = {};
-      attFeedback.forEach(function(a) {
-        if (a.student_id && a.session_code) {
-          attMap[a.student_id + '|' + a.session_code] = a.attendance || a.status;
-        }
-      });
+      // Attendance = attended ÷ sessions HELD to date, honouring instructor 'absent'
+      // overrides — same helper as the student / counsellor portals (2026-09-10).
+      var attFromSess = attendanceFromSessions(sessions, attFeedback);
+      var heldByBatchI = attFromSess.__heldByBatch || {};
 
       var assessMap = {};
       assessments.forEach(function(a) { assessMap[a.assessment_id] = a; });
@@ -9038,12 +9071,8 @@ window.gasGet = (function () {
             };
           }
 
-          var totalSess = (sessionsByBatch[bc] || []).length;
-          var attended = 0;
-          (sessionsByBatch[bc] || []).forEach(function(sc) {
-            var status = attMap[s.student_id + '|' + sc];
-            if (status && status !== 'Absent') attended++;
-          });
+          var attI = attFromSess[s.student_id + '|' + bc] || { total: heldByBatchI[bc] || 0, present: 0 };
+          var totalSess = attI.total, attended = attI.present;
 
           var key = s.student_id + '|' + bc;
           var hodStatus = hodMap[key] || '';
@@ -9111,16 +9140,17 @@ window.gasGet = (function () {
       });
     }
     try {
-      var [students, batches, attRows, assessments, marks, diplomas, hods, enrollments, fees] = await Promise.all([
+      var [students, batches, attRows, assessments, marks, diplomas, hods, enrollments, fees, sessionRows] = await Promise.all([
         getAllP('students', 'select=student_id,name,batch_code'),
         getAllP('batches', 'select=batch_code,centre,course,counselor'),
-        getAllP('attendance_feedback', 'select=student_id,batch_code,attendance'),
+        getAllP('attendance_feedback', 'select=id,student_id,batch_code,session_code,attendance,instructor_override'),
         getAllP('assessments', 'select=assessment_id,batch_code,test_name,test_type,max_marks,held_on'),
         getAllP('assessment_marks', 'select=assessment_id,student_id,marks,remarks'),
         getAllP('diplomas', 'select=student_id,batch_code,released_by,released_at'),
         getP('hod_approvals', 'status=eq.Approved&select=ref_code,status'),
         getAllP('enrollments', 'status=eq.Active&select=student_id,batch_code'),
-        getAllP('student_fees', '')
+        getAllP('student_fees', ''),
+        getAllP('sessions', 'select=session_code,batch_code,session_date,is_cancelled,topic')
       ]);
 
       // Fee-paid gate — same canonical outstanding-balance computation as the admin Fee
@@ -9167,14 +9197,9 @@ window.gasGet = (function () {
         if (parts.length === 2) hodMap[parts[1] + '|' + parts[0]] = h.status;
       });
 
-      var attByStudentBatch = {};
-      attRows.forEach(function(a) {
-        if (!a.student_id || !a.batch_code) return;
-        var key = a.student_id + '|' + a.batch_code.toUpperCase();
-        if (!attByStudentBatch[key]) attByStudentBatch[key] = { total: 0, present: 0 };
-        attByStudentBatch[key].total++;
-        if (a.attendance === 'Present' || a.attendance === 'Late') attByStudentBatch[key].present++;
-      });
+      // Attendance = attended ÷ sessions HELD (see attendanceFromSessions; 2026-09-10 fix)
+      var attByStudentBatch = attendanceFromSessions(sessionRows, attRows);
+      var heldByBatch = attByStudentBatch.__heldByBatch || {};
 
       var assessmentsByBatch = {};
       assessments.forEach(function(a) {
@@ -9209,7 +9234,7 @@ window.gasGet = (function () {
             centre: b.centre || '',
             batchAssessments: assessmentsByBatch[bc] || [],
             marksMap: marksByStudent[st.student_id] || {},
-            attInfo: attByStudentBatch[key] || { total: 0, present: 0 },
+            attInfo: attByStudentBatch[key] || { total: heldByBatch[bc] || 0, present: 0 },
             hodStatus: hodMap[key] || '',
             dipRec: diplomaMap[key],
             feeInfo: feeMap[key] || null

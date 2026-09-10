@@ -7,7 +7,7 @@
  */
 (function () {
   // Public VAPID key — safe to ship in client code by design (Web Push spec).
-  var VAPID_PUBLIC_KEY = 'BFayiPj9zj2S4UYmDZWhAACM5_2rGTmQ7ES_GWW6XCTNWyDmMJNrFz-hxff-chVNHUWmQtWmPzTZAg3tD7PP0oQ';
+  var VAPID_PUBLIC_KEY = 'BN2twNs9QZPHvOfKpCKMYMAcUUuNMF2F0galGeFPKd6RK4ibHOoJR8m3LxEPB6aOoWp-lUb8YRjVA32v6aoPJFs';
 
   function urlBase64ToUint8Array(base64String) {
     var padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -25,6 +25,14 @@
 
       var reg = await navigator.serviceWorker.ready;
       var sub = await reg.pushManager.getSubscription();
+
+      // If this browser subscribed under a previous VAPID key (rotated 2026-09-10), that
+      // subscription can never be delivered to — drop it and subscribe afresh.
+      if (sub && sub.options && sub.options.applicationServerKey) {
+        var cur = new Uint8Array(sub.options.applicationServerKey), want = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+        var same = cur.length === want.length; for (var i = 0; same && i < cur.length; i++) same = cur[i] === want[i];
+        if (!same) { try { await sub.unsubscribe(); } catch (e) {} sub = null; }
+      }
 
       if (!sub) {
         var perm = await Notification.requestPermission();

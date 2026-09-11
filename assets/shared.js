@@ -294,6 +294,19 @@ window.gasGet = (function () {
   function nowISO() { return new Date().toISOString(); }
   function uniqueId(prefix) { return prefix + Date.now() + '-' + Math.random().toString(36).slice(2, 7).toUpperCase(); }
   function todayYMD() { var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  /* ── batchHasEnded / batchNotStarted — inclusive, timezone-safe date-range checks ──────
+     2026-09-11 BUG FIX. These used to be written as `new Date() > new Date(b.end_date)`.
+     `new Date('2026-09-11')` parses as UTC midnight, which in IST is 05:30 that SAME
+     morning — so a batch counted as "ended" from 5.30am on its own final day. On
+     SUR-PDG-AUG26 (end 2026-09-11, Final Test day) that hid the student portal's Today
+     tab via applyAlumniTabVisibility and stopped _ensureTodaysSessions creating the
+     session, so both students could not submit attendance on their last day.
+     The end date is INCLUSIVE — the final day is a teaching day — so compare local
+     'YYYY-MM-DD' strings, which are lexicographically ordered and carry no timezone. */
+  function batchHasEnded(endDate)   { var e = String(endDate   || '').slice(0, 10); return !!e && todayYMD() > e; }
+  function batchNotStarted(startDate) { var s = String(startDate || '').slice(0, 10); return !!s && todayYMD() < s; }
+  window.batchHasEnded = batchHasEnded;
+  window.batchNotStarted = batchNotStarted;
   function sameName(n1, n2) {
     var clean = function(s) {
       return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -7244,10 +7257,10 @@ window.gasGet = (function () {
     var toCreate = [];
     (batches || []).forEach(function (b) {
       var batchCode = b.batch_code;
-      var startD = new Date(b.start_date);
-      var endD = new Date(b.end_date);
       var now = new Date();
-      if (now < startD || now > endD) return; // batch isn't currently running
+      // Inclusive of both the first and last day — see batchHasEnded above. Using
+      // `new Date(end_date)` here skipped session creation on the batch's final day.
+      if (batchNotStarted(b.start_date) || batchHasEnded(b.end_date)) return;
       var already = (existingSessions || []).some(function (s) {
         return s.batch_code === batchCode && s.session_date === todayYMDStr;
       });
@@ -7320,7 +7333,10 @@ window.gasGet = (function () {
                 var batchCode = b.batch_code;
                 var startD = new Date(b.start_date);
                 var endD = new Date(b.end_date);
-                var isExpired = new Date() > endD;
+                // Expired only AFTER the end date has fully passed; the last day is a
+                // teaching day (see batchHasEnded). This drives applyAlumniTabVisibility()
+                // in student.html, which hides the Today/attendance tab for alumni.
+                var isExpired = batchHasEnded(b.end_date);
                 // FIXED 2026-08-27: a batch can have MORE than one real session on the same
                 // date — e.g. the regular scheduled class plus a same-day "Extra" workshop
                 // or makeup session (a routine instructor workflow, not an edge case — this
@@ -7946,7 +7962,7 @@ window.gasGet = (function () {
         // on, and a batch that already ended is done; nagging about it forever (which is what
         // happened before this check existed — see e.g. a batch that ended 47 days ago still
         // showing "3 weekly tests not yet entered") isn't actionable for the instructor.
-        if (today < start || today > end) return;
+        if (batchNotStarted(b.start_date) || batchHasEnded(b.end_date)) return;
 
         var elapsedWeeks = Math.max(0, Math.min(totalWeeks, (today - start) / MS_PER_WEEK));
         var isJewelPad = (b.course || '').toLowerCase().indexOf('jewelpad') !== -1;

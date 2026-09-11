@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=91"></script>
+<script src="assets/shared.js?v=92"></script>
 <script src="assets/work.js?v=4"></script>
 <script src="assets/push-subscribe.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -5089,7 +5089,16 @@ function submitDiscountApprovalReview(decision) {
   var errEl = document.getElementById('discount-approval-review-err');
   gasGet({ action: 'reviewDiscountRequest', id: discountApprovalReviewTargetId, decision: decision, isAdmin: 'true', reviewedBy: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin'), reviewNote: note }, function (e, d) {
     if (e || !d || d.status !== 'ok') { errEl.textContent = (d && d.reason) || 'Could not save. Try again.'; return; }
-    showToast(decision === 'approved' ? 'Approved — counsellor can now save this discount.' : 'Rejected.');
+    // Tell the counsellor straight away — push to every device they've registered, plus
+    // the green "please enter the revenue" banner their portal polls for. Fire-and-forget:
+    // a push failure must never make a recorded decision look like it failed. 2026-09-11.
+    try {
+      fetch('/api/push/discount-notify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId: discountApprovalReviewTargetId, actor: (typeof adminUser !== 'undefined' && adminUser ? adminUser.name : 'Admin') })
+      }).catch(function () {});
+    } catch (ex) {}
+    showToast(decision === 'approved' ? 'Approved — counsellor notified to enter the revenue.' : 'Rejected — counsellor notified.');
     closeDiscountApprovalReview();
     loadDiscountApprovals();
   });

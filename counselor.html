@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=91"></script>
+<script src="/assets/shared.js?v=92"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1882,6 +1882,11 @@
   <!-- Work-assignment banner: "<manager> assigned you N tasks". Rendered by
        IGIWork.banner() in assets/work.js right after login; hides itself when nothing
        is open. Sits above the fee banners so new work is the first thing seen. -->
+  <!-- Discount-approved banner: HOD approved a discount but the fee record still hasn't
+       been saved, so the revenue isn't booked yet. Rendered by loadApprovedDiscountAlert()
+       right after login; persistent (no dismiss) — it clears itself only once the request
+       is marked `used`, i.e. the fee has actually been saved. 2026-09-11. -->
+  <div id="discount-approved-banner" style="display:none;background:#F0FDF4;border:1.5px solid #16a34a;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#14532d;flex-direction:column;gap:6px;"></div>
   <div id="work-assigned-banner" style="display:none;background:#eff6ff;border:1.5px solid #2563eb;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#1e3a8a;flex-direction:column;gap:6px;"></div>
   <div id="fees-reminder-banner" style="display:none;background:#fef2f2;border:1.5px solid #dc2626;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#991b1b;align-items:center;gap:10px;flex-wrap:wrap;">
     <span>⚠️</span>
@@ -5727,6 +5732,7 @@ function doLogin() {
     } catch(ex) {}
     if (window.IGIPush) window.IGIPush.subscribe('counselor', counselorName);
     refreshWorkBadge();
+    startApprovedDiscountWatch();
     if (window.IGIWork) window.IGIWork.banner({ id: 'work-assigned-banner', me: counselorName, onOpen: function(){ switchTab('t-work'); } });
     if (/[?&]work=/.test(location.search)) setTimeout(function(){ switchTab('t-work'); }, 300);
     // Update header
@@ -10078,6 +10084,7 @@ function applyApprovedDiscountRequest(id) {
       return;
     }
     showToast(rec.studentName + '\'s fee record saved.');
+    loadApprovedDiscountAlert();
     loadDiscountRequests(true);
     loadFeeOverview();
   });
@@ -19687,6 +19694,52 @@ function loadRevenueMonthMismatchNotification() {
 // Jumps straight to a specific student's Update Fee form from the mismatch banner above —
 // selects their batch on the Fees tab, loads it, then opens the form, same as clicking
 // "Update Fee" on that row manually would.
+
+/* ── Discount approved → "please enter the revenue" banner (2026-09-11) ──────────────
+   Lists this counsellor's discount requests that the HOD approved but that haven't been
+   used yet (used=false), i.e. the discount is cleared but the fee record — and therefore
+   the revenue — still isn't in. Persistent by design: no dismiss button, it disappears on
+   its own once each request is used. Re-checked every 2 min and after any fee save. */
+var _approvedDiscountTimer = null;
+function loadApprovedDiscountAlert() {
+  if (!counselorName) return;
+  gasGet({ action: 'getDiscountRequests', status: 'approved', requestedBy: counselorName, isAdmin: 'false' }, function(e, d) {
+    var banner = document.getElementById('discount-approved-banner');
+    if (!banner) return;
+    var pend = (!e && d && d.records) ? d.records.filter(function(r) { return r.status === 'approved' && !r.used; }) : [];
+    if (!pend.length) { banner.style.display = 'none'; return; }
+    banner.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;">' +
+        '<span>✅</span>' +
+        '<span style="flex:1;font-weight:700;">' + pend.length + ' discount' + (pend.length > 1 ? 's' : '') +
+          ' approved — please enter the revenue</span>' +
+        '<button onclick="switchTab(\'t-fee-record\');setTimeout(function(){var el=document.getElementById(\'discount-req-list\');if(el)el.scrollIntoView({behavior:\'smooth\'});},250)" ' +
+          'style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;">View all</button>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:5px;padding-left:26px;">' + pend.map(function(r) {
+        var who = r.reviewedBy ? escC(r.reviewedBy) : 'HOD';
+        // One-click save when the original fee entry was stashed with the request;
+        // otherwise jump straight into that student's Update Fee form.
+        var btn = r.payload
+          ? '<button onclick="applyApprovedDiscountRequest(\'' + escC(r.id) + '\')" style="background:#16a34a;color:#fff;border:none;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">Save Fee Now</button>'
+          : '<button onclick="jumpToFeeMismatch(\'' + escC(r.batchCode) + '\',\'' + escC(r.studentId) + '\')" style="background:#fff;color:#14532d;border:1.5px solid #16a34a;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">Enter Revenue</button>';
+        return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+          '<span style="flex:1;min-width:180px">' + escC(r.studentName) +
+            ' <span style="font-size:11px;color:#3f6212">(' + escC(r.studentId) + ' · ' + escC(r.batchCode) + ')</span>' +
+            '<div style="font-size:11px;color:#3f6212">' + r.discountPct + '% approved by ' + who + '</div></span>' +
+          btn + '</div>';
+      }).join('') + '</div>';
+    banner.style.display = 'flex';
+  });
+}
+function startApprovedDiscountWatch() {
+  loadApprovedDiscountAlert();
+  clearInterval(_approvedDiscountTimer);
+  _approvedDiscountTimer = setInterval(function() {
+    if (!document.hidden) loadApprovedDiscountAlert();
+  }, 120000);
+}
+
 function jumpToFeeMismatch(batchCode, studentId) {
   switchTab('t-fees');
   var sel = document.getElementById('fee-batch');

@@ -309,11 +309,65 @@ async function handleTaskNotify(req, res) {
   return res.status(200).json({ status: 'ok', results });
 }
 
+// ── /api/push/discount-notify — fires when the HOD approves/rejects a discount ────────
+// Called from admin.html right after reviewDiscountRequest succeeds. Like task-notify it
+// takes no secret (a browser can't hold one); instead the server re-reads the request by
+// id with the service key and composes the message itself, so a caller can at worst
+// re-send a notification about a decision that has genuinely been recorded.
+//   body: { requestId, actor }
+async function handleDiscountNotify(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ status: 'error', reason: 'Method not allowed' });
+  }
+  if (!SUPA_URL || !SUPA_KEY) {
+    return res.status(500).json({ status: 'error', reason: 'Server not configured' });
+  }
+  const { requestId, actor } = req.body || {};
+  if (!requestId || !/^[0-9a-f-]{36}$/i.test(String(requestId))) {
+    return res.status(400).json({ status: 'error', reason: 'Invalid requestId' });
+  }
+  try { configureWebPush(); } catch (e) {
+    return res.status(500).json({ status: 'error', reason: e.message });
+  }
+
+  let dr;
+  try {
+    const rows = await supaGet(`discount_requests?id=eq.${encodeURIComponent(requestId)}&select=id,student_id,student_name,batch_code,discount_pct,status,requested_by,reviewed_by,used`);
+    dr = rows[0];
+  } catch (e) {
+    return res.status(500).json({ status: 'error', reason: 'Could not load request' });
+  }
+  if (!dr) return res.status(404).json({ status: 'error', reason: 'Request not found' });
+  if (dr.status !== 'approved' && dr.status !== 'rejected') {
+    return res.status(200).json({ status: 'ok', sent: 0, reason: 'still pending' });
+  }
+  const who = wdn(dr.reviewed_by || actor || 'HOD');
+  const title = dr.status === 'approved'
+    ? `Discount approved by ${who}`
+    : `Discount not approved by ${who}`;
+  const body = dr.status === 'approved'
+    ? `${dr.student_name} (${dr.batch_code}) · ${dr.discount_pct}% — please enter the revenue now.`
+    : `${dr.student_name} (${dr.batch_code}) · ${dr.discount_pct}% was declined.`;
+
+  try {
+    const subs = await fetchSubscriptionsAllPortals(dr.requested_by);
+    const out = await pushTo('counselor', dr.requested_by, {
+      title, body,
+      url: `${PORTAL_URLS.counselor}?discount=${dr.id}`,
+      tag: `discount-${dr.id}`,
+    }, subs);
+    return res.status(200).json({ status: 'ok', to: dr.requested_by, ...out });
+  } catch (e) {
+    return res.status(500).json({ status: 'error', reason: e.message });
+  }
+}
+
 export default async function handler(req, res) {
   const action = (req.query && req.query.action) || '';
   if (action === 'send') return handleSend(req, res);
   if (action === 'subscribe') return handleSubscribe(req, res);
   if (action === 'unsubscribe') return handleUnsubscribe(req, res);
   if (action === 'task-notify') return handleTaskNotify(req, res);
+  if (action === 'discount-notify') return handleDiscountNotify(req, res);
   return res.status(400).json({ status: 'error', reason: 'Unknown or missing action' });
 }

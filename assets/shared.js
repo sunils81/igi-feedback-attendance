@@ -4441,6 +4441,46 @@ window.gasGet = (function () {
     }
   }
 
+
+  /* ── Monthly Business Summary drill-down: which students make up a month's revenue ──
+     2026-09-11, per instruction "student name and course should be visible" (admin portal).
+     Attribution mirrors migration_resync_revenue_monthly_achieved.sql exactly:
+     student_fees.recorded_by = counsellor, student_fees.centre = business centre,
+     student_fees.revenue_month = month — so the names listed always add up to the
+     counsellor row they sit under. */
+  function h_getMonthFeeDetail(p, cb) {
+    var month = String(p.month || '').trim();
+    if (!month) { cb(null, { status: 'error', reason: 'month required' }); return; }
+    GET('student_fees', 'revenue_month=eq.' + encodeURIComponent(month) + '&select=student_id,batch_code,centre,recorded_by,course_fee,gst_amount,payment_date&order=course_fee.desc&limit=2000', function(e, fees) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      fees = fees || [];
+      if (!fees.length) { cb(null, { status: 'ok', month: month, rows: [] }); return; }
+      var ids = {}, bcs = {};
+      fees.forEach(function(f) { if (f.student_id) ids[f.student_id] = 1; if (f.batch_code) bcs[f.batch_code] = 1; });
+      var idList = Object.keys(ids).map(function(x) { return '"' + encodeURIComponent(x) + '"'; }).join(',');
+      var bcList = Object.keys(bcs).map(function(x) { return '"' + encodeURIComponent(x) + '"'; }).join(',');
+      GET('students', 'student_id=in.(' + idList + ')&select=student_id,name', function(e2, students) {
+        GET('batches', 'batch_code=in.(' + bcList + ')&select=batch_code,course', function(e3, batches) {
+          var nameById = {}; (students || []).forEach(function(st) { nameById[String(st.student_id).toUpperCase()] = st.name; });
+          var courseByBc = {}; (batches || []).forEach(function(b) { courseByBc[String(b.batch_code).toUpperCase()] = b.course; });
+          cb(null, { status: 'ok', month: month, rows: fees.map(function(f) {
+            return {
+              studentId: f.student_id,
+              name: nameById[String(f.student_id || '').toUpperCase()] || f.student_id || '',
+              batchCode: f.batch_code || '',
+              course: courseByBc[String(f.batch_code || '').toUpperCase()] || '',
+              centre: f.centre || '',
+              counsellor: f.recorded_by || 'Unknown',
+              courseFee: Number(f.course_fee) || 0,
+              gstAmount: Number(f.gst_amount) || 0,
+              paymentDate: f.payment_date || ''
+            };
+          }) });
+        });
+      });
+    });
+  }
+
   function h_getSuspenseEntries(p, cb) {
     var isAdm = !!(p && (p.isAdmin === true || p.isAdmin === 'true'));
     var qs = 'order=created_at.desc&limit=500';
@@ -11571,6 +11611,7 @@ window.gasGet = (function () {
       case 'deleteCreditNote':          return h_deleteCreditNote(params, cb);
       case 'saveSuspenseEntry':         return h_saveSuspenseEntry(params, cb);
       case 'getSuspenseEntries':        return h_getSuspenseEntries(params, cb);
+      case 'getMonthFeeDetail':         return h_getMonthFeeDetail(params, cb);
       case 'resolveSuspenseEntry':      return h_resolveSuspenseEntry(params, cb);
       case 'saveRegularisationRequest': return h_saveRegularisationRequest(params, cb);
       case 'getRegularisationRequests': return h_getRegularisationRequests(params, cb);

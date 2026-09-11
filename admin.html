@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=90"></script>
+<script src="assets/shared.js?v=91"></script>
 <script src="assets/work.js?v=4"></script>
 <script src="assets/push-subscribe.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -6284,8 +6284,19 @@ function renderMonthlyBusinessSummary(monthKey) {
         var expanded = !!mbsExpandedCentres[c.centre];
         var counRows = c.byCounsellor.map(function(cn) {
           var catLabel = cn.category === 'own' ? 'Home' : (cn.category === 'other' ? 'Cross-sell' : 'Corporate');
+          // Student-level rows under each counsellor (name · course · batch · fee) — fetched
+          // lazily per month by mbsLoadStudentDetail() and cached in mbsStudentDetail.
+          var studs = mbsStudentsFor(monthKey, c.centre, cn.counsellor);
+          var studRows = studs === null
+            ? '<tr class="mbs-stud-row" style="background:#fff"><td></td><td style="padding-left:44px;font-size:11px;color:var(--muted)" colspan="6">Loading students…</td></tr>'
+            : studs.map(function(st) {
+                return '<tr class="mbs-stud-row" style="background:#fff;font-size:12px"><td></td>' +
+                  '<td style="padding-left:44px"><span style="font-weight:600">' + escHtml(st.name) + '</span> <span style="color:var(--muted);font-size:11px">(' + escHtml(st.studentId) + ')</span>' +
+                  '<div style="font-size:11px;color:var(--muted)">' + escHtml(st.course || '—') + ' · ' + escHtml(st.batchCode) + (st.paymentDate ? ' · ' + escHtml(st.paymentDate) : '') + '</div></td>' +
+                  '<td style="text-align:right;color:var(--muted)">' + money(st.courseFee) + '</td><td></td><td></td><td></td><td></td></tr>';
+              }).join('');
           return '<tr style="background:var(--off)"><td></td><td colspan="1" style="padding-left:24px">' + cn.counsellor + ' <span style="font-size:11px;color:var(--muted)">(' + catLabel + ')</span></td>' +
-            '<td style="text-align:right">' + money(cn.achievedCourse) + '</td><td></td><td></td><td></td><td style="text-align:right">' + cn.students + '</td></tr>';
+            '<td style="text-align:right">' + money(cn.achievedCourse) + '</td><td></td><td></td><td></td><td style="text-align:right">' + cn.students + '</td></tr>' + studRows;
         }).join('');
         var safeCentre = c.centre.replace(/'/g,"\\'").replace(/"/g,'&quot;');
         return '<tr style="cursor:pointer" onclick="mbsToggleCentre(\'' + c.centre.replace(/'/g,"\\'") + '\',\'' + monthKey + '\')">' +
@@ -6346,6 +6357,32 @@ var mbsExpandedCentres = {};
 function mbsToggleCentre(centre, monthKey) {
   mbsExpandedCentres[centre] = !mbsExpandedCentres[centre];
   renderMonthlyBusinessSummary(monthKey);
+  if (mbsExpandedCentres[centre]) mbsLoadStudentDetail(monthKey);
+}
+
+// ── Student-level detail for the Monthly Business Summary (2026-09-11) ─────────────
+// One fetch per month (getMonthFeeDetail in shared.js), cached; rows are grouped by
+// centre + counsellor using the same attribution as revenue_monthly_achieved.
+var mbsStudentDetail = {};   // monthKey -> { loading: bool, byKey: { 'CENTRE|COUNSELLOR': [rows] } }
+function mbsStudentsFor(monthKey, centre, counsellor) {
+  var d = mbsStudentDetail[monthKey];
+  if (!d || d.loading) return null;
+  return d.byKey[String(centre).toUpperCase() + '|' + String(counsellor).toUpperCase()] || [];
+}
+function mbsLoadStudentDetail(monthKey) {
+  if (mbsStudentDetail[monthKey]) return;
+  mbsStudentDetail[monthKey] = { loading: true, byKey: {} };
+  gasGet({ action: 'getMonthFeeDetail', month: monthKey }, function(e, d) {
+    var byKey = {};
+    if (!e && d && d.status === 'ok') {
+      (d.rows || []).forEach(function(r) {
+        var k = String(r.centre || 'Unknown').toUpperCase() + '|' + String(r.counsellor || 'Unknown').toUpperCase();
+        (byKey[k] = byKey[k] || []).push(r);
+      });
+    }
+    mbsStudentDetail[monthKey] = { loading: false, byKey: byKey };
+    renderMonthlyBusinessSummary(monthKey);
+  });
 }
 
 function mbsRenderCompareCell(cellClass, centre, achievedCourse, compareExclGst, noDataLabel) {

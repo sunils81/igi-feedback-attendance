@@ -1578,7 +1578,7 @@
           </div>
         </div>
         <div class="chart-card">
-          <div class="chart-title">Monthly Collections Trajectory</div>
+          <div class="chart-title">Monthly Revenue Trajectory</div>
           <div class="chart-subtitle">Appraisal cycle Apr→Mar · FY 26–27 (gold) vs FY 25–26 (grey) · ₹ Crores · Excl. GST</div>
           <div class="chart-wrap">
             <canvas id="monthlyTrendChart"></canvas>
@@ -2135,7 +2135,7 @@
         <div class="kpi-row" id="inv-kpis" style="display:none">
           <div class="kpi-card"><div class="kpi-label">Invoices</div><div class="kpi-value" id="inv-kpi-count">—</div></div>
           <div class="kpi-card"><div class="kpi-label">Expected</div><div class="kpi-value" id="inv-kpi-expected">—</div></div>
-          <div class="kpi-card"><div class="kpi-label">Fees with GST</div><div class="kpi-value" id="inv-kpi-collected">—</div></div>
+          <div class="kpi-card"><div class="kpi-label">Collected</div><div class="kpi-value" id="inv-kpi-collected">—</div></div>
           <div class="kpi-card"><div class="kpi-label">Outstanding</div><div class="kpi-value" id="inv-kpi-outstanding">—</div></div>
           <div class="kpi-card"><div class="kpi-label">Total Discount</div><div class="kpi-value" id="inv-kpi-discount">—</div></div>
         </div>
@@ -3502,11 +3502,11 @@
       <div class="pres-card-title">📈 YTD Financial Snapshot & Quarter Goals</div>
       <div class="pres-kpi-grid">
         <div class="pres-kpi-card">
-          <div class="pres-kpi-label">YTD Collections</div>
+          <div class="pres-kpi-label">YTD Revenue</div>
           <div class="pres-kpi-val" id="pres-kpi-ytd">—</div>
         </div>
         <div class="pres-kpi-card">
-          <div class="pres-kpi-label">GST Collected</div>
+          <div class="pres-kpi-label">GST on Revenue</div>
           <div class="pres-kpi-val" id="pres-kpi-gst">—</div>
         </div>
         <div class="pres-kpi-card">
@@ -5857,7 +5857,7 @@ function renderRevenueTab() {
   }
 
   // This-Month / Last-Month revenue — counts every rupee recorded (corporate rows included,
-  // same as YTD Collected above), so this figure reconciles with it.
+  // same as YTD Revenue above), so this figure reconciles with it.
   const nowForMonth = new Date();
   const thisMonthKey = nowForMonth.getFullYear() + '-' + String(nowForMonth.getMonth() + 1).padStart(2, '0');
   const lastMonthDate = new Date(nowForMonth.getFullYear(), nowForMonth.getMonth() - 1, 1);
@@ -5923,10 +5923,10 @@ function renderRevenueTab() {
     const pcTxt    = document.getElementById('smart-callout-text');
     if (pcBanner && pcTxt && pc && (pc.gst > 0 || pc.course > 0)) {
       pcTxt.innerHTML =
-        '<strong>Pre-Cycle Collections (Jan–Mar 2026):</strong> ' +
+        '<strong>Pre-Cycle Revenue (Jan–Mar 2026):</strong> ' +
         money(pc.gst) + ' incl. GST &nbsp;|&nbsp; ' +
         money(pc.course) + ' excl. GST &nbsp;|&nbsp; ' +
-        pc.students + ' students — <em>collected but outside the Apr 2026–Mar 2027 appraisal window. Not counted toward targets.</em>';
+        pc.students + ' students — <em>booked but outside the Apr 2026–Mar 2027 appraisal window. Not counted toward targets.</em>';
       pcBanner.style.display = 'block';
       // Change banner color to muted info style (not gold/dark)
       pcBanner.style.background = 'rgba(24,95,165,0.08)';
@@ -6470,10 +6470,13 @@ function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTarge
       '</div>' +
       '<!-- KPI chips -->' +
       '<div style="display:flex;gap:12px;flex-wrap:wrap;flex:1">' +
-        '<div class="kpi-card" style="min-width:140px;flex:1">' +
-          '<div class="kpi-label">YTD Collected</div>' +
+        // Booked revenue — full course fee recognised at enrolment, NOT cash received.
+        // Cash actually banked lives in Fee Reconciliation → Total Collected. Relabelled
+        // from "YTD Collected" on 2026-09-11 because the two were being read as the same.
+        '<div class="kpi-card" style="min-width:140px;flex:1" title="Booked revenue — full course fee recognised at enrolment. For cash actually received, see Fee Reconciliation → Total Collected.">' +
+          '<div class="kpi-label">YTD Revenue</div>' +
           '<div class="kpi-value">' + money(kAchieved) + '</div>' +
-          '<div class="kpi-meta">' + money(otherAchieved) + ' (' + otherLabel + ')</div>' +
+          '<div class="kpi-meta">' + money(otherAchieved) + ' (' + otherLabel + ') · booked</div>' +
         '</div>' +
         '<div class="kpi-card" style="min-width:140px;flex:1">' +
           '<div class="kpi-label">Annual Target</div>' +
@@ -6853,7 +6856,7 @@ function renderRevenueCharts(totalAchieved, rows) {
 // Appraisal Cycle YoY table — this used to be static HTML with April/May hand-typed once and
 // never updated (which is why June never "reflected" here — nothing did, automatically).
 // FY26-27 is now summed live from dashboardData.revenue.monthlyRows (same technique as the
-// Monthly Collections Trajectory chart above). FY24-25/FY25-26 are genuinely closed, historical
+// Monthly Revenue Trajectory chart above). FY24-25/FY25-26 are genuinely closed, historical
 // books, so they stay sourced from the HIST_REVENUE reference dataset — but computed here
 // instead of hand-copied, which also fixes a copy-paste bug where May FY25-26 was showing
 // April/May FY24-25's number instead of its own.
@@ -6889,7 +6892,7 @@ function renderAppraisalCycleTable() {
 
   // Centres with a native record — see computeCentresWithNativeRevenue() above. Bug found
   // 2026-07-28 — this table's Cycle YTD was reading ₹49.3L higher than the (correct) hero
-  // YTD Collected figure for the exact same Apr–Jul window without this guard.
+  // YTD Revenue figure for the exact same Apr–Jul window without this guard.
   const cycleCentresWithNative = computeCentresWithNativeRevenue(allRowsForCycle);
 
   // Live FY26-27 totals per month, Excl. GST (see liveByMonth below — always Excl. GST now,
@@ -6978,7 +6981,7 @@ function renderAppraisalCycleTable() {
   html += '<tr><td colspan="5" style="padding:10px 0;background:transparent;">' +
     '<div class="info-callout-banner"><span class="icon">ℹ️</span><div>' +
       '<em>Jan–Mar 2026 (pre-cycle):</em> ' + moneyShort(preJan) + ' + ' + moneyShort(preFeb) + ' + ' + moneyShort(preMar) +
-      ' = <strong>' + moneyShort(preTotal) + '</strong> collected — not counted above' +
+      ' = <strong>' + moneyShort(preTotal) + '</strong> booked — not counted above' +
     '</div></div>' +
   '</td></tr>';
 
@@ -9225,7 +9228,7 @@ function renderHistoricalTab() {
   // HIST_REVENUE snapshot simply because that snapshot hasn't been refreshed
   // yet — not because revenue is actually zero. Backfill any such gap from
   // the same live dashboardData.revenue.monthlyRows feed already used by the
-  // Monthly Collections Trajectory chart and the Appraisal Cycle table, so a
+  // Monthly Revenue Trajectory chart and the Appraisal Cycle table, so a
   // month with real live revenue never gets mislabeled as a lockdown ("LD").
   const heatLiveByMonth = {};
   ((dashboardData.revenue && dashboardData.revenue.monthlyRows) || []).forEach(mr => {

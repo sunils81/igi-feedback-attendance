@@ -178,6 +178,18 @@ function getStateForSave(prefix) {
   return ((otherEl && otherEl.value) || '').trim();
 }
 
+
+/* ── igiName — one place that turns a stored login name into a display name ──────────
+   The Super Admin account is stored as users.name = 'Admin' (and is the value written to
+   reviewed_by / recorded_by / requested_by, and used as the push user_key). Showing that
+   raw reads as a faceless system account, so every screen renders it as the HOD instead.
+   Keys are never rewritten — display only. assets/work.js has the same map inline for the
+   Work tab; api/push/handler.js has WORK_DISPLAY for push titles. 2026-09-11. */
+var IGI_DISPLAY_NAMES = { 'Admin': 'HOD – Sunil Sharma' };
+function igiName(n) { return IGI_DISPLAY_NAMES[String(n == null ? '' : n).trim()] || n; }
+window.IGI_DISPLAY_NAMES = IGI_DISPLAY_NAMES;
+window.igiName = igiName;
+
 window.gasGet = (function () {
   var SB  = 'https://atbexvtrcopaagcdbpqi.supabase.co';
   var AK  = 'sb_publishable_TpzxX5a3M7lnFeND8xLfhQ_YJOxOkhb';

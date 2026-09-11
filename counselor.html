@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=92"></script>
+<script src="/assets/shared.js?v=93"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -10047,7 +10047,7 @@ function renderDiscountRequestList() {
     var statusHtml = r.status === 'pending' ? '<span style="color:#B45309;font-weight:700">Pending</span>'
       : r.status === 'approved' ? (r.used ? '<span style="color:#1a7a3c;font-weight:700">✓ Approved · used</span>' : '<span style="color:#1a7a3c;font-weight:700">✓ Approved — save the fee now</span>')
       : '<span style="color:#B00020;font-weight:700">✗ Rejected</span>';
-    var reviewLine = r.status !== 'pending' ? '<div style="font-size:11px;color:var(--muted);margin-top:2px">By HOD' + (r.reviewedBy ? ' (' + escC(r.reviewedBy) + ')' : '') + (r.reviewedAt ? ' · ' + fmtWhen(r.reviewedAt) : '') + '</div>' : '';
+    var reviewLine = r.status !== 'pending' ? '<div style="font-size:11px;color:var(--muted);margin-top:2px">By ' + (r.reviewedBy ? escC(igiName(r.reviewedBy)) : 'HOD') + (r.reviewedAt ? ' · ' + fmtWhen(r.reviewedAt) : '') + '</div>' : '';
     // "Save Fee Now" — was "Apply Now" until 2026-08-11: read as "apply for approval"
     // (i.e. resubmit a request) rather than what it actually does, which is save the fee
     // record with the discount that's ALREADY approved — confusing given the discount
@@ -10441,7 +10441,7 @@ function renderFeeRecordTab() {
       mTotal.balance     += Number(r.outstanding) || 0;
       return '<tr>' +
         '<td>' + (idx+1) + '</td>' +
-        '<td>' + escC(r.enteredBy || '') + '</td>' +
+        '<td>' + escC(igiName(r.enteredBy || '')) + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace">' + escC(r.studentId || '') + '</td>' +
         '<td><strong>' + escC(r.studentName || '') + '</strong></td>' +
         '<td>' + escC(r.batchCode || '') + '</td>' +
@@ -18707,7 +18707,7 @@ function loadInventoryRequests() {
           <td class="text-center"><span class="badge" style="background:${req.urgency==='High'?'#FEF2F2':'#FFFBEB'};color:${req.urgency==='High'?'#DC2626':'#D97706'}">${escC(req.urgency)}</span></td>
           <td>
             <div style="font-size:11px">
-              <b>${escC(req.requestedBy)}</b>
+              <b>${escC(igiName(req.requestedBy))}</b>
               <div style="color:var(--muted)">${new Date(req.requestedAt).toLocaleString()}</div>
               ${req.note ? `<div style="font-style:italic;margin-top:4px;color:var(--navy)">"${escC(req.note)}"</div>` : ''}
             </div>
@@ -18773,7 +18773,7 @@ function loadInventoryDispatchQueue() {
           <td>${escC(req.itemName)}</td>
           <td class="text-center"><b>${req.quantityRequested}</b></td>
           <td class="text-center"><span class="badge" style="background:${req.urgency==='High'?'#FEF2F2':'#FFFBEB'};color:${req.urgency==='High'?'#DC2626':'#D97706'}">${escC(req.urgency)}</span></td>
-          <td><b>${escC(req.requestedBy)}</b></td>
+          <td><b>${escC(igiName(req.requestedBy))}</b></td>
           <td>${new Date(req.requestedAt).toLocaleString()}</td>
           <td><div style="max-width:200px;font-size:11px;color:var(--muted);white-space:normal;word-break:break-word">${escC(req.note || '—')}</div></td>
           <td>
@@ -19717,7 +19717,7 @@ function loadApprovedDiscountAlert() {
           'style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;">View all</button>' +
       '</div>' +
       '<div style="display:flex;flex-direction:column;gap:5px;padding-left:26px;">' + pend.map(function(r) {
-        var who = r.reviewedBy ? escC(r.reviewedBy) : 'HOD';
+        var who = r.reviewedBy ? escC(igiName(r.reviewedBy)) : 'the HOD';
         // One-click save when the original fee entry was stashed with the request;
         // otherwise jump straight into that student's Update Fee form.
         var btn = r.payload

@@ -80,7 +80,9 @@
 
   // Display names: the Super Admin login is stored as 'Admin' (users row / push key);
   // show it as the HOD everywhere a person is named. Keys stay untouched.
-  var DISPLAY = { 'Admin': 'HOD – Sunil Sharma' };
+  // Single source of truth is IGI_DISPLAY_NAMES in shared.js; this literal is only the
+  // fallback for the (never-happens) case of work.js loading without shared.js.
+  var DISPLAY = window.IGI_DISPLAY_NAMES || { 'Admin': 'HOD – Sunil Sharma' };
   function dn(n) { return DISPLAY[n] || n; }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function qsEnc(v) { return encodeURIComponent(v); }

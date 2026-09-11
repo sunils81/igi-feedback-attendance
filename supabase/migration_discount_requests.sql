@@ -52,3 +52,8 @@ END $$;
 -- a discount request is an approval-decision audit trail and should never be erasable from
 -- the client, matching the same restriction already in place on revenue_monthly_achieved.
 GRANT SELECT, INSERT, UPDATE ON public.discount_requests TO anon;
+-- service_role needs its own SELECT: /api/push/discount-notify re-reads the request
+-- server-side (service key) before composing the counsellor's notification. Without this
+-- the endpoint failed with "Could not load request" — grants are per-role, and
+-- service_role does NOT inherit anon's. Applied via MCP 2026-09-11. Read-only by design.
+GRANT SELECT ON public.discount_requests TO service_role;

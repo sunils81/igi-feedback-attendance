@@ -8,7 +8,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Student Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=94"></script>
+<script src="/assets/shared.js?v=95"></script>
 <script src="/assets/push-subscribe.js"></script>
 <style id="dyn-css"></style>
 <style>
@@ -2196,6 +2196,26 @@ function captureLocationAndShow() {
   );
 }
 
+
+// Is there still something the student must DO (as opposed to look back on)? Used to keep
+// the Today tab alive past the batch end date — see applyAlumniTabVisibility. otActiveTestInfo
+// is set by otCheckForActiveTest(), which runs on a 15s poll after the portal loads.
+function otHasOutstandingWork() {
+  return !!(typeof otActiveTestInfo !== 'undefined' && otActiveTestInfo);
+}
+
+// Called once an active test is discovered asynchronously — by then
+// applyAlumniTabVisibility() has usually already run and may have hidden Today.
+function otRevealTodayTabIfHidden() {
+  var btn = document.getElementById('nav-tab-today');
+  if (btn && btn.style.display === 'none') {
+    btn.style.display = '';
+    var feesBtn = document.querySelector('.nav-tab[onclick*="tab-fees"]');
+    if (feesBtn) feesBtn.style.display = '';
+    window.__alumniOnly = false;
+  }
+}
+
 // ── Alumni Mode ──────────────────────────────────────────────
 // Once a student has no active/ongoing batch left (every batch they were
 // ever enrolled in has expired), the tabs that only make sense mid-course
@@ -2210,6 +2230,13 @@ function applyAlumniTabVisibility(d) {
   var hasActiveBatch = allBatches.some(function(b) { return !b.expired; });
   var hasCompletedOne = allBatches.some(function(b) { return b.expired; });
   var alumniOnly = hasCompletedOne && !hasActiveBatch;
+
+  // 2026-09-12: a live test can outlast the batch's end date, and the Begin Test card
+  // lives on the Today tab — so going alumni-only used to make an open test unreachable
+  // (reported for Drishti Patel / MUM-JP-AUG26: "unable to mark her attendance and apply
+  // for the MCQ test"). If anything is still outstanding, keep Today available.
+  if (alumniOnly && otHasOutstandingWork()) alumniOnly = false;
+  window.__alumniOnly = alumniOnly;
 
   var operationalSelectors = [
     '.nav-tab[onclick*="tab-today"]',
@@ -3420,6 +3447,7 @@ function otShowSubmittedCard(info) {
 }
 
 function otShowRetakeCard(t) {
+  otRevealTodayTabIfHidden();
   // Amber card: Re-attempt available
   var banner = document.getElementById('ot-active-banner');
   if (banner) {
@@ -3452,6 +3480,7 @@ function otShowRetakeCard(t) {
 
 
 function otShowBanner(t) {
+  otRevealTodayTabIfHidden();
   var banner = document.getElementById('ot-active-banner');
   if (banner) banner.style.display = 'block';
 

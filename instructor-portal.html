@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Instructor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=94"></script>
+<script src="/assets/shared.js?v=95"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -388,6 +388,10 @@
   <!-- Work-assignment banner: "<manager> assigned you N tasks". Rendered by
        IGIWork.banner() in assets/work.js right after login; hides itself when nothing
        is open. Sits above the fee banners so new work is the first thing seen. -->
+  <!-- Attendance health: why students can't mark right now (batch ended, no session,
+       window closed, open test on an ended batch...). Rendered by loadAttendanceHealth()
+       in this file from getAttendanceHealth in shared.js. 2026-09-12. -->
+  <div id="att-health-banner" style="display:none;flex-direction:column;gap:6px;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;"></div>
   <div id="work-assigned-banner" style="display:none;background:#eff6ff;border:1.5px solid #2563eb;border-radius:8px;padding:10px 16px;margin:10px 0 0;font-size:13px;color:#1e3a8a;flex-direction:column;gap:6px;"></div>
   <div id="co-cover-banner" style="display:none;margin-top:12px;margin-bottom:4px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:13px 16px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
@@ -2917,6 +2921,7 @@ function saveSession() {
   } catch(e) {}
   if (window.IGIPush) window.IGIPush.subscribe('instructor', instructorName);
   refreshWorkBadge();
+  startAttendanceHealthWatch();
   if (window.IGIWork) window.IGIWork.banner({ id: 'work-assigned-banner', me: instructorName, onOpen: function(){ iTab('t-work'); } });
   if (/[?&]work=/.test(location.search)) setTimeout(function(){ iTab('t-work'); }, 300);
 }
@@ -2958,6 +2963,48 @@ function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
 }
+/* ── Attendance health banner (2026-09-12) ──────────────────────────────────────────
+   Surfaces, on the instructor's own screen, every reason a student can't mark attendance
+   right now — instead of it reaching us as an email hours later. Refreshed on login and
+   every 5 minutes. Red = nobody can mark until you act; amber = worth a look. */
+var _attHealthTimer = null;
+function loadAttendanceHealth() {
+  if (!instructorName) return;
+  gasGet({ action: 'getAttendanceHealth', instructorName: instructorName }, function (e, d) {
+    var el = document.getElementById('att-health-banner');
+    if (!el) return;
+    var issues = (!e && d && d.issues) ? d.issues : [];
+    if (!issues.length) { el.style.display = 'none'; return; }
+    var blockers = issues.filter(function (i) { return i.severity === 'block'; }).length;
+    var isBlock = blockers > 0;
+    el.style.background = isBlock ? '#fef2f2' : '#fffbeb';
+    el.style.border = '1.5px solid ' + (isBlock ? '#dc2626' : '#f59e0b');
+    el.style.color  = isBlock ? '#7f1d1d' : '#92400e';
+    el.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;">' +
+        '<span>' + (isBlock ? '\u26a0\ufe0f' : '\ud83d\udd52') + '</span>' +
+        '<span style="flex:1;font-weight:700;">' +
+          (isBlock ? blockers + ' attendance blocker' + (blockers > 1 ? 's' : '') + ' need your action'
+                   : issues.length + ' attendance reminder' + (issues.length > 1 ? 's' : '')) + '</span>' +
+        '<button onclick="loadAttendanceHealth()" style="background:transparent;border:1.5px solid currentColor;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;color:inherit;">Refresh</button>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:5px;padding-left:26px;">' +
+        issues.map(function (i) {
+          return '<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">' +
+            '<b style="font-family:monospace;font-size:11px">' + escHtml(i.batchCode) + '</b>' +
+            '<span style="flex:1;min-width:220px">' + escHtml(i.message) +
+              (i.action ? '<span style="opacity:.75"> ' + escHtml(i.action) + '</span>' : '') + '</span></div>';
+        }).join('') +
+      '</div>';
+    el.style.display = 'flex';
+  });
+}
+function startAttendanceHealthWatch() {
+  loadAttendanceHealth();
+  clearInterval(_attHealthTimer);
+  _attHealthTimer = setInterval(function () { if (!document.hidden) loadAttendanceHealth(); }, 300000);
+}
+
 /* ── Work Assignment Dashboard (assets/work.js) ───────────────────────────── */
 function mountWorkTab() {
   if (!window.IGIWork || !instructorName) return;

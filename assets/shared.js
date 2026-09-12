@@ -4840,6 +4840,171 @@ window.gasGet = (function () {
   }
 
   /* getPendingAttendanceSessions */
+
+  /* ── h_getAttendanceHealth — why can't my students mark attendance right now? ─────────
+     2026-09-11/12, per instruction: "i dont want any attendance issue going forward...
+     instructor should get a notification as to if batch date is over or something else".
+     Returns one plain-English issue per batch the instructor owns, so a blocked student
+     surfaces on the instructor's own screen instead of arriving as an email hours later.
+     Severities: 'block' (nobody can mark), 'warn' (marking possible but something's off). */
+  async function h_getAttendanceHealth(p, cb) {
+    function getP(table, qs) {
+      return new Promise(function (resolve) { GET(table, qs, function (e, d) { resolve(e ? [] : (d || [])); }); });
+    }
+    try {
+      var who = p.instructorName || '';
+      var today = todayYMD();
+      var batches = await getP('batches', '');
+      if (who) {
+        batches = batches.filter(function (b) {
+          if (sameName(b.instructor, who)) return true;
+          if (!sameName(b.co_instructor, who)) return false;
+          if (b.co_instructor_from && b.co_instructor_from > today) return false;
+          if (b.co_instructor_until && b.co_instructor_until < today) return false;
+          return true;
+        });
+      }
+      // Only batches that are running today, or ended within the last 14 days (where a
+      // pending test or a missed mark is still worth chasing).
+      var recent = new Date(); recent.setDate(recent.getDate() - 14);
+      var recentYMD = recent.toISOString().slice(0, 10);
+      batches = batches.filter(function (b) {
+        if (!b.end_date) return false;
+        if (batchNotStarted(b.start_date)) return false;
+        return String(b.end_date).slice(0, 10) >= recentYMD;
+      });
+      if (!batches.length) { cb(null, { status: 'ok', issues: [], count: 0 }); return; }
+
+      var codes = batches.map(function (b) { return b.batch_code; });
+      var inList = codes.map(encodeURIComponent).join(',');
+      var results = await Promise.all([
+        getP('sessions', 'batch_code=in.(' + inList + ')&session_date=eq.' + today),
+        getP('students', 'batch_code=in.(' + inList + ')&select=student_id,name,batch_code'),
+        getP('online_tests', 'status=in.(Live,Active,Scheduled)'),
+      ]);
+      var todaySessions = results[0], students = results[1], liveTests = results[2];
+
+      var studentsByBatch = {};
+      students.forEach(function (st) {
+        var bc = String(st.batch_code || '').toUpperCase();
+        (studentsByBatch[bc] = studentsByBatch[bc] || []).push(st);
+      });
+
+      // Attendance rows for today's sessions (one query, only if there are sessions)
+      var attBySession = {};
+      var todayCodes = todaySessions.map(function (s) { return s.session_code; }).filter(Boolean);
+      if (todayCodes.length) {
+        var atts = await getP('attendance_feedback', 'session_code=in.(' + todayCodes.map(encodeURIComponent).join(',') + ')&select=session_code,student_id');
+        atts.forEach(function (a) { (attBySession[a.session_code] = attBySession[a.session_code] || []).push(a.student_id); });
+      }
+
+      // Unsubmitted live tests, so an ended batch with an open test still gets chased
+      var testsByBatch = {};
+      liveTests.forEach(function (t) {
+        if (t.test_type === 'Assignment' || t.test_type === 'Portfolio Upload') return;
+        String(t.batch_codes || t.batch_code || '').toUpperCase().split(',').forEach(function (c) {
+          c = c.trim(); if (c) (testsByBatch[c] = testsByBatch[c] || []).push(t);
+        });
+      });
+      var testIds = liveTests.map(function (t) { return t.test_id; });
+      var submittedBy = {};
+      if (testIds.length) {
+        var resp = await getP('test_responses', 'test_id=in.(' + testIds.map(encodeURIComponent).join(',') + ')&select=test_id,student_id');
+        resp.forEach(function (r) { submittedBy[r.test_id + '|' + r.student_id] = true; });
+      }
+
+      var nowHr = new Date().getHours();
+      var issues = [];
+      batches.forEach(function (b) {
+        var bc = String(b.batch_code).toUpperCase();
+        var roster = studentsByBatch[bc] || [];
+        var ended = batchHasEnded(b.end_date);
+        var slot = b.batch_slot || 'Full Day';
+        var win = { open: 8, close: 24 };
+        if (slot === 'First Half') win = { open: 8, close: 14 };
+        else if (slot === 'Second Half') win = { open: 12, close: 20 };
+
+        var sess = todaySessions.filter(function (s) {
+          return String(s.batch_code).toUpperCase() === bc && s.session_type !== 'Cancelled' && s.is_cancelled !== true;
+        });
+        var cancelledToday = todaySessions.some(function (s) {
+          return String(s.batch_code).toUpperCase() === bc && (s.session_type === 'Cancelled' || s.is_cancelled === true);
+        });
+
+        // Any live test nobody has submitted yet — the reason this matters on an ENDED
+        // batch is that the student portal's Begin Test card lives on the Today tab.
+        var pendingTest = [];
+        (testsByBatch[bc] || []).forEach(function (t) {
+          var missing = roster.filter(function (st) { return !submittedBy[t.test_id + '|' + st.student_id]; });
+          if (missing.length) pendingTest.push({ title: t.title || 'Online test', missing: missing.length, names: missing.slice(0, 5).map(function (m) { return m.name; }) });
+        });
+
+        function add(sev, code, msg, action) {
+          issues.push({ batchCode: b.batch_code, course: b.course || '', centre: b.centre || '',
+            endDate: b.end_date, slot: slot, severity: sev, code: code, message: msg, action: action || '',
+            students: roster.length });
+        }
+
+        if (ended) {
+          if (pendingTest.length) {
+            pendingTest.forEach(function (t) {
+              add('block', 'ended_with_open_test',
+                'Batch ended ' + toDMY(b.end_date) + ' but "' + t.title + '" is still open — ' + t.missing + ' student' + (t.missing > 1 ? 's have' : ' has') + " not submitted (" + t.names.join(', ') + ').',
+                'Students can still take it from My Tests. Close the test once everyone is done.');
+            });
+          }
+          return; // an ended batch has no attendance left to take
+        }
+
+        if (cancelledToday && !sess.length) {
+          add('warn', 'cancelled_today', "Today's session is cancelled — no attendance will be recorded.", 'Reschedule it from Attendance if the class actually ran.');
+          return;
+        }
+        if (!sess.length) {
+          add('block', 'no_session_today',
+            'No session exists for today, so students have nothing to mark.',
+            nowHr < win.open ? 'It is created automatically from ' + win.open + ':00. Create it manually if class is earlier.'
+                             : 'Open the Session tab to create it now.');
+          return;
+        }
+        if (nowHr < win.open) {
+          add('warn', 'window_not_open', 'Attendance opens at ' + win.open + ':00 for a ' + slot + ' batch.', '');
+          return;
+        }
+        if (nowHr >= win.close) {
+          var unmarkedLate = [];
+          sess.forEach(function (sn) {
+            var marked = attBySession[sn.session_code] || [];
+            roster.forEach(function (st) { if (marked.indexOf(st.student_id) === -1) unmarkedLate.push(st.name); });
+          });
+          if (unmarkedLate.length) {
+            add('block', 'window_closed',
+              'Attendance closed at ' + win.close + ':00 for a ' + slot + ' batch — ' + unmarkedLate.length + ' student' + (unmarkedLate.length > 1 ? 's' : '') + ' never marked (' + unmarkedLate.slice(0, 5).join(', ') + ').',
+              'Mark them yourself from Attendance → Open Attendance.');
+          }
+          return;
+        }
+        // Window is open — flag anyone still unmarked so it is chased before it closes
+        sess.forEach(function (sn) {
+          var marked = attBySession[sn.session_code] || [];
+          var unmarked = roster.filter(function (st) { return marked.indexOf(st.student_id) === -1; });
+          if (unmarked.length) {
+            add('warn', 'unmarked_now',
+              unmarked.length + ' of ' + roster.length + ' not marked yet (' + unmarked.slice(0, 5).map(function (u) { return u.name; }).join(', ') + ').',
+              'Closes at ' + win.close + ':00.');
+          }
+        });
+      });
+
+      var order = { block: 0, warn: 1 };
+      issues.sort(function (a, b2) { return (order[a.severity] - order[b2.severity]) || a.batchCode.localeCompare(b2.batchCode); });
+      cb(null, { status: 'ok', issues: issues, count: issues.length,
+        blockers: issues.filter(function (i) { return i.severity === 'block'; }).length });
+    } catch (err) {
+      cb(null, { status: 'error', reason: String(err), issues: [], count: 0 });
+    }
+  }
+
   async function h_getPendingAttendanceSessions(p, cb) {
     function getP(table, qs) {
       return new Promise(function(resolve) {
@@ -11639,6 +11804,7 @@ window.gasGet = (function () {
       case 'deleteCreditNote':          return h_deleteCreditNote(params, cb);
       case 'saveSuspenseEntry':         return h_saveSuspenseEntry(params, cb);
       case 'getSuspenseEntries':        return h_getSuspenseEntries(params, cb);
+      case 'getAttendanceHealth':       return h_getAttendanceHealth(params, cb);
       case 'getMonthFeeDetail':         return h_getMonthFeeDetail(params, cb);
       case 'resolveSuspenseEntry':      return h_resolveSuspenseEntry(params, cb);
       case 'saveRegularisationRequest': return h_saveRegularisationRequest(params, cb);

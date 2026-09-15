@@ -2919,6 +2919,16 @@ function saveSession() {
       isDualRole, dualCentres, isAcademicHead, isRevenueManager, managerCentres
     }));
   } catch(e) {}
+  initInstructorSessionFeatures();
+}
+
+/* ── initInstructorSessionFeatures — everything that must run once a session exists ───
+   2026-09-15 BUG FIX, same as the counsellor portal: these were only ever reached via
+   saveSession() on a fresh login, but tryRestoreSession() (the normal path on refresh)
+   never called it — so the push subscription, Work badge/banner and attendance-health
+   banner silently never started for anyone already logged in. Safe to call twice. */
+function initInstructorSessionFeatures() {
+  if (!instructorName) return;
   if (window.IGIPush) window.IGIPush.subscribe('instructor', instructorName);
   refreshWorkBadge();
   startAttendanceHealthWatch();
@@ -2956,6 +2966,7 @@ function tryRestoreSession() {
     loadTodaySessions();
     loadUpcomingBatchNotifications();
     showTeachingQuoteBanner();
+    setTimeout(initInstructorSessionFeatures, 600);
   } catch(e) {}
 }
 

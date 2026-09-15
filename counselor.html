@@ -5370,6 +5370,7 @@ function initCounselorPortal() {
         setTimeout(loadGemaFoundationNotification, 3050);
         setTimeout(loadBatchEndingFeeNotification, 3300);
         setTimeout(loadCounsellorRiskAlert, 3500);
+        setTimeout(initCounsellorSessionFeatures, 600);
         if (!isAdmin) setTimeout(cmpLoadProspects, 1000);
       }
     }
@@ -5730,11 +5731,7 @@ function doLogin() {
         batches: d.batches || []
       }));
     } catch(ex) {}
-    if (window.IGIPush) window.IGIPush.subscribe('counselor', counselorName);
-    refreshWorkBadge();
-    startApprovedDiscountWatch();
-    if (window.IGIWork) window.IGIWork.banner({ id: 'work-assigned-banner', me: counselorName, onOpen: function(){ switchTab('t-work'); } });
-    if (/[?&]work=/.test(location.search)) setTimeout(function(){ switchTab('t-work'); }, 300);
+    initCounsellorSessionFeatures();
     // Update header
     document.getElementById('counselor-name-badge').textContent = counselorName;
     document.getElementById('counselor-name-badge').style.display = 'inline-block';
@@ -19732,6 +19729,23 @@ function loadApprovedDiscountAlert() {
     banner.style.display = 'flex';
   });
 }
+/* ── initCounsellorSessionFeatures — everything that must run once a session exists ───
+   2026-09-15 BUG FIX. Push subscription, the Work badge/banner and the discount-approved
+   banner used to be wired ONLY inside doLogin's success handler. A counsellor stays
+   logged in across refreshes (see the localStorage restore block in initCounselorPortal),
+   so in normal use none of them ever ran — Preethy could not see an approved discount for
+   Sneha Mehta because the banner had simply never been started. It also explains the near
+   empty push_subscriptions table: only a fresh PIN login ever registered a device.
+   Called from BOTH doLogin and the session-restore path. Safe to call twice. */
+function initCounsellorSessionFeatures() {
+  if (!counselorName) return;
+  if (window.IGIPush) window.IGIPush.subscribe('counselor', counselorName);
+  refreshWorkBadge();
+  startApprovedDiscountWatch();
+  if (window.IGIWork) window.IGIWork.banner({ id: 'work-assigned-banner', me: counselorName, onOpen: function(){ switchTab('t-work'); } });
+  if (/[?&]work=/.test(location.search)) setTimeout(function(){ switchTab('t-work'); }, 300);
+}
+
 function startApprovedDiscountWatch() {
   loadApprovedDiscountAlert();
   clearInterval(_approvedDiscountTimer);

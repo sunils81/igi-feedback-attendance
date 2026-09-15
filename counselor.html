@@ -5986,6 +5986,7 @@ function applyPasswordChangeState() {
 
 function doLogout() {
   if (!confirm('Sign out of the Counsellor Portal?')) return;
+  if (window.IGIIdle) window.IGIIdle.stop();
   // Clear persisted session
   try { localStorage.removeItem('igi_counselor_session'); } catch(e) {}
   try { sessionStorage.clear(); } catch(e) {}
@@ -19737,8 +19738,27 @@ function loadApprovedDiscountAlert() {
    Sneha Mehta because the banner had simply never been started. It also explains the near
    empty push_subscriptions table: only a fresh PIN login ever registered a device.
    Called from BOTH doLogin and the session-restore path. Safe to call twice. */
+/* Idle sign-out — doLogout's teardown without the confirm() prompt (nobody is at the
+   screen to answer it). Keep in step with doLogout if that changes. 2026-09-15. */
+function idleSignOutCounsellor() {
+  try { localStorage.removeItem('igi_counselor_session'); } catch(e) {}
+  try { sessionStorage.clear(); } catch(e) {}
+  counselorName = ''; counselorAuthRole = ''; counselorMustChangePassword = false;
+  allowedCentres = []; isAdmin = false; isManager = false;
+  allBatches = []; myBatches = [];
+  try {
+    document.getElementById('counselor-name-badge').style.display = 'none';
+    document.getElementById('logout-btn').style.display = 'none';
+    document.getElementById('lg-name').value = ''; document.getElementById('lg-pass').value = '';
+  } catch(e) {}
+  showScreen('s-login');
+}
+
 function initCounsellorSessionFeatures() {
   if (!counselorName) return;
+  // Idle sign-out — 15 minutes (Admin is 10; see admin.html). Started here so it covers
+  // both a fresh login and a restored session. 2026-09-15, per instruction.
+  if (window.IGIIdle) window.IGIIdle.start({ minutes: 15, warnSeconds: 60, onLogout: idleSignOutCounsellor });
   if (window.IGIPush) window.IGIPush.subscribe('counselor', counselorName);
   refreshWorkBadge();
   startApprovedDiscountWatch();

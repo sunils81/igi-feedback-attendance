@@ -4238,6 +4238,7 @@ function doAdminLogin() {
 }
 
 function doAdminLogout() {
+  if (window.IGIIdle) window.IGIIdle.stop();
   try { localStorage.removeItem('igi_admin_session'); } catch(e) {}
   adminUser = null;
   dashboardData = null;
@@ -4254,6 +4255,10 @@ function doAdminLogout() {
 function showMainScreen() {
   document.getElementById('s-login').classList.remove('active');
   document.getElementById('s-main').classList.add('active');
+  // Idle sign-out — 10 minutes, tighter than the counsellor portal's 15 because this
+  // screen carries revenue, targets and approvals. Runs on login and on restore, since
+  // both paths come through here. 2026-09-15, per instruction.
+  if (window.IGIIdle) window.IGIIdle.start({ minutes: 10, warnSeconds: 60, onLogout: doAdminLogout });
   // Push notifications for the Work dashboard (assets/work.js): register the service
   // worker + subscribe this browser under portal 'admin'. Non-fatal if declined. 2026-09-08.
   if (window.IGIPush && adminUser && adminUser.name) {

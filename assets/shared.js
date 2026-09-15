@@ -190,6 +190,144 @@ function igiName(n) { return IGI_DISPLAY_NAMES[String(n == null ? '' : n).trim()
 window.IGI_DISPLAY_NAMES = IGI_DISPLAY_NAMES;
 window.igiName = igiName;
 
+/* ── IGIIdle — sign the user out after a period of genuine inactivity ─────────────────
+   2026-09-15, per instruction: Admin 10 min, Counsellor 15 min, hard sign-out (no PIN
+   lock). Before this there was NO timeout anywhere and the stored session carried no
+   expiry, so a login on a shared centre desk lasted indefinitely.
+
+   Design notes that matter if you change this:
+   - Activity means REAL USER INPUT only (pointer/key/scroll/touch). Background polling
+     must never count: the Work, discount and attendance-health banners poll on 1-5 min
+     timers, so counting API traffic as activity would stop the clock from ever expiring.
+   - Elapsed time is measured against a stored timestamp, not a chain of setTimeouts, so
+     a laptop that sleeps past the limit is signed out on wake instead of resuming.
+   - The timestamp lives in localStorage, so several tabs share one clock and a sign-out
+     in any tab takes the others with it.
+   - A 60s warning with "Stay signed in" comes first — with a hard sign-out and no lock
+     screen, that countdown is the only thing standing between a slow typist and lost
+     form data.
+   - If a write is still in flight the sign-out waits for it (capped), so nobody loses a
+     half-written fee record.                                                            */
+window.IGIIdle = (function () {
+  var cfg = null, tick = null, warnEl = null, lastWrite = 0, deferredSince = 0;
+  var KEY = 'igi_idle_last_activity', OUT = 'igi_idle_signed_out';
+
+  function now() { return Date.now(); }
+  function readLast() {
+    // Take the LATER of this tab's own last input and the shared timestamp. The shared
+    // write is throttled to once every 4s, so trusting localStorage alone meant a mouse
+    // move during the warning did not actually reset the clock — the dialog flickered
+    // back a second later and its button could not be clicked. Caught in testing,
+    // 2026-09-15.
+    var shared = 0;
+    try { shared = parseInt(localStorage.getItem(KEY) || '0', 10) || 0; } catch (e) {}
+    return Math.max(shared, lastWrite || 0) || now();
+  }
+  // Passive events keep a working session alive, but once the warning is up they are
+  // ignored: only a deliberate act (click, key, tap) counts. Two reasons — a dialog that
+  // vanished the moment you moved the mouse toward its button was unusable, and a nudged
+  // mouse on an unattended desk should not silently extend the session. 2026-09-15.
+  var PASSIVE = { mousemove: 1, wheel: 1, scroll: 1 };
+  function bump(e) {
+    if (e && PASSIVE[e.type] && warnEl && warnEl.style.display === 'flex') return;
+    lastWrite = now();
+    // Throttle the shared write; mousemove fires constantly.
+    if (now() - (bump._w || 0) > 4000) {
+      bump._w = now();
+      try { localStorage.setItem(KEY, String(lastWrite)); } catch (e2) {}
+    }
+    hideWarning();
+  }
+
+  function ensureWarning() {
+    if (warnEl) return warnEl;
+    warnEl = document.createElement('div');
+    warnEl.id = 'igi-idle-warning';
+    warnEl.setAttribute('role', 'alertdialog');
+    warnEl.style.cssText = 'position:fixed;inset:0;background:rgba(13,27,46,.55);z-index:2147483600;display:none;align-items:center;justify-content:center;padding:16px;';
+    warnEl.innerHTML =
+      '<div style="background:#fff;border-radius:14px;max-width:380px;width:100%;padding:22px;box-shadow:0 12px 40px rgba(0,0,0,.3);font-family:inherit;text-align:center">' +
+        '<div style="font-size:30px;line-height:1">⏱️</div>' +
+        '<div style="font-size:17px;font-weight:800;color:#0D1B2E;margin:8px 0 4px">Still there?</div>' +
+        '<div style="font-size:13px;color:#5b6472;line-height:1.5">You will be signed out in <b id="igi-idle-count">60</b> seconds. ' +
+          'Anything you have typed but not saved will be lost.</div>' +
+        '<button id="igi-idle-stay" style="margin-top:16px;background:#C9A84C;color:#0D1B2E;border:none;border-radius:8px;padding:10px 20px;font-size:14px;font-weight:800;cursor:pointer;width:100%">Stay signed in</button>' +
+      '</div>';
+    document.body.appendChild(warnEl);
+    warnEl.querySelector('#igi-idle-stay').addEventListener('click', function (e) {
+      e.stopPropagation();
+      hideWarning();                 // hide first so bump() is not treated as "warning up"
+      lastWrite = now(); bump._w = 0; bump();
+    });
+    return warnEl;
+  }
+  function showWarning(secsLeft) {
+    var el = ensureWarning();
+    el.style.display = 'flex';
+    var c = el.querySelector('#igi-idle-count');
+    if (c) c.textContent = String(Math.max(0, secsLeft));
+  }
+  function hideWarning() { if (warnEl) warnEl.style.display = 'none'; }
+
+  function signOut(reason) {
+    // Hold off while a write is still in flight, so a half-saved record is never cut off.
+    if ((window.__igiWritesInFlight || 0) > 0) {
+      if (!deferredSince) deferredSince = now();
+      if (now() - deferredSince < 15000) return;   // cap the wait at 15s
+    }
+    deferredSince = 0;
+    // Capture what we need BEFORE stop() clears cfg, otherwise the message read
+    // "Signed out after 0 minutes". Caught in testing, 2026-09-15.
+    var mins = (cfg && cfg.minutes) || 0;
+    var onLogout = cfg && cfg.onLogout;
+    stop();
+    try { localStorage.setItem(OUT, String(now())); } catch (e) {}
+    try { if (typeof onLogout === 'function') onLogout(); } catch (e) {}
+    banner(mins);
+  }
+
+  function banner(mins) {
+    var d = document.createElement('div');
+    d.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#0D1B2E;color:#fff;padding:11px 18px;border-radius:10px;font-size:13px;z-index:2147483601;box-shadow:0 6px 24px rgba(0,0,0,.28);max-width:92vw;text-align:center';
+    d.textContent = 'Signed out after ' + mins + ' minutes of inactivity. Please sign in again.';
+    document.body.appendChild(d);
+    setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 9000);
+  }
+
+  function check() {
+    if (!cfg) return;
+    // Another tab signed out — follow it.
+    try {
+      var out = parseInt(localStorage.getItem(OUT) || '0', 10);
+      if (out && out > (cfg.startedAt || 0)) { signOut('other-tab'); return; }
+    } catch (e) {}
+    var idleMs = now() - readLast();
+    var limit = cfg.minutes * 60000, warnMs = (cfg.warnSeconds || 60) * 1000;
+    if (idleMs >= limit) { signOut('idle'); return; }
+    if (idleMs >= limit - warnMs) showWarning(Math.ceil((limit - idleMs) / 1000));
+    else hideWarning();
+  }
+
+  var EVENTS = ['mousedown', 'mousemove', 'keydown', 'wheel', 'touchstart', 'scroll', 'click'];
+  function start(opts) {
+    stop();
+    cfg = opts || {};
+    cfg.startedAt = now();
+    try { localStorage.removeItem(OUT); } catch (e) {}
+    lastWrite = now(); bump._w = 0;
+    try { localStorage.setItem(KEY, String(lastWrite)); } catch (e) {}
+    EVENTS.forEach(function (ev) { window.addEventListener(ev, bump, { passive: true, capture: true }); });
+    tick = setInterval(check, 1000);
+  }
+  function stop() {
+    if (tick) { clearInterval(tick); tick = null; }
+    EVENTS.forEach(function (ev) { window.removeEventListener(ev, bump, { capture: true }); });
+    hideWarning();
+    cfg = null;
+  }
+  return { start: start, stop: stop, bump: bump };
+})();
+
 window.gasGet = (function () {
   var SB  = 'https://atbexvtrcopaagcdbpqi.supabase.co';
   var AK  = 'sb_publishable_TpzxX5a3M7lnFeND8xLfhQ_YJOxOkhb';
@@ -203,13 +341,20 @@ window.gasGet = (function () {
     Object.keys(HDR).forEach(function (k) { x.setRequestHeader(k, HDR[k]); });
     x.setRequestHeader('Prefer', prefer || 'return=representation');
     x.timeout = 30000;
+    // Count writes still in flight so the idle-timeout logout can hold off rather than
+    // cutting a half-saved fee/batch record (see IGIIdle below). Reads are not counted —
+    // they are mostly background polls and would never settle. 2026-09-15.
+    var isWrite = method !== 'GET';
+    if (isWrite) window.__igiWritesInFlight = (window.__igiWritesInFlight || 0) + 1;
+    var done = function () { if (isWrite) window.__igiWritesInFlight = Math.max(0, (window.__igiWritesInFlight || 1) - 1); };
     x.onload = function () {
+      done();
       if (x.status >= 200 && x.status < 300) {
         var data; try { data = JSON.parse(x.responseText || '[]'); } catch (e) { data = []; }
         cb(null, data); // parse errors no longer re-invoke cb
       } else { cb(new Error('HTTP ' + x.status + ': ' + x.responseText), null); }
     };
-    x.onerror = x.ontimeout = function () { cb(new Error('network'), null); };
+    x.onerror = x.ontimeout = function () { done(); cb(new Error('network'), null); };
     x.send(body ? JSON.stringify(body) : null);
   }
   function GET(table, qs, cb)           { xhr('GET',    table, qs,   null, 'return=representation', cb); }

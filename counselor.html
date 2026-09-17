@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=99"></script>
+<script src="/assets/shared.js?v=100"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -11808,10 +11808,14 @@ function saveFeeRecord() {
       // it's "submit a request first." Pre-fills the request modal with everything already
       // on screen so there's nothing to re-type.
       if (d && d.reason === 'DISCOUNT_NEEDS_APPROVAL') {
+        // Spell out what happens next (2026-09-17) — counsellors were being stopped here
+        // without knowing that everything they typed is kept, or how they get back to it.
         err.innerHTML = (d.message || 'This discount needs admin approval before it can be saved.') +
-          ' <button type="button" onclick="openDiscountRequestFromFeeForm()" style="margin-left:6px;background:var(--navy);color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer">Request Approval</button>';
+          '<div style="margin-top:6px;font-weight:400">Nothing you have typed is lost. Submit the request and the HOD sees it straight away;' +
+          ' once it is approved you will get a notification, and this fee record reopens exactly as it is now — you just press save.</div>' +
+          '<button type="button" onclick="openDiscountRequestFromFeeForm()" style="margin-top:8px;background:var(--navy);color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer">Send for approval →</button>';
         err.classList.add('show');
-        showToast('This discount needs admin approval first.', 'error');
+        showToast('Discount needs HOD approval — send the request, nothing is lost.', 'error');
         return;
       }
       err.textContent = 'Could not save fee record. Please try again.';
@@ -19716,21 +19720,25 @@ function loadApprovedDiscountAlert() {
         '<span>✅</span>' +
         '<span style="flex:1;font-weight:700;">' + pend.length + ' discount' + (pend.length > 1 ? 's' : '') +
           ' approved — please enter the revenue</span>' +
-        '<button onclick="switchTab(\'t-fee-record\');setTimeout(function(){var el=document.getElementById(\'discount-req-list\');if(el)el.scrollIntoView({behavior:\'smooth\'});},250)" ' +
-          'style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;">View all</button>' +
       '</div>' +
+      /* One row per approved discount, and each row has exactly ONE obvious button that
+         opens that student's fee form (2026-09-17). Previously there were three different
+         destinations — "View all" went to the Fee Record tab, "Save Fee Now" silently
+         re-saved, "Enter Revenue" tried the Fees tab — which is what counsellors were
+         getting lost in. "Save fee now" is still offered as a SECOND button, and only when
+         the original entry was stashed with the request, so the one-tap path exists without
+         being the only path. */
       '<div style="display:flex;flex-direction:column;gap:5px;padding-left:26px;">' + pend.map(function(r) {
         var who = r.reviewedBy ? escC(igiName(r.reviewedBy)) : 'the HOD';
-        // One-click save when the original fee entry was stashed with the request;
-        // otherwise jump straight into that student's Update Fee form.
-        var btn = r.payload
-          ? '<button onclick="applyApprovedDiscountRequest(\'' + escC(r.id) + '\')" style="background:#16a34a;color:#fff;border:none;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">Save Fee Now</button>'
-          : '<button onclick="jumpToFeeMismatch(\'' + escC(r.batchCode) + '\',\'' + escC(r.studentId) + '\')" style="background:#fff;color:#14532d;border:1.5px solid #16a34a;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">Enter Revenue</button>';
+        var open = '<button onclick="openFeeFormFor(\'' + escC(r.studentId) + '\',\'' + escC(r.batchCode) + '\')" style="background:#16a34a;color:#fff;border:none;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">Enter revenue →</button>';
+        var quick = r.payload
+          ? '<button onclick="applyApprovedDiscountRequest(\'' + escC(r.id) + '\')" style="background:#fff;color:#14532d;border:1.5px solid #16a34a;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap" title="Save exactly what you entered before, with the approved discount">Save as entered</button>'
+          : '';
         return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
           '<span style="flex:1;min-width:180px">' + escC(r.studentName) +
             ' <span style="font-size:11px;color:#3f6212">(' + escC(r.studentId) + ' · ' + escC(r.batchCode) + ')</span>' +
             '<div style="font-size:11px;color:#3f6212">' + r.discountPct + '% approved by ' + who + '</div></span>' +
-          btn + '</div>';
+          quick + open + '</div>';
       }).join('') + '</div>';
     banner.style.display = 'flex';
   });
@@ -19773,6 +19781,8 @@ function initCounsellorSessionFeatures() {
   startApprovedDiscountWatch();
   if (window.IGIWork) window.IGIWork.banner({ id: 'work-assigned-banner', me: counselorName, onOpen: function(){ switchTab('t-work'); } });
   if (/[?&]work=/.test(location.search)) setTimeout(function(){ switchTab('t-work'); }, 300);
+  // Tapping the "Discount approved" push notification lands here — open that fee form.
+  if (/[?&]discount=/.test(location.search)) setTimeout(handleDiscountDeepLink, 400);
 }
 
 function startApprovedDiscountWatch() {
@@ -19783,12 +19793,67 @@ function startApprovedDiscountWatch() {
   }, 120000);
 }
 
-function jumpToFeeMismatch(batchCode, studentId) {
+/* openFeeFormFor — the ONE way anything jumps a counsellor to a student's fee form.
+
+   2026-09-17, per instruction ("clicking on the notification doesn't take u to that batch
+   and student, it just takes to the fee tab"). The old jumpToFeeMismatch set
+   #fee-batch.value to whatever batch code it was handed. A <select> silently ignores a
+   value that isn't one of its options, so when the batch on a discount request wasn't a
+   real batch in the dropdown — "MUM- DG & CG-SEP26", or a sibling batch — the dropdown
+   stayed where it was, the overview loaded the wrong batch (or none), openFeeForm found no
+   student, and the counsellor was dumped on the Fees tab with nothing open and no
+   explanation. That is the confusion being reported.
+
+   Now: try the batch we were given, and if it isn't a real option fall back to the batch
+   the STUDENT is actually in (resolved from their record). If neither works, say so out
+   loud instead of leaving them staring at an empty tab. */
+function openFeeFormFor(studentId, batchCode, onDone) {
   switchTab('t-fees');
   var sel = document.getElementById('fee-batch');
-  if (sel) sel.value = batchCode;
-  loadFeeOverview(function() {
-    openFeeForm(studentId);
+  if (!sel) return;
+  var hasOption = function (code) {
+    if (!code) return false;
+    var want = String(code).trim().toUpperCase();
+    for (var i = 0; i < sel.options.length; i++) {
+      if (String(sel.options[i].value).trim().toUpperCase() === want) return sel.options[i].value;
+    }
+    return false;
+  };
+  var go = function (code) {
+    sel.value = code;
+    loadFeeOverview(function () {
+      openFeeForm(studentId);
+      var card = document.getElementById('fee-form-card');
+      if (card && card.style.display !== 'none') card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (onDone) onDone();
+    });
+  };
+  var direct = hasOption(batchCode);
+  if (direct) { go(direct); return; }
+  // The batch on the request isn't one this counsellor can pick — use the student's own.
+  gasGet({ action: 'lookupStudentBasic', studentId: studentId }, function (e, d) {
+    var fromStudent = (!e && d && d.status === 'ok') ? hasOption(d.batchCode) : false;
+    if (fromStudent) { go(fromStudent); return; }
+    showToast('Could not open ' + (studentId || 'that student') + ' automatically — pick the batch below and click the student.', 'error');
+  });
+}
+// Kept as the old name so existing callers (fee mismatch nudges) keep working.
+function jumpToFeeMismatch(batchCode, studentId) { openFeeFormFor(studentId, batchCode); }
+
+/* handleDiscountDeepLink — the push notification sends the counsellor to
+   /counselor?discount=<request id> (see api/push/handler.js), but nothing ever read that
+   parameter, so tapping "Discount approved — please enter the revenue now" just opened the
+   portal. It now lands them on that exact student's fee form. */
+function handleDiscountDeepLink() {
+  var m = /[?&]discount=([0-9a-f-]{36})/i.exec(location.search);
+  if (!m) return;
+  var id = m[1];
+  gasGet({ action: 'getDiscountRequests', status: 'approved', requestedBy: counselorName, isAdmin: 'false' }, function (e, d) {
+    var rec = (!e && d && d.records) ? d.records.filter(function (r) { return r.id === id; })[0] : null;
+    if (!rec) { showToast('That discount request is no longer open.', 'error'); return; }
+    if (rec.used) { showToast(rec.studentName + '\'s fee record is already saved with that discount.'); return; }
+    showToast('Opening ' + rec.studentName + '\'s fee record — ' + rec.discountPct + '% approved.');
+    openFeeFormFor(rec.studentId, rec.batchCode);
   });
 }
 

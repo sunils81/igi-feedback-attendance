@@ -3648,11 +3648,32 @@ window.gasGet = (function () {
         h_saveFeeInner(p, cb);
         return;
       }
-      GET('discount_requests',
-        'student_id=eq.' + encodeURIComponent(p.studentId) + '&batch_code=eq.' + encodeURIComponent(p.batchCode) +
-        '&status=eq.approved&used=eq.false&order=reviewed_at.desc',
-        function (eReq, reqRows) {
-          var matching = (reqRows || []).filter(function (r) { return Math.abs(Number(r.discount_pct) - dp) < 0.01; })[0];
+      /* Redemption matching — WIDENED 2026-09-17.
+
+         It used to require an exact student_id + batch_code + pct hit. But the standalone
+         Discount Approval Request form has the counsellor TYPE the student ID and the batch
+         code by hand, so a real, admin-approved discount became unredeemable whenever either
+         was off by anything at all. Live, 3 of the 4 open approvals were stuck this way:
+           - "MUM- DG & CG-SEP26" — a describing label, not a batch code that exists
+           - a sibling batch (request on JAI-DG-SEP26, student sits in JAI-COL-SEP26)
+           - a mistyped student ID (7123 typed for Sneha Mehta, who is 7517)
+         The counsellor saw "needs admin approval" on a discount the HOD had already approved,
+         with no way to tell why.
+
+         Now: gather every approved + unused request for this student — by student_id, and by
+         student_name as a fallback for a mistyped ID — keep the ones whose discount_pct
+         matches what is being saved, and PREFER the one whose batch code matches once
+         punctuation and spacing are normalised away. The pct must still match exactly and the
+         row is still marked used=true only after a successful save, so a widened match can
+         never be redeemed twice or for a different discount than the one approved. */
+      var normBatch = function (s) { return String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+      var pickApproval = function (rows) {
+        var cands = (rows || []).filter(function (r) { return Math.abs(Number(r.discount_pct) - dp) < 0.01; });
+        var want = normBatch(p.batchCode);
+        var exact = cands.filter(function (r) { return normBatch(r.batch_code) === want; })[0];
+        return exact || cands[0] || null;
+      };
+      var withApproval = function (matching) {
           if (!matching) {
             cb(null, {
               status: 'error', reason: 'DISCOUNT_NEEDS_APPROVAL',
@@ -3669,7 +3690,18 @@ window.gasGet = (function () {
             }
             cb(errInner, resultInner);
           });
+      };
+
+      var openQs = '&status=eq.approved&used=eq.false&order=reviewed_at.desc';
+      GET('discount_requests', 'student_id=eq.' + encodeURIComponent(p.studentId) + openQs, function (eById, byId) {
+        var hit = pickApproval(eById ? [] : byId);
+        if (hit || !p.studentName) { withApproval(hit); return; }
+        // Fallback: the ID on the request was mistyped, so find it by the name the admin
+        // actually saw and approved. Still requires approved + unused + exact pct.
+        GET('discount_requests', 'student_name=ilike.' + encodeURIComponent(String(p.studentName).trim()) + openQs, function (eByName, byName) {
+          withApproval(pickApproval(eByName ? [] : byName));
         });
+      });
     });
   }
 
@@ -4422,9 +4454,12 @@ window.gasGet = (function () {
      intentionally minimal — just id -> name, not the full student record. */
   function h_lookupStudentBasic(p, cb) {
     if (!p.studentId) { cb(null, { status: 'error', reason: 'Missing student id.' }); return; }
-    GET('students', 'student_id=eq.' + encodeURIComponent(p.studentId) + '&select=student_id,name', function(e, rows) {
+    // Also returns batch_code (2026-09-17) so the Discount Approval Request form can fill the
+    // batch in from the student record instead of having it typed. A hand-typed batch on that
+    // form was the main way approvals ended up unredeemable — see h_saveFee's matching notes.
+    GET('students', 'student_id=eq.' + encodeURIComponent(p.studentId) + '&select=student_id,name,batch_code', function(e, rows) {
       if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'Student not found.' }); return; }
-      cb(null, { status: 'ok', studentId: rows[0].student_id, name: rows[0].name });
+      cb(null, { status: 'ok', studentId: rows[0].student_id, name: rows[0].name, batchCode: rows[0].batch_code || '' });
     });
   }
 

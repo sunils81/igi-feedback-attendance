@@ -3678,13 +3678,24 @@ window.gasGet = (function () {
          batch can spend it only once (used_batches). It retires (used=true) once every active
          enrolment has spent it — until then the counsellor's banner keeps asking for the
          revenue on the course still outstanding. */
+      var inList = function (list, code) {
+        var want = normBatch(code);
+        for (var i = 0; i < (list || []).length; i++) { if (normBatch(list[i]) === want) return true; }
+        return false;
+      };
       var pickApproval = function (rows) {
         var want = normBatch(p.batchCode);
         var cands = (rows || []).filter(function (r) {
           if (Math.abs(Number(r.discount_pct) - dp) >= 0.01) return false;
           // Already spent on THIS batch — cannot be redeemed twice for the same fee record.
-          var spent = r.used_batches || [];
-          for (var i = 0; i < spent.length; i++) { if (normBatch(spent[i]) === want) return false; }
+          if (inList(r.used_batches, p.batchCode)) return false;
+          /* covers_batches is the counsellor's tick box (2026-09-17, per instruction: "add
+             tick box is a better solution as a safe guard"). It names the courses the HOD
+             actually approved the discount for, so a two-course student discounted on only
+             one course cannot have it applied to the other. Empty means "all of this
+             student's courses" — rows raised before the tick box existed, and the default
+             when every course is ticked. */
+          if ((r.covers_batches || []).length && !inList(r.covers_batches, p.batchCode)) return false;
           return true;
         });
         var exact = cands.filter(function (r) { return normBatch(r.batch_code) === want; })[0];
@@ -3704,21 +3715,27 @@ window.gasGet = (function () {
               // (e.g. a duplicate-invoice error path, or a network failure) leaves the
               // approval intact to try again with.
               var spent = (matching.used_batches || []).slice();
-              if (spent.filter(function (b) { return normBatch(b) === normBatch(p.batchCode); }).length === 0) spent.push(p.batchCode);
-              // Retire the approval only once EVERY batch this student is enrolled in has
-              // spent it — so a GG student's second course keeps showing on the counsellor's
-              // "please enter the revenue" banner until that fee record is in too.
-              GET('enrollments', 'student_id=eq.' + encodeURIComponent(p.studentId) + '&select=batch_code,status', function (eEnr, enrRows) {
-                var active = (eEnr ? [] : (enrRows || [])).filter(function (r) { return String(r.status || 'Active') !== 'Dropped'; });
-                var covered = active.length > 0 && active.every(function (r) {
-                  return spent.filter(function (b) { return normBatch(b) === normBatch(r.batch_code); }).length > 0;
-                });
+              if (!inList(spent, p.batchCode)) spent.push(p.batchCode);
+              var retire = function (mustCover) {
+                var done = mustCover.length > 0 && mustCover.every(function (c) { return inList(spent, c); });
                 var patch = { used_batches: spent, updated_at: nowISO() };
-                // No enrolment rows at all → fall back to the old one-shot behaviour rather
-                // than leaving an approval open forever.
-                if (covered || active.length === 0) { patch.used = true; patch.used_at = nowISO(); }
+                // Nothing to measure against → fall back to the old one-shot behaviour
+                // rather than leaving an approval open forever.
+                if (done || mustCover.length === 0) { patch.used = true; patch.used_at = nowISO(); }
                 PATCH('discount_requests', 'id=eq.' + encodeURIComponent(matching.id), patch, function () {});
-              });
+              };
+              // Retire the approval only once every course it COVERS has spent it — so a GG
+              // student's second course keeps showing on the counsellor's "please enter the
+              // revenue" banner until that fee record is in too. Where the counsellor ticked
+              // specific courses, those are the ones that count; otherwise it is every batch
+              // the student is enrolled in.
+              if ((matching.covers_batches || []).length) { retire(matching.covers_batches); }
+              else {
+                GET('enrollments', 'student_id=eq.' + encodeURIComponent(p.studentId) + '&select=batch_code,status', function (eEnr, enrRows) {
+                  retire((eEnr ? [] : (enrRows || [])).filter(function (r) { return String(r.status || 'Active') !== 'Dropped'; })
+                    .map(function (r) { return r.batch_code; }));
+                });
+              }
             }
             cb(errInner, resultInner);
           });
@@ -3786,8 +3803,21 @@ window.gasGet = (function () {
       // Keep the batch the counsellor sent when it's a real batch code — it may legitimately
       // be a batch the student is moving INTO, which won't match students.batch_code yet. Only
       // replace it when it isn't a batch at all (live: "MUM- DG & CG-SEP26", a description).
+      /* Which courses this approval covers — the counsellor's tick boxes. Anything they sent
+         is intersected with what the student is actually enrolled in, so a stale or made-up
+         code can't widen the approval. Nothing sent (or nothing valid) = all their courses. */
+      var enrolled = stu.batches || [];
+      var wanted = p.coversBatches;
+      if (typeof wanted === 'string') { try { wanted = JSON.parse(wanted); } catch (ex) { wanted = String(wanted).split(','); } }
+      var nb = function (s) { return String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+      var covers = (wanted && wanted.length)
+        ? enrolled.filter(function (b) { return wanted.some(function (w) { return nb(w) === nb(b); }); })
+        : [];
+      p.coversBatches = covers;
       GET('batches', 'batch_code=eq.' + encodeURIComponent(p.batchCode) + '&select=batch_code&limit=1', function (eB, bRows) {
         if ((eB || !bRows || !bRows.length) && stu.batchCode) p.batchCode = stu.batchCode;
+        // If exactly one course is ticked, that IS the batch this request is about.
+        if (covers.length === 1) p.batchCode = covers[0];
         h_saveDiscountRequestInner(p, cb);
       });
     });
@@ -3809,15 +3839,28 @@ window.gasGet = (function () {
     // force — is the duplicate this is meant to stop, not a legitimate separate ask.
     GET('discount_requests',
       'student_id=eq.' + encodeURIComponent(p.studentId) +
-      '&or=(status.eq.pending,and(status.eq.approved,used.eq.false))&order=requested_at.desc&limit=1',
+      '&or=(status.eq.pending,and(status.eq.approved,used.eq.false))&order=requested_at.desc',
       function (eDup, dupRows) {
-        var existing = (dupRows || [])[0];
+        /* Only a request covering one of the SAME courses is a duplicate (2026-09-17). With
+           the tick boxes, a second request for the student's other course is a legitimate,
+           separate ask — e.g. 10% on Diamond Graduate and nothing on Colored Stone, then
+           later 5% on the Colored Stone. An approval with no courses ticked covers them all,
+           so it clashes with anything. */
+        var nb2 = function (s) { return String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+        var mine = (p.coversBatches || []).map(nb2);
+        var existing = (dupRows || []).filter(function (r) {
+          var theirs = (r.covers_batches || []).map(nb2);
+          if (!theirs.length || !mine.length) return true;              // either covers everything
+          return theirs.some(function (t) { return mine.indexOf(t) >= 0; });
+        })[0];
         if (existing) {
           cb(null, {
             status: 'error',
             reason: existing.status === 'pending'
               ? 'A discount request for this student is already pending approval (requested by ' + (existing.requested_by || '') + ' on ' + (existing.requested_at || '') + '). Wait for it to be reviewed instead of submitting another.'
-              : 'This student already has an approved ' + Number(existing.discount_pct) + '% discount waiting to be used. It covers every course they are enrolled in, so apply it on the fee record instead of requesting another.'
+              : 'This student already has an approved ' + Number(existing.discount_pct) + '% discount waiting to be used'
+                + ((existing.covers_batches || []).length ? ' for ' + existing.covers_batches.join(', ') : ', covering every course they are enrolled in')
+                + '. Apply it on the fee record instead of requesting another.'
           });
           return;
         }
@@ -3825,6 +3868,7 @@ window.gasGet = (function () {
           student_id: p.studentId, student_name: p.studentName || '', batch_code: p.batchCode,
           centre: p.centre, course: p.course || '', course_fee: cf, discount_pct: dp,
           discount_amount: Math.round(cf * dp / 100), discount_reason: p.discountReason,
+          covers_batches: p.coversBatches || [],
           status: 'pending', requested_by: p.requestedBy, updated_at: nowISO(),
           // Full intended saveFeeRecord payload (installments, invoice, mode, everything) --
           // 2026-08-08, confirmed live that the hard block rejects the WHOLE save before
@@ -3854,7 +3898,8 @@ window.gasGet = (function () {
           discountPct: Number(r.discount_pct) || 0, discountAmount: Number(r.discount_amount) || 0,
           discountReason: r.discount_reason, status: r.status, requestedBy: r.requested_by,
           requestedAt: r.requested_at, reviewedBy: r.reviewed_by, reviewedAt: r.reviewed_at,
-          reviewNote: r.review_note, used: !!r.used, usedAt: r.used_at, payload: r.payload || null
+          reviewNote: r.review_note, used: !!r.used, usedAt: r.used_at, payload: r.payload || null,
+          coversBatches: r.covers_batches || [], usedBatches: r.used_batches || []
         };
       });
       cb(null, { status: 'ok', count: records.filter(function (r) { return r.status === 'pending'; }).length, records: records });
@@ -4516,7 +4561,23 @@ window.gasGet = (function () {
     // form was the main way approvals ended up unredeemable — see h_saveFee's matching notes.
     GET('students', 'student_id=eq.' + encodeURIComponent(p.studentId) + '&select=student_id,name,batch_code', function(e, rows) {
       if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'Student not found.' }); return; }
-      cb(null, { status: 'ok', studentId: rows[0].student_id, name: rows[0].name, batchCode: rows[0].batch_code || '' });
+      var out = { status: 'ok', studentId: rows[0].student_id, name: rows[0].name, batchCode: rows[0].batch_code || '' };
+      /* Every course this student is enrolled in, so the Discount Approval Request form can
+         list them as tick boxes (2026-09-17). A GG student has two — Diamond Graduate and
+         Colored Stone Graduate — and the counsellor says which the discount is for. */
+      GET('enrollments', 'student_id=eq.' + encodeURIComponent(p.studentId) + '&select=batch_code,status', function (eE, eRows) {
+        var active = (eE ? [] : (eRows || [])).filter(function (r) { return String(r.status || 'Active') !== 'Dropped'; });
+        out.batches = active.map(function (r) { return r.batch_code; });
+        if (!out.batches.length && out.batchCode) out.batches = [out.batchCode];
+        if (!out.batches.length) { cb(null, out); return; }
+        // Attach the course name so the tick boxes read "Diamond Graduate", not just a code.
+        GET('batches', 'batch_code=in.(' + out.batches.map(function (b) { return '"' + b + '"'; }).join(',') + ')&select=batch_code,course', function (eB, bRows) {
+          var byCode = {};
+          (eB ? [] : (bRows || [])).forEach(function (b) { byCode[b.batch_code] = b.course; });
+          out.batchList = out.batches.map(function (b) { return { batchCode: b, course: byCode[b] || '' }; });
+          cb(null, out);
+        });
+      });
     });
   }
 

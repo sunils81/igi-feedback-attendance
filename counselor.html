@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=101"></script>
+<script src="/assets/shared.js?v=102"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -4203,6 +4203,15 @@
       <div class="field"><label>Student ID *</label><input type="text" id="dreq-student-id" placeholder="e.g. 7213" oninput="dreqLookupStudent()"></div>
       <div class="field"><label>Student Name</label><input type="text" id="dreq-student-name" readonly style="background:var(--off)"></div>
       <div class="field"><label>Batch Code *</label><input type="text" id="dreq-batch-code" placeholder="e.g. MUM-DG-JUL26"></div>
+      <!-- Which courses this discount applies to. A GG student is enrolled in two batches
+           (Diamond Graduate + Colored Stone Graduate); one approval can cover both, but the
+           counsellor says which, so a discount meant for one course can't be spent on the
+           other. Populated by dreqLookupStudent(); hidden when the student has only one. -->
+      <div class="field" id="dreq-covers-wrap" style="display:none">
+        <label>This discount applies to *</label>
+        <div id="dreq-covers-list" style="display:flex;flex-direction:column;gap:6px;border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--off)"></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">This student is doing more than one course. Tick only the ones the discount is for — the approval can't be used on the others.</div>
+      </div>
       <div class="field"><label>Course</label><input type="text" id="dreq-course" placeholder="Optional, for the admin's context"></div>
       <div class="field"><label>Course Fee (₹, excl. GST)</label><input type="number" id="dreq-course-fee" min="0" placeholder="Optional, for the admin's context"></div>
       <div class="field"><label>Discount % *</label><input type="number" id="dreq-discount-pct" min="0" max="100" step="0.01"></div>
@@ -9983,6 +9992,10 @@ function openDiscountRequestForm(prefill) {
   } else {
     ['dreq-student-id','dreq-student-name','dreq-batch-code','dreq-course','dreq-course-fee','dreq-discount-pct'].forEach(function(id) { document.getElementById(id).value = ''; });
   }
+  // Populate the "This discount applies to" tick boxes for whichever student is in the form
+  // — including the prefilled case, which comes straight from a blocked fee save.
+  renderDreqCovers([]);
+  if (document.getElementById('dreq-student-id').value.trim()) dreqLookupStudent();
   document.getElementById('discount-req-modal-overlay').style.display = 'flex';
 }
 function closeDiscountRequestForm() { document.getElementById('discount-req-modal-overlay').style.display = 'none'; }
@@ -9996,8 +10009,29 @@ function dreqLookupStudent() {
     // A hand-typed batch here — a sibling batch, or a label like "MUM- DG & CG-SEP26" that
     // isn't a batch code at all — produced approvals the counsellor then couldn't redeem.
     var batchEl = document.getElementById('dreq-batch-code');
-    if (batchEl && !e && d && d.status === 'ok' && d.batchCode) batchEl.value = d.batchCode;
+    // Only when it's empty — a prefilled request carries the batch the counsellor was
+    // actually saving, which can differ from the student record (e.g. a batch move).
+    if (batchEl && !batchEl.value.trim() && !e && d && d.status === 'ok' && d.batchCode) batchEl.value = d.batchCode;
+    renderDreqCovers((!e && d && d.status === 'ok') ? (d.batchList || []) : []);
   });
+}
+/* Tick boxes for a student doing more than one course (2026-09-17, per instruction: "add
+   tick box is a better solution as a safe guard"). One approval can cover both halves of a
+   GG enrolment, but the counsellor states which courses it is for, so a discount granted on
+   one course can never be spent on the other. A single-course student sees nothing extra —
+   the block stays hidden and the approval simply covers their one course. */
+function renderDreqCovers(list) {
+  var wrap = document.getElementById('dreq-covers-wrap');
+  var box = document.getElementById('dreq-covers-list');
+  if (!wrap || !box) return;
+  if (!list || list.length < 2) { wrap.style.display = 'none'; box.innerHTML = ''; return; }
+  box.innerHTML = list.map(function (b) {
+    var label = escC(b.batchCode) + (b.course ? ' <span style="color:var(--muted);font-weight:400">· ' + escC(b.course) + '</span>' : '');
+    return '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer">' +
+      '<input type="checkbox" class="dreq-cover-cb" value="' + escC(b.batchCode) + '" checked style="width:16px;height:16px;cursor:pointer">' +
+      '<span>' + label + '</span></label>';
+  }).join('');
+  wrap.style.display = '';
 }
 function submitDiscountRequest() {
   var errEl = document.getElementById('discount-req-err');
@@ -10007,6 +10041,12 @@ function submitDiscountRequest() {
   var discountPct = Number(document.getElementById('dreq-discount-pct').value);
   var reason = document.getElementById('dreq-reason').value.trim();
   var centre = document.getElementById('dreq-centre').value;
+  // Courses ticked in "This discount applies to" — empty list means the student only does
+  // one course and the block was never shown, which the server reads as "all their courses".
+  var coversEls = document.querySelectorAll('.dreq-cover-cb');
+  var covers = [];
+  for (var ci = 0; ci < coversEls.length; ci++) { if (coversEls[ci].checked) covers.push(coversEls[ci].value); }
+  if (coversEls.length && !covers.length) { errEl.textContent = 'Tick at least one course this discount applies to.'; return; }
   if (!studentId || !studentName || studentName === '(not found)') { errEl.textContent = 'Enter a valid Student ID.'; return; }
   if (!batchCode) { errEl.textContent = 'Enter the batch code.'; return; }
   if (!discountPct || discountPct <= 0) { errEl.textContent = 'Enter a discount % greater than 0.'; return; }
@@ -10016,6 +10056,7 @@ function submitDiscountRequest() {
     centre: centre, course: document.getElementById('dreq-course').value.trim(),
     courseFee: Number(document.getElementById('dreq-course-fee').value) || 0,
     discountPct: discountPct, discountReason: reason, requestedBy: counselorName,
+    coversBatches: JSON.stringify(covers),
     payload: dreqStashedPayload
   }, function(e, d) {
     if (e || !d || d.status !== 'ok') { errEl.textContent = (d && d.reason) || 'Could not submit. Try again.'; return; }

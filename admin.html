@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=101"></script>
+<script src="assets/shared.js?v=102"></script>
 <script src="assets/work.js?v=4"></script>
 <script src="assets/push-subscribe.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -5214,7 +5214,18 @@ function renderDiscountApprovalsList() {
       '<td class="text-left" style="white-space:normal;word-break:break-word">' + escC(igiName(r.requestedBy)) + '</td>' +
       '<td class="text-left" style="font-size:11px;color:var(--muted);white-space:normal">' + fmtWhen(r.requestedAt) + '</td>' +
       '<td class="text-left" style="white-space:normal;word-break:break-word">' + escC(r.studentName) + ' <span style="font-size:11px;color:var(--muted)">(' + escC(r.studentId) + ')</span></td>' +
-      '<td class="text-left" style="white-space:normal;word-break:break-word">' + escC(r.batchCode) + '<div style="font-size:11px;color:var(--muted)">' + escC(r.centre) + '</div></td>' +
+      // Spell out which courses the discount covers when the student is doing more than one
+      // (a GG student is DG + CG). One approval can cover both, but only the courses the
+      // counsellor ticked — so the HOD can see exactly what they are approving. 2026-09-17.
+      '<td class="text-left" style="white-space:normal;word-break:break-word">' + escC(r.batchCode) +
+        '<div style="font-size:11px;color:var(--muted)">' + escC(r.centre) + '</div>' +
+        ((r.coversBatches && r.coversBatches.length > 1)
+          ? '<div style="font-size:11px;color:#1a7a3c;margin-top:3px;font-weight:600">Covers ' + r.coversBatches.length + ' courses: ' + escC(r.coversBatches.join(', ')) + '</div>'
+          : '') +
+        ((r.usedBatches && r.usedBatches.length && r.coversBatches && r.coversBatches.length > 1)
+          ? '<div style="font-size:11px;color:var(--muted);margin-top:2px">Used on: ' + escC(r.usedBatches.join(', ')) + '</div>'
+          : '') +
+      '</td>' +
       '<td style="text-align:right;white-space:normal">' + (r.courseFee ? money(r.courseFee) : '—') + '</td>' +
       '<td style="text-align:right;font-weight:700;white-space:normal">' + r.discountPct + '%</td>' +
       // 2026-08-22: a 200px box with word-break:break-word forced every long reason onto

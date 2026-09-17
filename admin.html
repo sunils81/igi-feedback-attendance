@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=102"></script>
+<script src="assets/shared.js?v=103"></script>
 <script src="assets/work.js?v=4"></script>
 <script src="assets/push-subscribe.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1548,6 +1548,13 @@
       <div id="a-more-sheet-items"></div>
     </div>
   </div>
+
+    <!-- Pending discount approvals banner — the admin-side mirror of the counsellor's green
+         "discount approved, please enter the revenue" bar (2026-09-17, per instruction).
+         Amber rather than green because this one is a to-do, not a confirmation. Persistent
+         by design: no dismiss, it clears itself once nothing is pending. Rendered by
+         loadPendingDiscountBanner(), which also feeds the tab badge and the mobile nav dot. -->
+    <div id="discount-pending-banner" style="display:none;background:#FFFBEB;border:1.5px solid #D97706;border-radius:8px;padding:10px 16px;margin:0 0 14px;font-size:13px;color:#78350F;flex-direction:column;gap:6px"></div>
 
     <!-- Navigation Tab Bar -->
     <div class="tab-bar" id="tab-bar">
@@ -4358,6 +4365,7 @@ function showMainScreen() {
   // screen carries revenue, targets and approvals. Runs on login and on restore, since
   // both paths come through here. 2026-09-15, per instruction.
   if (window.IGIIdle) window.IGIIdle.start({ minutes: 10, warnSeconds: 60, onLogout: doAdminLogout });
+  startPendingDiscountWatch();   // amber "waiting for your approval" bar, on every tab
   // Push notifications for the Work dashboard (assets/work.js): register the service
   // worker + subscribe this browser under portal 'admin'. Non-fatal if declined. 2026-09-08.
   if (window.IGIPush && adminUser && adminUser.name) {
@@ -5150,6 +5158,63 @@ function switchAdminTab(tabId) {
    ══════════════════════════════════════════════════════════════ */
 var discountApprovalRequests = [];
 
+/* ── Pending-approval banner (2026-09-17, per instruction: "ADMIN PORTAL SHOULD HAVE A
+   NOTIFICATION BAR LIKE HOW COUNSELLOR PORTAL FOR DISCOUNT APPROVAL") ─────────────────
+   The counsellor has had a persistent green bar telling them a discount was approved and
+   the revenue still needs entering. This is its opposite number: every request waiting on
+   the HOD, on every tab, until it is reviewed. Nothing is dismissible — it clears itself
+   when the queue empties. Runs on its own light call rather than reusing
+   loadDiscountApprovals(), so it costs nothing on tabs that aren't the approvals list, and
+   it keeps the tab badge and the mobile nav dot in step. */
+var _pendingDiscountTimer = null;
+
+function loadPendingDiscountBanner() {
+  var banner = document.getElementById('discount-pending-banner');
+  if (!banner || !adminUser) return;
+  gasGet({ action: 'getDiscountRequests', status: 'pending', isAdmin: 'true' }, function (e, d) {
+    var pend = (!e && d && d.records) ? d.records.filter(function (r) { return r.status === 'pending'; }) : [];
+    // Keep the tab badge and the phone nav dot honest even when the list tab is untouched.
+    var badge = document.getElementById('discount-approvals-badge');
+    if (badge) { badge.textContent = pend.length || ''; badge.style.display = pend.length ? 'inline-block' : 'none'; }
+    var dot = document.getElementById('a-mnav-approvals-dot');
+    if (dot) { dot.textContent = pend.length || ''; dot.style.display = pend.length ? 'block' : 'none'; }
+
+    if (!pend.length) { banner.style.display = 'none'; return; }
+    var show = pend.slice(0, 4);
+    banner.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px">' +
+        '<span>⏳</span>' +
+        '<span style="flex:1;font-weight:700">' + pend.length + ' discount request' + (pend.length > 1 ? 's' : '') +
+          ' waiting for your approval</span>' +
+        '<button onclick="switchAdminTab(\'t-discount-approvals\')" style="background:#D97706;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer">Review now →</button>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:5px;padding-left:26px">' + show.map(function (r) {
+        var covers = (r.coversBatches && r.coversBatches.length > 1)
+          ? '<div style="font-size:11px">Covers ' + r.coversBatches.length + ' courses: ' + escC(r.coversBatches.join(', ')) + '</div>' : '';
+        return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+          '<span style="flex:1;min-width:200px">' + escC(r.studentName) +
+            ' <span style="font-size:11px;color:#92400E">(' + escC(r.studentId) + ' · ' + escC(r.batchCode) + ')</span>' +
+            '<div style="font-size:11px;color:#92400E"><strong>' + r.discountPct + '%</strong> requested by ' + escC(igiName(r.requestedBy)) + '</div>' +
+            covers +
+          '</span>' +
+          '<button onclick="switchAdminTab(\'t-discount-approvals\')" style="background:#fff;color:#78350F;border:1.5px solid #D97706;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">Open</button>' +
+        '</div>';
+      }).join('') +
+      (pend.length > show.length ? '<div style="font-size:11px;color:#92400E">+ ' + (pend.length - show.length) + ' more</div>' : '') +
+      '</div>';
+    banner.style.display = 'flex';
+  });
+}
+
+function startPendingDiscountWatch() {
+  loadPendingDiscountBanner();
+  clearInterval(_pendingDiscountTimer);
+  // Same 2-minute cadence the counsellor's approved-discount bar uses.
+  _pendingDiscountTimer = setInterval(function () {
+    if (!document.hidden) loadPendingDiscountBanner();
+  }, 120000);
+}
+
 function loadDiscountApprovals() {
   var list = document.getElementById('discount-approvals-list');
   if (list) list.innerHTML = '<div class="empty-state"><div class="empty-icon">💷</div><div class="empty-title">Loading…</div></div>';
@@ -5264,6 +5329,7 @@ function deleteDiscountApprovalEntry(id) {
     if (e || !d || d.status !== 'ok') { showToast((d && d.reason) || 'Could not remove.', 'error'); return; }
     showToast('Removed.');
     loadDiscountApprovals();
+    loadPendingDiscountBanner();
   });
 }
 
@@ -5313,6 +5379,7 @@ function submitDiscountApprovalReview(decision) {
     showToast(decision === 'approved' ? 'Approved — counsellor notified to enter the revenue.' : 'Rejected — counsellor notified.');
     closeDiscountApprovalReview();
     loadDiscountApprovals();
+    loadPendingDiscountBanner();   // drop it off the amber queue immediately
   });
 }
 

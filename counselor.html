@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=104"></script>
+<script src="/assets/shared.js?v=105"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -3977,8 +3977,26 @@
         </div>
         <div class="field" id="fee-custom-disc-wrap" style="display:none"><label>Custom Discount %</label><input type="number" id="fee-custom-disc" min="0" max="100" oninput="recalcFeeForm()"></div>
         <div class="field"><label>Discount Reason</label><input type="text" id="fee-disc-reason" placeholder="Optional"></div>
-        <div class="field"><label>Invoice Number</label><input type="text" id="fee-invoice-number" placeholder="e.g. BOM/26/INV/03721" onchange="checkInvoiceDuplicateWarning()"></div>
-        <div class="field"><label>Invoice Date <span style="font-weight:400;color:var(--muted)">(optional — often raised after payment)</span></label><input type="date" id="fee-invoice-date"></div>
+        <!-- PI vs Tax Invoice — 2026-09-17, per instruction: accounts raise a Proforma
+             Invoice unless the full payment is received. The dropdown defaults itself from
+             the outstanding balance (recalcFeeForm → syncDocTypeUI) so the right one is
+             already selected, but the counsellor can override for a corporate PO or an
+             uncleared cheque, and is asked why. The number field prefixes itself
+             CENTRE-PI- so every PI is numbered the same way. -->
+        <div class="field">
+          <label>Document Type *</label>
+          <select id="fee-doc-type" onchange="onDocTypeChanged()">
+            <option value="pi">Proforma Invoice (PI) — full payment not received</option>
+            <option value="invoice">Tax Invoice — fully paid</option>
+          </select>
+          <div id="fee-doc-type-hint" style="font-size:11px;margin-top:4px"></div>
+        </div>
+        <div class="field" id="fee-doc-type-note-wrap" style="display:none">
+          <label style="color:#7A5B00">Why override the suggested type?</label>
+          <input type="text" id="fee-doc-type-note" placeholder="e.g. corporate PO received, cheque banked but not cleared">
+        </div>
+        <div class="field"><label id="fee-invoice-number-label">PI Number</label><input type="text" id="fee-invoice-number" placeholder="e.g. MUM-PI-0042" onchange="checkInvoiceDuplicateWarning()"></div>
+        <div class="field"><label id="fee-invoice-date-label">PI Date <span style="font-weight:400;color:var(--muted)">(optional — often raised after payment)</span></label><input type="date" id="fee-invoice-date"></div>
         <div class="field" id="fee-invoice-dup-wrap" style="display:none"><label style="color:#7A5B00">⚠ Invoice number already used elsewhere — comment</label><input type="text" id="fee-invoice-shared-comment" placeholder="e.g. one invoice, 3 students, paid together by parent"></div>
         <div class="field"><label>Receipt / Invoice File <span style="font-weight:400;color:var(--muted)">(optional)</span></label><input type="file" id="fee-invoice-file" accept=".pdf,.jpg,.jpeg,.png" onchange="uploadInvoiceFile(this)"><div id="fee-invoice-file-status" style="font-size:11px;color:var(--muted);margin-top:4px"></div></div>
         <div class="field"><label>Payment Plan</label>
@@ -4105,6 +4123,8 @@
       </div>
 
       <div id="fr-summary" class="dashboard-summary" style="display:none"></div>
+      <!-- Fully paid but still on a PI — see renderPIPendingBanner(). Hidden when empty. -->
+      <div id="fr-pi-pending" style="display:none;background:#FFFBEB;border:1.5px solid #D97706;border-radius:8px;padding:10px 16px;margin:0 0 14px;font-size:13px;color:#78350F;flex-direction:column;gap:6px"></div>
       <div id="fr-list"><div class="empty-state"><div class="empty-icon">📑</div><div class="empty-title">Loading fee record…</div><div class="empty-copy">Pulling your fee records, grouped by month.</div></div></div>
 
       <div style="margin-top:28px;padding-top:20px;border-top:1.5px solid var(--border)">
@@ -10362,6 +10382,41 @@ function corpBatchesAsFeeRows() {
   });
 }
 
+/* PI PENDING CONVERSION — 2026-09-17. The gap this closes: a part-paid enrolment gets a
+   PI, the balance is later cleared, and unless someone reopens that fee record the PI just
+   stays a PI. Nobody sees it until an audit. This lists every record that is fully paid but
+   still marked PI, right at the top of the Fee Record ledger, and clicking one opens that
+   student's fee form so the tax invoice number can go in. It hides itself when there are
+   none, so in normal use it costs nothing. */
+function renderPIPendingBanner(rows) {
+  var el = document.getElementById('fr-pi-pending');
+  if (!el) return;
+  var pend = (rows || []).filter(function (r) {
+    return r.docType === 'pi' && (Number(r.outstanding) || 0) <= 0 && !r.isCorporate;
+  });
+  if (!pend.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  var show = pend.slice(0, 6);
+  el.innerHTML =
+    '<div style="display:flex;align-items:center;gap:10px">' +
+      '<span>🧾</span>' +
+      '<span style="flex:1;font-weight:700">' + pend.length + ' fully-paid record' + (pend.length > 1 ? 's' : '') +
+        ' still on a Proforma Invoice — the tax invoice is due</span>' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:5px;padding-left:26px">' + show.map(function (r) {
+      return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+        '<span style="flex:1;min-width:200px">' + escC(r.studentName || '') +
+          ' <span style="font-size:11px;color:#92400E">(' + escC(r.studentId || '') + ' · ' + escC(r.batchCode || '') + ')</span>' +
+          '<div style="font-size:11px;color:#92400E">' + (r.invoiceNumber ? escC(r.invoiceNumber) + ' · ' : '') +
+            money(r.collected) + ' collected, nothing outstanding</div></span>' +
+        '<button onclick="openFeeFormFor(\'' + escC(r.studentId || '') + '\',\'' + escC(r.batchCode || '') + '\')" ' +
+          'style="background:#fff;color:#78350F;border:1.5px solid #D97706;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">Raise tax invoice</button>' +
+      '</div>';
+    }).join('') +
+    (pend.length > show.length ? '<div style="font-size:11px;color:#92400E">+ ' + (pend.length - show.length) + ' more in the table below</div>' : '') +
+    '</div>';
+  el.style.display = 'flex';
+}
+
 function renderFeeRecordTab() {
   var summary = document.getElementById('fr-summary');
   var list = document.getElementById('fr-list');
@@ -10380,6 +10435,7 @@ function renderFeeRecordTab() {
   }
 
   var rows = feeRecordFilteredRows().concat(corpBatchesAsFeeRows());
+  renderPIPendingBanner(rows);
 
   if (!rows.length) {
     summary.style.display = 'none';
@@ -10490,7 +10546,14 @@ function renderFeeRecordTab() {
         '<td><strong>' + escC(r.studentName || '') + '</strong></td>' +
         '<td>' + escC(r.batchCode || '') + '</td>' +
         '<td>' + escC(r.centre || '') + '</td>' +
-        '<td style="font-family:\'JetBrains Mono\',monospace">' + (r.invoiceNumber ? escC(r.invoiceNumber) : '<span style="color:var(--muted)">—</span>') + '</td>' +
+        // PI / Invoice tag next to the number (2026-09-17) so accounts can see at a glance
+        // which are proformas. Records from before the change carry no docType and show
+        // nothing, exactly as they did.
+        '<td style="font-family:\'JetBrains Mono\',monospace">' + (r.invoiceNumber ? escC(r.invoiceNumber) : '<span style="color:var(--muted)">—</span>') +
+          (r.docType === 'pi'
+            ? '<div style="font-family:inherit;font-size:10px;font-weight:700;color:#B45309">PI'
+              + ((Number(r.outstanding) || 0) <= 0 ? ' · awaiting tax invoice' : '') + '</div>'
+            : '') + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace">' + money(r.courseFee) + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace">' + money(r.gstAmount) + '</td>' +
         '<td style="font-family:\'JetBrains Mono\',monospace">' + (Number(r.discountPct) ? (parseFloat(Number(r.discountPct).toFixed(2)) + '%') : '—') + '</td>' +
@@ -10556,7 +10619,7 @@ function downloadFeeRecordCsv() {
   // undiscounted course fee, overstating every discounted row and every subtotal built from it.
   // Discount is shown per-row as a % (not a rupee amount) — Total/Grand Total rows leave it
   // blank since summing percentages across different students isn't a meaningful number.
-  var blank = { SNo:'', Month:'', Counsellor:'', StudentID:'', Student:'', Batch:'', Centre:'', InvoiceNumber:'', InvoiceDate:'',
+  var blank = { SNo:'', Month:'', Counsellor:'', StudentID:'', Student:'', Batch:'', Centre:'', DocType:'', InvoiceNumber:'', InvoiceDate:'',
     CourseFee:'', GST:'', DiscountPct:'', Revenue:'', Collected:'', Balance:'' };
   var csvRows = [];
   var g = { courseFee:0, gst:0, revenue:0, collected:0, balance:0 };
@@ -10569,7 +10632,9 @@ function downloadFeeRecordCsv() {
       m.revenue += revenue;
       m.collected += Number(r.collected)||0;   m.balance += Number(r.outstanding)||0;
       csvRows.push(Object.assign({}, blank, { SNo: idx+1, Month: invMonthLabel(mk), Counsellor: r.enteredBy||'',
-        StudentID: r.studentId||'', Student: r.studentName||'', Batch: r.batchCode||'', Centre: r.centre||'', InvoiceNumber: r.invoiceNumber||'',
+        StudentID: r.studentId||'', Student: r.studentName||'', Batch: r.batchCode||'', Centre: r.centre||'',
+        DocType: r.docType === 'pi' ? 'PI' : 'Tax Invoice',
+        InvoiceNumber: r.invoiceNumber||'',
         InvoiceDate: r.invoiceDate||'',
         CourseFee: r.courseFee||0, GST: r.gstAmount||0,
         DiscountPct: Number(r.discountPct) ? parseFloat(Number(r.discountPct).toFixed(2)) : 0, Revenue: revenue,
@@ -11090,6 +11155,17 @@ function openFeeForm(studentId) {
   document.getElementById('fee-disc-reason').value = existing ? (existing.discountReason || '') : '';
   document.getElementById('fee-invoice-number').value = existing ? (existing.invoiceNumber || '') : '';
   document.getElementById('fee-invoice-date').value = existing ? (existing.invoiceDate || '') : '';
+  /* PI vs Tax Invoice (2026-09-17). A record saved before today has no docType and reads as
+     'invoice' — left exactly as it is. _docTypeTouched starts false so a NEW record simply
+     follows the outstanding balance; on an EXISTING record we honour what was saved, which
+     is what makes the conversion prompt below meaningful. */
+  _docTypeTouched = !!existing;
+  var _dtSel = document.getElementById('fee-doc-type');
+  if (_dtSel) _dtSel.value = existing ? (existing.docType || 'invoice') : 'pi';
+  var _dtNote = document.getElementById('fee-doc-type-note');
+  if (_dtNote) _dtNote.value = existing ? (existing.docTypeNote || '') : '';
+  _feePrevDocType = existing ? (existing.docType || 'invoice') : '';
+  _feePrevDocNumber = existing ? (existing.invoiceNumber || '') : '';
   document.getElementById('fee-invoice-shared-comment').value = existing ? (existing.invoiceSharedComment || '') : '';
   document.getElementById('fee-invoice-dup-wrap').style.display = existing && existing.invoiceSharedComment ? 'block' : 'none';
   currentInvoiceFileUrl = existing ? (existing.invoiceFileUrl || '') : '';
@@ -11748,6 +11824,111 @@ function recalcFeeForm() {
   } else if (warnEl) {
     warnEl.style.display = 'none';
   }
+  syncDocTypeUI(Math.max(calc.net - collected, 0));
+}
+
+/* ── PI vs TAX INVOICE ────────────────────────────────────────────────────────────────
+   2026-09-17, per instruction: "accounts have changed the system..now they will be
+   generating PI instead of invoice unless the full payment is received..so the system
+   should ask whether PI or Invoice", and "it should show Centre-PI-".
+
+   The dropdown is the counsellor's to set, but it is never left for them to work out: on
+   every recalc the outstanding balance picks the right option for them, the labels and the
+   number placeholder follow (PI Number / Invoice Number, MUM-PI-…), and choosing the one
+   the balance does NOT imply asks for a reason, which is stored on the record. Records
+   saved before today carry no doc_type and are read as tax invoices, so nothing already
+   entered is touched. */
+var _docTypeTouched = false;   // reset each time the form opens
+var _feePrevDocType = '';      // what the record carried when it was opened
+var _feePrevDocNumber = '';
+
+/* maybePromptPIConversion — the step that stops PIs quietly staying PIs forever.
+   A part-paid record carries a PI. When the balance is later cleared and the counsellor
+   saves again, this catches the moment: the record is fully paid but still marked PI, so
+   it asks for the tax invoice number instead of letting it slip through. Answering "not
+   yet" is allowed — the record then shows up in the PI Pending Conversion list for
+   accounts. Returns false to hold the save while the counsellor fills the number in. */
+function maybePromptPIConversion() {
+  var sel = document.getElementById('fee-doc-type');
+  if (!sel) return true;
+  var outstanding = _feeOutstandingNow();
+  if (!(_feePrevDocType === 'pi' && sel.value === 'pi' && outstanding <= 0)) return true;
+  var ok = confirm('This is now fully paid, but it is still marked as a Proforma Invoice'
+    + (_feePrevDocNumber ? ' (' + _feePrevDocNumber + ')' : '') + '.\n\n'
+    + 'Accounts raise the tax invoice once the full payment is in.\n\n'
+    + 'OK — switch it to Tax Invoice and enter the invoice number now\n'
+    + 'Cancel — leave it as a PI for now (it will be listed as pending conversion)');
+  if (!ok) return true;
+  sel.value = 'invoice';
+  _docTypeTouched = true;
+  var numEl = document.getElementById('fee-invoice-number');
+  // Clear the PI number so the tax invoice number isn't mistaken for it.
+  if (numEl && numEl.value.trim() === _feePrevDocNumber.trim()) numEl.value = '';
+  recalcFeeForm();
+  if (numEl) { numEl.focus(); numEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  showToast('Switched to Tax Invoice — enter the invoice number, then save.', 'info');
+  return false;   // hold this save; they press Save again with the number in
+}
+
+function feeCentreCode() {
+  // The 3-letter centre prefix already used by every batch code (MUM-DG-SEP26 → MUM).
+  var b = (currentFeeStudent && currentFeeStudent.batch && currentFeeStudent.batch.batchCode) || '';
+  var m = /^([A-Za-z]{2,4})-/.exec(String(b).trim());
+  return m ? m[1].toUpperCase() : '';
+}
+
+function suggestedDocType(outstanding) { return outstanding > 0 ? 'pi' : 'invoice'; }
+
+function syncDocTypeUI(outstanding) {
+  var sel = document.getElementById('fee-doc-type');
+  if (!sel) return;
+  var suggested = suggestedDocType(outstanding);
+  // Until the counsellor touches it, the dropdown tracks the payment state.
+  if (!_docTypeTouched) sel.value = suggested;
+  var isPI = sel.value === 'pi';
+  var code = feeCentreCode();
+
+  var numLabel = document.getElementById('fee-invoice-number-label');
+  if (numLabel) numLabel.textContent = isPI ? 'PI Number' : 'Invoice Number';
+  var dateLabel = document.getElementById('fee-invoice-date-label');
+  if (dateLabel) dateLabel.innerHTML = (isPI ? 'PI Date' : 'Invoice Date') +
+    ' <span style="font-weight:400;color:var(--muted)">(optional — often raised after payment)</span>';
+  var numEl = document.getElementById('fee-invoice-number');
+  if (numEl) {
+    numEl.placeholder = isPI
+      ? (code ? 'e.g. ' + code + '-PI-0042' : 'e.g. MUM-PI-0042')
+      : 'e.g. BOM/26/INV/03721';
+    // Seed the CENTRE-PI- prefix so every PI is numbered the same way; the counsellor
+    // just types the running number. Never overwrites anything already typed.
+    if (isPI && code && !numEl.value.trim()) numEl.value = code + '-PI-';
+  }
+
+  var hint = document.getElementById('fee-doc-type-hint');
+  var mismatch = sel.value !== suggested;
+  if (hint) {
+    hint.style.color = mismatch ? '#7A5B00' : (isPI ? '#B45309' : '#1a7a3c');
+    hint.textContent = mismatch
+      ? (suggested === 'pi'
+          ? '⚠ ' + money(outstanding) + ' is still outstanding — accounts would normally raise a PI. Give a reason below.'
+          : '⚠ This record is fully paid — accounts would normally raise the tax invoice. Give a reason below.')
+      : (isPI
+          ? money(outstanding) + ' outstanding — PI, as accounts require until the full payment is in.'
+          : 'Fully paid — tax invoice.');
+  }
+  var noteWrap = document.getElementById('fee-doc-type-note-wrap');
+  if (noteWrap) noteWrap.style.display = mismatch ? '' : 'none';
+}
+
+function onDocTypeChanged() {
+  _docTypeTouched = true;
+  recalcFeeForm();
+}
+
+// Outstanding exactly as the summary box shows it — read back rather than recomputed, so
+// the payload's "did they override?" flag can never disagree with what was on screen.
+function _feeOutstandingNow() {
+  var el = document.getElementById('fee-out');
+  return Number(String((el && el.textContent) || '').replace(/[^0-9.-]/g, '')) || 0;
 }
 
 // Reads the SAME live context saveFeeRecord() itself uses (currentFeeStudent, feeCalc())
@@ -11789,6 +11970,9 @@ function buildFeeSavePayload() {
     invoiceNumber:document.getElementById('fee-invoice-number').value.trim(),
     invoiceAmount:calc.net,
     invoiceDate:document.getElementById('fee-invoice-date').value || '',
+    docType: (document.getElementById('fee-doc-type') || {}).value || 'invoice',
+    docTypeManual: _docTypeTouched && ((document.getElementById('fee-doc-type') || {}).value !== suggestedDocType(_feeOutstandingNow())),
+    docTypeNote: (document.getElementById('fee-doc-type-note') || {}).value || '',
     invoiceSharedComment:document.getElementById('fee-invoice-shared-comment').value.trim(),
     invoiceFileUrl:currentInvoiceFileUrl || ''
   };
@@ -11825,6 +12009,20 @@ function saveFeeRecord() {
   const err = document.getElementById('fee-err');
   const btn = document.getElementById('fee-save-btn');
   err.classList.remove('show');
+  // A PI that has just been paid in full is the moment to raise the tax invoice — ask
+  // before saving rather than letting it stay a PI unnoticed. 2026-09-17.
+  if (!maybePromptPIConversion()) return;
+  // An override of the suggested document type has to say why, so accounts see a decision.
+  var _dtSelS = document.getElementById('fee-doc-type');
+  if (_dtSelS && _dtSelS.value !== suggestedDocType(_feeOutstandingNow())
+      && !(document.getElementById('fee-doc-type-note') || {}).value.trim()) {
+    err.textContent = 'You have chosen ' + (_dtSelS.value === 'pi' ? 'a Proforma Invoice' : 'a Tax Invoice')
+      + ' against what the payment shows. Please say why in the box above.';
+    err.classList.add('show');
+    var _n = document.getElementById('fee-doc-type-note');
+    if (_n) { _n.focus(); _n.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    return;
+  }
   // Defensive re-check (belt and braces alongside the disabled Save button in openFeeForm):
   // never send a courseFee of 0 for a course that simply has no catalog entry — that's how
   // Naini Paraswani's record got its Net Payable silently zeroed out.

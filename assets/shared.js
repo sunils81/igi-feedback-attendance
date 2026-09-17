@@ -2993,6 +2993,10 @@ window.gasGet = (function () {
       inst3Amt: mapped.inst3_amount, inst3Due: toDMY(mapped.inst3_due), inst3Paid: mapped.inst3_paid,
       inst3PaidDate: toDMY(mapped.inst3_paid_date), inst3Mode: mapped.inst3_mode, inst3Ref: mapped.inst3_reference,
       collected: mapped.collected, outstanding: mapped.outstanding,
+      // docType: 'pi' | 'invoice'. Absent on anything saved before 2026-09-17, which reads
+      // as a tax invoice so existing records are untouched.
+      docType: mapped.doc_type || 'invoice', docTypeManual: !!mapped.doc_type_manual,
+      docTypeNote: mapped.doc_type_note || '',
       invoiceNumber: mapped.invoice_number, invoiceAmount: mapped.invoice_amount,
       invoiceDate: mapped.invoice_date, invoiceSharedComment: mapped.invoice_shared_comment,
       invoiceFileUrl: mapped.invoice_file_url,
@@ -3404,6 +3408,16 @@ window.gasGet = (function () {
       net_payable: net,
       n_installments: n,
       invoice_number: p.invoiceNumber || '',
+      /* PI vs TAX INVOICE — 2026-09-17, per instruction: accounts now raise a Proforma
+         Invoice unless the full payment has been received, and only then a tax invoice.
+         doc_type is 'pi' or 'invoice'; anything saved before today has no doc_type at all
+         and is read as 'invoice', so existing records are untouched.
+         doc_type_manual records that the counsellor overrode what the payment state implied
+         (e.g. a corporate PO, or a cheque banked but not cleared) together with their
+         reason, so accounts see a decision rather than a mistake. */
+      doc_type: (String(p.docType || '').toLowerCase() === 'pi') ? 'pi' : 'invoice',
+      doc_type_manual: p.docTypeManual === true || p.docTypeManual === 'true',
+      doc_type_note: p.docTypeNote || '',
       invoice_amount: (p.invoiceAmount !== undefined && p.invoiceAmount !== null && p.invoiceAmount !== '')
         ? Number(p.invoiceAmount) : net,
       // invoice_date — stored here, and now ALSO the primary input to revenue_month below
@@ -3500,14 +3514,22 @@ window.gasGet = (function () {
           proceedNormalSave();
           return;
         }
-        if (!p.admissionSource && existingRow.receipt_no) {
+        if ((!p.admissionSource || p.docType === undefined) && existingRow.receipt_no) {
           try {
             var prevMeta1 = JSON.parse(existingRow.receipt_no);
-            if (prevMeta1.admission_source) {
+            if (!p.admissionSource && prevMeta1.admission_source) {
               meta.admission_source = prevMeta1.admission_source;
               meta.admission_source_detail = prevMeta1.admission_source_detail || '';
-              dbRow.receipt_no = JSON.stringify(meta);
             }
+            // Same reason as admission_source: a save path that doesn't send docType (the
+            // Enroll flow, an approved-discount replay) must not silently reset a PI to a
+            // tax invoice. Only an explicit docType changes it.
+            if (p.docType === undefined && prevMeta1.doc_type) {
+              meta.doc_type = prevMeta1.doc_type;
+              meta.doc_type_manual = !!prevMeta1.doc_type_manual;
+              meta.doc_type_note = prevMeta1.doc_type_note || '';
+            }
+            dbRow.receipt_no = JSON.stringify(meta);
           } catch (exAS1) {}
         }
         PATCH('student_fees', 'id=eq.' + encodeURIComponent(p.existingRecordId), dbRow, function (errPatch) {
@@ -3538,14 +3560,20 @@ window.gasGet = (function () {
       var previousRevenueMonth = existing ? (existing.revenue_month || '') : '';
       var previousCentre = existing ? existing.centre : null;
       var previousRecordedBy = existing ? existing.recorded_by : null;
-      if (!p.admissionSource && existing && existing.receipt_no) {
+      if ((!p.admissionSource || p.docType === undefined) && existing && existing.receipt_no) {
         try {
           var prevMeta2 = JSON.parse(existing.receipt_no);
-          if (prevMeta2.admission_source) {
+          if (!p.admissionSource && prevMeta2.admission_source) {
             meta.admission_source = prevMeta2.admission_source;
             meta.admission_source_detail = prevMeta2.admission_source_detail || '';
-            dbRow.receipt_no = JSON.stringify(meta);
           }
+          // See the matching note on the batch-move path above.
+          if (p.docType === undefined && prevMeta2.doc_type) {
+            meta.doc_type = prevMeta2.doc_type;
+            meta.doc_type_manual = !!prevMeta2.doc_type_manual;
+            meta.doc_type_note = prevMeta2.doc_type_note || '';
+          }
+          dbRow.receipt_no = JSON.stringify(meta);
         } catch (exAS2) {}
       }
       // Revenue-credit ownership must never move just because someone other than the
@@ -3986,7 +4014,11 @@ window.gasGet = (function () {
             discountPct: mapped.discount_pct, discountAmount: mapped.discount_amount,
             netPayable: mapped.net_payable, collected: mapped.collected,
             paymentDate: r.payment_date || '', createdAt: r.created_at || '',
-            invoiceNumber: mapped.invoice_number, invoiceAmount: mapped.invoice_amount,
+            // docType: 'pi' | 'invoice'. Absent on anything saved before 2026-09-17, which reads
+      // as a tax invoice so existing records are untouched.
+      docType: mapped.doc_type || 'invoice', docTypeManual: !!mapped.doc_type_manual,
+      docTypeNote: mapped.doc_type_note || '',
+      invoiceNumber: mapped.invoice_number, invoiceAmount: mapped.invoice_amount,
             invoiceDate: mapped.invoice_date, invoiceFileUrl: mapped.invoice_file_url,
             docComplete: !!(mapped.invoice_number && mapped.invoice_amount && mapped.invoice_date),
             enteredBy: mapped.entered_by,

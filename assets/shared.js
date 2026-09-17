@@ -3667,9 +3667,26 @@ window.gasGet = (function () {
          row is still marked used=true only after a successful save, so a widened match can
          never be redeemed twice or for a different discount than the one approved. */
       var normBatch = function (s) { return String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+      /* ONE APPROVAL COVERS ALL OF THAT STUDENT'S BATCHES — 2026-09-17, per instruction
+         ("if the student is a GG student with same student id then why does the same student
+         require twice approval?"). A Graduate Gemologist is not one enrolment in this system:
+         it is sold as Diamond Graduate + Colored Stone Graduate, two batches, so two fee
+         records — and the gate fired once per fee record. Live, Omkar had to get Adeeb's 10%
+         approved twice; Kripa had learned to raise two requests up front for Kartik.
+         The HOD approves a STUDENT for a discount, not a fee row, so one approval is now
+         redeemable against every batch that student is enrolled in, at that same %, and each
+         batch can spend it only once (used_batches). It retires (used=true) once every active
+         enrolment has spent it — until then the counsellor's banner keeps asking for the
+         revenue on the course still outstanding. */
       var pickApproval = function (rows) {
-        var cands = (rows || []).filter(function (r) { return Math.abs(Number(r.discount_pct) - dp) < 0.01; });
         var want = normBatch(p.batchCode);
+        var cands = (rows || []).filter(function (r) {
+          if (Math.abs(Number(r.discount_pct) - dp) >= 0.01) return false;
+          // Already spent on THIS batch — cannot be redeemed twice for the same fee record.
+          var spent = r.used_batches || [];
+          for (var i = 0; i < spent.length; i++) { if (normBatch(spent[i]) === want) return false; }
+          return true;
+        });
         var exact = cands.filter(function (r) { return normBatch(r.batch_code) === want; })[0];
         return exact || cands[0] || null;
       };
@@ -3686,7 +3703,22 @@ window.gasGet = (function () {
               // Only consumed on an actual successful save — a rejected/failed save
               // (e.g. a duplicate-invoice error path, or a network failure) leaves the
               // approval intact to try again with.
-              PATCH('discount_requests', 'id=eq.' + encodeURIComponent(matching.id), { used: true, used_at: nowISO(), updated_at: nowISO() }, function () {});
+              var spent = (matching.used_batches || []).slice();
+              if (spent.filter(function (b) { return normBatch(b) === normBatch(p.batchCode); }).length === 0) spent.push(p.batchCode);
+              // Retire the approval only once EVERY batch this student is enrolled in has
+              // spent it — so a GG student's second course keeps showing on the counsellor's
+              // "please enter the revenue" banner until that fee record is in too.
+              GET('enrollments', 'student_id=eq.' + encodeURIComponent(p.studentId) + '&select=batch_code,status', function (eEnr, enrRows) {
+                var active = (eEnr ? [] : (enrRows || [])).filter(function (r) { return String(r.status || 'Active') !== 'Dropped'; });
+                var covered = active.length > 0 && active.every(function (r) {
+                  return spent.filter(function (b) { return normBatch(b) === normBatch(r.batch_code); }).length > 0;
+                });
+                var patch = { used_batches: spent, updated_at: nowISO() };
+                // No enrolment rows at all → fall back to the old one-shot behaviour rather
+                // than leaving an approval open forever.
+                if (covered || active.length === 0) { patch.used = true; patch.used_at = nowISO(); }
+                PATCH('discount_requests', 'id=eq.' + encodeURIComponent(matching.id), patch, function () {});
+              });
             }
             cb(errInner, resultInner);
           });
@@ -3771,8 +3803,12 @@ window.gasGet = (function () {
     // approved but not yet spent on a fee save (h_saveFee's used=true is what retires it).
     // A rejected request, or an approved-and-used one, no longer blocks — those are settled
     // and a fresh ask for the same student/batch later is legitimate.
+    // 2026-09-17: the batch is no longer part of this check. An approval now covers every
+    // batch the student is enrolled in (see h_saveFee), so a counsellor raising a SECOND
+    // request for the same student's other course — which is what a GG enrolment used to
+    // force — is the duplicate this is meant to stop, not a legitimate separate ask.
     GET('discount_requests',
-      'student_id=eq.' + encodeURIComponent(p.studentId) + '&batch_code=eq.' + encodeURIComponent(p.batchCode) +
+      'student_id=eq.' + encodeURIComponent(p.studentId) +
       '&or=(status.eq.pending,and(status.eq.approved,used.eq.false))&order=requested_at.desc&limit=1',
       function (eDup, dupRows) {
         var existing = (dupRows || [])[0];
@@ -3781,7 +3817,7 @@ window.gasGet = (function () {
             status: 'error',
             reason: existing.status === 'pending'
               ? 'A discount request for this student is already pending approval (requested by ' + (existing.requested_by || '') + ' on ' + (existing.requested_at || '') + '). Wait for it to be reviewed instead of submitting another.'
-              : 'This student already has an approved ' + Number(existing.discount_pct) + '% discount waiting to be used — apply it on the fee record instead of requesting a new one.'
+              : 'This student already has an approved ' + Number(existing.discount_pct) + '% discount waiting to be used. It covers every course they are enrolled in, so apply it on the fee record instead of requesting another.'
           });
           return;
         }

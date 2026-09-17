@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=96"></script>
+<script src="assets/shared.js?v=97"></script>
 <script src="assets/work.js?v=4"></script>
 <script src="assets/push-subscribe.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -320,6 +320,75 @@
   }
 
   /* Navigation Tab Bar */
+
+  /* ══ MOBILE NAVIGATION (2026-09-16) ═══════════════════════════════════════════
+     The admin portal was the only portal never given a phone layout: the 24-tab bar
+     became a cramped horizontal scroller, the header wrapped "Executive Dashboard"
+     over three lines, and the KPI cards stacked awkwardly under the progress ring.
+     Same pattern the counsellor and instructor portals already use — four fixed
+     bottom-nav slots plus a "More" sheet for everything else, with the top tab bar
+     hidden below 768px. Sheet items are built from the real tab buttons, so a
+     role-gated tab that is hidden up top never appears in the sheet either. */
+  .mobile-bottom-nav{display:none;position:fixed;left:0;right:0;bottom:0;background:var(--white);border-top:1px solid var(--border);box-shadow:0 -4px 16px rgba(13,27,46,.10);z-index:500;padding-bottom:env(safe-area-inset-bottom,0)}
+  .mnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:transparent;border:none;padding:8px 4px 6px;cursor:pointer;color:var(--muted);font-family:inherit;position:relative}
+  .mnav-icon{font-size:19px;line-height:1}
+  .mnav-label{font-size:10px;font-weight:600}
+  .mnav-btn.active{color:var(--navy)}
+  .mnav-dot{position:absolute;top:5px;right:calc(50% - 18px);min-width:16px;height:16px;line-height:16px;border-radius:9px;background:#dc2626;color:#fff;font-size:9px;font-weight:700;padding:0 4px;display:none}
+  #a-more-sheet-overlay{position:fixed;inset:0;background:rgba(13,27,46,.45);z-index:600;display:flex;align-items:flex-end}
+  #a-more-sheet-panel{background:var(--white);width:100%;border-radius:16px 16px 0 0;padding:8px 0 max(12px,env(safe-area-inset-bottom,12px));max-height:78vh;overflow-y:auto}
+  .a-more-sheet-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:8px auto 6px}
+  .a-more-sheet-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:6px 20px 8px}
+  .a-more-sheet-item{display:flex;justify-content:space-between;align-items:center;width:100%;background:none;border:none;border-bottom:1px solid rgba(13,27,46,.05);padding:14px 20px;font-family:inherit;font-size:14px;font-weight:600;color:var(--navy);cursor:pointer;text-align:left}
+  .a-more-sheet-item:last-child{border-bottom:none}
+  .a-more-sheet-chev{color:var(--muted);font-size:16px}
+
+  @media(max-width:768px){
+    .tab-bar{display:none !important}
+    .mobile-bottom-nav{display:flex !important}
+    body{padding-bottom:68px}
+    .wrap{padding-left:12px;padding-right:12px}
+    /* Header: stack it and let the title breathe instead of wrapping mid-word */
+    .site-header{flex-direction:column;align-items:flex-start;gap:12px;padding:16px 18px;margin-bottom:16px}
+    .hdr-logo-area{gap:12px;width:100%}
+    .hdr-logo-area img{height:34px}
+    .hdr-label{font-size:18px !important;line-height:1.15;white-space:nowrap}
+    .hdr-sub{font-size:10px !important}
+    .hdr-user-area{width:100%;flex-wrap:wrap;gap:8px;justify-content:flex-start}
+    /* Rate chip on its own full-width line so the user badge can't sit on top of it */
+    #hdr-live-rate{margin-right:0 !important;font-size:11px;width:100%;order:-1;text-align:left}
+    .user-badge{text-align:left !important;min-width:0;flex:1 1 auto}
+    /* Controls row: stack left-aligned, one group per line */
+    .controls-row{justify-content:flex-start !important;gap:10px !important;align-items:stretch !important}
+    .controls-row>*{margin-right:0 !important}
+    .controls-row>div{width:100%;flex-wrap:wrap}
+    /* Hide the thin vertical separators — they take a whole row once stacked */
+    .controls-row>div[style*="width:1px"]{display:none !important}
+    /* Hero: gauge centred on its own line, KPI cards two-up beneath it */
+    .hero-row{gap:16px !important;justify-content:center}
+    .hero-kpis{flex:1 1 100% !important;width:100%}
+    .hero-kpis>.kpi-card{min-width:0 !important;flex:1 1 calc(50% - 6px) !important}
+    .hero-kpis .kpi-value{font-size:17px !important;letter-spacing:0}
+    /* KPI cards: two up rather than one tall column */
+    .kpi-row{grid-template-columns:1fr 1fr !important;gap:10px}
+    .kpi-value{font-size:20px !important;word-break:break-word}
+    .kpi-label{font-size:10px !important}
+    /* Collapse every two-up grid (class-based and inline-styled) to a single column */
+    .charts-grid{grid-template-columns:1fr !important}
+    [style*="grid-template-columns:1fr 1fr"],
+    [style*="grid-template-columns: 1fr 1fr"],
+    [style*="grid-template-columns:repeat(2"],
+    [style*="grid-template-columns: repeat(2"],
+    [style*="grid-template-columns:1.1fr 1fr"]{grid-template-columns:1fr !important}
+    .card>*,.chart-card>*{min-width:0}
+    canvas{max-width:100% !important}
+    /* Wide data tables scroll sideways instead of stretching the page */
+    .compact-table,.data-table,table.tbl{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;max-width:100%}
+  }
+  @media(max-width:420px){
+    .kpi-row{grid-template-columns:1fr !important}
+  }
+
   .tab-bar {
     display: flex;
     gap: 4px;
@@ -1450,6 +1519,36 @@
       </div>
     </div>
 
+
+  <!-- Mobile bottom nav + More sheet — see MOBILE NAVIGATION in the CSS above. -->
+  <div class="mobile-bottom-nav">
+    <button class="mnav-btn active" id="a-mnav-revenue" onclick="switchAdminTab('t-revenue')">
+      <span class="mnav-icon">📈</span><span class="mnav-label">Revenue</span>
+    </button>
+    <button class="mnav-btn" id="a-mnav-approvals" onclick="switchAdminTab('t-discount-approvals')">
+      <span class="mnav-icon">💷</span><span class="mnav-label">Approvals</span>
+      <span class="mnav-dot" id="a-mnav-approvals-dot"></span>
+    </button>
+    <button class="mnav-btn" id="a-mnav-fees" onclick="switchAdminTab('t-fees')">
+      <span class="mnav-icon">💸</span><span class="mnav-label">Fees</span>
+    </button>
+    <button class="mnav-btn" id="a-mnav-work" onclick="switchAdminTab('t-work')">
+      <span class="mnav-icon">🧩</span><span class="mnav-label">Work</span>
+      <span class="mnav-dot" id="a-mnav-work-dot"></span>
+    </button>
+    <button class="mnav-btn" id="a-mnav-more" onclick="toggleAdminMoreSheet()">
+      <span class="mnav-icon">☰</span><span class="mnav-label">More</span>
+    </button>
+  </div>
+
+  <div id="a-more-sheet-overlay" style="display:none" onclick="if(event.target===this) toggleAdminMoreSheet()">
+    <div id="a-more-sheet-panel">
+      <div class="a-more-sheet-handle"></div>
+      <div class="a-more-sheet-title">All sections</div>
+      <div id="a-more-sheet-items"></div>
+    </div>
+  </div>
+
     <!-- Navigation Tab Bar -->
     <div class="tab-bar" id="tab-bar">
       <button class="tab active" onclick="switchAdminTab('t-revenue')">📈 Revenue Overview</button>
@@ -1488,7 +1587,7 @@
       </div>
 
       <!-- Controls Row (GST & Target Model Toggles) -->
-      <div style="display:flex;align-items:center;justify-content:flex-end;gap:16px;margin-bottom:12px;flex-wrap:wrap">
+      <div class="controls-row" style="display:flex;align-items:center;justify-content:flex-end;gap:16px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;margin-right:auto;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="window.print()">🖨️ Print / Save PDF</button>
         <!-- Target Model Toggle -->
         <div style="display:flex;align-items:center;gap:8px">
@@ -4270,9 +4369,9 @@ function showMainScreen() {
   if (/[?&]work=/.test(location.search)) setTimeout(function() { switchAdminTab('t-work'); }, 300);
   
   // Update header badges
-  document.getElementById('user-badge-name').textContent = adminUser.name;
+  document.getElementById('user-badge-name').textContent = (window.igiName ? igiName(adminUser.name) : adminUser.name);
   document.getElementById('user-badge-role').textContent = adminUser.isManager ? 'Operations Manager' : 'HOD / Super Admin';
-  document.getElementById('footer-sig-name').textContent = adminUser.name;
+  document.getElementById('footer-sig-name').textContent = (window.igiName ? igiName(adminUser.name) : adminUser.name);
   document.getElementById('footer-sig-role').textContent = adminUser.isManager ? 'Operations Manager · IGI India' : 'Head of Education — National · IGI India';
   
   // Hide Target Tab if Manager
@@ -4860,6 +4959,101 @@ function stopActivityAutoRefresh() {
 }
 
 // ── Tab Navigation ────────────────────────────────────────────
+
+/* ══ MOBILE NAV (2026-09-16) ═══════════════════════════════════════════════════
+   Four fixed bottom-nav slots; everything else lives in the More sheet. Sheet items
+   are derived from the REAL tab buttons — label, visibility and badge all read off
+   the button — so a role-gated tab that is hidden up top is absent here too, and
+   nothing needs updating when a tab is added or renamed. Some tabs carry an extra
+   init call in their onclick (Tray Hub, Inventory); _aTabBtn().click() replays the
+   button's own handler rather than duplicating that here. */
+function _aTabBtn(tabId) {
+  var btns = document.querySelectorAll('#tab-bar .tab');
+  for (var i = 0; i < btns.length; i++) {
+    var oc = btns[i].getAttribute('onclick') || '';
+    if (oc.indexOf("'" + tabId + "'") >= 0) return btns[i];
+  }
+  return null;
+}
+function _aTabVisible(tabId) {
+  var b = _aTabBtn(tabId);
+  return !!b && b.style.display !== 'none';
+}
+function _aMoreSheetGoTo(tabId) {
+  var b = _aTabBtn(tabId);
+  document.getElementById('a-more-sheet-overlay').style.display = 'none';
+  if (b) b.click(); else switchAdminTab(tabId);   // click() keeps any extra init in the onclick
+}
+function toggleAdminMoreSheet() {
+  var o = document.getElementById('a-more-sheet-overlay');
+  var isOpen = o.style.display !== 'none';
+  if (!isOpen) renderAdminMoreSheet();
+  o.style.display = isOpen ? 'none' : 'flex';
+}
+// [tabId, icon, fallback label, badge element id or null]
+var A_MORE_ITEMS = [
+  ['t-hod-approvals',     '👑', 'HOD Approvals',          null],
+  ['t-activity',          '🔔', 'Activity',               'activity-badge'],
+  ['t-rev-breakdown',     '📑', 'Revenue Breakdown',      null],
+  ['t-standings',         '🏆', 'Championship Standings', null],
+  ['t-corp-revenue',      '💼', 'Corporate Revenue',      null],
+  ['t-course-revenue',    '📚', 'Course-Wise Revenue',    null],
+  ['t-targets',           '🎯', 'Target Settings',        null],
+  ['t-invoices',          '🧾', 'Ledger',                 null],
+  ['t-op-invoices',       '🧾', 'Operational Invoices',   null],
+  ['t-academic',          '📊', 'Academic Insights',      null],
+  ['t-alumni',            '🎓', 'Student Alumni',         null],
+  ['t-crm-admin',         '🎯', 'CRM Analytics',          null],
+  ['t-companion-admin',   '🧭', 'Prospects Companion',    'cmp-admin-conflict-badge'],
+  ['t-snapshot',          '📸', 'Batch Snapshot',         null],
+  ['t-trayhub-admin',     '🔮', 'Tray Hub',               null],
+  ['t-inventory',         '📦', 'Inventory',              null],
+  ['t-history',           '🗓️', 'Historical Intelligence', null],
+  ['t-reports',           '📋', 'Master Export',          null],
+  ['t-password-reset',    '🔐', 'Password Reset',         null],
+  ['t-settings',          '⚙️', 'Settings',               null]
+];
+function renderAdminMoreSheet() {
+  var wrap = document.getElementById('a-more-sheet-items');
+  if (!wrap) return;
+  wrap.innerHTML = A_MORE_ITEMS.filter(function (it) { return _aTabVisible(it[0]); }).map(function (it) {
+    // Prefer the live button's own text so a renamed or dynamic label follows along.
+    var label = it[2], btn = _aTabBtn(it[0]);
+    if (btn) {
+      var t = (btn.childNodes[0] && btn.childNodes[0].nodeValue || btn.textContent || '').trim();
+      t = t.replace(/^[^\w(]+\s*/, '').trim();
+      if (t) label = t;
+    }
+    var badge = '';
+    if (it[3]) {
+      var be = document.getElementById(it[3]);
+      if (be && be.style.display !== 'none' && (be.textContent || '').trim()) {
+        badge = '<span style="background:#dc2626;color:#fff;font-size:10px;padding:1px 7px;border-radius:10px;font-weight:700;margin-right:8px">' + be.textContent.trim() + '</span>';
+      }
+    }
+    return '<button class="a-more-sheet-item" onclick="_aMoreSheetGoTo(\'' + it[0] + '\')">' +
+             '<span>' + it[1] + '  ' + label + '</span>' +
+             '<span style="display:flex;align-items:center">' + badge + '<span class="a-more-sheet-chev">›</span></span>' +
+           '</button>';
+  }).join('') || '<div style="padding:18px 20px;color:var(--muted);font-size:13px">No other sections available.</div>';
+}
+/* Mirror the top-nav badges onto the bottom nav, so a pending approval is visible
+   on a phone without opening the sheet. Cheap enough to run on every tab switch. */
+function syncAdminMobileNav(tabId) {
+  var MAP = { 't-revenue': 'a-mnav-revenue', 't-discount-approvals': 'a-mnav-approvals',
+              't-fees': 'a-mnav-fees', 't-work': 'a-mnav-work' };
+  document.querySelectorAll('.mnav-btn').forEach(function (b) { b.classList.remove('active'); });
+  var el = document.getElementById(MAP[tabId] || 'a-mnav-more');
+  if (el) el.classList.add('active');
+  [['discount-approvals-badge', 'a-mnav-approvals-dot'], ['work-badge', 'a-mnav-work-dot']].forEach(function (pair) {
+    var src = document.getElementById(pair[0]), dot = document.getElementById(pair[1]);
+    if (!dot) return;
+    var txt = src && src.style.display !== 'none' ? (src.textContent || '').trim() : '';
+    dot.textContent = txt;
+    dot.style.display = txt ? 'block' : 'none';
+  });
+}
+
 function switchAdminTab(tabId) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(el => {
@@ -4872,6 +5066,8 @@ function switchAdminTab(tabId) {
   
   const targetTab = document.getElementById(tabId);
   if (targetTab) targetTab.classList.add('active');
+
+  syncAdminMobileNav(tabId);
 
   // Work Assignment Dashboard (assets/work.js) — admins/managers always get full team management
   if (tabId === 't-work') {
@@ -6468,7 +6664,7 @@ function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTarge
 
   container.innerHTML = 
     '<div class="section-tag">National Performance — Current Year</div>' +
-    '<div style="display:flex;align-items:center;gap:28px;flex-wrap:wrap;margin-bottom:20px">' +
+    '<div class="hero-row" style="display:flex;align-items:center;gap:28px;flex-wrap:wrap;margin-bottom:20px">' +
       '<!-- Circular progress ring -->' +
       '<div style="position:relative;width:110px;height:110px;flex-shrink:0">' +
         '<svg width="110" height="110" style="transform:rotate(-90deg)">' +
@@ -6483,7 +6679,7 @@ function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTarge
         '</div>' +
       '</div>' +
       '<!-- KPI chips -->' +
-      '<div style="display:flex;gap:12px;flex-wrap:wrap;flex:1">' +
+      '<div class="hero-kpis" style="display:flex;gap:12px;flex-wrap:wrap;flex:1">' +
         // Booked revenue — full course fee recognised at enrolment, NOT cash received.
         // Cash actually banked lives in Fee Reconciliation → Total Collected. Relabelled
         // from "YTD Collected" on 2026-09-11 because the two were being read as the same.

@@ -3692,16 +3692,15 @@ window.gasGet = (function () {
           });
       };
 
-      var openQs = '&status=eq.approved&used=eq.false&order=reviewed_at.desc';
-      GET('discount_requests', 'student_id=eq.' + encodeURIComponent(p.studentId) + openQs, function (eById, byId) {
-        var hit = pickApproval(eById ? [] : byId);
-        if (hit || !p.studentName) { withApproval(hit); return; }
-        // Fallback: the ID on the request was mistyped, so find it by the name the admin
-        // actually saw and approved. Still requires approved + unused + exact pct.
-        GET('discount_requests', 'student_name=ilike.' + encodeURIComponent(String(p.studentName).trim()) + openQs, function (eByName, byName) {
-          withApproval(pickApproval(eByName ? [] : byName));
-        });
-      });
+      /* Student ID is THE key for tracking an approval (per instruction, 2026-09-17) — never
+         the name. A name match was briefly used as a fallback for mistyped IDs; it is gone,
+         because two students can share a name and an approval must be traceable to exactly
+         one person. The ID is instead made trustworthy at the point the request is raised:
+         h_saveDiscountRequest now rejects an ID that is not a real student and stamps the
+         name and batch from that student's own record. */
+      GET('discount_requests',
+        'student_id=eq.' + encodeURIComponent(p.studentId) + '&status=eq.approved&used=eq.false&order=reviewed_at.desc',
+        function (eReq, reqRows) { withApproval(pickApproval(eReq ? [] : reqRows)); });
     });
   }
 
@@ -3740,6 +3739,28 @@ window.gasGet = (function () {
       cb(null, { status: 'error', reason: 'Student, batch, centre, discount %, reason, and requested-by are required.' });
       return;
     }
+    /* Student ID is the key an approval is tracked by (2026-09-17, per instruction), so it has
+       to be a real one BEFORE the request is filed — a typed ID that belongs to nobody produced
+       an approval the counsellor could never redeem, and the block message gave no hint why
+       (live: a 5% for Sneha Mehta filed under 7123; she is 7517, and 7123 is not a student at
+       all). The ID is verified here, and the name and batch are stamped from that student's own
+       record rather than from whatever was typed, so the whole row is consistent with the ID. */
+    h_lookupStudentBasic({ studentId: p.studentId }, function (eStu, stu) {
+      if (eStu || !stu || stu.status !== 'ok') {
+        cb(null, { status: 'error', reason: 'Student ID ' + p.studentId + ' does not exist. Check the ID — the approval is tracked by it.' });
+        return;
+      }
+      p.studentName = stu.name;
+      // Keep the batch the counsellor sent when it's a real batch code — it may legitimately
+      // be a batch the student is moving INTO, which won't match students.batch_code yet. Only
+      // replace it when it isn't a batch at all (live: "MUM- DG & CG-SEP26", a description).
+      GET('batches', 'batch_code=eq.' + encodeURIComponent(p.batchCode) + '&select=batch_code&limit=1', function (eB, bRows) {
+        if ((eB || !bRows || !bRows.length) && stu.batchCode) p.batchCode = stu.batchCode;
+        h_saveDiscountRequestInner(p, cb);
+      });
+    });
+  }
+  function h_saveDiscountRequestInner(p, cb) {
     var cf = Number(p.courseFee || 0);
     var dp = Number(p.discountPct);
     // Duplicate-request guard — 2026-08-21, per bug report: the same student/batch could

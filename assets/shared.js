@@ -11979,7 +11979,45 @@ window.gasGet = (function () {
     else if (status === 'applied') qs += '&applied=eq.true';
     else if (status === 'dismissed') qs += '&dismissed=eq.true';
     GET('cashfree_settlements', qs, function (e, rows) {
-      cb(null, { status: 'ok', rows: rows || [] });
+      /* CENTRE SCOPING — 2026-09-17, per instruction: "cash free recon tab should reflect
+         only their home centre fees update and their cross sell..only Mumbai team Bianca,
+         Anuradha and Omkar should see all the centres fees in Cash recon tab".
+
+         Every settlement in the country was visible to every counsellor, so Kripa in Jaipur
+         was looking at 192 rows totalling 1.9 Cr, nearly all of them someone else's. A
+         counsellor now sees a row only when:
+           - it belongs to one of THEIR centres (users.centres), or
+           - it is their CROSS-SELL: the payment is matched to a student whose fee record
+             they recorded, even though the centre is someone else's.
+         Admins, managers, and anyone with the cashfree_all_centres permission (granted to
+         Bianca, Anuradha and Omkar Kadam, the Mumbai team) still see everything.
+
+         Identity is re-read from the users table by name rather than trusted from the
+         client, so the scope can't be widened by the browser. */
+      var all = rows || [];
+      var actor = String(p.actorName || p.counsellorName || '').trim();
+      if (e) { cb(null, { status: 'ok', rows: [] }); return; }
+      if (!actor || p.isAdmin === true || p.isAdmin === 'true') { cb(null, { status: 'ok', rows: all }); return; }
+      GET('users', 'name=eq.' + encodeURIComponent(actor) + '&select=name,role,centres,permissions', function (eU, uRows) {
+        var u = (uRows || [])[0];
+        var perms = (u && u.permissions) || {};
+        var isPrivileged = !!(u && (u.role === 'Admin' || u.role === 'Manager')) || perms.cashfree_all_centres === true;
+        if (!u || isPrivileged) { cb(null, { status: 'ok', rows: all }); return; }
+        var norm = function (s) { return String(s == null ? '' : s).trim().toLowerCase(); };
+        var mine = String(u.centres || '').split(',').map(norm).filter(Boolean);
+        var byCentre = all.filter(function (r) { return mine.indexOf(norm(r.centre)) >= 0; });
+        // Cross-sell: a payment for a student whose fee record this counsellor entered,
+        // sitting under another centre. Looked up once, not per row.
+        GET('student_fees', 'recorded_by=eq.' + encodeURIComponent(actor) + '&select=student_id', function (eF, fRows) {
+          var own = {};
+          (eF ? [] : (fRows || [])).forEach(function (f) { own[String(f.student_id).toUpperCase()] = 1; });
+          var seen = {}, out = [];
+          byCentre.concat(all.filter(function (r) {
+            return r.matched_student_id && own[String(r.matched_student_id).toUpperCase()];
+          })).forEach(function (r) { if (!seen[r.id]) { seen[r.id] = 1; out.push(r); } });
+          cb(null, { status: 'ok', rows: out });
+        });
+      });
     });
   }
 

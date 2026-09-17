@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=103"></script>
+<script src="/assets/shared.js?v=104"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -11134,7 +11134,11 @@ function cfSetFilter(status) {
 function cfLoad() {
   const list = document.getElementById('cf-list');
   list.innerHTML = loadingState('Loading settlement rows...');
-  gasGet({ action: 'cashfreeList', status: cfCurrentFilter }, function(e, d) {
+  // actorName + isAdmin drive the centre scoping in h_cashfreeList — a counsellor sees
+  // their own centres plus their cross-sell; the Mumbai team (cashfree_all_centres) and
+  // admins see everything. The server re-reads the user by name, so these are a hint, not
+  // the authority. 2026-09-17.
+  gasGet({ action: 'cashfreeList', status: cfCurrentFilter, actorName: counselorName, isAdmin: isAdmin === true }, function(e, d) {
     if (e || !d || d.status !== 'ok') {
       list.innerHTML = emptyState('⚠️', 'Could not load', (d && d.reason) || String(e || 'Unknown error'));
       return;

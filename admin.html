@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=106"></script>
+<script src="assets/shared.js?v=107"></script>
 <script src="assets/work.js?v=4"></script>
 <script src="assets/push-subscribe.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -6546,8 +6546,15 @@ function renderMonthlyBusinessSummary(monthKey) {
     cBucket.achievedCourse += fee; cBucket.achievedGst += feeGst; cBucket.students += stu;
     cBucket[category] += fee;
 
-    var counKey = r.counsellor || 'Unknown';
-    var counRow = (cBucket.byCounsellor[counKey] = cBucket.byCounsellor[counKey] || { counsellor: counKey, category: category, achievedCourse: 0, achievedGst: 0, students: 0 });
+    /* Key by counsellor AND category — 2026-09-18, reported as "Anuradha corporate batch is
+       showing 3.75 and in month its showing 1.90". The bucket used to key on the counsellor
+       alone, so a counsellor with both corporate and centre revenue in the same centre got
+       ONE merged row, summed across both and labelled by whichever row happened to arrive
+       first. Anuradha's home revenue was being added to her corporate figure and the whole
+       line reported as Corporate. Now each counsellor shows a separate Home / Cross-sell /
+       Corporate line, which also matches the student rows listed underneath. */
+    var counKey = (r.counsellor || 'Unknown') + '|' + category;
+    var counRow = (cBucket.byCounsellor[counKey] = cBucket.byCounsellor[counKey] || { counsellor: r.counsellor || 'Unknown', category: category, achievedCourse: 0, achievedGst: 0, students: 0 });
     counRow.achievedCourse += fee; counRow.achievedGst += feeGst; counRow.students += stu;
   });
 
@@ -6574,7 +6581,10 @@ function renderMonthlyBusinessSummary(monthKey) {
           var catLabel = cn.category === 'own' ? 'Home' : (cn.category === 'other' ? 'Cross-sell' : 'Corporate');
           // Student-level rows under each counsellor (name · course · batch · fee) — fetched
           // lazily per month by mbsLoadStudentDetail() and cached in mbsStudentDetail.
-          var studs = mbsStudentsFor(monthKey, c.centre, cn.counsellor);
+          // Corporate revenue comes from corporate_batches, not student enrolments, so a
+          // corporate line lists no students — before the counsellor+category split above,
+          // a merged row would attach the enrolment list to a line labelled Corporate.
+          var studs = cn.category === 'corporate' ? [] : mbsStudentsFor(monthKey, c.centre, cn.counsellor);
           var studRows = studs === null
             ? '<tr class="mbs-stud-row" style="background:#fff"><td></td><td style="padding-left:44px;font-size:11px;color:var(--muted)" colspan="6">Loading students…</td></tr>'
             : studs.map(function(st) {

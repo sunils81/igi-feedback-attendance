@@ -6287,10 +6287,57 @@ window.gasGet = (function () {
       });
       POST('revenue_audit_log', '', auditRows, function() {}); // ignore result — never fail the save
     }
-    if (mDB.length)  POST('revenue_monthly_achieved', 'on_conflict=month,period,counsellor,business_centre,business_type', mDB, function(e) {
-      if (!e) writeAuditLog(mDB, p.updatedBy || 'Counselor');
-      fin(e);
-    });
+    /* CORPORATE ROWS ARE OWNED BY corporate_batches — 2026-09-18.
+
+       Reported as "anuradha corporate batch ... its not able to add extra corporate batch".
+       She added three corporate batches for Sept and the corporate figure never moved off
+       the first one, so it looked like adding had failed, and she kept retrying (three
+       duplicate MBMG rows in corporate_batches).
+
+       Cause: two writers on the same key. syncCorporateRevenue() sums every corporate batch
+       for (counsellor, centre, month) and upserts the 'Corporate Programs' row; this monthly
+       save then upserts the SAME key with whatever number is typed in the Revenue tab's
+       corporate box. Whichever ran last won, and the monthly save usually ran last — putting
+       the stale single-batch figure back over the correct total.
+
+       Fix: once a counsellor has ANY corporate batch for that centre and month, the batches
+       are the source of truth. The typed corporate row is dropped from this upsert and
+       syncCorporateRevenue is called instead to rewrite the authoritative sum. A counsellor
+       with no batches at all still types a flat number exactly as before. */
+    var isCorpRow = function (r) { return String(r.business_type || '').toLowerCase().indexOf('corporate') >= 0; };
+    var corpRows = mDB.filter(isCorpRow);
+    var postMonthly = function (rows, resyncKeys) {
+      if (!rows.length) {
+        (resyncKeys || []).forEach(function (k) { syncCorporateRevenue(k.counsellor, k.centre, k.month, k.period); });
+        fin(null); return;
+      }
+      POST('revenue_monthly_achieved', 'on_conflict=month,period,counsellor,business_centre,business_type', rows, function(e) {
+        if (!e) writeAuditLog(rows, p.updatedBy || 'Counselor');
+        (resyncKeys || []).forEach(function (k) { syncCorporateRevenue(k.counsellor, k.centre, k.month, k.period); });
+        fin(e);
+      });
+    };
+    if (mDB.length && corpRows.length) {
+      var checked = 0, drop = {}, resync = [];
+      corpRows.forEach(function (r) {
+        GET('corporate_batches',
+          'recorded_by=eq.' + encodeURIComponent(r.counsellor) +
+          '&centre=eq.' + encodeURIComponent(r.business_centre) +
+          '&revenue_month=eq.' + encodeURIComponent(r.month) + '&select=id&limit=1',
+          function (eB, bRows) {
+            if (!eB && bRows && bRows.length) {
+              drop[r.counsellor + '|' + r.business_centre + '|' + r.month] = 1;
+              resync.push({ counsellor: r.counsellor, centre: r.business_centre, month: r.month, period: r.period });
+            }
+            if (++checked < corpRows.length) return;
+            postMonthly(mDB.filter(function (m) {
+              return !(isCorpRow(m) && drop[m.counsellor + '|' + m.business_centre + '|' + m.month]);
+            }), resync);
+          });
+      });
+    } else if (mDB.length) {
+      postMonthly(mDB, []);
+    }
     if (tDB.length)  POST('revenue_annual_targets',   'on_conflict=period,counsellor',       tDB,  fin);
     if (ctDB.length) POST('revenue_centre_targets',   'on_conflict=period,centre',           ctDB, fin);
     if (!mDB.length && !tDB.length && !ctDB.length) fin(null);

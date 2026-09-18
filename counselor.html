@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=106"></script>
+<script src="/assets/shared.js?v=107"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -14320,6 +14320,21 @@ function renderRevenueEntryPanel(m, designatedCentre, otherDefault, existingRows
     existingOthers = [{ businessCentre: otherDefault, studentCount: '', achievedCourse: '', achievedGst: 0 }];
   }
   var existingCorp = existingRows.filter(function(r){ return revIsCorporate(r); })[0] || {};
+  /* What the corporate batches for THIS month and centre actually add up to (2026-09-18).
+     corpBatchRecords is already loaded by loadCorporateBatches(); summing it here lets the
+     Corporate Program Revenue box state the real, live total instead of whatever number was
+     typed the first time — the mismatch that made it look like extra batches weren't saving. */
+  var corpBatchInfo = (function(){
+    var out = { count: 0, fee: 0, associates: 0 };
+    (corpBatchRecords || []).forEach(function(b){
+      if (String(b.revenueMonth || '') !== m.key) return;
+      if (String(b.centre || '') !== String(designatedCentre || '')) return;
+      out.count++;
+      out.fee += (Number(b.courseFee) || 0) - (Number(b.discountAmount) || 0);
+      out.associates += Number(b.associatesTrained) || 0;
+    });
+    return out;
+  })();
   // Location is packed into the notes column as a '[Location: ...]' prefix (no separate
   // DB column) — split it back out for display when re-opening a saved entry.
   (function(){
@@ -14449,8 +14464,17 @@ function renderRevenueEntryPanel(m, designatedCentre, otherDefault, existingRows
       '<span class="rev-expand-badge '+(existingCorp.achievedCourse||existingCorp.studentCount?'filled':'opt')+'">'+(existingCorp.achievedCourse||existingCorp.studentCount?'Filled':'Optional')+'</span></div>'+
     '<div class="rev-bucket-body'+(existingCorp.achievedCourse||existingCorp.studentCount?' open':'')+'" data-bucket="corp">'+
       '<div style="background:#FFF8E8;border:1px solid var(--gold);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--navy)">'+
-        '💡 For a proper record with company name, invoice #, and date instead of just a number, use '+
-        '<a href="javascript:void(0)" onclick="openCorporateBatchForm(null,\''+escC(designatedCentre)+'\')" style="font-weight:600">+ Add Corporate Batch</a> — it fills in the fields below automatically.'+
+        (corpBatchInfo.count
+          /* Once batches exist they OWN this figure — the save no longer writes whatever is
+             typed here over the batch total (see h_saveRevenue). Saying so, and showing the
+             batch-derived number, stops the "I added a batch and nothing changed" confusion
+             that had Anuradha adding the same corporate batch three times. 2026-09-18. */
+          ? '🏢 <strong>'+corpBatchInfo.count+' corporate batch'+(corpBatchInfo.count>1?'es':'')+'</strong> recorded for this month at '+escC(designatedCentre)+' — '+
+            '<strong>'+money(corpBatchInfo.fee)+'</strong>'+(corpBatchInfo.associates?' · '+corpBatchInfo.associates+' associates':'')+'. '+
+            'This total comes from those batches and updates itself as you add or edit them — the boxes below are for reference. '+
+            '<a href="javascript:void(0)" onclick="openCorporateBatchForm(null,\''+escC(designatedCentre)+'\')" style="font-weight:600">+ Add another</a>'
+          : '💡 For a proper record with company name, invoice #, and date instead of just a number, use '+
+            '<a href="javascript:void(0)" onclick="openCorporateBatchForm(null,\''+escC(designatedCentre)+'\')" style="font-weight:600">+ Add Corporate Batch</a> — it fills in the fields below automatically.')+
       '</div>'+
       '<div class="rev-compact-row">'+
         '<div class="rev-ci"><label>Sales Associates Trained</label><input type="number" class="rmc-cstudents" min="0" placeholder="0" value="'+escC(existingCorp.studentCount||'')+'" oninput="revUpdateTotal(this)"></div>'+

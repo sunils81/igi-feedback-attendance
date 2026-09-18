@@ -510,6 +510,16 @@
 
   .kpi-meta.hit { color: var(--teal); font-weight: 700; }
 
+  /* INTERNAL-ONLY ANNOTATIONS
+     Reconciliation detail that is useful to us but noise — or worse, an invitation to
+     the wrong question — in a screenshot sent up to management. Tag any such line with
+     class="internal-only" and the "Detail" switch in the header hides the lot in one
+     click. The switch itself is .no-print and lives up in the dark header band, so
+     nothing lingers inside the KPI cards once it is off. 2026-09-18. */
+  body.hide-internal .internal-only { display: none !important; }
+  #detail-toggle { padding:5px 10px;font-size:11px;border-color:rgba(255,255,255,0.2);color:var(--white);margin-right:8px; }
+  body.hide-internal #detail-toggle { opacity:.55; }
+
   .fee-status{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:4px 9px;display:inline-flex}
   .fee-status.paid{background:#E8F5EE;color:#1a7a3c}
   .fee-status.partial{background:#FBF3DC;color:#B87A10}
@@ -1514,6 +1524,7 @@
           <div class="name" id="user-badge-name">—</div>
           <div class="role" id="user-badge-role">—</div>
         </div>
+        <button class="btn btn-outline no-print" id="detail-toggle" onclick="toggleInternalDetail()" title="Hide the internal reconciliation lines before taking a screenshot">👁 Detail: On</button>
         <button class="btn btn-gold no-print" style="padding:6px 12px;font-size:11px;margin-right:8px;font-weight:700" onclick="openPresentationMode()">📊 CEO Report Slide</button>
         <button class="btn btn-outline" style="padding:6px 12px;font-size:11px;border-color:rgba(255,255,255,0.2);color:var(--white)" onclick="doAdminLogout()">Log Out</button>
       </div>
@@ -4379,6 +4390,7 @@ function showMainScreen() {
   // Update header badges
   document.getElementById('user-badge-name').textContent = (window.igiName ? igiName(adminUser.name) : adminUser.name);
   document.getElementById('user-badge-role').textContent = adminUser.isManager ? 'Operations Manager' : 'HOD / Super Admin';
+  applyInternalDetailPref();
   document.getElementById('footer-sig-name').textContent = (window.igiName ? igiName(adminUser.name) : adminUser.name);
   document.getElementById('footer-sig-role').textContent = adminUser.isManager ? 'Operations Manager · IGI India' : 'Head of Education — National · IGI India';
   
@@ -6834,7 +6846,7 @@ function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTarge
       noteText = '⚠️ Behind pace for this point in the fiscal year. Significant acceleration needed across centres.';
     }
     if (targetBaselineModel === 'corporate') {
-      noteText += ' <span style="display:block;margin-top:5px;font-size:11px;color:#8f6d21;background:rgba(201,168,76,0.06);padding:4px 8px;border-radius:4px;border-left:2.5px solid var(--gold)"><em>Note: National pacing tracks against corporate ₹5.5Cr target. Counselor cards and leaderboard continue to track custom buffer targets.</em></span>';
+      noteText += ' <span class="internal-only" style="display:block;margin-top:5px;font-size:11px;color:#8f6d21;background:rgba(201,168,76,0.06);padding:4px 8px;border-radius:4px;border-left:2.5px solid var(--gold)"><em>Note: National pacing tracks against corporate ₹5.5Cr target. Counselor cards and leaderboard continue to track custom buffer targets.</em></span>';
     }
     pacingEl.innerHTML = noteText;
   }
@@ -6844,6 +6856,27 @@ function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTarge
 /* loadDocTypeSplit — fills the tax-invoiced / on-PI line under YTD Revenue.
    Deliberately a separate, non-blocking call: the hero card must render instantly off the
    dashboard payload, and this is a reconciliation detail, not a headline. 2026-09-18. */
+/* DETAIL SWITCH — hides every .internal-only annotation for a clean screenshot.
+   The choice sticks across reloads, because someone preparing a deck should not have
+   to re-hide the same lines on every page load. 2026-09-18. */
+function applyInternalDetailPref() {
+  var hidden = false;
+  try { hidden = localStorage.getItem('igi_hide_internal') === '1'; } catch (e) {}
+  document.body.classList.toggle('hide-internal', hidden);
+  var b = document.getElementById('detail-toggle');
+  if (b) {
+    b.innerHTML = hidden ? '🙈 Detail: Off' : '👁 Detail: On';
+    b.title = hidden
+      ? 'Internal reconciliation lines are hidden — safe to screenshot. Click to show them again.'
+      : 'Hide the internal reconciliation lines before taking a screenshot';
+  }
+}
+function toggleInternalDetail() {
+  var hidden = document.body.classList.contains('hide-internal');
+  try { localStorage.setItem('igi_hide_internal', hidden ? '0' : '1'); } catch (e) {}
+  applyInternalDetailPref();
+}
+
 var _docTypeSplitCache = null;
 function loadDocTypeSplit(force) {
   var el = document.getElementById('ytd-doctype-split');
@@ -6851,13 +6884,25 @@ function loadDocTypeSplit(force) {
   var paint = function (d) {
     if (!d || d.status !== 'ok' || !d.booked) { el.innerHTML = ''; return; }
     var pct = Math.round((d.pi / d.booked) * 100);
+    /* The split is measured over fee records, which is a slightly different base from the
+       headline: corporate programmes are booked as typed monthly rows with no student fee
+       record behind them, and hand-typed centre rows can drift from the fee records under
+       them. So the two figures below deliberately do NOT add up to YTD Revenue, and the
+       tooltip says so rather than leaving it to be spotted with a calculator. */
+    var caveat = 'Measured over student fee records (' + money(d.booked) + '), not the typed monthly rows, '
+      + 'so this does not add up to YTD Revenue — corporate programmes have no fee record behind them.'
+      + (d.inferredFromBalance
+          ? ' ' + d.inferredFromBalance + ' record' + (d.inferredFromBalance > 1 ? 's' : '')
+            + ' pre-date the Sept 2026 PI change and carry no document type, so they are classified by '
+            + 'whether a balance is still outstanding.'
+          : '');
     el.innerHTML =
-      '<span style="color:#1a7a3c;font-weight:600">' + money(d.taxInvoiced) + '</span> tax-invoiced · ' +
-      '<span style="color:#B45309;font-weight:600">' + money(d.pi) + '</span> on PI' +
-      (pct ? ' (' + pct + '%)' : '') +
-      '<div style="color:var(--muted)">Accounts report the tax-invoiced figure' +
-        (d.inferredFromBalance ? '. ' + d.inferredFromBalance + ' record' + (d.inferredFromBalance > 1 ? 's' : '') + ' pre-date the PI change and are read from the outstanding balance' : '') +
-      '.</div>';
+      '<span class="internal-only" title="' + String(caveat).replace(/"/g, '&quot;') + '">' +
+        '<span style="color:#1a7a3c;font-weight:600">' + money(d.taxInvoiced) + '</span> tax-invoiced · ' +
+        '<span style="color:#B45309;font-weight:600">' + money(d.pi) + '</span> on PI' +
+        (pct ? ' (' + pct + '%)' : '') +
+        '<div style="color:var(--muted)">Accounts report the tax-invoiced figure. Hover for basis.</div>' +
+      '</span>';
   };
   if (_docTypeSplitCache && !force) { paint(_docTypeSplitCache); return; }
   gasGet({ action: 'getDocTypeSplit', fromMonth: '2026-04', toMonth: '2027-03' }, function (e, d) {

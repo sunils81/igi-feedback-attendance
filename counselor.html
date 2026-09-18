@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=105"></script>
+<script src="/assets/shared.js?v=106"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -695,6 +695,13 @@
 .rev-expand-badge{font-size:9px;font-weight:800;letter-spacing:.05em;border-radius:999px;padding:2px 7px}
 .rev-expand-badge.opt{background:rgba(201,168,76,.12);color:#A07810}
 .rev-expand-badge.filled{background:#E0F5EA;color:#1a7a3c}
+/* "+ Add Corporate Batch" on the Corporate Program Revenue header row (2026-09-18).
+   The link to it used to live INSIDE the accordion body, which is collapsed until someone
+   has already entered corporate revenue — so a counsellor who had never entered one never
+   saw that it existed, and reported there was no way to add a corporate batch at all. On
+   the header it is visible whether or not the section is open. */
+.rev-corp-add{font-size:10px;font-weight:700;background:var(--gold);color:var(--navy);border:none;border-radius:5px;padding:3px 9px;cursor:pointer;font-family:inherit;white-space:nowrap}
+.rev-corp-add:hover{filter:brightness(1.06)}
 .rev-bucket-body{display:none;padding-top:7px}
 .rev-bucket-body.open{display:block}
 .rev-bucket-divider{font-size:9px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
@@ -14434,7 +14441,12 @@ function renderRevenueEntryPanel(m, designatedCentre, otherDefault, existingRows
     '<div class="rev-bucket-body'+(hasAnyOtherValue?' open':'')+'" data-bucket="other">'+
       othersHtml+
     '</div>'+
-    '<div class="rev-expand-row" onclick="revToggleBucket(this)"><span class="rev-expand-chevron'+(existingCorp.achievedCourse||existingCorp.studentCount?' open':'')+'">&#9658;</span><span class="rev-expand-label">Corporate Program Revenue</span><span class="rev-expand-badge '+(existingCorp.achievedCourse||existingCorp.studentCount?'filled':'opt')+'">'+(existingCorp.achievedCourse||existingCorp.studentCount?'Filled':'Optional')+'</span></div>'+
+    // The Add button sits on the header, NOT inside the body — the body is collapsed until
+    // corporate revenue has already been entered, which is exactly the case where someone
+    // needs to add their first batch. stopPropagation so it doesn't toggle the accordion.
+    '<div class="rev-expand-row" onclick="revToggleBucket(this)"><span class="rev-expand-chevron'+(existingCorp.achievedCourse||existingCorp.studentCount?' open':'')+'">&#9658;</span><span class="rev-expand-label">Corporate Program Revenue</span>'+
+      '<button type="button" class="rev-corp-add" onclick="event.stopPropagation();openCorporateBatchForm(null,\''+escC(designatedCentre)+'\')">+ Add Corporate Batch</button>'+
+      '<span class="rev-expand-badge '+(existingCorp.achievedCourse||existingCorp.studentCount?'filled':'opt')+'">'+(existingCorp.achievedCourse||existingCorp.studentCount?'Filled':'Optional')+'</span></div>'+
     '<div class="rev-bucket-body'+(existingCorp.achievedCourse||existingCorp.studentCount?' open':'')+'" data-bucket="corp">'+
       '<div style="background:#FFF8E8;border:1px solid var(--gold);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--navy)">'+
         '💡 For a proper record with company name, invoice #, and date instead of just a number, use '+

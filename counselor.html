@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=108"></script>
+<script src="/assets/shared.js?v=109"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -4451,7 +4451,10 @@
         <!-- My KPI tiles -->
         <div class="rev-kpi-bar" id="rev-kpi-bar">
           <div class="rev-kpi"><div class="k">My Revenue Target <span style="font-weight:500;opacity:.7">(excl. GST)</span></div><div class="v" id="rev-kpi-target">—</div><div class="s">2026-27</div></div>
-          <div class="rev-kpi ok"><div class="k">Total Achieved</div><div class="v" id="rev-kpi-achieved">—</div><div class="s" id="rev-kpi-pct">—</div></div>
+          <!-- The PI / tax-invoice split sits under Total Achieved so a counsellor can see
+               why their booked number is ahead of what accounts have invoiced. Filled by
+               loadMyDocTypeSplit(). 2026-09-18. -->
+          <div class="rev-kpi ok"><div class="k">Total Achieved</div><div class="v" id="rev-kpi-achieved">—</div><div class="s" id="rev-kpi-pct">—</div><div class="s" id="rev-kpi-doctype" style="margin-top:3px"></div></div>
           <div class="rev-kpi warn"><div class="k">Remaining</div><div class="v" id="rev-kpi-gap">—</div><div class="s" id="rev-kpi-gap-s">—</div></div>
           <div class="rev-kpi"><div class="k">Students This Year</div><div class="v" id="rev-kpi-students">—</div><div class="s" id="rev-kpi-students-s">2026-27</div></div>
         </div>
@@ -8189,6 +8192,29 @@ function _applyBatchData(batches, onDone) {
   loadAllCentreBatchesForFees();
   renderStudentBatchChoices();
   if (onDone) onDone();
+}
+
+/* loadMyDocTypeSplit — the counsellor's own share of booked revenue that is tax-invoiced
+   versus still sitting on a PI (2026-09-18). Same reconciliation the admin hero shows, but
+   scoped to this counsellor, so when their booked number runs ahead of what accounts have
+   invoiced they can see the reason on their own screen. Corporate batches are not included
+   — they are invoiced separately and carry no instalment plan. */
+var _myDocSplitCache = null;
+function loadMyDocTypeSplit() {
+  var el = document.getElementById('rev-kpi-doctype');
+  if (!el || !counselorName) return;
+  var paint = function (d) {
+    if (!d || d.status !== 'ok' || !d.booked || !d.pi) { el.innerHTML = ''; return; }
+    el.innerHTML = '<span style="color:#1a7a3c">' + money(d.taxInvoiced) + '</span> tax-invoiced · ' +
+      '<span style="color:#B45309">' + money(d.pi) + '</span> on PI';
+    el.title = 'Accounts raise the tax invoice once the full fee is in, so their figure lags this one by whatever is still part-paid. Your target is measured on booked business.';
+  };
+  if (_myDocSplitCache) { paint(_myDocSplitCache); return; }
+  gasGet({ action: 'getDocTypeSplit', counsellor: counselorName, fromMonth: '2026-04', toMonth: '2027-03' }, function (e, d) {
+    if (e || !d || d.status !== 'ok') { el.innerHTML = ''; return; }
+    _myDocSplitCache = d;
+    paint(d);
+  });
 }
 
 /* CROSS-SELL AT ANY CENTRE — 2026-09-18, per instruction: "cross sell can be at any centre
@@ -13568,6 +13594,7 @@ function renderMyRevenue() {
   var tkpi = t && t.closest('.rev-kpi'); if(tkpi) tkpi.style.borderColor = target ? '' : 'rgba(201,74,74,.3)';
   var a=document.getElementById('rev-kpi-achieved'); if(a) a.textContent = money(achieved);
   var p=document.getElementById('rev-kpi-pct'); if(p) p.textContent = target ? pct+'% of your target revenue achieved' : 'No target set';
+  loadMyDocTypeSplit();
   var g=document.getElementById('rev-kpi-gap'); if(g) g.textContent = money(gap);
   var gs=document.getElementById('rev-kpi-gap-s'); if(gs) gs.textContent = pct>=100 ? 'Target met! 🎉' : 'Still to achieve';
   // "Students This Year" counts regular course admissions only — corporate/branch tie-up

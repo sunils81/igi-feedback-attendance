@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=108"></script>
+<script src="assets/shared.js?v=109"></script>
 <script src="assets/work.js?v=4"></script>
 <script src="assets/push-subscribe.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -6775,6 +6775,13 @@ function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTarge
           '<div class="kpi-label">YTD Revenue</div>' +
           '<div class="kpi-value">' + money(kAchieved) + '</div>' +
           '<div class="kpi-meta">' + money(otherAchieved) + ' (' + otherLabel + ') · booked</div>' +
+          /* Tax-invoiced vs still on a PI. The dashboards report BOOKED business; accounts
+             report statutory revenue, which follows the tax invoice and — under the rule
+             accounts adopted in Sept 2026 — only once the full payment is in. The two
+             legitimately differ by whatever is part-paid, so the difference is stated here
+             rather than left to be discovered when the CFO's number does not match this
+             one. Filled by loadDocTypeSplit(). 2026-09-18. */
+          '<div class="kpi-meta" id="ytd-doctype-split" style="margin-top:3px;font-size:10px;line-height:1.35"></div>' +
         '</div>' +
         '<div class="kpi-card" style="min-width:140px;flex:1">' +
           '<div class="kpi-label">Annual Target</div>' +
@@ -6831,6 +6838,33 @@ function renderRevenueHeroCard(totalAchievedCourse, totalAchievedGst, totalTarge
     }
     pacingEl.innerHTML = noteText;
   }
+  loadDocTypeSplit();
+}
+
+/* loadDocTypeSplit — fills the tax-invoiced / on-PI line under YTD Revenue.
+   Deliberately a separate, non-blocking call: the hero card must render instantly off the
+   dashboard payload, and this is a reconciliation detail, not a headline. 2026-09-18. */
+var _docTypeSplitCache = null;
+function loadDocTypeSplit(force) {
+  var el = document.getElementById('ytd-doctype-split');
+  if (!el) return;
+  var paint = function (d) {
+    if (!d || d.status !== 'ok' || !d.booked) { el.innerHTML = ''; return; }
+    var pct = Math.round((d.pi / d.booked) * 100);
+    el.innerHTML =
+      '<span style="color:#1a7a3c;font-weight:600">' + money(d.taxInvoiced) + '</span> tax-invoiced · ' +
+      '<span style="color:#B45309;font-weight:600">' + money(d.pi) + '</span> on PI' +
+      (pct ? ' (' + pct + '%)' : '') +
+      '<div style="color:var(--muted)">Accounts report the tax-invoiced figure' +
+        (d.inferredFromBalance ? '. ' + d.inferredFromBalance + ' record' + (d.inferredFromBalance > 1 ? 's' : '') + ' pre-date the PI change and are read from the outstanding balance' : '') +
+      '.</div>';
+  };
+  if (_docTypeSplitCache && !force) { paint(_docTypeSplitCache); return; }
+  gasGet({ action: 'getDocTypeSplit', fromMonth: '2026-04', toMonth: '2027-03' }, function (e, d) {
+    if (e || !d || d.status !== 'ok') { el.innerHTML = ''; return; }
+    _docTypeSplitCache = d;
+    paint(d);
+  });
 }
 
 function renderCounselorLeaderboard(rev, counsellorsByCentre) {

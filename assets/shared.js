@@ -1071,6 +1071,9 @@ window.gasGet = (function () {
       inst3_reference: insts[2].ref,
       collected: collected,
       outstanding: outstanding,
+      // 'pi' | 'invoice'. Absent on records saved before 2026-09-17 — see h_getDocTypeSplit
+      // for how those are read against the same rule accounts now apply.
+      doc_type: (jsonMeta && jsonMeta.doc_type) || '',
       invoice_number: invoiceNumber,
       invoice_amount: invoiceAmount,
       invoice_date: invoiceDate,
@@ -4488,6 +4491,53 @@ window.gasGet = (function () {
       POST('revenue_monthly_achieved',
         'on_conflict=month,period,counsellor,business_centre,business_type',
         [revRow], function() {}); // fire-and-forget
+    });
+  }
+
+  /* h_getDocTypeSplit — how much of the booked revenue is tax-invoiced and how much is
+     still on a Proforma Invoice. 2026-09-18, per instruction.
+
+     WHY THIS EXISTS. The dashboards report BOOKED business — a seat sold is a sale, and a
+     counsellor is measured on closing it, not on the customer's instalment schedule. The
+     accounts team reports statutory revenue, which follows the tax invoice, and under the
+     new rule a tax invoice is only raised once the full payment is in. Both are right; they
+     just answer different questions. The two figures will therefore differ by however much
+     is part-paid at any moment, and that difference has to be visible and reconcilable on
+     demand rather than discovered in a review.
+
+     HOW A RECORD IS CLASSIFIED. doc_type when the record carries one. Records saved before
+     the PI change carry none, so they are read against the same rule accounts now apply —
+     nothing outstanding means it would be tax-invoiced, an open balance means it would sit
+     on a PI. That makes the split meaningful for the whole year today, and it converges on
+     the recorded doc_type as new records come through.
+
+     Returns rupee figures EXCLUDING GST, on the same basis as the revenue dashboards
+     (course_fee net of discount), so it reconciles against YTD Revenue exactly. */
+  function h_getDocTypeSplit(p, cb) {
+    var fromMonth = p.fromMonth || '2026-04';
+    var toMonth = p.toMonth || '2027-03';
+    var qs = 'select=*&revenue_month=gte.' + encodeURIComponent(fromMonth) +
+             '&revenue_month=lte.' + encodeURIComponent(toMonth) + '&limit=5000';
+    if (p.counsellor) qs += '&recorded_by=eq.' + encodeURIComponent(p.counsellor);
+    if (p.centre) qs += '&centre=eq.' + encodeURIComponent(p.centre);
+    GET('student_fees', qs, function (e, rows) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      var out = { booked: 0, taxInvoiced: 0, pi: 0, piCount: 0, invoiceCount: 0, recorded: 0, inferred: 0 };
+      (rows || []).forEach(function (r) {
+        var m = parseFeeRow(r, [], []);
+        var rev = (Number(m.course_fee) || 0) - (Number(m.discount_amount) || 0);
+        if (!rev) return;
+        var isPI;
+        if (m.doc_type) { isPI = (m.doc_type === 'pi'); out.recorded++; }
+        else { isPI = (Number(m.outstanding) || 0) > 0; out.inferred++; }
+        out.booked += rev;
+        if (isPI) { out.pi += rev; out.piCount++; }
+        else { out.taxInvoiced += rev; out.invoiceCount++; }
+      });
+      cb(null, { status: 'ok', fromMonth: fromMonth, toMonth: toMonth,
+                 booked: out.booked, taxInvoiced: out.taxInvoiced, pi: out.pi,
+                 piCount: out.piCount, invoiceCount: out.invoiceCount,
+                 recordedDocType: out.recorded, inferredFromBalance: out.inferred });
     });
   }
 
@@ -12207,6 +12257,7 @@ window.gasGet = (function () {
       case 'saveOperationalInvoice':    return h_saveOperationalInvoice(params, cb);
       case 'getOperationalInvoices':    return h_getOperationalInvoices(params, cb);
       case 'deleteOperationalInvoice':  return h_deleteOperationalInvoice(params, cb);
+      case 'getDocTypeSplit':           return h_getDocTypeSplit(params, cb);
       case 'saveCorporateBatch':        return h_saveCorporateBatch(params, cb);
       case 'getCorporateBatches':       return h_getCorporateBatches(params, cb);
       case 'deleteCorporateBatch':      return h_deleteCorporateBatch(params, cb);

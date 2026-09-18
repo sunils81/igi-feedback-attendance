@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=107"></script>
+<script src="/assets/shared.js?v=108"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -7920,7 +7920,10 @@ function checkBatchCodeDuplicate() {
   const btn    = document.getElementById('b-btn');
   const code   = (codeEl.value || '').trim().toUpperCase();
   if (!code) { warnEl.style.display = 'none'; if (btn) btn.disabled = false; return false; }
-  const match = (allBatches || []).some(b => String(b.batchCode).toUpperCase() === code);
+  // Check every centre's batches, not just this counsellor's — a code that collides with
+  // another centre's batch is still a collision. 2026-09-18.
+  const match = (allBatches || []).concat(allBatchesAllCentres || [])
+    .some(b => String(b.batchCode).toUpperCase() === code);
   if (match) {
     warnEl.textContent = '⚠ "' + codeEl.value.trim() + '" already belongs to an existing batch. Edit the code (e.g. add "-B" or a slot suffix) before creating — otherwise this will collide with that batch instead of creating a new one.';
     warnEl.style.display = 'block';
@@ -8174,14 +8177,50 @@ function _applyBatchData(batches, onDone) {
   });
   // fee-batch specifically grouped by month (<optgroup>), per instruction 2026-07-31 —
   // sorted soonest-first within reach group, groups sorted chronologically.
+  // It is ALSO the one dropdown that lists every centre's batches — see
+  // loadAllCentreBatchesForFees() for why.
   const feeSel = document.getElementById('fee-batch');
   if (feeSel) {
     const cur = feeSel.value;
-    feeSel.innerHTML = _buildGroupedBatchOptionsHtml(batches, 'Select a batch');
+    feeSel.innerHTML = _buildGroupedBatchOptionsHtml(
+      (allBatchesAllCentres && allBatchesAllCentres.length) ? allBatchesAllCentres : batches, 'Select a batch');
     if (cur) feeSel.value = cur;
   }
+  loadAllCentreBatchesForFees();
   renderStudentBatchChoices();
   if (onDone) onDone();
+}
+
+/* CROSS-SELL AT ANY CENTRE — 2026-09-18, per instruction: "cross sell can be at any centre
+   so any counsellor should have the access".
+
+   Every batch dropdown is scoped to the counsellor's own centres, plus (via h_getBatches)
+   any batch they have ALREADY sold into. That second part is a chicken-and-egg: to record
+   the first cross-sell into a new centre, the batch has to be pickable before the sale
+   exists. Live case — Anuradha sold Mojammed Tibyan into BLR-DG-SEP26, Bangalore is not one
+   of her centres, so the batch never appeared and Nadiya had to enter it, which put the
+   revenue credit on the wrong counsellor and needed an HOD fix.
+
+   The FEE dropdown alone now lists every centre's batches; the counsellor who records the
+   fee gets the credit, which is exactly how cross-sell is supposed to work. Attendance,
+   reports and My Batches stay scoped to their own centres on purpose — seeing another
+   centre's batch to bill it is not the same as running its classes. */
+var allBatchesAllCentres = [];
+var _allCentreBatchesLoading = false;
+function loadAllCentreBatchesForFees() {
+  if (isAdmin) return;                                   // admin already gets everything
+  if (_allCentreBatchesLoading || allBatchesAllCentres.length) return;
+  _allCentreBatchesLoading = true;
+  gasGet({ action: 'getBatches', centres: '', counsellor: '' }, function (e, d) {
+    _allCentreBatchesLoading = false;
+    if (e || !d || !d.batches || !d.batches.length) return;
+    allBatchesAllCentres = d.batches;
+    var feeSel = document.getElementById('fee-batch');
+    if (!feeSel) return;
+    var cur = feeSel.value;
+    feeSel.innerHTML = _buildGroupedBatchOptionsHtml(allBatchesAllCentres, 'Select a batch');
+    if (cur) feeSel.value = cur;
+  });
 }
 
 function loadBatchDropdowns(onDone, forceRefresh) {
@@ -9224,7 +9263,13 @@ function formatDateTime(v) {
 
 function selectedFeeBatch() {
   const code = document.getElementById('fee-batch').value;
-  return (allBatches || []).find(b => String(b.batchCode).toUpperCase() === String(code).toUpperCase()) || null;
+  // Search the all-centres list too — the fee dropdown offers every centre's batches for
+  // cross-sell, and this lookup feeding only from allBatches would make openFeeForm say
+  // "Select a batch and student first" for any of them. 2026-09-18.
+  var _fbFind = function (list) {
+    return (list || []).find(b => String(b.batchCode).toUpperCase() === String(code).toUpperCase());
+  };
+  return _fbFind(allBatches) || _fbFind(allBatchesAllCentres) || null;
 }
 
 function feeDefaultsForCourse(course) {
@@ -9271,7 +9316,18 @@ function loadFeeOverview(onDone) {
     students = (!e && d && d.students) ? d.students : [];
     finish();
   });
-  gasGet({action:'getFeeRecords', batchCode:batch, centres:isAdmin?'':allowedCentres.join(',')}, function(e,d) {
+  // The centres filter must include the SELECTED batch's centre, or a cross-sell into
+  // another centre would load its students but none of their existing fee records — the
+  // form would look empty and a second record could be created over the top. The list is
+  // already narrowed to one batchCode, so this widens nothing else. 2026-09-18.
+  var _feeCentres = '';
+  if (!isAdmin) {
+    var _selB = selectedFeeBatch();
+    var _cs = (allowedCentres || []).slice();
+    if (_selB && _selB.centre && _cs.indexOf(_selB.centre) < 0) _cs.push(_selB.centre);
+    _feeCentres = _cs.join(',');
+  }
+  gasGet({action:'getFeeRecords', batchCode:batch, centres:_feeCentres}, function(e,d) {
     recordsDone = true;
     records = (!e && d && d.records) ? d.records : [];
     finish();

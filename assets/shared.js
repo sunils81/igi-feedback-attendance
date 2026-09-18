@@ -4522,15 +4522,45 @@ window.gasGet = (function () {
     if (p.centre) qs += '&centre=eq.' + encodeURIComponent(p.centre);
     GET('student_fees', qs, function (e, rows) {
       if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
-      var out = { booked: 0, taxInvoiced: 0, pi: 0, piCount: 0, invoiceCount: 0, recorded: 0, inferred: 0 };
+      /* The month Accounts switched to raising a PI until the fee is fully in. Records
+         before this were tax-invoiced at enrolment regardless of balance. */
+      var PI_POLICY_FROM = '2026-09';
+      /* Reads a document number: "PI-72083" and "PI No : PI-72103" are proformas,
+         "BOM/26/INV/87705" and "KOL/26/INV/07408" are tax invoices. Used for both student
+         fee records and corporate batches. */
+      var looksLikePI = function (s) {
+        var v = String(s == null ? '' : s).trim().toUpperCase();
+        return /^PI([^A-Z0-9]|$)/.test(v) || /\bPI[-\/ ]?\d/.test(v);
+      };
+      var out = { booked: 0, taxInvoiced: 0, pi: 0, piCount: 0, invoiceCount: 0, recorded: 0,
+                  fromDocNumber: 0, preChange: 0, inferred: 0 };
       var piList = [];
       (rows || []).forEach(function (r) {
         var m = parseFeeRow(r, [], []);
         var rev = (Number(m.course_fee) || 0) - (Number(m.discount_amount) || 0);
         if (!rev) return;
+        /* HOW A RECORD IS CLASSIFIED — in order of how much the evidence is worth.
+
+           1. An explicit doc_type, captured by the dropdown since Sept 2026. Settled.
+           2. Failing that, the document number itself, which says what it is: "PI-72083"
+              is a proforma, "BOM/26/INV/87705" is a tax invoice. This beats any inference
+              from the balance and is the reason the PI figure was overstated before — ten
+              May-to-Aug records carrying real INV numbers were being read as PIs purely
+              because a balance was open.
+           3. Failing that, the month. Before Sept 2026 Accounts raised the tax invoice at
+              enrolment whether or not the fee was in, so a part-paid record from that era
+              is still tax-invoiced. Reading an open balance as a PI is only valid under
+              the policy that started in Sept 2026.
+           4. Only then, for a Sept-onwards record with nothing else to go on, the balance.
+
+           The threshold is a rupee, not zero: a few records carry sub-rupee rounding
+           residue that is not an outstanding balance in any meaningful sense. 2026-09-18. */
         var isPI;
+        var docNo = String(m.invoice_number || '').trim();
         if (m.doc_type) { isPI = (m.doc_type === 'pi'); out.recorded++; }
-        else { isPI = (Number(m.outstanding) || 0) > 0; out.inferred++; }
+        else if (docNo) { isPI = looksLikePI(docNo); out.fromDocNumber++; }
+        else if (String(r.revenue_month || '') < PI_POLICY_FROM) { isPI = false; out.preChange++; }
+        else { isPI = (Number(m.outstanding) || 0) >= 1; out.inferred++; }
         out.booked += rev;
         if (isPI) {
           out.pi += rev; out.piCount++;
@@ -4547,7 +4577,8 @@ window.gasGet = (function () {
         cb(null, { status: 'ok', fromMonth: fromMonth, toMonth: toMonth,
                    booked: out.booked, taxInvoiced: out.taxInvoiced, pi: out.pi,
                    piCount: out.piCount, invoiceCount: out.invoiceCount,
-                   recordedDocType: out.recorded, inferredFromBalance: out.inferred,
+                   recordedDocType: out.recorded, fromDocNumber: out.fromDocNumber,
+                   preChangeAssumed: out.preChange, inferredFromBalance: out.inferred,
                    corporate: out.corp, headline: out.headline, variance: out.variance,
                    piStudents: list });
       };
@@ -4565,10 +4596,6 @@ window.gasGet = (function () {
          and which are real tax invoices (KOL/26/INV/07408). Tax-invoiced is then the
          remainder, which is the right default: a corporate row with no PI marker against
          it has been invoiced. 2026-09-18. */
-      var looksLikePI = function (s) {
-        var v = String(s == null ? '' : s).trim().toUpperCase();
-        return /^PI([^A-Z0-9]|$)/.test(v) || /\bPI[-\/ ]?\d/.test(v);
-      };
       var finishCorporate = function () {
         // Oldest first — the ones worth chasing are the ones that have been open longest.
         piList.sort(function (a, b) { return String(a.since).localeCompare(String(b.since)); });

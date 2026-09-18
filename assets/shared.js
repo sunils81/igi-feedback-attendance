@@ -4548,17 +4548,93 @@ window.gasGet = (function () {
                    booked: out.booked, taxInvoiced: out.taxInvoiced, pi: out.pi,
                    piCount: out.piCount, invoiceCount: out.invoiceCount,
                    recordedDocType: out.recorded, inferredFromBalance: out.inferred,
+                   corporate: out.corp, headline: out.headline, variance: out.variance,
                    piStudents: list });
       };
-      // Oldest first — the ones worth chasing are the ones that have been open longest.
-      piList.sort(function (a, b) { return String(a.since).localeCompare(String(b.since)); });
-      if (!piList.length) { reply([]); return; }
-      var ids = piList.map(function (x) { return '"' + String(x.studentId).replace(/"/g, '') + '"'; }).join(',');
-      GET('students', 'student_id=in.(' + ids + ')&select=student_id,name', function (eS, sRows) {
-        var byId = {};
-        (eS ? [] : (sRows || [])).forEach(function (s) { byId[String(s.student_id).toUpperCase()] = s.name; });
-        piList.forEach(function (x) { x.studentName = byId[String(x.studentId).toUpperCase()] || x.studentId; });
-        reply(piList);
+
+      /* CORPORATE PROGRAMMES
+         Corporate business is revenue like any other, so it belongs in this split — but it
+         is booked differently. There is no student fee record behind it, and the Apr/May
+         rows pre-date the corporate-batch feature entirely, so they exist only as typed
+         monthly figures with no document behind them at all.
+
+         So corporate is measured from both ends. The TOTAL comes from the typed monthly
+         rows, which are what the headline is built from, so the split can never drift away
+         from the number above it. The PI portion is measured from the corporate batch
+         records, where the invoice number tells us plainly which are proforma (PI-72484)
+         and which are real tax invoices (KOL/26/INV/07408). Tax-invoiced is then the
+         remainder, which is the right default: a corporate row with no PI marker against
+         it has been invoiced. 2026-09-18. */
+      var looksLikePI = function (s) {
+        var v = String(s == null ? '' : s).trim().toUpperCase();
+        return /^PI([^A-Z0-9]|$)/.test(v) || /\bPI[-\/ ]?\d/.test(v);
+      };
+      var finishCorporate = function () {
+        // Oldest first — the ones worth chasing are the ones that have been open longest.
+        piList.sort(function (a, b) { return String(a.since).localeCompare(String(b.since)); });
+        var ids = piList.filter(function (x) { return x.kind !== 'corporate' && x.studentId; })
+                        .map(function (x) { return '"' + String(x.studentId).replace(/"/g, '') + '"'; });
+        if (!ids.length) { reply(piList); return; }
+        GET('students', 'student_id=in.(' + ids.join(',') + ')&select=student_id,name', function (eS, sRows) {
+          var byId = {};
+          (eS ? [] : (sRows || [])).forEach(function (s) { byId[String(s.student_id).toUpperCase()] = s.name; });
+          piList.forEach(function (x) {
+            if (x.kind === 'corporate') return;
+            x.studentName = byId[String(x.studentId).toUpperCase()] || x.studentId;
+          });
+          reply(piList);
+        });
+      };
+
+      var mq = 'select=business_type,achieved_course_fee&month=gte.' + encodeURIComponent(fromMonth) +
+               '&month=lte.' + encodeURIComponent(toMonth) + '&limit=5000';
+      if (p.counsellor) mq += '&counsellor=eq.' + encodeURIComponent(p.counsellor);
+      if (p.centre) mq += '&business_centre=eq.' + encodeURIComponent(p.centre);
+      GET('revenue_monthly_achieved', mq, function (eM, mRows) {
+        var corpTotal = 0, centreTyped = 0;
+        (eM ? [] : (mRows || [])).forEach(function (r) {
+          var v = Number(r.achieved_course_fee) || 0;
+          if (String(r.business_type || '').toLowerCase().indexOf('corporate') >= 0) corpTotal += v;
+          else centreTyped += v;
+        });
+
+        var cq = 'select=*&revenue_month=gte.' + encodeURIComponent(fromMonth) +
+                 '&revenue_month=lte.' + encodeURIComponent(toMonth) + '&limit=2000';
+        if (p.counsellor) cq += '&recorded_by=eq.' + encodeURIComponent(p.counsellor);
+        if (p.centre) cq += '&centre=eq.' + encodeURIComponent(p.centre);
+        GET('corporate_batches', cq, function (eC, cRows) {
+          var corpPI = 0, corpPICount = 0, corpTracked = 0;
+          (eC ? [] : (cRows || [])).forEach(function (r) {
+            var rev = (Number(r.course_fee) || 0) - (Number(r.discount_amount) || 0);
+            if (!rev) return;
+            corpTracked += rev;
+            if (!looksLikePI(r.invoice_number)) return;
+            corpPI += rev; corpPICount++;
+            piList.push({ kind: 'corporate', studentId: '', batchCode: '',
+                          studentName: r.company_name || 'Corporate programme',
+                          centre: r.centre || '', revenue: rev,
+                          // Corporate has no payment tracking, so the whole amount is
+                          // treated as open. The UI labels it so nobody reads it as a
+                          // measured balance.
+                          outstanding: rev, netPayable: rev, collected: 0,
+                          docNumber: r.invoice_number || '', since: r.revenue_month || '' });
+          });
+          // Never let the PI portion exceed the typed total for corporate; if the batch
+          // records have run ahead of the monthly rows, trust the batch records.
+          var corpBase = Math.max(corpTotal, corpPI);
+          var corpInvoiced = Math.max(0, corpBase - corpPI);
+
+          out.booked += corpBase;
+          out.pi += corpPI; out.piCount += corpPICount;
+          out.taxInvoiced += corpInvoiced;
+          out.corp = { total: corpBase, pi: corpPI, taxInvoiced: corpInvoiced,
+                       piCount: corpPICount, untracked: Math.max(0, corpBase - corpTracked) };
+          // The headline the dashboard shows, so the UI can state any drift rather than
+          // leave it to be found with a calculator.
+          out.headline = centreTyped + corpTotal;
+          out.variance = out.booked - out.headline;
+          finishCorporate();
+        });
       });
     });
   }

@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=110"></script>
+<script src="/assets/shared.js?v=111"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -8249,12 +8249,17 @@ function renderCollectPanel(d) {
   };
   var totalOut = list.reduce(function (s, x) { return s + (Number(x.outstanding) || 0); }, 0);
   var show = list.slice(0, 8);
+  var nCorp = list.filter(function (x) { return x.kind === 'corporate'; }).length;
+  var nStud = list.length - nCorp;
+  var who = [nStud ? nStud + ' student' + (nStud > 1 ? 's' : '') : '',
+             nCorp ? nCorp + ' corporate programme' + (nCorp > 1 ? 's' : '') : '']
+            .filter(Boolean).join(' and ');
   panel.innerHTML =
     '<div style="background:#FFFBEB;border:1.5px solid #D97706;border-radius:10px;padding:12px 16px;margin:12px 0 0;font-size:13px;color:#78350F">' +
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">' +
         '<span style="font-size:15px">💰</span>' +
         '<span style="flex:1;min-width:220px;font-weight:700">Still to collect — ' + money(totalOut) +
-          ' across ' + list.length + ' student' + (list.length > 1 ? 's' : '') + '</span>' +
+          ' across ' + who + '</span>' +
       '</div>' +
       '<div style="font-size:11.5px;margin-bottom:10px;line-height:1.5">' +
         'Accounts raise the tax invoice only once the full fee is in, so until then these sit on a Proforma Invoice. ' +
@@ -8262,19 +8267,29 @@ function renderCollectPanel(d) {
         money(d.pi) + ' of yours is already counted. Clearing these just turns each PI into a tax invoice.' +
       '</div>' +
       '<div style="display:flex;flex-direction:column;gap:6px">' + show.map(function (x) {
+        /* Corporate programmes carry no per-payment tracking — only the PI itself — so the
+           row states that instead of showing a "collected of payable" figure that was never
+           measured, and there is no fee form to send them to. */
+        var isCorp = (x.kind === 'corporate');
         return '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:rgba(255,255,255,.6);border-radius:7px;padding:7px 10px">' +
           '<span style="flex:1;min-width:200px">' +
             '<strong>' + escC(x.studentName || x.studentId) + '</strong> ' +
-            '<span style="font-size:11px;color:#92400E">(' + escC(x.studentId) + ' · ' + escC(x.batchCode) + ')</span>' +
+            (isCorp
+              ? '<span style="font-size:10px;font-weight:700;background:#FDE68A;color:#78350F;border-radius:999px;padding:2px 7px;margin-left:4px">CORPORATE</span>'
+              : '<span style="font-size:11px;color:#92400E">(' + escC(x.studentId) + ' · ' + escC(x.batchCode) + ')</span>') +
             '<div style="font-size:11px;color:#92400E">' +
-              money(x.collected) + ' of ' + money(x.netPayable) + ' received' +
+              (isCorp
+                ? money(x.outstanding) + ' on proforma · payment not tracked here'
+                : money(x.collected) + ' of ' + money(x.netPayable) + ' received') +
               (x.since ? ' · since ' + monthLabel(x.since) : '') +
               (x.docNumber ? ' · ' + escC(x.docNumber) : '') +
             '</div>' +
           '</span>' +
           '<span style="font-family:\'JetBrains Mono\',monospace;font-weight:700;color:#B45309;white-space:nowrap">' + money(x.outstanding) + '</span>' +
-          '<button onclick="openFeeFormFor(\'' + escC(x.studentId) + '\',\'' + escC(x.batchCode) + '\')" ' +
-            'style="background:#fff;color:#78350F;border:1.5px solid #D97706;border-radius:6px;padding:4px 11px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">Record payment</button>' +
+          (isCorp
+            ? '<span style="font-size:11px;color:#92400E;white-space:nowrap">Follow up with Accounts</span>'
+            : '<button onclick="openFeeFormFor(\'' + escC(x.studentId) + '\',\'' + escC(x.batchCode) + '\')" ' +
+              'style="background:#fff;color:#78350F;border:1.5px solid #D97706;border-radius:6px;padding:4px 11px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">Record payment</button>') +
         '</div>';
       }).join('') +
       (list.length > show.length

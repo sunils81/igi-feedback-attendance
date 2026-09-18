@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=110"></script>
+<script src="assets/shared.js?v=111"></script>
 <script src="assets/work.js?v=4"></script>
 <script src="assets/push-subscribe.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -6884,17 +6884,25 @@ function loadDocTypeSplit(force) {
   var paint = function (d) {
     if (!d || d.status !== 'ok' || !d.booked) { el.innerHTML = ''; return; }
     var pct = Math.round((d.pi / d.booked) * 100);
-    /* The split is measured over fee records, which is a slightly different base from the
-       headline: corporate programmes are booked as typed monthly rows with no student fee
-       record behind them, and hand-typed centre rows can drift from the fee records under
-       them. So the two figures below deliberately do NOT add up to YTD Revenue, and the
-       tooltip says so rather than leaving it to be spotted with a calculator. */
-    var caveat = 'Measured over student fee records (' + money(d.booked) + '), not the typed monthly rows, '
-      + 'so this does not add up to YTD Revenue — corporate programmes have no fee record behind them.'
+    /* Covers student fees AND corporate programmes — corporate is revenue like any other.
+       Any residual drift between the fee records and the hand-typed monthly rows is stated
+       in the tooltip rather than left to be spotted with a calculator. */
+    var c = d.corporate || {};
+    var caveat = 'Covers student fees and corporate programmes'
+      + (c.total ? ' (corporate: ' + money(c.total) + ' — ' + money(c.pi || 0) + ' on PI)' : '')
+      + '.'
       + (d.inferredFromBalance
-          ? ' ' + d.inferredFromBalance + ' record' + (d.inferredFromBalance > 1 ? 's' : '')
+          ? ' ' + d.inferredFromBalance + ' fee record' + (d.inferredFromBalance > 1 ? 's' : '')
             + ' pre-date the Sept 2026 PI change and carry no document type, so they are classified by '
             + 'whether a balance is still outstanding.'
+          : '')
+      + (c.untracked
+          ? ' ' + money(c.untracked) + ' of corporate is typed monthly revenue with no batch record '
+            + 'behind it (pre-dates the corporate batch feature) and is counted as invoiced.'
+          : '')
+      + (Math.abs(Number(d.variance) || 0) > 1000
+          ? ' Note: this totals ' + money(d.booked) + ' against a headline of ' + money(d.headline)
+            + ' — a ' + money(Math.abs(d.variance)) + ' drift between fee records and hand-typed monthly rows.'
           : '');
     el.innerHTML =
       '<span class="internal-only" title="' + String(caveat).replace(/"/g, '&quot;') + '">' +

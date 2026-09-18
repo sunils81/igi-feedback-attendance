@@ -4523,6 +4523,7 @@ window.gasGet = (function () {
     GET('student_fees', qs, function (e, rows) {
       if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
       var out = { booked: 0, taxInvoiced: 0, pi: 0, piCount: 0, invoiceCount: 0, recorded: 0, inferred: 0 };
+      var piList = [];
       (rows || []).forEach(function (r) {
         var m = parseFeeRow(r, [], []);
         var rev = (Number(m.course_fee) || 0) - (Number(m.discount_amount) || 0);
@@ -4531,13 +4532,34 @@ window.gasGet = (function () {
         if (m.doc_type) { isPI = (m.doc_type === 'pi'); out.recorded++; }
         else { isPI = (Number(m.outstanding) || 0) > 0; out.inferred++; }
         out.booked += rev;
-        if (isPI) { out.pi += rev; out.piCount++; }
+        if (isPI) {
+          out.pi += rev; out.piCount++;
+          // The students behind the PI figure — this is what makes it a follow-up list for
+          // a counsellor rather than an accounting note they can do nothing about.
+          piList.push({ studentId: r.student_id, batchCode: r.batch_code, centre: r.centre,
+                        revenue: rev, outstanding: Number(m.outstanding) || 0,
+                        netPayable: Number(m.net_payable) || 0, collected: Number(m.collected) || 0,
+                        docNumber: m.invoice_number || '', since: r.revenue_month || '' });
+        }
         else { out.taxInvoiced += rev; out.invoiceCount++; }
       });
-      cb(null, { status: 'ok', fromMonth: fromMonth, toMonth: toMonth,
-                 booked: out.booked, taxInvoiced: out.taxInvoiced, pi: out.pi,
-                 piCount: out.piCount, invoiceCount: out.invoiceCount,
-                 recordedDocType: out.recorded, inferredFromBalance: out.inferred });
+      var reply = function (list) {
+        cb(null, { status: 'ok', fromMonth: fromMonth, toMonth: toMonth,
+                   booked: out.booked, taxInvoiced: out.taxInvoiced, pi: out.pi,
+                   piCount: out.piCount, invoiceCount: out.invoiceCount,
+                   recordedDocType: out.recorded, inferredFromBalance: out.inferred,
+                   piStudents: list });
+      };
+      // Oldest first — the ones worth chasing are the ones that have been open longest.
+      piList.sort(function (a, b) { return String(a.since).localeCompare(String(b.since)); });
+      if (!piList.length) { reply([]); return; }
+      var ids = piList.map(function (x) { return '"' + String(x.studentId).replace(/"/g, '') + '"'; }).join(',');
+      GET('students', 'student_id=in.(' + ids + ')&select=student_id,name', function (eS, sRows) {
+        var byId = {};
+        (eS ? [] : (sRows || [])).forEach(function (s) { byId[String(s.student_id).toUpperCase()] = s.name; });
+        piList.forEach(function (x) { x.studentName = byId[String(x.studentId).toUpperCase()] || x.studentId; });
+        reply(piList);
+      });
     });
   }
 

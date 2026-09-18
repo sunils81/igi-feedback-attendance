@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=109"></script>
+<script src="/assets/shared.js?v=110"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -4460,6 +4460,10 @@
         </div>
         <div class="rev-progress-wrap"><div class="rev-progress-bar" id="rev-progress-bar" style="width:0%"></div></div>
 
+        <!-- Still to collect — the students behind this counsellor's "on PI" figure.
+             Rendered by loadMyDocTypeSplit(); hidden when nothing is outstanding. -->
+        <div id="rev-collect-panel" style="display:none"></div>
+
         <!-- Revenue Breakdown Row -->
         <div class="rev-breakdown-row" id="rev-breakdown-row" style="display:none">
           <div class="rev-bd-card own"><div class="icon-wrap">🏫</div> Own Centre <strong id="rev-bd-own">—</strong></div>
@@ -8203,11 +8207,17 @@ var _myDocSplitCache = null;
 function loadMyDocTypeSplit() {
   var el = document.getElementById('rev-kpi-doctype');
   if (!el || !counselorName) return;
+  var panel = document.getElementById('rev-collect-panel');
   var paint = function (d) {
-    if (!d || d.status !== 'ok' || !d.booked || !d.pi) { el.innerHTML = ''; return; }
+    if (!d || d.status !== 'ok' || !d.booked || !d.pi) {
+      el.innerHTML = '';
+      if (panel) { panel.style.display = 'none'; panel.innerHTML = ''; }
+      return;
+    }
     el.innerHTML = '<span style="color:#1a7a3c">' + money(d.taxInvoiced) + '</span> tax-invoiced · ' +
       '<span style="color:#B45309">' + money(d.pi) + '</span> on PI';
     el.title = 'Accounts raise the tax invoice once the full fee is in, so their figure lags this one by whatever is still part-paid. Your target is measured on booked business.';
+    renderCollectPanel(d);
   };
   if (_myDocSplitCache) { paint(_myDocSplitCache); return; }
   gasGet({ action: 'getDocTypeSplit', counsellor: counselorName, fromMonth: '2026-04', toMonth: '2027-03' }, function (e, d) {
@@ -8215,6 +8225,64 @@ function loadMyDocTypeSplit() {
     _myDocSplitCache = d;
     paint(d);
   });
+}
+
+/* renderCollectPanel — "Still to collect", the students behind this counsellor's on-PI
+   figure. 2026-09-18, per instruction that counsellors should also see the difference.
+
+   Framed as a follow-up list rather than an accounting note, because that is the only form
+   of it a counsellor can act on: accounts raise the tax invoice once the fee is fully in,
+   so the PI figure IS the money still to chase. Each row opens that student's fee form to
+   record the payment.
+
+   The reassurance line is not decoration. A number sitting beside "Total Achieved" invites
+   the reading that it is about to be taken away; targets are measured on booked business
+   and this changes nothing about that, so it says so once, plainly. */
+function renderCollectPanel(d) {
+  var panel = document.getElementById('rev-collect-panel');
+  if (!panel) return;
+  var list = (d && d.piStudents) || [];
+  if (!list.length) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
+  var monthLabel = function (ym) {
+    var m = /^(\d{4})-(\d{2})$/.exec(String(ym || '')); if (!m) return '';
+    return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m[2]) - 1] + ' ' + m[1];
+  };
+  var totalOut = list.reduce(function (s, x) { return s + (Number(x.outstanding) || 0); }, 0);
+  var show = list.slice(0, 8);
+  panel.innerHTML =
+    '<div style="background:#FFFBEB;border:1.5px solid #D97706;border-radius:10px;padding:12px 16px;margin:12px 0 0;font-size:13px;color:#78350F">' +
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">' +
+        '<span style="font-size:15px">💰</span>' +
+        '<span style="flex:1;min-width:220px;font-weight:700">Still to collect — ' + money(totalOut) +
+          ' across ' + list.length + ' student' + (list.length > 1 ? 's' : '') + '</span>' +
+      '</div>' +
+      '<div style="font-size:11.5px;margin-bottom:10px;line-height:1.5">' +
+        'Accounts raise the tax invoice only once the full fee is in, so until then these sit on a Proforma Invoice. ' +
+        '<strong>This does not reduce your achievement</strong> — your target is measured on business booked, and ' +
+        money(d.pi) + ' of yours is already counted. Clearing these just turns each PI into a tax invoice.' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px">' + show.map(function (x) {
+        return '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:rgba(255,255,255,.6);border-radius:7px;padding:7px 10px">' +
+          '<span style="flex:1;min-width:200px">' +
+            '<strong>' + escC(x.studentName || x.studentId) + '</strong> ' +
+            '<span style="font-size:11px;color:#92400E">(' + escC(x.studentId) + ' · ' + escC(x.batchCode) + ')</span>' +
+            '<div style="font-size:11px;color:#92400E">' +
+              money(x.collected) + ' of ' + money(x.netPayable) + ' received' +
+              (x.since ? ' · since ' + monthLabel(x.since) : '') +
+              (x.docNumber ? ' · ' + escC(x.docNumber) : '') +
+            '</div>' +
+          '</span>' +
+          '<span style="font-family:\'JetBrains Mono\',monospace;font-weight:700;color:#B45309;white-space:nowrap">' + money(x.outstanding) + '</span>' +
+          '<button onclick="openFeeFormFor(\'' + escC(x.studentId) + '\',\'' + escC(x.batchCode) + '\')" ' +
+            'style="background:#fff;color:#78350F;border:1.5px solid #D97706;border-radius:6px;padding:4px 11px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">Record payment</button>' +
+        '</div>';
+      }).join('') +
+      (list.length > show.length
+        ? '<div style="font-size:11px;color:#92400E;padding-left:2px">+ ' + (list.length - show.length) +
+          ' more — see Ledger for the full list</div>' : '') +
+      '</div>' +
+    '</div>';
+  panel.style.display = 'block';
 }
 
 /* CROSS-SELL AT ANY CENTRE — 2026-09-18, per instruction: "cross sell can be at any centre

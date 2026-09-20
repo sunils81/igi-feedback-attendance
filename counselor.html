@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=112"></script>
+<script src="/assets/shared.js?v=113"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -8247,10 +8247,38 @@ function renderCollectPanel(d) {
     var m = /^(\d{4})-(\d{2})$/.exec(String(ym || '')); if (!m) return '';
     return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m[2]) - 1] + ' ' + m[1];
   };
-  var totalOut = list.reduce(function (s, x) { return s + (Number(x.outstanding) || 0); }, 0);
-  var show = list.slice(0, 8);
-  var nCorp = list.filter(function (x) { return x.kind === 'corporate'; }).length;
-  var nStud = list.length - nCorp;
+  /* GROUPED BY STUDENT, NOT BY BATCH — 2026-09-20.
+     A GG enrolment lands as two batch records (DEL-DG-SEP26 + DEL-COL-NOV26) under a
+     single PI raised for the combined GG course fee. Listed per batch, the same student
+     appeared twice with the same PI number against both halves, which reads like a
+     duplicate and understates nothing but confuses everything. The counsellor chases the
+     student, so the student is the row: one line, the combined balance, and a button per
+     batch leg underneath, because payment is still recorded against a specific batch. */
+  var groups = [], byStudent = {};
+  list.forEach(function (x) {
+    if (x.kind === 'corporate') { groups.push({ corp: true, legs: [x], name: x.studentName,
+      outstanding: Number(x.outstanding) || 0, since: x.since, docs: x.docNumber ? [x.docNumber] : [] }); return; }
+    var k = String(x.studentId || '').toUpperCase() || ('#' + groups.length);
+    if (!byStudent[k]) {
+      byStudent[k] = { corp: false, legs: [], name: x.studentName || x.studentId,
+                       studentId: x.studentId, outstanding: 0, netPayable: 0, collected: 0,
+                       since: x.since, docs: [] };
+      groups.push(byStudent[k]);
+    }
+    var g = byStudent[k];
+    g.legs.push(x);
+    g.outstanding += Number(x.outstanding) || 0;
+    g.netPayable += Number(x.netPayable) || 0;
+    g.collected += Number(x.collected) || 0;
+    if (x.since && (!g.since || String(x.since) < String(g.since))) g.since = x.since;
+    if (x.docNumber && g.docs.indexOf(x.docNumber) < 0) g.docs.push(x.docNumber);
+  });
+  groups.sort(function (a, b) { return String(a.since || '').localeCompare(String(b.since || '')); });
+
+  var totalOut = groups.reduce(function (s, g) { return s + (Number(g.outstanding) || 0); }, 0);
+  var show = groups.slice(0, 8);
+  var nCorp = groups.filter(function (g) { return g.corp; }).length;
+  var nStud = groups.length - nCorp;
   var who = [nStud ? nStud + ' student' + (nStud > 1 ? 's' : '') : '',
              nCorp ? nCorp + ' corporate programme' + (nCorp > 1 ? 's' : '') : '']
             .filter(Boolean).join(' and ');
@@ -8266,34 +8294,43 @@ function renderCollectPanel(d) {
         '<strong>This does not reduce your achievement</strong> — your target is measured on business booked, and ' +
         money(d.pi) + ' of yours is already counted. Clearing these just turns each PI into a tax invoice.' +
       '</div>' +
-      '<div style="display:flex;flex-direction:column;gap:6px">' + show.map(function (x) {
+      '<div style="display:flex;flex-direction:column;gap:6px">' + show.map(function (g) {
         /* Corporate programmes carry no per-payment tracking — only the PI itself — so the
            row states that instead of showing a "collected of payable" figure that was never
            measured, and there is no fee form to send them to. */
-        var isCorp = (x.kind === 'corporate');
+        var multi = (g.legs.length > 1);
+        var btn = 'background:#fff;color:#78350F;border:1.5px solid #D97706;border-radius:6px;' +
+                  'padding:4px 11px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap';
         return '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:rgba(255,255,255,.6);border-radius:7px;padding:7px 10px">' +
           '<span style="flex:1;min-width:200px">' +
-            '<strong>' + escC(x.studentName || x.studentId) + '</strong> ' +
-            (isCorp
+            '<strong>' + escC(g.name) + '</strong> ' +
+            (g.corp
               ? '<span style="font-size:10px;font-weight:700;background:#FDE68A;color:#78350F;border-radius:999px;padding:2px 7px;margin-left:4px">CORPORATE</span>'
-              : '<span style="font-size:11px;color:#92400E">(' + escC(x.studentId) + ' · ' + escC(x.batchCode) + ')</span>') +
+              : '<span style="font-size:11px;color:#92400E">(' + escC(g.studentId) + ' · ' +
+                  g.legs.map(function (l) { return escC(l.batchCode); }).join(' + ') + ')</span>' +
+                (multi ? '<span style="font-size:10px;font-weight:700;background:#FDE68A;color:#78350F;border-radius:999px;padding:2px 7px;margin-left:5px">' +
+                          g.legs.length + ' BATCHES' + (g.docs.length === 1 ? ' · ONE PI' : '') + '</span>' : '')) +
             '<div style="font-size:11px;color:#92400E">' +
-              (isCorp
-                ? money(x.outstanding) + ' on proforma · payment not tracked here'
-                : money(x.collected) + ' of ' + money(x.netPayable) + ' received') +
-              (x.since ? ' · since ' + monthLabel(x.since) : '') +
-              (x.docNumber ? ' · ' + escC(x.docNumber) : '') +
+              (g.corp
+                ? money(g.outstanding) + ' on proforma · payment not tracked here'
+                : money(g.collected) + ' of ' + money(g.netPayable) + ' received') +
+              (g.since ? ' · since ' + monthLabel(g.since) : '') +
+              (g.docs.length ? ' · ' + escC(g.docs.join(', ')) : '') +
             '</div>' +
           '</span>' +
-          '<span style="font-family:\'JetBrains Mono\',monospace;font-weight:700;color:#B45309;white-space:nowrap">' + money(x.outstanding) + '</span>' +
-          (isCorp
+          '<span style="font-family:\'JetBrains Mono\',monospace;font-weight:700;color:#B45309;white-space:nowrap">' + money(g.outstanding) + '</span>' +
+          (g.corp
             ? '<span style="font-size:11px;color:#92400E;white-space:nowrap">Follow up with Accounts</span>'
-            : '<button onclick="openFeeFormFor(\'' + escC(x.studentId) + '\',\'' + escC(x.batchCode) + '\')" ' +
-              'style="background:#fff;color:#78350F;border:1.5px solid #D97706;border-radius:6px;padding:4px 11px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">Record payment</button>') +
+            /* Payment is still recorded against one batch, so a multi-batch student gets a
+               button per leg rather than a single button that would guess which. */
+            : g.legs.map(function (l) {
+                return '<button onclick="openFeeFormFor(\'' + escC(l.studentId) + '\',\'' + escC(l.batchCode) + '\')" style="' + btn + '">' +
+                  (multi ? escC(l.batchCode) : 'Record payment') + '</button>';
+              }).join('')) +
         '</div>';
       }).join('') +
-      (list.length > show.length
-        ? '<div style="font-size:11px;color:#92400E;padding-left:2px">+ ' + (list.length - show.length) +
+      (groups.length > show.length
+        ? '<div style="font-size:11px;color:#92400E;padding-left:2px">+ ' + (groups.length - show.length) +
           ' more — see Ledger for the full list</div>' : '') +
       '</div>' +
     '</div>';

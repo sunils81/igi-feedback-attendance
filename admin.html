@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=113"></script>
+<script src="assets/shared.js?v=114"></script>
 <script src="assets/work.js?v=4"></script>
 <script src="assets/push-subscribe.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -6544,18 +6544,27 @@ function renderMonthlyBusinessSummary(monthKey) {
   var allRows = (dashboardData && dashboardData.revenue && dashboardData.revenue.monthlyRows) || [];
   var rows = allRows.filter(function(r) { return r.month === monthKey; });
 
-  var national = { achievedCourse: 0, achievedGst: 0, students: 0, own: 0, other: 0, corporate: 0 };
+  /* STUDENTS AND CORPORATE ASSOCIATES ARE NOT THE SAME UNIT — 2026-09-21.
+     A corporate row counts associates trained on a client workshop (MBMG: 20 a batch,
+     333 in August alone); a centre row counts individually enrolled diploma students.
+     Summing them gave "361 students" for an August that enrolled 28, which is not a
+     number anyone can use or defend in a management report. They are counted apart and
+     shown apart — the same treatment the centre health cards and the headline Students
+     Enrolled KPI already give them. */
+  var national = { achievedCourse: 0, achievedGst: 0, students: 0, corpAssociates: 0, own: 0, other: 0, corporate: 0 };
   var byCentre = {};
   rows.forEach(function(r) {
     var fee = Number(r.achievedCourse) || 0, feeGst = Number(r.achievedGst) || 0, stu = Number(r.studentCount) || 0;
     var isCorp = String(r.businessType || '').toLowerCase().indexOf('corporate') >= 0;
     var category = isCorp ? 'corporate' : ((r.assignedCentre === r.businessCentre) ? 'own' : 'other');
-    national.achievedCourse += fee; national.achievedGst += feeGst; national.students += stu;
+    national.achievedCourse += fee; national.achievedGst += feeGst;
+    national[isCorp ? 'corpAssociates' : 'students'] += stu;
     national[category] += fee;
 
     var cKey = r.businessCentre || 'Unknown';
-    var cBucket = (byCentre[cKey] = byCentre[cKey] || { centre: cKey, achievedCourse: 0, achievedGst: 0, students: 0, own: 0, other: 0, corporate: 0, byCounsellor: {} });
-    cBucket.achievedCourse += fee; cBucket.achievedGst += feeGst; cBucket.students += stu;
+    var cBucket = (byCentre[cKey] = byCentre[cKey] || { centre: cKey, achievedCourse: 0, achievedGst: 0, students: 0, corpAssociates: 0, own: 0, other: 0, corporate: 0, byCounsellor: {} });
+    cBucket.achievedCourse += fee; cBucket.achievedGst += feeGst;
+    cBucket[isCorp ? 'corpAssociates' : 'students'] += stu;
     cBucket[category] += fee;
 
     /* Key by counsellor AND category — 2026-09-18, reported as "Anuradha corporate batch is
@@ -6581,7 +6590,8 @@ function renderMonthlyBusinessSummary(monthKey) {
     '<div class="kpi-row" style="margin-bottom:14px">' +
       '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">National Total (Excl. GST)</div><div class="kpi-value">' + money(national.achievedCourse) + '</div><div class="kpi-meta" id="mbs-mom-note">vs last month: —</div></div>' +
       '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">vs Same Month Last Year</div><div class="kpi-value" id="mbs-yoy-value">—</div><div class="kpi-meta" id="mbs-yoy-note">loading…</div></div>' +
-      '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">Students Enrolled</div><div class="kpi-value">' + national.students + '</div></div>' +
+      '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">Students Enrolled</div><div class="kpi-value">' + national.students + '</div>' +
+        (national.corpAssociates ? '<div class="kpi-meta">+ ' + national.corpAssociates + ' corporate associates trained</div>' : '') + '</div>' +
       '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">Home / Cross-sell / Corporate</div><div class="kpi-value" style="font-size:13px">' + money(national.own) + ' / ' + money(national.other) + ' / ' + money(national.corporate) + '</div></div>' +
     '</div>' +
     '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
@@ -6616,16 +6626,19 @@ function renderMonthlyBusinessSummary(monthKey) {
           '<td style="text-align:right;font-size:11px" class="mbs-centre-mom" data-centre="' + safeCentre + '" data-achieved="' + c.achievedCourse + '">…</td>' +
           '<td style="text-align:right;font-size:11px" class="mbs-centre-yoy" data-centre="' + safeCentre + '" data-achieved="' + c.achievedCourse + '">…</td>' +
           '<td style="text-align:right;font-size:11px;color:var(--muted)">' + money(c.own) + ' / ' + money(c.other) + ' / ' + money(c.corporate) + '</td>' +
-          '<td style="text-align:right">' + c.students + '</td>' +
+          '<td style="text-align:right">' + c.students +
+            (c.corpAssociates ? '<span style="color:var(--muted);font-size:10px"> +' + c.corpAssociates + ' corp</span>' : '') + '</td>' +
         '</tr>' + (expanded ? counRows : '');
       }).join('') +
       '<tr style="background:var(--navy);color:var(--gold);font-weight:800">' +
         '<td></td><td class="text-left">NATIONAL TOTAL</td><td style="text-align:right">' + money(national.achievedCourse) + '</td>' +
         '<td></td><td></td>' +
         '<td style="text-align:right;font-size:11px">' + money(national.own) + ' / ' + money(national.other) + ' / ' + money(national.corporate) + '</td>' +
-        '<td style="text-align:right">' + national.students + '</td>' +
+        '<td style="text-align:right">' + national.students +
+          (national.corpAssociates ? '<span style="font-size:10px;opacity:.8"> +' + national.corpAssociates + ' corp</span>' : '') + '</td>' +
       '</tr>' +
       '</tbody></table></div>' +
+    (national.corpAssociates ? '<div style="font-size:10.5px;color:var(--muted);margin-top:6px">Students Enrolled counts individually enrolled students only. Corporate associates trained (' + national.corpAssociates + ' this month) are shown separately — a client workshop headcount is not an enrolment and the two cannot be added.</div>' : '') +
     '<div style="font-size:10.5px;color:var(--muted);margin-top:6px">vs Last Year uses live figures from ' + mbsMonthPeriod('2026-01') + ' onward; centre-wise breakdowns before that don\'t exist in the historical dataset, so those cells read "no data" — only the National Total\'s YoY card above can reach further back.</div>';
 
   mbsLoadCentreComparisons(centreList, monthKey);

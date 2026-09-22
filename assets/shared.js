@@ -500,6 +500,47 @@ window.gasGet = (function () {
        dipRec: diplomas row or null
      }
   ══════════════════════════════════════════════════════════════ */
+  /* ── HOW MANY WEEKLY TESTS A COURSE REQUIRES ──────────────────────────────────
+     Full diploma courses average THREE weekly tests. Short courses run too few weeks
+     for three to be meaningful, so they average TWO. 2026-09-22, per instruction
+     ("for PDC or PDG course or any other short course make 2 weekly test average").
+
+     This is an explicit list on purpose. The obvious alternative — count how many
+     weekly tests the batch actually has scheduled — would be wrong and quietly
+     dangerous: weekly assessments are sparsely entered today (most batches have none
+     recorded yet), so a Diamond Graduate batch with two tests entered would lower its
+     own diploma bar to two. The requirement has to come from what the course IS, not
+     from how much data happens to have been keyed in.
+
+     Anything not listed gets three — the stricter bar — so a course added later keeps
+     the full standard until somebody deliberately classifies it as short. Failing
+     towards the stricter side is the only safe default for an eligibility rule.
+
+     TO ADD A SHORT COURSE: add its name fragment to SHORT_COURSE_NAMES, or its batch
+     code segment to SHORT_COURSE_CODES. Nothing else needs to change.
+
+     Course name is matched first and is authoritative. Batch codes are only consulted
+     for segments that unambiguously mean one course — DIA deliberately is NOT in the
+     code list, because it is used by both "Diamond Essential: The 5C's" (short) and
+     "Diamond Graduate Integrated" (a full diploma). */
+  var SHORT_COURSE_NAMES = [
+    'jewelpad',                  // JewelPad Design / JewelPad Online — on 2 since before this rule existed
+    'polished diamond grading'   // PDG
+  ];
+  var SHORT_COURSE_CODES = ['PDG', 'POL', 'PDC'];
+
+  function weeklyTestsRequired(course, batchCode) {
+    var c = String(course || '').toLowerCase();
+    for (var i = 0; i < SHORT_COURSE_NAMES.length; i++) {
+      if (c.indexOf(SHORT_COURSE_NAMES[i]) !== -1) return 2;
+    }
+    // Second segment of e.g. "MUM-PDG-SEP26". Only consulted when the course name did
+    // not already decide it.
+    var seg = String(batchCode || '').toUpperCase().split('-')[1] || '';
+    if (SHORT_COURSE_CODES.indexOf(seg) !== -1) return 2;
+    return 3;
+  }
+
   function buildDiplomaRow(opts) {
     var studentId   = opts.studentId;
     var studentName = opts.studentName || '';
@@ -537,8 +578,7 @@ window.gasGet = (function () {
     }
     function typeOf(a) { return String(a.test_type || '').toLowerCase(); }
 
-    var isJewelPad = course.toLowerCase().indexOf('jewelpad') !== -1;
-    var mandatoryCount = isJewelPad ? 2 : 3;
+    var mandatoryCount = weeklyTestsRequired(course, batchCode);
 
     var weeklyAssessments = batchAssessments
       .filter(function(a) {
@@ -583,7 +623,7 @@ window.gasGet = (function () {
     }
 
     // ── Weekly score: best of N across every weekly test actually taken ──────
-    // N = mandatoryCount (2 for JewelPad, 3 otherwise) — the number of weekly tests a batch
+    // N = mandatoryCount (2 for short courses, 3 otherwise — see weeklyTestsRequired) — the number of weekly tests a batch
     // is expected to run. Pool together every attempt with a recorded score: mandatory
     // slots, optional/bonus slots (WT4-6 etc.), and any Re-Test — then average this
     // student's best N of them. Retired 2026-09-03 (previously averaged only the fixed
@@ -8767,7 +8807,7 @@ window.gasGet = (function () {
      is to catch the "it's been weeks and nothing's been entered" case, not to nag over
      exact scheduling.
      Three independent checks per active batch:
-       - Weekly: mandatoryCount (2 for JewelPad, else 3 — same rule buildDiplomaRow uses)
+       - Weekly: mandatoryCount (2 for short courses, else 3 — weeklyTestsRequired, same rule buildDiplomaRow uses)
          paced proportionally across the batch's duration; flagged if fewer weekly-type
          tests exist than that pacing implies by today.
        - Practical: flagged once the batch is at/past its halfway point and zero
@@ -8858,8 +8898,9 @@ window.gasGet = (function () {
         if (batchNotStarted(b.start_date) || batchHasEnded(b.end_date)) return;
 
         var elapsedWeeks = Math.max(0, Math.min(totalWeeks, (today - start) / MS_PER_WEEK));
-        var isJewelPad = (b.course || '').toLowerCase().indexOf('jewelpad') !== -1;
-        var mandatoryCount = isJewelPad ? 2 : 3;
+        // Same rule as buildDiplomaRow — shared so the nudge can never ask for a
+        // different number of tests than eligibility actually requires.
+        var mandatoryCount = weeklyTestsRequired(b.course, b.batch_code);
 
         var expectedWeeklyByNow = Math.floor(mandatoryCount * elapsedWeeks / totalWeeks);
         var missingWeekly = Math.max(0, expectedWeeklyByNow - counts.weekly);

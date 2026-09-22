@@ -4591,20 +4591,28 @@ window.gasGet = (function () {
                    docNumber: docNo, since: r.revenue_month || '' };
         }).sort(function (a, b) { return String(a.since).localeCompare(String(b.since)); });
 
-        var ids = {}, list = [];
+        /* The id goes into the query exactly as stored — uppercasing it here would miss any
+           student_id carrying letters, since PostgREST's in.() is case-sensitive. Only the
+           lookup KEY is uppercased, to survive case drift between the two tables. */
+        var seen = {}, list = [];
         out.forEach(function (x) {
-          var k = String(x.studentId || '').toUpperCase();
-          if (k && !ids[k]) { ids[k] = 1; list.push('"' + k.replace(/"/g, '') + '"'); }
+          var raw = String(x.studentId || '').trim();
+          var k = raw.toUpperCase();
+          if (raw && !seen[k]) { seen[k] = 1; list.push('"' + raw.replace(/"/g, '') + '"'); }
         });
         var reply = function (byId) {
-          out.forEach(function (x) { x.studentName = byId[String(x.studentId).toUpperCase()] || x.studentId; });
+          out.forEach(function (x) { x.studentName = byId[String(x.studentId).trim().toUpperCase()] || x.studentId; });
           cb(null, { status: 'ok', fromMonth: fromMonth, toMonth: toMonth,
                      rows: out, totals: totals, corporate: corporate });
         };
         if (!list.length) { reply({}); return; }
-        GET('students', 'student_id=in.(' + list.join(',') + ')&select=student_id,name,course', function (eS, sRows) {
+        // students carries student_id and name only — asking for a column it does not have
+        // fails the whole request and silently drops every name back to the bare id.
+        GET('students', 'student_id=in.(' + list.join(',') + ')&select=student_id,name', function (eS, sRows) {
           var byId = {};
-          (eS ? [] : (sRows || [])).forEach(function (s) { byId[String(s.student_id).toUpperCase()] = s.name; });
+          (eS ? [] : (sRows || [])).forEach(function (s) {
+            if (s && s.name) byId[String(s.student_id).trim().toUpperCase()] = s.name;
+          });
           reply(byId);
         });
       };

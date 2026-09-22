@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=117"></script>
+<script src="/assets/shared.js?v=118"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -3854,7 +3854,8 @@
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <div><div class="section-tag">All Batches</div><h2 style="margin:0">Batch Overview</h2></div>
-        <button class="btn btn-outline" style="padding:6px 12px;font-size:12.5px;width:auto" onclick="mbOpenCrossSellEnroll()">&#43; Enroll Student at Another Centre</button>
+        <!-- Shown only to counsellors with cross-centre access — see canCrossSellOtherCentres(). -->
+        <button class="btn btn-outline" id="mb-cross-sell-btn" style="display:none;padding:6px 12px;font-size:12.5px;width:auto" onclick="mbOpenCrossSellEnroll()">&#43; Enroll Student at Another Centre</button>
       </div>
       <div id="mb-bulk-bar" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:12px;align-items:center;gap:10px;flex-wrap:wrap">
         <span id="mb-sel-count" style="font-size:13px;font-weight:600;color:#1d4ed8">0 selected</span>
@@ -5502,6 +5503,21 @@ function canViewAllIndiaMIS() {
   // Users → per-counsellor access) instead of a hardcoded name list — see
   // counselorPermissions, populated at login. 2026-08-21.
   return !!(counselorPermissions && counselorPermissions.all_india_mis);
+}
+
+/* CROSS-CENTRE BATCH ACCESS — 2026-09-22.
+   On 2026-09-18 cross-sell was opened to every counsellor, on the reasoning that a
+   cross-sell can happen at any centre. In practice that put all ten centres' batches in
+   front of everyone, which is not what a counsellor should see: their own centre is the
+   whole of their world, and the wider list was noise at best. It is now a permission,
+   granted to Anuradha, so it can be extended to anyone else with one database row rather
+   than a code change — the same pattern as cashfree_all_centres and billing_all_centres.
+
+   This gates VISIBILITY of other centres' batches only. A counsellor keeps every batch
+   they have already sold into (h_getBatches unions those in server-side), so no past
+   cross-sell disappears from anyone's list. */
+function canCrossSellOtherCentres() {
+  return !!(isAdmin || (counselorPermissions && counselorPermissions.cross_centre_batches));
 }
 
 // canSeeAllFeeRecords — the Fee Record/Ledger tab's rendering pipeline (
@@ -8624,6 +8640,10 @@ var allBatchesAllCentres = [];
 var _allCentreBatchesLoading = false;
 function loadAllCentreBatchesForFees() {
   if (isAdmin) return;                                   // admin already gets everything
+  // Only counsellors granted cross-centre access pull the national batch list. Without
+  // this the fee dropdown listed all ten centres for everyone — see
+  // canCrossSellOtherCentres(). 2026-09-22.
+  if (!canCrossSellOtherCentres()) return;
   if (_allCentreBatchesLoading || allBatchesAllCentres.length) return;
   _allCentreBatchesLoading = true;
   gasGet({ action: 'getBatches', centres: '', counsellor: '' }, function (e, d) {
@@ -14850,7 +14870,10 @@ function renderRevenueEntryPanel(m, designatedCentre, otherDefault, existingRows
       '</div>';
     }).join('');
     othersHtml = (otherRowsHtml || '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">No cross-centre enrollments yet this month.</div>') +
-      '<button type="button" class="rev-enroll-btn" '+enrollOtherAttrs+' onclick="openEnrollModalOtherCentre(this.dataset.month,this.dataset.centre,counselorName||\'Counselor\')">&#43; Enroll New Student at Another Centre</button>';
+      // Cross-centre enrolment is gated the same way here as on My Batches. 2026-09-22.
+      (canCrossSellOtherCentres()
+        ? '<button type="button" class="rev-enroll-btn" '+enrollOtherAttrs+' onclick="openEnrollModalOtherCentre(this.dataset.month,this.dataset.centre,counselorName||\'Counselor\')">&#43; Enroll New Student at Another Centre</button>'
+        : '');
   } else {
     othersHtml = '<div class="rev-other-centre-list">' + existingOthers.map(function(oth) {
       var centreOpts = CENTRES.map(function(cc){
@@ -16373,6 +16396,8 @@ function loadMyBatches() {
       renderSection('mb-sec-active', 'Active', 'rgba(201,168,76,0.12)', '#B87A10', groupActive, true, false) +
       renderSection('mb-sec-completed', 'Completed', '#F3F4F6', '#6B7280', groupCompleted, false, true);
   }
+  var xsBtn = document.getElementById('mb-cross-sell-btn');
+  if (xsBtn) xsBtn.style.display = canCrossSellOtherCentres() ? '' : 'none';
   // Reuse allBatches if already loaded — avoids a duplicate GAS call at login
   if (allBatches && allBatches.length) {
     renderMyBatchList(allBatches);
@@ -16391,6 +16416,12 @@ function loadMyBatches() {
 // Cross-sell entry point from the My Batches tab — opens the Enroll modal in
 // "other centre" mode, attributed to the current calendar month.
 function mbOpenCrossSellEnroll() {
+  // Belt and braces: the button is hidden without the permission, but the handler refuses
+  // too, so the modal cannot be reached from a stale page or the console.
+  if (!canCrossSellOtherCentres()) {
+    alert('Enrolling at another centre is not enabled for your account. Ask the HOD if you need it.');
+    return;
+  }
   var today = new Date();
   var monthKey = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0');
   var homeCentre = (allowedCentres && allowedCentres.length) ? allowedCentres[0] : '';

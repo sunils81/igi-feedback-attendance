@@ -4575,6 +4575,10 @@ window.gasGet = (function () {
             collected: Number(m.collected) || 0,
             outstanding: Number(m.outstanding) || 0,
             status: st, docNumber: String(m.invoice_number || '').trim(),
+            // The uploaded invoice/PI itself, when one was attached on the fee form, so the
+            // tab can open the actual document rather than just quote its number.
+            docFileUrl: String(m.invoice_file_url || '').trim(),
+            docDate: m.invoice_date || '',
             docTypeRecorded: m.doc_type || '', since: r.revenue_month || ''
           });
         });

@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=116"></script>
+<script src="/assets/shared.js?v=117"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -8397,7 +8397,7 @@ function renderCnBilling() {
       : '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
         '<th class="text-left">Student</th><th class="text-left">Batch</th><th class="text-left">Centre</th>' +
         '<th>Booked</th><th>Collected</th><th>Outstanding</th><th>Since</th><th>Status</th>' +
-        '<th class="text-left">Document</th></tr></thead><tbody>' +
+        '<th class="text-left">Document</th><th></th></tr></thead><tbody>' +
         rows.map(function (r, i) {
           var key = escC(r.studentId) + '|' + escC(r.batchCode);
           return '<tr' + (r.status === 'none' ? ' style="background:rgba(192,54,44,0.035)"' : '') + '>' +
@@ -8411,11 +8411,15 @@ function renderCnBilling() {
             '<td style="text-align:right;color:' + (r.outstanding >= 1 ? '#B45309' : 'var(--muted)') + '">' + money(r.outstanding) + '</td>' +
             '<td style="text-align:center;font-size:11px">' + escC(cnBillMonth(r.since)) + '</td>' +
             '<td style="text-align:center">' + cnBillChip(r.status) + '</td>' +
-            '<td class="text-left" style="font-size:11px">' +
-              (r.docNumber
-                ? escC(r.docNumber)
-                : '<button onclick="cnBillPrompt(' + i + ')" style="background:#fff;color:#78350F;border:1.5px solid #D97706;border-radius:6px;padding:3px 9px;font-size:10.5px;font-weight:600;cursor:pointer;white-space:nowrap">+ Add number</button>') +
-            '</td></tr>';
+            '<td class="text-left" style="font-size:11px;white-space:nowrap">' + cnBillDocCell(r, i) + '</td>' +
+            /* Fees, instalments, discounts and the document upload all belong to the fee
+               form, which already enforces the discount approvals and revenue-month rules.
+               This sends them there on the right student and batch rather than rebuilding
+               any of it here, where those guards would not apply. */
+            '<td style="white-space:nowrap"><button onclick="openFeeFormFor(\'' + escC(r.studentId) + '\',\'' + escC(r.batchCode) + '\')" ' +
+              'title="Open the fee form for this student — update payments, amounts or attach the invoice" ' +
+              'style="background:transparent;color:var(--navy);border:1px solid var(--border);border-radius:6px;padding:3px 9px;font-size:10.5px;font-weight:600;cursor:pointer">Edit fees</button></td>' +
+            '</tr>';
         }).join('') + '</tbody></table></div>';
   }
 
@@ -8443,14 +8447,31 @@ function renderCnBilling() {
   }
 }
 
-/* Keying in the number from here, rather than sending them back through the fee form.
+/* The Document cell: the number, a link to the uploaded document where one was attached on
+   the fee form, and an edit affordance whether or not a number exists — a wrong number
+   needs correcting as often as a missing one needs adding. */
+function cnBillDocCell(r, i) {
+  var file = r.docFileUrl
+    ? ' <a href="' + escC(r.docFileUrl) + '" target="_blank" rel="noopener" title="Open the uploaded document" style="text-decoration:none">📎</a>'
+    : '';
+  if (!r.docNumber) {
+    return '<button onclick="cnBillPrompt(' + i + ')" style="background:#fff;color:#78350F;border:1.5px solid #D97706;' +
+      'border-radius:6px;padding:3px 9px;font-size:10.5px;font-weight:600;cursor:pointer;white-space:nowrap">+ Add number</button>' + file;
+  }
+  return escC(r.docNumber) + file +
+    '<a href="#" onclick="cnBillPrompt(' + i + ');return false" title="Correct the document number" ' +
+    'style="color:var(--muted);text-decoration:none;margin-left:6px">✏️</a>';
+}
+
+/* Keying the number in from here, rather than sending them back through the fee form.
    The handler cross-checks the number against the type chosen, so a PI filed as an
    invoice is refused rather than quietly miscounted on the revenue dashboards. */
 function cnBillPrompt(idx) {
   var r = _cnBillFiltered()[idx];
   if (!r) return;
   var docNo = window.prompt('Document number for ' + (r.studentName || r.studentId) + ' — ' + r.batchCode +
-    '\n\nEnter the PI number (e.g. PI-72103) or the tax invoice number (e.g. BOM/26/INV/87705).');
+    '\n\nEnter the PI number (e.g. PI-72103) or the tax invoice number (e.g. BOM/26/INV/87705).',
+    r.docNumber || '');
   if (docNo === null) return;
   docNo = String(docNo).trim();
   if (!docNo) return;

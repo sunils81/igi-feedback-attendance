@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=119"></script>
+<script src="assets/shared.js?v=120"></script>
 <script src="assets/work.js?v=4"></script>
 <script src="assets/push-subscribe.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -6695,7 +6695,7 @@ function renderMonthlyBusinessSummary(monthKey) {
       '</tr>' +
       '</tbody></table></div>' +
     (national.corpAssociates ? '<div style="font-size:10.5px;color:var(--muted);margin-top:6px">Students Enrolled counts individually enrolled students only. Corporate associates trained (' + national.corpAssociates + ' this month) are shown separately — a client workshop headcount is not an enrolment and the two cannot be added.</div>' : '') +
-    '<div style="font-size:10.5px;color:var(--muted);margin-top:6px">vs Last Year uses live figures from ' + mbsMonthPeriod('2026-01') + ' onward; centre-wise breakdowns before that don\'t exist in the historical dataset, so those cells read "no data" — only the National Total\'s YoY card above can reach further back.</div>';
+    '<div style="font-size:10.5px;color:var(--muted);margin-top:6px">vs Last Year reaches back to January 2024. Months before April 2026 come from the Accounts MIS, which is dated by invoice; the current year is booked at enrolment. The two are close over a full year but a single month can differ on timing alone, so read a monthly YoY figure as indicative. A centre with nothing recorded for that month reads &ldquo;no data&rdquo;.</div>';
 
   mbsLoadCentreComparisons(centreList, monthKey);
 
@@ -6722,12 +6722,21 @@ function renderMonthlyBusinessSummary(monthKey) {
       valEl.textContent = money(lastYearExclGst);
       noteEl.innerHTML = '<span style="color:' + (diff >= 0 ? '#1a7a3c' : 'var(--red)') + '">' + (diff >= 0 ? '▲' : '▼') + ' ' + Math.abs(pct) + '%</span> vs ' + mbsMonthLabel(lyKey);
     }
-    // revenue_monthly_achieved only goes back to 2026-01 — anything before that has no
-    // live rows at all, so it used to show "No data" even where a real historical figure
-    // exists in HIST_REVENUE (see histRevenueExclGstForMonth above).
-    if (lyKey < '2026-01') { renderYoy(histRevenueExclGstForMonth(lyKey)); return; }
+    /* ONE SOURCE FOR THIS CARD AND THE CENTRE ROWS BELOW IT — 2026-09-22.
+       Two historical datasets now exist for the same months: HIST_REVENUE, the national
+       monthly series hardcoded in this file back to 2018, and the centre-wise Accounts MIS
+       imported into revenue_monthly_achieved for calendar 2024 and 2025. They agree for 15
+       of those 24 months and differ for 9, two of them materially.
+
+       The database is asked first, because that is what the per-centre cells underneath
+       read. Whatever this card shows therefore always foots to the rows below it, which
+       matters more here than which dataset is right — a summary whose total contradicts
+       its own rows is worse than either figure alone. HIST_REVENUE remains the fallback
+       for months the import does not cover (it reaches back to 2018; the import starts at
+       January 2024) and still feeds the two trend charts further down the page. */
     gasGet({ action: 'getNationalMonthTotal', month: lyKey, period: mbsMonthPeriod(lyKey) }, function(e, d) {
-      renderYoy((!e && d) ? d.achievedCourseFee : 0);
+      var fromDb = (!e && d) ? Number(d.achievedCourseFee) || 0 : 0;
+      renderYoy(fromDb || histRevenueExclGstForMonth(lyKey));
     });
   })();
 }
@@ -6783,12 +6792,15 @@ function mbsLoadCentreComparisons(centreList, monthKey) {
     gasGet({ action: 'getCentreMonthTotal', centre: c.centre, month: prevKey, period: mbsMonthPeriod(prevKey) }, function(e, d) {
       mbsRenderCompareCell('.mbs-centre-mom', c.centre, c.achievedCourse, (!e && d) ? exclGst(d.achievedCourseFeeGst) : 0, 'no prior data');
     });
-    if (lyKey < '2026-01') {
-      // No centre-wise historical breakdown exists before the live table starts — see the
-      // note under the table. This will start resolving on its own once FY27-28 data lands.
-      mbsRenderCompareCell('.mbs-centre-yoy', c.centre, c.achievedCourse, 0, 'no data');
-      return;
-    }
+    /* The cutoff that used to sit here ("if (lyKey < '2026-01') ... no data") is gone —
+       2026-09-22. It short-circuited every centre's YoY cell to "no data" on the premise
+       that no centre-wise history existed before the live table began. That premise ended
+       when the Accounts MIS for calendar 2024 and 2025 was imported centre-by-centre, and
+       the guard then hid data that was sitting right there.
+
+       No date test replaces it. If a centre genuinely has nothing for that month the fetch
+       returns zero and the cell says "no data" on its own — which is the honest answer and
+       needs no maintenance the next time history is extended. */
     gasGet({ action: 'getCentreMonthTotal', centre: c.centre, month: lyKey, period: mbsMonthPeriod(lyKey) }, function(e, d) {
       mbsRenderCompareCell('.mbs-centre-yoy', c.centre, c.achievedCourse, (!e && d) ? exclGst(d.achievedCourseFeeGst) : 0, 'no data');
     });

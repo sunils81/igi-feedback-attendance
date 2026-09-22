@@ -4513,6 +4513,171 @@ window.gasGet = (function () {
 
      Returns rupee figures EXCLUDING GST, on the same basis as the revenue dashboards
      (course_fee net of discount), so it reconciles against YTD Revenue exactly. */
+  /* BILLING — the single place that decides what document a fee record carries.
+     Used by h_getDocTypeSplit (the revenue dashboards) and h_getBillingStatus (the
+     Revenue Billing tab). Kept in one object deliberately: if the tab and the dashboard
+     ever classified a record differently, the tab would be arguing with the number it
+     exists to explain. 2026-09-22. */
+  var BILLING = {
+    // The month Accounts switched to raising a PI until the fee is fully in. Records
+    // before this were tax-invoiced at enrolment regardless of balance.
+    POLICY_FROM: '2026-09',
+    // "PI-72083" and "PI No : PI-72103" are proformas; "BOM/26/INV/87705" and
+    // "KOL/26/INV/07408" are tax invoices.
+    looksLikePI: function (s) {
+      var v = String(s == null ? '' : s).trim().toUpperCase();
+      return /^PI([^A-Z0-9]|$)/.test(v) || /\bPI[-\/ ]?\d/.test(v);
+    },
+    /* Returns 'invoice', 'pi' or 'none' — see the ordering note in h_getDocTypeSplit.
+       'none' means no document of any kind has been raised, which is the bucket worth
+       chasing; it is NOT the same as "not on PI". */
+    statusOf: function (meta, revenueMonth) {
+      var docNo = String((meta && meta.invoice_number) || '').trim();
+      if (meta && meta.doc_type) return meta.doc_type === 'pi' ? 'pi' : 'invoice';
+      if (docNo) return BILLING.looksLikePI(docNo) ? 'pi' : 'invoice';
+      if (String(revenueMonth || '') < BILLING.POLICY_FROM) return 'invoice';
+      return (Number(meta && meta.outstanding) || 0) >= 1 ? 'none' : 'invoice';
+    }
+  };
+
+  /* h_getBillingStatus — the Revenue Billing tab.
+     Every fee record in the window, labelled with the document actually raised against it,
+     so the gap between booked revenue and what Accounts have invoiced is a list of names
+     rather than an argument about totals.
+
+     Scoping mirrors h_cashfreeList exactly: identity is re-read from the users table by
+     name rather than trusted from the client, so no browser can widen its own scope.
+     Admins, managers and holders of billing_all_centres (Bianca, Anuradha, Omkar Kadam)
+     see every centre; everyone else sees their own centres plus their cross-sells. */
+  function h_getBillingStatus(p, cb) {
+    var fromMonth = p.fromMonth || '2026-04';
+    var toMonth = p.toMonth || '2027-03';
+    var qs = 'select=*&revenue_month=gte.' + encodeURIComponent(fromMonth) +
+             '&revenue_month=lte.' + encodeURIComponent(toMonth) + '&limit=5000';
+    if (p.centre) qs += '&centre=eq.' + encodeURIComponent(p.centre);
+
+    GET('student_fees', qs, function (e, rows) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+
+      var build = function (feeRows, corpRows) {
+        var out = [], totals = { invoice: { amount: 0, count: 0 }, pi: { amount: 0, count: 0 },
+                                 none: { amount: 0, count: 0 } };
+        (feeRows || []).forEach(function (r) {
+          var m = parseFeeRow(r, [], []);
+          var booked = (Number(m.course_fee) || 0) - (Number(m.discount_amount) || 0);
+          if (!booked) return;
+          var st = BILLING.statusOf(m, r.revenue_month);
+          totals[st].amount += booked; totals[st].count++;
+          out.push({
+            studentId: r.student_id, batchCode: r.batch_code, centre: r.centre,
+            counsellor: r.recorded_by || '', booked: booked,
+            netPayable: Number(m.net_payable) || 0,
+            collected: Number(m.collected) || 0,
+            outstanding: Number(m.outstanding) || 0,
+            status: st, docNumber: String(m.invoice_number || '').trim(),
+            docTypeRecorded: m.doc_type || '', since: r.revenue_month || ''
+          });
+        });
+        // Oldest first — age is what makes a row urgent.
+        out.sort(function (a, b) { return String(a.since).localeCompare(String(b.since)); });
+
+        var corporate = (corpRows || []).map(function (r) {
+          var booked = (Number(r.course_fee) || 0) - (Number(r.discount_amount) || 0);
+          var docNo = String(r.invoice_number || '').trim();
+          return { company: r.company_name || '', centre: r.centre || '',
+                   counsellor: r.recorded_by || '', booked: booked,
+                   associates: Number(r.associates_trained) || 0,
+                   status: docNo ? (BILLING.looksLikePI(docNo) ? 'pi' : 'invoice') : 'none',
+                   docNumber: docNo, since: r.revenue_month || '' };
+        }).sort(function (a, b) { return String(a.since).localeCompare(String(b.since)); });
+
+        var ids = {}, list = [];
+        out.forEach(function (x) {
+          var k = String(x.studentId || '').toUpperCase();
+          if (k && !ids[k]) { ids[k] = 1; list.push('"' + k.replace(/"/g, '') + '"'); }
+        });
+        var reply = function (byId) {
+          out.forEach(function (x) { x.studentName = byId[String(x.studentId).toUpperCase()] || x.studentId; });
+          cb(null, { status: 'ok', fromMonth: fromMonth, toMonth: toMonth,
+                     rows: out, totals: totals, corporate: corporate });
+        };
+        if (!list.length) { reply({}); return; }
+        GET('students', 'student_id=in.(' + list.join(',') + ')&select=student_id,name,course', function (eS, sRows) {
+          var byId = {};
+          (eS ? [] : (sRows || [])).forEach(function (s) { byId[String(s.student_id).toUpperCase()] = s.name; });
+          reply(byId);
+        });
+      };
+
+      var withCorporate = function (feeRows) {
+        var cq = 'select=*&revenue_month=gte.' + encodeURIComponent(fromMonth) +
+                 '&revenue_month=lte.' + encodeURIComponent(toMonth) + '&limit=2000';
+        if (p.centre) cq += '&centre=eq.' + encodeURIComponent(p.centre);
+        GET('corporate_batches', cq, function (eC, cRows) {
+          var corp = eC ? [] : (cRows || []);
+          if (p.scopeCounsellors) {
+            corp = corp.filter(function (r) { return p.scopeCounsellors[String(r.recorded_by || '').toLowerCase()]; });
+          }
+          build(feeRows, corp);
+        });
+      };
+
+      var all = rows || [];
+      var actor = String(p.actorName || p.counsellorName || '').trim();
+      if (!actor || p.isAdmin === true || p.isAdmin === 'true') { withCorporate(all); return; }
+      GET('users', 'name=eq.' + encodeURIComponent(actor) + '&select=name,role,centres,permissions', function (eU, uRows) {
+        var u = (uRows || [])[0];
+        var perms = (u && u.permissions) || {};
+        var isPrivileged = !!(u && (u.role === 'Admin' || u.role === 'Manager')) ||
+                           perms.billing_all_centres === true;
+        if (!u || isPrivileged) { withCorporate(all); return; }
+        var norm = function (s) { return String(s == null ? '' : s).trim().toLowerCase(); };
+        var mine = String(u.centres || '').split(',').map(norm).filter(Boolean);
+        // Own centres, plus any record this counsellor entered themselves (their
+        // cross-sell at someone else's centre).
+        var out = all.filter(function (r) {
+          return mine.indexOf(norm(r.centre)) >= 0 || norm(r.recorded_by) === norm(actor);
+        });
+        p.scopeCounsellors = {}; p.scopeCounsellors[norm(actor)] = 1;
+        withCorporate(out);
+      });
+    });
+  }
+
+  /* h_saveBillingDocNumber — record the document number against one fee record, from the
+     Revenue Billing tab, without pushing the whole fee form through h_saveFee. Touches
+     two fields inside the receipt_no JSON and nothing else, so it cannot disturb
+     instalments, discounts or revenue month. 2026-09-22. */
+  function h_saveBillingDocNumber(p, cb) {
+    if (!p.studentId || !p.batchCode) { cb(null, { status: 'error', reason: 'Missing student or batch.' }); return; }
+    var docNo = String(p.docNumber || '').trim();
+    if (!docNo) { cb(null, { status: 'error', reason: 'Enter the document number.' }); return; }
+    var docType = String(p.docType || '').toLowerCase() === 'pi' ? 'pi' : 'invoice';
+    // Guard against the commonest slip: a PI number filed as an invoice, or the reverse.
+    if (BILLING.looksLikePI(docNo) !== (docType === 'pi')) {
+      cb(null, { status: 'error', reason: docType === 'pi'
+        ? 'That does not look like a PI number. Choose Tax Invoice, or correct the number.'
+        : 'That looks like a PI number. Choose Proforma (PI), or correct the number.' });
+      return;
+    }
+    var q = 'student_id=eq.' + encodeURIComponent(p.studentId) +
+            '&batch_code=eq.' + encodeURIComponent(p.batchCode);
+    GET('student_fees', q + '&select=*', function (e, rows) {
+      var row = (rows || [])[0];
+      if (e || !row) { cb(null, { status: 'error', reason: 'Fee record not found.' }); return; }
+      var meta = {};
+      try { meta = JSON.parse(row.receipt_no || '{}') || {}; } catch (x) { meta = {}; }
+      meta.invoice_number = docNo;
+      meta.doc_type = docType;
+      meta.doc_type_manual = true;
+      PATCH('student_fees', 'id=eq.' + encodeURIComponent(row.id), {
+        receipt_no: JSON.stringify(meta)
+      }, function (e2) {
+        cb(null, e2 ? { status: 'error', reason: String(e2) } : { status: 'ok', docNumber: docNo, docType: docType });
+      });
+    });
+  }
+
   function h_getDocTypeSplit(p, cb) {
     var fromMonth = p.fromMonth || '2026-04';
     var toMonth = p.toMonth || '2027-03';
@@ -4522,18 +4687,10 @@ window.gasGet = (function () {
     if (p.centre) qs += '&centre=eq.' + encodeURIComponent(p.centre);
     GET('student_fees', qs, function (e, rows) {
       if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
-      /* The month Accounts switched to raising a PI until the fee is fully in. Records
-         before this were tax-invoiced at enrolment regardless of balance. */
-      var PI_POLICY_FROM = '2026-09';
-      /* Reads a document number: "PI-72083" and "PI No : PI-72103" are proformas,
-         "BOM/26/INV/87705" and "KOL/26/INV/07408" are tax invoices. Used for both student
-         fee records and corporate batches. */
-      var looksLikePI = function (s) {
-        var v = String(s == null ? '' : s).trim().toUpperCase();
-        return /^PI([^A-Z0-9]|$)/.test(v) || /\bPI[-\/ ]?\d/.test(v);
-      };
+      var PI_POLICY_FROM = BILLING.POLICY_FROM;
+      var looksLikePI = BILLING.looksLikePI;
       var out = { booked: 0, taxInvoiced: 0, pi: 0, piCount: 0, invoiceCount: 0, recorded: 0,
-                  fromDocNumber: 0, preChange: 0, inferred: 0 };
+                  fromDocNumber: 0, preChange: 0, inferred: 0, noDoc: 0 };
       var piList = [];
       (rows || []).forEach(function (r) {
         var m = parseFeeRow(r, [], []);
@@ -4560,7 +4717,14 @@ window.gasGet = (function () {
         if (m.doc_type) { isPI = (m.doc_type === 'pi'); out.recorded++; }
         else if (docNo) { isPI = looksLikePI(docNo); out.fromDocNumber++; }
         else if (String(r.revenue_month || '') < PI_POLICY_FROM) { isPI = false; out.preChange++; }
-        else { isPI = (Number(m.outstanding) || 0) >= 1; out.inferred++; }
+        else {
+          isPI = (Number(m.outstanding) || 0) >= 1; out.inferred++;
+          // No document of any kind has been raised. The dashboard counts these with the
+          // PIs — both are "not yet in Accounts' books" — but the amount is carried
+          // separately so the split can say so, and so it reconciles against the Revenue
+          // Billing tab, which shows them as their own third bucket.
+          if (isPI) out.noDoc += rev;
+        }
         out.booked += rev;
         if (isPI) {
           out.pi += rev; out.piCount++;
@@ -4578,7 +4742,7 @@ window.gasGet = (function () {
                    booked: out.booked, taxInvoiced: out.taxInvoiced, pi: out.pi,
                    piCount: out.piCount, invoiceCount: out.invoiceCount,
                    recordedDocType: out.recorded, fromDocNumber: out.fromDocNumber,
-                   preChangeAssumed: out.preChange, inferredFromBalance: out.inferred,
+                   preChangeAssumed: out.preChange, inferredFromBalance: out.inferred, noDoc: out.noDoc,
                    corporate: out.corp, headline: out.headline, variance: out.variance,
                    piStudents: list });
       };
@@ -12383,6 +12547,8 @@ window.gasGet = (function () {
       case 'getOperationalInvoices':    return h_getOperationalInvoices(params, cb);
       case 'deleteOperationalInvoice':  return h_deleteOperationalInvoice(params, cb);
       case 'getDocTypeSplit':           return h_getDocTypeSplit(params, cb);
+      case 'getBillingStatus':          return h_getBillingStatus(params, cb);
+      case 'saveBillingDocNumber':      return h_saveBillingDocNumber(params, cb);
       case 'saveCorporateBatch':        return h_saveCorporateBatch(params, cb);
       case 'getCorporateBatches':       return h_getCorporateBatches(params, cb);
       case 'deleteCorporateBatch':      return h_deleteCorporateBatch(params, cb);

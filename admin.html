@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=114"></script>
+<script src="assets/shared.js?v=115"></script>
 <script src="assets/work.js?v=4"></script>
 <script src="assets/push-subscribe.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1570,6 +1570,7 @@
     <!-- Navigation Tab Bar -->
     <div class="tab-bar" id="tab-bar">
       <button class="tab active" onclick="switchAdminTab('t-revenue')">📈 Revenue Overview</button>
+      <button class="tab" onclick="switchAdminTab('t-billing')">💳 Revenue Billing</button>
       <button class="tab" id="tab-targets" onclick="switchAdminTab('t-targets')">🎯 Target Settings</button>
       <button class="tab" onclick="switchAdminTab('t-rev-breakdown')">📑 Revenue Breakdown</button>
       <button class="tab" onclick="switchAdminTab('t-standings')">🏆 Championship Standings</button>
@@ -2197,6 +2198,56 @@
     </div>
 
     <!-- TAB: ALL INVOICES (national, cross-batch, cross-centre) -->
+    <!-- REVENUE BILLING — 2026-09-22.
+         Explains the gap between booked revenue and what Accounts have invoiced, as a list
+         of named students rather than an argument about totals. Three states, because
+         "invoiced" and "nothing raised at all" are not the same thing and collapsing them
+         hides the only bucket anyone can act on. -->
+    <div id="t-billing" class="tab-content">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
+          <h2 style="margin-bottom:0">💳 Revenue Billing Status</h2>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="loadBillingStatus(true)">🔄 Refresh</button>
+            <button class="btn btn-outline no-print" style="width:auto;padding:6px 12px;font-size:12px;border:1.5px solid var(--gold);background:transparent;color:var(--navy);border-radius:6px;font-weight:600;cursor:pointer" onclick="downloadBillingCsv()">📄 Download CSV</button>
+          </div>
+        </div>
+        <p class="sub">Which document has actually been raised against each enrolment. Booked revenue is recognised at enrolment; Accounts report once a tax invoice exists. The rows marked <strong>No document</strong> are the gap between the two — send that list to Accounts.</p>
+
+        <div class="controls-row no-print" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin:14px 0">
+          <div class="field" style="margin-bottom:0;min-width:150px">
+            <label>Centre</label>
+            <select id="bill-centre" onchange="renderBillingStatus()"><option value="">All centres</option></select>
+          </div>
+          <div class="field" style="margin-bottom:0;min-width:150px">
+            <label>Month</label>
+            <select id="bill-month" onchange="renderBillingStatus()"><option value="">Whole year to date</option></select>
+          </div>
+          <div class="field" style="margin-bottom:0;min-width:150px">
+            <label>Status</label>
+            <select id="bill-status" onchange="renderBillingStatus()">
+              <option value="">All statuses</option>
+              <option value="none">No document raised</option>
+              <option value="pi">On proforma (PI)</option>
+              <option value="invoice">Tax invoice raised</option>
+            </select>
+          </div>
+          <div class="field" style="margin-bottom:0;min-width:150px">
+            <label>Counsellor</label>
+            <select id="bill-counsellor" onchange="renderBillingStatus()"><option value="">All counsellors</option></select>
+          </div>
+          <div class="field" style="margin-bottom:0;min-width:170px;flex:1">
+            <label>Search student / batch / doc no.</label>
+            <input type="text" id="bill-search" oninput="renderBillingStatus()" placeholder="Name, ID, batch or number">
+          </div>
+        </div>
+
+        <div class="kpi-row" id="bill-summary" style="margin-bottom:14px"></div>
+        <div id="bill-table">Loading…</div>
+        <div id="bill-corporate" style="margin-top:22px"></div>
+      </div>
+    </div>
+
     <div id="t-invoices" class="tab-content">
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
@@ -5014,6 +5065,7 @@ function toggleAdminMoreSheet() {
 var A_MORE_ITEMS = [
   ['t-hod-approvals',     '👑', 'HOD Approvals',          null],
   ['t-activity',          '🔔', 'Activity',               'activity-badge'],
+  ['t-billing',           '💳', 'Revenue Billing',        null],
   ['t-rev-breakdown',     '📑', 'Revenue Breakdown',      null],
   ['t-standings',         '🏆', 'Championship Standings', null],
   ['t-corp-revenue',      '💼', 'Corporate Revenue',      null],
@@ -5123,6 +5175,10 @@ function switchAdminTab(tabId) {
   }
   if (tabId === 't-activity') {
     loadActivityFeed();
+    return;
+  }
+  if (tabId === 't-billing') {
+    initBillingTab();
     return;
   }
   if (tabId === 't-corp-revenue') {
@@ -6890,6 +6946,197 @@ function toggleInternalDetail() {
   applyInternalDetailPref();
 }
 
+/* ============================ REVENUE BILLING TAB ============================
+   2026-09-22. Fetched once and filtered in the browser: the whole year is a few hundred
+   rows, so a round trip per filter change would be slower and no more correct. The
+   classification comes from h_getBillingStatus, which shares BILLING.statusOf with the
+   revenue dashboards, so this tab can never disagree with the figure it exists to explain. */
+var _billingData = null, _billingLoading = false;
+
+function initBillingTab() { if (!_billingData) loadBillingStatus(); else renderBillingStatus(); }
+
+function loadBillingStatus(force) {
+  if (_billingLoading) return;
+  if (_billingData && !force) { renderBillingStatus(); return; }
+  _billingLoading = true;
+  var tbl = document.getElementById('bill-table');
+  if (tbl) tbl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">Loading…</div>';
+  gasGet({ action: 'getBillingStatus', fromMonth: '2026-04', toMonth: '2027-03',
+           actorName: (adminUser && adminUser.name) || '', isAdmin: true }, function (e, d) {
+    _billingLoading = false;
+    if (e || !d || d.status !== 'ok') {
+      if (tbl) tbl.innerHTML = '<div style="padding:20px;text-align:center;color:#C0362C">Could not load billing status. ' + escC(String((d && d.reason) || e || '')) + '</div>';
+      return;
+    }
+    _billingData = d;
+    _billingFillFilters(d);
+    renderBillingStatus();
+  });
+}
+
+function _billingFillFilters(d) {
+  var centres = {}, months = {}, couns = {};
+  (d.rows || []).forEach(function (r) {
+    if (r.centre) centres[r.centre] = 1;
+    if (r.since) months[r.since] = 1;
+    if (r.counsellor) couns[r.counsellor] = 1;
+  });
+  var fill = function (id, keys, labelFn, keep) {
+    var sel = document.getElementById(id); if (!sel) return;
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">' + keep + '</option>' +
+      keys.sort().map(function (k) { return '<option value="' + escC(k) + '">' + escC(labelFn ? labelFn(k) : k) + '</option>'; }).join('');
+    sel.value = cur;
+  };
+  fill('bill-centre', Object.keys(centres), null, 'All centres');
+  fill('bill-month', Object.keys(months), billMonthLabel, 'Whole year to date');
+  fill('bill-counsellor', Object.keys(couns), function (n) { return window.igiName ? igiName(n) : n; }, 'All counsellors');
+}
+
+function billMonthLabel(ym) {
+  var m = /^(\d{4})-(\d{2})$/.exec(String(ym || '')); if (!m) return String(ym || '');
+  return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m[2]) - 1] + ' ' + m[1];
+}
+
+var BILL_STATUS = {
+  invoice: { label: 'Tax invoice', bg: '#E8F5EE', fg: '#1a7a3c' },
+  pi:      { label: 'On PI',       bg: '#FBF3DC', fg: '#B87A10' },
+  none:    { label: 'No document', bg: '#FEF2F2', fg: '#C0362C' }
+};
+function billChip(st) {
+  var s = BILL_STATUS[st] || BILL_STATUS.none;
+  return '<span style="display:inline-block;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;' +
+    'border-radius:999px;padding:3px 9px;background:' + s.bg + ';color:' + s.fg + ';white-space:nowrap">' + s.label + '</span>';
+}
+
+function _billingFiltered() {
+  var d = _billingData; if (!d) return [];
+  var c = (document.getElementById('bill-centre') || {}).value || '';
+  var m = (document.getElementById('bill-month') || {}).value || '';
+  var s = (document.getElementById('bill-status') || {}).value || '';
+  var cn = (document.getElementById('bill-counsellor') || {}).value || '';
+  var q = String(((document.getElementById('bill-search') || {}).value || '')).trim().toLowerCase();
+  return (d.rows || []).filter(function (r) {
+    if (c && r.centre !== c) return false;
+    if (m && r.since !== m) return false;
+    if (s && r.status !== s) return false;
+    if (cn && r.counsellor !== cn) return false;
+    if (q) {
+      var hay = [r.studentName, r.studentId, r.batchCode, r.docNumber].join(' ').toLowerCase();
+      if (hay.indexOf(q) < 0) return false;
+    }
+    return true;
+  });
+}
+
+function renderBillingStatus() {
+  var d = _billingData; if (!d) return;
+  var rows = _billingFiltered();
+  var tot = { invoice: { amount: 0, count: 0 }, pi: { amount: 0, count: 0 }, none: { amount: 0, count: 0 } };
+  var collected = 0;
+  rows.forEach(function (r) { tot[r.status].amount += r.booked; tot[r.status].count++; collected += r.collected; });
+
+  var card = function (st, note) {
+    var s = BILL_STATUS[st], t = tot[st];
+    return '<div class="kpi-card" style="flex:1;min-width:170px;border-left:4px solid ' + s.fg + '">' +
+      '<div class="kpi-label">' + s.label + '</div>' +
+      '<div class="kpi-value" style="color:' + s.fg + '">' + money(t.amount) + '</div>' +
+      '<div class="kpi-meta">' + t.count + ' record' + (t.count === 1 ? '' : 's') + (note ? ' · ' + note : '') + '</div>' +
+    '</div>';
+  };
+  var sum = document.getElementById('bill-summary');
+  if (sum) {
+    sum.innerHTML =
+      card('invoice', 'in Accounts&rsquo; books') +
+      card('pi', 'awaiting full payment') +
+      card('none', 'nothing raised yet') +
+      '<div class="kpi-card" style="flex:1;min-width:170px"><div class="kpi-label">Collected to date</div>' +
+        '<div class="kpi-value">' + money(collected) + '</div>' +
+        '<div class="kpi-meta">across ' + rows.length + ' record' + (rows.length === 1 ? '' : 's') + ' shown</div></div>';
+  }
+
+  var tbl = document.getElementById('bill-table');
+  if (!tbl) return;
+  if (!rows.length) {
+    tbl.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted)">Nothing matches these filters.</div>';
+  } else {
+    tbl.innerHTML = '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+      '<th class="text-left">Student</th><th class="text-left">Batch</th><th class="text-left">Centre</th>' +
+      '<th class="text-left">Counsellor</th><th>Booked</th><th>Net payable</th><th>Collected</th>' +
+      '<th>Outstanding</th><th>Since</th><th>Status</th><th class="text-left">Document</th>' +
+      '</tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr' + (r.status === 'none' ? ' style="background:rgba(192,54,44,0.035)"' : '') + '>' +
+          '<td class="text-left"><strong>' + escC(r.studentName || r.studentId) + '</strong>' +
+            '<div style="font-size:10px;color:var(--muted)">' + escC(r.studentId) + '</div></td>' +
+          '<td class="text-left" style="font-size:11px">' + escC(r.batchCode) + '</td>' +
+          '<td class="text-left" style="font-size:11px">' + escC(r.centre) + '</td>' +
+          '<td class="text-left" style="font-size:11px">' + escC(window.igiName ? igiName(r.counsellor) : r.counsellor) + '</td>' +
+          '<td style="text-align:right;font-weight:600">' + money(r.booked) + '</td>' +
+          '<td style="text-align:right;font-size:11px;color:var(--muted)">' + money(r.netPayable) + '</td>' +
+          '<td style="text-align:right">' + money(r.collected) + '</td>' +
+          '<td style="text-align:right;color:' + (r.outstanding >= 1 ? '#B45309' : 'var(--muted)') + '">' + money(r.outstanding) + '</td>' +
+          '<td style="text-align:center;font-size:11px">' + escC(billMonthLabel(r.since)) + '</td>' +
+          '<td style="text-align:center">' + billChip(r.status) + '</td>' +
+          '<td class="text-left" style="font-size:11px">' + (r.docNumber ? escC(r.docNumber) : '<span style="color:var(--muted)">—</span>') + '</td>' +
+        '</tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+
+  // Corporate sits apart: no student, no batch, no payment tracking behind it, so it
+  // cannot share the table without inventing columns it has no data for.
+  var corp = (d.corporate || []).filter(function (r) {
+    var c = (document.getElementById('bill-centre') || {}).value || '';
+    var m = (document.getElementById('bill-month') || {}).value || '';
+    var s = (document.getElementById('bill-status') || {}).value || '';
+    var cn = (document.getElementById('bill-counsellor') || {}).value || '';
+    return (!c || r.centre === c) && (!m || r.since === m) && (!s || r.status === s) && (!cn || r.counsellor === cn);
+  });
+  var cEl = document.getElementById('bill-corporate');
+  if (cEl) {
+    cEl.innerHTML = !corp.length ? '' :
+      '<div class="section-tag">💼 Corporate Programmes</div>' +
+      '<p class="sub" style="margin-bottom:10px">Billed to the client, not to a student. Corporate carries no per-payment tracking, so there is no collected figure against these.</p>' +
+      '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+        '<th class="text-left">Company</th><th class="text-left">Centre</th><th class="text-left">Counsellor</th>' +
+        '<th>Associates</th><th>Booked</th><th>Since</th><th>Status</th><th class="text-left">Document</th>' +
+      '</tr></thead><tbody>' + corp.map(function (r) {
+        return '<tr' + (r.status === 'none' ? ' style="background:rgba(192,54,44,0.035)"' : '') + '>' +
+          '<td class="text-left"><strong>' + escC(r.company) + '</strong></td>' +
+          '<td class="text-left" style="font-size:11px">' + escC(r.centre) + '</td>' +
+          '<td class="text-left" style="font-size:11px">' + escC(window.igiName ? igiName(r.counsellor) : r.counsellor) + '</td>' +
+          '<td style="text-align:center">' + (r.associates || '—') + '</td>' +
+          '<td style="text-align:right;font-weight:600">' + money(r.booked) + '</td>' +
+          '<td style="text-align:center;font-size:11px">' + escC(billMonthLabel(r.since)) + '</td>' +
+          '<td style="text-align:center">' + billChip(r.status) + '</td>' +
+          '<td class="text-left" style="font-size:11px">' + (r.docNumber ? escC(r.docNumber) : '<span style="color:var(--muted)">—</span>') + '</td>' +
+        '</tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+}
+
+/* The export is the point of the tab: filter to "No document raised", download, send to
+   Accounts. So it exports exactly what is on screen, filters and all. */
+function downloadBillingCsv() {
+  var rows = _billingFiltered();
+  if (!rows.length) { showToast('Nothing to export with these filters.', 'info'); return; }
+  var esc = function (v) { var s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  var out = [['Student','Student ID','Batch','Centre','Counsellor','Booked (excl GST)','Net Payable','Collected','Outstanding','Month','Billing Status','Document Number'].join(',')];
+  rows.forEach(function (r) {
+    out.push([r.studentName || r.studentId, r.studentId, r.batchCode, r.centre,
+              (window.igiName ? igiName(r.counsellor) : r.counsellor),
+              Math.round(r.booked), Math.round(r.netPayable), Math.round(r.collected), Math.round(r.outstanding),
+              billMonthLabel(r.since), (BILL_STATUS[r.status] || {}).label || r.status, r.docNumber].map(esc).join(','));
+  });
+  var st = (document.getElementById('bill-status') || {}).value || 'all';
+  var blob = new Blob([out.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'IGI-Revenue-Billing-' + st + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  showToast(rows.length + ' rows exported.', 'success');
+}
+
 var _docTypeSplitCache = null;
 function loadDocTypeSplit(force) {
   var el = document.getElementById('ytd-doctype-split');
@@ -6911,9 +7158,10 @@ function loadDocTypeSplit(force) {
             + ' pre-date the Sept 2026 change with no document number and are counted as invoiced, '
             + 'since Accounts raised the tax invoice at enrolment under the old policy.'
           : '')
-      + (d.inferredFromBalance
-          ? ' ' + d.inferredFromBalance + ' Sept-onwards record' + (d.inferredFromBalance > 1 ? 's' : '')
-            + ' have no document number yet and are read as PI from the open balance.'
+      + (d.noDoc
+          ? ' Of the PI figure, ' + money(d.noDoc) + ' across ' + d.inferredFromBalance + ' record'
+            + (d.inferredFromBalance > 1 ? 's' : '') + ' has NO document raised at all — not a PI either. '
+            + 'See the Revenue Billing tab, which separates those out.'
           : '')
       + (c.untracked
           ? ' ' + money(c.untracked) + ' of corporate is typed monthly revenue with no batch record '

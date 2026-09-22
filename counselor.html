@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=114"></script>
+<script src="/assets/shared.js?v=115"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1828,6 +1828,7 @@
     <button class="tab" id="tab-work" onclick="switchTab('t-work')">🧩 Work <span id="work-badge" style="display:none;background:#2563eb;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-prospects" onclick="switchTab('t-prospects')">🧭 Prospects <span id="prospects-due-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="tab-revenue" onclick="switchTab('t-revenue')">📈 Revenue</button>
+    <button class="tab" id="tab-billing" onclick="switchTab('t-billing')">💳 Revenue Billing</button>
     <button class="tab" id="tab-fee-record" onclick="switchTab('t-fee-record')">📑 Ledger</button>
     <button class="tab" id="tab-op-invoices" onclick="switchTab('t-op-invoices')" style="display:none">🧾 Invoices &amp; Receipts</button>
     <button class="tab active" id="tab-batches" onclick="switchTab('t-batches')">📋 Batches</button>
@@ -4416,6 +4417,54 @@
     </div>
   </div>
 
+  <!-- TAB: REVENUE BILLING — 2026-09-22.
+       The counsellor's own view of which document exists against each of their enrolments.
+       The point is the "No document" rows: they can key the PI number in from here rather
+       than going back through the fee form. Scope is enforced server-side in
+       h_getBillingStatus, not by this markup. -->
+  <div id="t-billing" class="tab-content">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:4px">
+        <h2 style="margin-bottom:0">💳 Revenue Billing Status</h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:12px" onclick="loadCnBilling(true)">🔄 Refresh</button>
+          <button class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:12px" onclick="downloadCnBillingCsv()">📄 Download CSV</button>
+        </div>
+      </div>
+      <p class="sub">What document Accounts have raised against each of your enrolments. Your achievement is measured on business booked, so none of this changes your number — but a <strong>No document</strong> row is one nobody has billed yet. Add the PI or invoice number here as soon as you have it.</p>
+
+      <div id="cn-bill-scope-note" style="display:none;font-size:11.5px;color:#1a7a3c;background:#E8F5EE;border:1px solid #1a7a3c33;border-radius:8px;padding:8px 12px;margin:12px 0"></div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin:14px 0">
+        <div class="field" style="margin-bottom:0;min-width:150px" id="cn-bill-centre-wrap">
+          <label>Centre</label>
+          <select id="cn-bill-centre" onchange="renderCnBilling()"><option value="">All centres</option></select>
+        </div>
+        <div class="field" style="margin-bottom:0;min-width:150px">
+          <label>Month</label>
+          <select id="cn-bill-month" onchange="renderCnBilling()"><option value="">Whole year to date</option></select>
+        </div>
+        <div class="field" style="margin-bottom:0;min-width:150px">
+          <label>Status</label>
+          <select id="cn-bill-status" onchange="renderCnBilling()">
+            <option value="">All statuses</option>
+            <option value="none">No document raised</option>
+            <option value="pi">On proforma (PI)</option>
+            <option value="invoice">Tax invoice raised</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:0;min-width:160px;flex:1">
+          <label>Search</label>
+          <input type="text" id="cn-bill-search" oninput="renderCnBilling()" placeholder="Name, ID, batch or number">
+        </div>
+      </div>
+
+      <div id="cn-bill-summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
+      <div id="cn-bill-table">Loading…</div>
+      <div id="cn-bill-corporate" style="margin-top:22px"></div>
+    </div>
+  </div>
+
   <!-- TAB 7: REVENUE -->
   <div id="t-revenue" class="tab-content">
     <div class="card admin-only" id="admin-dashboard-card">
@@ -6214,6 +6263,9 @@ function switchTab(id) {
   if (id === 't-op-invoices') {
     loadOperationalInvoices();
   }
+  if (id === 't-billing') {
+    initCnBillingTab();
+  }
   if (id==='t-fees') {
     if (isAdmin && !adminDashboardData) renderAdminDashboardPlaceholders();
     var feeSel = document.getElementById('fee-batch');
@@ -6314,6 +6366,7 @@ function renderCounselorMoreSheet() {
     ['Prospects', '🧭', 't-prospects', null, 'prospects-due-badge'],
     ['Attendance', '✅', 't-attendance', null, 'att-pending-badge'],
     ['Students', '👥', 't-students', null, null],
+    ['Revenue Billing', '💳', 't-billing', null, null],
     ['Invoices & Receipts', '🧾', 't-op-invoices', 'tab-op-invoices', null],
     ['Inventory', '📦', 't-inventory', null, 'inv-pending-badge'],
     ['My Batches', '🗂', 't-mybatches', null, null],
@@ -8238,6 +8291,200 @@ function loadMyDocTypeSplit() {
    The reassurance line is not decoration. A number sitting beside "Total Achieved" invites
    the reading that it is about to be taken away; targets are measured on booked business
    and this changes nothing about that, so it says so once, plainly. */
+/* ==================== REVENUE BILLING TAB (counsellor) ====================
+   2026-09-22. Same handler and the same BILLING.statusOf as the admin tab and the revenue
+   dashboards, so a counsellor and the HOD looking at the same student always see the same
+   status. Scope is decided server-side from the users table; this file never widens it. */
+var _cnBill = null, _cnBillLoading = false;
+var CN_BILL_STATUS = {
+  invoice: { label: 'Tax invoice', bg: '#E8F5EE', fg: '#1a7a3c' },
+  pi:      { label: 'On PI',       bg: '#FBF3DC', fg: '#B87A10' },
+  none:    { label: 'No document', bg: '#FEF2F2', fg: '#C0362C' }
+};
+function cnBillChip(st) {
+  var s = CN_BILL_STATUS[st] || CN_BILL_STATUS.none;
+  return '<span style="display:inline-block;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;' +
+    'border-radius:999px;padding:3px 9px;background:' + s.bg + ';color:' + s.fg + ';white-space:nowrap">' + s.label + '</span>';
+}
+function cnBillMonth(ym) {
+  var m = /^(\d{4})-(\d{2})$/.exec(String(ym || '')); if (!m) return String(ym || '');
+  return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m[2]) - 1] + ' ' + m[1];
+}
+
+function initCnBillingTab() { if (!_cnBill) loadCnBilling(); else renderCnBilling(); }
+
+function loadCnBilling(force) {
+  if (_cnBillLoading) return;
+  if (_cnBill && !force) { renderCnBilling(); return; }
+  _cnBillLoading = true;
+  var tbl = document.getElementById('cn-bill-table');
+  if (tbl) tbl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">Loading…</div>';
+  gasGet({ action: 'getBillingStatus', fromMonth: '2026-04', toMonth: '2027-03',
+           actorName: counselorName, isAdmin: isAdmin === true }, function (e, d) {
+    _cnBillLoading = false;
+    if (e || !d || d.status !== 'ok') {
+      if (tbl) tbl.innerHTML = '<div style="padding:20px;text-align:center;color:#C0362C">Could not load billing status.</div>';
+      return;
+    }
+    _cnBill = d;
+    var centres = {}, months = {};
+    (d.rows || []).forEach(function (r) { if (r.centre) centres[r.centre] = 1; if (r.since) months[r.since] = 1; });
+    var cKeys = Object.keys(centres);
+    var fill = function (id, keys, labelFn, keep) {
+      var sel = document.getElementById(id); if (!sel) return;
+      var cur = sel.value;
+      sel.innerHTML = '<option value="">' + keep + '</option>' +
+        keys.sort().map(function (k) { return '<option value="' + escC(k) + '">' + escC(labelFn ? labelFn(k) : k) + '</option>'; }).join('');
+      sel.value = cur;
+    };
+    fill('cn-bill-centre', cKeys, null, 'All centres');
+    fill('cn-bill-month', Object.keys(months), cnBillMonth, 'Whole year to date');
+    // The centre filter only earns its space when more than one centre is in view.
+    var cw = document.getElementById('cn-bill-centre-wrap');
+    if (cw) cw.style.display = cKeys.length > 1 ? '' : 'none';
+    var note = document.getElementById('cn-bill-scope-note');
+    if (note) {
+      if (cKeys.length > 1) {
+        note.style.display = 'block';
+        note.innerHTML = '✅ You have all-centre visibility on this tab — showing ' + cKeys.length + ' centres.';
+      } else { note.style.display = 'none'; }
+    }
+    renderCnBilling();
+  });
+}
+
+function _cnBillFiltered() {
+  if (!_cnBill) return [];
+  var c = (document.getElementById('cn-bill-centre') || {}).value || '';
+  var m = (document.getElementById('cn-bill-month') || {}).value || '';
+  var s = (document.getElementById('cn-bill-status') || {}).value || '';
+  var q = String(((document.getElementById('cn-bill-search') || {}).value || '')).trim().toLowerCase();
+  return (_cnBill.rows || []).filter(function (r) {
+    if (c && r.centre !== c) return false;
+    if (m && r.since !== m) return false;
+    if (s && r.status !== s) return false;
+    if (q && [r.studentName, r.studentId, r.batchCode, r.docNumber].join(' ').toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+}
+
+function renderCnBilling() {
+  if (!_cnBill) return;
+  var rows = _cnBillFiltered();
+  var tot = { invoice: 0, pi: 0, none: 0 }, cnt = { invoice: 0, pi: 0, none: 0 }, collected = 0;
+  rows.forEach(function (r) { tot[r.status] += r.booked; cnt[r.status]++; collected += r.collected; });
+
+  var sum = document.getElementById('cn-bill-summary');
+  if (sum) {
+    var card = function (st) {
+      var s = CN_BILL_STATUS[st];
+      return '<div style="flex:1;min-width:150px;background:' + s.bg + ';border-left:4px solid ' + s.fg + ';border-radius:8px;padding:10px 13px">' +
+        '<div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:' + s.fg + '">' + s.label + '</div>' +
+        '<div style="font-size:19px;font-weight:800;color:' + s.fg + ';font-family:\'JetBrains Mono\',monospace">' + money(tot[st]) + '</div>' +
+        '<div style="font-size:10.5px;color:#6b7280">' + cnt[st] + ' record' + (cnt[st] === 1 ? '' : 's') + '</div></div>';
+    };
+    sum.innerHTML = card('none') + card('pi') + card('invoice') +
+      '<div style="flex:1;min-width:150px;background:var(--off);border-left:4px solid var(--border);border-radius:8px;padding:10px 13px">' +
+        '<div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Collected to date</div>' +
+        '<div style="font-size:19px;font-weight:800;font-family:\'JetBrains Mono\',monospace">' + money(collected) + '</div>' +
+        '<div style="font-size:10.5px;color:#6b7280">' + rows.length + ' shown</div></div>';
+  }
+
+  var tbl = document.getElementById('cn-bill-table');
+  if (tbl) {
+    tbl.innerHTML = !rows.length
+      ? '<div style="padding:24px;text-align:center;color:var(--muted)">Nothing matches these filters.</div>'
+      : '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+        '<th class="text-left">Student</th><th class="text-left">Batch</th><th class="text-left">Centre</th>' +
+        '<th>Booked</th><th>Collected</th><th>Outstanding</th><th>Since</th><th>Status</th>' +
+        '<th class="text-left">Document</th></tr></thead><tbody>' +
+        rows.map(function (r, i) {
+          var key = escC(r.studentId) + '|' + escC(r.batchCode);
+          return '<tr' + (r.status === 'none' ? ' style="background:rgba(192,54,44,0.035)"' : '') + '>' +
+            '<td class="text-left"><strong>' + escC(r.studentName || r.studentId) + '</strong>' +
+              '<div style="font-size:10px;color:var(--muted)">' + escC(r.studentId) + '</div></td>' +
+            '<td class="text-left" style="font-size:11px">' + escC(r.batchCode) + '</td>' +
+            '<td class="text-left" style="font-size:11px">' + escC(r.centre) + '</td>' +
+            '<td style="text-align:right;font-weight:600">' + money(r.booked) + '</td>' +
+            '<td style="text-align:right">' + money(r.collected) + '</td>' +
+            '<td style="text-align:right;color:' + (r.outstanding >= 1 ? '#B45309' : 'var(--muted)') + '">' + money(r.outstanding) + '</td>' +
+            '<td style="text-align:center;font-size:11px">' + escC(cnBillMonth(r.since)) + '</td>' +
+            '<td style="text-align:center">' + cnBillChip(r.status) + '</td>' +
+            '<td class="text-left" style="font-size:11px">' +
+              (r.docNumber
+                ? escC(r.docNumber)
+                : '<button onclick="cnBillPrompt(' + i + ')" style="background:#fff;color:#78350F;border:1.5px solid #D97706;border-radius:6px;padding:3px 9px;font-size:10.5px;font-weight:600;cursor:pointer;white-space:nowrap">+ Add number</button>') +
+            '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+  }
+
+  var corp = (_cnBill.corporate || []).filter(function (r) {
+    var s = (document.getElementById('cn-bill-status') || {}).value || '';
+    return !s || r.status === s;
+  });
+  var cEl = document.getElementById('cn-bill-corporate');
+  if (cEl) {
+    cEl.innerHTML = !corp.length ? '' :
+      '<h3 style="font-size:14px;margin:0 0 4px">💼 Corporate Programmes</h3>' +
+      '<p class="sub" style="margin-bottom:10px">Billed to the client. Corporate carries no per-payment tracking, so there is no collected figure against these.</p>' +
+      '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+        '<th class="text-left">Company</th><th class="text-left">Centre</th><th>Associates</th>' +
+        '<th>Booked</th><th>Since</th><th>Status</th><th class="text-left">Document</th>' +
+      '</tr></thead><tbody>' + corp.map(function (r) {
+        return '<tr><td class="text-left"><strong>' + escC(r.company) + '</strong></td>' +
+          '<td class="text-left" style="font-size:11px">' + escC(r.centre) + '</td>' +
+          '<td style="text-align:center">' + (r.associates || '—') + '</td>' +
+          '<td style="text-align:right;font-weight:600">' + money(r.booked) + '</td>' +
+          '<td style="text-align:center;font-size:11px">' + escC(cnBillMonth(r.since)) + '</td>' +
+          '<td style="text-align:center">' + cnBillChip(r.status) + '</td>' +
+          '<td class="text-left" style="font-size:11px">' + (r.docNumber ? escC(r.docNumber) : '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+}
+
+/* Keying in the number from here, rather than sending them back through the fee form.
+   The handler cross-checks the number against the type chosen, so a PI filed as an
+   invoice is refused rather than quietly miscounted on the revenue dashboards. */
+function cnBillPrompt(idx) {
+  var r = _cnBillFiltered()[idx];
+  if (!r) return;
+  var docNo = window.prompt('Document number for ' + (r.studentName || r.studentId) + ' — ' + r.batchCode +
+    '\n\nEnter the PI number (e.g. PI-72103) or the tax invoice number (e.g. BOM/26/INV/87705).');
+  if (docNo === null) return;
+  docNo = String(docNo).trim();
+  if (!docNo) return;
+  var isPI = /^PI([^A-Z0-9]|$)/i.test(docNo) || /\bPI[-\/ ]?\d/i.test(docNo);
+  var type = window.confirm('Record "' + docNo + '" as a ' + (isPI ? 'PROFORMA INVOICE (PI)' : 'TAX INVOICE') +
+    '?\n\nOK to confirm, Cancel to record it as a ' + (isPI ? 'tax invoice' : 'proforma (PI)') + ' instead.')
+    ? (isPI ? 'pi' : 'invoice') : (isPI ? 'invoice' : 'pi');
+  gasGet({ action: 'saveBillingDocNumber', studentId: r.studentId, batchCode: r.batchCode,
+           docNumber: docNo, docType: type }, function (e, d) {
+    if (e || !d || d.status !== 'ok') {
+      showToast((d && d.reason) || 'Could not save the document number.', 'error');
+      return;
+    }
+    showToast('Saved — ' + docNo + ' recorded.', 'success');
+    loadCnBilling(true);
+  });
+}
+
+function downloadCnBillingCsv() {
+  var rows = _cnBillFiltered();
+  if (!rows.length) { showToast('Nothing to export with these filters.', 'info'); return; }
+  var esc = function (v) { var s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  var out = [['Student','Student ID','Batch','Centre','Booked (excl GST)','Net Payable','Collected','Outstanding','Month','Billing Status','Document Number'].join(',')];
+  rows.forEach(function (r) {
+    out.push([r.studentName || r.studentId, r.studentId, r.batchCode, r.centre,
+              Math.round(r.booked), Math.round(r.netPayable), Math.round(r.collected), Math.round(r.outstanding),
+              cnBillMonth(r.since), (CN_BILL_STATUS[r.status] || {}).label || r.status, r.docNumber].map(esc).join(','));
+  });
+  var blob = new Blob([out.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Revenue-Billing-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+}
+
 function renderCollectPanel(d) {
   var panel = document.getElementById('rev-collect-panel');
   if (!panel) return;

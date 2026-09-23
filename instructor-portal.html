@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Instructor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=120"></script>
+<script src="/assets/shared.js?v=121"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -420,6 +420,7 @@
     <button class="tab" id="t-onlinetests-tab" style="display:none" onclick="iTab('t-onlinetests')">🧪 Online Tests</button>
     <button class="tab" id="t-assignments-tab" style="display:none" onclick="iTab('t-assignments')">📁 Assignments<span id="assignments-notif-badge" style="display:none;background:#dc2626;color:#fff;font-size:9px;padding:1px 5px;border-radius:10px;margin-left:5px;font-weight:700;"></span></button>
     <button class="tab" id="t-portfolios-tab" style="display:none" onclick="iTab('t-portfolios')">🎨 Portfolios<span id="portfolios-notif-badge" style="display:none;background:#dc2626;color:#fff;font-size:9px;padding:1px 5px;border-radius:10px;margin-left:5px;font-weight:700;"></span></button>
+    <button class="tab" id="t-stonechallenge-tab" style="display:none" onclick="iTab('t-stonechallenge')">💎 Stone Challenge</button>
     <button class="tab" id="t-trayhub-tab" onclick="iTab('t-trayhub'); trayHubInit();">🔮 Tray Hub<span id="tray-notif-badge" style="display:none;background:#dc2626;color:#fff;font-size:9px;padding:1px 5px;border-radius:10px;margin-left:5px;font-weight:700;"></span></button>
   </div>
 
@@ -1740,6 +1741,62 @@
     </div><!-- /ot-templates -->
 
   </div><!-- /t-onlinetests -->
+  <!-- ══════════════ STONE CHALLENGE (practical) ══════════════ -->
+  <div id="t-stonechallenge" class="tab-content">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+      <div>
+        <h2 style="margin:0;font-size:19px;">💎 Stone Challenge</h2>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px;">Practical grading — DG 4 stones, PDC 3 stones. 10 marks per stone.</div>
+      </div>
+      <button class="ot-btn" onclick="scOpenCreate()">➕ New Challenge</button>
+    </div>
+
+    <div id="sc-create-panel" style="display:none;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:16px;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;">
+        <label style="font-size:12px;font-weight:600;color:#374151;">Course
+          <select id="sc-course" onchange="scCourseChanged()" style="width:100%;margin-top:4px;padding:8px;border:1px solid #d1d5db;border-radius:8px;">
+            <option value="DG">Diamond Graduate — 4 stones</option>
+            <option value="PDC">PDC — 3 stones</option>
+          </select>
+        </label>
+        <label style="font-size:12px;font-weight:600;color:#374151;">Batch
+          <select id="sc-batch" style="width:100%;margin-top:4px;padding:8px;border:1px solid #d1d5db;border-radius:8px;"></select>
+        </label>
+        <label style="font-size:12px;font-weight:600;color:#374151;">Title
+          <input id="sc-title" placeholder="DG Stone Challenge" style="width:100%;margin-top:4px;padding:8px;border:1px solid #d1d5db;border-radius:8px;">
+        </label>
+        <label style="font-size:12px;font-weight:600;color:#374151;">Closes (end of session)
+          <input id="sc-closes" type="datetime-local" style="width:100%;margin-top:4px;padding:8px;border:1px solid #d1d5db;border-radius:8px;">
+        </label>
+      </div>
+
+      <div style="margin-top:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <div style="font-size:12px;font-weight:700;color:#374151;">Stones on the tray — <span id="sc-pick-count">0</span> of <span id="sc-pick-need">4</span> chosen</div>
+          <div style="display:flex;gap:6px;">
+            <input id="sc-stone-search" placeholder="Filter stone no / shape" oninput="scRenderPicker()" style="padding:6px 9px;border:1px solid #d1d5db;border-radius:8px;font-size:12px;">
+            <select id="sc-series-filter" onchange="scRenderPicker()" style="padding:6px 9px;border:1px solid #d1d5db;border-radius:8px;font-size:12px;">
+              <option value="">All series</option><option value="Main">Main</option>
+              <option value="Fancy">Fancy</option><option value="WT">WT</option>
+            </select>
+            <button class="ot-btn ghost" onclick="scPickRandom()">🎲 Pick at random</button>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Order is station order. Students rotate through the stations; everyone grades the same stones.</div>
+        <div id="sc-picked" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;"></div>
+        <div id="sc-picker" style="max-height:230px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;"></div>
+      </div>
+
+      <div style="margin-top:14px;display:flex;gap:8px;">
+        <button class="ot-btn" onclick="scCreate()">Create challenge</button>
+        <button class="ot-btn ghost" onclick="document.getElementById('sc-create-panel').style.display='none'">Cancel</button>
+      </div>
+    </div>
+
+    <div id="sc-list"><div style="padding:30px;text-align:center;color:var(--muted);">Loading…</div></div>
+    <div id="sc-results" style="margin-top:18px;"></div>
+  </div><!-- /t-stonechallenge -->
+
 
   <!-- ── TAB: ASSIGNMENTS ────────────────────────────────────────── -->
   <div id="t-assignments" class="tab-content">
@@ -3082,6 +3139,7 @@ function iTab(id) {
   if (id==='t-academic')   loadAcademicDashboard(false);
   if (id==='t-revenue')    loadAmitRevenueDashboard();
   if (id==='t-onlinetests') otInit();
+  if (id==='t-stonechallenge') scInit();
   if (id==='t-assignments') assignmentsInit();
   if (id==='t-portfolios') portfoliosInit();
 }
@@ -3122,6 +3180,7 @@ function renderInstructorMoreSheet() {
     ['Online Tests', '🧪', 't-onlinetests', 't-onlinetests-tab', null],
     ['Assignments', '📁', 't-assignments', 't-assignments-tab', 'assignments-notif-badge'],
     ['Portfolios', '🎨', 't-portfolios', 't-portfolios-tab', 'portfolios-notif-badge'],
+    ['Stone Challenge', '💎', 't-stonechallenge', 't-stonechallenge-tab', null],
     ['Tray Hub', '🔮', 't-trayhub', 't-trayhub-tab', 'tray-notif-badge']
   ];
   wrap.innerHTML = items.filter(function(it) {
@@ -5713,6 +5772,235 @@ var otCurrentCQType = 'MCQ';
 var otPendingSubmissions = [];
 var otActiveGradingTestId = null;
 var otIsCreating = false;     // prevent double submission
+
+
+/* ══════════════════════════════════════════════════════════════
+   STONE CHALLENGE — instructor side
+   A challenge is a tray of stones laid out at numbered stations.
+   Everyone grades the same stones; rotation is physical, not data.
+   ══════════════════════════════════════════════════════════════ */
+var scStones = [];      // stone_master, loaded once
+var scPicked = [];      // chosen stones, in station order
+var scChallenges = [];
+
+function scInit() {
+  if (!instructorBatchesCache || !instructorBatchesCache.length) loadInstructorBatches();
+  if (!scStones.length) scLoadStones();
+  scLoadChallenges();
+}
+
+function scLoadStones() {
+  gasGet({ action: 'scGetStoneMaster', discipline: 'Diamond' }, function (e, d) {
+    if (e || !d || d.status !== 'ok') { scStones = []; return; }
+    scStones = d.stones || [];
+    scRenderPicker();
+  });
+}
+
+function scNeeded() {
+  return (document.getElementById('sc-course') || {}).value === 'PDC' ? 3 : 4;
+}
+
+function scCourseChanged() {
+  document.getElementById('sc-pick-need').textContent = scNeeded();
+  if (scPicked.length > scNeeded()) scPicked = scPicked.slice(0, scNeeded());
+  scRenderPicked();
+}
+
+function scOpenCreate() {
+  var panel = document.getElementById('sc-create-panel');
+  panel.style.display = panel.style.display === 'none' ? '' : 'none';
+  if (panel.style.display === 'none') return;
+  var sel = document.getElementById('sc-batch');
+  sel.innerHTML = (instructorBatchesCache || []).map(function (b) {
+    return '<option value="' + escHtml(b.batchCode) + '">' + escHtml(b.batchCode) + ' — ' + escHtml(b.course || '') + '</option>';
+  }).join('');
+  // default: closes at the end of today
+  var d = new Date(); d.setHours(18, 0, 0, 0);
+  document.getElementById('sc-closes').value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  scPicked = [];
+  scCourseChanged();
+  scRenderPicker();
+}
+
+function scRenderPicker() {
+  var box = document.getElementById('sc-picker');
+  if (!box) return;
+  var q = ((document.getElementById('sc-stone-search') || {}).value || '').trim().toLowerCase();
+  var ser = (document.getElementById('sc-series-filter') || {}).value || '';
+  var list = scStones.filter(function (s) {
+    if (ser && s.series !== ser) return false;
+    if (!q) return true;
+    return (s.stoneNo + ' ' + (s.shape || '') + ' ' + (s.clarity || '') + ' ' + (s.color || '')).toLowerCase().indexOf(q) !== -1;
+  });
+  if (!list.length) { box.innerHTML = '<div style="padding:16px;color:#6b7280;font-size:12px;">No stones match.</div>'; return; }
+  box.innerHTML = list.map(function (s) {
+    var on = scPicked.some(function (x) { return x.id === s.id; });
+    return '<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid #f3f4f6;' + (on ? 'background:#eff6ff;' : '') + '">'
+      + '<input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="scTogglePick(\'' + s.id + '\')">'
+      + '<div style="flex:1;font-size:12px;"><b>' + escHtml(s.stoneNo) + '</b> · ' + escHtml(s.shape || '') + ' · ' + (s.carat || '') + 'ct'
+      + '<span style="color:#6b7280;"> · ' + escHtml(s.clarity || '') + ' / ' + escHtml(s.color || '') + '</span>'
+      + (s.measurementRequired ? '' : '<span style="color:#b45309;font-size:10px;margin-left:6px;">no measurements</span>')
+      + '</div></div>';
+  }).join('');
+}
+
+function scTogglePick(id) {
+  var i = scPicked.findIndex(function (x) { return x.id === id; });
+  if (i !== -1) { scPicked.splice(i, 1); }
+  else {
+    if (scPicked.length >= scNeeded()) { alert('That is ' + scNeeded() + ' stones already. Remove one first.'); scRenderPicker(); return; }
+    var s = scStones.find(function (x) { return x.id === id; });
+    if (s) scPicked.push(s);
+  }
+  scRenderPicked();
+  scRenderPicker();
+}
+
+function scPickRandom() {
+  var ser = (document.getElementById('sc-series-filter') || {}).value || '';
+  var pool = scStones.filter(function (s) { return !ser || s.series === ser; }).slice();
+  for (var i = pool.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
+  scPicked = pool.slice(0, scNeeded());
+  scRenderPicked();
+  scRenderPicker();
+}
+
+function scRenderPicked() {
+  document.getElementById('sc-pick-count').textContent = scPicked.length;
+  document.getElementById('sc-picked').innerHTML = scPicked.map(function (s, i) {
+    return '<span style="background:#1e3a8a;color:#fff;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;">'
+      + 'Station ' + (i + 1) + ': ' + escHtml(s.stoneNo)
+      + ' <span style="cursor:pointer;opacity:.8;" onclick="scTogglePick(\'' + s.id + '\')">✕</span></span>';
+  }).join('');
+}
+
+function scCreate() {
+  var need = scNeeded();
+  if (scPicked.length !== need) { alert('Choose exactly ' + need + ' stones.'); return; }
+  var batch = (document.getElementById('sc-batch') || {}).value || '';
+  if (!batch) { alert('Pick a batch.'); return; }
+  var closes = (document.getElementById('sc-closes') || {}).value || '';
+  gasGet({
+    action: 'scCreateChallenge',
+    courseType: (document.getElementById('sc-course') || {}).value || 'DG',
+    batchCodes: batch,
+    title: (document.getElementById('sc-title') || {}).value || '',
+    closesAt: closes ? new Date(closes).toISOString() : '',
+    stones: JSON.stringify(scPicked.map(function (s) { return { stoneId: s.id, stoneNo: s.stoneNo }; })),
+    instructor: instructorName || ''
+  }, function (e, d) {
+    if (e || !d || d.status !== 'ok') { alert('Could not create the challenge. ' + ((d && d.reason) || '')); return; }
+    document.getElementById('sc-create-panel').style.display = 'none';
+    scLoadChallenges();
+  });
+}
+
+function scLoadChallenges() {
+  gasGet({ action: 'getInstructorTests', instructor: instructorName || '' }, function (e, d) {
+    var all = (d && d.tests) || [];
+    scChallenges = all.filter(function (t) { return t.testType === 'Stone Challenge'; });
+    scRenderList();
+  });
+}
+
+function scRenderList() {
+  var box = document.getElementById('sc-list');
+  if (!scChallenges.length) {
+    box.innerHTML = '<div style="padding:26px;text-align:center;color:var(--muted);font-size:13px;">No stone challenges yet. Create one to get started.</div>';
+    return;
+  }
+  box.innerHTML = scChallenges.map(function (t) {
+    return '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:10px;">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">'
+      + '<div><b style="font-size:14px;">' + escHtml(t.testLabel || t.title || '') + '</b>'
+      + '<div style="font-size:11.5px;color:#6b7280;margin-top:2px;">' + escHtml(t.batchCodes || t.batchCode || '') + ' · ' + escHtml(t.status || '') + '</div></div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;">'
+      + (t.status === 'Draft' ? '<button class="ot-btn" onclick="scActivate(\'' + escJ(t.testId) + '\')">▶ Start</button>' : '')
+      + (t.status === 'Live' || t.status === 'Active' ? '<button class="ot-btn warn" onclick="scClose(\'' + escJ(t.testId) + '\')">⏹ Close</button>' : '')
+      + '<button class="ot-btn ghost" onclick="scShowResults(\'' + escJ(t.testId) + '\')">📊 Results</button>'
+      + '</div></div></div>';
+  }).join('');
+}
+
+function scActivate(tid) {
+  gasGet({ action: 'activateTest', testId: tid }, function () { scLoadChallenges(); });
+}
+function scClose(tid) {
+  gasGet({ action: 'closeTest', testId: tid }, function () { scLoadChallenges(); });
+}
+
+function scShowResults(tid) {
+  var box = document.getElementById('sc-results');
+  box.innerHTML = '<div style="padding:20px;color:var(--muted);">Loading results…</div>';
+  gasGet({ action: 'scGetChallengeResults', testId: tid }, function (e, d) {
+    if (e || !d || d.status !== 'ok') { box.innerHTML = '<div style="padding:20px;color:#b91c1c;">Could not load results.</div>'; return; }
+    var key = d.key || [], res = d.results || [];
+    var html = '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;">'
+      + '<h3 style="margin:0 0 10px;font-size:15px;">Answer key</h3>'
+      + '<div style="overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:11.5px;">'
+      + '<tr style="background:#f9fafb;text-align:left;"><th style="padding:6px;">Station</th><th style="padding:6px;">Stone</th>'
+      + '<th style="padding:6px;">Shape</th><th style="padding:6px;">Carat</th><th style="padding:6px;">Clarity</th>'
+      + '<th style="padding:6px;">Colour</th><th style="padding:6px;">Fluor</th><th style="padding:6px;">Inclusions</th></tr>'
+      + key.map(function (k) {
+          return '<tr style="border-top:1px solid #f3f4f6;"><td style="padding:6px;">' + k.station + '</td>'
+            + '<td style="padding:6px;"><b>' + escHtml(k.stoneNo || '') + '</b></td>'
+            + '<td style="padding:6px;">' + escHtml(k.shape || '') + '</td>'
+            + '<td style="padding:6px;">' + (k.carat == null ? '' : k.carat) + '</td>'
+            + '<td style="padding:6px;">' + escHtml(k.clarity || '') + '</td>'
+            + '<td style="padding:6px;">' + escHtml(k.color || '') + '</td>'
+            + '<td style="padding:6px;">' + escHtml(k.fluorescence || '') + '</td>'
+            + '<td style="padding:6px;color:#6b7280;">' + escHtml(k.inclusions || '') + '</td></tr>';
+        }).join('')
+      + '</table></div>';
+
+    html += '<h3 style="margin:18px 0 10px;font-size:15px;">Students — ' + res.length + ' submitted</h3>';
+    if (!res.length) {
+      html += '<div style="color:var(--muted);font-size:12.5px;">Nobody has submitted yet.</div>';
+    } else {
+      html += '<div style="overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">'
+        + '<tr style="background:#f9fafb;text-align:left;"><th style="padding:7px;">Student</th>'
+        + key.map(function (k) { return '<th style="padding:7px;">St' + k.station + ' (' + escHtml(k.stoneNo || '') + ')</th>'; }).join('')
+        + '<th style="padding:7px;">Total</th><th style="padding:7px;">%</th><th style="padding:7px;">Result</th></tr>'
+        + res.map(function (r) {
+            return '<tr style="border-top:1px solid #f3f4f6;">'
+              + '<td style="padding:7px;"><b>' + escHtml(r.studentName || '') + '</b><div style="font-size:10px;color:#6b7280;">' + escHtml(r.studentId || '') + '</div></td>'
+              + key.map(function (k) {
+                  var m = (r.marks || {})[String(k.station)] || {};
+                  return '<td style="padding:7px;">' + (m.score == null ? '—' : m.score + ' / 10') + '</td>';
+                }).join('')
+              + '<td style="padding:7px;"><b>' + (r.score == null ? '—' : r.score) + ' / ' + (r.totalMarks || '') + '</b></td>'
+              + '<td style="padding:7px;">' + (r.percentage == null ? '—' : r.percentage + '%') + '</td>'
+              + '<td style="padding:7px;color:' + (r.result === 'Pass' ? '#059669' : '#dc2626') + ';font-weight:700;">' + escHtml(r.result || '') + '</td></tr>';
+          }).join('')
+        + '</table></div>';
+      html += '<div style="margin-top:10px;"><button class="ot-btn ghost" onclick="scDownloadCsv()">⬇ Download CSV</button></div>';
+      window.__scLastResults = { key: key, results: res };
+    }
+    box.innerHTML = html + '</div>';
+  });
+}
+
+function scDownloadCsv() {
+  var d = window.__scLastResults;
+  if (!d) return;
+  var crit = ['shape', 'carat', 'clarity', 'color', 'fluorescence', 'inclusions', 'blemishes', 'measurements', 'proportions'];
+  var head = ['Student ID', 'Student Name', 'Station', 'Stone', 'Stone score'].concat(crit).join(',');
+  var rows = [head];
+  d.results.forEach(function (r) {
+    d.key.forEach(function (k) {
+      var m = (r.marks || {})[String(k.station)] || {};
+      var b = m.breakdown || {};
+      rows.push([r.studentId, '"' + String(r.studentName || '').replace(/"/g, '') + '"', k.station, k.stoneNo,
+        m.score == null ? '' : m.score].concat(crit.map(function (c) { return b[c] == null ? '' : b[c]; })).join(','));
+    });
+  });
+  var blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'stone-challenge-results.csv';
+  a.click();
+}
 
 function otInit() {
   otLoadTests();
@@ -10238,6 +10526,8 @@ function otHandleTestTypeChange() {
   function updateTabVisibilityForCourses() {
     const otTab = document.getElementById('t-onlinetests-tab');
     if (otTab) otTab.style.display = '';
+    const scTab = document.getElementById('t-stonechallenge-tab');
+    if (scTab) scTab.style.display = '';
     const assTab = document.getElementById('t-assignments-tab');
     if (assTab) assTab.style.display = '';
     const portTab = document.getElementById('t-portfolios-tab');

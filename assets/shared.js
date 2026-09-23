@@ -10412,6 +10412,411 @@ window.gasGet = (function () {
   }
 
   /* createOnlineTest */
+
+  /* ══════════════════════════════════════════════════════════════════════
+     STONE CHALLENGE  (practical grading)
+     ──────────────────────────────────────────────────────────────────────
+     A stone challenge is an ordinary online_tests row (test_type = 'Stone
+     Challenge') plus a stone_challenges row holding the station->stone map
+     and the rubric. Responses land in test_responses like any other test,
+     so results release, diploma eligibility and the Work dashboard all pick
+     it up with no extra wiring.
+
+     Marking is per stone, out of 10. DG = 4 stones (40), PDC = 3 (30).
+     Half a mark comes off a grade answered one step away (VS1 given as VS2);
+     two or more steps away scores nothing. Baguettes carry no measurements,
+     so those 1.5 marks move to clarity and colour.
+     ══════════════════════════════════════════════════════════════════════ */
+  var STONE = {
+    CLARITY: ['FL','IF','VVS1','VVS2','VS1','VS2','SI1','SI2','SI3','I1','I2','I3'],
+    COLOR:   ['D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'],
+    FLUOR:   ['NONE','FAINT','VERY SLIGHT','SLIGHT','MEDIUM','STRONG','VERY STRONG'],
+
+    RUBRIC: {
+      shape:        0.5,
+      carat:        1.0,
+      clarity:      2.0,
+      color:        2.0,
+      fluorescence: 0.5,
+      inclusions:   1.0,
+      blemishes:    0.5,
+      measurements: 1.5,
+      proportions:  1.0
+    },
+
+    norm: function (v) {
+      return String(v == null ? '' : v).trim().toUpperCase().replace(/\s+/g, ' ');
+    },
+
+    /* Strip the descriptive tail so 'I (Tinge)' sits on the D-Z scale as 'I'.
+       A fancy-colour answer has no letter grade and is matched as plain text. */
+    colorKey: function (v) {
+      var s = STONE.norm(v);
+      if (!s) return { fancy: false, letter: '', text: '' };
+      if (/FANCY|NATURAL|BROWN|GREY|GRAY|YELLOW|PINK|BLUE|GREEN|WHITE/.test(s) && !/^[D-Z](\s|$|\()/.test(s)) {
+        return { fancy: true, letter: '', text: s };
+      }
+      var m = s.match(/^([D-Z])(\s*-\s*([D-Z]))?/);
+      if (!m) return { fancy: true, letter: '', text: s };
+      return { fancy: false, letter: m[1], text: s };
+    },
+
+    /* Marks for an ordinal scale: full on an exact hit, half off one step away. */
+    scaleMark: function (scale, truth, given, max) {
+      var t = scale.indexOf(STONE.norm(truth));
+      var g = scale.indexOf(STONE.norm(given));
+      if (t === -1 || g === -1) return STONE.norm(truth) && STONE.norm(truth) === STONE.norm(given) ? max : 0;
+      var d = Math.abs(t - g);
+      if (d === 0) return max;
+      if (d === 1) return Math.max(0, max - 0.5);
+      return 0;
+    },
+
+    /* Symbol lists (inclusions / blemishes): credit for what was found,
+       debited for what was invented. Never below zero. */
+    listMark: function (truth, given, max) {
+      var split = function (s) {
+        return STONE.norm(s).split(/[,;/]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+      };
+      var T = split(truth), G = split(given);
+      if (!T.length) return G.length ? 0 : max;   // sheet says none: answering none is right
+      if (!G.length) return 0;
+      var hit = 0, wrong = 0;
+      G.forEach(function (g) { if (T.indexOf(g) !== -1) hit++; else wrong++; });
+      var uniqueHits = 0, seen = {};
+      G.forEach(function (g) { if (T.indexOf(g) !== -1 && !seen[g]) { seen[g] = 1; uniqueHits++; } });
+      var raw = (uniqueHits / T.length) * max - (wrong * (max / Math.max(T.length, 1)) * 0.5);
+      return Math.max(0, Math.round(raw * 4) / 4);   // quarter-mark steps
+    },
+
+    numMark: function (truth, given, tol, max) {
+      var t = parseFloat(truth), g = parseFloat(given);
+      if (isNaN(t)) return 0;
+      if (isNaN(g)) return 0;
+      var d = Math.abs(t - g);
+      if (d <= tol) return max;
+      if (d <= tol * 2) return max / 2;
+      return 0;
+    },
+
+    /* Grade one stone. `stone` is a stone_master row, `ans` the student's form. */
+    gradeStone: function (stone, ans) {
+      ans = ans || {};
+      var R = STONE.RUBRIC;
+      var needsMeasure = stone.measurement_required !== false;
+      /* A baguette is not measured and has no proportion set, so those
+         2.5 marks move onto the two grades the student can actually judge. */
+      var clarityMax = R.clarity, colorMax = R.color;
+      if (!needsMeasure) { clarityMax += 1.25; colorMax += 1.25; }
+
+      var d = {};
+      d.shape = STONE.norm(stone.shape) === STONE.norm(ans.shape) ? R.shape : 0;
+      d.carat = STONE.numMark(stone.carat, ans.carat, 0.005, R.carat);
+      d.clarity = STONE.scaleMark(STONE.CLARITY, stone.clarity, ans.clarity, clarityMax);
+
+      var tc = STONE.colorKey(stone.color), gc = STONE.colorKey(ans.color);
+      if (tc.fancy || gc.fancy) {
+        d.color = (tc.text && tc.text === gc.text) ? colorMax : 0;
+      } else {
+        d.color = STONE.scaleMark(STONE.COLOR, tc.letter, gc.letter, colorMax);
+      }
+
+      d.fluorescence = STONE.scaleMark(STONE.FLUOR,
+        STONE.norm(stone.fluorescence).replace(/\s*\(.*\)\s*/, ''),
+        STONE.norm(ans.fluorescence).replace(/\s*\(.*\)\s*/, ''),
+        R.fluorescence);
+
+      d.inclusions = STONE.listMark(stone.inclusions, ans.inclusions, R.inclusions);
+      d.blemishes  = STONE.listMark(stone.blemishes,  ans.blemishes,  R.blemishes);
+
+      if (needsMeasure) {
+        d.measurements =
+            STONE.numMark(stone.dim1, ans.dim1, 0.02, 0.5)
+          + STONE.numMark(stone.dim2, ans.dim2, 0.02, 0.5)
+          + STONE.numMark(stone.height_mm, ans.height_mm, 0.02, 0.5);
+      } else {
+        d.measurements = 0;   // marks already moved into clarity/colour above
+      }
+
+      d.proportions = !needsMeasure ? 0 : (
+          STONE.numMark(stone.total_depth, ans.total_depth, 1.0, 0.25)
+        + STONE.numMark(stone.table_pct,   ans.table_pct,   1.0, 0.25)
+        + STONE.numMark(stone.crown_angle, ans.crown_angle, 1.0, 0.25)
+        + STONE.numMark(stone.pav_depth,   ans.pav_depth,   1.0, 0.25));
+
+      var total = 0;
+      Object.keys(d).forEach(function (k) { d[k] = Math.round(d[k] * 100) / 100; total += d[k]; });
+      return { breakdown: d, score: Math.round(total * 100) / 100, max: 10 };
+    }
+  };
+
+  function h_scGetStoneMaster(p, cb) {
+    var disc = p.discipline || 'Diamond';
+    var qs = 'discipline=eq.' + encodeURIComponent(disc) + '&order=series.asc,stone_no.asc';
+    if (p.activeOnly !== 'false') qs += '&active=is.true';
+    GET('stone_master', qs, function (e, rows) {
+      if (e) { cb(null, { status: 'error', stones: [] }); return; }
+      cb(null, { status: 'ok', stones: (rows || []).map(function (s) {
+        return {
+          id: s.id, stoneNo: s.stone_no, series: s.series, shape: s.shape, carat: s.carat,
+          clarity: s.clarity, color: s.color, fluorescence: s.fluorescence,
+          inclusions: s.inclusions, blemishes: s.blemishes,
+          measurementRequired: s.measurement_required !== false,
+          dim1: s.dim1, dim2: s.dim2, heightMm: s.height_mm,
+          totalDepth: s.total_depth, tablePct: s.table_pct, avgGirdle: s.avg_girdle,
+          crownAngle: s.crown_angle, crownHeight: s.crown_height, pavDepth: s.pav_depth,
+          culet: s.culet, pelog: s.pelog, active: s.active !== false
+        };
+      }) });
+    });
+  }
+
+  /* Create the challenge: one online_tests row + its stone_challenges row. */
+  function h_scCreateChallenge(p, cb) {
+    var courseType = String(p.courseType || 'DG').toUpperCase();
+    var stones;
+    try { stones = typeof p.stones === 'string' ? JSON.parse(p.stones || '[]') : (p.stones || []); }
+    catch (err) { cb(null, { status: 'error', reason: 'bad_stones' }); return; }
+    if (!stones.length) { cb(null, { status: 'error', reason: 'no_stones' }); return; }
+
+    var expected = courseType === 'PDC' ? 3 : (courseType === 'DG' ? 4 : stones.length);
+    if (courseType !== 'CSG' && stones.length !== expected) {
+      cb(null, { status: 'error', reason: 'stone_count_mismatch', expected: expected });
+      return;
+    }
+
+    var batchCodes = p.batchCodes || p.batchCode || '';
+    var tid = uniqueId('SC-');
+    POST('online_tests', 'on_conflict=test_id', {
+      test_id:       tid,
+      title:         p.title || (courseType + ' Stone Challenge'),
+      test_type:     'Stone Challenge',
+      batch_code:    batchCodes.split(',')[0].trim(),
+      batch_codes:   batchCodes,
+      duration_mins: parseInt(p.durationMins || 0) || 0,   // 0 = open until the session closes
+      passing_score: parseInt(p.passingScore || 60) || 60,
+      instructions:  p.instructions || '',
+      neg_marking:   'No',
+      neg_mark_value: 0,
+      allow_retake:  'No',
+      expiry_mode:   'manual',
+      expiry_at:     p.closesAt || null,
+      target_students: sanitizeTargetStudents(p.targetStudents),
+      status:        'Draft',
+      created_by:    p.instructor || '',
+      created_at:    nowISO()
+    }, function (e1) {
+      if (e1) { cb(null, { status: 'error', reason: 'test_create_failed' }); return; }
+      var stations = stones.map(function (s, i) {
+        return { station: i + 1, stoneId: s.stoneId || s.id, stoneNo: s.stoneNo || s.stone_no || '' };
+      });
+      POST('stone_challenges', 'on_conflict=test_id', {
+        test_id:     tid,
+        discipline:  p.discipline || 'Diamond',
+        course_type: courseType,
+        stone_count: stations.length,
+        stations:    stations,
+        rubric:      STONE.RUBRIC,
+        closes_at:   p.closesAt || null,
+        created_by:  p.instructor || '',
+        created_at:  nowISO()
+      }, function (e2) {
+        if (e2) {
+          DEL('online_tests', 'test_id=eq.' + encodeURIComponent(tid), function () {});
+          cb(null, { status: 'error', reason: 'challenge_create_failed' });
+          return;
+        }
+        cb(null, { status: 'ok', testId: tid, stations: stations });
+      });
+    });
+  }
+
+  /* The student's form. Sends station numbers and stone numbers only —
+     never the answer key. */
+  function h_scGetChallengeForm(p, cb) {
+    var tid = p.testId;
+    if (!tid) { cb(null, { status: 'error', reason: 'missing_params' }); return; }
+    GET('online_tests', 'test_id=eq.' + encodeURIComponent(tid), function (e1, tests) {
+      var test = tests && tests[0];
+      if (!test) { cb(null, { status: 'error', reason: 'test_not_found' }); return; }
+      if (test.status !== 'Live' && test.status !== 'Active') { cb(null, { status: 'error', reason: 'test_not_active' }); return; }
+      if (test.expiry_at && new Date(test.expiry_at) < new Date()) { cb(null, { status: 'error', reason: 'session_closed' }); return; }
+      GET('stone_challenges', 'test_id=eq.' + encodeURIComponent(tid), function (e2, chs) {
+        var ch = chs && chs[0];
+        if (!ch) { cb(null, { status: 'error', reason: 'challenge_not_found' }); return; }
+        var stations = ch.stations || [];
+        var ids = stations.map(function (s) { return s.stoneId; }).filter(Boolean);
+        var finish = function (meta) {
+          GET('test_responses', 'test_id=eq.' + encodeURIComponent(tid) + '&student_id=eq.' + encodeURIComponent(p.studentId || ''), function (e4, rs) {
+            cb(null, {
+              status: 'ok',
+              title: test.title,
+              courseType: ch.course_type,
+              discipline: ch.discipline,
+              closesAt: ch.closes_at || test.expiry_at,
+              rubric: ch.rubric || STONE.RUBRIC,
+              alreadySubmitted: !!(rs && rs.length),
+              stations: stations.map(function (s) {
+                var m = meta[String(s.stoneId)] || {};
+                return {
+                  station: s.station,
+                  stoneNo: s.stoneNo,
+                  measurementRequired: m.measurement_required !== false,
+                  shapeHint: m.shape ? undefined : undefined   // nothing revealed
+                };
+              })
+            });
+          });
+        };
+        if (!ids.length) { finish({}); return; }
+        GET('stone_master', 'id=in.(' + ids.join(',') + ')&select=id,measurement_required', function (e3, rows) {
+          var meta = {};
+          (rows || []).forEach(function (r) { meta[String(r.id)] = r; });
+          finish(meta);
+        });
+      });
+    });
+  }
+
+  /* Grade and store. answers = { "1": {shape,carat,...}, "2": {...} } keyed by station. */
+  function h_scSubmitChallenge(p, cb) {
+    var tid = p.testId, sid = p.studentId;
+    if (!tid || !sid) { cb(null, { status: 'error', reason: 'missing_params' }); return; }
+    var answers;
+    try { answers = typeof p.answers === 'string' ? JSON.parse(p.answers || '{}') : (p.answers || {}); }
+    catch (err) { cb(null, { status: 'error', reason: 'bad_answers' }); return; }
+
+    GET('online_tests', 'test_id=eq.' + encodeURIComponent(tid), function (e1, tests) {
+      var test = tests && tests[0];
+      if (!test) { cb(null, { status: 'error', reason: 'test_not_found' }); return; }
+      if (test.status !== 'Live' && test.status !== 'Active') { cb(null, { status: 'error', reason: 'test_not_active' }); return; }
+      if (test.expiry_at && new Date(test.expiry_at) < new Date() && p.submitType !== 'auto') {
+        cb(null, { status: 'error', reason: 'session_closed' }); return;
+      }
+      GET('stone_challenges', 'test_id=eq.' + encodeURIComponent(tid), function (e2, chs) {
+        var ch = chs && chs[0];
+        if (!ch) { cb(null, { status: 'error', reason: 'challenge_not_found' }); return; }
+        GET('test_responses', 'test_id=eq.' + encodeURIComponent(tid) + '&student_id=eq.' + encodeURIComponent(sid), function (eX, existing) {
+          if (existing && existing.length && test.allow_retake !== 'Yes') {
+            cb(null, { status: 'error', reason: 'already_submitted' }); return;
+          }
+          var stations = ch.stations || [];
+          var ids = stations.map(function (s) { return s.stoneId; }).filter(Boolean);
+          if (!ids.length) { cb(null, { status: 'error', reason: 'no_stones' }); return; }
+          GET('stone_master', 'id=in.(' + ids.join(',') + ')', function (e3, rows) {
+            var byId = {};
+            (rows || []).forEach(function (r) { byId[String(r.id)] = r; });
+            var perStation = {}, score = 0, total = 0;
+            stations.forEach(function (st) {
+              var stone = byId[String(st.stoneId)];
+              if (!stone) return;
+              var g = STONE.gradeStone(stone, answers[String(st.station)] || {});
+              perStation[String(st.station)] = {
+                stoneNo: st.stoneNo, score: g.score, max: g.max, breakdown: g.breakdown
+              };
+              score += g.score; total += g.max;
+            });
+            score = Math.round(score * 100) / 100;
+            var pct = total > 0 ? Math.round((score / total) * 100) : 0;
+            var passing = test.passing_score || 60;
+            POST('test_responses', 'on_conflict=test_id,student_id', {
+              test_id: tid, student_id: sid, batch_code: p.batchCode || test.batch_code || '',
+              answers: { stations: answers, marks: perStation },
+              score: score, total_marks: total, percentage: pct,
+              result: pct >= passing ? 'Pass' : 'Fail',
+              submit_type: p.submitType || 'manual',
+              submitted_at: nowISO()
+            }, function (e4) {
+              cb(null, e4 ? { status: 'error', reason: String(e4) }
+                          : { status: 'ok', score: score, totalMarks: total, percentage: pct,
+                              result: pct >= passing ? 'Pass' : 'Fail', marks: perStation });
+            });
+          });
+        });
+      });
+    });
+  }
+
+  /* Instructor view: the answer key plus every student's per-criterion marks. */
+  function h_scGetChallengeResults(p, cb) {
+    var tid = p.testId;
+    if (!tid) { cb(null, { status: 'error', reason: 'missing_params' }); return; }
+    GET('stone_challenges', 'test_id=eq.' + encodeURIComponent(tid), function (e1, chs) {
+      var ch = chs && chs[0];
+      if (!ch) { cb(null, { status: 'error', reason: 'challenge_not_found' }); return; }
+      var stations = ch.stations || [];
+      var ids = stations.map(function (s) { return s.stoneId; }).filter(Boolean);
+      GET('stone_master', ids.length ? 'id=in.(' + ids.join(',') + ')' : 'id=is.null', function (e2, srows) {
+        var byId = {};
+        (srows || []).forEach(function (r) { byId[String(r.id)] = r; });
+        var key = stations.map(function (st) {
+          var s = byId[String(st.stoneId)] || {};
+          return {
+            station: st.station, stoneNo: st.stoneNo, shape: s.shape, carat: s.carat,
+            clarity: s.clarity, color: s.color, fluorescence: s.fluorescence,
+            inclusions: s.inclusions, blemishes: s.blemishes,
+            measurementRequired: s.measurement_required !== false,
+            dim1: s.dim1, dim2: s.dim2, heightMm: s.height_mm,
+            totalDepth: s.total_depth, tablePct: s.table_pct,
+            crownAngle: s.crown_angle, pavDepth: s.pav_depth
+          };
+        });
+        GET('test_responses', 'test_id=eq.' + encodeURIComponent(tid) + '&order=score.desc', function (e3, rrows) {
+          var responses = rrows || [];
+          var sids = responses.map(function (r) { return r.student_id; }).filter(Boolean);
+          var emit = function (nameMap) {
+            cb(null, {
+              status: 'ok', courseType: ch.course_type, discipline: ch.discipline,
+              stoneCount: ch.stone_count, closesAt: ch.closes_at, key: key,
+              results: responses.map(function (r) {
+                var a = r.answers || {};
+                return {
+                  studentId: r.student_id, studentName: nameMap[r.student_id] || r.student_id,
+                  score: r.score, totalMarks: r.total_marks, percentage: r.percentage,
+                  result: r.result, submittedAt: r.submitted_at,
+                  marks: a.marks || {}, given: a.stations || {}
+                };
+              })
+            });
+          };
+          if (!sids.length) { emit({}); return; }
+          GET('students', 'student_id=in.(' + sids.map(function (x) { return '"' + String(x).replace(/"/g, '') + '"'; }).join(',') + ')&select=student_id,name', function (e4, st) {
+            var nm = {};
+            (st || []).forEach(function (s) { nm[s.student_id] = s.name; });
+            emit(nm);
+          });
+        });
+      });
+    });
+  }
+
+  /* Correct a stone in the master (typo in the sheet, re-measured stone, retire one). */
+  function h_scUpdateStone(p, cb) {
+    if (!p.stoneId) { cb(null, { status: 'error', reason: 'missing_params' }); return; }
+    var map = {
+      shape: 'shape', carat: 'carat', clarity: 'clarity', color: 'color',
+      fluorescence: 'fluorescence', inclusions: 'inclusions', blemishes: 'blemishes',
+      dim1: 'dim1', dim2: 'dim2', heightMm: 'height_mm', totalDepth: 'total_depth',
+      tablePct: 'table_pct', avgGirdle: 'avg_girdle', crownAngle: 'crown_angle',
+      crownHeight: 'crown_height', pavDepth: 'pav_depth', culet: 'culet',
+      pelog: 'pelog', notes: 'notes'
+    };
+    var patch = {};
+    Object.keys(map).forEach(function (k) {
+      if (p[k] !== undefined && p[k] !== null && p[k] !== '') {
+        var col = map[k];
+        patch[col] = ['carat','dim1','dim2','height_mm','total_depth','table_pct','avg_girdle','crown_angle','crown_height','pav_depth'].indexOf(col) !== -1
+          ? (parseFloat(p[k]) || null) : String(p[k]).trim();
+      }
+    });
+    if (p.active !== undefined) patch.active = (p.active === true || p.active === 'true');
+    if (p.measurementRequired !== undefined) patch.measurement_required = (p.measurementRequired === true || p.measurementRequired === 'true');
+    if (!Object.keys(patch).length) { cb(null, { status: 'error', reason: 'nothing_to_update' }); return; }
+    PATCH('stone_master', 'id=eq.' + encodeURIComponent(p.stoneId), patch, function (e) {
+      cb(null, e ? { status: 'error', reason: 'patch_failed' } : { status: 'ok' });
+    });
+  }
+
   function h_createOnlineTest(p, cb) {
     var tid = uniqueId('OT-');
     var batchCodes = p.batchCodes || p.batchCode || '';
@@ -12732,6 +13137,12 @@ window.gasGet = (function () {
       case 'getQuestionBank':           return h_getQuestionBank(params, cb);
       case 'setupQuestionBank':         return h_setupQuestionBank(params, cb);
       case 'createOnlineTest':          return h_createOnlineTest(params, cb);
+      case 'scGetStoneMaster':          return h_scGetStoneMaster(params, cb);
+      case 'scCreateChallenge':         return h_scCreateChallenge(params, cb);
+      case 'scGetChallengeForm':        return h_scGetChallengeForm(params, cb);
+      case 'scSubmitChallenge':         return h_scSubmitChallenge(params, cb);
+      case 'scGetChallengeResults':     return h_scGetChallengeResults(params, cb);
+      case 'scUpdateStone':             return h_scUpdateStone(params, cb);
       case 'updateTestSettings':        return h_updateTestSettings(params, cb);
       case 'updateAssignmentContent':   return h_updateAssignmentContent(params, cb);
       case 'updateTestTargeting':       return h_updateTestTargeting(params, cb);

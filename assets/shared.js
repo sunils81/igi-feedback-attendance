@@ -5005,6 +5005,239 @@ window.gasGet = (function () {
     });
   }
 
+
+  /* ══════════════════════════════════════════════════════════════════════
+     CORPORATE / RTT PARTICIPANTS
+     ──────────────────────────────────────────────────────────────────────
+     corporate_batches carried only a headcount, so there was no way to
+     issue a certificate to anybody. This is the roster behind that number.
+
+     Two kinds of programme, set per batch:
+       participation  RTT, seminars — the certificate follows attendance,
+                      nothing academic is recorded or required.
+       tested         MBMG — a four-day programme with one weekly test and
+                      one final practical, both compulsory, 60% to qualify.
+
+     No fee, attendance or diploma machinery touches these people: they are
+     the client's associates, not IGI students, and were never counted as
+     enrolments (see the corporate/student split in the monthly summary).
+     ══════════════════════════════════════════════════════════════════════ */
+
+  /* City -> State. Typing a city fills the state in; it stays editable, and an
+     unknown city simply leaves it for the counsellor. Covers the cities IGI
+     actually trains in plus the larger metros their clients staff from. */
+  var CITY_STATE = {
+    'mumbai':'Maharashtra','navi mumbai':'Maharashtra','thane':'Maharashtra','pune':'Maharashtra',
+    'nagpur':'Maharashtra','nashik':'Maharashtra','aurangabad':'Maharashtra','kolhapur':'Maharashtra',
+    'solapur':'Maharashtra','dombivali':'Maharashtra','kalyan':'Maharashtra',
+    'delhi':'Delhi','new delhi':'Delhi',
+    'gurgaon':'Haryana','gurugram':'Haryana','faridabad':'Haryana','karnal':'Haryana','panipat':'Haryana',
+    'noida':'Uttar Pradesh','ghaziabad':'Uttar Pradesh','lucknow':'Uttar Pradesh','kanpur':'Uttar Pradesh',
+    'varanasi':'Uttar Pradesh','agra':'Uttar Pradesh','meerut':'Uttar Pradesh','prayagraj':'Uttar Pradesh',
+    'allahabad':'Uttar Pradesh','bareilly':'Uttar Pradesh','gorakhpur':'Uttar Pradesh',
+    'kolkata':'West Bengal','howrah':'West Bengal','siliguri':'West Bengal','durgapur':'West Bengal',
+    'asansol':'West Bengal','darjeeling':'West Bengal',
+    'chennai':'Tamil Nadu','coimbatore':'Tamil Nadu','madurai':'Tamil Nadu','salem':'Tamil Nadu',
+    'tiruchirappalli':'Tamil Nadu','trichy':'Tamil Nadu','tirupur':'Tamil Nadu','erode':'Tamil Nadu',
+    'bangalore':'Karnataka','bengaluru':'Karnataka','mysore':'Karnataka','mysuru':'Karnataka',
+    'mangalore':'Karnataka','mangaluru':'Karnataka','hubli':'Karnataka','belgaum':'Karnataka',
+    'hyderabad':'Telangana','secunderabad':'Telangana','warangal':'Telangana','karimnagar':'Telangana',
+    'visakhapatnam':'Andhra Pradesh','vizag':'Andhra Pradesh','vijayawada':'Andhra Pradesh',
+    'guntur':'Andhra Pradesh','tirupati':'Andhra Pradesh','nellore':'Andhra Pradesh',
+    'ahmedabad':'Gujarat','surat':'Gujarat','vadodara':'Gujarat','baroda':'Gujarat','rajkot':'Gujarat',
+    'bhavnagar':'Gujarat','jamnagar':'Gujarat','gandhinagar':'Gujarat','bhuj':'Gujarat',
+    'jaipur':'Rajasthan','jodhpur':'Rajasthan','udaipur':'Rajasthan','kota':'Rajasthan',
+    'ajmer':'Rajasthan','bikaner':'Rajasthan',
+    'bhopal':'Madhya Pradesh','indore':'Madhya Pradesh','gwalior':'Madhya Pradesh','jabalpur':'Madhya Pradesh',
+    'ujjain':'Madhya Pradesh',
+    'patna':'Bihar','gaya':'Bihar','muzaffarpur':'Bihar','bhagalpur':'Bihar',
+    'ranchi':'Jharkhand','jamshedpur':'Jharkhand','dhanbad':'Jharkhand','bokaro':'Jharkhand',
+    'bhubaneswar':'Odisha','cuttack':'Odisha','rourkela':'Odisha','puri':'Odisha',
+    'raipur':'Chhattisgarh','bhilai':'Chhattisgarh','bilaspur':'Chhattisgarh',
+    'chandigarh':'Chandigarh',
+    'ludhiana':'Punjab','amritsar':'Punjab','jalandhar':'Punjab','patiala':'Punjab','mohali':'Punjab',
+    'kochi':'Kerala','cochin':'Kerala','thiruvananthapuram':'Kerala','trivandrum':'Kerala',
+    'kozhikode':'Kerala','calicut':'Kerala','thrissur':'Kerala','kollam':'Kerala','kannur':'Kerala',
+    'guwahati':'Assam','dibrugarh':'Assam','silchar':'Assam',
+    'dehradun':'Uttarakhand','haridwar':'Uttarakhand','rishikesh':'Uttarakhand',
+    'shimla':'Himachal Pradesh','dharamshala':'Himachal Pradesh',
+    'srinagar':'Jammu and Kashmir','jammu':'Jammu and Kashmir',
+    'panaji':'Goa','panjim':'Goa','margao':'Goa','vasco da gama':'Goa',
+    'agartala':'Tripura','imphal':'Manipur','shillong':'Meghalaya','aizawl':'Mizoram',
+    'kohima':'Nagaland','itanagar':'Arunachal Pradesh','gangtok':'Sikkim','puducherry':'Puducherry',
+    'pondicherry':'Puducherry'
+  };
+
+  function stateForCity(city) {
+    var k = String(city == null ? '' : city).trim().toLowerCase().replace(/\s+/g, ' ');
+    return CITY_STATE[k] || '';
+  }
+
+  /* Whether a tested participant has qualified. Both marks are compulsory, so a
+     missing one is "not yet decided" rather than a fail — the same treatment a
+     missing weekly gets in buildDiplomaRow. */
+  function corpParticipantResult(batch, p) {
+    if (String(batch && batch.assessment_mode) !== 'tested') {
+      return { tested: false, avg: null, passed: true, pending: false };
+    }
+    var w = p.weekly_pct, f = p.final_pct;
+    if (w === null || w === undefined || w === '' || f === null || f === undefined || f === '') {
+      return { tested: true, avg: null, passed: false, pending: true };
+    }
+    var avg = (Number(w) + Number(f)) / 2;
+    var bar = Number(batch.pass_pct) || 60;
+    return { tested: true, avg: Math.round(avg * 10) / 10, passed: avg >= bar, pending: false };
+  }
+
+  function h_corpGetParticipants(p, cb) {
+    if (!p.batchId) { cb(null, { status: 'error', reason: 'missing_batch' }); return; }
+    GET('corporate_batches', 'id=eq.' + encodeURIComponent(p.batchId), function (e1, bRows) {
+      var batch = bRows && bRows[0];
+      if (e1 || !batch) { cb(null, { status: 'error', reason: 'batch_not_found' }); return; }
+      GET('corporate_participants', 'corporate_batch_id=eq.' + encodeURIComponent(p.batchId) +
+          '&order=participant_name.asc', function (e2, rows) {
+        var list = (rows || []).map(function (r) {
+          var res = corpParticipantResult(batch, r);
+          return {
+            id: r.id, name: r.participant_name, designation: r.designation || '',
+            branch: r.branch || '', city: r.city || '', state: r.state || '',
+            mobile: r.mobile || '', email: r.email || '',
+            weeklyPct: r.weekly_pct, finalPct: r.final_pct,
+            tested: res.tested, avg: res.avg, passed: res.passed, pending: res.pending,
+            certificateNo: r.certificate_no || '', certificateUrl: r.certificate_url || '',
+            releasedAt: r.released_at, releasedBy: r.released_by || ''
+          };
+        });
+        cb(null, {
+          status: 'ok',
+          batch: {
+            id: batch.id, companyName: batch.company_name, centre: batch.centre,
+            assessmentMode: batch.assessment_mode || 'participation',
+            passPct: Number(batch.pass_pct) || 60,
+            associatesTrained: batch.associates_trained || 0,
+            locationClient: batch.location_client || '', revenueMonth: batch.revenue_month || ''
+          },
+          participants: list,
+          counts: {
+            onRoster: list.length,
+            headcount: batch.associates_trained || 0,
+            released: list.filter(function (x) { return !!x.releasedAt; }).length,
+            eligible: list.filter(function (x) { return x.passed && !x.pending; }).length
+          }
+        });
+      });
+    });
+  }
+
+  /* Add or update one participant. */
+  function h_corpSaveParticipant(p, cb) {
+    var name = String(p.name || '').trim();
+    if (!p.batchId || !name) { cb(null, { status: 'error', reason: 'Name is required.' }); return; }
+    var row = {
+      corporate_batch_id: p.batchId,
+      participant_name: name,
+      designation: String(p.designation || '').trim(),
+      branch: String(p.branch || '').trim(),
+      city: String(p.city || '').trim(),
+      /* Fall back to the lookup when the state was left blank — the counsellor can still
+         overwrite it, this only saves typing for the cities we already know. */
+      state: String(p.state || '').trim() || stateForCity(p.city),
+      mobile: String(p.mobile || '').trim(),
+      email: String(p.email || '').trim(),
+      updated_at: nowISO()
+    };
+    if (p.weeklyPct !== undefined && p.weeklyPct !== '') row.weekly_pct = Number(p.weeklyPct);
+    if (p.finalPct !== undefined && p.finalPct !== '') row.final_pct = Number(p.finalPct);
+
+    if (p.id) {
+      PATCH('corporate_participants', 'id=eq.' + encodeURIComponent(p.id), row, function (e) {
+        cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', id: p.id });
+      });
+    } else {
+      row.created_at = nowISO();
+      POST('corporate_participants', null, row, function (e, res) {
+        cb(null, e ? { status: 'error', reason: String(e) }
+                   : { status: 'ok', id: (res && res[0] && res[0].id) || null });
+      });
+    }
+  }
+
+  /* Bulk import. A 287-name seminar is not going to be typed in one at a time, so the
+     roster is pasted from the client's own sheet: one participant per line, fields
+     separated by tab or comma, in the order the UI states. Blank lines are skipped;
+     a line with no name is reported back rather than silently dropped. */
+  function h_corpImportParticipants(p, cb) {
+    if (!p.batchId) { cb(null, { status: 'error', reason: 'missing_batch' }); return; }
+    var rows;
+    try { rows = typeof p.rows === 'string' ? JSON.parse(p.rows || '[]') : (p.rows || []); }
+    catch (err) { cb(null, { status: 'error', reason: 'bad_rows' }); return; }
+    if (!rows.length) { cb(null, { status: 'error', reason: 'Nothing to import.' }); return; }
+
+    var skipped = [], payload = [];
+    rows.forEach(function (r, i) {
+      var name = String((r && r.name) || '').trim();
+      if (!name) { skipped.push(i + 1); return; }
+      payload.push({
+        corporate_batch_id: p.batchId,
+        participant_name: name,
+        designation: String((r.designation) || '').trim(),
+        branch: String((r.branch) || '').trim(),
+        city: String((r.city) || '').trim(),
+        state: String((r.state) || '').trim() || stateForCity(r.city),
+        mobile: String((r.mobile) || '').trim(),
+        email: String((r.email) || '').trim(),
+        created_at: nowISO(), updated_at: nowISO()
+      });
+    });
+    if (!payload.length) { cb(null, { status: 'error', reason: 'No usable rows — every line was missing a name.' }); return; }
+
+    POST('corporate_participants', null, payload, function (e) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      /* Keep the headcount honest: it was a hand-typed estimate before the roster existed. */
+      GET('corporate_participants', 'corporate_batch_id=eq.' + encodeURIComponent(p.batchId) +
+          '&select=id', function (e2, all) {
+        var n = (all || []).length;
+        PATCH('corporate_batches', 'id=eq.' + encodeURIComponent(p.batchId),
+              { associates_trained: n, updated_at: nowISO() }, function () {
+          cb(null, { status: 'ok', imported: payload.length, skipped: skipped, onRoster: n });
+        });
+      });
+    });
+  }
+
+  function h_corpDeleteParticipant(p, cb) {
+    if (!p.id) { cb(null, { status: 'error', reason: 'missing_id' }); return; }
+    DEL('corporate_participants', 'id=eq.' + encodeURIComponent(p.id), function (e) {
+      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+    });
+  }
+
+  /* Programme type and pass bar. Switching a batch to 'tested' does not invent marks;
+     everyone simply reads as pending until the two scores are entered. */
+  function h_corpSetAssessmentMode(p, cb) {
+    if (!p.batchId) { cb(null, { status: 'error', reason: 'missing_batch' }); return; }
+    var mode = String(p.mode || '').toLowerCase() === 'tested' ? 'tested' : 'participation';
+    var patch = { assessment_mode: mode, updated_at: nowISO() };
+    if (p.passPct !== undefined && p.passPct !== '') patch.pass_pct = Number(p.passPct) || 60;
+    PATCH('corporate_batches', 'id=eq.' + encodeURIComponent(p.batchId), patch, function (e) {
+      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', mode: mode });
+    });
+  }
+
+  /* Record the certificate against a participant. The PDF itself is generated client-side
+     from the participation template, exactly as the student certificates are. */
+  function h_corpReleaseCertificate(p, cb) {
+    if (!p.id) { cb(null, { status: 'error', reason: 'missing_id' }); return; }
+    PATCH('corporate_participants', 'id=eq.' + encodeURIComponent(p.id), {
+      certificate_no: String(p.certificateNo || '').trim(),
+      certificate_url: String(p.certificateUrl || '').trim(),
+      released_by: String(p.releasedBy || '').trim(),
+      released_at: nowISO(), updated_at: nowISO()
+    }, function (e) {
+      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+    });
+  }
+
   function h_saveCorporateBatch(p, cb) {
     if (!p.companyName || !p.centre || !p.recordedBy) {
       cb(null, { status: 'error', reason: 'Company name, centre, and recorded-by are required.' });
@@ -13131,6 +13364,12 @@ window.gasGet = (function () {
       case 'getBillingStatus':          return h_getBillingStatus(params, cb);
       case 'saveBillingDocNumber':      return h_saveBillingDocNumber(params, cb);
       case 'saveCorporateBatch':        return h_saveCorporateBatch(params, cb);
+      case 'corpGetParticipants':       return h_corpGetParticipants(params, cb);
+      case 'corpSaveParticipant':       return h_corpSaveParticipant(params, cb);
+      case 'corpImportParticipants':    return h_corpImportParticipants(params, cb);
+      case 'corpDeleteParticipant':     return h_corpDeleteParticipant(params, cb);
+      case 'corpSetAssessmentMode':     return h_corpSetAssessmentMode(params, cb);
+      case 'corpReleaseCertificate':    return h_corpReleaseCertificate(params, cb);
       case 'getCorporateBatches':       return h_getCorporateBatches(params, cb);
       case 'deleteCorporateBatch':      return h_deleteCorporateBatch(params, cb);
       case 'saveMiscCharge':            return h_saveMiscCharge(params, cb);

@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=126"></script>
+<script src="/assets/shared.js?v=127"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -4145,6 +4145,9 @@
         </div>
         <p class="sub" style="margin-top:2px">Company training batches — a flat fee for the whole batch, not per associate. Managed separately here, but counted together with student fees in each month's total above.</p>
         <div id="corp-batch-list"><div class="empty-state"><div class="empty-icon">🏢</div><div class="empty-title">Loading…</div></div></div>
+        <!-- Participant roster for one corporate batch — the names behind the headcount,
+             and what a certificate is printed from. Filled by openCorpRoster(). -->
+        <div id="corp-roster-wrap" style="display:none"></div>
       </div>
 
       <div style="margin-top:28px;padding-top:20px;border-top:1.5px solid var(--border)">
@@ -10096,12 +10099,277 @@ function renderCorporateBatchList() {
       '<td style="text-align:right">' + (r.associatesTrained || 0) + '</td>' +
       '<td style="text-align:right;font-weight:600">' + money(net) + '</td>' +
       '<td style="text-align:right">' + (r.discountPct ? r.discountPct + '%' : '—') + '</td>' +
-      '<td><button class="del-btn" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer" onclick="openCorporateBatchForm(\'' + escC(r.id) + '\')">Edit</button> ' +
+      '<td><button class="del-btn" style="background:var(--navy);color:#fff;border:none;border-radius:6px;padding:3px 10px;cursor:pointer" onclick="openCorpRoster(\'' + escC(r.id) + '\')">Participants</button> ' +
+        '<button class="del-btn" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer" onclick="openCorporateBatchForm(\'' + escC(r.id) + '\')">Edit</button> ' +
         '<button class="del-btn" onclick="deleteCorporateBatchEntry(\'' + escC(r.id) + '\')">Remove</button></td>' +
       '</tr>';
   });
   html += '</tbody></table></div>';
   list.innerHTML = html;
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   CORPORATE / RTT PARTICIPANT ROSTER
+   corporate_batches held only a headcount, so there was nobody to put on a
+   certificate. This is the roster behind it: name, designation, branch, city,
+   state, and optionally mobile and email.
+
+   A 287-name seminar is not typed in one at a time, so the normal way in is
+   Paste from Excel. The headcount on the batch is rewritten from the roster
+   after an import, since it was a hand-typed estimate before this existed.
+
+   MBMG is a tested programme — one weekly test and one final practical, both
+   compulsory, averaged, 60% to qualify. RTT and seminars are participation
+   only and record no marks at all.
+   ══════════════════════════════════════════════════════════════ */
+var _corpRoster = null;      // { batch, participants, counts }
+var _corpRosterBatchId = '';
+
+var IN_STATES = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat',
+  'Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra',
+  'Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu',
+  'Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Andaman and Nicobar Islands',
+  'Chandigarh','Dadra and Nagar Haveli and Daman and Diu','Delhi','Jammu and Kashmir','Ladakh',
+  'Lakshadweep','Puducherry'];
+
+function openCorpRoster(batchId) {
+  _corpRosterBatchId = batchId;
+  var wrap = document.getElementById('corp-roster-wrap');
+  if (wrap) { wrap.style.display = ''; wrap.innerHTML = '<div style="padding:20px;color:var(--muted)">Loading roster…</div>'; }
+  gasGet({ action: 'corpGetParticipants', batchId: batchId }, function (e, d) {
+    if (e || !d || d.status !== 'ok') {
+      if (wrap) wrap.innerHTML = '<div style="padding:20px;color:#b91c1c">Could not load the roster.</div>';
+      return;
+    }
+    _corpRoster = d;
+    renderCorpRoster();
+    if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
+function closeCorpRoster() {
+  var wrap = document.getElementById('corp-roster-wrap');
+  if (wrap) { wrap.style.display = 'none'; wrap.innerHTML = ''; }
+  _corpRoster = null; _corpRosterBatchId = '';
+}
+
+function renderCorpRoster() {
+  var wrap = document.getElementById('corp-roster-wrap');
+  if (!wrap || !_corpRoster) return;
+  var b = _corpRoster.batch, ps = _corpRoster.participants || [], c = _corpRoster.counts || {};
+  var tested = b.assessmentMode === 'tested';
+
+  var h = '<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:14px">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">';
+  h += '<div><div style="font-size:16px;font-weight:800">' + escC(b.companyName) + '</div>' +
+       '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + escC(b.centre || '') +
+       (b.locationClient ? ' · ' + escC(b.locationClient) : '') + ' · ' + escC(b.revenueMonth || '') + '</div></div>';
+  h += '<button class="btn btn-xs" style="background:#e5e7eb;border:none;border-radius:6px;padding:5px 12px;cursor:pointer" onclick="closeCorpRoster()">Close</button>';
+  h += '</div>';
+
+  /* Programme type. Switching to tested does not invent marks — everyone simply
+     reads as pending until the two scores are in. */
+  h += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0;padding:10px 12px;background:var(--off);border-radius:8px">';
+  h += '<label style="font-size:12px;font-weight:700">Programme</label>';
+  h += '<select id="corp-mode" onchange="corpSaveMode()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:12.5px">' +
+       '<option value="participation"' + (tested ? '' : ' selected') + '>Participation only — no test (RTT, seminars)</option>' +
+       '<option value="tested"' + (tested ? ' selected' : '') + '>Tested — 1 weekly + 1 final (MBMG)</option></select>';
+  if (tested) {
+    h += '<label style="font-size:12px;font-weight:700;margin-left:6px">Pass %</label>' +
+         '<input id="corp-pass" type="number" min="0" max="100" value="' + (b.passPct || 60) + '" onchange="corpSaveMode()" style="width:70px;padding:6px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:12.5px">';
+  }
+  h += '</div>';
+
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">' +
+    '<span style="background:#eff6ff;color:#1d4ed8;border-radius:20px;padding:3px 11px;font-weight:700">' + (c.onRoster || 0) + ' on roster</span>' +
+    (c.headcount && c.headcount !== c.onRoster
+      ? '<span style="background:#fffbeb;color:#92400e;border-radius:20px;padding:3px 11px;font-weight:700">headcount says ' + c.headcount + '</span>' : '') +
+    (tested ? '<span style="background:#ecfdf5;color:#065f46;border-radius:20px;padding:3px 11px;font-weight:700">' + (c.eligible || 0) + ' qualified</span>' : '') +
+    '<span style="background:var(--off);color:var(--muted);border-radius:20px;padding:3px 11px;font-weight:700">' + (c.released || 0) + ' certificates issued</span>' +
+    '</div>';
+
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' +
+    '<button class="btn btn-gold btn-xs" style="padding:6px 14px;cursor:pointer" onclick="corpAddRow()">+ Add participant</button>' +
+    '<button class="btn btn-xs" style="background:var(--navy);color:#fff;border:none;border-radius:6px;padding:6px 14px;cursor:pointer" onclick="corpOpenPaste()">📋 Paste from Excel</button>' +
+    '<button class="btn btn-xs" style="background:#e5e7eb;border:none;border-radius:6px;padding:6px 14px;cursor:pointer" onclick="corpDownloadRoster()">⬇ Download CSV</button>' +
+    '</div>';
+
+  h += '<div id="corp-paste-wrap" style="display:none;margin-bottom:12px;padding:12px;background:var(--off);border-radius:8px">' +
+    '<div style="font-size:12px;font-weight:700;margin-bottom:4px">Paste one participant per line</div>' +
+    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:6px">Columns, tab or comma separated, in this order: ' +
+    '<b>Name · Designation · Branch · City · State · Mobile · Email</b>. Only the name is required. ' +
+    'Leave State blank and it fills itself in from the city where we know it.</div>' +
+    '<textarea id="corp-paste-box" rows="7" style="width:100%;box-sizing:border-box;padding:9px;border:1px solid #d1d5db;border-radius:7px;font-family:monospace;font-size:12px" ' +
+    'placeholder="Ramesh Iyer&#9;Sales Executive&#9;Bandra&#9;Mumbai&#9;&#9;9820012345&#9;ramesh@example.com"></textarea>' +
+    '<div style="margin-top:8px;display:flex;gap:8px">' +
+    '<button class="btn btn-gold btn-xs" style="padding:6px 14px;cursor:pointer" onclick="corpDoPaste()">Import</button>' +
+    '<button class="btn btn-xs" style="background:#e5e7eb;border:none;border-radius:6px;padding:6px 14px;cursor:pointer" onclick="document.getElementById(\'corp-paste-wrap\').style.display=\'none\'">Cancel</button>' +
+    '</div></div>';
+
+  if (!ps.length) {
+    h += '<div class="empty-state" style="padding:26px"><div class="empty-icon">👥</div>' +
+         '<div class="empty-title">No participants recorded yet</div>' +
+         '<div class="empty-copy">Paste the client\'s list to get started — certificates need names.</div></div>';
+  } else {
+    h += '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+      '<th class="text-left">Name</th><th class="text-left">Designation</th><th class="text-left">Branch</th>' +
+      '<th class="text-left">City</th><th class="text-left">State</th><th class="text-left">Mobile</th><th class="text-left">Email</th>' +
+      (tested ? '<th>Weekly %</th><th>Final %</th><th>Avg</th><th>Result</th>' : '') +
+      '<th>Certificate</th><th></th></tr></thead><tbody>';
+    ps.forEach(function (p, i) {
+      h += '<tr>' +
+        '<td><strong>' + escC(p.name) + '</strong></td>' +
+        '<td>' + escC(p.designation || '—') + '</td>' +
+        '<td>' + escC(p.branch || '—') + '</td>' +
+        '<td>' + escC(p.city || '—') + '</td>' +
+        '<td>' + escC(p.state || '—') + '</td>' +
+        '<td>' + escC(p.mobile || '—') + '</td>' +
+        '<td>' + escC(p.email || '—') + '</td>';
+      if (tested) {
+        h += '<td style="text-align:right">' + corpMarkCell(p, 'weeklyPct') + '</td>' +
+             '<td style="text-align:right">' + corpMarkCell(p, 'finalPct') + '</td>' +
+             '<td style="text-align:right">' + (p.avg == null ? '—' : p.avg + '%') + '</td>' +
+             '<td style="text-align:center;font-weight:700;color:' +
+               (p.pending ? '#6b7280' : (p.passed ? '#059669' : '#dc2626')) + '">' +
+               (p.pending ? 'Pending' : (p.passed ? 'Qualified' : 'Not qualified')) + '</td>';
+      }
+      h += '<td style="text-align:center">' + (p.releasedAt
+            ? '<span style="color:#059669;font-weight:700">✓ Issued</span>'
+            : '<span style="color:#9ca3af">—</span>') + '</td>';
+      h += '<td><button class="del-btn" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 9px;cursor:pointer" onclick="corpEditRow(' + i + ')">Edit</button> ' +
+           '<button class="del-btn" onclick="corpDeleteRow(\'' + escC(p.id) + '\')">Remove</button></td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+  h += '</div>';
+  wrap.innerHTML = h;
+}
+
+/* Marks are edited in place — with 20 associates a modal per person is worse than
+   tabbing across the row. */
+function corpMarkCell(p, field) {
+  var v = p[field];
+  return '<input type="number" min="0" max="100" value="' + (v == null ? '' : v) + '" ' +
+    'onchange="corpSaveMark(\'' + escC(p.id) + '\',\'' + field + '\',this.value)" ' +
+    'style="width:64px;padding:4px 6px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;text-align:right">';
+}
+
+function corpSaveMark(id, field, value) {
+  var p = (_corpRoster.participants || []).find(function (x) { return x.id === id; });
+  if (!p) return;
+  var payload = { action: 'corpSaveParticipant', id: id, batchId: _corpRosterBatchId,
+    name: p.name, designation: p.designation, branch: p.branch, city: p.city,
+    state: p.state, mobile: p.mobile, email: p.email,
+    weeklyPct: field === 'weeklyPct' ? value : (p.weeklyPct == null ? '' : p.weeklyPct),
+    finalPct:  field === 'finalPct'  ? value : (p.finalPct  == null ? '' : p.finalPct) };
+  gasGet(payload, function (e, d) {
+    if (e || !d || d.status !== 'ok') { showToast('Could not save the mark.', 'error'); return; }
+    openCorpRoster(_corpRosterBatchId);
+  });
+}
+
+function corpSaveMode() {
+  var mode = (document.getElementById('corp-mode') || {}).value || 'participation';
+  var passPct = (document.getElementById('corp-pass') || {}).value || '';
+  gasGet({ action: 'corpSetAssessmentMode', batchId: _corpRosterBatchId, mode: mode, passPct: passPct },
+    function (e, d) {
+      if (e || !d || d.status !== 'ok') { showToast('Could not change the programme type.', 'error'); return; }
+      openCorpRoster(_corpRosterBatchId);
+    });
+}
+
+function corpOpenPaste() {
+  var w = document.getElementById('corp-paste-wrap');
+  if (w) { w.style.display = w.style.display === 'none' ? '' : 'none'; }
+}
+
+/* Splits on tab first, because that is what a spreadsheet paste gives. Falls back to
+   comma, which is what someone typing by hand produces. */
+function corpDoPaste() {
+  var txt = ((document.getElementById('corp-paste-box') || {}).value || '').replace(/\r/g, '');
+  var lines = txt.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+  if (!lines.length) { showToast('Nothing pasted.', 'error'); return; }
+  var rows = lines.map(function (l) {
+    var f = (l.indexOf('\t') !== -1 ? l.split('\t') : l.split(',')).map(function (x) { return x.trim(); });
+    return { name: f[0] || '', designation: f[1] || '', branch: f[2] || '', city: f[3] || '',
+             state: f[4] || '', mobile: f[5] || '', email: f[6] || '' };
+  });
+  // A header row pasted along with the data would otherwise become a participant.
+  if (rows.length && /^(name|participant)/i.test(rows[0].name)) rows.shift();
+  if (!rows.length) { showToast('Only a header row was pasted.', 'error'); return; }
+
+  gasGet({ action: 'corpImportParticipants', batchId: _corpRosterBatchId, rows: JSON.stringify(rows) },
+    function (e, d) {
+      if (e || !d || d.status !== 'ok') { showToast((d && d.reason) || 'Import failed.', 'error'); return; }
+      var msg = 'Imported ' + d.imported + ' participant' + (d.imported === 1 ? '' : 's') + '.';
+      if (d.skipped && d.skipped.length) msg += ' Skipped line' + (d.skipped.length === 1 ? ' ' : 's ') + d.skipped.join(', ') + ' — no name.';
+      showToast(msg, d.skipped && d.skipped.length ? 'warn' : 'success');
+      openCorpRoster(_corpRosterBatchId);
+    });
+}
+
+function corpAddRow() { corpParticipantPrompt(null); }
+function corpEditRow(i) { corpParticipantPrompt((_corpRoster.participants || [])[i] || null); }
+
+/* One participant at a time. Deliberately a plain prompt chain rather than another
+   modal: this is the exception path — the roster normally arrives by paste. */
+function corpParticipantPrompt(p) {
+  var name = window.prompt('Participant name *', (p && p.name) || '');
+  if (name === null) return;
+  name = name.trim();
+  if (!name) { showToast('A name is required.', 'error'); return; }
+  var designation = window.prompt('Designation', (p && p.designation) || '');
+  if (designation === null) return;
+  var branch = window.prompt('Branch', (p && p.branch) || '');
+  if (branch === null) return;
+  var city = window.prompt('City', (p && p.city) || '');
+  if (city === null) return;
+  var state = window.prompt('State (leave blank to fill from the city)', (p && p.state) || '');
+  if (state === null) return;
+  var mobile = window.prompt('Mobile (optional)', (p && p.mobile) || '');
+  if (mobile === null) return;
+  var email = window.prompt('Email (optional)', (p && p.email) || '');
+  if (email === null) return;
+
+  gasGet({ action: 'corpSaveParticipant', id: (p && p.id) || '', batchId: _corpRosterBatchId,
+    name: name, designation: designation, branch: branch, city: city, state: state,
+    mobile: mobile, email: email }, function (e, d) {
+      if (e || !d || d.status !== 'ok') { showToast((d && d.reason) || 'Could not save.', 'error'); return; }
+      showToast('Saved.', 'success');
+      openCorpRoster(_corpRosterBatchId);
+    });
+}
+
+function corpDeleteRow(id) {
+  if (!window.confirm('Remove this participant from the roster?')) return;
+  gasGet({ action: 'corpDeleteParticipant', id: id }, function (e, d) {
+    if (e || !d || d.status !== 'ok') { showToast('Could not remove.', 'error'); return; }
+    openCorpRoster(_corpRosterBatchId);
+  });
+}
+
+function corpDownloadRoster() {
+  if (!_corpRoster) return;
+  var tested = _corpRoster.batch.assessmentMode === 'tested';
+  var head = ['Name', 'Designation', 'Branch', 'City', 'State', 'Mobile', 'Email'];
+  if (tested) head = head.concat(['Weekly %', 'Final %', 'Average %', 'Result']);
+  head.push('Certificate issued');
+  var q = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
+  var rows = [head.map(q).join(',')];
+  (_corpRoster.participants || []).forEach(function (p) {
+    var r = [p.name, p.designation, p.branch, p.city, p.state, p.mobile, p.email];
+    if (tested) r = r.concat([p.weeklyPct, p.finalPct, p.avg,
+      p.pending ? 'Pending' : (p.passed ? 'Qualified' : 'Not qualified')]);
+    r.push(p.releasedAt ? 'Yes' : 'No');
+    rows.push(r.map(q).join(','));
+  });
+  var blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (_corpRoster.batch.companyName || 'corporate') .replace(/[^a-zA-Z0-9]+/g, '_') + '_participants.csv';
+  a.click();
 }
 
 /* ══════════════════════════════════════════════════════════════

@@ -516,27 +516,48 @@ window.gasGet = (function () {
      the full standard until somebody deliberately classifies it as short. Failing
      towards the stricter side is the only safe default for an eligibility rule.
 
-     TO ADD A SHORT COURSE: add its name fragment to SHORT_COURSE_NAMES, or its batch
-     code segment to SHORT_COURSE_CODES. Nothing else needs to change.
+     There are two short tiers, because "short" is not one length:
+
+       ONE weekly test  — courses that run about two to three weeks. A three-week
+                          course cannot sit three weekly tests, and even two leaves no
+                          teaching room, so these carry one weekly plus the final.
+                          PDC (3 weeks) and Identification of RES (2 weeks), set by
+                          Sunil on 2026-09-28.
+
+       TWO weekly tests — the longer short courses: JewelPad and Polished Diamond
+                          Grading, unchanged from the 2026-09 decision.
+
+     TO ADD A SHORT COURSE: put its name fragment or batch-code segment in the tier it
+     belongs to. Nothing else needs to change.
 
      Course name is matched first and is authoritative. Batch codes are only consulted
-     for segments that unambiguously mean one course — DIA deliberately is NOT in the
+     for segments that unambiguously mean one course — DIA deliberately is NOT in any
      code list, because it is used by both "Diamond Essential: The 5C's" (short) and
      "Diamond Graduate Integrated" (a full diploma). */
+  var ONE_TEST_COURSE_NAMES = [
+    'identification of res'      // iRES — 2 weeks
+  ];
+  var ONE_TEST_COURSE_CODES = ['PDC', 'IDE', 'RES', 'IRES'];
+
   var SHORT_COURSE_NAMES = [
-    'jewelpad',                  // JewelPad Design / JewelPad Online — on 2 since before this rule existed
+    'jewelpad',                  // JewelPad Design / JewelPad Online
     'polished diamond grading'   // PDG
   ];
-  var SHORT_COURSE_CODES = ['PDG', 'POL', 'PDC'];
+  var SHORT_COURSE_CODES = ['PDG', 'POL'];
 
   function weeklyTestsRequired(course, batchCode) {
     var c = String(course || '').toLowerCase();
-    for (var i = 0; i < SHORT_COURSE_NAMES.length; i++) {
+    var i;
+    for (i = 0; i < ONE_TEST_COURSE_NAMES.length; i++) {
+      if (c.indexOf(ONE_TEST_COURSE_NAMES[i]) !== -1) return 1;
+    }
+    for (i = 0; i < SHORT_COURSE_NAMES.length; i++) {
       if (c.indexOf(SHORT_COURSE_NAMES[i]) !== -1) return 2;
     }
     // Second segment of e.g. "MUM-PDG-SEP26". Only consulted when the course name did
     // not already decide it.
     var seg = String(batchCode || '').toUpperCase().split('-')[1] || '';
+    if (ONE_TEST_COURSE_CODES.indexOf(seg) !== -1) return 1;
     if (SHORT_COURSE_CODES.indexOf(seg) !== -1) return 2;
     return 3;
   }
@@ -623,7 +644,7 @@ window.gasGet = (function () {
     }
 
     // ── Weekly score: best of N across every weekly test actually taken ──────
-    // N = mandatoryCount (2 for short courses, 3 otherwise — see weeklyTestsRequired) — the number of weekly tests a batch
+    // N = mandatoryCount (1 or 2 for short courses, 3 otherwise — see weeklyTestsRequired) — the number of weekly tests a batch
     // is expected to run. Pool together every attempt with a recorded score: mandatory
     // slots, optional/bonus slots (WT4-6 etc.), and any Re-Test — then average this
     // student's best N of them. Retired 2026-09-03 (previously averaged only the fixed
@@ -8807,7 +8828,7 @@ window.gasGet = (function () {
      is to catch the "it's been weeks and nothing's been entered" case, not to nag over
      exact scheduling.
      Three independent checks per active batch:
-       - Weekly: mandatoryCount (2 for short courses, else 3 — weeklyTestsRequired, same rule buildDiplomaRow uses)
+       - Weekly: mandatoryCount (1 or 2 for short courses, else 3 — weeklyTestsRequired, same rule buildDiplomaRow uses)
          paced proportionally across the batch's duration; flagged if fewer weekly-type
          tests exist than that pacing implies by today.
        - Practical: flagged once the batch is at/past its halfway point and zero

@@ -3211,6 +3211,13 @@ window.gasGet = (function () {
       }
       meta.invoice_number = p.invoiceNumber || '';
       meta.invoice_date = p.invoiceDate || '';
+      /* Keep doc_type in step with the number. This modal has no PI/Invoice
+         dropdown, so without this a record raised as a PI keeps doc_type:'pi'
+         after the real tax-invoice number is typed in here, and goes on
+         reporting as "awaiting full payment" in Revenue Billing for ever.
+         Only an unambiguous number changes it — see BILLING.docTypeFromNumber. */
+      var _byNum = BILLING.docTypeFromNumber(meta.invoice_number);
+      if (_byNum && !meta.doc_type_manual && _byNum !== meta.doc_type) meta.doc_type = _byNum;
       if (p.invoiceAmount !== undefined && p.invoiceAmount !== null && p.invoiceAmount !== '') {
         meta.invoice_amount = Number(p.invoiceAmount);
       }
@@ -3639,6 +3646,11 @@ window.gasGet = (function () {
               meta.doc_type = prevMeta1.doc_type;
               meta.doc_type_manual = !!prevMeta1.doc_type_manual;
               meta.doc_type_note = prevMeta1.doc_type_note || '';
+              // ...unless the number now unambiguously says otherwise. Carrying a
+              // stale 'pi' forward over a freshly typed tax-invoice number is what
+              // left records stuck on PI after Accounts had invoiced them.
+              var _bn1 = BILLING.docTypeFromNumber(meta.invoice_number);
+              if (_bn1 && !meta.doc_type_manual && _bn1 !== meta.doc_type) meta.doc_type = _bn1;
             }
             dbRow.receipt_no = JSON.stringify(meta);
           } catch (exAS1) {}
@@ -3683,6 +3695,9 @@ window.gasGet = (function () {
             meta.doc_type = prevMeta2.doc_type;
             meta.doc_type_manual = !!prevMeta2.doc_type_manual;
             meta.doc_type_note = prevMeta2.doc_type_note || '';
+            // See the matching note on the batch-move path above.
+            var _bn2 = BILLING.docTypeFromNumber(meta.invoice_number);
+            if (_bn2 && !meta.doc_type_manual && _bn2 !== meta.doc_type) meta.doc_type = _bn2;
           }
           dbRow.receipt_no = JSON.stringify(meta);
         } catch (exAS2) {}
@@ -4639,9 +4654,44 @@ window.gasGet = (function () {
     /* Returns 'invoice', 'pi' or 'none' — see the ordering note in h_getDocTypeSplit.
        'none' means no document of any kind has been raised, which is the bucket worth
        chasing; it is NOT the same as "not on PI". */
+    /* What the document NUMBER alone says, when it says anything at all.
+       Returns 'pi', 'invoice', or null when the number is too vague to call —
+       a bare serial, or a stub like "MUM-PI-" with no number after it.
+
+       This exists because doc_type and invoice_number are stored separately and
+       can drift apart. A record raised as a PI carries doc_type:'pi'; if somebody
+       later types the real tax-invoice number into the fee form or the Invoices
+       modal without touching a PI/Invoice dropdown, the stored doc_type stays
+       'pi' and the record reads as "awaiting full payment" for ever, even though
+       Accounts have invoiced it. Only an UNAMBIGUOUS number may overrule a stored
+       doc_type, so a vague edit can never silently reclassify a record. */
+    docTypeFromNumber: function (n) {
+      var v = String(n == null ? '' : n).trim().toUpperCase();
+      if (!v) return null;
+      if (BILLING.looksLikePI(v)) return 'pi';
+      if (/(^|[^A-Z])INV([^A-Z]|$)|INVOICE/.test(v)) return 'invoice';
+      return null;
+    },
+
     statusOf: function (meta, revenueMonth) {
       var docNo = String((meta && meta.invoice_number) || '').trim();
-      if (meta && meta.doc_type) return meta.doc_type === 'pi' ? 'pi' : 'invoice';
+      if (meta && meta.doc_type) {
+        /* An unambiguous number overrules a doc_type that was set automatically:
+           it is the later, more concrete evidence, and the drift above is
+           otherwise invisible and permanent.
+
+           It does NOT overrule doc_type_manual — a human who deliberately chose
+           PI or Tax Invoice may be sitting on a number field that simply has not
+           caught up (a tax invoice raised while the old PI number is still in the
+           box). Guessing against them would move real money between the headline
+           figures on nothing better than a stale string. Those records are
+           corrected by re-picking the type, not inferred around. */
+        if (!meta.doc_type_manual) {
+          var byNumber = BILLING.docTypeFromNumber(docNo);
+          if (byNumber && byNumber !== meta.doc_type) return byNumber;
+        }
+        return meta.doc_type === 'pi' ? 'pi' : 'invoice';
+      }
       if (docNo) return BILLING.looksLikePI(docNo) ? 'pi' : 'invoice';
       if (String(revenueMonth || '') < BILLING.POLICY_FROM) return 'invoice';
       return (Number(meta && meta.outstanding) || 0) >= 1 ? 'none' : 'invoice';

@@ -8833,8 +8833,51 @@ window.gasGet = (function () {
      - numerator:   distinct held sessions with a Present/Late row whose
                     instructor_override is not 'absent'
      Returns { 'STUDENT|BATCH': { total, present } } (batch codes upper-cased).  */
-  function attendanceFromSessions(sessions, attRows) {
+  /* Integrated (Smart Learning) courses are self-paced: the lectures are recorded
+     and the student only comes in for the practical — 5 full days, or 10 half days.
+     The nightly cron, however, creates a session every weekday for every active
+     batch regardless of course, so a batch running 17 Aug to 7 Oct accumulated 30
+     sessions against 5 real practical days. A student who attended every practical
+     read as 5/30 = 17% attendance.
+
+     For these courses the denominator is therefore the sessions where attendance was
+     actually taken, not every session the cron manufactured. That is self-correcting:
+     it fixes the batches already carrying phantom sessions without migrating
+     anything, and once the cron stops creating them (see api/cron/create-sessions.js)
+     the two definitions converge.
+
+     Deliberately NOT applied to ordinary courses: there a session nobody marked is
+     still a day that was held, and dropping it would let an unmarked register quietly
+     improve everyone's percentage. Set by Sunil 2026-09-28. */
+  var PRACTICAL_ONLY_COURSES = [
+    'diamond graduate integrated', 'coloured stone integrated', 'colored stone integrated'
+  ];
+
+  function isPracticalOnlyCourse(course) {
+    return PRACTICAL_ONLY_COURSES.indexOf(String(course || '').trim().toLowerCase()) !== -1;
+  }
+
+  /* batch_code (upper) -> course, for attendanceFromSessions' practical-only rule. */
+  function courseByBatchMap(batchMap) {
+    var out = {};
+    Object.keys(batchMap || {}).forEach(function (k) {
+      var b = batchMap[k];
+      if (b && b.batch_code) out[String(b.batch_code).toUpperCase()] = b.course || '';
+    });
+    return out;
+  }
+
+  function attendanceFromSessions(sessions, attRows, courseByBatch) {
     var today = new Date(); today.setHours(23, 59, 59, 999);
+    var courseMap = courseByBatch || {};
+
+    // Which sessions had a register taken at all — any status, present or absent.
+    // A practical is a day students were there to be marked.
+    var markedSessions = {};
+    (attRows || []).forEach(function(a) {
+      if (a && a.session_code) markedSessions[a.session_code] = true;
+    });
+
     var heldByBatch = {}, heldCodes = {};
     (sessions || []).forEach(function(sn) {
       if (!sn || !sn.batch_code || !sn.session_code) return;
@@ -8843,6 +8886,9 @@ window.gasGet = (function () {
       if (String(sn.topic || '').indexOf('CANCELLED:') === 0) return;
       if (sn.session_date && new Date(sn.session_date) > today) return;
       var bc = String(sn.batch_code).toUpperCase();
+      // On an Integrated batch, a session nobody was ever marked against is one the
+      // cron invented on a day the students were at home with the recordings.
+      if (isPracticalOnlyCourse(courseMap[bc]) && !markedSessions[sn.session_code]) return;
       if (!heldByBatch[bc]) heldByBatch[bc] = 0;
       if (!heldCodes[sn.session_code]) { heldCodes[sn.session_code] = bc; heldByBatch[bc]++; }
     });
@@ -8935,7 +8981,7 @@ window.gasGet = (function () {
       });
 
       // Attendance = attended ÷ sessions HELD (see attendanceFromSessions; 2026-09-10 fix)
-      var attFromSess = attendanceFromSessions(sessionRows, attRows);
+      var attFromSess = attendanceFromSessions(sessionRows, attRows, courseByBatchMap(batchMap));
       var attByBatch = {};
       batchCodes.forEach(function(code) {
         var bc = String(code).toUpperCase();
@@ -10469,7 +10515,7 @@ window.gasGet = (function () {
 
       // Attendance = attended ÷ sessions HELD to date, honouring instructor 'absent'
       // overrides — same helper as the student / counsellor portals (2026-09-10).
-      var attFromSess = attendanceFromSessions(sessions, attFeedback);
+      var attFromSess = attendanceFromSessions(sessions, attFeedback, courseByBatchMap(batchMap));
       var heldByBatchI = attFromSess.__heldByBatch || {};
 
       var assessMap = {};
@@ -10660,7 +10706,7 @@ window.gasGet = (function () {
       });
 
       // Attendance = attended ÷ sessions HELD (see attendanceFromSessions; 2026-09-10 fix)
-      var attByStudentBatch = attendanceFromSessions(sessionRows, attRows);
+      var attByStudentBatch = attendanceFromSessions(sessionRows, attRows, courseByBatchMap(batchMap));
       var heldByBatch = attByStudentBatch.__heldByBatch || {};
 
       var assessmentsByBatch = {};

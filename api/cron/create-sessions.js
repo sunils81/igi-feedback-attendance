@@ -95,6 +95,21 @@ export default async function handler(req, res) {
           continue;
         }
 
+        /* Integrated (Smart Learning) courses are self-paced: lectures are recorded
+           and the student only comes in for the practical — 5 full days or 10 half
+           days. Manufacturing a session every weekday for them created ~30 sessions
+           against 5 real practical days, which wrecked the attendance denominator
+           (a student who attended every practical read as 17%). The instructor
+           creates the session on the day a practical actually runs.
+           Kept in step with PRACTICAL_ONLY_COURSES in assets/shared.js. */
+        const PRACTICAL_ONLY = [
+          'diamond graduate integrated', 'coloured stone integrated', 'colored stone integrated'
+        ];
+        if (PRACTICAL_ONLY.indexOf(String(b.course || '').trim().toLowerCase()) !== -1) {
+          skipped.push({ batch: b.batch_code, reason: 'practical-only course' });
+          continue;
+        }
+
         // Get highest sess_no for this batch to compute next sequence number
         const lastSess = await supaGet(
           'sessions',

@@ -8369,11 +8369,14 @@ function loadCnBilling(force) {
   });
 }
 
-function _cnBillFiltered() {
+/* ignoreStatus=true applies every filter EXCEPT the status dropdown, so the
+   summary chips keep showing the whole picture while the table is filtered to
+   one of them. Mirrors _billingFiltered() in admin.html. */
+function _cnBillFiltered(ignoreStatus) {
   if (!_cnBill) return [];
   var c = (document.getElementById('cn-bill-centre') || {}).value || '';
   var m = (document.getElementById('cn-bill-month') || {}).value || '';
-  var s = (document.getElementById('cn-bill-status') || {}).value || '';
+  var s = ignoreStatus ? '' : ((document.getElementById('cn-bill-status') || {}).value || '');
   var q = String(((document.getElementById('cn-bill-search') || {}).value || '')).trim().toLowerCase();
   return (_cnBill.rows || []).filter(function (r) {
     if (c && r.centre !== c) return false;
@@ -8384,20 +8387,35 @@ function _cnBillFiltered() {
   });
 }
 
+function cnBillFilterByStatus(st) {
+  var sel = document.getElementById('cn-bill-status');
+  if (!sel) return;
+  sel.value = (sel.value === st) ? '' : st;
+  renderCnBilling();
+}
+
 function renderCnBilling() {
   if (!_cnBill) return;
-  var rows = _cnBillFiltered();
+  var rows    = _cnBillFiltered();
+  var allRows = _cnBillFiltered(true);   // chips ignore the status filter
+  var active  = (document.getElementById('cn-bill-status') || {}).value || '';
   var tot = { invoice: 0, pi: 0, none: 0 }, cnt = { invoice: 0, pi: 0, none: 0 }, collected = 0;
-  rows.forEach(function (r) { tot[r.status] += r.booked; cnt[r.status]++; collected += r.collected; });
+  allRows.forEach(function (r) { tot[r.status] += r.booked; cnt[r.status]++; });
+  rows.forEach(function (r) { collected += r.collected; });
 
   var sum = document.getElementById('cn-bill-summary');
   if (sum) {
     var card = function (st) {
       var s = CN_BILL_STATUS[st];
-      return '<div style="flex:1;min-width:150px;background:' + s.bg + ';border-left:4px solid ' + s.fg + ';border-radius:8px;padding:10px 13px">' +
-        '<div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:' + s.fg + '">' + s.label + '</div>' +
+      var on = active === st;
+      return '<div role="button" tabindex="0" title="Show only these records"' +
+        ' onclick="cnBillFilterByStatus(\'' + st + '\')"' +
+        ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();cnBillFilterByStatus(\'' + st + '\');}"' +
+        ' style="flex:1;min-width:150px;cursor:pointer;background:' + s.bg + ';border-left:4px solid ' + s.fg + ';border-radius:8px;padding:10px 13px' +
+        (on ? ';box-shadow:0 0 0 2px ' + s.fg + ' inset' : '') + '">' +
+        '<div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:' + s.fg + '">' + s.label + (on ? ' &#10005;' : '') + '</div>' +
         '<div style="font-size:19px;font-weight:800;color:' + s.fg + ';font-family:\'JetBrains Mono\',monospace">' + money(tot[st]) + '</div>' +
-        '<div style="font-size:10.5px;color:#6b7280">' + cnt[st] + ' record' + (cnt[st] === 1 ? '' : 's') + '</div></div>';
+        '<div style="font-size:10.5px;color:#6b7280">' + cnt[st] + ' record' + (cnt[st] === 1 ? '' : 's') + (on ? ' · showing' : '') + '</div></div>';
     };
     sum.innerHTML = card('none') + card('pi') + card('invoice') +
       '<div style="flex:1;min-width:150px;background:var(--off);border-left:4px solid var(--border);border-radius:8px;padding:10px 13px">' +

@@ -4876,9 +4876,14 @@ window.gasGet = (function () {
               because a balance was open.
            3. Failing that, the month. Before Sept 2026 Accounts raised the tax invoice at
               enrolment whether or not the fee was in, so a part-paid record from that era
-              is still tax-invoiced. Reading an open balance as a PI is only valid under
-              the policy that started in Sept 2026.
+              is still tax-invoiced. Reading an open balance as a PI was only ever valid
+              under the policy that ran from 2026-09-17, and accounts dropped it again on
+              2026-09-28 — they now invoice on partial payment as well. The balance is
+              therefore weak evidence at both ends of a narrow window.
            4. Only then, for a Sept-onwards record with nothing else to go on, the balance.
+              What this branch really identifies is a record with NO document of any kind,
+              which is why the amount is carried separately as noDoc and shown as its own
+              bucket in Revenue Billing — that reading survives the SOP change intact.
 
            The threshold is a rupee, not zero: a few records carry sub-rupee rounding
            residue that is not an outstanding balance in any meaningful sense. 2026-09-18. */

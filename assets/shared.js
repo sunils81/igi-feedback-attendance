@@ -10724,9 +10724,17 @@ window.gasGet = (function () {
 
   /* getQuestionBank */
   function h_getQuestionBank(p, cb) {
-    var qs = 'order=id.asc';
+    /* Only the live bank is offered when building a test. The September 2026 import
+       replaced DG, CSG and added PDG, RDG and SDA; the superseded rows are retired
+       (active = false) rather than deleted, because 4,414 test_questions rows across
+       179 tests still point at them — 1,209 of those on tests that are live. Retiring
+       keeps every existing paper readable while taking the old questions out of
+       circulation. Pass includeRetired=true to see them anyway. */
+    var qs = 'order=course.asc,topic.asc,source.asc';
+    if (p.includeRetired !== 'true') qs += '&active=is.true';
     if (p.course) qs += '&course=eq.' + encodeURIComponent(p.course);
     if (p.topic) qs += '&topic=eq.' + encodeURIComponent(p.topic);
+    qs += '&limit=2000';
     GET('question_bank', qs, function(e, rows) {
       if (e) { cb(null, { status: 'ok', questions: [], topicMap: {} }); return; }
       var topicMap = {};
@@ -10738,7 +10746,8 @@ window.gasGet = (function () {
       });
       var questions = (rows || []).map(function(r) {
         var q = { id: r.id, course: r.course, topic: r.topic, question: r.question,
-          opt1: r.option_a, opt2: r.option_b, opt3: r.option_c, opt4: r.option_d, type: r.q_type || 'MCQ' };
+          opt1: r.option_a, opt2: r.option_b, opt3: r.option_c, opt4: r.option_d, type: r.q_type || 'MCQ',
+          active: r.active !== false, source: r.source || '' };
         if (p.includeCorrect === 'true') q.correctOption = r.correct_ans;
         return q;
       });

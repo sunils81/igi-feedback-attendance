@@ -36,50 +36,81 @@ const SYLLABI = {
     {day:30, week:'Week 6', topic:'Re-Test, Instructor Review & Diploma Distribution'}
   ],
 
+  /* Revised 2026-09-28 from the official instructor attendance sheet F/ED-60
+     ("6 Weeks - Colored Stone Graduate Course", Rev 00). 30 days over 6 weeks,
+     105 hours. The portal's previous version was a different course in several
+     places: it had a factory visit on day 5 where the sheet has a theory test,
+     ran corundum before inclusions, and placed the final test on day 28 when the
+     sheet puts it on day 29 with the re-test on day 30.
+
+     Theory tests fall on days 5, 10, 15, 20 and 25. Diploma eligibility takes the
+     best three weekly scores, so five test days is not a problem.
+
+     Mirrored in api/_lib/syllabi.cjs — change both together. */
   'Colored Stone Graduate': [
-    {day:1,  week:'Week 1', topic:'Introduction to Gemology, Mineralogy & Crystallography, Properties of Gemstones, Lab Session'},
-    {day:2,  week:'Week 1', topic:'Instrumentation: Refractometer, Polariscope, Dichroscope'},
-    {day:3,  week:'Week 1', topic:'Inclusions & Microscope, Lab Session on all Instruments'},
-    {day:4,  week:'Week 1', topic:'Instrumentation: Specific Gravity, Microscope, Lab Session'},
-    {day:5,  week:'Week 1', topic:'Factory Visit / Practice'},
-    {day:6,  week:'Week 2', topic:'Introduction to Corundum'},
-    {day:7,  week:'Week 2', topic:'Lab Session on Corundum'},
-    {day:8,  week:'Week 2', topic:'Introduction to Emerald'},
-    {day:9,  week:'Week 2', topic:'Practice on Emerald'},
-    {day:10, week:'Week 2', topic:'Theory Test on RES, Lab Session'},
-    {day:11, week:'Week 3', topic:'Singly Refractive Gemstones'},
-    {day:12, week:'Week 3', topic:'Lab Session on SR Gemstones'},
-    {day:13, week:'Week 3', topic:'Doubly Refractive Gemstones – Uniaxial'},
-    {day:14, week:'Week 3', topic:'Lab Session on DR – Uniaxial Gemstones'},
-    {day:15, week:'Week 3', topic:'Theory Test on RES / SR / DR-Uniaxial / Instruments, Lab Session'},
-    {day:16, week:'Week 4', topic:'Doubly Refractive Gemstones – Biaxial'},
-    {day:17, week:'Week 4', topic:'Lab Session on DR – Biaxial Gemstones'},
-    {day:18, week:'Week 4', topic:'Synthetics'},
-    {day:19, week:'Week 4', topic:'Treatments'},
-    {day:20, week:'Week 4', topic:'Lab Session on Synthetics & Treatments'},
-    {day:21, week:'Week 5', topic:'Theory Test on Synthetics & Treatments, Full Practical Test'},
-    {day:22, week:'Week 5', topic:'Organics, Lab Session on Organics'},
-    {day:23, week:'Week 5', topic:'Pricing, Lab Session'},
+    {day:1,  week:'Week 1', topic:'Introduction to Gemology, Mineralogy & Crystallography, Qualifying Factors, Process of Identification, General Observation'},
+    {day:2,  week:'Week 1', topic:'Instrumentation: Refractometer, Polariscope, Lab Session'},
+    {day:3,  week:'Week 1', topic:'Instrumentation: Dichroscope, Spectroscope, Lab Session'},
+    {day:4,  week:'Week 1', topic:'Instrumentation: Specific Gravity Machine, Microscope, Lab Session'},
+    {day:5,  week:'Week 1', topic:'Theory Test, Lab Session'},
+    {day:6,  week:'Week 2', topic:'Inclusions: Natural & Synthetic Inclusions, Lab Session'},
+    {day:7,  week:'Week 2', topic:'Corundum: Ruby & Sapphire, Chemical & Optical Properties, Natural & Synthetic Inclusions, Lab Session'},
+    {day:8,  week:'Week 2', topic:'Lab Session'},
+    {day:9,  week:'Week 2', topic:'Emerald (Beryl): Chemical & Optical Properties, Natural & Synthetic Inclusions, Lab Session'},
+    {day:10, week:'Week 2', topic:'Theory Test, Lab Session'},
+    {day:11, week:'Week 3', topic:'Synthetics: Synthetic Processes, Synthetic Inclusions, Lab Session'},
+    {day:12, week:'Week 3', topic:'Treatments: Types of Treatment, Identification Methods, Lab Session'},
+    {day:13, week:'Week 3', topic:'Lab Session'},
+    {day:14, week:'Week 3', topic:'Fine Gemstones Group 1: Singly Refractive Stones, Chemical & Optical Properties, Lab Session'},
+    {day:15, week:'Week 3', topic:'Theory Test, Lab Session'},
+    {day:16, week:'Week 4', topic:'Fine Gemstones Group 2: Doubly Refractive (Uniaxial), Chemical & Optical Properties, Lab Session'},
+    {day:17, week:'Week 4', topic:'Lab Session'},
+    {day:18, week:'Week 4', topic:'Fine Gemstones Group 3: Doubly Refractive (Biaxial), Chemical & Optical Properties, Lab Session'},
+    {day:19, week:'Week 4', topic:'Lab Session'},
+    {day:20, week:'Week 4', topic:'Theory Test, Lab Session'},
+    {day:21, week:'Week 5', topic:'Organic Gemstones: Natural & Cultured Pearls, Other Organic Gemstones, Chemical & Optical Properties, Lab Session'},
+    {day:22, week:'Week 5', topic:'Pricing, Lab Session'},
+    {day:23, week:'Week 5', topic:'Lab Session'},
     {day:24, week:'Week 5', topic:'Lab Session'},
-    {day:25, week:'Week 5', topic:'Lab Visit & Lab Session'},
+    {day:25, week:'Week 5', topic:'Theory Test, Lab Session'},
     {day:26, week:'Week 6', topic:'Lab Session'},
     {day:27, week:'Week 6', topic:'Lab Session'},
-    {day:28, week:'Week 6', topic:'Final Test (Practical & Theory)'},
-    {day:29, week:'Week 6', topic:'Re-Test'},
-    {day:30, week:'Week 6', topic:'Graduation'}
+    {day:28, week:'Week 6', topic:'Lab Session'},
+    {day:29, week:'Week 6', topic:'Final Test: 5 Stones Practical Test, Theory Test'},
+    {day:30, week:'Week 6', topic:'Re-Test'}
   ],
 
+  /* Revised 2026-09-28: 10 days to 15, per instruction — "update PDG schedule from
+     10 Day sessions to 15 days sessions by copying 2nd, 3rd & 4th week topics from
+     DG courses schedule". PDG is polished-only, so it skips DG week 1 (mining,
+     rough morphology, sorting, factory visit) and picks the course up at clarity.
+
+     Days 1-14 are DG days 6-19 verbatim. Day 15 is NOT DG day 20 — a literal copy
+     would end the course on a weekly test and lose the final exam, the 3 Stone
+     Challenge and the diploma distribution that the old 10-day day 10 carried,
+     which would break diploma eligibility outright since a Final is required. Day
+     15 therefore carries the final, confirmed by Sunil 2026-09-28.
+
+     Weekly tests land on days 5 and 10, which matches the two-weekly-test rule PDG
+     already has in weeklyTestsRequired — nothing else needs changing.
+
+     Mirrored in api/_lib/syllabi.cjs — change both together. */
   'Polished Diamond Grading': [
-    {day:1,  week:'Week 1', topic:'Introduction, Evolution from Rough to Polish, Formation, Mining & Extraction, Manufacturing Process, Clarity Grading Theory'},
-    {day:2,  week:'Week 1', topic:'Lab (Clarity – Inclusion & Blemishes), Clarity Grade Definitions, Plotting Theory, Clarity + Plotting Lab'},
-    {day:3,  week:'Week 1', topic:'Color Theory, International Color Grading Scale, Fancy Colors, Visual Estimation, Clarity + Plotting + Color Lab'},
-    {day:4,  week:'Week 1', topic:'Measurements Theory, Estimation of Crown Angle & Table %, Crown Height %, Pavilion Depth %, Labs for Estimation'},
-    {day:5,  week:'Week 1', topic:'Girdle Thickness, Culet Condition, Proportion & Finish Grades, Lab for Complete Grading'},
-    {day:6,  week:'Week 2', topic:'Lab for Complete Grading (Clarity + Color + Cut)'},
-    {day:7,  week:'Week 2', topic:'Analysis & Grading of Fancy Shapes – Clarity, Color & Cut, Lab for Grading Fancy & Round Shapes'},
-    {day:8,  week:'Week 2', topic:'Recognition of Diamonds & Imitations (Theory + Lab), Synthetics, Lab for Recognition'},
-    {day:9,  week:'Week 2', topic:'Lab for Grading Fancy & Round Shapes, Pricing in International Market, Price Calculation Examples'},
-    {day:10, week:'Week 2', topic:'3 Stone Challenge, Final Theory Test, Instructor Review, Diploma Distribution'}
+    {day:1,  week:'Week 1', topic:'Instruments & Lighting Techniques, Inclusions & Blemishes'},
+    {day:2,  week:'Week 1', topic:'Clarity Grade Definitions with Plotting'},
+    {day:3,  week:'Week 1', topic:'Color'},
+    {day:4,  week:'Week 1', topic:'Lab on Color'},
+    {day:5,  week:'Week 1', topic:'Weekly Test - Clarity & Color (Theory 20 Questions, Lab 3 Stones)'},
+    {day:6,  week:'Week 2', topic:'Measurements, Weight Estimation, Table Size, Crown Angle'},
+    {day:7,  week:'Week 2', topic:'Crown Height %, Pavilion Depth %, Girdle & Culet'},
+    {day:8,  week:'Week 2', topic:'Proportions, Polish & Symmetry'},
+    {day:9,  week:'Week 2', topic:'Lab Practice'},
+    {day:10, week:'Week 2', topic:'Weekly Test - 4Cs (Theory 20 Questions, Lab 3 Stones)'},
+    {day:11, week:'Week 3', topic:'Fancy Shapes'},
+    {day:12, week:'Week 3', topic:'Color & Clarity Treatments'},
+    {day:13, week:'Week 3', topic:'Imitations and Synthetics'},
+    {day:14, week:'Week 3', topic:'Pricing'},
+    {day:15, week:'Week 3', topic:'Final Test - 3 Stone Challenge & Theory Test, Instructor Review, Diploma Distribution'}
   ],
 
   'Jewelry Design': [

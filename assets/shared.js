@@ -5770,12 +5770,13 @@ window.gasGet = (function () {
       GET('batches', 'batch_code=eq.' + encodeURIComponent(p.batchCode) + '&select=course&limit=1', function (eb, bRows) {
         var course = bRows && bRows[0] ? bRows[0].course : '';
         var syllabus = resolveSyllabus(course);
-        var syllabusDay = p.topic ? findSyllabusDay(syllabus, p.topic) : null;
+        var range = p.topic ? findSyllabusRange(syllabus, p.topic, p.perSession)
+                            : { from: null, to: null };
         POST('sessions', 'on_conflict=session_code', {
           session_code: sessCode, batch_code: p.batchCode,
           session_date: p.sessionDate || todayYMD(), sess_no: nextNo,
           instructor: p.instructor || '', session_type: p.sessionType || 'Scheduled', topic: p.topic || '',
-          syllabus_day: syllabusDay
+          syllabus_day: range.from, syllabus_day_to: range.to
         }, function (e2) { cb(null, e2 ? { status: 'error' } : { status: 'ok', sessionCode: sessCode, sessNo: nextNo, displaySessNo: displayNo }); });
       });
     });
@@ -9815,6 +9816,25 @@ window.gasGet = (function () {
   // review, an instructor-typed description, etc.). Used at write time — when a
   // session is created or its topic is set/confirmed — to record which specific
   // day (if any) that session actually covered. See computeSyllabusProgress.
+  /* Matches a topic against the syllabus at a given pace and returns {from, to}.
+     A double-pace session's topic is the two days joined, so it has to be matched
+     against the PACED list — against the raw list it would look custom and record
+     no day at all, which is how one full-day batch ran 15 sessions with nothing
+     tracked. Returns nulls for a genuinely custom topic (a factory visit, a makeup
+     session), which correctly consumes no syllabus day. */
+  function findSyllabusRange(syllabus, topic, perSession) {
+    var key = normTopicKey(topic);
+    if (!key) return { from: null, to: null };
+    var paced = pacedSyllabus(syllabus, perSession);
+    for (var i = 0; i < paced.length; i++) {
+      if (normTopicKey(paced[i].topic) === key) return { from: paced[i].day, to: paced[i].dayTo };
+    }
+    // An instructor may still pick a single day's topic on a double-pace batch —
+    // a short day, or catching up one outstanding half of a pair.
+    var one = findSyllabusDay(syllabus, topic);
+    return one ? { from: one, to: one } : { from: null, to: null };
+  }
+
   function findSyllabusDay(syllabus, topic) {
     var key = normTopicKey(topic);
     if (!key) return null;
@@ -9849,23 +9869,105 @@ window.gasGet = (function () {
   // there's no drift from re-matching text after the fact. "Next" is just the
   // lowest-numbered day nobody has recorded yet, so it's correct regardless of
   // order, holidays, or how many custom sessions happen along the way.
-  function computeSyllabusProgress(syllabus, pastRows) {
+  /* ══ SESSION PACE ═══════════════════════════════════════════════════════
+     A full-day DG or CSG batch covers two syllabus days in one sitting — 105
+     hours either way, taken as 30 half-days or 15 full days. Progression used
+     to assume one session = one day, so those batches could never reach the end
+     of the syllabus and instructors worked around it by hand, inconsistently.
+
+     The pace lives on the batch (syllabus_days_per_session). When it is not set
+     the rule below derives it, so a full-day DG or CSG batch created tomorrow
+     paces correctly without anybody remembering to set a field; the column stays
+     as the override for a batch that runs differently. Set by Sunil 2026-09-28.
+
+     Deliberately keyed on type = 'Full Day' and the course, NOT on batch_slot:
+     four DG batches carry slot 'Full Day' with type 'Weekday' and span about 95
+     days, so they are not double-pace and must not be treated as such. */
+  var DOUBLE_PACE_COURSES = ['diamond graduate', 'colored stone graduate', 'coloured stone graduate'];
+
+  function syllabusDaysPerSession(batch) {
+    if (!batch) return 1;
+    var explicit = Number(batch.syllabus_days_per_session || 0);
+    if (explicit >= 1) return explicit;
+    var type = String(batch.type || '').trim().toLowerCase();
+    var course = String(batch.course || '').trim().toLowerCase();
+    if (type === 'full day' && DOUBLE_PACE_COURSES.indexOf(course) !== -1) return 2;
+    return 1;
+  }
+
+  /* Courses taught without a fixed day plan. Smart Learning runs on recorded
+     lectures with students coming in for practicals, so what happens on any given
+     day is the instructor's call; SDA and iRES are short and run the same way.
+     These have no syllabus in SYLLABI, and the session UI gives the instructor a
+     free topic box instead of a dropdown. Named here so the intent is findable
+     rather than being an accident of an absent entry. */
+  var FREE_TOPIC_COURSES = [
+    'diamond graduate integrated', 'coloured stone integrated', 'colored stone integrated',
+    'small diamond assortment', 'identification of res'
+  ];
+
+  function isFreeTopicCourse(course) {
+    return FREE_TOPIC_COURSES.indexOf(String(course || '').trim().toLowerCase()) !== -1;
+  }
+
+  /* The syllabus as the instructor should see it for this batch's pace: at pace 1
+     the real days, at pace 2 the days in pairs. An odd tail (a 15-day course at
+     pace 2) leaves the last entry carrying a single day rather than overshooting. */
+  function pacedSyllabus(syllabus, perSession) {
+    var n = Math.max(1, Number(perSession) || 1);
+    if (n === 1) {
+      return (syllabus || []).map(function (x, i) {
+        return { day: x.day || (i + 1), dayTo: x.day || (i + 1), topic: x.topic, week: x.week || '' };
+      });
+    }
+    var out = [];
+    for (var i = 0; i < (syllabus || []).length; i += n) {
+      var grp = syllabus.slice(i, i + n);
+      out.push({
+        day: grp[0].day || (i + 1),
+        dayTo: grp[grp.length - 1].day || (i + grp.length),
+        topic: grp.map(function (g) { return g.topic; }).join('  +  '),
+        week: grp[0].week || ''
+      });
+    }
+    return out;
+  }
+
+  function computeSyllabusProgress(syllabus, pastRows, perSession) {
     var usedDaySet = {};
     var usedDays = [];
-    (pastRows || []).forEach(function (r) {
-      var d = r.syllabus_day;
-      if (d === null || d === undefined || d === '') return;
+    var mark = function (d) {
       d = Number(d);
-      if (!usedDaySet[d]) { usedDaySet[d] = true; usedDays.push(d); }
+      if (!isNaN(d) && !usedDaySet[d]) { usedDaySet[d] = true; usedDays.push(d); }
+    };
+    (pastRows || []).forEach(function (r) {
+      var from = r.syllabus_day;
+      if (from === null || from === undefined || from === '') return;
+      // A session on a double-pace batch covers a RANGE; both ends and everything
+      // between count as taught, or the second day of every pair would be offered
+      // again for ever.
+      var to = (r.syllabus_day_to === null || r.syllabus_day_to === undefined || r.syllabus_day_to === '')
+        ? from : r.syllabus_day_to;
+      for (var d = Number(from); d <= Number(to); d++) mark(d);
     });
     usedDays.sort(function (a, b) { return a - b; });
-    var out = { dayNo: '', scheduledTopic: '', week: '', usedDays: usedDays };
-    for (var i = 0; i < syllabus.length; i++) {
-      var day = syllabus[i].day || (i + 1);
-      if (!usedDaySet[day]) {
-        out.dayNo = day;
-        out.scheduledTopic = syllabus[i].topic;
-        out.week = syllabus[i].week || '';
+
+    var paced = pacedSyllabus(syllabus, perSession);
+    var out = { dayNo: '', dayTo: '', scheduledTopic: '', week: '',
+                usedDays: usedDays, perSession: Math.max(1, Number(perSession) || 1),
+                pacedSyllabus: paced };
+    for (var i = 0; i < paced.length; i++) {
+      // The group is outstanding while ANY day in it is still untaught — a part-covered
+      // pair should be offered again rather than skipped.
+      var covered = true;
+      for (var d2 = paced[i].day; d2 <= paced[i].dayTo; d2++) {
+        if (!usedDaySet[d2]) { covered = false; break; }
+      }
+      if (!covered) {
+        out.dayNo = paced[i].day;
+        out.dayTo = paced[i].dayTo;
+        out.scheduledTopic = paced[i].topic;
+        out.week = paced[i].week || '';
         break;
       }
     }
@@ -9950,7 +10052,7 @@ window.gasGet = (function () {
           var pastRows = allSess.filter(function (s) {
             return s.batch_code === b.batch_code && s.session_date < today && s.session_type !== 'Cancelled';
           });
-          var prog = computeSyllabusProgress(syllabus, pastRows);
+          var prog = computeSyllabusProgress(syllabus, pastRows, syllabusDaysPerSession(b));
           // Weekend-type batches meet on Sat/Sun; every other batch (Regular, or
           // type left blank) meets Mon–Fri — mirrors the same Mon–Fri assumption
           // the nightly auto-create cron uses (api/cron/create-sessions.js).
@@ -9959,6 +10061,7 @@ window.gasGet = (function () {
           function buildEntry(todaySess) {
             return {
               batchCode: b.batch_code, centre: b.centre, course: b.course, type: b.type, batchSlot: b.batch_slot || 'Full Day',
+              perSession: prog.perSession, dayTo: prog.dayTo, freeTopic: isFreeTopicCourse(b.course),
               startDate: toDMY(startD), endDate: toDMY(endD), activeToday: !!activeToday, workingDay: workingDay,
               sessionCode: todaySess ? todaySess.session_code : '', sessNo: todaySess ? todaySess.sess_no : '',
               displaySessNo: todaySess ? (displayNoByCode[todaySess.session_code] || todaySess.sess_no) : '',
@@ -9966,7 +10069,8 @@ window.gasGet = (function () {
               autoCreated: !!todaySess,
               cancelled: !!cancelledTodaySess,
               cancelledReason: cancelledTodaySess ? String(cancelledTodaySess.topic || '').replace(/^CANCELLED:\s*/, '') : '',
-              syllabus: syllabus, scheduledTopic: prog.scheduledTopic, dayNo: prog.dayNo, week: prog.week, usedDays: prog.usedDays
+              syllabus: prog.pacedSyllabus || syllabus, rawSyllabus: syllabus,
+              scheduledTopic: prog.scheduledTopic, dayNo: prog.dayNo, week: prog.week, usedDays: prog.usedDays
             };
           }
           if (todaySessArr.length > 1) {

@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Instructor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=128"></script>
+<script src="/assets/shared.js?v=129"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -3565,11 +3565,15 @@ function createTodaySession(batchCode) {
   const btn = document.getElementById('btn-'+batchCode);
   const topicEl = document.getElementById('topic-'+batchCode);
   if (btn) { btn.textContent='Creating…'; btn.disabled=true; }
+  // Send the batch's pace so the backend matches a combined "Day 7 + Day 8" topic
+  // against the paced syllabus and records the whole range, not just one day.
+  var _tb = (instructorTodayCache || []).find(function(x){ return x.batchCode === batchCode; });
   gasGet({
     action:'createSession',
     batchCode,
     instructor:instructorName,
     sessionDate:new Date().toISOString().split('T')[0],
+    perSession: (_tb && _tb.perSession) || 1,
     topic:topicEl ? topicEl.value.trim() : ''
   }, function(e,d) {
     if (btn) { btn.textContent='Create Today\'s Session →'; btn.disabled=false; }
@@ -3697,11 +3701,31 @@ function renderTodaySessions(sessions) {
       }
       
       var usedDays = s.usedDays || [];
+
+      /* Smart Learning (DG Integrated, Coloured Stone Integrated), SDA and iRES run
+         on recorded lectures with students coming in for practicals, so what happens
+         on a given day is the instructor's call. They have no fixed day plan, and the
+         dropdown had nothing in it but "Other / Custom Topic" — two clicks before the
+         instructor could type anything. Give them the box straight away. */
+      if (s.freeTopic || !syllabus.length) {
+        html += '<input type="text" class="topic-override" id="topic-' + escH(s.batchCode) + '" placeholder="What are you covering today?" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid var(--border);font-family:inherit;font-size:14px;margin-bottom:6px;" value="' + escH(scheduledTopic) + '">';
+        html += '<button class="btn btn-gold" id="btn-' + escH(s.batchCode) + '" data-batch="' + escH(s.batchCode) + '" onclick="createTodaySession(this.dataset.batch)" ' + ((!s.workingDay||!s.activeToday)?'disabled':'') + '>Create Today\'s Session →</button>';
+        html += '</div>';
+        continue;
+      }
+
       var selectHtml = '<select class="topic-select" id="topic-select-' + escH(s.batchCode) + '" onchange="handleTopicSelectChange(\'' + escH(s.batchCode) + '\', false)" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid var(--border);font-family:inherit;font-size:14px;background:#fff;margin-bottom:6px;">';
       selectHtml += '<option value="">-- Select Topic --</option>';
       syllabus.forEach(function(item) {
-        var alreadyCovered = usedDays.indexOf(item.day) !== -1;
-        var optLabel = 'Day ' + item.day + ': ' + item.topic + (alreadyCovered ? ' (already covered)' : '');
+        // On a full-day batch each entry spans two days, so it only counts as covered
+        // when both are, and it is labelled by the range: "Day 7-8: ...".
+        var dTo = item.dayTo || item.day;
+        var alreadyCovered = true;
+        for (var dd = item.day; dd <= dTo; dd++) {
+          if (usedDays.indexOf(dd) === -1) { alreadyCovered = false; break; }
+        }
+        var dayLabel = (dTo > item.day) ? ('Day ' + item.day + '-' + dTo) : ('Day ' + item.day);
+        var optLabel = dayLabel + ': ' + item.topic + (alreadyCovered ? ' (already covered)' : '');
         var selected = (isPredefined && item.topic === matchedTopicValue) ? ' selected' : '';
         var disabledAttr = (alreadyCovered && !selected) ? ' disabled' : '';
         selectHtml += '<option value="' + escH(item.topic) + '"' + selected + disabledAttr + '>' + escH(optLabel) + '</option>';

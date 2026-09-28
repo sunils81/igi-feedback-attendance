@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=125"></script>
+<script src="/assets/shared.js?v=126"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -12578,11 +12578,18 @@ function saveFeeRecord() {
           ' once it is approved you will get a notification, and this fee record reopens exactly as it is now — you just press save.</div>' +
           '<button type="button" onclick="openDiscountRequestFromFeeForm()" style="margin-top:8px;background:var(--navy);color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer">Send for approval →</button>';
         err.classList.add('show');
-        showToast('Discount needs HOD approval — send the request, nothing is lost.', 'error');
+        /* fee-err sits BELOW the Save button in the form, so on a long fee record the
+           whole block — including the "Send for approval →" button, which is the only
+           way to actually raise the request — lands off-screen. Counsellors saw the
+           toast, which fades, concluded the request had been sent, and nothing ever
+           reached discount_requests. Bring it into view. 2026-09-28. */
+        err.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        showToast('Not saved yet — scroll down and press "Send for approval".', 'error');
         return;
       }
       err.textContent = 'Could not save fee record. Please try again.';
       err.classList.add('show');
+      err.scrollIntoView({ behavior: 'smooth', block: 'center' });
       showToast('Could not save fee record.', 'error');
       return;
     }

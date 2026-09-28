@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=122"></script>
+<script src="/assets/shared.js?v=123"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -17135,7 +17135,9 @@ function renderDiplomaTable(list) {
       var approvedBadge = a.hodStatus === 'Approved' ? '<div style="color:#168B57;font-size:10px;font-weight:700;margin-top:4px">👑 HOD Approved</div>' : '';
       if (authorized) {
         canRelease = true;
-        actionCell = '<button class="btn btn-gold btn-xs" onclick="releaseDiploma(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', this)" style="padding:5px 10px;font-size:11px;margin:0 auto;display:block">Release Diploma</button>' + approvedBadge;
+        var relLabel = (a.awardType === 'participation' || _awardTypeForCourse(a.course, a.batchCode) === 'participation')
+          ? 'Release Certificate' : 'Release Diploma';
+        actionCell = '<button class="btn btn-gold btn-xs" onclick="releaseDiploma(\'' + escC(a.studentId) + '\', \'' + escC(a.batchCode) + '\', this)" style="padding:5px 10px;font-size:11px;margin:0 auto;display:block">' + relLabel + '</button>' + approvedBadge;
       } else {
         actionCell = '<span class="badge" style="background:#ECFDF5;color:#168B57;border:1px solid #A7F3D0;padding:3px 8px;font-size:11px">✅ Eligible</span>' + approvedBadge;
       }
@@ -17252,6 +17254,43 @@ var DIPLOMA_TEMPLATE_MAP = {
   'IRES':                         'IRES Diploma.pdf',
   'Diamond Essentials':           'Diamnd Essential 5cs Diploma.pdf',
 };
+
+/* Participation certificates.
+   Small Diamond Assortment and Diamond Essential: The 5C's award a certificate of
+   participation, not a diploma, so they take their own artwork — the diploma
+   templates above are worded "has been awarded the diploma" and must not be used
+   for them. These files live in the same diploma-templates bucket. */
+var PARTICIPATION_TEMPLATE_MAP = {
+  'Small Diamond Assortment':     'Small Diamond Assortment Participation.pdf',
+  "Diamond Essential: The 5C's":  'Diamond Essential 5Cs Participation.pdf',
+  'Diamond Essentials':           'Diamond Essential 5Cs Participation.pdf',
+  'Diamond Essential':            'Diamond Essential 5Cs Participation.pdf',
+};
+
+/* Mirrors awardTypeFor() in shared.js. Kept in step with it by hand; if the course
+   list there changes, change it here too. DIA is deliberately not matched on the
+   batch code, because "Diamond Graduate Integrated" shares it. */
+function _awardTypeForCourse(course, batchCode) {
+  var c = String(course || '').toLowerCase();
+  if (c.indexOf('small diamond assortment') !== -1) return 'participation';
+  if (c.indexOf('diamond essential') !== -1) return 'participation';
+  var seg = String(batchCode || '').toUpperCase().split('-')[1] || '';
+  if (seg === 'SMA') return 'participation';
+  return 'diploma';
+}
+
+function _participationTemplateForCourse(course) {
+  if (!course) return null;
+  if (PARTICIPATION_TEMPLATE_MAP[course]) return PARTICIPATION_TEMPLATE_MAP[course];
+  var lc = course.toLowerCase();
+  var keys = Object.keys(PARTICIPATION_TEMPLATE_MAP);
+  for (var i = 0; i < keys.length; i++) {
+    if (keys[i].toLowerCase().indexOf(lc) !== -1 || lc.indexOf(keys[i].toLowerCase()) !== -1) {
+      return PARTICIPATION_TEMPLATE_MAP[keys[i]];
+    }
+  }
+  return null;
+}
 
 // Per-template overlay coordinates (pdf-lib: y from BOTTOM of page)
 // cover: white rect {x,y,w,h} to erase existing sample text
@@ -17525,17 +17564,21 @@ function _showInstructorModal(studentId, batchCode, studentName, course, btn, pr
     }
   }
 
+  var _isPart = _awardTypeForCourse(course, batchCode) === 'participation';
+  var _modalTitle = _isPart ? '📜 Generate Participation Certificate' : '🎓 Generate Diploma';
+  var _countLabel = _isPart ? 'Certificates Issued' : 'Diploma Certificates Issued';
+
   var modal = document.createElement('div');
   modal.id = 'diploma-instructor-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center';
   modal.innerHTML =
     '<div style="background:#fff;border-radius:12px;padding:28px 32px;min-width:340px;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,.3)">' +
-      '<h3 style="margin:0 0 6px;font-size:17px;color:#0d1b2e">🎓 Generate Diploma</h3>' +
+      '<h3 style="margin:0 0 6px;font-size:17px;color:#0d1b2e">' + _modalTitle + '</h3>' +
       '<p style="margin:0 0 18px;font-size:13px;color:#666">' + escC(studentName) + ' &mdash; ' + escC(course) + '</p>' +
       '<label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">Course Instructor Name *</label>' +
       '<input id="dip-instructor-input" type="text" placeholder="e.g. Priya Mehta" value="' + escC(autoInstructor) + '" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:9px 12px;font-size:14px;outline:none">' +
       (autoInstructor ? '<p style="font-size:11px;color:#6b7280;margin:4px 0 0">Auto-filled from batch — edit if needed.</p>' : '') +
-      '<label style="display:block;font-size:12px;font-weight:600;color:#374151;margin:14px 0 6px">Diploma Certificates Issued</label>' +
+      '<label style="display:block;font-size:12px;font-weight:600;color:#374151;margin:14px 0 6px">' + _countLabel + '</label>' +
       '<input id="dip-count-input" type="number" min="1" value="1" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:9px 12px;font-size:14px;outline:none">' +
       '<p style="font-size:11px;color:#6b7280;margin:4px 0 0">Usually 1. Set higher only for bundle courses issuing multiple certificates in this release (e.g. Graduate Gemologist).</p>' +
       '<p id="dip-modal-err" style="color:#dc2626;font-size:12px;margin:6px 0 0;display:none">Please enter instructor name.</p>' +
@@ -17593,8 +17636,14 @@ async function _doGenerateAndRelease(studentId, batchCode, instructorName, btn, 
   if (!student) throw new Error('Student not found in list');
 
   var course = student.course || '';
-  var templateFilename = _templateForCourse(course);
-  if (!templateFilename) throw new Error('No diploma template found for course: ' + course);
+  var awardType = _awardTypeForCourse(course, batchCode);
+  var isParticipation = awardType === 'participation';
+  var awardWord = isParticipation ? 'participation certificate' : 'diploma';
+
+  var templateFilename = isParticipation
+    ? _participationTemplateForCourse(course)
+    : _templateForCourse(course);
+  if (!templateFilename) throw new Error('No ' + awardWord + ' template found for course: ' + course);
 
   if (statusEl) statusEl.textContent = '⏳ Fetching template...';
 
@@ -17605,7 +17654,7 @@ async function _doGenerateAndRelease(studentId, batchCode, instructorName, btn, 
   console.log('[Diploma] Fetching template from Supabase Storage:', templateUrl);
 
   var tplResp = await fetch(templateUrl);
-  if (!tplResp.ok) throw new Error('Template not found in Supabase Storage: ' + templateFilename + ' (' + tplResp.status + '). Please upload the PDF to the diploma-templates bucket.');
+  if (!tplResp.ok) throw new Error('Template not found in Supabase Storage: "' + templateFilename + '" (' + tplResp.status + '). Upload that PDF to the diploma-templates bucket and try again.');
   var tplArrayBuffer = await tplResp.arrayBuffer();
   // Convert ArrayBuffer to base64
   var tplBytes = new Uint8Array(tplArrayBuffer);
@@ -17633,7 +17682,7 @@ async function _doGenerateAndRelease(studentId, batchCode, instructorName, btn, 
 
   // --- Upload generated diploma PDF to Supabase Storage ---
   var safeStudentName = (student.studentName || '').replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_-]/g,'');
-  var pdfFilename = studentId + '_' + safeStudentName + '_diploma.pdf';
+  var pdfFilename = studentId + '_' + safeStudentName + (isParticipation ? '_participation.pdf' : '_diploma.pdf');
   var storagePath = batchCode + '/' + pdfFilename;
 
   // Convert base64 to blob for upload
@@ -17679,7 +17728,8 @@ async function _doGenerateAndRelease(studentId, batchCode, instructorName, btn, 
       released_by: counselorName || instructorName,
       released_at: nowIso,
       drive_link: storageLink,
-      diploma_count: diplomaCount || 1
+      diploma_count: diplomaCount || 1,
+      award_type: awardType
     })
   });
   if (!sbInsertResp.ok) {
@@ -17697,7 +17747,7 @@ async function _doGenerateAndRelease(studentId, batchCode, instructorName, btn, 
   dlLink.click();
   document.body.removeChild(dlLink);
 
-  showToast('🎓 Diploma generated & saved!');
+  showToast(isParticipation ? '📜 Participation certificate generated & saved!' : '🎓 Diploma generated & saved!');
   loadDiplomaData();
 }
 
@@ -17712,6 +17762,8 @@ function releaseDiploma(studentId, batchCode, btn) {
     }
   }
   if (!student) { btn.disabled = false; btn.textContent = 'Release Diploma'; alert('Student not found.'); return; }
+  var relWord = _awardTypeForCourse(student.course, batchCode) === 'participation'
+    ? 'Release Certificate' : 'Release Diploma';
   // Look up instructor from batch data for auto-fill
   var batchInstructor = '';
   if (allBatches) {
@@ -17721,7 +17773,7 @@ function releaseDiploma(studentId, batchCode, btn) {
       }
     }
   }
-  btn.textContent = 'Release Diploma';
+  btn.textContent = relWord;
   _showInstructorModal(studentId, batchCode, student.studentName, student.course, btn, batchInstructor);
 }
 

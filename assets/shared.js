@@ -534,6 +534,38 @@ window.gasGet = (function () {
      for segments that unambiguously mean one course — DIA deliberately is NOT in any
      code list, because it is used by both "Diamond Essential: The 5C's" (short) and
      "Diamond Graduate Integrated" (a full diploma). */
+  /* ── Participation-only courses ────────────────────────────────────────
+     Small Diamond Assortment and Diamond Essential: The 5C's are short
+     exposure courses. They award a participation certificate, not a diploma,
+     so no weekly test, final or practical is mandatory on them and marks
+     never gate the award. Set by Sunil on 2026-09-28.
+
+     The gate that remains is the fee. Attendance stays advisory here for the
+     same reason it is advisory everywhere else in this file: it is sparsely
+     recorded (at the time this was written six of the seven students on these
+     courses had no attendance marked at all), so gating on it would refuse
+     certificates over missing data rather than over absence. */
+  var PARTICIPATION_COURSE_NAMES = [
+    'small diamond assortment',
+    'diamond essential'          // "Diamond Essential: The 5C's", and the 'Diamond Essentials' spelling
+  ];
+  var PARTICIPATION_COURSE_CODES = ['SMA'];   // NOT 'DIA' — see the note below
+
+  function awardTypeFor(course, batchCode) {
+    var c = String(course || '').toLowerCase();
+    for (var i = 0; i < PARTICIPATION_COURSE_NAMES.length; i++) {
+      if (c.indexOf(PARTICIPATION_COURSE_NAMES[i]) !== -1) return 'participation';
+    }
+    // DIA is deliberately absent from the code list: it is carried by both
+    // "Diamond Essential: The 5C's" (participation) and "Diamond Graduate
+    // Integrated" (a full diploma), so only the course name can tell them apart.
+    // A DIA batch with no course name recorded therefore stays a diploma — the
+    // stricter reading, and the safe one to be wrong about.
+    var seg = String(batchCode || '').toUpperCase().split('-')[1] || '';
+    if (PARTICIPATION_COURSE_CODES.indexOf(seg) !== -1) return 'participation';
+    return 'diploma';
+  }
+
   var ONE_TEST_COURSE_NAMES = [
     'identification of res'      // iRES — 2 weeks
   ];
@@ -548,6 +580,10 @@ window.gasGet = (function () {
   function weeklyTestsRequired(course, batchCode) {
     var c = String(course || '').toLowerCase();
     var i;
+    // A participation course has no mandatory tests at all. Returning 0 here is
+    // what stops the Work dashboard reporting "3 weekly tests not yet entered"
+    // against a course that was never going to sit any.
+    if (awardTypeFor(course, batchCode) === 'participation') return 0;
     for (i = 0; i < ONE_TEST_COURSE_NAMES.length; i++) {
       if (c.indexOf(ONE_TEST_COURSE_NAMES[i]) !== -1) return 1;
     }
@@ -722,8 +758,17 @@ window.gasGet = (function () {
     // itself to be cleared.
     var eligible = (marksEligible || hodStatus === 'Approved') && feePaid;
 
+    /* A participation course awards a certificate of attendance, not a diploma.
+       Nothing academic is mandatory on it, so the marks gate is dropped entirely
+       and the fee gate is all that remains — the same hard gate as everywhere
+       else, and the one that actually has data behind it. Any marks that HAVE
+       been entered still show in the row; they simply do not decide anything. */
+    var awardType = awardTypeFor(course, batchCode);
+    if (awardType === 'participation') eligible = feePaid;
+
     return {
       studentId: studentId, studentName: studentName, batchCode: batchCode, centre: centre, course: course,
+      awardType: awardType,
       attendance: { attended: attInfo.present, total: attInfo.total, pct: attPct, pass: attPass },
       weeklyTests: weeklyTests,
       weeklyAvg: { value: weeklyAvgVal, pass: weeklyPass },
@@ -733,7 +778,9 @@ window.gasGet = (function () {
       feeStatus: { paid: feePaid, outstanding: feeOutstanding, hasRecord: !!feeInfo },
       eligible: eligible,
       hodStatus: hodStatus,
+      awardLabel: awardType === 'participation' ? 'Participation Certificate' : 'Diploma',
       diplomaStatus: dipRec ? 'Released' : 'Not Released',
+      releasedAwardType: dipRec ? (dipRec.award_type || 'diploma') : null,
       diplomaReleasedAt: dipRec ? dipRec.released_at : null,
       diplomaReleasedBy: dipRec ? dipRec.released_by : null
     };

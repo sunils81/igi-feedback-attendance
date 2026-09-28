@@ -8,7 +8,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Student Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=122"></script>
+<script src="/assets/shared.js?v=123"></script>
 <script src="/assets/push-subscribe.js"></script>
 <style id="dyn-css"></style>
 <style>
@@ -4442,7 +4442,7 @@ function loadStudentDiploma() {
 
     var html = '<div style="padding:4px 0 12px;">' +
       '<h3 class="dip-title">🎓 Diploma Eligibility</h3>' +
-      '<p class="dip-sub">Your weekly test average, Practical marks (if applicable), and Final exam must each be ≥ 60%. Attendance (≥75%) is advisory.</p>' +
+      '<p class="dip-sub">Your weekly test average, Practical marks (if applicable), and Final exam must each be &ge; 60%. Attendance (&ge;75%) is advisory. Short participation courses are shown separately below and carry no test requirement.</p>' +
     '</div>';
 
     rows.forEach(function(row) {
@@ -4451,6 +4451,13 @@ function loadStudentDiploma() {
       var weeklyTests = row.weeklyTests || [];
       var eligible = row.eligible;
       var released = row.diplomaStatus === 'Released';
+
+      /* A participation course awards a certificate of attendance. Nothing
+         academic is mandatory on it, so the card must not read like a diploma
+         track — a student on Small Diamond Assortment should never be shown a
+         final exam they were never going to sit, marked as missing. */
+      var isPart    = (row.awardType === 'participation');
+      var awardName = isPart ? 'Participation Certificate' : 'Diploma';
 
       var attPass  = attPct   != null && attPct  >= 75;
       var finalPass = finalVal != null && finalVal >= 60;
@@ -4552,15 +4559,25 @@ function loadStudentDiploma() {
       if (released) {
         heroHtml =
           '<div class="dip-hero"><div class="dip-hero-sweep"></div><div class="dip-hero-content">' +
-            '<div class="dip-hero-title">🎓 Diploma Released</div>' +
-            '<div class="dip-hero-sub">Congratulations — your diploma has been issued.</div>' +
+            '<div class="dip-hero-title">' + (isPart ? '📜' : '🎓') + ' ' + awardName + ' Released</div>' +
+            '<div class="dip-hero-sub">Congratulations — your ' + awardName.toLowerCase() + ' has been issued.</div>' +
           '</div></div>';
       } else if (eligible) {
         heroHtml =
           '<div class="dip-hero"><div class="dip-hero-sweep"></div><div class="dip-hero-content">' +
             '<div class="dip-hero-title">✅ Eligible — awaiting release</div>' +
-            '<div class="dip-hero-sub">All requirements met — your diploma will be released shortly.</div>' +
+            '<div class="dip-hero-sub">All requirements met — your ' + awardName.toLowerCase() + ' will be released shortly.</div>' +
           '</div></div>';
+      } else if (isPart) {
+        // The only thing that can hold a participation certificate back is the fee.
+        heroHtml = '<div class="dip-plain">' +
+          '<span style="color:#dc2626;font-weight:800;font-size:13px;">⏳ Not yet released</span>' +
+          '<div style="font-size:11px;color:var(--muted);margin-top:4px;">' +
+            (feeHasRecord
+              ? ('Fee balance of ₹' + Math.round(feeOutstanding || 0).toLocaleString('en-IN') + ' outstanding')
+              : 'No fee record on file — contact your counsellor') +
+          '</div>' +
+        '</div>';
       } else {
         var missing = [];
         if (combinedVal == null) {
@@ -4583,7 +4600,10 @@ function loadStudentDiploma() {
       // tile grid/weekly breakdown, which stay exactly as they are — this reuses the same
       // pass/fail values already computed above rather than re-deriving anything, so it
       // can never disagree with the detailed section below it. ══
-      var checklistItems = [
+      var checklistItems = isPart ? [
+        { label: 'Attendance', sub: 'advisory', val: attStr, met: attPct != null ? attPass : null },
+        { label: 'Fees cleared', sub: feeHasRecord ? (feePaid ? '' : ('₹' + Math.round(feeOutstanding || 0).toLocaleString('en-IN') + ' due')) : 'no record on file', val: feeHasRecord ? (feePaid ? 'Yes' : 'No') : '—', met: feeHasRecord ? feePaid : null }
+      ] : [
         { label: 'Attendance', sub: 'advisory ≥75%', val: attStr, met: attPct != null ? attPass : null },
         { label: 'Weekly average', sub: 'must be ≥60%', val: weeklyAvgVal != null ? Math.round(weeklyAvgVal) + '%' : '—', met: weeklyAvgVal != null ? weeklyPass : null },
         { label: 'Practical', sub: pracReq ? 'must be ≥60%' : 'not applicable', val: pracReq ? pracStr : 'N/A', met: !pracReq ? null : (pracVal != null ? pracPass : null) },
@@ -4593,7 +4613,7 @@ function loadStudentDiploma() {
       var metCount = checklistItems.filter(function(it) { return it.met === true; }).length;
       var checklistHtml = '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:12px">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
-          '<div style="font-size:14px;font-weight:700;color:var(--navy)">Diploma track</div>' +
+          '<div style="font-size:14px;font-weight:700;color:var(--navy)">' + (isPart ? 'Certificate track' : 'Diploma track') + '</div>' +
           '<span style="font-size:11px;font-weight:700;background:var(--gold-pale);color:#98710E;border-radius:20px;padding:3px 10px">' + metCount + ' of ' + checklistItems.length + '</span>' +
         '</div>' +
         checklistItems.map(function(it) {

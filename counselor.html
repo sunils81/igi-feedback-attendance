@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=130"></script>
+<script src="/assets/shared.js?v=131"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -10162,7 +10162,8 @@ function renderCorpRoster() {
 
   var h = '<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:14px">';
   h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">';
-  h += '<div><div style="font-size:16px;font-weight:800">' + escC(b.companyName) + '</div>' +
+  h += '<div><div style="font-size:16px;font-weight:800">' + escC(b.companyName) +
+       (b.batchCode ? ' <span style="font-family:monospace;font-size:12.5px;font-weight:700;color:var(--muted);background:var(--off);padding:2px 8px;border-radius:6px;vertical-align:middle">' + escC(b.batchCode) + '</span>' : '') + '</div>' +
        '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + escC(b.centre || '') +
        (b.locationClient ? ' · ' + escC(b.locationClient) : '') + ' · ' + escC(b.revenueMonth || '') + '</div></div>';
   h += '<button class="btn btn-xs" style="background:#e5e7eb;border:none;border-radius:6px;padding:5px 12px;cursor:pointer" onclick="closeCorpRoster()">Close</button>';
@@ -10199,7 +10200,8 @@ function renderCorpRoster() {
     '<div style="font-size:12px;font-weight:700;margin-bottom:4px">Paste one participant per line</div>' +
     '<div style="font-size:11.5px;color:var(--muted);margin-bottom:6px">Columns, tab or comma separated, in this order: ' +
     '<b>Name · Designation · Branch · City · State · Mobile · Email</b>. Only the name is required. ' +
-    'Leave State blank and it fills itself in from the city where we know it.</div>' +
+    'Leave State blank and it fills itself in from the city where we know it. ' +
+    'Do not paste a student ID — corporate participants are numbered automatically from the batch code.</div>' +
     '<textarea id="corp-paste-box" rows="7" style="width:100%;box-sizing:border-box;padding:9px;border:1px solid #d1d5db;border-radius:7px;font-family:monospace;font-size:12px" ' +
     'placeholder="Ramesh Iyer&#9;Sales Executive&#9;Bandra&#9;Mumbai&#9;&#9;9820012345&#9;ramesh@example.com"></textarea>' +
     '<div style="margin-top:8px;display:flex;gap:8px">' +
@@ -10213,12 +10215,14 @@ function renderCorpRoster() {
          '<div class="empty-copy">Paste the client\'s list to get started — certificates need names.</div></div>';
   } else {
     h += '<div style="overflow-x:auto"><table class="compact-table"><thead><tr>' +
+      '<th class="text-left">Participant ID</th>' +
       '<th class="text-left">Name</th><th class="text-left">Designation</th><th class="text-left">Branch</th>' +
       '<th class="text-left">City</th><th class="text-left">State</th><th class="text-left">Mobile</th><th class="text-left">Email</th>' +
       (tested ? '<th>Weekly %</th><th>Final %</th><th>Avg</th><th>Result</th>' : '') +
       '<th>Certificate</th><th></th></tr></thead><tbody>';
     ps.forEach(function (p, i) {
       h += '<tr>' +
+        '<td style="font-family:monospace;font-size:11.5px;color:var(--muted);white-space:nowrap">' + escC(p.participantId || '—') + '</td>' +
         '<td><strong>' + escC(p.name) + '</strong></td>' +
         '<td>' + escC(p.designation || '—') + '</td>' +
         '<td>' + escC(p.branch || '—') + '</td>' +
@@ -10353,13 +10357,13 @@ function corpDeleteRow(id) {
 function corpDownloadRoster() {
   if (!_corpRoster) return;
   var tested = _corpRoster.batch.assessmentMode === 'tested';
-  var head = ['Name', 'Designation', 'Branch', 'City', 'State', 'Mobile', 'Email'];
+  var head = ['Participant ID', 'Name', 'Designation', 'Branch', 'City', 'State', 'Mobile', 'Email'];
   if (tested) head = head.concat(['Weekly %', 'Final %', 'Average %', 'Result']);
   head.push('Certificate issued');
   var q = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
   var rows = [head.map(q).join(',')];
   (_corpRoster.participants || []).forEach(function (p) {
-    var r = [p.name, p.designation, p.branch, p.city, p.state, p.mobile, p.email];
+    var r = [p.participantId, p.name, p.designation, p.branch, p.city, p.state, p.mobile, p.email];
     if (tested) r = r.concat([p.weeklyPct, p.finalPct, p.avg,
       p.pending ? 'Pending' : (p.passed ? 'Qualified' : 'Not qualified')]);
     r.push(p.releasedAt ? 'Yes' : 'No');
@@ -10368,7 +10372,8 @@ function corpDownloadRoster() {
   var blob = new Blob([rows.join('\n')], { type: 'text/csv' });
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = (_corpRoster.batch.companyName || 'corporate') .replace(/[^a-zA-Z0-9]+/g, '_') + '_participants.csv';
+  a.download = (_corpRoster.batch.batchCode || _corpRoster.batch.companyName || 'corporate')
+    .replace(/[^a-zA-Z0-9-]+/g, '_') + '_participants.csv';
   a.click();
 }
 

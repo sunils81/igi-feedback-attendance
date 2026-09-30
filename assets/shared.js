@@ -5099,7 +5099,8 @@ window.gasGet = (function () {
         var list = (rows || []).map(function (r) {
           var res = corpParticipantResult(batch, r);
           return {
-            id: r.id, name: r.participant_name, designation: r.designation || '',
+            id: r.id, participantId: r.participant_id || '',
+            name: r.participant_name, designation: r.designation || '',
             branch: r.branch || '', city: r.city || '', state: r.state || '',
             mobile: r.mobile || '', email: r.email || '',
             weeklyPct: r.weekly_pct, finalPct: r.final_pct,
@@ -5112,6 +5113,11 @@ window.gasGet = (function () {
           status: 'ok',
           batch: {
             id: batch.id, companyName: batch.company_name, centre: batch.centre,
+            /* Corporate/RTT participants carry their own ID, not a student ID:
+               student IDs belong to individually enrolled IGI students. The code is
+               assigned by the corporate_batches_code trigger (RTT for participation
+               programmes, COR for tested ones) and participant IDs hang off it. */
+            batchCode: batch.batch_code || '',
             assessmentMode: batch.assessment_mode || 'participation',
             passPct: Number(batch.pass_pct) || 60,
             associatesTrained: batch.associates_trained || 0,

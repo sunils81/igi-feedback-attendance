@@ -880,10 +880,7 @@ window.gasGet = (function () {
         var ca = String(q.correct_ans || '').trim();
         var studentAns = String(answers[String(qid)] || '').trim();
         if (!studentAns || !ca) return;
-        var optIdx = parseInt(studentAns, 10) - 1;
-        var isCorrect = ca === studentAns
-          || (optIdx >= 0 && optLetters[optIdx] && ca.toUpperCase() === optLetters[optIdx])
-          || (optIdx >= 0 && String(optIdx + 1) === ca);
+        var isCorrect = mcqIsCorrect(q, studentAns);
         if (isCorrect) obtainedMarks += maxMark;
       });
       // Manually-graded tests (Portfolio, FileUpload Assignment): no MCQ questions to auto-score from, so use the
@@ -1545,6 +1542,53 @@ window.gasGet = (function () {
         });
       });
     });
+  }
+
+  /* ── MCQ answer matching, ONE implementation ────────────────────────────────
+     The student portal always submits the option INDEX ("1".."4"), and the question
+     bank stores correct_ans the same way. That convention is not enforced anywhere,
+     so an import in a different shape silently breaks things: the 2026-09 bank import
+     landed 355 rows holding "A".."D", and because the graders below happened to map an
+     index to a letter while the student's answer-review screen compared the two raw
+     strings, every answer scored correctly but rendered as "Wrong" to the student.
+     Scores were right and the screen lied, which is the worst way for this to fail.
+     Everything that decides right-from-wrong now goes through here and accepts an
+     index, a letter or the option's own text. Bank rows were normalised back to the
+     index convention at the same time (2026-09-30). */
+  var MCQ_OPT_LETTERS = ['A', 'B', 'C', 'D'];
+
+  /* Resolve whatever correct_ans / a student answer holds into the option's text.
+     Falls back to the value itself for TrueFalse, FillBlank and anything unresolvable. */
+  function mcqOptionText(q, val) {
+    var v = String(val == null ? '' : val).trim();
+    if (!v || !q) return v;
+    var opts = [q.option_a, q.option_b, q.option_c, q.option_d];
+    var idx = -1;
+    if (/^[1-4]$/.test(v)) idx = parseInt(v, 10) - 1;
+    else if (/^[A-Da-d]$/.test(v)) idx = MCQ_OPT_LETTERS.indexOf(v.toUpperCase());
+    return (idx >= 0 && opts[idx]) ? String(opts[idx]) : v;
+  }
+
+  /* True when the student's raw answer picks the same option as correct_ans, whichever
+     form either of them is stored in. Comparing resolved option text last is what makes
+     a mixed bank safe; an empty answer or an unanswerable question is never "correct". */
+  function mcqIsCorrect(q, rawAnswer) {
+    if (!q) return false;
+    var ans = String(rawAnswer == null ? '' : rawAnswer).trim();
+    var ca  = String((q.correct_ans == null ? '' : q.correct_ans)).trim();
+    if (!ans || !ca) return false;
+    if (ans === ca) return true;                                   // same form, same value
+    if (ans.toUpperCase() === ca.toUpperCase()) return true;       // letter / text case only
+    var idx = -1;
+    if (/^[1-4]$/.test(ans)) idx = parseInt(ans, 10) - 1;
+    else if (/^[A-Da-d]$/.test(ans)) idx = MCQ_OPT_LETTERS.indexOf(ans.toUpperCase());
+    if (idx >= 0) {
+      if (ca.toUpperCase() === MCQ_OPT_LETTERS[idx]) return true;  // index answer, letter bank
+      if (ca === String(idx + 1)) return true;                     // index answer, index bank
+    }
+    // Last resort: both sides resolved to the option's own text.
+    var at = mcqOptionText(q, ans), ct = mcqOptionText(q, ca);
+    return !!at && at.toLowerCase() === ct.toLowerCase();
   }
 
   /* getBatchCode */
@@ -9563,10 +9607,7 @@ window.gasGet = (function () {
           var studentAns = String(answers[String(tq.question_id)] || '').trim();
           if (!studentAns || !ca) return;
           // correct_ans may be "A"/"B"/"C"/"D", "1"/"2"/"3"/"4", or option text
-          var optIdx = parseInt(studentAns, 10) - 1; // student sends "1","2","3","4"
-          var isCorrect = ca === studentAns
-            || (optIdx >= 0 && optLetters[optIdx] && ca.toUpperCase() === optLetters[optIdx])
-            || (optIdx >= 0 && String(optIdx + 1) === ca);
+          var isCorrect = mcqIsCorrect(q, studentAns);
           if (isCorrect) autoScore += maxMark;
         });
 
@@ -9728,7 +9769,7 @@ window.gasGet = (function () {
                     qNo: i + 1, qId: String(tq.question_id), type: qType,
                     question: q.question || '', marks: maxMarks,
                     studentAnswer: optText(raw), rawStudentAnswer: raw,
-                    correctAnswer: optText(correctAns), isCorrect: null,
+                    correctAnswer: mcqOptionText(q, correctAns), isCorrect: null,
                     score: '', maxMarks: maxMarks
                   };
                   if (qType === 'Theory' || qType === 'FileUpload') {
@@ -9736,7 +9777,7 @@ window.gasGet = (function () {
                   } else if (!raw) {
                     item.isCorrect = false; item.score = 0;
                   } else {
-                    item.isCorrect = raw === correctAns;
+                    item.isCorrect = mcqIsCorrect(q, raw);
                     item.score = item.isCorrect ? maxMarks : 0;
                   }
                   breakdown.push(item);
@@ -11510,10 +11551,7 @@ window.gasGet = (function () {
                 var ca = String(q.correct_ans || '').trim();
                 var studentAns = String((answers[String(tq.question_id)] || '')).trim();
                 if (!studentAns || !ca) return;
-                var optIdx = parseInt(studentAns, 10) - 1;
-                var isCorrect = ca === studentAns
-                  || (optIdx >= 0 && optLetters[optIdx] && ca.toUpperCase() === optLetters[optIdx])
-                  || (optIdx >= 0 && String(optIdx + 1) === ca);
+                var isCorrect = mcqIsCorrect(q, studentAns);
                 if (isCorrect) autoScore += parseFloat(q.max_marks || 1);
               });
               var totalMarks = computedTotalMarks || 1;
@@ -12042,10 +12080,7 @@ window.gasGet = (function () {
           var ca = String(q.correct_ans || '').trim();
           var studentAns = String((answers || {})[String(tq.question_id)] || '').trim();
           if (!studentAns || !ca) return;
-          var optIdx = parseInt(studentAns, 10) - 1;
-          var isCorrect = ca === studentAns
-            || (optIdx >= 0 && optLetters[optIdx] && ca.toUpperCase() === optLetters[optIdx])
-            || (optIdx >= 0 && String(optIdx + 1) === ca);
+          var isCorrect = mcqIsCorrect(q, studentAns);
           if (isCorrect) s += parseFloat(q.max_marks || 1);
         });
         return s;

@@ -1582,6 +1582,7 @@
       <button class="tab" onclick="switchAdminTab('t-discount-approvals')">💷 Discount Approvals<span id="discount-approvals-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:4px"></span></button>
       <button class="tab" onclick="switchAdminTab('t-academic')">📊 Academic Insights</button>
       <button class="tab" onclick="switchAdminTab('t-alumni')">🎓 Student Alumni</button>
+      <button class="tab" id="tab-diplomas-admin" onclick="switchAdminTab('t-diplomas-admin')">🎓 Diploma Eligibility</button>
       <button class="tab" id="tab-crm-admin" onclick="switchAdminTab('t-crm-admin')">🎯 CRM Analytics</button>
       <button class="tab" id="tab-companion-admin" onclick="switchAdminTab('t-companion-admin')">🧭 Prospects Companion <span id="cmp-admin-conflict-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
       <button class="tab" onclick="switchAdminTab('t-history')">🗓️ Historical Intelligence</button>
@@ -2622,6 +2623,71 @@
         </div><!-- /overflow-x:auto -->
       </div><!-- /.card -->
     </div><!-- /#t-alumni -->
+
+    <!-- ══════════════════════════════════════════════════════════════
+         DIPLOMA ELIGIBILITY (2026-09-30) — admin-side, view only.
+         This tab never existed in admin.html; eligibility lived only in
+         counselor.html, and counselor.html redirects any Admin to admin.html
+         on login, so an Admin had no route to it anywhere in the system.
+         Reads the SAME handler as the counsellor and instructor portals
+         (getDiplomaEligibilityAll -> buildDiplomaRow() in shared.js), so this
+         table cannot disagree with what they see. Do not re-implement the
+         scoring math here. Releasing stays in the counsellor portal with the
+         diploma_release permission holders — the PDF pipeline is not duplicated.
+         ══════════════════════════════════════════════════════════════ -->
+    <div id="t-diplomas-admin" class="tab-content">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
+          <h2 style="margin-bottom:0">🎓 Diploma Eligibility</h2>
+          <span id="adip-count" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+        <p class="sub">All centres, view only. Eligibility criteria: weekly test average &ge; 60%, Practical marks &ge; 60% (if a Practical test exists for the batch), <strong>and</strong> final exam score &ge; 60%, with fees fully paid. Attendance (&ge;75%) is advisory and does not block eligibility. Releasing diplomas is done in the counsellor portal by holders of the Diploma Release Authority permission.</p>
+
+        <div style="display:flex;gap:12px;align-items:center;margin-top:14px;margin-bottom:14px;flex-wrap:wrap">
+          <div style="flex:1;min-width:260px">
+            <input type="text" id="adip-search" oninput="filterAdminDiplomaTable()" placeholder="🔍 Search by Name, Student ID or Batch..."
+              style="width:100%;font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);font-family:inherit;box-sizing:border-box">
+          </div>
+          <select id="adip-centre" onchange="onAdminDiplomaCentreChange()" style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+            <option value="">All Centres</option>
+          </select>
+          <select id="adip-batch" onchange="filterAdminDiplomaTable()" style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+            <option value="">All Batches</option>
+          </select>
+          <select id="adip-course" onchange="filterAdminDiplomaTable()" style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+            <option value="">All Courses</option>
+          </select>
+          <select id="adip-status" onchange="filterAdminDiplomaTable()" style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+            <option value="">All Statuses</option>
+            <option value="eligible">Eligible (Not Released)</option>
+            <option value="released">Released</option>
+            <option value="ineligible">Ineligible</option>
+          </select>
+          <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:13px" onclick="exportAdminDiplomaCsv()">⬇ CSV</button>
+        </div>
+
+        <div style="overflow-x:auto">
+          <table class="compact-table">
+            <thead>
+              <tr>
+                <th class="text-left">Student</th>
+                <th class="text-left">Batch &amp; Centre</th>
+                <th class="text-center">Attendance <span style="font-weight:400;font-size:10px;opacity:0.75">(advisory, &ge;75%)</span></th>
+                <th class="text-center">Weekly Tests <span style="font-weight:400;font-size:10px;opacity:0.75">(best-of average)</span></th>
+                <th class="text-center">Practical <span style="font-weight:400;font-size:10px;opacity:0.75">(&ge;60%, if applicable)</span></th>
+                <th class="text-center">Final Exam (&ge;60%)</th>
+                <th class="text-center" style="background:var(--gold-pale);border-left:2px solid var(--gold);border-right:2px solid var(--gold);color:#8A6600">🎯 Combined Score <span style="font-weight:400;font-size:10px;opacity:0.85">(50% Weekly/Final + 50% Practical — min 60%)</span></th>
+                <th class="text-center">Fee Status</th>
+                <th class="text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody id="adip-tbody">
+              <tr><td colspan="9" style="text-align:center;padding:16px;color:var(--muted)">Loading diploma eligibility records...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- /#t-diplomas-admin -->
 
     <!-- TAB: CRM ANALYTICS & ASSIGNMENT RULES -->
     <div id="t-crm-admin" class="tab-content">
@@ -5075,6 +5141,7 @@ var A_MORE_ITEMS = [
   ['t-op-invoices',       '🧾', 'Operational Invoices',   null],
   ['t-academic',          '📊', 'Academic Insights',      null],
   ['t-alumni',            '🎓', 'Student Alumni',         null],
+  ['t-diplomas-admin',    '🎓', 'Diploma Eligibility',    null],
   ['t-crm-admin',         '🎯', 'CRM Analytics',          null],
   ['t-companion-admin',   '🧭', 'Prospects Companion',    'cmp-admin-conflict-badge'],
   ['t-snapshot',          '📸', 'Batch Snapshot',         null],
@@ -5209,6 +5276,10 @@ function switchAdminTab(tabId) {
     loadDiscountApprovals();
     return;
   }
+  if (tabId === 't-diplomas-admin') {
+    loadAdminDiplomaData();
+    return;
+  }
   // Fetch dashboard data if we don't have it yet
   if (!dashboardData) {
     loadDashboardData();
@@ -5224,6 +5295,250 @@ function switchAdminTab(tabId) {
    follows the closest existing pattern in the file (HOD Approvals, just above) for
    visual consistency rather than inventing a new one.
    ══════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════
+   DIPLOMA ELIGIBILITY — admin view (2026-09-30)
+   Same data source as the counsellor and instructor portals:
+   getDiplomaEligibilityAll -> buildDiplomaRow() in shared.js. The scoring math
+   lives there and is deliberately NOT repeated here, so this table can never
+   drift from what a counsellor or a student sees. Admins see every centre (no
+   allowedCentres narrowing) — that narrowing in counselor.html exists to stop a
+   Mumbai counsellor reading Delhi's records, which does not apply to an admin.
+   View only: no release button, no PDF pipeline. Releasing is done in the
+   counsellor portal by holders of the diploma_release permission.
+   ══════════════════════════════════════════════════════════════ */
+var adminDiplomaList = [];
+
+function loadAdminDiplomaData() {
+  var tbody = document.getElementById('adip-tbody');
+  if (!tbody) return;
+  if (adminDiplomaList.length) { filterAdminDiplomaTable(); return; }
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:16px;color:var(--muted)">Loading diploma eligibility records...</td></tr>';
+
+  gasGet({ action: 'getDiplomaEligibilityAll' }, function (err, d) {
+    if (err || !d || d.status !== 'ok') {
+      console.error('[AdminDiploma] load error:', err);
+      var t2 = document.getElementById('adip-tbody');
+      if (t2) t2.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--red);padding:16px">Failed to load diploma eligibility records.</td></tr>';
+      return;
+    }
+    adminDiplomaList = d.list || [];
+
+    var courses = [], centres = [];
+    adminDiplomaList.forEach(function (a) {
+      if (a.course && courses.indexOf(a.course) === -1) courses.push(a.course);
+      if (a.centre && centres.indexOf(a.centre) === -1) centres.push(a.centre);
+    });
+    courses.sort(); centres.sort();
+    var cf = document.getElementById('adip-course');
+    if (cf) cf.innerHTML = '<option value="">All Courses</option>' + courses.map(function (c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
+    var nf = document.getElementById('adip-centre');
+    if (nf) nf.innerHTML = '<option value="">All Centres</option>' + centres.map(function (c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
+    populateAdminDiplomaBatchFilter();
+    renderAdminDiplomaTable(adminDiplomaList);
+  });
+}
+
+/* Batch dropdown, scoped to whichever centre is selected so an admin does not
+   scroll every batch school-wide to reach one. */
+function populateAdminDiplomaBatchFilter() {
+  var bf = document.getElementById('adip-batch');
+  if (!bf) return;
+  var prev = bf.value;
+  var centre = (document.getElementById('adip-centre') || {}).value || '';
+  var scoped = centre ? adminDiplomaList.filter(function (a) { return a.centre === centre; }) : adminDiplomaList;
+  var codes = [];
+  scoped.forEach(function (a) { if (a.batchCode && codes.indexOf(a.batchCode) === -1) codes.push(a.batchCode); });
+  codes.sort();
+  bf.innerHTML = '<option value="">All Batches</option>' + codes.map(function (c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
+  if (prev && codes.indexOf(prev) !== -1) bf.value = prev;
+}
+
+function onAdminDiplomaCentreChange() {
+  populateAdminDiplomaBatchFilter();
+  filterAdminDiplomaTable();
+}
+
+function _adipAttPct(a) { return (a.attendance && a.attendance.pct != null) ? a.attendance.pct : a.attPct; }
+function _adipWeekly(a) {
+  if (a.weeklyAvg && a.weeklyAvg.value != null) return a.weeklyAvg.value;
+  return (typeof a.weeklyAvg === 'number') ? a.weeklyAvg : null;
+}
+function _adipFinal(a) {
+  if (a.finalExam && a.finalExam.value != null) return a.finalExam.value;
+  return (a.finalPct != null) ? a.finalPct : null;
+}
+
+/* Released / Pending HOD / Rejected / Eligible / Fee Outstanding / Ineligible.
+   Same order of precedence as renderDiplomaTable() in counselor.html, minus the
+   release and Request-HOD buttons. "Fee Outstanding" is split out from a blanket
+   "Ineligible" because an HOD can waive weak marks but not an unpaid invoice, so
+   the two need different follow-ups. */
+function _adipStatus(a) {
+  var feeInfo = a.feeStatus || {};
+  var feePaid = !!feeInfo.paid;
+  var academicsOk = (a.combinedScore && a.combinedScore.pass) || a.hodStatus === 'Approved';
+  var hodBadge = a.hodStatus === 'Approved' ? '<div style="color:#168B57;font-size:10px;font-weight:700;margin-top:4px">\U0001F451 HOD Approved</div>' : '';
+
+  if (a.diplomaStatus === 'Released') {
+    var relDate = '';
+    if (a.diplomaReleasedAt) {
+      try { relDate = new Date(a.diplomaReleasedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); }
+      catch (ex) { relDate = String(a.diplomaReleasedAt).split('T')[0]; }
+    }
+    return { key: 'released', html: '<div style="color:#168B57;font-size:12px;font-weight:600">✅ Released<br><span style="font-size:11px;color:var(--muted)">by ' + escC(a.diplomaReleasedBy) + (relDate ? ' on ' + relDate : '') + '</span></div>' };
+  }
+  if (a.hodStatus === 'Pending')  return { key: 'ineligible', html: '<span style="background:#FFFBEB;color:#D97706;border:1px solid #FCD34D;padding:3px 8px;font-size:11px;border-radius:12px">⏳ Pending HOD</span>' };
+  if (a.hodStatus === 'Rejected') return { key: 'ineligible', html: '<span style="background:#FEF2F2;color:#DC2626;border:1px solid #FCA5A5;padding:3px 8px;font-size:11px;border-radius:12px">❌ HOD Rejected</span>' };
+  if (a.eligible)                 return { key: 'eligible',   html: '<span style="background:#ECFDF5;color:#168B57;border:1px solid #A7F3D0;padding:3px 8px;font-size:11px;border-radius:12px">✅ Eligible</span>' + hodBadge };
+  if (academicsOk && !feePaid) {
+    var msg = feeInfo.hasRecord ? ('₹' + Math.round(feeInfo.outstanding || 0).toLocaleString('en-IN') + ' outstanding') : 'no fee record found';
+    return { key: 'ineligible', html: '<span style="background:#FEF2F2;color:#DC2626;border:1px solid #FCA5A5;padding:3px 8px;font-size:11px;border-radius:12px">\U0001F4B0 Fee Outstanding</span><div style="font-size:10px;color:var(--muted);margin-top:4px">' + escC(msg) + '</div>' };
+  }
+  return { key: 'ineligible', html: '<span style="background:#F4F4F5;color:#71717A;border:1px solid #E4E4E7;padding:3px 8px;font-size:11px;border-radius:12px">Ineligible</span>' };
+}
+
+function renderAdminDiplomaTable(list) {
+  var tbody = document.getElementById('adip-tbody');
+  if (!tbody) return;
+
+  var countEl = document.getElementById('adip-count');
+  if (countEl) {
+    var elig = 0, rel = 0;
+    list.forEach(function (a) { if (a.diplomaStatus === 'Released') rel++; else if (a.eligible) elig++; });
+    countEl.textContent = list.length + ' students · ' + elig + ' eligible, not yet released · ' + rel + ' released';
+  }
+
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:16px">No student records found.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = list.map(function (a) {
+    var attPct = _adipAttPct(a);
+    var attPass = (a.attendance && a.attendance.pass != null) ? a.attendance.pass : (attPct != null && attPct >= 75);
+    var attStr = (a.attendance && a.attendance.total)
+      ? (a.attendance.attended + ' / ' + a.attendance.total + ' (' + attPct + '%)')
+      : (attPct != null ? attPct + '%' : 'N/A');
+    var attBadge = attPct == null
+      ? '<span style="color:var(--muted)">N/A</span>'
+      : (attPass ? '<span style="color:#168B57;font-weight:700">✅ ' + attStr + '</span>'
+                 : '<span style="color:#b45309;font-weight:700">⚠ ' + attStr + '</span>');
+
+    // Per-test WT1, WT2, WT3 breakdown plus the average — the average alone hides
+    // which specific test a student missed or failed.
+    var wTests = a.weeklyTests || [];
+    var wtRows = wTests.map(function (t) {
+      var lbl = 'WT' + t.slot + (t.mandatory ? '' : ' (opt)');
+      var val;
+      if (!t.conducted) val = '<span style="color:var(--muted)">—</span>';
+      else if (t.notTaken) val = '<span style="color:#C94A4A;font-weight:700">✗</span>';
+      else val = '<span style="color:' + (t.pass ? '#168B57' : '#C94A4A') + ';font-weight:700">' + t.pct + '%</span>';
+      return '<div style="display:flex;justify-content:space-between;gap:6px;font-size:10px;line-height:1.6"><span style="color:var(--muted)">' + lbl + '</span>' + val + '</div>';
+    }).join('');
+    var weeklyVal = _adipWeekly(a);
+    var weeklyPass = weeklyVal != null && weeklyVal >= 60;
+    var weeklyBadge = '<div style="text-align:left;min-width:90px">' +
+      (wtRows || '<div style="font-size:10px;color:var(--muted)">No weekly tests yet</div>') +
+      '<div style="border-top:1px dashed var(--border);margin-top:2px;padding-top:2px;display:flex;justify-content:space-between;gap:6px;font-size:11px;font-weight:700"><span>Avg</span>' +
+      (weeklyVal != null
+        ? '<span style="color:' + (weeklyPass ? '#168B57' : '#C94A4A') + '">' + (weeklyPass ? '✅ ' : '❌ ') + weeklyVal + '%</span>'
+        : '<span style="color:var(--muted)">N/A</span>') +
+      '</div></div>';
+
+    var pracInfo = a.practicalMarks || {};
+    var pracBadge = !pracInfo.required
+      ? '<span style="color:var(--muted)">N/A</span>'
+      : (pracInfo.value != null
+          ? '<span style="color:' + (pracInfo.pass ? '#168B57' : '#C94A4A') + ';font-weight:700">' + (pracInfo.pass ? '✅ ' : '❌ ') + pracInfo.value + '%</span>'
+          : '<span style="color:var(--muted)">N/A</span>');
+
+    var finalVal = _adipFinal(a);
+    var finalPass = finalVal != null && finalVal >= 60;
+    var finalBadge = finalVal != null
+      ? '<span style="color:' + (finalPass ? '#168B57' : '#C94A4A') + ';font-weight:700">' + (finalPass ? '✅ ' : '❌ ') + finalVal + '%</span>'
+      : '<span style="color:var(--muted)">N/A</span>';
+
+    var comb = a.combinedScore || {};
+    var combinedBadge = comb.value == null
+      ? '<span style="color:var(--muted)">N/A</span>'
+      : '<span style="color:' + (comb.pass ? '#168B57' : '#C94A4A') + ';font-weight:700">' + (comb.pass ? '✅ ' : '❌ ') + comb.value + '%</span>';
+
+    var feeInfo = a.feeStatus || {};
+    var feeBadge = !feeInfo.hasRecord
+      ? '<span style="color:#C94A4A;font-weight:700">❌ No Fee Record</span>'
+      : (feeInfo.paid
+          ? '<span style="color:#168B57;font-weight:700">✅ Paid</span>'
+          : '<span style="color:#C94A4A;font-weight:700">❌ ₹' + Math.round(feeInfo.outstanding || 0).toLocaleString('en-IN') + ' Due</span>');
+
+    return '<tr>' +
+      '<td class="text-left"><strong>' + escC(a.studentName) + '</strong><br><span style="font-size:11px;color:var(--muted)">ID: ' + escC(a.studentId) + '</span></td>' +
+      '<td class="text-left"><span style="font-family:monospace;font-weight:600">' + escC(a.batchCode) + '</span><br><span style="font-size:11px;color:var(--muted)">' + escC(a.centre) + '</span></td>' +
+      '<td class="text-center">' + attBadge + '</td>' +
+      '<td class="text-center">' + weeklyBadge + '</td>' +
+      '<td class="text-center">' + pracBadge + '</td>' +
+      '<td class="text-center">' + finalBadge + '</td>' +
+      '<td class="text-center" style="background:var(--gold-pale);border-left:2px solid var(--gold);border-right:2px solid var(--gold)">' + combinedBadge + '</td>' +
+      '<td class="text-center">' + feeBadge + '</td>' +
+      '<td class="text-center">' + _adipStatus(a).html + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function _adminDiplomaFiltered() {
+  var q = (document.getElementById('adip-search') || {}).value || '';
+  q = q.trim().toLowerCase();
+  var centre = (document.getElementById('adip-centre') || {}).value || '';
+  var batch  = (document.getElementById('adip-batch')  || {}).value || '';
+  var course = (document.getElementById('adip-course') || {}).value || '';
+  var status = (document.getElementById('adip-status') || {}).value || '';
+
+  var out = adminDiplomaList;
+  if (centre) out = out.filter(function (a) { return a.centre === centre; });
+  if (batch)  out = out.filter(function (a) { return a.batchCode === batch; });
+  if (course) out = out.filter(function (a) { return a.course === course; });
+  if (status) out = out.filter(function (a) { return _adipStatus(a).key === status; });
+  if (q) out = out.filter(function (a) {
+    return String(a.studentId).toLowerCase().indexOf(q) !== -1 ||
+           String(a.studentName).toLowerCase().indexOf(q) !== -1 ||
+           String(a.batchCode).toLowerCase().indexOf(q) !== -1;
+  });
+  return out;
+}
+
+function filterAdminDiplomaTable() { renderAdminDiplomaTable(_adminDiplomaFiltered()); }
+
+/* Exports exactly what the filters currently show, not the whole list — the row
+   count in the header is the check that the two agree. */
+function exportAdminDiplomaCsv() {
+  var rows = _adminDiplomaFiltered();
+  if (!rows.length) { alert('Nothing to export for the current filters.'); return; }
+  var head = ['Student ID','Student','Batch','Centre','Course','Attendance %','Weekly Avg %','Practical %','Final %','Combined %','Fee Paid','Outstanding','Status','Released By','Released At'];
+  var lines = [head.join(',')];
+  rows.forEach(function (a) {
+    var fee = a.feeStatus || {}, comb = a.combinedScore || {}, prac = a.practicalMarks || {};
+    var st = _adipStatus(a).key;
+    var label = a.diplomaStatus === 'Released' ? 'Released'
+              : (a.hodStatus === 'Pending' ? 'Pending HOD'
+              : (a.hodStatus === 'Rejected' ? 'HOD Rejected'
+              : (a.eligible ? 'Eligible' : (st === 'ineligible' && !fee.paid && ((comb && comb.pass) || a.hodStatus === 'Approved') ? 'Fee Outstanding' : 'Ineligible'))));
+    var cells = [a.studentId, a.studentName, a.batchCode, a.centre, a.course,
+                 _adipAttPct(a), _adipWeekly(a), (prac.required ? prac.value : ''), _adipFinal(a), comb.value,
+                 fee.paid ? 'Yes' : 'No', fee.paid ? 0 : Math.round(fee.outstanding || 0),
+                 label, a.diplomaReleasedBy || '', a.diplomaReleasedAt || ''];
+    lines.push(cells.map(function (c) {
+      var v = (c == null) ? '' : String(c);
+      return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+    }).join(','));
+  });
+  var blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var link = document.createElement('a');
+  link.href = url;
+  link.download = 'IGI_Diploma_Eligibility_' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 var discountApprovalRequests = [];
 
 /* ── Pending-approval banner (2026-09-17, per instruction: "ADMIN PORTAL SHOULD HAVE A

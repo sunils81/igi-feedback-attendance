@@ -5121,7 +5121,14 @@ window.gasGet = (function () {
      missing one is "not yet decided" rather than a fail — the same treatment a
      missing weekly gets in buildDiplomaRow. */
   function corpParticipantResult(batch, p) {
-    if (String(batch && batch.assessment_mode) !== 'tested') {
+    /* RTT conducts no tests, so there are no marks to judge a certificate on and
+       everyone on the roster qualifies. Corporate takes one weekly and one final,
+       both compulsory, averaged against pass_pct.
+       Fees are not consulted in either branch and must never be: the client company
+       pays for the programme, so an unpaid invoice is a matter between IGI and the
+       company, never a reason to withhold an associate's certificate. */
+    if (String(batch && batch.programme_type || '') === 'RTT'
+        || (!batch.programme_type && String(batch && batch.assessment_mode) !== 'tested')) {
       return { tested: false, avg: null, passed: true, pending: false };
     }
     var w = p.weekly_pct, f = p.final_pct;
@@ -5162,6 +5169,7 @@ window.gasGet = (function () {
                assigned by the corporate_batches_code trigger (RTT for participation
                programmes, COR for tested ones) and participant IDs hang off it. */
             batchCode: batch.batch_code || '',
+            programmeType: batch.programme_type || (String(batch.assessment_mode) === 'tested' ? 'Corporate' : 'RTT'),
             assessmentMode: batch.assessment_mode || 'participation',
             passPct: Number(batch.pass_pct) || 60,
             associatesTrained: batch.associates_trained || 0,
@@ -5266,11 +5274,20 @@ window.gasGet = (function () {
      everyone simply reads as pending until the two scores are entered. */
   function h_corpSetAssessmentMode(p, cb) {
     if (!p.batchId) { cb(null, { status: 'error', reason: 'missing_batch' }); return; }
-    var mode = String(p.mode || '').toLowerCase() === 'tested' ? 'tested' : 'participation';
-    var patch = { assessment_mode: mode, updated_at: nowISO() };
-    if (p.passPct !== undefined && p.passPct !== '') patch.pass_pct = Number(p.passPct) || 60;
+    /* Takes either the programme type or the old mode string. assessment_mode and the
+       batch code are derived in the database, so only programme_type is written here. */
+    var prog = String(p.programmeType || '').trim();
+    if (!prog) prog = String(p.mode || '').toLowerCase() === 'tested' ? 'Corporate' : 'RTT';
+    if (prog !== 'RTT' && prog !== 'Corporate') {
+      cb(null, { status: 'error', reason: 'Programme type must be RTT or Corporate.' });
+      return;
+    }
+    var patch = { programme_type: prog, updated_at: nowISO() };
+    if (prog === 'Corporate' && p.passPct !== undefined && p.passPct !== '') {
+      patch.pass_pct = Number(p.passPct) || 60;
+    }
     PATCH('corporate_batches', 'id=eq.' + encodeURIComponent(p.batchId), patch, function (e) {
-      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', mode: mode });
+      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', programmeType: prog });
     });
   }
 
@@ -5300,6 +5317,17 @@ window.gasGet = (function () {
     // Same invoice-date-priority rule as student_fees (see h_saveFee) — falls back to
     // today only when no invoice date is given at all.
     var revenueMonth = (p.invoiceDate ? toYMD(p.invoiceDate) : todayYMD()).slice(0, 7);
+    /* Programme type decides the certificate rules and the batch-code segment, so it is
+       required on create. An existing batch keeps what it has when the field is absent. */
+    var prog = String(p.programmeType || '').trim();
+    if (prog && prog !== 'RTT' && prog !== 'Corporate') {
+      cb(null, { status: 'error', reason: 'Programme type must be RTT or Corporate.' });
+      return;
+    }
+    if (!p.id && !prog) {
+      cb(null, { status: 'error', reason: 'Choose whether this is an RTT or a Corporate programme.' });
+      return;
+    }
     var dbRow = {
       company_name: p.companyName,
       invoice_number: p.invoiceNumber || '',
@@ -5316,6 +5344,7 @@ window.gasGet = (function () {
       revenue_month: revenueMonth,
       updated_at: nowISO()
     };
+    if (prog) dbRow.programme_type = prog;
     function afterSave(err, oldRow) {
       if (err) { cb(null, { status: 'error', reason: String(err) }); return; }
       syncCorporateRevenue(dbRow.recorded_by, dbRow.centre, revenueMonth, '2026-27');
@@ -5348,7 +5377,8 @@ window.gasGet = (function () {
           courseFee: Number(r.course_fee) || 0, gstAmount: Number(r.gst_amount) || 0,
           discountPct: Number(r.discount_pct) || 0, discountAmount: Number(r.discount_amount) || 0,
           associatesTrained: Number(r.associates_trained) || 0, locationClient: r.location_client,
-          description: r.description, revenueMonth: r.revenue_month, createdAt: r.created_at
+          description: r.description, revenueMonth: r.revenue_month, createdAt: r.created_at,
+          programmeType: r.programme_type || '', batchCode: r.batch_code || ''
         };
       });
       cb(null, { status: 'ok', records: records });

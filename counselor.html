@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=132"></script>
+<script src="/assets/shared.js?v=133"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -4327,6 +4327,14 @@
         <button onclick="closeCorporateBatchForm()" style="background:transparent;border:none;font-size:20px;cursor:pointer;color:var(--muted)">×</button>
       </div>
       <p class="sub" style="margin-top:2px">The Course Fee is the flat total for the whole batch — it is never multiplied by the number of associates trained.</p>
+      <div class="field"><label>Programme Type *</label>
+        <select id="corp-programme-type" onchange="onCorpProgrammeTypeChange()">
+          <option value="">Choose…</option>
+          <option value="RTT">RTT — Retail Technical Training</option>
+          <option value="Corporate">Corporate programme</option>
+        </select>
+        <div id="corp-programme-hint" style="font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.5"></div>
+      </div>
       <div class="field"><label>Company / Client Name *</label><input type="text" id="corp-company-name" placeholder="e.g. Riyaana Creations Pvt Ltd"></div>
       <div class="grid2">
         <div class="field"><label>Invoice Date</label><input type="date" id="corp-invoice-date"></div>
@@ -9991,14 +9999,17 @@ function openCorporateBatchForm(id, presetCentre) {
       document.getElementById('corp-centre').value = rec.centre || centres[0];
       document.getElementById('corp-location-client').value = rec.locationClient || '';
       document.getElementById('corp-description').value = rec.description || '';
+      document.getElementById('corp-programme-type').value = rec.programmeType || '';
     }
   } else {
     ['corp-company-name','corp-invoice-number','corp-course-fee','corp-associates','corp-discount-pct','corp-location-client','corp-description'].forEach(function(id2) {
       document.getElementById(id2).value = '';
     });
     document.getElementById('corp-invoice-date').value = new Date().toISOString().slice(0,10);
+    document.getElementById('corp-programme-type').value = '';
     if (presetCentre) document.getElementById('corp-centre').value = presetCentre;
   }
+  onCorpProgrammeTypeChange();
   recalcCorpBatchForm();
   document.getElementById('corp-batch-modal-overlay').style.display = 'flex';
 }
@@ -10006,6 +10017,25 @@ function openCorporateBatchForm(id, presetCentre) {
 function closeCorporateBatchForm() {
   document.getElementById('corp-batch-modal-overlay').style.display = 'none';
   editingCorpBatchId = null;
+}
+
+/* The two programmes differ in ways that decide the certificate, so the rules are on
+   screen at the moment of choosing rather than buried in a policy document. Neither one
+   looks at fees — the client company pays, not the associate. */
+function onCorpProgrammeTypeChange() {
+  var v = (document.getElementById('corp-programme-type') || {}).value || '';
+  var hint = document.getElementById('corp-programme-hint');
+  if (!hint) return;
+  if (v === 'RTT') {
+    hint.innerHTML = '<b>One day.</b> No tests are conducted, so the certificate cannot depend on marks — '
+      + 'everyone on the roster qualifies. Batch code segment: <b>RTT</b>.';
+  } else if (v === 'Corporate') {
+    hint.innerHTML = '<b>Usually more than one day.</b> One weekly test and one final test, both compulsory, '
+      + 'averaged — 60% to qualify for the certificate. Batch code segment: <b>COR</b>.';
+  } else {
+    hint.innerHTML = 'RTT is a one-day programme with no tests. A Corporate programme runs longer and carries '
+      + 'one weekly and one final test. Fees never affect a certificate in either case — the client company pays.';
+  }
 }
 
 function recalcCorpBatchForm() {
@@ -10025,11 +10055,14 @@ function saveCorporateBatchEntry() {
   errEl.textContent = '';
   if (!companyName) { errEl.textContent = 'Company / client name is required.'; return; }
   if (!courseFee || Number(courseFee) <= 0) { errEl.textContent = 'Enter a valid course fee.'; return; }
+  var programmeType = document.getElementById('corp-programme-type').value;
+  if (!programmeType) { errEl.textContent = 'Choose whether this is an RTT or a Corporate programme.'; return; }
 
   gasGet({
     action: 'saveCorporateBatch',
     id: editingCorpBatchId || '',
     companyName: companyName,
+    programmeType: programmeType,
     invoiceDate: document.getElementById('corp-invoice-date').value,
     invoiceNumber: document.getElementById('corp-invoice-number').value.trim(),
     courseFee: courseFee,
@@ -10174,13 +10207,19 @@ function renderCorpRoster() {
   h += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0;padding:10px 12px;background:var(--off);border-radius:8px">';
   h += '<label style="font-size:12px;font-weight:700">Programme</label>';
   h += '<select id="corp-mode" onchange="corpSaveMode()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:12.5px">' +
-       '<option value="participation"' + (tested ? '' : ' selected') + '>Participation only — no test (RTT, seminars)</option>' +
-       '<option value="tested"' + (tested ? ' selected' : '') + '>Tested — 1 weekly + 1 final (MBMG)</option></select>';
+       '<option value="RTT"' + (tested ? '' : ' selected') + '>RTT — one day, no tests</option>' +
+       '<option value="Corporate"' + (tested ? ' selected' : '') + '>Corporate — 1 weekly + 1 final test</option></select>';
   if (tested) {
     h += '<label style="font-size:12px;font-weight:700;margin-left:6px">Pass %</label>' +
          '<input id="corp-pass" type="number" min="0" max="100" value="' + (b.passPct || 60) + '" onchange="corpSaveMode()" style="width:70px;padding:6px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:12.5px">';
   }
   h += '</div>';
+
+  h += '<div style="font-size:11.5px;color:var(--muted);margin:-4px 0 10px;line-height:1.5">' +
+    (tested
+      ? 'Certificate eligibility: average of the weekly and final test ≥ ' + (b.passPct || 60) + '%. '
+      : 'No tests are conducted on an RTT programme, so every participant on the roster is eligible. ') +
+    'Fees are never part of it — the client company pays, not the participant.</div>';
 
   h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">' +
     '<span style="background:#eff6ff;color:#1d4ed8;border-radius:20px;padding:3px 11px;font-weight:700">' + (c.onRoster || 0) + ' on roster</span>' +
@@ -10275,9 +10314,9 @@ function corpSaveMark(id, field, value) {
 }
 
 function corpSaveMode() {
-  var mode = (document.getElementById('corp-mode') || {}).value || 'participation';
+  var programmeType = (document.getElementById('corp-mode') || {}).value || 'RTT';
   var passPct = (document.getElementById('corp-pass') || {}).value || '';
-  gasGet({ action: 'corpSetAssessmentMode', batchId: _corpRosterBatchId, mode: mode, passPct: passPct },
+  gasGet({ action: 'corpSetAssessmentMode', batchId: _corpRosterBatchId, programmeType: programmeType, passPct: passPct },
     function (e, d) {
       if (e || !d || d.status !== 'ok') { showToast('Could not change the programme type.', 'error'); return; }
       openCorpRoster(_corpRosterBatchId);

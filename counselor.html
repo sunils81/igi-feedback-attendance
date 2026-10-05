@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=134"></script>
+<script src="/assets/shared.js?v=135"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -10230,7 +10230,7 @@ function renderCorpRoster() {
     '</div>';
 
   h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' +
-    '<button class="btn btn-gold btn-xs" style="padding:6px 14px;cursor:pointer" onclick="corpAddRow()">+ Add participant</button>' +
+    '<button class="btn btn-gold btn-xs" style="padding:6px 14px;cursor:pointer" onclick="corpAddRow()">+ Add with all details</button>' +
     '<button class="btn btn-xs" style="background:var(--navy);color:#fff;border:none;border-radius:6px;padding:6px 14px;cursor:pointer" onclick="corpOpenPaste()">📋 Paste from Excel</button>' +
     '<button class="btn btn-xs" style="background:#e5e7eb;border:none;border-radius:6px;padding:6px 14px;cursor:pointer" onclick="corpDownloadRoster()">⬇ Download CSV</button>' +
     '</div>';
@@ -10262,13 +10262,13 @@ function renderCorpRoster() {
     ps.forEach(function (p, i) {
       h += '<tr>' +
         '<td style="font-family:monospace;font-size:11.5px;color:var(--muted);white-space:nowrap">' + escC(p.participantId || '—') + '</td>' +
-        '<td><strong>' + escC(p.name) + '</strong></td>' +
-        '<td>' + escC(p.designation || '—') + '</td>' +
-        '<td>' + escC(p.branch || '—') + '</td>' +
-        '<td>' + escC(p.city || '—') + '</td>' +
-        '<td>' + escC(p.state || '—') + '</td>' +
-        '<td>' + escC(p.mobile || '—') + '</td>' +
-        '<td>' + escC(p.email || '—') + '</td>';
+        '<td>' + corpTextCell(p, 'name', 150, true) + '</td>' +
+        '<td>' + corpTextCell(p, 'designation', 130) + '</td>' +
+        '<td>' + corpTextCell(p, 'branch', 110) + '</td>' +
+        '<td>' + corpTextCell(p, 'city', 100) + '</td>' +
+        '<td>' + corpTextCell(p, 'state', 110) + '</td>' +
+        '<td>' + corpTextCell(p, 'mobile', 110) + '</td>' +
+        '<td>' + corpTextCell(p, 'email', 160) + '</td>';
       if (tested) {
         h += '<td style="text-align:right">' + corpMarkCell(p, 'weeklyPct') + '</td>' +
              '<td style="text-align:right">' + corpMarkCell(p, 'finalPct') + '</td>' +
@@ -10280,14 +10280,67 @@ function renderCorpRoster() {
       h += '<td style="text-align:center">' + (p.releasedAt
             ? '<span style="color:#059669;font-weight:700">✓ Issued</span>'
             : '<span style="color:#9ca3af">—</span>') + '</td>';
-      h += '<td><button class="del-btn" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 9px;cursor:pointer" onclick="corpEditRow(' + i + ')">Edit</button> ' +
-           '<button class="del-btn" onclick="corpDeleteRow(\'' + escC(p.id) + '\')">Remove</button></td>';
+      h += '<td><button class="del-btn" onclick="corpDeleteRow(\'' + escC(p.id) + '\')">Remove</button></td>';
       h += '</tr>';
     });
+    h += '<tr style="background:var(--off)">' +
+      '<td style="color:var(--muted);font-size:11px">new</td>' +
+      '<td><input id="corp-new-name" placeholder="Type a name, press Enter" onkeydown="if(event.key===\'Enter\'){corpAddInline();}" ' +
+        'style="width:170px;padding:4px 7px;border:1px solid #d1d5db;border-radius:6px;font-size:12px"></td>' +
+      '<td colspan="' + (tested ? 10 : 6) + '" style="color:var(--muted);font-size:11px">' +
+        'Added straight to the roster — fill the rest in on the row, or leave it blank.</td>' +
+      '<td><button class="btn btn-xs" style="background:var(--navy);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer" onclick="corpAddInline()">Add</button></td>' +
+      '</tr>';
     h += '</tbody></table></div>';
   }
   h += '</div>';
   wrap.innerHTML = h;
+}
+
+/* Every field is edited in place, for the same reason the marks are: corporate rosters
+   change by ones and twos until the morning of the programme, and a spelling fix should
+   not cost seven prompts. Saves on blur, and only when the value actually changed. */
+function corpTextCell(p, field, width, bold) {
+  var v = p[field] == null ? '' : String(p[field]);
+  return '<input value="' + escC(v) + '" data-pid="' + escC(p.id) + '" data-field="' + field + '"' +
+    ' onblur="corpSaveField(this)" onkeydown="if(event.key===\'Enter\'){this.blur();}"' +
+    ' style="width:' + (width || 120) + 'px;padding:4px 7px;border:1px solid transparent;border-radius:6px;' +
+    'font-size:12px;font-family:inherit;background:transparent;' + (bold ? 'font-weight:700;' : '') + '"' +
+    ' onfocus="this.style.borderColor=\'#d1d5db\';this.style.background=\'#fff\'"' +
+    ' onmouseover="if(document.activeElement!==this)this.style.borderColor=\'#e5e7eb\'"' +
+    ' onmouseout="if(document.activeElement!==this)this.style.borderColor=\'transparent\'">';
+}
+
+function corpSaveField(el) {
+  var id = el.getAttribute('data-pid'), field = el.getAttribute('data-field');
+  var p = (_corpRoster.participants || []).find(function (x) { return x.id === id; });
+  if (!p) return;
+  var val = el.value.trim();
+  if (val === String(p[field] == null ? '' : p[field])) return;   // nothing actually changed
+  if (field === 'name' && !val) { el.value = p.name; showToast('A name is required.', 'error'); return; }
+  el.style.borderColor = 'transparent'; el.style.background = 'transparent';
+  var payload = { action: 'corpSaveParticipant', id: id, batchId: _corpRosterBatchId,
+    name: p.name, designation: p.designation, branch: p.branch, city: p.city,
+    state: p.state, mobile: p.mobile, email: p.email };
+  payload[field] = val;
+  gasGet(payload, function (e, d) {
+    if (e || !d || d.status !== 'ok') { showToast((d && d.reason) || 'Could not save.', 'error'); return; }
+    p[field] = val;
+    showToast('Saved.', 'success');
+  });
+}
+
+/* One name is enough to get somebody onto the roster; the rest can be filled in on the
+   row afterwards. This is the last-minute-addition path, so it asks for the minimum. */
+function corpAddInline() {
+  var el = document.getElementById('corp-new-name');
+  var name = el ? el.value.trim() : '';
+  if (!name) { showToast('Type a name first.', 'error'); return; }
+  gasGet({ action: 'corpSaveParticipant', batchId: _corpRosterBatchId, name: name }, function (e, d) {
+    if (e || !d || d.status !== 'ok') { showToast((d && d.reason) || 'Could not add.', 'error'); return; }
+    showToast(name + ' added.', 'success');
+    openCorpRoster(_corpRosterBatchId);
+  });
 }
 
 /* Marks are edited in place — with 20 associates a modal per person is worse than
@@ -10385,10 +10438,22 @@ function corpParticipantPrompt(p) {
     });
 }
 
-function corpDeleteRow(id) {
-  if (!window.confirm('Remove this participant from the roster?')) return;
-  gasGet({ action: 'corpDeleteParticipant', id: id }, function (e, d) {
+function corpDeleteRow(id, force) {
+  var p = (_corpRoster.participants || []).find(function (x) { return x.id === id; });
+  var who = (p && p.name) ? p.name : 'this participant';
+  if (!force && !window.confirm('Remove ' + who + ' from the roster?')) return;
+  gasGet({ action: 'corpDeleteParticipant', id: id, force: force ? 'true' : '' }, function (e, d) {
+    if (d && d.reason === 'certificate_issued') {
+      /* A certificate already carries this person's name and ID. Removing the row does not
+         un-issue it, so the counsellor is told what they are actually doing. */
+      if (window.confirm(who + ' has already been issued a certificate carrying their '
+            + 'participant ID. Removing them here does not cancel that certificate. Remove anyway?')) {
+        corpDeleteRow(id, true);
+      }
+      return;
+    }
     if (e || !d || d.status !== 'ok') { showToast('Could not remove.', 'error'); return; }
+    showToast(who + ' removed.', 'success');
     openCorpRoster(_corpRosterBatchId);
   });
 }

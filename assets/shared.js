@@ -5254,10 +5254,26 @@ window.gasGet = (function () {
     } else {
       row.created_at = nowISO();
       POST('corporate_participants', null, row, function (e, res) {
-        cb(null, e ? { status: 'error', reason: String(e) }
-                   : { status: 'ok', id: (res && res[0] && res[0].id) || null });
+        if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+        /* Import already rewrote the headcount from the roster; a one-off add has to do
+           the same or the two drift apart, and corporate rosters change by ones and twos
+           right up to the day of the programme. */
+        corpSyncHeadcount(p.batchId, function (n) {
+          cb(null, { status: 'ok', id: (res && res[0] && res[0].id) || null, onRoster: n });
+        });
       });
     }
+  }
+
+  /* Rewrite associates_trained from what is actually on the roster. */
+  function corpSyncHeadcount(batchId, done) {
+    if (!batchId) { done(null); return; }
+    GET('corporate_participants', 'corporate_batch_id=eq.' + encodeURIComponent(batchId) +
+        '&select=id', function (e, all) {
+      var n = (all || []).length;
+      PATCH('corporate_batches', 'id=eq.' + encodeURIComponent(batchId),
+            { associates_trained: n, updated_at: nowISO() }, function () { done(n); });
+    });
   }
 
   /* Bulk import. A 287-name seminar is not going to be typed in one at a time, so the
@@ -5305,8 +5321,21 @@ window.gasGet = (function () {
 
   function h_corpDeleteParticipant(p, cb) {
     if (!p.id) { cb(null, { status: 'error', reason: 'missing_id' }); return; }
-    DEL('corporate_participants', 'id=eq.' + encodeURIComponent(p.id), function (e) {
-      cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+    /* Read the row first: the batch is needed to resync the headcount after the delete,
+       and a participant who already holds a certificate should not vanish silently. */
+    GET('corporate_participants', 'id=eq.' + encodeURIComponent(p.id) +
+        '&select=corporate_batch_id,released_at', function (eGet, rows) {
+      var row = (rows && rows[0]) || null;
+      if (row && row.released_at && p.force !== true && p.force !== 'true') {
+        cb(null, { status: 'error', reason: 'certificate_issued' });
+        return;
+      }
+      DEL('corporate_participants', 'id=eq.' + encodeURIComponent(p.id), function (e) {
+        if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+        corpSyncHeadcount(row && row.corporate_batch_id, function (n) {
+          cb(null, { status: 'ok', onRoster: n });
+        });
+      });
     });
   }
 

@@ -1583,6 +1583,7 @@
       <button class="tab" onclick="switchAdminTab('t-academic')">📊 Academic Insights</button>
       <button class="tab" onclick="switchAdminTab('t-alumni')">🎓 Student Alumni</button>
       <button class="tab" id="tab-diplomas-admin" onclick="switchAdminTab('t-diplomas-admin')">🎓 Diploma Eligibility</button>
+      <button class="tab" id="tab-arp-admin" onclick="switchAdminTab('t-arp-admin')">💎 Associate Readiness</button>
       <button class="tab" id="tab-crm-admin" onclick="switchAdminTab('t-crm-admin')">🎯 CRM Analytics</button>
       <button class="tab" id="tab-companion-admin" onclick="switchAdminTab('t-companion-admin')">🧭 Prospects Companion <span id="cmp-admin-conflict-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
       <button class="tab" onclick="switchAdminTab('t-history')">🗓️ Historical Intelligence</button>
@@ -2688,6 +2689,134 @@
         </div>
       </div>
     </div><!-- /#t-diplomas-admin -->
+
+    <!-- ══ ASSOCIATE READINESS PROFILE (ARP) ═══════════════════════════════════
+         Admin owns ARP, not the counsellor: opening an assessment and issuing a
+         client manager's access are both decisions about what leaves IGI, so they
+         sit here behind the admin login rather than in the counsellor portal.
+         Every action on this tab goes through /api/arp/admin, which checks the
+         admin pin server-side and holds the ARP staff key — the key is never in
+         this page. ══════════════════════════════════════════════════════════ -->
+    <div id="t-arp-admin" class="tab-content">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
+          <h2 style="margin-bottom:0">💎 Associate Readiness Profile</h2>
+          <span id="arp-count" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+        <p class="sub">Open an assessment for an RTT batch or as a standalone, share the participant
+          link, and issue a client manager 30-day access to their own results. Scoring runs in the
+          database — the page never sees the answer key.</p>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">
+          <button class="btn btn-outline arp-sub active" id="arp-sub-assess" style="width:auto;padding:8px 16px;font-size:13px" onclick="arpSubTab('assess')">Assessments</button>
+          <button class="btn btn-outline arp-sub" id="arp-sub-access" style="width:auto;padding:8px 16px;font-size:13px" onclick="arpSubTab('access')">Client access</button>
+          <button class="btn btn-outline arp-sub" id="arp-sub-overview" style="width:auto;padding:8px 16px;font-size:13px" onclick="arpSubTab('overview')">Overview</button>
+          <span style="flex:1"></span>
+          <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:13px" onclick="arpAdminRefresh()">↻ Refresh</button>
+        </div>
+
+        <div id="arp-locked" style="display:none;background:var(--off);border-radius:10px;padding:18px">
+          <div style="font-weight:700;margin-bottom:6px">Admin PIN required</div>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:12px">ARP actions are checked on
+            the server, so the PIN is asked for once per visit and never stored in this browser.</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <input type="password" id="arp-pin" placeholder="Admin PIN" autocomplete="off"
+              onkeydown="if(event.key==='Enter')arpUnlock()"
+              style="font-size:14px;padding:9px 12px;border-radius:7px;border:1.5px solid var(--border);min-width:200px">
+            <button class="btn btn-gold" style="width:auto;padding:9px 20px" onclick="arpUnlock()">Unlock</button>
+            <span id="arp-pin-err" style="color:#B00020;font-size:12.5px"></span>
+          </div>
+        </div>
+
+        <div id="arp-body" style="display:none">
+          <div id="arp-pane-assess">
+            <div style="background:var(--off);border-radius:10px;padding:16px;margin-bottom:16px">
+              <div style="font-weight:700;margin-bottom:10px">Open a new assessment</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">
+                <div>
+                  <label style="font-size:11.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Against an RTT / Corporate batch</label>
+                  <select id="arp-new-batch" onchange="arpOnBatchPick()" style="width:100%;font-size:13px;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--white)">
+                    <option value="">Standalone — not tied to a batch</option>
+                  </select>
+                </div>
+                <div id="arp-new-client-wrap">
+                  <label style="font-size:11.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Client name *</label>
+                  <input type="text" id="arp-new-client" placeholder="e.g. Indriya" style="width:100%;font-size:13px;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border)">
+                </div>
+                <div>
+                  <label style="font-size:11.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Centre</label>
+                  <select id="arp-new-centre" style="width:100%;font-size:13px;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--white)"></select>
+                </div>
+                <div>
+                  <label style="font-size:11.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Trainer</label>
+                  <input type="text" id="arp-new-trainer" placeholder="Who is delivering it" style="width:100%;font-size:13px;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border)">
+                </div>
+                <div>
+                  <label style="font-size:11.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Diamond focus</label>
+                  <select id="arp-new-diamonds" style="width:100%;font-size:13px;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--white)">
+                    <option value="natural">Natural diamonds</option>
+                    <option value="lgd">Lab grown diamonds</option>
+                    <option value="both">Both</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:11.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Session code (optional)</label>
+                  <input type="text" id="arp-new-code" placeholder="Blank = no gate" style="width:100%;font-size:13px;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);text-transform:uppercase">
+                </div>
+              </div>
+              <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                <button class="btn btn-gold" style="width:auto;padding:9px 20px" onclick="arpOpenAssessment()">Open assessment</button>
+                <span id="arp-new-err" style="color:#B00020;font-size:12.5px"></span>
+              </div>
+            </div>
+            <div id="arp-assess-list"><p class="sub">Loading…</p></div>
+          </div>
+
+          <div id="arp-pane-access" style="display:none">
+            <div style="background:var(--off);border-radius:10px;padding:16px;margin-bottom:16px">
+              <div style="font-weight:700;margin-bottom:4px">Issue client manager access</div>
+              <p style="font-size:12.5px;color:var(--muted);margin-bottom:10px">They see their own
+                batches only: attendance, readiness and test performance. No fee, no invoice, no other
+                client. Access runs 30 days from issue unless you shorten it, and you can revoke it at
+                any time.</p>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">
+                <div>
+                  <label style="font-size:11.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Scope to a batch</label>
+                  <select id="arp-acc-batch" onchange="arpOnAccBatchPick()" style="width:100%;font-size:13px;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--white)">
+                    <option value="">All batches for one client</option>
+                  </select>
+                </div>
+                <div id="arp-acc-client-wrap">
+                  <label style="font-size:11.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Client name *</label>
+                  <input type="text" id="arp-acc-client" style="width:100%;font-size:13px;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border)">
+                </div>
+                <div>
+                  <label style="font-size:11.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Manager name</label>
+                  <input type="text" id="arp-acc-name" style="width:100%;font-size:13px;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border)">
+                </div>
+                <div>
+                  <label style="font-size:11.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Manager email</label>
+                  <input type="email" id="arp-acc-email" style="width:100%;font-size:13px;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border)">
+                </div>
+                <div>
+                  <label style="font-size:11.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">Days of access</label>
+                  <input type="number" id="arp-acc-days" value="30" min="1" max="365" style="width:100%;font-size:13px;padding:8px 10px;border-radius:6px;border:1.5px solid var(--border)">
+                </div>
+              </div>
+              <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                <button class="btn btn-gold" style="width:auto;padding:9px 20px" onclick="arpIssueAccess()">Issue access link</button>
+                <span id="arp-acc-err" style="color:#B00020;font-size:12.5px"></span>
+              </div>
+            </div>
+            <div id="arp-access-list"><p class="sub">Loading…</p></div>
+          </div>
+
+          <div id="arp-pane-overview" style="display:none">
+            <div id="arp-overview"><p class="sub">Loading…</p></div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /#t-arp-admin -->
 
     <!-- TAB: CRM ANALYTICS & ASSIGNMENT RULES -->
     <div id="t-crm-admin" class="tab-content">
@@ -5142,6 +5271,7 @@ var A_MORE_ITEMS = [
   ['t-academic',          '📊', 'Academic Insights',      null],
   ['t-alumni',            '🎓', 'Student Alumni',         null],
   ['t-diplomas-admin',    '🎓', 'Diploma Eligibility',    null],
+  ['t-arp-admin',         '💎', 'Associate Readiness',    null],
   ['t-crm-admin',         '🎯', 'CRM Analytics',          null],
   ['t-companion-admin',   '🧭', 'Prospects Companion',    'cmp-admin-conflict-badge'],
   ['t-snapshot',          '📸', 'Batch Snapshot',         null],
@@ -5280,12 +5410,381 @@ function switchAdminTab(tabId) {
     loadAdminDiplomaData();
     return;
   }
+  if (tabId === 't-arp-admin') {
+    arpAdminOpen();
+    return;
+  }
   // Fetch dashboard data if we don't have it yet
   if (!dashboardData) {
     loadDashboardData();
   } else {
     renderTabContent(tabId);
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   ASSOCIATE READINESS PROFILE — admin side.
+
+   Every call here goes to /api/arp/admin, never to Supabase directly. That endpoint
+   checks the admin pin on the server and holds the ARP staff key, so the key is not
+   in this file and a client-manager link carries nothing that reaches these actions.
+
+   The pin is kept in a plain variable for the life of the page and is never written
+   to localStorage or sessionStorage — /api/auth/verify-pin exists precisely so that
+   secret does not sit in a browser, and caching it here would undo that.
+   ══════════════════════════════════════════════════════════════════════════════ */
+var _arpPin = null, _arpData = { assessments: [], access: [], batches: [] }, _arpSub = 'assess';
+
+function arpApi(action, params) {
+  return fetch('/api/arp/admin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin: _arpPin, action: action, params: params || {} })
+  }).then(function (r) {
+    return r.json().then(function (d) {
+      if (r.status === 401) { _arpPin = null; throw new Error('not_authorised'); }
+      if (!r.ok) throw new Error((d && d.reason) || ('HTTP ' + r.status));
+      return d;
+    });
+  });
+}
+
+function arpAdminOpen() {
+  document.getElementById('arp-locked').style.display = _arpPin ? 'none' : 'block';
+  document.getElementById('arp-body').style.display = _arpPin ? 'block' : 'none';
+  if (_arpPin) arpAdminRefresh();
+  else { var p = document.getElementById('arp-pin'); if (p) { p.value = ''; p.focus(); } }
+}
+function arpUnlock() {
+  var el = document.getElementById('arp-pin'), err = document.getElementById('arp-pin-err');
+  err.textContent = '';
+  var pin = (el.value || '').trim();
+  if (!pin) { err.textContent = 'Enter the admin PIN.'; return; }
+  _arpPin = pin;
+  arpApi('assessments', {}).then(function () {
+    el.value = '';
+    arpAdminOpen();
+  }).catch(function (e) {
+    _arpPin = null;
+    err.textContent = e.message === 'not_authorised'
+      ? 'That PIN was not accepted.'
+      : ('Could not reach the ARP service: ' + e.message);
+  });
+}
+
+function arpSubTab(which) {
+  _arpSub = which;
+  ['assess', 'access', 'overview'].forEach(function (k) {
+    var pane = document.getElementById('arp-pane-' + k);
+    var btn = document.getElementById('arp-sub-' + k);
+    if (pane) pane.style.display = (k === which) ? 'block' : 'none';
+    if (btn) btn.classList.toggle('active', k === which);
+  });
+  if (which === 'overview') arpLoadOverview();
+}
+
+function arpAdminRefresh() {
+  if (!_arpPin) { arpAdminOpen(); return; }
+  /* The batch picker is filled from the existing corporate batch list rather than a new
+     endpoint, so an assessment can only ever be tied to a batch that really exists. */
+  gasGet({ action: 'getCorporateBatches', isAdmin: 'true' }, function (e, d) {
+    _arpData.batches = (d && d.records) || [];
+    arpFillBatchPickers();
+  });
+  arpApi('assessments', {}).then(function (d) {
+    _arpData.assessments = (d && d.assessments) || [];
+    arpRenderAssessments();
+  }).catch(function (err) {
+    document.getElementById('arp-assess-list').innerHTML =
+      '<p class="sub" style="color:#B00020">Could not load assessments: ' + escC(err.message) + '</p>';
+  });
+  arpApi('access_list', {}).then(function (d) {
+    _arpData.access = (d && d.access) || [];
+    arpRenderAccess();
+  }).catch(function () {});
+  if (_arpSub === 'overview') arpLoadOverview();
+}
+
+function arpFillBatchPickers() {
+  var opts = '<option value="">Standalone — not tied to a batch</option>' +
+    _arpData.batches.filter(function (b) { return b.programmeType; }).map(function (b) {
+      return '<option value="' + escC(b.id) + '">' + escC(b.batchCode || '(no code)') + ' · ' +
+             escC(b.companyName) + ' · ' + escC(b.centre || '') + '</option>';
+    }).join('');
+  var s1 = document.getElementById('arp-new-batch');
+  if (s1) s1.innerHTML = opts;
+  var s2 = document.getElementById('arp-acc-batch');
+  if (s2) s2.innerHTML = opts.replace('Standalone — not tied to a batch', 'All batches for one client');
+
+  var cs = document.getElementById('arp-new-centre');
+  if (cs && !cs.options.length) {
+    var centres = (typeof CENTRES !== 'undefined' && CENTRES.length) ? CENTRES : [];
+    cs.innerHTML = '<option value="">—</option>' + centres.map(function (c) {
+      return '<option value="' + escC(c) + '">' + escC(c) + '</option>';
+    }).join('');
+  }
+}
+/* Picking a batch fixes the client, so the free-text box is hidden rather than left to
+   drift out of step with the batch it is attached to. */
+function arpOnBatchPick() {
+  var id = document.getElementById('arp-new-batch').value;
+  document.getElementById('arp-new-client-wrap').style.display = id ? 'none' : 'block';
+}
+function arpOnAccBatchPick() {
+  var id = document.getElementById('arp-acc-batch').value;
+  document.getElementById('arp-acc-client-wrap').style.display = id ? 'none' : 'block';
+}
+
+var ARP_BASE = 'https://igi-arp-assessment.vercel.app';
+function arpLink(code, kind) {
+  return ARP_BASE + '/assess?code=' + encodeURIComponent(code) + (kind === 'post' ? '&kind=post' : '');
+}
+function arpCopy(text, label) {
+  navigator.clipboard.writeText(text).then(function () {
+    showToast((label || 'Link') + ' copied.');
+  }).catch(function () {
+    window.prompt('Copy this ' + (label || 'link') + ':', text);
+  });
+}
+
+function arpOpenAssessment() {
+  var err = document.getElementById('arp-new-err');
+  err.textContent = '';
+  var batchId = document.getElementById('arp-new-batch').value || null;
+  var client = document.getElementById('arp-new-client').value.trim();
+  if (!batchId && !client) { err.textContent = 'Name the client, or pick a batch.'; return; }
+  arpApi('open_assessment', {
+    p_batch_id: batchId,
+    p_client_name: client || null,
+    p_centre: document.getElementById('arp-new-centre').value || null,
+    p_trainer: document.getElementById('arp-new-trainer').value.trim() || null,
+    p_country: 'India',
+    p_diamond_type: document.getElementById('arp-new-diamonds').value,
+    p_session_code: document.getElementById('arp-new-code').value.trim().toUpperCase() || null,
+    p_code_minutes: 0,
+    p_opened_by: (adminUser && adminUser.name) || 'Admin'
+  }).then(function (d) {
+    if (!d || d.status !== 'ok') { err.textContent = (d && d.reason) || 'Could not open it.'; return; }
+    document.getElementById('arp-new-client').value = '';
+    document.getElementById('arp-new-trainer').value = '';
+    document.getElementById('arp-new-code').value = '';
+    showToast('Assessment ' + d.code + ' is open.');
+    arpCopy(arpLink(d.code), 'Participant link');
+    arpAdminRefresh();
+  }).catch(function (e) { err.textContent = e.message; });
+}
+
+function arpRenderAssessments() {
+  var rows = _arpData.assessments;
+  document.getElementById('arp-count').textContent =
+    rows.length + ' assessment' + (rows.length === 1 ? '' : 's') + ' · ' +
+    rows.reduce(function (t, r) { return t + (r.responses || 0); }, 0) + ' responses';
+  if (!rows.length) {
+    document.getElementById('arp-assess-list').innerHTML =
+      '<p class="sub">No assessments opened yet.</p>';
+    return;
+  }
+  var html = '<div class="table-wrap"><table><thead><tr>' +
+    '<th>Code</th><th>Client</th><th>Where</th><th class="text-center">Pre</th>' +
+    '<th class="text-center">Post</th><th class="text-center">State</th><th>Actions</th>' +
+    '</tr></thead><tbody>';
+  rows.forEach(function (r) {
+    var closed = !!r.closedAt;
+    html += '<tr' + (r.isTest ? ' style="opacity:.55"' : '') + '>' +
+      '<td style="font-family:monospace;font-weight:700">' + escC(r.code) + '</td>' +
+      '<td><b>' + escC(r.client) + '</b>' +
+        (r.batchCode ? '<br><span style="font-size:11px;color:var(--muted)">' + escC(r.batchCode) + '</span>'
+                     : '<br><span style="font-size:11px;color:var(--muted)">Standalone</span>') + '</td>' +
+      '<td style="font-size:12px">' + escC(r.centre || '—') +
+        (r.trainer ? '<br><span style="color:var(--muted)">' + escC(r.trainer) + '</span>' : '') + '</td>' +
+      '<td class="text-center"><b>' + (r.responses || 0) + '</b></td>' +
+      '<td class="text-center">' + (r.postResponses || 0) + '</td>' +
+      '<td class="text-center">' + (closed
+        ? '<span style="color:var(--muted)">Closed</span>'
+        : '<span style="color:#166534;font-weight:700">Open</span>') +
+        (r.postTestOpen ? '<br><span style="font-size:10.5px;color:#92400e">post test open</span>' : '') + '</td>' +
+      '<td style="white-space:nowrap">' +
+        '<button class="btn btn-xs btn-outline" style="width:auto;padding:4px 9px;font-size:11.5px" ' +
+          'onclick="arpCopy(\'' + arpLink(r.code) + '\',\'Participant link\')">Copy link</button> ' +
+        '<button class="btn btn-xs btn-outline" style="width:auto;padding:4px 9px;font-size:11.5px" ' +
+          'onclick="arpViewResponses(\'' + r.id + '\')">Responses</button> ' +
+        '<button class="btn btn-xs btn-outline" style="width:auto;padding:4px 9px;font-size:11.5px" ' +
+          'onclick="arpToggle(\'' + r.id + '\',\'post\',' + (!r.postTestOpen) + ')">' +
+          (r.postTestOpen ? 'Close post test' : 'Open post test') + '</button> ' +
+        '<button class="btn btn-xs btn-outline" style="width:auto;padding:4px 9px;font-size:11.5px" ' +
+          'onclick="arpToggle(\'' + r.id + '\',\'close\',' + (!closed) + ')">' +
+          (closed ? 'Reopen' : 'Close') + '</button>' +
+      '</td></tr>';
+  });
+  document.getElementById('arp-assess-list').innerHTML = html + '</tbody></table></div>';
+}
+
+function arpToggle(id, what, value) {
+  var p = { p_assessment_id: id, p_post_test_open: null, p_feedback_released: null, p_close: null };
+  if (what === 'post') p.p_post_test_open = value;
+  if (what === 'close') p.p_close = value;
+  arpApi('set_flags', p).then(function () { arpAdminRefresh(); })
+    .catch(function (e) { showToast('Could not update: ' + e.message, 'error'); });
+}
+
+function arpViewResponses(id) {
+  arpApi('responses', { p_assessment_id: id }).then(function (d) {
+    var rs = (d && d.responses) || [];
+    if (!rs.length) { showToast('No responses yet.'); return; }
+    var w = window.open('', '_blank');
+    if (!w) { showToast('Allow pop-ups to view responses.', 'error'); return; }
+    var rows = rs.map(function (r, i) {
+      return '<tr><td>' + (i + 1) + '</td><td><b>' + escC(r.name) + '</b>' +
+        (r.participantId ? '<br><small>' + escC(r.participantId) + '</small>' : '') + '</td>' +
+        '<td>' + escC(r.employer || r.branch || '') + '</td>' +
+        '<td>' + escC(r.kind) + '</td>' +
+        '<td style="text-align:center"><b>' + (r.readinessTotal == null ? '—' : r.readinessTotal) + '</b></td>' +
+        '<td>' + escC(r.readinessBand || '') + '</td>' +
+        '<td style="text-align:center">' + (r.fcsPct == null ? '—' : r.fcsPct + '%') + '</td>' +
+        '<td>' + escC(r.rspStage || '') + '</td>' +
+        '<td>' + escC(r.c2sLabel || '') + '</td>' +
+        '<td>' + escC(r.comboProfile || '') + '</td>' +
+        '<td>' + (r.matched ? '✓' : '—') + '</td></tr>';
+    }).join('');
+    w.document.write('<!doctype html><meta charset="utf-8"><title>ARP responses</title>' +
+      '<style>body{font-family:system-ui,sans-serif;margin:24px;color:#0D1B2E;font-size:13px}' +
+      'table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #e5e7eb;padding:7px 9px;text-align:left}' +
+      'th{background:#0D1B2E;color:#C9A84C;font-size:11px;text-transform:uppercase;letter-spacing:.04em}' +
+      'small{color:#6b7280}</style>' +
+      '<h2 style="margin:0 0 12px">ARP responses — ' + rs.length + '</h2>' +
+      '<table><thead><tr><th>#</th><th>Name</th><th>Employer / branch</th><th>Test</th>' +
+      '<th>Readiness</th><th>Band</th><th>4Cs</th><th>RSP</th><th>Style</th><th>Profile</th>' +
+      '<th>On roster</th></tr></thead><tbody>' + rows + '</tbody></table>');
+    w.document.close();
+  }).catch(function (e) { showToast('Could not load responses: ' + e.message, 'error'); });
+}
+
+function arpIssueAccess() {
+  var err = document.getElementById('arp-acc-err');
+  err.textContent = '';
+  var batchId = document.getElementById('arp-acc-batch').value || null;
+  var client = document.getElementById('arp-acc-client').value.trim();
+  if (!batchId && !client) { err.textContent = 'Name the client, or pick a batch.'; return; }
+  arpApi('issue_access', {
+    p_batch_id: batchId,
+    p_client_name: client || null,
+    p_manager_name: document.getElementById('arp-acc-name').value.trim() || null,
+    p_manager_email: document.getElementById('arp-acc-email').value.trim() || null,
+    p_issued_by: (adminUser && adminUser.name) || 'Admin',
+    p_days: Number(document.getElementById('arp-acc-days').value) || 30
+  }).then(function (d) {
+    if (!d || d.status !== 'ok') { err.textContent = (d && d.reason) || 'Could not issue it.'; return; }
+    var link = ARP_BASE + '/client?t=' + d.token;
+    arpCopy(link, 'Client link');
+    showToast(d.days + '-day access issued for ' + d.client + '. Link copied.');
+    document.getElementById('arp-acc-name').value = '';
+    document.getElementById('arp-acc-email').value = '';
+    arpAdminRefresh();
+  }).catch(function (e) { err.textContent = e.message; });
+}
+
+function arpRenderAccess() {
+  var rows = _arpData.access;
+  if (!rows.length) {
+    document.getElementById('arp-access-list').innerHTML =
+      '<p class="sub">No client access issued yet.</p>';
+    return;
+  }
+  var html = '<div class="table-wrap"><table><thead><tr>' +
+    '<th>Client</th><th>Manager</th><th>Scope</th><th class="text-center">Days left</th>' +
+    '<th class="text-center">Opened</th><th>Issued</th><th>Actions</th>' +
+    '</tr></thead><tbody>';
+  rows.forEach(function (a) {
+    html += '<tr' + (a.live ? '' : ' style="opacity:.5"') + '>' +
+      '<td><b>' + escC(a.client) + '</b></td>' +
+      '<td style="font-size:12px">' + escC(a.managerName || '—') +
+        (a.managerEmail ? '<br><span style="color:var(--muted)">' + escC(a.managerEmail) + '</span>' : '') + '</td>' +
+      '<td style="font-size:12px">' + escC(a.batchCode || 'All their batches') + '</td>' +
+      '<td class="text-center">' + (a.revokedAt
+          ? '<span style="color:#B00020">Revoked</span>'
+          : (a.live ? '<b>' + a.daysLeft + '</b>' : '<span style="color:var(--muted)">Expired</span>')) + '</td>' +
+      '<td class="text-center">' + (a.viewCount || 0) + '</td>' +
+      '<td style="font-size:11.5px;color:var(--muted)">' + escC((a.issuedAt || '').slice(0, 10)) +
+        '<br>' + escC(a.issuedBy || '') + '</td>' +
+      '<td style="white-space:nowrap">' + (a.live
+        ? '<button class="btn btn-xs btn-outline" style="width:auto;padding:4px 9px;font-size:11.5px" ' +
+            'onclick="arpCopy(\'' + ARP_BASE + '/client?t=' + a.token + '\',\'Client link\')">Copy link</button> ' +
+          '<button class="btn btn-xs btn-outline" style="width:auto;padding:4px 9px;font-size:11.5px;border-color:#B00020;color:#B00020" ' +
+            'onclick="arpRevoke(\'' + a.id + '\',\'' + escC(a.client).replace(/'/g, "\\'") + '\')">Revoke</button>'
+        : '—') + '</td></tr>';
+  });
+  document.getElementById('arp-access-list').innerHTML = html + '</tbody></table></div>';
+}
+
+function arpRevoke(id, client) {
+  if (!confirm('Revoke ' + client + '’s access now? Their link stops working immediately.')) return;
+  arpApi('revoke_access', { p_access_id: id, p_revoked_by: (adminUser && adminUser.name) || 'Admin' })
+    .then(function () { showToast('Access revoked.'); arpAdminRefresh(); })
+    .catch(function (e) { showToast('Could not revoke: ' + e.message, 'error'); });
+}
+
+/* The overview is aggregated in the database and comes back as one object — a dashboard
+   that pulled every response row and counted them here would eat the free plan's 5 GB
+   monthly egress on its own. */
+function arpLoadOverview() {
+  if (!_arpPin) return;
+  arpApi('overview', { p_from: null, p_to: null, p_centre: null, p_client: null, p_trainer: null })
+    .then(function (d) {
+      if (!d || d.status !== 'ok') throw new Error((d && d.reason) || 'no data');
+      var t = d.totals || {};
+      var card = function (label, val) {
+        return '<div style="background:var(--off);border-radius:9px;padding:12px 14px">' +
+          '<div style="font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)">' + label + '</div>' +
+          '<div style="font-size:21px;font-weight:700">' + (val == null ? '—' : val) + '</div></div>';
+      };
+      var bandRow = function (name, colour) {
+        var n = (d.bands || {})[name] || 0;
+        var pct = t.assessed ? Math.round(n * 100 / t.assessed) : 0;
+        return '<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;font-size:12.5px">' +
+          '<span>' + name + '</span><span><b>' + n + '</b> <small style="color:var(--muted)">' + pct + '%</small></span></div>' +
+          '<div style="height:7px;background:#E6DFCF;border-radius:7px;overflow:hidden">' +
+          '<i style="display:block;height:100%;width:' + pct + '%;background:' + colour + '"></i></div></div>';
+      };
+      var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px">' +
+        card('Assessed', t.assessed) + card('Clients', t.clients) + card('Centres', t.centres) +
+        card('Avg readiness', t.avgReadiness) + card('Avg 4Cs', t.avgFcsPct == null ? null : t.avgFcsPct + '%') +
+        card('Post-tested', t.postTested) +
+        card('Avg lift', t.avgLift == null ? null : (t.avgLift > 0 ? '+' : '') + t.avgLift + '%') +
+        '</div>';
+
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px">';
+      html += '<div><h3 style="font-size:14px;margin-bottom:10px">Readiness bands</h3>' +
+        bandRow('Outstanding', '#C9A84C') + bandRow('Proficient', '#1D9E75') +
+        bandRow('Developing', '#378ADD') + bandRow('Foundation', '#C9613A') + '</div>';
+
+      var tagRows = (d.tagHeatmap || []).map(function (x) {
+        var c = x.pct >= 75 ? '#166534' : x.pct >= 50 ? '#92400e' : '#991b1b';
+        return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">' +
+          '<span style="text-transform:capitalize">' + escC(x.tag) + '</span>' +
+          '<span style="color:' + c + ';font-weight:700">' + (x.pct == null ? '—' : x.pct + '%') +
+          ' <small style="color:var(--muted);font-weight:400">' + x.correct + '/' + x.total + '</small></span></div>';
+      }).join('');
+      html += '<div><h3 style="font-size:14px;margin-bottom:10px">Weakest knowledge areas</h3>' +
+        (tagRows || '<p class="sub">No data yet.</p>') + '</div>';
+
+      var clientRows = (d.byClient || []).map(function (c) {
+        return '<tr><td>' + escC(c.client) + '</td><td class="text-center">' + c.assessed + '</td>' +
+          '<td class="text-center"><b>' + (c.avgReadiness == null ? '—' : c.avgReadiness) + '</b></td>' +
+          '<td class="text-center">' + (c.avgFcsPct == null ? '—' : c.avgFcsPct + '%') + '</td></tr>';
+      }).join('');
+      html += '<div><h3 style="font-size:14px;margin-bottom:10px">By client</h3>' +
+        (clientRows
+          ? '<table style="width:100%;font-size:13px"><thead><tr><th style="text-align:left">Client</th>' +
+            '<th>Assessed</th><th>Readiness</th><th>4Cs</th></tr></thead><tbody>' + clientRows + '</tbody></table>'
+          : '<p class="sub">No data yet.</p>') + '</div>';
+      html += '</div>';
+
+      document.getElementById('arp-overview').innerHTML = html;
+    })
+    .catch(function (e) {
+      document.getElementById('arp-overview').innerHTML =
+        '<p class="sub" style="color:#B00020">Could not load the overview: ' + escC(e.message) + '</p>';
+    });
 }
 
 /* ══════════════════════════════════════════════════════════════

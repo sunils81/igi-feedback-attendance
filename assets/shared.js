@@ -5195,6 +5195,7 @@ window.gasGet = (function () {
             branch: r.branch || '', city: r.city || '', state: r.state || '',
             mobile: r.mobile || '', email: r.email || '',
             weeklyPct: r.weekly_pct, finalPct: r.final_pct,
+            daysAttended: r.days_attended,
             tested: res.tested, avg: res.avg, passed: res.passed, pending: res.pending,
             certificateNo: r.certificate_no || '', certificateUrl: r.certificate_url || '',
             releasedAt: r.released_at, releasedBy: r.released_by || ''
@@ -5212,6 +5213,7 @@ window.gasGet = (function () {
             programmeType: batch.programme_type || (String(batch.assessment_mode) === 'tested' ? 'Corporate' : 'RTT'),
             assessmentMode: batch.assessment_mode || 'participation',
             passPct: Number(batch.pass_pct) || 60,
+            trainingDays: Number(batch.training_days) || 1,
             associatesTrained: batch.associates_trained || 0,
             locationClient: batch.location_client || '', revenueMonth: batch.revenue_month || ''
           },
@@ -5245,6 +5247,11 @@ window.gasGet = (function () {
       updated_at: nowISO()
     };
     if (p.weeklyPct !== undefined && p.weeklyPct !== '') row.weekly_pct = Number(p.weeklyPct);
+    /* Blank clears it back to "not marked", which is not the same as zero days. */
+    if (p.daysAttended !== undefined) {
+      row.days_attended = (p.daysAttended === '' || p.daysAttended === null)
+        ? null : Math.max(0, Number(p.daysAttended) || 0);
+    }
     if (p.finalPct !== undefined && p.finalPct !== '') row.final_pct = Number(p.finalPct);
 
     if (p.id) {
@@ -5354,6 +5361,9 @@ window.gasGet = (function () {
     var patch = { programme_type: prog, updated_at: nowISO() };
     if (prog === 'Corporate' && p.passPct !== undefined && p.passPct !== '') {
       patch.pass_pct = Number(p.passPct) || 60;
+    }
+    if (prog === 'Corporate' && p.trainingDays !== undefined && p.trainingDays !== '') {
+      patch.training_days = Math.min(60, Math.max(1, Number(p.trainingDays) || 4));
     }
     PATCH('corporate_batches', 'id=eq.' + encodeURIComponent(p.batchId), patch, function (e) {
       cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', programmeType: prog });

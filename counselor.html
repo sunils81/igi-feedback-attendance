@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=135"></script>
+<script src="/assets/shared.js?v=136"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -10211,7 +10211,9 @@ function renderCorpRoster() {
        '<option value="Corporate"' + (tested ? ' selected' : '') + '>Corporate — 1 weekly + 1 final test</option></select>';
   if (tested) {
     h += '<label style="font-size:12px;font-weight:700;margin-left:6px">Pass %</label>' +
-         '<input id="corp-pass" type="number" min="0" max="100" value="' + (b.passPct || 60) + '" onchange="corpSaveMode()" style="width:70px;padding:6px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:12.5px">';
+         '<input id="corp-pass" type="number" min="0" max="100" value="' + (b.passPct || 60) + '" onchange="corpSaveMode()" style="width:70px;padding:6px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:12.5px">' +
+         '<label style="font-size:12px;font-weight:700;margin-left:6px">Programme days</label>' +
+         '<input id="corp-days" type="number" min="1" max="60" value="' + (b.trainingDays || 4) + '" onchange="corpSaveMode()" style="width:70px;padding:6px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:12.5px">';
   }
   h += '</div>';
 
@@ -10258,6 +10260,7 @@ function renderCorpRoster() {
       '<th class="text-left">Participant ID</th>' +
       '<th class="text-left">Name</th><th class="text-left">Designation</th><th class="text-left">Branch</th>' +
       '<th class="text-left">City</th><th class="text-left">State</th><th class="text-left">Mobile</th><th class="text-left">Email</th>' +
+      '<th class="text-center">Days attended<br><span style="font-weight:400;font-size:10px;opacity:.75">of ' + (b.trainingDays || 1) + '</span></th>' +
       (tested ? '<th>Weekly %</th><th>Final %</th><th>Avg</th><th>Result</th>' : '') +
       '<th>Certificate</th><th></th></tr></thead><tbody>';
     ps.forEach(function (p, i) {
@@ -10269,7 +10272,8 @@ function renderCorpRoster() {
         '<td>' + corpTextCell(p, 'city', 100) + '</td>' +
         '<td>' + corpTextCell(p, 'state', 110) + '</td>' +
         '<td>' + corpTextCell(p, 'mobile', 110) + '</td>' +
-        '<td>' + corpTextCell(p, 'email', 160) + '</td>';
+        '<td>' + corpTextCell(p, 'email', 160) + '</td>' +
+        '<td style="text-align:center">' + corpDaysCell(p, b.trainingDays || 1) + '</td>';
       if (tested) {
         h += '<td style="text-align:right">' + corpMarkCell(p, 'weeklyPct') + '</td>' +
              '<td style="text-align:right">' + corpMarkCell(p, 'finalPct') + '</td>' +
@@ -10288,7 +10292,7 @@ function renderCorpRoster() {
       '<td style="color:var(--muted);font-size:11px">new</td>' +
       '<td><input id="corp-new-name" placeholder="Type a name, press Enter" onkeydown="if(event.key===\'Enter\'){corpAddInline();}" ' +
         'style="width:170px;padding:4px 7px;border:1px solid #d1d5db;border-radius:6px;font-size:12px"></td>' +
-      '<td colspan="' + (tested ? 10 : 6) + '" style="color:var(--muted);font-size:11px">' +
+      '<td colspan="' + (tested ? 11 : 7) + '" style="color:var(--muted);font-size:11px">' +
         'Added straight to the roster — fill the rest in on the row, or leave it blank.</td>' +
       '<td><button class="btn btn-xs" style="background:var(--navy);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer" onclick="corpAddInline()">Add</button></td>' +
       '</tr>';
@@ -10344,6 +10348,37 @@ function corpAddInline() {
   });
 }
 
+/* Cumulative days attended, capped at the programme length so a 4-day programme can
+   never record a 5th day. Blank means not yet marked, which the client report prints as
+   such rather than as zero. */
+function corpDaysCell(p, maxDays) {
+  var v = p.daysAttended == null ? '' : p.daysAttended;
+  return '<input type="number" min="0" max="' + maxDays + '" value="' + v + '" ' +
+    'onchange="corpSaveDays(\'' + escC(p.id) + '\',this.value,' + maxDays + ')" ' +
+    'style="width:58px;padding:4px 6px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;text-align:center">';
+}
+
+function corpSaveDays(id, value, maxDays) {
+  var p = (_corpRoster.participants || []).find(function (x) { return x.id === id; });
+  if (!p) return;
+  var v = String(value).trim();
+  if (v !== '' && Number(v) > maxDays) {
+    showToast('The programme is ' + maxDays + ' day' + (maxDays === 1 ? '' : 's') + ' long.', 'error');
+    openCorpRoster(_corpRosterBatchId);
+    return;
+  }
+  gasGet({ action: 'corpSaveParticipant', id: id, batchId: _corpRosterBatchId,
+    name: p.name, designation: p.designation, branch: p.branch, city: p.city,
+    state: p.state, mobile: p.mobile, email: p.email,
+    weeklyPct: p.weeklyPct == null ? '' : p.weeklyPct,
+    finalPct: p.finalPct == null ? '' : p.finalPct,
+    daysAttended: v }, function (e, d) {
+      if (e || !d || d.status !== 'ok') { showToast('Could not save attendance.', 'error'); return; }
+      p.daysAttended = v === '' ? null : Number(v);
+      showToast('Saved.', 'success');
+    });
+}
+
 /* Marks are edited in place — with 20 associates a modal per person is worse than
    tabbing across the row. */
 function corpMarkCell(p, field) {
@@ -10370,7 +10405,9 @@ function corpSaveMark(id, field, value) {
 function corpSaveMode() {
   var programmeType = (document.getElementById('corp-mode') || {}).value || 'RTT';
   var passPct = (document.getElementById('corp-pass') || {}).value || '';
-  gasGet({ action: 'corpSetAssessmentMode', batchId: _corpRosterBatchId, programmeType: programmeType, passPct: passPct },
+  var trainingDays = (document.getElementById('corp-days') || {}).value || '';
+  gasGet({ action: 'corpSetAssessmentMode', batchId: _corpRosterBatchId, programmeType: programmeType,
+           passPct: passPct, trainingDays: trainingDays },
     function (e, d) {
       if (e || !d || d.status !== 'ok') { showToast('Could not change the programme type.', 'error'); return; }
       openCorpRoster(_corpRosterBatchId);
@@ -10482,17 +10519,27 @@ function corpClientReport() {
   var today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
   var e = function (v) { return escC(v == null ? '' : String(v)); };
 
+  /* The client gets attendance and performance against their own people, and nothing
+     else: designation, city, mobile and email are IGI's record of the roster, not part
+     of what was asked for. Branch stays because it is how the client tells one of their
+     outlets from another. */
+  var days = Number(b.trainingDays) || 1;
+  var attCell = function (p) {
+    if (p.daysAttended == null) return '<span style="color:#6b7280">Not marked</span>';
+    var d = Number(p.daysAttended), pct = Math.round((d / days) * 100);
+    var col = pct >= 75 ? '#166534' : pct > 0 ? '#92400e' : '#991b1b';
+    return '<span style="color:' + col + ';font-weight:700">' + d + ' of ' + days + '</span>' +
+           '<span style="color:#6b7280"> \u00b7 ' + pct + '%</span>';
+  };
+
   var rows = ps.map(function (p, i) {
     var cells = '<td style="text-align:center">' + (i + 1) + '</td>' +
       '<td style="font-family:monospace;font-size:10.5px">' + e(p.participantId) + '</td>' +
       '<td><b>' + e(p.name) + '</b></td>' +
-      '<td>' + e(p.designation || '—') + '</td>' +
       '<td>' + e(p.branch || '—') + '</td>' +
-      '<td>' + e(p.city || '—') + '</td>';
+      '<td style="text-align:center">' + attCell(p) + '</td>';
     if (tested) {
-      cells += '<td style="text-align:center">' + (p.weeklyPct == null ? '—' : p.weeklyPct + '%') + '</td>' +
-               '<td style="text-align:center">' + (p.finalPct == null ? '—' : p.finalPct + '%') + '</td>' +
-               '<td style="text-align:center"><b>' + (p.avg == null ? '—' : p.avg + '%') + '</b></td>' +
+      cells += '<td style="text-align:center"><b>' + (p.avg == null ? '—' : p.avg + '%') + '</b></td>' +
                '<td style="text-align:center;font-weight:700;color:' +
                  (p.pending ? '#6b7280' : (p.passed ? '#166534' : '#991b1b')) + '">' +
                  (p.pending ? 'Pending' : (p.passed ? 'Qualified' : 'Not qualified')) + '</td>';
@@ -10500,22 +10547,23 @@ function corpClientReport() {
     return '<tr>' + cells + '</tr>';
   }).join('');
 
-  var headCells = '<th style="width:34px">#</th><th>Participant ID</th><th>Name</th>' +
-    '<th>Designation</th><th>Branch</th><th>City</th>' +
-    (tested ? '<th style="text-align:center">Weekly</th><th style="text-align:center">Final</th>' +
-              '<th style="text-align:center">Average</th><th style="text-align:center">Result</th>' : '');
+  var headCells = '<th style="width:34px">#</th><th>Participant ID</th><th>Name</th><th>Branch</th>' +
+    '<th style="text-align:center">Attendance</th>' +
+    (tested ? '<th style="text-align:center">Average score</th><th style="text-align:center">Result</th>' : '');
 
-  /* The summary says what the programme was and what it produced. For RTT it would be
-     misleading to show a qualified count — no test is conducted, so attendance is the
-     whole record. */
-  var summary = '<div class="sum"><div><span>Participants trained</span><b>' + ps.length + '</b></div>';
+  var marked = ps.filter(function (p) { return p.daysAttended != null; });
+  var attendedSum = marked.reduce(function (t, p) { return t + Number(p.daysAttended); }, 0);
+  var avgAtt = marked.length ? Math.round((attendedSum / (marked.length * days)) * 100) : null;
+  var fullAtt = marked.filter(function (p) { return Number(p.daysAttended) >= days; }).length;
+
+  var summary = '<div class="sum"><div><span>Participants</span><b>' + ps.length + '</b></div>' +
+    '<div><span>Programme length</span><b>' + days + ' day' + (days === 1 ? '' : 's') + '</b></div>' +
+    '<div><span>Average attendance</span><b>' + (avgAtt == null ? 'Not marked' : avgAtt + '%') + '</b></div>' +
+    '<div><span>Attended in full</span><b>' + (marked.length ? fullAtt + ' of ' + ps.length : '—') + '</b></div>';
   if (tested) {
-    summary += '<div><span>Qualified (avg ≥ ' + (b.passPct || 60) + '%)</span><b>' + (c.eligible || 0) + '</b></div>' +
-               '<div><span>Assessment</span><b>1 weekly + 1 final test</b></div>';
-  } else {
-    summary += '<div><span>Assessment</span><b>Participation — no test conducted</b></div>';
+    summary += '<div><span>Qualified (avg \u2265 ' + (b.passPct || 60) + '%)</span><b>' + (c.eligible || 0) + '</b></div>';
   }
-  summary += '<div><span>Certificates issued</span><b>' + (c.released || 0) + '</b></div></div>';
+  summary += '</div>';
 
   var html = '<!doctype html><html><head><meta charset="utf-8">' +
     '<title>' + e(b.batchCode || 'Training Report') + ' — ' + e(b.companyName) + '</title>' +
@@ -10544,7 +10592,7 @@ function corpClientReport() {
     '.noprint button{background:#0D1B2E;color:#C9A84C;border:none;border-radius:7px;padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer}' +
     '</style></head><body>' +
     '<div class="noprint"><button onclick="window.print()">Print / Save as PDF</button></div>' +
-    '<div class="hdr"><div><h1>Training Report</h1>' +
+    '<div class="hdr"><div><h1>Attendance &amp; Performance Report</h1>' +
       '<div class="sub">' + e(b.companyName) + '</div></div>' +
       '<div class="org"><b>IGI</b>International Gemological Institute<br>School of Gemology, India</div></div>' +
     '<div class="meta">' +
@@ -10555,6 +10603,7 @@ function corpClientReport() {
       '<div><span>Period</span><b>' + e(b.revenueMonth || '—') + '</b></div>' +
       '<div><span>Report date</span><b>' + e(today) + '</b></div>' +
     '</div>' + summary +
+    (tested ? '' : '<div style="font-size:11px;color:#6b7280;margin-bottom:8px">No assessment is conducted on this programme, so the record is attendance only.</div>') +
     '<table><thead><tr>' + headCells + '</tr></thead><tbody>' + rows + '</tbody></table>' +
     '<div class="foot"><span>' + e(b.batchCode || '') + ' · ' + ps.length + ' participant' + (ps.length === 1 ? '' : 's') + '</span>' +
       '<span>Issued by IGI School of Gemology on ' + e(today) + '</span></div>' +
@@ -10569,13 +10618,14 @@ function corpClientReport() {
 function corpDownloadRoster() {
   if (!_corpRoster) return;
   var tested = _corpRoster.batch.assessmentMode === 'tested';
-  var head = ['Participant ID', 'Name', 'Designation', 'Branch', 'City', 'State', 'Mobile', 'Email'];
+  var head = ['Participant ID', 'Name', 'Designation', 'Branch', 'City', 'State', 'Mobile', 'Email', 'Days attended', 'Programme days'];
   if (tested) head = head.concat(['Weekly %', 'Final %', 'Average %', 'Result']);
   head.push('Certificate issued');
   var q = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
   var rows = [head.map(q).join(',')];
   (_corpRoster.participants || []).forEach(function (p) {
-    var r = [p.participantId, p.name, p.designation, p.branch, p.city, p.state, p.mobile, p.email];
+    var r = [p.participantId, p.name, p.designation, p.branch, p.city, p.state, p.mobile, p.email,
+             p.daysAttended == null ? '' : p.daysAttended, _corpRoster.batch.trainingDays || 1];
     if (tested) r = r.concat([p.weeklyPct, p.finalPct, p.avg,
       p.pending ? 'Pending' : (p.passed ? 'Qualified' : 'Not qualified')]);
     r.push(p.releasedAt ? 'Yes' : 'No');

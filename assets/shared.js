@@ -1509,6 +1509,7 @@ window.gasGet = (function () {
               batchSlot: r.batch_slot, startDate: r.start_date, endDate: r.end_date,
               counselor: r.counselor, counselorName: r.counselor, instructor: r.instructor,
               coInstructor: r.co_instructor || '', coInstructorUntil: r.co_instructor_until || '',
+              coInstructorMode: r.co_instructor_mode || 'cover',
               coInstructorFrom: r.co_instructor_from || '',
               createdAt: r.created_at,
               status: r.is_active !== false ? 'Active' : 'Completed',
@@ -1589,6 +1590,42 @@ window.gasGet = (function () {
     // Last resort: both sides resolved to the option's own text.
     var at = mcqOptionText(q, ans), ct = mcqOptionText(q, ca);
     return !!at && at.toLowerCase() === ct.toLowerCase();
+  }
+
+  /* ── Who is teaching this batch ─────────────────────────────────────────────
+     Two different arrangements share the co_instructor column:
+       cover  a temporary replacement. Active only inside its from/until window, and
+              while active it REPLACES the main instructor - that is the whole point.
+       joint  two instructors running the batch together for its whole life. No dates,
+              and neither name replaces the other: the student is shown both.
+     Access to the batch is the same either way and is granted elsewhere (every "my
+     batches" filter already matches the primary OR an active co-instructor), so this
+     function answers only the display question: whose name goes on the batch. */
+  function batchTeachingInfo(b, todayStr) {
+    var today = todayStr || todayYMD();
+    var main = (b && b.instructor) || '';
+    var co   = (b && b.co_instructor) || '';
+    var joint = String((b && b.co_instructor_mode) || 'cover') === 'joint';
+    if (!co) {
+      return { instructor: main, mainInstructor: main, coInstructor: '',
+               coInstructorActive: false, joint: false, instructors: main ? [main] : [] };
+    }
+    if (joint) {
+      var both = [main, co].filter(Boolean);
+      return {
+        instructor: both.join(' & '),          // display label, never a lookup key
+        mainInstructor: main, coInstructor: co,
+        coInstructorActive: true, joint: true, instructors: both
+      };
+    }
+    var active = !!(co
+      && (!b.co_instructor_from  || b.co_instructor_from  <= today)
+      && (!b.co_instructor_until || b.co_instructor_until >= today));
+    return {
+      instructor: active ? co : main, mainInstructor: main, coInstructor: co,
+      coInstructorActive: active, joint: false,
+      instructors: [active ? co : main].filter(Boolean)
+    };
   }
 
   /* getBatchCode */
@@ -1701,12 +1738,18 @@ window.gasGet = (function () {
   function h_saveCoInstructor(p, cb) {
     var batchCode = p.batchCode;
     var newCo = p.coInstructor || null;
-    var newFrom = p.coInstructorFrom || null;
-    var newUntil = p.coInstructorUntil || null;
+    var mode = String(p.coInstructorMode || 'cover') === 'joint' ? 'joint' : 'cover';
+    /* Joint teaching is open-ended by definition and both names stand, so it carries no
+       dates and must not restamp sessions.instructor - doing that would overwrite the
+       main instructor's name on every session the two of them teach together. */
+    var newFrom = mode === 'joint' ? null : (p.coInstructorFrom || null);
+    var newUntil = mode === 'joint' ? null : (p.coInstructorUntil || null);
     PATCH('batches', 'batch_code=eq.' + encodeURIComponent(batchCode),
-      { co_instructor: newCo, co_instructor_from: newCo ? newFrom : null, co_instructor_until: newUntil },
+      { co_instructor: newCo, co_instructor_mode: newCo ? mode : 'cover',
+        co_instructor_from: newCo ? newFrom : null, co_instructor_until: newUntil },
       function (e) {
         if (e) { cb(null, { status: 'error' }); return; }
+        if (newCo && mode === 'joint') { cb(null, { status: 'ok', joint: true }); return; }
         GET('batches', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=instructor', function (e2, rows) {
           var mainInstructor = (rows && rows[0] && rows[0].instructor) || '';
           // Only touch sessions that haven't been taught/finalized yet — history stays as-is.
@@ -1755,20 +1798,17 @@ window.gasGet = (function () {
   function h_getBatchCoverStatus(p, cb) {
     var batchCode = String(p.batchCode || '').trim();
     if (!batchCode) { cb(null, { status: 'error', reason: 'missing_batch_code' }); return; }
-    GET('batches', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=instructor,co_instructor,co_instructor_from,co_instructor_until', function (e, rows) {
+    GET('batches', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=instructor,co_instructor,co_instructor_mode,co_instructor_from,co_instructor_until', function (e, rows) {
       if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'batch_not_found' }); return; }
-      var b = rows[0];
-      var todayStr = todayYMD();
-      var coInstructorActive = !!(b.co_instructor
-        && (!b.co_instructor_from || b.co_instructor_from <= todayStr)
-        && (!b.co_instructor_until || b.co_instructor_until >= todayStr));
-      var effectiveInstructor = coInstructorActive ? b.co_instructor : (b.instructor || '');
+      var info = batchTeachingInfo(rows[0]);
       cb(null, {
         status: 'ok',
-        instructor: effectiveInstructor,
-        mainInstructor: b.instructor || '',
-        coInstructor: b.co_instructor || '',
-        coInstructorActive: coInstructorActive
+        instructor: info.instructor,
+        mainInstructor: info.mainInstructor,
+        coInstructor: info.coInstructor,
+        coInstructorActive: info.coInstructorActive,
+        joint: info.joint,
+        instructors: info.instructors
       });
     });
   }
@@ -8764,17 +8804,12 @@ window.gasGet = (function () {
                     return af.session_code === s.session_code && af.attendance !== 'Absent';
                   });
                 }).length;
-                // Effective instructor: co_instructor takes precedence if active
+                // Who the student is told is teaching. A cover replaces the main
+                // instructor for its window; a joint pairing shows both names.
                 var todayStr = todayYMD();
-                var effectiveInstructor = b.instructor || '';
-                if (b.co_instructor
-                    && (!b.co_instructor_from || b.co_instructor_from <= todayStr)
-                    && (!b.co_instructor_until || b.co_instructor_until >= todayStr)) {
-                  effectiveInstructor = b.co_instructor;
-                }
-                var coInstructorActive = !!(b.co_instructor
-                  && (!b.co_instructor_from || b.co_instructor_from <= todayStr)
-                  && (!b.co_instructor_until || b.co_instructor_until >= todayStr));
+                var _teach = batchTeachingInfo(b, todayStr);
+                var effectiveInstructor = _teach.instructor;
+                var coInstructorActive = _teach.coInstructorActive;
                 // FIXED 2026-08-27: build one card per real today-session instead of a single
                 // card for the whole batch, so a batch with two sessions today (e.g. a
                 // regular class plus a same-day Extra workshop) surfaces both — see the
@@ -9902,6 +9937,7 @@ window.gasGet = (function () {
           batchSlot: r.batch_slot || 'Full Day', startDate: toDMY(r.start_date), startDateISO: r.start_date ? new Date(r.start_date).toISOString() : '',
           endDate: toDMY(r.end_date), endDateISO: r.end_date ? new Date(r.end_date).toISOString() : '',
           active: r.is_active !== false, instructor: r.instructor || '', coInstructor: r.co_instructor || '',
+          coInstructorMode: r.co_instructor_mode || 'cover',
           coInstructorFrom: r.co_instructor_from || '', coInstructorUntil: r.co_instructor_until || '',
           syllabus: (window.SYLLABI || {})[r.course] || [] };
       }) });

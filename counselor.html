@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=133"></script>
+<script src="/assets/shared.js?v=134"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -16618,6 +16618,10 @@ function loadMyBatches() {
           ${b.instructor?`<span class="badge badge-green" style="margin-left:6px">${b.instructor}</span>`:'<span class="badge badge-amber" style="margin-left:6px">No instructor</span>'}
           ${b.coInstructor?(()=>{
             const today=(function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+            // A joint pairing has no dates, so none of the cover states apply to it.
+            if ((b.coInstructorMode||'cover')==='joint') {
+              return `<span class="badge" style="margin-left:6px;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe">👥 With ${b.coInstructor}</span>`;
+            }
             const expired=b.coInstructorUntil&&b.coInstructorUntil<today;
             const notStarted=b.coInstructorFrom&&b.coInstructorFrom>today;
             const fromTxt=b.coInstructorFrom?` from ${b.coInstructorFrom}`:'';
@@ -16642,7 +16646,7 @@ function loadMyBatches() {
           ${coInstructorControl}
         </div>
         <div id="co-panel-${escC(b.batchCode)}" style="display:${(!isCompleted && b.coInstructor)?'block':'none'};margin-top:6px">
-          ${isCompleted?'':renderInlineCoInstructorAssign(b.batchCode, b.coInstructor||'', b.coInstructorUntil||'', b.endDate||'', b.coInstructorFrom||'')}
+          ${isCompleted?'':renderInlineCoInstructorAssign(b.batchCode, b.coInstructor||'', b.coInstructorUntil||'', b.endDate||'', b.coInstructorFrom||'', b.coInstructorMode||'cover')}
         </div>
         <div style="margin-top:8px">
           ${isCompleted ? '' : `<button class="btn btn-gold" style="padding:5px 12px;font-size:11px;width:auto" onclick="openEnrollModalForBatch('${escC(b.batchCode)}','${escC(b.centre||'')}')">&#43; Add Student</button>`}
@@ -16844,7 +16848,7 @@ function dmyToISO(d) {
   return d;
 }
 
-function renderInlineCoInstructorAssign(batchCode, currentCoInstr, currentUntil, batchEndDate, currentFrom) {
+function renderInlineCoInstructorAssign(batchCode, currentCoInstr, currentUntil, batchEndDate, currentFrom, currentMode) {
   const instList = [
     'Amit Sidpura','Asmita Saroday','Arjun Mistry','Bhavin Patel',
     'Sneha Garodia','Khorehmand Kasad','Nishchay Kapoor','Piyush Ahuja',
@@ -16871,11 +16875,27 @@ function renderInlineCoInstructorAssign(batchCode, currentCoInstr, currentUntil,
   const dateOpacity = isSpecific ? '1' : '0.4';
   const dateVal = isSpecific ? currentUntil : '';
 
+  // Cover replaces the main instructor for a window; Joint means both run the batch
+  // together for its whole life. They are genuinely different arrangements, so the
+  // counsellor picks which one rather than inferring it from whether dates were left blank.
+  const isJoint = currentMode === 'joint';
+
   return `<div style="margin-top:6px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px">
-    <div style="font-size:11px;font-weight:600;color:#166534;margin-bottom:8px">↔ Cover / Co-Instructor</div>
+    <div style="font-size:11px;font-weight:600;color:#166534;margin-bottom:8px">↔ Second Instructor</div>
     <select id="co-assign-${batchCode}" style="width:100%;font-size:12px;border-color:#bbf7d0;margin-bottom:10px">
-      <option value=""${!currentCoInstr?' selected':''}>No co-instructor</option>${opts}
+      <option value=""${!currentCoInstr?' selected':''}>No second instructor</option>${opts}
     </select>
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">
+      <label style="display:flex;align-items:flex-start;gap:7px;cursor:pointer;text-transform:none;font-weight:400;font-size:12px;color:var(--navy)">
+        <input type="radio" name="co-kind-${batchCode}" value="joint" ${isJoint?'checked':''} onchange="toggleCoKind('${batchCode}')" style="margin-top:3px">
+        <span><b>Both take the batch together</b><br><span style="font-size:10.5px;color:var(--muted)">Runs for the whole batch. Both see it, mark attendance and set tests, and students see both names. No dates.</span></span>
+      </label>
+      <label style="display:flex;align-items:flex-start;gap:7px;cursor:pointer;text-transform:none;font-weight:400;font-size:12px;color:var(--navy)">
+        <input type="radio" name="co-kind-${batchCode}" value="cover" ${isJoint?'':'checked'} onchange="toggleCoKind('${batchCode}')" style="margin-top:3px">
+        <span><b>Covering for the main instructor</b><br><span style="font-size:10.5px;color:var(--muted)">Takes over for a set period. Students see the cover's name while it runs.</span></span>
+      </label>
+    </div>
+    <div id="co-dates-${batchCode}" style="display:${isJoint?'none':'block'}">
     <label style="display:block;font-size:11px;font-weight:600;color:#166534;margin-bottom:6px">
       Cover starts:
       <input type="date" id="co-from-${batchCode}" value="${fromVal}" max="${batchEndISO||''}"
@@ -16904,9 +16924,10 @@ function renderInlineCoInstructorAssign(batchCode, currentCoInstr, currentUntil,
         ${batchEndDate ? `<span style="font-size:10px;color:var(--muted)">max: ${batchEndDate}</span>` : ''}
       </label>
     </div>
+    </div>
     <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
-      <button class="btn btn-outline" style="border-color:#86efac;color:#166534;font-size:12px" onclick="saveInlineCoInstructor('${batchCode}','${batchEndISO}')">↔ Save Cover</button>
-      ${isExpired ? '<span style="font-size:10px;color:#dc2626;font-weight:600">⚠ Cover expired</span>' : ''}
+      <button class="btn btn-outline" style="border-color:#86efac;color:#166534;font-size:12px" onclick="saveInlineCoInstructor('${batchCode}','${batchEndISO}')">↔ Save</button>
+      ${isExpired && !isJoint ? '<span style="font-size:10px;color:#dc2626;font-weight:600">⚠ Cover expired</span>' : ''}
     </div>
   </div>`;
 }
@@ -16931,13 +16952,31 @@ function saveInlineInstructor(batchCode) {
   });
 }
 
+/* Dates belong to a cover only. A joint pairing runs for the life of the batch, and a
+   leftover end date would quietly expire it, so the whole block is hidden rather than
+   disabled - there is nothing there to fill in. */
+function toggleCoKind(batchCode) {
+  var joint = false;
+  document.querySelectorAll('input[name="co-kind-' + batchCode + '"]').forEach(function (r) {
+    if (r.checked && r.value === 'joint') joint = true;
+  });
+  var dates = document.getElementById('co-dates-' + batchCode);
+  if (dates) dates.style.display = joint ? 'none' : 'block';
+}
+
 function saveInlineCoInstructor(batchCode, batchEndISO) {
   const sel = document.getElementById('co-assign-'+batchCode);
   const coInstructor = sel ? sel.value : '';
 
+  var coInstructorMode = 'cover';
+  document.querySelectorAll('input[name="co-kind-'+batchCode+'"]').forEach(function (r) {
+    if (r.checked) coInstructorMode = r.value;
+  });
+  const isJointSave = coInstructorMode === 'joint';
+
   const fromEl = document.getElementById('co-from-'+batchCode);
-  const coInstructorFrom = fromEl ? fromEl.value : '';
-  if (coInstructor && !coInstructorFrom) { showToast('Please set when the cover starts.', 'error'); return; }
+  const coInstructorFrom = isJointSave ? '' : (fromEl ? fromEl.value : '');
+  if (coInstructor && !isJointSave && !coInstructorFrom) { showToast('Please set when the cover starts.', 'error'); return; }
 
   // Read selected mode
   const radios = document.querySelectorAll('input[name="co-mode-'+batchCode+'"]');
@@ -16945,7 +16984,9 @@ function saveInlineCoInstructor(batchCode, batchEndISO) {
   radios.forEach(function(r) { if (r.checked) mode = r.value; });
 
   let coInstructorUntil = '';
-  if (mode === 'tillend') {
+  if (isJointSave) {
+    coInstructorUntil = '';
+  } else if (mode === 'tillend') {
     coInstructorUntil = batchEndISO || '';
   } else if (mode === 'date') {
     const untilEl = document.getElementById('co-until-'+batchCode);
@@ -16955,15 +16996,17 @@ function saveInlineCoInstructor(batchCode, batchEndISO) {
       showToast('Cover date cannot be after the batch end date (' + batchEndISO + ').', 'error'); return;
     }
   }
-  if (coInstructor && coInstructorUntil && coInstructorFrom > coInstructorUntil) {
+  if (!isJointSave && coInstructor && coInstructorUntil && coInstructorFrom > coInstructorUntil) {
     showToast('Cover start date must be on or before the cover end date.', 'error'); return;
   }
 
-  gasGet({action:'saveCoInstructor', batchCode, coInstructor, coInstructorFrom, coInstructorUntil}, function(e,d) {
+  gasGet({action:'saveCoInstructor', batchCode, coInstructor, coInstructorMode, coInstructorFrom, coInstructorUntil}, function(e,d) {
     if (e||!d||d.status!=='ok') { showToast('Could not save co-instructor. Please try again.', 'error'); return; }
-    const label = coInstructor
-      ? 'Cover assigned: ' + coInstructor + ' from ' + coInstructorFrom + (coInstructorUntil ? ' until ' + coInstructorUntil : ' (permanent)')
-      : 'Co-instructor removed.';
+    const label = !coInstructor
+      ? 'Second instructor removed.'
+      : isJointSave
+        ? coInstructor + ' now takes this batch together with the main instructor.'
+        : 'Cover assigned: ' + coInstructor + ' from ' + coInstructorFrom + (coInstructorUntil ? ' until ' + coInstructorUntil : ' (permanent)');
     showToast(label);
     allBatches = null; // force re-fetch so updated co-instructor is shown
     loadMyBatches();

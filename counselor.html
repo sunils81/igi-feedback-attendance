@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=136"></script>
+<script src="/assets/shared.js?v=137"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -4336,6 +4336,15 @@
         <div id="corp-programme-hint" style="font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.5"></div>
       </div>
       <div class="field"><label>Company / Client Name *</label><input type="text" id="corp-company-name" placeholder="e.g. Riyaana Creations Pvt Ltd"></div>
+      <!-- Training dates are typed in here and nowhere else. They are deliberately NOT derived
+           from the invoice date or the revenue month: revenue month is when the fee was booked,
+           and a programme running 29 Sep to 2 Oct would be dated to the wrong month. Everything
+           the client sees — the batch report above all — dates the programme from these. -->
+      <div class="grid2">
+        <div class="field"><label>Training Start *</label><input type="date" id="corp-training-start" onchange="onCorpTrainingDatesChange()"></div>
+        <div class="field"><label>Training End</label><input type="date" id="corp-training-end" onchange="onCorpTrainingDatesChange()"></div>
+      </div>
+      <div id="corp-training-dates-hint" style="font-size:11.5px;color:var(--muted);margin:-8px 0 14px;line-height:1.5">Leave the end date blank for a one-day programme.</div>
       <div class="grid2">
         <div class="field"><label>Invoice Date</label><input type="date" id="corp-invoice-date"></div>
         <div class="field"><label>Invoice Number</label><input type="text" id="corp-invoice-number" placeholder="Optional"></div>
@@ -10000,9 +10009,11 @@ function openCorporateBatchForm(id, presetCentre) {
       document.getElementById('corp-location-client').value = rec.locationClient || '';
       document.getElementById('corp-description').value = rec.description || '';
       document.getElementById('corp-programme-type').value = rec.programmeType || '';
+      document.getElementById('corp-training-start').value = rec.trainingStart || '';
+      document.getElementById('corp-training-end').value = rec.trainingEnd || '';
     }
   } else {
-    ['corp-company-name','corp-invoice-number','corp-course-fee','corp-associates','corp-discount-pct','corp-location-client','corp-description'].forEach(function(id2) {
+    ['corp-company-name','corp-invoice-number','corp-course-fee','corp-associates','corp-discount-pct','corp-location-client','corp-description','corp-training-start','corp-training-end'].forEach(function(id2) {
       document.getElementById(id2).value = '';
     });
     document.getElementById('corp-invoice-date').value = new Date().toISOString().slice(0,10);
@@ -10010,6 +10021,7 @@ function openCorporateBatchForm(id, presetCentre) {
     if (presetCentre) document.getElementById('corp-centre').value = presetCentre;
   }
   onCorpProgrammeTypeChange();
+  onCorpTrainingDatesChange();
   recalcCorpBatchForm();
   document.getElementById('corp-batch-modal-overlay').style.display = 'flex';
 }
@@ -10038,6 +10050,46 @@ function onCorpProgrammeTypeChange() {
   }
 }
 
+/* corpDateRangeLabel — "6 Oct 2026" for one day, "6–9 Oct 2026" inside one month,
+   "29 Sep – 2 Oct 2026" across a month boundary. Parsed from the YYYY-MM-DD string by hand:
+   new Date('2026-10-06').getDate() is the 5th west of Greenwich, and a client report that
+   dates a programme a day early is worse than one with no dates at all. */
+function corpDateRangeLabel(startYmd, endYmd) {
+  var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function parts(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''));
+    return m ? { y: m[1], m: Number(m[2]), d: Number(m[3]) } : null;
+  }
+  var a = parts(startYmd), b = parts(endYmd) || a;
+  if (!a) return '';
+  if (a.y === b.y && a.m === b.m && a.d === b.d) return a.d + ' ' + MON[a.m - 1] + ' ' + a.y;
+  if (a.y === b.y && a.m === b.m) return a.d + '–' + b.d + ' ' + MON[a.m - 1] + ' ' + a.y;
+  if (a.y === b.y) return a.d + ' ' + MON[a.m - 1] + ' – ' + b.d + ' ' + MON[b.m - 1] + ' ' + a.y;
+  return a.d + ' ' + MON[a.m - 1] + ' ' + a.y + ' – ' + b.d + ' ' + MON[b.m - 1] + ' ' + b.y;
+}
+
+/* corpDaySpan — calendar days from start to end inclusive, or 0 when there is no start.
+   This is the span, not the number of training days: a programme can skip a Sunday, so
+   the two are allowed to differ and the form only says so rather than overruling either. */
+function corpDaySpan(startYmd, endYmd) {
+  if (!startYmd) return 0;
+  var a = Date.parse(startYmd + 'T00:00:00Z'), b = Date.parse((endYmd || startYmd) + 'T00:00:00Z');
+  if (isNaN(a) || isNaN(b)) return 0;
+  return Math.round((b - a) / 86400000) + 1;
+}
+
+function onCorpTrainingDatesChange() {
+  var hint = document.getElementById('corp-training-dates-hint');
+  if (!hint) return;
+  var s = (document.getElementById('corp-training-start') || {}).value || '';
+  var e = (document.getElementById('corp-training-end') || {}).value || '';
+  if (!s) { hint.textContent = 'Leave the end date blank for a one-day programme.'; return; }
+  if (e && e < s) { hint.innerHTML = '<span style="color:#B00020">The end date is before the start date.</span>'; return; }
+  var span = corpDaySpan(s, e);
+  hint.textContent = corpDateRangeLabel(s, e) + '  ·  ' + span + (span === 1 ? ' calendar day' : ' calendar days')
+    + '. The client report dates the programme from this, not from the invoice or revenue month.';
+}
+
 function recalcCorpBatchForm() {
   var fee = Number(document.getElementById('corp-course-fee').value) || 0;
   var dp = Number(document.getElementById('corp-discount-pct').value) || 0;
@@ -10057,12 +10109,18 @@ function saveCorporateBatchEntry() {
   if (!courseFee || Number(courseFee) <= 0) { errEl.textContent = 'Enter a valid course fee.'; return; }
   var programmeType = document.getElementById('corp-programme-type').value;
   if (!programmeType) { errEl.textContent = 'Choose whether this is an RTT or a Corporate programme.'; return; }
+  var trainingStart = document.getElementById('corp-training-start').value;
+  var trainingEnd = document.getElementById('corp-training-end').value;
+  if (!trainingStart) { errEl.textContent = 'Enter the training start date.'; return; }
+  if (trainingEnd && trainingEnd < trainingStart) { errEl.textContent = 'Training end date cannot be before the start date.'; return; }
 
   gasGet({
     action: 'saveCorporateBatch',
     id: editingCorpBatchId || '',
     companyName: companyName,
     programmeType: programmeType,
+    trainingStart: trainingStart,
+    trainingEnd: trainingEnd,
     invoiceDate: document.getElementById('corp-invoice-date').value,
     invoiceNumber: document.getElementById('corp-invoice-number').value.trim(),
     courseFee: courseFee,
@@ -10198,7 +10256,8 @@ function renderCorpRoster() {
   h += '<div><div style="font-size:16px;font-weight:800">' + escC(b.companyName) +
        (b.batchCode ? ' <span style="font-family:monospace;font-size:12.5px;font-weight:700;color:var(--muted);background:var(--off);padding:2px 8px;border-radius:6px;vertical-align:middle">' + escC(b.batchCode) + '</span>' : '') + '</div>' +
        '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + escC(b.centre || '') +
-       (b.locationClient ? ' · ' + escC(b.locationClient) : '') + ' · ' + escC(b.revenueMonth || '') + '</div></div>';
+       (b.locationClient ? ' · ' + escC(b.locationClient) : '') +
+       ' · ' + escC(corpDateRangeLabel(b.trainingStart, b.trainingEnd) || 'Training dates not recorded') + '</div></div>';
   h += '<button class="btn btn-xs" style="background:#e5e7eb;border:none;border-radius:6px;padding:5px 12px;cursor:pointer" onclick="closeCorpRoster()">Close</button>';
   h += '</div>';
 
@@ -10519,6 +10578,12 @@ function corpClientReport() {
   var today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
   var e = function (v) { return escC(v == null ? '' : String(v)); };
 
+  /* The client's copy is dated from the training dates typed in on the batch form, never
+     from revenueMonth: that is the month the fee was booked, and a programme running
+     29 Sep to 2 Oct would be headed "2026-09" on a report about four days of training.
+     A batch saved before the dates existed shows "Not recorded" rather than a wrong month. */
+  var trainingDates = corpDateRangeLabel(b.trainingStart, b.trainingEnd);
+
   /* The client gets attendance and performance against their own people, and nothing
      else: designation, city, mobile and email are IGI's record of the roster, not part
      of what was asked for. Branch stays because it is how the client tells one of their
@@ -10600,7 +10665,7 @@ function corpClientReport() {
       '<div><span>Batch reference</span><b>' + e(b.batchCode || '—') + '</b></div>' +
       '<div><span>Training centre</span><b>' + e(b.centre || '—') + '</b></div>' +
       '<div><span>Location</span><b>' + e(b.locationClient || b.centre || '—') + '</b></div>' +
-      '<div><span>Period</span><b>' + e(b.revenueMonth || '—') + '</b></div>' +
+      '<div><span>Training dates</span><b>' + e(trainingDates || 'Not recorded') + '</b></div>' +
       '<div><span>Report date</span><b>' + e(today) + '</b></div>' +
     '</div>' + summary +
     (tested ? '' : '<div style="font-size:11px;color:#6b7280;margin-bottom:8px">No assessment is conducted on this programme, so the record is attendance only.</div>') +

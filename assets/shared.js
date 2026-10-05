@@ -5214,6 +5214,12 @@ window.gasGet = (function () {
             assessmentMode: batch.assessment_mode || 'participation',
             passPct: Number(batch.pass_pct) || 60,
             trainingDays: Number(batch.training_days) || 1,
+            /* Training dates are typed in when the batch is created. They are NOT derived from
+               revenue_month or invoice_date: revenue_month is the month the fee was booked, which
+               on a multi-day programme straddling a month boundary is the wrong answer. Anything
+               shown to the client dates the programme from these two fields and nothing else. */
+            trainingStart: batch.training_start || '',
+            trainingEnd: batch.training_end || '',
             associatesTrained: batch.associates_trained || 0,
             locationClient: batch.location_client || '', revenueMonth: batch.revenue_month || ''
           },
@@ -5407,6 +5413,21 @@ window.gasGet = (function () {
       cb(null, { status: 'error', reason: 'Choose whether this is an RTT or a Corporate programme.' });
       return;
     }
+    /* Training dates: typed in by hand here, when the batch is created, and never derived.
+       revenue_month above is the month the FEE was booked — on a 4-day programme that runs
+       29 Sep to 2 Oct it names the wrong month, so nothing the client sees may be dated from
+       it. A one-day RTT programme leaves the end date blank and it mirrors the start. */
+    var tStart = p.trainingStart ? toYMD(p.trainingStart) : '';
+    var tEnd   = p.trainingEnd   ? toYMD(p.trainingEnd)   : '';
+    if (!p.id && !tStart) {
+      cb(null, { status: 'error', reason: 'Enter the training start date.' });
+      return;
+    }
+    if (tStart && !tEnd) tEnd = tStart;
+    if (tStart && tEnd && tEnd < tStart) {
+      cb(null, { status: 'error', reason: 'Training end date cannot be before the start date.' });
+      return;
+    }
     var dbRow = {
       company_name: p.companyName,
       invoice_number: p.invoiceNumber || '',
@@ -5424,6 +5445,7 @@ window.gasGet = (function () {
       updated_at: nowISO()
     };
     if (prog) dbRow.programme_type = prog;
+    if (tStart) { dbRow.training_start = tStart; dbRow.training_end = tEnd; }
     function afterSave(err, oldRow) {
       if (err) { cb(null, { status: 'error', reason: String(err) }); return; }
       syncCorporateRevenue(dbRow.recorded_by, dbRow.centre, revenueMonth, '2026-27');
@@ -5457,7 +5479,9 @@ window.gasGet = (function () {
           discountPct: Number(r.discount_pct) || 0, discountAmount: Number(r.discount_amount) || 0,
           associatesTrained: Number(r.associates_trained) || 0, locationClient: r.location_client,
           description: r.description, revenueMonth: r.revenue_month, createdAt: r.created_at,
-          programmeType: r.programme_type || '', batchCode: r.batch_code || ''
+          programmeType: r.programme_type || '', batchCode: r.batch_code || '',
+          trainingStart: r.training_start || '', trainingEnd: r.training_end || '',
+          trainingDays: Number(r.training_days) || 1
         };
       });
       cb(null, { status: 'ok', records: records });

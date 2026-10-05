@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=137"></script>
+<script src="/assets/shared.js?v=138"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -10039,14 +10039,16 @@ function onCorpProgrammeTypeChange() {
   var hint = document.getElementById('corp-programme-hint');
   if (!hint) return;
   if (v === 'RTT') {
-    hint.innerHTML = '<b>One day.</b> No tests are conducted, so the certificate cannot depend on marks — '
+    hint.innerHTML = '<b>Usually one day</b>, and the length is editable on the roster if a particular '
+      + 'programme runs longer. No tests are conducted, so the certificate cannot depend on marks — '
       + 'everyone on the roster qualifies. Batch code segment: <b>RTT</b>.';
   } else if (v === 'Corporate') {
-    hint.innerHTML = '<b>Usually more than one day.</b> One weekly test and one final test, both compulsory, '
-      + 'averaged — 60% to qualify for the certificate. Batch code segment: <b>COR</b>.';
+    hint.innerHTML = '<b>Usually four days</b>, editable on the roster. One weekly test and one final test, '
+      + 'both compulsory, averaged — 60% to qualify for the certificate. Batch code segment: <b>COR</b>.';
   } else {
-    hint.innerHTML = 'RTT is a one-day programme with no tests. A Corporate programme runs longer and carries '
-      + 'one weekly and one final test. Fees never affect a certificate in either case — the client company pays.';
+    hint.innerHTML = 'RTT is usually a one-day programme with no tests. A Corporate programme usually runs '
+      + 'longer and carries one weekly and one final test. Both lengths are editable. Fees never affect a '
+      + 'certificate in either case — the client company pays.';
   }
 }
 
@@ -10266,14 +10268,17 @@ function renderCorpRoster() {
   h += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0;padding:10px 12px;background:var(--off);border-radius:8px">';
   h += '<label style="font-size:12px;font-weight:700">Programme</label>';
   h += '<select id="corp-mode" onchange="corpSaveMode()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:12.5px">' +
-       '<option value="RTT"' + (tested ? '' : ' selected') + '>RTT — one day, no tests</option>' +
+       '<option value="RTT"' + (tested ? '' : ' selected') + '>RTT — usually one day, no tests</option>' +
        '<option value="Corporate"' + (tested ? ' selected' : '') + '>Corporate — 1 weekly + 1 final test</option></select>';
+  /* Pass % belongs to Corporate alone, because RTT runs no tests. Programme days belongs
+     to BOTH: one day is the usual RTT shape, not a rule, and a two-day RTT has to be
+     recordable or the client report prints the wrong denominator for attendance. */
   if (tested) {
     h += '<label style="font-size:12px;font-weight:700;margin-left:6px">Pass %</label>' +
-         '<input id="corp-pass" type="number" min="0" max="100" value="' + (b.passPct || 60) + '" onchange="corpSaveMode()" style="width:70px;padding:6px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:12.5px">' +
-         '<label style="font-size:12px;font-weight:700;margin-left:6px">Programme days</label>' +
-         '<input id="corp-days" type="number" min="1" max="60" value="' + (b.trainingDays || 4) + '" onchange="corpSaveMode()" style="width:70px;padding:6px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:12.5px">';
+         '<input id="corp-pass" type="number" min="0" max="100" value="' + (b.passPct || 60) + '" onchange="corpSaveMode()" style="width:70px;padding:6px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:12.5px">';
   }
+  h += '<label style="font-size:12px;font-weight:700;margin-left:6px">Programme days</label>' +
+       '<input id="corp-days" type="number" min="1" max="60" value="' + (b.trainingDays || (tested ? 4 : 1)) + '" onchange="corpSaveMode()" style="width:70px;padding:6px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:12.5px">';
   h += '</div>';
 
   h += '<div style="font-size:11.5px;color:var(--muted);margin:-4px 0 10px;line-height:1.5">' +

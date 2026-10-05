@@ -5368,8 +5368,13 @@ window.gasGet = (function () {
     if (prog === 'Corporate' && p.passPct !== undefined && p.passPct !== '') {
       patch.pass_pct = Number(p.passPct) || 60;
     }
-    if (prog === 'Corporate' && p.trainingDays !== undefined && p.trainingDays !== '') {
-      patch.training_days = Math.min(60, Math.max(1, Number(p.trainingDays) || 4));
+    /* Programme length is editable on BOTH types. RTT is usually one day and Corporate
+       usually four, but those are starting values the database fills in on create, not
+       rules: a two-day RTT happens, and refusing to save it here is how the figure ends
+       up wrong on the client's report. */
+    if (p.trainingDays !== undefined && p.trainingDays !== '') {
+      patch.training_days = Math.min(60, Math.max(1,
+        Number(p.trainingDays) || (prog === 'Corporate' ? 4 : 1)));
     }
     PATCH('corporate_batches', 'id=eq.' + encodeURIComponent(p.batchId), patch, function (e) {
       cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', programmeType: prog });

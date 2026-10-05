@@ -10233,6 +10233,7 @@ function renderCorpRoster() {
     '<button class="btn btn-gold btn-xs" style="padding:6px 14px;cursor:pointer" onclick="corpAddRow()">+ Add with all details</button>' +
     '<button class="btn btn-xs" style="background:var(--navy);color:#fff;border:none;border-radius:6px;padding:6px 14px;cursor:pointer" onclick="corpOpenPaste()">📋 Paste from Excel</button>' +
     '<button class="btn btn-xs" style="background:#e5e7eb;border:none;border-radius:6px;padding:6px 14px;cursor:pointer" onclick="corpDownloadRoster()">⬇ Download CSV</button>' +
+    '<button class="btn btn-xs" style="background:var(--gold);color:var(--navy);border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-weight:700" onclick="corpClientReport()">📄 Report for client</button>' +
     '</div>';
 
   h += '<div id="corp-paste-wrap" style="display:none;margin-bottom:12px;padding:12px;background:var(--off);border-radius:8px">' +
@@ -10456,6 +10457,113 @@ function corpDeleteRow(id, force) {
     showToast(who + ' removed.', 'success');
     openCorpRoster(_corpRosterBatchId);
   });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CLIENT TRAINING REPORT (2026-10-05)
+   What goes to the client company, as against the CSV (raw columns, for IGI's
+   own use) and admin's "Corporate Revenue Report" (fees, discounts, GST —
+   internal, and sending it to a client would hand them our commercials).
+
+   So this carries NO money: no course fee, invoice number, discount or GST.
+   It is the training record — who attended, and for a Corporate programme how
+   they scored — in a form a counsellor can print or save as PDF and attach.
+   Opened as a print window rather than built with pdf-lib: the diploma
+   pipeline's fixed overlay coordinates suit a fixed certificate, not a table
+   that runs to however many participants the client sent.
+   ══════════════════════════════════════════════════════════════ */
+function corpClientReport() {
+  if (!_corpRoster) return;
+  var b = _corpRoster.batch, ps = _corpRoster.participants || [], c = _corpRoster.counts || {};
+  var tested = b.assessmentMode === 'tested';
+  var prog = b.programmeType || (tested ? 'Corporate' : 'RTT');
+  if (!ps.length) { showToast('No participants on the roster yet.', 'error'); return; }
+
+  var today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+  var e = function (v) { return escC(v == null ? '' : String(v)); };
+
+  var rows = ps.map(function (p, i) {
+    var cells = '<td style="text-align:center">' + (i + 1) + '</td>' +
+      '<td style="font-family:monospace;font-size:10.5px">' + e(p.participantId) + '</td>' +
+      '<td><b>' + e(p.name) + '</b></td>' +
+      '<td>' + e(p.designation || '—') + '</td>' +
+      '<td>' + e(p.branch || '—') + '</td>' +
+      '<td>' + e(p.city || '—') + '</td>';
+    if (tested) {
+      cells += '<td style="text-align:center">' + (p.weeklyPct == null ? '—' : p.weeklyPct + '%') + '</td>' +
+               '<td style="text-align:center">' + (p.finalPct == null ? '—' : p.finalPct + '%') + '</td>' +
+               '<td style="text-align:center"><b>' + (p.avg == null ? '—' : p.avg + '%') + '</b></td>' +
+               '<td style="text-align:center;font-weight:700;color:' +
+                 (p.pending ? '#6b7280' : (p.passed ? '#166534' : '#991b1b')) + '">' +
+                 (p.pending ? 'Pending' : (p.passed ? 'Qualified' : 'Not qualified')) + '</td>';
+    }
+    return '<tr>' + cells + '</tr>';
+  }).join('');
+
+  var headCells = '<th style="width:34px">#</th><th>Participant ID</th><th>Name</th>' +
+    '<th>Designation</th><th>Branch</th><th>City</th>' +
+    (tested ? '<th style="text-align:center">Weekly</th><th style="text-align:center">Final</th>' +
+              '<th style="text-align:center">Average</th><th style="text-align:center">Result</th>' : '');
+
+  /* The summary says what the programme was and what it produced. For RTT it would be
+     misleading to show a qualified count — no test is conducted, so attendance is the
+     whole record. */
+  var summary = '<div class="sum"><div><span>Participants trained</span><b>' + ps.length + '</b></div>';
+  if (tested) {
+    summary += '<div><span>Qualified (avg ≥ ' + (b.passPct || 60) + '%)</span><b>' + (c.eligible || 0) + '</b></div>' +
+               '<div><span>Assessment</span><b>1 weekly + 1 final test</b></div>';
+  } else {
+    summary += '<div><span>Assessment</span><b>Participation — no test conducted</b></div>';
+  }
+  summary += '<div><span>Certificates issued</span><b>' + (c.released || 0) + '</b></div></div>';
+
+  var html = '<!doctype html><html><head><meta charset="utf-8">' +
+    '<title>' + e(b.batchCode || 'Training Report') + ' — ' + e(b.companyName) + '</title>' +
+    '<style>' +
+    '@page{size:A4;margin:14mm}' +
+    'body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#0D1B2E;margin:0;font-size:12px}' +
+    '.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #C9A84C;padding-bottom:12px;margin-bottom:16px}' +
+    '.hdr h1{font-size:19px;margin:0 0 3px}.hdr .sub{font-size:11.5px;color:#6b7280}' +
+    '.hdr .org{text-align:right;font-size:11px;color:#6b7280;line-height:1.6}' +
+    '.hdr .org b{display:block;font-size:14px;color:#0D1B2E;letter-spacing:.04em}' +
+    '.meta{display:grid;grid-template-columns:repeat(2,1fr);gap:5px 26px;margin-bottom:14px}' +
+    '.meta div{display:flex;justify-content:space-between;border-bottom:1px dotted #d1d5db;padding:4px 0}' +
+    '.meta span{color:#6b7280}.meta b{text-align:right}' +
+    '.sum{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}' +
+    '.sum div{flex:1;min-width:120px;background:#F9F3E3;border:1px solid #e8d9a8;border-radius:8px;padding:9px 12px}' +
+    '.sum span{display:block;font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em}' +
+    '.sum b{font-size:16px}' +
+    'table{width:100%;border-collapse:collapse;font-size:11px}' +
+    'th{background:#0D1B2E;color:#fff;text-align:left;padding:7px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.04em}' +
+    'td{padding:6px 8px;border-bottom:1px solid #e5e7eb}' +
+    'tr:nth-child(even) td{background:#fafafa}' +
+    'thead{display:table-header-group}tr{break-inside:avoid}' +
+    '.foot{margin-top:18px;padding-top:10px;border-top:1px solid #e5e7eb;font-size:10px;color:#6b7280;display:flex;justify-content:space-between}' +
+    '@media print{.noprint{display:none}}' +
+    '.noprint{margin-bottom:14px}' +
+    '.noprint button{background:#0D1B2E;color:#C9A84C;border:none;border-radius:7px;padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer}' +
+    '</style></head><body>' +
+    '<div class="noprint"><button onclick="window.print()">Print / Save as PDF</button></div>' +
+    '<div class="hdr"><div><h1>Training Report</h1>' +
+      '<div class="sub">' + e(b.companyName) + '</div></div>' +
+      '<div class="org"><b>IGI</b>International Gemological Institute<br>School of Gemology, India</div></div>' +
+    '<div class="meta">' +
+      '<div><span>Programme</span><b>' + e(prog === 'RTT' ? 'Retail Technical Training (RTT)' : 'Corporate Training Programme') + '</b></div>' +
+      '<div><span>Batch reference</span><b>' + e(b.batchCode || '—') + '</b></div>' +
+      '<div><span>Training centre</span><b>' + e(b.centre || '—') + '</b></div>' +
+      '<div><span>Location</span><b>' + e(b.locationClient || b.centre || '—') + '</b></div>' +
+      '<div><span>Period</span><b>' + e(b.revenueMonth || '—') + '</b></div>' +
+      '<div><span>Report date</span><b>' + e(today) + '</b></div>' +
+    '</div>' + summary +
+    '<table><thead><tr>' + headCells + '</tr></thead><tbody>' + rows + '</tbody></table>' +
+    '<div class="foot"><span>' + e(b.batchCode || '') + ' · ' + ps.length + ' participant' + (ps.length === 1 ? '' : 's') + '</span>' +
+      '<span>Issued by IGI School of Gemology on ' + e(today) + '</span></div>' +
+    '</body></html>';
+
+  var w = window.open('', '_blank');
+  if (!w) { showToast('Allow pop-ups to open the report.', 'error'); return; }
+  w.document.write(html);
+  w.document.close();
 }
 
 function corpDownloadRoster() {

@@ -2028,28 +2028,35 @@ window.gasGet = (function () {
       });
   }
 
-  /* writeAuditLog — fire-and-forget insert into admin_audit_log. Never blocks
-     or fails the action it's logging: if the insert itself errors, that's
-     swallowed (logged to console) rather than surfaced to the admin, because
-     losing the audit trail for one action is much better than blocking a
-     real Add/Disable/Delete/permission change on a logging bug. 2026-08-24. */
+  /* writeAuditLog — fire-and-forget. Never blocks or fails the action it is logging:
+     losing one audit line is much better than blocking a real Add/Disable/Delete/
+     permission change on a logging bug. 2026-08-24.
+
+     2026-10-06: this was writing nothing, and had been for some time. admin_audit_log
+     has no anon INSERT grant, and because the write is deliberately fire-and-forget —
+     a logging failure must never block a real admin action — the error was swallowed
+     every time. So every "user added / disabled / password reset / permissions changed"
+     line was silently dropped, and nobody would have found out until they needed the
+     trail. It now goes through auth_write_audit, which takes the actor from the session
+     rather than from the actorName the page passes in: the trail records who actually
+     did it, not who the browser said did it. Still fire-and-forget. */
   function writeAuditLog(action, actorName, targetName, detail) {
     try {
-      POST('admin_audit_log', '', {
-        action: action, actor_name: actorName || 'Admin', target_name: targetName || '',
-        detail: detail || {}
-      }, function (e) { if (e && typeof console !== 'undefined') console.warn('audit log failed:', e); });
+      adminRPC('auth_write_audit', {
+        p_action: action, p_target: targetName || '', p_detail: detail || {}
+      }, function (e, d) {
+        if ((e || !d || d.status !== 'ok') && typeof console !== 'undefined') {
+          console.warn('audit log failed:', (d && d.reason) || e);
+        }
+      });
     } catch (ex) {}
   }
 
   function h_getAuditLog(p, cb) {
     var limit = Math.min(Number(p.limit) || 100, 500);
-    GET('admin_audit_log', 'select=id,action,actor_name,target_name,detail,created_at&order=created_at.desc&limit=' + limit, function (e, rows) {
-      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
-      cb(null, { status: 'ok', entries: (rows || []).map(function (r) {
-        return { id: r.id, action: r.action, actorName: r.actor_name, targetName: r.target_name,
-          detail: r.detail || {}, createdAt: r.created_at };
-      }) });
+    adminRPC('auth_read_audit', { p_limit: limit }, function (e, d) {
+      if (e || !d || d.status !== 'ok') { cb(null, adminErr(d, e)); return; }
+      cb(null, { status: 'ok', entries: d.entries || [] });
     });
   }
 

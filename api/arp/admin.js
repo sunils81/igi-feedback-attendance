@@ -22,6 +22,7 @@
 //   MASTER_BREAKGLASS_PIN   (optional, break-glass only)
 
 import crypto from 'crypto';
+import { readTicket } from '../_auth-ticket.js';
 
 const SUPA_URL = process.env.SUPABASE_URL;
 const SUPA_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -96,9 +97,22 @@ export default async function handler(req, res) {
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) { body = {}; } }
   body = body || {};
 
-  const pin = body.pin, action = body.action, params = body.params;
-  if (!pinIsAdmin(pin)) {
-    res.status(401).json({ status: 'error', reason: 'not_authorised' });
+  const action = body.action, params = body.params;
+
+  // Two ways to prove admin, both server-checked:
+  //   ticket — the signed, expiring proof issued at login by /api/auth/verify-pin. The
+  //            normal path: the admin already passed the pin check to reach this page,
+  //            so asking again was pure friction and tempted us to store the pin.
+  //   pin    — still accepted, so a ticket that has expired mid-session, or a browser
+  //            that signed in before this shipped, can fall back rather than fail.
+  const authorised = readTicket(body.ticket) === 'admin' || pinIsAdmin(body.pin);
+  if (!authorised) {
+    // 'ticket_expired' tells the page to ask for the pin once instead of showing a
+    // bare failure; anything else is a genuine refusal.
+    res.status(401).json({
+      status: 'error',
+      reason: body.ticket && !body.pin ? 'ticket_expired' : 'not_authorised'
+    });
     return;
   }
   if (!Object.prototype.hasOwnProperty.call(ALLOWED, action)) {

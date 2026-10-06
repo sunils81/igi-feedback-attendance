@@ -28,6 +28,7 @@
 // blocks or fails the login itself.
 
 import crypto from 'crypto';
+import { issueTicket } from '../_auth-ticket.js';
 
 const SUPA_URL = process.env.SUPABASE_URL;
 const SUPA_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -83,5 +84,13 @@ export default async function handler(req, res) {
     await logMasterPinUse(name, req);
   }
 
-  return res.status(200).json({ matchedType });
+  // Admin and break-glass logins also get a signed, expiring ticket, so later admin-only
+  // calls (currently /api/arp/admin) can prove this browser passed the check without
+  // asking for the pin again and without the pin ever being stored. See _auth-ticket.js.
+  // Still only a label plus an opaque signature — the secret itself never leaves here.
+  const ticket = (matchedType === 'admin' || matchedType === 'master')
+    ? issueTicket('admin')
+    : null;
+
+  return res.status(200).json({ matchedType, ticket });
 }

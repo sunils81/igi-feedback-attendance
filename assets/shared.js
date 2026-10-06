@@ -1257,16 +1257,41 @@ window.gasGet = (function () {
      Fails closed on any network/server error — matchedType comes back null,
      which simply falls through to the normal per-user password-hash check
      below, so a slow or misconfigured endpoint can never grant access, only
-     ever refuse the shortcut and require a real password. */
+     ever refuse the shortcut and require a real password.
+
+     The second callback argument is the signed admin ticket (see api/_auth-ticket.js):
+     a short-lived proof that THIS browser passed the pin check, so a later admin-only
+     call does not have to ask for the pin a second time. It is not a secret and not the
+     pin — it expires on its own and only this deployment can verify it. */
   function h_verifyServerPin(pin, name, cb) {
-    if (!pin) { cb(null); return; }
+    if (!pin) { cb(null, null); return; }
     fetch('/api/auth/verify-pin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pin: pin, name: name || '' })
     }).then(function (res) { return res.json(); })
-      .then(function (d) { cb(d && d.matchedType ? d.matchedType : null); })
-      .catch(function () { cb(null); });
+      .then(function (d) { cb(d && d.matchedType ? d.matchedType : null, (d && d.ticket) || null); })
+      .catch(function () { cb(null, null); });
+  }
+
+  /* Asks the server to re-verify a named Admin's own password and issue the admin
+     ticket. Fails soft in every direction: no ticket simply means the ARP tab asks for
+     the pin once, exactly as it did before. Never blocks or delays the login itself
+     beyond this one call. */
+  function h_mintAdminTicket(name, password, cb) {
+    var done = false;
+    var finish = function (t) { if (!done) { done = true; cb(t || null); } };
+    // Never let a hung endpoint hold a login open.
+    setTimeout(function () { finish(null); }, 4000);
+    try {
+      fetch('/api/auth/verify-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, password: password })
+      }).then(function (r) { return r.json(); })
+        .then(function (d) { finish(d && d.ticket); })
+        .catch(function () { finish(null); });
+    } catch (e) { finish(null); }
   }
 
   /* counselorLogin / instructorLogin */
@@ -1274,7 +1299,7 @@ window.gasGet = (function () {
     var name = p.name, pin = String(p.pin || p.pass || '');
     var tbl  = 'users';
 
-    h_verifyServerPin(pin, name, function (matchedType) {
+    h_verifyServerPin(pin, name, function (matchedType, authTicket) {
       var isMasterPin = (matchedType === 'master');
 
       if (!name || name === '__admin__') {
@@ -1289,7 +1314,8 @@ window.gasGet = (function () {
           // why 'Annual Target Configurations' got stuck forever on 'Loading target
           // configurator...': the function returned before ever touching that div's HTML.
           cb(null, { status: 'ok', counselorName: 'Admin', instructorName: 'Admin', authRole: 'Admin',
-            isAdmin: true, isManager: false, centres: [], batches: [], mustChangePassword: false });
+            isAdmin: true, isManager: false, centres: [], batches: [], mustChangePassword: false,
+            authTicket: authTicket });
           return;
         }
         cb(null, { status: 'error', reason: 'Invalid password' });
@@ -1329,11 +1355,22 @@ window.gasGet = (function () {
             var isDual = (r.role && r.role.indexOf('Dual') >= 0) || r.role === 'Manager' || r.role === 'Admin' || centres.length > 1 || r.name === 'Anuradha';
             var mgrCentres = (r.role === 'Manager' || r.role === 'Admin' || (r.name && r.name.toLowerCase().indexOf('amit') >= 0)) ? ['Mumbai','Lucknow','Ahmedabad','Chennai','Delhi','Surat','Kolkata','Bangalore','Hyderabad','Jaipur'] : centres;
 
-            cb(null, { status: 'ok', counselorName: r.name, instructorName: r.name, authRole: r.role || 'Counselor',
+            var out = { status: 'ok', counselorName: r.name, instructorName: r.name, authRole: r.role || 'Counselor',
               isAdmin: isAdm, isManager: isMgr, centres: centres, mustChangePassword: !!r.must_change,
               batches: (bd && bd.batches) || [],
               isAcademicHead: isAH, isRevenueManager: isRM, isDualRole: isDual, managerCentres: mgrCentres,
-              permissions: r.permissions || {} });
+              permissions: r.permissions || {} };
+
+            // An Admin who signed in with their own password gets the same ticket the
+            // shared pin earns, so the ARP tab does not have to ask for a pin they never
+            // used. The server re-checks the password itself (api/auth/verify-user.js) —
+            // this is not the browser vouching for itself. Everyone else, and any error,
+            // simply carries on with no ticket. 2026-10-06.
+            if (!isAdm) { cb(null, out); return; }
+            h_mintAdminTicket(r.name, pin, function (t) {
+              out.authTicket = t || (isMasterPin ? authTicket : null);
+              cb(null, out);
+            });
           });
         }
 

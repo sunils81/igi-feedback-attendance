@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=138"></script>
+<script src="assets/shared.js?v=139"></script>
 <script src="assets/work.js?v=4"></script>
 <script src="assets/push-subscribe.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -2717,8 +2717,10 @@
 
         <div id="arp-locked" style="display:none;background:var(--off);border-radius:10px;padding:18px">
           <div style="font-weight:700;margin-bottom:6px">Admin PIN required</div>
-          <p style="font-size:13px;color:var(--muted);margin-bottom:12px">ARP actions are checked on
-            the server, so the PIN is asked for once per visit and never stored in this browser.</p>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:12px">This sign-in could not be
+            confirmed for ARP — usually an older session, or one open longer than eight hours.
+            Signing out and back in clears it for good; the PIN below unlocks it for now, and is
+            never stored in this browser.</p>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
             <input type="password" id="arp-pin" placeholder="Admin PIN" autocomplete="off"
               onkeydown="if(event.key==='Enter')arpUnlock()"
@@ -4584,7 +4586,12 @@ function doAdminLogin() {
       isAdmin: true,
       authRole: d.authRole || (nameVal === '__admin__' ? 'Super Admin' : 'Manager'),
       centres: d.centres || [],
-      permissions: d.permissions || {}
+      permissions: d.permissions || {},
+      // Signed, expiring proof that the server verified this sign-in (api/_auth-ticket.js).
+      // It is not the pin and not a password — it carries only the word "admin" and a
+      // signature this deployment can check, and it dies with the session on logout.
+      // Lets the ARP tab work without asking for the admin pin all over again.
+      authTicket: d.authTicket || null
     };
     
     try {
@@ -5446,20 +5453,48 @@ function switchAdminTab(tabId) {
    checks the admin pin on the server and holds the ARP staff key, so the key is not
    in this file and a client-manager link carries nothing that reaches these actions.
 
-   The pin is kept in a plain variable for the life of the page and is never written
-   to localStorage or sessionStorage — /api/auth/verify-pin exists precisely so that
-   secret does not sit in a browser, and caching it here would undo that.
+   Authorisation, in order of preference:
+
+   1. The ticket minted at sign-in (adminUser.authTicket). You already proved who you
+      were to open this page at all, so being asked for the admin pin a second time was
+      friction with nothing to show for it — Sunil said so, and he was right. The ticket
+      is a signature over the word "admin" and an expiry; it is not the pin, it cannot be
+      turned back into it, and it dies with the session.
+   2. The pin, asked for once, only when there is no usable ticket — an older session
+      stored before the ticket existed, or one left open past the ticket's 8 hours.
+
+   Either way the check happens on the server. The pin, when it is used, lives in a plain
+   variable for the life of the page and is never written to localStorage or
+   sessionStorage: /api/auth/verify-pin exists precisely so that secret does not sit in a
+   browser, and caching it here would undo that.
    ══════════════════════════════════════════════════════════════════════════════ */
 var _arpPin = null, _arpData = { assessments: [], access: [], batches: [] }, _arpSub = 'assess';
+
+function arpTicket() {
+  return (adminUser && adminUser.authTicket) || null;
+}
+/* Unlocked when either credential is in hand. */
+function arpAuthed() {
+  return !!(_arpPin || arpTicket());
+}
 
 function arpApi(action, params) {
   return fetch('/api/arp/admin', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pin: _arpPin, action: action, params: params || {} })
+    body: JSON.stringify({
+      ticket: arpTicket(), pin: _arpPin, action: action, params: params || {}
+    })
   }).then(function (r) {
     return r.json().then(function (d) {
-      if (r.status === 401) { _arpPin = null; throw new Error('not_authorised'); }
+      if (r.status === 401) {
+        // Drop whatever did not work, so the next attempt asks for the pin rather than
+        // retrying a stale ticket forever.
+        _arpPin = null;
+        if (adminUser) adminUser.authTicket = null;
+        try { localStorage.setItem('igi_admin_session', JSON.stringify(adminUser)); } catch (ex) {}
+        throw new Error((d && d.reason) === 'ticket_expired' ? 'ticket_expired' : 'not_authorised');
+      }
       if (!r.ok) throw new Error((d && d.reason) || ('HTTP ' + r.status));
       return d;
     });
@@ -5467,9 +5502,10 @@ function arpApi(action, params) {
 }
 
 function arpAdminOpen() {
-  document.getElementById('arp-locked').style.display = _arpPin ? 'none' : 'block';
-  document.getElementById('arp-body').style.display = _arpPin ? 'block' : 'none';
-  if (_arpPin) arpAdminRefresh();
+  var ok = arpAuthed();
+  document.getElementById('arp-locked').style.display = ok ? 'none' : 'block';
+  document.getElementById('arp-body').style.display = ok ? 'block' : 'none';
+  if (ok) arpAdminRefresh();
   else { var p = document.getElementById('arp-pin'); if (p) { p.value = ''; p.focus(); } }
 }
 function arpUnlock() {
@@ -5483,7 +5519,7 @@ function arpUnlock() {
     arpAdminOpen();
   }).catch(function (e) {
     _arpPin = null;
-    err.textContent = e.message === 'not_authorised'
+    err.textContent = (e.message === 'not_authorised' || e.message === 'ticket_expired')
       ? 'That PIN was not accepted.'
       : ('Could not reach the ARP service: ' + e.message);
   });
@@ -5501,7 +5537,7 @@ function arpSubTab(which) {
 }
 
 function arpAdminRefresh() {
-  if (!_arpPin) { arpAdminOpen(); return; }
+  if (!arpAuthed()) { arpAdminOpen(); return; }
   /* The batch picker is filled from the existing corporate batch list rather than a new
      endpoint, so an assessment can only ever be tied to a batch that really exists. */
   gasGet({ action: 'getCorporateBatches', isAdmin: 'true' }, function (e, d) {
@@ -5744,7 +5780,7 @@ function arpRevoke(id, client) {
    that pulled every response row and counted them here would eat the free plan's 5 GB
    monthly egress on its own. */
 function arpLoadOverview() {
-  if (!_arpPin) return;
+  if (!arpAuthed()) return;
   arpApi('overview', { p_from: null, p_to: null, p_centre: null, p_client: null, p_trainer: null })
     .then(function (d) {
       if (!d || d.status !== 'ok') throw new Error((d && d.reason) || 'no data');

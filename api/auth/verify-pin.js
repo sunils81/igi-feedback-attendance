@@ -80,10 +80,21 @@ export default async function handler(req, res) {
   const { pin, name } = req.body || {};
   if (!pin) return res.status(200).json({ matchedType: null });
 
+  // The same value may be used for more than one pin (e.g. master == admin). Where only
+  // the master pin can help — a named staff user, the student portal, the CEO/Board gate —
+  // check master FIRST, otherwise an admin match shadows it and the login is refused.
+  const isAdminPin  = safeEqual(pin, process.env.ADMIN_LOGIN_PIN);
+  const isHrPin     = safeEqual(pin, process.env.HR_LOGIN_PIN);
+  const isMasterPin = safeEqual(pin, process.env.MASTER_BREAKGLASS_PIN);
+  const reqMode = (req.body && req.body.mode) || '';
+  const nm = String(name || '').trim();
+  const namedUser = !!nm && nm !== '__admin__' && nm !== 'HR';
+
   let matchedType = null;
-  if (safeEqual(pin, process.env.ADMIN_LOGIN_PIN)) matchedType = 'admin';
-  else if (safeEqual(pin, process.env.HR_LOGIN_PIN)) matchedType = 'hr';
-  else if (safeEqual(pin, process.env.MASTER_BREAKGLASS_PIN)) matchedType = 'master';
+  if ((reqMode || namedUser) && isMasterPin) matchedType = 'master';
+  else if (isAdminPin) matchedType = 'admin';
+  else if (isHrPin) matchedType = 'hr';
+  else if (isMasterPin) matchedType = 'master';
 
   if (matchedType === 'master') {
     await logMasterPinUse(name, req);

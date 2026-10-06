@@ -666,7 +666,7 @@
         </div>
         <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
           <button class="btn btn-gold" id="me-save-btn" onclick="saveMarks()">Save All Marks ✓</button>
-          <button class="btn btn-outline" style="width:auto" onclick="showMarksList()">← Back to Tests</button>
+          <button class="btn btn-outline" style="width:auto" onclick="if(!psDirty||confirm('You have PDF changes that are not saved yet. Leave without saving?')){psDirty=false;showMarksList();}">← Back to Tests</button>
         </div>
         <div class="err-box" id="me-err"></div>
       </div>
@@ -4620,6 +4620,9 @@ function openTestMarks(aId, name, date, total, type, batchCode, stoneCount, mark
   psStoneCount = Number(stoneCount || 0);
   psMps = Number(marksPerStone) > 0 ? Number(marksPerStone) : (psStoneCount > 0 && Number(total) > 0 ? Number(total) / psStoneCount : 10);
   psPdfs = {};
+  psPendingDeletes = [];
+  psHadRow = {};
+  psDirty = false;
   psBatch = batchCode || currentBatch;
   var thead = document.getElementById('me-thead'), info = document.getElementById('me-info');
   if (_meClassicThead === null) { _meClassicThead = thead.innerHTML; _meClassicInfo = info.innerHTML; }
@@ -4672,6 +4675,7 @@ function buildStoneMarksTable(students, markMap) {
     const isDNA = !!ex && (ex.marks === 'DNA' || (ex.remarks === 'DNA' && (ex.marks === null || ex.marks === '')));
     const sc = (ex && ex.stoneScores) || {};
     psPdfs[s.enrollmentNo] = Object.assign({}, (ex && ex.stonePdfs) || {});
+    psHadRow[s.enrollmentNo] = !!ex;
     let cells = '';
     for (let i = 1; i <= n; i++) {
       const v = sc[String(i)];
@@ -4704,7 +4708,7 @@ function psPdfCell(enrol, i) {
   const pick = `<label style="font-size:10px;color:#2563eb;cursor:pointer;white-space:nowrap">${path ? '↻ Replace' : '📎 PDF'}
       <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="psUpload('${escJ(enrol)}',${i},this)"></label>`;
   if (!path) return pick;
-  return `<a href="#" onclick="event.preventDefault();psOpenPdf('${escJ(path)}')" style="font-size:10px;color:#059669;font-weight:600;text-decoration:none">✓ View</a> · ` + pick;
+  return `<a href="#" onclick="event.preventDefault();psViewPdf('${escJ(enrol)}',${i})" style="font-size:10px;color:#059669;font-weight:600;text-decoration:none">👁 View</a> · ` + pick;
 }
 
 function psRecalc(enrol) {
@@ -4751,13 +4755,13 @@ function psUpdatePdfCount() {
 
 // Upload straight to the private practical-sheets bucket. Deterministic path + x-upsert so a
 // re-upload replaces the old sheet instead of leaving orphans.
-function psUpload(enrol, i, input) {
+function psUpload(enrol, i, input, onDone) {
   const file = input.files && input.files[0];
   if (!file) return;
   if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') { showToast('Please choose a PDF file.', 'error'); input.value = ''; return; }
   if (file.size > 15 * 1024 * 1024) { showToast('PDF is over 15 MB — please compress it.', 'error'); input.value = ''; return; }
   const id = psSafe(enrol), cell = document.getElementById('pspdf-' + id + '-' + i);
-  const path = psSafe(psBatch) + '/' + psSafe(currentAssessmentId) + '/' + id + '/stone-' + i + '.pdf';
+  const path = psSafe(psBatch) + '/' + psSafe(currentAssessmentId) + '/' + id + '/stone-' + i + '-' + Date.now() + '.pdf';
   cell.innerHTML = '<span style="font-size:10px;color:var(--muted)">Uploading… 0%</span>';
   const xhr = new XMLHttpRequest();
   xhr.open('POST', _CM_SB + '/storage/v1/object/' + PS_BUCKET + '/' + path, true);
@@ -4768,9 +4772,12 @@ function psUpload(enrol, i, input) {
   xhr.upload.onprogress = ev => { if (ev.lengthComputable) cell.innerHTML = '<span style="font-size:10px;color:var(--muted)">Uploading… ' + Math.round(100 * ev.loaded / ev.total) + '%</span>'; };
   xhr.onload = () => {
     if (xhr.status >= 200 && xhr.status < 300) {
+      const prev = (psPdfs[enrol] || {})[String(i)];
+      if (prev && prev !== path) psPendingDeletes.push(prev);
       (psPdfs[enrol] = psPdfs[enrol] || {})[String(i)] = path;
-      cell.innerHTML = psPdfCell(enrol, i) + '<div style="font-size:9px;color:#b45309">unsaved</div>';
+      psMarkUnsaved(enrol, i);
       psUpdatePdfCount();
+      if (typeof onDone === 'function') onDone(path);
     } else {
       cell.innerHTML = psPdfCell(enrol, i);
       showToast('Upload failed (' + xhr.status + '). Has the practical-sheets bucket been set up?', 'error');
@@ -4781,6 +4788,93 @@ function psUpload(enrol, i, input) {
 }
 
 // Private bucket → open via a short-lived signed URL.
+var psHadRow = {};
+var psDirty = false;
+var psPendingDeletes = [];   // replaced/removed files, deleted from storage only after Save succeeds
+function psMarkUnsaved(enrol, i) {
+  const cell = document.getElementById('pspdf-' + psSafe(enrol) + '-' + i);
+  psDirty = true;
+  if (cell) cell.innerHTML = psPdfCell(enrol, i) + '<div style="font-size:9px;color:#b45309;font-weight:600">unsaved — click Save</div>';
+}
+function psSignedUrl(path) {
+  return fetch(_CM_SB + '/storage/v1/object/sign/' + PS_BUCKET + '/' + path, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + _CM_AK, 'apikey': _CM_AK, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expiresIn: 600 })
+  }).then(r => r.json()).then(d => {
+    const u = d && (d.signedURL || d.signedUrl);
+    if (!u) throw new Error('no url');
+    return /^https?:/.test(u) ? u : _CM_SB + '/storage/v1' + (u.charAt(0) === '/' ? '' : '/') + u;
+  });
+}
+
+/* In-page PDF viewer: view without downloading, Replace or Remove from the same window. */
+function psViewPdf(enrol, i) {
+  const path = (psPdfs[enrol] || {})[String(i)];
+  if (!path) return;
+  const stu = (psStudents.find(s => String(s.enrollmentNo) === String(enrol)) || {}).name || enrol;
+  let m = document.getElementById('ps-viewer');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'ps-viewer';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.72);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    m.onclick = e => { if (e.target === m) psCloseViewer(); };
+    document.body.appendChild(m);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('ps-viewer') && document.getElementById('ps-viewer').style.display !== 'none') psCloseViewer(); });
+  }
+  m.style.display = 'flex';
+  m.innerHTML = `<div style="background:#fff;border-radius:12px;width:min(1000px,100%);height:min(92vh,1100px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.35)">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid #e5e7eb;background:#f8fafc">
+      <div style="flex:1;min-width:160px"><div style="font-weight:700;font-size:14px">${escHtml(stu)} · Stone ${i}</div>
+        <div style="font-size:11px;color:#6b7280">${escHtml(enrol)} · graded sheet</div></div>
+      <label class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:12px;cursor:pointer;margin:0">↻ Replace PDF
+        <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="psReplaceFromViewer('${escJ(enrol)}',${i},this)"></label>
+      <button class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:12px;color:#dc2626;border-color:#fca5a5" onclick="psRemovePdf('${escJ(enrol)}',${i})">🗑 Remove</button>
+      <a id="ps-viewer-open" target="_blank" rel="noopener" style="font-size:12px;color:#2563eb;text-decoration:none;padding:6px 4px">Open in new tab ↗</a>
+      <button onclick="psCloseViewer()" style="background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:#374151;padding:0 4px" title="Close">×</button>
+    </div>
+    <div id="ps-viewer-msg" style="display:none;padding:8px 14px;font-size:12px;background:#fffbeb;color:#92400e;border-bottom:1px solid #fde68a"></div>
+    <div id="ps-viewer-body" style="flex:1;background:#525659;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px">Loading PDF…</div>
+  </div>`;
+  psSignedUrl(path).then(url => {
+    const body = document.getElementById('ps-viewer-body');
+    if (!body) return;
+    document.getElementById('ps-viewer-open').href = url;
+    body.innerHTML = '<iframe src="' + url + '#toolbar=1&view=FitH" style="width:100%;height:100%;border:0;background:#525659" title="Stone PDF"></iframe>';
+  }).catch(() => {
+    const body = document.getElementById('ps-viewer-body');
+    if (body) body.innerHTML = 'Could not load this PDF. Try Replace to upload it again.';
+  });
+}
+function psCloseViewer() { const m = document.getElementById('ps-viewer'); if (m) { m.style.display = 'none'; m.innerHTML = ''; } }
+function psReplaceFromViewer(enrol, i, input) {
+  const body = document.getElementById('ps-viewer-body');
+  if (body) body.innerHTML = 'Uploading new PDF…';
+  psUpload(enrol, i, input, function () {
+    psViewPdf(enrol, i);
+    setTimeout(() => { const msg = document.getElementById('ps-viewer-msg'); if (msg) { msg.textContent = 'Replaced. Click “Save All Marks” to keep this change — the old file is deleted once you save.'; msg.style.display = 'block'; } }, 50);
+  });
+}
+function psRemovePdf(enrol, i) {
+  const path = (psPdfs[enrol] || {})[String(i)];
+  if (!path) return;
+  if (!confirm('Remove the PDF for Stone ' + i + '? It will be deleted when you click Save All Marks.')) return;
+  delete psPdfs[enrol][String(i)];
+  psPendingDeletes.push(path);
+  psCloseViewer();
+  psMarkUnsaved(enrol, i);
+  psUpdatePdfCount();
+}
+function psFlushDeletes() {
+  const list = psPendingDeletes.splice(0);
+  if (!list.length) return;
+  fetch(_CM_SB + '/storage/v1/object/' + PS_BUCKET, {
+    method: 'DELETE',
+    headers: { 'Authorization': 'Bearer ' + _CM_AK, 'apikey': _CM_AK, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prefixes: list })
+  }).catch(() => {});
+}
+
 function psOpenPdf(path) {
   const w = window.open('', '_blank');
   fetch(_CM_SB + '/storage/v1/object/sign/' + PS_BUCKET + '/' + path, {
@@ -4995,7 +5089,7 @@ function saveStoneMarks() {
       if (isNaN(v) || v < 0 || v > psMps) { bad.push(s.name || s.enrollmentNo); continue; }
       scores[String(i)] = v; sum += v; filled++;
     }
-    if (!isDNA && !filled && !Object.keys(pdfs).length && !remarks) return;
+    if (!isDNA && !filled && !Object.keys(pdfs).length && !remarks && !psHadRow[s.enrollmentNo]) return;
     if (!isDNA && filled && filled < n) partial.push(s.name || s.enrollmentNo);
     rows.push({ enrollmentNo: s.enrollmentNo, studentName: s.name || '', dna: isDNA,
       marks: isDNA ? 'DNA' : (filled ? Math.round(sum * 100) / 100 : ''),
@@ -5008,6 +5102,8 @@ function saveStoneMarks() {
   gasGet({ action: 'saveAssessmentMarks', assessmentId: currentAssessmentId, totalMarks: n * psMps, stoneCount: n, marksPerStone: psMps, marks: JSON.stringify(rows) }, function (e, d) {
     btn.textContent = 'Save All Marks ✓'; btn.disabled = false;
     if (e || !d || d.status !== 'ok') { errEl.textContent = 'Could not save. If this is the first stone-wise test, the database migration may not have been run yet.'; errEl.classList.add('show'); return; }
+    psFlushDeletes();
+    psDirty = false;
     showToast('Marks saved.');
     btn.textContent = '✅ Saved!';
     setTimeout(() => { btn.textContent = 'Save All Marks ✓'; showMarksList(); loadAssessments(); }, 1500);

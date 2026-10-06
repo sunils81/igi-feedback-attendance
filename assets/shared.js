@@ -362,6 +362,46 @@ window.gasGet = (function () {
   function PATCH(table, qs, body, cb)   { xhr('PATCH',  table, qs,   body, 'return=representation', cb); }
   function DEL(table, qs, cb)           { xhr('DELETE', table, qs,   null, 'return=minimal', cb); }
 
+  /* Call a Postgres function. Every auth operation goes through one of these rather than
+     reading or writing public.users directly: the password hash and salt stay in the
+     database, and the function decides for itself whether the caller may do the thing.
+     PostgREST returns a scalar jsonb result as the body, so unwrap a single-element
+     array the same way for every caller. */
+  function RPC(fn, args, cb) {
+    POST('rpc/' + fn, '', args || {}, function (e, out) {
+      if (e) { cb(e, null); return; }
+      var d = Array.isArray(out) ? out[0] : out;
+      cb(null, d || null);
+    });
+  }
+
+  /* The portal session token, held for the life of the page and mirrored into the
+     per-portal localStorage session so a refresh keeps it. It is opaque: the server
+     resolves it to a person and a role on every privileged call. */
+  var _authToken = null;
+  function setAuthToken(t) { _authToken = t || null; }
+  function authToken()     { return _authToken; }
+
+  /* An admin-only RPC: the token goes along automatically, and the database decides
+     whether this caller may do the thing. The browser asserting "I am an admin" counts
+     for nothing now, which is the point. */
+  function adminRPC(fn, args, cb) {
+    var tok = authToken();
+    if (!tok) { cb(null, { status: 'error', reason: 'no_session' }); return; }
+    var a = {};
+    for (var k in args) if (Object.prototype.hasOwnProperty.call(args, k)) a[k] = args[k];
+    a.p_token = tok;
+    RPC(fn, a, cb);
+  }
+
+  /* Turns an RPC refusal into something a person can act on. */
+  function adminErr(d, e) {
+    var r = (d && d.reason) || (e && String(e.message || e)) || 'failed';
+    if (r === 'no_session')     r = 'Your session has expired — please sign in again.';
+    if (r === 'not_authorised') r = 'Only an administrator can do that. Try signing out and back in.';
+    return { status: 'error', reason: r };
+  }
+
   /* Helper functions to resolve direct + enrolled students for a batch or multiple batches */
   function getStudentsForBatchPromise(bc) {
     return new Promise(function(resolve) {
@@ -1259,10 +1299,10 @@ window.gasGet = (function () {
      below, so a slow or misconfigured endpoint can never grant access, only
      ever refuse the shortcut and require a real password.
 
-     The second callback argument is the signed admin ticket (see api/_auth-ticket.js):
-     a short-lived proof that THIS browser passed the pin check, so a later admin-only
-     call does not have to ask for the pin a second time. It is not a secret and not the
-     pin — it expires on its own and only this deployment can verify it. */
+     The second callback argument is a portal session token, issued by the server once
+     the pin matched (api/auth/verify-pin -> auth_issue_pin_session). It is opaque and
+     expiring, carries no secret, and is the same kind of credential a password login
+     gets back — so pin logins and password logins are indistinguishable from here on. */
   function h_verifyServerPin(pin, name, cb) {
     if (!pin) { cb(null, null); return; }
     fetch('/api/auth/verify-pin', {
@@ -1272,26 +1312,6 @@ window.gasGet = (function () {
     }).then(function (res) { return res.json(); })
       .then(function (d) { cb(d && d.matchedType ? d.matchedType : null, (d && d.ticket) || null); })
       .catch(function () { cb(null, null); });
-  }
-
-  /* Asks the server to re-verify a named Admin's own password and issue the admin
-     ticket. Fails soft in every direction: no ticket simply means the ARP tab asks for
-     the pin once, exactly as it did before. Never blocks or delays the login itself
-     beyond this one call. */
-  function h_mintAdminTicket(name, password, cb) {
-    var done = false;
-    var finish = function (t) { if (!done) { done = true; cb(t || null); } };
-    // Never let a hung endpoint hold a login open.
-    setTimeout(function () { finish(null); }, 4000);
-    try {
-      fetch('/api/auth/verify-pin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'user', name: name, password: password })
-      }).then(function (r) { return r.json(); })
-        .then(function (d) { finish(d && d.ticket); })
-        .catch(function () { finish(null); });
-    } catch (e) { finish(null); }
   }
 
   /* counselorLogin / instructorLogin */
@@ -1313,9 +1333,10 @@ window.gasGet = (function () {
           // `if (adminUser.isManager) return;` guard no-op'd immediately — which is exactly
           // why 'Annual Target Configurations' got stuck forever on 'Loading target
           // configurator...': the function returned before ever touching that div's HTML.
+          setAuthToken(authTicket);
           cb(null, { status: 'ok', counselorName: 'Admin', instructorName: 'Admin', authRole: 'Admin',
             isAdmin: true, isManager: false, centres: [], batches: [], mustChangePassword: false,
-            authTicket: authTicket });
+            authToken: authTicket });
           return;
         }
         cb(null, { status: 'error', reason: 'Invalid password' });
@@ -1325,67 +1346,81 @@ window.gasGet = (function () {
       // ── HR role account (no Supabase lookup needed) ─────────────────────
       if (name === 'HR') {
         if (matchedType === 'hr' || isMasterPin) {
+          setAuthToken(authTicket);
           cb(null, { status: 'ok', counselorName: 'HR', instructorName: 'HR', authRole: 'HR',
-            isHR: true, isAdmin: false, isManager: false, centres: [], batches: [], mustChangePassword: false });
+            isHR: true, isAdmin: false, isManager: false, centres: [], batches: [], mustChangePassword: false,
+            authToken: authTicket });
           return;
         }
         cb(null, { status: 'error', reason: 'Invalid name or PIN' });
         return;
       }
 
-      GET(tbl, 'name=eq.' + encodeURIComponent(name), function (e, rows) {
-        if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'Invalid name or PIN' }); return; }
-        var r = rows[0];
-        if (!r.is_active) { cb(null, { status: 'error', reason: 'Account is inactive' }); return; }
+      /* ── Named user ─────────────────────────────────────────────────────────
+         The password is checked by auth_login() inside the database. This used to
+         happen right here in the browser: fetch the row with the anon key, hash
+         salt|password locally, compare. That meant every staff hash and salt was
+         readable by anyone who opened view-source — the anon key ships in this very
+         file. Now the hash never leaves Postgres and we get back a session token
+         instead, which the server resolves to a person on every privileged call.
 
-        var centres = r.centres ? r.centres.split(',').map(function (c) { return c.trim(); }).filter(Boolean) : [];
+         The break-glass pin skips the password (that is what it is for), but the
+         session still comes from the server: /api/auth/verify-pin checked the pin
+         against a Vercel env var and issued the token, bound to this person's row. */
+      var finishWithProfile = function (prof, token) {
+        var centres = prof.centres
+          ? String(prof.centres).split(',').map(function (c) { return c.trim(); }).filter(Boolean)
+          : [];
+        var role  = prof.role || 'Counselor';
+        var rname = prof.name || name;
         // isManager must NOT also be true for an Admin-role account — see the identical
-        // fix and full explanation just above for the master __admin__ login path. A named
-        // user with role='Admin' (e.g. the 'Admin' row in users) hit the exact same bug via
-        // this branch instead of the master-password branch.
-        var isAdm = r.role === 'Admin', isMgr = (r.role === 'Manager');
+        // fix and full explanation above for the master __admin__ login path. A named
+        // user with role='Admin' hit the exact same bug via this branch.
+        var isAdm = role === 'Admin', isMgr = (role === 'Manager');
+        var lower = String(rname || '').toLowerCase();
 
-        function completeLogin() {
-          // Fire-and-forget — stamps last_login_at for the "stale account" view in
-          // Settings → Users. Never blocks or fails the actual login on this. 2026-08-24.
-          try { PATCH(tbl, 'name=eq.' + encodeURIComponent(name), { last_login_at: nowISO() }, function(){}); } catch(ex) {}
-          h_getBatches({ centres: isAdm ? '' : centres.join(',') }, function (e2, bd) {
-            var isAH = (r.role === 'AcademicHead' || r.role === 'Admin' || (r.name && r.name.toLowerCase().indexOf('bhavin') >= 0));
-            var isRM = (r.role === 'RevenueManager' || r.role === 'Manager' || r.role === 'Admin' || (r.name && r.name.toLowerCase().indexOf('amit') >= 0)) && !(r.name && r.name.toLowerCase().indexOf('bhavin') >= 0);
-            var isDual = (r.role && r.role.indexOf('Dual') >= 0) || r.role === 'Manager' || r.role === 'Admin' || centres.length > 1 || r.name === 'Anuradha';
-            var mgrCentres = (r.role === 'Manager' || r.role === 'Admin' || (r.name && r.name.toLowerCase().indexOf('amit') >= 0)) ? ['Mumbai','Lucknow','Ahmedabad','Chennai','Delhi','Surat','Kolkata','Bangalore','Hyderabad','Jaipur'] : centres;
+        setAuthToken(token);
+        h_getBatches({ centres: isAdm ? '' : centres.join(',') }, function (e2, bd) {
+          var isAH = (role === 'AcademicHead' || role === 'Admin' || lower.indexOf('bhavin') >= 0);
+          var isRM = (role === 'RevenueManager' || role === 'Manager' || role === 'Admin' || lower.indexOf('amit') >= 0)
+                     && lower.indexOf('bhavin') < 0;
+          var isDual = (role.indexOf('Dual') >= 0) || role === 'Manager' || role === 'Admin'
+                     || centres.length > 1 || rname === 'Anuradha';
+          var mgrCentres = (role === 'Manager' || role === 'Admin' || lower.indexOf('amit') >= 0)
+            ? ['Mumbai','Lucknow','Ahmedabad','Chennai','Delhi','Surat','Kolkata','Bangalore','Hyderabad','Jaipur']
+            : centres;
 
-            var out = { status: 'ok', counselorName: r.name, instructorName: r.name, authRole: r.role || 'Counselor',
-              isAdmin: isAdm, isManager: isMgr, centres: centres, mustChangePassword: !!r.must_change,
-              batches: (bd && bd.batches) || [],
-              isAcademicHead: isAH, isRevenueManager: isRM, isDualRole: isDual, managerCentres: mgrCentres,
-              permissions: r.permissions || {} };
+          cb(null, { status: 'ok', counselorName: rname, instructorName: rname, authRole: role,
+            isAdmin: isAdm, isManager: isMgr, centres: centres,
+            mustChangePassword: !!prof.mustChange,
+            batches: (bd && bd.batches) || [],
+            isAcademicHead: isAH, isRevenueManager: isRM, isDualRole: isDual,
+            managerCentres: mgrCentres,
+            permissions: prof.permissions || {},
+            authToken: token });
+        });
+      };
 
-            // An Admin who signed in with their own password gets the same ticket the
-            // shared pin earns, so the ARP tab does not have to ask for a pin they never
-            // used. The server re-checks the password itself (api/auth/verify-user.js) —
-            // this is not the browser vouching for itself. Everyone else, and any error,
-            // simply carries on with no ticket. 2026-10-06.
-            if (!isAdm) { cb(null, out); return; }
-            h_mintAdminTicket(r.name, pin, function (t) {
-              out.authTicket = t || (isMasterPin ? authTicket : null);
-              cb(null, out);
-            });
-          });
+      if (isMasterPin) {
+        if (!authTicket) { cb(null, { status: 'error', reason: 'Invalid name or PIN' }); return; }
+        RPC('auth_session', { p_token: authTicket }, function (e, prof) {
+          if (e || !prof || prof.status !== 'ok') {
+            cb(null, { status: 'error', reason: 'Invalid name or PIN' }); return;
+          }
+          finishWithProfile(prof, authTicket);
+        });
+        return;
+      }
+
+      RPC('auth_login', { p_name: name, p_password: pin }, function (e, prof) {
+        if (e) { cb(null, { status: 'error', reason: 'Could not reach the server. Try again.' }); return; }
+        if (!prof || prof.status !== 'ok') {
+          // auth_login answers the same way for a wrong password, an unknown name and a
+          // disabled account, so this cannot be used to find out who works here.
+          cb(null, { status: 'error', reason: 'Invalid name or PIN' });
+          return;
         }
-
-        if (isMasterPin) {
-          completeLogin();
-        } else {
-          var inputStr = String(r.salt || '') + '|' + pin;
-          sha256Hex(inputStr, function(hashVal) {
-            if (hashVal === r.password_hash) {
-              completeLogin();
-            } else {
-              cb(null, { status: 'error', reason: 'Invalid name or PIN' });
-            }
-          });
-        }
+        finishWithProfile(prof, prof.token);
       });
     });
   }
@@ -1395,41 +1430,18 @@ window.gasGet = (function () {
     var email = (p.email || '').trim().toLowerCase();
     if (!email) { cb(null, { status: 'error', reason: 'Email is required' }); return; }
 
-    // Find user by email
-    GET('users', 'email=eq.' + encodeURIComponent(email) + '&is_active=eq.true', function(e, rows) {
-      if (e || !rows || !rows.length) {
-        // Don't reveal if email exists — generic message
-        cb(null, { status: 'ok', message: 'If that email is registered, an OTP has been sent.' });
-        return;
-      }
-      var user = rows[0];
-
-      // Rate-limit: check last OTP for this email within 60s
-      var now = new Date();
-      var cutoff60s = new Date(now.getTime() - 60000).toISOString();
-      GET('otp_tokens', 'email=eq.' + encodeURIComponent(email) + '&created_at=gt.' + cutoff60s + '&used=eq.false', function(e2, recent) {
-        if (!e2 && recent && recent.length > 0) {
-          cb(null, { status: 'error', reason: 'Please wait 60 seconds before requesting another OTP.' });
-          return;
-        }
-
-        // Mark any old unused OTPs for this email as used
-        PATCH('otp_tokens', 'email=eq.' + encodeURIComponent(email) + '&used=eq.false', { used: true }, function() {
-          // Generate 6-digit OTP
-          var otp = String(Math.floor(100000 + Math.random() * 900000));
-          var expiresAt = new Date(now.getTime() + 10 * 60000).toISOString();
-
-          POST('otp_tokens', null, {
-            email: email,
-            otp_code: otp,
-            expires_at: expiresAt,
-            used: false
-          }, function(e3) {
-            if (e3) { cb(null, { status: 'error', reason: 'Could not create OTP. Try again.' }); return; }
-            // Return OTP + user name for EmailJS call (done client-side)
-            cb(null, { status: 'ok', otp: otp, userName: user.name, message: 'OTP created' });
-          });
-        });
+    /* The lookup, the rate limit and the code now all happen in auth_request_otp().
+       The code still comes back here, because EmailJS sends it from the browser — that
+       much is unchanged. What is gone is this function reading the user's whole row,
+       hash and salt included, to find out whether the address belongs to anyone. */
+    RPC('auth_request_otp', { p_email: email }, function (e, d) {
+      if (e || !d) { cb(null, { status: 'error', reason: 'Could not create OTP. Try again.' }); return; }
+      if (d.status !== 'ok') { cb(null, { status: 'error', reason: d.reason }); return; }
+      cb(null, {
+        status: 'ok',
+        otp: d.otp || null,            // absent when the address is not one of ours
+        userName: d.userName || null,
+        message: d.message || 'If that email is registered, an OTP has been sent.'
       });
     });
   }
@@ -1440,80 +1452,59 @@ window.gasGet = (function () {
     var code  = String(p.otp || '').trim();
     if (!email || !code) { cb(null, { status: 'error', reason: 'Missing email or OTP' }); return; }
 
-    var now = new Date().toISOString();
-    GET('otp_tokens',
-      'email=eq.' + encodeURIComponent(email) +
-      '&otp_code=eq.' + encodeURIComponent(code) +
-      '&used=eq.false' +
-      '&expires_at=gt.' + encodeURIComponent(now),
-      function(e, rows) {
-        if (e || !rows || !rows.length) {
-          cb(null, { status: 'error', reason: 'Invalid or expired OTP' });
-          return;
-        }
-        // Mark as used
-        PATCH('otp_tokens', 'id=eq.' + encodeURIComponent(rows[0].id), { used: true }, function() {
-          cb(null, { status: 'ok', message: 'OTP verified' });
-        });
+    /* Returns a real, server-issued, single-use reset token bound to this OTP row.
+       It used to return nothing and the page set resetToken = 'VERIFIED:' + email,
+       which h_resetPassword then accepted — so the OTP was decoration and anyone could
+       reset anyone's password by posting that string. The token below cannot be
+       guessed or constructed. */
+    RPC('auth_verify_otp', { p_email: email, p_code: code }, function (e, d) {
+      if (e || !d || d.status !== 'ok') {
+        cb(null, { status: 'error', reason: (d && d.reason) || 'Invalid or expired OTP' });
+        return;
       }
-    );
+      cb(null, { status: 'ok', resetToken: d.resetToken, message: 'OTP verified' });
+    });
   }
 
   /* ── Forgot Password: Reset Password ───────────────────────── */
   function h_resetPassword(p, cb) {
-    var email   = (p.email || '').trim().toLowerCase();
     var newPass = String(p.newPassword || '').trim();
     var token   = p.resetToken || '';
 
-    if (!email || !newPass) { cb(null, { status: 'error', reason: 'Missing required fields' }); return; }
-    // resetToken must be 'VERIFIED:' + email — set client-side after verifyOTP succeeds
-    if (token !== 'VERIFIED:' + email) { cb(null, { status: 'error', reason: 'Not authorized' }); return; }
+    if (!newPass) { cb(null, { status: 'error', reason: 'Missing required fields' }); return; }
+    if (!token)   { cb(null, { status: 'error', reason: 'Not authorized' }); return; }
 
-    GET('users', 'email=eq.' + encodeURIComponent(email) + '&is_active=eq.true', function(e, rows) {
-      if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'User not found' }); return; }
-      var user = rows[0];
-      var newSalt = generateSalt();
-      sha256Hex(newSalt + '|' + newPass, function(newHash) {
-        PATCH('users', 'id=eq.' + encodeURIComponent(user.id), {
-          password_hash: newHash,
-          salt: newSalt,
-          must_change: false
-        }, function(e2) {
-          cb(null, e2 ? { status: 'error', reason: 'Failed to update password' } : { status: 'ok' });
-        });
-      });
+    /* The email is no longer sent: auth_reset_password takes it from the token's own
+       row. A token issued for one address therefore cannot reset another, which the
+       old 'VERIFIED:' + email scheme could not promise. */
+    RPC('auth_reset_password', { p_reset_token: token, p_new: newPass }, function (e, d) {
+      if (e || !d) { cb(null, { status: 'error', reason: 'Failed to update password' }); return; }
+      cb(null, d.status === 'ok' ? { status: 'ok' } : { status: 'error', reason: d.reason });
     });
   }
 
   /* changeUserPassword */
   function h_changePwd(p, cb) {
-    var name = p.name;
     var oldPass = p.oldPassword || p.oldPin || '';
     var newPass = p.newPassword || p.newPin || '';
-    
-    GET('users', 'name=eq.' + encodeURIComponent(name), function(e, rows) {
-      if (e || !rows || !rows.length) { cb(null, { status: 'error', reason: 'User not found' }); return; }
-      var r = rows[0];
-      
-      var inputStr = String(r.salt || '') + '|' + oldPass;
-      sha256Hex(inputStr, function(hashVal) {
-        if (hashVal !== r.password_hash) {
-          cb(null, { status: 'error', reason: 'Wrong current password' });
-          return;
-        }
-        
-        var newSalt = generateSalt();
-        var newStr = newSalt + '|' + newPass;
-        sha256Hex(newStr, function(newHash) {
-          PATCH('users', 'id=eq.' + encodeURIComponent(r.id), {
-            password_hash: newHash,
-            salt: newSalt,
-            must_change: false
-          }, function (e2) {
-            cb(null, e2 ? { status: 'error' } : { status: 'ok' });
-          });
-        });
-      });
+
+    /* Identified by the session token, not by a name the browser supplies: you can only
+       change the password of the account you are actually signed in as. Previously this
+       took whatever name it was handed and changed that person's password.
+       Changing it also ends that account's other sessions, which is handled server-side. */
+    var tok = authToken();
+    if (!tok) {
+      cb(null, { status: 'error', reason: 'Your session has expired — please sign in again.' });
+      return;
+    }
+    RPC('auth_change_password', { p_token: tok, p_old: oldPass, p_new: newPass }, function (e, d) {
+      if (e || !d) { cb(null, { status: 'error', reason: 'Could not change the password.' }); return; }
+      if (d.status === 'ok') { cb(null, { status: 'ok' }); return; }
+      cb(null, { status: 'error', reason:
+        d.reason === 'wrong_current_password'  ? 'Wrong current password'
+      : d.reason === 'new_password_too_short'  ? 'New password must be at least 4 characters'
+      : d.reason === 'no_session'              ? 'Your session has expired — please sign in again.'
+      : d.reason });
     });
   }
 
@@ -1985,7 +1976,7 @@ window.gasGet = (function () {
      actions plus the `permissions` JSONB column on `users` (added 2026-08-21)
      let an admin toggle those same flags from the UI instead. */
   function h_getUsers(p, cb) {
-    GET('users', 'select=id,name,role,roles,centres,is_active,permissions,updated_at,last_login_at,reports_to&order=name.asc', function (e, rows) {
+    GET('users_public', 'select=id,name,role,roles,centres,is_active,permissions,updated_at,last_login_at,reports_to&order=name.asc', function (e, rows) {
       if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
       cb(null, { status: 'ok', users: (rows || []).map(function (r) {
         return { id: r.id, name: r.name, role: r.role,
@@ -2018,12 +2009,23 @@ window.gasGet = (function () {
     var rolesArr = Array.isArray(p.roles) ? p.roles.filter(Boolean) : [];
     if (!rolesArr.length) { cb(null, { status: 'error', reason: 'at_least_one_role_required' }); return; }
     var primary = pickPrimaryRole(rolesArr);
-    var qs = id ? ('id=eq.' + encodeURIComponent(id)) : ('name=eq.' + encodeURIComponent(name));
-    PATCH('users', qs, { role: primary, roles: rolesArr }, function (e) {
-      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
-      writeAuditLog('roles_updated', p.actorName, name || id, { roles: rolesArr, primary: primary });
-      cb(null, { status: 'ok', role: primary, roles: rolesArr });
-    });
+    // The one call that can hand out Admin, so the database checks the caller is one
+    // first. It also refuses to let an admin change their own role, which is how you
+    // would otherwise lock the last administrator out of this panel.
+    adminRPC('auth_admin_set_roles',
+      { p_id: id || null, p_name: name || null, p_primary: primary, p_roles: rolesArr },
+      function (e, d) {
+        if (e || !d || d.status !== 'ok') {
+          var r = adminErr(d, e);
+          if ((d && d.reason) === 'cannot_change_own_role') {
+            r.reason = 'You cannot change your own role — ask another administrator.';
+          }
+          cb(null, r);
+          return;
+        }
+        writeAuditLog('roles_updated', p.actorName, name || id, { roles: rolesArr, primary: primary });
+        cb(null, { status: 'ok', role: primary, roles: rolesArr });
+      });
   }
 
   /* writeAuditLog — fire-and-forget insert into admin_audit_log. Never blocks
@@ -2059,16 +2061,15 @@ window.gasGet = (function () {
     var tempPass = String(p.tempPassword || '');
     if (!id && !name) { cb(null, { status: 'error', reason: 'id_or_name_required' }); return; }
     if (!tempPass || tempPass.length < 4) { cb(null, { status: 'error', reason: 'temp_password_too_short' }); return; }
-    var salt = generateSalt();
-    sha256Hex(salt + '|' + tempPass, function (hashVal) {
-      if (!hashVal) { cb(null, { status: 'error', reason: 'hash_failed' }); return; }
-      var qs = id ? ('id=eq.' + encodeURIComponent(id)) : ('name=eq.' + encodeURIComponent(name));
-      PATCH('users', qs, { password_hash: hashVal, salt: salt, must_change: true }, function (e) {
-        if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+    // The database checks that the caller really is an Admin before touching anything;
+    // actorName is for the audit line only and is no longer what authorises this.
+    adminRPC('auth_admin_reset_password',
+      { p_id: id || null, p_name: name || null, p_temp_password: tempPass },
+      function (e, d) {
+        if (e || !d || d.status !== 'ok') { cb(null, adminErr(d, e)); return; }
         writeAuditLog('password_reset', p.actorName, name || id, {});
         cb(null, { status: 'ok' });
       });
-    });
   }
 
   /* Centre Responsibility — one designated "head" per centre, backed by its
@@ -2114,10 +2115,10 @@ window.gasGet = (function () {
       discount_approval_authority: !!p.discount_approval_authority,
       batch_admin:              !!p.batch_admin
     };
-    PATCH('users', 'name=eq.' + encodeURIComponent(name), { permissions: perms }, function (e) {
-      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
-      writeAuditLog('permissions_updated', p.actorName, name, perms);
-      cb(null, { status: 'ok', permissions: perms });
+    adminRPC('auth_admin_set_permissions', { p_name: name, p_permissions: perms }, function (e, d) {
+      if (e || !d || d.status !== 'ok') { cb(null, adminErr(d, e)); return; }
+      writeAuditLog('permissions_updated', p.actorName, name, d.permissions || perms);
+      cb(null, { status: 'ok', permissions: d.permissions || perms });
     });
   }
 
@@ -2135,24 +2136,18 @@ window.gasGet = (function () {
     var tempPass = String(p.tempPassword || p.pin || '');
     if (!name || !role) { cb(null, { status: 'error', reason: 'name_and_role_required' }); return; }
     if (!tempPass || tempPass.length < 4) { cb(null, { status: 'error', reason: 'temp_password_too_short' }); return; }
-    GET('users', 'select=id&name=eq.' + encodeURIComponent(name), function (e, rows) {
-      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
-      if (rows && rows.length) { cb(null, { status: 'error', reason: 'name_already_exists' }); return; }
-      var salt = generateSalt();
-      sha256Hex(salt + '|' + tempPass, function (hashVal) {
-        if (!hashVal) { cb(null, { status: 'error', reason: 'hash_failed' }); return; }
-        POST('users', '', {
-          name: name, role: role, roles: rolesArr.length ? rolesArr : [role],
-          centres: centres, email: email, reports_to: reportsTo,
-          password_hash: hashVal, salt: salt, must_change: true, is_active: true,
-          permissions: {}
-        }, function (e2, rows2) {
-          if (e2) { cb(null, { status: 'error', reason: String(e2) }); return; }
-          var newRow = (rows2 && rows2[0]) || null;
-          writeAuditLog('user_added', p.actorName, name, { role: role, roles: rolesArr, centres: centres });
-          cb(null, { status: 'ok', id: newRow && newRow.id, name: name });
-        });
-      });
+    // The duplicate-name check, the salt and the hash all happen inside
+    // auth_admin_add_user, so the temp password is never hashed in the browser and the
+    // name check cannot be raced between the lookup and the insert.
+    adminRPC('auth_admin_add_user', {
+      p_name: name, p_role: role,
+      p_roles: rolesArr.length ? rolesArr : null,
+      p_centres: centres, p_email: email, p_reports_to: reportsTo,
+      p_temp_password: tempPass
+    }, function (e, d) {
+      if (e || !d || d.status !== 'ok') { cb(null, adminErr(d, e)); return; }
+      writeAuditLog('user_added', p.actorName, name, { role: role, roles: rolesArr, centres: centres });
+      cb(null, { status: 'ok', id: d.id, name: name });
     });
   }
 
@@ -2161,12 +2156,12 @@ window.gasGet = (function () {
   function h_setUserCentres(p, cb) {
     var id = p.id, name = p.name;
     if (!id && !name) { cb(null, { status: 'error', reason: 'id_or_name_required' }); return; }
-    var qs = id ? ('id=eq.' + encodeURIComponent(id)) : ('name=eq.' + encodeURIComponent(name));
-    PATCH('users', qs, { centres: p.centres || '' }, function (e) {
-      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
-      writeAuditLog('centres_reassigned', p.actorName, name || id, { centres: p.centres || '' });
-      cb(null, { status: 'ok' });
-    });
+    adminRPC('auth_admin_set_centres',
+      { p_id: id || null, p_name: name || null, p_centres: p.centres || '' }, function (e, d) {
+        if (e || !d || d.status !== 'ok') { cb(null, adminErr(d, e)); return; }
+        writeAuditLog('centres_reassigned', p.actorName, name || id, { centres: p.centres || '' });
+        cb(null, { status: 'ok' });
+      });
   }
 
   /* setUserActive — enable/disable a login without touching any of their
@@ -2175,13 +2170,15 @@ window.gasGet = (function () {
   function h_setUserActive(p, cb) {
     var id = p.id, name = p.name;
     if (!id && !name) { cb(null, { status: 'error', reason: 'id_or_name_required' }); return; }
-    var qs = id ? ('id=eq.' + encodeURIComponent(id)) : ('name=eq.' + encodeURIComponent(name));
     var makeActive = !!p.isActive;
-    PATCH('users', qs, { is_active: makeActive }, function (e) {
-      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
-      writeAuditLog(makeActive ? 'user_enabled' : 'user_disabled', p.actorName, name || id, {});
-      cb(null, { status: 'ok', is_active: makeActive });
-    });
+    // Disabling now also ends that person's open sessions, server-side — previously they
+    // kept working until they happened to sign out.
+    adminRPC('auth_admin_set_active',
+      { p_id: id || null, p_name: name || null, p_active: makeActive }, function (e, d) {
+        if (e || !d || d.status !== 'ok') { cb(null, adminErr(d, e)); return; }
+        writeAuditLog(makeActive ? 'user_enabled' : 'user_disabled', p.actorName, name || id, {});
+        cb(null, { status: 'ok', is_active: makeActive });
+      });
   }
 
   /* deleteUser — removes the login row only (id/name/password_hash/salt).
@@ -2192,9 +2189,13 @@ window.gasGet = (function () {
   function h_deleteUser(p, cb) {
     var id = p.id, name = p.name;
     if (!id && !name) { cb(null, { status: 'error', reason: 'id_or_name_required' }); return; }
-    var qs = id ? ('id=eq.' + encodeURIComponent(id)) : ('name=eq.' + encodeURIComponent(name));
-    DEL('users', qs, function (e) {
-      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+    adminRPC('auth_admin_remove_user', { p_id: id || null, p_name: name || null }, function (e, d) {
+      if (e || !d || d.status !== 'ok') {
+        var r = adminErr(d, e);
+        if ((d && d.reason) === 'cannot_remove_self') r.reason = 'You cannot remove your own login.';
+        cb(null, r);
+        return;
+      }
       writeAuditLog('user_deleted', p.actorName, name || id, {});
       cb(null, { status: 'ok' });
     });
@@ -4602,7 +4603,7 @@ window.gasGet = (function () {
     // own designated-centre revenue instead of landing in the "Other Centres" bucket the
     // Revenue tab already has UI for. Look up her real home centre(s) from `users` and only
     // treat this as in-territory if the delivery centre is actually one of them.
-    GET('users', 'name=eq.' + encodeURIComponent(counsellor) + '&select=centres', function(eUser, userRows) {
+    GET('users_public', 'name=eq.' + encodeURIComponent(counsellor) + '&select=centres', function(eUser, userRows) {
       var homeCentres = (!eUser && userRows && userRows.length && userRows[0].centres)
         ? userRows[0].centres.split(',').map(function(c) { return c.trim(); }).filter(Boolean)
         : [];
@@ -4916,7 +4917,7 @@ window.gasGet = (function () {
       var all = rows || [];
       var actor = String(p.actorName || p.counsellorName || '').trim();
       if (!actor || p.isAdmin === true || p.isAdmin === 'true') { withCorporate(all); return; }
-      GET('users', 'name=eq.' + encodeURIComponent(actor) + '&select=name,role,centres,permissions', function (eU, uRows) {
+      GET('users_public', 'name=eq.' + encodeURIComponent(actor) + '&select=name,role,centres,permissions', function (eU, uRows) {
         var u = (uRows || [])[0];
         var perms = (u && u.permissions) || {};
         var isPrivileged = !!(u && (u.role === 'Admin' || u.role === 'Manager')) ||
@@ -12572,7 +12573,7 @@ window.gasGet = (function () {
   // the category coordinator list if no active instructor rows are found.
   function trayInstructorsForCentre(centre, cb) {
     if (!centre) { cb([]); return; }
-    GET('users', 'role=eq.Instructor&is_active=eq.true&select=name,centres', function(e, rows) {
+    GET('users_public', 'role=eq.Instructor&is_active=eq.true&select=name,centres', function(e, rows) {
       var list = [];
       (rows||[]).forEach(function(r) {
         var centres = String(r.centres||'').split(',').map(function(c){ return c.trim().toUpperCase(); });
@@ -13601,7 +13602,7 @@ window.gasGet = (function () {
       var actor = String(p.actorName || p.counsellorName || '').trim();
       if (e) { cb(null, { status: 'ok', rows: [] }); return; }
       if (!actor || p.isAdmin === true || p.isAdmin === 'true') { cb(null, { status: 'ok', rows: all }); return; }
-      GET('users', 'name=eq.' + encodeURIComponent(actor) + '&select=name,role,centres,permissions', function (eU, uRows) {
+      GET('users_public', 'name=eq.' + encodeURIComponent(actor) + '&select=name,role,centres,permissions', function (eU, uRows) {
         var u = (uRows || [])[0];
         var perms = (u && u.permissions) || {};
         var isPrivileged = !!(u && (u.role === 'Admin' || u.role === 'Manager')) || perms.cashfree_all_centres === true;
@@ -13653,6 +13654,12 @@ window.gasGet = (function () {
       applied_by: p.applied ? (p.actorName || '') : '', updated_at: new Date().toISOString()
     }, function (e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
   }
+
+  /* Each portal restores its session from localStorage on refresh and must hand the
+     token back in, or every privileged call after a refresh would look like an expired
+     session. Exposed here because the portals are separate files. */
+  window.IGISetAuthToken = setAuthToken;
+  window.IGIGetAuthToken = authToken;
 
   /* ══════════════════════════════════════════════════════════════
      MAIN DISPATCHER — replaces gasGet() transparently

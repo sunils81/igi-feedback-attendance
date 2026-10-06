@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=139"></script>
+<script src="/assets/shared.js?v=140"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -5464,6 +5464,9 @@ function initCounselorPortal() {
         isAdmin                  = !!sess.isAdmin;
         isManager                = !!sess.isManager;
         counselorPermissions     = sess.permissions || {};
+        // Hand the token back to shared.js: without it, changing your own password and
+        // any admin action would report an expired session on every refresh.
+        if (window.IGISetAuthToken) IGISetAuthToken(sess.authToken || null);
         document.getElementById('counselor-name-badge').textContent    = counselorName;
         document.getElementById('counselor-name-badge').style.display  = 'inline-block';
         document.getElementById('logout-btn').style.display = 'inline-block';
@@ -5858,7 +5861,10 @@ function doLogin() {
         isAdmin: isAdmin,
         isManager: isManager,
         permissions: counselorPermissions,
-        batches: d.batches || []
+        batches: d.batches || [],
+        // The portal session token. Opaque, expiring, and the only thing that proves to
+        // the server who this browser is — passwords are no longer checked here.
+        authToken: d.authToken || null
       }));
     } catch(ex) {}
     initCounsellorSessionFeatures();

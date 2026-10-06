@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=139"></script>
+<script src="assets/shared.js?v=140"></script>
 <script src="assets/work.js?v=4"></script>
 <script src="assets/push-subscribe.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -4536,6 +4536,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const saved = localStorage.getItem('igi_admin_session');
     if (saved) {
       adminUser = JSON.parse(saved);
+      // Hand the token back to shared.js before anything runs, or every privileged call
+      // after a refresh would look like an expired session.
+      if (window.IGISetAuthToken) IGISetAuthToken(adminUser.authToken || null);
       showMainScreen();
     }
   } catch(e) {}
@@ -4587,12 +4590,12 @@ function doAdminLogin() {
       authRole: d.authRole || (nameVal === '__admin__' ? 'Super Admin' : 'Manager'),
       centres: d.centres || [],
       permissions: d.permissions || {},
-      // Signed, expiring proof that the server verified this sign-in (api/_auth-ticket.js).
-      // It is not the pin and not a password — it carries only the word "admin" and a
-      // signature this deployment can check, and it dies with the session on logout.
-      // Lets the ARP tab work without asking for the admin pin all over again.
-      authTicket: d.authTicket || null
+      // The portal session token. Opaque and expiring: it is not the pin and not a
+      // password, and the server resolves it to a person and a role on every privileged
+      // call. It is what lets the ARP tab open without asking for the admin pin again.
+      authToken: d.authToken || null
     };
+    if (window.IGISetAuthToken) IGISetAuthToken(adminUser.authToken);
     
     try {
       localStorage.setItem('igi_admin_session', JSON.stringify(adminUser));
@@ -5455,13 +5458,13 @@ function switchAdminTab(tabId) {
 
    Authorisation, in order of preference:
 
-   1. The ticket minted at sign-in (adminUser.authTicket). You already proved who you
-      were to open this page at all, so being asked for the admin pin a second time was
-      friction with nothing to show for it — Sunil said so, and he was right. The ticket
-      is a signature over the word "admin" and an expiry; it is not the pin, it cannot be
-      turned back into it, and it dies with the session.
-   2. The pin, asked for once, only when there is no usable ticket — an older session
-      stored before the ticket existed, or one left open past the ticket's 8 hours.
+   1. The portal session token from sign-in (adminUser.authToken). You already proved who
+      you were to open this page at all, so being asked for the admin pin a second time
+      was friction with nothing to show for it — Sunil said so, and he was right. The
+      server resolves the token to a person and a role on every call, so a disabled or
+      demoted account stops working here immediately rather than at next sign-in.
+   2. The pin, asked for once, only when there is no usable session — a browser that
+      signed in before this shipped, or one left open past the session's expiry.
 
    Either way the check happens on the server. The pin, when it is used, lives in a plain
    variable for the life of the page and is never written to localStorage or
@@ -5471,7 +5474,7 @@ function switchAdminTab(tabId) {
 var _arpPin = null, _arpData = { assessments: [], access: [], batches: [] }, _arpSub = 'assess';
 
 function arpTicket() {
-  return (adminUser && adminUser.authTicket) || null;
+  return (adminUser && adminUser.authToken) || null;
 }
 /* Unlocked when either credential is in hand. */
 function arpAuthed() {
@@ -5491,7 +5494,7 @@ function arpApi(action, params) {
         // Drop whatever did not work, so the next attempt asks for the pin rather than
         // retrying a stale ticket forever.
         _arpPin = null;
-        if (adminUser) adminUser.authTicket = null;
+        if (adminUser) adminUser.authToken = null;
         try { localStorage.setItem('igi_admin_session', JSON.stringify(adminUser)); } catch (ex) {}
         throw new Error((d && d.reason) === 'ticket_expired' ? 'ticket_expired' : 'not_authorised');
       }

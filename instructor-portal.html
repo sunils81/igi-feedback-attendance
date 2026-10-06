@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Instructor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=139"></script>
+<script src="/assets/shared.js?v=140"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -3009,7 +3009,10 @@ function saveSession() {
   try {
     localStorage.setItem('igi_instr_session', JSON.stringify({
       instructorName, instructorAuthRole, instructorMustChangePassword,
-      isDualRole, dualCentres, isAcademicHead, isRevenueManager, managerCentres
+      isDualRole, dualCentres, isAcademicHead, isRevenueManager, managerCentres,
+      // The portal session token: opaque, expiring, and the only thing that proves to
+      // the server who this browser is now that passwords are checked there.
+      authToken: (window.IGIGetAuthToken ? IGIGetAuthToken() : null)
     }));
   } catch(e) {}
   initInstructorSessionFeatures();
@@ -3037,6 +3040,9 @@ function tryRestoreSession() {
     if (!saved) return;
     var s = JSON.parse(saved);
     if (!s || !s.instructorName) return;
+    // Before anything else: without the token, every privileged call after a refresh
+    // would report an expired session.
+    if (window.IGISetAuthToken) IGISetAuthToken(s.authToken || null);
     instructorName           = s.instructorName;
     instructorAuthRole       = s.instructorAuthRole || 'Instructor';
     instructorMustChangePassword = !!s.instructorMustChangePassword;

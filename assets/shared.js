@@ -340,6 +340,13 @@ window.gasGet = (function () {
     x.open(method, url, true);
     Object.keys(HDR).forEach(function (k) { x.setRequestHeader(k, HDR[k]); });
     x.setRequestHeader('Prefer', prefer || 'return=representation');
+    /* The portal session token, on every request. Supabase passes request headers
+       through to RLS, so app_session() resolves this in the database and the policies
+       on the revenue tables can require a real signed-in person. Every database call in
+       the portal funnels through this one function, so this single line covers all of
+       them — which is why the revenue tables did not need 122 queries rewritten as RPCs.
+       It only ever goes to SB (Supabase); nothing else is reached from here. 2026-10-06. */
+    if (_authToken) x.setRequestHeader('X-Portal-Session', _authToken);
     x.timeout = 30000;
     // Count writes still in flight so the idle-timeout logout can hold off rather than
     // cutting a half-saved fee/batch record (see IGIIdle below). Reads are not counted —
@@ -372,6 +379,15 @@ window.gasGet = (function () {
       if (e) { cb(e, null); return; }
       var d = Array.isArray(out) ? out[0] : out;
       cb(null, d || null);
+    });
+  }
+
+  /* As RPC, but for a function that returns a set of rows rather than a single jsonb
+     value — the result is the row array itself, not a one-element wrapper. */
+  function RPCRows(fn, args, cb) {
+    POST('rpc/' + fn, '', args || {}, function (e, out) {
+      if (e) { cb(e, null); return; }
+      cb(null, Array.isArray(out) ? out : (out ? [out] : []));
     });
   }
 
@@ -9641,9 +9657,17 @@ window.gasGet = (function () {
     });
   }
 
+  /* 2026-10-06: this used to ask for student_fees?student_id=eq.<id> with the anon key
+     and nothing else, so changing the id returned any other student's fee record. It now
+     goes through student_fee_rows(), which requires the last four digits of the mobile
+     on file as well — the same pair the student portal already signs in with — and
+     returns rows for that one student. parseFeeRow below is untouched, so nobody's
+     displayed balance changes. Staff callers pass the student's mobile from the record
+     they are already looking at. */
   function h_getStudentFeeStatus(p, cb) {
     GET('batches', 'select=batch_code,course', function(eBatches, batches) {
-      GET('student_fees', 'student_id=eq.' + encodeURIComponent(p.studentId), function(e, rows) {
+      RPCRows('student_fee_rows',
+        { p_student_id: p.studentId, p_mobile_last4: p.mobileLast4 || '' }, function(e, rows) {
         if (e || !rows || !rows.length) { cb(null, { status: 'ok', found: false, summaries: [] }); return; }
         var summaries = (rows || []).map(function(r) {
           var mapped = parseFeeRow(r, null, batches || []);

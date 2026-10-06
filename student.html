@@ -8,7 +8,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Student Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=141"></script>
+<script src="/assets/shared.js?v=142"></script>
 <script src="/assets/push-subscribe.js"></script>
 <style id="dyn-css"></style>
 <style>
@@ -3215,7 +3215,10 @@ function loadStudentFees() {
   var sid = saved.studentId || saved.enrollmentNo;
   if (!sid) return;
   feeWrap.innerHTML = loadingState('Loading fee dashboard...');
-  gasGet({action:'getStudentFeeStatus', studentId:sid}, function(e,d) {
+  // The mobile digits go with the request now: the fee lookup proves identity server-side
+  // rather than handing over whatever student id it is asked for. Already in `saved`,
+  // from the sign-in on this device.
+  gasGet({action:'getStudentFeeStatus', studentId:sid, mobileLast4: saved.mobileLast4 || ''}, function(e,d) {
     if (e||!d) { feeWrap.innerHTML = renderStudentFeeEmpty('Could not load fee details', 'Please refresh once. If this continues, contact your counselor.'); return; }
     if (!d.found||!d.summaries||!d.summaries.length) { feeWrap.innerHTML = renderStudentFeeEmpty('Fee record not set up yet', 'Your counselor has not added a fee schedule for this Student ID yet. Once added, payable amount, paid amount, balance, and installments will appear here.'); return; }
     feeWrap.innerHTML = renderStudentFeeDashboard(d.summaries);

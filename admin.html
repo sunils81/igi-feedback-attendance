@@ -4656,6 +4656,23 @@ function showMainScreen() {
   
   switchAdminTab('t-revenue');
 
+  // Deep link: #tab=<id> lands on that tab once the session exists. Used by the retired
+  // ARP instructor page, which now points at #tab=t-arp-admin. Runs after the default
+  // switchAdminTab above so it wins, and only for ids an actual visible tab button owns,
+  // so a hand-typed hash cannot reveal a pane this user is not meant to see. 2026-10-06.
+  (function () {
+    var m = /^#tab=([a-z0-9-]+)$/i.exec(location.hash || '');
+    if (!m) return;
+    var id = m[1];
+    var btn = Array.prototype.find.call(
+      document.querySelectorAll('.tab'),
+      function (el) {
+        return (el.getAttribute('onclick') || '').indexOf("'" + id + "'") > -1
+          && el.offsetParent !== null;
+      });
+    if (btn) setTimeout(function () { btn.click(); }, 300);
+  })();
+
   // Activity badge + auto-refresh
   setTimeout(checkActivityBadge, 3000);
   startActivityAutoRefresh();

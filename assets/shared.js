@@ -10518,7 +10518,7 @@ window.gasGet = (function () {
             var cnt = r.assessment_marks && r.assessment_marks[0] ? (r.assessment_marks[0].count || 0) : 0;
             var out = { assessmentId: r.assessment_id, batchCode: r.batch_code, testName: r.test_name, testType: r.test_type,
               testDate: toDMY(r.held_on), totalMarks: r.max_marks, marksEntered: Number(cnt), expectedStudents: expected,
-              stoneCount: Number(r.stone_count) || 0 };
+              stoneCount: Number(r.stone_count) || 0, marksPerStone: Number(r.marks_per_stone) || 0 };
             if (out.stoneCount > 0) {
               var ps = pdfStats[r.assessment_id] || { have: 0, dna: 0 };
               out.pdfUploaded = ps.have;
@@ -10559,7 +10559,8 @@ window.gasGet = (function () {
     // Stone-wise practical (3/4 stones × 10). Only sent when set so non-practical tests
     // still save even before migration_practical_stone_marks.sql has been run.
     var stoneCount = parseInt(p.stoneCount, 10) || 0;
-    if (stoneCount > 0) { row.stone_count = stoneCount; row.max_marks = stoneCount * 10; }
+    var mps = parseFloat(p.marksPerStone) || 10;
+    if (stoneCount > 0) { row.stone_count = stoneCount; row.marks_per_stone = mps; row.max_marks = stoneCount * mps; }
     POST('assessments', 'on_conflict=assessment_id', row, function(e) {
       cb(null, e ? { status: 'error' } : { status: 'ok', assessmentId: aid }); // return assessmentId!
     });

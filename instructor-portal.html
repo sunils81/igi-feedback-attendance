@@ -611,12 +611,21 @@
         <div id="ct-stones-wrap" style="display:none;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px">
           <div class="field" style="margin-bottom:6px"><label>Practical format</label>
             <select id="ct-stones" onchange="onStoneCountChange()">
-              <option value="4">4 Stone Challenge (40 marks)</option>
-              <option value="3">3 Stone Challenge (30 marks)</option>
+              <option value="4">4 Stone Challenge</option>
+              <option value="3">3 Stone Challenge</option>
+              <option value="custom">Custom number of stones…</option>
               <option value="0">Single total (old style, no per-stone marks)</option>
             </select>
           </div>
-          <div style="font-size:11px;color:var(--muted);line-height:1.4">Each stone is graded out of 10. You can upload the student's graded PDF against every stone on the next screen.</div>
+          <div class="grid2" id="ct-stone-extra" style="margin-bottom:6px">
+            <div class="field" id="ct-stone-n-wrap" style="display:none;margin-bottom:0"><label>Number of stones *</label>
+              <input type="number" id="ct-stone-n" min="1" max="20" step="1" value="5" oninput="onStoneCountChange()">
+            </div>
+            <div class="field" style="margin-bottom:0"><label>Marks per stone *</label>
+              <input type="number" id="ct-stone-mps" min="1" max="100" step="1" value="10" oninput="onStoneCountChange()">
+            </div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);line-height:1.4" id="ct-stone-note">Total = stones × marks per stone. You can upload the student's graded PDF against every stone on the next screen.</div>
         </div>
         <div style="display:flex;gap:10px;margin-top:4px">
           <button class="btn btn-gold" id="ct-btn" onclick="createTest()">Create & Enter Marks →</button>
@@ -4421,6 +4430,7 @@ function showCreateTest()  {
   if (rh) rh.style.display = 'none'; // only shown when opened via scheduleRetest() below
   var sw = document.getElementById('ct-stones-wrap');
   if (sw) delete sw.dataset.touched;
+  var mpsEl = document.getElementById('ct-stone-mps'); if (mpsEl) mpsEl.value = '10';
   updateTestTypeHint();
 }
 
@@ -4461,6 +4471,7 @@ function updateTestTypeHint() {
    Per-stone scores + PDF paths ride along in stone_scores / stone_pdfs (jsonb). */
 var PS_BUCKET = 'practical-sheets';
 var psStoneCount = 0;      // stones on the test currently open in marks entry (0 = classic)
+var psMps = 10;            // marks per stone on that test
 var psPdfs = {};           // { enrol: { "1": "path/in/bucket.pdf", ... } }
 var psStudents = [];
 
@@ -4482,9 +4493,23 @@ function onStoneCountChange(fromType) {
   var wrap = document.getElementById('ct-stones-wrap');
   if (!fromType && wrap) wrap.dataset.touched = '1';
   var isPrac = document.getElementById('ct-type').value === 'Practical';
-  var n = isPrac ? Number(document.getElementById('ct-stones').value || 0) : 0;
-  if (n > 0) { tot.value = n * 10; tot.readOnly = true; tot.style.background = '#f3f4f6'; }
+  var fmt = document.getElementById('ct-stones').value;
+  document.getElementById('ct-stone-n-wrap').style.display = fmt === 'custom' ? 'block' : 'none';
+  document.getElementById('ct-stone-extra').style.display = fmt === '0' ? 'none' : '';
+  document.getElementById('ct-stone-note').style.display = fmt === '0' ? 'none' : '';
+  var cfg = isPrac ? psReadStoneConfig() : { n: 0, mps: 0 };
+  if (cfg.n > 0) { tot.value = cfg.n * cfg.mps; tot.readOnly = true; tot.style.background = '#f3f4f6'; }
+  else if (fmt !== '0' && isPrac) { tot.value = ''; tot.readOnly = true; tot.style.background = '#f3f4f6'; }
   else if (tot.readOnly) { tot.readOnly = false; tot.style.background = ''; tot.value = ''; }
+}
+// { n, mps } from the create form; n = 0 means classic single-total (or invalid input).
+function psReadStoneConfig() {
+  var fmt = document.getElementById('ct-stones').value;
+  if (fmt === '0') return { n: 0, mps: 0 };
+  var n = fmt === 'custom' ? parseInt(document.getElementById('ct-stone-n').value, 10) : Number(fmt);
+  var mps = parseFloat(document.getElementById('ct-stone-mps').value);
+  if (!(n >= 1 && n <= 20) || !(mps > 0 && mps <= 100)) return { n: 0, mps: 0, invalid: true };
+  return { n: n, mps: mps };
 }
 function showMarksEntry()  { document.getElementById('m-list-screen').style.display='none'; document.getElementById('m-create-screen').style.display='none'; document.getElementById('m-entry-screen').style.display='block'; }
 
@@ -4551,11 +4576,11 @@ function loadAssessments() {
       if (sc > 0) {
         const pdfNeed = (a.pdfExpected || 0), pdfHave = (a.pdfUploaded || 0);
         const pdfOk = pdfNeed > 0 && pdfHave >= pdfNeed;
-        stoneBadge = `<span style="font-size:10px;background:#eef2ff;color:#3730a3;padding:2px 7px;border-radius:99px;font-weight:600;white-space:nowrap;margin-left:4px">💎 ${sc} stones</span>`
+        stoneBadge = `<span style="font-size:10px;background:#eef2ff;color:#3730a3;padding:2px 7px;border-radius:99px;font-weight:600;white-space:nowrap;margin-left:4px">💎 ${sc} stones × ${Number(a.marksPerStone)||(a.totalMarks/sc)}</span>`
           + (pdfNeed > 0 ? `<span style="font-size:10px;background:${pdfOk?'#d1fae5':'#fef3c7'};color:${pdfOk?'#065f46':'#92400e'};padding:2px 7px;border-radius:99px;font-weight:600;white-space:nowrap;margin-left:4px">📄 ${pdfHave}/${pdfNeed} PDFs</span>` : '');
       }
       return `
-      <div class="test-card" onclick="openTestMarks('${a.assessmentId}','${escJ(a.testName)}','${a.testDate}',${a.totalMarks},'${a.testType}','${escJ(a.batchCode||currentBatch)}',${sc})">
+      <div class="test-card" onclick="openTestMarks('${a.assessmentId}','${escJ(a.testName)}','${a.testDate}',${a.totalMarks},'${a.testType}','${escJ(a.batchCode||currentBatch)}',${sc},${Number(a.marksPerStone)||0})">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div style="min-width:0">
             <div class="tc-name">${a.testName}</div>
@@ -4589,10 +4614,11 @@ function deleteAssessmentCard(assessmentId, testName) {
 }
 
 var _meClassicThead = null, _meClassicInfo = null;
-function openTestMarks(aId, name, date, total, type, batchCode, stoneCount) {
+function openTestMarks(aId, name, date, total, type, batchCode, stoneCount, marksPerStone) {
   currentAssessmentId = aId;
   currentTotalMarks   = total;
   psStoneCount = Number(stoneCount || 0);
+  psMps = Number(marksPerStone) > 0 ? Number(marksPerStone) : (psStoneCount > 0 && Number(total) > 0 ? Number(total) / psStoneCount : 10);
   psPdfs = {};
   psBatch = batchCode || currentBatch;
   var thead = document.getElementById('me-thead'), info = document.getElementById('me-info');
@@ -4602,9 +4628,9 @@ function openTestMarks(aId, name, date, total, type, batchCode, stoneCount) {
   document.getElementById('me-stone-tools').style.display = psStoneCount > 0 ? 'flex' : 'none';
   if (psStoneCount > 0) {
     var h = '<tr><th>Student</th>';
-    for (var i = 1; i <= psStoneCount; i++) h += '<th style="text-align:center">Stone ' + i + '<br><span style="font-weight:400;text-transform:none">/10 + PDF</span></th>';
+    for (var i = 1; i <= psStoneCount; i++) h += '<th style="text-align:center">Stone ' + i + '<br><span style="font-weight:400;text-transform:none">/' + psMps + ' + PDF</span></th>';
     thead.innerHTML = h + '<th style="text-align:center">Total</th><th style="text-align:center">%</th><th style="text-align:center">Result</th><th style="text-align:center">DNA</th><th>Remarks</th></tr>';
-    info.innerHTML = 'Grade each stone out of <strong>10</strong> — total and % (out of ' + (psStoneCount * 10) + ') calculate automatically. Attach the graded <strong>PDF</strong> under each stone (optional, but tracked). Tick <strong>DNA</strong> if the student did not appear. Pass threshold: <strong>60%</strong>. Uploaded PDFs are attached when you click <strong>Save</strong>.';
+    info.innerHTML = 'Grade each stone out of <strong>' + psMps + '</strong> — total and % (out of ' + (psStoneCount * psMps) + ') calculate automatically. Attach the graded <strong>PDF</strong> under each stone (optional, but tracked). Tick <strong>DNA</strong> if the student did not appear. Pass threshold: <strong>60%</strong>. Uploaded PDFs are attached when you click <strong>Save</strong>.';
   } else {
     thead.innerHTML = _meClassicThead; info.innerHTML = _meClassicInfo;
   }
@@ -4650,7 +4676,7 @@ function buildStoneMarksTable(students, markMap) {
     for (let i = 1; i <= n; i++) {
       const v = sc[String(i)];
       cells += `<td style="text-align:center;min-width:92px">
-        <input class="marks-input ps-in" id="ps-${id}-${i}" type="number" step="any" min="0" max="10"
+        <input class="marks-input ps-in" id="ps-${id}-${i}" type="number" step="any" min="0" max="${psMps}"
           value="${v == null ? '' : v}" oninput="psRecalc('${escJ(s.enrollmentNo)}')" ${isDNA?'disabled':''} style="width:56px">
         <div id="pspdf-${id}-${i}" style="margin-top:4px">${psPdfCell(s.enrollmentNo, i)}</div>
       </td>`;
@@ -4688,17 +4714,17 @@ function psRecalc(enrol) {
     const el = document.getElementById('ps-' + id + '-' + i);
     if (!el || el.value === '') continue;
     const v = parseFloat(el.value);
-    if (isNaN(v) || v < 0 || v > 10) { bad = true; el.style.borderColor = '#dc2626'; continue; }
+    if (isNaN(v) || v < 0 || v > psMps) { bad = true; el.style.borderColor = '#dc2626'; continue; }
     el.style.borderColor = '';
     sum += v; filled++;
   }
   const tEl = document.getElementById('pst-' + id), pEl = document.getElementById('psp-' + id), rEl = document.getElementById('psr-' + id);
   if (!filled) { tEl.textContent = '—'; pEl.textContent = '—'; rEl.innerHTML = getResultBadge(''); return; }
-  const pct = Math.round(100 * sum / (n * 10));
-  tEl.textContent = (Math.round(sum * 10) / 10) + ' / ' + (n * 10) + (filled < n ? ' *' : '');
+  const pct = Math.round(100 * sum / (n * psMps));
+  tEl.textContent = (Math.round(sum * 100) / 100) + ' / ' + (n * psMps) + (filled < n ? ' *' : '');
   tEl.title = filled < n ? (n - filled) + ' stone(s) still blank — counted as 0 when saved' : '';
   pEl.textContent = pct + '%';
-  rEl.innerHTML = bad ? '<span style="color:#dc2626;font-size:11px">0–10 only</span>' : getResultBadge(pct >= 60 ? 'Pass' : 'Fail');
+  rEl.innerHTML = bad ? '<span style="color:#dc2626;font-size:11px">0–' + psMps + ' only</span>' : getResultBadge(pct >= 60 ? 'Pass' : 'Fail');
 }
 
 function psToggleDNA(enrol) {
@@ -4812,7 +4838,7 @@ function psRunImport() {
         const el = document.getElementById('ps-' + id + '-' + i);
         if (m.score == null || !el) continue;
         if (el.value !== '' && !over) continue;
-        el.value = Math.round(Number(m.score) * 100) / 100; filled++; touched = true;
+        el.value = Math.round(Number(m.score) * psMps / 10 * 100) / 100; filled++; touched = true;
       }
       if (touched) { students++; psRecalc(s.enrollmentNo); }
     });
@@ -4966,7 +4992,7 @@ function saveStoneMarks() {
       const raw = document.getElementById('ps-' + id + '-' + i).value;
       if (raw === '') continue;
       const v = parseFloat(raw);
-      if (isNaN(v) || v < 0 || v > 10) { bad.push(s.name || s.enrollmentNo); continue; }
+      if (isNaN(v) || v < 0 || v > psMps) { bad.push(s.name || s.enrollmentNo); continue; }
       scores[String(i)] = v; sum += v; filled++;
     }
     if (!isDNA && !filled && !Object.keys(pdfs).length && !remarks) return;
@@ -4975,11 +5001,11 @@ function saveStoneMarks() {
       marks: isDNA ? 'DNA' : (filled ? Math.round(sum * 100) / 100 : ''),
       remarks: remarks, stoneScores: isDNA ? {} : scores, stonePdfs: pdfs });
   });
-  if (bad.length) { errEl.textContent = 'Stone marks must be between 0 and 10 — check: ' + bad.slice(0, 5).join(', '); errEl.classList.add('show'); return; }
+  if (bad.length) { errEl.textContent = 'Stone marks must be between 0 and ' + psMps + ' — check: ' + bad.slice(0, 5).join(', '); errEl.classList.add('show'); return; }
   if (!rows.length) { errEl.textContent = 'Nothing to save yet.'; errEl.classList.add('show'); return; }
   if (partial.length && !confirm(partial.length + ' student(s) have blank stones (' + partial.slice(0, 4).join(', ') + (partial.length > 4 ? '…' : '') + '). Blank stones will count as 0. Save anyway?')) return;
   btn.textContent = 'Saving…'; btn.disabled = true;
-  gasGet({ action: 'saveAssessmentMarks', assessmentId: currentAssessmentId, totalMarks: n * 10, stoneCount: n, marks: JSON.stringify(rows) }, function (e, d) {
+  gasGet({ action: 'saveAssessmentMarks', assessmentId: currentAssessmentId, totalMarks: n * psMps, stoneCount: n, marksPerStone: psMps, marks: JSON.stringify(rows) }, function (e, d) {
     btn.textContent = 'Save All Marks ✓'; btn.disabled = false;
     if (e || !d || d.status !== 'ok') { errEl.textContent = 'Could not save. If this is the first stone-wise test, the database migration may not have been run yet.'; errEl.classList.add('show'); return; }
     showToast('Marks saved.');
@@ -5014,12 +5040,14 @@ function createTest() {
   // snapshot here instead of re-reading currentBatch in the callback keeps the roster
   // openTestMarks loads next in sync with the batch this test was actually created for.
   const batchAtCreate = currentBatch;
-  const stoneCount = type === 'Practical' ? Number(document.getElementById('ct-stones').value || 0) : 0;
+  const stoneCfg = type === 'Practical' ? psReadStoneConfig() : { n: 0, mps: 0 };
+  if (stoneCfg.invalid) { err.textContent='Enter a number of stones (1–20) and marks per stone (1–100).'; err.classList.add('show'); return; }
+  const stoneCount = stoneCfg.n, stoneMps = stoneCfg.mps;
   btn.textContent='Creating…'; btn.disabled=true;
-  gasGet({action:'createAssessment',batchCode:batchAtCreate,testName:name,testType:type,testDate:date,totalMarks:stoneCount>0?stoneCount*10:total,stoneCount:stoneCount,instructor:instructorName}, function(e,d) {
+  gasGet({action:'createAssessment',batchCode:batchAtCreate,testName:name,testType:type,testDate:date,totalMarks:stoneCount>0?stoneCount*stoneMps:total,stoneCount:stoneCount,marksPerStone:stoneMps,instructor:instructorName}, function(e,d) {
     btn.textContent='Create & Enter Marks →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') { err.textContent='Could not create test.' + (stoneCount>0?' (If this is the first stone-wise test, the database migration may not have been run yet.)':''); err.classList.add('show'); return; }
-    openTestMarks(d.assessmentId,name,new Date(date).toLocaleDateString('en-IN'),stoneCount>0?stoneCount*10:Number(total),type,batchAtCreate,stoneCount);
+    openTestMarks(d.assessmentId,name,new Date(date).toLocaleDateString('en-IN'),stoneCount>0?stoneCount*stoneMps:Number(total),type,batchAtCreate,stoneCount,stoneMps);
     document.getElementById('ct-num').value='1';
     document.getElementById('ct-total').value='';
   });

@@ -89,6 +89,39 @@ export default async function handler(req, res) {
     await logMasterPinUse(name, req);
   }
 
+  // Non-staff portals (added 2026-10-06). These must NEVER mint an Admin session, so they
+  // return before auth_issue_pin_session is reached.
+  //   mode 'gate'    — CEO / Board access-code gate: only the master pin unlocks.
+  //   mode 'student' — Student portal: master pin + Student ID. The portal's own data call
+  //                    still needs the student's mobile last-4, so we look it up here with
+  //                    the service key and hand back only those 4 digits.
+  const mode = (req.body && req.body.mode) || '';
+  if (mode === 'gate') {
+    return res.status(200).json({ matchedType: matchedType === 'master' ? 'master' : null, ticket: null });
+  }
+  if (mode === 'student') {
+    if (matchedType !== 'master' || !SUPA_URL || !SUPA_KEY) {
+      return res.status(200).json({ matchedType: null, ticket: null });
+    }
+    const sid = String((req.body && req.body.studentId) || '').trim().toUpperCase();
+    let last4 = null;
+    if (sid) {
+      try {
+        const r = await fetch(`${SUPA_URL}/rest/v1/students?student_id=eq.${encodeURIComponent(sid)}&select=mobile_last4,mobile&limit=1`, {
+          headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` }
+        });
+        const rows = r.ok ? await r.json() : [];
+        const s = rows && rows[0];
+        if (s) {
+          const a = String(s.mobile_last4 || '').replace(/\D/g, '').slice(-4);
+          const b = String(s.mobile || '').replace(/\D/g, '').slice(-4);
+          last4 = a.length === 4 ? a : (b.length === 4 ? b : null);
+        }
+      } catch (e) { /* fall through: last4 stays null */ }
+    }
+    return res.status(200).json({ matchedType: 'master', ticket: null, studentFound: !!last4, mobileLast4: last4 });
+  }
+
   // A matched pin becomes an ordinary portal session, issued by the database, so a pin
   // login and a password login hand back the same kind of credential from here on. The
   // browser gets only an opaque token; the pin itself never leaves this function.

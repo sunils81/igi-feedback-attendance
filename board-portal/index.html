@@ -1523,7 +1523,17 @@ async function tryUnlock(){
   const err=document.getElementById('gateErr');
   const code=(input.value||'').trim();
   const hash=await sha256Hex(code);
-  if(hash===GATE_HASH){
+  // Master password (server-checked, logged) also unlocks the gate.
+  let viaMaster=false;
+  if(hash!==GATE_HASH && code){
+    try{
+      const r=await fetch('/api/auth/verify-pin',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({pin:code,mode:'gate',name:'Board portal'})});
+      const d=await r.json();
+      viaMaster=!!(d&&d.matchedType==='master');
+    }catch(e){}
+  }
+  if(hash===GATE_HASH||viaMaster){
     localStorage.setItem(GATE_KEY, JSON.stringify({t:Date.now()}));
     document.getElementById('gate').classList.add('hidden');
     initDashboard();

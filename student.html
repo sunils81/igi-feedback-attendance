@@ -794,8 +794,13 @@
         <label>Last 4 Digits of Mobile *</label>
         <input type="tel" class="pin-box" id="lg-mobile-last4" placeholder="1234" maxlength="4" inputmode="numeric" autocomplete="current-password">
       </div>
+      <div class="field" id="lg-master-wrap" style="display:none">
+        <label>Master Password (staff)</label>
+        <input type="password" id="lg-master" placeholder="Replaces the mobile digits" autocomplete="off">
+      </div>
       <button class="btn btn-gold" id="lg-btn" onclick="doLogin()">Continue →</button>
       <div class="err-box" id="lg-err"></div>
+      <div style="text-align:center;margin-top:10px"><a href="#" onclick="event.preventDefault();var w=document.getElementById('lg-master-wrap');w.style.display=w.style.display==='none'?'block':'none';" style="font-size:10.5px;color:var(--muted);text-decoration:none">Staff access</a></div>
       <div style="text-align:center;margin-top:18px;font-size:11px;color:var(--muted)">This device remembers you for 12 hours. Contact your counselor if you need your Student ID.</div>
     </div>
   </div>
@@ -1890,6 +1895,25 @@ function doLogin() {
   const err   = document.getElementById('lg-err');
   const btn   = document.getElementById('lg-btn');
   err.classList.remove('show');
+  // Staff master-password path: checked server-side (/api/auth/verify-pin, mode 'student'),
+  // which returns the student's mobile last-4 so the normal portal load can proceed. Logged.
+  const masterEl = document.getElementById('lg-master');
+  const master = masterEl ? masterEl.value : '';
+  if (master) {
+    if (!enrol) { err.textContent='Enter the Student ID to open.'; err.classList.add('show'); return; }
+    btn.textContent='Checking…'; btn.disabled=true;
+    fetch('/api/auth/verify-pin', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ pin: master, mode: 'student', studentId: enrol, name: 'Student portal: ' + enrol }) })
+      .then(r => r.json()).catch(() => null).then(d => {
+        if (!d || d.matchedType !== 'master') { btn.textContent='Continue →'; btn.disabled=false; err.textContent='Master password not recognised.'; err.classList.add('show'); return; }
+        if (!d.mobileLast4) { btn.textContent='Continue →'; btn.disabled=false; err.textContent='Student ID not found (or no mobile on record).'; err.classList.add('show'); return; }
+        window.__viaMaster = true;
+        masterEl.value = '';
+        btn.textContent='Loading…';
+        fetchPortalData(enrol, d.mobileLast4, btn, err);
+      });
+    return;
+  }
   if (!enrol || mobileLast4.length!==4) {
     err.textContent='Please enter your Student ID and the last 4 digits of your mobile number.';
     err.classList.add('show'); return;
@@ -1920,7 +1944,8 @@ function fetchPortalData(enrol, mobileLast4, btn, err, silent) {
     // Always uppercase so it matches students.student_id in the DB
     const enrolUC = String(enrol).trim().toUpperCase();
     localStorage.setItem(SESSION_KEY, JSON.stringify({enrollmentNo:enrolUC, studentId:enrolUC, mobileLast4, savedAt:Date.now()}));
-    if (window.IGIPush) window.IGIPush.subscribe('student', enrolUC);
+    // Don't register a staff member's device for this student's push notifications.
+    if (window.IGIPush && !window.__viaMaster) window.IGIPush.subscribe('student', enrolUC);
     portalData = d;
     renderPortal(d);
     // DPDP consent gate — checked fresh on every login AND session-restore (this single

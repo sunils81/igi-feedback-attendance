@@ -27,6 +27,13 @@
 // use is always traceable after the fact — logging is best-effort and never
 // blocks or fails the login itself.
 
+// ── Second job: verifying a named user's own password (mode: 'user') ──────────
+// This lives here rather than in its own /api/auth/verify-user because the Vercel
+// Hobby plan allows twelve serverless functions per deployment and we are at twelve.
+// A thirteenth file does not fail loudly — the deployment simply never goes live, and
+// the previous one keeps answering, which cost an afternoon to spot. Same concern
+// either way ("check a credential, maybe issue a ticket"), so one endpoint, two modes.
+
 import crypto from 'crypto';
 import { issueTicket } from '../_auth-ticket.js';
 
@@ -72,7 +79,49 @@ export default async function handler(req, res) {
     return res.status(405).json({ status: 'error', reason: 'Method not allowed' });
   }
 
-  const { pin, name } = req.body || {};
+  const { pin, name, password, mode } = req.body || {};
+
+  /* ── mode: 'user' ── Re-check a named user's own portal password on the server and,
+     if they hold the Admin role, issue the ticket.
+
+     Why this exists. The per-user password check in shared.js runs in the BROWSER:
+     fetch the row, hash salt|password, compare. Fine for deciding what to render,
+     but it proves nothing to a server — so /api/arp/admin could not tell a real
+     admin from any script posting at it, and asking for the shared pin a second time
+     was the only server-checkable thing left. Sunil objected to being asked for a pin
+     he had already given, and he was right to.
+
+     The comparison itself happens in auth_check_password() inside the database
+     (security definer, EXECUTE granted to service_role only, so the public anon key
+     cannot use it as a password oracle). The salt and hash never leave Postgres.
+
+     This never logs anyone in. Failure here costs the ARP tab's convenience, nothing
+     more, so it returns a bare null ticket rather than an error in every bad case. */
+  if (mode === 'user' || password) {
+    if (!SUPA_URL || !SUPA_KEY || !name || !password) {
+      return res.status(200).json({ ticket: null });
+    }
+    try {
+      const r = await fetch(`${SUPA_URL}/rest/v1/rpc/auth_check_password`, {
+        method: 'POST',
+        headers: {
+          apikey: SUPA_KEY,
+          Authorization: `Bearer ${SUPA_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ p_name: String(name), p_password: String(password) })
+      });
+      if (!r.ok) return res.status(200).json({ ticket: null });
+      const role = await r.json();
+      // Only Admin earns a ticket. A counsellor with a perfectly valid password gets
+      // nothing here — the ticket authorises admin-only endpoints and nothing else
+      // should be able to mint one.
+      return res.status(200).json({ ticket: role === 'Admin' ? issueTicket('admin') : null });
+    } catch (e) {
+      return res.status(200).json({ ticket: null });
+    }
+  }
+
   if (!pin) return res.status(200).json({ matchedType: null });
 
   let matchedType = null;

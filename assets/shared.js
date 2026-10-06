@@ -1284,10 +1284,10 @@ window.gasGet = (function () {
     // Never let a hung endpoint hold a login open.
     setTimeout(function () { finish(null); }, 4000);
     try {
-      fetch('/api/auth/verify-user', {
+      fetch('/api/auth/verify-pin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name, password: password })
+        body: JSON.stringify({ mode: 'user', name: name, password: password })
       }).then(function (r) { return r.json(); })
         .then(function (d) { finish(d && d.ticket); })
         .catch(function () { finish(null); });

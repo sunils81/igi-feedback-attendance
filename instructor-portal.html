@@ -606,6 +606,18 @@
             <input type="number" id="ct-total" placeholder="e.g. 25" min="1" max="1000">
           </div>
         </div>
+        <!-- Stone-wise practical: shown only when Test Type = Practical. Each stone is graded /10;
+             total marks are locked to stones × 10 so % = sum ÷ (stones × 10). -->
+        <div id="ct-stones-wrap" style="display:none;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px">
+          <div class="field" style="margin-bottom:6px"><label>Practical format</label>
+            <select id="ct-stones" onchange="onStoneCountChange()">
+              <option value="4">4 Stone Challenge (40 marks)</option>
+              <option value="3">3 Stone Challenge (30 marks)</option>
+              <option value="0">Single total (old style, no per-stone marks)</option>
+            </select>
+          </div>
+          <div style="font-size:11px;color:var(--muted);line-height:1.4">Each stone is graded out of 10. You can upload the student's graded PDF against every stone on the next screen.</div>
+        </div>
         <div style="display:flex;gap:10px;margin-top:4px">
           <button class="btn btn-gold" id="ct-btn" onclick="createTest()">Create & Enter Marks →</button>
           <button class="btn btn-outline" style="width:auto" onclick="showMarksList()">← Back</button>
@@ -622,11 +634,17 @@
         <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:3px" id="me-test-meta">—</div>
       </div>
       <div class="card">
-        <div class="info-box" style="margin-bottom:16px">
+        <div class="info-box" id="me-info" style="margin-bottom:16px">
           Enter either <strong>Marks</strong> or <strong>%</strong> — the other field calculates automatically. Tick <strong>DNA</strong> if the student did not appear. Pass threshold: <strong>60%</strong>.
         </div>
+        <div id="me-stone-tools" style="display:none;margin-bottom:12px;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-outline" style="width:auto;padding:7px 12px;font-size:12px" onclick="psOpenImport()">⬇ Import from Stone Challenge</button>
+          <span id="me-stone-pdfcount" style="font-size:11.5px;color:var(--muted)"></span>
+        </div>
+        <div id="me-import-panel" style="display:none;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px"></div>
+        <div style="overflow-x:auto">
         <table class="marks-table">
-          <thead><tr>
+          <thead id="me-thead"><tr>
             <th>Student</th>
             <th style="text-align:center">Marks</th>
             <th style="text-align:center">%</th>
@@ -636,6 +654,7 @@
           </tr></thead>
           <tbody id="me-tbody"></tbody>
         </table>
+        </div>
         <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
           <button class="btn btn-gold" id="me-save-btn" onclick="saveMarks()">Save All Marks ✓</button>
           <button class="btn btn-outline" style="width:auto" onclick="showMarksList()">← Back to Tests</button>
@@ -4400,6 +4419,8 @@ function showCreateTest()  {
   document.getElementById('m-list-screen').style.display='none'; document.getElementById('m-create-screen').style.display='block'; document.getElementById('m-entry-screen').style.display='none';
   var rh = document.getElementById('mk-retest-hint');
   if (rh) rh.style.display = 'none'; // only shown when opened via scheduleRetest() below
+  var sw = document.getElementById('ct-stones-wrap');
+  if (sw) delete sw.dataset.touched;
   updateTestTypeHint();
 }
 
@@ -4430,6 +4451,40 @@ function updateTestTypeHint() {
   const type = document.getElementById('ct-type').value;
   const info = testTypeCategoryInfo(type);
   hintEl.innerHTML = info.desc + ' <span style="color:#9ca3af">(based on Type, not the test name — a test named "Final Practical Exam" but typed "Final" still counts as Final, not Practical.)</span>';
+  updateStoneOptions();
+}
+
+/* ── Stone-wise Practical ───────────────────────────────────────
+   A Practical test can be a 3- or 4-stone challenge. Each stone is graded /10, total
+   marks are locked to stones × 10, and the summed total is what lands in
+   assessment_marks.marks — so eligibility (buildDiplomaRow) reads it unchanged.
+   Per-stone scores + PDF paths ride along in stone_scores / stone_pdfs (jsonb). */
+var PS_BUCKET = 'practical-sheets';
+var psStoneCount = 0;      // stones on the test currently open in marks entry (0 = classic)
+var psPdfs = {};           // { enrol: { "1": "path/in/bucket.pdf", ... } }
+var psStudents = [];
+
+function psDefaultStonesForBatch(bc) {
+  var b = (instructorBatchesCache || []).find(function (x) { return x.batchCode === bc; }) || {};
+  var c = String((b.course || '') + ' ' + (bc || '')).toUpperCase();
+  return (c.indexOf('PDC') !== -1 || c.indexOf('POLISHED') !== -1) ? 3 : 4;
+}
+function updateStoneOptions() {
+  var wrap = document.getElementById('ct-stones-wrap');
+  if (!wrap) return;
+  var isPrac = document.getElementById('ct-type').value === 'Practical';
+  wrap.style.display = isPrac ? 'block' : 'none';
+  if (isPrac && !wrap.dataset.touched) document.getElementById('ct-stones').value = String(psDefaultStonesForBatch(currentBatch));
+  onStoneCountChange(true);
+}
+function onStoneCountChange(fromType) {
+  var tot = document.getElementById('ct-total');
+  var wrap = document.getElementById('ct-stones-wrap');
+  if (!fromType && wrap) wrap.dataset.touched = '1';
+  var isPrac = document.getElementById('ct-type').value === 'Practical';
+  var n = isPrac ? Number(document.getElementById('ct-stones').value || 0) : 0;
+  if (n > 0) { tot.value = n * 10; tot.readOnly = true; tot.style.background = '#f3f4f6'; }
+  else if (tot.readOnly) { tot.readOnly = false; tot.style.background = ''; tot.value = ''; }
 }
 function showMarksEntry()  { document.getElementById('m-list-screen').style.display='none'; document.getElementById('m-create-screen').style.display='none'; document.getElementById('m-entry-screen').style.display='block'; }
 
@@ -4491,14 +4546,22 @@ function loadAssessments() {
         statusBadge = `<span style="font-size:10px;background:#e0e7ff;color:#3730a3;padding:2px 7px;border-radius:99px;font-weight:600;white-space:nowrap">${entered} mark${entered===1?'':'s'} saved</span>`;
       }
       const catInfo = testTypeCategoryInfo(a.testType);
+      const sc = Number(a.stoneCount || 0);
+      let stoneBadge = '';
+      if (sc > 0) {
+        const pdfNeed = (a.pdfExpected || 0), pdfHave = (a.pdfUploaded || 0);
+        const pdfOk = pdfNeed > 0 && pdfHave >= pdfNeed;
+        stoneBadge = `<span style="font-size:10px;background:#eef2ff;color:#3730a3;padding:2px 7px;border-radius:99px;font-weight:600;white-space:nowrap;margin-left:4px">💎 ${sc} stones</span>`
+          + (pdfNeed > 0 ? `<span style="font-size:10px;background:${pdfOk?'#d1fae5':'#fef3c7'};color:${pdfOk?'#065f46':'#92400e'};padding:2px 7px;border-radius:99px;font-weight:600;white-space:nowrap;margin-left:4px">📄 ${pdfHave}/${pdfNeed} PDFs</span>` : '');
+      }
       return `
-      <div class="test-card" onclick="openTestMarks('${a.assessmentId}','${escJ(a.testName)}','${a.testDate}',${a.totalMarks},'${a.testType}','${escJ(a.batchCode||currentBatch)}')">
+      <div class="test-card" onclick="openTestMarks('${a.assessmentId}','${escJ(a.testName)}','${a.testDate}',${a.totalMarks},'${a.testType}','${escJ(a.batchCode||currentBatch)}',${sc})">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div style="min-width:0">
             <div class="tc-name">${a.testName}</div>
             <div class="tc-meta">${a.testDate} · ${a.testType||''} · Max: ${a.totalMarks} marks</div>
             <div style="font-size:10px;color:#9ca3af;margin-top:2px">Counts toward: ${catInfo.label}${catInfo.label==='Practical' ? ' grace' : ''}</div>
-            <div style="margin-top:5px">${statusBadge}</div>
+            <div style="margin-top:5px">${statusBadge}${stoneBadge}</div>
           </div>
           <div style="display:flex;gap:10px;align-items:center;flex-shrink:0">
             <div style="font-size:11px;color:var(--gold);font-weight:600;white-space:nowrap">Edit marks →</div>
@@ -4525,9 +4588,26 @@ function deleteAssessmentCard(assessmentId, testName) {
   });
 }
 
-function openTestMarks(aId, name, date, total, type, batchCode) {
+var _meClassicThead = null, _meClassicInfo = null;
+function openTestMarks(aId, name, date, total, type, batchCode, stoneCount) {
   currentAssessmentId = aId;
   currentTotalMarks   = total;
+  psStoneCount = Number(stoneCount || 0);
+  psPdfs = {};
+  psBatch = batchCode || currentBatch;
+  var thead = document.getElementById('me-thead'), info = document.getElementById('me-info');
+  if (_meClassicThead === null) { _meClassicThead = thead.innerHTML; _meClassicInfo = info.innerHTML; }
+  document.getElementById('me-tbody').innerHTML = '';
+  document.getElementById('me-import-panel').style.display = 'none';
+  document.getElementById('me-stone-tools').style.display = psStoneCount > 0 ? 'flex' : 'none';
+  if (psStoneCount > 0) {
+    var h = '<tr><th>Student</th>';
+    for (var i = 1; i <= psStoneCount; i++) h += '<th style="text-align:center">Stone ' + i + '<br><span style="font-weight:400;text-transform:none">/10 + PDF</span></th>';
+    thead.innerHTML = h + '<th style="text-align:center">Total</th><th style="text-align:center">%</th><th style="text-align:center">Result</th><th style="text-align:center">DNA</th><th>Remarks</th></tr>';
+    info.innerHTML = 'Grade each stone out of <strong>10</strong> — total and % (out of ' + (psStoneCount * 10) + ') calculate automatically. Attach the graded <strong>PDF</strong> under each stone (optional, but tracked). Tick <strong>DNA</strong> if the student did not appear. Pass threshold: <strong>60%</strong>. Uploaded PDFs are attached when you click <strong>Save</strong>.';
+  } else {
+    thead.innerHTML = _meClassicThead; info.innerHTML = _meClassicInfo;
+  }
   // Roster MUST come from the test's own batch, not the (mutable) currentBatch global.
   // currentBatch can change under us — e.g. the instructor switches the Marks-tab batch
   // dropdown, or a create-test request is still in flight when they do — and previously
@@ -4548,7 +4628,195 @@ function openTestMarks(aId, name, date, total, type, batchCode) {
   ]).then(([students, marks]) => {
     const markMap = {};
     marks.forEach(m => markMap[String(m.enrollmentNo).toUpperCase()] = m);
-    buildMarksTable(students, markMap, total);
+    if (psStoneCount > 0) buildStoneMarksTable(students, markMap);
+    else buildMarksTable(students, markMap, total);
+  });
+}
+
+var psBatch = '';
+function psSafe(s) { return String(s == null ? '' : s).replace(/[^A-Za-z0-9_-]/g, '_'); }
+
+function buildStoneMarksTable(students, markMap) {
+  psStudents = students;
+  const n = psStoneCount;
+  const tbody = document.getElementById('me-tbody');
+  tbody.innerHTML = students.map(s => {
+    const id = psSafe(s.enrollmentNo);
+    const ex = markMap[String(s.enrollmentNo).toUpperCase()] || null;
+    const isDNA = !!ex && (ex.marks === 'DNA' || (ex.remarks === 'DNA' && (ex.marks === null || ex.marks === '')));
+    const sc = (ex && ex.stoneScores) || {};
+    psPdfs[s.enrollmentNo] = Object.assign({}, (ex && ex.stonePdfs) || {});
+    let cells = '';
+    for (let i = 1; i <= n; i++) {
+      const v = sc[String(i)];
+      cells += `<td style="text-align:center;min-width:92px">
+        <input class="marks-input ps-in" id="ps-${id}-${i}" type="number" step="any" min="0" max="10"
+          value="${v == null ? '' : v}" oninput="psRecalc('${escJ(s.enrollmentNo)}')" ${isDNA?'disabled':''} style="width:56px">
+        <div id="pspdf-${id}-${i}" style="margin-top:4px">${psPdfCell(s.enrollmentNo, i)}</div>
+      </td>`;
+    }
+    const remarks = ex && ex.remarks && ex.remarks !== 'DNA' ? ex.remarks : '';
+    return `<tr id="tr-${escHtml(s.enrollmentNo)}" data-enrol="${escHtml(s.enrollmentNo)}" data-name="${escHtml(s.name||'')}">
+      <td><div style="font-weight:600;font-size:13px">${escHtml(s.name||'')}</div>
+        <div style="font-size:10px;color:var(--muted);font-family:monospace">${escHtml(s.enrollmentNo)}</div></td>
+      ${cells}
+      <td style="text-align:center;font-weight:700" id="pst-${id}">—</td>
+      <td style="text-align:center" id="psp-${id}">—</td>
+      <td style="text-align:center" id="psr-${id}">${getResultBadge(isDNA?'DNA':'')}</td>
+      <td style="text-align:center"><input type="checkbox" class="dna-toggle" id="psd-${id}" ${isDNA?'checked':''} onchange="psToggleDNA('${escJ(s.enrollmentNo)}')"></td>
+      <td><input type="text" id="psrem-${id}" value="${escHtml(remarks)}" placeholder="Optional"
+        style="width:100%;min-width:110px;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:11px;font-family:'Plus Jakarta Sans',sans-serif;outline:none"></td>
+    </tr>`;
+  }).join('');
+  students.forEach(s => { if (!document.getElementById('psd-' + psSafe(s.enrollmentNo)).checked) psRecalc(s.enrollmentNo); });
+  psUpdatePdfCount();
+}
+
+function psPdfCell(enrol, i) {
+  const id = psSafe(enrol);
+  const path = (psPdfs[enrol] || {})[String(i)];
+  const pick = `<label style="font-size:10px;color:#2563eb;cursor:pointer;white-space:nowrap">${path ? '↻ Replace' : '📎 PDF'}
+      <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="psUpload('${escJ(enrol)}',${i},this)"></label>`;
+  if (!path) return pick;
+  return `<a href="#" onclick="event.preventDefault();psOpenPdf('${escJ(path)}')" style="font-size:10px;color:#059669;font-weight:600;text-decoration:none">✓ View</a> · ` + pick;
+}
+
+function psRecalc(enrol) {
+  const id = psSafe(enrol), n = psStoneCount;
+  let sum = 0, filled = 0, bad = false;
+  for (let i = 1; i <= n; i++) {
+    const el = document.getElementById('ps-' + id + '-' + i);
+    if (!el || el.value === '') continue;
+    const v = parseFloat(el.value);
+    if (isNaN(v) || v < 0 || v > 10) { bad = true; el.style.borderColor = '#dc2626'; continue; }
+    el.style.borderColor = '';
+    sum += v; filled++;
+  }
+  const tEl = document.getElementById('pst-' + id), pEl = document.getElementById('psp-' + id), rEl = document.getElementById('psr-' + id);
+  if (!filled) { tEl.textContent = '—'; pEl.textContent = '—'; rEl.innerHTML = getResultBadge(''); return; }
+  const pct = Math.round(100 * sum / (n * 10));
+  tEl.textContent = (Math.round(sum * 10) / 10) + ' / ' + (n * 10) + (filled < n ? ' *' : '');
+  tEl.title = filled < n ? (n - filled) + ' stone(s) still blank — counted as 0 when saved' : '';
+  pEl.textContent = pct + '%';
+  rEl.innerHTML = bad ? '<span style="color:#dc2626;font-size:11px">0–10 only</span>' : getResultBadge(pct >= 60 ? 'Pass' : 'Fail');
+}
+
+function psToggleDNA(enrol) {
+  const id = psSafe(enrol), on = document.getElementById('psd-' + id).checked;
+  for (let i = 1; i <= psStoneCount; i++) {
+    const el = document.getElementById('ps-' + id + '-' + i);
+    el.disabled = on; if (on) el.value = '';
+  }
+  if (on) { document.getElementById('pst-' + id).textContent = '—'; document.getElementById('psp-' + id).textContent = '—'; document.getElementById('psr-' + id).innerHTML = getResultBadge('DNA'); }
+  else psRecalc(enrol);
+}
+
+function psUpdatePdfCount() {
+  const el = document.getElementById('me-stone-pdfcount');
+  if (!el) return;
+  let have = 0, need = 0;
+  psStudents.forEach(s => {
+    if (document.getElementById('psd-' + psSafe(s.enrollmentNo)).checked) return;
+    need += psStoneCount;
+    have += Object.keys(psPdfs[s.enrollmentNo] || {}).filter(k => Number(k) >= 1 && Number(k) <= psStoneCount && psPdfs[s.enrollmentNo][k]).length;
+  });
+  el.innerHTML = `📄 <b>${have}</b> of ${need} stone PDFs attached` + (have < need ? ` · <span style="color:#92400e">${need - have} pending</span>` : ' · <span style="color:#059669">all attached</span>');
+}
+
+// Upload straight to the private practical-sheets bucket. Deterministic path + x-upsert so a
+// re-upload replaces the old sheet instead of leaving orphans.
+function psUpload(enrol, i, input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') { showToast('Please choose a PDF file.', 'error'); input.value = ''; return; }
+  if (file.size > 15 * 1024 * 1024) { showToast('PDF is over 15 MB — please compress it.', 'error'); input.value = ''; return; }
+  const id = psSafe(enrol), cell = document.getElementById('pspdf-' + id + '-' + i);
+  const path = psSafe(psBatch) + '/' + psSafe(currentAssessmentId) + '/' + id + '/stone-' + i + '.pdf';
+  cell.innerHTML = '<span style="font-size:10px;color:var(--muted)">Uploading… 0%</span>';
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', _CM_SB + '/storage/v1/object/' + PS_BUCKET + '/' + path, true);
+  xhr.setRequestHeader('Authorization', 'Bearer ' + _CM_AK);
+  xhr.setRequestHeader('apikey', _CM_AK);
+  xhr.setRequestHeader('Content-Type', 'application/pdf');
+  xhr.setRequestHeader('x-upsert', 'true');
+  xhr.upload.onprogress = ev => { if (ev.lengthComputable) cell.innerHTML = '<span style="font-size:10px;color:var(--muted)">Uploading… ' + Math.round(100 * ev.loaded / ev.total) + '%</span>'; };
+  xhr.onload = () => {
+    if (xhr.status >= 200 && xhr.status < 300) {
+      (psPdfs[enrol] = psPdfs[enrol] || {})[String(i)] = path;
+      cell.innerHTML = psPdfCell(enrol, i) + '<div style="font-size:9px;color:#b45309">unsaved</div>';
+      psUpdatePdfCount();
+    } else {
+      cell.innerHTML = psPdfCell(enrol, i);
+      showToast('Upload failed (' + xhr.status + '). Has the practical-sheets bucket been set up?', 'error');
+    }
+  };
+  xhr.onerror = () => { cell.innerHTML = psPdfCell(enrol, i); showToast('Network error during upload.', 'error'); };
+  xhr.send(file);
+}
+
+// Private bucket → open via a short-lived signed URL.
+function psOpenPdf(path) {
+  const w = window.open('', '_blank');
+  fetch(_CM_SB + '/storage/v1/object/sign/' + PS_BUCKET + '/' + path, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + _CM_AK, 'apikey': _CM_AK, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expiresIn: 600 })
+  }).then(r => r.json()).then(d => {
+    const u = d && (d.signedURL || d.signedUrl);
+    if (!u) throw new Error('no url');
+    const full = /^https?:/.test(u) ? u : _CM_SB + '/storage/v1' + (u.charAt(0) === '/' ? '' : '/') + u;
+    if (w) w.location = full; else window.open(full, '_blank');
+  }).catch(() => { if (w) w.close(); showToast('Could not open the PDF.', 'error'); });
+}
+
+/* Import per-stone scores from an online Stone Challenge on this batch. Only fills blanks
+   unless the instructor chooses to overwrite; PDFs are never touched. */
+function psOpenImport() {
+  const panel = document.getElementById('me-import-panel');
+  if (panel.style.display === 'block') { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  panel.innerHTML = '<div style="font-size:12px;color:var(--muted)">Loading stone challenges…</div>';
+  gasGet({ action: 'getInstructorTests', instructor: instructorName || '' }, function (e, d) {
+    const bc = String(psBatch || '').toUpperCase();
+    const list = ((d && d.tests) || []).filter(t => t.testType === 'Stone Challenge' &&
+      String(t.batchCodes || t.batchCode || '').toUpperCase().split(',').map(x => x.trim()).indexOf(bc) !== -1);
+    if (!list.length) { panel.innerHTML = '<div style="font-size:12px;color:var(--muted)">No Stone Challenges found for ' + escHtml(psBatch) + '. Create one in the 💎 Stone Challenge tab.</div>'; return; }
+    panel.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px">'
+      + '<select id="ps-imp-sel" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px">'
+      + list.map(t => '<option value="' + escHtml(t.testId) + '">' + escHtml(t.testLabel || t.title || t.testId) + ' · ' + escHtml(t.status || '') + '</option>').join('')
+      + '</select><label style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="ps-imp-over"> Overwrite marks already entered</label>'
+      + '<button class="btn btn-gold" style="width:auto;padding:6px 12px;font-size:12px" onclick="psRunImport()">Import</button></div>';
+  });
+}
+
+function psRunImport() {
+  const tid = document.getElementById('ps-imp-sel').value;
+  const over = document.getElementById('ps-imp-over').checked;
+  const panel = document.getElementById('me-import-panel');
+  gasGet({ action: 'scGetChallengeResults', testId: tid }, function (e, d) {
+    if (e || !d || d.status !== 'ok') { showToast('Could not load challenge results.', 'error'); return; }
+    const key = d.key || [];
+    if (key.length !== psStoneCount) {
+      if (!confirm('That challenge has ' + key.length + ' stones but this test has ' + psStoneCount + '. Import the first ' + Math.min(key.length, psStoneCount) + ' only?')) return;
+    }
+    const byId = {};
+    (d.results || []).forEach(r => byId[String(r.studentId).toUpperCase()] = r);
+    let filled = 0, students = 0;
+    psStudents.forEach(s => {
+      const r = byId[String(s.enrollmentNo).toUpperCase()];
+      const id = psSafe(s.enrollmentNo);
+      if (!r || document.getElementById('psd-' + id).checked) return;
+      let touched = false;
+      for (let i = 1; i <= Math.min(key.length, psStoneCount); i++) {
+        const m = (r.marks || {})[String(key[i - 1].station)] || {};
+        const el = document.getElementById('ps-' + id + '-' + i);
+        if (m.score == null || !el) continue;
+        if (el.value !== '' && !over) continue;
+        el.value = Math.round(Number(m.score) * 100) / 100; filled++; touched = true;
+      }
+      if (touched) { students++; psRecalc(s.enrollmentNo); }
+    });
+    panel.innerHTML = '<div style="font-size:12px;color:#065f46">✓ Imported ' + filled + ' stone score(s) for ' + students + ' student(s). Review, attach PDFs, then click <b>Save All Marks</b>.</div>';
   });
 }
 
@@ -4649,6 +4917,7 @@ function toggleDNA(enrol) {
 }
 
 function saveMarks() {
+  if (psStoneCount > 0) return saveStoneMarks();
   const btn   = document.getElementById('me-save-btn');
   const errEl = document.getElementById('me-err');
   errEl.classList.remove('show');
@@ -4678,6 +4947,47 @@ function saveMarks() {
   });
 }
 
+// Stone-wise save: marks = sum of stone scores (blank stones in a started row count as 0),
+// stone_scores/stone_pdfs saved alongside. Untouched rows (no scores, no PDFs, no DNA) are
+// skipped so they still show as "pending" rather than a saved blank.
+function saveStoneMarks() {
+  const btn = document.getElementById('me-save-btn'), errEl = document.getElementById('me-err');
+  errEl.classList.remove('show');
+  const n = psStoneCount, rows = [];
+  let partial = [], bad = [];
+  psStudents.forEach(s => {
+    const id = psSafe(s.enrollmentNo);
+    const isDNA = document.getElementById('psd-' + id).checked;
+    const remarks = document.getElementById('psrem-' + id).value.trim();
+    const pdfs = {};
+    Object.keys(psPdfs[s.enrollmentNo] || {}).forEach(k => { if (Number(k) >= 1 && Number(k) <= n && psPdfs[s.enrollmentNo][k]) pdfs[k] = psPdfs[s.enrollmentNo][k]; });
+    const scores = {}; let sum = 0, filled = 0;
+    for (let i = 1; i <= n; i++) {
+      const raw = document.getElementById('ps-' + id + '-' + i).value;
+      if (raw === '') continue;
+      const v = parseFloat(raw);
+      if (isNaN(v) || v < 0 || v > 10) { bad.push(s.name || s.enrollmentNo); continue; }
+      scores[String(i)] = v; sum += v; filled++;
+    }
+    if (!isDNA && !filled && !Object.keys(pdfs).length && !remarks) return;
+    if (!isDNA && filled && filled < n) partial.push(s.name || s.enrollmentNo);
+    rows.push({ enrollmentNo: s.enrollmentNo, studentName: s.name || '', dna: isDNA,
+      marks: isDNA ? 'DNA' : (filled ? Math.round(sum * 100) / 100 : ''),
+      remarks: remarks, stoneScores: isDNA ? {} : scores, stonePdfs: pdfs });
+  });
+  if (bad.length) { errEl.textContent = 'Stone marks must be between 0 and 10 — check: ' + bad.slice(0, 5).join(', '); errEl.classList.add('show'); return; }
+  if (!rows.length) { errEl.textContent = 'Nothing to save yet.'; errEl.classList.add('show'); return; }
+  if (partial.length && !confirm(partial.length + ' student(s) have blank stones (' + partial.slice(0, 4).join(', ') + (partial.length > 4 ? '…' : '') + '). Blank stones will count as 0. Save anyway?')) return;
+  btn.textContent = 'Saving…'; btn.disabled = true;
+  gasGet({ action: 'saveAssessmentMarks', assessmentId: currentAssessmentId, totalMarks: n * 10, stoneCount: n, marks: JSON.stringify(rows) }, function (e, d) {
+    btn.textContent = 'Save All Marks ✓'; btn.disabled = false;
+    if (e || !d || d.status !== 'ok') { errEl.textContent = 'Could not save. If this is the first stone-wise test, the database migration may not have been run yet.'; errEl.classList.add('show'); return; }
+    showToast('Marks saved.');
+    btn.textContent = '✅ Saved!';
+    setTimeout(() => { btn.textContent = 'Save All Marks ✓'; showMarksList(); loadAssessments(); }, 1500);
+  });
+}
+
 // Test Type value -> display label used when auto-building the test name.
 // Keep these in sync with the <option> labels in #ct-type.
 var CT_TYPE_LABELS = {
@@ -4704,11 +5014,12 @@ function createTest() {
   // snapshot here instead of re-reading currentBatch in the callback keeps the roster
   // openTestMarks loads next in sync with the batch this test was actually created for.
   const batchAtCreate = currentBatch;
+  const stoneCount = type === 'Practical' ? Number(document.getElementById('ct-stones').value || 0) : 0;
   btn.textContent='Creating…'; btn.disabled=true;
-  gasGet({action:'createAssessment',batchCode:batchAtCreate,testName:name,testType:type,testDate:date,totalMarks:total,instructor:instructorName}, function(e,d) {
+  gasGet({action:'createAssessment',batchCode:batchAtCreate,testName:name,testType:type,testDate:date,totalMarks:stoneCount>0?stoneCount*10:total,stoneCount:stoneCount,instructor:instructorName}, function(e,d) {
     btn.textContent='Create & Enter Marks →'; btn.disabled=false;
-    if (e||!d||d.status!=='ok') { err.textContent='Could not create test.'; err.classList.add('show'); return; }
-    openTestMarks(d.assessmentId,name,new Date(date).toLocaleDateString('en-IN'),Number(total),type,batchAtCreate);
+    if (e||!d||d.status!=='ok') { err.textContent='Could not create test.' + (stoneCount>0?' (If this is the first stone-wise test, the database migration may not have been run yet.)':''); err.classList.add('show'); return; }
+    openTestMarks(d.assessmentId,name,new Date(date).toLocaleDateString('en-IN'),stoneCount>0?stoneCount*10:Number(total),type,batchAtCreate,stoneCount);
     document.getElementById('ct-num').value='1';
     document.getElementById('ct-total').value='';
   });

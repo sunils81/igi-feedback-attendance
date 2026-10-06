@@ -10512,11 +10512,32 @@ window.gasGet = (function () {
       function finishCount() {
         if (++done < 2) return;
         var expected = Object.keys(idSet).length;
-        cb(null, { status: 'ok', assessments: (rows || []).map(function(r) {
-          var cnt = r.assessment_marks && r.assessment_marks[0] ? (r.assessment_marks[0].count || 0) : 0;
-          return { assessmentId: r.assessment_id, batchCode: r.batch_code, testName: r.test_name, testType: r.test_type,
-            testDate: toDMY(r.held_on), totalMarks: r.max_marks, marksEntered: Number(cnt), expectedStudents: expected };
-        }) });
+        var stoneIds = (rows || []).filter(function(r) { return Number(r.stone_count) > 0; }).map(function(r) { return r.assessment_id; });
+        function emit(pdfStats) {
+          cb(null, { status: 'ok', assessments: (rows || []).map(function(r) {
+            var cnt = r.assessment_marks && r.assessment_marks[0] ? (r.assessment_marks[0].count || 0) : 0;
+            var out = { assessmentId: r.assessment_id, batchCode: r.batch_code, testName: r.test_name, testType: r.test_type,
+              testDate: toDMY(r.held_on), totalMarks: r.max_marks, marksEntered: Number(cnt), expectedStudents: expected,
+              stoneCount: Number(r.stone_count) || 0 };
+            if (out.stoneCount > 0) {
+              var ps = pdfStats[r.assessment_id] || { have: 0, dna: 0 };
+              out.pdfUploaded = ps.have;
+              out.pdfExpected = Math.max(0, expected - ps.dna) * out.stoneCount;
+            }
+            return out;
+          }) });
+        }
+        if (!stoneIds.length) { emit({}); return; }
+        GET('assessment_marks', 'select=assessment_id,remarks,marks,stone_pdfs&assessment_id=in.(' + stoneIds.map(function(x) { return '"' + String(x).replace(/"/g, '') + '"'; }).join(',') + ')', function(e4, mrows) {
+          var stats = {};
+          (mrows || []).forEach(function(m) {
+            var st = stats[m.assessment_id] || (stats[m.assessment_id] = { have: 0, dna: 0 });
+            if (m.remarks === 'DNA' && m.marks == null) { st.dna++; return; }
+            var sp = m.stone_pdfs || {};
+            st.have += Object.keys(sp).filter(function(k) { return !!sp[k]; }).length;
+          });
+          emit(stats);
+        });
       }
       GET('students', 'batch_code=eq.' + bc + '&select=student_id', function(e2, rows2) {
         (rows2 || []).forEach(function(s) { idSet[s.student_id] = true; });
@@ -10531,10 +10552,15 @@ window.gasGet = (function () {
 
   function h_createAssessment(p, cb) {
     var aid = p.batchCode + '-A-' + Date.now(); // generate ID here so we can return it
-    POST('assessments', 'on_conflict=assessment_id', {
+    var row = {
       assessment_id: aid, batch_code: p.batchCode, test_name: p.testName,
       test_type: p.testType || 'Weekly', held_on: toYMD(p.testDate), max_marks: Number(p.totalMarks || 100), instructor: p.instructor || ''
-    }, function(e) {
+    };
+    // Stone-wise practical (3/4 stones × 10). Only sent when set so non-practical tests
+    // still save even before migration_practical_stone_marks.sql has been run.
+    var stoneCount = parseInt(p.stoneCount, 10) || 0;
+    if (stoneCount > 0) { row.stone_count = stoneCount; row.max_marks = stoneCount * 10; }
+    POST('assessments', 'on_conflict=assessment_id', row, function(e) {
       cb(null, e ? { status: 'error' } : { status: 'ok', assessmentId: aid }); // return assessmentId!
     });
   }
@@ -10542,7 +10568,8 @@ window.gasGet = (function () {
   function h_getAssessmentMarks(p, cb) {
     GET('assessment_marks', 'assessment_id=eq.' + encodeURIComponent(p.assessmentId), function(e, rows) {
       cb(null, { status: e ? 'error' : 'ok', marks: (rows || []).map(function(r) {
-        return { enrollmentNo: r.student_id, studentName: r.student_name, marks: r.marks, remarks: r.remarks };
+        return { enrollmentNo: r.student_id, studentName: r.student_name, marks: r.marks, remarks: r.remarks,
+          stoneScores: r.stone_scores || null, stonePdfs: r.stone_pdfs || null };
       }) });
     });
   }
@@ -10550,11 +10577,17 @@ window.gasGet = (function () {
   function h_saveAssessmentMarks(p, cb) {
     var marks = [];
     try { marks = JSON.parse(p.marks || '[]'); } catch(x) {}
+    var isStone = (parseInt(p.stoneCount, 10) || 0) > 0;
     var rows = marks.map(function(m) {
       var isDNA = m.dna || m.marks === 'DNA';
-      return { assessment_id: p.assessmentId, student_id: m.enrollmentNo || m.studentId, student_name: m.studentName || '',
+      var row = { assessment_id: p.assessmentId, student_id: m.enrollmentNo || m.studentId, student_name: m.studentName || '',
         marks: isDNA ? null : (m.marks === '' || m.marks == null ? null : Number(m.marks)),
         remarks: isDNA ? 'DNA' : (m.remarks || '') };
+      if (isStone) {
+        row.stone_scores = isDNA ? {} : (m.stoneScores || {});
+        row.stone_pdfs = m.stonePdfs || {};
+      }
+      return row;
     });
     POST('assessment_marks', 'on_conflict=assessment_id,student_id', rows, function(e) {
       cb(null, e ? { status: 'error' } : { status: 'ok' });

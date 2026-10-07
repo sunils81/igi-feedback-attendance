@@ -5364,6 +5364,227 @@ window.gasGet = (function () {
     });
   }
 
+  /* ════════════════════════════════════════════════════════════════════════
+     CORPORATE REPORTING OFF A *TEACHING* BATCH
+
+     Corporate work runs on two tracks that nothing joins:
+
+       corporate_batches  — the revenue record. Carries the fee, the invoice and a
+                            hand-typed headcount. Its corporate_participants roster
+                            is, as of Oct 2026, empty for all seven rows.
+       batches/students   — the ordinary teaching pipeline. This is where corporate
+                            cohorts are actually enrolled, attended and marked.
+
+     MUM-COR-OCT26 is the case in point: 20 enrolled students, attendance taken,
+     instructor assigned — and no corporate_batches row at all. Asking counsellors
+     to retype those 20 (or GIVA's 287) into a second roster is duplicate data
+     entry of people the system already knows about, so the client report reads
+     the teaching track directly.
+
+     These two handlers return the SAME shape h_corpGetParticipants returns, so
+     assets/corp-report.js renders either source without knowing the difference.
+     ════════════════════════════════════════════════════════════════════════ */
+
+  /* Which teaching batches are corporate work. Course name first (that is what the
+     counsellor actually picks), with a batch-code fallback so a corporate cohort
+     filed under some other course name still appears rather than silently going
+     missing — the failure mode that started this. */
+  var CORP_COURSES = ['corporate programs', 'corporate program', 'seminars', 'seminar',
+                      'retail technical training', 'rtt'];
+  function isCorporateTeachingBatch(row) {
+    var course = String(row.course || '').trim().toLowerCase();
+    if (CORP_COURSES.indexOf(course) !== -1) return true;
+    var code = String(row.batch_code || '').toUpperCase();
+    return /-COR-|-RTT-|-SEM-/.test(code);
+  }
+
+  function h_corpListTeachingBatches(p, cb) {
+    GET('batches', 'order=start_date.desc', function (e, rows) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      var corp = (rows || []).filter(isCorporateTeachingBatch);
+      if (!corp.length) { cb(null, { status: 'ok', records: [] }); return; }
+      getActiveStudentCountsByBatch(function (counts) {
+        cb(null, {
+          status: 'ok',
+          records: corp.map(function (r) {
+            var bc = String(r.batch_code || '').trim().toUpperCase();
+            return {
+              id: r.batch_code, batchCode: r.batch_code, source: 'teaching',
+              companyName: r.batch_code, course: r.course || '', centre: r.centre || '',
+              description: r.course || '', instructor: r.instructor || '',
+              counselor: r.counselor || '',
+              trainingStart: r.start_date || '', trainingEnd: r.end_date || '',
+              invoiceDate: r.start_date || '',
+              associatesTrained: counts[bc] || 0,
+              isActive: r.is_active !== false
+            };
+          })
+        });
+      });
+    });
+  }
+
+  /* Build the client report's data for one teaching batch. */
+  async function h_corpTeachingBatchReport(p, cb) {
+    function getP(table, qs) {
+      return new Promise(function (resolve) {
+        GET(table, qs, function (err, data) { resolve(err ? [] : (data || [])); });
+      });
+    }
+    var code = String(p.batchCode || '').trim();
+    if (!code) { cb(null, { status: 'error', reason: 'missing_batch' }); return; }
+    var CODE = code.toUpperCase();
+    var passPct = Number(p.passPct) || 60;
+
+    try {
+      var batchRows = await getP('batches', 'batch_code=eq.' + encodeURIComponent(code));
+      var batch = batchRows[0];
+      if (!batch) { cb(null, { status: 'error', reason: 'batch_not_found' }); return; }
+
+      var res = await Promise.all([
+        getP('students', 'batch_code=eq.' + encodeURIComponent(code) + '&order=name.asc'),
+        getP('sessions', 'batch_code=eq.' + encodeURIComponent(code) + '&order=session_date.asc'),
+        getP('attendance_feedback', 'batch_code=eq.' + encodeURIComponent(code) +
+             '&select=student_id,session_code,attendance'),
+        getP('assessments', 'batch_code=eq.' + encodeURIComponent(code))
+      ]);
+      var students = res[0], sessions = res[1], attRows = res[2], assessments = res[3];
+
+      /* Dropped students are not shown to a client as having failed to attend —
+         they are simply not on the programme any more. */
+      students = students.filter(function (s) {
+        var st = String(s.status || '').trim().toLowerCase();
+        return st !== 'dropped' && st !== 'cancelled' && st !== 'inactive';
+      });
+      if (!students.length) { cb(null, { status: 'error', reason: 'no_students' }); return; }
+
+      var sids = students.map(function (s) { return s.student_id; });
+      var marks = await getP('assessment_marks',
+        'student_id=in.(' + sids.map(encodeURIComponent).join(',') + ')');
+
+      /* Most weekly/final scores live in the auto-graded online tests, not in
+         assessment_marks — the same merge h_getStudentDiplomaStatus does. */
+      var ot = await fetchOnlineTestPseudoData([CODE]);
+      var batchAssessments = assessments.concat((ot.assessmentsByBatch[CODE] || []));
+      var marksByStudent = {};
+      marks.forEach(function (m) {
+        if (!marksByStudent[m.student_id]) marksByStudent[m.student_id] = {};
+        marksByStudent[m.student_id][m.assessment_id] = m;
+      });
+      Object.keys(ot.marksByStudent || {}).forEach(function (sid) {
+        if (!marksByStudent[sid]) marksByStudent[sid] = {};
+        Object.keys(ot.marksByStudent[sid]).forEach(function (aid) {
+          marksByStudent[sid][aid] = ot.marksByStudent[sid][aid];
+        });
+      });
+
+      /* ── Attendance denominator ──────────────────────────────────────────────
+         Sessions that have actually had attendance TAKEN, not sessions scheduled.
+         MUM-COR-OCT26 is mid-programme: three sessions exist, two have been
+         marked, the third is still pending. Counting the unmarked one against
+         every participant would tell the client their people missed a day that
+         has not been registered yet. Present and Late both count as attended,
+         matching every other attendance figure in the portal. */
+      var liveSessions = sessions.filter(function (s) { return !s.is_cancelled; });
+      var sessionTaken = {};
+      attRows.forEach(function (a) { if (a.session_code) sessionTaken[a.session_code] = true; });
+      var takenCount = liveSessions.filter(function (s) { return sessionTaken[s.session_code]; }).length;
+      var days = takenCount || liveSessions.length || 1;
+
+      var attByStudent = {};
+      attRows.forEach(function (a) {
+        if (!sessionTaken[a.session_code]) return;
+        if (!attByStudent[a.student_id]) attByStudent[a.student_id] = 0;
+        if (a.attendance === 'Present' || a.attendance === 'Late') attByStudent[a.student_id]++;
+      });
+
+      /* A programme counts as tested only if it actually has tests set up. A
+         corporate cohort with no assessments at all is a participation
+         programme and its report carries attendance only — rather than a column
+         of "Pending" implying marks that were never going to exist. */
+      var tested = batchAssessments.length > 0;
+
+      function typeOf(a) { return String(a.test_type || '').toLowerCase(); }
+      function pctFor(markRow, maxMarks) {
+        if (!markRow) return null;
+        if (String(markRow.marks) === 'DNA' || String(markRow.remarks) === 'DNA') return null;
+        var obt = parseFloat(markRow.marks), max = parseFloat(maxMarks || 100);
+        if (!isFinite(obt) || !isFinite(max) || max <= 0) return null;
+        return Math.round(100 * obt / max);
+      }
+      var weeklyAss = batchAssessments.filter(function (a) {
+        var t = typeOf(a);
+        return t.indexOf('weekly') !== -1 || t === 'mcq' || t === 'theory' || t === 're-test';
+      });
+      var finalAss = batchAssessments.filter(function (a) {
+        var t = typeOf(a);
+        return t.indexOf('final') !== -1 || t.indexOf('practical') !== -1 || t.indexOf('portfolio') !== -1;
+      });
+
+      function avgOf(list) {
+        var vals = list.filter(function (v) { return v != null; });
+        if (!vals.length) return null;
+        return Math.round(vals.reduce(function (t, v) { return t + v; }, 0) / vals.length);
+      }
+
+      var participants = students.map(function (s) {
+        var mm = marksByStudent[s.student_id] || {};
+        var weekly = avgOf(weeklyAss.map(function (a) { return pctFor(mm[a.assessment_id], a.max_marks); }));
+        var fin = avgOf(finalAss.map(function (a) { return pctFor(mm[a.assessment_id], a.max_marks); }));
+        /* Anything that is neither weekly nor final still counts toward the
+           average rather than being silently dropped from the client's view. */
+        var other = avgOf(batchAssessments
+          .filter(function (a) { return weeklyAss.indexOf(a) === -1 && finalAss.indexOf(a) === -1; })
+          .map(function (a) { return pctFor(mm[a.assessment_id], a.max_marks); }));
+        var avg = avgOf([weekly, fin, other]);
+        var attended = attByStudent[s.student_id] || 0;
+        var everMarked = attRows.some(function (a) {
+          return a.student_id === s.student_id && sessionTaken[a.session_code];
+        });
+        return {
+          id: s.student_id, participantId: s.student_id, name: s.name || s.student_id,
+          designation: '', branch: '', city: '', state: s.state_region || '',
+          mobile: '', email: '',
+          weeklyPct: weekly, finalPct: fin,
+          daysAttended: everMarked || takenCount ? attended : null,
+          tested: tested, avg: avg,
+          passed: tested ? (avg != null && avg >= passPct) : true,
+          pending: tested && avg == null,
+          certificateNo: '', certificateUrl: '', releasedAt: null, releasedBy: ''
+        };
+      });
+
+      cb(null, {
+        status: 'ok',
+        batch: {
+          id: batch.batch_code, companyName: String(p.companyName || '').trim() || batch.course || batch.batch_code,
+          centre: batch.centre || '', batchCode: batch.batch_code || '',
+          programmeType: tested ? 'Corporate' : 'RTT',
+          assessmentMode: tested ? 'tested' : 'participation',
+          passPct: passPct,
+          trainingDays: days,
+          trainingStart: batch.start_date || '', trainingEnd: batch.end_date || '',
+          associatesTrained: participants.length,
+          locationClient: '', revenueMonth: '',
+          /* Context the report prints as a note so a client reading a mid-programme
+             copy knows it is one. */
+          sessionsPlanned: liveSessions.length,
+          sessionsTaken: takenCount,
+          instructor: batch.instructor || ''
+        },
+        participants: participants,
+        counts: {
+          onRoster: participants.length,
+          headcount: participants.length,
+          released: 0,
+          eligible: participants.filter(function (x) { return x.passed && !x.pending; }).length
+        }
+      });
+    } catch (err) {
+      cb(null, { status: 'error', reason: String(err && err.message || err) });
+    }
+  }
+
   /* Add or update one participant. */
   function h_corpSaveParticipant(p, cb) {
     var name = String(p.name || '').trim();
@@ -13895,6 +14116,8 @@ window.gasGet = (function () {
       case 'saveBillingDocNumber':      return h_saveBillingDocNumber(params, cb);
       case 'saveCorporateBatch':        return h_saveCorporateBatch(params, cb);
       case 'corpGetParticipants':       return h_corpGetParticipants(params, cb);
+      case 'corpListTeachingBatches':   return h_corpListTeachingBatches(params, cb);
+      case 'corpTeachingBatchReport':   return h_corpTeachingBatchReport(params, cb);
       case 'corpSaveParticipant':       return h_corpSaveParticipant(params, cb);
       case 'corpImportParticipants':    return h_corpImportParticipants(params, cb);
       case 'corpDeleteParticipant':     return h_corpDeleteParticipant(params, cb);

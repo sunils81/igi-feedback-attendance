@@ -146,12 +146,17 @@
                       : '<span class="pill pill-no">Not qualified</span>';
     };
 
+    /* Branch only earns a column when somebody has one. A teaching batch records
+       no branch at all, and a column of twenty em-dashes on a client's copy looks
+       like IGI lost the data rather than never having asked for it. */
+    var hasBranch = ps.some(function (p) { return String(p.branch || '').trim(); });
+
     var rows = ps.map(function (p, i) {
       var cells =
         '<td class="num">' + (i + 1) + '</td>' +
         '<td class="code">' + esc(p.participantId || '—') + '</td>' +
         '<td><b>' + esc(p.name) + '</b></td>' +
-        '<td>' + esc(p.branch || '—') + '</td>' +
+        (hasBranch ? '<td>' + esc(p.branch || '—') + '</td>' : '') +
         '<td class="ctr">' + attCell(p) + '</td>';
       if (tested) {
         cells += '<td class="ctr">' + scoreCell(p.weeklyPct) + '</td>' +
@@ -162,7 +167,8 @@
       return '<tr>' + cells + '</tr>';
     }).join('');
 
-    var head = '<th class="num">#</th><th>Participant ID</th><th>Name</th><th>Branch</th>' +
+    var head = '<th class="num">#</th><th>Participant ID</th><th>Name</th>' +
+      (hasBranch ? '<th>Branch</th>' : '') +
       '<th class="ctr">Attendance</th>' +
       (tested ? '<th class="ctr">Weekly</th><th class="ctr">Final</th>' +
                 '<th class="ctr">Average</th><th class="ctr">Result</th>' : '');
@@ -174,7 +180,10 @@
 
     var stats = stat('Participants', ps.length, b.associatesTrained && b.associatesTrained !== ps.length
         ? 'Headcount on file: ' + b.associatesTrained : '') +
-      stat('Programme length', days + ' day' + (days === 1 ? '' : 's'), rangeLabel(b.trainingStart, b.trainingEnd)) +
+      stat(b.sessionsPlanned && b.sessionsTaken != null && b.sessionsTaken < b.sessionsPlanned
+             ? 'Sessions registered' : 'Programme length',
+           days + ' day' + (days === 1 ? '' : 's'),
+           rangeLabel(b.trainingStart, b.trainingEnd)) +
       stat('Average attendance', avgAtt == null ? 'Not marked' : avgAtt + '%',
            marked.length === ps.length ? '' : marked.length + ' of ' + ps.length + ' marked') +
       stat('Attended in full', marked.length ? fullAtt + ' of ' + ps.length : '—',
@@ -202,6 +211,20 @@
           ' excluded from the distribution and from the average score above.</p>' : '') +
         '</section>';
     }
+
+    /* A report pulled while the programme is still running must say so on its
+       face. MUM-COR-OCT26 was asked for on day three of four, and a client
+       reading "4 of 4 days" against a cohort that has attended two would be
+       entitled to think the document was wrong. */
+    var inProgress = b.sessionsPlanned && b.sessionsTaken != null &&
+                     b.sessionsTaken < b.sessionsPlanned;
+    var progressNote = inProgress
+      ? 'This programme is still running. Attendance is shown against the ' +
+        b.sessionsTaken + ' session' + (b.sessionsTaken === 1 ? '' : 's') +
+        ' registered so far, out of ' + b.sessionsPlanned + ' scheduled; sessions not yet ' +
+        'held are not counted against any participant. A final report should be issued ' +
+        'once the programme has finished.'
+      : '';
 
     var methodology = tested
       ? 'Each participant sits two compulsory assessments — a weekly test and a final ' +
@@ -287,6 +310,9 @@
       '.pill-ok{background:#dcfce7;color:#166534}.pill-no{background:#fee2e2;color:#991b1b}' +
       '.pill-wait{background:#f1f3f5;color:#6b7280}' +
 
+      '.interim{background:#FEF3C7;border-bottom:1px solid #FDE68A;color:#92400e;font-size:9.5px;' +
+        'font-weight:700;letter-spacing:.14em;text-transform:uppercase;padding:7px 26px}' +
+
       /* sign-off */
       '.sign{display:grid;grid-template-columns:1fr 1fr;gap:34px;margin-top:26px;padding-top:4px}' +
       '.sign div{border-top:1px solid ' + NAVY + ';padding-top:6px;font-size:10px;color:#4b5563}' +
@@ -325,9 +351,13 @@
         '<div><span>Report issued</span><b>' + esc(today) + '</b></div>' +
       '</div>' +
 
+      (inProgress ? '<div class="interim">Interim report · programme in progress</div>' : '') +
+
       '<section class="blk"><div class="tag">Executive summary</div>' +
         '<h2>' + esc(b.companyName || '') + ' · at a glance</h2>' +
-        '<div class="stats">' + stats + '</div></section>' +
+        '<div class="stats">' + stats + '</div>' +
+        (progressNote ? '<p class="note">' + esc(progressNote) + '</p>' : '') +
+      '</section>' +
 
       bandBlock +
 
@@ -370,7 +400,8 @@
      THE TAB
      One markup tree, mounted by both portals into their own tab shell.
      ────────────────────────────────────────────────────────────────────────── */
-  var S = { batches: [], loaded: false, mountId: '', ctx: {}, q: '', sortBy: '', data: null, busy: false };
+  var S = { batches: [], teaching: [], loaded: false, mountId: '', ctx: {},
+            q: '', sortBy: '', data: null, busy: false };
 
   function el(id) { return document.getElementById(id); }
 
@@ -425,6 +456,12 @@
       'font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}',
       '.cr-ghost:hover{border-color:' + GOLD + ';background:#fffdf6}',
       '.cr-sm{padding:8px 11px;font-size:11.5px}',
+      '.cr-sec{margin:0 0 10px}.cr-sec-mt{margin-top:26px}',
+      '.cr-sec-h{font-family:"Playfair Display",Georgia,serif;font-size:16px;font-weight:600;color:' + NAVY + '}',
+      '.cr-sec-n{font-size:11.5px;color:#6b7280;margin-top:3px;max-width:76ch;line-height:1.6}',
+      '.cr-client{width:100%;min-width:0;font-size:12px;padding:7px 11px;margin-bottom:2px}',
+      '.cr-card-rev{border-top-color:#c7ccd4;background:#fcfcfd}',
+      '.cr-card-rev .cr-co{color:#4b5563}',
       '.cr-empty{text-align:center;padding:40px 20px;color:#6b7280;font-size:13px}',
       '.cr-ico{font-size:30px;margin-bottom:9px}',
       '.cr-empty .cr-ghost{margin-top:12px}'
@@ -456,63 +493,131 @@
       '<div id="cr-list"></div>';
   }
 
+  /* Two sources, loaded together.
+
+     The teaching track (batches/students) is where corporate cohorts actually
+     live — enrolled, attended, marked — and it is what a report is built from.
+     The revenue track (corporate_batches) is listed underneath because its rows
+     are the ones finance knows about, but a report can only come off one of them
+     once somebody has typed a roster into it. Keeping both visible, and saying
+     plainly which is which, is what stops the next person asking where their
+     batch went. */
   function load(force) {
     var list = el('cr-list');
     if (S.loaded && !force) { render(); return; }
     if (list) list.innerHTML = '<div class="cr-empty"><div class="cr-ico">⏳</div><div>Loading batches…</div></div>';
-    gasGet({
-      action: 'getCorporateBatches',
-      recordedBy: S.ctx.me || '',
-      isAdmin: S.ctx.isAdmin ? 'true' : 'false'
-    }, function (e, d) {
-      if (e || !d || !d.records) {
+
+    var pending = 2, failed = 0;
+    S.teaching = []; S.batches = [];
+    function done() {
+      if (--pending) return;
+      if (failed === 2) {
         if (list) list.innerHTML = '<div class="cr-empty"><div class="cr-ico">⚠️</div>' +
           '<div>Could not load batches.</div>' +
           '<button class="cr-ghost" onclick="IGICorpReport.reload()">Try again</button></div>';
         return;
       }
-      S.batches = d.records;
       S.loaded = true;
       render();
+    }
+
+    gasGet({ action: 'corpListTeachingBatches' }, function (e, d) {
+      if (e || !d || !d.records) failed++;
+      else S.teaching = d.records.map(function (r) { r.source = 'teaching'; return r; });
+      done();
     });
+    gasGet({
+      action: 'getCorporateBatches',
+      recordedBy: S.ctx.me || '',
+      isAdmin: S.ctx.isAdmin ? 'true' : 'false'
+    }, function (e, d) {
+      if (e || !d || !d.records) failed++;
+      else S.batches = d.records.map(function (r) { r.source = 'revenue'; return r; });
+      done();
+    });
+  }
+
+  function matches(r, q) {
+    if (!q) return true;
+    return [r.companyName, r.batchCode, r.centre, r.description, r.course, r.instructor]
+      .join(' ').toLowerCase().indexOf(q) >= 0;
+  }
+
+  function card(r) {
+    var teaching = r.source === 'teaching';
+    var n = Number(r.associatesTrained) || 0;
+    var when = teaching ? rangeLabel(r.trainingStart, r.trainingEnd)
+                        : (r.invoiceDate ? dateLabel(r.invoiceDate) : '');
+    var title = teaching ? (r.course || r.batchCode) : (r.companyName || '\u2014');
+    var meta = esc(r.centre || '\u2014') +
+      (r.batchCode ? ' \u00b7 <span class="cr-code">' + esc(r.batchCode) + '</span>' : '') +
+      (when ? ' \u00b7 ' + esc(when) : '');
+    var sub = teaching
+      ? (r.instructor ? 'Instructor: ' + esc(r.instructor) : '')
+      : (r.description ? esc(r.description) : '');
+
+    var act;
+    if (teaching) {
+      /* The teaching batch knows the course, the people and the dates but not
+         which client they work for \u2014 that is only on the revenue record, and
+         the two are not linked. Rather than guess a company name onto a document
+         that goes to that company, the counsellor types it here. It defaults to
+         blank and the report falls back to the course name if left empty. */
+      act = '<input class="cr-inp cr-client" id="cr-co-' + esc(r.batchCode) + '" ' +
+              'placeholder="Client / company name for the report" ' +
+              'value="' + esc(r.clientName || '') + '">' +
+            '<div class="cr-card-act">' +
+              '<button class="cr-btn" onclick="IGICorpReport.open(\'' + esc(r.batchCode) + '\')">\ud83d\udcc4 Generate report</button>' +
+              '<button class="cr-ghost cr-sm" onclick="IGICorpReport.csv(\'' + esc(r.batchCode) + '\')">\u2b07 CSV</button>' +
+            '</div>';
+    } else {
+      act = '<div class="cr-card-act">' +
+              '<button class="cr-btn" onclick="IGICorpReport.open(\'' + esc(r.id) + '\')">\ud83d\udcc4 Generate report</button>' +
+              '<button class="cr-ghost cr-sm" onclick="IGICorpReport.csv(\'' + esc(r.id) + '\')">\u2b07 CSV</button>' +
+            '</div>';
+    }
+
+    return '<div class="cr-card' + (teaching ? '' : ' cr-card-rev') + '">' +
+      '<div class="cr-card-top">' +
+        '<div><div class="cr-co">' + esc(title) + '</div>' +
+          '<div class="cr-meta">' + meta + '</div>' +
+          (sub ? '<div class="cr-desc">' + sub + '</div>' : '') +
+        '</div>' +
+        '<div class="cr-n"><b>' + n + '</b><span>' + (teaching ? 'enrolled' : 'headcount') + '</span></div>' +
+      '</div>' + act +
+    '</div>';
   }
 
   function render() {
     var list = el('cr-list');
     if (!list) return;
     var q = S.q.trim().toLowerCase();
-    var rows = S.batches.filter(function (r) {
-      if (!q) return true;
-      return [r.companyName, r.batchCode, r.centre, r.description]
-        .join(' ').toLowerCase().indexOf(q) >= 0;
-    });
-    if (!rows.length) {
-      list.innerHTML = '<div class="cr-empty"><div class="cr-ico">🏢</div><div>' +
-        (S.batches.length ? 'No batch matches “' + esc(S.q) + '”.'
-                          : 'No corporate batches yet. They are created in the Ledger.') + '</div></div>';
+    var teach = (S.teaching || []).filter(function (r) { return matches(r, q); });
+    var rev = (S.batches || []).filter(function (r) { return matches(r, q); });
+
+    if (!teach.length && !rev.length) {
+      list.innerHTML = '<div class="cr-empty"><div class="cr-ico">\ud83c\udfe2</div><div>' +
+        ((S.teaching.length || S.batches.length)
+          ? 'No batch matches \u201c' + esc(S.q) + '\u201d.'
+          : 'No corporate or RTT batches found.') + '</div></div>';
       return;
     }
-    var html = '<div class="cr-count">' + rows.length + ' batch' + (rows.length === 1 ? '' : 'es') + '</div>' +
-      '<div class="cr-grid">';
-    rows.forEach(function (r) {
-      var n = Number(r.associatesTrained) || 0;
-      html += '<div class="cr-card">' +
-        '<div class="cr-card-top">' +
-          '<div><div class="cr-co">' + esc(r.companyName || '—') + '</div>' +
-            '<div class="cr-meta">' + esc(r.centre || '—') +
-              (r.batchCode ? ' · <span class="cr-code">' + esc(r.batchCode) + '</span>' : '') +
-              (r.invoiceDate ? ' · ' + esc(dateLabel(r.invoiceDate)) : '') + '</div>' +
-            (r.description ? '<div class="cr-desc">' + esc(r.description) + '</div>' : '') +
-          '</div>' +
-          '<div class="cr-n"><b>' + n + '</b><span>on roster</span></div>' +
-        '</div>' +
-        '<div class="cr-card-act">' +
-          '<button class="cr-btn" onclick="IGICorpReport.open(\'' + esc(r.id) + '\')">📄 Generate report</button>' +
-          '<button class="cr-ghost cr-sm" onclick="IGICorpReport.csv(\'' + esc(r.id) + '\')">⬇ CSV</button>' +
-        '</div>' +
-      '</div>';
-    });
-    list.innerHTML = html + '</div>';
+
+    var html = '';
+    if (teach.length) {
+      html += '<div class="cr-sec"><div class="cr-sec-h">Training batches</div>' +
+        '<div class="cr-sec-n">' + teach.length + ' batch' + (teach.length === 1 ? '' : 'es') +
+        ' \u00b7 built from the enrolled participants, their attendance and their marks</div></div>' +
+        '<div class="cr-grid">' + teach.map(card).join('') + '</div>';
+    }
+    if (rev.length) {
+      html += '<div class="cr-sec cr-sec-mt"><div class="cr-sec-h">Billed corporate records</div>' +
+        '<div class="cr-sec-n">' + rev.length + ' record' + (rev.length === 1 ? '' : 's') +
+        ' from the Ledger. These carry the fee and a headcount; a report needs participant ' +
+        'names imported against the record first (Ledger \u2192 Corporate Batches \u2192 Participants).</div></div>' +
+        '<div class="cr-grid">' + rev.map(card).join('') + '</div>';
+    }
+    list.innerHTML = html;
   }
 
   /* The roster is fetched at the moment the report is asked for, never cached:
@@ -520,19 +625,40 @@
      tab open, and a client's copy printed from a stale roster is exactly the
      bug that made six students in DEL-DG-SEP26 read "Pending" after their
      marks were in. */
-  function withRoster(batchId, done) {
+  function withRoster(key, done) {
     if (S.busy) return;
+    var teach = (S.teaching || []).filter(function (r) { return r.batchCode === key; })[0];
     S.busy = true;
     if (typeof showToast === 'function') showToast('Building report…');
-    gasGet({ action: 'corpGetParticipants', batchId: batchId }, function (e, d) {
+
+    var req;
+    if (teach) {
+      var box = el('cr-co-' + key);
+      var client = box ? String(box.value || '').trim() : '';
+      if (client) teach.clientName = client;   // survives a re-render
+      req = { action: 'corpTeachingBatchReport', batchCode: key, companyName: client };
+    } else {
+      req = { action: 'corpGetParticipants', batchId: key };
+    }
+
+    gasGet(req, function (e, d) {
       S.busy = false;
       if (e || !d || d.status !== 'ok') {
-        if (typeof showToast === 'function') showToast('Could not load the roster for this batch.', 'error');
+        var why = d && d.reason;
+        if (typeof showToast === 'function') {
+          showToast(why === 'no_students'
+            ? 'Nobody is enrolled in this batch yet.'
+            : 'Could not load the participants for this batch.', 'error');
+        }
         return;
       }
       if (!(d.participants || []).length) {
-        if (typeof showToast === 'function')
-          showToast('No participants on this roster yet — add them in the Ledger first.', 'error');
+        if (typeof showToast === 'function') {
+          showToast(teach
+            ? 'Nobody is enrolled in this batch yet.'
+            : 'This billed record has no participant names against it yet — import them in the Ledger first.',
+            'error');
+        }
         return;
       }
       done(d);

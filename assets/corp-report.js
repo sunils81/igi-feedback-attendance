@@ -196,8 +196,10 @@
             '<span class="band-n"><b>' + bd.n + '</b> <em>' + bd.pct + '%</em></span></div>';
         }).join('') + '</div>' +
         (pendingCount ? '<p class="note">' + pendingCount + ' participant' + (pendingCount === 1 ? '' : 's') +
-          ' had not completed both tests when this report was issued and are shown as Pending; they are ' +
-          'excluded from the distribution and from the average score above.</p>' : '') +
+          ' had not completed both tests when this report was issued and ' +
+          (pendingCount === 1 ? 'is shown' : 'are shown') + ' as Pending; ' +
+          (pendingCount === 1 ? 'that participant is' : 'they are') +
+          ' excluded from the distribution and from the average score above.</p>' : '') +
         '</section>';
     }
 

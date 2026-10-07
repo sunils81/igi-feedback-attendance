@@ -410,10 +410,18 @@ window.gasGet = (function () {
      from an empty table, which is exactly what made it dangerous.
 
      So a portal must never assume a restored session is usable. This asks the server,
-     and a stale one goes back to the login screen rather than quietly showing zeros. */
+     and a stale one goes back to the login screen rather than quietly showing zeros.
+
+     Call hasSession() FIRST, synchronously, and skip the restore entirely when it is
+     false — otherwise the rest of the restore runs on and puts the dashboard back up
+     over the login screen. (It did exactly that on the first attempt at this fix.) */
+  function hasSession() { return !!authToken(); }
+
   function requireSession(onStale) {
     var tok = authToken();
-    if (!tok) { onStale('no_token'); return; }
+    // Deferred, never synchronous: a caller that runs more code after this must not have
+    // its screen changed out from under it mid-function.
+    if (!tok) { setTimeout(function () { onStale('no_token'); }, 0); return; }
     RPC('auth_session', { p_token: tok }, function (e, d) {
       // A network failure is not a stale session — leave the portal alone and let the
       // ordinary retry paths deal with it.
@@ -13750,6 +13758,7 @@ window.gasGet = (function () {
   window.IGISetAuthToken = setAuthToken;
   window.IGIGetAuthToken = authToken;
   window.IGIRequireSession = requireSession;
+  window.IGIHasSession     = hasSession;
 
   /* The one-off notice a portal shows when it sends someone back to the login screen
      because their stored session predates the session token. Worded so it reads as

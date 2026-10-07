@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=144"></script>
+<script src="assets/shared.js?v=145"></script>
 <script src="assets/work.js?v=4"></script>
 <script src="assets/push-subscribe.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -4690,12 +4690,12 @@ document.addEventListener('DOMContentLoaded', function() {
       // Hand the token back to shared.js before anything runs, or every privileged call
       // after a refresh would look like an expired session.
       if (window.IGISetAuthToken) IGISetAuthToken(adminUser.authToken || null);
-      showMainScreen();
-      // A session stored before the token existed restores looking fine but can read
-      // nothing that is access-controlled — revenue, fees, targets all come back empty
-      // rather than erroring, which reads as "no data". Check it and send them back to
-      // sign in once rather than showing a dashboard of zeros. 2026-10-07.
-      if (window.IGIRequireSession) IGIRequireSession(function () {
+      /* A session stored before the token existed restores looking fine but can read
+         nothing access-controlled — revenue, fees and targets all come back empty rather
+         than erroring, which reads as "no data" rather than as a problem. Bail BEFORE
+         showing the dashboard; the async check then covers a token that has since
+         expired or been revoked. 2026-10-07. */
+      var staleAdminRelogin = function () {
         if (window.IGIIdle) window.IGIIdle.stop();
         try { localStorage.removeItem('igi_admin_session'); } catch(e) {}
         if (window.IGISetAuthToken) IGISetAuthToken(null);
@@ -4703,7 +4703,15 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('s-main').classList.remove('active');
         document.getElementById('s-login').classList.add('active');
         if (window.IGIStaleSessionNotice) IGIStaleSessionNotice('lg-err');
-      });
+      };
+      // Not `return` — that would skip the Enter-key handler registered below, for
+      // exactly the people being sent back to the login screen.
+      if (window.IGIHasSession && !IGIHasSession()) {
+        staleAdminRelogin();
+      } else {
+        showMainScreen();
+        if (window.IGIRequireSession) IGIRequireSession(staleAdminRelogin);
+      }
     }
   } catch(e) {}
   

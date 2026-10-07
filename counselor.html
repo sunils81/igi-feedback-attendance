@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=144"></script>
+<script src="/assets/shared.js?v=145"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -5467,10 +5467,13 @@ function initCounselorPortal() {
         // Hand the token back to shared.js: without it, changing your own password and
         // any admin action would report an expired session on every refresh.
         if (window.IGISetAuthToken) IGISetAuthToken(sess.authToken || null);
-        // A session stored before the token existed restores looking perfectly fine but
-        // can read nothing that is access-controlled — which showed up as a revenue
-        // dashboard full of zeros rather than as an error. Check it, and send them back
-        // to sign in once rather than showing numbers that are wrong. 2026-10-07.
+        /* A session stored before the token existed restores looking perfectly fine but
+           can read nothing access-controlled — which surfaced as a revenue dashboard
+           full of zeros rather than as an error. Bail out BEFORE restoring anything:
+           continuing and correcting afterwards just puts the dashboard back on top of
+           the login screen. The async check below then covers a token that has since
+           expired or been revoked. 2026-10-07. */
+        if (window.IGIHasSession && !IGIHasSession()) { staleSessionRelogin(); return; }
         if (window.IGIRequireSession) IGIRequireSession(function () { staleSessionRelogin(); });
         document.getElementById('counselor-name-badge').textContent    = counselorName;
         document.getElementById('counselor-name-badge').style.display  = 'inline-block';

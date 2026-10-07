@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Instructor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=143"></script>
+<script src="/assets/shared.js?v=144"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -3071,6 +3071,16 @@ function tryRestoreSession() {
     // Before anything else: without the token, every privileged call after a refresh
     // would report an expired session.
     if (window.IGISetAuthToken) IGISetAuthToken(s.authToken || null);
+    // And a session stored before the token existed restores looking fine while being
+    // unable to read anything access-controlled. Check it rather than assume. 2026-10-07.
+    if (window.IGIRequireSession) IGIRequireSession(function () {
+      if (window.IGIIdle) window.IGIIdle.stop();
+      clearSession();
+      if (window.IGISetAuthToken) IGISetAuthToken(null);
+      instructorName = '';
+      showScreen('s-login');
+      if (window.IGIStaleSessionNotice) IGIStaleSessionNotice('lg-err');
+    });
     instructorName           = s.instructorName;
     instructorAuthRole       = s.instructorAuthRole || 'Instructor';
     instructorMustChangePassword = !!s.instructorMustChangePassword;

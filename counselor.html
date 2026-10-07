@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=143"></script>
+<script src="/assets/shared.js?v=144"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -5467,6 +5467,11 @@ function initCounselorPortal() {
         // Hand the token back to shared.js: without it, changing your own password and
         // any admin action would report an expired session on every refresh.
         if (window.IGISetAuthToken) IGISetAuthToken(sess.authToken || null);
+        // A session stored before the token existed restores looking perfectly fine but
+        // can read nothing that is access-controlled — which showed up as a revenue
+        // dashboard full of zeros rather than as an error. Check it, and send them back
+        // to sign in once rather than showing numbers that are wrong. 2026-10-07.
+        if (window.IGIRequireSession) IGIRequireSession(function () { staleSessionRelogin(); });
         document.getElementById('counselor-name-badge').textContent    = counselorName;
         document.getElementById('counselor-name-badge').style.display  = 'inline-block';
         document.getElementById('logout-btn').style.display = 'inline-block';
@@ -6118,6 +6123,24 @@ function applyPasswordChangeState() {
     ? 'Please replace the default PIN before continuing.'
     : 'Use a password that is not based on your name, centre, or the old default PIN.';
   document.querySelector('.tab-bar').style.display = counselorMustChangePassword ? 'none' : 'flex';
+}
+
+/* A restored session the server will not honour. Clears it and returns to the login
+   screen with an explanation, rather than leaving someone on a dashboard showing zeros
+   where their real numbers should be. No confirm() — they did not choose this. */
+function staleSessionRelogin() {
+  if (window.IGIIdle) window.IGIIdle.stop();
+  try { localStorage.removeItem('igi_counselor_session'); } catch(e) {}
+  if (window.IGISetAuthToken) IGISetAuthToken(null);
+  counselorName = ''; counselorAuthRole = ''; counselorMustChangePassword = false;
+  allowedCentres = []; isAdmin = false; isManager = false;
+  allBatches = []; myBatches = [];
+  try {
+    document.getElementById('counselor-name-badge').style.display = 'none';
+    document.getElementById('logout-btn').style.display = 'none';
+  } catch(e) {}
+  showScreen('s-login');
+  if (window.IGIStaleSessionNotice) IGIStaleSessionNotice('lg-err');
 }
 
 function doLogout() {

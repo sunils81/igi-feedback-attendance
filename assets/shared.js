@@ -398,6 +398,30 @@ window.gasGet = (function () {
   function setAuthToken(t) { _authToken = t || null; }
   function authToken()     { return _authToken; }
 
+  /* Checks that a restored session can still actually do anything, and calls onStale()
+     if it cannot.
+
+     2026-10-07, after a live bug. Closing the revenue tables assumed every signed-in
+     browser carries a session token. Sessions saved in localStorage BEFORE the token
+     existed restore perfectly happily — the name, the role and the tabs all come back —
+     but send no header, so every protected read returns zero rows. Anuradha saw her
+     revenue dashboard with a target of "Not set" and ₹0 achieved, against 35 months of
+     real data. Nothing errored: an empty result from a closed table is indistinguishable
+     from an empty table, which is exactly what made it dangerous.
+
+     So a portal must never assume a restored session is usable. This asks the server,
+     and a stale one goes back to the login screen rather than quietly showing zeros. */
+  function requireSession(onStale) {
+    var tok = authToken();
+    if (!tok) { onStale('no_token'); return; }
+    RPC('auth_session', { p_token: tok }, function (e, d) {
+      // A network failure is not a stale session — leave the portal alone and let the
+      // ordinary retry paths deal with it.
+      if (e) return;
+      if (!d || d.status !== 'ok') onStale(d && d.reason === 'no_session' ? 'expired' : 'invalid');
+    });
+  }
+
   /* An admin-only RPC: the token goes along automatically, and the database decides
      whether this caller may do the thing. The browser asserting "I am an admin" counts
      for nothing now, which is the point. */
@@ -13725,6 +13749,19 @@ window.gasGet = (function () {
      session. Exposed here because the portals are separate files. */
   window.IGISetAuthToken = setAuthToken;
   window.IGIGetAuthToken = authToken;
+  window.IGIRequireSession = requireSession;
+
+  /* The one-off notice a portal shows when it sends someone back to the login screen
+     because their stored session predates the session token. Worded so it reads as
+     routine rather than as something they did wrong, because it is our doing. */
+  window.IGIStaleSessionNotice = function (elId) {
+    var el = elId && document.getElementById(elId);
+    var msg = 'Please sign in once more — the portal was updated and your saved session ' +
+              'needs refreshing. This is a one-time step.';
+    if (el) { el.textContent = msg; el.classList.add('show'); el.style.display = ''; }
+    else if (window.showToast) showToast(msg);
+    return msg;
+  };
 
   /* ══════════════════════════════════════════════════════════════
      MAIN DISPATCHER — replaces gasGet() transparently

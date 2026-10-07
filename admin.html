@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=145"></script>
+<script src="assets/shared.js?v=146"></script>
 <script src="assets/work.js?v=4"></script>
 <script src="assets/push-subscribe.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -2802,6 +2802,58 @@
       #t-arp-admin .arp-b:hover{border-color:var(--gold);color:var(--navy);background:var(--gold-pale)}
       #t-arp-admin .arp-b.primary{background:var(--navy);border-color:var(--navy);color:#fff}
       #t-arp-admin .arp-b.primary:hover{background:#17304f;color:#fff}
+
+      /* Overview pane. Same language as the rest: the figures sit in cards with a gold
+         rule, the band meanings are spelled out, and the lift tile carries its own
+         footnote so a near-zero cannot be mistaken for missing data. */
+      #t-arp-admin .arp-ov-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(152px,1fr));
+        gap:12px;margin-bottom:22px}
+      #t-arp-admin .arp-ov-stat{background:var(--white);border:1px solid var(--border);
+        border-top:2px solid var(--gold);border-radius:10px;padding:13px 15px}
+      #t-arp-admin .arp-ov-stat span{display:block;font-size:9.5px;font-weight:700;letter-spacing:.1em;
+        text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+      #t-arp-admin .arp-ov-stat b{display:block;font-size:23px;font-weight:700;color:var(--navy);
+        line-height:1.1;font-variant-numeric:tabular-nums}
+      #t-arp-admin .arp-ov-stat em{display:block;font-style:normal;font-size:10.5px;color:var(--muted);
+        margin-top:5px;line-height:1.4}
+
+      #t-arp-admin .arp-ov-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(282px,1fr));gap:18px}
+      #t-arp-admin .arp-ov-block{background:var(--white);border:1px solid var(--border);
+        border-radius:12px;padding:18px}
+      #t-arp-admin .arp-ov-block h3{font-family:"Playfair Display",serif;font-size:15px;font-weight:700;
+        color:var(--navy);margin:0 0 14px;padding-bottom:9px;border-bottom:1px solid var(--border)}
+
+      #t-arp-admin .arp-band{margin-bottom:13px}
+      #t-arp-admin .arp-band:last-child{margin-bottom:0}
+      #t-arp-admin .arp-band-top{display:flex;justify-content:space-between;align-items:baseline;
+        gap:10px;font-size:12.5px;margin-bottom:5px}
+      #t-arp-admin .arp-band-top b{color:var(--navy);font-weight:600}
+      #t-arp-admin .arp-band-top em{font-style:normal;color:var(--muted);font-size:11px}
+      #t-arp-admin .arp-band-n{font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;
+        white-space:nowrap}
+      #t-arp-admin .arp-band-n small{color:var(--muted);font-weight:600}
+      #t-arp-admin .arp-band-track{height:7px;background:#EDE8DC;border-radius:7px;overflow:hidden}
+      #t-arp-admin .arp-band-track i{display:block;height:100%;border-radius:7px}
+
+      #t-arp-admin .arp-ov-row{display:flex;justify-content:space-between;align-items:baseline;
+        padding:9px 0;border-bottom:1px solid rgba(13,27,46,.06);font-size:13px}
+      #t-arp-admin .arp-ov-row:last-child{border-bottom:none}
+      #t-arp-admin .arp-ov-row .cap{text-transform:capitalize;color:var(--navy);font-weight:600}
+      #t-arp-admin .arp-ov-pct{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+      #t-arp-admin .arp-ov-pct small{color:var(--muted);font-weight:500;font-size:11px}
+      #t-arp-admin .arp-ov-pct.good{color:#11674B}
+      #t-arp-admin .arp-ov-pct.mid{color:#8a5a09}
+      #t-arp-admin .arp-ov-pct.weak{color:#8E1B1B}
+
+      #t-arp-admin table.arp-ov-t{width:100%;border-collapse:collapse;font-size:13px}
+      #t-arp-admin table.arp-ov-t th{font-size:9.5px;font-weight:700;letter-spacing:.08em;
+        text-transform:uppercase;color:var(--muted);text-align:left;padding:0 8px 8px 0;
+        border-bottom:1px solid var(--border)}
+      #t-arp-admin table.arp-ov-t th.n,#t-arp-admin table.arp-ov-t td.n{text-align:right;
+        font-variant-numeric:tabular-nums}
+      #t-arp-admin table.arp-ov-t td{padding:9px 8px 9px 0;border-bottom:1px solid rgba(13,27,46,.06);
+        color:var(--navy)}
+      #t-arp-admin table.arp-ov-t tbody tr:last-child td{border-bottom:none}
 
       #t-arp-admin .arp-empty{text-align:center;padding:48px 20px;color:var(--muted)}
       #t-arp-admin .arp-empty .mark{font-size:30px;opacity:.3;margin-bottom:10px}
@@ -5970,51 +6022,66 @@ function arpLoadOverview() {
     .then(function (d) {
       if (!d || d.status !== 'ok') throw new Error((d && d.reason) || 'no data');
       var t = d.totals || {};
-      var card = function (label, val) {
-        return '<div style="background:var(--off);border-radius:9px;padding:12px 14px">' +
-          '<div style="font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)">' + label + '</div>' +
-          '<div style="font-size:21px;font-weight:700">' + (val == null ? '—' : val) + '</div></div>';
+      var card = function (label, val, note) {
+        return '<div class="arp-ov-stat"><span>' + label + '</span>' +
+          '<b>' + (val == null ? '—' : val) + '</b>' +
+          (note ? '<em>' + note + '</em>' : '') + '</div>';
       };
-      var bandRow = function (name, colour) {
+      var bandRow = function (name, colour, meaning) {
         var n = (d.bands || {})[name] || 0;
         var pct = t.assessed ? Math.round(n * 100 / t.assessed) : 0;
-        return '<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;font-size:12.5px">' +
-          '<span>' + name + '</span><span><b>' + n + '</b> <small style="color:var(--muted)">' + pct + '%</small></span></div>' +
-          '<div style="height:7px;background:#E6DFCF;border-radius:7px;overflow:hidden">' +
-          '<i style="display:block;height:100%;width:' + pct + '%;background:' + colour + '"></i></div></div>';
+        return '<div class="arp-band"><div class="arp-band-top">' +
+          '<span><b>' + name + '</b> <em>' + meaning + '</em></span>' +
+          '<span class="arp-band-n">' + n + ' <small>' + pct + '%</small></span></div>' +
+          '<div class="arp-band-track"><i style="width:' + pct + '%;background:' + colour + '"></i></div></div>';
       };
-      var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px">' +
+
+      /* The lift tile used to round +0.44 to "0%", which reads as "nothing was measured"
+         rather than "measured, and it did not move". Show the exact figure, and the
+         three-way split underneath, so a near-zero is legible as a real result. */
+      var liftVal = '—', liftNote = '';
+      if (t.avgLiftExact != null) {
+        liftVal = (t.avgLiftExact > 0 ? '+' : '') + t.avgLiftExact + ' pts';
+        liftNote = (t.liftPreAvg != null ? t.liftPreAvg + '% → ' + t.liftPostAvg + '% · ' : '') +
+                   t.liftImproved + ' up / ' + t.liftDeclined + ' down';
+      }
+
+      var html = '<div class="arp-ov-stats">' +
         card('Assessed', t.assessed) + card('Clients', t.clients) + card('Centres', t.centres) +
-        card('Avg readiness', t.avgReadiness) + card('Avg 4Cs', t.avgFcsPct == null ? null : t.avgFcsPct + '%') +
-        card('Post-tested', t.postTested) +
-        card('Avg lift', t.avgLift == null ? null : (t.avgLift > 0 ? '+' : '') + t.avgLift + '%') +
+        card('Avg readiness', t.avgReadiness) +
+        card('Avg 4Cs', t.avgFcsPct == null ? null : t.avgFcsPct + '%') +
+        card('Post-tested', t.postTested, t.liftPairs != null ? t.liftPairs + ' matched pairs' : '') +
+        card('Knowledge lift', liftVal, liftNote) +
         '</div>';
 
-      html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px">';
-      html += '<div><h3 style="font-size:14px;margin-bottom:10px">Readiness bands</h3>' +
-        bandRow('Outstanding', '#C9A84C') + bandRow('Proficient', '#1D9E75') +
-        bandRow('Developing', '#378ADD') + bandRow('Foundation', '#C9613A') + '</div>';
+      html += '<div class="arp-ov-grid">';
+      html += '<section class="arp-ov-block"><h3>Readiness bands</h3>' +
+        bandRow('Outstanding', '#C9A84C', 'ready to lead a sale') +
+        bandRow('Proficient', '#1D9E75', 'sells confidently') +
+        bandRow('Developing', '#378ADD', 'needs support') +
+        bandRow('Foundation', '#C9613A', 'needs the basics') + '</section>';
 
       var tagRows = (d.tagHeatmap || []).map(function (x) {
-        var c = x.pct >= 75 ? '#166534' : x.pct >= 50 ? '#92400e' : '#991b1b';
-        return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">' +
-          '<span style="text-transform:capitalize">' + escC(x.tag) + '</span>' +
-          '<span style="color:' + c + ';font-weight:700">' + (x.pct == null ? '—' : x.pct + '%') +
-          ' <small style="color:var(--muted);font-weight:400">' + x.correct + '/' + x.total + '</small></span></div>';
+        var cls = x.pct >= 75 ? 'good' : x.pct >= 50 ? 'mid' : 'weak';
+        return '<div class="arp-ov-row"><span class="cap">' + escC(x.tag) + '</span>' +
+          '<span class="arp-ov-pct ' + cls + '">' + (x.pct == null ? '—' : x.pct + '%') +
+          ' <small>' + x.correct + '/' + x.total + '</small></span></div>';
       }).join('');
-      html += '<div><h3 style="font-size:14px;margin-bottom:10px">Weakest knowledge areas</h3>' +
-        (tagRows || '<p class="sub">No data yet.</p>') + '</div>';
+      html += '<section class="arp-ov-block"><h3>Weakest knowledge areas</h3>' +
+        (tagRows || '<p class="sub">No data yet.</p>') + '</section>';
 
       var clientRows = (d.byClient || []).map(function (c) {
-        return '<tr><td>' + escC(c.client) + '</td><td class="text-center">' + c.assessed + '</td>' +
-          '<td class="text-center"><b>' + (c.avgReadiness == null ? '—' : c.avgReadiness) + '</b></td>' +
-          '<td class="text-center">' + (c.avgFcsPct == null ? '—' : c.avgFcsPct + '%') + '</td></tr>';
+        return '<tr><td><b>' + escC(c.client) + '</b></td>' +
+          '<td class="n">' + c.assessed + '</td>' +
+          '<td class="n"><b>' + (c.avgReadiness == null ? '—' : c.avgReadiness) + '</b></td>' +
+          '<td class="n">' + (c.avgFcsPct == null ? '—' : c.avgFcsPct + '%') + '</td></tr>';
       }).join('');
-      html += '<div><h3 style="font-size:14px;margin-bottom:10px">By client</h3>' +
+      html += '<section class="arp-ov-block"><h3>By client</h3>' +
         (clientRows
-          ? '<table style="width:100%;font-size:13px"><thead><tr><th style="text-align:left">Client</th>' +
-            '<th>Assessed</th><th>Readiness</th><th>4Cs</th></tr></thead><tbody>' + clientRows + '</tbody></table>'
-          : '<p class="sub">No data yet.</p>') + '</div>';
+          ? '<table class="arp-ov-t"><thead><tr><th>Client</th>' +
+            '<th class="n">Assessed</th><th class="n">Readiness</th><th class="n">4Cs</th>' +
+            '</tr></thead><tbody>' + clientRows + '</tbody></table>'
+          : '<p class="sub">No data yet.</p>') + '</section>';
       html += '</div>';
 
       document.getElementById('arp-overview').innerHTML = html;

@@ -4782,11 +4782,38 @@ window.gasGet = (function () {
             };
             POST('revenue_monthly_achieved',
               'on_conflict=month,period,counsellor,business_centre,business_type',
-              [revRow], function() {}); // fire-and-forget
+              [revRow], revSyncReport('syncStudentRevenue', revRow));
           });
         });
       });
     });
+  }
+
+  /* ──────────────────────────────────────────────────────────────────────────
+     Both revenue re-syncs below used to pass `function(){}` — fire-and-forget.
+     That is how a counsellor's revenue came to revert to zero twice without a
+     single error anywhere: when RLS refused the write (the monthly rollup was
+     behind an Admin-only predicate, so every counsellor write was rejected) the
+     callback threw the error away, the UI kept showing the typed number until
+     the next render, and then the stored value — zero — came back.
+
+     These stay non-blocking: a failed rollup must never fail the save that
+     triggered it, because the underlying fee record is already written and
+     correct. But it is no longer silent. A refused write now says so in the
+     console with the exact key that failed, which is the difference between
+     "counsellors say revenue won't save" and a one-line diagnosis.
+     ────────────────────────────────────────────────────────────────────────── */
+  function revSyncReport(where, revRow) {
+    return function (err) {
+      if (!err) return;
+      try {
+        console.error('[revenue] ' + where + ' could not write the monthly rollup for ' +
+          [revRow.counsellor, revRow.business_centre, revRow.business_type, revRow.month].join(' / ') +
+          ' — the figure on screen will not match what is stored. ' +
+          'Most likely cause: the row-level security policy on revenue_monthly_achieved ' +
+          'is refusing this session. Underlying record saved; only the rollup failed.', err);
+      } catch (x) {}
+    };
   }
 
   /* syncCorporateRevenue — same purpose as syncStudentRevenue just above, but for the new
@@ -4826,7 +4853,7 @@ window.gasGet = (function () {
       };
       POST('revenue_monthly_achieved',
         'on_conflict=month,period,counsellor,business_centre,business_type',
-        [revRow], function() {}); // fire-and-forget
+        [revRow], revSyncReport('syncCorporateRevenue', revRow));
     });
   }
 

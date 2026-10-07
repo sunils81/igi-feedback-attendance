@@ -7,6 +7,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="assets/shared.js?v=147"></script>
 <script src="assets/work.js?v=4"></script>
+<!-- Corporate/RTT client report. Shared with counselor.html so the document a client
+     receives is byte-identical whichever portal issued it. -->
+<script src="assets/corp-report.js?v=1"></script>
 <script src="assets/push-subscribe.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
@@ -1587,6 +1590,7 @@
       <button class="tab" id="tab-crm-admin" onclick="switchAdminTab('t-crm-admin')">🎯 CRM Analytics</button>
       <button class="tab" id="tab-companion-admin" onclick="switchAdminTab('t-companion-admin')">🧭 Prospects Companion <span id="cmp-admin-conflict-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
       <button class="tab" onclick="switchAdminTab('t-history')">🗓️ Historical Intelligence</button>
+      <button class="tab" id="tab-corp-reports" onclick="switchAdminTab('t-corp-reports')">🏢 Batch Reports</button>
       <button class="tab" onclick="switchAdminTab('t-reports')">📋 Master Export</button>
       <button class="tab" id="tab-password-reset" onclick="switchAdminTab('t-password-reset')">🔐 Password Reset</button>
       <button class="tab" id="tab-settings" onclick="switchAdminTab('t-settings')">⚙️ Settings</button>
@@ -3506,6 +3510,14 @@
     </div>
 
     <!-- TAB 6: MASTER EXPORT -->
+    <!-- ══ CORPORATE / RTT BATCH REPORTS ══
+         Built by assets/corp-report.js, shared with counselor.html: a client's copy
+         is the same document whichever portal issued it. Admins see every centre's
+         batches, which is the whole reason this tab exists here. -->
+    <div id="t-corp-reports" class="tab-content">
+      <div id="corp-report-mount"></div>
+    </div>
+
     <div id="t-reports" class="tab-content">
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:12px">
@@ -5529,6 +5541,7 @@ var A_MORE_ITEMS = [
   ['t-trayhub-admin',     '🔮', 'Tray Hub',               null],
   ['t-inventory',         '📦', 'Inventory',              null],
   ['t-history',           '🗓️', 'Historical Intelligence', null],
+  ['t-corp-reports',      '🏢', 'Batch Reports',          null],
   ['t-reports',           '📋', 'Master Export',          null],
   ['t-password-reset',    '🔐', 'Password Reset',         null],
   ['t-settings',          '⚙️', 'Settings',               null]
@@ -5623,6 +5636,19 @@ function switchAdminTab(tabId) {
   }
   if (tabId === 't-activity') {
     loadActivityFeed();
+    return;
+  }
+  // Corporate/RTT client reports. isAdmin:true here on purpose — this portal is the
+  // all-centre view, and an HOD producing a client's copy for a batch another
+  // counsellor booked is exactly the gap this tab closes.
+  if (tabId === 't-corp-reports') {
+    if (window.IGICorpReport) {
+      IGICorpReport.mount('corp-report-mount', {
+        me: (adminUser && adminUser.name) || '',
+        isAdmin: true,
+        issuedBy: 'IGI School of Gemology'
+      });
+    }
     return;
   }
   if (tabId === 't-billing') {

@@ -7,6 +7,9 @@
 <script src="/assets/shared.js?v=147"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
+<!-- Corporate/RTT client report. Shared with admin.html so the document a client
+     receives is byte-identical whichever portal issued it. -->
+<script src="/assets/corp-report.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style id="dyn-css"></style>
@@ -1840,6 +1843,7 @@
     <button class="tab" id="tab-glossary" onclick="switchTab('t-glossary')">📖 Glossary</button>
     <button class="tab" id="tab-mybatches" onclick="switchTab('t-mybatches')">🗂 My Batches</button>
     <button class="tab" id="tab-reports" onclick="switchTab('t-reports')">📊 Reports</button>
+    <button class="tab" id="tab-corp-reports" onclick="switchTab('t-corp-reports')">🏢 Batch Reports</button>
     <button class="tab" id="tab-holidays" onclick="switchTab('t-holidays')">🗓 Holidays</button>
     <button class="tab" id="tab-diplomas" onclick="switchTab('t-diplomas')" style="display:none">🎓 Diploma Release</button>
     <button class="tab" id="tab-inventory" onclick="switchTab('t-inventory')">📦 Inventory <span id="inv-pending-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
@@ -3867,6 +3871,15 @@
   </div>
 
   <!-- TAB 5: REPORTS -->
+  <!-- ══ CORPORATE / RTT BATCH REPORTS ══
+       The client's training report used to be three clicks deep inside the Ledger's
+       roster drawer, and admins had no route to it at all. This tab is its own front
+       door; the document itself is built by assets/corp-report.js, shared with
+       admin.html so neither portal can drift from the other. -->
+  <div id="t-corp-reports" class="tab-content">
+    <div id="corp-report-mount"></div>
+  </div>
+
   <div id="t-reports" class="tab-content">
     <div class="card" id="hod-batch-oversight-card" style="display:none">
       <div class="section-tag">Oversight</div>
@@ -6320,6 +6333,17 @@ function switchTab(id) {
   }
   if (id === 't-reports') {
     loadHodBatchOversight();
+  }
+  // Corporate/RTT client reports. Same visibility rule as the Ledger's corporate list:
+  // a counsellor sees their own batches, anyone with all-India MIS or admin sees all.
+  if (id === 't-corp-reports') {
+    if (window.IGICorpReport) {
+      IGICorpReport.mount('corp-report-mount', {
+        me: counselorName,
+        isAdmin: canSeeAllFeeRecords(),
+        issuedBy: 'IGI School of Gemology'
+      });
+    }
   }
   if (id === 't-fee-record') {
     loadFeeRecordTab();
@@ -10607,114 +10631,18 @@ function corpDeleteRow(id, force) {
    ══════════════════════════════════════════════════════════════ */
 function corpClientReport() {
   if (!_corpRoster) return;
-  var b = _corpRoster.batch, ps = _corpRoster.participants || [], c = _corpRoster.counts || {};
-  var tested = b.assessmentMode === 'tested';
-  var prog = b.programmeType || (tested ? 'Corporate' : 'RTT');
-  if (!ps.length) { showToast('No participants on the roster yet.', 'error'); return; }
-
-  var today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-  var e = function (v) { return escC(v == null ? '' : String(v)); };
-
-  /* The client's copy is dated from the training dates typed in on the batch form, never
-     from revenueMonth: that is the month the fee was booked, and a programme running
-     29 Sep to 2 Oct would be headed "2026-09" on a report about four days of training.
-     A batch saved before the dates existed shows "Not recorded" rather than a wrong month. */
-  var trainingDates = corpDateRangeLabel(b.trainingStart, b.trainingEnd);
-
-  /* The client gets attendance and performance against their own people, and nothing
-     else: designation, city, mobile and email are IGI's record of the roster, not part
-     of what was asked for. Branch stays because it is how the client tells one of their
-     outlets from another. */
-  var days = Number(b.trainingDays) || 1;
-  var attCell = function (p) {
-    if (p.daysAttended == null) return '<span style="color:#6b7280">Not marked</span>';
-    var d = Number(p.daysAttended), pct = Math.round((d / days) * 100);
-    var col = pct >= 75 ? '#166534' : pct > 0 ? '#92400e' : '#991b1b';
-    return '<span style="color:' + col + ';font-weight:700">' + d + ' of ' + days + '</span>' +
-           '<span style="color:#6b7280"> \u00b7 ' + pct + '%</span>';
-  };
-
-  var rows = ps.map(function (p, i) {
-    var cells = '<td style="text-align:center">' + (i + 1) + '</td>' +
-      '<td style="font-family:monospace;font-size:10.5px">' + e(p.participantId) + '</td>' +
-      '<td><b>' + e(p.name) + '</b></td>' +
-      '<td>' + e(p.branch || '—') + '</td>' +
-      '<td style="text-align:center">' + attCell(p) + '</td>';
-    if (tested) {
-      cells += '<td style="text-align:center"><b>' + (p.avg == null ? '—' : p.avg + '%') + '</b></td>' +
-               '<td style="text-align:center;font-weight:700;color:' +
-                 (p.pending ? '#6b7280' : (p.passed ? '#166534' : '#991b1b')) + '">' +
-                 (p.pending ? 'Pending' : (p.passed ? 'Qualified' : 'Not qualified')) + '</td>';
-    }
-    return '<tr>' + cells + '</tr>';
-  }).join('');
-
-  var headCells = '<th style="width:34px">#</th><th>Participant ID</th><th>Name</th><th>Branch</th>' +
-    '<th style="text-align:center">Attendance</th>' +
-    (tested ? '<th style="text-align:center">Average score</th><th style="text-align:center">Result</th>' : '');
-
-  var marked = ps.filter(function (p) { return p.daysAttended != null; });
-  var attendedSum = marked.reduce(function (t, p) { return t + Number(p.daysAttended); }, 0);
-  var avgAtt = marked.length ? Math.round((attendedSum / (marked.length * days)) * 100) : null;
-  var fullAtt = marked.filter(function (p) { return Number(p.daysAttended) >= days; }).length;
-
-  var summary = '<div class="sum"><div><span>Participants</span><b>' + ps.length + '</b></div>' +
-    '<div><span>Programme length</span><b>' + days + ' day' + (days === 1 ? '' : 's') + '</b></div>' +
-    '<div><span>Average attendance</span><b>' + (avgAtt == null ? 'Not marked' : avgAtt + '%') + '</b></div>' +
-    '<div><span>Attended in full</span><b>' + (marked.length ? fullAtt + ' of ' + ps.length : '—') + '</b></div>';
-  if (tested) {
-    summary += '<div><span>Qualified (avg \u2265 ' + (b.passPct || 60) + '%)</span><b>' + (c.eligible || 0) + '</b></div>';
+  /* The report itself now lives in assets/corp-report.js, shared with admin.html.
+     This stayed as the roster drawer's entry point so the existing button keeps
+     working, but it no longer owns a second copy of the layout: the client gets
+     the same document whether it was launched from here or from the Batch
+     Reports tab. The roster already in hand is passed straight through rather
+     than re-fetched. */
+  if (!(_corpRoster.participants || []).length) {
+    showToast('No participants on the roster yet.', 'error');
+    return;
   }
-  summary += '</div>';
-
-  var html = '<!doctype html><html><head><meta charset="utf-8">' +
-    '<title>' + e(b.batchCode || 'Training Report') + ' — ' + e(b.companyName) + '</title>' +
-    '<style>' +
-    '@page{size:A4;margin:14mm}' +
-    'body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#0D1B2E;margin:0;font-size:12px}' +
-    '.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #C9A84C;padding-bottom:12px;margin-bottom:16px}' +
-    '.hdr h1{font-size:19px;margin:0 0 3px}.hdr .sub{font-size:11.5px;color:#6b7280}' +
-    '.hdr .org{text-align:right;font-size:11px;color:#6b7280;line-height:1.6}' +
-    '.hdr .org b{display:block;font-size:14px;color:#0D1B2E;letter-spacing:.04em}' +
-    '.meta{display:grid;grid-template-columns:repeat(2,1fr);gap:5px 26px;margin-bottom:14px}' +
-    '.meta div{display:flex;justify-content:space-between;border-bottom:1px dotted #d1d5db;padding:4px 0}' +
-    '.meta span{color:#6b7280}.meta b{text-align:right}' +
-    '.sum{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}' +
-    '.sum div{flex:1;min-width:120px;background:#F9F3E3;border:1px solid #e8d9a8;border-radius:8px;padding:9px 12px}' +
-    '.sum span{display:block;font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em}' +
-    '.sum b{font-size:16px}' +
-    'table{width:100%;border-collapse:collapse;font-size:11px}' +
-    'th{background:#0D1B2E;color:#fff;text-align:left;padding:7px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.04em}' +
-    'td{padding:6px 8px;border-bottom:1px solid #e5e7eb}' +
-    'tr:nth-child(even) td{background:#fafafa}' +
-    'thead{display:table-header-group}tr{break-inside:avoid}' +
-    '.foot{margin-top:18px;padding-top:10px;border-top:1px solid #e5e7eb;font-size:10px;color:#6b7280;display:flex;justify-content:space-between}' +
-    '@media print{.noprint{display:none}}' +
-    '.noprint{margin-bottom:14px}' +
-    '.noprint button{background:#0D1B2E;color:#C9A84C;border:none;border-radius:7px;padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer}' +
-    '</style></head><body>' +
-    '<div class="noprint"><button onclick="window.print()">Print / Save as PDF</button></div>' +
-    '<div class="hdr"><div><h1>Attendance &amp; Performance Report</h1>' +
-      '<div class="sub">' + e(b.companyName) + '</div></div>' +
-      '<div class="org"><b>IGI</b>International Gemological Institute<br>School of Gemology, India</div></div>' +
-    '<div class="meta">' +
-      '<div><span>Programme</span><b>' + e(prog === 'RTT' ? 'Retail Technical Training (RTT)' : 'Corporate Training Programme') + '</b></div>' +
-      '<div><span>Batch reference</span><b>' + e(b.batchCode || '—') + '</b></div>' +
-      '<div><span>Training centre</span><b>' + e(b.centre || '—') + '</b></div>' +
-      '<div><span>Location</span><b>' + e(b.locationClient || b.centre || '—') + '</b></div>' +
-      '<div><span>Training dates</span><b>' + e(trainingDates || 'Not recorded') + '</b></div>' +
-      '<div><span>Report date</span><b>' + e(today) + '</b></div>' +
-    '</div>' + summary +
-    (tested ? '' : '<div style="font-size:11px;color:#6b7280;margin-bottom:8px">No assessment is conducted on this programme, so the record is attendance only.</div>') +
-    '<table><thead><tr>' + headCells + '</tr></thead><tbody>' + rows + '</tbody></table>' +
-    '<div class="foot"><span>' + e(b.batchCode || '') + ' · ' + ps.length + ' participant' + (ps.length === 1 ? '' : 's') + '</span>' +
-      '<span>Issued by IGI School of Gemology on ' + e(today) + '</span></div>' +
-    '</body></html>';
-
-  var w = window.open('', '_blank');
-  if (!w) { showToast('Allow pop-ups to open the report.', 'error'); return; }
-  w.document.write(html);
-  w.document.close();
+  if (!window.IGICorpReport) { showToast('Report module did not load. Refresh the page.', 'error'); return; }
+  IGICorpReport.openFromRoster(_corpRoster, { issuedBy: 'IGI School of Gemology' });
 }
 
 function corpDownloadRoster() {

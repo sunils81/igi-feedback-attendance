@@ -8,7 +8,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Student Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=146"></script>
+<script src="/assets/shared.js?v=147"></script>
 <script src="/assets/push-subscribe.js"></script>
 <style id="dyn-css"></style>
 <style>
@@ -3138,20 +3138,24 @@ function renderStudentMarks(assessments) {
   let totalPct = 0;
   let gradedCount = 0;
   let passCount = 0;
-  
+  let decidedCount = 0;   // tests that actually have a Pass / Fail / DNA against them
+
   assessments.forEach(ass => {
     const pct = parseFloat(ass.percentage);
     if (!isNaN(pct)) {
       totalPct += pct;
       gradedCount++;
     }
-    if (String(ass.result || '').toLowerCase() === 'pass') {
-      passCount++;
-    }
+    const res = String(ass.result || '').toLowerCase();
+    if (res === 'pass' || res === 'fail' || res === 'dna') decidedCount++;
+    if (res === 'pass') passCount++;
   });
 
   const avgPct = gradedCount > 0 ? Math.round(totalPct / gradedCount) : 0;
-  const passRate = `${passCount} / ${assessments.length}`;
+  /* Out of the tests that have been decided, not out of every test on the batch. A
+     student with one marked test and three still to come was being shown "1 / 4", which
+     reads like three failures rather than three not yet marked. 2026-10-07. */
+  const passRate = `${passCount} / ${decidedCount || assessments.length}`;
 
   let html = `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;padding:0 2px">Report Card</div>`;
 

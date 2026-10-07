@@ -1004,15 +1004,51 @@ window.gasGet = (function () {
       var key = tr.test_id + '|' + tr.student_id;
       if (!(key in pctByKey)) return;
       if (!marksByStudent[tr.student_id]) marksByStudent[tr.student_id] = {};
-      // Derive Pass/Fail from the score so the student/instructor/counselor UIs don't show
-      // "Pending" for tests that have actually been released and graded — remarks was
-      // previously always '', which every consumer's fallback rendered as "Pending".
-      var passThreshold = psMap[tr.test_id] || 60;
-      var remarks = pctByKey[key] >= passThreshold ? 'Pass' : 'Fail';
-      marksByStudent[tr.student_id][tr.test_id] = { marks: pctByKey[key], remarks: remarks };
+      /* Pass/Fail against this test's own passing score, which can differ from the 60%
+         used for manually marked work. It goes in `result`, not `remarks`: writing it
+         into remarks is what made a student's report card show a comment bubble quoting
+         the word "Pass" back at her. Remarks are for what a human wrote. 2026-10-07. */
+      var passThreshold = psMap[tr.test_id] || MARKS_PASS_PCT;
+      marksByStudent[tr.student_id][tr.test_id] = {
+        marks: pctByKey[key],
+        result: pctByKey[key] >= passThreshold ? 'Pass' : 'Fail',
+        remarks: ''
+      };
     });
 
     return { assessmentsByBatch: assessmentsByBatch, marksByStudent: marksByStudent };
+  }
+
+  /* The pass mark. 60% everywhere in the instructor portal; one constant now, so the
+     student and the instructor cannot disagree about whether somebody passed. */
+  var MARKS_PASS_PCT = 60;
+
+  /* Pass / Fail / DNA for one marks row, worked out from the mark itself.
+     ─────────────────────────────────────────────────────────────────────────────
+     2026-10-07. This used to be `result: mRow.remarks` — the result shown to a student
+     was literally whatever an instructor had typed into the optional Remarks box. So:
+
+       · Aahna Kapoor scored 90/100 on Practical 1 and her report card said PENDING,
+         because the instructor left Remarks blank, as the field invites you to.
+       · Her Weekly Tests said PASS only because the online-test merge had been patched
+         to write the word "Pass" into remarks — which is also why her report card showed
+         a comment bubble quoting "Pass" back at her.
+       · Her summary read "Tests Passed 3/4" when she had in fact passed all four.
+       · A remark of "Good work" would have rendered as Pending, and one saying
+         "no fail this time" as Fail.
+
+     The instructor's own screen computed Pass correctly and showed it — it just never
+     stored it, and nothing downstream recomputed it. Marks are the source of truth. */
+  function markResult(mRow, maxMarks) {
+    if (!mRow) return '';
+    // DNA is recorded as the literal string, in either column, by the instructor portal.
+    if (String(mRow.marks) === 'DNA' || String(mRow.remarks) === 'DNA') return 'DNA';
+    // Online-test rows carry a result worked out against that test's own passing score.
+    if (mRow.result === 'Pass' || mRow.result === 'Fail') return mRow.result;
+    var m = parseFloat(mRow.marks), mx = parseFloat(maxMarks);
+    // No mark yet, or no total to measure it against: genuinely pending, say so.
+    if (!isFinite(m) || !isFinite(mx) || mx <= 0) return '';
+    return Math.round((m / mx) * 100) >= MARKS_PASS_PCT ? 'Pass' : 'Fail';
   }
 
   /* Merge synthetic online-test assessments/marks into the manual (assessments/assessment_marks) ones. */
@@ -7132,7 +7168,8 @@ window.gasGet = (function () {
             studentId: m.enrollment_no || m.student_id,
             name: m.student_name || ('Student ' + (m.enrollment_no || m.student_id)),
             pct: scorePct,
-            result: m.remarks || (scorePct >= 60 ? 'Pass' : 'Fail')
+            // Was `m.remarks || …`, so a remark of "Needs practice" became the result.
+            result: markResult(m, maxMarks)
           });
         }
       });
@@ -9049,7 +9086,9 @@ window.gasGet = (function () {
                         assessmentId: ass.assessment_id, batchCode: ass.batch_code, testName: ass.test_name, testType: ass.test_type,
                         testDate: toDMY(ass.held_on), totalMarks: ass.max_marks, marksObtained: mRow ? mRow.marks : '',
                         percentage: mRow && ass.max_marks ? Math.round((mRow.marks / ass.max_marks) * 100) : '',
-                        result: mRow ? mRow.remarks : '', remarks: mRow ? (mRow.remarks || '') : ''
+                        // Worked out from the mark, not read off the remarks box — see markResult().
+                        result: markResult(mRow, ass.max_marks),
+                        remarks: (mRow && mRow.remarks && mRow.remarks !== 'DNA') ? mRow.remarks : ''
                       };
                     });
                     cb(null, { status: 'ok', studentName: studentName, enrollmentNo: enrollNo, mobileLast4: student.mobile_last4 || mobColLast4,
@@ -9062,7 +9101,9 @@ window.gasGet = (function () {
                         assessmentId: ass.assessment_id, batchCode: ass.batch_code, testName: ass.test_name, testType: ass.test_type,
                         testDate: toDMY(ass.held_on), totalMarks: ass.max_marks, marksObtained: mRow ? mRow.marks : '',
                         percentage: mRow && ass.max_marks ? Math.round((mRow.marks / ass.max_marks) * 100) : '',
-                        result: mRow ? mRow.remarks : '', remarks: mRow ? (mRow.remarks || '') : ''
+                        // Worked out from the mark, not read off the remarks box — see markResult().
+                        result: markResult(mRow, ass.max_marks),
+                        remarks: (mRow && mRow.remarks && mRow.remarks !== 'DNA') ? mRow.remarks : ''
                       };
                     });
                     cb(null, { status: 'ok', studentName: studentName, enrollmentNo: enrollNo, mobileLast4: student.mobile_last4 || mobColLast4,

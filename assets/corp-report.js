@@ -334,7 +334,13 @@
 
       '<div class="sheet">' +
       '<header class="mast"><div>' +
-        '<div class="eyebrow">' + esc(tested ? 'Corporate Training Division' : 'Retail Technical Training') + '</div>' +
+        /* The eyebrow names the PROGRAMME, which is not the same question as
+           whether marks exist. A corporate cohort whose tests are not set up yet
+           was announcing itself to the client as Retail Technical Training. */
+        '<div class="eyebrow">' + esc(
+          (b.programmeType === 'RTT') ? 'Retail Technical Training'
+          : (b.programmeType === 'Seminar') ? 'Technical Seminar'
+          : 'Corporate Training Division') + '</div>' +
         '<h1>Attendance &amp; Performance Report</h1>' +
         '<div class="co">Prepared for <b>' + esc(b.companyName || '—') + '</b></div>' +
       '</div><div class="right">' +
@@ -401,7 +407,8 @@
      One markup tree, mounted by both portals into their own tab shell.
      ────────────────────────────────────────────────────────────────────────── */
   var S = { batches: [], teaching: [], loaded: false, mountId: '', ctx: {},
-            q: '', sortBy: '', data: null, busy: false };
+            q: '', sortBy: '', data: null, busy: false, edits: {},
+            lastLoad: '', timer: null };
 
   function el(id) { return document.getElementById(id); }
 
@@ -414,7 +421,41 @@
       root.innerHTML = shell();
       root.dataset.cr = '1';
     }
-    load(false);
+    /* Re-read on every entry to the tab, not just the first: an instructor may
+       have taken attendance since it was last opened, and a dashboard showing
+       this morning's numbers is worse than no dashboard. */
+    load(true);
+    startAutoRefresh();
+  }
+
+  /* While the tab is actually on screen, refresh quietly every 90s so a
+     programme running right now updates itself. Stops when the tab is hidden or
+     the browser tab is in the background — there is no value in polling a
+     dashboard nobody is looking at, and every poll is four queries. */
+  function startAutoRefresh() {
+    if (S.timer) return;
+    S.timer = setInterval(function () {
+      var root = el(S.mountId);
+      var visible = root && root.offsetParent !== null && !document.hidden;
+      if (!visible) return;
+      if (S.busy) return;
+      load(true, true);
+    }, 90000);
+  }
+
+  /* A background refresh must never wipe what someone is in the middle of
+     typing. Client names edited on a card are held here and re-applied after
+     every re-render, so the 90-second tick is invisible to anyone mid-keystroke. */
+  function captureEdits() {
+    (S.teaching || []).forEach(function (r) {
+      var box = el('cr-co-' + r.batchCode);
+      if (box) S.edits[r.batchCode] = String(box.value || '');
+    });
+  }
+  function clientValueFor(r) {
+    var typed = S.edits[r.batchCode];
+    if (typed !== undefined) return typed;
+    return r.suggestedClient || '';
   }
 
   /* The tab's own styling ships with the module and is scoped to .cr-* so it
@@ -462,6 +503,26 @@
       '.cr-client{width:100%;min-width:0;font-size:12px;padding:7px 11px;margin-bottom:2px}',
       '.cr-card-rev{border-top-color:#c7ccd4;background:#fcfcfd}',
       '.cr-card-rev .cr-co{color:#4b5563}',
+      /* live dashboard */
+      '.cr-ov{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:#e8dcb8;',
+      'border:1px solid #e8dcb8;border-radius:10px;overflow:hidden;margin-bottom:20px}',
+      '.cr-ov div{background:' + CREAM + ';padding:11px 14px}',
+      '.cr-ov span{display:block;font-size:8.5px;letter-spacing:.13em;text-transform:uppercase;color:#8a7a4e;font-weight:700}',
+      '.cr-ov b{display:block;font-family:"Playfair Display",Georgia,serif;font-size:21px;color:' + NAVY + ';line-height:1.2;margin-top:2px}',
+      '.cr-chip{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;',
+      'padding:3px 9px;border-radius:20px;align-self:flex-start}',
+      '.cr-chip-live{background:#FEF3C7;color:#92400e}',
+      '.cr-chip-done{background:#dcfce7;color:#166534}',
+      '.cr-chip-wait{background:#f1f3f5;color:#6b7280}',
+      '.cr-mini{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}',
+      '.cr-mini div{min-width:0}',
+      '.cr-mini span{display:block;font-size:8px;letter-spacing:.09em;text-transform:uppercase;color:#9aa3af;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '.cr-mini b{display:block;font-family:"Playfair Display",Georgia,serif;font-size:17px;color:' + NAVY + ';line-height:1.2}',
+      '.cr-track{height:5px;background:#eef0f3;border-radius:3px;overflow:hidden}',
+      '.cr-track i{display:block;height:100%}',
+      '.cr-lbl{display:block;font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:#9aa3af;font-weight:700;margin-bottom:-4px}',
+      '.cr-lbl em{font-style:normal;color:' + GOLD + '}',
+      '.cr-note-sm{font-size:11.5px;color:#6b7280;line-height:1.6}',
       '.cr-empty{text-align:center;padding:40px 20px;color:#6b7280;font-size:13px}',
       '.cr-ico{font-size:30px;margin-bottom:9px}',
       '.cr-empty .cr-ghost{margin-top:12px}'
@@ -502,10 +563,15 @@
      once somebody has typed a roster into it. Keeping both visible, and saying
      plainly which is which, is what stops the next person asking where their
      batch went. */
-  function load(force) {
+  function load(force, quiet) {
     var list = el('cr-list');
     if (S.loaded && !force) { render(); return; }
-    if (list) list.innerHTML = '<div class="cr-empty"><div class="cr-ico">⏳</div><div>Loading batches…</div></div>';
+    captureEdits();
+    /* A quiet tick leaves the current numbers on screen and swaps them when the
+       new ones arrive. Only a cold open shows a spinner. */
+    if (list && !quiet && !S.loaded) {
+      list.innerHTML = '<div class="cr-empty"><div class="cr-ico">⏳</div><div>Loading batches…</div></div>';
+    }
 
     var pending = 2, failed = 0;
     S.teaching = []; S.batches = [];
@@ -518,6 +584,8 @@
         return;
       }
       S.loaded = true;
+      S.lastLoad = new Date().toLocaleTimeString('en-IN',
+        { hour: '2-digit', minute: '2-digit', hour12: true });
       render();
     }
 
@@ -539,53 +607,112 @@
 
   function matches(r, q) {
     if (!q) return true;
-    return [r.companyName, r.batchCode, r.centre, r.description, r.course, r.instructor]
+    return [r.companyName, r.batchCode, r.centre, r.description, r.course, r.instructor, r.suggestedClient]
       .join(' ').toLowerCase().indexOf(q) >= 0;
+  }
+
+  /* ── Live figures, on the card ──────────────────────────────────────────────
+     The point of this tab is to answer "how is that programme going" at a
+     glance. Making someone generate a client-facing PDF to find out how many
+     people turned up is the wrong shape, so every number the report would
+     show is on the card itself, read fresh from attendance and marks. */
+  function statusChip(st) {
+    if (!st) return '';
+    if (st.notStarted) return '<span class="cr-chip cr-chip-wait">Not started</span>';
+    if (st.inProgress) return '<span class="cr-chip cr-chip-live">In progress \u00b7 ' +
+      st.sessionsTaken + ' of ' + st.sessionsPlanned + '</span>';
+    return '<span class="cr-chip cr-chip-done">Complete</span>';
+  }
+
+  function attTone(pct) {
+    if (pct == null) return '#9aa3af';
+    return pct >= 90 ? '#166534' : pct >= 75 ? '#15803d' : pct >= 50 ? '#b45309' : '#991b1b';
+  }
+
+  function miniStats(st) {
+    if (!st) return '';
+    var cells = [
+      ['Participants', st.participants, ''],
+      ['Attendance', st.avgAttendance == null ? '\u2014' : st.avgAttendance + '%', attTone(st.avgAttendance)],
+      ['Full attendance', st.participants ? st.attendedInFull + '/' + st.participants : '\u2014', ''],
+      ['Sessions', st.sessionsPlanned ? st.sessionsTaken + '/' + st.sessionsPlanned : '\u2014', '']
+    ];
+    return '<div class="cr-mini">' + cells.map(function (c) {
+      return '<div><span>' + esc(c[0]) + '</span>' +
+        '<b' + (c[2] ? ' style="color:' + c[2] + '"' : '') + '>' + c[1] + '</b></div>';
+    }).join('') + '</div>' +
+    (st.avgAttendance == null ? '' :
+      '<div class="cr-track"><i style="width:' + Math.max(2, Math.min(100, st.avgAttendance)) +
+        '%;background:' + attTone(st.avgAttendance) + '"></i></div>');
   }
 
   function card(r) {
     var teaching = r.source === 'teaching';
-    var n = Number(r.associatesTrained) || 0;
+    var st = r.stats;
     var when = teaching ? rangeLabel(r.trainingStart, r.trainingEnd)
                         : (r.invoiceDate ? dateLabel(r.invoiceDate) : '');
-    var title = teaching ? (r.course || r.batchCode) : (r.companyName || '\u2014');
+    var title = teaching ? (r.companyName || r.batchCode) : (r.companyName || '\u2014');
     var meta = esc(r.centre || '\u2014') +
       (r.batchCode ? ' \u00b7 <span class="cr-code">' + esc(r.batchCode) + '</span>' : '') +
       (when ? ' \u00b7 ' + esc(when) : '');
     var sub = teaching
-      ? (r.instructor ? 'Instructor: ' + esc(r.instructor) : '')
-      : (r.description ? esc(r.description) : '');
+      ? [r.course, r.instructor ? 'Instructor: ' + r.instructor : ''].filter(Boolean).join(' \u00b7 ')
+      : (r.description || '');
 
-    var act;
+    var body, act;
     if (teaching) {
-      /* The teaching batch knows the course, the people and the dates but not
-         which client they work for \u2014 that is only on the revenue record, and
-         the two are not linked. Rather than guess a company name onto a document
-         that goes to that company, the counsellor types it here. It defaults to
-         blank and the report falls back to the course name if left empty. */
-      act = '<input class="cr-inp cr-client" id="cr-co-' + esc(r.batchCode) + '" ' +
-              'placeholder="Client / company name for the report" ' +
-              'value="' + esc(r.clientName || '') + '">' +
-            '<div class="cr-card-act">' +
-              '<button class="cr-btn" onclick="IGICorpReport.open(\'' + esc(r.batchCode) + '\')">\ud83d\udcc4 Generate report</button>' +
-              '<button class="cr-ghost cr-sm" onclick="IGICorpReport.csv(\'' + esc(r.batchCode) + '\')">\u2b07 CSV</button>' +
-            '</div>';
-    } else {
+      body = statusChip(st) + miniStats(st) +
+        /* The client name is read off the cohort's own student IDs and shown here
+           so it can be checked, and corrected, BEFORE it goes on a document
+           addressed to that company. Blank means we could not tell. */
+        '<label class="cr-lbl">Client name on the report' +
+          (r.suggestedClient ? ' <em>\u00b7 read from participant IDs</em>' : '') + '</label>' +
+        '<input class="cr-inp cr-client" id="cr-co-' + esc(r.batchCode) + '" ' +
+          'placeholder="Type the client / company name" ' +
+          'value="' + esc(clientValueFor(r)) + '">';
       act = '<div class="cr-card-act">' +
-              '<button class="cr-btn" onclick="IGICorpReport.open(\'' + esc(r.id) + '\')">\ud83d\udcc4 Generate report</button>' +
-              '<button class="cr-ghost cr-sm" onclick="IGICorpReport.csv(\'' + esc(r.id) + '\')">\u2b07 CSV</button>' +
-            '</div>';
+          '<button class="cr-btn" onclick="IGICorpReport.open(\'' + esc(r.batchCode) + '\')">\ud83d\udcc4 Client report</button>' +
+          '<button class="cr-ghost cr-sm" onclick="IGICorpReport.csv(\'' + esc(r.batchCode) + '\')">\u2b07 CSV</button>' +
+        '</div>';
+    } else {
+      body = '<div class="cr-note-sm">Billed record \u00b7 ' +
+        (Number(r.associatesTrained) || 0) + ' on the invoice. Needs participant names ' +
+        'imported before a report can be produced.</div>';
+      act = '<div class="cr-card-act">' +
+          '<button class="cr-ghost cr-sm" onclick="IGICorpReport.open(\'' + esc(r.id) + '\')">Try report</button>' +
+        '</div>';
     }
 
     return '<div class="cr-card' + (teaching ? '' : ' cr-card-rev') + '">' +
       '<div class="cr-card-top">' +
         '<div><div class="cr-co">' + esc(title) + '</div>' +
           '<div class="cr-meta">' + meta + '</div>' +
-          (sub ? '<div class="cr-desc">' + sub + '</div>' : '') +
+          (sub ? '<div class="cr-desc">' + esc(sub) + '</div>' : '') +
         '</div>' +
-        '<div class="cr-n"><b>' + n + '</b><span>' + (teaching ? 'enrolled' : 'headcount') + '</span></div>' +
-      '</div>' + act +
+        (teaching ? '' : '<div class="cr-n"><b>' + (Number(r.associatesTrained) || 0) + '</b><span>headcount</span></div>') +
+      '</div>' + body + act +
     '</div>';
+  }
+
+  /* One line across the top: the whole corporate book at a glance. */
+  function overview(teach) {
+    var live = teach.filter(function (r) { return r.stats && r.stats.inProgress; }).length;
+    var people = teach.reduce(function (t, r) { return t + ((r.stats && r.stats.participants) || 0); }, 0);
+    var withAtt = teach.filter(function (r) { return r.stats && r.stats.avgAttendance != null; });
+    var avg = withAtt.length
+      ? Math.round(withAtt.reduce(function (t, r) { return t + r.stats.avgAttendance; }, 0) / withAtt.length)
+      : null;
+    var named = teach.filter(function (r) { return r.suggestedClient; }).length;
+    var cells = [
+      ['Batches', teach.length],
+      ['Running now', live],
+      ['Participants', people],
+      ['Average attendance', avg == null ? '\u2014' : avg + '%'],
+      ['Client identified', named + ' of ' + teach.length]
+    ];
+    return '<div class="cr-ov">' + cells.map(function (c) {
+      return '<div><span>' + esc(c[0]) + '</span><b>' + c[1] + '</b></div>';
+    }).join('') + '</div>';
   }
 
   function render() {
@@ -605,9 +732,10 @@
 
     var html = '';
     if (teach.length) {
-      html += '<div class="cr-sec"><div class="cr-sec-h">Training batches</div>' +
-        '<div class="cr-sec-n">' + teach.length + ' batch' + (teach.length === 1 ? '' : 'es') +
-        ' \u00b7 built from the enrolled participants, their attendance and their marks</div></div>' +
+      html += overview(teach) +
+        '<div class="cr-sec"><div class="cr-sec-h">Training batches</div>' +
+        '<div class="cr-sec-n">Live from attendance and marks' +
+        (S.lastLoad ? ' \u00b7 updated ' + esc(S.lastLoad) : '') + '</div></div>' +
         '<div class="cr-grid">' + teach.map(card).join('') + '</div>';
     }
     if (rev.length) {
@@ -635,7 +763,7 @@
     if (teach) {
       var box = el('cr-co-' + key);
       var client = box ? String(box.value || '').trim() : '';
-      if (client) teach.clientName = client;   // survives a re-render
+      S.edits[key] = client;                   // survives the next re-render
       req = { action: 'corpTeachingBatchReport', batchCode: key, companyName: client };
     } else {
       req = { action: 'corpGetParticipants', batchId: key };

@@ -5425,30 +5425,175 @@ window.gasGet = (function () {
     return /-COR-|-RTT-|-SEM-/.test(code);
   }
 
-  function h_corpListTeachingBatches(p, cb) {
-    GET('batches', 'order=start_date.desc', function (e, rows) {
-      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+  /* What KIND of programme this is, for the client's copy.
+
+     Read from the batch code and course, NOT from whether any tests happen to be
+     set up. Those are two different questions: MUM-COR-OCT26 is a Corporate
+     programme that has no assessments entered yet, and deriving the label from
+     the marks made its report announce itself as "Retail Technical Training" to
+     a corporate client. assessmentMode still answers the marks question. */
+  function corpProgrammeType(row) {
+    var code = String(row.batch_code || '').toUpperCase();
+    var course = String(row.course || '').toLowerCase();
+    if (/-SEM-/.test(code) || course.indexOf('seminar') !== -1) return 'Seminar';
+    if (/-RTT-/.test(code) || course.indexOf('retail technical') !== -1 || course === 'rtt') return 'RTT';
+    return 'Corporate';
+  }
+
+  /* ── Who the client is ────────────────────────────────────────────────────
+     A teaching batch records the course, the people and the dates, but not the
+     company that sent them: that lives only on the revenue record, and the two
+     tracks are not linked.
+
+     It is, however, usually sitting in plain sight in IGI's own student IDs.
+     Every participant on MUM-COR-OCT26 is enrolled as "MBMG 4 44468" — the
+     client's name, their batch number, then the roll. So read the client off the
+     leading tokens the whole cohort shares, drop any trailing number (the batch
+     counter, not part of the name), and require every single student to agree.
+
+     This is derived from IGI's own records, never invented, and it is offered as
+     a PREFILL the counsellor can see and overwrite before the report is issued —
+     not stamped silently onto a document addressed to that company. A batch whose
+     IDs are bare numbers (MUM-COR-MAY26: "7223", "7236") yields nothing, which is
+     the correct answer rather than a guess. */
+  function corpClientFromStudentIds(ids) {
+    var list = (ids || []).map(function (v) { return String(v == null ? '' : v).trim(); })
+                          .filter(Boolean);
+    if (list.length < 2) return '';
+    var toks = list.map(function (v) { return v.split(/\s+/); });
+    /* Every student must carry a multi-part ID. One bare numeric ID in the batch
+       means the convention is not in use here and nothing should be inferred. */
+    if (!toks.every(function (t) { return t.length > 1; })) return '';
+
+    var common = toks[0].slice();
+    toks.forEach(function (t) {
+      var i = 0;
+      while (i < common.length && i < t.length &&
+             common[i].toUpperCase() === t[i].toUpperCase()) i++;
+      common = common.slice(0, i);
+    });
+    while (common.length && /^\d+$/.test(common[common.length - 1])) common.pop();
+
+    var name = common.join(' ').trim();
+    if (name.length < 2 || !/[A-Za-z]/.test(name)) return '';
+    return name;
+  }
+
+  /* Prefer the exact company name as finance spells it. If the derived client
+     matches a company IGI has actually billed at this centre, use the billed
+     spelling ("MBMG" over "mbmg"); the derived token stands on its own otherwise.
+     Reads corporate_batches; never writes to it. */
+  function corpResolveClientName(derived, centre, cb) {
+    if (!derived) { cb(''); return; }
+    GET('corporate_batches', 'centre=eq.' + encodeURIComponent(centre || '') +
+        '&select=company_name&limit=200', function (e, rows) {
+      if (e || !rows || !rows.length) { cb(derived); return; }
+      var d = derived.toLowerCase();
+      var hit = rows.filter(function (r) {
+        var c = String(r.company_name || '').trim().toLowerCase();
+        return c === d || c.indexOf(d) === 0;
+      }).sort(function (x, y) {
+        return String(x.company_name).length - String(y.company_name).length;
+      })[0];
+      cb(hit ? String(hit.company_name).trim() : derived);
+    });
+  }
+
+  /* The tab is a live dashboard, not a menu of buttons, so this returns the real
+     numbers for every corporate batch in one pass rather than making someone
+     generate a report to find out how a programme is going. One query per table
+     across all batches, not per batch. */
+  async function h_corpListTeachingBatches(p, cb) {
+    function getP(table, qs) {
+      return new Promise(function (resolve) {
+        GET(table, qs, function (err, data) { resolve(err ? [] : (data || [])); });
+      });
+    }
+    try {
+      var rows = await getP('batches', 'order=start_date.desc');
       var corp = (rows || []).filter(isCorporateTeachingBatch);
       if (!corp.length) { cb(null, { status: 'ok', records: [] }); return; }
-      getActiveStudentCountsByBatch(function (counts) {
-        cb(null, {
-          status: 'ok',
-          records: corp.map(function (r) {
-            var bc = String(r.batch_code || '').trim().toUpperCase();
-            return {
-              id: r.batch_code, batchCode: r.batch_code, source: 'teaching',
-              companyName: r.batch_code, course: r.course || '', centre: r.centre || '',
-              description: r.course || '', instructor: r.instructor || '',
-              counselor: r.counselor || '',
-              trainingStart: r.start_date || '', trainingEnd: r.end_date || '',
-              invoiceDate: r.start_date || '',
-              associatesTrained: counts[bc] || 0,
-              isActive: r.is_active !== false
-            };
-          })
-        });
+
+      var codes = corp.map(function (r) { return r.batch_code; }).filter(Boolean);
+      var inList = codes.map(encodeURIComponent).join(',');
+      var res = await Promise.all([
+        getP('students', 'batch_code=in.(' + inList + ')&select=student_id,batch_code,status'),
+        getP('sessions', 'batch_code=in.(' + inList + ')&select=session_code,batch_code,is_cancelled'),
+        getP('attendance_feedback', 'batch_code=in.(' + inList + ')&select=student_id,batch_code,session_code,attendance'),
+        getP('assessments', 'batch_code=in.(' + inList + ')&select=batch_code,assessment_id')
+      ]);
+      var students = res[0], sessions = res[1], att = res[2], assess = res[3];
+
+      var byBatch = {};
+      function slot(bc) {
+        var k = String(bc || '').trim().toUpperCase();
+        if (!byBatch[k]) byBatch[k] = { ids: [], live: {}, taken: {}, present: {}, tests: 0 };
+        return byBatch[k];
+      }
+      students.forEach(function (s) {
+        var st = String(s.status || '').trim().toLowerCase();
+        if (st === 'dropped' || st === 'cancelled' || st === 'inactive') return;
+        slot(s.batch_code).ids.push(s.student_id);
       });
-    });
+      sessions.forEach(function (s) { if (!s.is_cancelled) slot(s.batch_code).live[s.session_code] = 1; });
+      att.forEach(function (a) { slot(a.batch_code).taken[a.session_code] = 1; });
+      att.forEach(function (a) {
+        var b = slot(a.batch_code);
+        if (!b.taken[a.session_code]) return;
+        if (a.attendance === 'Present' || a.attendance === 'Late') {
+          b.present[a.student_id] = (b.present[a.student_id] || 0) + 1;
+        }
+      });
+      assess.forEach(function (a) { slot(a.batch_code).tests++; });
+
+      var out = [];
+      for (var i = 0; i < corp.length; i++) {
+        var r = corp[i];
+        var bc = String(r.batch_code || '').trim().toUpperCase();
+        var b = byBatch[bc] || { ids: [], live: {}, taken: {}, present: {}, tests: 0 };
+
+        var planned = Object.keys(b.live).length;
+        /* Only count a session as registered if it is both scheduled and marked —
+           attendance rows can outlive a cancelled session. */
+        var taken = Object.keys(b.live).filter(function (sc) { return b.taken[sc]; }).length;
+        var n = b.ids.length;
+        var attended = b.ids.reduce(function (t, id) { return t + (b.present[id] || 0); }, 0);
+        var avgAtt = (n && taken) ? Math.round((attended / (n * taken)) * 100) : null;
+        var full = taken ? b.ids.filter(function (id) { return (b.present[id] || 0) >= taken; }).length : 0;
+
+        var derived = corpClientFromStudentIds(b.ids);
+        var resolved = await new Promise(function (ok) { corpResolveClientName(derived, r.centre, ok); });
+
+        out.push({
+          id: r.batch_code, batchCode: r.batch_code, source: 'teaching',
+          /* The card leads with the client when we can tell who it is. */
+          companyName: resolved || r.course || r.batch_code,
+          suggestedClient: resolved || '',
+          programmeType: corpProgrammeType(r),
+          course: r.course || '', centre: r.centre || '',
+          description: r.course || '', instructor: r.instructor || '',
+          counselor: r.counselor || '',
+          trainingStart: r.start_date || '', trainingEnd: r.end_date || '',
+          invoiceDate: r.start_date || '',
+          associatesTrained: n,
+          isActive: r.is_active !== false,
+          /* Live figures, so the tab answers "how is it going" without a report. */
+          stats: {
+            participants: n,
+            sessionsPlanned: planned,
+            sessionsTaken: taken,
+            avgAttendance: avgAtt,
+            attendedInFull: full,
+            hasTests: b.tests > 0,
+            inProgress: planned > 0 && taken < planned,
+            notStarted: taken === 0
+          }
+        });
+      }
+      cb(null, { status: 'ok', records: out });
+    } catch (err) {
+      cb(null, { status: 'error', reason: String(err && err.message || err) });
+    }
   }
 
   /* Build the client report's data for one teaching batch. */
@@ -5581,12 +5726,26 @@ window.gasGet = (function () {
         };
       });
 
+      /* Client name: whatever the counsellor typed wins; otherwise read it off the
+         cohort's own student IDs ("MBMG 4 44468" -> MBMG) and prefer the spelling
+         finance already bills under. The course name is the last resort, and the
+         batch code after that — a document addressed to a company should say the
+         company, not "Corporate Programs". */
+      var typedClient = String(p.companyName || '').trim();
+      var client = typedClient;
+      if (!client) {
+        var derived = corpClientFromStudentIds(students.map(function (s) { return s.student_id; }));
+        client = await new Promise(function (ok) { corpResolveClientName(derived, batch.centre, ok); });
+      }
+
       cb(null, {
         status: 'ok',
         batch: {
-          id: batch.batch_code, companyName: String(p.companyName || '').trim() || batch.course || batch.batch_code,
+          id: batch.batch_code,
+          companyName: client || batch.course || batch.batch_code,
+          clientResolved: !!client,
           centre: batch.centre || '', batchCode: batch.batch_code || '',
-          programmeType: tested ? 'Corporate' : 'RTT',
+          programmeType: corpProgrammeType(batch),
           assessmentMode: tested ? 'tested' : 'participation',
           passPct: passPct,
           trainingDays: days,

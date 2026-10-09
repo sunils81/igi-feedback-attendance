@@ -1667,6 +1667,28 @@
         <div id="rev-loading-hero" style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Loading revenue data…</div>
       </div>
 
+      <!-- ══ BOOKED / INVOICED / COLLECTED BY MONTH ══
+           Added after September 2026 was reported upward at ₹62.49L and later read
+           ₹55.95L on this same screen. The two were not a miscalculation: they were
+           different questions. This card puts all three bases side by side so the
+           number quoted upward is always a number someone can name the basis of,
+           and flags any month whose money is filed to a different month. -->
+      <div class="card" id="rev-basis-card" style="margin-bottom:14px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div>
+            <div class="section-tag" style="margin:0">📐 Booked vs Invoiced — by month</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px;max-width:78ch;line-height:1.6">
+              <b>Booked</b> is the month the sale is filed under — what every other screen totals and what gets
+              reported upward. <b>Invoiced</b> is the month the tax invoice was raised, which accounts recognises.
+              <b>Collected</b> is when the money actually arrived. They are supposed to differ; quoting one without
+              saying which is what causes the arguments.
+            </div>
+          </div>
+          <button class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:12px" onclick="loadRevenueBasis(true)">↻ Refresh</button>
+        </div>
+        <div id="rev-basis-body" style="margin-top:12px;font-size:12px;color:var(--muted)">Loading…</div>
+      </div>
+
       <!-- Branch-wise Monthly Revenue — a prominent, clearly-labeled entry point into the
            Monthly Business Summary below. Previously the ONLY way to reach it was a small
            unlabeled dropdown ("View another month's summary…") tucked inside the "This
@@ -7730,6 +7752,9 @@ function populateMbsMonthDropdown() {
   if (!mbsAutoLoaded && months.length) {
     mbsAutoLoaded = true;
     renderMonthlyBusinessSummary(months[0]);
+    // Booked / invoiced / collected loads alongside the branch breakdown, so the
+    // basis of whatever is on screen is visible without being asked for.
+    loadRevenueBasis(false);
   }
 }
 
@@ -7891,6 +7916,159 @@ function mbsToggleCentre(centre, monthKey) {
   mbsExpandedCentres[centre] = !mbsExpandedCentres[centre];
   renderMonthlyBusinessSummary(monthKey);
   if (mbsExpandedCentres[centre]) mbsLoadStudentDetail(monthKey);
+}
+
+/* ══ BOOKED / INVOICED / COLLECTED BY MONTH ══════════════════════════════
+
+   September 2026 went upward as ₹62.49L and later read ₹55.95L here. Both came
+   off the same records; they were different questions asked of one number. This
+   renders all three bases together so whatever gets quoted can be named, and
+   flags the rows whose money landed in one month but is filed to another — the
+   mechanism that moved September after it had already been reported.
+   ═══════════════════════════════════════════════════════════════════ */
+var _revBasis = null;
+
+function revBasisMonthLabel(m) {
+  var parts = String(m || '').split('-');
+  if (parts.length < 2) return m || '';
+  var names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return (names[parseInt(parts[1], 10) - 1] || parts[1]) + ' ' + parts[0];
+}
+
+function loadRevenueBasis(force) {
+  var box = document.getElementById('rev-basis-body');
+  if (!box) return;
+  if (_revBasis && !force) { renderRevenueBasis(); return; }
+  box.innerHTML = 'Loading\u2026';
+  gasGet({ action: 'getRevenueBasisByMonth', fromMonth: '2026-04', toMonth: '2027-03' }, function (e, d) {
+    if (e || !d || d.status !== 'ok') {
+      box.innerHTML = '<span style="color:var(--red)">Could not load. ' +
+        '<a href="#" onclick="loadRevenueBasis(true);return false">Try again</a></span>';
+      return;
+    }
+    _revBasis = d;
+    renderRevenueBasis();
+  });
+}
+
+function renderRevenueBasis() {
+  var box = document.getElementById('rev-basis-body');
+  if (!box || !_revBasis) return;
+  /* Months with nothing in them at all are noise on a 12-month fiscal grid. */
+  var rows = (_revBasis.months || []).filter(function (m) {
+    return m.booked || m.invoiced || m.collected;
+  });
+  if (!rows.length) { box.innerHTML = 'No revenue recorded in this period yet.'; return; }
+
+  var totBooked = rows.reduce(function (t, m) { return t + m.booked; }, 0);
+  var totInv    = rows.reduce(function (t, m) { return t + m.invoiced; }, 0);
+  var totColl   = rows.reduce(function (t, m) { return t + m.collected; }, 0);
+  var totMis    = rows.reduce(function (t, m) { return t + (m.misfiledTotal || 0); }, 0);
+
+  var html = '<div style="overflow-x:auto"><table class="compact-table" style="font-size:12px">' +
+    '<thead><tr>' +
+      '<th class="text-left">Month</th>' +
+      '<th style="text-align:right">Booked</th>' +
+      '<th style="text-align:right">Invoiced</th>' +
+      '<th style="text-align:right">Awaiting invoice</th>' +
+      '<th style="text-align:right">Collected</th>' +
+      '<th style="text-align:right">Filed elsewhere</th>' +
+    '</tr></thead><tbody>';
+
+  rows.forEach(function (m) {
+    var wait = m.awaitingInvoice || 0;
+    var mis  = m.misfiledTotal || 0;
+    html += '<tr>' +
+      '<td><strong>' + revBasisMonthLabel(m.month) + '</strong>' +
+        '<div style="font-size:10.5px;color:var(--muted)">' + m.bookedCount + ' booked \u00b7 ' +
+          m.invoicedCount + ' invoiced</div></td>' +
+      '<td style="text-align:right;font-weight:700">' + money(m.booked) + '</td>' +
+      '<td style="text-align:right">' + money(m.invoiced) + '</td>' +
+      '<td style="text-align:right;color:' + (wait > 0 ? '#b45309' : 'var(--muted)') + '">' +
+        (wait ? money(wait) : '\u2014') + '</td>' +
+      '<td style="text-align:right">' + money(m.collected) + '</td>' +
+      '<td style="text-align:right">' +
+        (mis
+          ? '<a href="#" onclick="showRevBasisMisfiled(\'' + m.month + '\');return false" ' +
+            'style="color:#991b1b;font-weight:700;text-decoration:underline">' + money(mis) + '</a>' +
+            '<div style="font-size:10.5px;color:var(--muted)">' + m.misfiled.length + ' record' +
+            (m.misfiled.length === 1 ? '' : 's') + '</div>'
+          : '<span style="color:var(--muted)">\u2014</span>') +
+      '</td>' +
+    '</tr>';
+  });
+
+  html += '</tbody><tfoot><tr style="border-top:2px solid var(--navy);font-weight:700">' +
+    '<td>Year to date</td>' +
+    '<td style="text-align:right">' + money(totBooked) + '</td>' +
+    '<td style="text-align:right">' + money(totInv) + '</td>' +
+    '<td style="text-align:right">' + (totBooked - totInv ? money(totBooked - totInv) : '\u2014') + '</td>' +
+    '<td style="text-align:right">' + money(totColl) + '</td>' +
+    '<td style="text-align:right">' + (totMis ? money(totMis) : '\u2014') + '</td>' +
+    '</tr></tfoot></table></div>';
+
+  html += '<div style="font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.7">' +
+    '<b>Awaiting invoice</b> is booked business with no tax invoice raised yet \u2014 the gap ' +
+    'accounts will close later, not missing revenue. ' +
+    '<b>Filed elsewhere</b> is money that arrived in this month but is filed to a different one; ' +
+    'click the figure to see which records. That is what moves a month\u2019s number after it has ' +
+    'already been reported.</div>';
+
+  box.innerHTML = html;
+}
+
+/* The records behind a "filed elsewhere" figure, named, so the month can be
+   corrected or the discrepancy explained to whoever was given the first number. */
+function showRevBasisMisfiled(month) {
+  if (!_revBasis) return;
+  var m = (_revBasis.months || []).filter(function (x) { return x.month === month; })[0];
+  if (!m || !m.misfiled.length) return;
+
+  var rows = m.misfiled.map(function (r) {
+    return '<tr>' +
+      '<td>' + escC(r.name) + '<div style="font-size:10.5px;color:var(--muted)">' +
+        escC(r.studentId) + ' \u00b7 ' + escC(r.centre) + ' \u00b7 ' + escC(r.recordedBy) + '</div></td>' +
+      '<td style="text-align:right;font-weight:700">' + money(r.net) + '</td>' +
+      '<td style="text-align:center">' + escC(r.paymentDate || '\u2014') + '</td>' +
+      '<td style="text-align:center">' + escC(r.invoiceDate || '\u2014') + '</td>' +
+      '<td style="text-align:center;color:#991b1b;font-weight:700">' +
+        revBasisMonthLabel(r.bookedMonth) + '</td>' +
+    '</tr>';
+  }).join('');
+
+  var html = '<div style="position:fixed;inset:0;background:rgba(13,27,46,.55);z-index:9999;' +
+    'display:flex;align-items:center;justify-content:center;padding:20px" onclick="closeRevBasisModal(event)">' +
+    '<div style="background:#fff;border-radius:12px;max-width:820px;width:100%;max-height:85vh;' +
+      'overflow:auto;padding:22px" onclick="event.stopPropagation()">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px">' +
+        '<div><div style="font-family:\'Playfair Display\',serif;font-size:19px;font-weight:700;color:var(--navy)">' +
+          'Money received in ' + revBasisMonthLabel(month) + ', filed to another month</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-top:4px;max-width:70ch;line-height:1.6">' +
+          'These payments arrived in ' + revBasisMonthLabel(month) + ' but their sale is recorded under a ' +
+          'different month, so they are counted there and not here. Either the filing is wrong, or the ' +
+          'month was reported before they were refiled.</div></div>' +
+        '<button class="btn btn-outline" style="width:auto;padding:5px 11px;font-size:12px" ' +
+          'onclick="closeRevBasisModal()">Close</button>' +
+      '</div>' +
+      '<table class="compact-table" style="font-size:12px;margin-top:14px"><thead><tr>' +
+        '<th class="text-left">Student</th><th style="text-align:right">Net fee</th>' +
+        '<th style="text-align:center">Paid</th><th style="text-align:center">Invoiced</th>' +
+        '<th style="text-align:center">Filed under</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody>' +
+      '<tfoot><tr style="border-top:2px solid var(--navy);font-weight:700">' +
+        '<td>Total</td><td style="text-align:right">' + money(m.misfiledTotal) + '</td>' +
+        '<td colspan="3"></td></tr></tfoot></table>' +
+    '</div></div>';
+
+  var host = document.createElement('div');
+  host.id = 'rev-basis-modal';
+  host.innerHTML = html;
+  document.body.appendChild(host);
+}
+function closeRevBasisModal(ev) {
+  if (ev && ev.target !== ev.currentTarget) return;
+  var el = document.getElementById('rev-basis-modal');
+  if (el) el.remove();
 }
 
 // ── Student-level detail for the Monthly Business Summary (2026-09-11) ─────────────

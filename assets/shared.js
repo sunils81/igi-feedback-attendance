@@ -5088,6 +5088,141 @@ window.gasGet = (function () {
     });
   }
 
+  /* ═════════════════════════════════════════════════════════════════════════
+     BOOKED / INVOICED / COLLECTED, BY MONTH
+
+     Why this exists. September 2026 was reported upward as ₹62.49L and later
+     read ₹55.95L on the same screen. Reconciling the two by hand took a
+     database session, and the answer was not an arithmetic bug: one number was
+     being asked to answer three different questions.
+
+       Booked     — the month the sale is filed under (revenue_month). A seat
+                    sold is a sale and the counsellor is measured on closing it,
+                    not on the customer's instalment schedule. This is the
+                    figure every other screen totals and the one reported upward.
+       Invoiced   — the month the tax invoice was raised (invoice_date). What
+                    accounts recognises. Under the current invoicing rule this
+                    routinely trails the booking by weeks.
+       Collected  — the month the money actually arrived (payment_date). Cash,
+                    including instalments against admissions closed earlier.
+
+     All three are real and they are SUPPOSED to differ. The danger is only ever
+     quoting one of them without saying which.
+
+     The second half of this is the misfiling check. Booked is the one field a
+     human sets by hand, so it is the one that can be wrong. Nisha Malik and
+     Vinothas Marx both closed and paid in September but were filed to October
+     because their invoice was raised in October — ₹3,71,800 that silently left
+     the September figure after it had already been reported. `misfiled` lists
+     exactly those rows: money in one month, filed to another.
+     ═════════════════════════════════════════════════════════════════════════ */
+  async function h_getRevenueBasisByMonth(p, cb) {
+    function getP(table, qs) {
+      return new Promise(function (resolve) {
+        GET(table, qs, function (err, data) { resolve(err ? [] : (data || [])); });
+      });
+    }
+    function monthOf(d) {
+      if (!d) return '';
+      var s = String(d);
+      return /^\d{4}-\d{2}/.test(s) ? s.slice(0, 7) : '';
+    }
+    /* Only the fields this needs are read out of the receipt_no blob; a
+       malformed one must not take the whole report down with it. */
+    function meta(r) {
+      var raw = r.receipt_no || '';
+      if (!raw || String(raw).trim().indexOf('{') !== 0) return {};
+      try { return JSON.parse(raw) || {}; } catch (e) { return {}; }
+    }
+
+    try {
+      var from = String(p.fromMonth || '2026-04');
+      var to   = String(p.toMonth   || '2027-03');
+
+      var res = await Promise.all([
+        getP('student_fees', 'select=student_id,centre,recorded_by,course_fee,' +
+             'payment_date,revenue_month,receipt_no&limit=20000'),
+        getP('corporate_batches', 'select=company_name,centre,recorded_by,course_fee,' +
+             'discount_amount,invoice_date,revenue_month&limit=2000'),
+        getP('students', 'select=student_id,name&limit=20000')
+      ]);
+      var fees = res[0], corp = res[1], studs = res[2];
+      var nameOf = {};
+      studs.forEach(function (s2) { nameOf[s2.student_id] = s2.name; });
+
+      var months = {};
+      function slot(m) {
+        if (!m || m < from || m > to) return null;
+        if (!months[m]) months[m] = {
+          month: m,
+          booked: 0, invoiced: 0, collected: 0,
+          bookedCount: 0, invoicedCount: 0, collectedCount: 0,
+          corporateBooked: 0,
+          misfiled: []
+        };
+        return months[m];
+      }
+
+      fees.forEach(function (r) {
+        var m = meta(r);
+        var net = Number(r.course_fee || 0) - Number(m.discount_amount || 0);
+        if (!isFinite(net)) net = 0;
+
+        var payM = monthOf(r.payment_date);
+        var invM = monthOf(m.invoice_date);
+        var bkM  = monthOf(r.revenue_month) || String(r.revenue_month || '').slice(0, 7);
+
+        var b = slot(bkM);  if (b) { b.booked    += net; b.bookedCount++; }
+        var i = slot(invM); if (i) { i.invoiced  += net; i.invoicedCount++; }
+        var c = slot(payM); if (c) { c.collected += net; c.collectedCount++; }
+
+        /* The money landed in one month and the sale is filed in another. Listed
+           against the month the MONEY arrived, because that is the month whose
+           reported figure is short by this amount. */
+        if (payM && bkM && payM !== bkM && c) {
+          c.misfiled.push({
+            studentId: r.student_id, name: nameOf[r.student_id] || r.student_id,
+            centre: r.centre || '', recordedBy: r.recorded_by || '',
+            net: Math.round(net),
+            paidMonth: payM, bookedMonth: bkM, invoiceMonth: invM,
+            paymentDate: r.payment_date || '', invoiceDate: m.invoice_date || ''
+          });
+        }
+      });
+
+      /* Corporate carries an invoice date and a filed month but no payment date,
+         so it contributes to collected on its invoice date rather than being
+         silently absent from that column. */
+      corp.forEach(function (r) {
+        var net = Number(r.course_fee || 0) - Number(r.discount_amount || 0);
+        if (!isFinite(net)) net = 0;
+        var invM = monthOf(r.invoice_date);
+        var bkM  = monthOf(r.revenue_month) || String(r.revenue_month || '').slice(0, 7);
+        var i = slot(invM);
+        if (i) { i.invoiced += net; i.invoicedCount++; i.collected += net; i.collectedCount++; }
+        var b = slot(bkM);
+        if (b) { b.booked += net; b.bookedCount++; b.corporateBooked += net; }
+      });
+
+      var rows = Object.keys(months).sort().map(function (k) {
+        var x = months[k];
+        x.booked    = Math.round(x.booked);
+        x.invoiced  = Math.round(x.invoiced);
+        x.collected = Math.round(x.collected);
+        /* How much of this month's money is filed to a different month — the
+           number that explains a figure moving after it was reported. */
+        x.misfiledTotal = x.misfiled.reduce(function (t, r) { return t + r.net; }, 0);
+        x.awaitingInvoice = x.booked - x.invoiced;
+        x.misfiled.sort(function (a, b2) { return b2.net - a.net; });
+        return x;
+      });
+
+      cb(null, { status: 'ok', fromMonth: from, toMonth: to, months: rows });
+    } catch (err) {
+      cb(null, { status: 'error', reason: String(err && err.message || err) });
+    }
+  }
+
   function h_getDocTypeSplit(p, cb) {
     var fromMonth = p.fromMonth || '2026-04';
     var toMonth = p.toMonth || '2027-03';
@@ -14298,6 +14433,7 @@ window.gasGet = (function () {
       case 'getOperationalInvoices':    return h_getOperationalInvoices(params, cb);
       case 'deleteOperationalInvoice':  return h_deleteOperationalInvoice(params, cb);
       case 'getDocTypeSplit':           return h_getDocTypeSplit(params, cb);
+      case 'getRevenueBasisByMonth':    return h_getRevenueBasisByMonth(params, cb);
       case 'getBillingStatus':          return h_getBillingStatus(params, cb);
       case 'saveBillingDocNumber':      return h_saveBillingDocNumber(params, cb);
       case 'saveCorporateBatch':        return h_saveCorporateBatch(params, cb);

@@ -6678,7 +6678,7 @@ const QUESTION_BANK_DATA = [
   {id:'QB0094',course:'DG',topic:'DG Proportions',q:'Crown Facets is responsible for',o1:'Brilliance',o2:'Dispersion',o3:'Scintillation',o4:'Total Internal Reflection',ans:2,type:'MCQ'},
   {id:'QB0095',course:'DG',topic:'DG SDA',q:'Melee includes sizes from',o1:'0.03ct – 0.07ct',o2:'0.01ct - 0.02ct',o3:'Less than 0.01ct',o4:'0.08ct – 0.12ct',ans:1,type:'MCQ'},
   {id:'QB0096',course:'DG',topic:'DG SDA',q:'-2 sieve includes sizes from',o1:'0.03ct – 0.07ct',o2:'0.01ct - 0.02ct',o3:'Less than 0.01ct',o4:'0.08ct – 0.12ct',ans:3,type:'MCQ'},
-  {id:'QB0097',course:'DG',topic:'DG Pricing',q:'Diamond prizes are updated on every _____________ . (day of the weeDG',o1:'Thursday',o2:'Friday',o3:'Saturday',o4:'Sunday',ans:2,type:'MCQ'},
+  {id:'QB0097',course:'DG',topic:'DG Pricing',q:'Diamond prizes are updated on every _____________ . (day of the week)',o1:'Thursday',o2:'Friday',o3:'Saturday',o4:'Sunday',ans:2,type:'MCQ'},
   {id:'QB0098',course:'DG',topic:'DG Pol/Sym',q:'Burn Marks & Abraded Culet are considered in _____________ grade.',o1:'Clarity',o2:'Cut',o3:'Polish',o4:'Symmetry',ans:3,type:'MCQ'},
   {id:'QB0099',course:'DG',topic:'DG Rough',q:'The diamonds originating from War Zones / Third World Countries are called',o1:'Coated diamonds',o2:'Conflict diamonds',o3:'Frosted diamonds',o4:'Irradiated diamonds',ans:2,type:'MCQ'},
   {id:'QB0100',course:'DG',topic:'DG SDA',q:'Approx diameter of 0.10ct diamond would be?',o1:'1 mm',o2:'2 mm',o3:'3 mm',o4:'4 mm',ans:3,type:'MCQ'},

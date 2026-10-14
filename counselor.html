@@ -25136,13 +25136,40 @@ function enrollLoadBatches(centre, preSelectedBatch) {
     var batches = (d && d.batches) || [];
     _enrollState.batchList = batches;
     var sel = document.getElementById('enroll-batch-select');
+
+    /* Grouped by centre, the counsellor's own centre pinned first — 2026-10-14.
+       In cross-sell mode this list spans every centre, and a flat dropdown of all of
+       them is exactly why cross-sell was pulled back to a permission on 2026-09-22
+       ("all ten centres' batches in front of everyone... noise at best"). The problem
+       was the picker, not the access: an <optgroup> per centre keeps their own centre
+       at the top and turns the rest into something scannable, so the permission can
+       stay open to every counsellor. The centre now rides on the group label instead
+       of being repeated on every option. */
+    var homeCentre = (allowedCentres && allowedCentres.length) ? allowedCentres[0] : '';
+    var byCentre = {};
+    batches.forEach(function(b) {
+      var c = b.centre || 'Other';
+      (byCentre[c] = byCentre[c] || []).push(b);
+    });
+    var centreOrder = Object.keys(byCentre).sort(function(a, b) {
+      if (a === b) return 0;
+      if (a === homeCentre) return -1;   // own centre always first
+      if (b === homeCentre) return 1;
+      return a.localeCompare(b);         // everything else alphabetical
+    });
+
     sel.innerHTML = '<option value="">— Select Batch —</option>' +
-      batches.map(function(b) {
-        // Always show the centre — harmless when everything's from one centre, and
-        // essential when this list spans multiple (cross-sell "other centre" mode).
-        var label = escC(b.batchCode) + ' · ' + escC(b.course || '') + ' · ' + escC(b.centre || '') +
-          (b.startDate ? ' · from ' + escC(b.startDate) : '');
-        return '<option value="' + escC(b.batchCode) + '">' + label + '</option>';
+      centreOrder.map(function(c) {
+        var list = byCentre[c];
+        var groupLabel = c + (c === homeCentre ? ' (your centre)' : '') +
+          ' — ' + list.length + ' batch' + (list.length === 1 ? '' : 'es');
+        return '<optgroup label="' + escC(groupLabel) + '">' +
+          list.map(function(b) {
+            var label = escC(b.batchCode) + ' · ' + escC(b.course || '') +
+              (b.startDate ? ' · from ' + escC(b.startDate) : '');
+            return '<option value="' + escC(b.batchCode) + '">' + label + '</option>';
+          }).join('') +
+        '</optgroup>';
       }).join('');
 
     // "+ Add Student" on a specific batch card — lock the batch in and hide the

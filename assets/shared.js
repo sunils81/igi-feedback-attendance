@@ -59,6 +59,29 @@ window.CENTRES = CENTRES;
 window.COURSES = COURSES;
 window.INSTRUCTORS = INSTRUCTORS;
 
+// ── CRM-only pseudo-centres ────────────────────────────────────────────────
+// A web lead does not always map to a real centre. A quiz taken from Dubai has
+// no Indian centre to route to, and a lead from an Indian city we don't teach in
+// has no obvious owner either. Rather than guessing — which puts a lead in a
+// counsellor's queue that they can never service — those land on one of these
+// two holding values and an admin triages them.
+//
+// These are deliberately NOT in CENTRES. CENTRES drives batch setup, revenue
+// targets, holiday calendars and enrolment; a pseudo-centre appearing in any of
+// those would create batches and targets for a place that does not exist.
+// They exist only inside the CRM, and only for admins.
+const ADMIN_ONLY_CENTRES = ['International', 'Unassigned'];
+window.ADMIN_ONLY_CENTRES = ADMIN_ONLY_CENTRES;
+
+// The centre list the CRM should offer. Admins get the real centres plus the two
+// holding values; everyone else gets the real centres only.
+window.crmCentreList = function(isAdminFlag) {
+  return isAdminFlag ? CENTRES.concat(ADMIN_ONLY_CENTRES) : CENTRES.slice();
+};
+window.isAdminOnlyCentre = function(c) {
+  return ADMIN_ONLY_CENTRES.indexOf(c) !== -1;
+};
+
 // Countries a student can be enrolled from. India is first/default since that's the
 // overwhelming majority of enrollments; "Other" is a deliberate catch-all for any country
 // not explicitly listed (rather than trying to maintain a full 195-country list) — picking

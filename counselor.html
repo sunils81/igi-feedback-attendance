@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=151"></script>
+<script src="/assets/shared.js?v=152"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <!-- Corporate/RTT client report. Shared with admin.html so the document a client
@@ -22441,6 +22441,15 @@ function loadCRMData() {
       return;
     }
     crmLeadsList = d.leads || [];
+    // International / Unassigned are admin triage buckets, not real centres. Strip
+    // them here — the one place leads enter the page — so every downstream consumer
+    // (KPIs, filters, table, source breakdown, export) is consistent without each
+    // having to remember the rule.
+    if (!isAdmin && typeof window.isAdminOnlyCentre === 'function') {
+      crmLeadsList = crmLeadsList.filter(function(l) {
+        return !window.isAdminOnlyCentre(l.centre);
+      });
+    }
     updateCRMKPIs();
     filterLeads();
     if (typeof populateOwnerFilter === 'function') populateOwnerFilter();
@@ -23878,7 +23887,11 @@ function openAddLeadModal() {
   var centreSel = document.getElementById('crm-new-centre');
   if (centreSel && centreSel.options.length <= 1) {
     centreSel.innerHTML = '<option value="">Select School of Gemology Location</option>';
-    (window.CENTRES || []).forEach(function(c) {
+    // Admins additionally get International / Unassigned — see crmCentreList() in shared.js
+    var _crmCentres = (typeof window.crmCentreList === 'function')
+      ? window.crmCentreList(isAdmin)
+      : (window.CENTRES || []);
+    _crmCentres.forEach(function(c) {
       var o = document.createElement('option'); o.value = c; o.textContent = c; centreSel.appendChild(o);
     });
   }

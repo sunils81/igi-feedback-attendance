@@ -7,6 +7,7 @@
 <script src="/assets/shared.js?v=153"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
+<script src="/assets/lessons.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style id="dyn-css"></style>
 <style>
@@ -406,6 +407,7 @@
 
   <div class="tab-bar">
     <button class="tab active" onclick="iTab('t-session')">🗓️ Session</button>
+    <button class="tab" id="t-lessons-tab" onclick="iTab('t-lessons')">📽 Lessons <span id="lessons-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" onclick="iTab('t-attendance')">👥 Attendance</button>
     <button class="tab" onclick="iTab('t-marks')">📝 Marks</button>
     <button class="tab" onclick="iTab('t-resources')">📚 Resources</button>
@@ -460,6 +462,11 @@
 
   <!-- ── TAB 1: TODAY ── -->
   <div id="t-session" class="tab-content active">
+    <!-- Shortcut to today's lesson presentation (assets/lessons.js, 2026-10-15) -->
+    <div id="lesson-shortcut" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:linear-gradient(120deg,#0D1B2E,#1A2F4E);color:#F7F1E4;border-radius:14px;padding:14px 18px;margin-bottom:14px">
+      <div><div style="font-size:10px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#E8C97A">Lessons</div><div style="font-weight:700;font-size:15px;margin-top:4px">Present today’s lesson in class</div></div>
+      <button type="button" onclick="iTab('t-lessons')" style="border:0;border-radius:30px;padding:10px 18px;font-weight:800;font-size:12px;letter-spacing:.06em;cursor:pointer;background:linear-gradient(180deg,#F0D9A6,#D6B16C 48%,#B3873C);color:#0D1B2E">▶ Open Lessons</button>
+    </div>
     <!-- Today's auto-sessions per batch -->
     <div class="card">
       <div class="section-tag">Today's Sessions</div>
@@ -2031,6 +2038,18 @@
   <div id="t-work" class="tab-content">
     <div id="work-mount"></div>
   </div>
+  <!-- ── LESSONS: day-wise animated lesson decks (assets/lessons.js). 2026-10-15, per Sunil:
+       each day's presentation opens day-wise; any other day, or a change of order, needs a
+       request with a reason to the HOD (Bhavin is backup approver). Rules live in the DB:
+       supabase/migrations/migration_lesson_decks.sql. Students never see these. ── -->
+  <div id="t-lessons" class="tab-content">
+    <div class="card">
+      <div class="section-tag">Day-wise presentations</div>
+      <h2>📽 Lessons</h2>
+      <p class="sub">Open today’s lesson and present it full screen. Covered days stay open for recap; any other day needs HOD approval.</p>
+      <div id="lessons-mount" style="margin-top:14px"></div>
+    </div>
+  </div>
   <div id="t-trayhub" class="tab-content">
   <style>
     /* ── Tray Hub Styles ── */
@@ -3058,6 +3077,45 @@ function initInstructorSessionFeatures() {
   startAttendanceHealthWatch();
   if (window.IGIWork) window.IGIWork.banner({ id: 'work-assigned-banner', me: instructorName, onOpen: function(){ iTab('t-work'); } });
   if (/[?&]work=/.test(location.search)) setTimeout(function(){ iTab('t-work'); }, 300);
+  refreshLessonsBadge();
+  if (/[?&]lessons=/.test(location.search)) setTimeout(function(){ iTab('t-lessons'); }, 300);
+}
+
+/* ── Lessons tab (assets/lessons.js) ─────────────────────────────────────────
+   Instructors see their running batches; Bhavin (isAcademicHead) also gets the HOD
+   request queue on top, as backup approver. The server decides who may approve and
+   open what — isAcademicHead only decides whether to show the queue. */
+function mountLessonsTab() {
+  if (!window.IGILessons) return;
+  var go = function () {
+    IGILessons.mountInstructor('lessons-mount', {
+      me: instructorName,
+      approver: !!isAcademicHead,
+      onCount: setLessonsBadge,
+      getBatches: function () { return instructorBatchesCache || []; }
+    });
+  };
+  if (instructorBatchesCache && instructorBatchesCache.length) { go(); return; }
+  document.getElementById('lessons-mount').innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><p>Loading your batches…</p></div>';
+  gasGet({action:'getInstructorBatches', instructor:instructorName}, function (e, d) {
+    if (!e && d && d.batches) {
+      d.batches.forEach(function (b) { if (!b.syllabus || !b.syllabus.length) b.syllabus = getSyllabusForCourse(b.course); });
+      instructorBatchesCache = d.batches;
+    }
+    go();
+  });
+}
+function setLessonsBadge(n) {
+  var b = document.getElementById('lessons-badge');
+  if (!b) return;
+  b.textContent = n || '';
+  b.style.display = n ? 'inline-block' : 'none';
+}
+var _lessonsBadgeTimer = null;
+function refreshLessonsBadge() {
+  if (!window.IGILessons || !isAcademicHead) return;
+  IGILessons.pendingCount(setLessonsBadge);
+  if (!_lessonsBadgeTimer) _lessonsBadgeTimer = setInterval(function () { if (instructorName && isAcademicHead) IGILessons.pendingCount(setLessonsBadge); }, 120000);
 }
 function clearSession() {
   try { localStorage.removeItem('igi_instr_session'); } catch(e) {}
@@ -3199,6 +3257,7 @@ function iTab(id) {
   _summaryActiveTab = id;
   renderInstructorSummary();
   if (id==='t-session')    { loadTodaySessions(); if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
+  if (id==='t-lessons')    { mountLessonsTab(); }
   if (id==='t-attendance') { stopAttendanceRefresh(); if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-marks')      { if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-resources')  { syncResourcesBatchSelect(); }
@@ -3252,6 +3311,7 @@ function renderInstructorMoreSheet() {
   if (!wrap) return;
   // [label, icon, tabId, gateTabButtonId or null if always visible, badgeElId or null]
   var items = [
+    ['Lessons', '📽', 't-lessons', null, 'lessons-badge'],
     ['Work', '🧩', 't-work', null, 'work-badge'],
     ['Resources', '📚', 't-resources', null, null],
     ['Diamond Calculator', '🧮', 't-diamondcalc', null, null],

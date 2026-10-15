@@ -2,7 +2,7 @@
  * IGI Service Worker — caches the app shell for instant load on return visits
  * Version bump the CACHE_NAME to force refresh when files change
  */
-const CACHE_NAME = 'igi-v38';
+const CACHE_NAME = 'igi-v39';
 const SHELL_FILES = [
   '/assets/shared.js'
 ];
@@ -30,7 +30,9 @@ self.addEventListener('activate', function(e) {
   e.waitUntil(
     caches.keys().then(function(keys) {
       return Promise.all(
-        keys.filter(function(k) { return k !== CACHE_NAME; })
+        // Spare the lesson-deck cache (assets/lessons.js): it holds today's presentation so a
+        // Wi-Fi drop in class doesn't stop the lesson. lessons.js prunes it itself.
+        keys.filter(function(k) { return k !== CACHE_NAME && k.indexOf('igi-lessons') !== 0; })
             .map(function(k) { return caches.delete(k); })
       );
     }).then(function() {

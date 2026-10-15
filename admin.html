@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="assets/shared.js?v=153"></script>
 <script src="assets/work.js?v=4"></script>
+<script src="assets/lessons.js?v=1"></script>
 <!-- Corporate/RTT client report. Shared with counselor.html so the document a client
      receives is byte-identical whichever portal issued it. -->
 <script src="assets/corp-report.js?v=3"></script>
@@ -1597,6 +1598,7 @@
       <button class="tab" onclick="switchAdminTab('t-snapshot')">📸 Batch Snapshot</button>
       <button class="tab" onclick="switchAdminTab('t-trayhub-admin'); adminTrayHubInit();">🔮 Tray Hub</button>
       <button class="tab" id="tab-hod-approvals" onclick="switchAdminTab('t-hod-approvals');">👑 HOD Approvals</button>
+      <button class="tab" id="tab-lessons-admin" style="display:none" onclick="switchAdminTab('t-lessons-admin');">📽 Lessons <span id="lessons-admin-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:4px"></span></button>
       <button class="tab" onclick="switchAdminTab('t-inventory'); adminInitInventory();">📦 Inventory</button>
       <button class="tab" id="tab-work" onclick="switchAdminTab('t-work')">🧩 Work <span id="work-badge" style="display:none;background:#2563eb;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
       <button class="tab" id="tab-activity" onclick="switchAdminTab('t-activity')">🔔 Activity <span id="activity-badge" style="display:none;background:#e53935;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;vertical-align:middle">0</span></button>
@@ -4238,6 +4240,27 @@
 
 
     <!-- TAB: HOD APPROVALS -->
+    <!-- Lessons — day-wise lesson decks (assets/lessons.js). 2026-10-15, per Sunil: opening a
+         day out of order needs a request with a reason to the HOD. Shown only when the
+         server says this session may approve (Admin, or a name in lesson_approvers). -->
+    <div id="t-lessons-admin" class="tab-content">
+      <div class="card">
+        <div class="section-tag">HOD Approvals</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <h2 style="margin:0">📽 Lesson access requests</h2>
+          <label style="font-size:13px;color:var(--muted);display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="lessons-admin-history" onchange="IGILessons.setHistory('lesson-approvals-mount', this.checked)"> Show the last 45 days</label>
+        </div>
+        <p class="sub">Instructors ask here when they need a day that is not open yet, or want to change the order. Approving opens that day for that batch until the end of the day you choose. The instructor gets a notification either way.</p>
+        <div id="lesson-approvals-mount" style="margin-top:14px"></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="section-tag">Library</div>
+        <h2>Published presentations</h2>
+        <p class="sub">Preview any deck exactly as instructors see it. Every opening is logged.</p>
+        <div id="lesson-library-mount" style="margin-top:14px"></div>
+      </div>
+    </div>
+
     <div id="t-hod-approvals" class="tab-content">
       <div class="card">
         <div class="section-tag">HOD Executive Approvals</div>
@@ -4883,6 +4906,28 @@ function doAdminLogout() {
   document.getElementById('lg-pass').value = '';
 }
 
+/* Lesson access requests (assets/lessons.js): reveal the tab only for approvers and keep
+   its badge current. Polls every 2 min; real user input is what the idle timer counts,
+   so this background poll never keeps a session alive. */
+var _lessonWatch = null;
+function setLessonsAdminBadge(n) {
+  var b = document.getElementById('lessons-admin-badge');
+  if (b) { b.textContent = n || ''; b.style.display = n ? 'inline-block' : 'none'; }
+}
+function startLessonRequestWatch() {
+  if (!window.IGILessons) return;
+  var tick = function () {
+    IGILessons.approverStatus(function (ok, n) {
+      var t = document.getElementById('tab-lessons-admin');
+      if (t) t.style.display = ok ? '' : 'none';
+      setLessonsAdminBadge(ok ? n : 0);
+      if (ok && /[?&]lessons=/.test(location.search) && !tick._opened) { tick._opened = true; switchAdminTab('t-lessons-admin'); }
+    });
+  };
+  tick();
+  if (!_lessonWatch) _lessonWatch = setInterval(tick, 120000);
+}
+
 function showMainScreen() {
   document.getElementById('s-login').classList.remove('active');
   document.getElementById('s-main').classList.add('active');
@@ -4900,6 +4945,7 @@ function showMainScreen() {
     }
   }
   if (/[?&]work=/.test(location.search)) setTimeout(function() { switchAdminTab('t-work'); }, 300);
+  startLessonRequestWatch();
   
   // Update header badges
   document.getElementById('user-badge-name').textContent = (window.igiName ? igiName(adminUser.name) : adminUser.name);
@@ -5544,6 +5590,7 @@ function toggleAdminMoreSheet() {
 // [tabId, icon, fallback label, badge element id or null]
 var A_MORE_ITEMS = [
   ['t-hod-approvals',     '👑', 'HOD Approvals',          null],
+  ['t-lessons-admin',     '📽', 'Lessons',                'lessons-admin-badge'],
   ['t-activity',          '🔔', 'Activity',               'activity-badge'],
   ['t-billing',           '💳', 'Revenue Billing',        null],
   ['t-rev-breakdown',     '📑', 'Revenue Breakdown',      null],
@@ -5654,6 +5701,14 @@ function switchAdminTab(tabId) {
   }
   if (tabId === 't-hod-approvals') {
     loadPendingHODApprovals();
+    return;
+  }
+  if (tabId === 't-lessons-admin') {
+    if (window.IGILessons) {
+      var _h = document.getElementById('lessons-admin-history');
+      IGILessons.mountApprovals('lesson-approvals-mount', { history: !!(_h && _h.checked), onCount: setLessonsAdminBadge });
+      IGILessons.mountLibrary('lesson-library-mount');
+    }
     return;
   }
   if (tabId === 't-activity') {

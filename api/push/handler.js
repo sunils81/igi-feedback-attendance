@@ -362,6 +362,141 @@ async function handleDiscountNotify(req, res) {
   }
 }
 
+// ── /api/push/lesson-open — gate for the day-wise lesson decks (assets/lessons.js) ─────
+// The browser sends its portal session token (X-Portal-Session). We hand it to
+// lesson_authorize_open() — granted to service_role only — which decides from the batch's
+// syllabus progress and any HOD approval whether this person may open this day, logs the
+// opening, and returns the deck's storage path. Only then do we sign a 5-minute URL for the
+// file in the private lesson-decks bucket. The path itself never reaches the browser.
+//   body: { batchCode, day, deckId?, purpose?: 'open' | 'prefetch' }
+async function handleLessonOpen(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
+  if (req.method !== 'POST') {
+    return res.status(405).json({ status: 'error', reason: 'Method not allowed' });
+  }
+  if (!SUPA_URL || !SUPA_KEY) {
+    return res.status(500).json({ status: 'error', reason: 'Server not configured' });
+  }
+  const token = String(req.headers['x-portal-session'] || '').trim();
+  if (!token) return res.status(401).json({ status: 'error', reason: 'session' });
+  const { batchCode, day, deckId, purpose } = req.body || {};
+  if (deckId && !/^[0-9a-f-]{36}$/i.test(String(deckId))) {
+    return res.status(400).json({ status: 'error', reason: 'Invalid deckId' });
+  }
+  let gate;
+  try {
+    const r = await fetch(`${SUPA_URL}/rest/v1/rpc/lesson_authorize_open`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`,
+        'Content-Type': 'application/json', 'X-Portal-Session': token,
+      },
+      body: JSON.stringify({
+        p_batch_code: batchCode ? String(batchCode) : null,
+        p_day: day === undefined || day === null || day === '' ? null : Number(day),
+        p_deck_id: deckId || null,
+        p_purpose: purpose === 'prefetch' ? 'prefetch' : 'open',
+      }),
+    });
+    if (!r.ok) throw new Error(`gate ${r.status} ${await r.text()}`);
+    gate = await r.json();
+  } catch (e) {
+    console.error('lesson-open gate failed', e);
+    return res.status(500).json({ status: 'error', reason: 'Could not check access' });
+  }
+  if (!gate || gate.status !== 'ok' || !gate.deck || !gate.deck.path) {
+    return res.status(200).json({ status: (gate && gate.status) || 'error', reason: (gate && gate.reason) || 'Not allowed' });
+  }
+  try {
+    const path = String(gate.deck.path).split('/').map(encodeURIComponent).join('/');
+    const r = await fetch(`${SUPA_URL}/storage/v1/object/sign/lesson-decks/${path}`, {
+      method: 'POST',
+      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expiresIn: 300 }),
+    });
+    if (!r.ok) throw new Error(`sign ${r.status} ${await r.text()}`);
+    const d = await r.json();
+    const signed = d.signedURL || d.signedUrl;
+    if (!signed) throw new Error('no signedURL');
+    const { path: _omit, ...deck } = gate.deck;
+    return res.status(200).json({ status: 'ok', basis: gate.basis, deck, url: `${SUPA_URL}/storage/v1${signed}` });
+  } catch (e) {
+    console.error('lesson-open sign failed', e);
+    return res.status(500).json({ status: 'error', reason: 'Could not prepare the presentation' });
+  }
+}
+
+// ── /api/push/lesson-notify — a lesson-unlock request was raised or decided ───────────
+// Same pattern as discount-notify: no secret, the server re-reads the request by id and
+// composes the message, and only for an event in the last 15 minutes, so a caller can at
+// worst repeat a notification about something that genuinely just happened.
+//   pending  -> the HOD (Admin) and the backup approvers in lesson_approvers
+//   approved / rejected -> the instructor who asked
+//   body: { requestId }
+async function handleLessonNotify(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ status: 'error', reason: 'Method not allowed' });
+  }
+  if (!SUPA_URL || !SUPA_KEY) {
+    return res.status(500).json({ status: 'error', reason: 'Server not configured' });
+  }
+  const { requestId } = req.body || {};
+  if (!requestId || !/^[0-9a-f-]{36}$/i.test(String(requestId))) {
+    return res.status(400).json({ status: 'error', reason: 'Invalid requestId' });
+  }
+  try { configureWebPush(); } catch (e) {
+    return res.status(500).json({ status: 'error', reason: e.message });
+  }
+  let rq;
+  try {
+    const rows = await supaGet(`lesson_unlock_requests?id=eq.${encodeURIComponent(requestId)}&select=id,batch_code,syllabus_day,requested_by,reason,status,decided_by,decision_note,decided_at,created_at`);
+    rq = rows[0];
+  } catch (e) {
+    return res.status(500).json({ status: 'error', reason: 'Could not load request' });
+  }
+  if (!rq) return res.status(404).json({ status: 'error', reason: 'Request not found' });
+  const fresh = (t) => t && (Date.now() - new Date(t).getTime()) < 15 * 60 * 1000;
+
+  const results = [];
+  if (rq.status === 'pending') {
+    if (!fresh(rq.created_at)) return res.status(200).json({ status: 'ok', sent: 0, reason: 'stale' });
+    let approvers = [];
+    try { approvers = (await supaGet('lesson_approvers?select=name')).map((r) => r.name); } catch (_e) {}
+    const targets = [{ name: 'Admin', portal: 'admin', url: '/admin.html?lessons=1' }]
+      .concat(approvers.map((n) => ({ name: n, portal: 'instructor', url: '/instructor-portal?lessons=approvals' })));
+    for (const t of targets) {
+      try {
+        const subs = await fetchSubscriptionsAllPortals(t.name);
+        const out = await pushTo(t.portal, t.name, {
+          title: `Lesson access request · Day ${rq.syllabus_day}`,
+          body: `${rq.requested_by} (${rq.batch_code}): ${String(rq.reason || '').slice(0, 110)}`,
+          url: t.url, tag: `lesson-${rq.id}`,
+        }, subs);
+        results.push({ name: t.name, ...out });
+      } catch (e) { results.push({ name: t.name, error: e.message }); }
+    }
+    return res.status(200).json({ status: 'ok', results });
+  }
+  if (rq.status === 'approved' || rq.status === 'rejected') {
+    if (!fresh(rq.decided_at)) return res.status(200).json({ status: 'ok', sent: 0, reason: 'stale' });
+    const who = wdn(rq.decided_by || 'HOD');
+    const title = rq.status === 'approved'
+      ? `Day ${rq.syllabus_day} unlocked by ${who}`
+      : `Day ${rq.syllabus_day} request declined by ${who}`;
+    const body = `${rq.batch_code}${rq.decision_note ? ' · ' + String(rq.decision_note).slice(0, 110) : (rq.status === 'approved' ? ' · open it from the Lessons tab' : '')}`;
+    try {
+      const subs = await fetchSubscriptionsAllPortals(rq.requested_by);
+      const out = await pushTo('instructor', rq.requested_by, {
+        title, body, url: '/instructor-portal?lessons=1', tag: `lesson-${rq.id}`,
+      }, subs);
+      return res.status(200).json({ status: 'ok', to: rq.requested_by, ...out });
+    } catch (e) {
+      return res.status(500).json({ status: 'error', reason: e.message });
+    }
+  }
+  return res.status(200).json({ status: 'ok', sent: 0 });
+}
+
 export default async function handler(req, res) {
   const action = (req.query && req.query.action) || '';
   if (action === 'send') return handleSend(req, res);
@@ -369,5 +504,7 @@ export default async function handler(req, res) {
   if (action === 'unsubscribe') return handleUnsubscribe(req, res);
   if (action === 'task-notify') return handleTaskNotify(req, res);
   if (action === 'discount-notify') return handleDiscountNotify(req, res);
+  if (action === 'lesson-open') return handleLessonOpen(req, res);
+  if (action === 'lesson-notify') return handleLessonNotify(req, res);
   return res.status(400).json({ status: 'error', reason: 'Unknown or missing action' });
 }

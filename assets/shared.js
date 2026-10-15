@@ -4030,14 +4030,18 @@ window.gasGet = (function () {
       if (!eLookup && existingRows && existingRows[0] && existingRows[0].receipt_no) {
         try { existingDiscPct = Number(JSON.parse(existingRows[0].receipt_no).discount_pct); } catch (ex) {}
       }
-      if (existingDiscPct !== null && Math.abs(existingDiscPct - dp) < 0.01) {
-        // Same discount that's already on this record — not a new decision, no fresh
-        // approval needed. Lets a counsellor fix an invoice number or mark an installment
-        // paid without being blocked by a discount someone already approved before this
-        // system existed, or that was already spent on this exact save earlier.
-        h_saveFeeInner(p, cb);
-        return;
-      }
+      /* Same discount that's already on this record — not a new decision, so no fresh
+         approval is REQUIRED. Lets a counsellor fix an invoice number or mark an
+         installment paid without being blocked by a discount someone already approved
+         before this system existed, or that was already spent on this exact save earlier.
+
+         2026-10-15: this used to return immediately, which also skipped the redemption
+         block below — so if the discount was on the record but its approval had never
+         been marked used, no amount of re-saving would ever retire it and the
+         counsellor's green "please enter the revenue" banner was stuck for good. Now it
+         falls through: a matching approval still gets spent, and only the hard block is
+         waived (see withApproval). */
+      var alreadyOnRecord = (existingDiscPct !== null && Math.abs(existingDiscPct - dp) < 0.01);
       /* Redemption matching — WIDENED 2026-09-17.
 
          It used to require an exact student_id + batch_code + pct hit. But the standalone
@@ -4093,6 +4097,10 @@ window.gasGet = (function () {
       };
       var withApproval = function (matching) {
           if (!matching) {
+            // Nothing left to redeem. If this same discount is already on the record it is
+            // not a new decision, so the save proceeds — only a genuinely NEW or CHANGED
+            // discount is blocked.
+            if (alreadyOnRecord) { h_saveFeeInner(p, cb); return; }
             cb(null, {
               status: 'error', reason: 'DISCOUNT_NEEDS_APPROVAL',
               message: 'A ' + dp + '% discount needs admin approval before it can be saved. Submit a Discount Approval Request first.'
@@ -4292,7 +4300,47 @@ window.gasGet = (function () {
           coversBatches: r.covers_batches || [], usedBatches: r.used_batches || []
         };
       });
-      cb(null, { status: 'ok', count: records.filter(function (r) { return r.status === 'pending'; }).length, records: records });
+
+      /* outstandingBatches — 2026-10-15. An approval covers every course the student is
+         enrolled in (see h_saveFee), so a two-course student's approval stays open until
+         BOTH fee records are saved. The counsellor's banner was showing only the batch
+         written on the request, with no hint that a second course was the thing still
+         holding it open: they entered the revenue for the named batch, nothing visibly
+         changed, and it read as the banner being broken. Resolve here, where GET lives,
+         so the banner can name the course it is actually waiting for. */
+      var open = records.filter(function (r) { return r.status === 'approved' && !r.used; });
+      if (!open.length) {
+        cb(null, { status: 'ok', count: records.filter(function (r) { return r.status === 'pending'; }).length, records: records });
+        return;
+      }
+      var nb = function (s) { return String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+      var minus = function (all, spent) {
+        var gone = (spent || []).map(nb);
+        return (all || []).filter(function (b) { return b && gone.indexOf(nb(b)) < 0; });
+      };
+      var pending = open.length;
+      var settle = function () {
+        if (--pending > 0) return;
+        cb(null, { status: 'ok', count: records.filter(function (r) { return r.status === 'pending'; }).length, records: records });
+      };
+      open.forEach(function (r) {
+        if (r.coversBatches.length) {           // counsellor ticked the courses it covers
+          r.outstandingBatches = minus(r.coversBatches, r.usedBatches);
+          settle();
+          return;
+        }
+        // No tick boxes = every course this student is enrolled in.
+        GET('enrollments', 'student_id=eq.' + encodeURIComponent(r.studentId) + '&select=batch_code,status',
+          function (eEnr, enrRows) {
+            var live = (eEnr ? [] : (enrRows || []))
+              .filter(function (x) { return String(x.status || 'Active') !== 'Dropped'; })
+              .map(function (x) { return x.batch_code; });
+            // Fall back to the batch on the request if the student has no enrolment rows,
+            // so the banner never ends up with nothing to point at.
+            r.outstandingBatches = minus(live.length ? live : [r.batchCode], r.usedBatches);
+            settle();
+          });
+      });
     });
   }
 

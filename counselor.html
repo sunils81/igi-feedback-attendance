@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=152"></script>
+<script src="/assets/shared.js?v=153"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <!-- Corporate/RTT client report. Shared with admin.html so the document a client
@@ -21201,14 +21201,41 @@ function loadApprovedDiscountAlert() {
          being the only path. */
       '<div style="display:flex;flex-direction:column;gap:5px;padding-left:26px;">' + pend.map(function(r) {
         var who = r.reviewedBy ? escC(igiName(r.reviewedBy)) : 'the HOD';
-        var open = '<button onclick="openFeeFormFor(\'' + escC(r.studentId) + '\',\'' + escC(r.batchCode) + '\')" style="background:#16a34a;color:#fff;border:none;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">Enter revenue →</button>';
-        var quick = r.payload
+        /* One approval covers every course the student is enrolled in, so it stays open
+           until each one's fee record is saved. Point at the course still OUTSTANDING,
+           not the batch written on the request — otherwise a counsellor who has just
+           entered the revenue for the named batch sees an unchanged banner and concludes
+           it is broken. outstandingBatches comes from h_getDiscountRequests. 2026-10-15. */
+        var left = (r.outstandingBatches && r.outstandingBatches.length)
+          ? r.outstandingBatches : [r.batchCode];
+        var doneCount = (r.usedBatches || []).length;
+        var target = left[0];
+
+        var open = '<button onclick="openFeeFormFor(\'' + escC(r.studentId) + '\',\'' + escC(target) + '\')" style="background:#16a34a;color:#fff;border:none;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">Enter revenue →</button>';
+        // "Save as entered" replays the stashed payload, which targets the batch on the
+        // request. Once that one is already in, it would re-save the wrong course — so it
+        // is only offered while the request's own batch is the one still outstanding.
+        var sameBatch = left.some(function(b) {
+          return String(b).toUpperCase().replace(/[^A-Z0-9]/g,'') ===
+                 String(r.batchCode).toUpperCase().replace(/[^A-Z0-9]/g,'');
+        });
+        var quick = (r.payload && sameBatch)
           ? '<button onclick="applyApprovedDiscountRequest(\'' + escC(r.id) + '\')" style="background:#fff;color:#14532d;border:1.5px solid #16a34a;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap" title="Save exactly what you entered before, with the approved discount">Save as entered</button>'
           : '';
+
+        var progress = doneCount
+          ? '<div style="font-size:11px;color:#3f6212">Already entered for ' + escC((r.usedBatches || []).join(', ')) +
+            ' — still waiting on ' + escC(left.join(', ')) + '.</div>'
+          : (left.length > 1
+              ? '<div style="font-size:11px;color:#3f6212">Covers ' + left.length + ' courses: ' + escC(left.join(', ')) +
+                '. The alert clears once every one has its fee record.</div>'
+              : '');
+
         return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
           '<span style="flex:1;min-width:180px">' + escC(r.studentName) +
-            ' <span style="font-size:11px;color:#3f6212">(' + escC(r.studentId) + ' · ' + escC(r.batchCode) + ')</span>' +
-            '<div style="font-size:11px;color:#3f6212">' + r.discountPct + '% approved by ' + who + '</div></span>' +
+            ' <span style="font-size:11px;color:#3f6212">(' + escC(r.studentId) + ' · ' + escC(target) + ')</span>' +
+            '<div style="font-size:11px;color:#3f6212">' + r.discountPct + '% approved by ' + who + '</div>' +
+            progress + '</span>' +
           quick + open + '</div>';
       }).join('') + '</div>';
     banner.style.display = 'flex';

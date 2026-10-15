@@ -269,6 +269,10 @@
 
     function show(blob, offline) {
       if (!P.el || P.el !== el) return;
+      // Supabase Storage serves .html as text/plain (anti-XSS), so a fresh download arrives
+      // typed as text and the iframe would show the source code. Always re-type it as HTML.
+      // (Cached copies were fine because the cache stores them as text/html.) 2026-10-15.
+      blob = new Blob([blob], { type: 'text/html;charset=utf-8' });
       var url = URL.createObjectURL(blob);
       P.url = url;
       var fr = document.createElement('iframe');
@@ -583,6 +587,13 @@
       });
     }).catch(function () { box.innerHTML = opts.compact ? '' : '<div class="igl-empty">Could not load requests.</div>'; });
   }
+  // Approvers only: cb(isApprover, pendingCount). The admin portal shows its Lessons tab
+  // only when the server says this session may approve.
+  function approverStatus(cb) {
+    rpc('lesson_list_requests', { p_scope: 'pending' }).then(function (d) {
+      cb(!!(d && d.status === 'ok'), d && d.status === 'ok' ? (d.rows || []).length : 0);
+    }).catch(function () { cb(false, 0); });
+  }
   function pendingCount(cb) {
     rpc('lesson_list_requests', { p_scope: 'pending' }).then(function (d) {
       cb(d && d.status === 'ok' ? (d.rows || []).length : 0);
@@ -617,8 +628,10 @@
     mountApprovals: mountApprovals,
     mountLibrary: mountLibrary,
     pendingCount: pendingCount,
+    approverStatus: approverStatus,
     present: present,
     close: closePlayer,
-    reload: load
+    reload: load,
+    setHistory: function (id, on) { if (A.mounts[id]) { A.mounts[id].history = !!on; loadApprovals(id); } }
   };
 })();

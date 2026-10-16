@@ -1800,10 +1800,10 @@ window.gasGet = (function () {
     var SC = { 'Diamond Graduate': 39, 'JewelPad Design': 20, 'JewelPad Online': 20, 'Diamond Grading': 15,
                'Colored Stones': 15, 'Jewelry Design': 18, 'Pearls': 10 };
     // Short courses run on consecutive days, so the end date is start + (days - 1).
-    // Pearl Grading: 3 full days or 5 half days. Pearl Grading Advance: 5 full days.
+    // Pearl Grading and Pearl Grading Advance: 3 full days or 5 half days.
     // Added 2026-10-16 per Sunil.
     var SHORT = { 'Pearl Grading': { 'Full Day': 3, 'Half Day': 5 },
-                  'Pearl Grading Advance': { 'Full Day': 5, 'Half Day': 5 } };
+                  'Pearl Grading Advance': { 'Full Day': 3, 'Half Day': 5 } };
     var end  = new Date(p.startDate || new Date());
     var n;
     if (SHORT[p.course]) {
@@ -15562,8 +15562,7 @@ const COURSE_FEES_JS = {
   // New 2026-07-25 per Sunil — same course as 'Diamond Essentials 5Cs' above under its
   // current display name; added to COURSES so it's actually selectable in Batch Setup/CRM.
   'Diamond Essential: The 5C\'s':        {fee:29900, regFee:0,    gst:18},
-  // New 2026-10-16 per Sunil. Pearl Grading runs 3 full days or 5 half days;
-  // Pearl Grading Advance runs 5 full days.
+  // New 2026-10-16 per Sunil. Both run 3 full days or 5 half days.
   'Pearl Grading':                       {fee:29900, regFee:0,    gst:18},
   'Pearl Grading Advance':               {fee:59900, regFee:0,    gst:18},
   // The 5 entries below are current-name aliases for courses above that were renamed in the

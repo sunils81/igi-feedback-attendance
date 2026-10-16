@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=154"></script>
+<script src="/assets/shared.js?v=155"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <!-- Corporate/RTT client report. Shared with admin.html so the document a client
@@ -5339,7 +5339,8 @@ if (typeof COURSES === 'undefined') {
     'Rough Diamond Graduate','Identification of RES','Small Diamond Assortment',
     'Diamond Graduate Integrated','Coloured Stone Integrated',
     'Corporate Programs','Seminars','Gem-A Foundation','Gem-A Diploma',
-    'Emerald','Pearl',
+    'Emerald','Pearl','Diamond Essential: The 5C\'s',
+    'Pearl Grading','Pearl Grading Advance',
     'Navratna Masterclass (10 Half Days)','Navratna Masterclass (5 Full Days)'
   ];
 }
@@ -8032,7 +8033,7 @@ function genBatchCode() {
     }
   });
   // Auto-calculate end date
-  gasGet({action:'getEndDate', course, startDate:start}, function(e, d2) {
+  gasGet({action:'getEndDate', course, startDate:start, type:(document.getElementById('b-type')||{}).value}, function(e, d2) {
     if (!e && d2 && d2.endDate) {
       const endEl   = document.getElementById('b-end');
       const helpEl  = document.getElementById('b-end-help');
@@ -18544,6 +18545,10 @@ function toggleSlotField() {
   const slotDiv = document.getElementById('b-slot-field');
   slotDiv.style.display = type === 'Half Day' ? 'block' : 'none';
   if (type === 'Full Day') document.getElementById('b-slot').value = 'First Half';
+  // Short courses (e.g. Pearl Grading: 3 full days / 5 half days) end on a different
+  // date for each batch type, so recompute the end date when the type changes.
+  if (document.getElementById('b-course').value && document.getElementById('b-start').value
+      && typeof genBatchCode === 'function') genBatchCode();
 }
 
 function toggleEndDateOverride() {
@@ -18565,7 +18570,7 @@ function toggleEndDateOverride() {
     const course = document.getElementById('b-course').value;
     const start  = document.getElementById('b-start').value;
     if (course && start) {
-      gasGet({action:'getEndDate', course, startDate:start}, function(e, d2) {
+      gasGet({action:'getEndDate', course, startDate:start, type:(document.getElementById('b-type')||{}).value}, function(e, d2) {
         if (!e && d2 && d2.endDate) {
           endEl.value = d2.endDate;
           helpEl.textContent = d2.totalDays + ' teaching days → ends ' + d2.endDateDisplay;

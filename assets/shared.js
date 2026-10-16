@@ -41,6 +41,7 @@ const COURSES  = [
   'Diamond Graduate Integrated','Coloured Stone Integrated',
   'Corporate Programs','Seminars','Gem-A Foundation','Gem-A Diploma',
   'Emerald','Pearl','Diamond Essential: The 5C\'s',
+  'Pearl Grading','Pearl Grading Advance',
   'Navratna Masterclass (10 Half Days)','Navratna Masterclass (5 Full Days)'
 ];
 const INSTRUCTORS = [
@@ -1768,7 +1769,8 @@ window.gasGet = (function () {
     var CC = { Mumbai:'MUM', Chennai:'CHE', Bangalore:'BLR', Delhi:'DEL', Kolkata:'KOL',
                Hyderabad:'HYD', Pune:'PUN', Ahmedabad:'AMD', Jaipur:'JAI', Surat:'SUR' };
     var RC = { 'Diamond Graduate':'DG', 'JewelPad Design':'JP', 'JewelPad Online':'JPO', 'Diamond Grading':'DGR',
-               'Colored Stones':'CS', 'Jewelry Design':'JD', 'Pearls':'PRL' };
+               'Colored Stones':'CS', 'Jewelry Design':'JD', 'Pearls':'PRL',
+               'Pearl Grading':'PGR', 'Pearl Grading Advance':'PGA' };
     var c = CC[p.centre]  || String(p.centre  || '').slice(0, 3).toUpperCase();
     var r = RC[p.course]  || String(p.course  || '').replace(/\s+/g, '').slice(0, 3).toUpperCase();
     var m = p.month ? String(p.month).slice(0, 3).toUpperCase() + String(p.month).slice(-2) : '';
@@ -1797,10 +1799,20 @@ window.gasGet = (function () {
     // adjust here if the online program actually runs for a different number of sessions.
     var SC = { 'Diamond Graduate': 39, 'JewelPad Design': 20, 'JewelPad Online': 20, 'Diamond Grading': 15,
                'Colored Stones': 15, 'Jewelry Design': 18, 'Pearls': 10 };
-    var n    = SC[p.course] || 20;
-    var days = Math.ceil(n / 3 * 7) + 4;
+    // Short courses run on consecutive days, so the end date is start + (days - 1).
+    // Pearl Grading: 3 full days or 5 half days. Pearl Grading Advance: 5 full days.
+    // Added 2026-10-16 per Sunil.
+    var SHORT = { 'Pearl Grading': { 'Full Day': 3, 'Half Day': 5 },
+                  'Pearl Grading Advance': { 'Full Day': 5, 'Half Day': 5 } };
     var end  = new Date(p.startDate || new Date());
-    end.setDate(end.getDate() + days);
+    var n;
+    if (SHORT[p.course]) {
+      n = SHORT[p.course][p.type] || SHORT[p.course]['Full Day'];
+      end.setDate(end.getDate() + n - 1);
+    } else {
+      n = SC[p.course] || 20;
+      end.setDate(end.getDate() + Math.ceil(n / 3 * 7) + 4);
+    }
     var iso  = end.toISOString().slice(0, 10);
     cb(null, { endDate: iso, endDateDisplay: toDMY(iso), totalDays: n });
   }
@@ -15550,6 +15562,10 @@ const COURSE_FEES_JS = {
   // New 2026-07-25 per Sunil — same course as 'Diamond Essentials 5Cs' above under its
   // current display name; added to COURSES so it's actually selectable in Batch Setup/CRM.
   'Diamond Essential: The 5C\'s':        {fee:29900, regFee:0,    gst:18},
+  // New 2026-10-16 per Sunil. Pearl Grading runs 3 full days or 5 half days;
+  // Pearl Grading Advance runs 5 full days.
+  'Pearl Grading':                       {fee:29900, regFee:0,    gst:18},
+  'Pearl Grading Advance':               {fee:59900, regFee:0,    gst:18},
   // The 5 entries below are current-name aliases for courses above that were renamed in the
   // batch-creation Course dropdown without this catalog being updated to match — confirmed
   // with the counsellor team, same price carries over under the new name. The old-name keys

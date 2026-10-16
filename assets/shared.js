@@ -11875,6 +11875,56 @@ window.gasGet = (function () {
     });
   }
 
+  /* addCustomQuestion — an instructor's own question, saved into question_bank.
+     2026-10-16: until now this action had no Supabase handler, so gasGet fell through to
+     the retired Google Apps Script backend. GAS still answered "ok" with an id, so the
+     instructor saw "Saved!", but the question went into the old Google Sheet and never
+     reached question_bank, the only place the paper builder reads from. Not one custom
+     question had ever arrived (source='custom' count was 0).
+     Options and answers are stored the same way as the imported bank (option_a..d,
+     correct_ans "1".."4") so mcqIsCorrect grades them like any bank question. A True/False
+     question is stored with True/False as options a/b. With testId set (the Assignment
+     prompt flow) the question is also attached to that test. */
+  function h_addCustomQuestion(p, cb) {
+    var text = String(p.question || '').trim();
+    if (!text) { cb(null, { status: 'error', reason: 'missing_question' }); return; }
+    var type = String(p.type || 'MCQ');
+    var allowed = { MCQ: 1, TrueFalse: 1, FillBlank: 1, Theory: 1, FileUpload: 1 };
+    if (!allowed[type]) type = 'MCQ';
+    var row = {
+      course: String(p.course || 'DG').trim() || 'DG',
+      topic: String(p.topic || '').trim() || 'General',
+      question: text,
+      option_a: String(p.opt1 || '').trim(), option_b: String(p.opt2 || '').trim(),
+      option_c: String(p.opt3 || '').trim(), option_d: String(p.opt4 || '').trim(),
+      correct_ans: String(p.correctAnswer != null ? p.correctAnswer : (p.correct || '')).trim(),
+      q_type: type,
+      max_marks: Number(p.maxMarks || p.marks || 1) || 1,
+      instructor: String(p.instructor || '').trim(),
+      source: 'custom', active: true
+    };
+    if (type === 'MCQ') {
+      if (!row.option_a || !row.option_b) { cb(null, { status: 'error', reason: 'Add at least options 1 and 2.' }); return; }
+      if (!/^[1-4]$/.test(row.correct_ans)) row.correct_ans = '1';
+      var pick = [row.option_a, row.option_b, row.option_c, row.option_d][Number(row.correct_ans) - 1];
+      if (!pick) { cb(null, { status: 'error', reason: 'The correct option is empty.' }); return; }
+    } else if (type === 'TrueFalse') {
+      row.option_a = 'True'; row.option_b = 'False'; row.option_c = ''; row.option_d = '';
+      row.correct_ans = /^f/i.test(row.correct_ans) ? 'False' : 'True';
+    }
+    POST('question_bank', '', row, function (e, out) {
+      var saved = Array.isArray(out) ? out[0] : out;
+      if (e || !saved || !saved.id) { cb(null, { status: 'error', reason: 'save_failed' }); return; }
+      if (!p.testId) { cb(null, { status: 'ok', cqId: saved.id, id: saved.id }); return; }
+      GET('test_questions', 'test_id=eq.' + encodeURIComponent(p.testId) + '&select=order_no&order=order_no.desc&limit=1', function (e2, last) {
+        var next = (last && last[0] && Number(last[0].order_no)) ? Number(last[0].order_no) + 1 : 1;
+        POST('test_questions', '', { test_id: p.testId, question_id: saved.id, order_no: next }, function (e3) {
+          cb(null, e3 ? { status: 'error', reason: 'attach_failed', cqId: saved.id } : { status: 'ok', cqId: saved.id, id: saved.id });
+        });
+      });
+    });
+  }
+
   /* setupQuestionBank */
   function h_setupQuestionBank(p, cb) {
     cb(null, { status: 'ok', questions: [] });
@@ -14644,6 +14694,7 @@ window.gasGet = (function () {
       case 'getInstructorTests':        return h_getInstructorTests(params, cb);
       case 'getQuestionBank':           return h_getQuestionBank(params, cb);
       case 'setupQuestionBank':         return h_setupQuestionBank(params, cb);
+      case 'addCustomQuestion':         return h_addCustomQuestion(params, cb);
       case 'createOnlineTest':          return h_createOnlineTest(params, cb);
       case 'scGetStoneMaster':          return h_scGetStoneMaster(params, cb);
       case 'scCreateChallenge':         return h_scCreateChallenge(params, cb);

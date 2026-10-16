@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Instructor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=153"></script>
+<script src="/assets/shared.js?v=154"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="/assets/lessons.js?v=2"></script>
@@ -1166,7 +1166,9 @@
               <option value="JP">JP (JewelPad)</option>
               <option value="JD">JD (Jewelry Design)</option>
               <option value="JDM">JDM (Jewelry Design Manual)</option>
-              <option value="OTHER">Other (PDG/RDG/SDA)</option>
+              <option value="PDG">PDG (Polished Diamond Grading)</option>
+              <option value="RDG">RDG</option>
+              <option value="SDA">SDA (Small Diamond Assortment)</option>
             </select>
           </div>
           <div><label>Topic</label><input type="text" id="cq-topic" placeholder="e.g. DG Rough" style="width:160px;"></div>
@@ -3698,6 +3700,11 @@ function createTodaySession(batchCode) {
 
 function showSessionShare(sessionCode, link, sessNo, sessionType) {
   const studentLink = window.location.origin + '/student';
+  /* The old /feedback?s=CODE page verified students against the retired Google Apps
+     Script backend, which knows none of the current sessions, so every student got
+     "Session code not found" (Amana Hamsath ali, HYD-DG-OCT26, 2026-10-15). Attendance
+     lives in the Student Portal now: share that link and QR instead. */
+  link = studentLink;
   document.getElementById('ss-code').textContent  = sessionCode;
   document.getElementById('ss-type-disp').textContent = 'Session ' + sessNo + ' · ' + sessionType + ' · Students can also use the Student Portal';
   document.getElementById('student-portal-link').textContent = studentLink;
@@ -3748,8 +3755,8 @@ function createSession() {
       const msg = d&&d.reason==='session_exists_today'?'A session already exists for this batch today.':'Error creating session.';
       err.textContent=msg; err.classList.add('show'); return;
     }
-    const baseUrl  = window.location.origin + '/feedback';
-    const fullLink = baseUrl + '?s=' + encodeURIComponent(d.sessionCode);
+    // Students mark attendance in the Student Portal (see showSessionShare).
+    const fullLink = window.location.origin + '/student';
     document.getElementById('ss-code').textContent  = d.sessionCode;
     document.getElementById('ss-type-disp').textContent = 'Session ' + (d.displaySessNo || d.sessNo) + ' · ' + (d.sessionType||'Scheduled');
     document.getElementById('ss-link').value = fullLink;
@@ -6870,8 +6877,10 @@ function otSaveCustomQ() {
   };
   gasGet(params, function(err, d) {
     var st = document.getElementById('cq-status');
-    if (err || !d || d.status !== 'ok') { if(st) st.textContent='❌ Save failed'; return; }
-    if(st) { st.textContent = '✅ Saved! ID: '+d.cqId; setTimeout(function(){ st.textContent=''; },4000); }
+    if (err || !d || d.status !== 'ok') { if(st) st.textContent='❌ Save failed' + (d && d.reason && d.reason.length > 12 ? ' — ' + d.reason : ''); return; }
+    if(st) { st.textContent = '✅ Saved to the question bank — it is now available when building a paper.'; setTimeout(function(){ st.textContent=''; },5000); }
+    // Show it in the bank straight away rather than after the next reload.
+    if (typeof otLoadQB === 'function') otLoadQB();
     // Clear form
     ['cq-question','cq-o1','cq-o2','cq-o3','cq-o4','cq-blank-answer'].forEach(function(id){
       var el = document.getElementById(id); if(el) el.value='';

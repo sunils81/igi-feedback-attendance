@@ -410,7 +410,8 @@
       if (pace > 1) { var g = calDecks[calDay(k.day)] || []; return 'Day ' + calDay(k.day) + (g.length > 1 ? ' · Part ' + (g.indexOf(k) + 1) : ''); }
       var n = (decks[k.day] || []).length; return 'Day ' + k.day + (n > 1 ? ' · Part ' + (k.part || 1) : '');
     };
-    var syl = syllabusFor(st.course);
+    // 2027 DG/CSG batches follow the 7-week or 3-week plan (the database names it in syllabus_key)
+    var syl = syllabusFor(st.syllabus_key || st.course);
     var days = syl.length ? syl.map(function (s, i) { return { day: s.day || (i + 1), topic: s.topic, week: s.week || '' }; })
       : (d.decks || []).map(function (k) { return { day: k.day, topic: k.title, week: '' }; });
     var meName = (d.me && d.me.name) || I.opts.me || '';

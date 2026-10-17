@@ -1806,6 +1806,22 @@ window.gasGet = (function () {
                   'Pearl Grading Advance': { 'Full Day': 3, 'Half Day': 5 } };
     var end  = new Date(p.startDate || new Date());
     var n;
+    // From 2027: DG and CSG run 7 weeks of half days (35 days, Mon-Fri) or 3 weeks of
+    // full days (18 days, Mon-Sat). Count working days so the end date lands on the last one.
+    var newKey = syllabusKeyFor({ course: p.course, type: p.type, start_date: p.startDate });
+    if (newKey !== String(p.course || '').trim()) {
+      var full = / \(3 Weeks\)$/.test(newKey);
+      n = full ? 18 : 35;
+      var d = new Date(String(p.startDate).slice(0, 10) + 'T00:00:00Z'), left = n;
+      while (true) {
+        var wd = d.getUTCDay();
+        if (wd !== 0 && (full || wd !== 6)) { left--; if (!left) break; }
+        d.setUTCDate(d.getUTCDate() + 1);
+      }
+      var iso2 = d.toISOString().slice(0, 10);
+      cb(null, { endDate: iso2, endDateDisplay: toDMY(iso2), totalDays: n });
+      return;
+    }
     if (SHORT[p.course]) {
       n = SHORT[p.course][p.type] || SHORT[p.course]['Full Day'];
       end.setDate(end.getDate() + n - 1);
@@ -6709,9 +6725,8 @@ window.gasGet = (function () {
       // — null for a custom/off-syllabus topic (factory visit, makeup session
       // with its own description, etc.) so it doesn't consume a syllabus day.
       // See computeSyllabusProgress for why this matters.
-      GET('batches', 'batch_code=eq.' + encodeURIComponent(p.batchCode) + '&select=course&limit=1', function (eb, bRows) {
-        var course = bRows && bRows[0] ? bRows[0].course : '';
-        var syllabus = resolveSyllabus(course);
+      GET('batches', 'batch_code=eq.' + encodeURIComponent(p.batchCode) + '&select=course,type,start_date&limit=1', function (eb, bRows) {
+        var syllabus = resolveSyllabusForBatch(bRows && bRows[0]);
         var range = p.topic ? findSyllabusRange(syllabus, p.topic, p.perSession)
                             : { from: null, to: null };
         POST('sessions', 'on_conflict=session_code', {
@@ -10774,7 +10789,7 @@ window.gasGet = (function () {
           active: r.is_active !== false, instructor: r.instructor || '', coInstructor: r.co_instructor || '',
           coInstructorMode: r.co_instructor_mode || 'cover',
           coInstructorFrom: r.co_instructor_from || '', coInstructorUntil: r.co_instructor_until || '',
-          syllabus: (window.SYLLABI || {})[r.course] || [] };
+          syllabusKey: syllabusKeyFor(r), syllabus: resolveSyllabusForBatch(r) };
       }) });
     });
   }
@@ -10796,6 +10811,25 @@ window.gasGet = (function () {
     'Jewelpad Design':    'JewelPad Design',
     'jewelpad design':    'JewelPad Design',
   };
+  /* From 2027-01-01 DG and CSG run new plans (Sunil, "7 Weeks & 3 Weeks GG Schedule.xlsx"):
+     Full Day batches follow the 3-week syllabus (18 days, Mon-Sat), every other type the
+     7-week syllabus (35 days, Mon-Fri), one syllabus day per session. Batches that started
+     earlier keep their course's original syllabus. Mirrors syllabusKeyFor in
+     api/_lib/syllabi.cjs and lesson_syllabus_key() in the database. */
+  var NEW_SCHEME_FROM = '2027-01-01';
+  function syllabusKeyFor(b) {
+    if (!b) return '';
+    var course = String(b.course || '').trim(), lc = course.toLowerCase();
+    var base = lc === 'diamond graduate' ? 'Diamond Graduate'
+      : (lc === 'colored stone graduate' || lc === 'coloured stone graduate') ? 'Colored Stone Graduate' : '';
+    var start = String(b.start_date || b.startDateISO || '').slice(0, 10);
+    if (!base || !start || start < NEW_SCHEME_FROM) return course;
+    return base + (String(b.type || '').trim().toLowerCase() === 'full day' ? ' (3 Weeks)' : ' (7 Weeks)');
+  }
+  function isNewScheme(b) { return syllabusKeyFor(b) !== String((b && b.course) || '').trim(); }
+  function resolveSyllabusForBatch(b) { return resolveSyllabus(syllabusKeyFor(b)); }
+  window.IGISyllabusKey = syllabusKeyFor;
+
   function resolveSyllabus(courseName) {
     var all = window.SYLLABI || {};
     if (all[courseName]) return all[courseName];
@@ -10881,6 +10915,8 @@ window.gasGet = (function () {
 
   function syllabusDaysPerSession(batch) {
     if (!batch) return 1;
+    // The 2027 plans already set out each day of the batch, so one session is one day.
+    if (isNewScheme(batch)) return 1;
     var explicit = Number(batch.syllabus_days_per_session || 0);
     if (explicit >= 1) return explicit;
     var type = String(batch.type || '').trim().toLowerCase();
@@ -11042,7 +11078,7 @@ window.gasGet = (function () {
           var startD = b.start_date || '';
           var endD = b.end_date || '';
           var activeToday = startD && endD && today >= startD && today <= endD;
-          var syllabus = resolveSyllabus(b.course);
+          var syllabus = resolveSyllabusForBatch(b);
           var pastRows = allSess.filter(function (s) {
             return s.batch_code === b.batch_code && s.session_date < today && s.session_type !== 'Cancelled';
           });
@@ -11052,6 +11088,8 @@ window.gasGet = (function () {
           // the nightly auto-create cron uses (api/cron/create-sessions.js).
           var isWeekendBatch = String(b.type || '').toLowerCase() === 'weekend';
           var workingDay = isWeekendBatch ? todayIsWeekendDay : !todayIsWeekendDay;
+          // the 2027 3-week plan runs Mon-Sat
+          if (!workingDay && todayDow === 6 && / \(3 Weeks\)$/.test(syllabusKeyFor(b))) workingDay = true;
           function buildEntry(todaySess) {
             return {
               batchCode: b.batch_code, centre: b.centre, course: b.course, type: b.type, batchSlot: b.batch_slot || 'Full Day',
@@ -11089,7 +11127,7 @@ window.gasGet = (function () {
       var sRow = sRows && sRows[0];
       if (!sRow) { cb(null, { status: 'error', message: 'Session not found' }); return; }
       var batchCode = sRow.batch_code;
-      GET('batches', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=course,instructor,co_instructor,co_instructor_from,co_instructor_until&limit=1', function (eb, bRows) {
+      GET('batches', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=course,type,start_date,instructor,co_instructor,co_instructor_from,co_instructor_until&limit=1', function (eb, bRows) {
         var bRow = bRows && bRows[0];
         if (!bRow) { cb(null, { status: 'error', message: 'Batch not found' }); return; }
         var instr = String(p.instructor || '').trim();
@@ -11102,7 +11140,7 @@ window.gasGet = (function () {
           cb(null, { status: 'error', message: 'You are not assigned to this batch' });
           return;
         }
-        var syllabus = resolveSyllabus(bRow.course);
+        var syllabus = resolveSyllabusForBatch(bRow);
         var syllabusDay = p.topic ? findSyllabusDay(syllabus, p.topic) : null;
         PATCH('sessions', 'session_code=eq.' + encodeURIComponent(p.sessionCode), { topic: p.topic, syllabus_day: syllabusDay }, function(e) {
           if (e) { cb(null, { status: 'error' }); return; }

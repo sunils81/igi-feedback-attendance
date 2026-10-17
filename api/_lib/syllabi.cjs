@@ -36,6 +36,125 @@ const SYLLABI = {
     {day:30, week:'Week 6', topic:'Re-Test, Instructor Review & Diploma Distribution'}
   ],
 
+  /* From January 2027 (batches starting on or after 2027-01-01), from Sunil's sheet
+     "7 Weeks & 3 Weeks GG Schedule.xlsx": Half Day batches run the 7-week plan (35 days,
+     Mon-Fri), Full Day batches the 3-week plan (18 days, Mon-Sat), one day per session.
+     Older batches keep the 30-day syllabus above. Mirrored in api/_lib/syllabi.cjs. */
+  'Diamond Graduate (7 Weeks)': [
+    {day:1,  week:'Week 1', topic:'Evolution of Diamonds'},
+    {day:2,  week:'Week 1', topic:'Mines to Market (Diamond Manufacturing)'},
+    {day:3,  week:'Week 1', topic:'Morphology'},
+    {day:4,  week:'Week 1', topic:'Rough Diamond Sorting & Trading'},
+    {day:5,  week:'Week 1', topic:'Origin Identification'},
+    {day:6,  week:'Week 2', topic:'Clarity Grading (Inclusions & Blemishes)'},
+    {day:7,  week:'Week 2', topic:'Clarity Grading (Grades & Plotting)'},
+    {day:8,  week:'Week 2', topic:'Color Grading & Fluorescence'},
+    {day:9,  week:'Week 2', topic:'Carat Weight, Girdle Thickness & Culet Condition'},
+    {day:10, week:'Week 2', topic:'Crown Angle, Table Size, Crown Height & Pavilion Depth'},
+    {day:11, week:'Week 3', topic:'Polish & Symmetry Grading'},
+    {day:12, week:'Week 3', topic:'Proportion Grade, Understanding Hearts & Arrows & Light Performance'},
+    {day:13, week:'Week 3', topic:'Polished Diamond Practice Session (1 of 4)'},
+    {day:14, week:'Week 3', topic:'Polished Diamond Practice Session (2 of 4)'},
+    {day:15, week:'Week 3', topic:'Week 1, 2 & 3 - Theory Test and Practice Session'},
+    {day:16, week:'Week 4', topic:'Polished Diamond Practice Session (3 of 4)'},
+    {day:17, week:'Week 4', topic:'Polished Diamond Practice Session (4 of 4)'},
+    {day:18, week:'Week 4', topic:'Fancy Shapes Theory'},
+    {day:19, week:'Week 4', topic:'Fancy Shapes Practical'},
+    {day:20, week:'Week 4', topic:'Week 1, 2, 3 & 4 - Theory Test and Practice Session'},
+    {day:21, week:'Week 5', topic:'Clarity & Color Treatments'},
+    {day:22, week:'Week 5', topic:'Synthetics Identification'},
+    {day:23, week:'Week 5', topic:'Imitations Identification'},
+    {day:24, week:'Week 5', topic:'Pricing Evaluation'},
+    {day:25, week:'Week 5', topic:'Week 1, 2, 3, 4 & 5 - Theory Test and PDG Practical Test'},
+    {day:26, week:'Week 6', topic:'Small Diamond Assortment (Clarity)'},
+    {day:27, week:'Week 6', topic:'Small Diamond Assortment (Color)'},
+    {day:28, week:'Week 6', topic:'Small Diamond Assortment (Clarity & Color)'},
+    {day:29, week:'Week 6', topic:'Mounted Jewelry Grading, Weight Estimation'},
+    {day:30, week:'Week 6', topic:'Mounted Jewelry Grading and SDA Practical & Theory Test'},
+    {day:31, week:'Week 7', topic:'Final Theory Test & Final Practice Session'},
+    {day:32, week:'Week 7', topic:'Final Practical Test (4 Stone Challenge 3R+1I)'},
+    {day:33, week:'Week 7', topic:'Jewelry Business Essentials'},
+    {day:34, week:'Week 7', topic:'Stone Setting & Metal QC'},
+    {day:35, week:'Week 7', topic:'Diploma Distribution Ceremony / Re-Test'}
+  ],
+  'Colored Stone Graduate (7 Weeks)': [
+    {day:1,  week:'Week 1', topic:'Introduction to Gemology'},
+    {day:2,  week:'Week 1', topic:'Physical & Optical Properties'},
+    {day:3,  week:'Week 1', topic:'Instrumentation (Refractometer & Polariscope)'},
+    {day:4,  week:'Week 1', topic:'Instrumentation (Dichroscope, UV Light & SG Kit)'},
+    {day:5,  week:'Week 1', topic:'Instrumentation (Microscope & Inclusions)'},
+    {day:6,  week:'Week 2', topic:'Instruments Practice & Week 1 - Theory Test'},
+    {day:7,  week:'Week 2', topic:'Corundum (Theory)'},
+    {day:8,  week:'Week 2', topic:'Corundum (Practical)'},
+    {day:9,  week:'Week 2', topic:'Beryl (Theory)'},
+    {day:10, week:'Week 2', topic:'Beryl (Practical)'},
+    {day:11, week:'Week 3', topic:'Treatments (Theory)'},
+    {day:12, week:'Week 3', topic:'Treatments (Practical)'},
+    {day:13, week:'Week 3', topic:'Synthetics (Theory)'},
+    {day:14, week:'Week 3', topic:'Synthetics (Practical)'},
+    {day:15, week:'Week 3', topic:'Week 1, 2 & 3 - Theory Test and IRES Practical Test'},
+    {day:16, week:'Week 4', topic:'Group I (Theory)'},
+    {day:17, week:'Week 4', topic:'Group I (Practical)'},
+    {day:18, week:'Week 4', topic:'Group II (Theory)'},
+    {day:19, week:'Week 4', topic:'Group II (Practical) (1 of 2)'},
+    {day:20, week:'Week 4', topic:'Group II (Practical) (2 of 2)'},
+    {day:21, week:'Week 5', topic:'Group III (Theory)'},
+    {day:22, week:'Week 5', topic:'Group III (Practical)'},
+    {day:23, week:'Week 5', topic:'Organics Gemstones (Theory)'},
+    {day:24, week:'Week 5', topic:'Organics Gemstones (Practical)'},
+    {day:25, week:'Week 5', topic:'Week 1, 2, 3, 4 & 5 - Theory Test'},
+    {day:26, week:'Week 6', topic:'Mixed Stones Practice (1 of 4)'},
+    {day:27, week:'Week 6', topic:'Mixed Stones Practice (2 of 4)'},
+    {day:28, week:'Week 6', topic:'Mixed Stones Practice (3 of 4)'},
+    {day:29, week:'Week 6', topic:'Mixed Stones Practice (4 of 4)'},
+    {day:30, week:'Week 6', topic:'Final Theory & Practical Test (10 Stones Challenge 6C+4PC/O)'},
+    {day:31, week:'Week 7', topic:'Pearl Grading (Theory) (1 of 2)'},
+    {day:32, week:'Week 7', topic:'Pearl Grading (Theory) (2 of 2)'},
+    {day:33, week:'Week 7', topic:'Pearl Grading (Practical)'},
+    {day:34, week:'Week 7', topic:'Gem Stones Pricing & Navratna Terminology'},
+    {day:35, week:'Week 7', topic:'Diploma Distribution Ceremony / Re-Test'}
+  ],
+  'Diamond Graduate (3 Weeks)': [
+    {day:1,  week:'Week 1', topic:'Evolution of Diamonds, Mines to Market (Diamond Manufacturing)'},
+    {day:2,  week:'Week 1', topic:'Morphology, Rough Diamond Sorting & Trading'},
+    {day:3,  week:'Week 1', topic:'Clarity Grading (Inclusions, Blemishes, Grades & Plotting)'},
+    {day:4,  week:'Week 1', topic:'Color Grading & Fluorescence, Carat Weight & Girdle Thickness'},
+    {day:5,  week:'Week 1', topic:'Crown Angle, Table Size, Crown Height, Pavilion Depth & Culet Condition'},
+    {day:6,  week:'Week 1', topic:'Polish Grading, Symmetry Grading, Proportion Grade, Understanding Hearts & Arrows'},
+    {day:7,  week:'Week 2', topic:'Polished Diamond Practice Session (1 of 2)'},
+    {day:8,  week:'Week 2', topic:'Polished Diamond Practice Session (2 of 2)'},
+    {day:9,  week:'Week 2', topic:'Week 1 Theory Test and Practice Session'},
+    {day:10, week:'Week 2', topic:'Fancy Shapes Theory & Practical'},
+    {day:11, week:'Week 2', topic:'Clarity & Color Treatments and Synthetics & Imitations Identification'},
+    {day:12, week:'Week 2', topic:'Pricing Evaluation and Week 1 & 2 Theory Test'},
+    {day:13, week:'Week 3', topic:'Final Practice Session & Final Practical Test (4 Stone Challenge 3R+1I)'},
+    {day:14, week:'Week 3', topic:'Small Diamond Assortment (Clarity & Color)'},
+    {day:15, week:'Week 3', topic:'Final Theory Test and Small Diamond Assortment (Clarity & Color)'},
+    {day:16, week:'Week 3', topic:'Mounted Jewelry Grading & Weight Estimation'},
+    {day:17, week:'Week 3', topic:'Jewelry Business Essentials, Stone Setting & Metal QC'},
+    {day:18, week:'Week 3', topic:'Diploma Distribution Ceremony / Re-Test'}
+  ],
+  'Colored Stone Graduate (3 Weeks)': [
+    {day:1,  week:'Week 1', topic:'Introduction to Gemology, Physical & Optical Properties'},
+    {day:2,  week:'Week 1', topic:'Instrumentation (Refractometer, Polariscope, Dichroscope, UV Light & SG Kit)'},
+    {day:3,  week:'Week 1', topic:'Instrumentation (Microscope & Inclusions) & Instruments Practice'},
+    {day:4,  week:'Week 1', topic:'Instruments Practice & Week 1 - Theory Test'},
+    {day:5,  week:'Week 1', topic:'Corundum (Theory & Practical)'},
+    {day:6,  week:'Week 1', topic:'Beryl (Theory & Practical)'},
+    {day:7,  week:'Week 2', topic:'Week 1 Theory Test & Treatments (Theory & Practical)'},
+    {day:8,  week:'Week 2', topic:'Synthetics (Theory & Practical)'},
+    {day:9,  week:'Week 2', topic:'Group I (Theory & Practical)'},
+    {day:10, week:'Week 2', topic:'Group II (Theory & Practical)'},
+    {day:11, week:'Week 2', topic:'Group III (Theory & Practical)'},
+    {day:12, week:'Week 2', topic:'Group I, II, III Practicals and Week 1 & 2 Theory Test'},
+    {day:13, week:'Week 3', topic:'Organics Gemstones (Theory & Practical)'},
+    {day:14, week:'Week 3', topic:'Mixed Stones Practice'},
+    {day:15, week:'Week 3', topic:'Final Theory Test, Final Practice Session & Practical Test (10 Stones Challenge 6C+4PC/O)'},
+    {day:16, week:'Week 3', topic:'Pearl Grading (Theory)'},
+    {day:17, week:'Week 3', topic:'Pearl Grading (Practical), Gem Stones Pricing & Navratna Terminology'},
+    {day:18, week:'Week 3', topic:'Diploma Distribution Ceremony / Re-Test'}
+  ],
+
   /* Revised 2026-09-28 from the official instructor attendance sheet F/ED-60
      ("6 Weeks - Colored Stone Graduate Course", Rev 00). 30 days over 6 weeks,
      105 hours. The portal's previous version was a different course in several
@@ -408,6 +527,23 @@ function getSyllabusForCourse(courseName) {
   return [];
 }
 
+/* From 2027-01-01 DG and CSG run new plans: Half Day (and any non-Full-Day) batches the
+   7-week syllabus, Full Day batches the 3-week one. Older batches keep their course's
+   original syllabus. Mirrors syllabusKeyFor in assets/shared.js and lesson_syllabus_key()
+   in the database — change all three together. */
+const NEW_SCHEME_FROM = '2027-01-01';
+function syllabusKeyFor(b) {
+  if (!b) return '';
+  const course = String(b.course || '').trim();
+  const lc = course.toLowerCase();
+  const base = lc === 'diamond graduate' ? 'Diamond Graduate'
+    : (lc === 'colored stone graduate' || lc === 'coloured stone graduate') ? 'Colored Stone Graduate' : '';
+  const start = String(b.start_date || b.startDateISO || '').slice(0, 10);
+  if (!base || !start || start < NEW_SCHEME_FROM) return course;
+  return base + (String(b.type || '').trim().toLowerCase() === 'full day' ? ' (3 Weeks)' : ' (7 Weeks)');
+}
+function getSyllabusForBatch(b) { return getSyllabusForCourse(syllabusKeyFor(b)); }
+
 function normalizeTopic(str) {
   return String(str || '')
     .toLowerCase()
@@ -475,4 +611,4 @@ function computeNextSyllabusDay(syllabus, pastSessions) {
   return result;
 }
 
-module.exports = { SYLLABI, getSyllabusForCourse, computeNextSyllabusDay, findSyllabusDay, normalizeTopic };
+module.exports = { SYLLABI, getSyllabusForCourse, getSyllabusForBatch, syllabusKeyFor, computeNextSyllabusDay, findSyllabusDay, normalizeTopic };

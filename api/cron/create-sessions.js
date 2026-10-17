@@ -8,7 +8,7 @@
 // the topic if they want to override it for that day.
 
 import syllabiLib from '../_lib/syllabi.cjs';
-const { getSyllabusForCourse, computeNextSyllabusDay } = syllabiLib;
+const { getSyllabusForBatch, computeNextSyllabusDay } = syllabiLib;
 
 const SUPA_URL = process.env.SUPABASE_URL;
 const SUPA_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -59,9 +59,12 @@ export default async function handler(req, res) {
   const skipped = [];
   const errors = [];
 
-  // Skip weekends — sessions are Mon–Fri only (instructors create manually if Sat needed)
+  // Skip weekends — sessions are Mon–Fri only (instructors create manually if Sat needed),
+  // except 2027 3-week batches, which run Mon–Sat.
   const dayOfWeek = new Date(today + 'T00:00:00+05:30').getDay(); // 0=Sun, 6=Sat
-  if (dayOfWeek === 0 || dayOfWeek === 6) {
+  // Saturday is a teaching day only for the 2027 3-week (full-day, Mon-Sat) DG/CSG plan.
+  const saturdayOnly = dayOfWeek === 6;
+  if (dayOfWeek === 0) {
     return res.status(200).json({ date: today, message: 'Weekend — no auto sessions', created: [], skipped: [], errors: [] });
   }
 
@@ -74,10 +77,11 @@ export default async function handler(req, res) {
     // those batches from ever getting an auto-created session.
     const batches = await supaGet(
       'batches',
-      `and=(or(is_active.is.null,is_active.eq.true),start_date.lte.${today},or(end_date.is.null,end_date.gte.${today}))&select=batch_code,course,instructor,co_instructor,co_instructor_until`
+      `and=(or(is_active.is.null,is_active.eq.true),start_date.lte.${today},or(end_date.is.null,end_date.gte.${today}))&select=batch_code,course,type,start_date,instructor,co_instructor,co_instructor_until`
     );
 
     for (const b of batches) {
+      if (saturdayOnly && !/\(3 Weeks\)$/.test(syllabiLib.syllabusKeyFor(b))) continue;
       try {
         // Effective instructor for TODAY: co_instructor takes precedence while active
         // (same rule used everywhere else — student portal, proctor room, etc.)
@@ -124,7 +128,7 @@ export default async function handler(req, res) {
         // Progress is driven by each past session's recorded syllabus_day (set
         // explicitly when it was created/confirmed), not by counting sessions —
         // see computeNextSyllabusDay in ../_lib/syllabi.cjs for why.
-        const syllabus = getSyllabusForCourse(b.course);
+        const syllabus = getSyllabusForBatch(b);
         let topic = '';
         let syllabusDay = null;
         if (syllabus.length) {

@@ -75,3 +75,11 @@ Sources: `7 Weeks DG` WeTransfer folder, mapped by topic to the 30-day portal sy
 
 Full-day (3-week) batches use the same decks: the portal pairs syllabus days (Day N = syllabus 2N-1, 2N).
 External HTML courses: `python3 lessons-src/bundle_html.py <course.html> <slug>` packs media/ and fonts/ into one file for the portal.
+
+## January 2027 schedules (applied 2026-10-17)
+DG and CSG batches starting on or after 2027-01-01 follow the plans in "7 Weeks & 3 Weeks GG Schedule.xlsx":
+Full Day -> "<course> (3 Weeks)" (18 days, Mon-Sat), any other type -> "<course> (7 Weeks)" (35 days, Mon-Fri),
+one syllabus day per session. Older batches keep the 30-day syllabus. The rule lives in three places that must
+match: `syllabusKeyFor` in assets/shared.js and api/_lib/syllabi.cjs, and `lesson_syllabus_key()` in the database
+(supabase/migrations/migration_lesson_syllabus_2027.sql, which also adds the deck rows for both DG plans).
+The plan rows point at the same published files; `upload.py` moves every row sharing a file when a deck is republished.

@@ -57,7 +57,7 @@ def publish(slug, url, key):
     bmeta = json.load(open(os.path.join(DIST, slug + '.json'), encoding='utf-8'))
     course, day, part = meta['course'], int(meta['day']), int(meta.get('part', 1))
 
-    q = '%s/rest/v1/lesson_decks?course=eq.%s&syllabus_day=eq.%d&part=eq.%d&is_active=is.true&select=id,version' % (
+    q = '%s/rest/v1/lesson_decks?course=eq.%s&syllabus_day=eq.%d&part=eq.%d&is_active=is.true&select=id,version,storage_path' % (
         url, urllib.parse.quote(course), day, part)
     rows = req('GET', q, key)
     version = (rows[0]['version'] + 1) if rows else 1
@@ -72,6 +72,9 @@ def publish(slug, url, key):
            'is_active': True, 'updated_at': datetime.datetime.utcnow().isoformat() + 'Z'}
     if rows:
         req('PATCH', '%s/rest/v1/lesson_decks?id=eq.%s' % (url, rows[0]['id']), key, row, {'Prefer': 'return=minimal'})
+        # the 2027 7-week / 3-week plans have their own rows pointing at the same file: move them too
+        shared = {k: row[k] for k in ('title', 'subtitle', 'storage_path', 'version', 'slide_count', 'bytes', 'updated_at')}
+        req('PATCH', '%s/rest/v1/lesson_decks?storage_path=eq.%s&is_active=is.true' % (url, urllib.parse.quote(rows[0]['storage_path'])), key, shared, {'Prefer': 'return=minimal'})
     else:
         req('POST', '%s/rest/v1/lesson_decks' % url, key, row, {'Prefer': 'return=minimal'})
     print('published %-28s %s Day %-3d p%d v%d  %.1f MB  -> %s/%s' % (slug, course, day, part, version, len(data) / 1048576.0, BUCKET, path))

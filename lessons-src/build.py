@@ -75,7 +75,8 @@ def build(slug):
     def img(m):
         name, cap = m.group(1), m.group(2)
         stem = os.path.splitext(name)[0]
-        for base in (os.path.join(ddir, 'media-src'), os.path.join(ENGINE, 'media')):
+        # media-src: this deck's own images; shared-media: photo library reused across decks (not in git)
+        for base in (os.path.join(ddir, 'media-src'), os.path.join(ROOT, 'shared-media'), os.path.join(ENGINE, 'media')):
             # the extension in the scene is a hint only: PowerPoint exports mix .jpg and .png
             for cand in [name] + [stem + e for e in ('.jpg', '.jpeg', '.png', '.gif', '.webp')]:
                 p = os.path.join(base, cand)

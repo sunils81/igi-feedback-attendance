@@ -83,3 +83,31 @@ one syllabus day per session. Older batches keep the 30-day syllabus. The rule l
 match: `syllabusKeyFor` in assets/shared.js and api/_lib/syllabi.cjs, and `lesson_syllabus_key()` in the database
 (supabase/migrations/migration_lesson_syllabus_2027.sql, which also adds the deck rows for both DG plans).
 The plan rows point at the same published files; `upload.py` moves every row sharing a file when a deck is republished.
+
+## Colored Stone Graduate decks (published 2026-10-17)
+Sources: `wetransfer_a-introdouction-crystallography-pptx` (CSG PowerPoints, extracted to `dist/_extract/csg/`), plus photos from the IGI Coloured Stone Masterclass in `shared-media/` (credited on the slides). Files: `lesson-decks/colored-stone-graduate/<slug>-v1.html`.
+
+| Slug | Deck | 30-day (6 weeks) | 7 Weeks | 3 Weeks |
+|---|---|---|---|---|
+| csg-intro | Introduction to Gemology | 1.1 | 1.1 | 1.1 |
+| csg-properties | Properties of Gemstones | 2.1 | 2.1 | 1.2 |
+| csg-refractometer | The Refractometer | 2.2 | 3.1 | 2.1 |
+| csg-polariscope | The Polariscope | 2.3 | 3.2 | 2.2 |
+| csg-dichroscope | The Dichroscope | 3.1 | 4.1 | 2.3 |
+| csg-spectroscope | The Spectroscope | 3.2 | 4.3 | 2.5 |
+| csg-luminescence | Luminescence & UV | 4.2 | 4.2 | 2.4 |
+| csg-microscope | The Microscope & Inclusions | 4.1, 6.1 | 5.1 | 3.1 |
+| csg-corundum | Corundum: Ruby & Sapphire | 7.1 | 7.1 | 5.1 |
+| csg-emerald | Emerald | 9.1 | 9.1 | 6.1 |
+| csg-synthetics | Synthetic Production Methods | 11.1 | 13.1 | 8.1 |
+| csg-treatments | Treatments in Gemstones | 12.1 | 11.1 | 7.1 |
+| csg-sr | Singly Refractive Gemstones (Group I) | 14.1 | 16.1 | 9.1 |
+| csg-uniaxial-1 | Uniaxial Gemstones 1 (Group II) | 16.1 | 18.1 | 10.1 |
+| csg-uniaxial-2 | Uniaxial Gemstones 2 · Quartz | 16.2 | 18.2 | 10.2 |
+| csg-biaxial-1 | Biaxial Gemstones 1 (Group III) | 18.1 | 21.1 | 11.1 |
+| csg-biaxial-2 | Biaxial Gemstones 2 | 18.2 | 21.2 | 11.2 |
+| csg-organics-1 | Organic Gemstones 1 · Pearl | 21.1 | 23.1, 31.1 | 13.1, 16.1 |
+| csg-organics-2 | Organic Gemstones 2 | 21.2 | 23.2 | 13.2 |
+| csg-pricing | Gemstone Value Factors | 22.1 | 34.1 | 17.1 |
+
+Day.part numbers are portal syllabus days. Media for each deck is copied into `decks/<slug>/media-src/` from the extract (only files the deck uses).

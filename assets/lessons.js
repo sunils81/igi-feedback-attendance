@@ -400,7 +400,16 @@
     // a day can carry several decks (part 1, 2, …), already ordered by day then part
     var decks = {}, byId = {};
     (d.decks || []).forEach(function (k) { (decks[k.day] = decks[k.day] || []).push(k); byId[k.id] = k; });
-    var dlabel = function (k) { var n = (decks[k.day] || []).length; return 'Day ' + k.day + (n > 1 ? ' · Part ' + (k.part || 1) : ''); };
+    // A full-day batch (e.g. the 3-week Diamond Graduate) takes the syllabus `pace` days at a
+    // time, so its Day 6 is syllabus days 11-12. Label and group by the batch's own day.
+    var pace = Math.max(1, Number(st.pace) || 1);
+    var calDay = function (n) { return pace > 1 ? Math.ceil(Number(n) / pace) : Number(n); };
+    var calDecks = {};
+    (d.decks || []).forEach(function (k) { var c = calDay(k.day); (calDecks[c] = calDecks[c] || []).push(k); });
+    var dlabel = function (k) {
+      if (pace > 1) { var g = calDecks[calDay(k.day)] || []; return 'Day ' + calDay(k.day) + (g.length > 1 ? ' · Part ' + (g.indexOf(k) + 1) : ''); }
+      var n = (decks[k.day] || []).length; return 'Day ' + k.day + (n > 1 ? ' · Part ' + (k.part || 1) : '');
+    };
     var syl = syllabusFor(st.course);
     var days = syl.length ? syl.map(function (s, i) { return { day: s.day || (i + 1), topic: s.topic, week: s.week || '' }; })
       : (d.decks || []).map(function (k) { return { day: k.day, topic: k.title, week: '' }; });
@@ -423,7 +432,7 @@
           return '<button class="igl-btn" type="button" data-present="' + esc(h.deck.id) + '">▶ Present ' + esc(dlabel(h.deck)) + '</button>';
         }).join('') + '<span class="igl-off" id="igl-off">Checking offline copy…</span></div></div>';
     } else {
-      var nd = todayDays.length ? todayDays.join(' + ') : '';
+      var nd = todayDays.length ? (pace > 1 ? calDay(todayDays[0]) + ' (syllabus ' + todayDays.join(' + ') + ')' : todayDays.join(' + ')) : '';
       var topic = days.filter(function (x) { return inArr(todayDays, x.day); }).map(function (x) { return x.topic; }).join(' + ');
       hero = '<div class="igl-hero"><div class="k">Today · ' + esc(st.batch_code) + '</div><h3>' + (nd ? 'Day ' + esc(nd) + (topic ? ' · ' + esc(topic) : '') : 'No syllabus day today') + '</h3><p>There is no presentation for this day yet.</p></div>';
     }
@@ -433,9 +442,13 @@
       html += '<div class="igl-empty">No presentations have been published for ' + esc(st.deck_course || st.course) + ' yet.</div>';
     } else {
       html += '<div class="igl-days">';
-      var lastWeek = null;
+      var lastWeek = null, lastCal = null;
       days.forEach(function (x) {
-        if (x.week && x.week !== lastWeek) { html += '<div class="igl-wk">' + esc(x.week) + '</div>'; lastWeek = x.week; }
+        if (pace > 1) {
+          var c = calDay(x.day);
+          if (c !== lastCal) { var a = (c - 1) * pace + 1, b = Math.min(c * pace, days.length ? days[days.length - 1].day : c * pace);
+            html += '<div class="igl-wk">Day ' + c + ' · syllabus day' + (a === b ? ' ' + a : 's ' + a + '–' + b) + '</div>'; lastCal = c; }
+        } else if (x.week && x.week !== lastWeek) { html += '<div class="igl-wk">' + esc(x.week) + '</div>'; lastWeek = x.week; }
         var ks = decks[x.day] || [], k = ks[0], s = dayState(d, x.day), isToday = inArr(todayDays, x.day) && st.mode !== 'free';
         var chip, act;
         if (!k) { chip = '<span class="igl-chip none">No presentation</span>'; act = ''; }
@@ -449,7 +462,7 @@
           chip = '<span class="igl-chip locked">' + esc(s.label) + '</span>';
           act = '<button class="igl-btn ghost sm" type="button" data-request="' + x.day + '">Request access</button>';
         }
-        html += '<div class="igl-day' + (isToday ? ' cur' : '') + '"><div class="dn"><small>DAY</small>' + x.day + '</div>' +
+        html += '<div class="igl-day' + (isToday ? ' cur' : '') + '"><div class="dn"><small>' + (pace > 1 ? 'SYL' : 'DAY') + '</small>' + x.day + '</div>' +
           '<div><div class="tp">' + esc(x.topic || (k && k.title) || '') + '</div>' +
           ks.map(function (kk) { return '<div class="dk">📽 ' + (ks.length > 1 ? 'Part ' + (kk.part || 1) + ' · ' : '') + esc(kk.title) + (kk.slides ? ' · ' + kk.slides + ' slides' : '') + '</div>'; }).join('') + '</div>' +
           '<div class="act">' + chip + act + '</div></div>';

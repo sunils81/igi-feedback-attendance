@@ -62,13 +62,16 @@ Sources: `7 Weeks DG` WeTransfer folder, mapped by topic to the 30-day portal sy
 | 11 | 1 | dg-measurements | Measurements & Carat Weight |
 | 12 | 1 | dg-proportions | Estimating Proportions |
 | 13 | 1 | dg-cut-finish | Cut & Finish Grades |
+| 16 | 1 | dg-fancy-shapes | Fancy Shapes (from Fancy Shapes.pdf) |
 | 17 | 1 | dg-treatments | Colour & Clarity Treatments |
 | 18 | 1 | dg-synthetics-imitations | Lab-Grown Diamonds & Imitations |
 | 19 | 1 | dg-pricing | Diamond Pricing |
-| 19 | 2 | dg-jewellery-business | Jewellery Business Essentials |
+| 19 | 2 | dg-jewellery-business | Jewelry Business Essentials (full IGI masterclass, bundled from IGI-LGD-Masterclass with `bundle_html.py`) |
 | 21 | 1 | dg-assortment | Small Diamond Assortment |
 | 23 | 1 | dg-mounted-jewellery | Grading Mounted Jewellery |
 | 23 | 2 | dg-settings | Settings in Jewellery |
 | 23 | 3 | dg-metal-qa | IGI Metal Quality Assurance |
 
-Not built: Day 16 Fancy Shapes (source .ppt is password-protected; resave unlocked as .pptx).
+
+Full-day (3-week) batches use the same decks: the portal pairs syllabus days (Day N = syllabus 2N-1, 2N).
+External HTML courses: `python3 lessons-src/bundle_html.py <course.html> <slug>` packs media/ and fonts/ into one file for the portal.

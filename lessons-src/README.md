@@ -89,8 +89,10 @@ Sources: `wetransfer_a-introdouction-crystallography-pptx` (CSG PowerPoints, ext
 
 | Slug | Deck | 30-day (6 weeks) | 7 Weeks | 3 Weeks |
 |---|---|---|---|---|
-| csg-intro | Introduction to Gemology | 1.1 | 1.1 | 1.1 |
-| csg-properties | Properties of Gemstones | 2.1 | 2.1 | 1.2 |
+| csg-intro (v2) | Introduction to Gemology (crystal-system slides moved out) | 1.1 | 1.1 | 1.1 |
+| csg-crystallography-1 | Crystallography Part 1 · structure and the seven systems (3D) | 1.2 | 1.2 | 1.2 |
+| csg-crystallography-2 | Crystallography Part 2 · symmetry, habit, gallery, bench (3D) | 1.3 | 2.1 | 1.3 |
+| csg-properties | Properties of Gemstones | 2.1 | 2.2 | 1.4 |
 | csg-refractometer | The Refractometer | 2.2 | 3.1 | 2.1 |
 | csg-polariscope | The Polariscope | 2.3 | 3.2 | 2.2 |
 | csg-dichroscope | The Dichroscope | 3.1 | 4.1 | 2.3 |

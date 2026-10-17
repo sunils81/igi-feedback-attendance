@@ -104,13 +104,16 @@
     try {
       var g = readGrants(), today = istToday();
       Object.keys(g).forEach(function (k) { if (g[k].date !== today) delete g[k]; });
-      g[(batch || '_') + '|' + day] = { date: today, id: deck.id, version: deck.version, title: deck.title };
+      // keyed by deck too: a day can carry more than one deck (part 1, 2, …)
+      g[(batch || '_') + '|' + day + '|' + deck.id] = { date: today, id: deck.id, version: deck.version, title: deck.title };
       localStorage.setItem(GRANTS, JSON.stringify(g));
     } catch (e) {}
   }
-  function grantFor(batch, day) {
-    var g = readGrants()[(batch || '_') + '|' + day];
-    return g && g.date === istToday() ? g : null;
+  function grantFor(batch, day, deckId) {
+    var all = readGrants(), pre = (batch || '_') + '|' + day + '|', today = istToday();
+    var k = deckId ? pre + deckId : Object.keys(all).filter(function (x) { return x.indexOf(pre) === 0; })[0];
+    var g = k && all[k];
+    return g && g.date === today ? g : null;
   }
   function cacheKey(id, v) { return '/__igi_lessons/' + id + '/v' + v; }
   function cacheOpen() { return (window.caches && window.isSecureContext) ? caches.open(CACHE) : Promise.reject(new Error('no cache')); }
@@ -292,7 +295,7 @@
       }
     }
     function fallbackOffline(reason) {
-      var g = grantFor(o.batchCode, o.day);
+      var g = grantFor(o.batchCode, o.day, o.deckId);
       if (!g) { setMsg(esc(reason || 'Could not reach the server.') + '<br><br><button class="igl-btn sm" type="button" onclick="IGILessons.close()">Close</button>'); return; }
       cachedBlob(g.id, g.version).then(function (blob) {
         if (blob) show(blob, true);
@@ -394,7 +397,10 @@
 
   function render() {
     var d = I.plan, st = d.state || {}, body = $('igl-body'); if (!body) return;
-    var decks = {}; (d.decks || []).forEach(function (k) { decks[k.day] = k; });
+    // a day can carry several decks (part 1, 2, …), already ordered by day then part
+    var decks = {}, byId = {};
+    (d.decks || []).forEach(function (k) { (decks[k.day] = decks[k.day] || []).push(k); byId[k.id] = k; });
+    var dlabel = function (k) { var n = (decks[k.day] || []).length; return 'Day ' + k.day + (n > 1 ? ' · Part ' + (k.part || 1) : ''); };
     var syl = syllabusFor(st.course);
     var days = syl.length ? syl.map(function (s, i) { return { day: s.day || (i + 1), topic: s.topic, week: s.week || '' }; })
       : (d.decks || []).map(function (k) { return { day: k.day, topic: k.title, week: '' }; });
@@ -402,7 +408,8 @@
 
     // hero: what to teach today
     var todayDays = (st.todays && st.todays.length ? st.todays : st.next) || [];
-    var heroItems = todayDays.map(Number).filter(function (n) { return decks[n]; }).map(function (n) { return { day: n, deck: decks[n] }; });
+    var heroItems = [];
+    todayDays.map(Number).forEach(function (n) { (decks[n] || []).forEach(function (k) { heroItems.push({ day: n, deck: k }); }); });
     var hero = '';
     if (st.mode === 'free') {
       hero = '<div class="igl-hero"><div class="k">Smart Learning · ' + esc(st.batch_code) + '</div><h3>Pick today’s topic</h3><p>This course runs without a fixed day plan, so every presentation below is open. Choose the one that matches today’s topic.</p></div>';
@@ -410,10 +417,10 @@
       hero = '<div class="igl-hero"><div class="k">' + esc(st.batch_code) + '</div><h3>This batch is not running today</h3><p>Days already covered stay open for recap. Anything else needs HOD approval.</p></div>';
     } else if (heroItems.length) {
       hero = '<div class="igl-hero"><div class="k">Today’s lesson · ' + esc(st.batch_code) + '</div>' +
-        '<h3>' + heroItems.map(function (h) { return 'Day ' + h.day + ' · ' + esc(h.deck.title); }).join('  +  ') + '</h3>' +
+        '<h3>' + heroItems.map(function (h) { return dlabel(h.deck) + ' · ' + esc(h.deck.title); }).join('  +  ') + '</h3>' +
         '<p>' + esc(heroItems[0].deck.subtitle || '') + '</p>' +
         '<div class="row">' + heroItems.map(function (h) {
-          return '<button class="igl-btn" type="button" data-present="' + h.day + '">▶ Present Day ' + h.day + '</button>';
+          return '<button class="igl-btn" type="button" data-present="' + esc(h.deck.id) + '">▶ Present ' + esc(dlabel(h.deck)) + '</button>';
         }).join('') + '<span class="igl-off" id="igl-off">Checking offline copy…</span></div></div>';
     } else {
       var nd = todayDays.length ? todayDays.join(' + ') : '';
@@ -429,12 +436,12 @@
       var lastWeek = null;
       days.forEach(function (x) {
         if (x.week && x.week !== lastWeek) { html += '<div class="igl-wk">' + esc(x.week) + '</div>'; lastWeek = x.week; }
-        var k = decks[x.day], s = dayState(d, x.day), isToday = inArr(todayDays, x.day) && st.mode !== 'free';
+        var ks = decks[x.day] || [], k = ks[0], s = dayState(d, x.day), isToday = inArr(todayDays, x.day) && st.mode !== 'free';
         var chip, act;
         if (!k) { chip = '<span class="igl-chip none">No presentation</span>'; act = ''; }
         else if (s.open) {
           chip = '<span class="igl-chip ' + s.key + '">' + esc(s.label) + '</span>';
-          act = '<button class="igl-btn sm" type="button" data-present="' + x.day + '">▶ Present</button>';
+          act = ks.map(function (kk) { return '<button class="igl-btn sm" type="button" data-present="' + esc(kk.id) + '">▶ ' + (ks.length > 1 ? 'Part ' + (kk.part || 1) : 'Present') + '</button>'; }).join('');
         } else if (s.key === 'pending') {
           chip = '<span class="igl-chip pending">' + esc(s.label) + '</span>';
           act = s.pending.by === meName ? '<button class="igl-btn ghost sm" type="button" data-cancel="' + esc(s.pending.id) + '">Withdraw</button>' : '';
@@ -444,7 +451,7 @@
         }
         html += '<div class="igl-day' + (isToday ? ' cur' : '') + '"><div class="dn"><small>DAY</small>' + x.day + '</div>' +
           '<div><div class="tp">' + esc(x.topic || (k && k.title) || '') + '</div>' +
-          (k ? '<div class="dk">📽 ' + esc(k.title) + (k.slides ? ' · ' + k.slides + ' slides' : '') + '</div>' : '') + '</div>' +
+          ks.map(function (kk) { return '<div class="dk">📽 ' + (ks.length > 1 ? 'Part ' + (kk.part || 1) + ' · ' : '') + esc(kk.title) + (kk.slides ? ' · ' + kk.slides + ' slides' : '') + '</div>'; }).join('') + '</div>' +
           '<div class="act">' + chip + act + '</div></div>';
       });
       html += '</div>';
@@ -464,15 +471,15 @@
 
     Array.prototype.forEach.call(body.querySelectorAll('[data-present]'), function (b) {
       b.onclick = function () {
-        var day = Number(b.getAttribute('data-present')), k = decks[day];
-        present({ batchCode: st.batch_code, day: day, deckId: k && k.id, title: 'Day ' + day + ' · ' + (k ? k.title : ''), me: meName, onClose: function () { load(); } });
+        var k = byId[b.getAttribute('data-present')]; if (!k) return;
+        present({ batchCode: st.batch_code, day: k.day, deckId: k.id, title: dlabel(k) + ' · ' + k.title, me: meName, onClose: function () { load(); } });
       };
     });
     Array.prototype.forEach.call(body.querySelectorAll('[data-request]'), function (b) {
       b.onclick = function () {
         var day = Number(b.getAttribute('data-request'));
         var x = days.filter(function (y) { return y.day === day; })[0] || {};
-        openRequest(st.batch_code, day, x.topic || (decks[day] && decks[day].title) || '');
+        openRequest(st.batch_code, day, x.topic || (decks[day] || []).map(function (k) { return k.title; }).join(' + ') || '');
       };
     });
     Array.prototype.forEach.call(body.querySelectorAll('[data-cancel]'), function (b) {
@@ -612,7 +619,7 @@
       var html = '<div class="igl"><div class="igl-days">', last = null;
       rows.forEach(function (r) {
         if (r.course !== last) { html += '<div class="igl-wk">' + esc(r.course) + '</div>'; last = r.course; }
-        html += '<div class="igl-day"><div class="dn"><small>DAY</small>' + r.day + '</div><div><div class="tp">' + esc(r.title) + '</div>' +
+        html += '<div class="igl-day"><div class="dn"><small>DAY</small>' + r.day + '</div><div><div class="tp">' + ((r.part || 1) > 1 || rows.some(function (q) { return q.course === r.course && q.day === r.day && q.id !== r.id; }) ? 'Part ' + (r.part || 1) + ' · ' : '') + esc(r.title) + '</div>' +
           '<div class="dk">v' + r.version + (r.slides ? ' · ' + r.slides + ' slides' : '') + (r.bytes ? ' · ' + mb(r.bytes) : '') + ' · opened ' + r.opens_30d + '× in 30 days</div></div>' +
           '<div class="act"><button class="igl-btn sm" type="button" data-prev="' + esc(r.id) + '" data-day="' + r.day + '" data-t="' + esc(r.title) + '">▶ Preview</button></div></div>';
       });

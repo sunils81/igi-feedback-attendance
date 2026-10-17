@@ -39,8 +39,12 @@ create table if not exists public.lesson_decks (
   created_at    timestamptz default now(),
   updated_at    timestamptz default now()
 );
-create unique index if not exists lesson_decks_course_day_active
-  on public.lesson_decks(course, syllabus_day) where is_active;
+-- A syllabus day can carry more than one deck (part 1, 2, …), e.g. Day 3 = Origin of Rough +
+-- Rough Trading. Added 2026-10-17.
+alter table public.lesson_decks add column if not exists part integer not null default 1;
+drop index if exists public.lesson_decks_course_day_active;
+create unique index if not exists lesson_decks_course_day_part_active
+  on public.lesson_decks(course, syllabus_day, part) where is_active;
 
 create table if not exists public.lesson_approvers (
   name text primary key                      -- users.name of a backup approver (Admin role always approves)
@@ -262,8 +266,8 @@ begin
   end if;
   st := public.lesson_day_state(p_batch_code);
   return jsonb_build_object('status','ok', 'me', c, 'state', st,
-    'decks', coalesce((select jsonb_agg(jsonb_build_object('id', d.id, 'day', d.syllabus_day, 'title', d.title,
-                         'subtitle', d.subtitle, 'version', d.version, 'slides', d.slide_count, 'bytes', d.bytes) order by d.syllabus_day)
+    'decks', coalesce((select jsonb_agg(jsonb_build_object('id', d.id, 'day', d.syllabus_day, 'part', d.part, 'title', d.title,
+                         'subtitle', d.subtitle, 'version', d.version, 'slides', d.slide_count, 'bytes', d.bytes) order by d.syllabus_day, d.part)
                         from public.lesson_decks d where d.is_active and d.course = st->>'deck_course'), '[]'));
 end $$;
 
@@ -322,7 +326,7 @@ begin
       'decided_by', r.decided_by, 'decision_note', r.decision_note, 'decided_at', r.decided_at,
       'valid_until', r.valid_until, 'created_at', r.created_at,
       'centre', b.centre,
-      'deck_title', (select d.title from public.lesson_decks d where d.is_active and d.course = public.lesson_deck_course(r.course) and d.syllabus_day = r.syllabus_day limit 1),
+      'deck_title', (select string_agg(d.title, ' + ' order by d.part) from public.lesson_decks d where d.is_active and d.course = public.lesson_deck_course(r.course) and d.syllabus_day = r.syllabus_day),
       'covered_upto', (select max(coalesce(s.syllabus_day_to::int, s.syllabus_day)) from public.sessions s
                         where s.batch_code = r.batch_code and s.syllabus_day is not null
                           and not coalesce(s.is_cancelled,false) and coalesce(s.session_type,'') <> 'Cancelled'
@@ -383,7 +387,7 @@ begin
   end if;
   select * into d from public.lesson_decks
    where is_active and course = st->>'deck_course' and syllabus_day = p_day
-     and (p_deck_id is null or id = p_deck_id) limit 1;
+     and (p_deck_id is null or id = p_deck_id) order by part limit 1;
   if d.id is null then return jsonb_build_object('status','error','reason','No presentation for this day yet'); end if;
   insert into public.lesson_access_log(batch_code, syllabus_day, deck_id, deck_version, opened_by, basis, purpose)
   values (p_batch_code, p_day, d.id, d.version, c->>'name', v_basis, coalesce(p_purpose,'open'));
@@ -399,10 +403,10 @@ begin
   c := public.lesson_caller();
   if c is null or not (c->>'approver')::boolean then return jsonb_build_object('status','error','reason','Only the HOD'); end if;
   return jsonb_build_object('status','ok','rows', coalesce((select jsonb_agg(jsonb_build_object(
-    'id', d.id, 'course', d.course, 'day', d.syllabus_day, 'title', d.title, 'version', d.version,
+    'id', d.id, 'course', d.course, 'day', d.syllabus_day, 'part', d.part, 'title', d.title, 'version', d.version,
     'slides', d.slide_count, 'bytes', d.bytes, 'updated_at', d.updated_at,
     'opens_30d', (select count(*) from public.lesson_access_log l where l.deck_id = d.id and l.purpose = 'open' and l.opened_at > now() - interval '30 days'))
-    order by d.course, d.syllabus_day) from public.lesson_decks d where d.is_active), '[]'));
+    order by d.course, d.syllabus_day, d.part) from public.lesson_decks d where d.is_active), '[]'));
 end $$;
 
 -- ── grants ───────────────────────────────────────────────────────────────────────────

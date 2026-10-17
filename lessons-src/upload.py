@@ -55,10 +55,10 @@ def publish(slug, url, key):
     if not os.path.exists(built):
         sys.exit('Build it first: python3 lessons-src/build.py ' + slug)
     bmeta = json.load(open(os.path.join(DIST, slug + '.json'), encoding='utf-8'))
-    course, day = meta['course'], int(meta['day'])
+    course, day, part = meta['course'], int(meta['day']), int(meta.get('part', 1))
 
-    q = '%s/rest/v1/lesson_decks?course=eq.%s&syllabus_day=eq.%d&is_active=is.true&select=id,version' % (
-        url, urllib.parse.quote(course), day)
+    q = '%s/rest/v1/lesson_decks?course=eq.%s&syllabus_day=eq.%d&part=eq.%d&is_active=is.true&select=id,version' % (
+        url, urllib.parse.quote(course), day, part)
     rows = req('GET', q, key)
     version = (rows[0]['version'] + 1) if rows else 1
     path = '%s/%s-v%d.html' % (slugify(course), slug, version)
@@ -67,14 +67,14 @@ def publish(slug, url, key):
     req('POST', '%s/storage/v1/object/%s/%s' % (url, BUCKET, path), key, data,
         {'Content-Type': 'text/html; charset=utf-8', 'x-upsert': 'true', 'cache-control': 'private, max-age=0'})
 
-    row = {'course': course, 'syllabus_day': day, 'title': meta['title'], 'subtitle': meta.get('subtitle', ''),
+    row = {'course': course, 'syllabus_day': day, 'part': part, 'title': meta['title'], 'subtitle': meta.get('subtitle', ''),
            'storage_path': path, 'version': version, 'slide_count': bmeta.get('slides'), 'bytes': len(data),
            'is_active': True, 'updated_at': datetime.datetime.utcnow().isoformat() + 'Z'}
     if rows:
         req('PATCH', '%s/rest/v1/lesson_decks?id=eq.%s' % (url, rows[0]['id']), key, row, {'Prefer': 'return=minimal'})
     else:
         req('POST', '%s/rest/v1/lesson_decks' % url, key, row, {'Prefer': 'return=minimal'})
-    print('published %-28s %s Day %-3d v%d  %.1f MB  -> %s/%s' % (slug, course, day, version, len(data) / 1048576.0, BUCKET, path))
+    print('published %-28s %s Day %-3d p%d v%d  %.1f MB  -> %s/%s' % (slug, course, day, part, version, len(data) / 1048576.0, BUCKET, path))
 
 
 if __name__ == '__main__':

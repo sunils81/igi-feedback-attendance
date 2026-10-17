@@ -48,3 +48,28 @@ P laser, Esc / ✕ Exit returns to the portal.
 | Diamond Graduate | 1 | The Evolution of Diamonds (43 slides) | 1 new evolution of diamonds version 1.1.pptx |
 | Diamond Graduate | 2 | Morphology of Rough (37 slides) | 05-Rough Morphology new.pptx |
 | Diamond Graduate | 4 | Rough Diamond Sorting (24 slides) | 07-Rough Sorting new.pptx |
+
+## Built, waiting to publish (2026-10-17)
+Run the `lesson_decks_parts` migration first (part column), then `upload.py <slug>` for each.
+Sources: `7 Weeks DG` WeTransfer folder, mapped by topic to the 30-day portal syllabus.
+
+| Day | Part | Slug | Deck |
+|---|---|---|---|
+| 3 | 1 | dg-origin-of-rough | Origin of Rough |
+| 3 | 2 | dg-rough-trading | The Rough Diamond Trade |
+| 6 | 1 | dg-clarity-inclusions | Clarity I · Inclusions & Blemishes |
+| 7 | 1 | dg-clarity-grading | Clarity II · Grades & Plotting |
+| 8 | 1 | dg-colour-grading | Colour Grading |
+| 11 | 1 | dg-measurements | Measurements & Carat Weight |
+| 12 | 1 | dg-proportions | Estimating Proportions |
+| 13 | 1 | dg-cut-finish | Cut & Finish Grades |
+| 17 | 1 | dg-treatments | Colour & Clarity Treatments |
+| 18 | 1 | dg-synthetics-imitations | Lab-Grown Diamonds & Imitations |
+| 19 | 1 | dg-pricing | Diamond Pricing |
+| 19 | 2 | dg-jewellery-business | Jewellery Business Essentials |
+| 21 | 1 | dg-assortment | Small Diamond Assortment |
+| 23 | 1 | dg-mounted-jewellery | Grading Mounted Jewellery |
+| 23 | 2 | dg-settings | Settings in Jewellery |
+| 23 | 3 | dg-metal-qa | IGI Metal Quality Assurance |
+
+Not built: Day 16 Fancy Shapes (source .ppt is password-protected; resave unlocked as .pptx).

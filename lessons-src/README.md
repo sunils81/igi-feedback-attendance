@@ -49,8 +49,7 @@ P laser, Esc / ✕ Exit returns to the portal.
 | Diamond Graduate | 2 | Morphology of Rough (37 slides) | 05-Rough Morphology new.pptx |
 | Diamond Graduate | 4 | Rough Diamond Sorting (24 slides) | 07-Rough Sorting new.pptx |
 
-## Built, waiting to publish (2026-10-17)
-Run the `lesson_decks_parts` migration first (part column), then `upload.py <slug>` for each.
+## Published (2026-10-17)
 Sources: `7 Weeks DG` WeTransfer folder, mapped by topic to the 30-day portal syllabus.
 
 | Day | Part | Slug | Deck |

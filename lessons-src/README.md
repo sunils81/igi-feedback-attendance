@@ -113,3 +113,14 @@ Sources: `wetransfer_a-introdouction-crystallography-pptx` (CSG PowerPoints, ext
 | csg-pricing | Gemstone Value Factors | 22.1 | 34.1 | 17.1 |
 
 Day.part numbers are portal syllabus days. Media for each deck is copied into `decks/<slug>/media-src/` from the extract (only files the deck uses).
+
+## World gem map (globe-src/)
+
+`python3 globe-src/make_globe.py` injects the interactive gem-origin globe into the CSG decks:
+the full map (plus the look-alike, "Which one is the ruby?" and inclusion-fingerprint slides) in
+`csg-intro`, and a filtered "Where it's found" slide in Corundum, Emerald, SR, Uniaxial 1–2,
+Biaxial 1–2 and Organics 1–2. Edit localities, origin clues and chapter days in
+`globe-src/gemdata.json`, then re-run the script and `build.py`. Re-running is safe (sections are
+replaced by id). Libraries in `globe-src/libs/`: d3-array, d3-geo, topojson-client (ISC) and
+world-atlas countries-50m/110m (ISC; Natural Earth, public domain). The inclusion photos
+(`inc-*.jpg`) are copies of course photos placed in `shared-media/`.

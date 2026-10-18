@@ -7,7 +7,7 @@
 <script src="/assets/shared.js?v=157"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
-<script src="/assets/lessons.js?v=6"></script>
+<script src="/assets/lessons.js?v=7"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style id="dyn-css"></style>
 <style>
@@ -408,6 +408,7 @@
   <div class="tab-bar">
     <button class="tab active" onclick="iTab('t-session')">🗓️ Session</button>
     <button class="tab" id="t-lessons-tab" onclick="iTab('t-lessons')">📽 Lessons <span id="lessons-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
+    <button class="tab" id="t-library-tab" style="display:none" onclick="iTab('t-library')">🏛 Library</button>
     <button class="tab" onclick="iTab('t-attendance')">👥 Attendance</button>
     <button class="tab" onclick="iTab('t-marks')">📝 Marks</button>
     <button class="tab" onclick="iTab('t-resources')">📚 Resources</button>
@@ -2052,6 +2053,18 @@
       <div id="lessons-mount" style="margin-top:14px"></div>
     </div>
   </div>
+  <!-- ── LIBRARY: every DG and CSG presentation in one place for reference (assets/lessons.js).
+       2026-10-18, per Sunil: for tutors and new joiners; the HOD grants access per person,
+       optionally for a fixed period. Reference openings are logged and never touch a batch's
+       day lock. The tab shows only when lesson_ref_status says this person has access. ── -->
+  <div id="t-library" class="tab-content">
+    <div class="card">
+      <div class="section-tag">Reference</div>
+      <h2>🏛 Lesson Library</h2>
+      <p class="sub">Every Diamond Graduate and Coloured Stone Graduate presentation, day by day, for study and preparation. Mark each one as studied as you go.</p>
+      <div id="library-mount" style="margin-top:14px"></div>
+    </div>
+  </div>
   <div id="t-trayhub" class="tab-content">
   <style>
     /* ── Tray Hub Styles ── */
@@ -3207,6 +3220,10 @@ function initInstructorSessionFeatures() {
   if (/[?&]work=/.test(location.search)) setTimeout(function(){ iTab('t-work'); }, 300);
   refreshLessonsBadge();
   if (/[?&]lessons=/.test(location.search)) setTimeout(function(){ iTab('t-lessons'); }, 300);
+  // Lesson Library tab: only for people the HOD has given access (and approvers)
+  if (window.IGILessons && IGILessons.refStatus) IGILessons.refStatus(function (ok) {
+    var t = document.getElementById('t-library-tab'); if (t) t.style.display = ok ? '' : 'none';
+  });
 }
 
 /* ── Lessons tab (assets/lessons.js) ─────────────────────────────────────────
@@ -3386,6 +3403,7 @@ function iTab(id) {
   renderInstructorSummary();
   if (id==='t-session')    { loadTodaySessions(); if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-lessons')    { mountLessonsTab(); }
+  if (id==='t-library')    { if (window.IGILessons && IGILessons.mountReference) IGILessons.mountReference('library-mount'); }
   if (id==='t-attendance') { stopAttendanceRefresh(); if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-marks')      { if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-resources')  { syncResourcesBatchSelect(); }
@@ -3440,6 +3458,7 @@ function renderInstructorMoreSheet() {
   // [label, icon, tabId, gateTabButtonId or null if always visible, badgeElId or null]
   var items = [
     ['Lessons', '📽', 't-lessons', null, 'lessons-badge'],
+    ['Library', '🏛', 't-library', 't-library-tab', null],
     ['Work', '🧩', 't-work', null, 'work-badge'],
     ['Resources', '📚', 't-resources', null, null],
     ['Diamond Calculator', '🧮', 't-diamondcalc', null, null],

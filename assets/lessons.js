@@ -166,6 +166,14 @@
       '.igl-btn.sm{padding:8px 14px;font-size:12px}',
       '.igl-btn.red{background:#fff;color:#B00020;border:1.5px solid #B00020;box-shadow:none}',
       '.igl-off{font-size:12px;color:#A9B2C8}.igl-off b{color:#8BD5A8}',
+      '.igl-libtop{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:4px 0 14px}',
+      '.igl-libtop .seg{display:flex;gap:6px;flex-wrap:wrap}',
+      '.igl-libtop .seg button{border:1.5px solid var(--bd);background:#fff;color:var(--n);border-radius:30px;padding:8px 14px;font:800 12px/1 "Plus Jakarta Sans",sans-serif;cursor:pointer}',
+      '.igl-libtop .seg button.on{background:var(--n);border-color:var(--n);color:#F7F1E4}',
+      '.igl-libtop input{flex:1;min-width:220px;font:inherit;border:1.5px solid var(--bd);border-radius:10px;padding:9px 12px}',
+      '.igl-libprog{font-size:13px;color:var(--mu)}.igl-libprog b{color:var(--n)}',
+      '.igl-study.on{background:#E7F4EC;border-color:#8BD5A8;color:#1F7A4D}',
+      '.igl-grant{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}.igl-grant select{min-width:200px}.igl-grant input{flex:1;min-width:200px;font:inherit;border:1.5px solid var(--bd);border-radius:10px;padding:10px 12px}',
       '.igl-savebar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:-4px 0 14px;font-size:13px;color:#5A6075}.igl-savebar b{color:#1F7A4D}',
       '.igl-days{display:flex;flex-direction:column;gap:8px}',
       '.igl-wk{font:800 11px/1 "Plus Jakarta Sans",sans-serif;letter-spacing:.2em;text-transform:uppercase;color:var(--mu);margin:14px 0 2px}',
@@ -314,7 +322,7 @@
 
     var el = document.createElement('div');
     el.className = 'igl-player';
-    var mark = [o.me || '', o.batchCode || 'HOD preview', istToday()].filter(Boolean).join(' · ');
+    var mark = o.mark || [o.me || '', o.batchCode || 'HOD preview', istToday()].filter(Boolean).join(' · ');
     el.innerHTML = '<button class="x" type="button">✕ Close</button>' +
       '<div class="ld"><i></i><span>Opening ' + esc(o.title || ('Day ' + o.day)) + '…</span></div>' +
       '<div class="wmt" style="background-image:' + wmTile(mark) + '"></div>' +
@@ -733,10 +741,145 @@
     }).catch(function () { root.innerHTML = '<div class="igl"><div class="igl-empty">Could not load.</div></div>'; });
   }
 
+
+  // ── LIBRARY: every DG and CSG deck in one place, for reference (2026-10-18) ──────────
+  // Open to the HOD and to people the HOD has granted Library access (lesson_library_access).
+  // Openings are logged with basis 'reference' and do not touch any batch's day lock.
+  var R = { rows: null, course: 'Colored Stone Graduate', plan: '', q: '', me: '', approver: false, until: null };
+  var RCOURSES = [['Diamond Graduate', 'Diamond Graduate'], ['Colored Stone Graduate', 'Coloured Stone Graduate']];
+  function refStatus(cb) {
+    rpc('lesson_ref_status', {}).then(function (d) { cb(!!(d && d.status === 'ok' && d.allowed), d || {}); }).catch(function () { cb(false, {}); });
+  }
+  function mountReference(id) {
+    injectCss();
+    var root = $(id); if (!root) return;
+    try { var sv = JSON.parse(localStorage.getItem('igi_lesson_lib') || '{}'); if (sv.course) R.course = sv.course; if (sv.plan != null) R.plan = sv.plan; } catch (e) {}
+    root.innerHTML = '<div class="igl"><div class="igl-empty">Loading the library…</div></div>';
+    rpc('lesson_ref_library', {}).then(function (d) {
+      if (!d || d.status !== 'ok') { root.innerHTML = '<div class="igl"><div class="igl-empty">' + esc(d && d.reason === 'session' ? 'Please sign in again.' : (d && d.reason) || 'Could not load the library.') + '</div></div>'; return; }
+      R.rows = d.rows || []; R.me = d.me || ''; R.approver = !!d.approver; R.until = d.until || null;
+      root.innerHTML = '<div class="igl igl-lib">' +
+        '<div class="igl-libtop"><div class="seg" id="igl-lc"></div><div class="seg" id="igl-lp"></div>' +
+        '<input type="search" id="igl-lq" placeholder="Search lessons, e.g. emerald, refractometer">' +
+        '<span class="igl-libprog" id="igl-lprog"></span></div>' +
+        (R.until ? '<p class="igl-note" style="margin:0 0 10px">Your Library access runs until ' + esc(fmtUntil(R.until)) + '.</p>' : '') +
+        '<div class="igl-savebar" id="igl-lsave"></div><div id="igl-llist"></div>' +
+        '<p class="igl-note">Reference copies carry a “Reference · not for class” watermark and every opening is logged. To teach a batch, use the Lessons tab, where the day plan and HOD approvals apply.</p></div>';
+      $('igl-lq').oninput = function () { R.q = this.value.trim().toLowerCase(); drawList(); };
+      drawSegs(); drawList();
+    }).catch(function () { root.innerHTML = '<div class="igl"><div class="igl-empty">Could not load the library. Check the connection and try again.</div></div>'; });
+  }
+  function rSave() { try { localStorage.setItem('igi_lesson_lib', JSON.stringify({ course: R.course, plan: R.plan })); } catch (e) {} }
+  function rPlans() {
+    var seen = {};
+    R.rows.forEach(function (r) { if (r.course.indexOf(R.course) === 0) seen[r.course] = Math.max(seen[r.course] || 0, Number(r.day) || 0); });
+    return Object.keys(seen).sort(function (a, b) { return (a === R.course ? -1 : b === R.course ? 1 : seen[b] - seen[a]); }).map(function (k) {
+      var m = /\((\d+) Weeks?\)/.exec(k);
+      return { key: k, label: m ? m[1] + '-week plan' : seen[k] + '-day plan' };
+    });
+  }
+  function drawSegs() {
+    var c = $('igl-lc'), p = $('igl-lp'); if (!c) return;
+    c.innerHTML = RCOURSES.map(function (x) { return '<button type="button" data-c="' + esc(x[0]) + '" class="' + (R.course === x[0] ? 'on' : '') + '">' + esc(x[1]) + '</button>'; }).join('');
+    var plans = rPlans();
+    if (!plans.some(function (x) { return x.key === R.plan; })) R.plan = plans.length ? plans[0].key : '';
+    p.innerHTML = plans.map(function (x) { return '<button type="button" data-p="' + esc(x.key) + '" class="' + (R.plan === x.key ? 'on' : '') + '">' + esc(x.label) + '</button>'; }).join('');
+    Array.prototype.forEach.call(c.children, function (b) { b.onclick = function () { R.course = b.getAttribute('data-c'); R.plan = ''; rSave(); drawSegs(); drawList(); }; });
+    Array.prototype.forEach.call(p.children, function (b) { b.onclick = function () { R.plan = b.getAttribute('data-p'); rSave(); drawSegs(); drawList(); }; });
+  }
+  function drawList() {
+    var box = $('igl-llist'); if (!box) return;
+    var rows = R.rows.filter(function (r) { return r.course === R.plan; });
+    var syl = syllabusFor(R.plan), topic = {}, week = {};
+    syl.forEach(function (s, i) { var dd = s.day || (i + 1); topic[dd] = s.topic; week[dd] = s.week || ''; });
+    var q = R.q, keys = {}, done = {};
+    rows.forEach(function (r) { keys[r.key] = 1; if (r.studied) done[r.key] = 1; });
+    var nK = Object.keys(keys).length, nD = Object.keys(done).length;
+    var prog = $('igl-lprog'); if (prog) prog.innerHTML = '<b>' + nD + '</b> of ' + nK + ' studied';
+    var shown = rows.filter(function (r) { return !q || (r.title + ' ' + (r.subtitle || '') + ' ' + (topic[r.day] || '')).toLowerCase().indexOf(q) !== -1; });
+    var uniq = {}, items = [];
+    rows.forEach(function (r) { if (!uniq[r.id]) { uniq[r.id] = 1; items.push({ day: r.day, deck: r }); } });
+    saveAllBar('igl-lsave', null, items, 'presentations in this plan');
+    if (!shown.length) { box.innerHTML = '<div class="igl-empty">' + (q ? 'Nothing matches “' + esc(R.q) + '”.' : 'No presentations published for this plan yet.') + '</div>'; return; }
+    var html = '<div class="igl-days">', lastW = null;
+    shown.forEach(function (r) {
+      var w = week[r.day]; if (!q && w && w !== lastW) { html += '<div class="igl-wk">' + esc(w) + '</div>'; lastW = w; }
+      html += '<div class="igl-day"><div class="dn"><small>DAY</small>' + r.day + '</div><div>' +
+        '<div class="tp">' + esc(topic[r.day] || r.title) + '</div>' +
+        '<div class="dk">📽 ' + ((r.part || 1) > 1 ? 'Part ' + r.part + ' · ' : '') + esc(r.title) + (r.slides ? ' · ' + r.slides + ' slides' : '') + (r.bytes ? ' · ' + mb(r.bytes) : '') + '</div>' +
+        (r.subtitle ? '<div class="dk" style="opacity:.8">' + esc(r.subtitle) + '</div>' : '') + '</div>' +
+        '<div class="act"><button type="button" class="igl-btn ghost sm igl-study' + (r.studied ? ' on' : '') + '" data-key="' + esc(r.key) + '">' + (r.studied ? '✓ Studied' : 'Mark studied') + '</button>' +
+        '<button class="igl-btn sm" type="button" data-ref="' + esc(r.id) + '">▶ Open</button></div></div>';
+    });
+    box.innerHTML = html + '</div>';
+    var byId = {}; rows.forEach(function (r) { byId[r.id] = r; });
+    Array.prototype.forEach.call(box.querySelectorAll('[data-ref]'), function (b) {
+      b.onclick = function () {
+        var r = byId[b.getAttribute('data-ref')]; if (!r) return;
+        present({ batchCode: null, day: r.day, deckId: r.id, version: r.version, title: r.title, me: R.me,
+          mark: ['Reference · not for class', R.me, istToday()].filter(Boolean).join(' · ') });
+      };
+    });
+    Array.prototype.forEach.call(box.querySelectorAll('[data-key]'), function (b) {
+      b.onclick = function () {
+        var k = b.getAttribute('data-key'), on = !b.classList.contains('on');
+        b.disabled = true;
+        rpc('lesson_ref_mark', { p_key: k, p_done: on }).then(function (d) {
+          if (!d || d.status !== 'ok') { toast((d && d.reason) || 'Could not save', 'error'); b.disabled = false; return; }
+          R.rows.forEach(function (r) { if (r.key === k) r.studied = on; });
+          drawList();
+        }).catch(function () { b.disabled = false; toast('No connection — try again', 'error'); });
+      };
+    });
+  }
+
+  // ── HOD: who has Library access ───────────────────────────────────────────────────────
+  function mountRefGrants(id) {
+    injectCss();
+    var root = $(id); if (!root) return;
+    root.innerHTML = '<div class="igl"><div class="igl-empty">Loading…</div></div>';
+    rpc('lesson_ref_grants', {}).then(function (d) {
+      if (!d || d.status !== 'ok') { root.innerHTML = '<div class="igl"><div class="igl-empty">' + esc((d && d.reason) || 'Could not load') + '</div></div>'; return; }
+      var people = d.people || [], total = d.total || 0;
+      var html = '<div class="igl"><div class="igl-grant">' +
+        '<select id="igl-gp"><option value="">Choose a person…</option>' + people.map(function (p) { return '<option>' + esc(p) + '</option>'; }).join('') + '</select>' +
+        '<select id="igl-gd"><option value="30">for 30 days</option><option value="7">for 7 days</option><option value="90">for 90 days</option><option value="0">with no end date</option></select>' +
+        '<input id="igl-gn" placeholder="Note (e.g. new instructor, Mumbai)">' +
+        '<button class="igl-btn sm" type="button" id="igl-gg">Give Library access</button></div>';
+      var gs = d.grants || [];
+      if (!gs.length) html += '<div class="igl-empty">Nobody has Library access yet. The HOD always has it.</div>';
+      else html += '<div class="igl-list">' + gs.map(function (g) {
+        return '<div class="igl-req"><div class="h"><b>' + esc(g.person) + '</b>' +
+          (g.active ? '<span class="igl-chip approved">' + (g.until ? 'Until ' + esc(fmtUntil(g.until)) : 'No end date') + '</span>' : '<span class="igl-chip locked">Ended</span>') +
+          (g.active ? '<button class="igl-btn ghost sm" type="button" data-revoke="' + esc(g.id) + '" style="margin-left:auto">Remove access</button>' : '') + '</div>' +
+          '<div class="meta">Studied ' + g.studied + ' of ' + total + ' presentations · opened ' + g.opens + '×' + (g.last_open ? ' · last ' + esc(String(g.last_open).slice(0, 10)) : '') +
+          ' · given by ' + esc(g.by === 'Admin' ? 'HOD' : g.by) + ' on ' + esc(String(g.at).slice(0, 10)) + '</div>' + (g.note ? '<div class="why">' + esc(g.note) + '</div>' : '') + '</div>';
+      }).join('') + '</div>';
+      root.innerHTML = html + '</div>';
+      $('igl-gg').onclick = function () {
+        var p = $('igl-gp').value; if (!p) { toast('Choose a person first', 'error'); return; }
+        this.disabled = true;
+        rpc('lesson_ref_grant', { p_person: p, p_days: Number($('igl-gd').value), p_note: $('igl-gn').value }).then(function (r) {
+          if (!r || r.status !== 'ok') toast((r && r.reason) || 'Could not save', 'error'); else toast('Library access given to ' + p, 'success');
+          mountRefGrants(id);
+        }).catch(function () { toast('No connection — try again', 'error'); mountRefGrants(id); });
+      };
+      Array.prototype.forEach.call(root.querySelectorAll('[data-revoke]'), function (b) {
+        b.onclick = function () {
+          b.disabled = true;
+          rpc('lesson_ref_revoke', { p_id: b.getAttribute('data-revoke') }).then(function () { toast('Access removed', 'success'); mountRefGrants(id); }).catch(function () { b.disabled = false; });
+        };
+      });
+    }).catch(function () { root.innerHTML = '<div class="igl"><div class="igl-empty">Could not load.</div></div>'; });
+  }
+
   window.IGILessons = {
     mountInstructor: mountInstructor,
     mountApprovals: mountApprovals,
     mountLibrary: mountLibrary,
+    mountReference: mountReference,
+    mountRefGrants: mountRefGrants,
+    refStatus: refStatus,
     pendingCount: pendingCount,
     approverStatus: approverStatus,
     present: present,

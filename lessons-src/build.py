@@ -19,7 +19,7 @@ import base64, io, json, os, re, sys
 ROOT = os.path.dirname(os.path.abspath(__file__))
 ENGINE = os.path.join(ROOT, 'engine')
 DIST = os.path.join(ROOT, 'dist')
-MAX_SIDE = 1600
+MAX_SIDE = 1280  # was 1600 until 2026-10-18: smaller decks, quicker to download and open
 
 try:
     from PIL import Image
@@ -87,6 +87,13 @@ def build(slug):
     html = re.sub(r"media/([A-Za-z0-9_.\-]+\.(?:jpe?g|png|gif|webp))(?:#w=(\d+))?", img, html)
     if missing:
         sys.exit('Missing images in %s: %s' % (slug, ', '.join(sorted(set(missing)))))
+
+    # Lazy photos: <img> inside scenes keeps its picture in data-lz and gets a 1-px placeholder;
+    # the engine (foot.html, hyd) attaches it just before the scene is shown. 2026-10-18.
+    PH = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+    def lazy_section(m):
+        return re.sub(r'(<img\b[^>]*?)\ssrc="(data:image/[^"]+)"', lambda t: t.group(1) + ' src="' + PH + '" data-lz="' + t.group(2) + '"', m.group(0))
+    html = re.sub(r'<section class="scene.*?</section>', lazy_section, html, flags=re.S)
 
     os.makedirs(DIST, exist_ok=True)
     out = os.path.join(DIST, slug + '.html')

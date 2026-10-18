@@ -204,8 +204,11 @@ const WIPES={
  sliceB:['polygon(-50% 0%,-50% 0%,-30% 100%,-50% 100%)','polygon(-50% 0%,150% 0%,130% 100%,-50% 100%)']};
 /* ---------- image warm-up: decode a scene's photos before it is shown, so they never pop in half-painted ---------- */
 const warmed=new WeakMap();
+/* photos in scenes are built lazy (data-lz) so a deck opens fast; a scene's photos are attached
+   just before it is shown, and the rest in the background a moment after the deck opens. 2026-10-18 */
+function hyd(sc){if(sc)sc.querySelectorAll('img[data-lz]').forEach(i=>{i.src=i.getAttribute('data-lz');i.removeAttribute('data-lz')})}
 function warm(sc){
- if(!sc) return Promise.resolve(); if(warmed.has(sc)) return warmed.get(sc);
+ if(!sc) return Promise.resolve(); hyd(sc); if(warmed.has(sc)) return warmed.get(sc);
  const ps=[];
  sc.querySelectorAll('img').forEach(i=>{if(i.decode)ps.push(i.decode().catch(()=>{}))});
  sc.querySelectorAll('[style*="url("]').forEach(el=>{const m=/url\((['"]?)(.*?)\1\)/.exec(el.getAttribute('style')||'');if(m){const im=new Image();im.src=m[2];if(im.decode)ps.push(im.decode().catch(()=>{}));el._warm=im}});
@@ -214,6 +217,7 @@ function warm(sc){
 function warmAround(i){[i+1,i-1,i+2].forEach(k=>{if(scenes[k])warm(scenes[k])})}
 function go(n,instant){
  n=Math.max(0,Math.min(scenes.length-1,n)); if(n===cur&&!instant) return; if(busy&&!instant) return;
+ hyd(scenes[n]);
  if(!instant&&!scenes[n]._ready&&!scenes[n]._waited){scenes[n]._waited=1;busy=true;const t=new Promise(r=>setTimeout(r,350));Promise.race([warm(scenes[n]),t]).then(()=>{busy=false;go(n)});return}
  const prev=scenes[cur], next=scenes[n], back=n<cur; let w=next.dataset.wipe||'diamond'; if(w==='slice'&&back) w='sliceB';
  $$('video',prev).forEach(v=>v.pause());
@@ -279,7 +283,7 @@ $('#bLaser').onclick=()=>laser.toggle();
 updScore();
 const h=inFrame?'':location.hash.slice(1);const start=h?Math.max(0,/^\d+$/.test(h)?+h:idx(h)):0;
 scenes.forEach(s=>s.classList.remove('active'));cur=start;go(start,true);
-(function idle(i){if(i>=scenes.length)return;warm(scenes[i]).then(()=>setTimeout(()=>idle(i+1),60))})(0);
+warmAround(start);setTimeout(()=>(function idle(i){if(i>=scenes.length)return;warm(scenes[i]).then(()=>setTimeout(()=>idle(i+1),60))})(0),700);
 if(/[?&]all/.test(location.search)){$$('.step').forEach(s=>s.classList.add('on'));updHint()}
 requestAnimationFrame(loop);
 window.focus();

@@ -34,6 +34,7 @@
   var SB = 'https://atbexvtrcopaagcdbpqi.supabase.co';
   var AK = 'sb_publishable_TpzxX5a3M7lnFeND8xLfhQ_YJOxOkhb';
   var CACHE = 'igi-lessons-v1';
+  var MAXDECKS = 70;
   var GRANTS = 'igi_lesson_grants_v1';
   var QUICK_REASONS = [
     'Batch is ahead of schedule',
@@ -129,7 +130,8 @@
       return c.keys().then(function (keys) {
         // drop older versions of this deck, and keep at most 14 decks on the laptop
         var drops = keys.filter(function (k) { var p = new URL(k.url).pathname; return p.indexOf('/__igi_lessons/' + id + '/') === 0 && p !== cacheKey(id, v); });
-        if (keys.length - drops.length >= 14) drops = drops.concat(keys.slice(0, keys.length - drops.length - 13));
+        // room for every DG and CSG deck (about 60 decks, ~250 MB); was 14 until 2026-10-18
+        if (keys.length - drops.length >= MAXDECKS) drops = drops.concat(keys.slice(0, keys.length - drops.length - (MAXDECKS - 1)));
         return Promise.all(drops.map(function (k) { return c.delete(k); }));
       }).then(function () {
         return c.put(cacheKey(id, v), new Response(blob, { headers: { 'Content-Type': 'text/html; charset=utf-8' } }));
@@ -164,6 +166,7 @@
       '.igl-btn.sm{padding:8px 14px;font-size:12px}',
       '.igl-btn.red{background:#fff;color:#B00020;border:1.5px solid #B00020;box-shadow:none}',
       '.igl-off{font-size:12px;color:#A9B2C8}.igl-off b{color:#8BD5A8}',
+      '.igl-savebar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:-4px 0 14px;font-size:13px;color:#5A6075}.igl-savebar b{color:#1F7A4D}',
       '.igl-days{display:flex;flex-direction:column;gap:8px}',
       '.igl-wk{font:800 11px/1 "Plus Jakarta Sans",sans-serif;letter-spacing:.2em;text-transform:uppercase;color:var(--mu);margin:14px 0 2px}',
       '.igl-day{display:grid;grid-template-columns:64px 1fr auto;gap:14px;align-items:center;background:#fff;border:1px solid var(--bd);border-radius:14px;padding:12px 14px;transition:.2s}',
@@ -230,31 +233,85 @@
   }
 
   // ── PLAYER ─────────────────────────────────────────────────────────────────────────
-  var P = { el: null, url: null, onClose: null };
+  var P = { el: null, url: null, onClose: null, key: null };
+  // The last deck stays loaded (hidden) after Exit, so going back to it is instant. 2026-10-18.
+  var K = null;
   function wmTile(text) {
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="520" height="260"><text x="20" y="150" transform="rotate(-18 260 130)" font-family="sans-serif" font-size="22" font-weight="700" fill="#ffffff">' +
       esc(text) + '</text></svg>';
     return 'url("data:image/svg+xml;utf8,' + encodeURIComponent(svg) + '")';
   }
-  function closePlayer() {
+  function dropKept() {
+    if (!K) return;
+    try { if (K.url) URL.revokeObjectURL(K.url); } catch (e) {}
+    try { K.el.remove(); } catch (e) {}
+    K = null;
+  }
+  function closePlayer(discard) {
     if (!P.el) return;
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
-    if (P.url) { try { URL.revokeObjectURL(P.url); } catch (e) {} }
-    P.el.remove(); P.el = null; P.url = null;
+    var el = P.el;
+    if (!discard && P.key && el.classList.contains('ready') && el.querySelector('iframe')) {
+      dropKept();
+      el.style.display = 'none';
+      K = { key: P.key, el: el, url: P.url };
+      try { el.querySelector('iframe').blur(); } catch (e) {}
+    } else {
+      if (P.url) { try { URL.revokeObjectURL(P.url); } catch (e) {} }
+      el.remove();
+    }
+    P.el = null; P.url = null; P.key = null;
     document.removeEventListener('keydown', onPlayerKey, true);
     if (P.onClose) { var f = P.onClose; P.onClose = null; f(); }
   }
-  function onPlayerKey(e) { if (e.key === 'Escape' && P.el && !P.el.classList.contains('ready')) closePlayer(); }
+  function onPlayerKey(e) { if (e.key === 'Escape' && P.el && !P.el.classList.contains('ready')) closePlayer(true); }
   window.addEventListener('message', function (e) {
     if (!P.el || !e.data || typeof e.data !== 'object') return;
     if (e.data.type === 'igi-lesson-exit') closePlayer();
   });
+  function closeBtn() { return '<br><br><button class="igl-btn sm" type="button" onclick="IGILessons.close(true)">Close</button>'; }
+  // Server refused an opening that we had already started from the laptop copy.
+  function refuse(el, html) {
+    if (P.el !== el) { if (K && K.el === el) dropKept(); return; }
+    var fr = el.querySelector('iframe'); if (fr) fr.remove();
+    if (P.url) { try { URL.revokeObjectURL(P.url); } catch (e) {} P.url = null; }
+    P.key = null; el.classList.remove('ready');
+    var ld = el.querySelector('.ld');
+    if (!ld) { ld = document.createElement('div'); ld.className = 'ld'; ld.innerHTML = '<span></span>'; el.appendChild(ld); }
+    ld.querySelector('span').innerHTML = html;
+  }
 
-  /* present({ batchCode, day, deckId?, title, me, onClose })
-     Must be called straight from a click so full screen is allowed. */
+  /* present({ batchCode, day, deckId?, version?, title, me, onClose })
+     Must be called straight from a click so full screen is allowed.
+     Speed (2026-10-18): if this laptop already holds the deck (same id + version), it opens at
+     once and the access check runs alongside; a refusal still closes it. The last deck is kept
+     loaded after Exit, so re-opening it skips loading altogether. */
   function present(o) {
     injectCss();
     closePlayer();
+    var key = (o.batchCode || '_') + '|' + (o.deckId || '') + '|' + (o.version || '');
+    var gate = function () {
+      return postApi('/api/push/lesson-open', { batchCode: o.batchCode || null, day: o.day, deckId: o.deckId || null, purpose: 'open' });
+    };
+    var why = function (d) {
+      var w = (d && d.reason) || 'Not allowed';
+      if (w === 'session') w = 'Your sign-in has expired. Please sign in again.';
+      return (d && d.status === 'locked' ? '🔒 ' : '') + esc(w);
+    };
+
+    // 1) the same deck is still loaded from last time
+    if (o.deckId && o.version && K && K.key === key) {
+      var kel = K.el; P.el = kel; P.url = K.url; P.key = key; K = null;
+      P.onClose = o.onClose || null;
+      kel.style.display = '';
+      document.addEventListener('keydown', onPlayerKey, true);
+      try { if (kel.requestFullscreen) kel.requestFullscreen().catch(function () {}); } catch (e) {}
+      try { kel.querySelector('iframe').contentWindow.focus(); } catch (e) {}
+      gate().then(function (d) { if (!d || d.status !== 'ok') refuse(kel, why(d) + closeBtn()); else saveGrant(o.batchCode, o.day, d.deck); }).catch(function () {});
+      return;
+    }
+    dropKept();
+
     var el = document.createElement('div');
     el.className = 'igl-player';
     var mark = [o.me || '', o.batchCode || 'HOD preview', istToday()].filter(Boolean).join(' · ');
@@ -263,21 +320,23 @@
       '<div class="wmt" style="background-image:' + wmTile(mark) + '"></div>' +
       '<div class="wm">' + esc(mark) + '</div>';
     el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
-    el.querySelector('.x').onclick = closePlayer;
+    el.querySelector('.x').onclick = function () { closePlayer(true); };
     document.body.appendChild(el);
     P.el = el; P.onClose = o.onClose || null;
     document.addEventListener('keydown', onPlayerKey, true);
     try { if (el.requestFullscreen) el.requestFullscreen().catch(function () {}); } catch (e) {}
     var setMsg = function (t) { var s = el.querySelector('.ld span'); if (s) s.innerHTML = t; };
+    var shown = false;
 
-    function show(blob, offline) {
-      if (!P.el || P.el !== el) return;
+    function show(blob, offline, k) {
+      if (!P.el || P.el !== el || shown) return;
+      shown = true;
       // Supabase Storage serves .html as text/plain (anti-XSS), so a fresh download arrives
       // typed as text and the iframe would show the source code. Always re-type it as HTML.
       // (Cached copies were fine because the cache stores them as text/html.) 2026-10-15.
       blob = new Blob([blob], { type: 'text/html;charset=utf-8' });
       var url = URL.createObjectURL(blob);
-      P.url = url;
+      P.url = url; P.key = k || key;
       var fr = document.createElement('iframe');
       fr.setAttribute('allow', 'fullscreen; autoplay');
       fr.setAttribute('allowfullscreen', '');
@@ -295,29 +354,32 @@
       }
     }
     function fallbackOffline(reason) {
+      if (shown) return;
       var g = grantFor(o.batchCode, o.day, o.deckId);
-      if (!g) { setMsg(esc(reason || 'Could not reach the server.') + '<br><br><button class="igl-btn sm" type="button" onclick="IGILessons.close()">Close</button>'); return; }
+      if (!g) { setMsg(esc(reason || 'Could not reach the server.') + closeBtn()); return; }
       cachedBlob(g.id, g.version).then(function (blob) {
-        if (blob) show(blob, true);
-        else setMsg(esc(reason || 'Could not reach the server.') + '<br>This presentation is not saved on this laptop yet.<br><br><button class="igl-btn sm" type="button" onclick="IGILessons.close()">Close</button>');
+        if (blob) show(blob, true, (o.batchCode || '_') + '|' + g.id + '|' + g.version);
+        else setMsg(esc(reason || 'Could not reach the server.') + '<br>This presentation is not saved on this laptop yet.' + closeBtn());
       });
     }
 
-    postApi('/api/push/lesson-open', { batchCode: o.batchCode || null, day: o.day, deckId: o.deckId || null, purpose: 'open' })
+    // 2) start from the laptop copy straight away, check access alongside
+    var early = (o.deckId && o.version) ? cachedBlob(o.deckId, o.version) : Promise.resolve(null);
+    early.then(function (hit) { if (hit) show(hit, false); });
+
+    gate()
       .then(function (d) {
-        if (!d || d.status !== 'ok') {
-          var why = (d && d.reason) || 'Not allowed';
-          if (why === 'session') why = 'Your sign-in has expired. Please sign in again.';
-          setMsg((d && d.status === 'locked' ? '🔒 ' : '') + esc(why) + '<br><br><button class="igl-btn sm" type="button" onclick="IGILessons.close()">Close</button>');
-          return;
-        }
+        if (!d || d.status !== 'ok') { if (shown) refuse(el, why(d) + closeBtn()); else setMsg(why(d) + closeBtn()); return; }
         saveGrant(o.batchCode, o.day, d.deck);
-        return cachedBlob(d.deck.id, d.deck.version).then(function (hit) {
-          if (hit) { show(hit, false); return; }
-          setMsg('Downloading ' + esc(d.deck.title) + '…');
-          return download(d.url).then(function (blob) {
-            storeBlob(d.deck.id, d.deck.version, blob);
-            show(blob, false);
+        var k2 = (o.batchCode || '_') + '|' + d.deck.id + '|' + d.deck.version;
+        return early.then(function (hit) {
+          if (hit && String(d.deck.version) === String(o.version)) return;
+          return cachedBlob(d.deck.id, d.deck.version).then(function (hit2) {
+            if (hit2) { show(hit2, false, k2); return; }
+            if (!shown) setMsg('Downloading ' + esc(d.deck.title) + (d.deck.bytes ? ' (' + mb(d.deck.bytes) + ')' : '') + '…');
+            return download(d.url).then(function (blob) {
+              return storeBlob(d.deck.id, d.deck.version, blob).then(function () { show(blob, false, k2); });
+            });
           });
         });
       })
@@ -325,23 +387,44 @@
   }
 
   // Quietly save the decks that are open today onto this laptop.
-  function prefetch(batchCode, items, onDone) {
-    var i = 0;
+  function prefetch(batchCode, items, onDone, onStep) {
+    var i = 0, saved = 0;
     (function next() {
-      if (i >= items.length) { if (onDone) onDone(); return; }
+      if (onStep) onStep(i, items.length, saved);
+      if (i >= items.length) { if (onDone) onDone(saved); return; }
       var it = items[i++];
       isCached(it.deck.id, it.deck.version).then(function (have) {
-        if (have) { saveGrant(batchCode, it.day, it.deck); next(); return; }
+        if (have) { saved++; saveGrant(batchCode, it.day, it.deck); next(); return; }
         postApi('/api/push/lesson-open', { batchCode: batchCode, day: it.day, deckId: it.deck.id, purpose: 'prefetch' })
           .then(function (d) {
             if (!d || d.status !== 'ok') return;
             saveGrant(batchCode, it.day, d.deck);
-            return download(d.url).then(function (blob) { return storeBlob(d.deck.id, d.deck.version, blob); });
+            return download(d.url).then(function (blob) { return storeBlob(d.deck.id, d.deck.version, blob); }).then(function () { saved++; });
           })
           .catch(function () {})
           .then(next);
       });
     })();
+  }
+  // "Save all on this laptop": a button that pre-downloads every deck in `items`.
+  function saveAllBar(id, batchCode, items, label) {
+    var box = $(id); if (!box || !items.length) return;
+    if (!(window.caches && window.isSecureContext)) { box.innerHTML = ''; return; }
+    var total = items.reduce(function (a, it) { return a + (Number(it.deck.bytes) || 0); }, 0);
+    Promise.all(items.map(function (it) { return isCached(it.deck.id, it.deck.version); })).then(function (have) {
+      var n = have.filter(Boolean).length;
+      var draw = function (msg, busy) {
+        box.innerHTML = '<span class="igl-save">' + msg + '</span>' +
+          (busy || n >= items.length ? '' : ' <button class="igl-btn ghost sm" type="button" id="' + id + '-go">💾 Save all ' + esc(label) + ' on this laptop' + (total ? ' · ' + mb(total) : '') + '</button>');
+        var go = $(id + '-go');
+        if (go) go.onclick = function () {
+          draw('Saving 0 of ' + items.length + '…', true);
+          prefetch(batchCode, items, function (saved) { n = saved; draw(saved >= items.length ? '<b>✓</b> All ' + items.length + ' saved on this laptop: they open instantly, even offline' : saved + ' of ' + items.length + ' saved · press again to retry', false); },
+            function (i, len) { if (i < len) box.querySelector('.igl-save').textContent = 'Saving ' + (i + 1) + ' of ' + len + '… keep this tab open'; });
+        };
+      };
+      draw(n >= items.length ? '<b>✓</b> All ' + items.length + ' saved on this laptop: they open instantly, even offline' : n + ' of ' + items.length + ' ' + esc(label) + ' saved on this laptop', false);
+    });
   }
 
   // ── INSTRUCTOR: Lessons tab ──────────────────────────────────────────────────────────
@@ -438,7 +521,7 @@
       hero = '<div class="igl-hero"><div class="k">Today · ' + esc(st.batch_code) + '</div><h3>' + (nd ? 'Day ' + esc(nd) + (topic ? ' · ' + esc(topic) : '') : 'No syllabus day today') + '</h3><p>There is no presentation for this day yet.</p></div>';
     }
 
-    var html = hero;
+    var html = hero + '<div class="igl-savebar" id="igl-saveall"></div>';
     if (!(d.decks || []).length) {
       html += '<div class="igl-empty">No presentations have been published for ' + esc(st.deck_course || st.course) + ' yet.</div>';
     } else {
@@ -486,7 +569,7 @@
     Array.prototype.forEach.call(body.querySelectorAll('[data-present]'), function (b) {
       b.onclick = function () {
         var k = byId[b.getAttribute('data-present')]; if (!k) return;
-        present({ batchCode: st.batch_code, day: k.day, deckId: k.id, title: dlabel(k) + ' · ' + k.title, me: meName, onClose: function () { load(); } });
+        present({ batchCode: st.batch_code, day: k.day, deckId: k.id, version: k.version, title: dlabel(k) + ' · ' + k.title, me: meName, onClose: function () { load(); } });
       };
     });
     Array.prototype.forEach.call(body.querySelectorAll('[data-request]'), function (b) {
@@ -502,6 +585,11 @@
         rpc('lesson_cancel_request', { p_id: b.getAttribute('data-cancel') }).then(function () { load(); }).catch(function () { b.disabled = false; toast('Could not withdraw — try again', 'error'); });
       };
     });
+
+    // every deck this person may open now (covered, today, approved; all for the HOD)
+    var openItems = [];
+    (d.decks || []).forEach(function (k) { if (dayState(d, k.day).open) openItems.push({ day: k.day, deck: k }); });
+    saveAllBar('igl-saveall', st.batch_code, openItems, 'open lessons');
 
     // save today's decks on this laptop in the background
     var off = $('igl-off');
@@ -635,11 +723,12 @@
         if (r.course !== last) { html += '<div class="igl-wk">' + esc(r.course) + '</div>'; last = r.course; }
         html += '<div class="igl-day"><div class="dn"><small>DAY</small>' + r.day + '</div><div><div class="tp">' + ((r.part || 1) > 1 || rows.some(function (q) { return q.course === r.course && q.day === r.day && q.id !== r.id; }) ? 'Part ' + (r.part || 1) + ' · ' : '') + esc(r.title) + '</div>' +
           '<div class="dk">v' + r.version + (r.slides ? ' · ' + r.slides + ' slides' : '') + (r.bytes ? ' · ' + mb(r.bytes) : '') + ' · opened ' + r.opens_30d + '× in 30 days</div></div>' +
-          '<div class="act"><button class="igl-btn sm" type="button" data-prev="' + esc(r.id) + '" data-day="' + r.day + '" data-t="' + esc(r.title) + '">▶ Preview</button></div></div>';
+          '<div class="act"><button class="igl-btn sm" type="button" data-prev="' + esc(r.id) + '" data-v="' + esc(r.version) + '" data-day="' + r.day + '" data-t="' + esc(r.title) + '">▶ Preview</button></div></div>';
       });
-      root.innerHTML = html + '</div></div>';
+      root.innerHTML = html.replace('<div class="igl"><div class="igl-days">', '<div class="igl"><div class="igl-savebar" id="igl-lib-save"></div><div class="igl-days">') + '</div></div>';
+      saveAllBar('igl-lib-save', null, rows.map(function (r) { return { day: r.day, deck: { id: r.id, version: r.version, bytes: r.bytes, title: r.title } }; }), 'presentations');
       Array.prototype.forEach.call(root.querySelectorAll('[data-prev]'), function (b) {
-        b.onclick = function () { present({ batchCode: null, day: Number(b.getAttribute('data-day')), deckId: b.getAttribute('data-prev'), title: b.getAttribute('data-t'), me: 'HOD preview' }); };
+        b.onclick = function () { present({ batchCode: null, day: Number(b.getAttribute('data-day')), deckId: b.getAttribute('data-prev'), version: b.getAttribute('data-v'), title: b.getAttribute('data-t'), me: 'HOD preview' }); };
       });
     }).catch(function () { root.innerHTML = '<div class="igl"><div class="igl-empty">Could not load.</div></div>'; });
   }

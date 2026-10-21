@@ -42,7 +42,8 @@ const COURSES  = [
   'Corporate Programs','Seminars','Gem-A Foundation','Gem-A Diploma',
   'Emerald','Pearl','Diamond Essential: The 5C\'s',
   'Pearl Grading','Pearl Grading Advance',
-  'Navratna Masterclass (10 Half Days)','Navratna Masterclass (5 Full Days)'
+  'Navratna Masterclass (10 Half Days)','Navratna Masterclass (5 Full Days)',
+  'Jewelry Business Essentials'
 ];
 const INSTRUCTORS = [
   'Amit Sidpura','Asmita Saroday','Arjun Mistry','Bhavin Patel',
@@ -1770,7 +1771,8 @@ window.gasGet = (function () {
                Hyderabad:'HYD', Pune:'PUN', Ahmedabad:'AMD', Jaipur:'JAI', Surat:'SUR' };
     var RC = { 'Diamond Graduate':'DG', 'JewelPad Design':'JP', 'JewelPad Online':'JPO', 'Diamond Grading':'DGR',
                'Colored Stones':'CS', 'Jewelry Design':'JD', 'Pearls':'PRL',
-               'Pearl Grading':'PGR', 'Pearl Grading Advance':'PGA' };
+               'Pearl Grading':'PGR', 'Pearl Grading Advance':'PGA',
+               'Jewelry Business Essentials':'JBE' };
     var c = CC[p.centre]  || String(p.centre  || '').slice(0, 3).toUpperCase();
     var r = RC[p.course]  || String(p.course  || '').replace(/\s+/g, '').slice(0, 3).toUpperCase();
     var m = p.month ? String(p.month).slice(0, 3).toUpperCase() + String(p.month).slice(-2) : '';
@@ -1802,8 +1804,12 @@ window.gasGet = (function () {
     // Short courses run on consecutive days, so the end date is start + (days - 1).
     // Pearl Grading and Pearl Grading Advance: 3 full days or 5 half days.
     // Added 2026-10-16 per Sunil.
+    // Jewelry Business Essentials runs 5 half days only (added 2026-10-21 per Sunil).
+    // 'Full Day' carries the same 5 so a batch mis-typed as full day still gets a
+    // sane end date rather than an invalid one.
     var SHORT = { 'Pearl Grading': { 'Full Day': 3, 'Half Day': 5 },
-                  'Pearl Grading Advance': { 'Full Day': 3, 'Half Day': 5 } };
+                  'Pearl Grading Advance': { 'Full Day': 3, 'Half Day': 5 },
+                  'Jewelry Business Essentials': { 'Full Day': 5, 'Half Day': 5 } };
     var end  = new Date(p.startDate || new Date());
     var n;
     // From 2027: DG and CSG run 7 weeks of half days (35 days, Mon-Fri) or 3 weeks of
@@ -11268,7 +11274,11 @@ window.gasGet = (function () {
      rather than being an accident of an absent entry. */
   var FREE_TOPIC_COURSES = [
     'diamond graduate integrated', 'coloured stone integrated', 'colored stone integrated',
-    'small diamond assortment', 'identification of res'
+    'small diamond assortment', 'identification of res',
+    // Jewelry Business Essentials — new 2026-10-21, no day plan in SYLLABI yet, so the
+    // instructor types the topic. Move it out of this list once Bhavin supplies the
+    // 5-day plan and it is added to SYLLABI.
+    'jewelry business essentials'
   ];
 
   function isFreeTopicCourse(course) {
@@ -15943,6 +15953,8 @@ const COURSE_FEES_JS = {
   // New 2026-10-16 per Sunil. Both run 3 full days or 5 half days.
   'Pearl Grading':                       {fee:29900, regFee:0,    gst:18},
   'Pearl Grading Advance':               {fee:59900, regFee:0,    gst:18},
+  // New 2026-10-21 per Sunil. Runs 5 half days. ₹25,900 + GST.
+  'Jewelry Business Essentials':         {fee:25900, regFee:0,    gst:18},
   // The 5 entries below are current-name aliases for courses above that were renamed in the
   // batch-creation Course dropdown without this catalog being updated to match — confirmed
   // with the counsellor team, same price carries over under the new name. The old-name keys

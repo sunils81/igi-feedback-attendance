@@ -512,6 +512,28 @@ const SYLLABI = {
 };
 
 
+/* Jewelry Business Essentials — 5 half days, one of which is a factory visit at a host
+   unit. Which day that is depends on the factory's availability, so the four teaching
+   days always keep their order and the visit is inserted at the batch's visit_day; the
+   batch picks the variant via syllabusKeyFor() / lesson_syllabus_key(). Day 3 is the
+   default and the one to prefer — they see wastage, setting and finishing on the floor,
+   then cost it the next day. Added 2026-10-21 per Sunil. */
+(function () {
+  var JBE_TEACHING = [
+    'Foundations: The World of Jewellery, The Diamond Story, Science & the 4Cs, Types & Design Styles',
+    'Materials & Design: Gemstones, Colour-Stone Pricing, Precious Metals, Design Advantage',
+    'Costing, Pricing & Market: Gold Calculations & Costing, Diamond Pricing, Market Analysis',
+    'Building the Business: Trends to 2030, Setting Up, Selling with Integrity, Final Assessment'
+  ];
+  var JBE_VISIT = 'Factory Visit: Manufacturing Process, Site Visit & Debrief';
+  for (var v = 1; v <= 5; v++) {
+    var topics = JBE_TEACHING.slice();
+    topics.splice(v - 1, 0, JBE_VISIT);
+    SYLLABI['Jewelry Business Essentials' + (v === 3 ? '' : ' (Visit Day ' + v + ')')] =
+      topics.map(function (t, i) { return { day: i + 1, week: 'Week 1', topic: t }; });
+  }
+})();
+
 // Course-name aliases (kept in sync with getSyllabusForCourse in instructor-portal.html)
 const ALIASES = {
   'JewelPad On-campus': 'JewelPad Design',
@@ -536,6 +558,13 @@ function syllabusKeyFor(b) {
   if (!b) return '';
   const course = String(b.course || '').trim();
   const lc = course.toLowerCase();
+  // Jewelry Business Essentials: the factory visit floats, so the batch's visit_day
+  // (1-5, default 3) picks which of the five generated variants applies.
+  if (lc === 'jewelry business essentials') {
+    var vd = Number(b.visit_day || b.visitDay || 3);
+    if (!(vd >= 1 && vd <= 5)) vd = 3;
+    return 'Jewelry Business Essentials' + (vd === 3 ? '' : ' (Visit Day ' + vd + ')');
+  }
   const base = lc === 'diamond graduate' ? 'Diamond Graduate'
     : (lc === 'colored stone graduate' || lc === 'coloured stone graduate') ? 'Colored Stone Graduate' : '';
   const start = String(b.start_date || b.startDateISO || '').slice(0, 10);

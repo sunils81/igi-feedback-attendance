@@ -2059,6 +2059,18 @@
             <option value="Half Day">Half Day</option>
           </select>
         </div>
+        <!-- Jewelry Business Essentials only: the factory visit is hosted by an outside
+             unit, so which half day it lands on depends on their availability. -->
+        <div class="field" id="b-visit-field" style="display:none"><label>Factory visit day *</label>
+          <select id="b-visit-day">
+            <option value="1">Day 1</option>
+            <option value="2">Day 2</option>
+            <option value="3" selected>Day 3 (recommended)</option>
+            <option value="4">Day 4</option>
+            <option value="5">Day 5</option>
+          </select>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.45">The four teaching days keep their order; the visit slots in here. Day 3 works best — they see the floor, then cost it the next day. Changeable later if the factory moves the date.</div>
+        </div>
         <div class="field" id="b-slot-field" style="display:none"><label>Batch Slot *</label>
           <select id="b-slot">
             <option value="First Half">First Half (Morning)</option>
@@ -8015,7 +8027,19 @@ function changeSelectedRevMonth(direction) {
 }
 
 // ── Batch Code Generator ──────────────────────────────────────
+/* Courses whose syllabus includes an externally-hosted factory visit that can land on
+   any of the course days. Only Jewelry Business Essentials so far. */
+function courseHasFloatingVisit(course) {
+  return String(course || '').trim().toLowerCase() === 'jewelry business essentials';
+}
+function toggleVisitDayField() {
+  const f = document.getElementById('b-visit-field');
+  if (!f) return;
+  f.style.display = courseHasFloatingVisit((document.getElementById('b-course') || {}).value) ? '' : 'none';
+}
+
 function genBatchCode() {
+  toggleVisitDayField();
   const centre = document.getElementById('b-centre').value;
   const course = document.getElementById('b-course').value;
   const start  = document.getElementById('b-start').value;
@@ -8242,7 +8266,9 @@ function createBatch() {
     }
   }
   const createdByCentre = isRemoteBatch ? homeCentre : centre;
-  gasGet({action:'createBatch',batchCode,centre,course,type,batchSlot,startDate,endDate,counselorName,instructor,coInstructor,coInstructorUntil,createdByCentre,createdByCounselor:counselorName},function(e,d){
+  const visitDay = courseHasFloatingVisit(course)
+    ? Number((document.getElementById('b-visit-day') || {}).value || 3) : '';
+  gasGet({action:'createBatch',batchCode,centre,course,type,batchSlot,startDate,endDate,counselorName,instructor,coInstructor,coInstructorUntil,visitDay,createdByCentre,createdByCounselor:counselorName},function(e,d){
     btn.textContent='Create Batch →'; btn.disabled=false;
     if (e||!d||d.status!=='ok') {
       errEl.textContent=d&&d.reason==='batch_exists'?'Batch code already exists. Try a different start date.':'Error creating batch. Try again.';
@@ -24896,6 +24922,13 @@ function openBatchEditDatesModal(batchCode, startDMY, endDMY, batchSlot) {
   document.getElementById('bedit-extend-preview').textContent = '';
   var slotEl = document.getElementById('bedit-slot');
   if (slotEl) slotEl.value = batchSlot || 'Full Day';
+  var bInfo = (allBatches || []).filter(function (b) { return b.batchCode === batchCode; })[0];
+  var vWrap = document.getElementById('bedit-visit-wrap');
+  if (vWrap) {
+    var floats = courseHasFloatingVisit(bInfo && bInfo.course);
+    vWrap.style.display = floats ? '' : 'none';
+    if (floats) document.getElementById('bedit-visit-day').value = String((bInfo && bInfo.visitDay) || 3);
+  }
   document.getElementById('batch-edit-dates-modal').style.display = 'flex';
 }
 function closeBatchEditDatesModal() {
@@ -24922,14 +24955,18 @@ function saveBatchDates() {
     endISO = baseDate.toISOString().split('T')[0];
   }
   var batchSlot = (document.getElementById('bedit-slot') || {}).value || '';
+  var vWrap = document.getElementById('bedit-visit-wrap');
+  var visitDay = (vWrap && vWrap.style.display !== 'none')
+    ? Number((document.getElementById('bedit-visit-day') || {}).value || 3) : '';
   if (!bc) return;
-  if (!startISO && !endISO && !batchSlot) { alert('Please set at least one field.'); return; }
+  if (!startISO && !endISO && !batchSlot && !visitDay) { alert('Please set at least one field.'); return; }
   var btn = document.getElementById('bedit-save-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
   var p = { action:'updateBatchDates', batchCode:bc };
   if (startISO)  p.startDate  = startISO;
   if (endISO)    p.endDate    = endISO;
   if (batchSlot) p.batchSlot  = batchSlot;
+  if (visitDay)  p.visitDay   = visitDay;
   gasGet(p, function(e,d) {
     if (btn) { btn.disabled = false; btn.textContent = '💾 Save'; }
     if (e || !d || d.status !== 'ok') { alert('Failed: ' + (d&&d.reason ? d.reason : String(e||'Unknown'))); return; }
@@ -24940,6 +24977,7 @@ function saveBatchDates() {
           if (startISO)  b.startDate  = isoToDMY(startISO);
           if (endISO)    b.endDate    = isoToDMY(endISO);
           if (batchSlot) b.batchSlot  = batchSlot;
+          if (visitDay)  b.visitDay   = visitDay;
         }
       });
     }
@@ -25990,6 +26028,19 @@ function enrollSave() {
           <option value="First Half">🌅 First Half</option>
           <option value="Second Half">🌆 Second Half</option>
         </select>
+      </div>
+      <!-- Shown only for a course whose syllabus carries an externally-hosted visit.
+           The host factory reschedules; this is how the batch follows them. -->
+      <div id="bedit-visit-wrap" style="display:none">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px">FACTORY VISIT DAY</label>
+        <select id="bedit-visit-day" class="crm-ni" style="width:100%;box-sizing:border-box">
+          <option value="1">Day 1</option>
+          <option value="2">Day 2</option>
+          <option value="3">Day 3 (recommended)</option>
+          <option value="4">Day 4</option>
+          <option value="5">Day 5</option>
+        </select>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.45">Moves the visit without reordering the teaching days. Sessions already taught keep the topic they were marked with.</div>
       </div>
     </div>
     <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">

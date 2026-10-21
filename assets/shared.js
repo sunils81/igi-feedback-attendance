@@ -1648,6 +1648,7 @@ window.gasGet = (function () {
               coInstructor: r.co_instructor || '', coInstructorUntil: r.co_instructor_until || '',
               coInstructorMode: r.co_instructor_mode || 'cover',
               coInstructorFrom: r.co_instructor_from || '',
+              visitDay: r.visit_day || null,
               createdAt: r.created_at,
               status: r.is_active !== false ? 'Active' : 'Completed',
               studentCount: sCount,
@@ -1858,6 +1859,8 @@ window.gasGet = (function () {
       counselor: p.counselorName || p.counselor, instructor: p.instructor || null,
       co_instructor: p.coInstructor || null,
       co_instructor_until: p.coInstructorUntil || null,
+      // Jewelry Business Essentials only — which half day is the factory visit.
+      visit_day: p.visitDay ? Number(p.visitDay) : null,
       created_by_centre: createdByCentre,
       created_by_counselor: p.createdByCounselor || p.counselorName || p.counselor || '',
       confirmed_by: isRemote ? null : (p.counselorName || p.counselor || ''),
@@ -2102,6 +2105,8 @@ window.gasGet = (function () {
     if (p.startDate)  payload.start_date  = p.startDate;
     if (p.endDate)    payload.end_date    = p.endDate;
     if (p.batchSlot)  payload.batch_slot  = p.batchSlot;
+    // Jewelry Business Essentials: the host factory reschedules, so the visit day moves.
+    if (p.visitDay)   payload.visit_day   = Number(p.visitDay);
     if (!Object.keys(payload).length) { cb(null, { status: 'error', reason: 'no_fields_provided' }); return; }
     PATCH('batches', 'batch_code=eq.' + bc, payload, function(e) {
       cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
@@ -6948,7 +6953,7 @@ window.gasGet = (function () {
       // — null for a custom/off-syllabus topic (factory visit, makeup session
       // with its own description, etc.) so it doesn't consume a syllabus day.
       // See computeSyllabusProgress for why this matters.
-      GET('batches', 'batch_code=eq.' + encodeURIComponent(p.batchCode) + '&select=course,type,start_date&limit=1', function (eb, bRows) {
+      GET('batches', 'batch_code=eq.' + encodeURIComponent(p.batchCode) + '&select=course,type,start_date,visit_day&limit=1', function (eb, bRows) {
         var syllabus = resolveSyllabusForBatch(bRows && bRows[0]);
         var range = p.topic ? findSyllabusRange(syllabus, p.topic, p.perSession)
                             : { from: null, to: null };
@@ -11161,6 +11166,13 @@ window.gasGet = (function () {
   function syllabusKeyFor(b) {
     if (!b) return '';
     var course = String(b.course || '').trim(), lc = course.toLowerCase();
+  // Jewelry Business Essentials: the factory visit floats, so the batch's visit_day
+  // (1-5, default 3) picks which of the five generated variants applies.
+  if (lc === 'jewelry business essentials') {
+    var vd = Number(b.visit_day || b.visitDay || 3);
+    if (!(vd >= 1 && vd <= 5)) vd = 3;
+    return 'Jewelry Business Essentials' + (vd === 3 ? '' : ' (Visit Day ' + vd + ')');
+  }
     var base = lc === 'diamond graduate' ? 'Diamond Graduate'
       : (lc === 'colored stone graduate' || lc === 'coloured stone graduate') ? 'Colored Stone Graduate' : '';
     var start = String(b.start_date || b.startDateISO || '').slice(0, 10);
@@ -11274,11 +11286,7 @@ window.gasGet = (function () {
      rather than being an accident of an absent entry. */
   var FREE_TOPIC_COURSES = [
     'diamond graduate integrated', 'coloured stone integrated', 'colored stone integrated',
-    'small diamond assortment', 'identification of res',
-    // Jewelry Business Essentials — new 2026-10-21, no day plan in SYLLABI yet, so the
-    // instructor types the topic. Move it out of this list once Bhavin supplies the
-    // 5-day plan and it is added to SYLLABI.
-    'jewelry business essentials'
+    'small diamond assortment', 'identification of res'
   ];
 
   function isFreeTopicCourse(course) {
@@ -11472,7 +11480,7 @@ window.gasGet = (function () {
       var sRow = sRows && sRows[0];
       if (!sRow) { cb(null, { status: 'error', message: 'Session not found' }); return; }
       var batchCode = sRow.batch_code;
-      GET('batches', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=course,type,start_date,instructor,co_instructor,co_instructor_from,co_instructor_until&limit=1', function (eb, bRows) {
+      GET('batches', 'batch_code=eq.' + encodeURIComponent(batchCode) + '&select=course,type,start_date,visit_day,instructor,co_instructor,co_instructor_from,co_instructor_until&limit=1', function (eb, bRows) {
         var bRow = bRows && bRows[0];
         if (!bRow) { cb(null, { status: 'error', message: 'Batch not found' }); return; }
         var instr = String(p.instructor || '').trim();

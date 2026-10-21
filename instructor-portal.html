@@ -3102,6 +3102,28 @@ const SYLLABI = {
 // Top-level `const` does NOT attach to `window` in a classic script — but shared.js's
 // h_getInstructorTodaySessions (and other handlers) read window.SYLLABI to compute
 // syllabus day-progression. Expose it explicitly so that actually works.
+
+/* Jewelry Business Essentials — 5 half days, one of which is a factory visit at a host
+   unit. Which day that is depends on the factory's availability, so the four teaching
+   days always keep their order and the visit is inserted at the batch's visit_day; the
+   batch picks the variant via syllabusKeyFor() / lesson_syllabus_key(). Day 3 is the
+   default and the one to prefer — they see wastage, setting and finishing on the floor,
+   then cost it the next day. Added 2026-10-21 per Sunil. */
+(function () {
+  var JBE_TEACHING = [
+    'Foundations: The World of Jewellery, The Diamond Story, Science & the 4Cs, Types & Design Styles',
+    'Materials & Design: Gemstones, Colour-Stone Pricing, Precious Metals, Design Advantage',
+    'Costing, Pricing & Market: Gold Calculations & Costing, Diamond Pricing, Market Analysis',
+    'Building the Business: Trends to 2030, Setting Up, Selling with Integrity, Final Assessment'
+  ];
+  var JBE_VISIT = 'Factory Visit: Manufacturing Process, Site Visit & Debrief';
+  for (var v = 1; v <= 5; v++) {
+    var topics = JBE_TEACHING.slice();
+    topics.splice(v - 1, 0, JBE_VISIT);
+    SYLLABI['Jewelry Business Essentials' + (v === 3 ? '' : ' (Visit Day ' + v + ')')] =
+      topics.map(function (t, i) { return { day: i + 1, week: 'Week 1', topic: t }; });
+  }
+})();
 window.SYLLABI = SYLLABI;
 
 function getSyllabusForCourse(courseName) {

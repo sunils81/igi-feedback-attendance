@@ -6917,6 +6917,87 @@ window.gasGet = (function () {
 
   /* getPendingAttendanceSessions */
 
+  /* ── h_closeOutAttendance — record absence, don't infer it ──────────────────────────
+     2026-10-21, per Sunil: "also record absenteism".
+
+     The portal only ever wrote 'Present'. An absence was the ABSENCE of a row,
+     which made a student who skipped class indistinguishable from a class the
+     instructor never marked — and meant the counsellor risk alerts, which work
+     off marked rows, showed a chronic absentee as 100% attendance.
+
+     This closes out past sessions: any enrolled student with no row on a session
+     that has already finished gets an explicit 'Absent'.
+
+     The one rule that matters: only sessions with at least one 'Present' are
+     touched. That is the proof the class actually ran and someone was marking.
+     A session nobody marked stays blank — turning an unmarked class into
+     everyone-absent would be far worse than leaving the gap visible, and the
+     instructor health banner already chases those separately.
+
+     Students are never marked absent for sessions before they enrolled.
+     Fire-and-forget from the instructor portal; safe to run repeatedly. */
+  async function h_closeOutAttendance(p, cb) {
+    function getP(table, qs) {
+      return new Promise(function (resolve) { GET(table, qs, function (e, d) { resolve(e ? [] : (d || [])); }); });
+    }
+    try {
+      var who = p.instructorName || '';
+      var today = todayYMD();
+      var since = new Date(); since.setDate(since.getDate() - 14);
+      var sinceYMD = since.toISOString().slice(0, 10);
+
+      var batches = await getP('batches', '');
+      if (who) {
+        batches = batches.filter(function (b) {
+          return sameName(b.instructor, who) || sameName(b.co_instructor, who);
+        });
+      }
+      var codes = batches.map(function (b) { return b.batch_code; }).filter(Boolean);
+      if (!codes.length) { cb(null, { status: 'ok', created: 0 }); return; }
+      var inList = codes.map(encodeURIComponent).join(',');
+
+      // Finished sessions only — today's is still open for marking.
+      var sessions = (await getP('sessions',
+        'batch_code=in.(' + inList + ')&session_date=lt.' + today + '&session_date=gte.' + sinceYMD))
+        .filter(function (s) { return !(s.is_cancelled || s.session_type === 'Cancelled'); });
+      if (!sessions.length) { cb(null, { status: 'ok', created: 0 }); return; }
+
+      var sList = sessions.map(function (s) { return encodeURIComponent(s.session_code); }).join(',');
+      var att = await getP('attendance_feedback',
+        'session_code=in.(' + sList + ')&select=session_code,student_id,attendance');
+      var enrol = (await getP('enrollments',
+        'batch_code=in.(' + inList + ')&select=student_id,batch_code,status,enrolled_at'))
+        .filter(function (e) { return String(e.status || 'Active') !== 'Dropped'; });
+
+      var marked = {}, ranSession = {};
+      att.forEach(function (a) {
+        marked[a.session_code + '|' + a.student_id] = true;
+        if (a.attendance === 'Present' || a.attendance === 'Late') ranSession[a.session_code] = true;
+      });
+
+      var rows = [];
+      sessions.forEach(function (s) {
+        if (!ranSession[s.session_code]) return;           // class never ran / never marked
+        enrol.forEach(function (e) {
+          if (e.batch_code !== s.batch_code) return;
+          if (e.enrolled_at && String(e.enrolled_at).slice(0, 10) > s.session_date) return;
+          if (marked[s.session_code + '|' + e.student_id]) return;
+          rows.push({
+            session_code: s.session_code, student_id: e.student_id, batch_code: s.batch_code,
+            attendance: 'Absent', marked_at: nowISO(),
+            marked_by: 'system (auto-absent)', instructor_verified: false
+          });
+        });
+      });
+      if (!rows.length) { cb(null, { status: 'ok', created: 0 }); return; }
+      POST('attendance_feedback', '', rows, function (e) {
+        cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', created: rows.length });
+      });
+    } catch (err) {
+      cb(null, { status: 'error', reason: String(err) });
+    }
+  }
+
   /* ── h_getAttendanceHealth — why can't my students mark attendance right now? ─────────
      2026-09-11/12, per instruction: "i dont want any attendance issue going forward...
      instructor should get a notification as to if batch date is over or something else".
@@ -9543,6 +9624,43 @@ window.gasGet = (function () {
      sessions) are left untouched either way. */
   function _ensureTodaysSessions(batches, existingSessions, cb) {
     var todayYMDStr = todayYMD();
+
+    /* Teaching days only — 2026-10-21, per Sunil: "its Monday to Friday and
+       saturday only if instructor creates session, plus skip anything in the
+       holidays table".
+
+       This used to create a session for EVERY calendar day a batch was running.
+       Nobody attends on a Sunday, so each phantom session counted as a day the
+       whole class missed, and attendance was being under-reported estate-wide:
+       250 weekend sessions across 74 of 98 batches, 182 of them with nobody
+       marked, plus 62 sessions on public holidays. MUM-DG-SEP26 read 52-59%
+       when the real figure was 75-85%. Nothing was ever lost — the marks are
+       all there — it was purely an inflated denominator.
+
+       Saturday is deliberately NOT auto-created: a Saturday class happens only
+       when an instructor decides to hold one, and creating it by hand is that
+       decision. Sunday never. */
+    var dow = new Date().getDay();            // 0 = Sun, 6 = Sat
+    if (dow === 0 || dow === 6) { cb(existingSessions || []); return; }
+
+    _todayIsHoliday(function (isHoliday) {
+      if (isHoliday) { cb(existingSessions || []); return; }
+      _ensureTodaysSessionsInner(batches, existingSessions, todayYMDStr, cb);
+    });
+  }
+
+  /* Is today in the holidays table, for all centres or this one? Falls through
+     as "not a holiday" if the lookup fails — a missed holiday costs one stray
+     session, while refusing to create any session would block attendance for a
+     whole day, which is the worse failure. */
+  function _todayIsHoliday(cb) {
+    try {
+      GET('holidays', 'holiday_date=eq.' + encodeURIComponent(todayYMD()) + '&select=id,centre',
+        function (e, rows) { cb(!e && rows && rows.length > 0); });
+    } catch (err) { cb(false); }
+  }
+
+  function _ensureTodaysSessionsInner(batches, existingSessions, todayYMDStr, cb) {
     var toCreate = [];
     (batches || []).forEach(function (b) {
       var batchCode = b.batch_code;
@@ -14669,6 +14787,7 @@ window.gasGet = (function () {
       case 'saveSuspenseEntry':         return h_saveSuspenseEntry(params, cb);
       case 'getSuspenseEntries':        return h_getSuspenseEntries(params, cb);
       case 'getAttendanceHealth':       return h_getAttendanceHealth(params, cb);
+      case 'closeOutAttendance':        return h_closeOutAttendance(params, cb);
       case 'getMonthFeeDetail':         return h_getMonthFeeDetail(params, cb);
       case 'resolveSuspenseEntry':      return h_resolveSuspenseEntry(params, cb);
       case 'saveRegularisationRequest': return h_saveRegularisationRequest(params, cb);

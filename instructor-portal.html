@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Instructor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=158"></script>
+<script src="/assets/shared.js?v=159"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=4"></script>
 <script src="/assets/lessons.js?v=7"></script>
@@ -3324,6 +3324,12 @@ function showScreen(id) {
 var _attHealthTimer = null;
 function loadAttendanceHealth() {
   if (!instructorName) return;
+  /* Close out attendance for sessions that have finished: any student not marked
+     Present in a session where somebody was marked is recorded Absent, so the
+     register reflects actual absenteeism instead of silence. Fire-and-forget. */
+  try {
+    gasGet({ action: 'closeOutAttendance', instructorName: instructorName }, function () {});
+  } catch (e0) {}
   gasGet({ action: 'getAttendanceHealth', instructorName: instructorName }, function (e, d) {
     var el = document.getElementById('att-health-banner');
     if (!el) return;

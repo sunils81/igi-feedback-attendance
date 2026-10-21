@@ -11829,7 +11829,7 @@ window.gasGet = (function () {
     try {
       var [students, batches, attRows, assessments, marks, diplomas, hods, enrollments, fees, sessionRows] = await Promise.all([
         getAllP('students', 'select=student_id,name,batch_code'),
-        getAllP('batches', 'select=batch_code,centre,course,counselor'),
+        getAllP('batches', 'select=batch_code,centre,course,counselor,start_date'),
         getAllP('attendance_feedback', 'select=id,student_id,batch_code,session_code,attendance,instructor_override'),
         getAllP('assessments', 'select=assessment_id,batch_code,test_name,test_type,max_marks,held_on'),
         getAllP('assessment_marks', 'select=assessment_id,student_id,marks,remarks'),
@@ -11927,6 +11927,7 @@ window.gasGet = (function () {
             feeInfo: feeMap[key] || null
           });
           row.counselorName = b.counselor || '';
+          row.batchStart = b.start_date || '';   // lets the admin filter by batch month
           diplomaList.push(row);
         });
       });

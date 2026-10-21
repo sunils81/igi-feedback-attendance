@@ -2680,6 +2680,9 @@
           <select id="adip-centre" onchange="onAdminDiplomaCentreChange()" style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
             <option value="">All Centres</option>
           </select>
+          <select id="adip-month" onchange="onAdminDiplomaMonthChange()" style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
+            <option value="">All Months</option>
+          </select>
           <select id="adip-batch" onchange="filterAdminDiplomaTable()" style="font-size:13px;padding:8px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy)">
             <option value="">All Batches</option>
           </select>
@@ -6247,9 +6250,56 @@ function loadAdminDiplomaData() {
     if (cf) cf.innerHTML = '<option value="">All Courses</option>' + courses.map(function (c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
     var nf = document.getElementById('adip-centre');
     if (nf) nf.innerHTML = '<option value="">All Centres</option>' + centres.map(function (c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
+    populateAdminDiplomaMonthFilter();
     populateAdminDiplomaBatchFilter();
     renderAdminDiplomaTable(adminDiplomaList);
   });
+}
+
+/* Batch month. Prefers the batch's own start_date; falls back to the month token
+   in the batch code (MUM-DG-JUL26-A, BLR-COL-Oct2026) for any batch whose start
+   date was never filled in. Returns 'YYYY-MM' so the dropdown sorts correctly. */
+var _ADIP_MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+function _adipMonthKey(a) {
+  var sd = a && a.batchStart ? String(a.batchStart) : '';
+  var m = sd.match(/^(\d{4})-(\d{2})/);
+  if (m) return m[1] + '-' + m[2];
+  var code = String((a && a.batchCode) || '').toUpperCase();
+  var t = code.match(/(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\s*-?\s*(\d{4}|\d{2})/);
+  if (!t) return '';
+  var yr = t[2].length === 4 ? t[2] : '20' + t[2];
+  var mo = _ADIP_MONS.indexOf(t[1]) + 1;
+  return yr + '-' + (mo < 10 ? '0' : '') + mo;
+}
+function _adipMonthLabel(key) {
+  var p = key.split('-');
+  return _ADIP_MONS[parseInt(p[1], 10) - 1].charAt(0) + _ADIP_MONS[parseInt(p[1], 10) - 1].slice(1).toLowerCase() + ' ' + p[0];
+}
+
+/* Month dropdown, scoped to the selected centre for the same reason the batch
+   dropdown is. Newest month first — that is the one being chased. */
+function populateAdminDiplomaMonthFilter() {
+  var mf = document.getElementById('adip-month');
+  if (!mf) return;
+  var prev = mf.value;
+  var centre = (document.getElementById('adip-centre') || {}).value || '';
+  var scoped = centre ? adminDiplomaList.filter(function (a) { return a.centre === centre; }) : adminDiplomaList;
+  var keys = [], undated = false;
+  scoped.forEach(function (a) {
+    var k = _adipMonthKey(a);
+    if (!k) { undated = true; return; }
+    if (keys.indexOf(k) === -1) keys.push(k);
+  });
+  keys.sort().reverse();
+  mf.innerHTML = '<option value="">All Months</option>' +
+    keys.map(function (k) { return '<option value="' + escC(k) + '">' + escC(_adipMonthLabel(k)) + '</option>'; }).join('') +
+    (undated ? '<option value="__none">No batch month</option>' : '');
+  if (prev && (prev === '__none' ? undated : keys.indexOf(prev) !== -1)) mf.value = prev;
+}
+
+function onAdminDiplomaMonthChange() {
+  populateAdminDiplomaBatchFilter();
+  filterAdminDiplomaTable();
 }
 
 /* Batch dropdown, scoped to whichever centre is selected so an admin does not
@@ -6259,7 +6309,12 @@ function populateAdminDiplomaBatchFilter() {
   if (!bf) return;
   var prev = bf.value;
   var centre = (document.getElementById('adip-centre') || {}).value || '';
+  var month  = (document.getElementById('adip-month')  || {}).value || '';
   var scoped = centre ? adminDiplomaList.filter(function (a) { return a.centre === centre; }) : adminDiplomaList;
+  if (month) scoped = scoped.filter(function (a) {
+    var k = _adipMonthKey(a);
+    return month === '__none' ? !k : k === month;
+  });
   var codes = [];
   scoped.forEach(function (a) { if (a.batchCode && codes.indexOf(a.batchCode) === -1) codes.push(a.batchCode); });
   codes.sort();
@@ -6268,6 +6323,7 @@ function populateAdminDiplomaBatchFilter() {
 }
 
 function onAdminDiplomaCentreChange() {
+  populateAdminDiplomaMonthFilter();
   populateAdminDiplomaBatchFilter();
   filterAdminDiplomaTable();
 }
@@ -6402,12 +6458,17 @@ function _adminDiplomaFiltered() {
   var q = (document.getElementById('adip-search') || {}).value || '';
   q = q.trim().toLowerCase();
   var centre = (document.getElementById('adip-centre') || {}).value || '';
+  var month  = (document.getElementById('adip-month')  || {}).value || '';
   var batch  = (document.getElementById('adip-batch')  || {}).value || '';
   var course = (document.getElementById('adip-course') || {}).value || '';
   var status = (document.getElementById('adip-status') || {}).value || '';
 
   var out = adminDiplomaList;
   if (centre) out = out.filter(function (a) { return a.centre === centre; });
+  if (month)  out = out.filter(function (a) {
+    var k = _adipMonthKey(a);
+    return month === '__none' ? !k : k === month;
+  });
   if (batch)  out = out.filter(function (a) { return a.batchCode === batch; });
   if (course) out = out.filter(function (a) { return a.course === course; });
   if (status) out = out.filter(function (a) { return _adipStatus(a).key === status; });
@@ -6426,7 +6487,7 @@ function filterAdminDiplomaTable() { renderAdminDiplomaTable(_adminDiplomaFilter
 function exportAdminDiplomaCsv() {
   var rows = _adminDiplomaFiltered();
   if (!rows.length) { alert('Nothing to export for the current filters.'); return; }
-  var head = ['Student ID','Student','Batch','Centre','Course','Attendance %','Weekly Avg %','Practical %','Final %','Combined %','Fee Paid','Outstanding','Status','Released By','Released At'];
+  var head = ['Student ID','Student','Batch','Batch Month','Centre','Course','Attendance %','Weekly Avg %','Practical %','Final %','Combined %','Fee Paid','Outstanding','Status','Released By','Released At'];
   var lines = [head.join(',')];
   rows.forEach(function (a) {
     var fee = a.feeStatus || {}, comb = a.combinedScore || {}, prac = a.practicalMarks || {};
@@ -6435,7 +6496,8 @@ function exportAdminDiplomaCsv() {
               : (a.hodStatus === 'Pending' ? 'Pending HOD'
               : (a.hodStatus === 'Rejected' ? 'HOD Rejected'
               : (a.eligible ? 'Eligible' : (st === 'ineligible' && !fee.paid && ((comb && comb.pass) || a.hodStatus === 'Approved') ? 'Fee Outstanding' : 'Ineligible'))));
-    var cells = [a.studentId, a.studentName, a.batchCode, a.centre, a.course,
+    var _mk = _adipMonthKey(a);
+    var cells = [a.studentId, a.studentName, a.batchCode, (_mk ? _adipMonthLabel(_mk) : ''), a.centre, a.course,
                  _adipAttPct(a), _adipWeekly(a), (prac.required ? prac.value : ''), _adipFinal(a), comb.value,
                  fee.paid ? 'Yes' : 'No', fee.paid ? 0 : Math.round(fee.outstanding || 0),
                  label, a.diplomaReleasedBy || '', a.diplomaReleasedAt || ''];

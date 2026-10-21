@@ -6256,24 +6256,27 @@ function loadAdminDiplomaData() {
   });
 }
 
-/* Batch month. Prefers the batch's own start_date; falls back to the month token
-   in the batch code (MUM-DG-JUL26-A, BLR-COL-Oct2026) for any batch whose start
-   date was never filled in. Returns 'YYYY-MM' so the dropdown sorts correctly. */
+/* Batch month — same convention as the Counsellor Portal's _batchMonthGroup, so a
+   batch sits under the same month on both screens. The month token in the batch
+   code wins (MUM-DG-JUL26-A, BLR-COL-Oct2026); batches whose code carries no month
+   fall back to the batch's own start_date. Returns 'YYYY-MM' so the list sorts. */
 var _ADIP_MONS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+var _ADIP_MON_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 function _adipMonthKey(a) {
-  var sd = a && a.batchStart ? String(a.batchStart) : '';
-  var m = sd.match(/^(\d{4})-(\d{2})/);
-  if (m) return m[1] + '-' + m[2];
   var code = String((a && a.batchCode) || '').toUpperCase();
   var t = code.match(/(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\s*-?\s*(\d{4}|\d{2})/);
-  if (!t) return '';
-  var yr = t[2].length === 4 ? t[2] : '20' + t[2];
-  var mo = _ADIP_MONS.indexOf(t[1]) + 1;
-  return yr + '-' + (mo < 10 ? '0' : '') + mo;
+  if (t) {
+    var yr = t[2].length === 4 ? t[2] : '20' + t[2];
+    var mo = _ADIP_MONS.indexOf(t[1]) + 1;
+    return yr + '-' + (mo < 10 ? '0' : '') + mo;
+  }
+  var sd = a && a.batchStart ? String(a.batchStart) : '';
+  var m = sd.match(/^(\d{4})-(\d{2})/);
+  return m ? m[1] + '-' + m[2] : '';
 }
 function _adipMonthLabel(key) {
   var p = key.split('-');
-  return _ADIP_MONS[parseInt(p[1], 10) - 1].charAt(0) + _ADIP_MONS[parseInt(p[1], 10) - 1].slice(1).toLowerCase() + ' ' + p[0];
+  return _ADIP_MON_FULL[parseInt(p[1], 10) - 1] + ' ' + p[0];
 }
 
 /* Month dropdown, scoped to the selected centre for the same reason the batch
@@ -6315,10 +6318,22 @@ function populateAdminDiplomaBatchFilter() {
     var k = _adipMonthKey(a);
     return month === '__none' ? !k : k === month;
   });
-  var codes = [];
-  scoped.forEach(function (a) { if (a.batchCode && codes.indexOf(a.batchCode) === -1) codes.push(a.batchCode); });
-  codes.sort();
-  bf.innerHTML = '<option value="">All Batches</option>' + codes.map(function (c) { return '<option value="' + escC(c) + '">' + escC(c) + '</option>'; }).join('');
+  /* Grouped into month <optgroup>s, the same shape the Counsellor Portal uses, so
+     the list reads as "October 2026 → these batches" instead of one long A–Z run. */
+  var byMonth = {}, codes = [];
+  scoped.forEach(function (a) {
+    if (!a.batchCode || codes.indexOf(a.batchCode) !== -1) return;
+    codes.push(a.batchCode);
+    var k = _adipMonthKey(a) || 'zzzz';
+    (byMonth[k] = byMonth[k] || []).push(a.batchCode);
+  });
+  var html = '<option value="">All Batches</option>';
+  Object.keys(byMonth).sort().reverse().forEach(function (k) {
+    html += '<optgroup label="' + escC(k === 'zzzz' ? 'No batch month' : _adipMonthLabel(k)) + '">';
+    byMonth[k].sort().forEach(function (c) { html += '<option value="' + escC(c) + '">' + escC(c) + '</option>'; });
+    html += '</optgroup>';
+  });
+  bf.innerHTML = html;
   if (prev && codes.indexOf(prev) !== -1) bf.value = prev;
 }
 

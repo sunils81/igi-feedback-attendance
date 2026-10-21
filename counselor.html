@@ -9150,7 +9150,8 @@ function renderStudentTable(batch, query) {
     String(s.enrollmentNo || '').toLowerCase().includes(q) ||
     String(s.mobileLast4 || s.dob || '').toLowerCase().includes(q)
   );
-  let html = '<div class="student-count-row"><input class="search-input" style="max-width:320px;margin-bottom:0" placeholder="Search students..." oninput="renderStudentTable(\'' + escC(batch) + '\', this.value)"><span class="badge badge-blue">' + filtered.length + ' shown</span></div>';
+  let html = '<div class="student-count-row"><input class="search-input" style="max-width:320px;margin-bottom:0" placeholder="Search students..." oninput="renderStudentTable(\'' + escC(batch) + '\', this.value)"><span class="badge badge-blue">' + filtered.length + ' shown</span>' +
+    '<button class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:12px;margin-left:auto" onclick="openDeferredList()" title="Students who have discontinued and are waiting for a later batch">⏸ Deferred students</button></div>';
   if (!filtered.length) {
     listEl.innerHTML = html + emptyState('🔎', 'No matching students', 'Try a name, Student ID, or mobile last 4.');
     return;
@@ -9164,7 +9165,7 @@ function renderStudentTable(batch, query) {
       '<td><strong>' + escC(s.name) + '</strong><div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--muted)">' + escC(s.enrollmentNo) + idFlag + '</div></td>' +
       '<td><span class="badge badge-amber">Last 4: ' + escC(s.mobileLast4 || s.dob || '') + '</span></td>' +
       '<td><span class="badge ' + (String(emailLabel).indexOf('failed') >= 0 ? 'badge-red' : 'badge-green') + '">' + escC(emailLabel) + '</span></td>' +
-      '<td><div class="student-actions"><button class="del-btn" title="Edit student info" onclick="openStudentEditModal(\'' + escC(s.enrollmentNo) + '\',\'' + escC(s.name) + '\',\'' + escC(s.mobileLast4 || s.dob || '') + '\',\'' + escC(batch) + '\')">✏️ Edit</button><button class="del-btn" title="Resend welcome email" onclick="resendWelcomeEmail(\'' + escC(s.enrollmentNo) + '\',\'' + escC(batch) + '\')">Email</button><button class="del-btn" title="Request to move to a different batch — needs a reason and HOD approval" onclick="openMoveStudentModal(\'' + escC(s.enrollmentNo) + '\',\'' + escC(s.name) + '\',\'' + escC(batch) + '\')">🔀 Move</button><button class="del-btn danger" onclick="removeStudent(\'' + escC(s.enrollmentNo) + '\',\'' + escC(batch) + '\')">Remove</button></div></td>' +
+      '<td><div class="student-actions"><button class="del-btn" title="Edit student info" onclick="openStudentEditModal(\'' + escC(s.enrollmentNo) + '\',\'' + escC(s.name) + '\',\'' + escC(s.mobileLast4 || s.dob || '') + '\',\'' + escC(batch) + '\')">✏️ Edit</button><button class="del-btn" title="Resend welcome email" onclick="resendWelcomeEmail(\'' + escC(s.enrollmentNo) + '\',\'' + escC(batch) + '\')">Email</button><button class="del-btn" title="Request to move to a different batch — needs a reason and HOD approval" onclick="openMoveStudentModal(\'' + escC(s.enrollmentNo) + '\',\'' + escC(s.name) + '\',\'' + escC(batch) + '\')">🔀 Move</button><button class="del-btn" title="Discontinuing now, rejoining a later batch that doesn\'t exist yet" onclick="openDeferStudentModal(\'' + escC(s.enrollmentNo) + '\',\'' + escC(s.name) + '\',\'' + escC(batch) + '\')">⏸ Defer</button><button class="del-btn danger" onclick="removeStudent(\'' + escC(s.enrollmentNo) + '\',\'' + escC(batch) + '\')">Remove</button></div></td>' +
     '</tr>';
   }).join('');
   html += '</tbody></table>';
@@ -9470,6 +9471,115 @@ function openMoveStudentModal(enrollmentNo, name, fromBatch) {
 
 function closeMoveStudentModal() {
   document.getElementById('move-student-modal').style.display = 'none';
+}
+
+/* ── Defer / rejoin (2026-10-21) ────────────────────────────────────────────────────
+   Move needs a target batch that exists today. Defer is for the student who stops now
+   and rejoins an intake that hasn't been created yet — she comes out of the register
+   immediately and sits on the Deferred list until there is a batch to put her in. */
+function openDeferStudentModal(enrollmentNo, name, fromBatch) {
+  document.getElementById('df-enrollment-no').value = enrollmentNo;
+  document.getElementById('df-from-batch-code').value = fromBatch;
+  document.getElementById('df-student-name').textContent = name || enrollmentNo;
+  document.getElementById('df-student-id').textContent = enrollmentNo;
+  document.getElementById('df-from-batch').textContent = fromBatch;
+  document.getElementById('df-reason').value = '';
+  document.getElementById('df-expected').value = '';
+  var errEl = document.getElementById('df-err');
+  errEl.style.display = 'none'; errEl.textContent = '';
+  document.getElementById('defer-student-modal').style.display = 'flex';
+}
+
+function closeDeferStudentModal() {
+  document.getElementById('defer-student-modal').style.display = 'none';
+}
+
+function saveDeferStudent() {
+  var enrollmentNo = document.getElementById('df-enrollment-no').value;
+  var studentName  = document.getElementById('df-student-name').textContent || enrollmentNo;
+  var fromBatch    = document.getElementById('df-from-batch-code').value;
+  var reason       = (document.getElementById('df-reason').value || '').trim();
+  var expected     = (document.getElementById('df-expected').value || '').trim();
+  var errEl = document.getElementById('df-err');
+  if (!reason) { errEl.textContent = 'Please say why she is discontinuing — whoever places her later will need the context.'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+
+  var btn = document.getElementById('df-save-btn');
+  btn.disabled = true; btn.textContent = 'Deferring…';
+  gasGet({
+    action: 'deferStudent',
+    studentId: enrollmentNo,
+    batchCode: fromBatch,
+    reason: reason,
+    expectedRejoin: expected,
+    requestedBy: counselorName || 'Counselor'
+  }, function (e, d) {
+    btn.disabled = false; btn.textContent = 'Defer Student';
+    if (e || !d || d.status !== 'ok') {
+      errEl.textContent = (d && d.reason) || 'Could not defer the student. Please try again.';
+      errEl.style.display = 'block';
+      return;
+    }
+    closeDeferStudentModal();
+    showToast(studentName + ' deferred from ' + fromBatch + '.' +
+      (d.hasFeeRecord ? ' Her fee record is unchanged — move it with the fee form’s "Change batch" picker once she rejoins.' : ''), 'success');
+    renderStudentList(fromBatch);
+  });
+}
+
+var _deferredStudents = [];
+function openDeferredList() {
+  var body = document.getElementById('deferred-list-body');
+  body.innerHTML = '<div style="padding:18px;text-align:center;color:var(--muted);font-size:13px">Loading deferred students…</div>';
+  document.getElementById('deferred-list-modal').style.display = 'flex';
+  gasGet({ action: 'getDeferredStudents', centres: isAdmin ? '' : allowedCentres.join(',') }, function (e, d) {
+    if (e || !d || d.status !== 'ok') {
+      body.innerHTML = '<div style="padding:18px;text-align:center;color:var(--red);font-size:13px">Could not load the deferred list.</div>';
+      return;
+    }
+    _deferredStudents = d.list || [];
+    renderDeferredList();
+  });
+}
+
+function renderDeferredList() {
+  var body = document.getElementById('deferred-list-body');
+  if (!_deferredStudents.length) {
+    body.innerHTML = '<div style="padding:18px;text-align:center;color:var(--muted);font-size:13px">Nobody is deferred right now.</div>';
+    return;
+  }
+  var batches = (allBatches || []).slice();
+  body.innerHTML = '<table class="compact-table" style="width:100%"><thead><tr>' +
+    '<th>Student</th><th>Left</th><th>Reason</th><th>Expected back</th><th>Place into batch</th>' +
+    '</tr></thead><tbody>' +
+    _deferredStudents.map(function (s, i) {
+      var opts = '<option value="">— Select batch —</option>' + batches
+        .filter(function (b) { return String(b.batchCode).toUpperCase() !== String(s.fromBatch).toUpperCase(); })
+        .map(function (b) { return '<option value="' + escC(b.batchCode) + '">' + escC(b.batchCode + ' — ' + (b.course || '')) + '</option>'; }).join('');
+      return '<tr>' +
+        '<td><strong>' + escC(s.studentName) + '</strong><br><span style="font-size:11px;color:var(--muted);font-family:\'JetBrains Mono\',monospace">' + escC(s.studentId) + '</span></td>' +
+        '<td style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px">' + escC(s.fromBatch) + '<br><span style="font-size:11px;color:var(--muted);font-family:inherit">' + escC(s.centre || '') + '</span></td>' +
+        '<td style="font-size:12px;max-width:260px">' + escC(s.reason || '') +
+          (s.deferredBy ? '<br><span style="font-size:11px;color:var(--muted)">— ' + escC(s.deferredBy) + (s.deferredAt ? ', ' + escC(String(s.deferredAt).slice(0, 10)) : '') + '</span>' : '') + '</td>' +
+        '<td style="font-size:12px">' + escC(s.expectedRejoin || '—') + '</td>' +
+        '<td><select id="dfp-sel-' + i + '" style="font-size:12px;max-width:230px">' + opts + '</select> ' +
+          '<button class="btn" style="width:auto;padding:5px 10px;font-size:12px;margin-top:4px" onclick="placeDeferredStudent(' + i + ')">Place</button></td>' +
+      '</tr>';
+    }).join('') + '</tbody></table>';
+}
+
+function placeDeferredStudent(i) {
+  var s = _deferredStudents[i];
+  var toBatch = (document.getElementById('dfp-sel-' + i) || {}).value || '';
+  if (!s || !toBatch) { showToast('Pick the batch to place them into.', 'error'); return; }
+  gasGet({ action: 'placeDeferredStudent', studentId: s.studentId, fromBatch: s.fromBatch, toBatch: toBatch },
+    function (e, d) {
+      if (e || !d || d.status !== 'ok') { showToast((d && d.reason) || 'Could not place the student.', 'error'); return; }
+      showToast(s.studentName + ' placed into ' + toBatch + '.' +
+        (d.hasFeeRecord ? ' Her fee record still sits under ' + s.fromBatch + ' — re-point it with the fee form’s "Change batch" picker.' : ''), 'success');
+      _deferredStudents.splice(i, 1);
+      renderDeferredList();
+    });
 }
 
 function saveMoveStudent() {
@@ -25693,6 +25803,47 @@ function enrollSave() {
     <div style="display:flex;gap:8px">
       <button class="btn" id="mv-save-btn" onclick="saveMoveStudent()">Submit for HOD Approval</button>
       <button class="btn btn-outline" onclick="closeMoveStudentModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Defer student modal (2026-10-21) — for the student who stops now and rejoins a
+     later intake that doesn't exist yet, so there is no target batch for a Move. -->
+<div id="defer-student-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--white);border-radius:12px;padding:24px;width:100%;max-width:440px;box-shadow:0 8px 40px rgba(0,0,0,.2)">
+    <h3 style="margin:0 0 4px 0;font-size:16px;color:var(--navy)">Defer to a Later Batch</h3>
+    <p style="margin:0 0 16px 0;font-size:12px;color:var(--muted)">
+      <strong id="df-student-name" style="color:var(--navy)"></strong> (<span id="df-student-id" style="font-family:'JetBrains Mono',monospace"></span>) — currently in <strong id="df-from-batch" style="font-family:'JetBrains Mono',monospace"></strong>
+    </p>
+    <input type="hidden" id="df-enrollment-no">
+    <input type="hidden" id="df-from-batch-code">
+    <div class="field" style="margin-bottom:14px">
+      <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Reason for discontinuing</label>
+      <textarea id="df-reason" rows="2" style="width:100%;resize:vertical" placeholder="e.g. Discontinued for personal reasons, will join the next Colored Stone intake"></textarea>
+    </div>
+    <div class="field" style="margin-bottom:14px">
+      <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Expected back (optional)</label>
+      <input type="month" id="df-expected" style="width:100%">
+    </div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:14px;line-height:1.5">
+      She stops counting towards this batch's register, eligibility and risk alerts straight away, but stays on the Deferred list so she isn't forgotten. Her fee record is left exactly as it is — the money stays booked in the month it was collected. When the new batch exists, place her into it from the Deferred list.
+    </div>
+    <div id="df-err" class="err-box" style="display:none;margin-bottom:10px"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" id="df-save-btn" onclick="saveDeferStudent()">Defer Student</button>
+      <button class="btn btn-outline" onclick="closeDeferStudentModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Deferred students list + place-into-batch modal -->
+<div id="deferred-list-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--white);border-radius:12px;padding:24px;width:100%;max-width:820px;max-height:86vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.2)">
+    <h3 style="margin:0 0 6px 0;font-size:16px;color:var(--navy)">⏸ Deferred Students</h3>
+    <p style="margin:0 0 16px 0;font-size:12.5px;color:var(--muted)">Students who have discontinued their batch and are waiting to join a later one. They are out of every register and eligibility count until you place them — and their fee stays booked where it was collected.</p>
+    <div id="deferred-list-body"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px">
+      <button class="btn btn-outline" onclick="document.getElementById('deferred-list-modal').style.display='none'">Close</button>
     </div>
   </div>
 </div>

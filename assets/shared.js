@@ -2651,6 +2651,182 @@ window.gasGet = (function () {
     });
   }
 
+  /* One place to ask "is this enrolment a live class membership?". A blank status is
+     legacy data and means Active; 'Dropped' left for good; 'Deferred' is sitting out
+     until the next intake (see h_deferStudent). Neither counts towards a register, an
+     eligibility denominator or a risk alert. */
+  function _enrolmentIsLive(status) {
+    var s = String(status || 'Active');
+    return s !== 'Dropped' && s !== 'Deferred';
+  }
+  window._enrolmentIsLive = _enrolmentIsLive;
+
+  /* ── Deferral: discontinued now, rejoining a later batch ───────────────────────────
+     Added 2026-10-21, per instruction (the "Neesha Jagtaini has discontinued and will
+     join the next batch" case, written generically).
+
+     A Move needs a target batch that already exists. A deferral is the case where it
+     does not: the student stops attending now and the batch she will join has not been
+     created yet. Until this existed the only options were to leave her Active — where
+     she quietly drags down her batch's attendance and sits in Diploma Eligibility as
+     permanently ineligible — or to Remove her, which loses the fact that she is coming
+     back and that her fee is already booked.
+
+     What a deferral does:
+       - flips the enrolment to status 'Deferred' and records who, when, why and the
+         month she is expected back. Almost every query in this file already scopes to
+         status=eq.Active, so she drops out of registers, eligibility, risk alerts and
+         the batch roster the moment this runs — no other call sites to chase.
+       - clears students.batch_code when it points at the batch she has left, because
+         the student portal unions that column with enrolments and she should not be
+         looking at a class she is no longer in.
+     What it deliberately does NOT do: touch student_fees. Same reasoning as
+     doMoveStudentToBatch — re-pointing a paid invoice is h_saveFee's job, so this
+     reports whether a fee record exists and leaves the money where it is. The revenue
+     stays booked in the month it was collected, which is correct: she has paid, she
+     has not refunded, she is simply sitting out until the next intake. */
+  function h_deferStudent(p, cb) {
+    var sid = String(p.studentId || p.enrollmentNo || '').trim();
+    var batch = String(p.batchCode || p.fromBatch || '').trim();
+    var reason = String(p.reason || '').trim();
+    if (!sid || !batch) { cb(null, { status: 'error', reason: 'Missing student or batch.' }); return; }
+    if (!reason) { cb(null, { status: 'error', reason: 'Please give a reason for the deferral.' }); return; }
+
+    var sidFilter = 'student_id=eq.' + encodeURIComponent(sid);
+    var pairFilter = sidFilter + '&batch_code=eq.' + encodeURIComponent(batch);
+    var patch = {
+      status: 'Deferred',
+      deferred_at: nowISO(),
+      deferred_reason: reason,
+      deferred_by: String(p.requestedBy || p.counselorName || '').trim(),
+      expected_rejoin: String(p.expectedRejoin || '').trim()
+    };
+
+    GET('enrollments', pairFilter + '&select=id,status', function (eE, rows) {
+      function afterEnrolment(err) {
+        if (err) { cb(null, { status: 'error', reason: 'Could not defer the enrolment: ' + String(err) }); return; }
+        GET('students', sidFilter + '&limit=1&select=student_id,batch_code', function (eS, sRows) {
+          var student = sRows && sRows[0];
+          var primary = String((student && student.batch_code) || '').trim().toUpperCase();
+          function done() {
+            GET('student_fees', pairFilter + '&select=id&limit=1', function (eF, feeRows) {
+              cb(null, {
+                status: 'ok',
+                hasFeeRecord: !!(feeRows && feeRows.length),
+                studentId: sid,
+                batchCode: batch
+              });
+            });
+          }
+          if (student && primary === batch.toUpperCase()) {
+            PATCH('students', sidFilter, { batch_code: null }, function () { done(); });
+          } else { done(); }
+        });
+      }
+      if (rows && rows.length) {
+        PATCH('enrollments', pairFilter, patch, afterEnrolment);
+      } else {
+        // Legacy student linked only through students.batch_code — create the row so the
+        // deferral is recorded somewhere rather than silently doing nothing.
+        var ins = { student_id: sid, batch_code: batch };
+        Object.keys(patch).forEach(function (k) { ins[k] = patch[k]; });
+        POST('enrollments', 'on_conflict=student_id,batch_code', ins, afterEnrolment);
+      }
+    });
+  }
+
+  /* The deferred list — the whole point of recording a deferral rather than removing
+     the student. Scoped to a counsellor's own centres when centres are passed, since a
+     Mumbai counsellor placing a Delhi student would be a mistake, not a convenience. */
+  function h_getDeferredStudents(p, cb) {
+    GET('enrollments', 'status=eq.Deferred&select=student_id,batch_code,deferred_at,deferred_reason,deferred_by,expected_rejoin&order=deferred_at.desc', function (e, rows) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      rows = rows || [];
+      if (!rows.length) { cb(null, { status: 'ok', list: [] }); return; }
+      var sids = rows.map(function (r) { return r.student_id; });
+      var codes = rows.map(function (r) { return r.batch_code; });
+      GET('students', 'student_id=in.(' + sids.map(encodeURIComponent).join(',') + ')&select=student_id,name,mobile,email', function (eS, sRows) {
+        var byId = {};
+        (sRows || []).forEach(function (s) { byId[s.student_id] = s; });
+        GET('batches', 'batch_code=in.(' + codes.map(function (c) { return '"' + c + '"'; }).join(',') + ')&select=batch_code,centre,course', function (eB, bRows) {
+          var byCode = {};
+          (bRows || []).forEach(function (b) { byCode[b.batch_code] = b; });
+          var centres = (p.centres && p.centres.length)
+            ? String(p.centres).split(',').map(function (c) { return c.trim(); }).filter(Boolean)
+            : null;
+          var list = rows.map(function (r) {
+            var s = byId[r.student_id] || {}, b = byCode[r.batch_code] || {};
+            return {
+              studentId: r.student_id,
+              studentName: s.name || r.student_id,
+              mobile: s.mobile || '',
+              email: s.email || '',
+              fromBatch: r.batch_code,
+              centre: b.centre || '',
+              course: b.course || '',
+              deferredAt: r.deferred_at || '',
+              deferredBy: r.deferred_by || '',
+              reason: r.deferred_reason || '',
+              expectedRejoin: r.expected_rejoin || ''
+            };
+          }).filter(function (x) { return !centres || centres.indexOf(x.centre) !== -1; });
+          cb(null, { status: 'ok', list: list });
+        });
+      });
+    });
+  }
+
+  /* Placing a deferred student into the batch she is rejoining. Re-points the same
+     enrolment row rather than creating a second one, so the deferral and the rejoin are
+     one continuous record and her original batch stays visible in history via the
+     reason text. Goes straight through — no HOD approval — because unlike a Move this
+     only ever touches a student who is already out of class, so there is no risk of
+     quietly pulling a substantially-completed student out of a live batch. */
+  function h_placeDeferredStudent(p, cb) {
+    var sid = String(p.studentId || '').trim();
+    var fromBatch = String(p.fromBatch || '').trim();
+    var toBatch = String(p.toBatch || '').trim();
+    if (!sid || !fromBatch || !toBatch) { cb(null, { status: 'error', reason: 'Missing student, original batch, or target batch.' }); return; }
+
+    GET('batches', 'batch_code=eq.' + encodeURIComponent(toBatch) + '&limit=1&select=batch_code,centre,course', function (eB, bRows) {
+      if (eB || !bRows || !bRows.length) { cb(null, { status: 'error', reason: 'Target batch ' + toBatch + ' was not found.' }); return; }
+      var target = bRows[0];
+      var sidFilter = 'student_id=eq.' + encodeURIComponent(sid);
+      var pairFilter = sidFilter + '&batch_code=eq.' + encodeURIComponent(fromBatch);
+      // Guard against a second enrolment for the target batch already existing.
+      GET('enrollments', sidFilter + '&batch_code=eq.' + encodeURIComponent(toBatch) + '&select=id', function (eX, dupes) {
+        if (dupes && dupes.length) { cb(null, { status: 'error', reason: 'This student already has an enrolment in ' + toBatch + '.' }); return; }
+        PATCH('enrollments', pairFilter, {
+          batch_code: toBatch,
+          status: 'Active',
+          deferred_at: null,
+          deferred_by: null,
+          expected_rejoin: null,
+          deferred_reason: 'Rejoined ' + toBatch + ' on ' + todayYMD() + ' (deferred from ' + fromBatch + ')'
+        }, function (eP) {
+          if (eP) { cb(null, { status: 'error', reason: 'Could not place the student: ' + String(eP) }); return; }
+          GET('students', sidFilter + '&limit=1&select=student_id,batch_code', function (eS, sRows) {
+            var student = sRows && sRows[0];
+            function done() {
+              GET('student_fees', pairFilter + '&select=id&limit=1', function (eF, feeRows) {
+                cb(null, {
+                  status: 'ok',
+                  hasFeeRecord: !!(feeRows && feeRows.length),
+                  toBatchCentre: target.centre || '',
+                  toBatchCourse: target.course || ''
+                });
+              });
+            }
+            // She was parked with no primary batch when deferred — give her the new one.
+            if (student && !String(student.batch_code || '').trim()) {
+              PATCH('students', sidFilter, { batch_code: toBatch }, function () { done(); });
+            } else { done(); }
+          });
+        });
+      });
+    });
+  }
+
   /* submitBatchMoveRequest — the counsellor-facing front door for moving a student
      between batches. Added 2026-09-04, per instruction: an earlier version of this
      feature let a counsellor move a student immediately, no questions asked — the
@@ -4161,7 +4337,7 @@ window.gasGet = (function () {
               if ((matching.covers_batches || []).length) { retire(matching.covers_batches); }
               else {
                 GET('enrollments', 'student_id=eq.' + encodeURIComponent(p.studentId) + '&select=batch_code,status', function (eEnr, enrRows) {
-                  retire((eEnr ? [] : (enrRows || [])).filter(function (r) { return String(r.status || 'Active') !== 'Dropped'; })
+                  retire((eEnr ? [] : (enrRows || [])).filter(function (r) { return _enrolmentIsLive(r.status); })
                     .map(function (r) { return r.batch_code; }));
                 });
               }
@@ -4402,7 +4578,7 @@ window.gasGet = (function () {
         GET('enrollments', 'student_id=eq.' + encodeURIComponent(r.studentId) + '&select=batch_code,status',
           function (eEnr, enrRows) {
             var live = (eEnr ? [] : (enrRows || []))
-              .filter(function (x) { return String(x.status || 'Active') !== 'Dropped'; })
+              .filter(function (x) { return _enrolmentIsLive(x.status); })
               .map(function (x) { return x.batch_code; });
             // Fall back to the batch on the request if the student has no enrolment rows,
             // so the banner never ends up with nothing to point at.
@@ -6344,7 +6520,7 @@ window.gasGet = (function () {
          list them as tick boxes (2026-09-17). A GG student has two — Diamond Graduate and
          Colored Stone Graduate — and the counsellor says which the discount is for. */
       GET('enrollments', 'student_id=eq.' + encodeURIComponent(p.studentId) + '&select=batch_code,status', function (eE, eRows) {
-        var active = (eE ? [] : (eRows || [])).filter(function (r) { return String(r.status || 'Active') !== 'Dropped'; });
+        var active = (eE ? [] : (eRows || [])).filter(function (r) { return _enrolmentIsLive(r.status); });
         out.batches = active.map(function (r) { return r.batch_code; });
         if (!out.batches.length && out.batchCode) out.batches = [out.batchCode];
         if (!out.batches.length) { cb(null, out); return; }
@@ -6967,7 +7143,7 @@ window.gasGet = (function () {
         'session_code=in.(' + sList + ')&select=session_code,student_id,attendance');
       var enrol = (await getP('enrollments',
         'batch_code=in.(' + inList + ')&select=student_id,batch_code,status,enrolled_at'))
-        .filter(function (e) { return String(e.status || 'Active') !== 'Dropped'; });
+        .filter(function (e) { return _enrolmentIsLive(e.status); });
 
       var marked = {}, ranSession = {};
       att.forEach(function (a) {
@@ -14726,6 +14902,9 @@ window.gasGet = (function () {
       case 'addStudent':                return h_addStudent(params, cb);
       case 'removeStudent':             return h_removeStudent(params, cb);
       case 'moveStudentToBatch':        return h_moveStudentToBatch(params, cb);
+      case 'deferStudent':              return h_deferStudent(params, cb);
+      case 'getDeferredStudents':       return h_getDeferredStudents(params, cb);
+      case 'placeDeferredStudent':      return h_placeDeferredStudent(params, cb);
       case 'submitBatchMoveRequest':    return h_submitBatchMoveRequest(params, cb);
       case 'resendStudentWelcomeEmail': return h_resendEmail(params, cb);
       case 'getStudentProfile':         return h_studentProfile(params, cb);

@@ -2520,6 +2520,9 @@ window.gasGet = (function () {
     // long after both the student and the fee row were gone.
     GET('student_fees', fullFilter, function(e0, feeRowsToRemove) {
       (feeRowsToRemove || []).forEach(function(r) {
+        // Same audit trail as the Fees tab's own delete — this path removes fee
+        // records too, and silently, so it needs the log at least as much.
+        logFeeRecordDeletion(r, p.requestedBy || p.removedBy, 'student_removal');
         DEL('student_fees', 'id=eq.' + encodeURIComponent(r.id), function() {
           syncStudentRevenue(r.recorded_by || 'Counselor', r.centre,
             fmtMonthKey(new Date(r.created_at || Date.now())), '2026-27');
@@ -4196,6 +4199,9 @@ window.gasGet = (function () {
         cb(null, { status: 'error', reason: 'not_owner' });
         return;
       }
+      // Log BEFORE the delete — a log written afterwards is lost exactly when
+      // the delete half-succeeds, which is the case worth having a log for.
+      logFeeRecordDeletion(row, p.requestedBy, 'fee_record');
       DEL('student_fees', 'id=eq.' + encodeURIComponent(id), function (e2) {
         if (e2) { cb(null, { status: 'error', reason: String(e2) }); return; }
         syncStudentRevenue(row.recorded_by || 'Counselor', row.centre,
@@ -4203,6 +4209,41 @@ window.gasGet = (function () {
         cb(null, { status: 'ok' });
       });
     });
+  }
+
+  /* logFeeRecordDeletion — 2026-10-21.
+
+     Kartik Soni (7543) lost his Colored Stone fee record on 12 Oct 2026 and
+     nothing anywhere recorded it: not who removed it, not when, not what it
+     held. It surfaced over a month later only because its discount approval
+     had been left stranded — and by then the September figure already sent to
+     the COO no longer matched the system, short by ₹1,76,605.
+
+     Every delete path now writes the whole row to fee_record_deletions first,
+     so the next one is visible the same day and can be restored from the
+     snapshot rather than rebuilt from memory. Fire-and-forget: a failure to
+     log must never block a delete the user legitimately asked for, and the
+     browser is granted INSERT and SELECT on that table but not UPDATE or
+     DELETE, so an entry cannot be quietly removed afterwards. */
+  function logFeeRecordDeletion(row, actor, via) {
+    if (!row) return;
+    try {
+      POST('fee_record_deletions', '', {
+        fee_record_id: row.id,
+        student_id:    row.student_id || '',
+        batch_code:    row.batch_code || '',
+        centre:        row.centre || '',
+        course_fee:    row.course_fee == null ? null : Number(row.course_fee),
+        amount:        row.amount == null ? null : Number(row.amount),
+        recorded_by:   row.recorded_by || '',
+        revenue_month: row.revenue_month ||
+                       fmtMonthKey(new Date(row.created_at || Date.now())),
+        deleted_by:    actor || 'Unknown',
+        deleted_via:   via || 'fee_record',
+        deleted_at:    nowISO(),
+        row_snapshot:  row
+      }, function () {});
+    } catch (err) { /* never block the delete */ }
   }
 
   /* DISCOUNT APPROVAL REQUESTS — 2026-08-07, per instruction: "counselor request for

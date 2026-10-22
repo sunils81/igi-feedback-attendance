@@ -142,3 +142,17 @@ Each `deck.json` holds the default plan (visit on day 3) as `course`/`day`, and 
 
 Publish: `python3 lessons-src/upload.py jbe-day-1 jbe-day-2 jbe-day-3 jbe-day-4 jbe-day-5 --env <file>`.
 `dg-jewellery-business` (DG Day 19 part 2) is a separate, shortened 19-slide version (v4 live); it was left unchanged when the merchandising module was added.
+
+## Keeping decks inside the portal (2026-10-22)
+- **Portal lock** (`lock.py`): every published file starts with a script that shows "opens only inside the IGI
+  School of Gemology portal" and stops the rest of the file from loading, unless it is playing in the portal's
+  player (same-origin frame on igi-feedback-attendance.vercel.app or localhost). `upload.py` adds it on every
+  publish; `lock_published.py --env <file>` adds it to decks already live (run once on 2026-10-22: 47 files,
+  162 rows, each bumped one version). `dist/` copies stay unlocked for local checking. It stops casual
+  sharing; it is not DRM.
+- **Library copies are not saved on laptops**: no "Save all" in the Library, and reference openings are shown
+  without being stored. "Save all" remains in the Lessons tab for the batch being taught (offline in class).
+- **Saved decks are cleared when access ends**: after sign-in the instructor portal calls `lesson_keep_decks()`
+  (migration_lesson_keep_decks.sql) and deletes every saved deck that is not the current version of a deck of a
+  batch the person teaches (active, ended ≤ 21 days ago). The HOD keeps everything.
+- Not done yet: a per-person watermark baked into each downloaded file (option 2).

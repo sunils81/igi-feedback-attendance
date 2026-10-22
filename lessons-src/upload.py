@@ -15,6 +15,8 @@ Needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, from the environment or an env
 service key must never be committed or left lying around.
 """
 import json, os, re, sys, urllib.request, urllib.error, datetime
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lock import lock
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DIST = os.path.join(ROOT, 'dist')
@@ -63,7 +65,8 @@ def publish(slug, url, key):
     version = (rows[0]['version'] + 1) if rows else 1
     path = '%s/%s-v%d.html' % (slugify(course), slug, version)
 
-    data = open(built, 'rb').read()
+    # portal lock: a copied file will not play outside the portal (lock.py)
+    data = lock(open(built, encoding='utf-8').read()).encode('utf-8')
     req('POST', '%s/storage/v1/object/%s/%s' % (url, BUCKET, path), key, data,
         {'Content-Type': 'text/html; charset=utf-8', 'x-upsert': 'true', 'cache-control': 'private, max-age=0'})
 

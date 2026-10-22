@@ -387,6 +387,8 @@
             if (hit2) { show(hit2, false, k2); return; }
             if (!shown) setMsg('Downloading ' + esc(d.deck.title) + (d.deck.bytes ? ' (' + mb(d.deck.bytes) + ')' : '') + '…');
             return download(d.url).then(function (blob) {
+              // Library (reference) copies are shown but never stored on the laptop (2026-10-22)
+              if (!o.batchCode) { show(blob, false, k2); return; }
               return storeBlob(d.deck.id, d.deck.version, blob).then(function () { show(blob, false, k2); });
             });
           });
@@ -434,6 +436,27 @@
       };
       draw(n >= items.length ? '<b>✓</b> All ' + items.length + ' saved on this laptop: they open instantly, even offline' : n + ' of ' + items.length + ' ' + esc(label) + ' saved on this laptop', false);
     });
+  }
+
+  // ── Clear saved decks this person may no longer keep (2026-10-22) ───────────────────
+  // After sign-in the server lists the decks (current versions) of the batches this person
+  // teaches. Every other saved deck is deleted from this laptop: old versions, finished
+  // batches, revoked access, and any Library copy saved before reference copies stopped
+  // being stored. The HOD keeps everything. Runs once per page load.
+  var purged = false;
+  function purgeStale() {
+    if (purged) return Promise.resolve(); purged = true;
+    return rpc('lesson_keep_decks', {}).then(function (d) {
+      if (!d || d.status !== 'ok' || d.all) return;
+      var keep = {}; (d.decks || []).forEach(function (x) { keep[cacheKey(x.id, x.version)] = 1; });
+      var ids = {}; (d.decks || []).forEach(function (x) { ids[x.id] = 1; });
+      try { var g = readGrants(); Object.keys(g).forEach(function (k) { if (!ids[g[k].id]) delete g[k]; }); localStorage.setItem(GRANTS, JSON.stringify(g)); } catch (e) {}
+      return cacheOpen().then(function (c) {
+        return c.keys().then(function (keys) {
+          return Promise.all(keys.filter(function (k) { return !keep[new URL(k.url).pathname]; }).map(function (k) { return c.delete(k); }));
+        });
+      });
+    }).catch(function () { purged = false; });
   }
 
   // ── INSTRUCTOR: Lessons tab ──────────────────────────────────────────────────────────
@@ -768,8 +791,8 @@
         '<input type="search" id="igl-lq" placeholder="Search lessons, e.g. emerald, refractometer">' +
         '<span class="igl-libprog" id="igl-lprog"></span></div>' +
         (R.until ? '<p class="igl-note" style="margin:0 0 10px">Your Library access runs until ' + esc(fmtUntil(R.until)) + '.</p>' : '') +
-        '<div class="igl-savebar" id="igl-lsave"></div><div id="igl-llist"></div>' +
-        '<p class="igl-note">Reference copies carry a “Reference · not for class” watermark and every opening is logged. To teach a batch, use the Lessons tab, where the day plan and HOD approvals apply.</p></div>';
+        '<div id="igl-llist"></div>' +
+        '<p class="igl-note">Reference copies carry a “Reference · not for class” watermark, open only inside the portal, are not saved on this laptop, and every opening is logged. To teach a batch, use the Lessons tab, where the day plan and HOD approvals apply.</p></div>';
       $('igl-lq').oninput = function () { R.q = this.value.trim().toLowerCase(); drawList(); };
       drawSegs(); drawList();
     }).catch(function () { root.innerHTML = '<div class="igl"><div class="igl-empty">Could not load the library. Check the connection and try again.</div></div>'; });
@@ -806,7 +829,7 @@
     var shown = rows.filter(function (r) { return !q || (r.title + ' ' + (r.subtitle || '') + ' ' + (topic[r.day] || '')).toLowerCase().indexOf(q) !== -1; });
     var uniq = {}, items = [];
     rows.forEach(function (r) { if (!uniq[r.id]) { uniq[r.id] = 1; items.push({ day: r.day, deck: r }); } });
-    saveAllBar('igl-lsave', null, items, 'presentations in this plan');
+    // 2026-10-22: Library (reference) copies are no longer saved on laptops, so no "Save all" here.
     if (!shown.length) { box.innerHTML = '<div class="igl-empty">' + (q ? 'Nothing matches “' + esc(R.q) + '”.' : 'No presentations published for this plan yet.') + '</div>'; return; }
     var html = '<div class="igl-days">', lastW = null;
     shown.forEach(function (r) {
@@ -912,6 +935,7 @@
     mountLibrary: mountLibrary,
     mountReference: mountReference,
     mountRefGrants: mountRefGrants,
+    purgeStale: purgeStale,
     refStatus: refStatus,
     pendingCount: pendingCount,
     approverStatus: approverStatus,

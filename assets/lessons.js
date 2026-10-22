@@ -173,6 +173,7 @@
       '.igl-libtop input{flex:1;min-width:220px;font:inherit;border:1.5px solid var(--bd);border-radius:10px;padding:9px 12px}',
       '.igl-libprog{font-size:13px;color:var(--mu)}.igl-libprog b{color:var(--n)}',
       '.igl-study.on{background:#E7F4EC;border-color:#8BD5A8;color:#1F7A4D}',
+      '.igl-courses{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.igl-courses label{display:flex;gap:6px;align-items:center;border:1.5px solid var(--bd);border-radius:999px;padding:7px 12px;cursor:pointer;font-weight:600}.igl-courses label.on{border-color:#B58A3E;background:rgba(181,138,62,.12)}.igl-ccl{font-size:12px;letter-spacing:.12em;text-transform:uppercase;opacity:.7;margin-right:4px}.igl-cchips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px}.igl-grant .igl-courses input,.igl-courses input{flex:none;min-width:0;width:auto;padding:0;margin:0}' +
       '.igl-grant{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}.igl-grant select{min-width:200px}.igl-grant input{flex:1;min-width:200px;font:inherit;border:1.5px solid var(--bd);border-radius:10px;padding:10px 12px}',
       '.igl-savebar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:-4px 0 14px;font-size:13px;color:#5A6075}.igl-savebar b{color:#1F7A4D}',
       '.igl-days{display:flex;flex-direction:column;gap:8px}',
@@ -759,6 +760,9 @@
     rpc('lesson_ref_library', {}).then(function (d) {
       if (!d || d.status !== 'ok') { root.innerHTML = '<div class="igl"><div class="igl-empty">' + esc(d && d.reason === 'session' ? 'Please sign in again.' : (d && d.reason) || 'Could not load the library.') + '</div></div>'; return; }
       R.rows = d.rows || []; R.me = d.me || ''; R.approver = !!d.approver; R.until = d.until || null;
+      // per-course grants (2026-10-22): show only the courses this person was given
+      R.allowed = d.courses || RCOURSES.map(function (x) { return x[0]; });
+      if (R.allowed.indexOf(R.course) === -1) { R.course = R.allowed[0] || ''; R.plan = ''; }
       root.innerHTML = '<div class="igl igl-lib">' +
         '<div class="igl-libtop"><div class="seg" id="igl-lc"></div><div class="seg" id="igl-lp"></div>' +
         '<input type="search" id="igl-lq" placeholder="Search lessons, e.g. emerald, refractometer">' +
@@ -781,7 +785,9 @@
   }
   function drawSegs() {
     var c = $('igl-lc'), p = $('igl-lp'); if (!c) return;
-    c.innerHTML = RCOURSES.map(function (x) { return '<button type="button" data-c="' + esc(x[0]) + '" class="' + (R.course === x[0] ? 'on' : '') + '">' + esc(x[1]) + '</button>'; }).join('');
+    var mine = RCOURSES.filter(function (x) { return !R.allowed || R.allowed.indexOf(x[0]) !== -1; });
+    c.style.display = mine.length > 1 ? '' : 'none';
+    c.innerHTML = mine.map(function (x) { return '<button type="button" data-c="' + esc(x[0]) + '" class="' + (R.course === x[0] ? 'on' : '') + '">' + esc(x[1]) + '</button>'; }).join('');
     var plans = rPlans();
     if (!plans.some(function (x) { return x.key === R.plan; })) R.plan = plans.length ? plans[0].key : '';
     p.innerHTML = plans.map(function (x) { return '<button type="button" data-p="' + esc(x.key) + '" class="' + (R.plan === x.key ? 'on' : '') + '">' + esc(x.label) + '</button>'; }).join('');
@@ -842,29 +848,55 @@
     rpc('lesson_ref_grants', {}).then(function (d) {
       if (!d || d.status !== 'ok') { root.innerHTML = '<div class="igl"><div class="igl-empty">' + esc((d && d.reason) || 'Could not load') + '</div></div>'; return; }
       var people = d.people || [], total = d.total || 0;
+      var cname = {}; RCOURSES.forEach(function (x) { cname[x[0]] = x[1]; });
+      function courseBoxes(on) {
+        return RCOURSES.map(function (x) { var c = on.indexOf(x[0]) !== -1;
+          return '<label class="' + (c ? 'on' : '') + '"><input type="checkbox" value="' + esc(x[0]) + '"' + (c ? ' checked' : '') + '>' + esc(x[1]) + '</label>'; }).join('');
+      }
+      function picked(box) { return Array.prototype.filter.call(box.querySelectorAll('input[type=checkbox]'), function (i) { return i.checked; }).map(function (i) { return i.value; }); }
       var html = '<div class="igl"><div class="igl-grant">' +
         '<select id="igl-gp"><option value="">Choose a person…</option>' + people.map(function (p) { return '<option>' + esc(p) + '</option>'; }).join('') + '</select>' +
         '<select id="igl-gd"><option value="30">for 30 days</option><option value="7">for 7 days</option><option value="90">for 90 days</option><option value="0">with no end date</option></select>' +
         '<input id="igl-gn" placeholder="Note (e.g. new instructor, Mumbai)">' +
+        '<div class="igl-courses" id="igl-gc" style="flex-basis:100%"><span class="igl-ccl">Courses</span>' + courseBoxes([]) + '</div>' +
         '<button class="igl-btn sm" type="button" id="igl-gg">Give Library access</button></div>';
       var gs = d.grants || [];
       if (!gs.length) html += '<div class="igl-empty">Nobody has Library access yet. The HOD always has it.</div>';
       else html += '<div class="igl-list">' + gs.map(function (g) {
         return '<div class="igl-req"><div class="h"><b>' + esc(g.person) + '</b>' +
           (g.active ? '<span class="igl-chip approved">' + (g.until ? 'Until ' + esc(fmtUntil(g.until)) : 'No end date') + '</span>' : '<span class="igl-chip locked">Ended</span>') +
-          (g.active ? '<button class="igl-btn ghost sm" type="button" data-revoke="' + esc(g.id) + '" style="margin-left:auto">Remove access</button>' : '') + '</div>' +
-          '<div class="meta">Studied ' + g.studied + ' of ' + total + ' presentations · opened ' + g.opens + '×' + (g.last_open ? ' · last ' + esc(String(g.last_open).slice(0, 10)) : '') +
+          (g.active ? '<button class="igl-btn ghost sm" type="button" data-editc="' + esc(g.id) + '" style="margin-left:auto">Change courses</button><button class="igl-btn ghost sm" type="button" data-revoke="' + esc(g.id) + '">Remove access</button>' : '') + '</div>' +
+          '<div class="igl-cchips">' + (g.courses || []).map(function (c) { return '<span class="igl-chip approved">' + esc(cname[c] || c) + '</span>'; }).join('') + '</div>' +
+          (g.active ? '<div class="igl-courses" data-cbox="' + esc(g.id) + '" style="display:none;margin:8px 0">' + courseBoxes(g.courses || []) + '<button class="igl-btn sm" type="button" data-savec="' + esc(g.id) + '">Save courses</button></div>' : '') +
+          '<div class="meta">Studied ' + g.studied + ' of ' + (g.total != null ? g.total : total) + ' presentations · opened ' + g.opens + '×' + (g.last_open ? ' · last ' + esc(String(g.last_open).slice(0, 10)) : '') +
           ' · given by ' + esc(g.by === 'Admin' ? 'HOD' : g.by) + ' on ' + esc(String(g.at).slice(0, 10)) + '</div>' + (g.note ? '<div class="why">' + esc(g.note) + '</div>' : '') + '</div>';
       }).join('') + '</div>';
       root.innerHTML = html + '</div>';
       $('igl-gg').onclick = function () {
         var p = $('igl-gp').value; if (!p) { toast('Choose a person first', 'error'); return; }
+        var cs = picked($('igl-gc')); if (!cs.length) { toast('Tick at least one course', 'error'); return; }
         this.disabled = true;
-        rpc('lesson_ref_grant', { p_person: p, p_days: Number($('igl-gd').value), p_note: $('igl-gn').value }).then(function (r) {
+        rpc('lesson_ref_grant', { p_person: p, p_days: Number($('igl-gd').value), p_note: $('igl-gn').value, p_courses: cs }).then(function (r) {
           if (!r || r.status !== 'ok') toast((r && r.reason) || 'Could not save', 'error'); else toast('Library access given to ' + p, 'success');
           mountRefGrants(id);
         }).catch(function () { toast('No connection — try again', 'error'); mountRefGrants(id); });
       };
+      // tick-box highlight, and the per-grant course editor
+      Array.prototype.forEach.call(root.querySelectorAll('.igl-courses input'), function (i) { i.onchange = function () { i.parentNode.classList.toggle('on', i.checked); }; });
+      Array.prototype.forEach.call(root.querySelectorAll('[data-editc]'), function (b) {
+        b.onclick = function () { var box = root.querySelector('[data-cbox="' + b.getAttribute('data-editc') + '"]'); if (box) box.style.display = box.style.display === 'none' ? '' : 'none'; };
+      });
+      Array.prototype.forEach.call(root.querySelectorAll('[data-savec]'), function (b) {
+        b.onclick = function () {
+          var gid = b.getAttribute('data-savec'), cs = picked(root.querySelector('[data-cbox="' + gid + '"]'));
+          if (!cs.length) { toast('Tick at least one course, or use Remove access', 'error'); return; }
+          b.disabled = true;
+          rpc('lesson_ref_set_courses', { p_id: gid, p_courses: cs }).then(function (r) {
+            if (!r || r.status !== 'ok') toast((r && r.reason) || 'Could not save', 'error'); else toast('Courses updated', 'success');
+            mountRefGrants(id);
+          }).catch(function () { toast('No connection — try again', 'error'); b.disabled = false; });
+        };
+      });
       Array.prototype.forEach.call(root.querySelectorAll('[data-revoke]'), function (b) {
         b.onclick = function () {
           b.disabled = true;

@@ -742,11 +742,12 @@
   }
 
 
-  // ── LIBRARY: every DG and CSG deck in one place, for reference (2026-10-18) ──────────
+  // ── LIBRARY: every DG, CSG and JBE deck in one place, for reference (2026-10-18; JBE 2026-10-22) ──────────
   // Open to the HOD and to people the HOD has granted Library access (lesson_library_access).
   // Openings are logged with basis 'reference' and do not touch any batch's day lock.
   var R = { rows: null, course: 'Colored Stone Graduate', plan: '', q: '', me: '', approver: false, until: null };
-  var RCOURSES = [['Diamond Graduate', 'Diamond Graduate'], ['Colored Stone Graduate', 'Coloured Stone Graduate']];
+  // Jewelry Business Essentials added 2026-10-22: its default plan only (lesson_in_library() in the database).
+  var RCOURSES = [['Diamond Graduate', 'Diamond Graduate'], ['Colored Stone Graduate', 'Coloured Stone Graduate'], ['Jewelry Business Essentials', 'Jewelry Business Essentials']];
   function refStatus(cb) {
     rpc('lesson_ref_status', {}).then(function (d) { cb(!!(d && d.status === 'ok' && d.allowed), d || {}); }).catch(function () { cb(false, {}); });
   }

@@ -124,3 +124,21 @@ Biaxial 1–2 and Organics 1–2. Edit localities, origin clues and chapter days
 replaced by id). Libraries in `globe-src/libs/`: d3-array, d3-geo, topojson-client (ISC) and
 world-atlas countries-50m/110m (ISC; Natural Earth, public domain). The inclusion photos
 (`inc-*.jpg`) are copies of course photos placed in `shared-media/`.
+
+## Jewelry Business Essentials day decks (prepared 2026-10-22)
+Five half-day decks built by `IGI-LGD-Masterclass/08-jewelry-business-essentials/src/build.py` (Day-1 … Day-5.html) and packed with
+`bundle_html.py` as `jbe-day-1` … `jbe-day-5`. The factory visit floats (`batches.visit_day`, 1–5, default 3; see
+`supabase/migrations/migration_jbe_visit_day.sql`), so each deck appears on a different syllabus day in each of the five plans.
+Each `deck.json` holds the default plan (visit on day 3) as `course`/`day`, and the other four plans in an `"also"` list;
+`upload.py` creates or updates a row for every entry, all pointing at the same file.
+
+| Slug | Deck | Visit day 1 | 2 | 3 (default) | 4 | 5 |
+|---|---|---|---|---|---|---|
+| jbe-day-1 | Foundations & the Product | 2 | 1 | 1 | 1 | 1 |
+| jbe-day-2 | Materials & Design | 3 | 3 | 2 | 2 | 2 |
+| jbe-day-3 | Factory Visit | 1 | 2 | 3 | 4 | 5 |
+| jbe-day-4 | Costing, Pricing, Market & Merchandising | 4 | 4 | 4 | 3 | 3 |
+| jbe-day-5 | Building the Business | 5 | 5 | 5 | 5 | 4 |
+
+Publish: `python3 lessons-src/upload.py jbe-day-1 jbe-day-2 jbe-day-3 jbe-day-4 jbe-day-5 --env <file>`.
+`dg-jewellery-business` (DG Day 19 part 2) is a separate, shortened 19-slide version (v4 live); it was left unchanged when the merchandising module was added.

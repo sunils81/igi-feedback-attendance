@@ -77,7 +77,20 @@ def publish(slug, url, key):
         req('PATCH', '%s/rest/v1/lesson_decks?storage_path=eq.%s&is_active=is.true' % (url, urllib.parse.quote(rows[0]['storage_path'])), key, shared, {'Prefer': 'return=minimal'})
     else:
         req('POST', '%s/rest/v1/lesson_decks' % url, key, row, {'Prefer': 'return=minimal'})
-    print('published %-28s %s Day %-3d p%d v%d  %.1f MB  -> %s/%s' % (slug, course, day, part, version, len(data) / 1048576.0, BUCKET, path))
+    # Extra plans that use this same file on a different syllabus day (deck.json "also"), e.g.
+    # the Jewelry Business Essentials visit-day variants. Rows already sharing the file were
+    # moved by the storage_path PATCH above; create any that are missing.
+    for extra in meta.get('also', []):
+        ec, ed = extra['course'], int(extra['day'])
+        q = '%s/rest/v1/lesson_decks?course=eq.%s&syllabus_day=eq.%d&part=eq.%d&is_active=is.true&select=id' % (
+            url, urllib.parse.quote(ec), ed, part)
+        if req('GET', q, key):
+            req('PATCH', '%s/rest/v1/lesson_decks?course=eq.%s&syllabus_day=eq.%d&part=eq.%d&is_active=is.true' % (
+                url, urllib.parse.quote(ec), ed, part), key, dict(row, course=ec, syllabus_day=ed), {'Prefer': 'return=minimal'})
+        else:
+            req('POST', '%s/rest/v1/lesson_decks' % url, key, dict(row, course=ec, syllabus_day=ed), {'Prefer': 'return=minimal'})
+    print('published %-28s %s Day %-3d p%d v%d  %.1f MB  -> %s/%s%s' % (slug, course, day, part, version, len(data) / 1048576.0, BUCKET, path,
+          ('  (+%d plan rows)' % len(meta['also'])) if meta.get('also') else ''))
 
 
 if __name__ == '__main__':

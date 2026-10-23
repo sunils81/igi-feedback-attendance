@@ -771,7 +771,7 @@
   // Openings are logged with basis 'reference' and do not touch any batch's day lock.
   var R = { rows: null, course: 'Colored Stone Graduate', plan: '', q: '', me: '', approver: false, until: null };
   // Jewelry Business Essentials added 2026-10-22: its default plan only (lesson_in_library() in the database).
-  var RCOURSES = [['Diamond Graduate', 'Diamond Graduate'], ['Colored Stone Graduate', 'Coloured Stone Graduate'], ['Jewelry Business Essentials', 'Jewelry Business Essentials'], ['Gem-A Foundation Orientation', 'Gem-A Orientation']];
+  var RCOURSES = [['Diamond Graduate', 'Diamond Graduate'], ['Colored Stone Graduate', 'Coloured Stone Graduate'], ['Jewelry Business Essentials', 'Jewelry Business Essentials'], ['Gem-A Foundation Orientation', 'Gem-A Orientation'], ['Gem-A Foundation', 'Gem-A Foundation']];
   function refStatus(cb) {
     rpc('lesson_ref_status', {}).then(function (d) { cb(!!(d && d.status === 'ok' && d.allowed), d || {}); }).catch(function () { cb(false, {}); });
   }
@@ -800,7 +800,8 @@
   function rSave() { try { localStorage.setItem('igi_lesson_lib', JSON.stringify({ course: R.course, plan: R.plan })); } catch (e) {} }
   function rPlans() {
     var seen = {};
-    R.rows.forEach(function (r) { if (r.course.indexOf(R.course) === 0) seen[r.course] = Math.max(seen[r.course] || 0, Number(r.day) || 0); });
+    var exactKeys = RCOURSES.map(function (x) { return x[0]; });
+    R.rows.forEach(function (r) { if (r.course === R.course || (r.course.indexOf(R.course) === 0 && exactKeys.indexOf(r.course) === -1)) seen[r.course] = Math.max(seen[r.course] || 0, Number(r.day) || 0); });
     return Object.keys(seen).sort(function (a, b) { return (a === R.course ? -1 : b === R.course ? 1 : seen[b] - seen[a]); }).map(function (k) {
       var m = /\((\d+) Weeks?\)/.exec(k);
       return { key: k, label: m ? m[1] + '-week plan' : seen[k] + '-day plan' };

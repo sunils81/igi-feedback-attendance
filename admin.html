@@ -4940,10 +4940,19 @@ function startLessonRequestWatch() {
 function showMainScreen() {
   document.getElementById('s-login').classList.remove('active');
   document.getElementById('s-main').classList.add('active');
-  // Idle sign-out — 10 minutes, tighter than the counsellor portal's 15 because this
-  // screen carries revenue, targets and approvals. Runs on login and on restore, since
-  // both paths come through here. 2026-09-15, per instruction.
-  if (window.IGIIdle) window.IGIIdle.start({ minutes: 10, warnSeconds: 60, onLogout: doAdminLogout });
+  // Idle sign-out — DISABLED for admin as of 2026-10-23, per instruction ("admin accounts
+  // log out every now and then — I don't want that"). It ran at 10 minutes from 2026-09-15.
+  // The session token also no longer lapses while in use: auth_session slides an Admin
+  // session's expiry to 30 days on every check (migration_admin_session_sliding.sql), and the
+  // keepalive below checks every 30 minutes while the page is open. An admin now stays
+  // signed in until they sign out, the account is disabled, or the browser sits unused for 30 days.
+  // To re-enable the idle timeout: IGIIdle.start({ minutes: 10, warnSeconds: 60, onLogout: doAdminLogout })
+  if (window.IGIIdle) window.IGIIdle.stop();
+  if (!window._adminKeepalive && window.IGIRequireSession) {
+    window._adminKeepalive = setInterval(function () {
+      if (adminUser && window.IGIHasSession && IGIHasSession()) IGIRequireSession(staleAdminRelogin);
+    }, 30 * 60 * 1000);
+  }
   startPendingDiscountWatch();   // amber "waiting for your approval" bar, on every tab
   // Push notifications for the Work dashboard (assets/work.js): register the service
   // worker + subscribe this browser under portal 'admin'. Non-fatal if declined. 2026-09-08.

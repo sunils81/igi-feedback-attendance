@@ -65,7 +65,7 @@ const QUIZ=D.quiz||{};
 const answered={};
 const NQ=[...new Set($$('[data-quiz]').map(b=>b.dataset.quiz))].reduce((s,id)=>s+(QUIZ[id]?QUIZ[id].length:0),0);
 $('#scoreT').textContent=NQ;
-if(!NQ)$('#score').style.display='none';
+if(!NQ||D.noScore)$('#score').style.display='none';
 const score=()=>Object.values(answered).filter(Boolean).length;
 function updScore(pop){$('#scoreN').textContent=score();if(pop){const s=$('#score');s.classList.remove('pop');void s.offsetWidth;s.classList.add('pop')}}
 function stagePt(el){const r=el.getBoundingClientRect(),s=stage.getBoundingClientRect(),k=s.width/1920;return[(r.left+r.width/2-s.left)/k,(r.top+r.height/2-s.top)/k]}
@@ -76,7 +76,7 @@ function buildQuiz(box){
  const L='ABCD';
  const render=()=>{
   if(i>=qs.length){const n=qs.filter((q,k)=>answered[id+':'+k]).length;
-   box.innerHTML=`<div class="qdone"><div class="eyebrow" style="justify-content:center">Round complete</div><div class="num">${n} / ${qs.length}</div><p class="lead" style="text-align:center">${n===qs.length?'Perfect round. Well done, everyone.':n>=qs.length*.6?'Good work. Let’s go over the ones we missed.':'Let’s revisit these points before moving on.'}</p><button class="btn ghost" type="button">↻ Try this round again</button></div>`;
+   box.innerHTML=`<div class="qdone"><div class="eyebrow" style="justify-content:center">Round complete</div>${D.noScore?'':`<div class="num">${n} / ${qs.length}</div>`}<p class="lead" style="text-align:center">${D.noScore?'All done. Any questions before we finish?':n===qs.length?'Perfect round. Well done, everyone.':n>=qs.length*.6?'Good work. Let’s go over the ones we missed.':'Let’s revisit these points before moving on.'}</p><button class="btn ghost" type="button">↻ Try this round again</button></div>`;
    $('button',box).onclick=e=>{e.stopPropagation();qs.forEach((q,k)=>delete answered[id+':'+k]);updScore();i=0;render()};return}
   const q=qs[i];
   box.innerHTML=`<div class="qhead"><div class="eyebrow">${box.dataset.title||'Quick check'} · ${i+1} of ${qs.length}</div><div class="qdots">${qs.map((x,k)=>`<i class="${k===i?'cur':answered[id+':'+k]===true?'ok':answered[id+':'+k]===false?'no':''}"></i>`).join('')}</div></div>

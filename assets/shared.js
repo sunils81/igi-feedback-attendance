@@ -11635,7 +11635,7 @@ window.gasGet = (function () {
             if (out.stoneCount > 0) {
               var ps = pdfStats[r.assessment_id] || { have: 0, dna: 0 };
               out.pdfUploaded = ps.have;
-              out.pdfExpected = Math.max(0, expected - ps.dna) * out.stoneCount;
+              out.pdfExpected = Math.max(0, expected - ps.dna);   // one graded sheet per student (2026-10-23)
             }
             return out;
           }) });
@@ -11647,7 +11647,7 @@ window.gasGet = (function () {
             var st = stats[m.assessment_id] || (stats[m.assessment_id] = { have: 0, dna: 0 });
             if (m.remarks === 'DNA' && m.marks == null) { st.dna++; return; }
             var sp = m.stone_pdfs || {};
-            st.have += Object.keys(sp).filter(function(k) { return !!sp[k]; }).length;
+            if (Object.keys(sp).some(function(k) { return !!sp[k]; })) st.have++;
           });
           emit(stats);
         });

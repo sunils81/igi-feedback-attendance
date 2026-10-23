@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Instructor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=160"></script>
+<script src="/assets/shared.js?v=161"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=6"></script>
 <script src="/assets/lessons.js?v=11"></script>
@@ -656,6 +656,7 @@
         </div>
         <div id="me-stone-tools" style="display:none;margin-bottom:12px;gap:8px;flex-wrap:wrap;align-items:center">
           <button class="btn btn-outline" style="width:auto;padding:7px 12px;font-size:12px" onclick="psOpenImport()">⬇ Import from Stone Challenge</button>
+          <label class="btn btn-outline" style="width:auto;padding:7px 12px;font-size:12px;cursor:pointer;margin:0">⬆ Upload all sheets<input type="file" accept="application/pdf,.pdf" multiple style="display:none" onchange="psBulkPick(this)"></label>
           <span id="me-stone-pdfcount" style="font-size:11.5px;color:var(--muted)"></span>
         </div>
         <div id="me-import-panel" style="display:none;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px"></div>
@@ -4887,9 +4888,9 @@ function openTestMarks(aId, name, date, total, type, batchCode, stoneCount, mark
   document.getElementById('me-stone-tools').style.display = psStoneCount > 0 ? 'flex' : 'none';
   if (psStoneCount > 0) {
     var h = '<tr><th>Student</th>';
-    for (var i = 1; i <= psStoneCount; i++) h += '<th style="text-align:center">Stone ' + i + '<br><span style="font-weight:400;text-transform:none">/' + psMps + ' + PDF</span></th>';
-    thead.innerHTML = h + '<th style="text-align:center">Total</th><th style="text-align:center">%</th><th style="text-align:center">Result</th><th style="text-align:center">DNA</th><th>Remarks</th></tr>';
-    info.innerHTML = 'Grade each stone out of <strong>' + psMps + '</strong> — total and % (out of ' + (psStoneCount * psMps) + ') calculate automatically. Attach the graded <strong>PDF</strong> under each stone (optional, but tracked). Tick <strong>DNA</strong> if the student did not appear. Pass threshold: <strong>60%</strong>. Uploaded PDFs are attached when you click <strong>Save</strong>.';
+    for (var i = 1; i <= psStoneCount; i++) h += '<th style="text-align:center">Stone ' + i + '<br><span style="font-weight:400;text-transform:none">/' + psMps + '</span></th>';
+    thead.innerHTML = h + '<th style="text-align:center">Total</th><th style="text-align:center">%</th><th style="text-align:center">Result</th><th style="text-align:center">Graded sheet<br><span style="font-weight:400;text-transform:none">1 PDF</span></th><th style="text-align:center">DNA</th><th>Remarks</th></tr>';
+    info.innerHTML = 'Grade each stone out of <strong>' + psMps + '</strong> — total and % (out of ' + (psStoneCount * psMps) + ') calculate automatically. Attach <strong>one graded PDF per student</strong> covering all stones (optional, but tracked), or use <strong>⬆ Upload all sheets</strong> to attach every student’s PDF in one go, matched by the enrolment number in each file name. Tick <strong>DNA</strong> if the student did not appear. Pass threshold: <strong>60%</strong>. Uploaded PDFs are attached when you click <strong>Save</strong>.';
   } else {
     thead.innerHTML = _meClassicThead; info.innerHTML = _meClassicInfo;
   }
@@ -4935,10 +4936,9 @@ function buildStoneMarksTable(students, markMap) {
     let cells = '';
     for (let i = 1; i <= n; i++) {
       const v = sc[String(i)];
-      cells += `<td style="text-align:center;min-width:92px">
+      cells += `<td style="text-align:center;min-width:72px">
         <input class="marks-input ps-in" id="ps-${id}-${i}" type="number" step="any" min="0" max="${psMps}"
           value="${v == null ? '' : v}" oninput="psRecalc('${escJ(s.enrollmentNo)}')" ${isDNA?'disabled':''} style="width:56px">
-        <div id="pspdf-${id}-${i}" style="margin-top:4px">${psPdfCell(s.enrollmentNo, i)}</div>
       </td>`;
     }
     const remarks = ex && ex.remarks && ex.remarks !== 'DNA' ? ex.remarks : '';
@@ -4949,6 +4949,7 @@ function buildStoneMarksTable(students, markMap) {
       <td style="text-align:center;font-weight:700" id="pst-${id}">—</td>
       <td style="text-align:center" id="psp-${id}">—</td>
       <td style="text-align:center" id="psr-${id}">${getResultBadge(isDNA?'DNA':'')}</td>
+      <td style="text-align:center;min-width:130px" id="psheet-${id}">${psSheetCell(s.enrollmentNo)}</td>
       <td style="text-align:center"><input type="checkbox" class="dna-toggle" id="psd-${id}" ${isDNA?'checked':''} onchange="psToggleDNA('${escJ(s.enrollmentNo)}')"></td>
       <td><input type="text" id="psrem-${id}" value="${escHtml(remarks)}" placeholder="Optional"
         style="width:100%;min-width:110px;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:11px;font-family:'Plus Jakarta Sans',sans-serif;outline:none"></td>
@@ -4958,14 +4959,27 @@ function buildStoneMarksTable(students, markMap) {
   psUpdatePdfCount();
 }
 
-function psPdfCell(enrol, i) {
-  const id = psSafe(enrol);
-  const path = (psPdfs[enrol] || {})[String(i)];
-  const pick = `<label style="font-size:10px;color:#2563eb;cursor:pointer;white-space:nowrap">${path ? '↻ Replace' : '📎 PDF'}
-      <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="psUpload('${escJ(enrol)}',${i},this)"></label>`;
-  if (!path) return pick;
-  return `<a href="#" onclick="event.preventDefault();psViewPdf('${escJ(enrol)}',${i})" style="font-size:10px;color:#059669;font-weight:600;text-decoration:none">👁 View</a> · ` + pick;
+/* One graded PDF per student per test, stored as stone_pdfs.all. Older tests may still hold
+   per-stone PDFs under keys "1".."n": they stay viewable, and attaching a single sheet replaces
+   them (old files are deleted only after Save). */
+function psLegacyKeys(enrol) {
+  const m = psPdfs[enrol] || {};
+  return Object.keys(m).filter(k => k !== 'all' && m[k] && Number(k) >= 1).sort((x, y) => Number(x) - Number(y));
 }
+function psHasSheet(enrol) { const m = psPdfs[enrol] || {}; return !!m.all || psLegacyKeys(enrol).length > 0; }
+function psSheetCell(enrol, unsaved) {
+  const e = escJ(enrol), m = psPdfs[enrol] || {}, leg = psLegacyKeys(enrol);
+  const pick = `<label style="font-size:11px;color:#2563eb;cursor:pointer;white-space:nowrap">${(m.all || leg.length) ? '↻ Replace' : '📎 Attach PDF'}
+      <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="psUpload('${e}','all',this)"></label>`;
+  let h = pick;
+  if (m.all) h = `<a href="#" onclick="event.preventDefault();psViewPdf('${e}','all')" style="font-size:11px;color:#059669;font-weight:600;text-decoration:none">👁 View</a> · ` + pick;
+  else if (leg.length) h = `<div style="font-size:10px;color:var(--muted);margin-bottom:3px">${leg.length} older stone PDF${leg.length > 1 ? 's' : ''}: `
+    + leg.map(k => `<a href="#" onclick="event.preventDefault();psViewPdf('${e}','${k}')" style="color:#059669;font-weight:600;text-decoration:none">S${k}</a>`).join(' ')
+    + `</div>` + pick;
+  if (unsaved) h += '<div style="font-size:9px;color:#b45309;font-weight:600">unsaved — click Save</div>';
+  return h;
+}
+function psRefreshSheet(enrol, unsaved) { const c = document.getElementById('psheet-' + psSafe(enrol)); if (c) c.innerHTML = psSheetCell(enrol, unsaved); }
 
 function psRecalc(enrol) {
   const id = psSafe(enrol), n = psStoneCount;
@@ -5003,54 +5017,58 @@ function psUpdatePdfCount() {
   let have = 0, need = 0;
   psStudents.forEach(s => {
     if (document.getElementById('psd-' + psSafe(s.enrollmentNo)).checked) return;
-    need += psStoneCount;
-    have += Object.keys(psPdfs[s.enrollmentNo] || {}).filter(k => Number(k) >= 1 && Number(k) <= psStoneCount && psPdfs[s.enrollmentNo][k]).length;
+    need++;
+    if (psHasSheet(s.enrollmentNo)) have++;
   });
-  el.innerHTML = `📄 <b>${have}</b> of ${need} stone PDFs attached` + (have < need ? ` · <span style="color:#92400e">${need - have} pending</span>` : ' · <span style="color:#059669">all attached</span>');
+  el.innerHTML = `📄 <b>${have}</b> of ${need} students' graded sheets attached` + (have < need ? ` · <span style="color:#92400e">${need - have} pending</span>` : ' · <span style="color:#059669">all attached</span>');
 }
 
-// Upload straight to the private practical-sheets bucket. Deterministic path + x-upsert so a
-// re-upload replaces the old sheet instead of leaving orphans.
-function psUpload(enrol, i, input, onDone) {
+// Upload straight to the private practical-sheets bucket (one sheet per student). A new file
+// path each time; the replaced file(s) are deleted from storage only after Save succeeds.
+var psHadRow = {};
+var psDirty = false;
+var psPendingDeletes = [];
+function psCheckPdf(file) {
+  if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') return 'not a PDF';
+  if (file.size > 15 * 1024 * 1024) return 'over 15 MB, please compress it';
+  return '';
+}
+function psUpload(enrol, slot, input, onDone) {
   const file = input.files && input.files[0];
+  input.value = '';
   if (!file) return;
-  if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') { showToast('Please choose a PDF file.', 'error'); input.value = ''; return; }
-  if (file.size > 15 * 1024 * 1024) { showToast('PDF is over 15 MB — please compress it.', 'error'); input.value = ''; return; }
-  const id = psSafe(enrol), cell = document.getElementById('pspdf-' + id + '-' + i);
-  const path = psSafe(psBatch) + '/' + psSafe(currentAssessmentId) + '/' + id + '/stone-' + i + '-' + Date.now() + '.pdf';
-  cell.innerHTML = '<span style="font-size:10px;color:var(--muted)">Uploading… 0%</span>';
+  psUploadFile(enrol, file, onDone);
+}
+function psUploadFile(enrol, file, onDone, onFail) {
+  const bad = psCheckPdf(file);
+  if (bad) { showToast(file.name + ': ' + bad + '.', 'error'); if (onFail) onFail(bad); return; }
+  const id = psSafe(enrol), cell = document.getElementById('psheet-' + id);
+  const path = psSafe(psBatch) + '/' + psSafe(currentAssessmentId) + '/' + id + '/sheet-' + Date.now() + '.pdf';
+  if (cell) cell.innerHTML = '<span style="font-size:10px;color:var(--muted)">Uploading… 0%</span>';
   const xhr = new XMLHttpRequest();
   xhr.open('POST', _CM_SB + '/storage/v1/object/' + PS_BUCKET + '/' + path, true);
   xhr.setRequestHeader('Authorization', 'Bearer ' + _CM_AK);
   xhr.setRequestHeader('apikey', _CM_AK);
   xhr.setRequestHeader('Content-Type', 'application/pdf');
   xhr.setRequestHeader('x-upsert', 'true');
-  xhr.upload.onprogress = ev => { if (ev.lengthComputable) cell.innerHTML = '<span style="font-size:10px;color:var(--muted)">Uploading… ' + Math.round(100 * ev.loaded / ev.total) + '%</span>'; };
+  xhr.upload.onprogress = ev => { if (ev.lengthComputable && cell) cell.innerHTML = '<span style="font-size:10px;color:var(--muted)">Uploading… ' + Math.round(100 * ev.loaded / ev.total) + '%</span>'; };
   xhr.onload = () => {
     if (xhr.status >= 200 && xhr.status < 300) {
-      const prev = (psPdfs[enrol] || {})[String(i)];
-      if (prev && prev !== path) psPendingDeletes.push(prev);
-      (psPdfs[enrol] = psPdfs[enrol] || {})[String(i)] = path;
-      psMarkUnsaved(enrol, i);
+      const m = psPdfs[enrol] = psPdfs[enrol] || {};
+      Object.keys(m).forEach(k => { if (m[k] && m[k] !== path) psPendingDeletes.push(m[k]); delete m[k]; });
+      m.all = path;
+      psDirty = true;
+      psRefreshSheet(enrol, true);
       psUpdatePdfCount();
       if (typeof onDone === 'function') onDone(path);
     } else {
-      cell.innerHTML = psPdfCell(enrol, i);
-      showToast('Upload failed (' + xhr.status + '). Has the practical-sheets bucket been set up?', 'error');
+      psRefreshSheet(enrol);
+      showToast('Upload failed (' + xhr.status + ') for ' + file.name + '.', 'error');
+      if (typeof onFail === 'function') onFail(xhr.status);
     }
   };
-  xhr.onerror = () => { cell.innerHTML = psPdfCell(enrol, i); showToast('Network error during upload.', 'error'); };
+  xhr.onerror = () => { psRefreshSheet(enrol); showToast('Network error uploading ' + file.name + '.', 'error'); if (typeof onFail === 'function') onFail('network'); };
   xhr.send(file);
-}
-
-// Private bucket → open via a short-lived signed URL.
-var psHadRow = {};
-var psDirty = false;
-var psPendingDeletes = [];   // replaced/removed files, deleted from storage only after Save succeeds
-function psMarkUnsaved(enrol, i) {
-  const cell = document.getElementById('pspdf-' + psSafe(enrol) + '-' + i);
-  psDirty = true;
-  if (cell) cell.innerHTML = psPdfCell(enrol, i) + '<div style="font-size:9px;color:#b45309;font-weight:600">unsaved — click Save</div>';
 }
 function psSignedUrl(path) {
   return fetch(_CM_SB + '/storage/v1/object/sign/' + PS_BUCKET + '/' + path, {
@@ -5064,11 +5082,14 @@ function psSignedUrl(path) {
   });
 }
 
-/* In-page PDF viewer: view without downloading, Replace or Remove from the same window. */
-function psViewPdf(enrol, i) {
-  const path = (psPdfs[enrol] || {})[String(i)];
+/* In-page PDF viewer: view without downloading, Replace or Remove from the same window.
+   k = 'all' for the graded sheet, or "1".."n" for an older per-stone upload. */
+function psViewPdf(enrol, k) {
+  k = String(k);
+  const path = (psPdfs[enrol] || {})[k];
   if (!path) return;
   const stu = (psStudents.find(s => String(s.enrollmentNo) === String(enrol)) || {}).name || enrol;
+  const label = k === 'all' ? 'Graded sheet' : 'Stone ' + k + ' (older per-stone upload)';
   let m = document.getElementById('ps-viewer');
   if (!m) {
     m = document.createElement('div');
@@ -5081,11 +5102,11 @@ function psViewPdf(enrol, i) {
   m.style.display = 'flex';
   m.innerHTML = `<div style="background:#fff;border-radius:12px;width:min(1000px,100%);height:min(92vh,1100px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.35)">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid #e5e7eb;background:#f8fafc">
-      <div style="flex:1;min-width:160px"><div style="font-weight:700;font-size:14px">${escHtml(stu)} · Stone ${i}</div>
-        <div style="font-size:11px;color:#6b7280">${escHtml(enrol)} · graded sheet</div></div>
-      <label class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:12px;cursor:pointer;margin:0">↻ Replace PDF
-        <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="psReplaceFromViewer('${escJ(enrol)}',${i},this)"></label>
-      <button class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:12px;color:#dc2626;border-color:#fca5a5" onclick="psRemovePdf('${escJ(enrol)}',${i})">🗑 Remove</button>
+      <div style="flex:1;min-width:160px"><div style="font-weight:700;font-size:14px">${escHtml(stu)} · ${escHtml(label)}</div>
+        <div style="font-size:11px;color:#6b7280">${escHtml(enrol)}</div></div>
+      <label class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:12px;cursor:pointer;margin:0">${k === 'all' ? '↻ Replace PDF' : '↻ Replace with one sheet'}
+        <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="psReplaceFromViewer('${escJ(enrol)}',this)"></label>
+      <button class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:12px;color:#dc2626;border-color:#fca5a5" onclick="psRemovePdf('${escJ(enrol)}','${k}')">🗑 Remove</button>
       <a id="ps-viewer-open" target="_blank" rel="noopener" style="font-size:12px;color:#2563eb;text-decoration:none;padding:6px 4px">Open in new tab ↗</a>
       <button onclick="psCloseViewer()" style="background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:#374151;padding:0 4px" title="Close">×</button>
     </div>
@@ -5096,31 +5117,113 @@ function psViewPdf(enrol, i) {
     const body = document.getElementById('ps-viewer-body');
     if (!body) return;
     document.getElementById('ps-viewer-open').href = url;
-    body.innerHTML = '<iframe src="' + url + '#toolbar=1&view=FitH" style="width:100%;height:100%;border:0;background:#525659" title="Stone PDF"></iframe>';
+    body.innerHTML = '<iframe src="' + url + '#toolbar=1&view=FitH" style="width:100%;height:100%;border:0;background:#525659" title="Graded sheet PDF"></iframe>';
   }).catch(() => {
     const body = document.getElementById('ps-viewer-body');
     if (body) body.innerHTML = 'Could not load this PDF. Try Replace to upload it again.';
   });
 }
 function psCloseViewer() { const m = document.getElementById('ps-viewer'); if (m) { m.style.display = 'none'; m.innerHTML = ''; } }
-function psReplaceFromViewer(enrol, i, input) {
+function psReplaceFromViewer(enrol, input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
   const body = document.getElementById('ps-viewer-body');
   if (body) body.innerHTML = 'Uploading new PDF…';
-  psUpload(enrol, i, input, function () {
-    psViewPdf(enrol, i);
+  psUploadFile(enrol, file, function () {
+    psViewPdf(enrol, 'all');
     setTimeout(() => { const msg = document.getElementById('ps-viewer-msg'); if (msg) { msg.textContent = 'Replaced. Click “Save All Marks” to keep this change — the old file is deleted once you save.'; msg.style.display = 'block'; } }, 50);
   });
 }
-function psRemovePdf(enrol, i) {
-  const path = (psPdfs[enrol] || {})[String(i)];
+function psRemovePdf(enrol, k) {
+  k = String(k);
+  const path = (psPdfs[enrol] || {})[k];
   if (!path) return;
-  if (!confirm('Remove the PDF for Stone ' + i + '? It will be deleted when you click Save All Marks.')) return;
-  delete psPdfs[enrol][String(i)];
+  if (!confirm('Remove this PDF? It will be deleted when you click Save All Marks.')) return;
+  delete psPdfs[enrol][k];
   psPendingDeletes.push(path);
+  psDirty = true;
   psCloseViewer();
-  psMarkUnsaved(enrol, i);
+  psRefreshSheet(enrol, true);
   psUpdatePdfCount();
 }
+
+/* Bulk upload: pick every student's graded PDF at once. Each file is matched to a student by
+   the enrolment number in its file name (punctuation and case ignored), else by full name.
+   A preview lets the instructor fix or skip matches before anything uploads. */
+var psBulk = [];
+function psNorm(x) { return String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function psBulkPick(input) {
+  const files = Array.from(input.files || []);
+  input.value = '';
+  if (!files.length) return;
+  const studs = psStudents.map(s => ({ s: s, e: psNorm(s.enrollmentNo), n: psNorm(s.name) }));
+  psBulk = files.map(f => {
+    const fn = psNorm(f.name.replace(/\.pdf$/i, ''));
+    let best = null, how = '';
+    studs.forEach(x => { if (x.e && fn.indexOf(x.e) !== -1 && (!best || x.e.length > best.e.length)) best = x; });
+    if (best) how = 'enrolment no.';
+    else {
+      const byName = studs.filter(x => x.n && x.n.length >= 4 && fn.indexOf(x.n) !== -1);
+      if (byName.length === 1) { best = byName[0]; how = 'name'; }
+    }
+    return { file: f, enrol: best ? best.s.enrollmentNo : '', how: how, err: psCheckPdf(f), state: '' };
+  });
+  psRenderBulk();
+}
+function psBulkSet(i, v) { psBulk[i].enrol = v; psBulk[i].how = v ? 'chosen' : ''; psRenderBulk(); }
+function psRenderBulk(note) {
+  const panel = document.getElementById('me-import-panel');
+  panel.style.display = 'block';
+  const counts = {};
+  psBulk.forEach(r => { if (r.enrol && !r.err) counts[r.enrol] = (counts[r.enrol] || 0) + 1; });
+  const dup = Object.keys(counts).filter(k => counts[k] > 1);
+  const ready = psBulk.filter(r => r.enrol && !r.err && !r.state).length;
+  const opts = enrol => '<option value="">— skip this file —</option>' + psStudents.map(s =>
+    `<option value="${escHtml(s.enrollmentNo)}" ${String(s.enrollmentNo) === String(enrol) ? 'selected' : ''}>${escHtml(s.name || '')} · ${escHtml(s.enrollmentNo)}</option>`).join('');
+  const rows = psBulk.map((r, i) => {
+    let st;
+    if (r.state === 'done') st = '<span style="color:#059669;font-weight:600">✓ Attached</span>';
+    else if (r.state === 'up') st = '<span style="color:var(--muted)">Uploading…</span>';
+    else if (r.state === 'fail') st = '<span style="color:#dc2626;font-weight:600">Failed</span>';
+    else if (r.err) st = '<span style="color:#dc2626">' + escHtml(r.err) + '</span>';
+    else if (!r.enrol) st = '<span style="color:#92400e">No match: pick a student or skip</span>';
+    else if (counts[r.enrol] > 1) st = '<span style="color:#dc2626;font-weight:600">Same student as another file</span>';
+    else {
+      const sid = psSafe(r.enrol), dna = document.getElementById('psd-' + sid) && document.getElementById('psd-' + sid).checked;
+      st = '<span style="color:#065f46">Matched by ' + r.how + '</span>' + (psHasSheet(r.enrol) ? ' <span style="color:#92400e">· replaces existing PDF</span>' : '') + (dna ? ' <span style="color:#92400e">· student marked DNA</span>' : '');
+    }
+    return `<tr><td style="padding:5px 8px;font-size:12px;word-break:break-all">${escHtml(r.file.name)}</td>
+      <td style="padding:5px 8px"><select onchange="psBulkSet(${i},this.value)" ${r.state ? 'disabled' : ''} style="padding:5px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px;max-width:260px">${opts(r.enrol)}</select></td>
+      <td style="padding:5px 8px;font-size:11.5px">${st}</td></tr>`;
+  }).join('');
+  const busy = psBulk.some(r => r.state === 'up');
+  panel.innerHTML = `<div style="font-weight:700;font-size:13px;margin-bottom:6px">⬆ Upload all sheets · ${psBulk.length} file${psBulk.length === 1 ? '' : 's'} selected</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Files are matched by the enrolment number in the file name. Check the matches, fix any by choosing a student, then upload.</div>
+    <div style="overflow-x:auto;max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:#fff">
+      <table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9;font-size:11px;text-align:left"><th style="padding:6px 8px">File</th><th style="padding:6px 8px">Student</th><th style="padding:6px 8px">Status</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+      <button class="btn btn-gold" style="width:auto;padding:7px 14px;font-size:12px" onclick="psBulkRun()" ${(!ready || dup.length || busy) ? 'disabled' : ''}>Upload ${ready} sheet${ready === 1 ? '' : 's'}</button>
+      <button class="btn btn-outline" style="width:auto;padding:7px 14px;font-size:12px" onclick="psBulkClose()" ${busy ? 'disabled' : ''}>Close</button>
+      <span style="font-size:11.5px">${note || (dup.length ? '<span style="color:#dc2626">Two files point to the same student. Fix or skip one to continue.</span>' : '')}</span>
+    </div>`;
+}
+function psBulkClose() { psBulk = []; const p = document.getElementById('me-import-panel'); p.style.display = 'none'; p.innerHTML = ''; }
+function psBulkRun() {
+  const queue = psBulk.filter(r => r.enrol && !r.err && !r.state);
+  let ok = 0, fail = 0;
+  const next = () => {
+    const r = queue.shift();
+    if (!r) {
+      psRenderBulk((fail ? '<span style="color:#dc2626">' + fail + ' failed. </span>' : '') + '<span style="color:#065f46;font-weight:600">✓ ' + ok + ' sheet' + (ok === 1 ? '' : 's') + ' attached. Click <b>Save All Marks</b> to keep them.</span>');
+      return;
+    }
+    r.state = 'up'; psRenderBulk();
+    psUploadFile(r.enrol, r.file, () => { r.state = 'done'; ok++; next(); }, () => { r.state = 'fail'; fail++; next(); });
+  };
+  next();
+}
+
 function psFlushDeletes() {
   const list = psPendingDeletes.splice(0);
   if (!list.length) return;
@@ -5336,7 +5439,7 @@ function saveStoneMarks() {
     const isDNA = document.getElementById('psd-' + id).checked;
     const remarks = document.getElementById('psrem-' + id).value.trim();
     const pdfs = {};
-    Object.keys(psPdfs[s.enrollmentNo] || {}).forEach(k => { if (Number(k) >= 1 && Number(k) <= n && psPdfs[s.enrollmentNo][k]) pdfs[k] = psPdfs[s.enrollmentNo][k]; });
+    Object.keys(psPdfs[s.enrollmentNo] || {}).forEach(k => { if ((k === 'all' || (Number(k) >= 1 && Number(k) <= n)) && psPdfs[s.enrollmentNo][k]) pdfs[k] = psPdfs[s.enrollmentNo][k]; });
     const scores = {}; let sum = 0, filled = 0;
     for (let i = 1; i <= n; i++) {
       const raw = document.getElementById('ps-' + id + '-' + i).value;

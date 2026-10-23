@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=159"></script>
+<script src="assets/shared.js?v=160"></script>
 <script src="assets/work.js?v=4"></script>
 <script src="assets/lessons.js?v=10"></script>
 <!-- Corporate/RTT client report. Shared with counselor.html so the document a client
@@ -8103,6 +8103,7 @@ function renderRevenueBasis() {
   var totInv    = rows.reduce(function (t, m) { return t + m.invoiced; }, 0);
   var totColl   = rows.reduce(function (t, m) { return t + m.collected; }, 0);
   var totMis    = rows.reduce(function (t, m) { return t + (m.misfiledTotal || 0); }, 0);
+  var totWait   = rows.reduce(function (t, m) { return t + (m.awaitingInvoice || 0); }, 0);
 
   var html = '<div style="overflow-x:auto"><table class="compact-table" style="font-size:12px">' +
     '<thead><tr>' +
@@ -8123,8 +8124,12 @@ function renderRevenueBasis() {
           m.invoicedCount + ' invoiced</div></td>' +
       '<td style="text-align:right;font-weight:700">' + money(m.booked) + '</td>' +
       '<td style="text-align:right">' + money(m.invoiced) + '</td>' +
-      '<td style="text-align:right;color:' + (wait > 0 ? '#b45309' : 'var(--muted)') + '">' +
-        (wait ? money(wait) : '\u2014') + '</td>' +
+      '<td style="text-align:right">' +
+        (wait
+          ? '<a href="#" onclick="showRevBasisPending(\'' + m.month + '\');return false" ' +
+            'style="color:#b45309;font-weight:700;text-decoration:underline">' + money(wait) + '</a>' +
+            '<div style="font-size:10.5px;color:var(--muted)">' + (m.pending || []).length + ' pending</div>'
+          : '<span style="color:var(--muted)">\u2014</span>') + '</td>' +
       '<td style="text-align:right">' + money(m.collected) + '</td>' +
       '<td style="text-align:right">' +
         (mis
@@ -8141,14 +8146,14 @@ function renderRevenueBasis() {
     '<td>Year to date</td>' +
     '<td style="text-align:right">' + money(totBooked) + '</td>' +
     '<td style="text-align:right">' + money(totInv) + '</td>' +
-    '<td style="text-align:right">' + (totBooked - totInv ? money(totBooked - totInv) : '\u2014') + '</td>' +
+    '<td style="text-align:right">' + (totWait ? money(totWait) : '\u2014') + '</td>' +
     '<td style="text-align:right">' + money(totColl) + '</td>' +
     '<td style="text-align:right">' + (totMis ? money(totMis) : '\u2014') + '</td>' +
     '</tr></tfoot></table></div>';
 
   html += '<div style="font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.7">' +
     '<b>Awaiting invoice</b> is booked business with no tax invoice raised yet \u2014 the gap ' +
-    'accounts will close later, not missing revenue. ' +
+    'accounts will close later, not missing revenue; click the figure to see the students. ' +
     '<b>Filed elsewhere</b> is money that arrived in this month but is filed to a different one; ' +
     'click the figure to see which records. That is what moves a month\u2019s number after it has ' +
     'already been reported.</div>';
@@ -8199,6 +8204,63 @@ function showRevBasisMisfiled(month) {
         '<td colspan="3"></td></tr></tfoot></table>' +
     '</div></div>';
 
+  var host = document.createElement('div');
+  host.id = 'rev-basis-modal';
+  host.innerHTML = html;
+  document.body.appendChild(host);
+}
+/* The students behind an "Awaiting invoice" figure (2026-10-23): booked in this month,
+   no invoice date yet. Oldest first, with how long each has been waiting, so accounts and
+   the counsellor know whom to chase. An invoice number with no date is called out: the
+   invoice may exist, only its date was never entered. */
+function showRevBasisPending(month) {
+  if (!_revBasis) return;
+  var m = (_revBasis.months || []).filter(function (x) { return x.month === month; })[0];
+  if (!m || !(m.pending || []).length) return;
+  var today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  function daysSince(d) {
+    if (!d) return '';
+    var t = new Date(String(d).slice(0, 10) + 'T00:00:00');
+    var n = Math.floor((today - t) / 864e5);
+    return isFinite(n) && n >= 0 ? n : '';
+  }
+  var rows = m.pending.map(function (r) {
+    var since = r.paymentDate || r.createdAt, n = daysSince(since);
+    var note = r.kind === 'corporate' ? 'Corporate batch'
+      : r.invoiceNumber ? 'Invoice no. ' + escC(r.invoiceNumber) + ' entered, date missing' : '';
+    return '<tr>' +
+      '<td>' + escC(r.name) + '<div style="font-size:10.5px;color:var(--muted)">' +
+        [r.studentId, r.batchCode, r.centre, r.recordedBy].filter(Boolean).map(escC).join(' \u00b7 ') + '</div></td>' +
+      '<td style="text-align:right;font-weight:700">' + money(r.net) + '</td>' +
+      '<td style="text-align:center">' + escC(r.paymentDate || '\u2014') + '</td>' +
+      '<td style="text-align:center">' + escC(r.createdAt || '\u2014') + '</td>' +
+      '<td style="text-align:center;font-weight:700;color:' + (n !== '' && n > 15 ? '#991b1b' : '#b45309') + '">' +
+        (n === '' ? '\u2014' : n + ' day' + (n === 1 ? '' : 's')) + '</td>' +
+      '<td style="font-size:11px;color:' + (r.invoiceNumber ? '#991b1b' : 'var(--muted)') + '">' + note + '</td>' +
+    '</tr>';
+  }).join('');
+  var html = '<div style="position:fixed;inset:0;background:rgba(13,27,46,.55);z-index:9999;' +
+    'display:flex;align-items:center;justify-content:center;padding:20px" onclick="closeRevBasisModal(event)">' +
+    '<div style="background:#fff;border-radius:12px;max-width:960px;width:100%;max-height:85vh;' +
+      'overflow:auto;padding:22px" onclick="event.stopPropagation()">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px">' +
+        '<div><div style="font-family:\'Playfair Display\',serif;font-size:19px;font-weight:700;color:var(--navy)">' +
+          'Awaiting invoice \u2014 booked in ' + revBasisMonthLabel(month) + '</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-top:4px;max-width:75ch;line-height:1.6">' +
+          'These sales are filed under ' + revBasisMonthLabel(month) + ' but no tax invoice date is recorded yet. ' +
+          'Oldest first. \u201cWaiting\u201d counts from the payment date (or the day the record was made).</div></div>' +
+        '<button class="btn btn-outline" style="width:auto;padding:5px 11px;font-size:12px" ' +
+          'onclick="closeRevBasisModal()">Close</button>' +
+      '</div>' +
+      '<table class="compact-table" style="font-size:12px;margin-top:14px"><thead><tr>' +
+        '<th class="text-left">Student</th><th style="text-align:right">Net fee</th>' +
+        '<th style="text-align:center">Paid</th><th style="text-align:center">Recorded</th>' +
+        '<th style="text-align:center">Waiting</th><th class="text-left">Note</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody>' +
+      '<tfoot><tr style="border-top:2px solid var(--navy);font-weight:700">' +
+        '<td>Total \u00b7 ' + m.pending.length + ' record' + (m.pending.length === 1 ? '' : 's') + '</td>' +
+        '<td style="text-align:right">' + money(m.awaitingInvoice) + '</td><td colspan="4"></td></tr></tfoot></table>' +
+    '</div></div>';
   var host = document.createElement('div');
   host.id = 'rev-basis-modal';
   host.innerHTML = html;

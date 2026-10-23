@@ -5467,10 +5467,10 @@ window.gasGet = (function () {
       var to   = String(p.toMonth   || '2027-03');
 
       var res = await Promise.all([
-        getP('student_fees', 'select=student_id,centre,recorded_by,course_fee,' +
-             'payment_date,revenue_month,receipt_no&limit=20000'),
+        getP('student_fees', 'select=student_id,batch_code,centre,recorded_by,course_fee,' +
+             'payment_date,revenue_month,receipt_no,created_at&limit=20000'),
         getP('corporate_batches', 'select=company_name,centre,recorded_by,course_fee,' +
-             'discount_amount,invoice_date,revenue_month&limit=2000'),
+             'discount_amount,invoice_date,revenue_month,created_at&limit=2000'),
         getP('students', 'select=student_id,name&limit=20000')
       ]);
       var fees = res[0], corp = res[1], studs = res[2];
@@ -5485,7 +5485,8 @@ window.gasGet = (function () {
           booked: 0, invoiced: 0, collected: 0,
           bookedCount: 0, invoicedCount: 0, collectedCount: 0,
           corporateBooked: 0,
-          misfiled: []
+          misfiled: [],
+          pending: []
         };
         return months[m];
       }
@@ -5500,6 +5501,18 @@ window.gasGet = (function () {
         var bkM  = monthOf(r.revenue_month) || String(r.revenue_month || '').slice(0, 7);
 
         var b = slot(bkM);  if (b) { b.booked    += net; b.bookedCount++; }
+        /* Booked with no invoice date: the records behind "Awaiting invoice". Named,
+           so the figure can be chased (2026-10-23). An invoice number with no date is
+           flagged separately - the invoice may exist but the date was never entered. */
+        if (b && !invM) {
+          b.pending.push({
+            kind: 'student', studentId: r.student_id, name: nameOf[r.student_id] || r.student_id,
+            batchCode: r.batch_code || '', centre: r.centre || '', recordedBy: r.recorded_by || '',
+            net: Math.round(net), paymentDate: r.payment_date || '',
+            createdAt: String(r.created_at || '').slice(0, 10),
+            invoiceNumber: String(m.invoice_number || '').trim()
+          });
+        }
         var i = slot(invM); if (i) { i.invoiced  += net; i.invoicedCount++; }
         var c = slot(payM); if (c) { c.collected += net; c.collectedCount++; }
 
@@ -5529,6 +5542,13 @@ window.gasGet = (function () {
         if (i) { i.invoiced += net; i.invoicedCount++; i.collected += net; i.collectedCount++; }
         var b = slot(bkM);
         if (b) { b.booked += net; b.bookedCount++; b.corporateBooked += net; }
+        if (b && !invM) {
+          b.pending.push({
+            kind: 'corporate', studentId: '', name: r.company_name || 'Corporate batch', batchCode: '',
+            centre: r.centre || '', recordedBy: r.recorded_by || '', net: Math.round(net),
+            paymentDate: '', createdAt: String(r.created_at || '').slice(0, 10), invoiceNumber: ''
+          });
+        }
       });
 
       var rows = Object.keys(months).sort().map(function (k) {
@@ -5539,7 +5559,11 @@ window.gasGet = (function () {
         /* How much of this month's money is filed to a different month — the
            number that explains a figure moving after it was reported. */
         x.misfiledTotal = x.misfiled.reduce(function (t, r) { return t + r.net; }, 0);
-        x.awaitingInvoice = x.booked - x.invoiced;
+        /* Was booked - invoiced, which nets out invoices raised this month for sales
+           booked in another month, so it could understate what is actually pending.
+           Now the sum of the records that have no invoice date (2026-10-23). */
+        x.awaitingInvoice = x.pending.reduce(function (t, r) { return t + r.net; }, 0);
+        x.pending.sort(function (a, b2) { return String(a.createdAt).localeCompare(String(b2.createdAt)); });
         x.misfiled.sort(function (a, b2) { return b2.net - a.net; });
         return x;
       });

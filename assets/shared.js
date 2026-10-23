@@ -1997,7 +1997,34 @@ window.gasGet = (function () {
   //    404, continue regardless"), so none of this ever surfaced — until the leftover
   //    students/enrollments rows finally blocked the batches DELETE itself with the FK
   //    violation this rewrite fixes ("Key is still referenced from table students").
-  async function h_deleteBatch(p, cb) {
+  /* deleteBatch front door — admins delete directly; everyone else needs a valid, unused
+     BatchDelete approval for this batch and this delete type (see h_submitBatchDeleteRequest). */
+  function h_deleteBatch(p, cb) {
+    var bc = String(p.batchCode || '').trim();
+    if (!bc) { cb(null, { status: 'error', reason: 'missing_batch_code' }); return; }
+    if (p.isAdmin === 'true' || p.isAdmin === true) { h_deleteBatchCore(p, cb); return; }
+    var keep = p.keepStudents === true || p.keepStudents === 'true';
+    GET('hod_approvals', 'ref_code=eq.' + encodeURIComponent(batchDeleteRef(bc)) + '&status=eq.Approved&order=actioned_at.desc', function(e, rows) {
+      var row = (rows || []).filter(batchDeleteApprovalValid).filter(function(r) {
+        var n = {}; try { n = JSON.parse(r.notes || '{}'); } catch (x) {}
+        return !!n.keep_students === keep;
+      })[0];
+      if (e || !row) {
+        cb(null, { status: 'error', message: 'This deletion needs an admin approval first (or the approval has expired / was for the other delete type). Use "Request deletion" on the batch card.' });
+        return;
+      }
+      h_deleteBatchCore(p, function(err, d) {
+        if (d && d.status === 'ok') {
+          var n = {}; try { n = JSON.parse(row.notes || '{}'); } catch (x) {}
+          n.deleted_by = p.counselorName || '';
+          n.deleted_at = nowISO();
+          PATCH('hod_approvals', 'id=eq.' + encodeURIComponent(row.id), { status: 'Completed', notes: JSON.stringify(n) }, function() { cb(err, d); });
+        } else cb(err, d);
+      });
+    });
+  }
+
+  async function h_deleteBatchCore(p, cb) {
     var bc = String(p.batchCode || '').trim();
     if (!bc) { cb(null, { status: 'error', reason: 'missing_batch_code' }); return; }
     var qbc = 'batch_code=eq.' + encodeURIComponent(bc);
@@ -2882,6 +2909,89 @@ window.gasGet = (function () {
           notes: notesVal
         }, function(e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
       }
+    });
+  }
+
+  /* Batch deletion through admin approval — added 2026-10-23, per instruction: counsellors
+     may delete a batch only after an admin approves a request for it. The counsellor files a
+     request (keep-students or remove-students, plus a reason) into the same hod_approvals
+     queue Batch Moves and Diploma overrides use; type 'BatchDelete', ref_code
+     '<BATCH>-DELETE'. Approving it has NO side effect — the counsellor then deletes it
+     themselves from My Batches, and h_deleteBatch refuses a non-admin delete unless it finds
+     an unused approval for that batch and that delete type, actioned within the last
+     BATCH_DELETE_APPROVAL_DAYS days. On a successful delete the approval is marked
+     'Completed' so it can't be reused. Admins still delete directly. */
+  var BATCH_DELETE_APPROVAL_DAYS = 7;
+  function batchDeleteRef(bc) { return String(bc || '').trim().toUpperCase() + '-DELETE'; }
+  function batchDeleteApprovalValid(row) {
+    if (!row || row.status !== 'Approved' || !row.actioned_at) return false;
+    var age = Date.now() - new Date(row.actioned_at).getTime();
+    return age >= 0 && age <= BATCH_DELETE_APPROVAL_DAYS * 86400000;
+  }
+
+  function h_submitBatchDeleteRequest(p, cb) {
+    var bc = String(p.batchCode || '').trim();
+    var reason = String(p.reason || '').trim();
+    var keep = p.keepStudents === true || p.keepStudents === 'true';
+    if (!bc) { cb(null, { status: 'error', reason: 'Missing batch code.' }); return; }
+    if (!reason) { cb(null, { status: 'error', reason: 'Please give a reason for deleting this batch.' }); return; }
+    var refCode = batchDeleteRef(bc);
+    GET('batches', 'batch_code=eq.' + encodeURIComponent(bc) + '&select=batch_code,centre,course,start_date,end_date', function(eb, brows) {
+      var b = (brows && brows[0]) || {};
+      GET('student_fees', 'batch_code=eq.' + encodeURIComponent(bc) + '&select=id', function(ef, frows) {
+        var notesVal = JSON.stringify({
+          batch_code: bc,
+          course: b.course || '',
+          start_date: b.start_date || '',
+          end_date: b.end_date || '',
+          keep_students: keep,
+          student_count: Number(p.studentCount) || 0,
+          fee_records: (frows || []).length,
+          reason: reason
+        });
+        GET('hod_approvals', 'ref_code=eq.' + encodeURIComponent(refCode) + '&status=eq.Pending', function(err, rows) {
+          if (!err && rows && rows.length) {
+            PATCH('hod_approvals', 'id=eq.' + encodeURIComponent(rows[0].id), {
+              centre: p.centre || b.centre || '',
+              requested_by: p.counselorName || '',
+              created_at: nowISO(),
+              notes: notesVal
+            }, function(e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
+          } else {
+            POST('hod_approvals', null, {
+              type: 'BatchDelete',
+              ref_code: refCode,
+              centre: p.centre || b.centre || '',
+              requested_by: p.counselorName || '',
+              status: 'Pending',
+              notes: notesVal
+            }, function(e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
+          }
+        });
+      });
+    });
+  }
+
+  /* getBatchDeleteRequests — latest deletion request per batch, for the counsellor's
+     My Batches cards. state: Pending | Approved (still usable) | Expired | Rejected | Completed */
+  function h_getBatchDeleteRequests(p, cb) {
+    GET('hod_approvals', 'type=eq.BatchDelete&order=created_at.desc', function(e, rows) {
+      if (e) { cb(null, { status: 'error', requests: {} }); return; }
+      var out = {};
+      (rows || []).forEach(function(r) {
+        var n = {}; try { n = JSON.parse(r.notes || '{}'); } catch (x) {}
+        var bc = String(n.batch_code || String(r.ref_code || '').replace(/-DELETE$/, '')).toUpperCase();
+        if (!bc || out[bc]) return; // newest first — keep the latest only
+        var state = r.status;
+        if (r.status === 'Approved' && !batchDeleteApprovalValid(r)) state = 'Expired';
+        var expires = r.actioned_at ? new Date(new Date(r.actioned_at).getTime() + BATCH_DELETE_APPROVAL_DAYS * 86400000).toISOString() : '';
+        out[bc] = {
+          approvalId: r.id, state: state, keepStudents: !!n.keep_students, reason: n.reason || '',
+          reviewNote: n.review_note || '', requestedBy: r.requested_by || '', requestedAt: r.created_at,
+          actionedBy: r.actioned_by || '', actionedAt: r.actioned_at || '', expiresAt: expires
+        };
+      });
+      cb(null, { status: 'ok', requests: out });
     });
   }
 
@@ -7605,13 +7715,20 @@ window.gasGet = (function () {
         var fromBatch = '';
         var toBatch = '';
         var reason = '';
+        var keepStudents = null, studentCount = null, feeRecords = null;
 
         if (r.notes) {
           try {
             var n = JSON.parse(r.notes);
             studentId = n.student_id || '';
             studentName = n.student_name || '';
-            if (type === 'BatchMove') {
+            if (type === 'BatchDelete') {
+              batchCode = n.batch_code || '';
+              reason = n.reason || '';
+              keepStudents = !!n.keep_students;
+              studentCount = n.student_count;
+              feeRecords = n.fee_records;
+            } else if (type === 'BatchMove') {
               fromBatch = n.from_batch || '';
               toBatch = n.to_batch || '';
               reason = n.reason || '';
@@ -7624,7 +7741,7 @@ window.gasGet = (function () {
           } catch(err) {}
         }
 
-        if (!studentId && type !== 'BatchMove' && r.ref_code) {
+        if (!studentId && type !== 'BatchMove' && type !== 'BatchDelete' && r.ref_code) {
           var parts = r.ref_code.split('-HOD-');
           if (parts.length === 2) {
             batchCode = parts[0];
@@ -7637,7 +7754,10 @@ window.gasGet = (function () {
           type: type,
           studentId: studentId,
           batchCode: batchCode,
-          studentName: studentName || ('Student ' + studentId),
+          studentName: type === 'BatchDelete' ? ('Batch ' + batchCode) : (studentName || ('Student ' + studentId)),
+          keepStudents: keepStudents,
+          studentCount: studentCount,
+          feeRecords: feeRecords,
           weeklyAvg: weeklyAvg,
           finalExam: finalExam,
           fromBatch: fromBatch,
@@ -14926,6 +15046,8 @@ window.gasGet = (function () {
       case 'assignInstructor':          return h_assignInstructor(params, cb);
       case 'saveCoInstructor':          return h_saveCoInstructor(params, cb);
       case 'deleteBatch':               return h_deleteBatch(params, cb);
+      case 'submitBatchDeleteRequest':  return h_submitBatchDeleteRequest(params, cb);
+      case 'getBatchDeleteRequests':    return h_getBatchDeleteRequests(params, cb);
       case 'updateBatchDates':          return h_updateBatchDates(params, cb);
       case 'getUsers':                  return h_getUsers(params, cb);
       case 'updateUserPermissions':     return h_updateUserPermissions(params, cb);

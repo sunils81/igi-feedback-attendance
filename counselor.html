@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=161"></script>
+<script src="/assets/shared.js?v=162"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=6"></script>
 <!-- Corporate/RTT client report. Shared with admin.html so the document a client
@@ -14617,7 +14617,7 @@ function revEvaluateMilestones(counsellor, annualTarget) {
   var hasLoggedAny = achieved > 0;
   
   var monthsCount = revenueMonths().length || 15;
-  var runRate = Number((revenueData && revenueData.summary && revenueData.summary.monthlyTargetGst)||0) || (annualTarget ? Math.round(annualTarget / monthsCount) : 0);
+  var runRate = annualTarget ? Math.round(annualTarget / monthsCount) : 0; // only used as "has a target" + fallback; each month is judged on its own dynamic rate
   var currentStreak = revCurrentStreak(counsellor, (allowedCentres && allowedCentres.length ? allowedCentres[0] : ''), runRate);
   var isConsistent = currentStreak >= 3;
   
@@ -14627,7 +14627,8 @@ function revEvaluateMilestones(counsellor, annualTarget) {
     if (revSameCounsellor(r.counsellor, counsellor)) {
       var mRows = revRowsForMonth(r.month, counsellor, assignedCentre);
       var total = revTotalsFromRows(mRows, assignedCentre).totalGst;
-      var pct = runRate ? (total / runRate) * 100 : 0;
+      var need = revDynamicRunRate(counsellor, r.month, assignedCentre).rate;
+      var pct = need ? (total / need) * 100 : 0;
       if (pct >= 200) hasCenturionMonth = true;
     }
   });
@@ -14682,6 +14683,10 @@ function renderMyRevenue() {
         } else {
           badges += '<span class="rev-motivate-badge projection" style="background:#FDF5E6;border:1px solid #F5D3A0;color:#98710E;border-radius:6px;padding:4px 8px;font-size:10px;font-weight:700">📈 Projected to hit target by: <strong>' + proj.dateLabel + '</strong></span>';
         }
+      }
+      var drNow = revDynamicRunRate(me, revenueCurrentMonthKey(), (allowedCentres && allowedCentres.length) ? allowedCentres[0] : '');
+      if (drNow.target && !drNow.stretchDone) {
+        badges += '<span class="rev-motivate-badge" title="(annual target − booked before this month) ÷ months left incl. this one" style="background:#EEF2FF;border:1px solid #C7D2FE;color:#3730A3;border-radius:6px;padding:4px 8px;font-size:10px;font-weight:700">🎯 ' + (drNow.hit ? 'Stretch pace' : 'Needed this month') + ': <strong>' + money(drNow.rate) + '</strong> (' + money(drNow.remaining) + ' over ' + drNow.left + ' mo)</span>';
       }
       badges += '</div>';
       subEl.innerHTML = '<div>' + html + '</div>' + badges;
@@ -14846,12 +14851,47 @@ function revPreviewTargets() {
   return revDeduplicateTargetRows(raw);
 }
 
-function revMonthlyTargetForCounsellor(counsellor) {
-  var months = revenueMonths();
-  var target = revPreviewTargets().filter(function(r){
+/* Dynamic monthly run rate (2026-10-23, per instruction: the monthly run rate should
+   depend on how much has been achieved, not a flat target ÷ 12).
+     needed for month M = (annual target − revenue booked in the months BEFORE M)
+                          ÷ months left in the FY, counting M itself
+   Course fee excl. GST throughout — the same basis as the annual target and the Achieved
+   figure on the month cards (the old flat figure used summary.monthlyTargetGst, a
+   GST-inclusive target against excl-GST achievement). A past month's figure depends only on
+   the months before it, so it stays what it was at the time (unless an earlier month is
+   revised). Once the annual target is hit, the pace shown is the stretch to target + 10%;
+   once that is hit too, the rate is 0 and every month counts as met. The annual targets
+   themselves never change. */
+var REV_STRETCH_PCT = 0.10;
+function revTargetForCounsellorAny(counsellor) {
+  var t = revPreviewTargets().filter(function(r){
     return revSameCounsellor(r.counsellor, counsellor);
   }).reduce(function(sum,r){ return sum + (Number(r.targetCourse)||0); }, 0);
-  return target && months.length ? Math.round(target / months.length) : 0;
+  return t || (typeof revAnnualTargetForCounsellor === 'function' ? revAnnualTargetForCounsellor(counsellor) : 0);
+}
+function revDynamicRunRate(counsellor, monthKey, assignedCentre) {
+  var months = revenueMonths();
+  var target = revTargetForCounsellorAny(counsellor);
+  var flat = target && months.length ? Math.round(target / months.length) : 0;
+  if (!target) return { rate:0, target:0, flat:0, hit:false, before:0, left:0, remaining:0 };
+  var idx = -1;
+  months.forEach(function(m, i){ if (m.key === monthKey) idx = i; });
+  if (idx < 0) idx = monthKey < months[0].key ? 0 : months.length - 1;
+  var before = 0;
+  for (var i = 0; i < idx; i++) {
+    before += revTotalsFromRows(revRowsForCounsellorMonth(months[i].key, counsellor, assignedCentre || ''), assignedCentre || '').totalGst;
+  }
+  var left = months.length - idx;
+  var remaining = target - before;
+  if (remaining > 0) {
+    return { rate:Math.round(remaining / left), target:target, flat:flat, hit:false, before:before, left:left, remaining:remaining };
+  }
+  var stretchLeft = target * (1 + REV_STRETCH_PCT) - before;
+  return { rate:stretchLeft > 0 ? Math.round(stretchLeft / left) : 0, target:target, flat:flat, hit:true,
+           stretchDone:stretchLeft <= 0, before:before, left:left, remaining:Math.max(stretchLeft, 0) };
+}
+function revMonthlyTargetForCounsellor(counsellor, monthKey) {
+  return revDynamicRunRate(counsellor, monthKey || revenueCurrentMonthKey(), '').rate;
 }
 
 function revMonthTotalsByCounsellor(monthKey) {
@@ -14869,7 +14909,7 @@ function revMonthTotalsByCounsellor(monthKey) {
     out[key].targetGst += Number(r.targetCourse)||0;
   });
   Object.keys(out).forEach(function(k){
-    out[k].runRateGst = revMonthlyTargetForCounsellor(out[k].counsellor);
+    out[k].runRateGst = revMonthlyTargetForCounsellor(out[k].counsellor, monthKey);
     out[k].pct = out[k].runRateGst ? Math.round(out[k].achievedGst/out[k].runRateGst*100) : (out[k].achievedGst ? 100 : 0);
   });
   return out;
@@ -14897,7 +14937,9 @@ function revStreakEndingAt(counsellor, assignedCentre, runRate, monthKey) {
     var rows = revRowsForCounsellorMonth(m.key, counsellor, assignedCentre);
     if (!rows.length) { streak = 0; return false; }
     var total = revTotalsFromRows(rows, assignedCentre || '').totalGst;
-    streak = total >= runRate ? streak + 1 : 0;
+    var dr = revDynamicRunRate(counsellor, m.key, assignedCentre);
+    var need = dr.target ? dr.rate : runRate;
+    streak = (total > 0 && total >= need) ? streak + 1 : 0;
     return false;
   });
   return streak;
@@ -15180,7 +15222,7 @@ function renderRevenueMonthCards(counsellor) {
   var months = revenueMonths();
   var designatedCentre = (allowedCentres && allowedCentres.length) ? allowedCentres[0] : (CENTRES[0]||'');
   var target = revAnnualTargetForCounsellor(counsellor);
-  var runRate = Number((revenueData && revenueData.summary && revenueData.summary.monthlyTargetGst)||0) || (target ? Math.round(target / months.length) : 0);
+  var baseRunRate = target ? Math.round(target / months.length) : 0;
   // Default "other centre" = first centre that is NOT the designated one
   var otherDefault = CENTRES.filter(function(c){ return c !== designatedCentre; })[0] || CENTRES[0];
 
@@ -15190,7 +15232,13 @@ function renderRevenueMonthCards(counsellor) {
     var rows = revRowsForMonth(m.key, counsellor, designatedCentre);
     var totals = revTotalsFromRows(rows, designatedCentre);
     var saved = rows.some(function(r){ return window.isRevenueLocked(r.locked); });
-    var pct = runRate ? Math.round((totals.totalGst / runRate) * 100) : (totals.totalGst ? 100 : 0);
+    var dr = revDynamicRunRate(counsellor, m.key, designatedCentre);
+    var runRate = dr.target ? dr.rate : baseRunRate;
+    var pct = runRate ? Math.round((totals.totalGst / runRate) * 100) : (totals.totalGst || (dr.target && dr.hit) ? 100 : 0);
+    var paceNote = !dr.target ? '' :
+      (dr.hit
+        ? (dr.stretchDone ? '🎯 Annual target and +10% stretch achieved' : '🎯 Target achieved · pace shown is the +10% stretch: ' + money(dr.remaining) + ' over ' + dr.left + ' month' + (dr.left===1?'':'s'))
+        : (open && m.key === revenueCurrentMonthKey() ? 'Needed now: ' : (open ? 'Needed at the time: ' : 'If nothing more is booked: ')) + money(dr.remaining) + ' left ÷ ' + dr.left + ' month' + (dr.left===1?'':'s') + ' · flat plan ' + money(dr.flat) + '/mo');
     var variance = totals.totalGst - runRate;
     var status = !open ? 'Future' : (saved ? (variance >= 0 ? 'Ahead' : 'Behind') : 'Open');
     var state = !open ? 'future' : (saved ? (variance >= 0 ? 'saved' : 'behind') : 'open');
@@ -15202,11 +15250,12 @@ function renderRevenueMonthCards(counsellor) {
         '<div class="rev-run-head"><div class="rev-run-title">'+escC(m.label)+'</div><div class="rev-run-pct">'+escC(pct)+'%</div></div>'+
         '<div class="rev-run-bar"><span style="width:'+barWidth+'%"></span></div>'+
         '<div class="rev-run-meta">'+
-          '<div>Run Rate<strong>'+money(runRate)+'</strong></div>'+
+          '<div>'+(dr.hit?'Stretch Pace':'Required')+'<strong>'+money(runRate)+'</strong></div>'+
           '<div>Achieved<strong>'+money(totals.totalGst)+'</strong></div>'+
           '<div>Variance<strong>'+money(Math.abs(variance))+'</strong></div>'+
           '<div>Status<strong>'+escC(status)+'</strong></div>'+
         '</div>'+
+        (paceNote ? '<div style="font-size:11px;color:var(--muted);margin-top:2px">'+escC(paceNote)+'</div>' : '')+
         '<div class="rev-centre-total" id="rmc-centre-total-'+escC(m.key)+'" data-centre="'+escC(designatedCentre)+'" data-month="'+escC(m.key)+'" style="font-size:11.5px;color:var(--muted);margin-top:2px">🏢 '+escC(designatedCentre)+' centre total this month: <span>—</span> <span class="rmc-centre-mom"></span></div>'+
         '<div class="rmc-own-compare" id="rmc-own-compare-'+escC(m.key)+'" data-counsellor="'+escC(counsellor)+'" data-month="'+escC(m.key)+'" data-achieved="'+totals.totalGst+'" style="font-size:11px;color:var(--muted);margin-top:2px">📊 Me vs last month: <span class="rmc-own-mom">…</span> &middot; vs last year: <span class="rmc-own-yoy">…</span></div>'+
         revAchievementChips(open, rows, pct, streak)+
@@ -16153,7 +16202,8 @@ function revSaveMonthCard(btn) {
     var totalGst = gst1 + totalGst2 + gst3;
     var target = revAnnualTargetForCounsellor(me);
     var monthsCount = revenueMonths().length || 15;
-    var runRate = Number((revenueData && revenueData.summary && revenueData.summary.monthlyTargetGst)||0) || (target ? Math.round(target / monthsCount) : 0);
+    var drSave = revDynamicRunRate(me, monthKey, assignedCentre);
+    var runRate = drSave.target ? drSave.rate : (target ? Math.round(target / monthsCount) : 0);
     if (totalGst >= runRate && totalGst > 0) {
       triggerConfettiCelebration();
     }
@@ -16957,7 +17007,9 @@ function loadMyBatches() {
         var startMid = new Date(startDForAge); startMid.setHours(0,0,0,0);
         daysSinceStart = Math.floor((todayMid - startMid) / 86400000);
       }
-      var deleteLockedByAge = !isCompleted && daysSinceStart !== null && daysSinceStart >= 3;
+      // Counsellors now delete only through an admin-approved request (2026-10-23), so the
+      // 3-day age lock applies to the direct (admin) delete only.
+      var deleteLockedByAge = isAdmin && !isCompleted && daysSinceStart !== null && daysSinceStart >= 3;
 
       var lockedNote = isCompleted
         ? `<div style="margin-top:6px;font-size:10px;color:#9CA3AF;font-style:italic">🔒 Batch completed — deletion and instructor changes are locked. Dates can still be edited.</div>`
@@ -16969,6 +17021,8 @@ function loadMyBatches() {
 
       var deleteButtonsHtml = isCompleted
         ? `<span style="${lockedPillStyle}" title="Locked — batch completed">🔒 Delete</span>`
+        : (!isAdmin
+        ? `<span class="bdel-slot" id="bdel-${escC(b.batchCode)}" data-bc="${escC(b.batchCode)}" data-scount="${sCount}" data-centre="${escC(b.centre||'')}"><span style="font-size:11px;color:var(--muted)">…</span></span>`
         : (deleteLockedByAge
         ? `<span style="${lockedPillStyle}" title="Locked — batch started ${daysSinceStart} days ago">🔒 Delete</span>`
         : (sCount === 0
@@ -16976,7 +17030,7 @@ function loadMyBatches() {
           : `
           <button class="btn btn-outline" style="padding:4px 8px; font-size:11px; width:auto; border-color:rgba(201,74,74,0.3); color:var(--red)" onclick="promptDeleteBatch('${escC(b.batchCode)}', true)">Delete Batch (Keep Students)</button>
           <button class="btn" style="padding:4px 8px; font-size:11px; width:auto; background:#DC2626; color:#fff; border:none" onclick="promptDeleteBatch('${escC(b.batchCode)}', false)">Delete Batch &amp; Students</button>
-        `));
+        `)));
 
       var changeInstructorControl = isCompleted
         ? (b.instructor ? `<span style="${lockedPillStyle}" title="Locked — batch completed">🔒 Change Instructor</span>` : '')
@@ -17130,6 +17184,7 @@ function loadMyBatches() {
       renderSection('mb-sec-upcoming', 'Upcoming', '#EFF6FF', '#1D4ED8', groupUpcoming, true, false) +
       renderSection('mb-sec-active', 'Active', 'rgba(201,168,76,0.12)', '#B87A10', groupActive, true, false) +
       renderSection('mb-sec-completed', 'Completed', '#F3F4F6', '#6B7280', groupCompleted, false, true);
+    if (!isAdmin) loadBatchDeleteStates();
   }
   var xsBtn = document.getElementById('mb-cross-sell-btn');
   if (xsBtn) xsBtn.style.display = canCrossSellOtherCentres() ? '' : 'none';
@@ -17172,9 +17227,102 @@ function mbToggleSection(bodyId, headerEl) {
   if (chev) chev.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
 }
 
+/* ── Batch deletion through admin approval (2026-10-23) ─────────────────────────
+   Counsellors no longer delete a batch directly. "Request deletion" files a request with a
+   reason into the admin's Pending Approvals queue (type BatchDelete). Once approved, the
+   card shows "Approved: Delete now" for 7 days; the delete itself is re-checked against the
+   approval in h_deleteBatch (shared.js). Admins keep the direct delete buttons. */
+var _batchDelReqs = {};
+function loadBatchDeleteStates() {
+  gasGet({ action: 'getBatchDeleteRequests' }, function(e, d) {
+    _batchDelReqs = (d && d.requests) || {};
+    document.querySelectorAll('.bdel-slot').forEach(renderBatchDeleteSlot);
+  });
+}
+function renderBatchDeleteSlot(slot) {
+  var bc = slot.getAttribute('data-bc');
+  var r = _batchDelReqs[String(bc).toUpperCase()];
+  var reqBtn = function(label) {
+    return '<button class="btn btn-outline" style="padding:4px 8px;font-size:11px;width:auto;border-color:rgba(201,74,74,0.3);color:var(--red)" onclick="openBatchDeleteRequest(\'' + escC(bc) + '\')">' + label + '</button>';
+  };
+  var pill = function(bg, col, bd, txt, title) {
+    return '<span title="' + escC(title || '') + '" style="font-size:11px;background:' + bg + ';color:' + col + ';border:1px solid ' + bd + ';border-radius:6px;padding:3px 10px">' + txt + '</span>';
+  };
+  var html;
+  if (!r || r.state === 'Completed') {
+    html = reqBtn('🗑 Request deletion');
+  } else if (r.state === 'Pending') {
+    html = pill('#FFFBEB', '#92400E', '#FDE68A', '⏳ Deletion requested · awaiting admin', 'Reason: ' + r.reason) +
+      ' <a href="javascript:void(0)" style="font-size:11px" onclick="openBatchDeleteRequest(\'' + escC(bc) + '\')">edit request</a>';
+  } else if (r.state === 'Approved') {
+    var exp = r.expiresAt ? new Date(r.expiresAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '';
+    html = '<button class="btn" style="padding:4px 8px;font-size:11px;width:auto;background:#DC2626;color:#fff;border:none" onclick="promptDeleteBatch(\'' + escC(bc) + '\', ' + (r.keepStudents ? 'true' : 'false') + ')">✅ Approved: Delete now' + (r.keepStudents ? ' (keep students)' : ' (with students)') + '</button>' +
+      '<span style="font-size:10.5px;color:var(--muted);margin-left:6px">approved by ' + escC(r.actionedBy || 'admin') + (exp ? ' · valid until ' + exp : '') + (r.reviewNote ? ' · “' + escC(r.reviewNote) + '”' : '') + '</span>';
+  } else if (r.state === 'Rejected') {
+    html = pill('#FEF2F2', '#B91C1C', '#FCA5A5', '✖ Deletion rejected' + (r.reviewNote ? ': ' + escC(r.reviewNote) : ''), 'Rejected by ' + (r.actionedBy || 'admin')) + ' ' + reqBtn('Request again');
+  } else { // Expired
+    html = pill('#F3F4F6', '#6B7280', '#E5E7EB', '⌛ Approval expired', 'Approvals are valid for 7 days') + ' ' + reqBtn('Request again');
+  }
+  slot.innerHTML = html;
+}
+function openBatchDeleteRequest(bc) {
+  var slot = document.getElementById('bdel-' + bc);
+  var sCount = slot ? Number(slot.getAttribute('data-scount')) || 0 : 0;
+  var centre = slot ? slot.getAttribute('data-centre') || '' : '';
+  var prev = _batchDelReqs[String(bc).toUpperCase()] || {};
+  var old = document.getElementById('bdel-modal'); if (old) old.remove();
+  var m = document.createElement('div');
+  m.id = 'bdel-modal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(13,27,46,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML =
+    '<div style="background:#fff;border-radius:12px;max-width:460px;width:100%;padding:20px 22px;box-shadow:0 20px 50px rgba(0,0,0,0.25)">' +
+      '<div style="font-size:16px;font-weight:800;color:var(--navy)">Request batch deletion</div>' +
+      '<div style="font-size:12px;color:var(--muted);margin:4px 0 14px">' + escC(bc) + ' · ' + sCount + ' student' + (sCount === 1 ? '' : 's') + '. An admin must approve before you can delete it.</div>' +
+      (sCount > 0 ?
+        '<label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin-bottom:8px;cursor:pointer"><input type="radio" name="bdel-keep" value="true"' + (prev.keepStudents !== false ? ' checked' : '') + '> <span><b>Keep students</b><br><span style="color:var(--muted)">Delete the batch, sessions, marks and fee records; student profiles stay.</span></span></label>' +
+        '<label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin-bottom:12px;cursor:pointer"><input type="radio" name="bdel-keep" value="false"' + (prev.keepStudents === false ? ' checked' : '') + '> <span><b>Remove students too</b><br><span style="color:var(--muted)">Also removes students who are in no other batch.</span></span></label>'
+        : '<input type="hidden" name="bdel-keep" value="false">') +
+      '<div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:4px">Reason <span style="color:#DC2626">*</span></div>' +
+      '<textarea id="bdel-reason" rows="3" style="width:100%;box-sizing:border-box;font-size:13px;padding:8px;border:1px solid var(--border);border-radius:8px" placeholder="e.g. Created by mistake / duplicate of ...">' + escC(prev.state === 'Pending' ? (prev.reason || '') : '') + '</textarea>' +
+      '<div id="bdel-err" style="display:none;color:#DC2626;font-size:12px;margin-top:6px"></div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">' +
+        '<button class="btn btn-outline" style="width:auto;padding:7px 14px;font-size:12px" onclick="document.getElementById(\'bdel-modal\').remove()">Cancel</button>' +
+        '<button class="btn" id="bdel-send" style="width:auto;padding:7px 14px;font-size:12px;background:#DC2626;color:#fff;border:none" onclick="submitBatchDeleteRequest(\'' + escC(bc) + '\')">Send to admin</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(m);
+  m.addEventListener('click', function(ev) { if (ev.target === m) m.remove(); });
+}
+function submitBatchDeleteRequest(bc) {
+  var slot = document.getElementById('bdel-' + bc);
+  var reason = (document.getElementById('bdel-reason').value || '').trim();
+  var keepEl = document.querySelector('#bdel-modal input[name="bdel-keep"]:checked') || document.querySelector('#bdel-modal input[name="bdel-keep"]');
+  var err = document.getElementById('bdel-err');
+  if (!reason) { err.textContent = 'Please give a reason.'; err.style.display = 'block'; return; }
+  var btn = document.getElementById('bdel-send'); btn.disabled = true; btn.textContent = 'Sending…';
+  gasGet({
+    action: 'submitBatchDeleteRequest', batchCode: bc, reason: reason,
+    keepStudents: keepEl ? keepEl.value : 'false',
+    studentCount: slot ? slot.getAttribute('data-scount') : '0',
+    centre: slot ? slot.getAttribute('data-centre') : '',
+    counselorName: counselorName
+  }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      btn.disabled = false; btn.textContent = 'Send to admin';
+      err.textContent = (d && d.reason) || 'Could not send the request. Please try again.'; err.style.display = 'block';
+      return;
+    }
+    document.getElementById('bdel-modal').remove();
+    showToast('Deletion request sent to admin for approval.');
+    loadBatchDeleteStates();
+  });
+}
+
 function promptDeleteBatch(batchCode, keepStudents) {
-  // Batch Admin authority — same opt-out semantics as createBatch() above.
-  if (!isAdmin && counselorPermissions && counselorPermissions.batch_admin === false) {
+  // Batch Admin authority — same opt-out semantics as createBatch() above. Counsellors now
+  // delete through an approved request instead (checked in h_deleteBatch), so this only
+  // gates admins' direct delete.
+  if (isAdmin && counselorPermissions && counselorPermissions.batch_admin === false) {
     alert('Your account does not have batch admin authority — ask an admin to grant it in Settings → Users.');
     return;
   }
@@ -17196,7 +17344,9 @@ function promptDeleteBatch(batchCode, keepStudents) {
   var params = {
     action: 'deleteBatch',
     batchCode: batchCode,
-    keepStudents: keepStudents ? 'true' : 'false'
+    keepStudents: keepStudents ? 'true' : 'false',
+    isAdmin: isAdmin ? 'true' : 'false',
+    counselorName: counselorName
   };
   
   showToast('Deleting batch...', 'info');

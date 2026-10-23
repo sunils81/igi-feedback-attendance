@@ -133,7 +133,28 @@
   function teamById(id) { for (var i = 0; i < S.teams.length; i++) if (S.teams[i].id === id) return S.teams[i]; return null; }
   function isLead(teamId) { var t = teamById(teamId); return !!(t && t.lead_name === S.ctx.me); }
   function canAssign(teamId) { return S.ctx.canManage || isLead(teamId); }
+  // in the direct list a non-manager may edit only tasks they gave themselves
   function myTeams() { return S.teams; }
+  /* Direct one-to-one tasks (2026-10-23): one built-in team (work_teams.is_direct). Not
+     membership-based: you load its tasks only where you are the assignee or the assigner;
+     the HOD's admin portal sees all of them. Managers assign to any counsellor or
+     instructor from it. */
+  function isDirect(teamId) { var t = teamById(teamId); return !!(t && t.is_direct); }
+  function directTeam() { for (var i = 0; i < S.teams.length; i++) if (S.teams[i].is_direct) return S.teams[i]; return null; }
+  var ROLE_GROUPS = [['Counselor', 'Counsellors'], ['Instructor', 'Instructors'], ['AcademicHead', 'Academic head'], ['*', 'Management & others']];
+  function staffOptions(selected) {
+    var staff = S.users.filter(function (u) { return u.name && u.role !== 'Student'; });
+    var used = {};
+    var html = ROLE_GROUPS.map(function (g) {
+      var list = staff.filter(function (u) { if (used[u.name]) return false; var hit = g[0] === '*' || u.roles.indexOf(g[0]) >= 0 || u.role === g[0]; if (hit) used[u.name] = 1; return hit; });
+      if (!list.length) return '';
+      return '<optgroup label="' + esc(g[1]) + '">' + list.map(function (u) {
+        return '<option value="' + esc(u.name) + '"' + (u.name === selected ? ' selected' : '') + '>' + esc(dn(u.name)) + (u.centres.length ? ' · ' + esc(u.centres.slice(0, 2).join(', ')) + (u.centres.length > 2 ? '…' : '') : '') + '</option>';
+      }).join('') + '</optgroup>';
+    }).join('');
+    if (selected && !used[selected]) html = '<option value="' + esc(selected) + '" selected>' + esc(dn(selected)) + '</option>' + html;
+    return html;
+  }
 
   // ── data loading ─────────────────────────────────────────────────────────
   function loadUsers() {
@@ -152,7 +173,7 @@
     } else {
       p = GET('work_team_members', 'select=team_id&user_name=eq.' + qsEnc(S.ctx.me)).then(function (m) {
         var ids = m.map(function (r) { return r.team_id; });
-        return GET('work_teams', 'select=*&is_active=eq.true&or=(id.in.(' + ids.concat(['00000000-0000-0000-0000-000000000000']).join(',') + '),lead_name.eq.' + qsEnc('"' + S.ctx.me + '"') + ')&order=name.asc');
+        return GET('work_teams', 'select=*&is_active=eq.true&or=(id.in.(' + ids.concat(['00000000-0000-0000-0000-000000000000']).join(',') + '),lead_name.eq.' + qsEnc('"' + S.ctx.me + '"') + ',is_direct.eq.true)&order=name.asc');
       });
     }
     return p.then(function (teams) {
@@ -168,18 +189,32 @@
 
   function loadTasks() {
     if (!S.teams.length) { S.tasks = []; return Promise.resolve(); }
-    var ids = S.teams.map(function (t) { return t.id; }).join(',');
-    return GET('work_tasks', 'select=*&team_id=in.(' + ids + ')&order=created_at.desc&limit=1000').then(function (rows) { S.tasks = rows; });
+    var dt = directTeam();
+    var ids = S.teams.filter(function (t) { return !t.is_direct; }).map(function (t) { return t.id; });
+    var ps = [ids.length ? GET('work_tasks', 'select=*&team_id=in.(' + ids.join(',') + ')&order=created_at.desc&limit=1000') : Promise.resolve([])];
+    if (dt) ps.push(GET('work_tasks', 'select=*&team_id=eq.' + dt.id + (S.ctx.portal === 'admin' ? '' :
+      '&or=(assigned_to.eq.' + qsEnc('"' + S.ctx.me + '"') + ',assigned_by.eq.' + qsEnc('"' + S.ctx.me + '"') + ')') + '&order=created_at.desc&limit=1000'));
+    return Promise.all(ps).then(function (r) {
+      S.tasks = r[0].concat(r[1] || []).sort(function (a, b) { return String(b.created_at).localeCompare(String(a.created_at)); });
+    });
   }
 
   function loadEvents() {
     if (!S.teams.length) { S.events = []; return Promise.resolve(); }
-    var ids = S.teams.map(function (t) { return t.id; }).join(',');
-    return GET('work_task_events', 'select=*&team_id=in.(' + ids + ')&order=created_at.desc&limit=300').then(function (rows) { S.events = rows; });
+    var ids = S.teams.filter(function (t) { return !t.is_direct; }).map(function (t) { return t.id; });
+    var dt = directTeam();
+    var dids = dt ? S.tasks.filter(function (t) { return t.team_id === dt.id; }).map(function (t) { return t.id; }) : [];
+    var parts = [];
+    if (ids.length) parts.push('team_id.in.(' + ids.join(',') + ')');
+    if (dids.length) parts.push('task_id.in.(' + dids.slice(0, 150).join(',') + ')');
+    if (!parts.length) { S.events = []; return Promise.resolve(); }
+    return GET('work_task_events', 'select=*&or=(' + parts.join(',') + ')&order=created_at.desc&limit=300').then(function (rows) { S.events = rows; });
   }
+  // events depend on which direct tasks were loaded, so tasks first
+  function loadTasksAndEvents() { return loadTasks().then(loadEvents); }
 
   function reloadAll() {
-    return loadTeams().then(function () { return Promise.all([loadTasks(), loadEvents()]); }).then(render).catch(function (e) {
+    return loadTeams().then(loadTasksAndEvents).then(render).catch(function (e) {
       console.error('work reload', e);
       var m = document.getElementById(S.mountId);
       if (m && /HTTP 404|relation .* does not exist/i.test(e.message)) {
@@ -201,7 +236,7 @@
   function scheduleRefresh() {
     clearTimeout(_rtDebounce);
     _rtDebounce = setTimeout(function () {
-      Promise.all([loadTasks(), loadEvents()]).then(render).catch(function () {});
+      loadTasksAndEvents().then(render).catch(function () {});
       renderBanner();
     }, 250);
   }
@@ -240,7 +275,7 @@
     if (S.pollTimer) return;
     S.pollTimer = setInterval(function () {
       if (document.hidden) return;
-      Promise.all([loadTasks(), loadEvents()]).then(render).catch(function () {});
+      loadTasksAndEvents().then(render).catch(function () {});
     }, 45000);
   }
   function setLiveIndicator() {
@@ -394,14 +429,14 @@
   function renderTeamSelect() {
     var sel = document.getElementById('wk-team'); if (!sel) return;
     sel.innerHTML = S.teams.length ? S.teams.map(function (t) {
-      return '<option value="' + t.id + '"' + (t.id === S.teamId ? ' selected' : '') + '>' + esc(t.name) + (t.centre ? ' · ' + esc(t.centre) : '') + '</option>';
+      return '<option value="' + t.id + '"' + (t.id === S.teamId ? ' selected' : '') + '>' + (t.is_direct ? '👤 ' : '') + esc(t.name) + (t.centre ? ' · ' + esc(t.centre) : '') + '</option>';
     }).join('') : '<option value="">No teams yet</option>';
     renderTeamButtons();
   }
   function renderTeamButtons() {
     var nt = document.getElementById('wk-new-team'), et = document.getElementById('wk-edit-team'), nk = document.getElementById('wk-new-task');
     if (nt) nt.style.display = S.ctx.canManage ? '' : 'none';
-    if (et) et.style.display = (S.teamId && canAssign(S.teamId)) ? '' : 'none';
+    if (et) et.style.display = (S.teamId && canAssign(S.teamId) && !isDirect(S.teamId)) ? '' : 'none';
     if (nk) nk.style.display = S.teams.length ? '' : 'none';
   }
   function renderOnline() {
@@ -495,6 +530,7 @@
   function boardHtml() {
     var team = teamById(S.teamId); if (!team) return '<div class="wk-empty">Pick a team.</div>';
     var mem = (S.members[S.teamId] || []).map(function (m) { return m.user_name; });
+    if (team.is_direct) { var seen = {}; mem = []; S.tasks.forEach(function (t) { if (t.team_id === S.teamId && !seen[t.assigned_to]) { seen[t.assigned_to] = 1; mem.push(t.assigned_to); } }); mem.sort(); }
     var tasks = S.tasks.filter(function (t) { return t.team_id === S.teamId && (!S.filterAssignee || t.assigned_to === S.filterAssignee); });
     var h = '<div class="wk-boardbar">' +
       '<div class="wk-people">' + mem.map(function (n) {
@@ -553,6 +589,7 @@
   function openDrawer(id) { S.openTaskId = id; document.getElementById('wk-drawer-overlay').style.display = ''; renderDrawer(); }
   function closeDrawer() { S.openTaskId = null; var o = document.getElementById('wk-drawer-overlay'); if (o) o.style.display = 'none'; }
   function peopleOptions(teamId, selected) {
+    if (isDirect(teamId)) return staffOptions(selected);
     var mem = (S.members[teamId] || []).map(function (m) { return m.user_name; });
     if (selected && mem.indexOf(selected) < 0) mem.push(selected);
     return mem.map(function (n) { return '<option value="' + esc(n) + '"' + (n === selected ? ' selected' : '') + '>' + esc(dn(n)) + '</option>'; }).join('');
@@ -606,13 +643,16 @@
   function closeModal() { var o = document.getElementById('wk-modal-overlay'); if (o) o.style.display = 'none'; }
 
   function openTaskModal() {
-    var teams = myTeams(); if (!teams.length) return;
-    var tid = teamById(S.teamId) ? S.teamId : teams[0].id;
+    var teams = myTeams().filter(function (t) { return !t.is_direct || S.ctx.canManage; });
+    if (!teams.length) return;
+    teams = teams.slice().sort(function (a, b) { return (b.is_direct ? 1 : 0) - (a.is_direct ? 1 : 0); });
+    var dt = S.ctx.canManage ? directTeam() : null;
+    var tid = (teamById(S.teamId) && teams.indexOf(teamById(S.teamId)) >= 0) ? S.teamId : (dt ? dt.id : teams[0].id);
     var tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(18, 0, 0, 0);
     openModal('<div class="wk-dh"><h3>New task</h3><button class="wk-x" id="wk-mclose">✕</button></div>' +
       '<div class="wk-grid">' +
       '<label class="wk-span2">Title<input id="wk-n-title" placeholder="e.g. Call Kripa about GG 2nd installment" autofocus></label>' +
-      '<label>Team<select id="wk-n-team">' + teams.map(function (t) { return '<option value="' + t.id + '"' + (t.id === tid ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('') + '</select></label>' +
+      '<label>Team<select id="wk-n-team">' + teams.map(function (t) { return '<option value="' + t.id + '"' + (t.id === tid ? ' selected' : '') + '>' + (t.is_direct ? '👤 Direct to one person' : esc(t.name)) + '</option>'; }).join('') + '</select></label>' +
       '<label>Assign to<select id="wk-n-assignee"></select></label>' +
       '<label>Priority<select id="wk-n-priority">' + Object.keys(PRIORITY).map(function (p) { return '<option' + (p === 'normal' ? ' selected' : '') + '>' + p + '</option>'; }).join('') + '</select></label>' +
       '<label>Due<input type="datetime-local" id="wk-n-due" value="' + toLocalInput(tomorrow.toISOString()) + '"></label>' +
@@ -624,7 +664,9 @@
     var fillAssignees = function () {
       var teamId = m.querySelector('#wk-n-team').value;
       var sel = m.querySelector('#wk-n-assignee');
-      sel.innerHTML = canAssign(teamId) ? peopleOptions(teamId, S.ctx.me) : '<option value="' + esc(S.ctx.me) + '">' + esc(dn(S.ctx.me)) + ' (me)</option>';
+      sel.innerHTML = canAssign(teamId)
+        ? (isDirect(teamId) ? '<option value="">Choose a person…</option>' + staffOptions('') : peopleOptions(teamId, S.ctx.me))
+        : '<option value="' + esc(S.ctx.me) + '">' + esc(dn(S.ctx.me)) + ' (me)</option>';
     };
     fillAssignees();
     m.querySelector('#wk-n-team').onchange = fillAssignees;

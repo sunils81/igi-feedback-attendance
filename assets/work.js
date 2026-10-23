@@ -158,7 +158,8 @@
 
   // ── data loading ─────────────────────────────────────────────────────────
   function loadUsers() {
-    return GET('users', 'select=name,role,roles,centres,is_active&is_active=eq.true&order=name.asc').then(function (rows) {
+    // users is locked to the browser (it holds login data); users_public is the readable staff view (2026-10-23)
+    return GET('users_public', 'select=name,role,roles,centres,is_active&is_active=eq.true&order=name.asc').then(function (rows) {
       S.users = rows.map(function (r) {
         var roles = (r.roles && r.roles.length) ? r.roles : (r.role ? [r.role] : []);
         return { name: r.name, role: r.role, roles: roles, centres: String(r.centres || '').split(',').map(function (c) { return c.trim(); }).filter(Boolean) };

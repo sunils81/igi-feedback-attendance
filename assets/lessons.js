@@ -771,7 +771,7 @@
   // Openings are logged with basis 'reference' and do not touch any batch's day lock.
   var R = { rows: null, course: 'Colored Stone Graduate', plan: '', q: '', me: '', approver: false, until: null };
   // Jewelry Business Essentials added 2026-10-22: its default plan only (lesson_in_library() in the database).
-  var RCOURSES = [['Diamond Graduate', 'Diamond Graduate'], ['Colored Stone Graduate', 'Coloured Stone Graduate'], ['Jewelry Business Essentials', 'Jewelry Business Essentials'], ['Gem-A Foundation Orientation', 'Gem-A Orientation'], ['Gem-A Foundation', 'Gem-A Foundation']];
+  var RCOURSES = [['Diamond Graduate', 'Diamond Graduate'], ['Colored Stone Graduate', 'Coloured Stone Graduate'], ['Jewelry Business Essentials', 'Jewelry Business Essentials'], ['Gem-A Foundation Orientation', 'Gem-A Orientation'], ['Gem-A Foundation', 'Gem-A Foundation'], ['IGI Orientation', 'IGI Orientation (HOD)']];  // IGI Orientation: HOD-only (server returns it only to the Admin session), 2026-10-26
   function refStatus(cb) {
     rpc('lesson_ref_status', {}).then(function (d) { cb(!!(d && d.status === 'ok' && d.allowed), d || {}); }).catch(function () { cb(false, {}); });
   }

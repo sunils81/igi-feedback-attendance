@@ -5,7 +5,7 @@
 <svg id="wipe" viewBox="0 0 1920 1080"><polygon id="wp" fill="none" stroke="#D6B16C" stroke-width="3" opacity="0"/></svg>
 <div id="hud"><img src="media/igi-logo-white.png" alt="IGI School of Gemology"><div class="r"><span id="chap"></span><span id="dayTag"></span><span id="score" title="Class quiz score">◆ SCORE <b id="scoreN">0</b><span style="color:#8D96AD">/ <span id="scoreT">0</span></span></span></div></div>
 <div id="hint">Click or → to reveal <span>▸</span></div>
-<div id="bar"><button id="bPrev" aria-label="Previous">←</button><button id="bNext" aria-label="Next">→</button><button id="bMenu">Sections</button><div id="prog"><i></i></div><span id="count"></span><button id="bLaser" title="Laser pointer (P)">◉ Laser</button><button id="bFull" aria-label="Full screen" title="Full screen (F)">⤢</button><button id="bExit" style="display:none" title="Close the presentation">✕ Exit</button></div>
+<div id="bar"><button id="bPrev" aria-label="Previous">←</button><button id="bNext" aria-label="Next">→</button><button id="bMenu">Sections</button><div id="prog"><i></i></div><span id="count"></span><button id="bLaser" title="Laser pointer (P or L)">◉ Laser</button><button id="bFull" aria-label="Full screen" title="Full screen (F)">⤢</button><button id="bExit" style="display:none" title="Close the presentation">✕ Exit</button></div>
 <canvas id="laser" width="1920" height="1080"></canvas>
 <div id="menu"><h2>Jump to a section</h2></div>
 <div id="lightbox"><img alt=""><div class="cap"></div></div>
@@ -15,7 +15,7 @@
 (()=>{
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const D=window.DECK||{};
-const stage=$('#stage'), scenes=$$('.scene');
+const stage=$('#stage'); const ALL=$$('.scene'); let scenes=ALL.slice();
 let cur=0, busy=false;
 function fit(){const s=Math.min(innerWidth/1920,innerHeight/1080);stage.style.transform=`translate(-50%,-50%) scale(${s})`;}
 addEventListener('resize',fit);fit();
@@ -279,6 +279,56 @@ const laser=(()=>{const c=$('#laser'),x=c.getContext('2d');let on=false,pts=[],r
  const mv=e=>{const [a,b]=pos(e);pts.push([a,b,performance.now()])};
  return{toggle(){on=!on;stage.classList.toggle('lasering',on);$('#bLaser').classList.toggle('on',on);if(on){addEventListener('pointermove',mv);raf=requestAnimationFrame(draw)}else{removeEventListener('pointermove',mv);cancelAnimationFrame(raf);x.clearRect(0,0,1920,1080);pts=[]}}}})();
 $('#bLaser').onclick=()=>laser.toggle();
+
+/* ---------- audience filter (opt-in via window.DECK.audience, 2026-10-26) ----------
+   Scenes can carry data-aud="dg csg" (shown when ANY of those audiences is ticked) and/or
+   data-pitch="csg jp" (shown when ANY of those pitches is ticked). Hidden scenes drop out of
+   navigation, the slide counter and the Sections menu. The presenter picks the audience on the
+   setup scene (an element with class .aud-setup); pitches follow automatically from
+   DECK.audience.auto(sel) until the presenter changes a pitch by hand. The choice is remembered
+   per deck on this browser; ?aud=dg,csg&pitch=csg,jp in the URL presets it. Decks without
+   DECK.audience are untouched. */
+const AUD=D.audience||null;
+let audSel=[],pitchSel=[],pitchManual=false;
+function audApply(keepId){
+ if(!AUD)return;
+ const curEl=scenes[cur];
+ const hasAny=(attr,list)=>{if(attr==null)return true;const t=attr.split(/\s+/).filter(Boolean);return !t.length||t.some(x=>list.includes(x))};
+ ALL.forEach(s=>{const ok=hasAny(s.getAttribute('data-aud'),audSel)&&hasAny(s.getAttribute('data-pitch'),pitchSel);s.classList.toggle('skipped',!ok)});
+ scenes=ALL.filter(s=>!s.classList.contains('skipped'));
+ $$('#menu [data-jump]').forEach(b=>{const t=document.getElementById(b.dataset.jump);b.style.display=(t&&t.classList.contains('skipped'))?'none':''});
+ const ni=scenes.indexOf(curEl);cur=ni>=0?ni:Math.min(cur,scenes.length-1);
+ $('#count').textContent=(cur+1)+' / '+scenes.length;$('#prog i').style.width=(cur/(Math.max(1,scenes.length-1))*100)+'%';
+ try{localStorage.setItem('igi-aud:'+AUD.key,JSON.stringify({a:audSel,p:pitchSel,m:pitchManual}))}catch(e){}
+ audRender();
+}
+function audRender(){
+ $$('.aud-setup').forEach(box=>{
+  const grp=(id,title,opts,sel)=>`<div class="aud-grp"><div class="aud-t">${title}</div><div class="aud-opts">${opts.map(([k,l,sub])=>`<button type="button" class="aud-chip${sel.includes(k)?' on':''}" data-aud-g="${id}" data-aud-k="${k}"><i>${sel.includes(k)?'✓':''}</i><span>${l}${sub?`<small>${sub}</small>`:''}</span></button>`).join('')}</div></div>`;
+  box.innerHTML=grp('a',AUD.audTitle||'Who is in the room?',AUD.aud,audSel)+grp('p',AUD.pitchTitle||'Courses to pitch',AUD.pitch,pitchSel)+
+   `<div class="aud-foot"><span>${audSel.length?scenes.length+' slides selected for this audience':'Tick at least one audience to begin'}</span>${pitchManual?'<button type="button" class="aud-reset">↺ Reset pitches to match the audience</button>':''}</div>`;
+ });
+}
+document.addEventListener('click',e=>{
+ const c=e.target.closest('.aud-chip');const r=e.target.closest('.aud-reset');
+ if(!c&&!r)return; e.stopPropagation();
+ if(r){pitchManual=false;pitchSel=AUD.auto?AUD.auto(audSel):[];audApply();return}
+ const g=c.dataset.audG,k=c.dataset.audK;
+ if(g==='a'){audSel=audSel.includes(k)?audSel.filter(x=>x!==k):audSel.concat([k]);if(!pitchManual)pitchSel=AUD.auto?AUD.auto(audSel):pitchSel}
+ else{pitchManual=true;pitchSel=pitchSel.includes(k)?pitchSel.filter(x=>x!==k):pitchSel.concat([k])}
+ audApply();
+},true);
+if(AUD){
+ let saved=null;try{saved=JSON.parse(localStorage.getItem('igi-aud:'+AUD.key)||'null')}catch(e){}
+ const qa=/[?&]aud=([^&#]*)/.exec(location.search),qp=/[?&]pitch=([^&#]*)/.exec(location.search);
+ if(qa){audSel=decodeURIComponent(qa[1]).split(',').filter(Boolean);pitchSel=qp?decodeURIComponent(qp[1]).split(',').filter(Boolean):(AUD.auto?AUD.auto(audSel):[]);pitchManual=!!qp}
+ else if(saved){audSel=saved.a||[];pitchSel=saved.p||[];pitchManual=!!saved.m}
+ else{audSel=(AUD.defaultAud||[]).slice();pitchSel=AUD.auto?AUD.auto(audSel):[]}
+ const b=document.createElement('button');b.id='bAud';b.type='button';b.title='Choose the audience (A)';b.textContent='⚙ Audience';
+ b.onclick=()=>{const i=scenes.findIndex(s=>s.querySelector('.aud-setup'));if(i>=0)go(i)};$('#bLaser').before(b);
+ audApply();
+}
+addEventListener('keydown',e=>{if(e.target.matches('input,select,textarea'))return;if((e.key==='l'||e.key==='L'))laser.toggle();else if(AUD&&(e.key==='a'||e.key==='A')&&$('#bAud'))$('#bAud').click()});
 
 updScore();
 const h=inFrame?'':location.hash.slice(1);const start=h?Math.max(0,/^\d+$/.test(h)?+h:idx(h)):0;

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=162"></script>
+<script src="assets/shared.js?v=163"></script>
 <script src="assets/work.js?v=6"></script>
 <script src="assets/lessons.js?v=13"></script>
 <!-- Corporate/RTT client report. Shared with counselor.html so the document a client
@@ -2058,6 +2058,9 @@
             </div>
           </div>
         </div>
+
+        <!-- Centre contribution plan: who closes each centre's remaining gap -->
+        <div id="centre-push-box" style="margin-top:22px"></div>
       </div>
     </div>
 
@@ -11792,7 +11795,111 @@ function setStandingSort(key, mode) {
   renderStandingListPanel(key);
 }
 
+/* ── Centre contribution plan (HOD view) ──────────────────────────────────────
+   A counsellor's target follows the person; a centre's target follows the centre.
+   Where they diverge, "everyone hit their number" and "the centre hit its number"
+   can both be true and still not meet — Mumbai is the clearest case. This shows
+   each centre's remaining gap and who is carrying how much of it, computed 60% on
+   demonstrated run rate at that centre and 40% on share of annual targets, with
+   an override per person because the formula cannot know who is ramping up or
+   covering four other centres. Added 2026-10-28 per Sunil. */
+var centrePushAdmin = null;
+
+function loadCentrePushAdmin() {
+  var box = document.getElementById('centre-push-box');
+  if (!box) return;
+  box.innerHTML = '<div style="text-align:center;padding:14px;color:var(--muted)">Loading centre contribution plan…</div>';
+  gasGet({ action: 'getCentrePushPlan', period: '2026-27' }, function (e, d) {
+    if (e || !d || d.status !== 'ok') {
+      box.innerHTML = '<div style="text-align:center;padding:14px;color:var(--red)">Could not load the centre contribution plan.</div>';
+      return;
+    }
+    centrePushAdmin = d;
+    renderCentrePushAdmin();
+  });
+}
+
+function renderCentrePushAdmin() {
+  var box = document.getElementById('centre-push-box');
+  if (!box || !centrePushAdmin) return;
+  var d = centrePushAdmin;
+  var rows = '';
+  (d.centres || []).forEach(function (c) {
+    var met = c.gap <= 0;
+    var span = Math.max(1, (c.shares || []).length);
+    var head =
+      '<td rowspan="' + span + '" style="vertical-align:top"><strong>' + escC(c.centre) + '</strong>' +
+        '<div style="font-size:10.5px;color:var(--muted);margin-top:3px">' + escC(c.pct) + '% of target</div>' +
+        (c.unassigned ? '<div><span class="badge badge-red" title="Nobody is carrying this centre\'s target">unassigned</span></div>' : '') + '</td>' +
+      '<td rowspan="' + span + '" style="text-align:right;vertical-align:top">' + revMoneyAbbr(c.target) + '</td>' +
+      '<td rowspan="' + span + '" style="text-align:right;vertical-align:top">' + revMoneyAbbr(c.ytd) + '</td>' +
+      '<td rowspan="' + span + '" style="text-align:right;vertical-align:top;font-weight:700;color:' + (met ? '#15803D' : 'var(--navy)') + '">' +
+        (met ? 'Met' : revMoneyAbbr(c.gap)) + '</td>' +
+      '<td rowspan="' + span + '" style="text-align:right;vertical-align:top">' + (met ? '—' : revMoneyAbbr(c.perMonth)) + '</td>';
+
+    if (!c.shares || !c.shares.length) {
+      rows += '<tr>' + head + '<td colspan="5" style="color:var(--red);font-size:12px">No counsellor assigned — this centre\'s target is nobody\'s number.</td></tr>';
+      return;
+    }
+    c.shares.forEach(function (s, i) {
+      rows += '<tr>' + (i === 0 ? head : '') +
+        '<td>' + escC(s.counsellor) + (s.isOverride ? ' <span class="badge badge-amber" title="' + escC(s.overrideReason || '') + '">override</span>' : '') + '</td>' +
+        '<td style="text-align:right">' + revMoneyAbbr(s.centreYtd) + '<div style="font-size:10px;color:var(--muted)">' + revMoneyAbbr(s.runRate) + '/mo</div></td>' +
+        '<td style="text-align:right">' + escC(s.blendPct) + '%<div style="font-size:10px;color:var(--muted)">rr ' + escC(s.rrSharePct) + ' · tgt ' + escC(s.tgtSharePct) + '</div></td>' +
+        '<td style="text-align:right;font-weight:700">' + (met ? '—' : revMoneyAbbr(s.amount)) +
+          (s.isOverride ? '<div style="font-size:10px;color:var(--muted)">was ' + revMoneyAbbr(s.computed) + '</div>' : '') + '</td>' +
+        '<td style="text-align:right;font-weight:700">' + (met ? '—' : revMoneyAbbr(s.perMonth)) +
+          '<div><button class="btn btn-outline" style="width:auto;padding:3px 8px;font-size:11px;margin-top:4px" onclick="promptCentreShare(\'' +
+            escC(c.centre) + '\',\'' + escC(s.counsellor) + '\',' + (s.amount || 0) + ')">Adjust</button></div></td>' +
+      '</tr>';
+    });
+  });
+
+  var done = (d.counsellors || []).filter(function (c) { return c.targetHit; });
+  var surplusHtml = done.length
+    ? '<div style="margin:12px 0;display:flex;gap:8px;flex-wrap:wrap">' + done.map(function (c) {
+        return '<span style="display:inline-flex;gap:7px;align-items:center;background:var(--gold-pale);border:1px solid var(--gold);border-radius:999px;padding:5px 13px;font-size:12px;font-weight:700;color:#8A6600">🏆 ' +
+          escC(c.counsellor) + ' <span style="color:var(--navy)">' + escC(c.annualPct) + '%</span> <span style="color:#15803D">surplus +' + escC(c.surplusPct) + '%</span></span>';
+      }).join('') + '</div>'
+    : '';
+
+  box.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">' +
+      '<h2 style="margin:0;font-size:17px">🏢 Centre Contribution Plan</h2>' +
+      '<span style="font-size:11px;color:var(--muted)">' + escC(d.monthsLeft) + ' month' + (d.monthsLeft === 1 ? '' : 's') + ' left · split ' +
+        Math.round(d.rrWeight * 100) + '% run rate / ' + Math.round(d.tgtWeight * 100) + '% annual target</span>' +
+    '</div>' +
+    '<p class="sub" style="margin-bottom:6px">What each centre still needs, and who is carrying it. A counsellor\'s own target follows them wherever they book; a centre\'s target follows the centre, so these are not the same number. Adjust any share where the formula does not match reality.</p>' +
+    surplusHtml +
+    '<div style="overflow-x:auto"><table class="compact-table" style="width:100%">' +
+      '<thead><tr><th>Centre</th><th style="text-align:right">Target</th><th style="text-align:right">YTD</th>' +
+      '<th style="text-align:right">Gap</th><th style="text-align:right">Need/mo</th>' +
+      '<th>Counsellor</th><th style="text-align:right">Their YTD here</th><th style="text-align:right">Share</th>' +
+      '<th style="text-align:right">Amount</th><th style="text-align:right">Per month</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+    '</table></div>';
+}
+
+function promptCentreShare(centre, counsellor, current) {
+  var raw = prompt('Share of the ' + centre + ' gap for ' + counsellor +
+    '\n\nEnter rupees for the whole remaining period, or leave blank to go back to the computed split.',
+    current || '');
+  if (raw === null) return;
+  var amount = String(raw).replace(/[^0-9.]/g, '');
+  var reason = '';
+  if (amount !== '') {
+    reason = prompt('Why this number? (shown to ' + counsellor + ')', '') || '';
+  }
+  gasGet({ action: 'setCentreShare', centre: centre, counsellor: counsellor,
+           amount: amount, reason: reason, period: '2026-27',
+           requestedBy: (typeof adminUserName !== 'undefined' ? adminUserName : 'HOD') }, function (e, d) {
+    if (e || !d || d.status !== 'ok') { alert('Could not save: ' + ((d && d.reason) || 'unknown error')); return; }
+    loadCentrePushAdmin();
+  });
+}
+
 function renderStandingsTab() {
+  loadCentrePushAdmin();
   const rBox = document.getElementById('rev-counsellor-standings-box');
   const cBox = document.getElementById('rev-centre-standings-box');
   const hBox = document.getElementById('standing-highlights-container');

@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=162"></script>
+<script src="/assets/shared.js?v=163"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=6"></script>
 <!-- Corporate/RTT client report. Shared with admin.html so the document a client
@@ -4587,6 +4587,9 @@
 
         <!-- YTD comparison (own + centre, vs last year) -->
         <div id="rev-ytd-compare" style="margin-top:14px"></div>
+
+        <!-- Centre contribution: what the centres I carry still need from me -->
+        <div id="rev-centre-push" style="margin-top:14px"></div>
 
         <!-- Month cards -->
         <div id="rev-month-grid" style="margin-top:14px"></div>
@@ -14797,8 +14800,116 @@ function renderMyRevenue() {
   // YTD comparison (own + centre, vs last year's YTD)
   renderOwnYtdComparison(me);
 
+  // Centre contribution, then the month cards (which read the plan it loads)
+  loadCentrePushPlan(me);
+
   // Month cards
   renderRevenueMonthCards(me);
+}
+
+/* ── Centre contribution · "gear two" ─────────────────────────────────────────
+   A counsellor's target and their centre's target are two different ledgers: the
+   first follows the person wherever they book, the second follows the centre.
+   Once someone passes their own annual target the month cards used to have
+   nothing left to show — the +10% stretch collapsed toward zero, percentages
+   exploded, and every remaining month read "0% · Future". From here on, a
+   counsellor who is past their number is shown their share of the remaining gap
+   at the centres they carry instead. Added 2026-10-28 per Sunil. */
+var centrePushPlan = null;      // the whole plan, as returned by getCentrePushPlan
+var centrePushMine = null;      // just my row
+
+function loadCentrePushPlan(counsellor) {
+  gasGet({ action: 'getCentrePushPlan', period: '2026-27' }, function (e, d) {
+    if (e || !d || d.status !== 'ok') { renderCentrePush(); return; }
+    centrePushPlan = d;
+    centrePushMine = (d.counsellors || []).filter(function (c) {
+      return revSameCounsellor(c.counsellor, counsellor);
+    })[0] || null;
+    renderCentrePush();
+    // The month cards' pace numbers depend on the plan, so redraw them once it lands.
+    renderRevenueMonthCards(counsellor);
+  });
+}
+
+function renderCentrePush() {
+  var wrap = document.getElementById('rev-centre-push');
+  if (!wrap) return;
+  var me = centrePushMine;
+  if (!me || !me.centres || !me.centres.length) { wrap.innerHTML = ''; return; }
+  var left = (centrePushPlan && centrePushPlan.monthsLeft) || 0;
+
+  // The surplus line. Percentage only — the incentive scheme is not settled, so
+  // this deliberately carries no rupee payout implication.
+  var surplusHtml = me.surplus > 0
+    ? '<div style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(90deg,#FDF6E3,#FBEFD0);border:1.5px solid var(--gold);border-radius:999px;padding:7px 15px;margin-bottom:12px">' +
+        '<span style="font-size:12px;font-weight:800;color:#8A6600;letter-spacing:.04em;text-transform:uppercase">🏆 Annual target achieved</span>' +
+        '<span style="font-size:13px;font-weight:800;color:var(--navy)">' + escC(me.annualPct) + '% of target</span>' +
+        '<span style="font-size:12.5px;font-weight:800;color:#15803D">Surplus +' + escC(me.surplusPct) + '%</span>' +
+      '</div>'
+    : '';
+
+  var rows = me.centres.sort(function (a, b) { return b.amount - a.amount; }).map(function (c) {
+    var done = c.centreGap <= 0;
+    var barPct = Math.max(0, Math.min(100, c.centrePct));
+    return '<tr>' +
+      '<td><strong>' + escC(c.centre) + '</strong>' +
+        (c.isOverride ? ' <span class="badge badge-amber" title="' + escC(c.overrideReason || 'Set by the HOD') + '">set by HOD</span>' : '') +
+        '<div style="margin-top:5px;height:5px;background:var(--border);border-radius:3px;overflow:hidden;max-width:180px">' +
+          '<span style="display:block;height:100%;width:' + barPct + '%;background:' + (barPct >= 100 ? '#15803D' : 'var(--gold)') + '"></span>' +
+        '</div>' +
+        '<span style="font-size:10.5px;color:var(--muted)">centre at ' + escC(c.centrePct) + '% of target</span>' +
+      '</td>' +
+      '<td style="text-align:right">' + money(c.centreTarget) + '</td>' +
+      '<td style="text-align:right">' + money(c.centreYtd) + '</td>' +
+      '<td style="text-align:right;font-weight:700;color:' + (done ? '#15803D' : 'var(--navy)') + '">' +
+        (done ? 'Met' : money(c.centreGap)) + '</td>' +
+      '<td style="text-align:right">' + money(c.myCentreYtd) + '</td>' +
+      '<td style="text-align:right;font-weight:800;color:var(--navy)">' + (done ? '—' : money(c.amount)) + '</td>' +
+      '<td style="text-align:right;font-weight:800">' + (done ? '—' : money(c.perMonth) + '<div style="font-size:10px;color:var(--muted);font-weight:600">per month</div>') + '</td>' +
+    '</tr>';
+  }).join('');
+
+  wrap.innerHTML =
+    '<div class="card" style="padding:18px 16px">' +
+      '<div class="section-tag" style="background:var(--navy);color:var(--white)">Centre Contribution</div>' +
+      '<h2 style="margin-top:8px">🏢 What my centres still need</h2>' +
+      '<p class="sub" style="margin-bottom:12px">Your own target follows you wherever you book. A centre’s target follows the centre. These are the centres you carry and what each still needs over the remaining ' +
+        escC(left) + ' month' + (left === 1 ? '' : 's') + ' — split 60% on what you have actually been booking there and 40% on the size of your annual target.</p>' +
+      surplusHtml +
+      '<div style="overflow-x:auto"><table class="compact-table" style="width:100%">' +
+        '<thead><tr><th>Centre</th><th style="text-align:right">Centre target</th><th style="text-align:right">Centre YTD</th>' +
+        '<th style="text-align:right">Gap</th><th style="text-align:right">My YTD there</th>' +
+        '<th style="text-align:right">My share</th><th style="text-align:right">Pace</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+        (me.centres.length > 1 ? '<tfoot><tr style="font-weight:800;background:var(--off)">' +
+          '<td colspan="5" style="text-align:right">Total across my centres</td>' +
+          '<td style="text-align:right">' + money(me.centrePushTotal) + '</td>' +
+          '<td style="text-align:right">' + money(me.centrePushPerMonth) + '</td>' +
+        '</tr></tfoot>' : '') +
+      '</table></div>' +
+    '</div>';
+}
+
+/* My centre-contribution pace per month, used by the month cards once my own
+   annual target is behind me. Returns 0 when there is no plan yet. */
+function centrePushPerMonth() {
+  return (centrePushMine && centrePushMine.centrePushPerMonth) || 0;
+}
+/* Has this counsellor already passed their annual target? Returns their plan row
+   (truthy, carries surplusPct) or null. Used by the standings so a finished
+   counsellor is badged rather than ranked last on a quarter they no longer need. */
+function revCounsellorTargetDone(name) {
+  if (!centrePushPlan || !centrePushPlan.counsellors) return null;
+  var row = centrePushPlan.counsellors.filter(function (c) {
+    return revSameCounsellor(c.counsellor, name);
+  })[0];
+  return (row && row.targetHit) ? row : null;
+}
+
+function centrePushCentreNames() {
+  if (!centrePushMine || !centrePushMine.centres) return '';
+  return centrePushMine.centres.filter(function (c) { return c.centreGap > 0; })
+    .map(function (c) { return c.centre; }).join(', ');
 }
 
 function renderMumbaiCentreBar(counsellor) {
@@ -14890,9 +15001,23 @@ function revDynamicRunRate(counsellor, monthKey, assignedCentre) {
   if (remaining > 0) {
     return { rate:Math.round(remaining / left), target:target, flat:flat, hit:false, before:before, left:left, remaining:remaining };
   }
+  /* Target met. The old behaviour chased a +10% stretch, which has two problems:
+     the remainder collapses toward zero so the percentage explodes (a real Sept
+     card read 3334%), and once the stretch is done too there is nothing left to
+     aim at and every remaining month reads 0% · Future. Instead, aim at this
+     counsellor's share of the gap still open at the centres they carry — a number
+     that stays meaningful all the way to March. Falls back to the old stretch
+     only while the plan has not loaded. (2026-10-28) */
+  var push = centrePushPerMonth();
+  if (push > 0) {
+    return { rate:push, target:target, flat:flat, hit:true, mode:'centre',
+             centres:centrePushCentreNames(), stretchDone:false,
+             before:before, left:left, remaining:push * left };
+  }
   var stretchLeft = target * (1 + REV_STRETCH_PCT) - before;
   return { rate:stretchLeft > 0 ? Math.round(stretchLeft / left) : 0, target:target, flat:flat, hit:true,
-           stretchDone:stretchLeft <= 0, before:before, left:left, remaining:Math.max(stretchLeft, 0) };
+           mode:'stretch', stretchDone:stretchLeft <= 0, before:before, left:left,
+           remaining:Math.max(stretchLeft, 0) };
 }
 function revMonthlyTargetForCounsellor(counsellor, monthKey) {
   return revDynamicRunRate(counsellor, monthKey || revenueCurrentMonthKey(), '').rate;
@@ -15084,13 +15209,22 @@ function renderCounsellorRankings() {
       } else if (item.pct > 0) {
         badgeStyle = 'background:#FFF5F5;color:var(--red);border:1px solid rgba(201,74,74,0.15)';
       }
-      return '<div class="rev-leader-row" style="margin-bottom: 0px">' +
-        '<div style="font-size:14px;font-weight:700;text-align:center">' + rankIcon + '</div>' +
+      /* Someone who has already passed their ANNUAL target still gets ranked on a
+         quarterly target that is a flat quarter of a number they have beaten, so
+         they sink to the bottom of the quarterly board reading like a failure —
+         Bianca sat at #10 on 14% the day after finishing her year. Mark them, and
+         show the surplus instead of a meaningless quarter percentage. (2026-10-28) */
+      var done = revCounsellorTargetDone(item.name);
+      return '<div class="rev-leader-row" style="margin-bottom: 0px' + (done ? ';background:linear-gradient(90deg,#FDF9EF,transparent);border-radius:8px' : '') + '">' +
+        '<div style="font-size:14px;font-weight:700;text-align:center">' + (done ? '🏆' : rankIcon) + '</div>' +
         '<div>' +
           '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + escC(item.name) + ' <span style="font-size:10px;font-weight:400;color:var(--muted)">(' + escC(item.centre) + ')</span></div>' +
-          '<div style="font-size:10px;color:var(--muted);margin-top:2px;">' + revMoneyAbbr(item.achieved) + ' of ' + revMoneyAbbr(item.target) + '</div>' +
+          '<div style="font-size:10px;color:var(--muted);margin-top:2px;">' + revMoneyAbbr(item.achieved) + ' of ' + revMoneyAbbr(item.target) +
+            (done ? ' &middot; <span style="color:#8A6600;font-weight:700">annual target done, surplus +' + escC(done.surplusPct) + '%</span>' : '') + '</div>' +
         '</div>' +
-        '<div style="padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700;text-align:center;' + badgeStyle + '">' + item.pct + '% Hit</div>' +
+        (done
+          ? '<div style="padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700;text-align:center;background:var(--gold-pale);color:#8A6600;border:1px solid var(--gold)">Achieved</div>'
+          : '<div style="padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700;text-align:center;' + badgeStyle + '">' + item.pct + '% Hit</div>') +
       '</div>';
     }).join('');
   }
@@ -15238,10 +15372,19 @@ function renderRevenueMonthCards(counsellor) {
     var saved = rows.some(function(r){ return window.isRevenueLocked(r.locked); });
     var dr = revDynamicRunRate(counsellor, m.key, designatedCentre);
     var runRate = dr.target ? dr.rate : baseRunRate;
+    /* Cap the percentage. When the annual remainder shrinks to almost nothing the
+       old formula divided by it and printed things like 3334%, which tells the
+       counsellor nothing. Below a tenth of the flat plan there is no meaningful
+       denominator left, so say so in words instead. (2026-10-28) */
+    var denomTooSmall = dr.target && dr.hit && dr.mode !== 'centre' && runRate > 0 && runRate < dr.flat * 0.1;
     var pct = runRate ? Math.round((totals.totalGst / runRate) * 100) : (totals.totalGst || (dr.target && dr.hit) ? 100 : 0);
+    if (denomTooSmall) pct = totals.totalGst > 0 ? 100 : 0;
+    var pctLabel = denomTooSmall ? 'Target met' : (pct > 400 ? '400%+' : pct + '%');
     var paceNote = !dr.target ? '' :
       (dr.hit
-        ? (dr.stretchDone ? '🎯 Annual target and +10% stretch achieved' : '🎯 Target achieved · pace shown is the +10% stretch: ' + money(dr.remaining) + ' over ' + dr.left + ' month' + (dr.left===1?'':'s'))
+        ? (dr.mode === 'centre'
+            ? '🏢 Target achieved · pace shown is your share of the ' + (dr.centres || 'centre') + ' gap: ' + money(dr.remaining) + ' over ' + dr.left + ' month' + (dr.left===1?'':'s')
+            : (dr.stretchDone ? '🎯 Annual target and +10% stretch achieved' : '🎯 Target achieved · pace shown is the +10% stretch: ' + money(dr.remaining) + ' over ' + dr.left + ' month' + (dr.left===1?'':'s')))
         : (open && m.key === revenueCurrentMonthKey() ? 'Needed now: ' : (open ? 'Needed at the time: ' : 'If nothing more is booked: ')) + money(dr.remaining) + ' left ÷ ' + dr.left + ' month' + (dr.left===1?'':'s') + ' · flat plan ' + money(dr.flat) + '/mo');
     var variance = totals.totalGst - runRate;
     var status = !open ? 'Future' : (saved ? (variance >= 0 ? 'Ahead' : 'Behind') : 'Open');
@@ -15251,10 +15394,10 @@ function renderRevenueMonthCards(counsellor) {
     var streak = revStreakEndingAt(counsellor, designatedCentre, runRate, m.key);
     html +=
       '<div class="rev-run-card '+state+beatClass+'" id="rmc-'+escC(m.key)+'">'+
-        '<div class="rev-run-head"><div class="rev-run-title">'+escC(m.label)+'</div><div class="rev-run-pct">'+escC(pct)+'%</div></div>'+
+        '<div class="rev-run-head"><div class="rev-run-title">'+escC(m.label)+'</div><div class="rev-run-pct">'+escC(pctLabel)+'</div></div>'+
         '<div class="rev-run-bar"><span style="width:'+barWidth+'%"></span></div>'+
         '<div class="rev-run-meta">'+
-          '<div>'+(dr.hit?'Stretch Pace':'Required')+'<strong>'+money(runRate)+'</strong></div>'+
+          '<div>'+(dr.hit?(dr.mode==='centre'?'Centre Share':'Stretch Pace'):'Required')+'<strong>'+money(runRate)+'</strong></div>'+
           '<div>Achieved<strong>'+money(totals.totalGst)+'</strong></div>'+
           '<div>Variance<strong>'+money(Math.abs(variance))+'</strong></div>'+
           '<div>Status<strong>'+escC(status)+'</strong></div>'+

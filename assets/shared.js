@@ -4939,6 +4939,229 @@ window.gasGet = (function () {
        - business_type anything else AND assigned_centre!==centre  -> 'other' (cross-sell in)
      Same convention revTotalsFromRows already uses for a single counsellor's own card,
      just applied across everyone selling into this one centre instead. */
+  /* ── Centre contribution · "gear two" ───────────────────────────────────────
+     A counsellor's annual target and a centre's annual target are two different
+     ledgers. A counsellor's achievement follows them wherever they book; a
+     centre's follows business_centre. Mumbai is where they diverge most —
+     Anuradha's own 1.75 Cr spans Mumbai, Lucknow, Pune and Thrissur — so
+     "everyone hit their number" and "the centre hit its number" can both be true
+     and still not meet.
+
+     Once a counsellor passes their personal annual target the old display had
+     nothing left to show them: the +10% stretch collapsed toward zero, the
+     percentage exploded (a real Sept card read 3334%), and every remaining month
+     flipped to 0% · Future. This replaces that with a share of the centre's
+     remaining gap — a number that only ever goes up.
+
+     The split is 60% demonstrated run rate AT THAT CENTRE and 40% share of the
+     assigned counsellors' annual targets. Run rate alone lets someone new coast;
+     target share alone over-asks whoever is actually carrying the centre today.
+     An HOD can override any share (centre_contribution.amount_override), because
+     the formula cannot know that one person is ramping up and another is covering
+     four other centres. Added 2026-10-28 per Sunil. */
+  var CENTRE_PUSH_RR_WEIGHT = 0.6;   // run rate at the centre
+  var CENTRE_PUSH_TGT_WEIGHT = 0.4;  // share of assigned annual targets
+
+  // The period's months, Apr→Mar, and how many are gone. The current month counts
+  // as remaining — it is still being sold into.
+  function periodMonths(period) {
+    var y = parseInt(String(period || '').slice(0, 4), 10);
+    if (!y) y = new Date().getFullYear();
+    var out = [];
+    for (var i = 0; i < 12; i++) {
+      var mo = 4 + i, yy = y;
+      if (mo > 12) { mo -= 12; yy = y + 1; }
+      out.push(yy + '-' + (mo < 10 ? '0' : '') + mo);
+    }
+    return out;
+  }
+
+  async function h_getCentrePushPlan(p, cb) {
+    try {
+      var period = String(p.period || '2026-27').trim();
+      var months = periodMonths(period);
+      var nowKey = todayYMD().slice(0, 7);
+      var idx = months.indexOf(nowKey);
+      // Before the period starts, nothing is elapsed; after it ends, nothing is left.
+      var elapsed = idx < 0 ? (nowKey < months[0] ? 0 : 12) : idx;
+      var monthsLeft = Math.max(0, 12 - elapsed);
+
+      function getP(table, qs) {
+        return new Promise(function (res) { GET(table, qs, function (e, rows) { res(e ? [] : (rows || [])); }); });
+      }
+      var pq = 'period=eq.' + encodeURIComponent(period);
+      var all = await Promise.all([
+        getP('revenue_centre_targets', pq + '&select=centre,annual_course_fee_target'),
+        getP('revenue_annual_targets', pq + '&select=centre,counsellor,annual_course_fee_target'),
+        getP('revenue_monthly_achieved', pq + '&select=counsellor,business_centre,month,achieved_course_fee'),
+        getP('centre_contribution', pq + '&select=centre,counsellor,amount_override,override_reason,updated_by')
+      ]);
+      var centreTargets = all[0], counsTargets = all[1], achieved = all[2], assigns = all[3];
+
+      // Centre ledger: everything booked at the centre, whoever sold it.
+      var centreYtd = {}, centreByCounsellor = {};
+      // Counsellor ledger: everything they sold, wherever it landed.
+      var counsYtd = {};
+      achieved.forEach(function (r) {
+        var fee = Number(r.achieved_course_fee) || 0;
+        var bc = r.business_centre || '', cn = r.counsellor || '';
+        centreYtd[bc] = (centreYtd[bc] || 0) + fee;
+        counsYtd[cn] = (counsYtd[cn] || 0) + fee;
+        var k = bc + '||' + cn;
+        centreByCounsellor[k] = (centreByCounsellor[k] || 0) + fee;
+      });
+
+      var counsTargetMap = {};
+      counsTargets.forEach(function (t) {
+        counsTargetMap[t.counsellor] = Number(t.annual_course_fee_target) || 0;
+      });
+
+      var byCentre = {};
+      assigns.forEach(function (a) { (byCentre[a.centre] = byCentre[a.centre] || []).push(a); });
+
+      var centres = [];
+      centreTargets.forEach(function (ct) {
+        var centre = ct.centre;
+        var target = Number(ct.annual_course_fee_target) || 0;
+        var ytd = centreYtd[centre] || 0;
+        var gap = Math.max(0, target - ytd);
+        var people = byCentre[centre] || [];
+
+        // Weights. With one assigned counsellor both shares are 1, so the blend is
+        // a no-op and the whole gap is theirs.
+        var sumRr = 0, sumTgt = 0;
+        people.forEach(function (a) {
+          sumRr += elapsed ? ((centreByCounsellor[centre + '||' + a.counsellor] || 0) / elapsed) : 0;
+          sumTgt += counsTargetMap[a.counsellor] || 0;
+        });
+
+        var shares = people.map(function (a) {
+          var atCentre = centreByCounsellor[centre + '||' + a.counsellor] || 0;
+          var rr = elapsed ? atCentre / elapsed : 0;
+          // No history anywhere at this centre (a brand-new centre, or nobody has
+          // sold there yet) — fall back to an even split rather than dividing by 0.
+          var rrShare = sumRr > 0 ? rr / sumRr : (1 / Math.max(1, people.length));
+          var tgtShare = sumTgt > 0 ? (counsTargetMap[a.counsellor] || 0) / sumTgt
+                                    : (1 / Math.max(1, people.length));
+          var blend = CENTRE_PUSH_RR_WEIGHT * rrShare + CENTRE_PUSH_TGT_WEIGHT * tgtShare;
+          var computed = Math.round(gap * blend);
+          var override = (a.amount_override === null || a.amount_override === undefined)
+            ? null : Number(a.amount_override);
+          var amount = override === null ? computed : override;
+          return {
+            counsellor: a.counsellor,
+            centreYtd: atCentre,
+            runRate: Math.round(rr),
+            rrSharePct: Math.round(rrShare * 1000) / 10,
+            tgtSharePct: Math.round(tgtShare * 1000) / 10,
+            blendPct: Math.round(blend * 1000) / 10,
+            computed: computed,
+            amount: amount,
+            perMonth: monthsLeft ? Math.round(amount / monthsLeft) : 0,
+            isOverride: override !== null,
+            overrideReason: a.override_reason || '',
+            setBy: a.updated_by || ''
+          };
+        });
+
+        centres.push({
+          centre: centre, target: target, ytd: ytd, gap: gap,
+          perMonth: monthsLeft ? Math.round(gap / monthsLeft) : 0,
+          runRate: elapsed ? Math.round(ytd / elapsed) : 0,
+          pct: target ? Math.round(ytd / target * 100) : 0,
+          unassigned: people.length === 0,
+          shares: shares
+        });
+      });
+
+      // Flip it round for the counsellor's own screen: one person, every centre
+      // they carry. Anuradha gets four rows, Preethy two.
+      var byCounsellor = {};
+      centres.forEach(function (c) {
+        c.shares.forEach(function (s) {
+          var row = (byCounsellor[s.counsellor] = byCounsellor[s.counsellor] || {
+            counsellor: s.counsellor, totalAmount: 0, totalPerMonth: 0, centres: []
+          });
+          row.totalAmount += s.amount;
+          row.totalPerMonth += s.perMonth;
+          row.centres.push({
+            centre: c.centre, centreTarget: c.target, centreYtd: c.ytd, centreGap: c.gap,
+            centrePct: c.pct, myCentreYtd: s.centreYtd, amount: s.amount,
+            perMonth: s.perMonth, blendPct: s.blendPct, isOverride: s.isOverride,
+            overrideReason: s.overrideReason
+          });
+        });
+      });
+
+      // Personal ledger + surplus. Surplus is shown as a percentage over target —
+      // the incentive scheme is not settled yet, so nothing here feeds a payout.
+      var counsellors = [];
+      Object.keys(counsTargetMap).forEach(function (name) {
+        var target = counsTargetMap[name] || 0;
+        var ytd = counsYtd[name] || 0;
+        var push = byCounsellor[name] || { totalAmount: 0, totalPerMonth: 0, centres: [] };
+        counsellors.push({
+          counsellor: name, annualTarget: target, annualYtd: ytd,
+          annualPct: target ? Math.round(ytd / target * 100) : 0,
+          targetHit: target > 0 && ytd >= target,
+          surplus: Math.max(0, ytd - target),
+          surplusPct: target ? Math.round(Math.max(0, ytd - target) / target * 1000) / 10 : 0,
+          personalRemaining: Math.max(0, target - ytd),
+          centrePushTotal: push.totalAmount,
+          centrePushPerMonth: push.totalPerMonth,
+          centres: push.centres
+        });
+      });
+
+      cb(null, {
+        status: 'ok', period: period, elapsedMonths: elapsed, monthsLeft: monthsLeft,
+        rrWeight: CENTRE_PUSH_RR_WEIGHT, tgtWeight: CENTRE_PUSH_TGT_WEIGHT,
+        centres: centres.sort(function (a, b) { return b.gap - a.gap; }),
+        counsellors: counsellors.sort(function (a, b) { return b.annualPct - a.annualPct; })
+      });
+    } catch (err) {
+      cb(null, { status: 'error', reason: String(err && err.message || err) });
+    }
+  }
+
+  /* HOD overrides one counsellor's share of one centre. Passing a blank amount
+     clears the override and the computed blend takes over again. */
+  function h_setCentreShare(p, cb) {
+    var period = String(p.period || '2026-27').trim();
+    var centre = String(p.centre || '').trim();
+    var counsellor = String(p.counsellor || '').trim();
+    if (!centre || !counsellor) { cb(null, { status: 'error', reason: 'Missing centre or counsellor.' }); return; }
+    var amt = (p.amount === '' || p.amount === null || p.amount === undefined) ? null : Number(p.amount);
+    if (amt !== null && (!isFinite(amt) || amt < 0)) { cb(null, { status: 'error', reason: 'Amount must be a positive number.' }); return; }
+    POST('centre_contribution', 'on_conflict=period,centre,counsellor', {
+      period: period, centre: centre, counsellor: counsellor,
+      amount_override: amt, override_reason: String(p.reason || '').trim(),
+      updated_by: String(p.requestedBy || '').trim(), updated_at: nowISO()
+    }, function (e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
+  }
+
+  /* Add or remove a counsellor from a centre's plan. Coimbatore is carried by
+     Preethy and Nadiya together; Lucknow, Pune and Thrissur sit with Anuradha. */
+  function h_setCentreCounsellor(p, cb) {
+    var period = String(p.period || '2026-27').trim();
+    var centre = String(p.centre || '').trim();
+    var counsellor = String(p.counsellor || '').trim();
+    if (!centre || !counsellor) { cb(null, { status: 'error', reason: 'Missing centre or counsellor.' }); return; }
+    var filter = 'period=eq.' + encodeURIComponent(period) +
+                 '&centre=eq.' + encodeURIComponent(centre) +
+                 '&counsellor=eq.' + encodeURIComponent(counsellor);
+    if (p.remove) {
+      DEL('centre_contribution', filter, function (e) {
+        cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' });
+      });
+      return;
+    }
+    POST('centre_contribution', 'on_conflict=period,centre,counsellor', {
+      period: period, centre: centre, counsellor: counsellor,
+      updated_by: String(p.requestedBy || '').trim(), updated_at: nowISO()
+    }, function (e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
+  }
+
   function h_getCentrePerformance(p, cb) {
     var centre = String(p.centre || '').trim();
     var period = String(p.period || '2026-27').trim();
@@ -15142,6 +15365,9 @@ window.gasGet = (function () {
       case 'getCentreMonthTotal':       return h_getCentreMonthTotal(params, cb);
       case 'getNationalMonthTotal':     return h_getNationalMonthTotal(params, cb);
       case 'getCentrePerformance':      return h_getCentrePerformance(params, cb);
+      case 'getCentrePushPlan':         return h_getCentrePushPlan(params, cb);
+      case 'setCentreShare':            return h_setCentreShare(params, cb);
+      case 'setCentreCounsellor':       return h_setCentreCounsellor(params, cb);
       case 'getCorporateRevenueReport': return h_getCorporateRevenueReport(params, cb);
       case 'getCourseWiseRevenueReport':return h_getCourseWiseRevenueReport(params, cb);
       case 'checkInvoiceNumber':        return h_checkInvoiceNumber(params, cb);

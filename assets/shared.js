@@ -8583,8 +8583,20 @@ window.gasGet = (function () {
       }
       // Month filter aligns with h_hrDash: FY 2026-27 = Apr-26 to Mar-27 only.
       // Excludes pre-cycle Jan–Mar 2026 rows (period=2026-27 but month < 2026-04).
+      //
+      // Bug fix 2026-10-28: this condition used to read (!me || isAdm || r.counsellor
+      // === me). The `isAdm ||` short-circuited the name check, so a counsellor with
+      // all-India MIS rights — who is sent isAdmin='true' purely to widen the data
+      // fetch — had every counsellor's revenue summed into their PERSONAL summary.
+      // The KPI ribbon then showed Anuradha a ₹1.75 Cr target (correctly her own,
+      // after the 2026-08-22 fix below) beside ₹4.37 Cr achieved (the national
+      // total), and a "Remaining: ✓ Hit" conclusion drawn from comparing the two.
+      // The target side was fixed in August; the achieved side was missed, which is
+      // what made the mismatch look like a labelling problem rather than a bug.
+      // The All-India MIS tab is unaffected: it reads dash.monthlyRows / dash.centres,
+      // which are built from the full unfiltered set by buildRevenueDashboardJSON.
       (monthly || []).forEach(function (r) {
-        if ((!me || isAdm || r.counsellor === me) && r.month >= '2026-04' && r.month <= '2027-03') {
+        if ((!me || r.counsellor === me) && r.month >= '2026-04' && r.month <= '2027-03') {
           aGst += Number(r.achieved_course_fee_gst || 0);
           aCourse += Number(r.achieved_course_fee || 0);
           stu  += Number(r.student_count || 0);

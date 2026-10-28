@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=163"></script>
+<script src="/assets/shared.js?v=164"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=6"></script>
 <!-- Corporate/RTT client report. Shared with admin.html so the document a client
@@ -17921,18 +17921,38 @@ function renderContextSummary(tabId) {
     var rd = revenueData;
     var sm = (rd && rd.summary) || {};
     // Excl. GST throughout — matches the basis used everywhere else in the dashboards
-    // (Target, YTD Revenue, etc). For a company-wide view (real Admin, or Anuradha via
-    // her MIS access) targetCourse is the fixed 5.5 Cr Annual Business Plan figure Sunil
-    // reports to management — see h_revDash in shared.js — not a sum of individual
-    // counsellor targets, so this number is safe to put directly into her MIS report.
+    // (Target, YTD Revenue, etc). targetCourse is the fixed 5.5 Cr Annual Business Plan
+    // figure Sunil reports to management ONLY for a true blank-counsellor Admin call;
+    // anyone with a name attached — including an MIS viewer like Anuradha — gets their
+    // own personal target, and since 2026-10-28 their own achieved to match. See
+    // h_revDash in shared.js.
     var target = Number(sm.targetCourse || sm.annualTarget || 0);
     var achieved = Number(sm.achievedCourse || 0);
     var remaining = target - achieved;
+    /* Whose numbers are these? A blank-counsellor Admin sees the company figures;
+       everyone else — including a counsellor with all-India MIS rights — sees their
+       own. Say so on the tiles. Until 2026-10-28 these were silently mixed: the
+       target was personal and the achieved was national, so Anuradha read
+       "Target ₹1.75 Cr · Achieved ₹4.37 Cr · Remaining ✓ Hit". */
+    var mine = !!(typeof counselorName !== 'undefined' && counselorName);
+    var who = mine ? 'My ' : '';
+    // Centres: the ones THIS person actually booked into, not all 13 nationally.
+    var centreCount;
+    if (mine) {
+      var seen = {};
+      ((rd && rd.monthlyRows) || []).forEach(function (r) {
+        if (revSameCounsellor(r.counsellor, counselorName) && r.businessCentre) seen[r.businessCentre] = 1;
+      });
+      centreCount = Object.keys(seen).length;
+    } else {
+      centreCount = (rd && rd.centres && rd.centres.length) ? rd.centres.length : 0;
+    }
     el.innerHTML =
-      tile('', 'Target', target ? moneyShort(target) : '—', 'Annual (excl. GST)') +
-      tile('ok', 'Achieved', achieved ? moneyShort(achieved) : '—', 'Collected so far') +
-      tile(remaining > 0 ? 'warn' : 'ok', 'Remaining', remaining > 0 ? moneyShort(remaining) : '✓ Hit', 'Balance to target') +
-      tile('', 'Centres', (rd && rd.centres && rd.centres.length) ? rd.centres.length : '—', 'Contributing');
+      tile('', who + 'Target', target ? moneyShort(target) : '—', (mine ? 'My annual target' : 'Annual') + ' (excl. GST)') +
+      tile('ok', who + 'Achieved', achieved ? moneyShort(achieved) : '—', mine ? 'Booked by me, all centres' : 'Collected so far') +
+      tile(remaining > 0 ? 'warn' : 'ok', 'Remaining', remaining > 0 ? moneyShort(remaining) : '✓ Hit',
+           mine ? 'To my own target' : 'Balance to target') +
+      tile('', 'Centres', centreCount || '—', mine ? 'I booked into' : 'Contributing');
     return;
   }
 

@@ -43,7 +43,7 @@ const COURSES  = [
   'Emerald','Pearl','Diamond Essential: The 5C\'s',
   'Pearl Grading','Pearl Grading Advance',
   'Navratna Masterclass (10 Half Days)','Navratna Masterclass (5 Full Days)',
-  'Jewelry Business Essentials'
+  'Jewelry Business Essentials','Jewelry Business Essentials Online'
 ];
 const INSTRUCTORS = [
   'Amit Sidpura','Asmita Saroday','Arjun Mistry','Bhavin Patel',
@@ -1773,7 +1773,8 @@ window.gasGet = (function () {
     var RC = { 'Diamond Graduate':'DG', 'JewelPad Design':'JP', 'JewelPad Online':'JPO', 'Diamond Grading':'DGR',
                'Colored Stones':'CS', 'Jewelry Design':'JD', 'Pearls':'PRL',
                'Pearl Grading':'PGR', 'Pearl Grading Advance':'PGA',
-               'Jewelry Business Essentials':'JBE' };
+               'Jewelry Business Essentials':'JBE',
+               'Jewelry Business Essentials Online':'JBEO' };
     var c = CC[p.centre]  || String(p.centre  || '').slice(0, 3).toUpperCase();
     var r = RC[p.course]  || String(p.course  || '').replace(/\s+/g, '').slice(0, 3).toUpperCase();
     var m = p.month ? String(p.month).slice(0, 3).toUpperCase() + String(p.month).slice(-2) : '';
@@ -1810,7 +1811,9 @@ window.gasGet = (function () {
     // sane end date rather than an invalid one.
     var SHORT = { 'Pearl Grading': { 'Full Day': 3, 'Half Day': 5 },
                   'Pearl Grading Advance': { 'Full Day': 3, 'Half Day': 5 },
-                  'Jewelry Business Essentials': { 'Full Day': 5, 'Half Day': 5 } };
+                  'Jewelry Business Essentials': { 'Full Day': 5, 'Half Day': 5 },
+                  // Online: four half days, no factory visit (2026-10-28 per Sunil).
+                  'Jewelry Business Essentials Online': { 'Full Day': 4, 'Half Day': 4 } };
     var end  = new Date(p.startDate || new Date());
     var n;
     // From 2027: DG and CSG run 7 weeks of half days (35 days, Mon-Fri) or 3 weeks of
@@ -16347,6 +16350,9 @@ const COURSE_FEES_JS = {
   'Pearl Grading Advance':               {fee:59900, regFee:0,    gst:18},
   // New 2026-10-21 per Sunil. Runs 5 half days. ₹25,900 + GST.
   'Jewelry Business Essentials':         {fee:25900, regFee:0,    gst:18},
+  // New 2026-10-28 per Sunil. Online delivery of the same programme, minus the
+  // factory visit: four half days instead of five. ₹14,900 + GST.
+  'Jewelry Business Essentials Online':  {fee:14900, regFee:0,    gst:18},
   // The 5 entries below are current-name aliases for courses above that were renamed in the
   // batch-creation Course dropdown without this catalog being updated to match — confirmed
   // with the counsellor team, same price carries over under the new name. The old-name keys

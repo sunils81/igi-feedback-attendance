@@ -532,6 +532,14 @@ const SYLLABI = {
     SYLLABI['Jewelry Business Essentials' + (v === 3 ? '' : ' (Visit Day ' + v + ')')] =
       topics.map(function (t, i) { return { day: i + 1, week: 'Week 1', topic: t }; });
   }
+  /* The online course is the same four teaching days with no factory visit — you
+     cannot walk a cohort round a host unit over a video call — so the manufacturing
+     module becomes a recorded walkthrough inside the materials day. Four half days,
+     not five, which is why it is priced lower. Added 2026-10-28 per Sunil. */
+  var JBE_ONLINE = JBE_TEACHING.slice();
+  JBE_ONLINE[1] += ', Manufacturing Process (recorded walkthrough)';
+  SYLLABI['Jewelry Business Essentials Online'] =
+    JBE_ONLINE.map(function (t, i) { return { day: i + 1, week: 'Week 1', topic: t }; });
 })();
 
 // Course-name aliases (kept in sync with getSyllabusForCourse in instructor-portal.html)

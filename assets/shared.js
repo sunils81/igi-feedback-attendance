@@ -4018,10 +4018,87 @@ window.gasGet = (function () {
     });
   }
 
+  /* Is this invoice number a half-built stub rather than a real one?
+
+     The fee form pre-fills the centre's prefix ("MUM-PI-", "BO2/26/INV/") the moment the
+     form opens, so a payload captured before Accounts had actually raised the invoice
+     carries the prefix and nothing else. A real number always ends in digits after the
+     last separator. Treating a stub as real is what let a stale payload overwrite a
+     genuine invoice number. */
+  function feeInvoiceIsStub(num) {
+    var s = String(num == null ? '' : num).trim();
+    if (!s) return true;
+    var tail = s.split(/[^A-Za-z0-9]+/).pop() || '';
+    return !/\d/.test(tail);
+  }
+
+  /* Fields on a fee record that belong to the record, not to whoever is saving it right
+     now. A save path that does not manage a field must never blank it.
+
+     Added for admission_source (the Enroll flow doesn't resend it) and doc_type (so a
+     replay doesn't reset a PI to a tax invoice). Extended 2026-10-29 per Sunil, after
+     Manya Kumari's MUM-JEW-SEP26 record came back with invoice_number "MUM-PI-" and an
+     empty invoice_date: the approved-discount banner's "Save as entered" replays the
+     payload stashed when the discount was first requested, and at that moment the invoice
+     had not been raised yet. The counsellor later saved the real number and date; clicking
+     the banner then replayed the old payload straight over them.
+
+     Invoice fields carry forward when the incoming save either does not mention them at
+     all, or offers only a prefix stub. An explicitly typed, real invoice number always
+     wins, so a genuine correction still goes through.
+
+     Returns true when meta was changed and the caller should re-stringify it. */
+  function carryForwardFeeMeta(meta, prevRaw, p) {
+    if (!prevRaw) return false;
+    var prev;
+    try { prev = JSON.parse(prevRaw); } catch (ex) { return false; }
+    if (!prev) return false;
+    var changed = false;
+
+    if (!p.admissionSource && prev.admission_source) {
+      meta.admission_source = prev.admission_source;
+      meta.admission_source_detail = prev.admission_source_detail || '';
+      changed = true;
+    }
+
+    /* The invoice set moves together: if we keep the previous number, we keep the date,
+       amount, shared-invoice note and file raised against it. Splitting them would pair a
+       real number with a blank date, which is how this surfaced.
+
+       invoiceFromStash marks a replay of a payload captured earlier (the approved-discount
+       banner's "Save as entered"). Its invoice number is a snapshot from before the
+       approval, so it fills a gap but never outranks what is on the record now — otherwise
+       replaying an old payload silently undoes a later invoice correction. A number typed
+       in the fee form carries no such flag and always wins. */
+    var fromStash = (p.invoiceFromStash === true || p.invoiceFromStash === 'true');
+    var incomingReal = (p.invoiceNumber !== undefined) && !feeInvoiceIsStub(p.invoiceNumber) && !fromStash;
+    if (!incomingReal && !feeInvoiceIsStub(prev.invoice_number)) {
+      meta.invoice_number = prev.invoice_number;
+      if (!p.invoiceDate && prev.invoice_date) meta.invoice_date = prev.invoice_date;
+      if ((p.invoiceAmount === undefined || p.invoiceAmount === null || p.invoiceAmount === '') &&
+          Number(prev.invoice_amount)) meta.invoice_amount = Number(prev.invoice_amount);
+      if (!p.invoiceSharedComment && prev.invoice_shared_comment) meta.invoice_shared_comment = prev.invoice_shared_comment;
+      if (!p.invoiceFileUrl && prev.invoice_file_url) meta.invoice_file_url = prev.invoice_file_url;
+      changed = true;
+    }
+
+    if (p.docType === undefined && prev.doc_type) {
+      meta.doc_type = prev.doc_type;
+      meta.doc_type_manual = !!prev.doc_type_manual;
+      meta.doc_type_note = prev.doc_type_note || '';
+      // ...unless the number now unambiguously says otherwise. Carrying a stale 'pi'
+      // forward over a freshly typed tax-invoice number is what left records stuck on PI
+      // after Accounts had invoiced them.
+      var bn = BILLING.docTypeFromNumber(meta.invoice_number);
+      if (bn && !meta.doc_type_manual && bn !== meta.doc_type) meta.doc_type = bn;
+      changed = true;
+    }
+    return changed;
+  }
+
   /* saveFeeRecord */
   // Renamed from h_saveFee 2026-08-07 — this is now the inner implementation, called by
-  // the new h_saveFee wrapper below AFTER discount-approval validation passes. Body is
-  // completely unchanged from before the rename.
+  // the new h_saveFee wrapper below AFTER discount-approval validation passes.
   function h_saveFeeInner(p, cb) {
     var n   = Number(p.nInst || 1);
     var cf  = Number(p.courseFee || 0);
@@ -4199,28 +4276,8 @@ window.gasGet = (function () {
           proceedNormalSave();
           return;
         }
-        if ((!p.admissionSource || p.docType === undefined) && existingRow.receipt_no) {
-          try {
-            var prevMeta1 = JSON.parse(existingRow.receipt_no);
-            if (!p.admissionSource && prevMeta1.admission_source) {
-              meta.admission_source = prevMeta1.admission_source;
-              meta.admission_source_detail = prevMeta1.admission_source_detail || '';
-            }
-            // Same reason as admission_source: a save path that doesn't send docType (the
-            // Enroll flow, an approved-discount replay) must not silently reset a PI to a
-            // tax invoice. Only an explicit docType changes it.
-            if (p.docType === undefined && prevMeta1.doc_type) {
-              meta.doc_type = prevMeta1.doc_type;
-              meta.doc_type_manual = !!prevMeta1.doc_type_manual;
-              meta.doc_type_note = prevMeta1.doc_type_note || '';
-              // ...unless the number now unambiguously says otherwise. Carrying a
-              // stale 'pi' forward over a freshly typed tax-invoice number is what
-              // left records stuck on PI after Accounts had invoiced them.
-              var _bn1 = BILLING.docTypeFromNumber(meta.invoice_number);
-              if (_bn1 && !meta.doc_type_manual && _bn1 !== meta.doc_type) meta.doc_type = _bn1;
-            }
-            dbRow.receipt_no = JSON.stringify(meta);
-          } catch (exAS1) {}
+        if (carryForwardFeeMeta(meta, existingRow.receipt_no, p)) {
+          dbRow.receipt_no = JSON.stringify(meta);
         }
         PATCH('student_fees', 'id=eq.' + encodeURIComponent(p.existingRecordId), dbRow, function (errPatch) {
           if (errPatch) { cb(null, { status: 'error', reason: String(errPatch) }); return; }
@@ -4250,24 +4307,8 @@ window.gasGet = (function () {
       var previousRevenueMonth = existing ? (existing.revenue_month || '') : '';
       var previousCentre = existing ? existing.centre : null;
       var previousRecordedBy = existing ? existing.recorded_by : null;
-      if ((!p.admissionSource || p.docType === undefined) && existing && existing.receipt_no) {
-        try {
-          var prevMeta2 = JSON.parse(existing.receipt_no);
-          if (!p.admissionSource && prevMeta2.admission_source) {
-            meta.admission_source = prevMeta2.admission_source;
-            meta.admission_source_detail = prevMeta2.admission_source_detail || '';
-          }
-          // See the matching note on the batch-move path above.
-          if (p.docType === undefined && prevMeta2.doc_type) {
-            meta.doc_type = prevMeta2.doc_type;
-            meta.doc_type_manual = !!prevMeta2.doc_type_manual;
-            meta.doc_type_note = prevMeta2.doc_type_note || '';
-            // See the matching note on the batch-move path above.
-            var _bn2 = BILLING.docTypeFromNumber(meta.invoice_number);
-            if (_bn2 && !meta.doc_type_manual && _bn2 !== meta.doc_type) meta.doc_type = _bn2;
-          }
-          dbRow.receipt_no = JSON.stringify(meta);
-        } catch (exAS2) {}
+      if (existing && carryForwardFeeMeta(meta, existing.receipt_no, p)) {
+        dbRow.receipt_no = JSON.stringify(meta);
       }
       // Revenue-credit ownership must never move just because someone other than the
       // current owner saved a correction (invoice number, discount, etc.) — that's the

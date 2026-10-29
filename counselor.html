@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Counsellor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=165"></script>
+<script src="/assets/shared.js?v=166"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=6"></script>
 <!-- Corporate/RTT client report. Shared with admin.html so the document a client
@@ -11369,7 +11369,15 @@ function applyApprovedDiscountRequest(id) {
   var rec = discountRequests.find(function(r) { return r.id === id; });
   if (!rec || !rec.payload) { showToast('Nothing to apply — no saved details for this request.', 'error'); return; }
   if (!confirm('Save this fee record now? This will save ' + rec.studentName + '\'s fee record with the approved ' + rec.discountPct + '% discount, exactly as originally entered.')) return;
-  gasGet(rec.payload, function(e, d) {
+  /* The stashed payload is a snapshot from when the discount was requested — before the
+     invoice existed. Flag it so the backend treats its invoice number and date as a
+     fallback rather than an instruction: replaying it must never wipe an invoice the
+     counsellor entered in the meantime. Manya Kumari's record came back as "MUM-PI-" with
+     no date exactly this way. 2026-10-29. */
+  var payload = {};
+  Object.keys(rec.payload || {}).forEach(function (k) { payload[k] = rec.payload[k]; });
+  payload.invoiceFromStash = 'true';
+  gasGet(payload, function(e, d) {
     if (e || !d || d.status !== 'ok') {
       showToast((d && d.message) || (d && d.reason) || 'Could not save. Try again or use the Fee form directly.', 'error');
       return;

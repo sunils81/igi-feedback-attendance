@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Instructor Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=166"></script>
+<script src="/assets/shared.js?v=167"></script>
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=6"></script>
 <script src="/assets/lessons.js?v=13"></script>
@@ -9272,8 +9272,28 @@ function otResetStudentAttempt(studentId, studentName) {
 
 function otCloseTest() {
   if (!otActiveTestId) return alert('No test selected.');
-  if (!confirm('Close this test? All in-progress student sessions will be ended.')) return;
-  gasGet({action:'closeTest', instructor:instructorName, testId:otActiveTestId}, function(err, d) {
+  var testId = otActiveTestId;
+  // 2026-10-30: say who is still writing (started, not submitted, time not up) before closing.
+  gasGet({action:'getProctorRoom', instructor:instructorName, testId:testId}, function(e0, room) {
+    var writing = [];
+    if (!e0 && room && room.status === 'ok') {
+      var durMs = (Number(room.durationMins) || 30) * 60000;
+      (room.room || []).forEach(function(r) {
+        if (r.status !== 'In Progress' || !r.startedAt) return;
+        var left = new Date(r.startedAt).getTime() + durMs - Date.now();
+        if (left > 0) writing.push((r.studentName || r.studentId) + ' (' + Math.ceil(left / 60000) + ' min left)');
+      });
+    }
+    var msg = writing.length
+      ? '⚠️ ' + writing.length + ' student' + (writing.length > 1 ? 's are' : ' is') + ' still writing this test:\n\n' + writing.join('\n') +
+        '\n\nIf you close now they may not finish. Close anyway?'
+      : 'Close this test? All in-progress student sessions will be ended.';
+    if (!confirm(msg)) return;
+    otDoCloseTest(testId);
+  });
+}
+function otDoCloseTest(testId) {
+  gasGet({action:'closeTest', instructor:instructorName, testId:testId}, function(err, d) {
     if (err || !d || d.status !== 'ok') return alert('Error closing test');
     clearInterval(otProctorTimer);
     alert('✅ Test closed. Go to Results tab to release scores.');
@@ -9346,12 +9366,25 @@ function otViewResults(testId) {
   otLoadResults();
 }
 
-function otLoadResults() {
+var otResultsTimer = null;
+/* 2026-10-30: keep the Results table fresh so late submissions appear without pressing
+   Load Results again — every 20 s while the Results view of the same test is on screen. */
+function otArmResultsRefresh(testId) {
+  clearInterval(otResultsTimer);
+  otResultsTimer = setInterval(function () {
+    var sel = document.getElementById('ot-results-test'), body = document.getElementById('ot-results-body');
+    if (!sel || sel.value !== testId || !body || !body.offsetParent) { clearInterval(otResultsTimer); return; }
+    if (document.hidden) return;
+    otLoadResults(true);
+  }, 20000);
+}
+function otLoadResults(silent) {
   var testId = (document.getElementById('ot-results-test')||{}).value || '';
   if (!testId) return;
   var el = document.getElementById('ot-results-body');
   if (!el) return;
-  el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">Loading…</div>';
+  if (silent !== true) el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">Loading…</div>';
+  otArmResultsRefresh(testId);
 
   // Check if this is a Portfolio Upload test
   var testObj2 = (otCurrentTests||[]).find(function(t){ return t.testId===testId; });
@@ -9361,6 +9394,8 @@ function otLoadResults() {
   }
 
   gasGet({action:'getTestResultsSummary', instructor:instructorName, testId:testId}, function(err, d) {
+    if (silent === true && (err || !d || d.status !== 'ok')) return;
+    if (silent === true && ((document.getElementById('ot-results-test')||{}).value || '') !== testId) return;
     if (err || !d || d.status !== 'ok') { el.innerHTML='<div style="color:#dc2626;">Failed to load results</div>'; return; }
     if (!d.responses || !d.responses.length) { el.innerHTML='<div style="color:#9ca3af;padding:20px 0;">No submissions yet.</div>'; return; }
 

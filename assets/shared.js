@@ -11238,15 +11238,23 @@ window.gasGet = (function () {
               opt1: q.option_a, opt2: q.option_b, opt3: q.option_c, opt4: q.option_d };
           });
           GET('test_starts', 'test_id=eq.' + encodeURIComponent(tid) + '&student_id=eq.' + encodeURIComponent(sid), function(e4, starts) {
-            var durationSec = (test.duration_mins || 30) * 60;
-            var remainingSec = durationSec;
-            if (starts && starts.length) {
-              var elapsed = Math.floor((Date.now() - new Date(starts[0].started_at).getTime()) / 1000);
-              remainingSec = Math.max(0, durationSec - elapsed);
-            } else {
-              POST('test_starts', 'on_conflict=test_id,student_id', { test_id: tid, student_id: sid, started_at: nowISO() }, function() {});
-            }
-            cb(null, { status: 'ok', questions: questions, remainingSec: remainingSec });
+            // 2026-10-30: reloading after the time ran out used to hand out a fresh full timer.
+            // Now: a start with no submission whose time is used up is reported as expired, so
+            // the student page submits what it has instead of restarting the clock. A start that
+            // already has a submission is a retake (allow_retake / instructor reset): new clock.
+            GET('test_responses', 'test_id=eq.' + encodeURIComponent(tid) + '&student_id=eq.' + encodeURIComponent(sid) + '&select=student_id', function(e5, prior) {
+              var durationSec = (test.duration_mins || 30) * 60;
+              var remainingSec = durationSec, expired = false;
+              var hasPrior = !!(prior && prior.length);
+              if (starts && starts.length && !hasPrior) {
+                var elapsed = Math.floor((Date.now() - new Date(starts[0].started_at).getTime()) / 1000);
+                remainingSec = Math.max(0, durationSec - elapsed);
+                expired = remainingSec <= 0;
+              } else {
+                POST('test_starts', 'on_conflict=test_id,student_id', { test_id: tid, student_id: sid, started_at: nowISO() }, function() {});
+              }
+              cb(null, { status: 'ok', questions: questions, remainingSec: remainingSec, expired: expired, durationSec: durationSec });
+            });
           });
         });
       });
@@ -13814,6 +13822,7 @@ window.gasGet = (function () {
 
       cb(null, {
         status: 'ok',
+        durationMins: test.duration_mins || 30,
         room: room,
         activeCount: room.filter(function(r){ return r.status === 'In Progress'; }).length,
         // Fields expected by otLoadProctor in instructor-portal.html

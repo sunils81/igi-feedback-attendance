@@ -8,7 +8,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — Student Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="/assets/shared.js?v=166"></script>
+<script src="/assets/shared.js?v=167"></script>
 <script src="/assets/push-subscribe.js"></script>
 <style id="dyn-css"></style>
 <style>
@@ -1948,6 +1948,8 @@ function fetchPortalData(enrol, mobileLast4, btn, err, silent) {
     if (window.IGIPush && !window.__viaMaster) window.IGIPush.subscribe('student', enrolUC);
     portalData = d;
     renderPortal(d);
+    // send any test submission that failed to reach the server earlier (2026-10-30)
+    setTimeout(function () { otFlushPendingSubmissions(enrolUC); }, 1500);
     // DPDP consent gate — checked fresh on every login AND session-restore (this single
     // call site covers both, see the two callers of fetchPortalData above). Shows a
     // blocking overlay on top of whatever renderPortal just drew if the student hasn't
@@ -3747,6 +3749,14 @@ function otLoadAndStartTest() {
     otCurrentQ = 0;
     otSubmitted = false;
 
+    // 2026-10-30: time already used up on an earlier visit — submit what this device saved
+    // instead of starting a new clock.
+    if (d.expired) {
+      alert('Your time for this test is over. Submitting the answers saved on this device now.');
+      otDoSubmit('time-expired');
+      return;
+    }
+
     // If server says 0 time left but we fell back to full duration, it means
     // the student is joining a test whose window has elapsed. Still allow them in
     // (instructor hasn't closed it) with the full allocated time.
@@ -4074,48 +4084,93 @@ function otDoSubmit(submitType) {
   var sid   = portalData ? (portalData.enrollmentNo||portalData.studentId||'') : '';
   var sname = portalData ? (portalData.studentName||'') : '';
   var batch = otActiveTestInfo ? (otActiveTestInfo.batchCode || otActiveTestInfo.batchCodes || '') : '';
+  var info  = otActiveTestInfo;
 
   var params = {
     action:'submitTestResponse',
-    testId: otActiveTestInfo.testId,
+    testId: info.testId,
     studentId: sid, studentName: sname, batchCode: batch,
     submitType: submitType,
     answers: JSON.stringify(otAnswers)
   };
+  // 2026-10-30: keep a copy until the server confirms. Before this, a failed submit told the
+  // student "submitted" and deleted the only copy of the answers.
+  otSavePending(params);
 
-  gasGet(params, function(err, d) {
-    // Clear local state
-    try { localStorage.removeItem('ot_state_'+otActiveTestInfo.testId); } catch(x){}
+  try { if (document.exitFullscreen && document.fullscreenElement) document.exitFullscreen(); } catch(x){}
+  var scr = document.getElementById('ot-test-screen');
+  if (scr) scr.style.display = 'none';
+  var banner = document.getElementById('ot-active-banner');
+  if (banner) banner.style.display = 'none';
 
-    // Exit fullscreen
-    try { if (document.exitFullscreen) document.exitFullscreen(); } catch(x){}
-
-    var scr = document.getElementById('ot-test-screen');
-    if (scr) scr.style.display = 'none';
-    var banner = document.getElementById('ot-active-banner');
-    if (banner) banner.style.display = 'none';
-
-    if (err || !d || d.status !== 'ok') {
-      alert('Test submitted (server confirmation pending). You may close this page.');
-      return;
-    }
-
+  otSendPending(params, 0, function(d) {
     var msg = '✅ Test Submitted!\n\n';
-    var isAssignment = otActiveTestInfo && otActiveTestInfo.testType === 'Assignment';
+    var isAssignment = info && info.testType === 'Assignment';
     if (d.hasTheory) {
       msg += 'Your answers have been recorded.\nTheory questions will be graded by your instructor.\nCheck "' + (isAssignment ? 'Assignments' : 'My Tests') + '" tab for results once released.';
     } else {
       msg += 'Your score has been recorded.\nResults will be visible in "' + (isAssignment ? 'Assignments' : 'My Tests') + '" tab once your instructor releases them.';
     }
     alert(msg);
-    if (isAssignment) {
-      otActiveTestInfo = null;
-      loadMyAssignments();
-    } else {
-      otActiveTestInfo = null;
-      otLoadMyResults();
-    }
+    otActiveTestInfo = null;
+    if (isAssignment) loadMyAssignments(); else otLoadMyResults();
   });
+}
+
+// ── Submissions waiting for the server (2026-10-30) ─────────
+function otPendingKey(tid) { return 'ot_pending_' + tid; }
+function otSavePending(params) {
+  try { localStorage.setItem(otPendingKey(params.testId), JSON.stringify({ params: params, ts: Date.now() })); } catch(x){}
+}
+function otClearPending(tid) {
+  try { localStorage.removeItem(otPendingKey(tid)); localStorage.removeItem('ot_state_' + tid); } catch(x){}
+}
+function otPendingBox(show, html) {
+  var el = document.getElementById('ot-pending-box');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'ot-pending-box';
+    el.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:99999;max-width:420px;width:90%;background:#fff;border:2px solid #f59e0b;border-radius:14px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-size:14px;line-height:1.5;color:#1f2937;text-align:center';
+    document.body.appendChild(el);
+  }
+  el.style.display = show ? 'block' : 'none';
+  if (html) el.innerHTML = html;
+}
+/* Send a saved submission; retries every 5 s while the page is open and shows the student a
+   clear "not submitted yet" box until the server confirms. */
+function otSendPending(params, tries, onOk) {
+  gasGet(params, function(err, d) {
+    if (!err && d && d.status === 'ok') {
+      otClearPending(params.testId);
+      otPendingBox(false);
+      if (onOk) onOk(d);
+      return;
+    }
+    tries = (tries || 0) + 1;
+    otPendingBox(true,
+      '<div style="font-size:30px">⚠️</div><b style="font-size:16px">Your test is NOT submitted yet</b>' +
+      '<p style="margin:10px 0">We could not reach the server. Your answers are saved on this device and we keep trying every few seconds (attempt ' + tries + ').</p>' +
+      '<p style="margin:0 0 14px;color:#b45309"><b>Do not close this page or log out.</b> Check the Wi-Fi, then press Try again.</p>' +
+      '<button type="button" id="ot-pending-retry" style="background:#0D1B2E;color:#fff;border:0;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer">Try again now</button>');
+    var go = function () { clearTimeout(otSendPending._t); otSendPending(params, tries, onOk); };
+    var b = document.getElementById('ot-pending-retry'); if (b) b.onclick = go;
+    clearTimeout(otSendPending._t);
+    otSendPending._t = setTimeout(go, 5000);
+  });
+}
+/* On portal load: send any submission left over from a failed attempt. */
+function otFlushPendingSubmissions(sid) {
+  try {
+    Object.keys(localStorage).forEach(function (k) {
+      if (k.indexOf('ot_pending_') !== 0) return;
+      var rec = JSON.parse(localStorage.getItem(k) || 'null');
+      if (!rec || !rec.params) { localStorage.removeItem(k); return; }
+      if (sid && String(rec.params.studentId || '').toUpperCase() !== String(sid).toUpperCase()) return;
+      otSendPending(rec.params, 0, function () {
+        alert('✅ Your earlier test submission has now reached the server.');
+        try { otLoadMyResults(); } catch(x){}
+      });
+    });
+  } catch(x){}
 }
 
 // ── My Results ───────────────────────────────────────────────

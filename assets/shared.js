@@ -7015,6 +7015,55 @@ window.gasGet = (function () {
     });
   }
 
+  /* h_getMiscRevenueReport — Miscellaneous revenue (diploma issue/replacement, manual
+     replacement and other non-course charges) for a date range, nationally or for one
+     centre (2026-11-02, per Sunil: "the portal should add miscellaneous and should
+     reflect that in a separate tab"). These charges are still counted inside each
+     counsellor's Centre Revenue total by syncStudentRevenue (that stays as is, so every
+     dashboard total keeps including them); this report is the separate view that shows
+     how much of the total is miscellaneous rather than course fees. Reads misc_charges
+     directly — the line items are the source of truth, not the blended monthly rollup. */
+  function h_getMiscRevenueReport(p, cb) {
+    var fromMonth = String(p.fromMonth || '2026-04').trim();
+    var toMonth = String(p.toMonth || '2027-03').trim();
+    var centre = String(p.centre || '').trim();
+    var qs = 'revenue_month=gte.' + encodeURIComponent(fromMonth) + '&revenue_month=lte.' + encodeURIComponent(toMonth) +
+      '&order=revenue_month.desc,invoice_date.desc.nullslast,created_at.desc&limit=2000';
+    if (centre) qs += '&centre=eq.' + encodeURIComponent(centre);
+    GET('misc_charges', qs, function (e, rows) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      rows = rows || [];
+      var byMonth = {}, byCentre = {}, byType = {};
+      var total = 0, totalGst = 0;
+      var records = rows.map(function (r) {
+        var amt = Number(r.amount) || 0, gst = Number(r.gst_amount) || 0;
+        total += amt; totalGst += gst;
+        var type = r.charge_type || 'Other';
+        var m = (byMonth[r.revenue_month] = byMonth[r.revenue_month] || { month: r.revenue_month, amount: 0, amountGst: 0, count: 0 });
+        m.amount += amt; m.amountGst += amt + gst; m.count++;
+        var c = (byCentre[r.centre] = byCentre[r.centre] || { centre: r.centre, amount: 0, amountGst: 0, count: 0 });
+        c.amount += amt; c.amountGst += amt + gst; c.count++;
+        var t = (byType[type] = byType[type] || { chargeType: type, amount: 0, count: 0 });
+        t.amount += amt; t.count++;
+        return {
+          id: r.id, studentId: r.student_id, studentName: r.student_name, chargeType: type,
+          description: r.description || '', amount: amt, gstAmount: gst,
+          invoiceNumber: r.invoice_number || '', invoiceDate: r.invoice_date, centre: r.centre,
+          recordedBy: r.recorded_by, revenueMonth: r.revenue_month
+        };
+      });
+      var sortDesc = function (a, b) { return b.amount - a.amount; };
+      cb(null, {
+        status: 'ok', fromMonth: fromMonth, toMonth: toMonth, centre: centre,
+        totalAmount: total, totalAmountGst: total + totalGst, count: records.length,
+        byMonth: Object.keys(byMonth).sort().map(function (k) { return byMonth[k]; }),
+        byCentre: Object.keys(byCentre).map(function (k) { return byCentre[k]; }).sort(sortDesc),
+        byType: Object.keys(byType).map(function (k) { return byType[k]; }).sort(sortDesc),
+        records: records
+      });
+    });
+  }
+
   /* CREDIT NOTES — refunds or overpayment corrections that reduce revenue (2026-08-05,
      per instruction: "credit note is issued in case there is a refund or extra amount
      paid by student"). Counsellor logs directly, no approval step (confirmed with Sunil,
@@ -15435,6 +15484,7 @@ window.gasGet = (function () {
       case 'setCentreCounsellor':       return h_setCentreCounsellor(params, cb);
       case 'getCorporateRevenueReport': return h_getCorporateRevenueReport(params, cb);
       case 'getCourseWiseRevenueReport':return h_getCourseWiseRevenueReport(params, cb);
+      case 'getMiscRevenueReport':      return h_getMiscRevenueReport(params, cb);
       case 'checkInvoiceNumber':        return h_checkInvoiceNumber(params, cb);
       case 'checkStudentMobile':        return h_checkStudentMobile(params, cb);
       case 'mergeStudentRecords':       return h_mergeStudentRecords(params, cb);

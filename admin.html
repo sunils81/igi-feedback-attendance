@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>IGI — HOD & Manager Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="assets/shared.js?v=167"></script>
+<script src="assets/shared.js?v=168"></script>
 <script src="assets/work.js?v=6"></script>
 <script src="assets/lessons.js?v=14"></script>
 <!-- Corporate/RTT client report. Shared with counselor.html so the document a client
@@ -1579,6 +1579,7 @@
       <button class="tab" onclick="switchAdminTab('t-rev-breakdown')">📑 Revenue Breakdown</button>
       <button class="tab" onclick="switchAdminTab('t-standings')">🏆 Championship Standings</button>
       <button class="tab" onclick="switchAdminTab('t-corp-revenue')">💼 Corporate Revenue</button>
+      <button class="tab" onclick="switchAdminTab('t-misc-revenue')">📗 Miscellaneous Revenue</button>
       <button class="tab" onclick="switchAdminTab('t-course-revenue')">📚 Course-Wise Revenue</button>
       <button class="tab" onclick="switchAdminTab('t-fees')">💸 Fee Reconciliation</button>
       <button class="tab" onclick="switchAdminTab('t-invoices')">🧾 Ledger</button>
@@ -2076,6 +2077,24 @@
           <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="setCorpRevenueYTD()">Reset to YTD</button>
         </div>
         <div id="cr-report-wrap"><div class="empty-state"><div class="empty-icon">💼</div><div class="empty-title">Loading…</div></div></div>
+      </div>
+    </div>
+
+    <!-- TAB: MISCELLANEOUS REVENUE — 2026-11-02, per Sunil: "the portal should add
+         miscellaneous and should reflect that in a separate tab". Diploma issue/replacement,
+         manual replacement and other non-course charges. Still included in Centre Revenue
+         totals everywhere else; this tab shows them on their own. -->
+    <div id="t-misc-revenue" class="tab-content">
+      <div class="card">
+        <h2 style="margin-bottom:4px">📗 Miscellaneous Revenue</h2>
+        <p class="sub">Non-course revenue (diploma issue or replacement, manual replacement and other charges), by month, centre and type. These amounts are already included in Centre Revenue totals on the other dashboards. Counsellors add them from Ledger → Misc Charges.</p>
+        <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin:14px 0">
+          <div class="field" style="min-width:150px;margin-bottom:0"><label>From</label><select id="mr-from-month" onchange="loadMiscRevenueReport()"></select></div>
+          <div class="field" style="min-width:150px;margin-bottom:0"><label>To</label><select id="mr-to-month" onchange="loadMiscRevenueReport()"></select></div>
+          <div class="field" style="min-width:170px;margin-bottom:0"><label>Centre</label><select id="mr-centre" onchange="loadMiscRevenueReport()"><option value="">All Centres (National)</option></select></div>
+          <button class="btn btn-outline" style="width:auto;padding:8px 14px;font-size:12px" onclick="setMiscRevenueYTD()">Reset to YTD</button>
+        </div>
+        <div id="mr-report-wrap"><div class="empty-state"><div class="empty-icon">📗</div><div class="empty-title">Loading…</div></div></div>
       </div>
     </div>
 
@@ -5618,6 +5637,7 @@ var A_MORE_ITEMS = [
   ['t-rev-breakdown',     '📑', 'Revenue Breakdown',      null],
   ['t-standings',         '🏆', 'Championship Standings', null],
   ['t-corp-revenue',      '💼', 'Corporate Revenue',      null],
+  ['t-misc-revenue',      '📗', 'Miscellaneous Revenue',  null],
   ['t-course-revenue',    '📚', 'Course-Wise Revenue',    null],
   ['t-targets',           '🎯', 'Target Settings',        null],
   ['t-invoices',          '🧾', 'Ledger',                 null],
@@ -5757,6 +5777,10 @@ function switchAdminTab(tabId) {
   }
   if (tabId === 't-corp-revenue') {
     initCorporateRevenueTab();
+    return;
+  }
+  if (tabId === 't-misc-revenue') {
+    initMiscRevenueTab();
     return;
   }
   if (tabId === 't-course-revenue') {
@@ -6852,6 +6876,70 @@ function renderCorporateRevenueReport(d) {
         return '<tr><td class="text-left">' + escC(b.companyName) + '</td><td class="text-left">' + escC(b.centre) + '</td><td class="text-left">' + escC(b.invoiceNumber||'—') + '</td><td style="text-align:right">' + money(b.courseFee - b.discountAmount) + '</td><td style="text-align:right">' + b.associatesTrained + '</td></tr>';
       }).join('') + '</tbody></table></div>';
   }
+  wrap.innerHTML = html;
+}
+
+/* ── Miscellaneous Revenue tab (2026-11-02) ─────────────────────────────── */
+var _miscRevenueInit = false;
+function initMiscRevenueTab() {
+  if (!_miscRevenueInit) {
+    _populateMonthRangeSelects('mr-from-month', 'mr-to-month', '2026-04', _revReportCurrentMonthKey());
+    var centreSel = document.getElementById('mr-centre');
+    (window.CENTRES || []).forEach(function(c) {
+      var o = document.createElement('option'); o.value = c; o.textContent = c; centreSel.appendChild(o);
+    });
+    _miscRevenueInit = true;
+  }
+  loadMiscRevenueReport();
+}
+function setMiscRevenueYTD() {
+  document.getElementById('mr-from-month').value = '2026-04';
+  document.getElementById('mr-to-month').value = _revReportCurrentMonthKey();
+  loadMiscRevenueReport();
+}
+function loadMiscRevenueReport() {
+  var from = document.getElementById('mr-from-month').value;
+  var to = document.getElementById('mr-to-month').value;
+  var centre = document.getElementById('mr-centre').value;
+  var wrap = document.getElementById('mr-report-wrap');
+  wrap.innerHTML = '<div class="empty-state"><div class="empty-icon">📗</div><div class="empty-title">Loading…</div></div>';
+  gasGet({ action: 'getMiscRevenueReport', fromMonth: from, toMonth: to, centre: centre }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      wrap.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load. Try again.</div></div>';
+      return;
+    }
+    renderMiscRevenueReport(d);
+  });
+}
+function renderMiscRevenueReport(d) {
+  var wrap = document.getElementById('mr-report-wrap');
+  if (!d.count) {
+    wrap.innerHTML = '<div class="empty-state"><div class="empty-icon">📗</div><div class="empty-title">No miscellaneous revenue in this range.</div></div>';
+    return;
+  }
+  var r = function(v) { return '<td style="text-align:right">' + v + '</td>'; };
+  var html = '<div class="kpi-row" style="margin-bottom:16px">' +
+    '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">Total (Excl. GST)</div><div class="kpi-value">' + money(d.totalAmount) + '</div></div>' +
+    '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">Total (Incl. GST)</div><div class="kpi-value">' + money(d.totalAmountGst) + '</div></div>' +
+    '<div class="kpi-card" style="flex:1;min-width:150px"><div class="kpi-label">Charges</div><div class="kpi-value">' + d.count + '</div></div>' +
+    '</div>';
+  html += '<h3 style="font-size:13px;margin:16px 0 6px">By Month</h3><div style="overflow-x:auto"><table class="compact-table"><thead><tr><th class="text-left">Month</th><th>Amount (Excl. GST)</th><th>Charges</th></tr></thead><tbody>' +
+    d.byMonth.map(function(m) { return '<tr><td class="text-left">' + mbsMonthLabel(m.month) + '</td>' + r(money(m.amount)) + r(m.count) + '</tr>'; }).join('') +
+    '</tbody></table></div>';
+  html += '<h3 style="font-size:13px;margin:16px 0 6px">By Centre</h3><div style="overflow-x:auto"><table class="compact-table"><thead><tr><th class="text-left">Centre</th><th>Amount (Excl. GST)</th><th>Charges</th></tr></thead><tbody>' +
+    d.byCentre.map(function(c) { return '<tr><td class="text-left">' + escC(c.centre) + '</td>' + r(money(c.amount)) + r(c.count) + '</tr>'; }).join('') +
+    '</tbody></table></div>';
+  html += '<h3 style="font-size:13px;margin:16px 0 6px">By Type</h3><div style="overflow-x:auto"><table class="compact-table"><thead><tr><th class="text-left">Charge type</th><th>Amount (Excl. GST)</th><th>Charges</th></tr></thead><tbody>' +
+    d.byType.map(function(t) { return '<tr><td class="text-left">' + escC(t.chargeType) + '</td>' + r(money(t.amount)) + r(t.count) + '</tr>'; }).join('') +
+    '</tbody></table></div>';
+  html += '<h3 style="font-size:13px;margin:16px 0 6px">All Charges</h3><div style="overflow-x:auto"><table class="compact-table"><thead><tr><th class="text-left">Month</th><th class="text-left">Centre</th><th class="text-left">Student</th><th class="text-left">Type</th><th class="text-left">Invoice</th><th>Amount</th><th class="text-left">Recorded by</th></tr></thead><tbody>' +
+    d.records.map(function(x) {
+      return '<tr><td class="text-left">' + mbsMonthLabel(x.revenueMonth) + '</td><td class="text-left">' + escC(x.centre) + '</td>' +
+        '<td class="text-left">' + escC(x.studentName || '') + (x.studentId ? ' <span style="color:var(--muted)">(' + escC(x.studentId) + ')</span>' : '') + '</td>' +
+        '<td class="text-left">' + escC(x.chargeType) + (x.description ? '<div style="color:var(--muted);font-size:11px">' + escC(x.description) + '</div>' : '') + '</td>' +
+        '<td class="text-left">' + escC(x.invoiceNumber || '—') + '</td>' + r(money(x.amount)) +
+        '<td class="text-left">' + escC(x.recordedBy || '') + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
   wrap.innerHTML = html;
 }
 

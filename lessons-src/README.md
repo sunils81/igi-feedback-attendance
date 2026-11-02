@@ -156,3 +156,15 @@ Publish: `python3 lessons-src/upload.py jbe-day-1 jbe-day-2 jbe-day-3 jbe-day-4 
   (migration_lesson_keep_decks.sql) and deletes every saved deck that is not the current version of a deck of a
   batch the person teaches (active, ended ≤ 21 days ago). The HOD keeps everything.
 - Not done yet: a per-person watermark baked into each downloaded file (option 2).
+
+## Retail Technical Training (published 2026-11-02)
+`decks/rtt-retail-training` · course "Retail Technical Training" · Library only (HOD grants it per person: Library access → tick "Retail Technical Training (RTT)").
+One deck for all RTT clients. ⚙ Settings (S key, or the slide after the title) sets the **track** (Natural / Lab-grown / Both: `data-aud` nat, lab, both, natonly, labonly),
+the **focus** (Full 60/40 / Technical / Sales: `data-pitch` tech, sales), the centre and contact on the closing slide, and the client name. Elements inside a slide switch with `data-tk="nat lab both"`.
+It uses `window.LESSON` (engine/foot.html) to apply the filter.
+
+**Live phone quiz:** in Settings pick the client's RTT batch (corporate_batches, programme_type RTT) → Start live session. Phones join at `/rtt?c=CODE`
+(rtt-join.html, no login). Every quiz slide opens the lobby automatically; → steps through countdown, question, reveal, leaderboard; the "The winners" slide shows the podium.
+Results are saved per batch (rtt_live_sessions / players / questions / answers) and download as CSV from Settings. Engagement only, never a certificate criterion.
+Rules and functions: `supabase/migrations/migration_rtt_live.sql` (applied). Question banks are in `decks/rtt-retail-training/scenes.html` (`window.DECK.quiz`, ids q0–q8 + n/l/b).
+Sources: "RTT Natural.pdf" (images in media-src as rt-*), IGI Diamond Masterclass (mc-*).

@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Join the live quiz · IGI Retail Technical Training</title><meta name="theme-color" content="#0A1530">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
+<!-- Participant page for the RTT live quiz (2026-11-02). No login: the player's id and secret come from
+     rtt_live_join and stay in this phone's localStorage. All calls go to SECURITY DEFINER functions
+     (rtt_live_join / rtt_live_poll / rtt_live_answer); answer keys arrive only after a question closes. -->
+<style>
+:root{--navy:#0A1530;--ivory:#F5F1E8;--gold:#B58A3E;--gold-hi:#E6C98F;--grad:linear-gradient(180deg,#F0D9A6 0%,#D6B16C 48%,#B3873C 100%);--good:#1F9D63;--bad:#C2453A;--display:'Playfair Display',Georgia,serif;--body:'Manrope',system-ui,-apple-system,Segoe UI,sans-serif}
+[hidden]{display:none!important}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--ivory);font-family:var(--body);color:#0D1733}
+body{display:flex;flex-direction:column;min-height:100%}
+.top{flex:none;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--navy);color:#F5EFE3}
+.top b{font:800 15px/1 var(--body);letter-spacing:.2em;color:var(--gold-hi)}
+.top span{font:800 12px/1 var(--body);letter-spacing:.14em;text-transform:uppercase;background:var(--grad);color:var(--navy);padding:7px 10px;border-radius:14px}
+main{flex:1;display:flex;flex-direction:column}
+section{flex:1;display:flex;flex-direction:column}
+section[hidden]{display:none}
+.navy{background:radial-gradient(120% 80% at 50% 0%,#18295A,#0A1530 60%,#060C1C);color:#F7F1E4}
+.full{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px 22px 40px;gap:14px}
+h1{font:700 32px/1.15 var(--display);margin:0}
+.muted{color:#5A6075}.navy .muted{color:#C5C9D6}
+.card{background:#fff;border:1px solid #E2D9C4;border-radius:22px;padding:22px;margin:-30px 16px 20px;box-shadow:0 14px 40px rgba(13,23,51,.1);display:flex;flex-direction:column;gap:10px}
+.mast{background:var(--navy);color:#F5EFE3;padding:30px 22px 56px}
+.mast .eb{font:800 12px/1 var(--body);letter-spacing:.24em;text-transform:uppercase;color:var(--gold-hi)}
+.mast h1{color:#FBF6EA;margin-top:12px}
+label{font:800 12px/1 var(--body);letter-spacing:.18em;text-transform:uppercase;color:#86621A;margin-top:6px}
+input{font:700 18px/1.2 var(--body);padding:14px 14px;border-radius:14px;border:2px solid #E2D9C4;outline:none;width:100%;color:#0D1733;background:#fff}
+input:focus{border-color:var(--gold)}
+input.code{font:700 30px/1 ui-monospace,Menlo,monospace;letter-spacing:.3em;text-transform:uppercase;text-align:center}
+.btn{margin-top:10px;background:var(--grad);border:0;border-radius:30px;padding:16px;font:800 16px/1 var(--body);letter-spacing:.14em;text-transform:uppercase;color:var(--navy);cursor:pointer}
+.btn:disabled{opacity:.5}
+.err{color:var(--bad);font:700 15px/1.4 var(--body);min-height:20px}
+.avatar{width:92px;height:92px;border-radius:50%;display:grid;place-items:center;font:700 38px/1 var(--display);color:var(--navy);background:var(--grad);box-shadow:0 0 0 6px rgba(214,177,108,.2)}
+.pill{display:inline-flex;gap:8px;align-items:center;background:rgba(255,255,255,.14);border-radius:30px;padding:10px 16px;font:800 15px/1 var(--body)}
+.row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.count{font:700 140px/1 var(--display);color:#F0D9A6;animation:pop .9s cubic-bezier(.16,1,.3,1)}
+@keyframes pop{0%{transform:scale(.3);opacity:0}60%{transform:scale(1.15);opacity:1}100%{transform:scale(1)}}
+.qbar{display:flex;align-items:center;gap:14px;padding:14px 16px 0}
+.ring{position:relative;width:64px;height:64px;flex:none}.ring svg{width:64px;height:64px;transform:rotate(-90deg)}
+.ring b{position:absolute;inset:0;display:grid;place-items:center;font:700 24px/1 var(--display)}
+.ring.low b{color:var(--bad)}
+.qtext{font:700 20px/1.35 var(--display);padding:12px 16px 0}
+.tiles{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 12px 18px;min-height:50vh}
+.tiles.long{grid-template-columns:1fr}
+.tile{position:relative;border:0;border-radius:18px;color:#fff;font:800 17px/1.3 var(--body);text-align:left;padding:44px 14px 14px;cursor:pointer;box-shadow:0 6px 0 rgba(0,0,0,.18);display:flex;align-items:flex-end;transition:transform .1s,opacity .3s}
+.tile:active{transform:translateY(3px)}
+.tile svg{position:absolute;left:14px;top:12px;width:24px;height:24px;fill:#fff}
+.tile.c0{background:#2F6FDE}.tile.c1{background:#16967A}.tile.c2{background:#D98A0B}.tile.c3{background:#C2416B}
+.tile.dim{opacity:.25}.tile.pick{outline:5px solid var(--navy);outline-offset:-5px}
+.res{transition:background .4s}
+.res.ok{background:linear-gradient(180deg,#1F9D63,#11663F);color:#fff}.res.no{background:linear-gradient(180deg,#C2453A,#8B2620);color:#fff}.res.none{background:linear-gradient(180deg,#3A4157,#1B2033);color:#fff}
+.res h1{color:#fff}.pts{font:700 60px/1 var(--display)}
+.ans{background:rgba(255,255,255,.14);border-radius:16px;padding:14px 16px;font:500 15px/1.5 var(--body);text-align:left;max-width:480px}
+.rankbig{font:700 96px/1 var(--display);color:#F0D9A6}
+.mv{font:800 18px/1 var(--body)}.mv.up{color:#7FD8A8}.mv.dn{color:#FF9C8C}
+.gem{width:70px;height:70px;background:var(--grad);clip-path:polygon(50% 100%,0 35%,20% 0,80% 0,100% 35%);animation:spin 3s ease-in-out infinite}
+@keyframes spin{50%{transform:rotateY(180deg) scale(.9)}}
+canvas#conf{position:fixed;inset:0;pointer-events:none;z-index:40}
+.foot{font:600 12px/1.4 var(--body);color:#8A8F9C;text-align:center;padding:12px}
+</style></head>
+<body>
+<div class="top"><b>IGI</b><span id="topTag">Live quiz</span></div>
+<main>
+<section id="vJoin" hidden>
+  <div class="mast"><div class="eb">Retail Technical Training</div><h1>Join the live quiz</h1><p class="muted" style="margin:8px 0 0;color:#C5C9D6">Answer on your phone and climb the leaderboard.</p></div>
+  <div class="card">
+    <label for="code">Game code</label><input id="code" class="code" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="ABCD">
+    <label for="name">Your name</label><input id="name" maxlength="40" autocomplete="name" placeholder="e.g. Priya Sharma">
+    <label for="store">Store / branch</label><input id="store" maxlength="40" placeholder="e.g. Noida">
+    <button class="btn" id="joinBtn">Join</button><div class="err" id="joinErr"></div>
+  </div>
+  <p class="foot">Your name and store are shown on the trainer's screen and saved with today's results for your company's training record.</p>
+</section>
+<section id="vLobby" class="navy" hidden><div class="full">
+  <div class="avatar" id="av">P</div><h1 id="hello">You're in!</h1>
+  <p class="muted" id="lobbyMsg">Look for your name on the big screen. The quiz starts when your trainer is ready.</p>
+  <div class="row"><span class="pill" id="lScore">0 pts</span><span class="pill" id="lRank" hidden></span></div>
+  <div class="gem" style="margin-top:18px"></div>
+</div></section>
+<section id="vReady" class="navy" hidden><div class="full">
+  <p style="font:800 13px/1 var(--body);letter-spacing:.22em;text-transform:uppercase;color:#E6C98F" id="rTitle"></p>
+  <p class="muted" style="font:800 14px/1 var(--body);letter-spacing:.2em;text-transform:uppercase">Get ready</p>
+  <div class="count" id="rCount">5</div><p class="muted">Eyes on the screen</p>
+</div></section>
+<section id="vQ" hidden>
+  <div class="qbar"><div class="ring" id="ring"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="none" stroke="#E2D9C4" stroke-width="10"/><circle id="arc" cx="50" cy="50" r="44" fill="none" stroke="#B58A3E" stroke-width="10" stroke-linecap="round" stroke-dasharray="276.5"/></svg><b id="sec">20</b></div>
+  <div style="flex:1"><p class="muted" style="margin:0;font:800 12px/1 var(--body);letter-spacing:.16em;text-transform:uppercase" id="qNum"></p><p style="margin:6px 0 0;font:800 15px/1.3 var(--body)" id="qState">Tap your answer</p></div></div>
+  <div class="qtext" id="qText"></div><div class="tiles" id="tiles"></div>
+</section>
+<section id="vRes" class="res none" hidden><div class="full">
+  <div style="font-size:60px" id="resIcon">⏱</div><h1 id="resTitle">Time's up</h1><div class="pts" id="resPts"></div>
+  <div class="row"><span class="pill" id="resRank"></span><span class="pill" id="resStreak" hidden></span></div><div class="ans" id="resAns"></div>
+</div></section>
+<section id="vBoard" class="navy" hidden><div class="full">
+  <p style="font:800 13px/1 var(--body);letter-spacing:.2em;text-transform:uppercase;color:#E6C98F">Your position</p>
+  <div class="rankbig" id="bRank">#–</div><div class="mv" id="bMove"></div><p class="muted" id="bOf"></p><span class="pill" id="bScore">0 pts</span>
+</div></section>
+<section id="vEnd" class="navy" hidden><div class="full">
+  <div style="font-size:72px" id="medal">💎</div>
+  <p style="font:800 13px/1 var(--body);letter-spacing:.2em;text-transform:uppercase;color:#E6C98F">Final result</p>
+  <div class="rankbig" id="eRank">#–</div><p class="muted" id="eOf"></p><span class="pill" id="eScore">0 pts</span>
+  <p class="muted" style="margin-top:16px;max-width:420px">Know it. Prove it. Sell it. Thank you for training with IGI.</p>
+</div></section>
+</main>
+<canvas id="conf"></canvas>
+<script>
+(()=>{
+const SB='https://atbexvtrcopaagcdbpqi.supabase.co',AK='sb_publishable_TpzxX5a3M7lnFeND8xLfhQ_YJOxOkhb';
+const $=s=>document.querySelector(s),V=['vJoin','vLobby','vReady','vQ','vRes','vBoard','vEnd'];
+let view='';const show=id=>{if(view===id)return;view=id;V.forEach(v=>$('#'+v).hidden=v!==id);scrollTo(0,0)};
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const buzz=p=>{try{navigator.vibrate&&navigator.vibrate(p)}catch(e){}};
+async function rpc(fn,a){const r=await fetch(SB+'/rest/v1/rpc/'+fn,{method:'POST',headers:{apikey:AK,Authorization:'Bearer '+AK,'Content-Type':'application/json'},body:JSON.stringify(a)});const d=await r.json().catch(()=>null);if(!r.ok)throw new Error((d&&d.message)||'Network error');return Array.isArray(d)?d[0]:d}
+const SH=['<svg viewBox="0 0 24 24"><path d="M12 2L22 20H2z"/></svg>','<svg viewBox="0 0 24 24"><path d="M12 1l11 11-11 11L1 12z"/></svg>','<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>','<svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2"/></svg>'];
+const qs=new URLSearchParams(location.search);let CODE=(qs.get('c')||qs.get('code')||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+const key=c=>'rttj:'+c;let ME=null;try{ME=JSON.parse(localStorage.getItem(key(CODE))||'null')}catch(e){}
+let S=null,off=0,picked=null,lastSeq=-1,lastView='',busy=false;
+$('#code').value=CODE;try{const p=JSON.parse(localStorage.getItem('rttj:me')||'{}');$('#name').value=p.name||'';$('#store').value=p.store||''}catch(e){}
+async function join(){const c=$('#code').value.toUpperCase().replace(/[^A-Z0-9]/g,''),n=$('#name').value.trim(),st=$('#store').value.trim();
+ if(c.length<4){$('#joinErr').textContent='Enter the 4-letter code from the screen.';return}if(n.length<2){$('#joinErr').textContent='Please enter your name.';return}
+ $('#joinBtn').disabled=true;$('#joinErr').textContent='';
+ try{const d=await rpc('rtt_live_join',{p_code:c,p_name:n,p_store:st});if(!d||d.status!=='ok'){$('#joinErr').textContent=(d&&d.reason)||'Could not join';return}
+  CODE=c;ME={pid:d.pid,secret:d.secret,name:d.name,store:d.store};localStorage.setItem(key(c),JSON.stringify(ME));localStorage.setItem('rttj:me',JSON.stringify({name:n,store:st}));
+  history.replaceState(null,'','?c='+c);hello();poll()}catch(e){$('#joinErr').textContent='No connection. Try again.'}finally{$('#joinBtn').disabled=false}}
+$('#joinBtn').onclick=join;$('#store').addEventListener('keydown',e=>{if(e.key==='Enter')join()});
+function hello(){$('#av').textContent=(ME.name||'?').trim()[0].toUpperCase();$('#hello').textContent='You\'re in, '+ME.name.split(' ')[0]+'!';show('vLobby')}
+async function poll(){if(!ME||busy)return;busy=true;try{const d=await rpc('rtt_live_poll',{p_code:CODE,p_pid:ME.pid,p_secret:ME.secret});
+  if(!d||d.status==='gone'||(d.status==='error'&&/No such/.test(d.reason||''))){localStorage.removeItem(key(CODE));ME=null;show('vJoin');$('#joinErr').textContent=d&&d.status==='gone'?'You were removed from this session. Join again.':'That session has ended.';return}
+  if(d.status==='ok'){S=d;off=d.server-Date.now();render()}}catch(e){}finally{busy=false}}
+function me(){return S.me||{}}
+function render(){const m=me();$('#topTag').textContent=S.client?S.client:'Live quiz';
+ if(!S.live||S.view==='podium'){end();return}
+ if(S.view==='board'){const mv=S.qi>0&&m.prev&&m.prev!==m.rank?(m.prev>m.rank?`<span class="mv up">▲ up ${m.prev-m.rank}</span>`:`<span class="mv dn">▼ down ${m.rank-m.prev}</span>`):'';$('#bRank').textContent='#'+(m.rank||'–');$('#bMove').innerHTML=mv;$('#bOf').textContent='of '+m.of+' players';$('#bScore').textContent=m.score+' pts'+(m.streak>=3?' · 🔥 '+m.streak:'');show('vBoard');return}
+ if(S.view==='question'&&S.clock){const now=Date.now()+off,c=S.clock,t=c.paused_at||now;
+  if(S.seq!==lastSeq){lastSeq=S.seq;picked=null}
+  if(S.reveal){result();return}
+  if(t<c.open_at||!S.q){$('#rTitle').textContent=(S.title||'')+' · Q'+(S.qi+1)+' of '+S.n;const n=Math.max(1,Math.ceil((c.open_at-now)/1000));if($('#rCount').textContent!==String(n)){$('#rCount').textContent=n;const el=$('#rCount');el.style.animation='none';void el.offsetWidth;el.style.animation=''}show('vReady');return}
+  const mine=S.mine?S.mine.choice:picked;
+  if(view!=='vQ'||$('#tiles').dataset.seq!==String(S.seq)){$('#qNum').textContent='Question '+(S.qi+1)+' of '+S.n;$('#qText').textContent=S.q.q;const long=S.q.o.some(o=>o.length>38);$('#tiles').className='tiles'+(long?' long':'');
+   $('#tiles').innerHTML=S.q.o.map((o,k)=>`<button class="tile c${k}" data-k="${k}">${SH[k]}<span>${esc(o)}</span></button>`).join('');$('#tiles').dataset.seq=S.seq;
+   [...$('#tiles').children].forEach(b=>b.onclick=()=>answer(+b.dataset.k));show('vQ')}
+  [...$('#tiles').children].forEach((b,k)=>{b.disabled=mine!=null;b.classList.toggle('pick',mine===k);b.classList.toggle('dim',mine!=null&&mine!==k)});
+  $('#qState').textContent=c.paused_at?'Paused':mine!=null?'Answer locked in ✓':'Tap your answer';
+  const rem=Math.max(0,(c.end_at-t)/1000);$('#sec').textContent=Math.ceil(rem);$('#arc').style.strokeDashoffset=276.5*(1-rem/(c.ms/1000));$('#ring').classList.toggle('low',rem<=5);return}
+ // idle / lobby
+ $('#lScore').textContent=(m.score||0)+' pts';if(m.rank&&m.score){$('#lRank').hidden=false;$('#lRank').textContent='#'+m.rank+' of '+m.of}else $('#lRank').hidden=true;
+ $('#lobbyMsg').textContent=S.view==='lobby'?(S.title||'The quiz')+' is about to start. Eyes on the screen!':'Look for your name on the big screen. The next quiz starts when your trainer is ready.';
+ if(!ME)return;$('#av').textContent=(ME.name||'?').trim()[0].toUpperCase();show('vLobby')}
+async function answer(k){if(picked!=null||(S.mine))return;picked=k;buzz(30);render();
+ try{const d=await rpc('rtt_live_answer',{p_code:CODE,p_pid:ME.pid,p_secret:ME.secret,p_seq:S.seq,p_choice:k});if(d&&d.status==='closed'){$('#qState').textContent=d.reason||'Closed'}}catch(e){picked=null;$('#qState').textContent='No connection, tap again';render()}}
+let shownRes=-1;
+function result(){const r=S.reveal,m=me();if(shownRes===S.seq&&view==='vRes'){return}shownRes=S.seq;
+ const box=$('#vRes');box.className='res '+(!r.answered?'none':r.correct?'ok':'no');
+ $('#resIcon').textContent=!r.answered?'⏱':r.correct?'✓':'✕';$('#resTitle').textContent=!r.answered?'Time\'s up':r.correct?'Correct!':'Not this time';
+ $('#resPts').textContent=r.correct?'+'+r.points:'';$('#resRank').textContent='#'+(m.rank||'–')+' · '+m.score+' pts';
+ $('#resStreak').hidden=!(m.streak>=3);$('#resStreak').textContent='🔥 '+m.streak+' in a row';
+ $('#resAns').innerHTML='<b>Answer: '+esc(S.q?S.q.o[r.a]:'')+'</b>'+(r.why?'<br>'+esc(r.why):'');
+ buzz(r.correct?[40,60,40]:[200]);show('vRes')}
+let ended=false;function end(){const m=me();$('#eRank').textContent='#'+(m.rank||'–');$('#eOf').textContent='of '+(m.of||0)+' players';$('#eScore').textContent=(m.score||0)+' pts';
+ $('#medal').textContent=m.rank===1?'🥇':m.rank===2?'🥈':m.rank===3?'🥉':'💎';show('vEnd');if(!ended&&m.rank&&m.rank<=3){ended=true;confetti()}}
+function confetti(){const cv=$('#conf');cv.width=innerWidth;cv.height=innerHeight;const x=cv.getContext('2d'),C=['#F0D9A6','#D6B16C','#fff','#7FD8A8','#8FBDF0','#E9A0A8'];
+ const P=Array.from({length:140},()=>({x:Math.random()*cv.width,y:-20-Math.random()*400,vx:(Math.random()-.5)*3,vy:2+Math.random()*4,r:Math.random()*6,s:6+Math.random()*8,c:C[Math.random()*6|0]}));let t=0;
+ (function f(){x.clearRect(0,0,cv.width,cv.height);P.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.r+=.1;x.save();x.translate(p.x,p.y);x.rotate(p.r);x.fillStyle=p.c;x.fillRect(-p.s/2,-p.s/4,p.s,p.s/2);x.restore()});if(++t<260)requestAnimationFrame(f);else x.clearRect(0,0,cv.width,cv.height)})()}
+// rejoin on reload
+(async()=>{if(ME&&CODE){try{const d=await rpc('rtt_live_join',{p_code:CODE,p_name:ME.name,p_store:ME.store,p_pid:ME.pid,p_secret:ME.secret});if(d&&d.status==='ok'){hello();poll();return}}catch(e){}localStorage.removeItem(key(CODE));ME=null}show('vJoin');if(CODE)$('#name').focus()})();
+(function loop(){const fast=S&&S.view==='question';poll().finally(()=>setTimeout(loop,fast?700:1500))})();
+setInterval(()=>{if(S&&S.view==='question'&&!S.reveal)render()},250);
+})();
+</script>
+</body></html>

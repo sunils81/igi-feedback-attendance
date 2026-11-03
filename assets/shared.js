@@ -61,6 +61,53 @@ window.CENTRES = CENTRES;
 window.COURSES = COURSES;
 window.INSTRUCTORS = INSTRUCTORS;
 
+/* ── Live staff names for login dropdowns (2026-11-03, per Sunil) ─────────────────────
+   A user created in Admin → Settings must show up in the Instructor / Counsellor login list
+   without a code change. portal_staff_names(role) returns the names of active users holding
+   that role. The list is cached so the dropdown fills instantly next time and still works if
+   the network is slow; the hard-coded list above is only the last-resort fallback.
+   IGIFillNameSelect(selectEl, 'Instructor' | 'Counselor', fallbackArray) */
+window.IGIStaffNames = function (role, cb) {
+  var key = 'igi_staff_names_' + role;
+  try { var c = JSON.parse(localStorage.getItem(key) || 'null'); if (c && c.length) cb(c, true); } catch (e) {}
+  try {
+    var x = new XMLHttpRequest();
+    x.open('POST', 'https://atbexvtrcopaagcdbpqi.supabase.co/rest/v1/rpc/portal_staff_names', true);
+    x.setRequestHeader('apikey', 'sb_publishable_TpzxX5a3M7lnFeND8xLfhQ_YJOxOkhb');
+    x.setRequestHeader('Authorization', 'Bearer sb_publishable_TpzxX5a3M7lnFeND8xLfhQ_YJOxOkhb');
+    x.setRequestHeader('Content-Type', 'application/json');
+    x.timeout = 15000;
+    x.onload = function () {
+      if (x.status < 200 || x.status >= 300) return;
+      var list; try { list = JSON.parse(x.responseText || '[]'); } catch (e) { return; }
+      if (Array.isArray(list) && list.length && typeof list[0] === 'string') {
+        try { localStorage.setItem(key, JSON.stringify(list)); } catch (e) {}
+        cb(list, false);
+      }
+    };
+    x.send(JSON.stringify({ p_role: role }));
+  } catch (e) {}
+};
+window.IGIFillNameSelect = function (sel, role, fallback) {
+  if (!sel) return;
+  var draw = function (names) {
+    var keep = sel.value;
+    sel.innerHTML = '<option value="">Select your name</option>';
+    names.forEach(function (n) { var o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o); });
+    if (keep && names.indexOf(keep) !== -1) sel.value = keep;
+  };
+  if (fallback && fallback.length && sel.options.length <= 1) draw(fallback);
+  window.IGIStaffNames(role, function (names) {
+    draw(names);
+    // keep the shared instructor list (batch setup and other dropdowns) in step
+    if (role === 'Instructor') {
+      names.forEach(function (n) { if (INSTRUCTORS.indexOf(n) === -1) INSTRUCTORS.push(n); });
+    }
+  });
+};
+// Refresh the shared instructor list once per page so new instructors appear in dropdowns.
+try { window.IGIStaffNames('Instructor', function (names) { names.forEach(function (n) { if (INSTRUCTORS.indexOf(n) === -1) INSTRUCTORS.push(n); }); }); } catch (e) {}
+
 // ── CRM-only pseudo-centres ────────────────────────────────────────────────
 // A web lead does not always map to a real centre. A quiz taken from Dubai has
 // no Indian centre to route to, and a lead from an Indian city we don't teach in

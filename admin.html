@@ -1600,6 +1600,7 @@
       <button class="tab" onclick="switchAdminTab('t-trayhub-admin'); adminTrayHubInit();">🔮 Tray Hub</button>
       <button class="tab" id="tab-hod-approvals" onclick="switchAdminTab('t-hod-approvals');">👑 HOD Approvals</button>
       <button class="tab" id="tab-lessons-admin" style="display:none" onclick="switchAdminTab('t-lessons-admin');">📽 Lessons <span id="lessons-admin-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:4px"></span></button>
+      <button class="tab" id="tab-library-admin" style="display:none" onclick="switchAdminTab('t-library-admin');">🏛 Lesson Library</button>
       <button class="tab" onclick="switchAdminTab('t-inventory'); adminInitInventory();">📦 Inventory</button>
       <button class="tab" id="tab-work" onclick="switchAdminTab('t-work')">🧩 Work <span id="work-badge" style="display:none;background:#2563eb;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
       <button class="tab" id="tab-activity" onclick="switchAdminTab('t-activity')">🔔 Activity <span id="activity-badge" style="display:none;background:#e53935;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;vertical-align:middle">0</span></button>
@@ -4279,7 +4280,12 @@
         <p class="sub">Instructors ask here when they need a day that is not open yet, or want to change the order. Approving opens that day for that batch until the end of the day you choose. The instructor gets a notification either way.</p>
         <div id="lesson-approvals-mount" style="margin-top:14px"></div>
       </div>
-      <div class="card" style="margin-top:16px">
+    </div>
+
+    <!-- Lesson Library: every DG and CSG presentation, plus who has Library access.
+         Own tab since 2026-11-03 (was at the bottom of Lessons). Same gate as Lessons. -->
+    <div id="t-library-admin" class="tab-content">
+      <div class="card">
         <div class="section-tag">Library</div>
         <h2>Lesson Library · every DG and CSG presentation</h2>
         <p class="sub">Preview any deck exactly as instructors see it, by course and plan, with search. Every opening is logged.</p>
@@ -4952,6 +4958,8 @@ function startLessonRequestWatch() {
     IGILessons.approverStatus(function (ok, n) {
       var t = document.getElementById('tab-lessons-admin');
       if (t) t.style.display = ok ? '' : 'none';
+      var tl = document.getElementById('tab-library-admin');
+      if (tl) tl.style.display = ok ? '' : 'none';
       setLessonsAdminBadge(ok ? n : 0);
       if (ok && /[?&]lessons=/.test(location.search) && !tick._opened) { tick._opened = true; switchAdminTab('t-lessons-admin'); }
     });
@@ -5632,6 +5640,7 @@ function toggleAdminMoreSheet() {
 var A_MORE_ITEMS = [
   ['t-hod-approvals',     '👑', 'HOD Approvals',          null],
   ['t-lessons-admin',     '📽', 'Lessons',                'lessons-admin-badge'],
+  ['t-library-admin',     '🏛', 'Lesson Library',         null],
   ['t-activity',          '🔔', 'Activity',               'activity-badge'],
   ['t-billing',           '💳', 'Revenue Billing',        null],
   ['t-rev-breakdown',     '📑', 'Revenue Breakdown',      null],
@@ -5749,6 +5758,11 @@ function switchAdminTab(tabId) {
     if (window.IGILessons) {
       var _h = document.getElementById('lessons-admin-history');
       IGILessons.mountApprovals('lesson-approvals-mount', { history: !!(_h && _h.checked), onCount: setLessonsAdminBadge });
+    }
+    return;
+  }
+  if (tabId === 't-library-admin') {
+    if (window.IGILessons) {
       IGILessons.mountReference('lesson-library-mount');
       IGILessons.mountRefGrants('lesson-refgrants-mount');
     }

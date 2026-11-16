@@ -9,7 +9,7 @@
 <script src="assets/work.js?v=6"></script>
 <script src="assets/lessons.js?v=14"></script>
 <script defer src="assets/hls.min.js?v=1.5.17"></script>
-<script defer src="assets/films.js?v=1"></script>
+<script defer src="assets/films.js?v=2"></script>
 <!-- Corporate/RTT client report. Shared with counselor.html so the document a client
      receives is byte-identical whichever portal issued it. -->
 <script src="assets/corp-report.js?v=3"></script>
@@ -1603,6 +1603,7 @@
       <button class="tab" id="tab-hod-approvals" onclick="switchAdminTab('t-hod-approvals');">👑 HOD Approvals</button>
       <button class="tab" id="tab-lessons-admin" style="display:none" onclick="switchAdminTab('t-lessons-admin');">📽 Lessons <span id="lessons-admin-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:4px"></span></button>
       <button class="tab" id="tab-library-admin" style="display:none" onclick="switchAdminTab('t-library-admin');">🏛 Lesson Library</button>
+      <button class="tab" id="tab-films-admin" style="display:none" onclick="switchAdminTab('t-films-admin');">🎬 Films</button>
       <button class="tab" onclick="switchAdminTab('t-inventory'); adminInitInventory();">📦 Inventory</button>
       <button class="tab" id="tab-work" onclick="switchAdminTab('t-work')">🧩 Work <span id="work-badge" style="display:none;background:#2563eb;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
       <button class="tab" id="tab-activity" onclick="switchAdminTab('t-activity')">🔔 Activity <span id="activity-badge" style="display:none;background:#e53935;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:4px;vertical-align:middle">0</span></button>
@@ -4301,6 +4302,23 @@
       </div>
     </div>
 
+    <!-- Films: the IGI voice+music films (assets/films.js), streamed only inside the portal.
+         2026-11-16, per Sunil. Same gate as Lessons; plays and class preparations are logged. -->
+    <div id="t-films-admin" class="tab-content">
+      <div class="card">
+        <div class="section-tag">Class films</div>
+        <h2>🎬 Films</h2>
+        <p class="sub">The films instructors play in Diamond Graduate and Coloured Stone Graduate classes. They stream inside the portal only and cannot be downloaded.</p>
+        <div id="films-admin-mount" style="margin-top:14px"></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="section-tag">Usage</div>
+        <h2>Who watched what</h2>
+        <p class="sub">Every play and every “Prepare for class” in the last 60 days.</p>
+        <div id="films-usage-mount" style="margin-top:14px"></div>
+      </div>
+    </div>
+
     <div id="t-hod-approvals" class="tab-content">
       <div class="card">
         <div class="section-tag">HOD Executive Approvals</div>
@@ -4962,6 +4980,8 @@ function startLessonRequestWatch() {
       if (t) t.style.display = ok ? '' : 'none';
       var tl = document.getElementById('tab-library-admin');
       if (tl) tl.style.display = ok ? '' : 'none';
+      var tf = document.getElementById('tab-films-admin');
+      if (tf) tf.style.display = ok ? '' : 'none';
       setLessonsAdminBadge(ok ? n : 0);
       if (ok && /[?&]lessons=/.test(location.search) && !tick._opened) { tick._opened = true; switchAdminTab('t-lessons-admin'); }
     });
@@ -5643,6 +5663,7 @@ var A_MORE_ITEMS = [
   ['t-hod-approvals',     '👑', 'HOD Approvals',          null],
   ['t-lessons-admin',     '📽', 'Lessons',                'lessons-admin-badge'],
   ['t-library-admin',     '🏛', 'Lesson Library',         null],
+  ['t-films-admin',       '🎬', 'Films',                  null],
   ['t-activity',          '🔔', 'Activity',               'activity-badge'],
   ['t-billing',           '💳', 'Revenue Billing',        null],
   ['t-rev-breakdown',     '📑', 'Revenue Breakdown',      null],
@@ -5761,6 +5782,10 @@ function switchAdminTab(tabId) {
       var _h = document.getElementById('lessons-admin-history');
       IGILessons.mountApprovals('lesson-approvals-mount', { history: !!(_h && _h.checked), onCount: setLessonsAdminBadge });
     }
+    return;
+  }
+  if (tabId === 't-films-admin') {
+    if (window.IGIFilms) { IGIFilms.mount('films-admin-mount'); IGIFilms.mountUsage('films-usage-mount'); }
     return;
   }
   if (tabId === 't-library-admin') {

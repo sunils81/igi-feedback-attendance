@@ -342,5 +342,26 @@
     play(String(e.data.id), e.data.title ? String(e.data.title) : '');
   });
 
-  window.IGIFilms = { mount: mount, play: play, close: close, prepare: prepare, purgeExpired: purgeExpired };
+
+  // HOD: plays and class preparations, last 60 days (admin portal)
+  function mountUsage(id) {
+    var box = $(id); if (!box) return;
+    injectCss();
+    box.innerHTML = '<div class="igf-note">Loading…</div>';
+    rpc('lesson_film_usage', {}).then(function (d) {
+      if (!d || d.status !== 'ok') { box.innerHTML = '<div class="igf-note">' + esc((d && d.reason) || 'Could not load') + '</div>'; return; }
+      var rows = d.rows || [];
+      if (!rows.length) { box.innerHTML = '<div class="igf-note">No plays yet.</div>'; return; }
+      var lab = { play: '▶ Played', prepare: '⬇ Prepared for class', offline: '▶ Played (laptop copy)' };
+      box.innerHTML = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
+        '<tr style="text-align:left;color:#6b7280"><th style="padding:6px 8px">When</th><th style="padding:6px 8px">Who</th><th style="padding:6px 8px">Film</th><th style="padding:6px 8px">What</th></tr>' +
+        rows.map(function (r) {
+          var t = ''; try { t = new Date(r.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' }); } catch (e) {}
+          return '<tr style="border-top:1px solid #eee"><td style="padding:6px 8px;white-space:nowrap">' + esc(t) + '</td><td style="padding:6px 8px">' + esc(r.by) +
+            '</td><td style="padding:6px 8px">' + esc(r.film) + '</td><td style="padding:6px 8px">' + esc(lab[r.purpose] || r.purpose) + '</td></tr>';
+        }).join('') + '</table></div>';
+    }).catch(function () { box.innerHTML = '<div class="igf-note">Could not load. Check the connection.</div>'; });
+  }
+
+  window.IGIFilms = { mount: mount, mountUsage: mountUsage, play: play, close: close, prepare: prepare, purgeExpired: purgeExpired };
 })();

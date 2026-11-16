@@ -15,6 +15,7 @@
 // caller (assets/push-subscribe.js, or any external cron/admin script hitting
 // /api/push/send) needs to change — the public URLs are unchanged.
 
+import crypto from 'crypto';
 import webpush from 'web-push';
 
 const SUPA_URL = process.env.SUPABASE_URL;
@@ -426,6 +427,79 @@ async function handleLessonOpen(req, res) {
   }
 }
 
+// ── /api/push/film-play — gate for the Lesson Films (assets/films.js) ─────────────────
+// lesson_film_authorize() (service_role only) checks the portal session, logs the play,
+// and returns the film's HLS playlists plus its AES key. We sign every 6-second piece in the
+// private Cloudflare R2 bucket (free egress) for 3 hours and send the playlists back with those URLs in
+// place. The pieces are encrypted, so they are useless outside the portal player.
+//   body: { filmId, purpose?: 'play' | 'prepare' | 'offline' }
+// Cloudflare R2 (S3-compatible) presigned GET, SigV4 query auth. Env (Vercel):
+// R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET. Films live in R2, not
+// Supabase, because R2 has no egress charge (2026-11-16, per Sunil).
+function r2Enc(x) { return encodeURIComponent(x).replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase()); }
+function r2Presign(objectKey, expiresIn) {
+  const acct = process.env.R2_ACCOUNT_ID, ak = process.env.R2_ACCESS_KEY_ID, sk = process.env.R2_SECRET_ACCESS_KEY, bucket = process.env.R2_BUCKET;
+  if (!acct || !ak || !sk || !bucket) throw new Error('R2 not configured');
+  const host = `${acct}.r2.cloudflarestorage.com`;
+  const path = `/${bucket}/` + objectKey.split('/').map(r2Enc).join('/');
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const day = amzDate.slice(0, 8);
+  const scope = `${day}/auto/s3/aws4_request`;
+  const q = [
+    ['X-Amz-Algorithm', 'AWS4-HMAC-SHA256'], ['X-Amz-Credential', `${ak}/${scope}`], ['X-Amz-Date', amzDate],
+    ['X-Amz-Expires', String(expiresIn)], ['X-Amz-SignedHeaders', 'host'],
+  ].map(([k, v]) => `${r2Enc(k)}=${r2Enc(v)}`).sort().join('&');
+  const canonical = `GET\n${path}\n${q}\nhost:${host}\n\nhost\nUNSIGNED-PAYLOAD`;
+  const sts = `AWS4-HMAC-SHA256\n${amzDate}\n${scope}\n` + crypto.createHash('sha256').update(canonical).digest('hex');
+  const h = (k, m) => crypto.createHmac('sha256', k).update(m).digest();
+  const kSig = h(h(h(h('AWS4' + sk, day), 'auto'), 's3'), 'aws4_request');
+  const sig = crypto.createHmac('sha256', kSig).update(sts).digest('hex');
+  return `https://${host}${path}?${q}&X-Amz-Signature=${sig}`;
+}
+
+async function handleFilmPlay(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
+  if (req.method !== 'POST') return res.status(405).json({ status: 'error', reason: 'Method not allowed' });
+  if (!SUPA_URL || !SUPA_KEY) return res.status(500).json({ status: 'error', reason: 'Server not configured' });
+  const token = String(req.headers['x-portal-session'] || '').trim();
+  if (!token) return res.status(401).json({ status: 'error', reason: 'session' });
+  const { filmId, purpose } = req.body || {};
+  if (!/^[a-z0-9-]{3,60}$/.test(String(filmId || ''))) return res.status(400).json({ status: 'error', reason: 'Invalid film' });
+  const p = ['prepare', 'offline'].includes(purpose) ? purpose : 'play';
+  let gate;
+  try {
+    const r = await fetch(`${SUPA_URL}/rest/v1/rpc/lesson_film_authorize`, {
+      method: 'POST',
+      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json', 'X-Portal-Session': token },
+      body: JSON.stringify({ p_film: String(filmId), p_purpose: p }),
+    });
+    if (!r.ok) throw new Error(`gate ${r.status} ${await r.text()}`);
+    gate = await r.json();
+  } catch (e) {
+    console.error('film-play gate failed', e);
+    return res.status(500).json({ status: 'error', reason: 'Could not check access' });
+  }
+  if (!gate || gate.status !== 'ok' || !gate.film) {
+    return res.status(200).json({ status: (gate && gate.status) || 'error', reason: (gate && gate.reason) || 'Not allowed' });
+  }
+  if (p === 'offline') return res.status(200).json({ status: 'ok', me: gate.me });
+  const f = gate.film;
+  let variants = Array.isArray(f.variants) ? f.variants : [];
+  if (p === 'prepare') variants = variants.filter((v) => v.v === 'v1').slice(0, 1);
+  try {
+    const out = variants.map((v) => ({
+      v: v.v, bw: v.bw, res: v.res, codecs: v.codecs,
+      segs: (v.segs || []).map((sg) => r2Presign(`films/${f.id}/${v.v}/${sg}`, 10800)),
+      playlist: v.playlist,
+    }));
+    return res.status(200).json({ status: 'ok', me: gate.me, film: { id: f.id, title: f.title }, key: f.key, variants: out });
+  } catch (e) {
+    console.error('film-play sign failed', e);
+    return res.status(500).json({ status: 'error', reason: 'Could not prepare the film' });
+  }
+}
+
 // ── /api/push/lesson-notify — a lesson-unlock request was raised or decided ───────────
 // Same pattern as discount-notify: no secret, the server re-reads the request by id and
 // composes the message, and only for an event in the last 15 minutes, so a caller can at
@@ -506,5 +580,6 @@ export default async function handler(req, res) {
   if (action === 'discount-notify') return handleDiscountNotify(req, res);
   if (action === 'lesson-open') return handleLessonOpen(req, res);
   if (action === 'lesson-notify') return handleLessonNotify(req, res);
+  if (action === 'film-play') return handleFilmPlay(req, res);
   return res.status(400).json({ status: 'error', reason: 'Unknown or missing action' });
 }

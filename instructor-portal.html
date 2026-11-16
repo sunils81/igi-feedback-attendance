@@ -8,6 +8,8 @@
 <script src="/assets/push-subscribe.js?v=2"></script>
 <script src="/assets/work.js?v=6"></script>
 <script src="/assets/lessons.js?v=14"></script>
+<script defer src="/assets/hls.min.js?v=1.5.17"></script>
+<script defer src="/assets/films.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style id="dyn-css"></style>
 <style>
@@ -409,6 +411,7 @@
     <button class="tab active" onclick="iTab('t-session')">🗓️ Session</button>
     <button class="tab" id="t-lessons-tab" onclick="iTab('t-lessons')">📽 Lessons <span id="lessons-badge" style="display:none;background:#dc2626;color:#fff;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:3px;vertical-align:middle"></span></button>
     <button class="tab" id="t-library-tab" style="display:none" onclick="iTab('t-library')">🏛 Library</button>
+    <button class="tab" id="t-films-tab" onclick="iTab('t-films')">🎬 Films</button>
     <button class="tab" onclick="iTab('t-attendance')">👥 Attendance</button>
     <button class="tab" onclick="iTab('t-marks')">📝 Marks</button>
     <button class="tab" onclick="iTab('t-resources')">📚 Resources</button>
@@ -2060,6 +2063,17 @@
        2026-10-18, per Sunil: for tutors and new joiners; the HOD grants access per person,
        optionally for a fixed period. Reference openings are logged and never touch a batch's
        day lock. The tab shows only when lesson_ref_status says this person has access. ── -->
+  <!-- ── FILMS: IGI voice+music films for DG / CSG classes (assets/films.js). 2026-11-16, per Sunil:
+       stream inside the portal only (no downloads), adaptive quality so a weak connection lowers
+       the quality instead of freezing, and "Prepare for class" keeps a locked 7-day copy on the laptop. ── -->
+  <div id="t-films" class="tab-content">
+    <div class="card">
+      <div class="section-tag">Class films</div>
+      <h2>🎬 Films</h2>
+      <p class="sub">IGI's narrated films for Diamond Graduate and Coloured Stone Graduate. Play them in class, or prepare them on the classroom laptop the day before.</p>
+      <div id="films-mount" style="margin-top:14px"></div>
+    </div>
+  </div>
   <div id="t-library" class="tab-content">
     <div class="card">
       <div class="section-tag">Reference</div>
@@ -3448,6 +3462,7 @@ function iTab(id) {
   if (id==='t-session')    { loadTodaySessions(); if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-lessons')    { mountLessonsTab(); }
   if (id==='t-library')    { if (window.IGILessons && IGILessons.mountReference) IGILessons.mountReference('library-mount'); }
+  if (id==='t-films')      { if (window.IGIFilms) IGIFilms.mount('films-mount'); }
   if (id==='t-attendance') { stopAttendanceRefresh(); if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-marks')      { if(!instructorBatchesCache||!instructorBatchesCache.length) loadInstructorBatches(); }
   if (id==='t-resources')  { syncResourcesBatchSelect(); }
@@ -3503,6 +3518,7 @@ function renderInstructorMoreSheet() {
   var items = [
     ['Lessons', '📽', 't-lessons', null, 'lessons-badge'],
     ['Library', '🏛', 't-library', 't-library-tab', null],
+    ['Films', '🎬', 't-films', null, null],
     ['Work', '🧩', 't-work', null, 'work-badge'],
     ['Resources', '📚', 't-resources', null, null],
     ['Diamond Calculator', '🧮', 't-diamondcalc', null, null],

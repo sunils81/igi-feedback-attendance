@@ -168,3 +168,17 @@ It uses `window.LESSON` (engine/foot.html) to apply the filter.
 Results are saved per batch (rtt_live_sessions / players / questions / answers) and download as CSV from Settings. Engagement only, never a certificate criterion.
 Rules and functions: `supabase/migrations/migration_rtt_live.sql` (applied). Question banks are in `decks/rtt-retail-training/scenes.html` (`window.DECK.quiz`, ids q0–q8 + n/l/b).
 Sources: "RTT Natural.pdf" (images in media-src as rt-*), IGI Diamond Masterclass (mc-*).
+
+## Films (2026-11-16)
+The 11 IGI voice+music films stream inside the portal only (🎬 Films tab, and a "▶ Watch the
+film" slide in 11 DG/CSG decks, added by `lessons-src/film_slides.py`).
+- Encoded on the Mac by `~/Desktop/IGI_Films_HLS/encode.sh`: encrypted HLS (AES-128), 6-second
+  pieces at 1080p / 720p / 480p, so a weak connection lowers the quality instead of freezing.
+- Pieces live in **Cloudflare R2** (bucket `igi-films`, prefix `films/`), uploaded with
+  `r2_upload.py` (keys in `r2.env`, never in git). R2 has no egress charge.
+- `lesson_films` holds the playlists and AES keys (server only); `lesson_film_log` logs every
+  play / prepare. `/api/push/film-play` checks the session (`lesson_film_authorize`) and signs
+  3-hour R2 links (Vercel env R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET).
+- Player: `assets/films.js` + `assets/hls.min.js` (1.5.17). "Prepare for class" keeps the 720p
+  pieces, still encrypted, in Cache Storage `igi-lessons-films-v1` for 7 days.
+- R2 bucket CORS must allow the portal origin (https://igi-feedback-attendance.vercel.app).

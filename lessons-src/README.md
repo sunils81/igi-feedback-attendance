@@ -182,3 +182,13 @@ film" slide in 11 DG/CSG decks, added by `lessons-src/film_slides.py`).
 - Player: `assets/films.js` + `assets/hls.min.js` (1.5.17). "Prepare for class" keeps the 720p
   pieces, still encrypted, in Cache Storage `igi-lessons-films-v1` for 7 days.
 - R2 bucket CORS must allow the portal origin (https://igi-feedback-attendance.vercel.app).
+
+## IGI Team Training · Diamonds 101 (2026-11-17)
+Two 2-hour internal sessions for new IGI colleagues (marketing and other teams), taken by the HOD:
+`igi-team-diamonds-1` (Part 1 · From the Earth to the cutting wheel, 39 scenes, 4 films) and
+`igi-team-diamonds-2` (Part 2 · The 4Cs and the IGI report, 34 scenes, 2 films). Course
+`IGI Team Training`, day 1 and day 2. Source: `lessons-src/team_training/` (`deck1.py`, `deck2.py`,
+shared `common.html` + `common.js.html`); run `python3 lessons-src/team_training/make.py`, then
+`build.py`. No photos: every visual is SVG/CSS. Access (`migration_lesson_team_training.sql`): the
+HOD sees them in the admin 🏛 Lesson Library; anyone else only if the HOD ticks
+"IGI Team Training (internal)" on their Library access. The backup approver does not get them by default.

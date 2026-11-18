@@ -43,25 +43,23 @@ def make():
     'Where diamonds come from, how laboratory-grown diamonds are made, what happens to the rough, and why a well-cut diamond sparkles.',
     ['4 IGI films', '8 games &amp; votes', 'Trivia rounds', 'About 2 hours']))
 
-  # ---------- hook ----------
+  # ---------- hook: spot the diamond (no prior knowledge needed, 2026-11-18) ----------
+  stone = '<svg viewBox="0 0 200 200"><polygon points="40,70 70,40 130,40 160,70 100,170" fill="{f}" stroke="#0A1530" stroke-width="3"/><polyline points="40,70 160,70" stroke="#0A1530" stroke-width="2" fill="none"/><polyline points="70,40 85,70 100,40 115,70 130,40" stroke="#0A1530" stroke-width="1.5" fill="none"/><polyline points="85,70 100,170 115,70" stroke="#0A1530" stroke-width="1.2" fill="none"/></svg>'
+  trio = ''.join('<div class="st">' + stone.format(f=f) + '<span class="chip">Stone ' + k + '</span></div>' for k, f in (('A', '#F7FAFF'), ('B', '#F9FBFF'), ('C', '#F6F9FE')))
   S.append(f'''
 <section class="scene" id="s-hook" data-chap="Warm-up" data-wipe="hex" data-morph="1800,200,90,0,diamond">
   <style>
-    #s-hook .twins{{display:flex;gap:60px;align-items:center;justify-content:center}}
+    #s-hook .trio{{display:flex;gap:40px;align-items:center;justify-content:center}}
     #s-hook .st{{display:flex;flex-direction:column;align-items:center;gap:16px}}
-    #s-hook .st svg{{width:250px;height:250px;filter:drop-shadow(0 20px 30px rgba(13,23,51,.18))}}
-    #s-hook .price{{font:700 54px/1 var(--display);color:var(--ink)}}
+    #s-hook .st svg{{width:200px;height:200px;filter:drop-shadow(0 20px 30px rgba(13,23,51,.18))}}
   </style>
   <div class="pad" style="gap:24px">
-    <div class="eyebrow rise">Warm-up · the room votes</div>
-    <h2 class="kt">Same size. Same shape. One costs <span class="gold">ten times</span> more. Why?</h2>
+    <div class="eyebrow rise">Warm-up · quick poll</div>
+    <h2 class="kt" style="font-size:60px">Only <span class="gold">one</span> of these is a diamond. Which one?</h2>
     <div class="row" style="gap:60px;flex:1;min-height:0;align-items:center">
-      <div class="twins rise" style="width:680px;flex:none">
-        <div class="st"><svg viewBox="0 0 200 200"><polygon points="40,70 70,40 130,40 160,70 100,170" fill="#F7FAFF" stroke="#0A1530" stroke-width="3"/><polyline points="40,70 160,70" stroke="#0A1530" stroke-width="2" fill="none"/><polyline points="70,40 85,70 100,40 115,70 130,40" stroke="#0A1530" stroke-width="1.5" fill="none"/><polyline points="85,70 100,170 115,70" stroke="#0A1530" stroke-width="1.2" fill="none"/></svg><div class="price">₹4,00,000</div><span class="chip">Stone A</span></div>
-        <div class="st"><svg viewBox="0 0 200 200"><polygon points="40,70 70,40 130,40 160,70 100,170" fill="#FBF3DC" stroke="#0A1530" stroke-width="3"/><polyline points="40,70 160,70" stroke="#0A1530" stroke-width="2" fill="none"/><polyline points="70,40 85,70 100,40 115,70 130,40" stroke="#0A1530" stroke-width="1.5" fill="none"/><polyline points="85,70 100,170 115,70" stroke="#0A1530" stroke-width="1.2" fill="none"/></svg><div class="price">₹40,000</div><span class="chip">Stone B</span></div>
-      </div>
-      <div class="grow rise">{poll(['Stone A is natural, B is laboratory-grown', 'A is whiter and cleaner', 'A is better cut, so it sparkles more', 'It could be any or all of these'], 3,
-        'It could be <b>any or all</b> of them. Origin, colour, clarity, cut and weight all move the price, and you cannot see most of it with the naked eye. That is why the <b>IGI report</b> exists. By the end of Part 2 you will read it like a grader.')}</div>
+      <div class="trio rise" style="width:660px;flex:none">{trio}</div>
+      <div class="grow rise">{poll(['Stone A', 'Stone B', 'Stone C', 'You cannot tell just by looking'], 3,
+        'You <b>cannot tell by eye</b>: A is cubic zirconia, B is a diamond, C is moissanite. Look-alikes, and even laboratory-grown diamonds, can look exactly like a natural diamond. That is why laboratories like <b>IGI</b> exist, and why the <b>IGI report</b> matters.')}</div>
     </div>
   </div>
 </section>''')
@@ -100,7 +98,7 @@ def make():
     <div class="eyebrow rise">The plan · two sessions of about 2 hours</div>
     <h2 class="kt">Today: the diamond's journey. Next time: <span class="gold">grade it and read the report</span>.</h2>
     <div class="two">
-      <div class="part p1 rise"><span class="chip gold" style="align-self:flex-start">Part 1 · today · tap to jump</span><h3>From the Earth to the cutting wheel</h3>
+      <div class="part p1 rise"><span class="chip gold" style="align-self:flex-start">Part 1 · today</span><h3>From the Earth to the cutting wheel</h3>
         <button class="it2" type="button" data-jump="s-ch1"><i>01</i>What is a diamond?</button>
         <button class="it2" type="button" data-jump="s-ch2"><i>02</i>Born deep in the Earth<small>🎬 film</small></button>
         <button class="it2" type="button" data-jump="s-ch3"><i>03</i>Laboratory-grown diamonds<small>🎬 film</small></button>
@@ -132,7 +130,6 @@ def make():
       <div class="ev step"><b>ISO</b><span>Accreditation</span><p>First institute with ISO accreditation for grading both natural and laboratory-grown diamonds.</p></div>
       <div class="ev step"><b>Dec 2024</b><span>Listed in India</span><p>IGI listed on the NSE and BSE. Today it grades diamonds, coloured stones and jewellery, and runs schools like ours.</p></div>
     </div>
-    <div class="tip step" style="margin-top:auto">Ask the room: <b>who has seen an IGI report before today?</b> Keep those hands in mind: by the end of Part 2, every hand in the room will be up.</div>
   </div>
 </section>''')
 
@@ -147,7 +144,7 @@ def make():
     #s-carbon .lat{{display:none}}#s-carbon .lat.on{{display:inline}}
   </style>
   <div class="pad" style="gap:22px" data-explore="tCarbon">
-    <div class="eyebrow rise">Same element, two personalities · tap to compare</div>
+    <div class="eyebrow rise">Same element, two personalities</div>
     <h2 class="kt">Diamond and graphite are both <span class="gold">pure carbon</span></h2>
     <div class="seg rise"><button type="button" data-x="d" class="on">◆ Diamond</button><button type="button" data-x="g">✎ Graphite (pencil)</button></div>
     <div class="row" style="flex:1;min-height:0;gap:36px">
@@ -174,7 +171,7 @@ def make():
     #s-hard .mb b{{font:700 34px/1 var(--display);color:var(--ink)}}
   </style>
   <div class="pad" style="gap:22px">
-    <div class="eyebrow rise">The Mohs scale of hardness · tap a mineral</div>
+    <div class="eyebrow rise">The Mohs scale of hardness</div>
     <h2 class="kt">Hardest? Yes. <span class="gold">Unbreakable?</span> No.</h2>
     <div class="row" style="flex:1;min-height:0;gap:40px">
       <div class="col grow" style="justify-content:center;padding-bottom:40px"><div class="ladder rise">{bars}</div></div>
@@ -205,7 +202,7 @@ def make():
     #s-depth .x svg{{width:100%;height:100%}}
   </style>
   <div class="pad" style="gap:20px">
-    <div class="eyebrow rise">Drag the slider · take a diamond to the surface</div>
+    <div class="eyebrow rise">The journey to the surface</div>
     <h2 class="kt">150 to 200 km down, then a <span class="gold">fast ride up</span></h2>
     <div class="row" style="flex:1;min-height:0;gap:36px">
       <div class="x rise"><svg viewBox="0 0 1000 620" preserveAspectRatio="none">
@@ -245,7 +242,7 @@ def make():
   S.append(f'''
 <section class="scene" id="s-age" data-chap="02 · Born in the Earth" data-wipe="hex" data-morph="1820,190,80,0,hex">
   <div class="pad" style="gap:22px">
-    <div class="eyebrow rise">Room vote</div>
+    <div class="eyebrow rise">Quick poll</div>
     <h2 class="kt">How old is a typical natural diamond?</h2>
     <div class="row" style="flex:1;min-height:0;gap:44px">
       <div class="grow rise">{poll(['About 10,000 years', 'About 1 million years', 'About 65 million years, as old as the dinosaurs', 'Between 1 and 3.5 billion years'], 3,
@@ -283,7 +280,7 @@ def make():
   </div>
 </section>''')
 
-  S.append(dyk('s-dyk2', '02 · Trivia', 'Famous diamonds · tap a card', [
+  S.append(dyk('s-dyk2', '02 · Trivia', 'Famous diamonds', [
     ('👑', 'The Koh-i-Noor', 'Mountain of Light', 'Found in India, fought over for centuries by Mughal, Persian, Afghan, Sikh and British rulers. Today it is set in a British crown and is still claimed by several countries.'),
     ('💎', 'The largest gem rough ever found?', 'The Cullinan · 3,106 carats', 'Found in South Africa in 1905, about the size of a fist. The biggest stone cut from it, Cullinan I (530 ct), sits in the British royal sceptre.'),
     ('🔵', 'The Hope Diamond', 'Blue, and it glows red', 'A 45.52 ct blue diamond from India, now in the Smithsonian. Under ultraviolet light it glows red-orange for a while after the light is switched off. Its blue comes from traces of boron.'),
@@ -314,7 +311,7 @@ def make():
     #s-same thead th{{background:none;border:0;font:800 18px/1 var(--body);letter-spacing:.2em;text-transform:uppercase;color:#86621A}}
   </style>
   <div class="pad" style="gap:16px">
-    <div class="eyebrow rise">Natural and laboratory-grown, side by side · click to build the table</div>
+    <div class="eyebrow rise">Natural and laboratory-grown, side by side</div>
     <h2 class="kt" style="font-size:56px">Same diamond. <span class="gold">Different origin.</span> Very different price.</h2>
     <table class="rise"><thead><tr><th></th><th>Natural diamond</th><th>Laboratory-grown diamond</th></tr></thead><tbody>{tr}</tbody></table>
   </div>
@@ -334,7 +331,7 @@ def make():
     @keyframes pl{50%{opacity:.6;transform:scale(1.06)}}
   </style>
   <div class="pad" style="gap:20px">
-    <div class="eyebrow rise">Two ways to grow a diamond · press the buttons</div>
+    <div class="eyebrow rise">Two ways to grow a diamond</div>
     <h2 class="kt" style="font-size:58px">HPHT recreates the mantle. CVD builds it <span class="gold">atom layer by atom layer</span>.</h2>
     <div class="two">
       <div class="m rise"><span class="chip gold" style="align-self:flex-start">HPHT · High Pressure, High Temperature</span>
@@ -363,7 +360,7 @@ def make():
   S.append(f'''
 <section class="scene" id="s-sort1" data-chap="03 · Game" data-wipe="slice" data-morph="1820,190,80,0,tri">
   <div class="pad" style="gap:18px">
-    <div class="eyebrow rise">Game · sort the cards</div>
+    <div class="eyebrow rise">Game · sort the cards into the right box</div>
     <h2 class="kt" style="font-size:56px">Natural, laboratory-grown, or <span class="gold">not a diamond at all</span>?</h2>
     {sort(['Natural diamond', 'Laboratory-grown diamond', 'Imitation (not diamond)'], [
       ['Formed 150 km below the surface', 0], ['Grown on a seed plate', 1], ['Cubic zirconia', 2], ['Moissanite', 2],
@@ -399,10 +396,10 @@ def make():
   S.append('''
 <section class="scene" id="s-shapes" data-chap="04 · The rough" data-wipe="slice" data-morph="1820,190,80,0,octa">
   <div class="pad" style="gap:20px">
-    <div class="eyebrow rise">Rough crystal shapes · drag to spin, tap a shape</div>
+    <div class="eyebrow rise">Rough crystal shapes</div>
     <h2 class="kt">What a diamond looks like <span class="gold">before</span> it is cut</h2>
     <div class="row" style="flex:1;min-height:0;gap:40px">
-      <div class="viewer rise" data-shape="octahedron" style="width:760px;flex:none"><span class="vl">Octahedron</span><span class="vh">drag to rotate</span></div>
+      <div class="viewer rise" data-shape="octahedron" style="width:760px;flex:none"><span class="vl">Octahedron</span></div>
       <div class="col grow" style="gap:20px;justify-content:center">
         <div class="seg rise"><button type="button" class="on" data-setshape="octahedron" data-cap="&lt;b&gt;Octahedron&lt;/b&gt; · two pyramids base to base. The classic diamond crystal and the cutter's favourite: one octahedron can give two round brilliants.">Octahedron</button><button type="button" data-setshape="macle" data-cap="&lt;b&gt;Macle&lt;/b&gt; · a flat, triangular twinned crystal. Good for shapes like hearts and trilliants, harder to cut.">Macle</button><button type="button" data-setshape="cube" data-cap="&lt;b&gt;Cube&lt;/b&gt; · rarer in gem rough, often with rough faces. HPHT laboratory-grown crystals often combine cube and octahedron faces.">Cube</button><button type="button" data-setshape="dodecahedron" data-cap="&lt;b&gt;Dodecahedron&lt;/b&gt; · twelve faces, usually rounded, because the crystal partly dissolved on its way up.">Dodecahedron</button></div>
         <p class="lead rise" data-shapecap><b>Octahedron</b> · two pyramids base to base. The classic diamond crystal and the cutter's favourite: one octahedron can give two round brilliants.</p>
@@ -426,7 +423,7 @@ def make():
 <section class="scene" id="s-r2p" data-chap="04 · The rough" data-wipe="hex" data-morph="1820,190,80,0,hex">
   <style>#s-r2p .seg{{flex-direction:column;width:560px;flex:none}}#s-r2p .seg button{{text-align:left;font-size:26px;padding:22px 24px;display:flex;align-items:center}}</style>
   <div class="pad" style="gap:22px" data-explore>
-    <div class="eyebrow rise">Rough to polished in five steps · tap each step</div>
+    <div class="eyebrow rise">Rough to polished in five steps</div>
     <h2 class="kt">Only a diamond can cut a diamond</h2>
     <div class="row" style="flex:1;min-height:0;gap:36px">
       <div class="seg rise">{btn}</div>
@@ -443,7 +440,7 @@ def make():
     #s-yield .vis div{display:flex;flex-direction:column;align-items:center;gap:12px;font:800 20px/1 var(--body);color:var(--ink2)}
   </style>
   <div class="pad" style="gap:20px">
-    <div class="eyebrow rise">Guess first · drag the slider, then reveal</div>
+    <div class="eyebrow rise">Guess first</div>
     <h2 class="kt">From a 2-carat rough, how much is left as a <span class="gold">polished round</span>?</h2>
     <div class="row" style="flex:1;min-height:0;gap:50px">
       <div class="col grow" style="gap:24px;justify-content:center">
@@ -454,7 +451,7 @@ def make():
         <div class="rise"><input class="t-range" id="yR" type="range" min="10" max="95" value="80"><div class="t-tick"><span>10% kept</span><span>95% kept</span></div></div>
       </div>
       <div class="col" style="width:600px;flex:none;gap:18px;justify-content:center">
-        <div class="t-panel rise"><span class="tag">The room's guess</span><div class="t-big" id="yG">80%</div><p class="body" id="yGc">= 1.60 ct polished</p></div>
+        <div class="t-panel rise"><span class="tag">Your guess</span><div class="t-big" id="yG">80%</div><p class="body" id="yGc">= 1.60 ct polished</p></div>
         <button class="btn rise" type="button" id="yRev" style="align-self:flex-start">Reveal the answer</button>
         <div class="tip" id="yAns" style="display:none">Typically only about <b>40–50%</b> survives: around <b>0.8–1.0 ct</b>. More than half of the rough becomes diamond dust. That loss is one reason polished diamonds cost what they do.</div>
       </div>
@@ -492,7 +489,7 @@ def make():
     #s-anatomy svg [data-x]{{cursor:pointer}}
   </style>
   <div class="pad" style="gap:20px" data-explore="tAnat">
-    <div class="eyebrow rise">Anatomy of a round brilliant · tap a part (on the drawing or the buttons)</div>
+    <div class="eyebrow rise">Anatomy of a round brilliant</div>
     <h2 class="kt">Know the parts, and every report makes sense</h2>
     <div class="row" style="flex:1;min-height:0;gap:36px">
       <div class="rise" style="width:900px;flex:none;background:#fff;border:1px solid #E2D9C4;border-radius:24px;display:grid;place-items:center">
@@ -532,7 +529,7 @@ def make():
     #s-light .leak{stroke:#FF8A7A}
   </style>
   <div class="pad" style="gap:20px" data-explore="tLight">
-    <div class="eyebrow rise">Follow the light · tap a cut</div>
+    <div class="eyebrow rise">Follow the light</div>
     <h2 class="kt">Too shallow, too deep, or <span class="gold">just right</span></h2>
     <div class="row" style="flex:1;min-height:0;gap:36px">
       <div class="col" style="width:900px;flex:none;gap:16px">
@@ -583,7 +580,7 @@ def make():
     #s-fancy .shp.on{{background:#0A1530;color:#F0D9A6;border-color:#0A1530}}
   </style>
   <div class="pad" style="gap:20px" data-explore>
-    <div class="eyebrow rise">Shape is not cut · tap a shape</div>
+    <div class="eyebrow rise">Shape is not cut</div>
     <h2 class="kt" style="font-size:58px">"Shape" is the outline. "Cut" is how well it was made.</h2>
     <div class="row" style="flex:1;min-height:0;gap:34px">
       <div class="grid rise">{sb}</div>
@@ -597,7 +594,7 @@ def make():
   S.append(f'''
 <section class="scene" id="s-mf1" data-chap="Game · Myth or fact" data-wipe="hex" data-morph="1820,190,80,0,tri">
   <div class="pad" style="gap:10px">
-    <div class="eyebrow rise">Game · the room shouts, then tap</div>
+    <div class="eyebrow rise">Game · myth or fact?</div>
     {mf([
       ['A diamond can be scratched only by another diamond.', True, 'Fact. Diamond is 10 on the Mohs scale; that is why it is cut and polished with diamond powder.'],
       ['Diamonds are formed from coal.', False, 'Myth. Coal forms near the surface from plants; diamonds form 150–200 km down from carbon in the mantle, mostly long before land plants existed.'],
@@ -625,9 +622,9 @@ def make():
         <div class="card step" style="border-color:#D6B16C"><h3 style="color:#E6C98F">Next session · Part 2</h3><p class="small">Colour, clarity, carat, cut grade, and reading an IGI report line by line. Homework: find one IGI report online and bring a question about it.</p></div>
       </div>
       <div class="col center" style="width:480px;gap:10px">
-        <div class="eyebrow" style="justify-content:center">Room score today</div>
+        <div class="eyebrow" style="justify-content:center">Quiz score</div>
         <div class="num" style="font-size:200px;color:#FBF6EA"><span id="endScore">0</span></div>
-        <p class="small muted">quiz answers correct</p>
+        <p class="small muted">correct answers</p>
       </div>
     </div>
   </div>
@@ -635,7 +632,7 @@ def make():
 
   deck = {
     'tag': 'IGI · Team Training · Part 1',
-    'menu': [['s-hero', 'Start', 'Welcome'], ['s-hook', 'Warm-up', 'Same size, ten times the price'], ['s-igi', 'About', 'IGI in five milestones'],
+    'menu': [['s-hero', 'Start', 'Welcome'], ['s-hook', 'Warm-up', 'Spot the diamond'], ['s-igi', 'About', 'IGI in five milestones'],
              ['s-ch1', 'Chapter 01', 'What is a diamond?'], ['s-ch2', 'Chapter 02', 'Born in the Earth'], ['s-ch3', 'Chapter 03', 'Laboratory-grown'],
              ['s-words', 'Marketing', 'Words we use and avoid'], ['s-ch4', 'Chapter 04', 'The rough'], ['s-ch5', 'Chapter 05', 'Anatomy & light'],
              ['s-mf1', 'Game', 'Myth or fact'], ['s-final', 'Final', 'Final check'], ['s-end', 'Close', 'Wrap-up']],

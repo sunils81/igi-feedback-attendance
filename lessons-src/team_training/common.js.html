@@ -9,7 +9,7 @@
   var opts=JSON.parse(box.getAttribute('data-opts')),ans=+box.getAttribute('data-ans'),why=box.getAttribute('data-why')||'';
   var n=opts.map(function(){return 0});
   box.innerHTML=opts.map(function(o,k){return '<button type="button" class="opt" data-k="'+k+'"><i class="bar"></i><span class="l">'+L[k]+'</span><span>'+o+'</span><span class="n">0</span></button>'}).join('')+
-   '<div class="ctl"><button type="button" class="btn" data-r>Reveal the answer</button><button type="button" class="btn ghost" data-z>↺ Reset</button><span class="t-hintline">Tap an option once for each hand raised</span></div><div class="ans">'+why+'</div>';
+   '<div class="ctl"><button type="button" class="btn" data-r>Reveal the answer</button><button type="button" class="btn ghost" data-z>↺ Reset</button></div><div class="ans">'+why+'</div>';
   function draw(){var t=n.reduce(function(a,b){return a+b},0)||1;$$('.opt',box).forEach(function(b,k){b.querySelector('.n').textContent=n[k];b.querySelector('.bar').style.width=(n[k]/t*100)+'%'})}
   $$('.opt',box).forEach(function(b){b.addEventListener('click',function(e){stop(e);n[+b.dataset.k]++;draw()});b.addEventListener('contextmenu',function(e){e.preventDefault();e.stopPropagation();var k=+b.dataset.k;if(n[k]>0)n[k]--;draw()})});
   box.querySelector('[data-r]').addEventListener('click',function(e){stop(e);$$('.opt',box).forEach(function(b,k){b.classList.toggle('right',k===ans);b.classList.toggle('wrong',k!==ans)});box.querySelector('.ans').classList.add('show')});
@@ -20,7 +20,7 @@
   var bins=JSON.parse(box.getAttribute('data-bins')),items=JSON.parse(box.getAttribute('data-items')),sel=null;
   function build(){
    var order=items.map(function(x,i){return i}).sort(function(){return Math.random()-.5});
-   box.innerHTML='<div class="row" style="justify-content:space-between;align-items:center"><span class="t-hintline">Tap a card, then tap the box it belongs in</span><span class="stat"></span></div><div class="pool">'+
+   box.innerHTML='<div class="row" style="justify-content:space-between;align-items:center"><span class="t-hintline">Which box does each card belong in?</span><span class="stat"></span></div><div class="pool">'+
     order.map(function(i){return '<button type="button" class="chip2" data-i="'+i+'">'+items[i][0]+'</button>'}).join('')+'</div>'+
     '<div class="bins" style="grid-template-columns:repeat('+bins.length+',1fr)">'+bins.map(function(b,k){return '<div class="bin" data-b="'+k+'"><h3><span>'+b+'</span><span class="c">0</span></h3><div class="in"></div></div>'}).join('')+'</div>'+
     '<div class="row" style="justify-content:flex-end"><button type="button" class="btn ghost" data-z>↺ Shuffle and start again</button></div>';
@@ -37,16 +37,16 @@
  /* ---- myth or fact ---- */
  $$('.t-mf').forEach(function(box){
   var items=JSON.parse(box.getAttribute('data-items')),i=0,score=0,done=false;
-  box.innerHTML='<div class="meta"><span class="cnt"></span><span>Room score <b class="sc">0</b></span></div><div class="st"></div><div class="btns"><button type="button" class="m">✕ MYTH</button><button type="button" class="f">✓ FACT</button></div><div class="verdict"></div><div class="why"></div><div class="row" style="gap:16px"><button type="button" class="btn" data-n style="visibility:hidden">Next statement →</button><button type="button" class="btn ghost" data-z>↺ Start again</button></div>';
+  box.innerHTML='<div class="meta"><span class="cnt"></span><span>Score <b class="sc">0</b></span></div><div class="st"></div><div class="btns"><button type="button" class="m">✕ MYTH</button><button type="button" class="f">✓ FACT</button></div><div class="verdict"></div><div class="why"></div><div class="row" style="gap:16px"><button type="button" class="btn" data-n style="visibility:hidden">Next statement →</button><button type="button" class="btn ghost" data-z>↺ Start again</button></div>';
   var st=box.querySelector('.st'),why=box.querySelector('.why'),vd=box.querySelector('.verdict'),nx=box.querySelector('[data-n]');
   function show(){done=false;var it=items[i];st.textContent='“'+it[0]+'”';why.classList.remove('show');why.innerHTML='';vd.textContent='';nx.style.visibility='hidden';box.querySelector('.cnt').textContent='Statement '+(i+1)+' of '+items.length;box.querySelector('.sc').textContent=score;
    st.animate([{opacity:0,transform:'translateY(20px)'},{opacity:1,transform:'none'}],{duration:600,easing:'cubic-bezier(.16,1,.3,1)'})}
   function pick(f){if(done)return;done=true;var it=items[i],ok=(f===it[1]);if(ok)score++;box.querySelector('.sc').textContent=score;
-   vd.textContent=(it[1]?'✓ Fact':'✕ Myth')+(ok?' · the room got it':' · the room was caught out');vd.style.color=it[1]?'var(--good)':'var(--bad)';
+   vd.textContent=(it[1]?'✓ Fact':'✕ Myth')+(ok?' · correct':' · caught out');vd.style.color=it[1]?'var(--good)':'var(--bad)';
    why.innerHTML=it[2];why.classList.add('show');nx.style.visibility='visible';nx.textContent=i<items.length-1?'Next statement →':'See the score →'}
   box.querySelector('.m').addEventListener('click',function(e){stop(e);pick(false)});
   box.querySelector('.f').addEventListener('click',function(e){stop(e);pick(true)});
-  nx.addEventListener('click',function(e){stop(e);if(i<items.length-1){i++;show()}else{st.textContent='Room score: '+score+' of '+items.length;why.innerHTML=score===items.length?'Perfect. Nobody can fool this team.':'Every myth we bust is trust earned.';why.classList.add('show');vd.textContent='';nx.style.visibility='hidden'}});
+  nx.addEventListener('click',function(e){stop(e);if(i<items.length-1){i++;show()}else{st.textContent='Score: '+score+' of '+items.length;why.innerHTML=score===items.length?'Perfect. Nobody can fool this team.':'Every myth we bust is trust earned.';why.classList.add('show');vd.textContent='';nx.style.visibility='hidden'}});
   box.querySelector('[data-z]').addEventListener('click',function(e){stop(e);i=0;score=0;show()});
   show();
  });

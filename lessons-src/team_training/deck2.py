@@ -23,6 +23,29 @@ def make():
 
   S.append(quiz('s-recap', 'recap', 'Warm-up', 'Warm-up · what do we remember from Part 1?'))
 
+  # ---------- hook: why does one cost ten times more? (moved from Part 1, 2026-11-18) ----------
+  S.append(f'''
+<section class="scene" id="s-hook" data-chap="The big question" data-wipe="hex" data-morph="1800,200,90,0,diamond">
+  <style>
+    #s-hook .twins{{display:flex;gap:60px;align-items:center;justify-content:center}}
+    #s-hook .st{{display:flex;flex-direction:column;align-items:center;gap:16px}}
+    #s-hook .st svg{{width:250px;height:250px;filter:drop-shadow(0 20px 30px rgba(13,23,51,.18))}}
+    #s-hook .price{{font:700 54px/1 var(--display);color:var(--ink)}}
+  </style>
+  <div class="pad" style="gap:24px">
+    <div class="eyebrow rise">The big question · quick poll</div>
+    <h2 class="kt">Same size. Same shape. One costs <span class="gold">ten times</span> more. Why?</h2>
+    <div class="row" style="gap:60px;flex:1;min-height:0;align-items:center">
+      <div class="twins rise" style="width:680px;flex:none">
+        <div class="st"><svg viewBox="0 0 200 200"><polygon points="40,70 70,40 130,40 160,70 100,170" fill="#F7FAFF" stroke="#0A1530" stroke-width="3"/><polyline points="40,70 160,70" stroke="#0A1530" stroke-width="2" fill="none"/><polyline points="70,40 85,70 100,40 115,70 130,40" stroke="#0A1530" stroke-width="1.5" fill="none"/><polyline points="85,70 100,170 115,70" stroke="#0A1530" stroke-width="1.2" fill="none"/></svg><div class="price">₹4,00,000</div><span class="chip">Stone A</span></div>
+        <div class="st"><svg viewBox="0 0 200 200"><polygon points="40,70 70,40 130,40 160,70 100,170" fill="#FBF3DC" stroke="#0A1530" stroke-width="3"/><polyline points="40,70 160,70" stroke="#0A1530" stroke-width="2" fill="none"/><polyline points="70,40 85,70 100,40 115,70 130,40" stroke="#0A1530" stroke-width="1.5" fill="none"/><polyline points="85,70 100,170 115,70" stroke="#0A1530" stroke-width="1.2" fill="none"/></svg><div class="price">₹40,000</div><span class="chip">Stone B</span></div>
+      </div>
+      <div class="grow rise">{poll(['A is natural, B is laboratory-grown', 'A is whiter and cleaner', 'A is better cut, so it sparkles more', 'It could be any or all of these'], 3,
+        'It could be <b>any or all</b> of them. Origin (Part 1) matters, and so do colour, clarity, cut and carat weight: the 4Cs we cover today. You cannot see most of this with the naked eye. That is why the <b>IGI report</b> exists. By the end of today you will read it like a grader.')}</div>
+    </div>
+  </div>
+</section>''')
+
   tiles = [('s-ch1', 'Colour', 'How white (or how colourful)?', '#FBF3DC'), ('s-ch2', 'Clarity', 'How clean inside and out?', '#EEF3FA'),
            ('s-ch3', 'Carat', 'How heavy?', '#F6F0E2'), ('s-ch4', 'Cut', 'How well made, and how bright?', '#F2EDF8')]
   tl = ''.join(f'<button type="button" class="c4 rise" data-jump="{j}" style="background:{bg}"><b>{t[0]}</b><span class="n">{t}</span><span class="d">{d}</span></button>' for j, t, d, bg in tiles)
@@ -37,7 +60,7 @@ def make():
     #s-4cs .c4 .d{{font:600 23px/1.4 var(--body);color:#4A5063}}
   </style>
   <div class="pad" style="gap:24px">
-    <div class="eyebrow rise">The 4Cs · a universal language for diamond quality · tap one to jump</div>
+    <div class="eyebrow rise">The 4Cs · a universal language for diamond quality</div>
     <h2 class="kt">Four questions every buyer asks, and every report answers</h2>
     <div class="g">{tl}</div>
     <div class="tip step">Some people add a 5th C: <b>Certificate</b>. The 4Cs are only as good as the lab that graded them, and that is where IGI comes in.</div>
@@ -60,7 +83,7 @@ def make():
     #s-colscale .grp span{{font:800 15px/1.2 var(--body);letter-spacing:.08em;text-transform:uppercase;color:#86621A;border-top:3px solid #D6B16C;padding-top:8px}}
   </style>
   <div class="pad" style="gap:18px">
-    <div class="eyebrow rise">The D-to-Z colour scale · drag the slider</div>
+    <div class="eyebrow rise">The D-to-Z colour scale</div>
     <h2 class="kt">Can you see it? Most people can't, until about <span class="gold">K</span>.</h2>
     <div class="row" style="flex:1;min-height:0;gap:50px;align-items:center">
       <div class="gem rise" id="csGem">{GEM.format(cls='', gid='csg', c='#FFFFFF')}</div>
@@ -96,7 +119,7 @@ def make():
     #s-colgame .pick.win{{border-color:var(--good);box-shadow:0 0 0 6px rgba(31,122,77,.2)}}
   </style>
   <div class="pad" style="gap:18px">
-    <div class="row rise" style="justify-content:space-between;align-items:center"><div class="eyebrow">Game · which one is whiter? The room points, then tap</div><div class="seg" id="cgR"><button type="button" class="on" data-r="0">Round 1</button><button type="button" data-r="1">Round 2</button><button type="button" data-r="2">Round 3</button></div></div>
+    <div class="row rise" style="justify-content:space-between;align-items:center"><div class="eyebrow">Game · which one is whiter?</div><div class="seg" id="cgR"><button type="button" class="on" data-r="0">Round 1</button><button type="button" data-r="1">Round 2</button><button type="button" data-r="2">Round 3</button></div></div>
     <h2 class="kt" style="font-size:56px">One grade apart. <span class="gold">Can you spot it?</span></h2>
     <div class="pair rise"><div class="pick" data-s="0"><div class="gw"></div><span class="g"></span></div><div class="pick" data-s="1"><div class="gw"></div><span class="g"></span></div></div>
     <p class="lead" id="cgMsg" style="text-align:center;min-height:50px;max-width:none">Look at the colour in the <b>bottom half</b> of each stone.</p>
@@ -109,7 +132,7 @@ def make():
    s.querySelectorAll('#cgR button').forEach(function(b){{b.addEventListener('click',function(e){{e.stopPropagation();load(+b.dataset.r)}})}});load(0)}})();</script>
 </section>''')
 
-  S.append(dyk('s-dyk1', '01 · Trivia', 'Colour · tap a card', [
+  S.append(dyk('s-dyk1', '01 · Trivia', 'Colour', [
     ('🔤', 'Why does the scale start at D, not A?', 'A fresh start', 'Older systems used A, B, C, AAA and more, inconsistently. The modern scale deliberately began at D so it would not be confused with them.'),
     ('🧪', 'What makes a diamond yellowish?', 'Nitrogen', 'A few nitrogen atoms among millions of carbon atoms absorb blue light, so the stone looks yellow. Boron makes diamonds blue, like the Hope.'),
     ('🌈', 'Do coloured diamonds follow D–Z?', 'No: "fancy colour"', 'Pink, blue, green or intense yellow diamonds are graded on a separate fancy-colour scale, where more colour usually means more value.'),
@@ -157,7 +180,7 @@ def make():
   <style>#s-clarscale .seg{{flex-direction:column;width:330px;flex:none}}#s-clarscale .seg button{{font-size:26px;padding:20px;text-align:left}}
    #s-clarscale .face{{width:520px;height:520px;flex:none;background:#fff;border:1px solid #E2D9C4;border-radius:26px;display:grid;place-items:center}}</style>
   <div class="pad" style="gap:20px" data-explore="tClar">
-    <div class="eyebrow rise">The clarity scale · 11 grades in 6 groups · tap a group</div>
+    <div class="eyebrow rise">The clarity scale · 11 grades in 6 groups</div>
     <h2 class="kt">From Flawless to Included</h2>
     <div class="row" style="flex:1;min-height:0;gap:36px">
       <div class="seg rise">{btn}</div>
@@ -185,7 +208,7 @@ def make():
     #s-loupe .list{padding:0;margin:0;display:flex;flex-direction:column;gap:10px}
   </style>
   <div class="pad" style="gap:18px">
-    <div class="eyebrow rise">Game · be the grader · move the loupe and click what you find</div>
+    <div class="eyebrow rise">Game · be the grader</div>
     <h2 class="kt" style="font-size:56px">Find the four <span class="gold">inclusions</span></h2>
     <div class="row" style="flex:1;min-height:0;gap:40px">
       <div class="arena rise" id="lpA"><svg viewBox="0 0 860 640">
@@ -220,7 +243,7 @@ def make():
     #s-carat .kv4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
   </style>
   <div class="pad" style="gap:18px">
-    <div class="eyebrow rise">Drag the slider · round brilliants, actual proportions</div>
+    <div class="eyebrow rise">Round brilliants, actual proportions</div>
     <h2 class="kt">Double the weight is <span class="gold">not</span> double the size</h2>
     <div class="row" style="flex:1;min-height:0;gap:44px">
       <div class="vw rise"><svg viewBox="0 0 640 600">
@@ -245,7 +268,7 @@ def make():
   S.append(f'''
 <section class="scene" id="s-magic" data-chap="03 · Carat" data-wipe="hex" data-morph="1820,190,80,0,square">
   <div class="pad" style="gap:20px">
-    <div class="eyebrow rise">Room vote, then the chart</div>
+    <div class="eyebrow rise">Quick poll</div>
     <h2 class="kt" style="font-size:58px">A 0.99 ct and a 1.00 ct: <span class="gold">how different is the price?</span></h2>
     <div class="row" style="flex:1;min-height:0;gap:44px">
       <div class="grow rise">{poll(['Exactly 1% apart', 'About 5% apart', 'Often 15–25% or more apart', 'The 0.99 costs more'], 2,
@@ -264,7 +287,7 @@ def make():
   </div>
 </section>''')
 
-  S.append(dyk('s-dyk3', '03 · Trivia', 'Carat · tap a card', [
+  S.append(dyk('s-dyk3', '03 · Trivia', 'Carat', [
     ('🌱', 'Where does the word "carat" come from?', 'Carob seeds', 'Traders once balanced gems against the seeds of the carob tree. Today one metric carat is exactly 0.2 grams (200 milligrams).'),
     ('💯', 'What is a "pointer"?', '1 carat = 100 points', 'A 0.25 ct diamond is a "25-pointer". The trade often talks in points for small stones.'),
     ('⚖️', 'Carat or karat?', 'Different things!', 'Carat (ct) is the weight of a gem. Karat (K, as in 22K or 18K) is the purity of gold. Mixing them up in a post is a classic mistake.'),
@@ -317,14 +340,14 @@ def make():
     #s-price.revealed .pc .why{{display:block}}
   </style>
   <div class="pad" style="gap:18px">
-    <div class="eyebrow rise">Game · tap the stones from MOST to LEAST expensive</div>
+    <div class="eyebrow rise">Game · rank from most to least expensive</div>
     <h2 class="kt" style="font-size:58px">Put it all together: <span class="gold">price these four</span></h2>
     <div class="cards rise">{''.join(f'<button type="button" class="pc" data-k="{s[0]}"><span class="rk"></span><span class="L">{s[0]}</span><span class="s">{s[1]}</span><span class="o">{s[2]}</span><span class="why"></span></button>' for s in stones)}</div>
     <div class="row rise" style="gap:14px;align-items:center"><button class="btn" type="button" id="prRev">Reveal the order</button><button class="btn ghost" type="button" id="prZ">↺ Start again</button><span class="lead" id="prMsg" style="font-size:26px"></span></div>
   </div>
   <script>(function(){{var s=document.getElementById('s-price'),pick=[],ANS=['A','C','D','B'],W={{A:'1st. Natural, a full carat, good colour and clarity.',C:'2nd. Same quality as A, but under the 1-carat "magic weight", so noticeably cheaper.',D:'3rd. A full natural carat, but K colour, SI2 clarity and a Good cut pull the price far down.',B:'4th. Same grades as A, but laboratory-grown: typically a fraction of the natural price.'}};
    s.querySelectorAll('.pc').forEach(function(b){{b.addEventListener('click',function(e){{e.stopPropagation();if(s.classList.contains('revealed')||pick.indexOf(b.dataset.k)>=0)return;pick.push(b.dataset.k);b.classList.add('r');b.querySelector('.rk').textContent=pick.length}})}});
-   document.getElementById('prRev').addEventListener('click',function(e){{e.stopPropagation();s.classList.add('revealed');var ok=0;s.querySelectorAll('.pc').forEach(function(b){{var k=b.dataset.k,i=ANS.indexOf(k);b.classList.add('r');b.querySelector('.rk').textContent=i+1;b.querySelector('.why').textContent=W[k];var good=pick[i]===k;if(good)ok++;b.classList.toggle('ok',good);b.classList.toggle('no',!good&&pick.length)}});document.getElementById('prMsg').innerHTML='The room got <b>'+ok+' of 4</b> in the right place. Prices are illustrative: the order is what matters.'}});
+   document.getElementById('prRev').addEventListener('click',function(e){{e.stopPropagation();s.classList.add('revealed');var ok=0;s.querySelectorAll('.pc').forEach(function(b){{var k=b.dataset.k,i=ANS.indexOf(k);b.classList.add('r');b.querySelector('.rk').textContent=i+1;b.querySelector('.why').textContent=W[k];var good=pick[i]===k;if(good)ok++;b.classList.toggle('ok',good);b.classList.toggle('no',!good&&pick.length)}});document.getElementById('prMsg').innerHTML='<b>'+ok+' of 4</b> in the right place. Prices are illustrative: the order is what matters.'}});
    document.getElementById('prZ').addEventListener('click',function(e){{e.stopPropagation();pick=[];s.classList.remove('revealed');s.querySelectorAll('.pc').forEach(function(b){{b.classList.remove('r','ok','no')}});document.getElementById('prMsg').textContent=''}})}})();</script>
 </section>''')
 
@@ -385,7 +408,7 @@ def make():
     #s-report .tabs{{display:flex;gap:10px}}
   </style>
   <div class="pad" style="gap:16px" data-explore>
-    <div class="row rise" style="justify-content:space-between;align-items:center"><div class="eyebrow">Tap any line of the report</div><div class="seg tabs" id="rpTabs"><button type="button" class="on" data-t="nat">Natural diamond report</button><button type="button" data-t="lab">Laboratory-grown diamond report</button></div></div>
+    <div class="row rise" style="justify-content:space-between;align-items:center"><div class="eyebrow">Anatomy of an IGI report</div><div class="seg tabs" id="rpTabs"><button type="button" class="on" data-t="nat">Natural diamond report</button><button type="button" data-t="lab">Laboratory-grown diamond report</button></div></div>
     <div class="row" style="flex:1;min-height:0;gap:30px">
       <div class="doc rise">
         <div class="hd"><div><b>INTERNATIONAL GEMOLOGICAL INSTITUTE</b><br><span class="tt" id="rpTitle">DIAMOND REPORT</span></div><span class="ill">Training sample · not a real report</span></div>
@@ -411,7 +434,7 @@ def make():
           <button type="button" class="f" data-x="ver"><i>Verify</i><svg viewBox="0 0 120 120" style="width:120px"><rect width="120" height="120" fill="#fff"/><g fill="#0A1530"><rect x="6" y="6" width="34" height="34"/><rect x="80" y="6" width="34" height="34"/><rect x="6" y="80" width="34" height="34"/><rect x="50" y="50" width="12" height="12"/><rect x="66" y="66" width="12" height="12"/><rect x="50" y="86" width="12" height="12"/><rect x="86" y="54" width="12" height="12"/><rect x="96" y="96" width="14" height="14"/></g><g fill="#fff"><rect x="14" y="14" width="18" height="18"/><rect x="88" y="14" width="18" height="18"/><rect x="14" y="88" width="18" height="18"/></g></svg><span style="font-size:16px">www.igi.org</span></button>
         </div>
       </div>
-      <div class="t-panel grow rise" data-out><span class="tag">Start here</span><h3>Tap a line on the report</h3><p class="body">Walk it in this order: <b>identity → the 4Cs → finish → inscription → verify</b>.</p></div>
+      <div class="t-panel grow rise" data-out><span class="tag">How to read it</span><h3>Top to bottom</h3><p class="body">Walk it in this order: <b>identity → the 4Cs → finish → inscription → verify</b>.</p></div>
     </div>
     {info}
   </div>
@@ -437,7 +460,7 @@ def make():
     #s-natlg thead th{{background:none;border:0;font:800 18px/1 var(--body);letter-spacing:.2em;text-transform:uppercase;color:#86621A}}
   </style>
   <div class="pad" style="gap:16px">
-    <div class="eyebrow rise">Spot the difference · click to reveal each row</div>
+    <div class="eyebrow rise">Spot the difference</div>
     <h2 class="kt" style="font-size:56px">Six places a report tells you it is <span class="gold">laboratory-grown</span></h2>
     <table class="rise"><thead><tr><th></th><th>Natural diamond report</th><th>Laboratory-grown diamond report</th></tr></thead><tbody>{tr}</tbody></table>
   </div>
@@ -450,7 +473,7 @@ def make():
     #s-inscr .gird .txt{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(var(--z,0.08));transform-origin:center;font:600 64px/1 var(--mono);letter-spacing:.12em;color:#5D6C8F;white-space:nowrap;transition:transform .15s}
   </style>
   <div class="pad" style="gap:22px">
-    <div class="eyebrow rise">The laser inscription · drag to zoom in, like a 10× loupe</div>
+    <div class="eyebrow rise">The laser inscription · seen through a 10× loupe</div>
     <h2 class="kt">The report number, <span class="gold">written on the diamond</span></h2>
     <div class="gird rise"><div class="txt" id="inTxt">IGI LG612345678</div></div>
     <div class="rise"><input class="t-range" id="inR" type="range" min="8" max="100" value="8"><div class="t-tick"><span>Naked eye</span><span>10× loupe</span></div></div>
@@ -466,7 +489,7 @@ def make():
   S.append('''
 <section class="scene" id="s-verify" data-chap="05 · The IGI report" data-wipe="slice" data-morph="1820,190,80,0,hex">
   <div class="pad" style="gap:26px">
-    <div class="eyebrow rise">How to verify any IGI report · we will do one live</div>
+    <div class="eyebrow rise">How to verify any IGI report</div>
     <h2 class="kt">Four steps, two minutes, total confidence</h2>
     <div class="flow rise">
       <div class="st step"><span class="num-badge">1</span><h3>Find the number</h3><p>On the report, and on the girdle (inscription).</p></div><div class="ar">›</div>
@@ -474,7 +497,7 @@ def make():
       <div class="st step"><span class="num-badge">3</span><h3>Match every field</h3><p>Description, shape, weight, measurements and grades must all match.</p></div><div class="ar">›</div>
       <div class="st step"><span class="num-badge">4</span><h3>Check the stone</h3><p>Ask a gemologist to read the inscription with a loupe.</p></div>
     </div>
-    <div class="tip step">Live demo: open <b>igi.org</b> on the classroom laptop now, and verify a real report number together. Anything that does not match is a red flag: stop and ask the lab.</div>
+    <div class="tip step">Anyone can verify an IGI report at <b>igi.org</b>. If anything does not match, treat it as a red flag: stop and contact the lab.</div>
   </div>
 </section>''')
 
@@ -492,7 +515,7 @@ def make():
     #s-spot .row2.miss{animation:shake .5s}
   </style>
   <div class="pad" style="gap:16px">
-    <div class="eyebrow rise">Game · a customer emails us a report and a photo of the stone · tap the THREE problems on the report</div>
+    <div class="eyebrow rise">Game · a customer sends us a report and a photo of the stone · find the THREE problems</div>
     <h2 class="kt" style="font-size:54px">Does this paperwork match the diamond?</h2>
     <div class="two">
       <div class="box rise"><h3>What the report says</h3>
@@ -536,7 +559,7 @@ def make():
   S.append(f'''
 <section class="scene" id="s-mf" data-chap="Game · Myth or fact" data-wipe="hex" data-morph="1820,190,80,0,tri">
   <div class="pad" style="gap:10px">
-    <div class="eyebrow rise">Game · myth or fact · the room shouts, then tap</div>
+    <div class="eyebrow rise">Game · myth or fact?</div>
     {mf([
       ['A D-colour diamond is always more expensive than a G.', False, 'Myth. Colour is one of four Cs. A G with better clarity, cut or weight can easily cost more than a D.'],
       ['Fluorescence is a defect.', False, 'Myth. It is a characteristic, recorded on the report. Many natural diamonds have it.'],
@@ -577,9 +600,9 @@ def make():
         <p class="lead rise">Questions are welcome any time. Want to go deeper? Ask about IGI's Diamond Essentials and Diamond Graduate programmes.</p>
       </div>
       <div class="col center" style="width:480px;gap:10px">
-        <div class="eyebrow" style="justify-content:center">Room score today</div>
+        <div class="eyebrow" style="justify-content:center">Quiz score</div>
         <div class="num" style="font-size:200px;color:#FBF6EA"><span id="endScore">0</span></div>
-        <p class="small muted">quiz answers correct</p>
+        <p class="small muted">correct answers</p>
       </div>
     </div>
   </div>
@@ -587,7 +610,7 @@ def make():
 
   deck = {
     'tag': 'IGI · Team Training · Part 2',
-    'menu': [['s-hero', 'Start', 'Welcome'], ['s-recap', 'Warm-up', 'Part 1 recap'], ['s-4cs', 'Map', 'The 4Cs'], ['s-ch1', 'Chapter 01', 'Colour'],
+    'menu': [['s-hero', 'Start', 'Welcome'], ['s-recap', 'Warm-up', 'Part 1 recap'], ['s-hook', 'Question', 'Same size, ten times the price'], ['s-4cs', 'Map', 'The 4Cs'], ['s-ch1', 'Chapter 01', 'Colour'],
              ['s-ch2', 'Chapter 02', 'Clarity'], ['s-ch3', 'Chapter 03', 'Carat'], ['s-ch4', 'Chapter 04', 'Cut grade'], ['s-price', 'Game', 'Price these four'],
              ['s-ch5', 'Chapter 05', 'The IGI report'], ['s-report', 'Tool', 'Tap-through report'], ['s-spot', 'Game', 'Spot the error'],
              ['s-ch6', 'Chapter 06', 'How we talk'], ['s-mf', 'Game', 'Myth or fact'], ['s-trivia', 'Fun', 'Trivia round'], ['s-final', 'Final', 'Final check'], ['s-end', 'Close', 'Close']],

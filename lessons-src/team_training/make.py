@@ -83,10 +83,10 @@ def film(id, fid, blurb, watch, chap='🎬 Film', n=0):
   <div class="facets"></div>
   <div class="reel rise">{REEL.format(n=n)}</div>
   <div class="pad" style="max-width:1150px">
-    <div class="row rise" style="gap:16px;align-items:center"><div class="eyebrow">IGI film · watch together</div><span class="t-dur">{dur}</span></div>
+    <div class="row rise" style="gap:16px;align-items:center"><div class="eyebrow">IGI film</div><span class="t-dur">{dur}</span></div>
     <h1 class="kt" style="font-size:96px;color:#FBF6EA">{title}</h1>
     <p class="lead rise" style="max-width:980px">{blurb}</p>
-    <div class="col" style="gap:12px"><div class="t-hintline rise" style="color:#E6C98F">Before we press play · watch for</div><ul class="t-watch">{w}</ul></div>
+    <div class="col" style="gap:12px"><div class="t-hintline rise" style="color:#E6C98F">Watch for</div><ul class="t-watch">{w}</ul></div>
     <div class="row rise" style="gap:16px;align-items:center">
       <button class="btn" type="button" style="font-size:26px;padding:22px 38px"
         onclick="event.stopPropagation();if(window.parent!==window){{parent.postMessage({{type:'igi-film',id:'{fid}',title:'{t_js}'}},'*')}}else{{this.nextElementSibling.textContent='Open this deck from the portal to play the film.'}}">▶ Watch the film</button>
@@ -96,9 +96,9 @@ def film(id, fid, blurb, watch, chap='🎬 Film', n=0):
 </section>'''
 
 
-def dyk(id, chap, title, cards, dark=False, eyebrow='Did you know? · tap a card'):
+def dyk(id, chap, title, cards, dark=False, eyebrow='Did you know?'):
   cols = len(cards)
-  cs = ''.join(f'''<div class="flip rise"><div class="in"><div class="f"><div class="ic">{ic}</div><div class="q">{q}</div><div class="tap">Tap to reveal</div></div><div class="bk"><h3>{h}</h3><p>{p}</p></div></div></div>''' for ic, q, h, p in cards)
+  cs = ''.join(f'''<div class="flip rise"><div class="in"><div class="f"><div class="ic">{ic}</div><div class="q">{q}</div></div><div class="bk"><h3>{h}</h3><p>{p}</p></div></div></div>''' for ic, q, h, p in cards)
   return f'''
 <section class="scene{' dark' if dark else ''}" id="{id}" data-chap="{chap}" data-wipe="hex" data-morph="1820,190,80,0,hex">
   <div class="pad" style="gap:26px">

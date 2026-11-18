@@ -437,7 +437,7 @@ async function handleLessonOpen(req, res) {
 // R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET. Films live in R2, not
 // Supabase, because R2 has no egress charge (2026-11-16, per Sunil).
 function r2Enc(x) { return encodeURIComponent(x).replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase()); }
-function r2Presign(objectKey, expiresIn) {
+function r2Presign(objectKey, expiresIn, method) {
   const acct = process.env.R2_ACCOUNT_ID, ak = process.env.R2_ACCESS_KEY_ID, sk = process.env.R2_SECRET_ACCESS_KEY, bucket = process.env.R2_BUCKET;
   if (!acct || !ak || !sk || !bucket) throw new Error('R2 not configured');
   const host = `${acct}.r2.cloudflarestorage.com`;
@@ -450,7 +450,7 @@ function r2Presign(objectKey, expiresIn) {
     ['X-Amz-Algorithm', 'AWS4-HMAC-SHA256'], ['X-Amz-Credential', `${ak}/${scope}`], ['X-Amz-Date', amzDate],
     ['X-Amz-Expires', String(expiresIn)], ['X-Amz-SignedHeaders', 'host'],
   ].map(([k, v]) => `${r2Enc(k)}=${r2Enc(v)}`).sort().join('&');
-  const canonical = `GET\n${path}\n${q}\nhost:${host}\n\nhost\nUNSIGNED-PAYLOAD`;
+  const canonical = `${method || 'GET'}\n${path}\n${q}\nhost:${host}\n\nhost\nUNSIGNED-PAYLOAD`;
   const sts = `AWS4-HMAC-SHA256\n${amzDate}\n${scope}\n` + crypto.createHash('sha256').update(canonical).digest('hex');
   const h = (k, m) => crypto.createHmac('sha256', k).update(m).digest();
   const kSig = h(h(h(h('AWS4' + sk, day), 'auto'), 's3'), 'aws4_request');
@@ -498,6 +498,18 @@ async function handleFilmPlay(req, res) {
     console.error('film-play sign failed', e);
     return res.status(500).json({ status: 'error', reason: 'Could not prepare the film' });
   }
+}
+
+// TEMPORARY (2026-11-18): presigned PUT URLs so the Diamonds 101 clips can be uploaded to R2
+// from Sunil's Mac. One-time token (only its SHA-256 is here), only tt-lab-* film pieces, and it
+// stops working after 19 Nov 2026. To be removed in the next commit.
+async function handleTmpFilmPut(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
+  if (req.method !== 'POST' || Date.now() > Date.UTC(2026, 10, 19, 12)) return res.status(410).json({ status: 'gone' });
+  const { token, keys } = req.body || {};
+  if (crypto.createHash('sha256').update(String(token || '')).digest('hex') !== '995b6dc4d0532a049463e4c34e7df91c82d6f589161acb3119376fff7adef1b9') return res.status(403).json({ status: 'forbidden' });
+  if (!Array.isArray(keys) || keys.length > 200 || !keys.every((k) => /^films\/tt-lab-[a-z-]{3,30}\/v[0-2]\/s\d{3}\.ts$/.test(k))) return res.status(400).json({ status: 'bad keys' });
+  return res.status(200).json({ status: 'ok', urls: keys.map((k) => r2Presign(k, 3600, 'PUT')) });
 }
 
 // ── /api/push/lesson-notify — a lesson-unlock request was raised or decided ───────────
@@ -581,5 +593,6 @@ export default async function handler(req, res) {
   if (action === 'lesson-open') return handleLessonOpen(req, res);
   if (action === 'lesson-notify') return handleLessonNotify(req, res);
   if (action === 'film-play') return handleFilmPlay(req, res);
+  if (action === 'tmp-film-put') return handleTmpFilmPut(req, res);
   return res.status(400).json({ status: 'error', reason: 'Unknown or missing action' });
 }

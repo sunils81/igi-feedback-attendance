@@ -1,6 +1,6 @@
 """Diamonds 101 · Part 2 — The 4Cs and the IGI report (about 2 hours)."""
 import json
-from make import hero, chapter, film, dyk, poll, sort, mf, quiz, write, A
+from make import clip, hero, chapter, film, dyk, poll, sort, mf, quiz, write, A
 from photos import fig, src, credits_slide
 J = lambda o: json.dumps(o, ensure_ascii=False).replace('</', '<\\/')
 
@@ -492,6 +492,9 @@ def make():
     <table class="rise"><thead><tr><th></th><th>Natural diamond report</th><th>Laboratory-grown diamond report</th></tr></thead><tbody>{tr}</tbody></table>
   </div>
 </section>''')
+
+  S.append(clip('s-clip-grade', 'tt-lab-cut-grade', 'From a cloudy rough tile to a finished diamond with an IGI report and a laser inscription.',
+    ['What does a lab-grown <b>rough</b> look like?', 'What does <b>IGI</b> do to each stone?', 'Where does the <b>laser inscription</b> go?'], '05 · The IGI report', 6))
 
   S.append('''
 <section class="scene" id="s-inscr" data-chap="05 · The IGI report" data-wipe="hex" data-morph="1820,190,80,0,circle">

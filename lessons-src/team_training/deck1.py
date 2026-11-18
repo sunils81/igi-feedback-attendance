@@ -1,6 +1,6 @@
 """Diamonds 101 · Part 1 — From the Earth to the cutting wheel (about 2 hours)."""
 import math
-from make import hero, chapter, film, dyk, poll, sort, mf, quiz, write, A
+from make import clip, hero, chapter, film, dyk, poll, sort, mf, quiz, write, A
 from photos import fig, src, credits_slide
 
 
@@ -403,6 +403,9 @@ def make():
   </div>
 </section>''')
 
+  S.append(clip('s-clip-history', 'tt-lab-history', 'How the first diamond was grown in a laboratory, and why it took another 50 years to grow one good enough for jewellery.',
+    ['<b>Who</b> grew the first one, and <b>when</b>?', 'What were early lab diamonds used for?', 'Why was it so hard to grow a <b>clean</b> one?'], '03 · Laboratory-grown', 3))
+
   S.append('''
 <section class="scene" id="s-grow" data-chap="03 · Laboratory-grown" data-wipe="hex" data-morph="1820,190,80,0,hex">
   <style>
@@ -443,6 +446,9 @@ def make():
    document.getElementById('cvdZ').addEventListener('click',function(e){e.stopPropagation();g.innerHTML='';n=0;t()});})();</script>
 </section>''')
 
+  S.append(clip('s-clip-growing', 'tt-lab-growing', 'Real footage of both growing methods: the HPHT press and the CVD reactor.',
+    ['Where does every lab-grown diamond <b>start</b>?', 'What does the <b>HPHT</b> press do?', 'What happens inside the <b>CVD</b> reactor?'], '03 · Laboratory-grown', 4))
+
   S.append('''
 <section class="scene dark" id="s-crystals" data-chap="03 · Laboratory-grown" data-wipe="slice" data-morph="1820,190,80,0,octa">
   <div class="facets"></div>
@@ -463,6 +469,9 @@ def make():
     </div>
   </div>
 </section>''')
+
+  S.append(clip('s-clip-india', 'tt-lab-india-china', 'Where today’s laboratory-grown diamonds are grown, and where they are cut.',
+    ['Which country <b>grows</b> most lab-grown rough?', 'Which city <b>cuts</b> most of it?', 'Is cutting a lab-grown diamond any <b>different</b>?'], '03 · Laboratory-grown', 5))
 
   S.append(f'''
 <section class="scene" id="s-sort1" data-chap="03 · Game" data-wipe="slice" data-morph="1820,190,80,0,tri">

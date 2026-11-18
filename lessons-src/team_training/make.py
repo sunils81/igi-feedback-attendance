@@ -26,7 +26,13 @@ FILMS = {  # id: (title, seconds) — durations from lesson_films
   'filma-journey-inside': ('The Journey Inside a Diamond', 194),
   'filmb-diamond-colour': ('The Mystery of Diamond Colour', 182),
   'cvd-earth-vs-lab': ('CVD Diamond · Earth vs Lab', 147),
+  # short clips from "How Lab Diamonds Are Made" by The Process (YouTube), internal training only
+  'tt-lab-history': ('The first lab-grown diamond', 43),
+  'tt-lab-growing': ('How a diamond is grown: HPHT and CVD', 101),
+  'tt-lab-cut-grade': ('From rough to an IGI report', 24),
+  'tt-lab-india-china': ('Grown in China, cut in India', 33),
 }
+CLIP_CREDIT = 'Clip from <i>How Lab Diamonds Are Made</i> · The Process (YouTube) · shown for internal training'
 
 
 def A(obj):
@@ -74,7 +80,7 @@ REEL = '''<svg viewBox="0 0 640 640"><defs><radialGradient id="rg{n}" cx="50%" c
 <polygon points="300,300 345,320 300,345" fill="#F0D9A6"/></svg>'''
 
 
-def film(id, fid, blurb, watch, chap='🎬 Film', n=0):
+def film(id, fid, blurb, watch, chap='🎬 Film', n=0, eyebrow='IGI film', credit='', btn='▶ Watch the film'):
   title, secs = FILMS[fid]
   dur = f'{secs // 60} min {secs % 60:02d} s'
   t_js = title.replace("'", "\\'")
@@ -84,17 +90,22 @@ def film(id, fid, blurb, watch, chap='🎬 Film', n=0):
   <div class="facets"></div>
   <div class="reel rise">{REEL.format(n=n)}</div>
   <div class="pad" style="max-width:1150px">
-    <div class="row rise" style="gap:16px;align-items:center"><div class="eyebrow">IGI film</div><span class="t-dur">{dur}</span></div>
+    <div class="row rise" style="gap:16px;align-items:center"><div class="eyebrow">{eyebrow}</div><span class="t-dur">{dur}</span></div>
     <h1 class="kt" style="font-size:96px;color:#FBF6EA">{title}</h1>
     <p class="lead rise" style="max-width:980px">{blurb}</p>
     <div class="col" style="gap:12px"><div class="t-hintline rise" style="color:#E6C98F">Watch for</div><ul class="t-watch">{w}</ul></div>
     <div class="row rise" style="gap:16px;align-items:center">
       <button class="btn" type="button" style="font-size:26px;padding:22px 38px"
-        onclick="event.stopPropagation();if(window.parent!==window){{parent.postMessage({{type:'igi-film',id:'{fid}',title:'{t_js}'}},'*')}}else{{this.nextElementSibling.textContent='Open this deck from the portal to play the film.'}}">▶ Watch the film</button>
+        onclick="event.stopPropagation();if(window.parent!==window){{parent.postMessage({{type:'igi-film',id:'{fid}',title:'{t_js}'}},'*')}}else{{this.nextElementSibling.textContent='Open this deck from the portal to play the film.'}}">{btn}</button>
       <span class="small" style="color:rgba(255,255,255,.6)"></span>
     </div>
+    {f'<div class="small rise" style="color:rgba(255,255,255,.45)">{credit}</div>' if credit else ''}
   </div>
 </section>'''
+
+
+def clip(id, fid, blurb, watch, chap, n=0):
+  return film(id, fid, blurb, watch, chap, n, eyebrow='Video clip', credit=CLIP_CREDIT, btn='▶ Watch the clip')
 
 
 def dyk(id, chap, title, cards, dark=False, eyebrow='Did you know?', note=''):

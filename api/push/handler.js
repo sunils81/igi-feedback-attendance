@@ -500,18 +500,6 @@ async function handleFilmPlay(req, res) {
   }
 }
 
-// TEMPORARY (2026-11-18): presigned PUT URLs so the Diamonds 101 clips can be uploaded to R2
-// from Sunil's Mac. One-time token (only its SHA-256 is here), only tt-lab-* film pieces, and it
-// stops working after 19 Nov 2026. To be removed in the next commit.
-async function handleTmpFilmPut(req, res) {
-  res.setHeader('Cache-Control', 'no-store');
-  if (req.method !== 'POST' || Date.now() > Date.UTC(2026, 10, 19, 12)) return res.status(410).json({ status: 'gone' });
-  const { token, keys } = req.body || {};
-  if (crypto.createHash('sha256').update(String(token || '')).digest('hex') !== '995b6dc4d0532a049463e4c34e7df91c82d6f589161acb3119376fff7adef1b9') return res.status(403).json({ status: 'forbidden' });
-  if (!Array.isArray(keys) || keys.length > 200 || !keys.every((k) => /^films\/tt-lab-[a-z-]{3,30}\/v[0-2]\/s\d{3}\.ts$/.test(k))) return res.status(400).json({ status: 'bad keys' });
-  return res.status(200).json({ status: 'ok', urls: keys.map((k) => r2Presign(k, 3600, 'PUT')) });
-}
-
 // ── /api/push/lesson-notify — a lesson-unlock request was raised or decided ───────────
 // Same pattern as discount-notify: no secret, the server re-reads the request by id and
 // composes the message, and only for an event in the last 15 minutes, so a caller can at
@@ -593,6 +581,5 @@ export default async function handler(req, res) {
   if (action === 'lesson-open') return handleLessonOpen(req, res);
   if (action === 'lesson-notify') return handleLessonNotify(req, res);
   if (action === 'film-play') return handleFilmPlay(req, res);
-  if (action === 'tmp-film-put') return handleTmpFilmPut(req, res);
   return res.status(400).json({ status: 'error', reason: 'Unknown or missing action' });
 }

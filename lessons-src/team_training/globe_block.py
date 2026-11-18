@@ -38,8 +38,22 @@ def rd(*p):
     return open(os.path.join(GS, *p), encoding='utf-8').read()
 
 
+PHOTO = {'Russia': ('ph-mir', 'Mir mine, Mirny'), 'Botswana': ('ph-jwaneng', 'Jwaneng open pit'), 'Canada': ('ph-diavik', 'Diavik mine from space'),
+         'Australia': ('ph-argyle', 'Argyle mine'), 'South Africa': ('ph-premier-pit', 'Premier (Cullinan) mine, early 1900s'),
+         'India · Golconda': ('ph-golconda', 'Golconda Fort, Hyderabad'), 'India · Panna': ('ph-panna', 'Majhgawan mine, Panna'),
+         'India · Surat': ('ph-surat', 'Surat Diamond Bourse'), 'Belgium · Antwerp': ('ph-antwerp', 'Antwerp diamond district')}
+
+
 def block(el_id):
-    data = {'decks': {}, 'fam': FAM, 'loc': LOC}
+    from photos import src, CRED, have
+    loc = []
+    for r in LOC:
+        r = list(r)
+        if r[0] in PHOTO and have(PHOTO[r[0]][0]):
+            k, cap = PHOTO[r[0]]; c = CRED[k]
+            r.append([src(k), cap + ' · ' + (c['artist'] or 'Wikimedia Commons') + ', ' + c['lic']])
+        loc.append(r)
+    data = {'decks': {}, 'fam': FAM, 'loc': loc}
     libs = ''.join(rd('libs', f) + '\n' for f in ('d3-array.min.js', 'd3-geo.min.js', 'topojson-client.min.js'))
     js = rd('globe.js').replace('<div class="gg-hint">Drag to spin · tap a pin</div>', '').replace('<b>Origin clue</b>', '<b>Good to know</b>').replace("(gs.length ? '<div class=\"gg-taught\">", "(false ? '<div class=\"gg-taught\">").replace(
         'Gold countries are sources. Pins are coloured by gem; ◆ marks trading hubs.',

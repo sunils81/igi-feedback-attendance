@@ -34,7 +34,7 @@ def A(obj):
   return html.escape(json.dumps(obj, ensure_ascii=False), quote=True)
 
 
-def hero(id, eyebrow, title_html, lead, chips, morph='1480,560,520,0,octa'):
+def hero(id, eyebrow, title_html, lead, chips, morph='1480,560,520,0,octa', img='media/tt-diamond-hero.png', img_style='position:absolute;right:40px;top:200px;width:780px;pointer-events:none'):
   ch = ''.join(f'<span class="chip{" gold" if i == 0 else ""}">{c}</span>' for i, c in enumerate(chips))
   return f'''
 <section class="scene dark" id="{id}" data-chap="Welcome" data-wipe="diamond" data-morph="{morph}">
@@ -46,7 +46,7 @@ def hero(id, eyebrow, title_html, lead, chips, morph='1480,560,520,0,octa'):
     <p class="lead rise" style="max-width:950px">{lead}</p>
     <div class="row rise" style="gap:14px;flex-wrap:wrap">{ch}</div>
   </div>
-  <img src="media/tt-diamond-hero.png" alt="" class="rise" style="position:absolute;right:40px;top:200px;width:780px;pointer-events:none">
+  <img src="{img}" alt="" class="rise" style="{img_style}">
 </section>'''
 
 

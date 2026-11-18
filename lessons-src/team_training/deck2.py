@@ -1,6 +1,7 @@
 """Diamonds 101 · Part 2 — The 4Cs and the IGI report (about 2 hours)."""
 import json
 from make import hero, chapter, film, dyk, poll, sort, mf, quiz, write, A
+from photos import fig, src, credits_slide
 J = lambda o: json.dumps(o, ensure_ascii=False).replace('</', '<\\/')
 
 # D–Z tints for the colour scale (illustrative, for projection)
@@ -19,7 +20,8 @@ def make():
   S.append(hero('s-hero', 'IGI Team Training · Diamonds 101 · Part 2 of 2',
     'The 4Cs, and how to read an <span class="it shine">IGI report</span>',
     'Colour, clarity, carat and cut: what each grade means, how much it moves the price, and where to find every one of them on an IGI report.',
-    ['2 IGI films', 'Price game', 'Live report walk-through', 'About 2 hours']))
+    ['2 IGI films', 'Price game', 'Live report walk-through', 'About 2 hours'],
+    img=src('ph-tweezers'), img_style='position:absolute;right:56px;top:230px;width:560px;height:620px;object-fit:cover;object-position:50% 40%;border-radius:28px;pointer-events:none'))
 
   S.append(quiz('s-recap', 'recap', 'Warm-up', 'Warm-up · what do we remember from Part 1?'))
 
@@ -132,6 +134,19 @@ def make():
    s.querySelectorAll('#cgR button').forEach(function(b){{b.addEventListener('click',function(e){{e.stopPropagation();load(+b.dataset.r)}})}});load(0)}})();</script>
 </section>''')
 
+  S.append('''
+<section class="scene dark" id="s-colreal" data-chap="01 · Colour" data-wipe="slice" data-morph="1820,190,80,0,octa">
+  <div class="facets"></div>
+  <div class="pad" style="gap:18px">
+    <div class="eyebrow rise">Colour in real life</div>
+    <h2 class="kt" style="color:#FBF6EA;font-size:56px">From colourless to <span class="it shine">fancy colour</span></h2>
+    ''' + fig('ph-col-dhnz', 'D, H, N and Z side by side (computer model): the tint grows slowly down the scale', 'height:330px;flex:none;background:#000', img_style='object-fit:contain') + '''
+    <div class="row" style="gap:20px;flex:1;min-height:0">
+      ''' + fig('ph-fancy-smithsonian', 'Natural fancy yellow and brown diamonds, Smithsonian', 'flex:1') + fig('ph-fancy', 'A rainbow of natural coloured diamonds', 'flex:1') + fig('ph-tiffany', 'The Tiffany Diamond: 128.54 ct fancy yellow', 'flex:1') + '''
+    </div>
+  </div>
+</section>''')
+
   S.append(dyk('s-dyk1', '01 · Trivia', 'Colour', [
     ('🔤', 'Why does the scale start at D, not A?', 'A fresh start', 'Older systems used A, B, C, AAA and more, inconsistently. The modern scale deliberately began at D so it would not be confused with them.'),
     ('🧪', 'What makes a diamond yellowish?', 'Nitrogen', 'A few nitrogen atoms among millions of carbon atoms absorb blue light, so the stone looks yellow. Boron makes diamonds blue, like the Hope.'),
@@ -151,9 +166,8 @@ def make():
     <div class="eyebrow rise">Fluorescence · it is on every IGI report</div>
     <h2 class="kt">Some diamonds <span class="gold">glow</span> under ultraviolet light</h2>
     <div class="row" style="flex:1;min-height:0;gap:50px;align-items:center">
-      <div class="uv rise" id="uvBox"><svg viewBox="0 0 200 180"><polygon points="20,60 55,25 145,25 180,60 100,165" fill="#F7FAFF" stroke="#0A1530" stroke-width="2.5"/><polyline points="20,60 180,60" stroke="#0A1530" stroke-width="1.6" fill="none"/></svg></div>
+      <div class="rise" style="width:620px;flex:none;height:560px">''' + fig('ph-uv-rough', 'Rough diamonds in daylight and under UV light', 'height:100%') + '''</div>
       <div class="col grow" style="gap:18px">
-        <button class="btn rise" type="button" style="align-self:flex-start" onclick="event.stopPropagation();document.getElementById('uvBox').classList.toggle('on')">💡 Switch on the UV lamp</button>
         <p class="body rise">Fluorescence is light a diamond gives off under ultraviolet. Many natural diamonds fluoresce, usually <b>blue</b>. It is a characteristic, not a defect, and in daylight you normally cannot see it.</p>
         <div class="card step"><h3>On the report</h3><p class="body">IGI reports fluorescence as <b>NONE</b>, <b>VERY SLIGHT</b> or <b>SLIGHT</b>, through <b>MEDIUM</b>, <b>STRONG</b> and <b>VERY STRONG</b>.</p></div>
         <div class="tip step">Strong blue fluorescence can make a slightly yellowish stone look whiter, and occasionally makes a very white stone look a little hazy. That's why it's recorded.</div>
@@ -221,6 +235,7 @@ def make():
       </svg><div id="lpLens"></div></div>
       <div class="col grow" style="gap:20px">
         <ul class="list rise"><li data-k="0">Crystal · a tiny mineral trapped inside</li><li data-k="1">Feather · a small internal crack</li><li data-k="2">Cloud · a group of tiny pinpoints</li><li data-k="3">Needle · a long thin crystal</li></ul>
+        <div class="row rise" style="gap:14px">''' + fig('ph-inclusion-garnet', 'A red garnet crystal inside a diamond', 'height:170px;flex:1') + fig('ph-inclusion-crystal', 'A crystal inclusion, magnified', 'height:170px;flex:1') + '''</div>
         <p class="lead rise" id="lpMsg" style="font-size:28px">Graders scan the whole stone in a pattern, at 10×, so nothing is missed.</p>
         <div class="tip step">Now the twist: these features are why the IGI report includes a <b>clarity plot</b>. Like a fingerprint, they help identify that exact stone.</div>
       </div>
@@ -315,6 +330,7 @@ def make():
         <div class="step"><b>FAIR · POOR</b><span>Noticeably dull or dark areas.</span></div>
       </div>
       <div class="col" style="width:600px;flex:none;gap:18px">
+        ''' + fig('ph-lightreturn', 'Light return: Excellent, Good and Poor cuts (computer model)', 'height:190px;flex:none;background:#fff', img_style='object-fit:contain') + '''
         <div class="card rise"><h3>Polish &amp; symmetry</h3><p class="body">Two separate grades, Excellent to Poor. <b>Polish</b>: how smooth the facets are. <b>Symmetry</b>: how precisely they line up.</p></div>
         <div class="card step"><h3>Fancy shapes too</h3><p class="body">Most labs give a cut grade to rounds only. In <b>2022 IGI became the first lab to grade the cut of fancy shapes</b> like ovals and pears.</p></div>
       </div>
@@ -600,6 +616,7 @@ def make():
   </div>
 </section>''')
 
+  S.append(credits_slide())
   S.append('''
 <section class="scene dark" id="s-end" data-chap="Close" data-wipe="diamond" data-morph="1500,560,480,0,octa">
   <div class="facets"></div>

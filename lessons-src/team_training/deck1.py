@@ -1,6 +1,7 @@
 """Diamonds 101 · Part 1 — From the Earth to the cutting wheel (about 2 hours)."""
 import math
 from make import hero, chapter, film, dyk, poll, sort, mf, quiz, write, A
+from photos import fig, src, credits_slide
 
 
 def lattice_diamond():
@@ -195,8 +196,8 @@ def make():
       <div class="vw rise" style="background:#0A1530"><img class="lat on" data-lat="d" src="media/tt-lattice-diamond.png" alt="Diamond structure (3-D model)"><img class="lat" data-lat="g" src="media/tt-lattice-graphite.png" alt="Graphite structure (3-D model)"></div>
       <div class="t-panel rise" style="width:640px;flex:none" data-out></div>
     </div>
-    <template data-for="d"><span class="tag">Diamond</span><h3>Every atom locked to four others</h3><p class="body">Each carbon atom bonds tightly to four neighbours in every direction, a 3-D cage. That makes diamond the <b>hardest natural material</b>, transparent, and brilliant.</p><p class="body">It forms only under enormous <b>pressure</b> and <b>heat</b>: deep in the Earth, or in a laboratory that recreates those conditions.</p></template>
-    <template data-for="g"><span class="tag">Graphite</span><h3>Flat sheets that slide</h3><p class="body">Here carbon forms flat sheets that are only loosely stacked. The sheets slide over each other, which is why graphite is soft, grey and leaves a mark on paper.</p><p class="body">Same atoms, different arrangement: <b>structure, not chemistry</b>, makes a diamond a diamond.</p></template>
+    <template data-for="d">{fig('ph-octahedron', 'A natural diamond crystal', 'height:200px;flex:none')}<span class="tag">Diamond</span><h3>Every atom locked to four others</h3><p class="body">Each carbon atom bonds tightly to four neighbours in every direction, a 3-D cage. That makes diamond the <b>hardest natural material</b>, transparent, and brilliant.</p><p class="body">It forms only under enormous <b>pressure</b> and <b>heat</b>: deep in the Earth, or in a laboratory that recreates those conditions.</p></template>
+    <template data-for="g">{fig('ph-graphite-diamond', 'Graphite (left) and diamond: both pure carbon', 'height:200px;flex:none;background:#fff', img_style='object-fit:contain')}<span class="tag">Graphite</span><h3>Flat sheets that slide</h3><p class="body">Here carbon forms flat sheets that are only loosely stacked. The sheets slide over each other, which is why graphite is soft, grey and leaves a mark on paper.</p><p class="body">Same atoms, different arrangement: <b>structure, not chemistry</b>, makes a diamond a diamond.</p></template>
   </div>
   <script>window.tCarbon=function(x){{document.querySelectorAll('#s-carbon .lat').forEach(function(g){{g.classList.toggle('on',g.getAttribute('data-lat')===x)}})}};</script>
 </section>''')
@@ -268,6 +269,7 @@ def make():
       <div class="col" style="width:600px;flex:none;gap:18px">
         <div class="t-panel rise"><span class="tag" id="dpK">Depth</span><div class="t-big" id="dpV">180 km</div><p class="body" id="dpT"></p></div>
         <div class="rise"><input class="t-range" id="dpR" type="range" min="0" max="200" value="180" style="direction:rtl"><div class="t-tick"><span>200 km deep</span><span>surface</span></div></div>
+        {fig('ph-kimberlite', 'Kimberlite: the rock that carries diamonds up', 'height:190px;flex:none')}
         <div class="tip step">The ride up was <b>fast</b>, in deep, explosive eruptions. Too slow, and the diamond would have turned back into graphite on the way.</div>
       </div>
     </div>
@@ -331,10 +333,10 @@ def make():
     <div class="eyebrow rise">India's diamond story</div>
     <h2 class="kt" style="font-size:58px">The first home of diamonds, and still <span class="gold">the world's polishing hub</span></h2>
     <div class="tl2">
-      <div class="ev2 rise"><div class="pic cover"><img src="media/tt-mine-alluvial.png" alt="River gravels"></div><b>~300 BCE</b><h3>Golconda's river gravels</h3><p>For about 2,000 years every known diamond came from India, picked from the gravels of rivers like the Krishna, near Golconda (today's Telangana and Andhra Pradesh).</p></div>
-      <div class="ev2 step"><div class="pic"><img src="media/tt-famous-kohinoor.png" alt="Koh-i-Noor (illustration)"></div><b>Legends</b><h3>Koh-i-Noor, Hope, Regent</h3><p>The world's most famous historic diamonds are Golconda diamonds, prized for being exceptionally clear and white.</p></div>
-      <div class="ev2 step"><div class="pic cover"><img src="media/tt-mine-openpit.png" alt="Kimberlite mine"></div><b>1720s · 1867</b><h3>Brazil, then South Africa</h3><p>Brazil's finds ended India's monopoly in the 1720s. South Africa's discovery in 1867 started the modern era of kimberlite mining.</p></div>
-      <div class="ev2 step"><div class="pic"><img src="media/tt-diamond-hero.png" alt="Polished diamond"></div><b>Today</b><h3>Surat and Mumbai</h3><p>India mines little (Panna, Madhya Pradesh) but cuts and polishes about <strong>9 of every 10</strong> diamonds in the world, mostly in Surat, and trades them from Mumbai's Bharat Diamond Bourse.</p></div>
+      <div class="ev2 rise"><div class="pic cover"><img src="''' + src('ph-golconda') + '''" alt="Golconda Fort, Hyderabad"></div><b>~300 BCE</b><h3>Golconda's river gravels</h3><p>For about 2,000 years every known diamond came from India, picked from the gravels of rivers like the Krishna, near Golconda (today's Telangana and Andhra Pradesh).</p></div>
+      <div class="ev2 step"><div class="pic cover"><img src="''' + src('ph-kohinoor') + '''" alt="Replica of the Koh-i-Noor"></div><b>Legends</b><h3>Koh-i-Noor, Hope, Regent</h3><p>The world's most famous historic diamonds are Golconda diamonds, prized for being exceptionally clear and white.</p></div>
+      <div class="ev2 step"><div class="pic cover"><img src="''' + src('ph-uncut-kimberley') + '''" alt="Uncut diamonds, Kimberley, about 1900"></div><b>1720s · 1867</b><h3>Brazil, then South Africa</h3><p>Brazil's finds ended India's monopoly in the 1720s. South Africa's discovery in 1867 started the modern era of kimberlite mining.</p></div>
+      <div class="ev2 step"><div class="pic cover"><img src="''' + src('ph-surat') + '''" alt="Surat Diamond Bourse"></div><b>Today</b><h3>Surat and Mumbai</h3><p>India mines little (Panna, Madhya Pradesh) but cuts and polishes about <strong>9 of every 10</strong> diamonds in the world, mostly in Surat, and trades them from Mumbai's Bharat Diamond Bourse.</p></div>
     </div>
   </div>
 </section>''')
@@ -354,8 +356,8 @@ def make():
     <div class="eyebrow rise">How natural diamonds are mined</div>
     <h2 class="kt" style="font-size:56px">From the pipe, or from the river</h2>
     <div class="two">
-      <div class="m rise"><img src="media/tt-mine-openpit.png" alt="Open-pit kimberlite mine (3-D model)"><div class="tx"><span class="chip gold" style="align-self:flex-start">Primary deposit</span><h3>Open-pit kimberlite mine</h3><p>Miners dig down into the carrot-shaped kimberlite pipe in giant steps (benches). The rock is crushed and the diamonds are separated out, often with X-ray machines, because diamonds glow under X-rays.</p></div></div>
-      <div class="m rise"><img src="media/tt-mine-alluvial.png" alt="River (alluvial) diamond deposit (3-D model)"><div class="tx"><span class="chip gold" style="align-self:flex-start">Secondary deposit</span><h3>Alluvial: rivers and beaches</h3><p>Over millions of years, rivers wear down the pipes and carry diamonds away. Being tough, they survive and collect in gravels, river beds and even the seabed. India's Golconda diamonds were found this way.</p></div></div>
+      <div class="m rise"><img src="''' + src('ph-mir') + '''" alt="Mir open-pit mine, Mirny, Siberia"><div class="tx"><span class="chip gold" style="align-self:flex-start">Primary deposit · Mir mine, Siberia</span><h3>Open-pit kimberlite mine</h3><p>Miners dig down into the carrot-shaped kimberlite pipe in giant steps (benches). The rock is crushed and the diamonds are separated out, often with X-ray machines, because diamonds glow under X-rays.</p></div></div>
+      <div class="m rise"><img src="media/tt-mine-alluvial.png" alt="River (alluvial) diamond deposit (3-D model)"><div class="tx"><span class="chip gold" style="align-self:flex-start">Secondary deposit · 3-D model</span><h3>Alluvial: rivers and beaches</h3><p>Over millions of years, rivers wear down the pipes and carry diamonds away. Being tough, they survive and collect in gravels, river beds and even the seabed. India's Golconda diamonds were found this way.</p></div></div>
     </div>
     <div class="more">
       <div class="tip step"><b>Underground mines</b> follow the pipe deeper once an open pit becomes too deep to be safe or affordable.</div>
@@ -365,10 +367,10 @@ def make():
 </section>''')
 
   S.append(dyk('s-dyk2', '02 · Famous diamonds', 'Famous diamonds', [
-    ('media/tt-famous-kohinoor.png', 'The Koh-i-Noor', 'Mountain of Light', 'Found in India’s Golconda region, fought over for centuries by Mughal, Persian, Afghan, Sikh and British rulers. Re-cut in 1852 to about 105.6 ct, it is set in a British crown and is still claimed by several countries.'),
-    ('media/tt-famous-cullinan.png', 'The largest gem rough ever found', 'The Cullinan · 3,106 carats', 'Found in South Africa in 1905, about the size of a fist. It was cut into nine major stones; the biggest, Cullinan I (530 ct), sits in the British royal sceptre.'),
+    (src('ph-kohinoor'), 'The Koh-i-Noor', 'Mountain of Light', 'Found in India’s Golconda region, fought over for centuries by Mughal, Persian, Afghan, Sikh and British rulers. Re-cut in 1852 to about 105.6 ct, it is set in a British crown and is still claimed by several countries.'),
+    (src('ph-cullinan'), 'The largest gem rough ever found', 'The Cullinan · 3,106 carats', 'Found in South Africa in 1905, about the size of a fist. It was cut into nine major stones; the biggest, Cullinan I (530 ct), sits in the British royal sceptre.'),
     ('media/tt-famous-hope.png', 'The Hope Diamond', 'Blue, and it glows red', 'A 45.52 ct blue diamond, originally from India, now in the Smithsonian museum in Washington. Its blue comes from traces of boron, and under ultraviolet light it glows red-orange for a while after the lamp is switched off.'),
-  ], dark=True, note='Pictures are 3-D illustrations, not photographs of the real stones.'))
+  ], dark=True, note='Koh-i-Noor and Cullinan: photos of museum replicas. Hope Diamond: 3-D illustration.'))
 
   S.append(quiz('s-pc1', 'pc1', '02 · Quick check', 'Quick check · chapters 1 and 2'))
 
@@ -452,12 +454,12 @@ def make():
     #s-crystals .c p{font:500 22px/1.45 var(--body);color:#C9CFDC;max-width:520px}
   </style>
   <div class="pad" style="gap:18px">
-    <div class="eyebrow rise">Before cutting · what the crystals look like (3-D models)</div>
+    <div class="eyebrow rise">Before cutting · what the crystals look like</div>
     <h2 class="kt" style="color:#FBF6EA;font-size:58px">Three rough diamonds, three <span class="it shine">shapes</span></h2>
     <div class="three">
-      <div class="c rise"><img src="media/tt-crystal-natural.png" alt=""><span class="chip gold">Natural</span><h3>Octahedron</h3><p>Grew slowly in the mantle. Faces often look frosted or slightly rounded from its journey to the surface.</p></div>
-      <div class="c step"><img src="media/tt-crystal-hpht.png" alt=""><span class="chip gold">HPHT</span><h3>Cubo-octahedron</h3><p>Square and triangular faces together. Often yellowish from nitrogen unless growers remove it.</p></div>
-      <div class="c step"><img src="media/tt-crystal-cvd.png" alt=""><span class="chip gold">CVD</span><h3>Square tablet</h3><p>A flat plate grown up from the seed, with a rough, dark rim that is cut away. Often brownish before treatment.</p></div>
+      <div class="c rise"><img src="''' + src('ph-octahedron') + '''" alt="" style="border-radius:18px;object-fit:cover"><span class="chip gold">Natural</span><h3>Octahedron</h3><p>Grew slowly in the mantle. Faces often look frosted or slightly rounded from its journey to the surface.</p></div>
+      <div class="c step"><img src="media/tt-crystal-hpht.png" alt="" style="border-radius:18px;object-fit:cover"><span class="chip gold">HPHT</span><h3>Cubo-octahedron</h3><p>Square and triangular faces together. Often yellowish from nitrogen unless growers remove it.</p></div>
+      <div class="c step"><img src="''' + src('ph-cvd') + '''" alt="" style="border-radius:18px;object-fit:cover"><span class="chip gold">CVD</span><h3>Square tablet</h3><p>A flat plate grown up from the seed, with a rough, dark rim that is cut away. Often brownish before treatment.</p></div>
     </div>
   </div>
 </section>''')
@@ -713,6 +715,7 @@ def make():
 
   S.append(quiz('s-final', 'final', 'Final check', 'Final check · Part 1'))
 
+  S.append(credits_slide())
   S.append('''
 <section class="scene dark" id="s-end" data-chap="Wrap-up" data-wipe="diamond" data-morph="1500,560,480,0,octa">
   <div class="facets"></div>

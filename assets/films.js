@@ -134,7 +134,9 @@
       '.igf-note{font-size:12px;color:#6b7280;line-height:1.5;margin:6px 0 2px}',
       '.igf-pl{position:fixed;inset:0;z-index:10050;background:#000;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none}',
       '.igf-pl video{width:100%;height:100%;object-fit:contain;background:#000}',
-      '.igf-pl .x{position:absolute;top:12px;right:12px;z-index:3;background:rgba(255,255,255,.1);border:1px solid rgba(230,201,142,.55);color:#E6C98F;border-radius:10px;padding:8px 12px;font:800 12px/1 "Plus Jakarta Sans",sans-serif;cursor:pointer}',
+      '.igf-pl > .x{position:absolute;top:max(14px,env(safe-area-inset-top));right:max(14px,env(safe-area-inset-right));z-index:5;opacity:1!important;pointer-events:auto!important;background:rgba(13,27,46,.85);border:1.5px solid #E6C98F;color:#E6C98F;border-radius:12px;padding:11px 16px;font:800 15px/1 "Plus Jakarta Sans",sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.5)}',
+      '.igf-pl > .x:hover{background:#E6C98F;color:#0D1B2E}',
+      '.igf-pl > .end{position:absolute;z-index:5;display:none;background:#E6C98F;color:#0D1B2E;border:0;border-radius:14px;padding:18px 30px;font:800 20px/1 "Plus Jakarta Sans",sans-serif;cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,.6)}',
       '.igf-pl .tt{position:absolute;top:16px;left:16px;z-index:3;color:#E6C98F;font:800 13px/1.2 "Plus Jakarta Sans",sans-serif;letter-spacing:.04em;opacity:.85;pointer-events:none;transition:opacity .4s}',
       '.igf-pl .wm{position:absolute;z-index:2;pointer-events:none;color:rgba(255,255,255,.22);font:700 13px/1 "Plus Jakarta Sans",sans-serif;letter-spacing:.08em;text-shadow:0 1px 2px rgba(0,0,0,.5);transition:top 1.2s ease,left 1.2s ease;white-space:nowrap}',
       '.igf-pl .q{position:absolute;bottom:64px;right:16px;z-index:3;pointer-events:none;color:rgba(230,201,142,.75);font:800 10px/1 "Plus Jakarta Sans",sans-serif;letter-spacing:.12em}',
@@ -171,9 +173,10 @@
     el.innerHTML = '<div class="ld">Loading the film…</div>' +
       '<video playsinline controls controlslist="nodownload noremoteplayback noplaybackrate" disablepictureinpicture disableremoteplayback></video>' +
       '<div class="tt">' + esc(title || '') + '</div><div class="wm"></div><div class="q"></div>' +
-      '<button class="x" type="button">✕ Close</button>';
+      '<button class="x" type="button">✕ Close</button><button class="end" type="button">↩ Back to the slides</button>';
     el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     el.querySelector('.x').onclick = close;
+    el.querySelector('.end').onclick = close;
     // over a deck in full screen, the film must sit inside that full-screen element
     var host = document.fullscreenElement || document.webkitFullscreenElement || null;
     (host && host.tagName !== 'VIDEO' && host.tagName !== 'IFRAME' ? host : document.body).appendChild(el);
@@ -183,6 +186,9 @@
     var tt = el.querySelector('.tt');
     v.addEventListener('play', function () { setTimeout(function () { tt.style.opacity = '0'; }, 2500); });
     v.addEventListener('pause', function () { tt.style.opacity = '.85'; });
+    var endB = el.querySelector('.end');
+    v.addEventListener('ended', function () { endB.style.display = 'block'; tt.style.opacity = '.85'; });
+    v.addEventListener('play', function () { endB.style.display = 'none'; });
     // full screen on the whole player (keeps the watermark over the picture)
     v.addEventListener('dblclick', function (e) { e.preventDefault(); toggleFs(el); });
     if (!host) { try { if (el.requestFullscreen) el.requestFullscreen().catch(function () {}); } catch (e) {} }

@@ -43,6 +43,66 @@ def make():
     'Where diamonds come from, how laboratory-grown diamonds are made, what happens to the rough, and why a well-cut diamond sparkles.',
     ['4 IGI films', '8 games &amp; votes', 'Trivia rounds', 'About 2 hours']))
 
+  # ---------- opening (2026-11-18, per Sunil): IGI timeline -> what is IGI's product? -> the report family ----------
+  S.append('''
+<section class="scene dark" id="s-igi" data-chap="About IGI" data-wipe="diamond" data-morph="1700,250,140,0,octa">
+  <div class="facets"></div>
+  <div class="pad" style="gap:26px">
+    <div class="eyebrow rise">Welcome to IGI</div>
+    <h2 class="kt" style="color:#FBF6EA">Fifty years of building <span class="it shine">trust</span> in diamonds</h2>
+    <div class="tl rise" style="margin-top:10px">
+      <div class="ev step"><b>1975</b><span>Antwerp</span><p>Founded in Antwerp, then the centre of the world's rough-diamond trade.</p></div>
+      <div class="ev step"><b>Inscription</b><span>A first</span><p>Co-created the modern laser inscription: the report number written on the diamond itself.</p></div>
+      <div class="ev step"><b>2005</b><span>Laboratory-grown</span><p>The first gemological lab to grade laboratory-grown diamonds.</p></div>
+      <div class="ev step"><b>ISO</b><span>Accreditation</span><p>First with ISO accreditation for grading both natural and laboratory-grown diamonds.</p></div>
+      <div class="ev step"><b>2022</b><span>Fancy shapes</span><p>First lab to give a cut grade to fancy shapes like ovals and pears.</p></div>
+      <div class="ev step"><b>Dec 2024</b><span>Listed in India</span><p>Listed on the NSE and BSE. Labs and schools across the world's diamond centres.</p></div>
+    </div>
+  </div>
+</section>''')
+
+  S.append(f'''
+<section class="scene" id="s-product" data-chap="IGI's product" data-wipe="hex" data-morph="1800,200,90,0,diamond">
+  <div class="pad" style="gap:24px">
+    <div class="eyebrow rise">Quick poll</div>
+    <h2 class="kt">So what is IGI's <span class="gold">product</span>?</h2>
+    <div class="row" style="gap:50px;flex:1;min-height:0;align-items:center">
+      <div class="grow rise">{poll(['Diamonds and diamond jewellery', 'Machines that grow diamonds', 'Independent grading reports (and the education behind them)', 'Gold and silver'], 2,
+        'IGI does <b>not</b> buy, sell or grow diamonds. Its product is an <b>independent, expert report</b> that tells a buyer exactly what they are getting, plus education like our School of Gemology. In one word, IGI sells <b>trust</b>.')}</div>
+      <div class="col step" style="width:560px;flex:none;gap:18px">
+        <div class="t-stat"><b>Independent</b><span>No stake in the stone: IGI earns the same whatever the grade.</span></div>
+        <div class="t-stat"><b>Expert</b><span>Trained gemologists and lab instruments, under standard conditions.</span></div>
+        <div class="t-stat"><b>Verifiable</b><span>Every report can be checked online at igi.org.</span></div>
+      </div>
+    </div>
+  </div>
+</section>''')
+
+  reps = [('rep', 'Diamond Report', 'media/igi-sample-rep.png', 'The full grading report for a loose diamond: identity, the 4Cs, polish, symmetry, fluorescence, a <b>proportions diagram</b>, a <b>clarity plot</b> and a photo of the laser inscription. Natural and laboratory-grown diamonds each have their own version.'),
+          ('dos', 'Compact diamond report', 'media/igi-sample-dos.png', 'A shorter format for smaller diamonds: the same grades and proportions in a compact layout, with the inscription photo but without the full clarity plot.'),
+          ('jew', 'Jewelry Report', 'media/igi-sample-jew.png', 'For a finished piece: a photo, a description of the article, the number of diamonds, their <b>total estimated weight</b>, and colour and clarity <b>ranges</b>, graded "as mounting permits".'),
+          ('card', 'Jewelry Report · card', 'media/igi-sample-card.png', 'The same jewellery details on a wallet-sized card that customers can keep with the piece.')]
+  rb = ''.join(f'<button type="button" data-x="{k}"{" class=\"on\"" if i == 0 else ""}>{t}</button>' for i, (k, t, im, d) in enumerate(reps))
+  rt = ''.join(f'<template data-for="{k}"><div class="shot"><img src="{im}" alt="{t}"></div><div class="cap"><span class="tag">IGI {t}</span><p class="body">{d}</p></div></template>' for k, t, im, d in reps)
+  S.append(f'''
+<section class="scene" id="s-reports" data-chap="IGI's product" data-wipe="slice" data-morph="1820,190,80,0,square">
+  <style>
+    #s-reports [data-out]{{flex:1;min-height:0;display:grid;grid-template-columns:1fr 470px;gap:30px}}
+    #s-reports .shot{{background:#fff;border:1px solid #E2D9C4;border-radius:22px;box-shadow:0 26px 60px rgba(13,23,51,.14);padding:22px;display:grid;place-items:center;min-height:0;overflow:hidden}}
+    #s-reports .shot img{{max-width:100%;max-height:640px;object-fit:contain}}
+    #s-reports .cap{{display:flex;flex-direction:column;gap:14px;justify-content:center}}
+    #s-reports .cap .tag{{font:800 16px/1.2 var(--body);letter-spacing:.2em;text-transform:uppercase;color:#86621A}}
+  </style>
+  <div class="pad" style="gap:18px" data-explore>
+    <div class="eyebrow rise">Meet the product · IGI sample reports</div>
+    <h2 class="kt" style="font-size:58px">One stone, one report. <span class="gold">This is what we sell.</span></h2>
+    <div class="seg rise">{rb}</div>
+    <div class="rise" data-out></div>
+    {rt}
+    <p class="t-small-note">IGI preview and specimen reports. By the end of Part 2 you will be able to read every line of them.</p>
+  </div>
+</section>''')
+
   # ---------- hook: spot the diamond (no prior knowledge needed, 2026-11-18) ----------
   stone = '<svg viewBox="0 0 200 200"><polygon points="40,70 70,40 130,40 160,70 100,170" fill="{f}" stroke="#0A1530" stroke-width="3"/><polyline points="40,70 160,70" stroke="#0A1530" stroke-width="2" fill="none"/><polyline points="70,40 85,70 100,40 115,70 130,40" stroke="#0A1530" stroke-width="1.5" fill="none"/><polyline points="85,70 100,170 115,70" stroke="#0A1530" stroke-width="1.2" fill="none"/></svg>'
   trio = ''.join('<div class="st">' + stone.format(f=f) + '<span class="chip">Stone ' + k + '</span></div>' for k, f in (('A', '#F7FAFF'), ('B', '#F9FBFF'), ('C', '#F6F9FE')))
@@ -113,22 +173,6 @@ def make():
         <div class="it2"><i>05</i>Reading an IGI report, line by line</div>
         <div class="it2"><i>06</i>How we talk about diamonds</div>
       </div>
-    </div>
-  </div>
-</section>''')
-
-  S.append('''
-<section class="scene dark" id="s-igi" data-chap="About IGI" data-wipe="diamond" data-morph="1700,250,140,0,octa">
-  <div class="facets"></div>
-  <div class="pad" style="gap:26px">
-    <div class="eyebrow rise">First, the company you just joined</div>
-    <h2 class="kt" style="color:#FBF6EA">IGI in five milestones</h2>
-    <div class="tl rise" style="margin-top:10px">
-      <div class="ev step"><b>1975</b><span>Antwerp</span><p>Founded in Antwerp, then the centre of the world's rough-diamond trade.</p></div>
-      <div class="ev step"><b>Inscription</b><span>A first</span><p>IGI co-created the modern laser inscription process: the report number written on the diamond itself.</p></div>
-      <div class="ev step"><b>2005</b><span>Laboratory-grown</span><p>The first gemological lab to grade laboratory-grown diamonds.</p></div>
-      <div class="ev step"><b>ISO</b><span>Accreditation</span><p>First institute with ISO accreditation for grading both natural and laboratory-grown diamonds.</p></div>
-      <div class="ev step"><b>Dec 2024</b><span>Listed in India</span><p>IGI listed on the NSE and BSE. Today it grades diamonds, coloured stones and jewellery, and runs schools like ours.</p></div>
     </div>
   </div>
 </section>''')
@@ -632,7 +676,7 @@ def make():
 
   deck = {
     'tag': 'IGI · Team Training · Part 1',
-    'menu': [['s-hero', 'Start', 'Welcome'], ['s-hook', 'Warm-up', 'Spot the diamond'], ['s-igi', 'About', 'IGI in five milestones'],
+    'menu': [['s-hero', 'Start', 'Welcome'], ['s-igi', 'About', 'IGI timeline'], ['s-product', 'Product', 'What does IGI sell?'], ['s-reports', 'Product', 'The IGI report family'], ['s-hook', 'Warm-up', 'Spot the diamond'],
              ['s-ch1', 'Chapter 01', 'What is a diamond?'], ['s-ch2', 'Chapter 02', 'Born in the Earth'], ['s-ch3', 'Chapter 03', 'Laboratory-grown'],
              ['s-words', 'Marketing', 'Words we use and avoid'], ['s-ch4', 'Chapter 04', 'The rough'], ['s-ch5', 'Chapter 05', 'Anatomy & light'],
              ['s-mf1', 'Game', 'Myth or fact'], ['s-final', 'Final', 'Final check'], ['s-end', 'Close', 'Wrap-up']],

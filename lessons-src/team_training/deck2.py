@@ -369,6 +369,17 @@ def make():
   </div>
 </section>''')
 
+  S.append('''
+<section class="scene" id="s-realrep" data-chap="05 · The IGI report" data-wipe="slice" data-morph="1820,190,80,0,square">
+  <style>#s-realrep .shot{flex:1;min-height:0;background:#fff;border:1px solid #E2D9C4;border-radius:22px;box-shadow:0 26px 60px rgba(13,23,51,.14);padding:24px;display:grid;place-items:center}
+  #s-realrep .shot img{max-width:100%;max-height:700px;object-fit:contain}</style>
+  <div class="pad" style="gap:18px">
+    <div class="eyebrow rise">An IGI Diamond Report · preview copy</div>
+    <h2 class="kt" style="font-size:58px">Here is the real thing. <span class="gold">Now let's read it, line by line.</span></h2>
+    <div class="shot rise"><img src="media/igi-sample-rep.png" alt="IGI Diamond Report preview"></div>
+  </div>
+</section>''')
+
   # interactive report
   fields = [
     ('no', 'IGI Report Number', 'The unique ID of this report, and of this stone. It is also laser-inscribed on the girdle and is what you type into igi.org to verify. Laboratory-grown reports start with <b>LG</b>.'),

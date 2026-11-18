@@ -42,10 +42,11 @@ def hero(id, eyebrow, title_html, lead, chips, morph='1480,560,520,0,octa'):
   <div class="pad" style="justify-content:center;gap:34px">
     <img src="media/igi-logo-white.png" alt="IGI" class="rise" style="width:340px">
     <div class="eyebrow rise">{eyebrow}</div>
-    <h1 class="kt" style="font-size:132px;max-width:1350px;color:#FBF6EA">{title_html}</h1>
-    <p class="lead rise" style="max-width:1000px">{lead}</p>
+    <h1 class="kt" style="font-size:120px;max-width:1150px;color:#FBF6EA">{title_html}</h1>
+    <p class="lead rise" style="max-width:950px">{lead}</p>
     <div class="row rise" style="gap:14px;flex-wrap:wrap">{ch}</div>
   </div>
+  <img src="media/tt-diamond-hero.png" alt="" class="rise" style="position:absolute;right:40px;top:200px;width:780px;filter:drop-shadow(0 40px 60px rgba(0,0,0,.5));pointer-events:none">
 </section>'''
 
 
@@ -96,15 +97,16 @@ def film(id, fid, blurb, watch, chap='🎬 Film', n=0):
 </section>'''
 
 
-def dyk(id, chap, title, cards, dark=False, eyebrow='Did you know?'):
+def dyk(id, chap, title, cards, dark=False, eyebrow='Did you know?', note=''):
   cols = len(cards)
-  cs = ''.join(f'''<div class="flip rise"><div class="in"><div class="f"><div class="ic">{ic}</div><div class="q">{q}</div></div><div class="bk"><h3>{h}</h3><p>{p}</p></div></div></div>''' for ic, q, h, p in cards)
+  pic = lambda ic: f'<img class="pic" src="{ic}" alt="">' if ic.startswith('media/') else f'<div class="ic">{ic}</div>'
+  cs = ''.join(f'''<div class="flip rise"><div class="in"><div class="f">{pic(ic)}<div class="q">{q}</div></div><div class="bk"><h3>{h}</h3><p>{p}</p></div></div></div>''' for ic, q, h, p in cards)
   return f'''
 <section class="scene{' dark' if dark else ''}" id="{id}" data-chap="{chap}" data-wipe="hex" data-morph="1820,190,80,0,hex">
   <div class="pad" style="gap:26px">
     <div class="eyebrow rise">{eyebrow}</div>
     <h2 class="kt">{title}</h2>
-    <div class="t-dyk" style="grid-template-columns:repeat({cols},1fr)">{cs}</div>
+    <div class="t-dyk" style="grid-template-columns:repeat({cols},1fr)">{cs}</div>{f'<p class="t-small-note">{note}</p>' if note else ''}
   </div>
 </section>'''
 
@@ -131,7 +133,9 @@ def quiz(id, qid, chap, title):
 def write(slug, scenes, deck):
   common = open(os.path.join(HERE, 'common.html'), encoding='utf-8').read()
   js = open(os.path.join(HERE, 'common.js.html'), encoding='utf-8').read()
-  body = common + '\n'.join(scenes) + '\n' + js + '\n<script>\nwindow.DECK=' + json.dumps(deck, ensure_ascii=False, indent=1) + ';\n</script>\n'
+  from glossary import G
+  gl = '<script>window.TGLOSS=' + json.dumps(G, ensure_ascii=False).replace('</', '<\\/') + ';</script>\n'
+  body = common + '\n'.join(scenes) + '\n' + gl + js + '\n<script>\nwindow.DECK=' + json.dumps(deck, ensure_ascii=False, indent=1) + ';\n</script>\n'
   d = os.path.join(DECKS, slug)
   os.makedirs(d, exist_ok=True)
   open(os.path.join(d, 'scenes.html'), 'w', encoding='utf-8').write(body)

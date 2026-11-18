@@ -113,7 +113,7 @@ def make():
     #s-colgame .pair{{display:flex;gap:80px;justify-content:center;align-items:flex-end;flex:1;min-height:0}}
     #s-colgame .pick{{display:flex;flex-direction:column;align-items:center;gap:14px;background:#fff;border:2px solid #E2D9C4;border-radius:26px;padding:26px 34px;cursor:pointer;transition:.3s var(--out)}}
     #s-colgame .pick:hover{{border-color:var(--gold);transform:translateY(-6px)}}
-    #s-colgame .pick svg{{width:300px;height:270px}}
+    #s-colgame .pick img{{width:340px;height:290px;object-fit:contain;background:#0A1530;border-radius:18px}}
     #s-colgame .pick .g{{font:700 64px/1 var(--display);color:var(--ink);visibility:hidden}}
     #s-colgame .pick.show .g{{visibility:visible}}
     #s-colgame .pick.win{{border-color:var(--good);box-shadow:0 0 0 6px rgba(31,122,77,.2)}}
@@ -124,8 +124,8 @@ def make():
     <div class="pair rise"><div class="pick" data-s="0"><div class="gw"></div><span class="g"></span></div><div class="pick" data-s="1"><div class="gw"></div><span class="g"></span></div></div>
     <p class="lead" id="cgMsg" style="text-align:center;min-height:50px;max-width:none">Look at the colour in the <b>bottom half</b> of each stone.</p>
   </div>
-  <script>(function(){{var C={J([c for l, c in COLS])},L='DEFGHIJKLMNOPQRSTUVWXYZ',R={J(rounds)},G={J(GEM)},cur=0;var s=document.getElementById('s-colgame');
-   function load(k){{cur=k;var r=R[k];s.querySelectorAll('.pick').forEach(function(p,j){{var i=r[j];p.classList.remove('show','win');p.querySelector('.gw').innerHTML=G.replace('{{cls}}','').split('{{gid}}').join('cg'+k+j).split('{{c}}').join(C[i]);p.querySelector('.g').textContent=L[i]}});
+  <script>(function(){{var C={J([c for l, c in COLS])},L='DEFGHIJKLMNOPQRSTUVWXYZ',R={J(rounds)},IMG={{E:'media/tt-col-E.png',G:'media/tt-col-G.png',H:'media/tt-col-H.png',I:'media/tt-col-I.png',J:'media/tt-col-J.png'}},cur=0;var s=document.getElementById('s-colgame');
+   function load(k){{cur=k;var r=R[k];s.querySelectorAll('.pick').forEach(function(p,j){{var i=r[j];p.classList.remove('show','win');p.querySelector('.gw').innerHTML='<img src="'+IMG[L[i]]+'" alt="">';p.querySelector('.g').textContent=L[i]}});
     document.getElementById('cgMsg').innerHTML='Look at the colour in the <b>bottom half</b> of each stone.';s.querySelectorAll('#cgR button').forEach(function(b){{b.classList.toggle('on',+b.dataset.r===k)}})}}
    s.querySelectorAll('.pick').forEach(function(p){{p.addEventListener('click',function(e){{e.stopPropagation();var r=R[cur];s.querySelectorAll('.pick').forEach(function(q,j){{q.classList.add('show');q.classList.toggle('win',r[j]<r[1-j])}});
     document.getElementById('cgMsg').innerHTML=r[0]===r[1]?'<b>Same grade.</b> Under different lighting, identical stones can look different. That is why graders use controlled light and <b>master stones</b>.':'Answer: <b>'+r[2]+'</b>. One grade is a tiny difference to the eye, but a real difference in price.'}})}});

@@ -105,13 +105,13 @@ def make():
 
   # ---------- hook: spot the diamond (no prior knowledge needed, 2026-11-18) ----------
   stone = '<svg viewBox="0 0 200 200"><polygon points="40,70 70,40 130,40 160,70 100,170" fill="{f}" stroke="#0A1530" stroke-width="3"/><polyline points="40,70 160,70" stroke="#0A1530" stroke-width="2" fill="none"/><polyline points="70,40 85,70 100,40 115,70 130,40" stroke="#0A1530" stroke-width="1.5" fill="none"/><polyline points="85,70 100,170 115,70" stroke="#0A1530" stroke-width="1.2" fill="none"/></svg>'
-  trio = ''.join('<div class="st">' + stone.format(f=f) + '<span class="chip">Stone ' + k + '</span></div>' for k, f in (('A', '#F7FAFF'), ('B', '#F9FBFF'), ('C', '#F6F9FE')))
+  trio = ''.join('<div class="st"><img src="media/' + f + '" alt="Stone ' + k + '"><span class="chip">Stone ' + k + '</span></div>' for k, f in (('A', 'tt-look-cz.png'), ('B', 'tt-look-diamond.png'), ('C', 'tt-look-moissanite.png')))
   S.append(f'''
 <section class="scene" id="s-hook" data-chap="Warm-up" data-wipe="hex" data-morph="1800,200,90,0,diamond">
   <style>
     #s-hook .trio{{display:flex;gap:40px;align-items:center;justify-content:center}}
     #s-hook .st{{display:flex;flex-direction:column;align-items:center;gap:16px}}
-    #s-hook .st svg{{width:200px;height:200px;filter:drop-shadow(0 20px 30px rgba(13,23,51,.18))}}
+    #s-hook .st img{{width:220px;height:190px;object-fit:contain;background:#0A1530;border-radius:20px;padding:10px}}
   </style>
   <div class="pad" style="gap:24px">
     <div class="eyebrow rise">Warm-up · quick poll</div>
@@ -185,14 +185,14 @@ def make():
   <style>
     #s-carbon .vw{{background:#fff;border:1px solid #E2D9C4;border-radius:24px;padding:20px;display:grid;place-items:center;flex:1;min-height:0}}
     #s-carbon svg{{width:100%;height:100%;max-height:560px}}
-    #s-carbon .lat{{display:none}}#s-carbon .lat.on{{display:inline}}
+    #s-carbon .lat{{display:none;max-width:100%;max-height:560px;object-fit:contain}}#s-carbon .lat.on{{display:block}}
   </style>
   <div class="pad" style="gap:22px" data-explore="tCarbon">
     <div class="eyebrow rise">Same element, two personalities</div>
     <h2 class="kt">Diamond and graphite are both <span class="gold">pure carbon</span></h2>
     <div class="seg rise"><button type="button" data-x="d" class="on">◆ Diamond</button><button type="button" data-x="g">✎ Graphite (pencil)</button></div>
     <div class="row" style="flex:1;min-height:0;gap:36px">
-      <div class="vw rise"><svg viewBox="0 0 720 540"><g class="lat on" data-lat="d">{lattice_diamond()}</g><g class="lat" data-lat="g">{lattice_graphite()}</g></svg></div>
+      <div class="vw rise" style="background:#0A1530"><img class="lat on" data-lat="d" src="media/tt-lattice-diamond.png" alt="Diamond structure (3-D model)"><img class="lat" data-lat="g" src="media/tt-lattice-graphite.png" alt="Graphite structure (3-D model)"></div>
       <div class="t-panel rise" style="width:640px;flex:none" data-out></div>
     </div>
     <template data-for="d"><span class="tag">Diamond</span><h3>Every atom locked to four others</h3><p class="body">Each carbon atom bonds tightly to four neighbours in every direction, a 3-D cage. That makes diamond the <b>hardest natural material</b>, transparent, and brilliant.</p><p class="body">It forms only under enormous <b>pressure</b> and <b>heat</b>: deep in the Earth, or in a laboratory that recreates those conditions.</p></template>
@@ -304,31 +304,71 @@ def make():
   </div>
 </section>''')
 
+  # ---------- where diamonds come from (2026-11-18: globe, India's story, how they are mined) ----------
+  from globe_block import block as globe_block
   S.append('''
-<section class="scene" id="s-where" data-chap="02 · Born in the Earth" data-wipe="slice" data-morph="1820,190,80,0,octa">
-  <div class="pad" style="gap:24px">
+<section class="scene dark" id="s-globe" data-chap="02 · Where diamonds are found" data-wipe="slice" data-morph="1800,200,90,0,hex">
+  <div class="pad" style="gap:12px;padding-top:34px">
     <div class="eyebrow rise">Where natural diamonds come from</div>
-    <h2 class="kt">India was the world's <span class="gold">only</span> source for 2,000 years</h2>
-    <div class="row" style="flex:1;min-height:0;gap:30px">
-      <div class="col grow" style="gap:20px">
-        <div class="card rise"><h3>📜 India, the first home of diamonds</h3><p class="body">For about two thousand years, every diamond known came from India, from the river gravels around <b>Golconda</b> (today's Telangana and Andhra Pradesh). The Koh-i-Noor and the stone that became the Hope Diamond are Golconda diamonds.</p></div>
-        <div class="card step"><h3>🇧🇷 1720s · Brazil</h3><p class="body">Diamonds found in Brazil ended India's monopoly.</p></div>
-        <div class="card step"><h3>🇿🇦 1867 · South Africa</h3><p class="body">A diamond picked up near the Orange River started the modern rush. The town of Kimberley gave its name to <b>kimberlite</b>, the rock that carries diamonds.</p></div>
-      </div>
-      <div class="col" style="width:620px;flex:none;gap:20px">
-        <div class="card step"><h3>Major producers today</h3><p class="body">Russia, Botswana, Canada, the Democratic Republic of Congo, Australia, Angola, South Africa and Namibia.</p></div>
-        <div class="card step"><h3>India today</h3><p class="body">India mines very little: its active diamond mine is near <b>Panna</b>, Madhya Pradesh. But India <b>cuts and polishes about 90%</b> of the world's diamonds, mostly in <b>Surat</b>. Rough comes in, polished goes out.</p></div>
-        <div class="tip step">That is why IGI has a big presence in India: the diamonds of the world pass through here.</div>
-      </div>
+    <div class="gg-host" id="ggD" style="flex:1;min-height:0;display:flex"></div>
+  </div>
+  ''' + globe_block('ggD') + '''
+</section>''')
+
+  S.append('''
+<section class="scene" id="s-india" data-chap="02 · India's diamond story" data-wipe="hex" data-morph="1820,190,80,0,octa">
+  <style>
+    #s-india .tl2{display:grid;grid-template-columns:repeat(4,1fr);gap:22px;flex:1;min-height:0}
+    #s-india .ev2{background:#fff;border:1px solid #E2D9C4;border-radius:22px;padding:0 0 22px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+    #s-india .ev2 .pic{height:250px;background:#0A1530;display:grid;place-items:center;overflow:hidden}
+    #s-india .ev2 .pic img{max-height:100%;max-width:100%;object-fit:contain}
+    #s-india .ev2 .pic.cover img{width:100%;height:100%;object-fit:cover}
+    #s-india .ev2 b{font:700 46px/1 var(--display);color:#86621A;padding:0 24px}
+    #s-india .ev2 h3{font:700 27px/1.2 var(--body);color:var(--ink);padding:0 24px}
+    #s-india .ev2 p{font:500 21px/1.45 var(--body);color:var(--ink2);padding:0 24px}
+  </style>
+  <div class="pad" style="gap:22px">
+    <div class="eyebrow rise">India's diamond story</div>
+    <h2 class="kt" style="font-size:58px">The first home of diamonds, and still <span class="gold">the world's polishing hub</span></h2>
+    <div class="tl2">
+      <div class="ev2 rise"><div class="pic cover"><img src="media/tt-mine-alluvial.png" alt="River gravels"></div><b>~300 BCE</b><h3>Golconda's river gravels</h3><p>For about 2,000 years every known diamond came from India, picked from the gravels of rivers like the Krishna, near Golconda (today's Telangana and Andhra Pradesh).</p></div>
+      <div class="ev2 step"><div class="pic"><img src="media/tt-famous-kohinoor.png" alt="Koh-i-Noor (illustration)"></div><b>Legends</b><h3>Koh-i-Noor, Hope, Regent</h3><p>The world's most famous historic diamonds are Golconda diamonds, prized for being exceptionally clear and white.</p></div>
+      <div class="ev2 step"><div class="pic cover"><img src="media/tt-mine-openpit.png" alt="Kimberlite mine"></div><b>1720s · 1867</b><h3>Brazil, then South Africa</h3><p>Brazil's finds ended India's monopoly in the 1720s. South Africa's discovery in 1867 started the modern era of kimberlite mining.</p></div>
+      <div class="ev2 step"><div class="pic"><img src="media/tt-diamond-hero.png" alt="Polished diamond"></div><b>Today</b><h3>Surat and Mumbai</h3><p>India mines little (Panna, Madhya Pradesh) but cuts and polishes about <strong>9 of every 10</strong> diamonds in the world, mostly in Surat, and trades them from Mumbai's Bharat Diamond Bourse.</p></div>
     </div>
   </div>
 </section>''')
 
-  S.append(dyk('s-dyk2', '02 · Trivia', 'Famous diamonds', [
-    ('👑', 'The Koh-i-Noor', 'Mountain of Light', 'Found in India, fought over for centuries by Mughal, Persian, Afghan, Sikh and British rulers. Today it is set in a British crown and is still claimed by several countries.'),
-    ('💎', 'The largest gem rough ever found?', 'The Cullinan · 3,106 carats', 'Found in South Africa in 1905, about the size of a fist. The biggest stone cut from it, Cullinan I (530 ct), sits in the British royal sceptre.'),
-    ('🔵', 'The Hope Diamond', 'Blue, and it glows red', 'A 45.52 ct blue diamond from India, now in the Smithsonian. Under ultraviolet light it glows red-orange for a while after the light is switched off. Its blue comes from traces of boron.'),
-  ], dark=True))
+  S.append('''
+<section class="scene" id="s-mining" data-chap="02 · How diamonds are mined" data-wipe="slice" data-morph="1820,190,80,0,circle">
+  <style>
+    #s-mining .two{display:grid;grid-template-columns:1fr 1fr;gap:30px;flex:1;min-height:0}
+    #s-mining .m{background:#fff;border:1px solid #E2D9C4;border-radius:24px;overflow:hidden;display:flex;flex-direction:column}
+    #s-mining .m img{width:100%;height:320px;object-fit:cover;display:block}
+    #s-mining .m .tx{padding:20px 28px;display:flex;flex-direction:column;gap:8px}
+    #s-mining .m h3{font:700 36px/1.1 var(--display);color:var(--ink)}
+    #s-mining .m p{font:500 22px/1.45 var(--body);color:var(--ink2)}
+    #s-mining .more{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  </style>
+  <div class="pad" style="gap:18px">
+    <div class="eyebrow rise">How natural diamonds are mined</div>
+    <h2 class="kt" style="font-size:56px">From the pipe, or from the river</h2>
+    <div class="two">
+      <div class="m rise"><img src="media/tt-mine-openpit.png" alt="Open-pit kimberlite mine (3-D model)"><div class="tx"><span class="chip gold" style="align-self:flex-start">Primary deposit</span><h3>Open-pit kimberlite mine</h3><p>Miners dig down into the carrot-shaped kimberlite pipe in giant steps (benches). The rock is crushed and the diamonds are separated out, often with X-ray machines, because diamonds glow under X-rays.</p></div></div>
+      <div class="m rise"><img src="media/tt-mine-alluvial.png" alt="River (alluvial) diamond deposit (3-D model)"><div class="tx"><span class="chip gold" style="align-self:flex-start">Secondary deposit</span><h3>Alluvial: rivers and beaches</h3><p>Over millions of years, rivers wear down the pipes and carry diamonds away. Being tough, they survive and collect in gravels, river beds and even the seabed. India's Golconda diamonds were found this way.</p></div></div>
+    </div>
+    <div class="more">
+      <div class="tip step"><b>Underground mines</b> follow the pipe deeper once an open pit becomes too deep to be safe or affordable.</div>
+      <div class="tip step"><b>Marine mining</b> off Namibia lifts diamond gravel from the sea floor with ships and underwater crawlers.</div>
+    </div>
+  </div>
+</section>''')
+
+  S.append(dyk('s-dyk2', '02 · Famous diamonds', 'Famous diamonds', [
+    ('media/tt-famous-kohinoor.png', 'The Koh-i-Noor', 'Mountain of Light', 'Found in India’s Golconda region, fought over for centuries by Mughal, Persian, Afghan, Sikh and British rulers. Re-cut in 1852 to about 105.6 ct, it is set in a British crown and is still claimed by several countries.'),
+    ('media/tt-famous-cullinan.png', 'The largest gem rough ever found', 'The Cullinan · 3,106 carats', 'Found in South Africa in 1905, about the size of a fist. It was cut into nine major stones; the biggest, Cullinan I (530 ct), sits in the British royal sceptre.'),
+    ('media/tt-famous-hope.png', 'The Hope Diamond', 'Blue, and it glows red', 'A 45.52 ct blue diamond, originally from India, now in the Smithsonian museum in Washington. Its blue comes from traces of boron, and under ultraviolet light it glows red-orange for a while after the lamp is switched off.'),
+  ], dark=True, note='Pictures are 3-D illustrations, not photographs of the real stones.'))
 
   S.append(quiz('s-pc1', 'pc1', '02 · Quick check', 'Quick check · chapters 1 and 2'))
 
@@ -399,6 +439,27 @@ def make():
   <script>(function(){var g=document.getElementById('cvdLayers'),n=0;function t(){document.getElementById('cvdTxt').textContent=n?('≈ '+n+' week'+(n>1?'s':'')+' of growth'):''}
    document.getElementById('cvdGo').addEventListener('click',function(e){e.stopPropagation();if(n>=8)return;var r=document.createElementNS('http://www.w3.org/2000/svg','rect');r.setAttribute('x',205+n);r.setAttribute('width',190-2*n);r.setAttribute('y',270-(n+1)*14);r.setAttribute('height',14);r.setAttribute('fill','rgba(235,245,255,'+(.55+n*.05)+')');r.setAttribute('stroke','#0A1530');g.appendChild(r);r.animate([{opacity:0,transform:'translateY(-20px)'},{opacity:1,transform:'none'}],{duration:600});n++;t()});
    document.getElementById('cvdZ').addEventListener('click',function(e){e.stopPropagation();g.innerHTML='';n=0;t()});})();</script>
+</section>''')
+
+  S.append('''
+<section class="scene dark" id="s-crystals" data-chap="03 · Laboratory-grown" data-wipe="slice" data-morph="1820,190,80,0,octa">
+  <div class="facets"></div>
+  <style>
+    #s-crystals .three{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;flex:1;min-height:0}
+    #s-crystals .c{display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center}
+    #s-crystals .c img{width:100%;height:420px;object-fit:contain;filter:drop-shadow(0 30px 40px rgba(0,0,0,.45))}
+    #s-crystals .c h3{font:700 38px/1.1 var(--display);color:#FBF6EA}
+    #s-crystals .c p{font:500 22px/1.45 var(--body);color:#C9CFDC;max-width:520px}
+  </style>
+  <div class="pad" style="gap:18px">
+    <div class="eyebrow rise">Before cutting · what the crystals look like (3-D models)</div>
+    <h2 class="kt" style="color:#FBF6EA;font-size:58px">Three rough diamonds, three <span class="it shine">shapes</span></h2>
+    <div class="three">
+      <div class="c rise"><img src="media/tt-crystal-natural.png" alt=""><span class="chip gold">Natural</span><h3>Octahedron</h3><p>Grew slowly in the mantle. Faces often look frosted or slightly rounded from its journey to the surface.</p></div>
+      <div class="c step"><img src="media/tt-crystal-hpht.png" alt=""><span class="chip gold">HPHT</span><h3>Cubo-octahedron</h3><p>Square and triangular faces together. Often yellowish from nitrogen unless growers remove it.</p></div>
+      <div class="c step"><img src="media/tt-crystal-cvd.png" alt=""><span class="chip gold">CVD</span><h3>Square tablet</h3><p>A flat plate grown up from the seed, with a rough, dark rim that is cut away. Often brownish before treatment.</p></div>
+    </div>
+  </div>
 </section>''')
 
   S.append(f'''
@@ -588,15 +649,15 @@ def make():
       <div class="col grow" style="gap:18px">
         <div class="t-panel rise" data-out></div>
         <div class="row rise" style="gap:12px">
-          <div class="flip" style="flex:1;height:200px"><div class="in"><div class="f" style="justify-content:center;align-items:center;font:700 28px/1.2 var(--display)">Brilliance</div><div class="bk"><h3>Brilliance</h3><p>The white light returned to your eye.</p></div></div></div>
-          <div class="flip" style="flex:1;height:200px"><div class="in"><div class="f" style="justify-content:center;align-items:center;font:700 28px/1.2 var(--display)">Fire</div><div class="bk"><h3>Fire</h3><p>Flashes of rainbow colour as white light splits.</p></div></div></div>
-          <div class="flip" style="flex:1;height:200px"><div class="in"><div class="f" style="justify-content:center;align-items:center;font:700 28px/1.2 var(--display)">Scintillation</div><div class="bk"><h3>Scintillation</h3><p>The sparkle: light and dark flashes as it moves.</p></div></div></div>
+          <div class="flip" style="flex:1;height:150px"><div class="in"><div class="f" style="justify-content:center;align-items:center;font:700 28px/1.2 var(--display)">Brilliance</div><div class="bk"><h3>Brilliance</h3><p>The white light returned to your eye.</p></div></div></div>
+          <div class="flip" style="flex:1;height:150px"><div class="in"><div class="f" style="justify-content:center;align-items:center;font:700 28px/1.2 var(--display)">Fire</div><div class="bk"><h3>Fire</h3><p>Flashes of rainbow colour as white light splits.</p></div></div></div>
+          <div class="flip" style="flex:1;height:150px"><div class="in"><div class="f" style="justify-content:center;align-items:center;font:700 28px/1.2 var(--display)">Scintillation</div><div class="bk"><h3>Scintillation</h3><p>The sparkle: light and dark flashes as it moves.</p></div></div></div>
         </div>
       </div>
     </div>
-    <template data-for="ideal"><span class="tag">Well cut</span><h3>Light comes back to you</h3><p class="body">Light enters the table, hits one side of the pavilion, bounces to the other side and comes back up through the top. The stone looks <b>bright and lively</b>.</p></template>
-    <template data-for="shallow"><span class="tag">Too shallow</span><h3>Light leaks out of the bottom</h3><p class="body">The pavilion is too flat, so light passes straight through and escapes underneath. The centre can look glassy, with a dull ring called a <b>fish-eye</b>. It looks big for its weight, but lifeless.</p></template>
-    <template data-for="deep"><span class="tag">Too deep</span><h3>Light escapes through the sides</h3><p class="body">The pavilion is too steep: light bounces once and then leaks out of the opposite side. The centre looks <b>dark</b>. It also hides weight in the bottom, so it looks smaller than it weighs.</p></template>
+    <template data-for="ideal"><img src="media/tt-cut-ideal.png" alt="Face-up view (3-D model)" style="width:300px;height:300px;align-self:center;background:#0A1530;border-radius:50%"><span class="tag">Well cut · seen face-up</span><h3>Light comes back to you</h3><p class="body">Light enters the table, hits one side of the pavilion, bounces to the other side and comes back up through the top. The stone looks <b>bright and lively</b>.</p></template>
+    <template data-for="shallow"><img src="media/tt-cut-shallow.png" alt="Face-up view (3-D model)" style="width:300px;height:300px;align-self:center;background:#0A1530;border-radius:50%"><span class="tag">Too shallow · seen face-up</span><h3>Light leaks out of the bottom</h3><p class="body">The pavilion is too flat, so light passes straight through and escapes underneath. The centre can look glassy, with a dull ring called a <b>fish-eye</b>. It looks big for its weight, but lifeless.</p></template>
+    <template data-for="deep"><img src="media/tt-cut-deep.png" alt="Face-up view (3-D model)" style="width:300px;height:300px;align-self:center;background:#0A1530;border-radius:50%"><span class="tag">Too deep · seen face-up</span><h3>Light escapes through the sides</h3><p class="body">The pavilion is too steep: light bounces once and then leaks out of the opposite side. The centre looks <b>dark</b>. It also hides weight in the bottom, so it looks smaller than it weighs.</p></template>
   </div>
   <script>(function(){var B={ideal:'150,200 330,110 570,110 750,200 450,470',shallow:'150,200 330,110 570,110 750,200 450,350',deep:'150,200 330,110 570,110 750,200 450,560'};
    var R={ideal:['400,0 400,110 380,330 560,300 520,110 520,0',''],shallow:['400,0 400,110 380,265 330,560',''],deep:['400,0 400,110 340,350 600,330 820,250','']};
@@ -677,7 +738,7 @@ def make():
   deck = {
     'tag': 'IGI · Team Training · Part 1',
     'menu': [['s-hero', 'Start', 'Welcome'], ['s-igi', 'About', 'IGI timeline'], ['s-product', 'Product', 'What does IGI sell?'], ['s-reports', 'Product', 'The IGI report family'], ['s-hook', 'Warm-up', 'Spot the diamond'],
-             ['s-ch1', 'Chapter 01', 'What is a diamond?'], ['s-ch2', 'Chapter 02', 'Born in the Earth'], ['s-ch3', 'Chapter 03', 'Laboratory-grown'],
+             ['s-ch1', 'Chapter 01', 'What is a diamond?'], ['s-ch2', 'Chapter 02', 'Born in the Earth'], ['s-globe', 'Globe', 'Where diamonds are found'], ['s-india', 'India', 'India\'s diamond story'], ['s-mining', 'Mining', 'How diamonds are mined'], ['s-ch3', 'Chapter 03', 'Laboratory-grown'],
              ['s-words', 'Marketing', 'Words we use and avoid'], ['s-ch4', 'Chapter 04', 'The rough'], ['s-ch5', 'Chapter 05', 'Anatomy & light'],
              ['s-mf1', 'Game', 'Myth or fact'], ['s-final', 'Final', 'Final check'], ['s-end', 'Close', 'Wrap-up']],
     'quiz': {

@@ -12,7 +12,7 @@
    '<div class="ctl"><button type="button" class="btn" data-r>Reveal the answer</button><button type="button" class="btn ghost" data-z>↺ Reset</button></div><div class="ans">'+why+'</div>';
   function draw(){var t=n.reduce(function(a,b){return a+b},0)||1;$$('.opt',box).forEach(function(b,k){b.querySelector('.n').textContent=n[k];b.querySelector('.bar').style.width=(n[k]/t*100)+'%'})}
   $$('.opt',box).forEach(function(b){b.addEventListener('click',function(e){stop(e);n[+b.dataset.k]++;draw()});b.addEventListener('contextmenu',function(e){e.preventDefault();e.stopPropagation();var k=+b.dataset.k;if(n[k]>0)n[k]--;draw()})});
-  box.querySelector('[data-r]').addEventListener('click',function(e){stop(e);$$('.opt',box).forEach(function(b,k){b.classList.toggle('right',k===ans);b.classList.toggle('wrong',k!==ans)});box.querySelector('.ans').classList.add('show')});
+  box.querySelector('[data-r]').addEventListener('click',function(e){stop(e);$$('.opt',box).forEach(function(b,k){b.classList.toggle('right',k===ans);b.classList.toggle('wrong',k!==ans)});box.querySelector('.ans').classList.add('show');if(window.tGlossWrap&&!box.__gw){box.__gw=1;window.tGlossWrap(box.querySelector('.ans'))}});
   box.querySelector('[data-z]').addEventListener('click',function(e){stop(e);n=n.map(function(){return 0});$$('.opt',box).forEach(function(b){b.classList.remove('right','wrong')});box.querySelector('.ans').classList.remove('show');draw()});
  });
  /* ---- sort game: tap a card, then tap the right box ---- */
@@ -43,7 +43,7 @@
    st.animate([{opacity:0,transform:'translateY(20px)'},{opacity:1,transform:'none'}],{duration:600,easing:'cubic-bezier(.16,1,.3,1)'})}
   function pick(f){if(done)return;done=true;var it=items[i],ok=(f===it[1]);if(ok)score++;box.querySelector('.sc').textContent=score;
    vd.textContent=(it[1]?'✓ Fact':'✕ Myth')+(ok?' · correct':' · caught out');vd.style.color=it[1]?'var(--good)':'var(--bad)';
-   why.innerHTML=it[2];why.classList.add('show');nx.style.visibility='visible';nx.textContent=i<items.length-1?'Next statement →':'See the score →'}
+   why.innerHTML=it[2];if(window.tGlossWrap)window.tGlossWrap(why);why.classList.add('show');nx.style.visibility='visible';nx.textContent=i<items.length-1?'Next statement →':'See the score →'}
   box.querySelector('.m').addEventListener('click',function(e){stop(e);pick(false)});
   box.querySelector('.f').addEventListener('click',function(e){stop(e);pick(true)});
   nx.addEventListener('click',function(e){stop(e);if(i<items.length-1){i++;show()}else{st.textContent='Score: '+score+' of '+items.length;why.innerHTML=score===items.length?'Perfect. Nobody can fool this team.':'Every myth we bust is trust earned.';why.classList.add('show');vd.textContent='';nx.style.visibility='hidden'}});
@@ -54,9 +54,52 @@
  $$('[data-explore]').forEach(function(box){
   var out=box.querySelector('[data-out]');
   $$('[data-x]',box).forEach(function(b){b.addEventListener('click',function(e){stop(e);$$('[data-x]',box).forEach(function(x){x.classList.toggle('on',x===b)});
-   var tpl=box.querySelector('template[data-for="'+b.getAttribute('data-x')+'"]');if(tpl&&out){out.innerHTML=tpl.innerHTML;out.querySelectorAll('img[data-lz]').forEach(function(i){i.src=i.getAttribute('data-lz');i.removeAttribute('data-lz')});out.animate([{opacity:0,transform:'translateY(14px)'},{opacity:1,transform:'none'}],{duration:500,easing:'cubic-bezier(.16,1,.3,1)'})}
+   var tpl=box.querySelector('template[data-for="'+b.getAttribute('data-x')+'"]');if(tpl&&out){out.innerHTML=tpl.innerHTML;out.querySelectorAll('img[data-lz]').forEach(function(i){i.src=i.getAttribute('data-lz');i.removeAttribute('data-lz')});if(window.tGlossWrap)window.tGlossWrap(out);out.animate([{opacity:0,transform:'translateY(14px)'},{opacity:1,transform:'none'}],{duration:500,easing:'cubic-bezier(.16,1,.3,1)'})}
    if(box.dataset.explore&&window[box.dataset.explore])window[box.dataset.explore](b.getAttribute('data-x'),box)})});
   var first=box.querySelector('[data-x].on')||null;if(first)first.click();
  });
+})();
+</script>
+<script>
+/* Pop-up glossary: the first mention of each term on a slide is underlined; click it for a plain-English definition. 2026-11-18 */
+(function(){
+ var G=window.TGLOSS||{},idx=[];
+ Object.keys(G).forEach(function(k){(G[k][2]||[]).forEach(function(w){idx.push([w,k])})});
+ idx.sort(function(a,b){return b[0].length-a[0].length});
+ function esc(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}
+ var RE=new RegExp('(^|[^A-Za-z0-9\\-])('+idx.map(function(x){return esc(x[0])}).join('|')+')(?![A-Za-z0-9])','i');
+ var KEY={};idx.forEach(function(x){KEY[x[0].toLowerCase()]=x[1]});
+ var SKIP='h1,h2,.kt,.kc,button,svg,script,style,a,.t-term,.chip,.eyebrow,.num,.bignum,.seg,input,textarea,.t-pop,.t-hintline,.tag,.t-big,.k,.vl,.quiz,.t-poll .opt,.t-sort,.price,.t-dur';
+ function wrap(root,used){
+  used=used||{};
+  var tw=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:function(n){var p=n.parentElement;if(!p||p.closest(SKIP))return NodeFilter.FILTER_REJECT;return /[A-Za-z]/.test(n.nodeValue)?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT}});
+  var nodes=[];while(tw.nextNode())nodes.push(tw.currentNode);
+  nodes.forEach(function(n){
+   var guard=0;
+   while(n&&guard++<20){
+    var s=n.nodeValue,m,off=0,found=null,sub=s;
+    while((m=RE.exec(sub))){var w=m[2],k=KEY[w.toLowerCase()];var at=off+m.index+m[1].length;if(!used[k]){found=[at,w,k];break}off=at+w.length;sub=s.slice(off)}
+    if(!found)break;
+    used[found[2]]=1;
+    var after=n.splitText(found[0]);var rest=after.splitText(found[1].length);
+    var sp=document.createElement('span');sp.className='t-term';sp.setAttribute('data-g',found[2]);sp.textContent=after.nodeValue;after.parentNode.replaceChild(sp,after);
+    n=rest;
+   }
+  });
+  return used;
+ }
+ window.tGlossWrap=wrap;
+ document.querySelectorAll('section.scene').forEach(function(sc){if(!sc.classList.contains('chapter'))sc.__tg=wrap(sc)});
+ var pop=null;
+ function show(k){var g=G[k];if(!g)return;var sc=document.querySelector('section.scene');var host=sc.parentElement;
+  if(!pop){pop=document.createElement('div');pop.className='t-pop';host.appendChild(pop)}
+  pop.innerHTML='<div class="card2"><span class="k">Glossary</span><h3>'+g[0]+'</h3><p>'+g[1]+'</p>'+(g[3]?'<img src="'+g[3]+'" alt="">':'')+'<span class="hint">Click anywhere to close</span></div>';
+  pop.classList.add('on')}
+ document.addEventListener('click',function(e){
+  if(pop&&pop.classList.contains('on')){e.stopPropagation();e.preventDefault();pop.classList.remove('on');return}
+  var t=e.target.closest&&e.target.closest('.t-term');if(t){e.stopPropagation();e.preventDefault();show(t.getAttribute('data-g'))}
+ },true);
+ document.querySelectorAll('section.scene').forEach(function(sc){sc.addEventListener('scene-enter',function(){if(pop)pop.classList.remove('on')})});
+ document.addEventListener('keydown',function(e){if(pop&&pop.classList.contains('on')){if(e.key==='Escape'||e.key==='ArrowRight'||e.key==='ArrowLeft'||e.key===' '){e.stopPropagation();e.preventDefault();pop.classList.remove('on')}}},true);
 })();
 </script>

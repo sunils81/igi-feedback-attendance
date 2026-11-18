@@ -411,7 +411,7 @@ def make():
     #s-grow .press.run .plate.t{transform:translateY(58px)}#s-grow .press.run .plate.b{transform:translateY(-58px)}
     #s-grow .press .glow{opacity:0;transition:opacity 1.2s}#s-grow .press.run .glow{opacity:1}
     #s-grow .press .seed{transform-origin:300px 165px;transform:scale(.4);transition:transform 2.4s 1s var(--out)}#s-grow .press.run .seed{transform:scale(1)}
-    #s-grow .plasma{animation:pl 2s ease-in-out infinite;transform-origin:300px 90px}
+    #s-grow.active .plasma{animation:pl 2s ease-in-out infinite;transform-origin:300px 90px}
     @keyframes pl{50%{opacity:.6;transform:scale(1.06)}}
   </style>
   <div class="pad" style="gap:20px">
@@ -447,7 +447,7 @@ def make():
   <style>
     #s-crystals .three{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;flex:1;min-height:0}
     #s-crystals .c{display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center}
-    #s-crystals .c img{width:100%;height:420px;object-fit:contain;filter:drop-shadow(0 30px 40px rgba(0,0,0,.45))}
+    #s-crystals .c img{width:100%;height:420px;object-fit:contain}
     #s-crystals .c h3{font:700 38px/1.1 var(--display);color:#FBF6EA}
     #s-crystals .c p{font:500 22px/1.45 var(--body);color:#C9CFDC;max-width:520px}
   </style>

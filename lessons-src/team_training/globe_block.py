@@ -46,7 +46,7 @@ def block(el_id):
         'Highlighted countries mine diamonds. Pins: gold = mined today, red = in history, blue ◆ = cutting and trading centres.')
     opt = {'families': ['mine', 'history', 'hub'], 'filter': ['mine', 'history', 'hub'], 'chips': ['mine', 'history', 'hub'], 'allLabel': 'Everything',
            'title': 'Where diamonds come from', 'intro': 'A handful of countries mine most of the world’s diamonds, and almost all of them are cut in India. Tap a pin or a name.',
-           'size': 760, 'spin': True, 'home': [40, 5]}
+           'size': 760, 'spin': False, 'home': [40, 5]}
     return ('<style>' + rd('globe.css') + '</style>\n<script>' + libs + 'window.__WORLD=' + rd('libs', 'countries-50m.json').strip() +
             ';\nwindow.__WORLD_LO=' + rd('libs', 'countries-110m.json').strip() + ';\nwindow.GEMDATA=' + json.dumps(data, ensure_ascii=False) + ';\n' + js +
             '</script>\n<script>GEMGLOBE.mount(document.getElementById(\'' + el_id + '\'),' + json.dumps(opt, ensure_ascii=False) + ');</script>')

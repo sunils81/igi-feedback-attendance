@@ -46,7 +46,7 @@ def hero(id, eyebrow, title_html, lead, chips, morph='1480,560,520,0,octa'):
     <p class="lead rise" style="max-width:950px">{lead}</p>
     <div class="row rise" style="gap:14px;flex-wrap:wrap">{ch}</div>
   </div>
-  <img src="media/tt-diamond-hero.png" alt="" class="rise" style="position:absolute;right:40px;top:200px;width:780px;filter:drop-shadow(0 40px 60px rgba(0,0,0,.5));pointer-events:none">
+  <img src="media/tt-diamond-hero.png" alt="" class="rise" style="position:absolute;right:40px;top:200px;width:780px;pointer-events:none">
 </section>'''
 
 
@@ -64,7 +64,7 @@ def chapter(id, num, chap, title, lead, shape='octa'):
 
 
 REEL = '''<svg viewBox="0 0 640 640"><defs><radialGradient id="rg{n}" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#22366E"/><stop offset="1" stop-color="#0A1530"/></radialGradient></defs>
-<circle cx="320" cy="320" r="300" fill="url(#rg{n})" stroke="#D6B16C" stroke-width="3" opacity=".9"/>
+<circle cx="320" cy="320" r="300" fill="#13224A" stroke="#D6B16C" stroke-width="3"/>
 <g class="spin" fill="none" stroke="#D6B16C" stroke-width="3">
 <circle cx="320" cy="320" r="250" opacity=".35"/><circle cx="320" cy="320" r="60" fill="#0A1530"/><circle cx="320" cy="320" r="18" fill="#D6B16C"/>
 <circle cx="320" cy="160" r="70" fill="rgba(214,177,108,.08)"/><circle cx="320" cy="480" r="70" fill="rgba(214,177,108,.08)"/>

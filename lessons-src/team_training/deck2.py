@@ -29,7 +29,7 @@ def make():
   <style>
     #s-hook .twins{{display:flex;gap:60px;align-items:center;justify-content:center}}
     #s-hook .st{{display:flex;flex-direction:column;align-items:center;gap:16px}}
-    #s-hook .st svg{{width:250px;height:250px;filter:drop-shadow(0 20px 30px rgba(13,23,51,.18))}}
+    #s-hook .st svg{{width:250px;height:250px}}
     #s-hook .price{{font:700 54px/1 var(--display);color:var(--ink)}}
   </style>
   <div class="pad" style="gap:24px">
@@ -76,7 +76,7 @@ def make():
   S.append(f'''
 <section class="scene" id="s-colscale" data-chap="01 · Colour" data-wipe="slice" data-morph="1820,190,80,0,octa">
   <style>
-    #s-colscale .gem svg{{width:420px;height:380px;filter:drop-shadow(0 26px 40px rgba(13,23,51,.2))}}
+    #s-colscale .gem svg{{width:420px;height:380px}}
     #s-colscale .strip{{height:46px;border-radius:12px;background:linear-gradient(90deg,{','.join(c for l, c in COLS)});border:1px solid #E2D9C4}}
     #s-colscale .lets{{display:flex;justify-content:space-between;font:800 18px/1 var(--body);color:var(--muted);padding:8px 6px 0}}
     #s-colscale .grp{{display:grid;grid-template-columns:3fr 4fr 3fr 5fr 8fr;gap:6px;margin-top:10px}}
@@ -145,7 +145,7 @@ def make():
     #s-fluor .uv.on{background:#120A2E}
     #s-fluor .uv svg{width:300px;height:270px;transition:filter .8s}
     #s-fluor .uv.on svg polygon:first-child{fill:#6E8CFF}
-    #s-fluor .uv.on svg{filter:drop-shadow(0 0 40px #4E6BFF)}
+    #s-fluor .uv.on{box-shadow:inset 0 0 120px rgba(78,107,255,.55)}
   </style>
   <div class="pad" style="gap:22px">
     <div class="eyebrow rise">Fluorescence · it is on every IGI report</div>

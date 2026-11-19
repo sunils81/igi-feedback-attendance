@@ -5416,6 +5416,30 @@ if (typeof amtL === 'undefined') {
   };
 }
 
+// ── Instructor names for batch dropdowns (2026-11-19) ───────────────────────────
+// The live list (portal_staff_names, cached by shared.js) when we have it, else the shared fallback.
+function counsellorInstructorList() {
+  try { var c = JSON.parse(localStorage.getItem('igi_staff_names_Instructor') || 'null'); if (c && c.length) return c.slice(); } catch (e) {}
+  return (window.INSTRUCTORS || []).slice();
+}
+// An existing batch keeps showing its instructor even if that person has since left.
+function withCurrentInstructor(list, current) {
+  if (current && list.indexOf(current) === -1) list.push(current);
+  return list;
+}
+function fillBatchInstructorSelects(names) {
+  [['b-instructor', 'Select instructor'], ['b-co-instructor', 'None']].forEach(function (pair) {
+    var sel = document.getElementById(pair[0]); if (!sel) return;
+    var keep = sel.value;
+    sel.innerHTML = '';
+    var o0 = document.createElement('option'); o0.value = ''; o0.textContent = pair[1]; sel.appendChild(o0);
+    withCurrentInstructor(names.slice(), keep).forEach(function (n) {
+      var o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o);
+    });
+    sel.value = keep;
+  });
+}
+
 // ── Init ──────────────────────────────────────────────────────
 function initCounselorPortal() {
   var cmpFotdRoot = document.getElementById('cmp-fact-of-day');
@@ -5451,20 +5475,12 @@ function initCounselorPortal() {
   });
   const instrSel = document.getElementById('b-instructor');
   const coInstrSel = document.getElementById('b-co-instructor');
+  // Instructor + co-instructor dropdowns follow Admin → Settings (active users with the
+  // Instructor role) via portal_staff_names, so a newly added instructor shows up without a
+  // code change (2026-11-19, per Sunil). Cached list first, then refreshed from the server.
   if (instrSel) {
-    const instList = [
-      'Amit Sidpura','Asmita Saroday','Arjun Mistry','Bhavin Patel',
-      'Sneha Garodia','Khorehmand Kasad','Nishchay Kapoor','Piyush Ahuja',
-      'Preeti Agarwala','Sayan Banerjee','Deepak Nachankar','Sharoon Joy','Seema Athavale'
-    ];
-    instList.forEach(i => {
-      const o = document.createElement('option'); o.value=i; o.textContent=i;
-      instrSel.appendChild(o);
-      if (coInstrSel) {
-        const o2 = document.createElement('option'); o2.value=i; o2.textContent=i;
-        coInstrSel.appendChild(o2);
-      }
-    });
+    fillBatchInstructorSelects(counsellorInstructorList());
+    if (window.IGIStaffNames) IGIStaffNames('Instructor', function (names) { fillBatchInstructorSelects(names.slice()); });
   }
   const bStart = document.getElementById('b-start');
   if (bStart) bStart.value  = new Date().toISOString().split('T')[0];
@@ -17523,11 +17539,7 @@ function promptDeleteBatch(batchCode, keepStudents) {
 }
 
 function renderInlineInstructorAssign(batchCode, current) {
-  const instList = [
-    'Amit Sidpura','Asmita Saroday','Arjun Mistry','Bhavin Patel',
-    'Sneha Garodia','Khorehmand Kasad','Nishchay Kapoor','Piyush Ahuja',
-    'Preeti Agarwala','Sayan Banerjee','Deepak Nachankar','Sharoon Joy','Seema Athavale'
-  ];
+  const instList = withCurrentInstructor(counsellorInstructorList(), current);
   const opts = instList.map(i=>`<option value="${i}"${i===current?' selected':''}>${i}</option>`).join('');
   return `<div class="inline-assign">
     <select id="assign-${batchCode}"><option value="">Select instructor</option>${opts}</select>
@@ -17544,11 +17556,7 @@ function dmyToISO(d) {
 }
 
 function renderInlineCoInstructorAssign(batchCode, currentCoInstr, currentUntil, batchEndDate, currentFrom, currentMode) {
-  const instList = [
-    'Amit Sidpura','Asmita Saroday','Arjun Mistry','Bhavin Patel',
-    'Sneha Garodia','Khorehmand Kasad','Nishchay Kapoor','Piyush Ahuja',
-    'Preeti Agarwala','Sayan Banerjee','Deepak Nachankar','Sharoon Joy','Seema Athavale'
-  ];
+  const instList = withCurrentInstructor(counsellorInstructorList(), currentCoInstr);
   const opts = instList.map(i=>`<option value="${i}"${i===currentCoInstr?' selected':''}>${i}</option>`).join('');
   const today = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
   const isExpired = currentCoInstr && currentUntil && currentUntil < today;

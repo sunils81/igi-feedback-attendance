@@ -12378,6 +12378,7 @@ function openFeeForm(studentId) {
   // negative Outstanding. Block Save entirely for unrecognized courses instead of silently
   // corrupting the record further.
   var hasFeeCatalogEntry = typeof COURSE_FEES_JS !== 'undefined' && Object.prototype.hasOwnProperty.call(COURSE_FEES_JS, b.course);
+  window._feeFormCourse = b.course;
   document.getElementById('fee-no-catalog-warn').style.display = hasFeeCatalogEntry ? 'none' : 'block';
   document.getElementById('fee-save-btn').disabled = !hasFeeCatalogEntry;
   // For an EXISTING record, always default to the course fee it was actually saved
@@ -12920,6 +12921,7 @@ function renderInstallments(existing) {
     '</div>') : '');
   }
   html += '<div id="fee-inst-warn" style="display:none;font-size:12px;color:#b94a00;background:#fff3eb;border:1px solid #f5c09a;border-radius:6px;padding:6px 10px;margin-top:6px"></div>';
+  html += '<div id="fee-course-mismatch-warn" style="display:none;font-size:12px;color:#9b1c1c;background:#fdecec;border:1px solid #f3b4b4;border-radius:6px;padding:8px 10px;margin-top:6px;font-weight:600"></div>';
   wrap.innerHTML = html;
   recalcFeeForm();
 }
@@ -13076,6 +13078,53 @@ function recalcFeeForm() {
     warnEl.style.display = 'none';
   }
   syncDocTypeUI(Math.max(calc.net - collected, 0));
+  showFeeCourseMismatch(calc.net, n);
+}
+
+/* ── Wrong-course alert (2026-11-19, per Sunil) ───────────────────────────────────────
+   The course fee is locked to the batch's course, so a student put in the wrong batch
+   shows up only as an odd payment amount: e.g. ₹51,900 typed on a Pearl Grading
+   (₹14,900) record. If an amount the counsellor types matches another course's fee
+   (excl. or incl. GST) and not this one, warn that the course/batch may be wrong. For
+   instalment plans an amount only counts as suspicious when it is more than this
+   student's whole net payable, so a normal DG instalment of ₹51,900 is not flagged. */
+function feeCourseMismatch(netPayable, n) {
+  var course = window._feeFormCourse;
+  if (!course || typeof COURSE_FEES_JS === 'undefined' || !COURSE_FEES_JS[course]) return null;
+  var own = COURSE_FEES_JS[course];
+  var incl = function (c) { return Math.round(c.fee * (1 + (c.gst || 0) / 100)); };
+  var near = function (x, y) { return Math.abs(x - y) <= 1; };
+  var names = (window.COURSES || []).concat(['Graduate Gemologist']).filter(function (c, i, arr) {
+    return arr.indexOf(c) === i && COURSE_FEES_JS[c] && c !== course;
+  });
+  var amts = [];
+  for (var i = 1; i <= n; i++) {
+    var el = document.getElementById('fee-inst' + i + '-amt');
+    var v = el ? Number(el.value) || 0 : 0;
+    if (v > 0 && el.dataset.manual === '1') amts.push(v);
+  }
+  for (var k = 0; k < amts.length; k++) {
+    var a = amts[k];
+    if (near(a, own.fee) || near(a, incl(own)) || near(a, netPayable)) continue;
+    if (n > 1 && a <= netPayable) continue;
+    var hits = names.filter(function (c) {
+      var f = COURSE_FEES_JS[c];
+      return f.fee !== own.fee && (near(a, f.fee) || near(a, incl(f)));
+    });
+    if (hits.length) return { amount: a, courses: hits, course: course, fee: own.fee };
+  }
+  return null;
+}
+function showFeeCourseMismatch(netPayable, n) {
+  var box = document.getElementById('fee-course-mismatch-warn');
+  if (!box) return;
+  var m = feeCourseMismatch(netPayable, n);
+  window._feeCourseMismatch = m;
+  if (!m) { box.style.display = 'none'; return; }
+  box.textContent = '⚠ Wrong course? ' + money(m.amount) + ' is the fee for ' + m.courses.join(' / ') +
+    ', but this student is in a ' + m.course + ' batch (' + money(m.fee) + ' + GST). ' +
+    'Please check the student is in the correct batch before saving.';
+  box.style.display = 'block';
 }
 
 /* ── PI vs TAX INVOICE ────────────────────────────────────────────────────────────────
@@ -13264,6 +13313,9 @@ function openDiscountRequestFromFeeForm() {
 
 function saveFeeRecord() {
   if (!currentFeeStudent) return;
+  var mm = window._feeCourseMismatch;
+  if (mm && !confirm(money(mm.amount) + ' is the fee for ' + mm.courses.join(' / ') + ', not ' + mm.course +
+      '.\n\nThis student may be in the wrong batch. Save anyway?')) return;
   const err = document.getElementById('fee-err');
   const btn = document.getElementById('fee-save-btn');
   err.classList.remove('show');

@@ -16493,8 +16493,12 @@ const COURSE_FEES_JS = {
   // current display name; added to COURSES so it's actually selectable in Batch Setup/CRM.
   'Diamond Essential: The 5C\'s':        {fee:29900, regFee:0,    gst:18},
   // New 2026-10-16 per Sunil. Both run 3 full days or 5 half days.
-  'Pearl Grading':                       {fee:29900, regFee:0,    gst:18},
-  'Pearl Grading Advance':               {fee:59900, regFee:0,    gst:18},
+  // Revised 2026-11-19 per Sunil: Pearl Grading was 29900, now 14900 + GST (sold along with
+  // Graduate Gemologist); Pearl Grading Advance was 59900, now 29900 + GST.
+  'Pearl Grading':                       {fee:14900, regFee:0,    gst:18},
+  'Pearl Grading Advance':               {fee:29900, regFee:0,    gst:18},
+  // New 2026-11-19 per Sunil: Diploma in Pearls, 59900 + GST (was in COURSES with no price).
+  'Diploma in Pearls':                   {fee:59900, regFee:0,    gst:18},
   // New 2026-10-21 per Sunil. Runs 5 half days. ₹25,900 + GST.
   'Jewelry Business Essentials':         {fee:25900, regFee:0,    gst:18},
   // New 2026-10-28 per Sunil. Online delivery of the same programme, minus the

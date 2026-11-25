@@ -200,8 +200,9 @@ const WIPES={
  diamond:['polygon(50% 50%,50% 50%,50% 50%,50% 50%)','polygon(50% -80%,180% 50%,50% 180%,-80% 50%)'],
  hex:['polygon(50% 50%,50% 50%,50% 50%,50% 50%,50% 50%,50% 50%)','polygon(25% -90%,75% -90%,150% 50%,75% 190%,25% 190%,-50% 50%)'],
  circle:['circle(0% at 50% 50%)','circle(120% at 50% 50%)'],
- slice:['polygon(130% 0%,150% 0%,150% 100%,150% 100%)','polygon(-50% 0%,150% 0%,150% 100%,-30% 100%)'],
- sliceB:['polygon(-50% 0%,-50% 0%,-30% 100%,-50% 100%)','polygon(-50% 0%,150% 0%,130% 100%,-50% 100%)']};
+ /* slices start right at the screen edge, so the wipe moves from the first frame (2026-11-25) */
+ slice:['polygon(100% 0%,150% 0%,150% 100%,120% 100%)','polygon(-20% 0%,150% 0%,150% 100%,0% 100%)'],
+ sliceB:['polygon(-50% 0%,0% 0%,-20% 100%,-50% 100%)','polygon(-50% 0%,120% 0%,100% 100%,-50% 100%)']};
 /* ---------- image warm-up: decode a scene's photos before it is shown, so they never pop in half-painted ---------- */
 const warmed=new WeakMap();
 /* photos in scenes are built lazy (data-lz) so a deck opens fast; a scene's photos are attached
@@ -228,8 +229,8 @@ function go(n,instant){
  else{prev.classList.add('leaving');
   const W=WIPES[w],DUR=1050,E='cubic-bezier(.77,0,.18,1)';
   next.classList.add('moving');prev.classList.add('moving');
-  next.animate([{clipPath:W[0]},{clipPath:W[1]}],{duration:DUR,easing:E});
-  next.animate([{transform:'scale(1.1)'},{transform:'scale(1)'}],{duration:DUR+300,easing:'cubic-bezier(.16,1,.3,1)'}).onfinish=()=>next.classList.remove('moving');
+  /* the incoming scene only wipes in: a zoom on the same element as the clip-path wipe flickered on Mac (2026-11-25) */
+  next.animate([{clipPath:W[0]},{clipPath:W[1]}],{duration:DUR,easing:E}).onfinish=()=>next.classList.remove('moving');
   try{prev.animate([{opacity:0},{opacity:.7}],{duration:DUR,easing:E,pseudoElement:'::after'})}catch(e){}
   prev.animate([{transform:'scale(1)'},{transform:`scale(.9) translateX(${back?6:-6}%)`}],{duration:DUR,easing:E}).onfinish=()=>{prev.classList.remove('leaving','moving');busy=false;updHint()};
   if(!w.startsWith('slice')){const wp=$('#wp');const pts=w==='hex'?ngon(6,1,0):w==='circle'?ngon(40):[[0,-1],[1,0],[0,1],[-1,0]];

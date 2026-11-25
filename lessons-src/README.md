@@ -192,3 +192,13 @@ shared `common.html` + `common.js.html`); run `python3 lessons-src/team_training
 `build.py`. No photos: every visual is SVG/CSS. Access (`migration_lesson_team_training.sql`): the
 HOD sees them in the admin 🏛 Lesson Library; anyone else only if the HOD ticks
 "IGI Team Training (internal)" on their Library access. The backup approver does not get them by default.
+
+## IGI Team Training · BD briefing (2026-11-25)
+`igi-team-bd-pitch` (course `IGI Team Training`, day 3): a 20-minute, 16-scene briefing the HOD gives Lata's and
+Dinesh Kala's Business Development teams so they can pitch Retail Technical & Sales Training (₹2,500 per associate
+per day) to retailers and the LGD Business Masterclass (India, online, Dec 9–11 2026, US$1,000) to people entering
+lab-grown. Two-buyer split, what RTT covers, proof charts, format and testing, discovery questions, one-breath
+pitches, objection flip cards, India LGD charts, a "which one do you pitch?" scenario game, a quick quiz and lead
+hand-off to sunil.sharma@igi.org. Same access as Diamonds 101: the HOD sees it in the admin 🏛 Lesson Library;
+others only with "IGI Team Training (internal)" ticked on their Library access. Photos from rtt-retail-training.
+Publish: `python3 lessons-src/upload.py igi-team-bd-pitch --env <file>`.

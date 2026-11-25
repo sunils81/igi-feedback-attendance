@@ -19,6 +19,7 @@ import base64, io, json, os, re, sys
 ROOT = os.path.dirname(os.path.abspath(__file__))
 ENGINE = os.path.join(ROOT, 'engine')
 DIST = os.path.join(ROOT, 'dist')
+HI_SIDE = 2000  # zoom copy, only for photos larger than the slide copy (2026-11-25)
 MAX_SIDE = 1280  # was 1600 until 2026-10-18: smaller decks, quicker to download and open
 
 try:
@@ -62,6 +63,10 @@ def build(slug):
     foot = open(os.path.join(ENGINE, 'foot.html'), encoding='utf-8').read()
     scenes = open(os.path.join(ddir, 'scenes.html'), encoding='utf-8').read()
     html = head.replace('{{TITLE}}', meta['title'] + ' · IGI') + scenes + foot
+    # photo zoom (engine/zoom.html, 2026-11-25): click any photo -> full screen, zoom up to 6x
+    zoom = open(os.path.join(ENGINE, 'zoom.html'), encoding='utf-8').read()
+    k = html.rfind('</body>')
+    html = html[:k] + zoom + html[k:] if k >= 0 else html + zoom
 
     # fonts
     def font(m):
@@ -81,10 +86,17 @@ def build(slug):
             for cand in [name] + [stem + e for e in ('.jpg', '.jpeg', '.png', '.gif', '.webp')]:
                 p = os.path.join(base, cand)
                 if os.path.exists(p):
-                    return image_uri(p, int(cap) if cap else MAX_SIDE)
+                    if cap == 'hi':
+                        with Image.open(p) as im0:
+                            big = max(im0.size)
+                        return image_uri(p, HI_SIDE) if big > MAX_SIDE * 1.15 else ''
+                    return image_uri(p, int(cap[2:]) if cap else MAX_SIDE)
         missing.append(name)
         return 'media/' + name
-    html = re.sub(r"media/([A-Za-z0-9_.\-]+\.(?:jpe?g|png|gif|webp))(?:#w=(\d+))?", img, html)
+    # zoom copy: photos whose original is bigger than the slide copy also carry a sharper version (data-hi, up to HI_SIDE)
+    html = re.sub(r'(<img\b[^>]*?\ssrc=")media/([A-Za-z0-9_.\-]+\.(?:jpe?g|png|gif|webp))"',
+                  lambda m: m.group(1) + 'media/' + m.group(2) + ('" data-nozoom="1"' if 'logo' in m.group(2).lower() else '" data-hi="media/' + m.group(2) + '#hi"'), html)
+    html = re.sub(r"media/([A-Za-z0-9_.\-]+\.(?:jpe?g|png|gif|webp))(?:#(w=\d+|hi))?", img, html)
     if missing:
         sys.exit('Missing images in %s: %s' % (slug, ', '.join(sorted(set(missing)))))
 

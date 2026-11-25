@@ -202,3 +202,12 @@ pitches, objection flip cards, India LGD charts, a "which one do you pitch?" sce
 hand-off to sunil.sharma@igi.org. Same access as Diamonds 101: the HOD sees it in the admin 🏛 Lesson Library;
 others only with "IGI Team Training (internal)" ticked on their Library access. Photos from rtt-retail-training.
 Publish: `python3 lessons-src/upload.py igi-team-bd-pitch --env <file>`.
+
+## Presenter notes, presenter view and phone remote (2026-11-25)
+Ported from The LGD Opportunity (IGI-LGD-Masterclass/09). Opt-in per deck: put `<aside class="notes">…</aside>` inside a
+scene (cue tags `<span class="cue">[CLICK]</span>`, `<span class="ifask">If asked: …</span>`). Decks with notes get three
+buttons in the bottom bar: **Notes** (N, panel at the bottom), **Presenter view** (V, a second window with the script, next
+slide and a clock; share only the deck window on Zoom/Teams), **📱 Phone remote** (R, QR code for `/remote?c=CODE`,
+`deck-remote.html`). The remote uses Supabase Realtime broadcast on channel `igi-deck-remote-CODE` (anon key, nothing
+stored); it needs internet on both laptop and phone. Code: `engine/foot.html` and `engine/head.html`; decks without notes
+are unchanged. First deck with notes: `igi-team-bd-pitch` (notes written by `team_training/bd_notes.py`).

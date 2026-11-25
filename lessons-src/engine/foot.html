@@ -243,6 +243,7 @@ function go(n,instant){
  $('#chap').textContent=next.dataset.chap||'';
  $('#prog i').style.width=(cur/(scenes.length-1)*100)+'%';
  $('#count').textContent=(cur+1)+' / '+scenes.length;
+ try{window.__onScene&&window.__onScene()}catch(e){}
  if(next.id==='s-end'){const sc=score();const t0=performance.now();const f=t=>{const q=Math.min(1,Math.max(0,(t-t0-500)/1500));const el=$('#endScore');if(el)el.textContent=Math.round(sc*(1-Math.pow(1-q,3)));if(q<1)requestAnimationFrame(f)};requestAnimationFrame(f);setTimeout(()=>burst(960,520),1800)}
  if(instant) updHint();
  try{if(!inFrame)history.replaceState(null,'','#'+(next.id||cur))}catch(e){}
@@ -336,6 +337,105 @@ window.LESSON={
  cur:()=>scenes[cur], scenes:()=>scenes.slice(), advance:()=>advance(), back:()=>go(cur-1)
 };
 addEventListener('keydown',e=>{if(e.target.matches('input,select,textarea'))return;if((e.key==='l'||e.key==='L'))laser.toggle();else if(AUD&&(e.key==='a'||e.key==='A')&&$('#bAud'))$('#bAud').click()});
+
+/* ---------- presenter notes, presenter view, phone remote (2026-11-25, from The LGD Opportunity) ----------
+   Opt-in: only decks whose scenes carry <aside class="notes"> get the Notes / Presenter view / Phone remote
+   buttons. N = notes panel at the bottom of the deck, V = presenter view (a second window with the script,
+   the next slide and a clock: share only the deck window on Zoom/Teams), R = phone remote: a QR code opens
+   <portal>/remote?c=CODE on the trainer's phone, which shows the notes and has Back / Next buttons.
+   The remote uses Supabase Realtime broadcast on channel igi-deck-remote-CODE: nothing is stored. */
+const HASN=$$('.scene .notes').length>0;
+const pvTitle=sc=>{if(!sc)return'';const h=sc.querySelector('h1,h2,.quiz');let t=h?(h.dataset&&h.dataset.title)||h.textContent:'';t=(t||'').replace(/\s+/g,' ').trim();if(!t)t=sc.dataset.chap||'';return t.length>90?t.slice(0,88)+'…':t};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const notesOf=sc=>{const n=sc&&sc.querySelector('.notes');return n?n.innerHTML:''};
+let PV=null,pvT0=Date.now(),pvFs=24,RM=null;
+function notesUpd(){if(!HASN)return;const sc=scenes[cur];const NT=$('#notesT');
+ if(NT)NT.innerHTML=notesOf(sc)||'<span style="color:#8D96AD">No notes for this slide.</span>';
+ pvUpd();rmState()}
+const togNotes=()=>{const NP=$('#notesP');if(!NP)return;NP.classList.toggle('open');$('#bNotes').classList.toggle('on',NP.classList.contains('open'))};
+function pvOpen(){
+ if(PV&&!PV.closed){PV.focus();return}
+ PV=window.open('','igiDeckPresenter','width=1200,height=820');
+ if(!PV){if(!$('#notesP').classList.contains('open'))togNotes();return}
+ const d=PV.document;
+ d.open();d.write(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Presenter view · ${esc(document.title)}</title><style>
+ *{box-sizing:border-box}html,body{height:100%}
+ body{margin:0;background:#0A1530;color:#F2EEE4;font:400 24px/1.55 Manrope,"Segoe UI",Helvetica,Arial,sans-serif;display:grid;grid-template-rows:auto 1fr auto}
+ header,footer{display:flex;gap:18px;align-items:center;padding:12px 26px;font-size:15px;color:#A9B2C8}
+ header{border-bottom:1px solid rgba(214,177,108,.4)}footer{border-top:1px solid rgba(214,177,108,.4)}
+ #pvChap{color:#E6C98F;font-weight:800;letter-spacing:.16em;text-transform:uppercase;font-size:13px}
+ #pvCount{margin-left:auto}#pvClock{font:700 26px/1 Manrope,system-ui;color:#FBF6EA;font-variant-numeric:tabular-nums;min-width:90px;text-align:right}
+ main{overflow:auto;padding:24px 40px 30px}
+ #pvTitle{font:600 30px/1.2 Georgia,"Times New Roman",serif;color:#FBF6EA;margin:0 0 18px}
+ #pvNotes p{margin:0 0 14px}#pvNotes b{color:#E6C98F}
+ #pvNotes .cue{font:800 .68em/1 Manrope,system-ui;letter-spacing:.14em;text-transform:uppercase;color:#E6C98F;white-space:nowrap}
+ #pvNotes .ifask{display:block;margin-top:12px;font-size:.78em;color:#A9B2C8}
+ button{font:700 15px Manrope,system-ui;padding:9px 16px;border-radius:999px;border:1px solid #D6B16C;background:transparent;color:#F2EEE4;cursor:pointer}
+ button:hover{background:rgba(214,177,108,.15)}#pvNext{background:#D6B16C;color:#0A1530}
+ #pvNextT{color:#F2EEE4;font-weight:600}.sp{margin-left:auto}
+ </style></head><body>
+ <header><span id="pvChap"></span><span id="pvCount"></span><span id="pvClock">0:00</span><button id="pvReset" title="Restart the clock">Reset</button></header>
+ <main><h1 id="pvTitle"></h1><div id="pvNotes"></div></main>
+ <footer><button id="pvPrev">← Back</button><span>Next slide: <span id="pvNextT"></span></span><span class="sp"></span><button id="pvSm" title="Smaller text">A−</button><button id="pvLg" title="Larger text">A+</button><button id="pvNext">Next →</button></footer>
+ </body></html>`);d.close();
+ const g=id=>d.getElementById(id);
+ g('pvNext').onclick=()=>advance();g('pvPrev').onclick=()=>go(cur-1);
+ g('pvReset').onclick=()=>{pvT0=Date.now();pvTick()};
+ g('pvLg').onclick=()=>{pvFs=Math.min(40,pvFs+2);d.body.style.fontSize=pvFs+'px'};
+ g('pvSm').onclick=()=>{pvFs=Math.max(16,pvFs-2);d.body.style.fontSize=pvFs+'px'};
+ d.body.style.fontSize=pvFs+'px';
+ PV.addEventListener('keydown',e=>{
+  if(['ArrowRight','PageDown',' ','Enter'].includes(e.key)){e.preventDefault();advance()}
+  else if(['ArrowLeft','PageUp','Backspace'].includes(e.key)){e.preventDefault();go(cur-1)}});
+ pvT0=Date.now();pvUpd();
+}
+function pvTick(){if(!PV||PV.closed)return;const s=Math.floor((Date.now()-pvT0)/1000),h=Math.floor(s/3600),m=Math.floor(s%3600/60);
+ const el=PV.document.getElementById('pvClock');if(el)el.textContent=(h?h+':'+String(m).padStart(2,'0'):m)+':'+String(s%60).padStart(2,'0')}
+setInterval(pvTick,1000);
+function pvUpd(){if(!PV||PV.closed)return;const d=PV.document,g=id=>d.getElementById(id);if(!g('pvNotes'))return;
+ const sc=scenes[cur],nx=scenes[cur+1];
+ g('pvChap').textContent=sc.dataset.chap||'';g('pvCount').textContent=(cur+1)+' / '+scenes.length;
+ g('pvTitle').textContent=pvTitle(sc);
+ g('pvNotes').innerHTML=notesOf(sc)||'<p style="color:#8D96AD">No notes for this slide.</p>';
+ g('pvNextT').textContent=nx?pvTitle(nx):'End of the deck';d.title=(cur+1)+' / '+scenes.length+' · Presenter view';pvTick()}
+/* phone remote */
+const RM_SB='https://atbexvtrcopaagcdbpqi.supabase.co',RM_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF0YmV4dnRyY29wYWFnY2RicHFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzNDI0MDgsImV4cCI6MjA5NjkxODQwOH0.4hl6Hs2ZnDW6vSMiRTOkp9sR-93v5dpTjC0uNuticBM';
+const RM_SITE=(()=>{try{const o=parent&&parent!==window?parent.location.origin:location.origin;if(o&&o!=='null'&&/^https?:/.test(o))return o}catch(e){}return 'https://igi-feedback-attendance.vercel.app'})();
+const loadJs=src=>new Promise((ok,no)=>{if(document.querySelector(`script[src="${src}"]`))return ok();const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=no;document.head.appendChild(s)});
+const rmUrl=()=>RM_SITE+'/remote?c='+RM.code;
+async function rmStart(){if(RM&&RM.ch){rmShow();return}
+ rmShow('Connecting…');
+ try{await loadJs('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js');await loadJs('https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js')}
+ catch(e){RM=null;rmShow('The phone remote needs an internet connection.');return}
+ const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',code=Array.from(crypto.getRandomValues(new Uint8Array(6)),b=>A[b%A.length]).join('');
+ const client=window.supabase.createClient(RM_SB,RM_KEY,{auth:{persistSession:false}});
+ const ch=client.channel('igi-deck-remote-'+code,{config:{broadcast:{self:false}}});
+ RM={code,client,ch,connected:false};
+ ch.on('broadcast',{event:'cmd'},({payload:p})=>{if(!p)return;
+  if(p.a==='hello'){RM.connected=true;rmBadge();rmHide();rmState()}
+  else if(p.a==='next')advance();else if(p.a==='prev')go(cur-1);else if(p.a==='go'&&Number.isInteger(p.n))go(p.n)});
+ ch.subscribe(s=>{if(s==='SUBSCRIBED'){rmShow();rmState()}else if(s==='CHANNEL_ERROR'||s==='TIMED_OUT')rmShow('Could not connect. Check the internet and press R again.')})}
+function rmState(){if(!RM||!RM.ch)return;const sc=scenes[cur],nx=scenes[cur+1];
+ try{RM.ch.send({type:'broadcast',event:'state',payload:{i:cur,n:scenes.length,deck:D.tag||document.title,chap:sc.dataset.chap||'',title:pvTitle(sc),next:nx?pvTitle(nx):'End of the deck',notes:notesOf(sc)}})}catch(e){}}
+function rmShow(msg){let o=$('#rmO');if(!o){o=document.createElement('div');o.id='rmO';stage.appendChild(o);o.addEventListener('click',e=>{e.stopPropagation();if(e.target.closest('[data-x]'))rmHide()})}
+ if(msg||!RM){o.innerHTML=`<div class="rm-in"><div class="rm-t"><h3>Phone remote</h3><p>${esc(msg||'Connecting…')}</p><button data-x class="rm-b">Close</button></div></div>`;o.classList.add('open');return}
+ const q=qrcode(0,'M');q.addData(rmUrl());q.make();
+ o.innerHTML=`<div class="rm-in"><div class="rm-qr">${q.createSvgTag({cellSize:6,margin:2,scalable:true})}</div><div class="rm-t"><h3>Phone remote</h3>
+  <p>Scan with your phone camera, or open <b>${esc(rmUrl().replace(/^https?:\/\//,''))}</b></p><p class="rm-code">${RM.code}</p>
+  <p class="rm-s">Your phone shows the notes for each slide, with Back and Next buttons. This box closes when your phone connects. Keep this code to yourself.</p>
+  <button data-x class="rm-b">Hide</button></div></div>`;o.classList.add('open')}
+function rmHide(){const o=$('#rmO');o&&o.classList.remove('open')}
+function rmBadge(){const b=$('#bRM');if(b){b.textContent=RM&&RM.connected?'📱 Phone ●':'📱 Phone remote';b.classList.toggle('on',!!(RM&&RM.connected))}}
+if(HASN){
+ const P=document.createElement('div');P.id='notesP';P.innerHTML='<h5>Presenter notes <small>N to hide · V for a separate window · R for your phone</small></h5><div id="notesT"></div>';stage.appendChild(P);
+ ['click','pointerdown','touchstart','wheel'].forEach(t=>P.addEventListener(t,e=>e.stopPropagation(),{passive:true}));
+ const mk=(id,txt,tip,fn)=>{const b=document.createElement('button');b.id=id;b.type='button';b.textContent=txt;b.title=tip;b.onclick=fn;$('#bLaser').before(b);return b};
+ mk('bNotes','Notes','Presenter notes (N)',togNotes);mk('bPV','Presenter view','Notes in a separate window (V). Share only the deck window.',pvOpen);mk('bRM','📱 Phone remote','Run the deck from your phone, with the notes on the phone (R)',rmStart);
+ addEventListener('keydown',e=>{if(e.target.matches('input,select,textarea')||e.metaKey||e.ctrlKey||e.altKey)return;
+  if(e.key==='n'||e.key==='N')togNotes();else if(e.key==='v'||e.key==='V')pvOpen();else if(e.key==='r'||e.key==='R')rmStart()});
+ ['beforeunload','pagehide'].forEach(t=>addEventListener(t,()=>{try{PV&&!PV.closed&&PV.close()}catch(e){}}));
+ window.__onScene=notesUpd;
+}
 
 updScore();
 const h=inFrame?'':location.hash.slice(1);const start=h?Math.max(0,/^\d+$/.test(h)?+h:idx(h)):0;

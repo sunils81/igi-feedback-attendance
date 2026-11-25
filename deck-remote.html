@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0A1530"><meta name="robots" content="noindex">
+<title>Phone remote · IGI School of Gemology</title>
+<!-- Phone remote for portal lesson decks that carry presenter notes (2026-11-25, adapted from The LGD Opportunity).
+     The deck (press R) shows a QR code for /remote?c=CODE. This page joins the Supabase Realtime broadcast channel
+     igi-deck-remote-CODE: it receives the current slide's title and notes, and sends next / prev. Nothing is stored. -->
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{background:#0A1530;color:#F2EEE4;font:400 19px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;display:flex;flex-direction:column;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+header{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid rgba(214,177,108,.35);font-size:13px;color:#A9B2C8}
+#chap{color:#E6C98F;font-weight:800;letter-spacing:.14em;text-transform:uppercase;font-size:11px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#count{font-variant-numeric:tabular-nums}#clock{font:700 17px/1 system-ui;color:#FBF6EA;font-variant-numeric:tabular-nums}
+#dot{width:9px;height:9px;border-radius:50%;background:#c0574a;flex:none}#dot.on{background:#5fd08a}
+main{flex:1;overflow:auto;padding:16px 18px 22px}
+#deck{font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#8D96AD;margin-bottom:6px}
+#title{font:600 22px/1.25 Georgia,"Times New Roman",serif;color:#FBF6EA;margin:0 0 12px}
+#notes p{margin:0 0 12px}#notes b{color:#E6C98F}
+#notes .cue{font:800 .68em/1 system-ui;letter-spacing:.12em;text-transform:uppercase;color:#E6C98F}
+#notes .ifask{display:block;margin-top:10px;font-size:.82em;color:#A9B2C8}
+#nextL{font-size:13px;color:#A9B2C8;padding:8px 18px;border-top:1px solid rgba(214,177,108,.25)}#nextL b{color:#F2EEE4;font-weight:600}
+nav{display:grid;grid-template-columns:1fr 2fr;gap:10px;padding:10px 14px 14px}
+nav button{font:800 20px system-ui;padding:20px 0;border-radius:16px;border:1px solid #D6B16C;background:transparent;color:#F2EEE4}
+#next{background:#D6B16C;color:#0A1530}
+nav button:active{transform:scale(.97)}
+.tools{display:flex;gap:8px;align-items:center}
+.tools button{font:700 13px system-ui;padding:6px 10px;border-radius:999px;border:1px solid rgba(214,177,108,.6);background:transparent;color:#F2EEE4}
+#join{padding:30px 22px;display:none}#join h1{font:600 26px/1.2 Georgia,serif;color:#FBF6EA;margin:0 0 10px}
+#join input{width:100%;font:700 26px/1 ui-monospace,monospace;letter-spacing:.2em;text-transform:uppercase;padding:14px;border-radius:12px;border:1px solid #6f86bd;background:#0F1E40;color:#FBF6EA;margin:14px 0}
+#join button{width:100%;font:800 18px system-ui;padding:16px;border:0;border-radius:999px;background:#D6B16C;color:#0A1530}
+#wait{color:#A9B2C8}
+</style></head><body>
+<div id="join"><h1>Phone remote</h1><p>In the deck on the laptop, press <b>R</b> (or click "📱 Phone remote") and type the 6-letter code shown on the screen.</p>
+ <input id="codeIn" maxlength="6" autocomplete="off" autocapitalize="characters"><button id="go">Connect</button></div>
+<div id="app" style="display:none;flex-direction:column;flex:1;min-height:0">
+ <header><span id="dot" title="Connection"></span><span id="chap">Connecting…</span><span id="count"></span><span id="clock">0:00</span>
+  <span class="tools"><button id="sm" aria-label="Smaller text">A−</button><button id="lg" aria-label="Larger text">A+</button></span></header>
+ <main id="main"><div id="deck"></div><h1 id="title"></h1><div id="notes"><p id="wait">Waiting for the deck. Keep it open on the laptop.</p></div></main>
+ <div id="nextL">Next slide: <b id="next1">…</b></div>
+ <nav><button id="prev">← Back</button><button id="next">Next →</button></nav>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+(()=>{
+const SB_URL='https://atbexvtrcopaagcdbpqi.supabase.co',SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF0YmV4dnRyY29wYWFnY2RicHFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzNDI0MDgsImV4cCI6MjA5NjkxODQwOH0.4hl6Hs2ZnDW6vSMiRTOkp9sR-93v5dpTjC0uNuticBM';
+const $=id=>document.getElementById(id);
+let fs=19;try{fs=+localStorage.getItem('igiRemoteFs')||19}catch(e){}document.body.style.fontSize=fs+'px';
+const setFs=d=>{fs=Math.max(14,Math.min(30,fs+d));document.body.style.fontSize=fs+'px';try{localStorage.setItem('igiRemoteFs',fs)}catch(e){}};
+$('sm').onclick=()=>setFs(-2);$('lg').onclick=()=>setFs(2);
+const code=(new URLSearchParams(location.search).get('c')||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+if(!/^[A-Z0-9]{6}$/.test(code)){$('join').style.display='block';$('go').onclick=()=>{const c=$('codeIn').value.toUpperCase().replace(/[^A-Z0-9]/g,'');if(c.length===6)location.search='?c='+c};return}
+$('app').style.display='flex';
+/* notes come from our own published decks; still drop scripts, handlers and links before showing them */
+const clean=h=>{const t=document.createElement('div');t.innerHTML=h||'';t.querySelectorAll('script,style,iframe,img,a').forEach(e=>e.replaceWith(...e.childNodes));t.querySelectorAll('*').forEach(el=>[...el.attributes].forEach(a=>{if(a.name!=='class')el.removeAttribute(a.name)}));return t.innerHTML};
+let t0=null,got=false,lastI=-1;
+setInterval(()=>{if(!t0)return;const s=Math.floor((Date.now()-t0)/1000),h=Math.floor(s/3600),m=Math.floor(s%3600/60);$('clock').textContent=(h?h+':'+String(m).padStart(2,'0'):m)+':'+String(s%60).padStart(2,'0')},1000);
+$('clock').onclick=()=>{t0=Date.now()};
+const client=supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:false}});
+const ch=client.channel('igi-deck-remote-'+code,{config:{broadcast:{self:false}}});
+const send=(a,n)=>ch.send({type:'broadcast',event:'cmd',payload:{a,n}});
+ch.on('broadcast',{event:'state'},({payload:s})=>{got=true;if(!t0)t0=Date.now();$('dot').classList.add('on');
+ $('deck').textContent=s.deck||'';$('chap').textContent=s.chap||'';$('count').textContent=(s.i+1)+' / '+s.n;$('title').textContent=s.title||'';
+ $('notes').innerHTML=s.notes?clean(s.notes):'<p style="color:#8D96AD">No notes for this slide.</p>';
+ $('next1').textContent=s.next||'';if(s.i!==lastI){$('main').scrollTop=0;lastI=s.i}});
+ch.subscribe(st=>{if(st==='SUBSCRIBED'){send('hello')}else if(st==='CHANNEL_ERROR'||st==='TIMED_OUT'||st==='CLOSED'){$('dot').classList.remove('on')}});
+setInterval(()=>{if(!got)send('hello')},3000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){got=false;send('hello');wake()}});
+const tap=a=>{send(a);navigator.vibrate&&navigator.vibrate(15)};
+$('next').onclick=()=>tap('next');$('prev').onclick=()=>tap('prev');
+let x0=null;$('main').addEventListener('touchstart',e=>{x0=e.touches[0].clientX},{passive:true});
+$('main').addEventListener('touchend',e=>{if(x0==null)return;const d=e.changedTouches[0].clientX-x0;if(Math.abs(d)>80)tap(d<0?'next':'prev');x0=null});
+const wake=async()=>{try{await navigator.wakeLock.request('screen')}catch(e){}};wake();
+})();
+</script>
+</body></html>

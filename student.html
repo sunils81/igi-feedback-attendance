@@ -976,6 +976,10 @@
         <span class="tab-label">Portfolio</span>
         <span id="portfolio-tab-badge" style="display:none;position:absolute;top:4px;right:4px;width:10px;height:10px;background:#ef4444;border-radius:50%;border:2px solid #fff;animation:badgePulse 1.5s infinite;"></span>
       </button>
+      <button class="nav-tab" id="nav-tab-smartlearning" style="display:none" onclick="switchTab('tab-smartlearning', this);">
+        <span class="tab-icon">🎓</span>
+        <span class="tab-label">Smart Learning</span>
+      </button>
       <button class="nav-tab" id="nav-tab-diploma" onclick="switchTab('tab-diploma', this); loadStudentDiploma();">
         <span class="tab-icon">🎓</span>
         <span class="tab-label">Diploma</span>
@@ -1028,6 +1032,7 @@
         <button class="more-sheet-item" onclick="moreSheetGoTo('tab-assignments','nav-tab-assignments'); loadMyAssignments();"><span>📁 Assignments</span><span class="more-sheet-chev">›</span></button>
         <button class="more-sheet-item" onclick="moreSheetGoTo('tab-stonechallenge','nav-tab-stonechallenge'); loadMyStoneChallenge();"><span>💎 Stone Challenge</span><span class="more-sheet-chev">›</span></button>
         <button class="more-sheet-item" onclick="moreSheetGoTo('tab-portfolio','nav-tab-portfolio'); loadMyPortfolio();"><span>🎨 Portfolio</span><span class="more-sheet-chev">›</span></button>
+        <button class="more-sheet-item" id="more-sl-item" style="display:none" onclick="moreSheetGoTo('tab-smartlearning','nav-tab-smartlearning')"><span>🎓 Smart Learning</span><span class="more-sheet-chev">›</span></button>
         <button class="more-sheet-item" onclick="moreSheetGoTo('tab-diploma','nav-tab-diploma'); loadStudentDiploma();"><span>🎓 Diploma</span><span class="more-sheet-chev">›</span></button>
         <button class="more-sheet-item" onclick="moreSheetGoTo('tab-diamondcalc','nav-tab-diamondcalc'); mountStudentDiamondCalc();"><span>🧮 Calculator</span><span class="more-sheet-chev">›</span></button>
         <button class="more-sheet-item" onclick="moreSheetGoTo('tab-glossary','nav-tab-glossary'); mountStudentGlossary();"><span>📖 Glossary</span><span class="more-sheet-chev">›</span></button>
@@ -1221,6 +1226,10 @@
       <div id="ot-portfolio-wrap" style="padding:16px;">
         <div style="color:#9ca3af;font-size:13px;padding:20px 0;">Loading portfolio requests…</div>
       </div>
+    </div>
+
+    <div id="tab-smartlearning" class="tab-content">
+      <div id="sl-wrap"><div style="color:#9ca3af;font-size:13px;padding:20px 0;">Loading your course…</div></div>
     </div>
 
     <div id="tab-diploma" class="tab-content">
@@ -2263,6 +2272,105 @@ function otRevealTodayTabIfHidden() {
 // are hidden. Everything tied to their permanent record — Courses history,
 // Calendar, Marks, Resources, Portfolio, Diploma, Alumni network, and the
 // Diamond Calculator — stays available indefinitely.
+
+/* ── Smart Learning (2026-11-27) ─────────────────────────────────────────────────────
+   Shown only to students the HOD has granted access (sl_access, via the counsellor's
+   batch request). Modules open one at a time: each needs its micro-quiz passed (4 of 5),
+   each week its test (60%), then the final (60%). Access lasts 3 months; when it ends the
+   tab goes and the portal keeps only Diploma, Alumni and Career Path (slApplyEndedView). */
+var _slData = null;
+window.__slEnded = {};
+function slFmt(iso) {
+  try { return new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) { return iso; }
+}
+function loadSmartLearning(d) {
+  var sid = (d && d.enrollmentNo) || '';
+  if (!sid) return;
+  gasGet({ action: 'getMySmartLearning', studentId: sid }, function(e, r) {
+    if (e || !r || r.status !== 'ok') return;
+    _slData = r.programmes || [];
+    window.__slEnded = {};
+    _slData.forEach(function(p) { if (p.state === 'ended' || p.state === 'revoked') window.__slEnded[String(p.batchCode).toUpperCase()] = true; });
+    var live = _slData.filter(function(p) { return p.state === 'active' || p.state === 'upcoming'; });
+    var show = live.length > 0;
+    ['nav-tab-smartlearning', 'more-sl-item'].forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = show ? '' : 'none'; });
+    if (show) renderSmartLearning(live);
+    applyAlumniTabVisibility(portalData);
+    slApplyEndedView();
+    var q = new URLSearchParams(location.search);
+    if (show && q.get('tab') === 'smartlearning') { var b = document.getElementById('nav-tab-smartlearning'); if (b) b.click(); }
+  });
+}
+/* Every batch the student has is a Smart Learning batch whose access has ended → only the
+   Diploma, Alumni and Career Path tabs (and Privacy) stay. */
+function slApplyEndedView() {
+  var all = (portalData && (portalData.allBatches || portalData.batches)) || [];
+  if (!all.length) return;
+  var allEnded = all.every(function(b) { return window.__slEnded[String(b.batchCode || '').toUpperCase()]; });
+  if (!allEnded) return;
+  var keep = { 'nav-tab-diploma': 1, 'nav-tab-alumni': 1, 'nav-tab-careerpath': 1 };
+  document.querySelectorAll('.nav-tab').forEach(function(btn) { if (!keep[btn.id]) btn.style.display = 'none'; });
+  ['mnav-home', 'mnav-timetable', 'mnav-marks', 'mnav-notes'].forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  document.querySelectorAll('.more-sheet-item').forEach(function(it) {
+    var oc = it.getAttribute('onclick') || '';
+    if (!/tab-diploma|tab-alumni|tab-careerpath|openConsentSettings/.test(oc)) it.style.display = 'none';
+  });
+  var dip = document.getElementById('nav-tab-diploma'); if (dip) dip.click();
+}
+function slStateRow(icon, title, sub, right, tone) {
+  var col = { done: '#065F46', open: '#1D4ED8', soon: '#6B7280', locked: '#9CA3AF' }[tone] || '#374151';
+  return '<div style="display:flex;gap:10px;align-items:center;padding:10px 12px;border-top:1px solid #F1F1EE;opacity:' + (tone === 'locked' ? '0.6' : '1') + '">' +
+    '<div style="font-size:18px;width:24px;text-align:center">' + icon + '</div>' +
+    '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;color:#0d1b2e">' + escapeHtmlSL(title) + '</div>' +
+    (sub ? '<div style="font-size:11.5px;color:#6B7280;margin-top:2px">' + sub + '</div>' : '') + '</div>' +
+    '<div style="font-size:11.5px;font-weight:700;color:' + col + ';white-space:nowrap">' + right + '</div></div>';
+}
+function escapeHtmlSL(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function renderSmartLearning(list) {
+  var wrap = document.getElementById('sl-wrap'); if (!wrap) return;
+  wrap.innerHTML = list.map(function(p) {
+    var pct = p.modulesTotal ? Math.round(100 * p.modulesDone / p.modulesTotal) : 0;
+    var when = p.state === 'upcoming'
+      ? 'Opens on <b>' + slFmt(p.startsOn) + '</b>'
+      : 'Access until <b>' + slFmt(p.endsOn) + '</b> · ' + p.daysLeft + ' day' + (p.daysLeft === 1 ? '' : 's') + ' left';
+    var warn = '';
+    if (p.state === 'active' && p.daysLeft <= 30) {
+      var red = p.daysLeft <= 7;
+      warn = '<div style="margin-top:10px;padding:9px 12px;border-radius:8px;font-size:12.5px;background:' + (red ? '#FEF2F2' : '#FFFBEB') + ';color:' + (red ? '#991B1B' : '#92400E') + ';border:1px solid ' + (red ? '#FCA5A5' : '#FDE68A') + '">' +
+        (red ? '⚠ ' : '⏳ ') + 'Your access ends in ' + p.daysLeft + ' day' + (p.daysLeft === 1 ? '' : 's') + '. Finish your modules and tests; after that only your diploma stays in the portal. Need more time? Ask your counsellor.</div>';
+    }
+    var head = '<div class="card" style="background:linear-gradient(135deg,#0d1b2e 0%,#1a3a5c 100%);color:#fff;border:1.5px solid #C8A951">' +
+      '<div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#C8A951;font-weight:700">' + escapeHtmlSL(p.batchCode) + '</div>' +
+      '<div style="font-size:19px;font-weight:800;margin-top:4px">' + escapeHtmlSL(p.title) + '</div>' +
+      '<div style="font-size:12.5px;color:rgba(255,255,255,.85);margin-top:6px">' + when + '</div>' +
+      '<div style="margin-top:12px;height:7px;background:rgba(255,255,255,.15);border-radius:6px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:#C8A951"></div></div>' +
+      '<div style="font-size:11.5px;color:rgba(255,255,255,.75);margin-top:6px">' + p.modulesDone + ' of ' + p.modulesTotal + ' modules complete</div>' +
+      warn + '</div>';
+    var rules = '<div style="font-size:12px;color:#6B7280;margin:10px 2px 14px;line-height:1.5">Each module: watch the film (if there is one) and the lesson, then take a 5-question quiz. Get ' + p.passMicro + ' right to open the next module. Each week ends with a test (' + p.passTestPct + '% to pass), and the course ends with a final exam (' + p.passTestPct + '%) and your practical at the centre.</div>';
+    var allPassed = true;
+    var weeks = (p.weeks || []).map(function(w) {
+      var rows = w.modules.map(function(m) {
+        var sub = m.film ? '🎬 Film: ' + escapeHtmlSL(m.film) : '';
+        if (m.state === 'done') return slStateRow('✅', m.title, sub, 'Passed' + (m.quizBest != null ? ' · ' + m.quizBest + '/5' : ''), 'done');
+        if (m.state === 'open') return slStateRow('▶️', m.title, sub, 'Start', 'open');
+        if (m.state === 'soon') return slStateRow('🎬', m.title, sub, 'Video coming soon', 'soon');
+        return slStateRow('🔒', m.title, sub, 'Locked', 'locked');
+      }).join('');
+      var t = w.test;
+      if (t.state !== 'done') allPassed = false;
+      rows += t.state === 'done' ? slStateRow('🏅', 'Week ' + w.n + ' test', '', 'Passed' + (t.best != null ? ' · ' + t.best + '%' : ''), 'done')
+            : t.state === 'open' ? slStateRow('📝', 'Week ' + w.n + ' test', p.passTestPct + '% to pass', 'Take the test', 'open')
+            : slStateRow('🔒', 'Week ' + w.n + ' test', 'Opens when this week’s modules are passed', 'Locked', 'locked');
+      return '<div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">' +
+        '<div style="padding:12px 12px 10px;font-size:12px;font-weight:800;color:#B87A10;letter-spacing:0.06em;text-transform:uppercase">Week ' + w.n + ' · ' + escapeHtmlSL(w.title) + '</div>' + rows + '</div>';
+    }).join('');
+    if (!(p.weeks || []).length) weeks = '<div class="card" style="font-size:13px;color:#6B7280">Your course outline is being prepared. Your counsellor will let you know when the first module opens.</div>';
+    var fin = (p.weeks || []).length ? '<div class="card" style="padding:0;overflow:hidden">' +
+      slStateRow(allPassed ? '🎓' : '🔒', 'Final exam', p.passTestPct + '% to pass · then your practical at the centre', allPassed ? 'Ask your counsellor for the date' : 'Opens after all weekly tests', allPassed ? 'open' : 'locked') + '</div>' : '';
+    return head + rules + weeks + fin;
+  }).join('<div style="height:20px"></div>');
+}
+
 function applyAlumniTabVisibility(d) {
   var allBatches = (d && (d.allBatches || d.batches)) || [];
   if (!allBatches.length) return; // no batch data at all yet — leave tabs as-is
@@ -2364,6 +2472,7 @@ function renderPortal(d) {
   }
 
   applyAlumniTabVisibility(d);
+  loadSmartLearning(d);
 
   var fotdRoot = document.getElementById('student-fact-of-day');
   if (fotdRoot && typeof FactOfDay !== 'undefined') {

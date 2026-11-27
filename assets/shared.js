@@ -8091,6 +8091,14 @@ window.gasGet = (function () {
               keepStudents = !!n.keep_students;
               studentCount = n.student_count;
               feeRecords = n.fee_records;
+            } else if (type === 'SmartLearning') {
+              batchCode = n.batch_code || '';
+              studentCount = n.student_count;
+              reason = (n.programme ? 'Smart Learning ' + n.programme : 'Smart Learning') + (n.note ? ' · ' + n.note : '');
+              studentName = (n.students || []).map(function(x) { return x.name || x.id; }).slice(0, 6).join(', ');
+            } else if (type === 'SLExtend') {
+              batchCode = n.batch_code || '';
+              reason = '+' + (n.days || 30) + ' days · ' + (n.reason || '') + (n.current_end ? ' (ends ' + n.current_end + ')' : '');
             } else if (type === 'BatchMove') {
               fromBatch = n.from_batch || '';
               toBatch = n.to_batch || '';
@@ -8104,7 +8112,7 @@ window.gasGet = (function () {
           } catch(err) {}
         }
 
-        if (!studentId && type !== 'BatchMove' && type !== 'BatchDelete' && r.ref_code) {
+        if (!studentId && type !== 'BatchMove' && type !== 'BatchDelete' && type !== 'SmartLearning' && type !== 'SLExtend' && r.ref_code) {
           var parts = r.ref_code.split('-HOD-');
           if (parts.length === 2) {
             batchCode = parts[0];
@@ -8117,7 +8125,7 @@ window.gasGet = (function () {
           type: type,
           studentId: studentId,
           batchCode: batchCode,
-          studentName: type === 'BatchDelete' ? ('Batch ' + batchCode) : (studentName || ('Student ' + studentId)),
+          studentName: type === 'BatchDelete' ? ('Batch ' + batchCode) : (type === 'SmartLearning' ? (studentName || ('Batch ' + batchCode)) : (studentName || ('Student ' + studentId))),
           keepStudents: keepStudents,
           studentCount: studentCount,
           feeRecords: feeRecords,
@@ -8152,7 +8160,8 @@ window.gasGet = (function () {
       function finalizeApproval(moveResult) {
         parsedNotes.review_note = p.note || '';
         parsedNotes.actioned_by = p.adminName || 'Admin';
-        if (moveResult) parsedNotes.move_result = moveResult;
+        if (moveResult && (row.type === 'SmartLearning' || row.type === 'SLExtend')) parsedNotes.grant_result = moveResult;
+        else if (moveResult) parsedNotes.move_result = moveResult;
         var notesVal;
         try { notesVal = JSON.stringify(parsedNotes); } catch(e2) { notesVal = row.notes || ''; }
 
@@ -8164,7 +8173,9 @@ window.gasGet = (function () {
         }, function(e) {
           if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
           var out = { status: 'ok' };
-          if (moveResult) {
+          if (moveResult && (row.type === 'SmartLearning' || row.type === 'SLExtend')) {
+            out.granted = moveResult.granted; out.endsOn = moveResult.endsOn || moveResult.newEnd;
+          } else if (moveResult) {
             out.hadAttendance = moveResult.hadAttendance;
             out.hasFeeRecord = moveResult.hasFeeRecord;
           }
@@ -8191,7 +8202,271 @@ window.gasGet = (function () {
         return;
       }
 
+      // Smart Learning grant / extension (2026-11-27): same rule — apply first, then approve.
+      if (status === 'Approved' && (row.type === 'SmartLearning' || row.type === 'SLExtend')) {
+        slApplyApproval(row, parsedNotes, p.adminName, function(res) {
+          if (!res || res.status !== 'ok') { cb(null, { status: 'error', reason: (res && res.reason) || 'Could not grant access.' }); return; }
+          finalizeApproval(res);
+        });
+        return;
+      }
+
       finalizeApproval(null);
+    });
+  }
+
+
+  /* ── Smart Learning access (2026-11-27) ─────────────────────────────────────────────
+     Per Sunil: a counsellor creates a Smart Learning DG/CSG batch, adds the students and
+     sends it to the HOD for approval. Approving (h_reviewHODApproval, type 'SmartLearning')
+     writes one sl_access row per student who has none yet: starts on the approval day, or
+     the batch start date if that is later, and runs 3 calendar months. Students added after
+     an approval are sent again the same way and get their own 3 months. When access ends
+     the Smart Learning tab locks and the student portal falls back to the alumni view, so
+     only the Diploma (and Alumni / Career Path) stays visible. Extensions are a separate
+     request type, 'SLExtend', per student, approved by the HOD.
+     Tables: sl_access, sl_progress (supabase/migration_smart_learning_access.sql). */
+  var SL_ACCESS_MONTHS = 3;
+  var SL_PASS_MICRO = 4;      // micro-quiz: 4 of 5
+  var SL_PASS_TEST_PCT = 60;  // weekly tests and final
+  var SL_COURSE_PROGRAMME = {
+    'smart learning dg': 'DG', 'diamond graduate integrated': 'DG',
+    'smart learning csg': 'CSG', 'coloured stone integrated': 'CSG', 'colored stone integrated': 'CSG'
+  };
+  function slProgrammeFor(course) { return SL_COURSE_PROGRAMME[String(course || '').trim().toLowerCase()] || ''; }
+
+  /* The programme in order. A module with no `video` yet shows as "coming soon"; gating
+     still applies, so nothing after an unfinished module opens. Film ids match films.js. */
+  var SL_PROGRAMMES = {
+    DG: { title: 'Smart Learning · Diamond Graduate', weeks: [
+      { n: 1, title: 'Foundations of diamond', modules: [
+        { id: 'dg-evolution-1', title: 'Evolution of Diamonds · Part 1' },
+        { id: 'dg-evolution-2', title: 'Evolution of Diamonds · Part 2' },
+        { id: 'dg-morphology-1', title: 'Morphology of Rough · Part 1' },
+        { id: 'dg-morphology-2', title: 'Morphology of Rough · Part 2' },
+        { id: 'dg-origin-of-rough', title: 'Origin of Rough', film: 'From Earth’s Depths' },
+        { id: 'dg-rough-trading', title: 'The Rough Diamond Trade' },
+        { id: 'dg-rough-sorting', title: 'Rough Diamond Sorting' } ] },
+      { n: 2, title: 'Clarity', modules: [
+        { id: 'dg-clarity-inclusions', title: 'Clarity I · Inclusions & Blemishes', film: 'The Journey Inside a Diamond' },
+        { id: 'dg-clarity-grading', title: 'Clarity II · Grades & Plotting' } ] },
+      { n: 3, title: 'Colour and carat', modules: [
+        { id: 'dg-colour-grading', title: 'Colour Grading', film: 'Mystery of Diamond Color' },
+        { id: 'dg-measurements', title: 'Measurements & Carat Weight' } ] },
+      { n: 4, title: 'Cut', modules: [
+        { id: 'dg-proportions', title: 'Estimating Proportions', film: 'Diamond Disassembled · Inside the Diamond' },
+        { id: 'dg-cut-finish', title: 'Cut & Finish Grades', film: 'From Rough to Radiant' },
+        { id: 'dg-fancy-shapes', title: 'Fancy Shapes' } ] },
+      { n: 5, title: 'Identification', modules: [
+        { id: 'dg-treatments', title: 'Colour & Clarity Treatments' },
+        { id: 'dg-synthetics-imitations', title: 'Lab-Grown Diamonds & Imitations', film: 'CVD: Earth vs Lab' } ] },
+      { n: 6, title: 'Trade and jewellery', modules: [
+        { id: 'dg-pricing', title: 'Diamond Pricing' },
+        { id: 'dg-jewellery-business', title: 'Jewelry Business Essentials' },
+        { id: 'dg-assortment', title: 'Small Diamond Assortment' },
+        { id: 'dg-settings', title: 'Settings in Jewellery' },
+        { id: 'dg-mounted-jewellery', title: 'Grading Mounted Jewellery' },
+        { id: 'dg-metal-qa', title: 'IGI Metal Quality Assurance' } ] }
+    ] },
+    CSG: { title: 'Smart Learning · Coloured Stone Graduate', weeks: [] }
+  };
+
+  function slTodayISO() { return new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10); }
+  function slAddDaysISO(iso, n) {
+    var d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10);
+  }
+  function slAddMonthsISO(iso, n) {
+    var p = iso.split('-').map(Number), y = p[0], m = p[1] - 1 + n, day = p[2];
+    y += Math.floor(m / 12); m = ((m % 12) + 12) % 12;
+    var last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    return new Date(Date.UTC(y, m, Math.min(day, last))).toISOString().slice(0, 10);
+  }
+  function slStartFor(batchStart) {
+    var today = slTodayISO(), bs = String(batchStart || '').slice(0, 10);
+    return (/^\d{4}-\d{2}-\d{2}$/.test(bs) && bs > today) ? bs : today;
+  }
+  function slEffectiveEnd(row) { return String(row.ends_on || '').slice(0, 10); }
+  function slIsActive(row) {
+    var t = slTodayISO();
+    return row.status === 'Active' && String(row.starts_on).slice(0, 10) <= t && slEffectiveEnd(row) >= t;
+  }
+
+  function slStudentIdsForBatch(batchCode, cb) {
+    h_getStudents({ batchCode: batchCode }, function (e, d) {
+      cb(((d && d.students) || []).map(function (s) {
+        return { id: String(s.enrollmentNo || '').trim().toUpperCase(), name: s.name || '' };
+      }).filter(function (s) { return s.id; }));
+    });
+  }
+
+  /* Counsellor → HOD. One request per batch (ref '<BATCH>-SL'); re-sending while one is
+     pending refreshes it. Approving covers every student in the batch without access. */
+  function h_submitSmartLearningRequest(p, cb) {
+    var bc = String(p.batchCode || '').trim().toUpperCase();
+    if (!bc) { cb(null, { status: 'error', reason: 'Missing batch.' }); return; }
+    GET('batches', 'batch_code=eq.' + encodeURIComponent(bc) + '&select=batch_code,course,centre,start_date&limit=1', function (eB, bRows) {
+      var b = bRows && bRows[0];
+      if (eB || !b) { cb(null, { status: 'error', reason: 'Batch ' + bc + ' was not found.' }); return; }
+      var prog = slProgrammeFor(b.course);
+      if (!prog) { cb(null, { status: 'error', reason: b.course + ' is not a Smart Learning course.' }); return; }
+      slStudentIdsForBatch(bc, function (studs) {
+        GET('sl_access', 'batch_code=eq.' + encodeURIComponent(bc) + '&select=student_id', function (eA, aRows) {
+          var have = {}; (aRows || []).forEach(function (r) { have[String(r.student_id).toUpperCase()] = 1; });
+          var waiting = studs.filter(function (s) { return !have[s.id]; });
+          if (!waiting.length) {
+            cb(null, { status: 'error', reason: studs.length ? 'Every student in this batch already has access.' : 'Add students to the batch first.' });
+            return;
+          }
+          var refCode = bc + '-SL';
+          var notesVal = JSON.stringify({ batch_code: bc, course: b.course, programme: prog,
+            student_count: waiting.length, students: waiting.slice(0, 60), note: String(p.note || '').trim() });
+          GET('hod_approvals', 'ref_code=eq.' + encodeURIComponent(refCode) + '&status=eq.Pending', function (err, rows) {
+            if (!err && rows && rows.length) {
+              PATCH('hod_approvals', 'id=eq.' + encodeURIComponent(rows[0].id), {
+                centre: b.centre || p.centre || '', requested_by: p.counselorName || '', created_at: nowISO(), notes: notesVal
+              }, function (e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', count: waiting.length }); });
+            } else {
+              POST('hod_approvals', null, {
+                type: 'SmartLearning', ref_code: refCode, centre: b.centre || p.centre || '',
+                requested_by: p.counselorName || '', status: 'Pending', notes: notesVal
+              }, function (e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok', count: waiting.length }); });
+            }
+          });
+        });
+      });
+    });
+  }
+
+  /* Counsellor → HOD: extend one student's access by `days` (default 30). */
+  function h_submitSmartLearningExtension(p, cb) {
+    var sid = String(p.studentId || '').trim().toUpperCase();
+    var bc = String(p.batchCode || '').trim().toUpperCase();
+    var days = Math.max(1, Math.min(180, parseInt(p.days, 10) || 30));
+    var reason = String(p.reason || '').trim();
+    if (!sid || !bc) { cb(null, { status: 'error', reason: 'Missing student or batch.' }); return; }
+    if (!reason) { cb(null, { status: 'error', reason: 'Please give a reason for the extension.' }); return; }
+    GET('sl_access', 'student_id=eq.' + encodeURIComponent(sid) + '&batch_code=eq.' + encodeURIComponent(bc) + '&limit=1', function (eA, aRows) {
+      var a = aRows && aRows[0];
+      if (eA || !a) { cb(null, { status: 'error', reason: 'This student has no Smart Learning access to extend yet.' }); return; }
+      var refCode = bc + '-SLX-' + sid;
+      var notesVal = JSON.stringify({ student_id: sid, student_name: p.studentName || '', batch_code: bc,
+        days: days, reason: reason, current_end: slEffectiveEnd(a) });
+      GET('hod_approvals', 'ref_code=eq.' + encodeURIComponent(refCode) + '&status=eq.Pending', function (err, rows) {
+        if (!err && rows && rows.length) {
+          PATCH('hod_approvals', 'id=eq.' + encodeURIComponent(rows[0].id), {
+            centre: p.centre || '', requested_by: p.counselorName || '', created_at: nowISO(), notes: notesVal
+          }, function (e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
+        } else {
+          POST('hod_approvals', null, { type: 'SLExtend', ref_code: refCode, centre: p.centre || '',
+            requested_by: p.counselorName || '', status: 'Pending', notes: notesVal
+          }, function (e) { cb(null, e ? { status: 'error', reason: String(e) } : { status: 'ok' }); });
+        }
+      });
+    });
+  }
+
+  /* Runs inside h_reviewHODApproval before the request is marked Approved, so a failed
+     grant leaves it Pending for the HOD to retry (same rule as BatchMove). */
+  function slApplyApproval(row, notes, adminName, cb) {
+    if (row.type === 'SLExtend') {
+      var sid = String(notes.student_id || '').toUpperCase(), bc = String(notes.batch_code || '').toUpperCase();
+      var days = Math.max(1, Math.min(180, parseInt(notes.days, 10) || 30));
+      GET('sl_access', 'student_id=eq.' + encodeURIComponent(sid) + '&batch_code=eq.' + encodeURIComponent(bc) + '&limit=1', function (e, rows) {
+        var a = rows && rows[0];
+        if (e || !a) { cb({ status: 'error', reason: 'No Smart Learning access found for ' + sid + ' in ' + bc + '.' }); return; }
+        var base = slEffectiveEnd(a) > slTodayISO() ? slEffectiveEnd(a) : slTodayISO();
+        var newEnd = slAddDaysISO(base, days);
+        PATCH('sl_access', 'id=eq.' + encodeURIComponent(a.id), {
+          ends_on: newEnd, status: 'Active', extended_by: adminName || 'Admin', extended_at: nowISO(),
+          extension_note: (a.extension_note ? a.extension_note + ' | ' : '') + days + ' days: ' + (notes.reason || '')
+        }, function (e2) {
+          cb(e2 ? { status: 'error', reason: 'Could not extend access: ' + String(e2) } : { status: 'ok', newEnd: newEnd });
+        });
+      });
+      return;
+    }
+    var bc2 = String(notes.batch_code || '').toUpperCase();
+    GET('batches', 'batch_code=eq.' + encodeURIComponent(bc2) + '&select=batch_code,course,start_date&limit=1', function (eB, bRows) {
+      var b = bRows && bRows[0];
+      if (eB || !b) { cb({ status: 'error', reason: 'Batch ' + bc2 + ' was not found.' }); return; }
+      var prog = slProgrammeFor(b.course);
+      if (!prog) { cb({ status: 'error', reason: b.course + ' is not a Smart Learning course.' }); return; }
+      slStudentIdsForBatch(bc2, function (studs) {
+        GET('sl_access', 'batch_code=eq.' + encodeURIComponent(bc2) + '&select=student_id', function (eA, aRows) {
+          var have = {}; (aRows || []).forEach(function (r) { have[String(r.student_id).toUpperCase()] = 1; });
+          var start = slStartFor(b.start_date), end = slAddMonthsISO(start, SL_ACCESS_MONTHS);
+          var add = studs.filter(function (s) { return !have[s.id]; }).map(function (s) {
+            return { student_id: s.id, batch_code: bc2, programme: prog, starts_on: start, ends_on: end,
+              approval_id: String(row.id), approved_by: adminName || 'Admin', approved_at: nowISO(), status: 'Active' };
+          });
+          if (!add.length) { cb({ status: 'error', reason: studs.length ? 'Every student in this batch already has access.' : 'This batch has no students yet.' }); return; }
+          xhr('POST', 'sl_access', '', add, 'return=minimal', function (eI) {
+            if (eI) { cb({ status: 'error', reason: 'Could not grant access: ' + String(eI.message || eI) }); return; }
+            cb({ status: 'ok', granted: add.length, startsOn: start, endsOn: end });
+          });
+        });
+      });
+    });
+  }
+
+  /* Counsellor batch cards: latest request state and how many students have access. */
+  function h_getSmartLearningStates(p, cb) {
+    GET('hod_approvals', 'type=eq.SmartLearning&order=created_at.desc&select=ref_code,status,actioned_by,actioned_at,notes', function (e, rows) {
+      GET('sl_access', 'select=batch_code,student_id,ends_on,status', function (e2, aRows) {
+        var req = {}, granted = {};
+        (rows || []).forEach(function (r) {
+          var bc = String(r.ref_code || '').replace(/-SL$/, '').toUpperCase();
+          if (req[bc]) return; // newest first
+          var n = {}; try { n = JSON.parse(r.notes || '{}'); } catch (x) {}
+          req[bc] = { state: r.status, actionedBy: r.actioned_by || '', actionedAt: r.actioned_at || '',
+            count: n.student_count || 0, reviewNote: n.review_note || '' };
+        });
+        (aRows || []).forEach(function (a) {
+          var bc = String(a.batch_code).toUpperCase();
+          var g = granted[bc] || (granted[bc] = { count: 0, students: {} });
+          g.count++; g.students[String(a.student_id).toUpperCase()] = slEffectiveEnd(a);
+        });
+        cb(null, { status: 'ok', requests: req, granted: granted });
+      });
+    });
+  }
+
+  /* Student portal: the programme with each module's state. */
+  function h_getMySmartLearning(p, cb) {
+    var sid = String(p.studentId || '').trim().toUpperCase();
+    if (!sid) { cb(null, { status: 'error', reason: 'missing_params' }); return; }
+    GET('sl_access', 'student_id=eq.' + encodeURIComponent(sid) + '&order=starts_on.desc', function (e, rows) {
+      if (e) { cb(null, { status: 'error', reason: String(e) }); return; }
+      if (!rows || !rows.length) { cb(null, { status: 'ok', programmes: [] }); return; }
+      GET('sl_progress', 'student_id=eq.' + encodeURIComponent(sid), function (e2, pRows) {
+        var prog = {}; (pRows || []).forEach(function (r) { prog[r.programme + '|' + r.module_id] = r; });
+        var today = slTodayISO();
+        var out = rows.map(function (a) {
+          var def = SL_PROGRAMMES[a.programme] || { title: a.programme, weeks: [] };
+          var open = true, total = 0, done = 0;
+          var weeks = def.weeks.map(function (w) {
+            var mods = w.modules.map(function (m) {
+              var pr = prog[a.programme + '|' + m.id] || {};
+              var passed = !!pr.passed_at; total++; if (passed) done++;
+              var state = passed ? 'done' : (open ? (m.video ? 'open' : 'soon') : 'locked');
+              if (!passed) open = false;
+              return { id: m.id, title: m.title, film: m.film || '', state: state, quizBest: pr.quiz_best == null ? null : pr.quiz_best };
+            });
+            var tp = prog[a.programme + '|week-' + w.n] || {};
+            var testPassed = !!tp.passed_at;
+            var testState = testPassed ? 'done' : (open ? 'open' : 'locked');
+            if (!testPassed) open = false;
+            return { n: w.n, title: w.title, modules: mods, test: { state: testState, best: tp.quiz_best == null ? null : tp.quiz_best } };
+          });
+          var end = slEffectiveEnd(a), start = String(a.starts_on).slice(0, 10);
+          var state = a.status !== 'Active' ? 'revoked' : (start > today ? 'upcoming' : (end >= today ? 'active' : 'ended'));
+          var daysLeft = Math.round((new Date(end + 'T00:00:00Z') - new Date(today + 'T00:00:00Z')) / 86400000);
+          return { programme: a.programme, title: def.title, batchCode: a.batch_code, startsOn: start, endsOn: end,
+            state: state, daysLeft: daysLeft, extended: !!a.extended_at, weeks: weeks,
+            modulesDone: done, modulesTotal: total, passMicro: SL_PASS_MICRO, passTestPct: SL_PASS_TEST_PCT };
+        });
+        cb(null, { status: 'ok', programmes: out });
+      });
     });
   }
 
@@ -15454,6 +15729,10 @@ window.gasGet = (function () {
       case 'getDeferredStudents':       return h_getDeferredStudents(params, cb);
       case 'placeDeferredStudent':      return h_placeDeferredStudent(params, cb);
       case 'submitBatchMoveRequest':    return h_submitBatchMoveRequest(params, cb);
+      case 'submitSmartLearningRequest':   return h_submitSmartLearningRequest(params, cb);
+      case 'submitSmartLearningExtension': return h_submitSmartLearningExtension(params, cb);
+      case 'getSmartLearningStates':       return h_getSmartLearningStates(params, cb);
+      case 'getMySmartLearning':           return h_getMySmartLearning(params, cb);
       case 'resendStudentWelcomeEmail': return h_resendEmail(params, cb);
       case 'getStudentProfile':         return h_studentProfile(params, cb);
       case 'getStudentAlumni':          return h_alumni(params, cb);

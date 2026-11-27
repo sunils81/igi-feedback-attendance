@@ -17255,6 +17255,12 @@ function loadMyBatches() {
           <button class="btn" style="padding:4px 8px; font-size:11px; width:auto; background:#DC2626; color:#fff; border:none" onclick="promptDeleteBatch('${escC(b.batchCode)}', false)">Delete Batch &amp; Students</button>
         `)));
 
+      // Smart Learning access (2026-11-27): HOD-approved, 3 months per student. Filled in by
+      // loadSmartLearningStates() once the cards are on the page.
+      var slSlotHtml = isSmartLearningCourse(b.course)
+        ? `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="sl-slot" data-bc="${escC(String(b.batchCode).toUpperCase())}" data-scount="${sCount}" data-centre="${escC(b.centre||'')}"><span style="font-size:11px;color:var(--muted)">…</span></span></div>`
+        : '';
+
       var changeInstructorControl = isCompleted
         ? (b.instructor ? `<span style="${lockedPillStyle}" title="Locked — batch completed">🔒 Change Instructor</span>` : '')
         : (b.instructor?`<button onclick="document.getElementById('change-instr-panel-${escC(b.batchCode)}').style.display=document.getElementById('change-instr-panel-${escC(b.batchCode)}').style.display==='none'?'block':'none'" style="font-size:11px;background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer;color:var(--navy)">✏️ Change Instructor</button>`:'');
@@ -17322,6 +17328,7 @@ function loadMyBatches() {
           ${editBatchControl}
           ${deleteButtonsHtml}
         </div>
+        ${slSlotHtml}
         ${lockedNote}
           </div>
         </div>
@@ -17408,6 +17415,7 @@ function loadMyBatches() {
       renderSection('mb-sec-active', 'Active', 'rgba(201,168,76,0.12)', '#B87A10', groupActive, true, false) +
       renderSection('mb-sec-completed', 'Completed', '#F3F4F6', '#6B7280', groupCompleted, false, true);
     if (!isAdmin) loadBatchDeleteStates();
+    loadSmartLearningStates();
   }
   var xsBtn = document.getElementById('mb-cross-sell-btn');
   if (xsBtn) xsBtn.style.display = canCrossSellOtherCentres() ? '' : 'none';
@@ -17448,6 +17456,107 @@ function mbToggleSection(bodyId, headerEl) {
   body.style.display = isOpen ? 'none' : 'block';
   var chev = headerEl.querySelector('.mb-chevron');
   if (chev) chev.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
+}
+
+
+/* ── Smart Learning access through HOD approval (2026-11-27) ────────────────────────
+   On a Smart Learning DG/CSG batch card: "Send for Smart Learning approval" files a
+   request (type SmartLearning) for every student in the batch who has no access yet. The
+   HOD approves in Pending Approvals and each student gets 3 months. Students added later
+   are sent the same way. "Request extension" asks the HOD to add days for one student. */
+var SL_COURSES = ['smart learning dg', 'diamond graduate integrated', 'smart learning csg', 'coloured stone integrated', 'colored stone integrated'];
+function isSmartLearningCourse(c) { return SL_COURSES.indexOf(String(c || '').trim().toLowerCase()) !== -1; }
+var _slStates = { requests: {}, granted: {} };
+function loadSmartLearningStates() {
+  if (!document.querySelector('.sl-slot')) return;
+  gasGet({ action: 'getSmartLearningStates' }, function(e, d) {
+    if (d && d.status === 'ok') _slStates = d;
+    document.querySelectorAll('.sl-slot').forEach(renderSmartLearningSlot);
+  });
+}
+function renderSmartLearningSlot(slot) {
+  var bc = String(slot.getAttribute('data-bc') || '').toUpperCase();
+  var sCount = Number(slot.getAttribute('data-scount')) || 0;
+  var r = _slStates.requests[bc], g = _slStates.granted[bc] || { count: 0 };
+  var waiting = Math.max(0, sCount - g.count);
+  var pill = function(bg, col, bd, txt, title) {
+    return '<span title="' + escC(title || '') + '" style="font-size:11px;background:' + bg + ';color:' + col + ';border:1px solid ' + bd + ';border-radius:6px;padding:3px 10px">' + txt + '</span>';
+  };
+  var sendBtn = function(label) {
+    return '<button class="btn" style="padding:4px 10px;font-size:11px;width:auto;background:#1D4ED8;color:#fff;border:none" onclick="sendSmartLearningRequest(\'' + escC(bc) + '\')">' + label + '</button>';
+  };
+  var html = '';
+  if (g.count) html += pill('#ECFDF5', '#065F46', '#A7F3D0', '🎓 Smart Learning access: ' + g.count + ' student' + (g.count === 1 ? '' : 's'), 'Granted by the HOD; 3 months each') + ' ';
+  if (r && r.state === 'Pending') {
+    html += pill('#FFFBEB', '#92400E', '#FDE68A', '⏳ ' + (r.count || '') + ' awaiting HOD approval', 'Sent for approval');
+  } else if (sCount === 0) {
+    html += '<span style="font-size:11px;color:var(--muted)">Add students, then send for Smart Learning approval</span>';
+  } else if (waiting > 0) {
+    if (r && r.state === 'Rejected') html += pill('#FEF2F2', '#B91C1C', '#FCA5A5', '✖ Not approved' + (r.reviewNote ? ': ' + escC(r.reviewNote) : ''), 'Rejected by ' + (r.actionedBy || 'HOD')) + ' ';
+    html += sendBtn('🎓 Send ' + waiting + ' student' + (waiting === 1 ? '' : 's') + ' for Smart Learning approval');
+  }
+  if (g.count) html += ' <a href="javascript:void(0)" style="font-size:11px" onclick="openSmartLearningExtension(\'' + escC(bc) + '\')">request extension</a>';
+  slot.innerHTML = html;
+}
+function sendSmartLearningRequest(bc) {
+  var slot = document.querySelector('.sl-slot[data-bc="' + bc + '"]');
+  if (slot) slot.innerHTML = '<span style="font-size:11px;color:var(--muted)">Sending…</span>';
+  gasGet({ action: 'submitSmartLearningRequest', batchCode: bc, counselorName: counselorName,
+    centre: slot ? slot.getAttribute('data-centre') : '' }, function(e, d) {
+    if (e || !d || d.status !== 'ok') showToast((d && d.reason) || 'Could not send the request. Please try again.', 'error');
+    else showToast('Sent to the HOD: ' + d.count + ' student(s) for Smart Learning access.');
+    loadSmartLearningStates();
+  });
+}
+function openSmartLearningExtension(bc) {
+  var g = _slStates.granted[bc] || { students: {} };
+  var old = document.getElementById('slx-modal'); if (old) old.remove();
+  var m = document.createElement('div');
+  m.id = 'slx-modal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(13,27,46,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:440px;width:100%;padding:20px 22px;box-shadow:0 20px 50px rgba(0,0,0,0.25)">' +
+    '<div style="font-size:16px;font-weight:800;color:var(--navy)">Request a Smart Learning extension</div>' +
+    '<div style="font-size:12px;color:var(--muted);margin:4px 0 14px">' + escC(bc) + ' · the HOD approves extensions.</div>' +
+    '<div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:4px">Student</div>' +
+    '<select id="slx-student" style="width:100%;font-size:13px;padding:7px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px"><option>Loading…</option></select>' +
+    '<div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:4px">Extend by</div>' +
+    '<select id="slx-days" style="width:100%;font-size:13px;padding:7px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px"><option value="15">15 days</option><option value="30" selected>30 days</option><option value="60">60 days</option></select>' +
+    '<div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:4px">Reason <span style="color:#DC2626">*</span></div>' +
+    '<textarea id="slx-reason" rows="3" style="width:100%;box-sizing:border-box;font-size:13px;padding:8px;border:1px solid var(--border);border-radius:8px" placeholder="e.g. Practical days moved; two weekly tests still to take"></textarea>' +
+    '<div id="slx-err" style="display:none;color:#DC2626;font-size:12px;margin-top:6px"></div>' +
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">' +
+      '<button class="btn btn-outline" style="width:auto;padding:7px 14px;font-size:12px" onclick="document.getElementById(\'slx-modal\').remove()">Cancel</button>' +
+      '<button class="btn" id="slx-send" style="width:auto;padding:7px 14px;font-size:12px;background:#1D4ED8;color:#fff;border:none" onclick="submitSmartLearningExtension(\'' + escC(bc) + '\')">Send to HOD</button>' +
+    '</div></div>';
+  document.body.appendChild(m);
+  m.addEventListener('click', function(ev) { if (ev.target === m) m.remove(); });
+  gasGet({ action: 'getStudents', batchCode: bc }, function(e, d) {
+    var sel = document.getElementById('slx-student'); if (!sel) return;
+    var list = ((d && d.students) || []).filter(function(s) { return g.students[String(s.enrollmentNo).toUpperCase()]; });
+    sel.innerHTML = list.length ? list.map(function(s) {
+      var id = String(s.enrollmentNo).toUpperCase();
+      return '<option value="' + escC(id) + '" data-name="' + escC(s.name || '') + '">' + escC(s.name || id) + ' · ' + escC(id) + ' · ends ' + escC(g.students[id]) + '</option>';
+    }).join('') : '<option value="">No students with access yet</option>';
+  });
+}
+function submitSmartLearningExtension(bc) {
+  var sel = document.getElementById('slx-student'), err = document.getElementById('slx-err');
+  var reason = (document.getElementById('slx-reason').value || '').trim();
+  if (!sel.value) { err.textContent = 'Pick a student.'; err.style.display = 'block'; return; }
+  if (!reason) { err.textContent = 'Please give a reason.'; err.style.display = 'block'; return; }
+  var btn = document.getElementById('slx-send'); btn.disabled = true; btn.textContent = 'Sending…';
+  var slot = document.querySelector('.sl-slot[data-bc="' + bc + '"]');
+  gasGet({ action: 'submitSmartLearningExtension', batchCode: bc, studentId: sel.value,
+    studentName: sel.options[sel.selectedIndex].getAttribute('data-name') || '',
+    days: document.getElementById('slx-days').value, reason: reason, counselorName: counselorName,
+    centre: slot ? slot.getAttribute('data-centre') : '' }, function(e, d) {
+    if (e || !d || d.status !== 'ok') {
+      btn.disabled = false; btn.textContent = 'Send to HOD';
+      err.textContent = (d && d.reason) || 'Could not send the request.'; err.style.display = 'block'; return;
+    }
+    document.getElementById('slx-modal').remove();
+    showToast('Extension request sent to the HOD.');
+  });
 }
 
 /* ── Batch deletion through admin approval (2026-10-23) ─────────────────────────

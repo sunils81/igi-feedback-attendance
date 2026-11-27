@@ -316,6 +316,51 @@ async function handleTaskNotify(req, res) {
 // id with the service key and composes the message itself, so a caller can at worst
 // re-send a notification about a decision that has genuinely been recorded.
 //   body: { requestId, actor }
+// ── /api/push/sl-notify — Smart Learning access granted or extended (2026-11-27) ──────
+// The admin page posts the approval id after approving; we look it up ourselves (only an
+// Approved SmartLearning / SLExtend request does anything) and push to each student whose
+// sl_access row came from it, or the one student an extension was for.
+async function handleSlNotify(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ status: 'error', reason: 'Method not allowed' });
+  if (!SUPA_URL || !SUPA_KEY) return res.status(500).json({ status: 'error', reason: 'Server not configured' });
+  const { approvalId } = req.body || {};
+  if (!approvalId || !/^[0-9a-f-]{36}$/i.test(String(approvalId))) {
+    return res.status(400).json({ status: 'error', reason: 'Invalid approvalId' });
+  }
+  try { configureWebPush(); } catch (e) { return res.status(500).json({ status: 'error', reason: e.message }); }
+  let ap;
+  try {
+    const rows = await supaGet(`hod_approvals?id=eq.${encodeURIComponent(approvalId)}&select=id,type,status,notes`);
+    ap = rows[0];
+  } catch (e) { return res.status(500).json({ status: 'error', reason: 'Could not load approval' }); }
+  if (!ap || ap.status !== 'Approved' || (ap.type !== 'SmartLearning' && ap.type !== 'SLExtend')) {
+    return res.status(200).json({ status: 'ok', sent: 0 });
+  }
+  let rows = [];
+  try {
+    if (ap.type === 'SmartLearning') {
+      rows = await supaGet(`sl_access?approval_id=eq.${encodeURIComponent(ap.id)}&select=student_id,ends_on`);
+    } else {
+      let n = {}; try { n = JSON.parse(ap.notes || '{}'); } catch (x) {}
+      rows = await supaGet(`sl_access?student_id=eq.${encodeURIComponent(n.student_id || '')}&batch_code=eq.${encodeURIComponent(n.batch_code || '')}&select=student_id,ends_on`);
+    }
+  } catch (e) { return res.status(500).json({ status: 'error', reason: 'Could not load access rows' }); }
+  const fmt = (d) => { try { return new Date(d + 'T00:00:00Z').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }); } catch (x) { return d; } };
+  let sent = 0;
+  for (const r of rows.slice(0, 200)) {
+    try {
+      const out = await pushTo('student', String(r.student_id).toUpperCase(), {
+        title: ap.type === 'SmartLearning' ? 'Your Smart Learning course is open' : 'Smart Learning access extended',
+        body: (ap.type === 'SmartLearning' ? 'Start with Week 1 in the Smart Learning tab. ' : '') + 'Access until ' + fmt(String(r.ends_on).slice(0, 10)) + '.',
+        url: `${PORTAL_URLS.student}?tab=smartlearning`,
+        tag: `sl-${ap.id}`,
+      });
+      sent += (out && out.sent) || 0;
+    } catch (e) { /* one student's failure doesn't stop the rest */ }
+  }
+  return res.status(200).json({ status: 'ok', students: rows.length, sent });
+}
+
 async function handleDiscountNotify(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ status: 'error', reason: 'Method not allowed' });
@@ -578,6 +623,7 @@ export default async function handler(req, res) {
   if (action === 'unsubscribe') return handleUnsubscribe(req, res);
   if (action === 'task-notify') return handleTaskNotify(req, res);
   if (action === 'discount-notify') return handleDiscountNotify(req, res);
+  if (action === 'sl-notify') return handleSlNotify(req, res);
   if (action === 'lesson-open') return handleLessonOpen(req, res);
   if (action === 'lesson-notify') return handleLessonNotify(req, res);
   if (action === 'film-play') return handleFilmPlay(req, res);

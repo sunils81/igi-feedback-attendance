@@ -7312,8 +7312,18 @@ function loadPendingHODApprovals() {
         var isMove = a.type === 'BatchMove';
 
         var isDel = a.type === 'BatchDelete';
+        var isSL = a.type === 'SmartLearning', isSLX = a.type === 'SLExtend';
         var batchCell, middleCell, finalCell;
-        if (isDel) {
+        if (isSL || isSLX) {
+          // Smart Learning (2026-11-27): approving grants access right away — 3 months from
+          // today (or the batch start, if later) for every student listed. See slApplyApproval.
+          batchCell = '<span style="background:rgba(29,78,216,0.06);color:#1D4ED8;padding:4px 8px;border-radius:6px;font-size:11.5px;font-weight:700;letter-spacing:0.02em;border:1px solid rgba(29,78,216,0.2);">' + escShared(a.batchCode) + '</span>' +
+            '<div style="font-size:9.5px;color:#1D4ED8;font-weight:700;margin-top:4px;text-transform:uppercase;letter-spacing:0.03em;">' + (isSL ? '🎓 Smart Learning access' : '⏳ Access extension') + '</div>';
+          middleCell = '<div style="font-size:11.5px;color:var(--navy);text-align:left;line-height:1.4;max-width:240px;">' + escShared(a.reason || '—') + '</div>';
+          finalCell = isSL
+            ? '<div style="font-size:11px;line-height:1.45;text-align:left"><b>' + (a.studentCount != null ? a.studentCount : '?') + ' student(s)</b><br><span style="color:var(--muted)">3 months each from approval</span></div>'
+            : '<span style="color:var(--muted)">—</span>';
+        } else if (isDel) {
           // Batch deletion request (2026-10-23). Approving has no side effect here — the
           // counsellor deletes it themselves afterwards, within 7 days (see h_deleteBatch).
           batchCell = '<span style="background:rgba(220,38,38,0.06);color:#991B1B;padding:4px 8px;border-radius:6px;font-size:11.5px;font-weight:700;letter-spacing:0.02em;border:1px solid rgba(220,38,38,0.2);">' + escShared(a.batchCode) + '</span>' +
@@ -7347,7 +7357,7 @@ function loadPendingHODApprovals() {
         return '<tr style="transition: transform 0.2s;">' +
           '<td class="text-left" style="padding:12px 10px;padding-left:12px;vertical-align:middle;">' +
             '<div style="font-weight:700;color:var(--navy);font-size:14px;">' + escShared(a.studentName) + '</div>' +
-            (isDel ? '<div style="font-size:11px;color:var(--muted);margin-top:2px;">Deletion request</div>' : '<div style="font-size:11px;color:var(--muted);margin-top:2px;font-family:\'JetBrains Mono\',monospace;">ID: ' + escShared(a.studentId) + '</div>') +
+            (isSL ? '<div style="font-size:11px;color:var(--muted);margin-top:2px;">Smart Learning batch</div>' : isDel ? '<div style="font-size:11px;color:var(--muted);margin-top:2px;">Deletion request</div>' : '<div style="font-size:11px;color:var(--muted);margin-top:2px;font-family:\'JetBrains Mono\',monospace;">ID: ' + escShared(a.studentId) + '</div>') +
           '</td>' +
           '<td class="text-left" style="vertical-align:middle;">' + batchCell + '</td>' +
           '<td class="text-center" style="vertical-align:middle;font-size:14px;">' + middleCell + '</td>' +
@@ -7389,7 +7399,13 @@ function submitHODDecision(appId, status) {
       showToast((d && d.reason) || 'Failed to save HOD decision.', 'error');
       return;
     }
-    showToast('Request ' + status.toLowerCase() + ' successfully.');
+    if (status === 'Approved' && (d.granted || d.endsOn)) {
+      showToast(d.granted ? ('Smart Learning access granted to ' + d.granted + ' student(s), until ' + d.endsOn + '.') : ('Access extended until ' + d.endsOn + '.'));
+      // Tell the students (only those who allowed notifications). Fire-and-forget.
+      try { fetch('/api/push/sl-notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approvalId: appId }) }).catch(function(){}); } catch (x) {}
+    } else {
+      showToast('Request ' + status.toLowerCase() + ' successfully.');
+    }
     loadPendingHODApprovals();
   });
 }
